@@ -41,7 +41,6 @@ Author
 #include "dynamicTopoFvMesh.H"
 #include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
-#include "triPointRef.H"
 #include "mapPolyMesh.H"
 
 #include "fvPatchFields.H"
@@ -736,8 +735,9 @@ inline label dynamicTopoFvMesh::compare
     }
 }
 
-// Find the volume of a tetrahedron. This function assumes proper orientation
-// of the vertices, and will give negative values otherwise.
+// Find the volume of a tetrahedron. 
+// The function assumes points (a-b-c)
+// are in counter-clockwise fashion when viewed from d.
 inline scalar dynamicTopoFvMesh::tetVolume
 (
     const point& a,
@@ -747,6 +747,33 @@ inline scalar dynamicTopoFvMesh::tetVolume
 )
 {
     return (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
+}
+
+// Find the volume sign of a tetrahedron
+// The function assumes points (a-b-c)
+// are in counter-clockwise fashion when viewed from d;
+// (to obtain positive orientation)
+inline label dynamicTopoFvMesh::tetVolumeSign
+(
+    const point& a,
+    const point& b,
+    const point& c,
+    const point& d
+)
+{
+    scalar det = ((b - a) ^ (c - a)) & (d - a);
+
+    if (mag(det) < VSMALL)
+    {
+        return 0;
+    }
+
+    if (Foam::sign(det) < 0.0)
+    {
+        return -1;
+    }
+
+    return 1;
 }
 
 // Method to determine the old boundary patch index for a given face
@@ -2297,6 +2324,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
                         isolatedVertex,
                         eIndex,
                         i,
+                        numTriangulations,
                         triangulations,
                         hullVertices,
                         hullFaces,
@@ -2333,6 +2361,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
     (
         eIndex,
         t32,
+        numTriangulations,
         triangulations,
         hullVertices,
         hullFaces,
@@ -2386,6 +2415,10 @@ void dynamicTopoFvMesh::extractTriangulation
 }
 
 // Identify the 3-2 swap from the triangulation sequence
+// Algorithm taken from:
+//   ALGORITHMS TO TEST RAY-TRIANGLE INTERSECTION.
+//   R. J. Segura and F. R. Feito,
+//   Journal of WSCG, pp. 200-1, 2001.
 label dynamicTopoFvMesh::identify32Swap
 (
     const label eIndex,
@@ -2395,26 +2428,57 @@ label dynamicTopoFvMesh::identify32Swap
 {
     label m = hullVertices.size();
     edge& edgeToCheck = edges_[eIndex];
+    FixedList<label, 3> sign(-2);
 
     for (label i = 0; i < (m-2); i++)
     {
-        pointHit curHit = triPointRef
-        (
-            meshPoints_[hullVertices[triangulations[0][i]]],
-            meshPoints_[hullVertices[triangulations[1][i]]],
-            meshPoints_[hullVertices[triangulations[2][i]]]
-        ).ray
-        (
-            meshPoints_[edgeToCheck[0]],
-            (meshPoints_[edgeToCheck[1]]-meshPoints_[edgeToCheck[0]])
-        );
+        sign[0] =
+            tetVolumeSign
+            (
+                meshPoints_[hullVertices[triangulations[0][i]]],
+                meshPoints_[hullVertices[triangulations[1][i]]],
+                meshPoints_[edgeToCheck[1]],
+                meshPoints_[edgeToCheck[0]]
+            );
 
-        if (curHit.hit())
+        sign[1] =
+            tetVolumeSign
+            (
+                meshPoints_[hullVertices[triangulations[1][i]]],
+                meshPoints_[hullVertices[triangulations[2][i]]],
+                meshPoints_[edgeToCheck[1]],
+                meshPoints_[edgeToCheck[0]]
+            );
+
+        sign[2] =
+            tetVolumeSign
+            (
+                meshPoints_[hullVertices[triangulations[2][i]]],
+                meshPoints_[hullVertices[triangulations[0][i]]],
+                meshPoints_[edgeToCheck[1]],
+                meshPoints_[edgeToCheck[0]]
+            );
+
+        // Intersects at edge AC
+        if ((sign[0]==0) && (sign[1]==sign[2]))
         {
             return i;
         }
-        else
-        if (curHit.eligibleMiss())
+
+        // Intersects at edge BC
+        if ((sign[1]==0) && (sign[0]==sign[2]))
+        {
+            return i;
+        }
+
+        // Intersects at edge AB
+        if ((sign[2]==0) && (sign[0]==sign[1]))
+        {
+            return i;
+        }
+
+        // Intersects inside
+        if ((sign[0]==sign[1]) && (sign[1]==sign[2]))
         {
             return i;
         }
@@ -2502,6 +2566,7 @@ void dynamicTopoFvMesh::swap23
     const label isolatedVertex,
     const label eIndex,
     const label triangulationIndex,
+    const label numTriangulations,
     const labelListList& triangulations,
     const labelList& hullVertices,
     const labelList& hullFaces,
@@ -2523,6 +2588,14 @@ void dynamicTopoFvMesh::swap23
     // Assume that write-locks have been obtained
     edge& edgeToCheck = edges_[eIndex];
 
+    label faceForRemoval = hullFaces[isolatedVertex];
+    label vertexForRemoval = hullVertices[isolatedVertex];
+
+    // Determine the two cells to be removed
+    FixedList<label,2> cellsForRemoval;
+    cellsForRemoval[0] = owner_[faceForRemoval];
+    cellsForRemoval[1] = neighbour_[faceForRemoval];
+
     if (debug > 2)
     {
         // Print out arguments
@@ -2538,15 +2611,19 @@ void dynamicTopoFvMesh::swap23
              << triangulations[2][triangulationIndex] << " "
              << endl;
         Info << "Isolated vertex: " << isolatedVertex << endl;
+
+        if (debug > 3)
+        {
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + "_beforeSwap_"
+              + Foam::name(numTriangulations) + "_"
+              + Foam::name(triangulationIndex),
+                cellsForRemoval
+            );
+        }
     }
-
-    label faceForRemoval = hullFaces[isolatedVertex];
-    label vertexForRemoval = hullVertices[isolatedVertex];
-
-    // Determine the two cells to be removed
-    FixedList<label,2> cellsForRemoval;
-    cellsForRemoval[0] = owner_[faceForRemoval];
-    cellsForRemoval[1] = neighbour_[faceForRemoval];
 
     // Write lock the cell mutex
     cMutex_.lock(rwMutex::WRITE_LOCK);
@@ -3169,6 +3246,18 @@ void dynamicTopoFvMesh::swap23
                  << cells_[newCellIndex[cellI]]
                  << endl;
         }
+
+        if (debug > 3)
+        {
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + "_afterSwap_"
+              + Foam::name(numTriangulations) + "_"
+              + Foam::name(triangulationIndex),
+                newCellIndex
+            );
+        }
     }
 }
 
@@ -3177,6 +3266,7 @@ void dynamicTopoFvMesh::swap32
 (
     const label eIndex,
     const label triangulationIndex,
+    const label numTriangulations,
     const labelListList& triangulations,
     const labelList& hullVertices,
     const labelList& hullFaces,
@@ -3204,31 +3294,6 @@ void dynamicTopoFvMesh::swap32
     // Determine the patch this edge belongs to
     label edgePatch = whichEdgePatch(eIndex);
 
-    if (debug > 2)
-    {
-        // Print out arguments
-        Info << endl;
-
-        if (edgePatch < 0)
-        {
-            Info << "== Swapping 3-2 ==" << endl;
-        }
-        else
-        {
-            Info << "== Swapping 2-2 ==" << endl;
-        }
-
-        Info << "Edge: " << eIndex << ": " << edgeToCheck << endl;
-        Info << "Ring: " << hullVertices << endl;
-        Info << "Faces: " << hullFaces << endl;
-        Info << "Cells: " << hullCells << endl;
-        Info << "Triangulation: "
-             << triangulations[0][triangulationIndex] << " "
-             << triangulations[1][triangulationIndex] << " "
-             << triangulations[2][triangulationIndex] << " "
-             << endl;
-    }
-
     // Determine the three faces to be removed
     FixedList<label,3> facesForRemoval;
     labelHashSet cellsForRemoval(3);
@@ -3254,6 +3319,43 @@ void dynamicTopoFvMesh::swap32
     }
 
     labelList cellRemovalList = cellsForRemoval.toc();
+
+    if (debug > 2)
+    {
+        // Print out arguments
+        Info << endl;
+
+        if (edgePatch < 0)
+        {
+            Info << "== Swapping 3-2 ==" << endl;
+        }
+        else
+        {
+            Info << "== Swapping 2-2 ==" << endl;
+        }
+
+        Info << "Edge: " << eIndex << ": " << edgeToCheck << endl;
+        Info << "Ring: " << hullVertices << endl;
+        Info << "Faces: " << hullFaces << endl;
+        Info << "Cells: " << hullCells << endl;
+        Info << "Triangulation: "
+             << triangulations[0][triangulationIndex] << " "
+             << triangulations[1][triangulationIndex] << " "
+             << triangulations[2][triangulationIndex] << " "
+             << endl;
+
+        if (debug > 3)
+        {
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + "_beforeSwap_"
+              + Foam::name(numTriangulations) + "_"
+              + Foam::name(triangulationIndex),
+                cellRemovalList
+            );
+        }
+    }
 
     // Write lock the cell mutex
     cMutex_.lock(rwMutex::WRITE_LOCK);
@@ -3827,6 +3929,7 @@ void dynamicTopoFvMesh::swap32
         if (edgePatch > -1)
         {
             Info << "Added edge: " << endl;
+
             Info << newEdgeIndex << ":: "
                  << edges_[newEdgeIndex]
                  << " edgeFaces: "
@@ -3835,8 +3938,10 @@ void dynamicTopoFvMesh::swap32
         }
 
         Info << "Added face(s): " << endl;
+
         Info << newFaceIndex << ":: "
              << faces_[newFaceIndex];
+
         Info << " faceEdges: "
              << faceEdges_[newFaceIndex]
              << endl;
@@ -3854,11 +3959,24 @@ void dynamicTopoFvMesh::swap32
         }
 
         Info << "Added cells: " << endl;
+
         forAll(newCellIndex, cellI)
         {
             Info << newCellIndex[cellI] << ":: "
                  << cells_[newCellIndex[cellI]]
                  << endl;
+        }
+
+        if (debug > 3)
+        {
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + "_afterSwap_"
+              + Foam::name(numTriangulations) + "_"
+              + Foam::name(triangulationIndex),
+                newCellIndex
+            );
         }
     }
 }
@@ -4608,6 +4726,154 @@ void dynamicTopoFvMesh::reOrderMesh
     // Reorder the edges
     if (debug) Info << "ReOrdering edges..." << endl;
     reOrderEdges(edges, edgeFaces);
+}
+
+// Output a list of cells as a VTK file.
+// Uses the current state of connectivity.
+void dynamicTopoFvMesh::writeVTK
+(
+    const word& name,
+    const labelList& cList
+)
+{
+    label nCells = 0;
+    label nTotalCells = 0;
+    label nPoints = 0;
+
+    // Estimate a size for points and cellPoints
+    List<vector> points(6*cList.size());
+    labelListList cpList(cList.size());
+
+    // Create a map for local points
+    Map<label> pointMap;
+
+    forAll(cList, cellI)
+    {
+        if (cList[cellI] == -1)
+        {
+            continue;
+        }
+
+        cell& thisCell = cells_[cList[cellI]];
+
+        // Point-ordering for tetrahedra is different
+        if (thisCell.size() == 4)
+        {
+            const face& currFace = faces_[thisCell[0]];
+            const face& nextFace = faces_[thisCell[1]];
+
+            // Size the list
+            cpList[nCells].setSize(4);
+
+            // Get the fourth point
+            forAll(nextFace, pointI)
+            {
+                if
+                (
+                    nextFace[pointI] != currFace[0]
+                 && nextFace[pointI] != currFace[1]
+                 && nextFace[pointI] != currFace[2]
+                )
+                {
+                    // Write-out in order
+                    if (owner_[thisCell[0]] == cList[cellI])
+                    {
+                        cpList[nCells][0] = currFace[2];
+                        cpList[nCells][1] = currFace[1];
+                        cpList[nCells][2] = currFace[0];
+                        cpList[nCells][3] = nextFace[pointI];
+                    }
+                    else
+                    {
+                        cpList[nCells][0] = currFace[0];
+                        cpList[nCells][1] = currFace[1];
+                        cpList[nCells][2] = currFace[2];
+                        cpList[nCells][3] = nextFace[pointI];
+                    }
+
+                    break;
+                }
+            }
+
+            // Renumber to local ordering
+            forAll(cpList[nCells], pointI)
+            {
+                // Check if this point was added to the map
+                if (!pointMap.found(cpList[nCells][pointI]))
+                {
+                    // Point was not found, so add it
+                    points[nPoints] = meshPoints_[cpList[nCells][pointI]];
+
+                    // Update the map
+                    pointMap.insert(cpList[nCells][pointI], nPoints);
+
+                    // Increment the number of points
+                    nPoints++;
+                }
+
+                // Renumber it.
+                cpList[nCells][pointI] = pointMap[cpList[nCells][pointI]];
+            }
+
+            nTotalCells += 4;
+            nCells++;
+        }
+    }
+
+    // Make the directory
+    fileName dirName(time().path()/time().timeName()/"VTK");
+
+    mkDir(dirName);
+
+    // Open stream for output
+    OFstream file(dirName/name+".vtk");
+
+    // Write out the header
+    file << "# vtk DataFile Version 2.0" << nl
+         << name << ".vtk" << nl
+         << "ASCII" << nl
+         << "DATASET UNSTRUCTURED_GRID" << nl
+         << "POINTS " << nPoints << " float" << nl;
+
+    for(label i = 0; i < nPoints; i++)
+    {
+        file << float(points[i].x()) << ' '
+             << float(points[i].y()) << ' '
+             << float(points[i].z()) << ' '
+             << nl;
+    }
+
+    file << "CELLS " << nCells << " " << nTotalCells + nCells << endl;
+
+    forAll(cpList, i)
+    {
+        file << cpList[i].size() << ' ';
+
+        forAll(cpList[i], j)
+        {
+            file << cpList[i][j] << ' ';
+        }
+
+        file << nl;
+    }
+
+    file << "CELL_TYPES " << nCells << endl;
+    forAll(cpList, i)
+    {
+        if (cpList[i].size() == 4)
+        {
+            // Tetrahedron
+            file << "10" << nl;
+        }
+
+        if (cpList[i].size() == 6)
+        {
+            // Wedge
+            file << "13" << nl;
+        }
+    }
+
+    file << nl;
 }
 
 // Copy edge-based connectivity from eMesh to HashLists
@@ -5847,7 +6113,7 @@ bool dynamicTopoFvMesh::tryFaceEdgeLock
 
         forAll(fEdges, edgeI)
         {
-            if (edgeToAvoid != -1)
+            if (edgeToAvoid != fEdges[edgeI])
             {
                 if (obtainLock(tIndex, lType, edgeMutex_[fEdges[edgeI]]))
                 {
@@ -8519,12 +8785,6 @@ void dynamicTopoFvMesh::bisectEdge
     labelList& vertexHull = edgePoints_[eIndex];
     label m = vertexHull.size();
 
-    if (debug > 1)
-    {
-        Info << nl << nl << "Edge: " << eIndex
-             << ": " << thisEdge << " is to be bisected. " << endl;
-    }
-
     // Size up the hull lists
     labelList cellHull(m, -1);
     labelList faceHull(m, -1);
@@ -8548,6 +8808,23 @@ void dynamicTopoFvMesh::bisectEdge
         // Put this edge back on the stack and bail out
         edgeStack(tIndex).push(eIndex);
         return;
+    }
+
+    if (debug > 1)
+    {
+        Info << nl << nl << "Edge: " << eIndex
+             << ": " << thisEdge << " is to be bisected. " << endl;
+
+        // Write out VTK files prior to change
+        if (debug > 3)
+        {
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + "Bisect_0",
+                cellHull
+            );
+        }
     }
 
     // Write lock the point mutex
@@ -9195,23 +9472,27 @@ void dynamicTopoFvMesh::bisectEdge
         Info << "Modified cells: " << endl;
         forAll(cellHull, cellI)
         {
-            if (cellHull[cellI] != -1)
+            if (cellHull[cellI] == -1)
             {
-                Info << cellHull[cellI] << ":: "
-                     << cells_[cellHull[cellI]]
-                     << endl;
+                continue;
             }
+
+            Info << cellHull[cellI] << ":: "
+                 << cells_[cellHull[cellI]]
+                 << endl;
         }
 
         Info << "Added cells: " << endl;
         forAll(addedCellIndices, cellI)
         {
-            if (addedCellIndices[cellI] != -1)
+            if (addedCellIndices[cellI] == -1)
             {
-                Info << addedCellIndices[cellI] << ":: "
-                     << cells_[addedCellIndices[cellI]]
-                     << endl;
+                continue;
             }
+
+            Info << addedCellIndices[cellI] << ":: "
+                 << cells_[addedCellIndices[cellI]]
+                 << endl;
         }
 
         Info << "Modified faces: " << endl;
@@ -9237,16 +9518,18 @@ void dynamicTopoFvMesh::bisectEdge
         }
         forAll(addedIntFaceIndices, faceI)
         {
-            if (addedIntFaceIndices[faceI] != -1)
+            if (addedIntFaceIndices[faceI] == -1)
             {
-                Info << addedIntFaceIndices[faceI] << ":: "
-                     << faces_[addedIntFaceIndices[faceI]] << ": "
-                     << owner_[addedIntFaceIndices[faceI]] << ": "
-                     << neighbour_[addedIntFaceIndices[faceI]] << " "
-                     << "faceEdges:: "
-                     << faceEdges_[addedIntFaceIndices[faceI]]
-                     << endl;
+                continue;
             }
+
+            Info << addedIntFaceIndices[faceI] << ":: "
+                 << faces_[addedIntFaceIndices[faceI]] << ": "
+                 << owner_[addedIntFaceIndices[faceI]] << ": "
+                 << neighbour_[addedIntFaceIndices[faceI]] << " "
+                 << "faceEdges:: "
+                 << faceEdges_[addedIntFaceIndices[faceI]]
+                 << endl;
         }
 
         Info << "New edge:: " << newEdgeIndex
@@ -9267,6 +9550,32 @@ void dynamicTopoFvMesh::bisectEdge
 
         Info << "New Point:: " << newPointIndex << endl;
         Info << "pointEdges:: " << pointEdges_[newPointIndex] << endl;
+
+        // Write out VTK files after change
+        if (debug > 3)
+        {
+            labelList newHull(cellHull.size() + addedCellIndices.size(), 0);
+
+            // Combine both lists into one.
+            forAll(cellHull, i)
+            {
+                newHull[i] = cellHull[i];
+            }
+
+            label start = cellHull.size();
+
+            for(label i = start; i < newHull.size(); i++)
+            {
+                newHull[i] = addedCellIndices[i - start];
+            }
+
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + "Bisect_1",
+                newHull
+            );
+        }
     }
 
     // Set the flag
@@ -9323,12 +9632,6 @@ void dynamicTopoFvMesh::collapseEdge
     label replaceIndex = -1, m = vertexHull.size();
     FixedList<bool,2> edgeBoundary(false);
 
-    if (debug > 1)
-    {
-        Info << nl << nl << "Edge: " << eIndex
-             << ": " << thisEdge << " is to be collapsed. " << endl;
-    }
-
     // Size up the hull lists
     labelList cellHull(m, -1);
     labelList faceHull(m, -1);
@@ -9352,6 +9655,22 @@ void dynamicTopoFvMesh::collapseEdge
         // Put this edge back on the stack and bail out
         edgeStack(tIndex).push(eIndex);
         return;
+    }
+
+    if (debug > 1)
+    {
+        Info << nl << nl << "Edge: " << eIndex
+             << ": " << thisEdge << " is to be collapsed. " << endl;
+
+        // Write out VTK files prior to change
+        if (debug > 3)
+        {
+            writeVTK
+            (
+                Foam::name(eIndex)+"Collapse_0",
+                cellHull
+            );
+        }
     }
 
     // Check whether points of the edge lies on a boundary
@@ -9420,10 +9739,12 @@ void dynamicTopoFvMesh::collapseEdge
         {
             label fIndex = ringEntities[removeFaceIndex][faceI];
 
-            if (fIndex != -1)
+            if (fIndex == -1)
             {
-                Info << fIndex << ": " << faces_[fIndex] << endl;
+                continue;
             }
+
+            Info << fIndex << ": " << faces_[fIndex] << endl;
         }
 
         Info << "ringEntities (removed edges): " << endl;
@@ -9431,10 +9752,12 @@ void dynamicTopoFvMesh::collapseEdge
         {
             label ieIndex = ringEntities[removeEdgeIndex][edgeI];
 
-            if (ieIndex != -1)
+            if (ieIndex == -1)
             {
-                Info << ieIndex << ": " << edges_[ieIndex] << endl;
+                continue;
             }
+
+            Info << ieIndex << ": " << edges_[ieIndex] << endl;
         }
 
         Info << "ringEntities (replacement faces): " << endl;
@@ -9442,10 +9765,12 @@ void dynamicTopoFvMesh::collapseEdge
         {
             label fIndex = ringEntities[replaceFaceIndex][faceI];
 
-            if (fIndex != -1)
+            if (fIndex == -1)
             {
-                Info << fIndex << ": " << faces_[fIndex] << endl;
+                continue;
             }
+
+            Info << fIndex << ": " << faces_[fIndex] << endl;
         }
 
         Info << "ringEntities (replacement edges): " << endl;
@@ -9453,18 +9778,23 @@ void dynamicTopoFvMesh::collapseEdge
         {
             label ieIndex = ringEntities[replaceEdgeIndex][edgeI];
 
-            if (ieIndex != -1)
+            if (ieIndex == -1)
             {
-                Info << ieIndex << ": " << edges_[ieIndex] << endl;
+                continue;
             }
+
+            Info << ieIndex << ": " << edges_[ieIndex] << endl;
         }
 
         labelList& collapsePointEdges = pointEdges_[collapsePoint];
+
         Info << "pointEdges (collapsePoint): ";
+
         forAll(collapsePointEdges, edgeI)
         {
             Info << collapsePointEdges[edgeI] << " ";
         }
+
         Info << endl;
     }
 
@@ -9474,10 +9804,12 @@ void dynamicTopoFvMesh::collapseEdge
     // Add all hull cells as 'checked'
     forAll(cellHull, cellI)
     {
-        if (cellHull[cellI] != -1)
+        if (cellHull[cellI] == -1)
         {
-            cellsChecked.insert(cellHull[cellI]);
+            continue;
         }
+
+        cellsChecked.insert(cellHull[cellI]);
     }
 
     // Check collapsibility of cells around edges with the re-configured point
@@ -9652,116 +9984,118 @@ void dynamicTopoFvMesh::collapseEdge
             }
         }
 
-        if (cellToRemove != -1)
+        if (cellToRemove == -1)
         {
-            // Size down edgeFaces for the ring edges
-            sizeDownList
-            (
-                faceToRemove,
-                edgeFaces_[edgeHull[indexI]]
-            );
+            continue;
+        }
 
-            // Size down edgePoints for the ring edges
-            sizeDownList
-            (
-                collapsePoint,
-                edgePoints_[edgeHull[indexI]]
-            );
+        // Size down edgeFaces for the ring edges
+        sizeDownList
+        (
+            faceToRemove,
+            edgeFaces_[edgeHull[indexI]]
+        );
 
-            // Ensure proper orientation of retained faces
-            if (owner_[faceToRemove] == cellToRemove)
+        // Size down edgePoints for the ring edges
+        sizeDownList
+        (
+            collapsePoint,
+            edgePoints_[edgeHull[indexI]]
+        );
+
+        // Ensure proper orientation of retained faces
+        if (owner_[faceToRemove] == cellToRemove)
+        {
+            if (owner_[replaceFace] == cellToRemove)
             {
-                if (owner_[replaceFace] == cellToRemove)
+                if
+                (
+                    (neighbour_[faceToRemove] > neighbour_[replaceFace])
+                 && (neighbour_[replaceFace] != -1)
+                )
                 {
-                    if
-                    (
-                        (neighbour_[faceToRemove] > neighbour_[replaceFace])
-                     && (neighbour_[replaceFace] != -1)
-                    )
-                    {
-                        // This face is to be flipped
-                        faces_[replaceFace] = faces_[replaceFace].reverseFace();
-                        owner_[replaceFace] = neighbour_[replaceFace];
-                        neighbour_[replaceFace] = neighbour_[faceToRemove];
-                    }
-                    else
-                    {
-                        // Keep orientation intact, and update the owner
-                        owner_[replaceFace] = neighbour_[faceToRemove];
-                    }
-                }
-                else
-                {
-                    // Keep orientation intact, and update the neighbour
+                    // This face is to be flipped
+                    faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                    owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = neighbour_[faceToRemove];
-                }
-
-                // Update the cell
-                if (neighbour_[faceToRemove] != -1)
-                {
-                    replaceLabel
-                    (
-                        faceToRemove,
-                        replaceFace,
-                        cells_[neighbour_[faceToRemove]]
-                    );
-                }
-            }
-            else
-            {
-                if (neighbour_[replaceFace] == cellToRemove)
-                {
-                    if (owner_[faceToRemove] < owner_[replaceFace])
-                    {
-                        // This face is to be flipped
-                        faces_[replaceFace] = faces_[replaceFace].reverseFace();
-                        neighbour_[replaceFace] = owner_[replaceFace];
-                        owner_[replaceFace] = owner_[faceToRemove];
-                    }
-                    else
-                    {
-                        // Keep orientation intact, and update the neighbour
-                        neighbour_[replaceFace] = owner_[faceToRemove];
-                    }
                 }
                 else
                 {
                     // Keep orientation intact, and update the owner
-                    owner_[replaceFace] = owner_[faceToRemove];
+                    owner_[replaceFace] = neighbour_[faceToRemove];
                 }
-
-                // Update the cell
-                if (owner_[faceToRemove] != -1)
-                {
-                    replaceLabel
-                    (
-                        faceToRemove,
-                        replaceFace,
-                        cells_[owner_[faceToRemove]]
-                    );
-                }
-            }
-
-            // Check orientation of faces
-            if (owner_[replaceFace] == -1)
-            {
-                FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                    << "Face: " << replaceFace << ": " << faces_[replaceFace]
-                    << " is an orphan, i.e, no owner cell."
-                    << abort(FatalError);
             }
             else
-            if
-            (
-                (neighbour_[replaceFace] == -1)
-             && (whichPatch(replaceFace) < 0)
-            )
             {
-                FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                    << "Face: " << replaceFace << faces_[replaceFace]
-                    << " is being converted to a boundary."
-                    << abort(FatalError);
+                // Keep orientation intact, and update the neighbour
+                neighbour_[replaceFace] = neighbour_[faceToRemove];
             }
+
+            // Update the cell
+            if (neighbour_[faceToRemove] != -1)
+            {
+                replaceLabel
+                (
+                    faceToRemove,
+                    replaceFace,
+                    cells_[neighbour_[faceToRemove]]
+                );
+            }
+        }
+        else
+        {
+            if (neighbour_[replaceFace] == cellToRemove)
+            {
+                if (owner_[faceToRemove] < owner_[replaceFace])
+                {
+                    // This face is to be flipped
+                    faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                    neighbour_[replaceFace] = owner_[replaceFace];
+                    owner_[replaceFace] = owner_[faceToRemove];
+                }
+                else
+                {
+                    // Keep orientation intact, and update the neighbour
+                    neighbour_[replaceFace] = owner_[faceToRemove];
+                }
+            }
+            else
+            {
+                // Keep orientation intact, and update the owner
+                owner_[replaceFace] = owner_[faceToRemove];
+            }
+
+            // Update the cell
+            if (owner_[faceToRemove] != -1)
+            {
+                replaceLabel
+                (
+                    faceToRemove,
+                    replaceFace,
+                    cells_[owner_[faceToRemove]]
+                );
+            }
+        }
+
+        // Check orientation of faces
+        if (owner_[replaceFace] == -1)
+        {
+            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                << "Face: " << replaceFace << ": " << faces_[replaceFace]
+                << " is an orphan, i.e, no owner cell."
+                << abort(FatalError);
+        }
+        else
+        if
+        (
+            (neighbour_[replaceFace] == -1)
+         && (whichPatch(replaceFace) < 0)
+        )
+        {
+            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                << "Face: " << replaceFace << faces_[replaceFace]
+                << " is being converted to a boundary."
+                << abort(FatalError);
         }
     }
 
@@ -10064,14 +10398,16 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         if (debug > 1)
         {
-            WarningIn
+            InfoIn
             (
                 "dynamicTopoFvMesh::checkCollapse"
-            )   << "\nCollapsing cell: " << cellIndex << " containing points:\n"
+            )   << "\nCollapsing cell: " << cellIndex
+                << " containing points:\n"
                 << faceToCheck[0] << "," << faceToCheck[1] << ","
                 << faceToCheck[2] << "," << pointIndex << nl
                 << "will yield a negative volume: " << cellVolume
-                << ", when " << pointIndex << " is moved to location: " << nl
+                << ", when " << pointIndex
+                << " is moved to location: " << nl
                 << newPoint << endl;
         }
 

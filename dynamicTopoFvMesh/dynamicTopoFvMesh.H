@@ -293,6 +293,15 @@ class dynamicTopoFvMesh
             const point& d
         );
 
+        // Find the volume sign of a tetrahedron
+        inline label tetVolumeSign
+        (
+            const point& a,
+            const point& b,
+            const point& c,
+            const point& d
+        );
+
         // Initialize mesh edges and related connectivity lists
         void initEdges();
 
@@ -690,6 +699,7 @@ class dynamicTopoFvMesh
             const label isolatedVertex,
             const label eIndex,
             const label triangulationIndex,
+            const label numTriangulations,
             const labelListList& triangulations,
             const labelList& hullVertices,
             const labelList& hullFaces,
@@ -701,6 +711,7 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             const label triangulationIndex,
+            const label numTriangulations,
             const labelListList& triangulations,
             const labelList& hullVertices,
             const labelList& hullFaces,
@@ -736,6 +747,9 @@ class dynamicTopoFvMesh
             labelList& neighbour,
             labelListList& edgeFaces
         );
+
+        // Output a list of cells as a VTK file
+        void writeVTK(const word& name, const labelList& cList);
 
         // Copy edge-based connectivity to HashLists
         void setEdgeConnectivity();
