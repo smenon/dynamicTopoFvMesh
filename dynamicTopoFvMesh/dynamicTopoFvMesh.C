@@ -556,8 +556,16 @@ scalar dynamicTopoFvMesh::tetIntersection
     const label oldCellIndex
 ) const
 {
-    // Reset intersection volume
     scalar intVol = 0.0, tolFactor = 1e-8;
+
+    // For post-processing purposes, define a name
+    word cvxName
+    (
+        "cvxSet_"
+      + Foam::name(newCellIndex)
+      + '_'
+      + Foam::name(oldCellIndex)
+    );
 
     bool intersects = false;
 
@@ -585,333 +593,8 @@ scalar dynamicTopoFvMesh::tetIntersection
     const cell& newCell = cells_[newCellIndex];
     const cell& oldCell = oldCells[oldCellIndex];
 
-    // Topologically check for common faces.
-    // If a common face exists, computation is vastly simplified.
-    label commonOldFaceIndex = -1, commonNewFaceIndex = -1;
-
-    forAll(oldCell, faceI)
-    {
-        const face& oldFace = oldFaces[oldCell[faceI]];
-
-        forAll(newCell, faceJ)
-        {
-            const face& newFace = faces_[newCell[faceJ]];
-
-            if (triFaceCompare(oldFace, newFace))
-            {
-                commonOldFaceIndex = oldCell[faceI];
-                commonNewFaceIndex = newCell[faceJ];
-                break;
-            }
-        }
-
-        if (commonOldFaceIndex != -1)
-        {
-            break;
-        }
-    }
-
-    if (commonOldFaceIndex > -1)
-    {
-        // Fetch references
-        const face& newFace = faces_[commonNewFaceIndex];
-        const face& oldFace = oldFaces[commonOldFaceIndex];
-
-        // Look for an adjacent face
-        label nextNewFace = -1, nextOldFace = -1;
-
-        forAll(newCell, faceI)
-        {
-            if (newCell[faceI] != commonNewFaceIndex)
-            {
-                nextNewFace = newCell[faceI];
-                break;
-            }
-        }
-
-        forAll(oldCell, faceI)
-        {
-            if (oldCell[faceI] != commonOldFaceIndex)
-            {
-                nextOldFace = oldCell[faceI];
-                break;
-            }
-        }
-
-        const face& newCheckFace = faces_[nextNewFace];
-        const face& oldCheckFace = oldFaces[nextOldFace];
-
-        vector intPoint = vector::zero;
-        vectorField tP(4, vector::zero);
-        FixedList<vector,2> segment(vector::zero);
-
-        // Find the apex-point
-        label newApexPoint = findIsolatedPoint(oldFace, newCheckFace);
-        label oldApexPoint = findIsolatedPoint(oldFace, oldCheckFace);
-
-        if (newApexPoint == oldApexPoint)
-        {
-            // Looks like this cell is identical to the old cell.
-            tP[0] = oldPoints_[newFace[0]];
-            tP[1] = oldPoints_[newFace[1]];
-            tP[2] = oldPoints_[newFace[2]];
-            tP[3] = oldPoints_[newApexPoint];
-
-            // Compute intersection volume.
-            intVol =
-            (
-                convexSetVolume
-                (
-                    "cvxSet_"
-                  + Foam::name(newCellIndex)
-                  + '_'
-                  + Foam::name(oldCellIndex),
-                    tolFactor,
-                    tP
-                )
-            );
-
-            intersects = true;
-
-            return intVol;
-        }
-        else
-        if (pointInTet(newCellIndex, oldPoints_[oldApexPoint], false, true))
-        {
-            // Old cell is within the new cell.
-            // This situation usually occurs in edge collapse.
-            tP[0] = oldPoints_[oldFace[0]];
-            tP[1] = oldPoints_[oldFace[1]];
-            tP[2] = oldPoints_[oldFace[2]];
-            tP[3] = oldPoints_[oldApexPoint];
-
-            // Compute intersection volume.
-            intVol =
-            (
-                convexSetVolume
-                (
-                    "cvxSet_"
-                  + Foam::name(newCellIndex)
-                  + '_'
-                  + Foam::name(oldCellIndex),
-                    tolFactor,
-                    tP
-                )
-            );
-
-            intersects = true;
-
-            return intVol;
-        }
-        else
-        if (newApexPoint >= nOldPoints_)
-        {
-            // Result of a bisection.
-            // Check if the new point lies on any old edges.
-            forAll(oldFace, pI)
-            {
-                edge edgeToCheck(oldFace[pI], oldApexPoint);
-
-                segment[0] = oldPoints_[edgeToCheck[0]];
-                segment[1] = oldPoints_[edgeToCheck[1]];
-
-                bool foundIntersection =
-                (
-                    segmentPointIntersection
-                    (
-                        segment,
-                        edgeToCheck,
-                        newApexPoint,
-                        tolFactor,
-                        true
-                    )
-                );
-
-                if (foundIntersection)
-                {
-                    // Size up the list.
-                    tP[0] = oldPoints_[newFace[0]];
-                    tP[1] = oldPoints_[newFace[1]];
-                    tP[2] = oldPoints_[newFace[2]];
-                    tP[3] = oldPoints_[newApexPoint];
-
-                    // Compute intersection volume.
-                    intVol =
-                    (
-                        convexSetVolume
-                        (
-                            "cvxSet_"
-                          + Foam::name(newCellIndex)
-                          + '_'
-                          + Foam::name(oldCellIndex),
-                            tolFactor,
-                            tP
-                        )
-                    );
-
-                    intersects = true;
-
-                    return intVol;
-                }
-            }
-        }
-
-        forAll(oldCell, fI)
-        {
-            if (oldCell[fI] == commonOldFaceIndex)
-            {
-                continue;
-            }
-
-            const face& oldCheckFace = oldFaces[oldCell[fI]];
-
-            forAll(oldFace, pI)
-            {
-                edge edgeToCheck(oldFace[pI], newApexPoint);
-
-                // Ensure that face doesn't contain edgeToCheck
-                if
-                (
-                    (oldCheckFace.which(edgeToCheck[0]) > -1) &&
-                    (oldCheckFace.which(edgeToCheck[1]) > -1)
-                )
-                {
-                    continue;
-                }
-
-                segment[0] = oldPoints_[edgeToCheck[0]];
-                segment[1] = oldPoints_[edgeToCheck[1]];
-
-                bool foundIntersection =
-                (
-                    segmentTriFaceIntersection
-                    (
-                        segment,
-                        edgeToCheck,
-                        oldCheckFace,
-                        tolFactor,
-                        intPoint,
-                        true
-                    )
-                );
-
-                if (foundIntersection)
-                {
-                    // Size up the list.
-                    tP[0] = oldPoints_[newFace[0]];
-                    tP[1] = oldPoints_[newFace[1]];
-                    tP[2] = oldPoints_[newFace[2]];
-                    tP[3] = intPoint;
-
-                    // Compute intersection volume.
-                    intVol =
-                    (
-                        convexSetVolume
-                        (
-                            "cvxSet_"
-                          + Foam::name(newCellIndex)
-                          + '_'
-                          + Foam::name(oldCellIndex),
-                            tolFactor,
-                            tP
-                        )
-                    );
-
-                    intersects = true;
-                    break;
-                }
-            }
-
-            if (intersects)
-            {
-                break;
-            }
-        }
-
-        if (!intersects)
-        {
-            // None of the new cell edges pass through old
-            // faces. Try the converse, where old edges pass
-            // through new faces.
-            forAll(newCell, fI)
-            {
-                if (newCell[fI] == commonNewFaceIndex)
-                {
-                    continue;
-                }
-
-                const face& newCheckFace = faces_[newCell[fI]];
-
-                forAll(newFace, pI)
-                {
-                    edge edgeToCheck(newFace[pI], oldApexPoint);
-
-                    // Ensure that face doesn't contain edgeToCheck
-                    if
-                    (
-                        (newCheckFace.which(edgeToCheck[0]) > -1) &&
-                        (newCheckFace.which(edgeToCheck[1]) > -1)
-                    )
-                    {
-                        continue;
-                    }
-
-                    segment[0] = oldPoints_[edgeToCheck[0]];
-                    segment[1] = oldPoints_[edgeToCheck[1]];
-
-                    bool foundIntersection =
-                    (
-                        segmentTriFaceIntersection
-                        (
-                            segment,
-                            edgeToCheck,
-                            newCheckFace,
-                            tolFactor,
-                            intPoint,
-                            true
-                        )
-                    );
-
-                    if (foundIntersection)
-                    {
-                        // Size up the list
-                        tP[0] = oldPoints_[oldFace[0]];
-                        tP[1] = oldPoints_[oldFace[1]];
-                        tP[2] = oldPoints_[oldFace[2]];
-                        tP[3] = intPoint;
-
-                        // Compute intersection volume.
-                        intVol =
-                        (
-                            convexSetVolume
-                            (
-                                "cvxSet_"
-                              + Foam::name(newCellIndex)
-                              + '_'
-                              + Foam::name(oldCellIndex),
-                                tolFactor,
-                                tP
-                            )
-                        );
-
-                        intersects = true;
-                        break;
-                    }
-                }
-
-                if (intersects)
-                {
-                    break;
-                }
-            }
-        }
-
-        // Return intersection volume.
-        return intVol;
-    }
-
-    // No common faces are present.
-    // Next, check topologically for common points / edges.
+    // Check topologically for common points / edges / faces.
+    // These count as intersections.
     FixedList<label, 4> oldCellPoints(-1), newCellPoints(-1);
     FixedList<edge, 6> oldEdges(edge(-1,-1));
     FixedList<label, 6> newEdges(-1);
@@ -985,6 +668,8 @@ scalar dynamicTopoFvMesh::tetIntersection
 
     // Check whether any old points are within
     // the new cell. Count these as 'intersections'.
+    bool allCommon = true;
+
     forAll(oldCellPoints, pI)
     {
         bool foundUnique = true;
@@ -1008,48 +693,142 @@ scalar dynamicTopoFvMesh::tetIntersection
 
                 nInts++;
             }
+
+            // Set the flag
+            allCommon = false;
+        }
+    }
+
+    if (allCommon)
+    {
+        // Looks like this cell is identical to the old cell.
+        tP.setSize(4, vector::zero);
+
+        forAll(newCellPoints, pI)
+        {
+            tP[pI] = oldPoints_[newCellPoints[pI]];
+        }
+
+        // Compute intersection volume.
+        intVol =
+        (
+            convexSetVolume
+            (
+                cvxName,
+                tolFactor,
+                tP
+            )
+        );
+
+        intersects = true;
+
+        return intVol;
+    }
+
+    // Common flags
+    bool foundCommonFace = false;
+    bool foundCommonEdge = false;
+    bool foundCommonPoint = false;
+
+    // Check for a common face.
+    // Note that two common faces cannot occur,
+    // since we've already checked points.
+    label nCo = 0, nCn = 0;
+    FixedList<label, 3> commonOldEdgeIndices(-1);
+    FixedList<label, 3> commonNewEdgeIndices(-1);
+
+    forAll(oldCell, faceI)
+    {
+        const face& oldFace = oldFaces[oldCell[faceI]];
+
+        forAll(newCell, faceJ)
+        {
+            const face& newFace = faces_[newCell[faceJ]];
+
+            if (triFaceCompare(oldFace, newFace))
+            {
+                // Fill in first three points from the common face.
+                const face& commonFace = faces_[newCell[faceJ]];
+
+                // Add to the list.
+                forAll(commonFace, pI)
+                {
+                    sizeUpList(oldPoints_[commonFace[pI]], tP);
+                }
+
+                nInts += 3;
+
+                foundCommonFace = true;
+
+                // Also identify common edges.
+                const labelList& fEdges = faceEdges_[newCell[faceJ]];
+
+                forAll(fEdges, edgeI)
+                {
+                    forAll(oldEdges, edgeJ)
+                    {
+                        if (oldEdges[edgeJ] == edges_[fEdges[edgeI]])
+                        {
+                            commonOldEdgeIndices[nCo++] = edgeJ;
+                            commonNewEdgeIndices[nCn++] = fEdges[edgeI];
+
+                            break;
+                        }
+                    }
+                }
+
+                break;
+            }
+        }
+
+        if (foundCommonFace)
+        {
+            break;
         }
     }
 
     // Check for one common edge.
     // Note that two common edges cannot occur,
     // since we've already checked faces.
-    label commonOldEdgeIndex = -1, commonNewEdgeIndex = -1;
-
-    forAll(newEdges, edgeI)
+    if (!foundCommonFace)
     {
-        forAll(oldEdges, edgeJ)
+        forAll(newEdges, edgeI)
         {
-            if (oldEdges[edgeJ] == edges_[newEdges[edgeI]])
+            forAll(oldEdges, edgeJ)
             {
-                commonOldEdgeIndex = edgeJ;
-                commonNewEdgeIndex = newEdges[edgeI];
+                if (oldEdges[edgeJ] == edges_[newEdges[edgeI]])
+                {
+                    commonOldEdgeIndices[nCo++] = edgeJ;
+                    commonNewEdgeIndices[nCn++] = newEdges[edgeI];
 
-                // Fill in first two points from the common edge.
-                const edge& commonEdge = edges_[commonNewEdgeIndex];
+                    // Fill in first two points from the common edge.
+                    const edge& commonEdge = edges_[newEdges[edgeI]];
 
-                // Add to the list.
-                sizeUpList(oldPoints_[commonEdge[0]], tP);
-                sizeUpList(oldPoints_[commonEdge[1]], tP);
+                    // Add to the list.
+                    forAll(commonEdge, pI)
+                    {
+                        sizeUpList(oldPoints_[commonEdge[pI]], tP);
+                    }
 
-                nInts += 2;
+                    nInts += 2;
 
+                    foundCommonEdge = true;
+
+                    break;
+                }
+            }
+
+            if (foundCommonEdge)
+            {
                 break;
             }
-        }
-
-        if (commonNewEdgeIndex > -1)
-        {
-            break;
         }
     }
 
     // If a common edge wasn't found, look for a common point.
     // Obviously, two common points cannot occur,
     // since we've already checked edges.
-    label commonPointIndex = -1;
-
-    if (commonNewEdgeIndex == -1)
+    if (!foundCommonFace && !foundCommonEdge)
     {
         forAll(newCellPoints, pointI)
         {
@@ -1057,18 +836,18 @@ scalar dynamicTopoFvMesh::tetIntersection
             {
                 if (oldCellPoints[pointJ] == newCellPoints[pointI])
                 {
-                    commonPointIndex = oldCellPoints[pointJ];
-
                     // Add the common point to the list.
-                    sizeUpList(oldPoints_[commonPointIndex], tP);
+                    sizeUpList(oldPoints_[oldCellPoints[pointJ]], tP);
 
                     nInts++;
+
+                    foundCommonPoint = true;
 
                     break;
                 }
             }
 
-            if (commonPointIndex > -1)
+            if (foundCommonPoint)
             {
                 break;
             }
@@ -1078,7 +857,8 @@ scalar dynamicTopoFvMesh::tetIntersection
     // Loop through all new edges, and find possible intersections.
     forAll(newEdges, edgeI)
     {
-        if (newEdges[edgeI] == commonNewEdgeIndex)
+        // Avoid common edges.
+        if (findIndex(commonNewEdgeIndices, newEdges[edgeI]) > -1)
         {
             continue;
         }
@@ -1176,7 +956,8 @@ scalar dynamicTopoFvMesh::tetIntersection
     // intersections with new cell faces.
     forAll(oldEdges, edgeI)
     {
-        if (edgeI == commonOldEdgeIndex)
+        // Avoid common edges.
+        if (findIndex(commonOldEdgeIndices, edgeI) > -1)
         {
             continue;
         }
@@ -1278,10 +1059,7 @@ scalar dynamicTopoFvMesh::tetIntersection
         (
             convexSetVolume
             (
-                "cvxSet_"
-              + Foam::name(newCellIndex)
-              + '_'
-              + Foam::name(oldCellIndex),
+                cvxName,
                 tolFactor,
                 tP
             )
