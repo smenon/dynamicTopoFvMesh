@@ -1110,6 +1110,9 @@ void Foam::mesquiteSmoother::initArrays()
         pV_.setSize(totalSize, vector::zero);
         rV_.setSize(totalSize, vector::zero);
         wV_.setSize(totalSize, vector::zero);
+
+        // Initialize the original points list
+        origPoints_.setSize(refPoints_.size(), vector::zero);
     }
 }
 
@@ -1326,6 +1329,9 @@ void Foam::mesquiteSmoother::smoothSurfaces()
 {
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
+    // Copy refPoints prior to all surface-smoothing sweeps.
+    origPoints_ = refPoints_;
+
     for (label i = 0; i < nSweeps_; i++)
     {
         // Prepare point-normals with updated point positions
@@ -1502,7 +1508,7 @@ void Foam::mesquiteSmoother::correctInvalidCells()
             refPoints_[invCellPoints[pointI]] =
             (
                 (lambda * newPoints[pointI])
-              + ((1.0 - lambda) * mesh().points()[invCellPoints[pointI]])
+              + ((1.0 - lambda) * origPoints_[invCellPoints[pointI]])
             );
         }
 
@@ -1530,11 +1536,19 @@ void Foam::mesquiteSmoother::correctInvalidCells()
 
         nAttempts++;
 
-        if (nAttempts > 10)
+        if (nAttempts > 50)
         {
-            FatalErrorIn("mesquiteSmoother::correctInvalidCells()")
-                    << " Failed to obtain an untangled mesh."
-                    << abort(FatalError);
+            Info << endl;
+
+            WarningIn("mesquiteSmoother::correctInvalidCells()")
+                    << " Failed to obtain an untangled mesh." << nl
+                    << " Reverting to original point positions."
+                    << endl;
+
+            // Copy original points, and avoid surface-smoothing for now.
+            refPoints_ = origPoints_;
+
+            break;
         }
     }
 
@@ -1710,6 +1724,8 @@ void Foam::mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
         gradEdgeV_.clear();
         pNormals_.clear();
         offsets_.clear();
+
+        origPoints_.clear();
     }
 
     // Initialize data structures

@@ -102,6 +102,9 @@ protected:
     //- Reference points
     mutable pointIOField refPoints_;
 
+    //- Original points prior to surface-smoothing
+    mutable pointField origPoints_;
+
     //- The quality metric
     word qMetric_;
 
