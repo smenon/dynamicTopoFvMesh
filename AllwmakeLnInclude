@@ -2,7 +2,9 @@
 set -x
 
 wmakeLnInclude coupleMap
+wmakeLnInclude conservativeMeshToMesh
 wmakeLnInclude freeSurface
 wmakeLnInclude mesquiteSmoother
 wmakeLnInclude dynamicTopoFvMesh
 wmakeLnInclude interfaceTrackFoam
+wmakeLnInclude mapConservativeFields

@@ -1,0 +1,10 @@
+EXE_INC = \
+    -I../conservativeMeshToMesh/lnInclude \
+    -I$(LIB_SRC)/finiteVolume/lnInclude \
+    -I$(LIB_SRC)/sampling/lnInclude
+
+EXE_LIBS = \
+    -L$(FOAM_USER_LIBBIN) \
+    -lconservativeMeshToMesh \
+    -lsampling \
+    -lfiniteVolume

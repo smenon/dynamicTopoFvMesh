@@ -3,10 +3,12 @@ set -x
 
 # Clean out existing object files
 wclean coupleMap
+wclean conservativeMeshToMesh
 wclean mesquiteSmoother
 wclean freeSurface
 wclean dynamicTopoFvMesh
 wclean interfaceTrackFoam
+wclean mapConservativeFields
 
 # Wipe out all lnInclude directories and re-link
 wcleanLnIncludeAll
