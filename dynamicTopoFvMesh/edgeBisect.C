@@ -3264,22 +3264,19 @@ const changeMap dynamicTopoFvMesh::trisectFace
 // Slice the mesh at a particular edge in 3D
 void dynamicTopoFvMesh::sliceMesh
 (
-    const label eIndex
+    const labelPair& pointPair
 )
 {
     if (debug > 1)
     {
         Info << nl << nl
-             << "Edge: " << eIndex
-             << ": " << edges_[eIndex]
+             << "Pair: " << pointPair
              << " is to be used for mesh slicing. " << endl;
     }
 
-    const edge& edgeToCheck = edges_[eIndex];
-
     // Find the patch that the edge-vertex is connected to.
     label patchIndex = -1;
-    const labelList& pEdges = pointEdges_[edgeToCheck[0]];
+    const labelList& pEdges = pointEdges_[pointPair.first()];
 
     forAll(pEdges, edgeI)
     {
@@ -3289,13 +3286,35 @@ void dynamicTopoFvMesh::sliceMesh
         }
     }
 
-    // Specify the edge centre.
+    // Specify the centre.
     point eCentre =
     (
-        0.5 * (points_[edgeToCheck[0]] + points_[edgeToCheck[1]])
+        0.5 * (points_[pointPair.first()] + points_[pointPair.second()])
     );
 
-    scalar dx = 5.0 * edgeLength(eIndex);
+    // Is this edge in the vicinity of a previous slice-point?
+    forAll(sliceBoxes_, boxI)
+    {
+        if (sliceBoxes_[boxI].contains(eCentre))
+        {
+            if (debug > 1)
+            {
+                Info << nl << nl
+                     << "Pair: " << pointPair
+                     << " is too close to another slice point. "
+                     << endl;
+            }
+
+            // Too close to another slice-point. Bail out.
+            return;
+        }
+    }
+
+    // Specify a search distance
+    scalar dx =
+    (
+        1.5*mag(points_[pointPair.first()] - points_[pointPair.second()])
+    );
 
     // Choose a box around the edge centre and scan all
     // surface points/edges/faces/cells that fall into this region.
@@ -3348,11 +3367,11 @@ void dynamicTopoFvMesh::sliceMesh
         }
     }
 
-    if (debug > 2)
+    if (debug > 1)
     {
         Info << nl << nl
-             << " Edge point [0]: " << points_[edgeToCheck[0]] << nl
-             << " Edge point [1]: " << points_[edgeToCheck[1]] << endl;
+             << " Point [0]: " << points_[pointPair.first()] << nl
+             << " Point [1]: " << points_[pointPair.second()] << endl;
 
         if (debug > 3)
         {
@@ -3370,8 +3389,8 @@ void dynamicTopoFvMesh::sliceMesh
         (
             checkPoints,
             checkEdges,
-            edgeToCheck[0],
-            edgeToCheck[1],
+            pointPair.first(),
+            pointPair.second(),
             shortestPath
         )
     );
@@ -3380,12 +3399,12 @@ void dynamicTopoFvMesh::sliceMesh
     if (foundPath)
     {
         scalar nPathPoints = 1.0;
-        vector S = checkPoints[edgeToCheck[0]];
-        symmTensor M = sqr(checkPoints[edgeToCheck[0]]);
+        vector S = checkPoints[pointPair.first()];
+        symmTensor M = sqr(checkPoints[pointPair.first()]);
 
-        label currentPoint = edgeToCheck[1];
+        label currentPoint = pointPair.second();
 
-        while (currentPoint != edgeToCheck[0])
+        while (currentPoint != pointPair.first())
         {
             S += checkPoints[currentPoint];
             M += sqr(checkPoints[currentPoint]);
@@ -3403,7 +3422,7 @@ void dynamicTopoFvMesh::sliceMesh
         // Obtain centroid of the point cloud
         vector p = S / nPathPoints;
 
-        if (debug > 2)
+        if (debug > 1)
         {
             Info << nl << nl
                 << " Plane normal: " << N << nl
@@ -3468,17 +3487,95 @@ void dynamicTopoFvMesh::sliceMesh
             }
         }
 
-        // Prepare a list of internal faces for mesh splitting.
-        forAllIter(labelHashSet, checkFaces, fIter)
+        label nOldFaces = checkFaces.size(), n = 2;
+        labelHashSet testFaces;
+
+        while (n > 1)
         {
-            if
-            (
-                cellColors[owner_[fIter.key()]]
-             != cellColors[neighbour_[fIter.key()]]
-            )
+            // Prepare a test list of internal faces for mesh splitting.
+            forAllIter(labelHashSet, checkFaces, fIter)
             {
-                splitFaces.insert(fIter.key());
+                if
+                (
+                    cellColors[owner_[fIter.key()]]
+                 != cellColors[neighbour_[fIter.key()]]
+                )
+                {
+                    testFaces.insert(fIter.key());
+                }
             }
+
+            if (testFaces.size() >= nOldFaces)
+            {
+                // Didn't find any reduction in the number of faces.
+                splitFaces = testFaces;
+
+                break;
+            }
+
+            bool flipFlag = false;
+            labelHashSet flipCells;
+            FixedList<label,2> nTotalFound(0);
+
+            forAllIter(Map<point>, checkCells, cIter)
+            {
+                const cell& cellToCheck = cells_[cIter.key()];
+
+                // Check for cells with more than 'n' faces in testFaces.
+                label nFoundFaces = 0;
+
+                forAll(cellToCheck, faceI)
+                {
+                    if (testFaces.found(cellToCheck[faceI]))
+                    {
+                        nFoundFaces++;
+                    }
+                }
+
+                if (nFoundFaces > n)
+                {
+                    flipCells.insert(cIter.key());
+
+                    if (cellColors[cIter.key()])
+                    {
+                        nTotalFound[1]++;
+                    }
+                    else
+                    {
+                        nTotalFound[0]++;
+                    }
+                }
+            }
+
+            if (!nTotalFound[0] && !nTotalFound[1])
+            {
+                // Couldn't find any. Move on to the next test.
+                n--;
+            }
+            else
+            if (nTotalFound[0] > nTotalFound[1])
+            {
+                flipFlag = false;
+            }
+            else
+            if (nTotalFound[0] < nTotalFound[1])
+            {
+                flipFlag = true;
+            }
+
+            // Flip flags for the set of cells.
+            forAllIter(labelHashSet, flipCells, flIter)
+            {
+                if (cellColors[flIter.key()] == flipFlag)
+                {
+                    cellColors[flIter.key()] = !flipFlag;
+                }
+            }
+
+            // Copy from testFaces
+            splitFaces = testFaces;
+            nOldFaces = testFaces.size();
+            testFaces.clear();
         }
 
         if (debug > 3)
@@ -3495,6 +3592,13 @@ void dynamicTopoFvMesh::sliceMesh
             cellColors
         );
     }
+
+    // Add an entry to sliceBoxes.
+    label currentSize = sliceBoxes_.size();
+
+    sliceBoxes_.setSize(currentSize + 1);
+
+    sliceBoxes_[currentSize] = bBox;
 }
 
 // Given a set of points and edges, find the shortest path
@@ -3680,8 +3784,8 @@ void dynamicTopoFvMesh::splitInternalFaces
     const Map<bool>& cellColors
 )
 {
-    Map<label> mirrorPoints;
-    FixedList<Map<label>, 2> mirrorEdges, mirrorFaces;
+    Map<label> mirrorPointLabels;
+    FixedList<Map<label>, 2> mirrorEdgeLabels, mirrorFaceLabels;
 
     // First loop through the list and accumulate a list of
     // points and edges that need to be duplicated.
@@ -3691,9 +3795,9 @@ void dynamicTopoFvMesh::splitInternalFaces
 
         forAll(faceToCheck, pointI)
         {
-            if (!mirrorPoints.found(faceToCheck[pointI]))
+            if (!mirrorPointLabels.found(faceToCheck[pointI]))
             {
-                mirrorPoints.insert(faceToCheck[pointI], -1);
+                mirrorPointLabels.insert(faceToCheck[pointI], -1);
             }
         }
 
@@ -3701,20 +3805,23 @@ void dynamicTopoFvMesh::splitInternalFaces
 
         forAll(fEdges, edgeI)
         {
-            if (!mirrorEdges[0].found(fEdges[edgeI]))
+            if (!mirrorEdgeLabels[0].found(fEdges[edgeI]))
             {
-                mirrorEdges[0].insert(fEdges[edgeI], -1);
+                mirrorEdgeLabels[0].insert(fEdges[edgeI], -1);
             }
         }
     }
 
     // Now for every point in the list, add a new one.
     // Add a mapping entry as well.
-    forAllIter(Map<label>, mirrorPoints, pIter)
+    forAllIter(Map<label>, mirrorPointLabels, pIter)
     {
-        pIter() = insertPoint(points_[pIter.key()]);
+        // Obtain a copy of the point before adding it,
+        // since the reference might become invalid during list resizing.
+        point newPoint = points_[pIter.key()];
 
-        // Correct pointEdges and associated edges for mirror points
+        pIter() = insertPoint(newPoint);
+
         const labelList& pEdges = pointEdges_[pIter.key()];
 
         labelHashSet edgesToRemove;
@@ -3772,6 +3879,45 @@ void dynamicTopoFvMesh::splitInternalFaces
                 pointEdges_[pIter.key()]
             );
         }
+    }
+
+    if (debug > 3)
+    {
+        label i = 0;
+        labelList mPoints(mirrorPointLabels.size());
+
+        forAllIter(Map<label>, mirrorPointLabels, pIter)
+        {
+            writeVTK
+            (
+                "pEdges_o_" + Foam::name(pIter.key()) + '_',
+                pointEdges_[pIter.key()],
+                1
+            );
+
+            writeVTK
+            (
+                "pEdges_m_" + Foam::name(pIter()) + '_',
+                pointEdges_[pIter()],
+                1
+            );
+
+            mPoints[i++] = pIter();
+        }
+
+        writeVTK
+        (
+            "points_o_",
+            mirrorPointLabels.toc(),
+            0
+        );
+
+        writeVTK
+        (
+            "points_m_",
+            mPoints,
+            0
+        );
     }
 
     // For every internal face, add a new one.
@@ -3834,7 +3980,7 @@ void dynamicTopoFvMesh::splitInternalFaces
         // Renumber point labels for the first new face.
         forAll(newFace[0], pointI)
         {
-            newFace[0][pointI] = mirrorPoints[newFace[0][pointI]];
+            newFace[0][pointI] = mirrorPointLabels[newFace[0][pointI]];
         }
 
         // Insert the new boundary faces.
@@ -3853,7 +3999,9 @@ void dynamicTopoFvMesh::splitInternalFaces
 
             // Make an identical faceEdges entry.
             // This will be renumbered once new edges are added.
-            faceEdges_.append(faceEdges_[internalFaces[faceI]]);
+            labelList newFaceEdges(faceEdges_[internalFaces[faceI]]);
+
+            faceEdges_.append(newFaceEdges);
 
             // Replace face labels on cells
             replaceLabel
@@ -3864,7 +4012,7 @@ void dynamicTopoFvMesh::splitInternalFaces
             );
 
             // Make face mapping entries for posterity.
-            mirrorFaces[indexI].insert
+            mirrorFaceLabels[indexI].insert
             (
                 internalFaces[faceI],
                 newFaceIndex[indexI]
@@ -3874,9 +4022,11 @@ void dynamicTopoFvMesh::splitInternalFaces
 
     // For every edge in the list, add a new one.
     // We'll deal with correcting edgeFaces and edgePoints later.
-    forAllIter(Map<label>, mirrorEdges[0], eIter)
+    forAllIter(Map<label>, mirrorEdgeLabels[0], eIter)
     {
-        const edge& origEdge = edges_[eIter.key()];
+        // Obtain copies for the append method
+        edge origEdge = edges_[eIter.key()];
+        labelList newEdgeFaces(edgeFaces_[eIter.key()]);
 
         eIter() =
         (
@@ -3885,10 +4035,10 @@ void dynamicTopoFvMesh::splitInternalFaces
                 patchIndex,
                 edge
                 (
-                    mirrorPoints[origEdge[0]],
-                    mirrorPoints[origEdge[1]]
+                    mirrorPointLabels[origEdge[0]],
+                    mirrorPointLabels[origEdge[1]]
                 ),
-                edgeFaces_[eIter.key()],
+                newEdgeFaces,
                 labelList(0)
             )
         );
@@ -3903,26 +4053,26 @@ void dynamicTopoFvMesh::splitInternalFaces
                 (
                     patchIndex,
                     origEdge,
-                    edgeFaces_[eIter.key()],
+                    newEdgeFaces,
                     labelList(0)
                 )
             );
 
             // Map the new entry.
-            mirrorEdges[1].insert(eIter.key(), rplEdgeIndex);
+            mirrorEdgeLabels[1].insert(eIter.key(), rplEdgeIndex);
         }
         else
         {
             // This is already a boundary edge.
             // Make an identical map.
-            mirrorEdges[1].insert(eIter.key(), eIter.key());
+            mirrorEdgeLabels[1].insert(eIter.key(), eIter.key());
         }
     }
 
     // Correct edgeFaces for all new edges
-    forAll(mirrorEdges, indexI)
+    forAll(mirrorEdgeLabels, indexI)
     {
-        forAllIter(Map<label>, mirrorEdges[indexI], eIter)
+        forAllIter(Map<label>, mirrorEdgeLabels[indexI], eIter)
         {
             labelList& eFaces = edgeFaces_[eIter()];
 
@@ -3956,10 +4106,10 @@ void dynamicTopoFvMesh::splitInternalFaces
                     }
                 }
 
-                if (mirrorFaces[indexI].found(eFaces[faceI]))
+                if (mirrorFaceLabels[indexI].found(eFaces[faceI]))
                 {
                     // Perform a replacement instead of a removal.
-                    eFaces[faceI] = mirrorFaces[indexI][eFaces[faceI]];
+                    eFaces[faceI] = mirrorFaceLabels[indexI][eFaces[faceI]];
 
                     remove = false;
                 }
@@ -3977,20 +4127,13 @@ void dynamicTopoFvMesh::splitInternalFaces
             {
                 sizeDownList(hsIter.key(), edgeFaces_[eIter()]);
             }
-
-            if (debug > 2)
-            {
-                Info << "Edge: " << eIter()
-                     << ": " << edges_[eIter()]
-                     << " edgeFaces: " << edgeFaces_[eIter()] << endl;
-            }
         }
     }
 
     // Renumber faceEdges for all faces connected to new edges
-    forAll(mirrorEdges, indexI)
+    forAll(mirrorEdgeLabels, indexI)
     {
-        forAllIter(Map<label>, mirrorEdges[indexI], eIter)
+        forAllIter(Map<label>, mirrorEdgeLabels[indexI], eIter)
         {
             const labelList& eFaces = edgeFaces_[eIter()];
 
@@ -4000,11 +4143,11 @@ void dynamicTopoFvMesh::splitInternalFaces
 
                 forAll(fEdges, edgeI)
                 {
-                    if (mirrorEdges[indexI].found(fEdges[edgeI]))
+                    if (mirrorEdgeLabels[indexI].found(fEdges[edgeI]))
                     {
                         fEdges[edgeI] =
                         (
-                            mirrorEdges[indexI][fEdges[edgeI]]
+                            mirrorEdgeLabels[indexI][fEdges[edgeI]]
                         );
                     }
                 }
@@ -4013,7 +4156,7 @@ void dynamicTopoFvMesh::splitInternalFaces
     }
 
     // Point renumbering of entities connected to mirror points
-    forAllIter(Map<label>, mirrorPoints, pIter)
+    forAllIter(Map<label>, mirrorPointLabels, pIter)
     {
         const labelList& pEdges = pointEdges_[pIter()];
 
@@ -4045,10 +4188,18 @@ void dynamicTopoFvMesh::splitInternalFaces
                     }
                 }
             }
+        }
+    }
 
-            // Scan edges connected to mirror points,
-            // and correct any edgePoints entries for
-            // edges connected to the other vertex.
+    // Scan edges connected to mirror points,
+    // and correct any edgePoints entries for
+    // edges connected to the other vertex.
+    forAllIter(Map<label>, mirrorPointLabels, pIter)
+    {
+        const labelList& pEdges = pointEdges_[pIter()];
+
+        forAll(pEdges, edgeI)
+        {
             label otherVertex = edges_[pEdges[edgeI]].otherVertex(pIter());
 
             // Scan edgePoints for edges connected to this point
@@ -4060,20 +4211,20 @@ void dynamicTopoFvMesh::splitInternalFaces
 
                 forAll(ePoints, pointI)
                 {
-                    if (mirrorPoints.found(ePoints[pointI]))
+                    if (mirrorPointLabels.found(ePoints[pointI]))
                     {
                         // Replace this point with the mirror point
-                        ePoints[pointI] = mirrorPoints[ePoints[pointI]];
+                        ePoints[pointI] = mirrorPointLabels[ePoints[pointI]];
                     }
                 }
             }
         }
     }
 
-    // Since edgePoints for all new edges are broken, rebuild them.
-    forAll(mirrorEdges, indexI)
+    // Build edgePoints for new edges
+    forAll(mirrorEdgeLabels, indexI)
     {
-        forAllIter(Map<label>, mirrorEdges[indexI], eIter)
+        forAllIter(Map<label>, mirrorEdgeLabels[indexI], eIter)
         {
             buildEdgePoints(eIter());
         }
@@ -4086,7 +4237,7 @@ void dynamicTopoFvMesh::splitInternalFaces
     }
 
     // Remove old internal edges as well.
-    forAllIter(Map<label>, mirrorEdges[1], eIter)
+    forAllIter(Map<label>, mirrorEdgeLabels[1], eIter)
     {
         if (eIter.key() != eIter())
         {

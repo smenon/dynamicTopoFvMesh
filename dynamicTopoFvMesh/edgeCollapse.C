@@ -1071,12 +1071,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     if (edgeBoundary[0] && edgeBoundary[1])
     {
         // If this is an interior edge with two boundary points.
+        // Bail out for now. If proximity based refinement is
+        // switched on, mesh may be sliced at this point.
         if (whichEdgePatch(eIndex) == -1)
         {
-            // Check if the mesh needs to be sliced at this point,
-            // and do so if necessary.
-            sliceMesh(eIndex);
-
             return map;
         }
 

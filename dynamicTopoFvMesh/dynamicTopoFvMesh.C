@@ -130,6 +130,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nSwaps_(0),
     maxModifications_(-1),
     proximityBins_(0),
+    sliceThreshold_(VSMALL),
+    sliceHoldOff_(0),
+    sliceBoxes_(0),
+    slicePairs_(0),
     maxTetsPerEdge_(-1),
     allowTableResize_(false),
     gTol_(1e-20)
@@ -245,6 +249,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nSwaps_(0),
     maxModifications_(mesh.maxModifications_),
     proximityBins_(0),
+    sliceThreshold_(VSMALL),
+    sliceHoldOff_(0),
+    sliceBoxes_(0),
+    slicePairs_(0),
     maxTetsPerEdge_(mesh.maxTetsPerEdge_),
     allowTableResize_(mesh.allowTableResize_),
     gTol_(mesh.gTol_),
@@ -2668,7 +2676,8 @@ void dynamicTopoFvMesh::writeVTK
     }
 
     // Make the directory
-    fileName dirName(time().path()/time().timeName()/"VTK");
+    // fileName dirName(time().path()/time().timeName()/"VTK");
+    fileName dirName(time().path()/"VTK"/time().timeName());
 
     mkDir(dirName);
 
@@ -3356,7 +3365,7 @@ void dynamicTopoFvMesh::prepareProximityPatches()
         Info << "Preparing patches for proximity-based refinement...";
     }
 
-    // Check if proximity bins have been allocated already.
+    // Clear out existing lists.
     proximityBins_.clear();
 
     proximityBins_.setSize(997, labelList(0));
@@ -3425,6 +3434,66 @@ void dynamicTopoFvMesh::prepareProximityPatches()
     }
 }
 
+void dynamicTopoFvMesh::handleMeshSlicing()
+{
+    if (slicePairs_.empty())
+    {
+        return;
+    }
+
+    if (sliceHoldOff_)
+    {
+        // Hold-off mesh slicing for a few time-steps.
+        sliceHoldOff_--;
+        return;
+    }
+
+    Info << "Slicing Mesh...";
+
+    // Loop through candidates and weed-out invalid points
+    forAll(slicePairs_, pairI)
+    {
+        const labelPair& pairToCheck = slicePairs_[pairI];
+
+        bool available = true;
+
+        forAll(pairToCheck, indexI)
+        {
+            if (deletedPoints_.found(pairToCheck[indexI]))
+            {
+                available = false;
+                break;
+            }
+
+            if (pairToCheck[indexI] < nOldPoints_)
+            {
+                if (reversePointMap_[pairToCheck[indexI]] == -1)
+                {
+                    available = false;
+                    break;
+                }
+            }
+        }
+
+        if (available)
+        {
+            // Slice the mesh at this point.
+            sliceMesh(pairToCheck);
+        }
+    }
+
+    Info << "Done." << endl;
+
+    // checkConnectivity(10);
+
+    // Clear out data.
+    sliceBoxes_.clear();
+    slicePairs_.clear();
+
+    // Set the sliceHoldOff value
+    sliceHoldOff_ = 50;
+}
+
 // Test an edge for proximity with other faces on proximity patches
 // and return the scalar distance to an oppositely-oriented face.
 scalar dynamicTopoFvMesh::testProximity
@@ -3435,6 +3504,9 @@ scalar dynamicTopoFvMesh::testProximity
 {
     const edge& thisEdge = edges_[eIndex];
     const labelList& eFaces = edgeFaces_[eIndex];
+
+    // Reset the proximity face
+    proximityFace = -1;
 
     // Obtain the edge centre.
     point eCentre =
@@ -3535,6 +3607,49 @@ scalar dynamicTopoFvMesh::testProximity
                 {
                     // Inside the domain
                 }
+            }
+        }
+    }
+
+    if (proximityFace != -1)
+    {
+        // Check if we need to mark points for mesh-slicing.
+        if (minDistance < sliceThreshold_)
+        {
+            // Check if any points on this face are still around.
+            // If yes, mark one of them as the end point
+            // for Dijkstra's algorithm. The start point will be a point
+            // on this edge.
+            labelPair proxPoints(thisEdge[0], -1);
+
+            const face& proxFace = polyMesh::faces()[proximityFace];
+
+            bool foundPoint = false;
+
+            forAll(proxFace, pointI)
+            {
+                if (reversePointMap_[proxFace[pointI]] != -1)
+                {
+                    proxPoints.second() = proxFace[pointI];
+                    foundPoint = true;
+                    break;
+                }
+            }
+
+            if (foundPoint)
+            {
+                // Lock the edge mutex
+                entityMutex_[1].lock();
+
+                // Add this entry as a candidate for mesh slicing.
+                label curSize = slicePairs_.size();
+
+                slicePairs_.setSize(curSize + 1);
+
+                slicePairs_[curSize] = proxPoints;
+
+                // Unlock the edge mutex
+                entityMutex_[1].unlock();
             }
         }
     }
@@ -4521,6 +4636,18 @@ void dynamicTopoFvMesh::readEdgeOptions
 
         // Ensure that patches are legitimate.
         checkPatches(proximityPatches_.toc());
+
+        // Check if a threshold for slicing has been specified.
+        if (edgeOptionDict.found("sliceThreshold") || mandatory_)
+        {
+            sliceThreshold_ =
+            (
+                readScalar(edgeOptionDict.lookup("sliceThreshold"))
+            );
+
+            // Cap the threshold value
+            sliceThreshold_ = Foam::max(sliceThreshold_, minLengthScale_);
+        }
     }
 
     if (edgeOptionDict.found("sliverThreshold") || mandatory_)
@@ -7644,6 +7771,9 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
         // Set the master thread to implement modifications
         edgeBisectCollapse3D(&(handlerPtr_[0]));
+
+        // Handle mesh slicing events, if necessary
+        handleMeshSlicing();
 
         if (debug)
         {

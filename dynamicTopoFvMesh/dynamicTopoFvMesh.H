@@ -204,6 +204,10 @@ class dynamicTopoFvMesh
         label               spatialRes_;
         boundBox            proxBoundBox_;
         labelListList       proximityBins_;
+        scalar              sliceThreshold_;
+        label               sliceHoldOff_;
+        List<boundBox>      sliceBoxes_;
+        List<labelPair>     slicePairs_;
 
         // Buffers for length-scale calculations
         labelListList       sendLblBuffer_;
@@ -577,7 +581,7 @@ class dynamicTopoFvMesh
         // Slice the mesh at a particular edge in 3D
         void sliceMesh
         (
-            const label eIndex
+            const labelPair& pointPair
         );
 
         // Dijkstra's algorithm for the shortest path problem
@@ -996,6 +1000,9 @@ class dynamicTopoFvMesh
 
         // Prepare for proximity-based refinement, if necessary
         void prepareProximityPatches();
+
+        // Handle mesh slicing events.
+        void handleMeshSlicing();
 
         // Test an edge for proximity with other non-neighbouring faces.
         // Return the scalar distance to the nearest face.
