@@ -29,6 +29,32 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+// Entity index
+inline label& changeMap::index()
+{
+    return index_;
+}
+
+
+inline label changeMap::index() const
+{
+    return index_;
+}
+
+
+// Coupled patch index
+inline label& changeMap::patchIndex()
+{
+    return pIndex_;
+}
+
+
+inline label changeMap::patchIndex() const
+{
+    return pIndex_;
+}
+
+
 // Type
 inline label& changeMap::type()
 {
@@ -163,6 +189,9 @@ changeMap::addedCellList() const
 
 inline void changeMap::operator=(const changeMap& rhs)
 {
+    index_ = rhs.index_;
+    pIndex_ = rhs.pIndex_;
+
     type_ = rhs.type_;
 
     firstEdge_    = rhs.firstEdge_;
@@ -175,6 +204,35 @@ inline void changeMap::operator=(const changeMap& rhs)
     addedFaces_   = rhs.addedFaces_;
     addedCells_   = rhs.addedCells_;
 }
+
+
+inline Ostream& operator<<(Ostream& os, changeMap& cm)
+{
+    // Write indices
+    os << "Index: " << cm.index_ << endl;
+    os << "patchIndex: " << cm.pIndex_ << endl;
+
+    // Write out type
+    os << " Type: " << cm.type_ << endl;
+
+    // Write out sliver-specific information
+    os << " firstEdge: " << cm.firstEdge_ << endl;
+    os << " secondEdge: " << cm.secondEdge_ << endl;
+    os << " apexPoint: " << cm.apexPoint_ << endl;
+    os << " opposingFace: " << cm.opposingFace_ << endl;
+
+    // Write out added entity information
+    os << " addedPoints: " << cm.addedPoints_ << endl;
+    os << " addedEdges: " << cm.addedEdges_ << endl;
+    os << " addedFaces: " << cm.addedFaces_ << endl;
+    os << " addedCells: " << cm.addedCells_ << endl;
+
+    // Check state of IOstream
+    os.check("Ostream& operator<<(Ostream&, changeMap&)");
+
+    return os;
+}
+
 
 } // End namespace Foam
 

@@ -353,10 +353,10 @@ class dynamicTopoFvMesh
         inline label getTriBoundaryEdge(const label fIndex) const;
 
         // Return length-scale at an face-location in the mesh [2D]
-        inline scalar faceLengthScale(const label fIndex) const;
+        scalar faceLengthScale(const label fIndex) const;
 
         // Return length-scale at an edge-location in the mesh [3D]
-        inline scalar edgeLengthScale(const label eIndex) const;
+        scalar edgeLengthScale(const label eIndex) const;
 
         // Check for bisection
         inline bool checkBisection(const label index) const;
@@ -386,7 +386,7 @@ class dynamicTopoFvMesh
         inline void initStacks(const labelHashSet& entities);
 
         // Initialize the coupled stack
-        inline void initCoupledStack();
+        void initCoupledStack();
 
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label index) const;
@@ -609,7 +609,7 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             const label checkIndex = 0
-        ) const;
+        );
 
         // Utility to check whether points of an edge lie on a boundary
         const FixedList<bool,2> checkEdgeBoundary(const label eIndex) const;
@@ -914,10 +914,10 @@ class dynamicTopoFvMesh
         bool isCoupledMaster(const label eIndex) const;
 
         // Set coupled modification
-        inline void setCoupledModification() const;
+        void setCoupledModification() const;
 
         // Unset coupled modification
-        inline void unsetCoupledModification() const;
+        void unsetCoupledModification() const;
 
         // Handle topology changes for coupled patches
         void handleCoupledPatches(labelHashSet& entities);

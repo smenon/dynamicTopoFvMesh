@@ -150,6 +150,12 @@ void coupledPatchInfo::setBuiltMaps()
 }
 
 
+coupleMap& coupledPatchInfo::patchMap()
+{
+    return patchMap_;
+}
+
+
 const coupleMap& coupledPatchInfo::patchMap() const
 {
     return patchMap_;

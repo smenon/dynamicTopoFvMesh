@@ -2326,9 +2326,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Check if edgeRefinements are to be avoided on patch.
-    if (lengthEstimator().checkRefinementPatch(whichEdgePatch(eIndex)))
+    if (!isSubMesh_)
     {
-        return map;
+        if (lengthEstimator().checkRefinementPatch(whichEdgePatch(eIndex)))
+        {
+            return map;
+        }
     }
 
     // Sanity check: Is the index legitimate?
@@ -2440,7 +2443,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 switch (slaveMap.type())
                 {
                     case 1:
-
+                    {
                         if (pointMap[mEdge[0]] == sEdge[0])
                         {
                             overRideCase = 1;
@@ -2471,9 +2474,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         }
 
                         break;
+                    }
 
                     case 2:
-
+                    {
                         if (pointMap[mEdge[1]] == sEdge[1])
                         {
                             overRideCase = 2;
@@ -2504,12 +2508,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         }
 
                         break;
+                    }
 
                     case 3:
-
+                    {
                         overRideCase = 3;
 
                         break;
+                    }
                 }
 
                 // Can the overRideCase be used for this edge?

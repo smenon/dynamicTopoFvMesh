@@ -1057,7 +1057,7 @@ void dynamicTopoFvMesh::buildEdgePoints
 (
     const label eIndex,
     const label checkIndex
-) const
+)
 {
     bool found = false;
     label faceIndex = -1, cellIndex = -1;
@@ -1068,7 +1068,7 @@ void dynamicTopoFvMesh::buildEdgePoints
     const labelList& eFaces = edgeFaces_[eIndex];
 
     // Re-size the list first
-    labelList& ePoints = const_cast<labelList&>(edgePoints_[eIndex]);
+    labelList& ePoints = edgePoints_[eIndex];
     ePoints.setSize(eFaces.size(), -1);
 
     if (whichEdgePatch(eIndex) == -1)
@@ -3306,6 +3306,253 @@ void dynamicTopoFvMesh::removeSlivers()
     {
         unsetCoupledModification();
     }
+}
+
+
+// Return length-scale at an face-location in the mesh [2D]
+scalar dynamicTopoFvMesh::faceLengthScale
+(
+    const label fIndex
+) const
+{
+    // Reset the scale first
+    scalar scale = 0.0;
+
+    label facePatch = whichPatch(fIndex);
+
+    // Determine whether the face is internal
+    if (facePatch < 0)
+    {
+        scale =
+        (
+            0.5 *
+            (
+                lengthScale_[owner_[fIndex]]
+              + lengthScale_[neighbour_[fIndex]]
+            )
+        );
+    }
+    else
+    {
+        // Fetch the fixed-length scale
+        scale = lengthEstimator().fixedLengthScale(fIndex, facePatch);
+
+        // If this is a floating face, pick the owner length-scale
+        if (lengthEstimator().isFreePatch(facePatch))
+        {
+            scale = lengthScale_[owner_[fIndex]];
+        }
+
+        // If proximity-based refinement is requested,
+        // test the proximity to the nearest non-neighbour.
+        if (lengthEstimator().isProximityPatch(facePatch))
+        {
+            label proximityFace = -1;
+
+            // Perform a proximity-check.
+            scalar distance = testProximity(fIndex, proximityFace);
+
+            if (debug > 3 && self() == 0)
+            {
+                if
+                (
+                    (proximityFace > -1) &&
+                    ((distance / 5.0) < scale)
+                )
+                {
+                    Info << " Closest opposing face detected for face: " << nl
+                         << '\t' << fIndex
+                         << " :: " << faces_[fIndex]
+                         << " was face:\n"
+                         << '\t' << proximityFace
+                         << " :: " << polyMesh::faces()[proximityFace] << nl
+                         << " with distance: " << distance
+                         << endl;
+                }
+            }
+
+            scale =
+            (
+                Foam::min
+                (
+                    scale,
+                    ((distance / 3.0) - SMALL)/lengthEstimator().ratioMax()
+                )
+            );
+        }
+
+        // If this face lies on a processor patch,
+        // fetch lengthScale info from patchSubMeshes
+        if (processorCoupledEntity(fIndex))
+        {
+            scale = processorLengthScale(fIndex);
+        }
+
+        // Limit scales if necessary
+        lengthEstimator().limitScale(scale);
+    }
+
+    return scale;
+}
+
+
+// Compute length-scale at an edge-location in the mesh [3D]
+scalar dynamicTopoFvMesh::edgeLengthScale
+(
+    const label eIndex
+) const
+{
+    // Reset the scale first
+    scalar scale = 0.0;
+
+    const labelList& eFaces = edgeFaces_[eIndex];
+
+    label edgePatch = whichEdgePatch(eIndex);
+
+    // Determine whether the edge is internal
+    if (edgePatch < 0)
+    {
+        forAll(eFaces, faceI)
+        {
+            scale += lengthScale_[owner_[eFaces[faceI]]];
+            scale += lengthScale_[neighbour_[eFaces[faceI]]];
+        }
+
+        scale /= (2.0*eFaces.size());
+    }
+    else
+    {
+        // Search for boundary faces, and average their scale
+        forAll(eFaces, faceI)
+        {
+            if (neighbour_[eFaces[faceI]] == -1)
+            {
+                scale +=
+                (
+                    lengthEstimator().fixedLengthScale
+                    (
+                        eFaces[faceI],
+                        edgePatch
+                    )
+                );
+            }
+        }
+
+        scale *= 0.5;
+
+        // If proximity-based refinement is requested,
+        // test the proximity to the nearest non-neighbour.
+        if (lengthEstimator().isProximityPatch(edgePatch))
+        {
+            label proximityFace = -1;
+
+            // Perform a proximity-check.
+            scalar distance = testProximity(eIndex, proximityFace);
+
+            if (debug > 3 && self() == 0)
+            {
+                if
+                (
+                    (proximityFace > -1) &&
+                    ((distance / 5.0) < scale)
+                )
+                {
+                    Info << " Closest opposing face detected for edge: " << nl
+                         << '\t' << eIndex
+                         << " :: " << edges_[eIndex]
+                         << " was face:\n"
+                         << '\t' << proximityFace
+                         << " :: " << polyMesh::faces()[proximityFace] << nl
+                         << " with distance: " << distance
+                         << endl;
+                }
+            }
+
+            scale =
+            (
+                Foam::min
+                (
+                    scale,
+                    ((distance / 3.0) - SMALL)/lengthEstimator().ratioMax()
+                )
+            );
+        }
+
+        // If curvature-based refinement is requested,
+        // test the variation in face-normal directions.
+        if (lengthEstimator().isCurvaturePatch(edgePatch))
+        {
+            // Obtain face-normals for both faces.
+            label count = 0;
+            FixedList<vector, 2> fNorm;
+
+            forAll(eFaces, faceI)
+            {
+                if (neighbour_[eFaces[faceI]] == -1)
+                {
+                    // Obtain the normal.
+                    fNorm[count] = faces_[eFaces[faceI]].normal(points_);
+
+                    // Normalize it.
+                    fNorm[count] /= mag(fNorm[count]);
+
+                    count++;
+                }
+            }
+
+            scalar deviation = (fNorm[0] & fNorm[1]);
+            scalar refDeviation = lengthEstimator().curvatureDeviation();
+
+            if (mag(deviation) < refDeviation)
+            {
+                // Fetch the edge
+                const edge& edgeToCheck = edges_[eIndex];
+
+                // Get the edge-length.
+                scalar length =
+                (
+                    linePointRef
+                    (
+                        points_[edgeToCheck.start()],
+                        points_[edgeToCheck.end()]
+                    ).mag()
+                );
+
+                if (debug > 3 && self() == 0)
+                {
+                    Info << "Deviation: " << deviation << nl
+                         << "curvatureDeviation: " << refDeviation
+                         << ", Edge: " << eIndex << ", Length: " << length
+                         << ", Scale: " << scale << nl
+                         << " Half-length: " << (0.5*length) << nl
+                         << " MinRatio: "
+                         << (lengthEstimator().ratioMin()*scale)
+                         << endl;
+                }
+
+                scale =
+                (
+                    Foam::min
+                    (
+                        scale,
+                        ((length - SMALL)/lengthEstimator().ratioMax())
+                    )
+                );
+            }
+        }
+
+        // If this edge lies on a processor patch,
+        // fetch lengthScale info from patchSubMeshes
+        if (processorCoupledEntity(eIndex))
+        {
+            scale = processorLengthScale(eIndex);
+        }
+
+        // Limit scales if necessary
+        lengthEstimator().limitScale(scale);
+    }
+
+    return scale;
 }
 
 

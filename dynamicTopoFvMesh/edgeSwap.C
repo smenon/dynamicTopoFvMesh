@@ -1922,22 +1922,6 @@ scalar dynamicTopoFvMesh::computeMinQuality
     const label eIndex
 ) const
 {
-    // If this is a subMesh, we might need to build edgePoints first
-    if (isSubMesh_)
-    {
-        if (edgePoints_[eIndex].empty())
-        {
-            if (debug > 3)
-            {
-                Pout << " Building edgePoints for: " << eIndex
-                     << " :: " << edges_[eIndex]
-                     << endl;
-            }
-
-            buildEdgePoints(eIndex);
-        }
-    }
-
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;
 
@@ -1970,7 +1954,7 @@ scalar dynamicTopoFvMesh::computeMinQuality
     else
     {
         // Boundary edge.
-        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
+        for (label indexI = 1; indexI < hullVertices.size(); indexI++)
         {
             // Pick vertices off the list
             const point& b = points_[hullVertices[indexI-1]];

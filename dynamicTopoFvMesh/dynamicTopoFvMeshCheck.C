@@ -1365,12 +1365,6 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                 continue;
             }
 
-            // SubMeshes might require edgePoints to be built
-            if (isSubMesh_ && edgePoints_[edgeI].empty())
-            {
-                buildEdgePoints(edgeI);
-            }
-
             // Do a preliminary size check
             const labelList& edgePoints = edgePoints_[edgeI];
 

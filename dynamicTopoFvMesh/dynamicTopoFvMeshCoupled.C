@@ -46,6 +46,127 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+// Set coupled modification
+void dynamicTopoFvMesh::setCoupledModification() const
+{
+    coupledModification_ = true;
+}
+
+
+// Unset coupled modification
+void dynamicTopoFvMesh::unsetCoupledModification() const
+{
+    coupledModification_ = false;
+}
+
+
+// Initialize the coupled stack
+void dynamicTopoFvMesh::initCoupledStack()
+{
+    // Clear existing lists/stacks.
+    stack(0).clear();
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Loop though boundary faces and check whether
+    // they belong to master/slave coupled patches.
+    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+    {
+        // Add only valid faces
+        if (faces_[faceI].empty())
+        {
+            continue;
+        }
+
+        label pIndex = whichPatch(faceI);
+
+        if (pIndex == -1)
+        {
+            continue;
+        }
+
+        // Check if this is a locally coupled master face.
+        if (patchCoupling_.size())
+        {
+            if (patchCoupling_(pIndex))
+            {
+                // Add this to the coupled modification stack.
+                if (twoDMesh_)
+                {
+                    stack(0).push(faceI);
+                }
+                else
+                {
+                    const labelList& mfEdges = faceEdges_[faceI];
+
+                    forAll(mfEdges, edgeI)
+                    {
+                        // Add this to the coupled modification stack.
+                        stack(0).push(mfEdges[edgeI]);
+                    }
+                }
+            }
+        }
+
+        // Check if this is a processor patch.
+        if (isA<processorPolyPatch>(boundary[pIndex]))
+        {
+            // Check if this is a master processor patch.
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[pIndex])
+            );
+
+            label neiProcID = pp.neighbProcNo();
+
+            if (neiProcID > Pstream::myProcNo())
+            {
+                // Add this to the coupled modification stack.
+                if (twoDMesh_)
+                {
+                    stack(0).push(faceI);
+                }
+                else
+                {
+                    const labelList& mfEdges = faceEdges_[faceI];
+
+                    forAll(mfEdges, edgeI)
+                    {
+                        stack(0).push(mfEdges[edgeI]);
+                    }
+                }
+            }
+        }
+    }
+
+    if (debug > 3)
+    {
+        Pout << nl << "Coupled stack size: " << stack(0).size() << endl;
+
+        if (debug > 4)
+        {
+            // Write out stack entities
+            labelList stackElements(stack(0).size(), -1);
+
+            forAll(stackElements, elemI)
+            {
+                stackElements[elemI] = stack(0)[elemI];
+            }
+
+            label elemType = twoDMesh_ ? 2 : 1;
+
+            writeVTK
+            (
+                "stack_"
+              + Foam::name(Pstream::myProcNo()),
+                stackElements,
+                elemType
+            );
+        }
+    }
+}
+
+
 // Identify coupled patches.
 //  - Also builds global shared point information.
 //  - Returns true if no coupled patches were found.
@@ -1885,6 +2006,10 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
         {
             // Not a nearest neighbour. Attempt to match
             // edges, provided any common ones exist.
+            notImplemented
+            (
+                "void dynamicTopoFvMesh::buildProcessorCoupledMaps()"
+            );
         }
 
         if (unMatchedFaces.size())
@@ -1899,6 +2024,23 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             )
                 << " Unmatched faces were found for processor: " << proc
                 << abort(FatalError);
+        }
+
+        // If the received mesh is of higher rank,
+        // build associated edgePoints.
+        if (proc > Pstream::myProcNo() && !twoDMesh_)
+        {
+            if (debug > 3)
+            {
+                Pout << "Building edgePoints for proc: " << proc << endl;
+            }
+
+            dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+
+            forAll(mesh.edges_, edgeI)
+            {
+                mesh.buildEdgePoints(edgeI);
+            }
         }
     }
 }

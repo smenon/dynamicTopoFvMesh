@@ -115,7 +115,10 @@ public:
         // Change the flag
         inline void setBuiltMaps();
 
-        // Return the coupleMap
+        // Return a reference to the coupleMap
+        inline coupleMap& patchMap();
+
+        // Return a const reference to the coupleMap
         inline const coupleMap& patchMap() const;
 
         // Return the master / slave face zone IDs

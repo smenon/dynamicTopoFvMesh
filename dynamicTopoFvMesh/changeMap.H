@@ -49,12 +49,26 @@ SourceFiles
 namespace Foam
 {
 
+// Class forward declarations
+class changeMap;
+
+// * * * * * * * * Forward declaration of friend fuctions  * * * * * * * * * //
+
+Ostream& operator<<(Ostream&, changeMap&);
+
+
 /*---------------------------------------------------------------------------*\
                            Class changeMap Declaration
 \*---------------------------------------------------------------------------*/
 
 class changeMap
 {
+    // Entity indices
+    label index_;
+
+    // Coupled patch index
+    label pIndex_;
+
     // Sliver type index.
     //  Type 1: Sliver
     //  Type 2: Cap
@@ -83,6 +97,8 @@ public:
     // Constructor
     changeMap()
     :
+        index_(-1),
+        pIndex_(-1),
         type_(-1),
         firstEdge_(-1),
         secondEdge_(-1),
@@ -95,6 +111,14 @@ public:
     {}
 
     //- Access
+
+        // Entity index
+        inline label& index();
+        inline label index() const;
+
+        // Coupled patch index
+        inline label& patchIndex();
+        inline label patchIndex() const;
 
         // Type
         inline label& type();
@@ -144,6 +168,10 @@ public:
     //- Operators
 
         inline void operator=(const changeMap& rhs);
+
+    //- IOstream Operators
+
+        inline friend Ostream& operator<<(Ostream&, changeMap&);
 };
 
 
