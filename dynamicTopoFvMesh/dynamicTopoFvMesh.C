@@ -40,11 +40,13 @@ Author
 
 #include "clockTime.H"
 #include "mapPolyMesh.H"
-#include "interpolator.H"
 #include "volFields.H"
 #include "motionSolver.H"
-#include "MapFvFields.H"
+#include "MapTopoFvFields.H"
+#include "fvPatchFields.H"
+#include "fvsPatchFields.H"
 #include "MeshObject.H"
+#include "topoMapper.H"
 #include "SortableList.H"
 
 namespace Foam
@@ -90,7 +92,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     interval_(1),
     mapper_(NULL),
     mPtr_(NULL),
-    iPtr_(NULL),
     oldPoints_(polyMesh::points()),
     points_(polyMesh::points()),
     faces_(polyMesh::faces()),
@@ -183,8 +184,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Load the mesh-motion solver
     loadMotionSolver();
 
-    // Load the interpolator
-    loadInterpolator();
+    // Load the field-mapper
+    loadFieldMapper();
 
     // Set sizes for the reverse maps
     reversePointMap_.setSize(nPoints_, -7);
@@ -225,7 +226,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     interval_(1),
     mapper_(NULL),
     mPtr_(NULL),
-    iPtr_(NULL),
     oldPoints_(points),
     points_(points),
     faces_(faces),
@@ -1451,9 +1451,6 @@ labelList dynamicTopoFvMesh::cellParents
 
 
 // Set fill-in mapping information for a particular cell
-//  - Requires cell-face connectivity information to be valid.
-//  - mapCells/mapFaces can have old and/or new cell/face labels,
-//    since consistency is maintained with each topo-change.
 void dynamicTopoFvMesh::setCellMapping
 (
     const label cIndex,
@@ -1461,34 +1458,47 @@ void dynamicTopoFvMesh::setCellMapping
     const scalarField& mapWeights
 )
 {
-    if (iPtr_.valid())
+    if (debug > 3)
     {
-        if (debug > 3)
-        {
-            Info << "Inserting mapping cell: " << cIndex << nl
-                 << " mapCells: " << mapCells << nl
-                 << " cellWeights: " << mapWeights
-                 << endl;
-        }
-
-        // Ensure compatible sizes.
-        if (mapCells.size() != mapWeights.size())
-        {
-            FatalErrorIn("dynamicTopoFvMesh::setCellMapping()")
-                << nl << " Incompatible mapping for cell: "
-                << cIndex << ":: " << cells_[cIndex] << nl
-                << " mapCells: " << mapCells
-                << " cellWeights: " << mapWeights
-                << abort(FatalError);
-        }
-
-        iPtr_->insertCell
-        (
-            cIndex,
-            mapCells,
-            mapWeights
-        );
+        Info << "Inserting mapping cell: " << cIndex << nl
+             << " mapCells: " << mapCells << nl
+             << " cellWeights: " << mapWeights
+             << endl;
     }
+
+    // Ensure compatible sizes.
+    if (mapCells.size() != mapWeights.size())
+    {
+        FatalErrorIn("dynamicTopoFvMesh::setCellMapping()")
+            << nl << " Incompatible mapping for cell: "
+            << cIndex << ":: " << cells_[cIndex] << nl
+            << " mapCells: " << mapCells
+            << " cellWeights: " << mapWeights
+            << abort(FatalError);
+    }
+
+    // Insert weights into the list, and overwrite if necessary
+    bool index = -1;
+
+    forAll(cellsFromCells_, indexI)
+    {
+        if (cellsFromCells_[indexI].index() == cIndex)
+        {
+            index = indexI;
+            break;
+        }
+    }
+
+    if (index == -1)
+    {
+        sizeUpList(objectMap(cIndex, mapCells), cellsFromCells_);
+    }
+    else
+    {
+        cellsFromCells_[index].masterObjects() = mapCells;
+    }
+
+    cellWeights_.set(cIndex, mapWeights);
 }
 
 
@@ -1500,37 +1510,49 @@ void dynamicTopoFvMesh::setFaceMapping
     const scalarField& mapWeights
 )
 {
-    if (iPtr_.valid())
+    label patch = whichPatch(fIndex);
+
+    if (debug > 3)
     {
-        label patch = whichPatch(fIndex);
-
-        if (debug > 3)
-        {
-            Info << "Inserting mapping face: " << fIndex << nl
-                 << " patch: " << patch << nl
-                 << " mapFaces: " << mapFaces << nl
-                 << " faceWeights: " << mapWeights
-                 << endl;
-        }
-
-        // Ensure compatible sizes.
-        if (mapFaces.size() != mapWeights.size())
-        {
-            FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
-                << nl << " Incompatible mapping: " << nl
-                << " mapFaces: " << mapFaces
-                << " faceWeights: " << mapWeights
-                << abort(FatalError);
-        }
-
-        iPtr_->insertFace
-        (
-            patch,
-            fIndex,
-            mapFaces,
-            mapWeights
-        );
+        Info << "Inserting mapping face: " << fIndex << nl
+             << " patch: " << patch << nl
+             << " mapFaces: " << mapFaces << nl
+             << " faceWeights: " << mapWeights
+             << endl;
     }
+
+    // Ensure compatible sizes.
+    if (mapFaces.size() != mapWeights.size())
+    {
+        FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
+            << nl << " Incompatible mapping: " << nl
+            << " mapFaces: " << mapFaces
+            << " faceWeights: " << mapWeights
+            << abort(FatalError);
+    }
+
+    // Insert weights into the list, and overwrite if necessary
+    bool index = -1;
+
+    forAll(facesFromFaces_, indexI)
+    {
+        if (facesFromFaces_[indexI].index() == fIndex)
+        {
+            index = indexI;
+            break;
+        }
+    }
+
+    if (index == -1)
+    {
+        sizeUpList(objectMap(fIndex, mapFaces), facesFromFaces_);
+    }
+    else
+    {
+        facesFromFaces_[index].masterObjects() = mapFaces;
+    }
+
+    faceWeights_.set(fIndex, mapWeights);
 }
 
 
@@ -1591,11 +1613,6 @@ void dynamicTopoFvMesh::removeCell
         lengthScale_[cIndex] = -1.0;
     }
 
-    if (iPtr_.valid())
-    {
-        iPtr_->removeCell(cIndex);
-    }
-
     // Update the number of cells, and the reverse cell map
     nCells_--;
 
@@ -1613,6 +1630,53 @@ void dynamicTopoFvMesh::removeCell
     if (addedCellZones_.found(cIndex))
     {
         addedCellZones_.erase(cIndex);
+    }
+
+    // Check if the cell was added in the current morph, and delete
+    forAll(cellsFromPoints_, indexI)
+    {
+        if (cellsFromPoints_[indexI].index() == cIndex)
+        {
+            // Remove entry from the list
+            removeIndex(indexI, cellsFromPoints_);
+            break;
+        }
+    }
+
+    forAll(cellsFromEdges_, indexI)
+    {
+        if (cellsFromEdges_[indexI].index() == cIndex)
+        {
+            // Remove entry from the list
+            removeIndex(indexI, cellsFromEdges_);
+            break;
+        }
+    }
+
+    forAll(cellsFromFaces_, indexI)
+    {
+        if (cellsFromFaces_[indexI].index() == cIndex)
+        {
+            // Remove entry from the list
+            removeIndex(indexI, cellsFromFaces_);
+            break;
+        }
+    }
+
+    forAll(cellsFromCells_, indexI)
+    {
+        if (cellsFromCells_[indexI].index() == cIndex)
+        {
+            // Remove entry from the list
+            removeIndex(indexI, cellsFromCells_);
+            break;
+        }
+    }
+
+    // Check if any explicit cell weights were specified
+    if (cellWeights_.found(cIndex))
+    {
+        cellWeights_.erase(cIndex);
     }
 }
 
@@ -1823,9 +1887,47 @@ void dynamicTopoFvMesh::removeFace
         addedFaceZones_.erase(fIndex);
     }
 
-    if (iPtr_.valid())
+    // Check if the face was added in the current morph, and delete
+    forAll(facesFromPoints_, indexI)
     {
-        iPtr_->removeFace(fIndex);
+        if (facesFromPoints_[indexI].index() == fIndex)
+        {
+            // Remove entry from the list
+            removeIndex(indexI, facesFromPoints_);
+            break;
+        }
+    }
+
+    forAll(facesFromEdges_, indexI)
+    {
+        if (facesFromEdges_[indexI].index() == fIndex)
+        {
+            // Remove entry from the list
+            removeIndex(indexI, facesFromEdges_);
+            break;
+        }
+    }
+
+    forAll(facesFromFaces_, indexI)
+    {
+        if (facesFromFaces_[indexI].index() == fIndex)
+        {
+            // Remove entry from the list
+            removeIndex(indexI, facesFromFaces_);
+            break;
+        }
+    }
+
+    // Remove from the flipFaces list, if necessary
+    if (flipFaces_.found(fIndex))
+    {
+        flipFaces_.erase(fIndex);
+    }
+
+    // Check if any explicit face weights were specified
+    if (faceWeights_.found(fIndex))
+    {
+        faceWeights_.erase(fIndex);
     }
 
     // Decrement the total face-count
@@ -2123,6 +2225,17 @@ void dynamicTopoFvMesh::removePoint
                 // Update pointMap
                 pointMap.erase(pIndex);
             }
+        }
+    }
+
+    // Check if the point was added in the current morph, and delete
+    forAll(pointsFromPoints_, indexI)
+    {
+        if (pointsFromPoints_[indexI].index() == pIndex)
+        {
+            // Remove entry from the list
+            removeIndex(indexI, pointsFromPoints_);
+            break;
         }
     }
 
@@ -3809,20 +3922,20 @@ void dynamicTopoFvMesh::loadMotionSolver()
 }
 
 
-// Load the interpolator
-void dynamicTopoFvMesh::loadInterpolator()
+// Load the field mapper
+void dynamicTopoFvMesh::loadFieldMapper()
 {
-    if (iPtr_.valid())
+    if (mapper_.valid())
     {
         FatalErrorIn
         (
-            "dynamicTopoFvMesh::loadInterpolator() "
-        ) << nl << " Interpolator already loaded. "
+            "dynamicTopoFvMesh::loadFieldMapper() "
+        ) << nl << " Field mapper already loaded. "
           << abort(FatalError);
     }
     else
     {
-        iPtr_.set(new interpolator(*this));
+        mapper_.set(new topoMapper(*this));
     }
 }
 
@@ -5528,6 +5641,53 @@ void dynamicTopoFvMesh::synchronizeThreads
 }
 
 
+// Map all fields in time using a customized mapper
+void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
+{
+    if (debug)
+    {
+        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh&): "
+             << "Mapping fv fields."
+             << endl;
+    }
+
+    // Set the mapPolyMesh object in the mapper
+    mapper_().setMapper(meshMap);
+
+    // Set weighting information.
+    // This takes over the weight data.
+    mapper_().setFaceWeights(faceWeights_);
+    mapper_().setCellWeights(cellWeights_);
+
+    // Map all the volFields in the objectRegistry
+    MapGeometricFields<scalar,fvPatchField,topoMapper,volMesh>
+        (mapper_());
+    MapGeometricFields<vector,fvPatchField,topoMapper,volMesh>
+        (mapper_());
+    MapGeometricFields<sphericalTensor,fvPatchField,topoMapper,volMesh>
+        (mapper_());
+    MapGeometricFields<symmTensor,fvPatchField,topoMapper,volMesh>
+        (mapper_());
+    MapGeometricFields<tensor,fvPatchField,topoMapper,volMesh>
+        (mapper_());
+
+    // Map all the surfaceFields in the objectRegistry
+    MapGeometricFields<scalar,fvsPatchField,topoMapper,surfaceMesh>
+        (mapper_());
+    MapGeometricFields<vector,fvsPatchField,topoMapper,surfaceMesh>
+        (mapper_());
+    MapGeometricFields<sphericalTensor,fvsPatchField,topoMapper,surfaceMesh>
+        (mapper_());
+    MapGeometricFields<symmTensor,fvsPatchField,topoMapper,surfaceMesh>
+        (mapper_());
+    MapGeometricFields<tensor,fvsPatchField,topoMapper,surfaceMesh>
+        (mapper_());
+
+    // Clear mapper
+    mapper_().clear();
+}
+
+
 // Update the mesh for topology changes.
 // Return true if changes have occurred
 bool dynamicTopoFvMesh::update()
@@ -5566,9 +5726,6 @@ bool dynamicTopoFvMesh::update()
              << "    Bandwidth before renumbering: " << band << endl;
     }
 
-    // Register all necessary fields with the interpolator.
-    iPtr_->registerFields();
-
     // Set old-points before moving the mesh
     const pointField& oldPoints = points();
 
@@ -5576,6 +5733,9 @@ bool dynamicTopoFvMesh::update()
     {
         oldPoints_[pointI] = oldPoints[pointI];
     }
+
+    // Set old cell-centre information for the mapping stage
+    mapper_().setOldCellCentres(fvMesh::C());
 
     // Invoke mesh-motion solver and move points
     if (mPtr_.valid())
@@ -5682,9 +5842,6 @@ bool dynamicTopoFvMesh::update()
         labelListList faceZonePointMap(faceZones.size());
         labelListList faceZoneFaceMap(faceZones.size());
         labelListList cellZoneMap(cellZones.size());
-
-        // Null temporaries
-        labelHashSet flipFaceFlux;
 
         // Obtain faceZone point maps before reordering
         List<Map<label> > oldFaceZonePointMaps(faceZones.size());
@@ -5804,64 +5961,57 @@ bool dynamicTopoFvMesh::update()
             }
         }
 
-        // Clear the existing mapper
-        if (mapper_.valid()) mapper_.clear();
-
         // Generate new mesh mapping information
-        mapper_.set
+        mapPolyMesh mpm
         (
-            new mapPolyMesh
-            (
-                (*this),
-                nOldPoints_,
-                nOldFaces_,
-                nOldCells_,
-                pointMap_,
-                pointsFromPoints_,
-                faceMap_,
-                facesFromPoints_,
-                facesFromEdges_,
-                facesFromFaces_,
-                cellMap_,
-                cellsFromPoints_,
-                cellsFromEdges_,
-                cellsFromFaces_,
-                cellsFromCells_,
-                reversePointMap_,
-                reverseFaceMap_,
-                reverseCellMap_,
-                flipFaceFlux,
-                patchPointMap,
-                pointZoneMap,
-                faceZonePointMap,
-                faceZoneFaceMap,
-                cellZoneMap,
-                preMotionPoints,
-                oldPatchStarts,
-                oldPatchNMeshPoints,
-                true
-            )
+            (*this),
+            nOldPoints_,
+            nOldFaces_,
+            nOldCells_,
+            pointMap_,
+            pointsFromPoints_,
+            faceMap_,
+            facesFromPoints_,
+            facesFromEdges_,
+            facesFromFaces_,
+            cellMap_,
+            cellsFromPoints_,
+            cellsFromEdges_,
+            cellsFromFaces_,
+            cellsFromCells_,
+            reversePointMap_,
+            reverseFaceMap_,
+            reverseCellMap_,
+            flipFaces_,
+            patchPointMap,
+            pointZoneMap,
+            faceZonePointMap,
+            faceZoneFaceMap,
+            cellZoneMap,
+            preMotionPoints,
+            oldPatchStarts,
+            oldPatchNMeshPoints,
+            true
         );
 
+        // Move points to positions before mesh-motion
+        movePoints(mpm.preMotionPoints());
+
         // Update the underlying mesh, and map all related fields
-        updateMesh(mapper_);
+        updateMesh(mpm);
+
+        // Reset old-volumes / mesh-fluxes.
+        // This overrides mapped V0 values.
+        resetMotion();
+        setV0();
+
+        // Correct volume fluxes on the old mesh
+        mapper_().correctFluxes();
 
         // Update the mesh-motion solver
         if (mPtr_.valid())
         {
-            mPtr_->updateMesh(mapper_);
-        }
-
-        // Move the mesh to the old-position, and reset
-        // old-volumes / mesh-fluxes.
-        movePoints(mapper_->preMotionPoints());
-        resetMotion();
-        setV0();
-
-        // Update interpolated fields/fluxes
-        if (iPtr_.valid())
-        {
-            iPtr_->updateMesh(mapper_);
+            mPtr_->updateMesh(mpm);
         }
 
         // Now move back to new points and
@@ -5928,6 +6078,9 @@ bool dynamicTopoFvMesh::update()
         deletedFaces_.clear();
         deletedCells_.clear();
 
+        // Clear flipFaces
+        flipFaces_.clear();
+
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_, -7);
         reverseEdgeMap_.setSize(nEdges_, -7);
@@ -5936,9 +6089,9 @@ bool dynamicTopoFvMesh::update()
 
         // Update "old" information
         nOldPoints_ = nPoints_;
-        nOldEdges_  = nEdges_;
-        nOldFaces_  = nFaces_;
-        nOldCells_  = nCells_;
+        nOldEdges_ = nEdges_;
+        nOldFaces_ = nFaces_;
+        nOldCells_ = nCells_;
         nOldInternalFaces_ = nInternalFaces_;
         nOldInternalEdges_ = nInternalEdges_;
 

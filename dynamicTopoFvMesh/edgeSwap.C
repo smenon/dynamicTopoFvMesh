@@ -25,7 +25,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
-#include "interpolator.H"
 #include "multiThreader.H"
 #include "dynamicTopoFvMesh.H"
 
@@ -697,7 +696,7 @@ void dynamicTopoFvMesh::swapQuadFace
             newOwn     = neighbour_[commonIntFaceIndex[1]];
             newNei     = c0;
 
-            iPtr_->setFlip(commonIntFaceIndex[1]);
+            setFlip(commonIntFaceIndex[1]);
         }
         else
         {
@@ -719,7 +718,7 @@ void dynamicTopoFvMesh::swapQuadFace
             newOwn     = c0;
             newNei     = owner_[commonIntFaceIndex[1]];
 
-            iPtr_->setFlip(commonIntFaceIndex[1]);
+            setFlip(commonIntFaceIndex[1]);
         }
         else
         {
@@ -757,7 +756,7 @@ void dynamicTopoFvMesh::swapQuadFace
             newOwn     = neighbour_[commonIntFaceIndex[2]];
             newNei     = c1;
 
-            iPtr_->setFlip(commonIntFaceIndex[2]);
+            setFlip(commonIntFaceIndex[2]);
         }
         else
         {
@@ -779,7 +778,7 @@ void dynamicTopoFvMesh::swapQuadFace
             newOwn     = c1;
             newNei     = owner_[commonIntFaceIndex[2]];
 
-            iPtr_->setFlip(commonIntFaceIndex[2]);
+            setFlip(commonIntFaceIndex[2]);
         }
         else
         {
@@ -1975,7 +1974,7 @@ const changeMap dynamicTopoFvMesh::swap23
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
 
-                        iPtr_->setFlip(faceIndex);
+                        setFlip(faceIndex);
                     }
                 }
                 else
@@ -2086,7 +2085,7 @@ const changeMap dynamicTopoFvMesh::swap23
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
 
-                        iPtr_->setFlip(faceIndex);
+                        setFlip(faceIndex);
                     }
                 }
                 else
@@ -2165,7 +2164,7 @@ const changeMap dynamicTopoFvMesh::swap23
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[2];
 
-                        iPtr_->setFlip(faceIndex);
+                        setFlip(faceIndex);
                     }
                 }
                 else
@@ -2585,7 +2584,6 @@ const changeMap dynamicTopoFvMesh::swap32
     // For a 2-2 swap on a boundary edge,
     // add two boundary faces and an edge
     FixedList<label,2> oldBdyFaceIndex(-1), newBdyFaceIndex(-1);
-    FixedList<scalar, 2> oldPhi(0.0), newPhi(0.0), fArea(0.0);
     label newEdgeIndex = -1;
 
     if (edgePatch > -1)
@@ -2669,16 +2667,6 @@ const changeMap dynamicTopoFvMesh::swap32
                 }
             }
         }
-
-        // Setting mapping variables.
-
-        // Fetch old flux values.
-        // oldPhi[0] = iPtr_->getPhi(oldBdyFaceIndex[0]);
-        // oldPhi[1] = iPtr_->getPhi(oldBdyFaceIndex[1]);
-
-        // Compute face area with the new faces.
-        fArea[0] = triFaceArea(newBdyTriFace[0], true);
-        fArea[1] = triFaceArea(newBdyTriFace[1], true);
 
         // Insert the first of two new faces
         newBdyFaceIndex[0] =
@@ -2855,7 +2843,7 @@ const changeMap dynamicTopoFvMesh::swap32
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
 
-                        iPtr_->setFlip(faceIndex);
+                        setFlip(faceIndex);
                     }
                 }
                 else
@@ -2928,7 +2916,7 @@ const changeMap dynamicTopoFvMesh::swap32
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
 
-                        iPtr_->setFlip(faceIndex);
+                        setFlip(faceIndex);
                     }
                 }
                 else
@@ -3094,36 +3082,17 @@ const changeMap dynamicTopoFvMesh::swap32
     }
 
     // Set fill-in mapping for two new boundary faces
-    /*
     if (edgePatch > -1)
     {
-        // Set mapping masters
-        labelList mF(2, -1);
-        scalarField mW(2, 0.0);
-
-        mF[0] = oldBdyFaceIndex[0];
-        mF[1] = oldBdyFaceIndex[1];
-
-        // Set area-weighted fluxes for both new faces,
-        // and don't interpolate them from cells.
         forAll(newBdyFaceIndex, i)
         {
-            setFaceMapping
-            (
-                newBdyFaceIndex[i],
-                mF,
-                mW,
-                (fArea[i] / (fArea[0] + fArea[1] + VSMALL))
-              * (oldPhi[0] + oldPhi[1]),
-                false
-            );
+            setFaceMapping(newBdyFaceIndex[i]);
         }
     }
 
     // Fill in mapping information for the new face.
     // Since it is internal, interpolate fluxes by default.
     setFaceMapping(newFaceIndex);
-    */
 
     if (debug > 2)
     {

@@ -7,7 +7,6 @@ $(ePatches)/ePatch/ePatch.C
 $(ePatches)/ePatch/newEPatch.C
 
 changeMap.C
-interpolator.C
 
 dynamicTopoFvMesh.C
 coupledPatchInfo.C

@@ -25,7 +25,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
-#include "interpolator.H"
 #include "resizableList.H"
 #include "multiThreader.H"
 #include "dynamicTopoFvMesh.H"
@@ -484,9 +483,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // required for coupled patch mapping.
     map.addFace(fIndex);
 
-    // Fetch face flux for the old face.
-    // scalar oldPhi = iPtr_->getPhi(fIndex);
-
     if (debug > 1)
     {
         Info << "Modified face: " << fIndex
@@ -540,7 +536,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             owner_[replaceFace] = neighbour_[replaceFace];
             neighbour_[replaceFace] = newCellIndex[0];
 
-            iPtr_->setFlip(replaceFace);
+            setFlip(replaceFace);
         }
     }
     else
@@ -978,7 +974,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 owner_[replaceFace] = neighbour_[replaceFace];
                 neighbour_[replaceFace] = newCellIndex[1];
 
-                iPtr_->setFlip(replaceFace);
+                setFlip(replaceFace);
             }
         }
         else
@@ -1501,47 +1497,17 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     setCellMapping(newCellIndex[0], mC0, scalarField(1, 1.0));
 
     // Set fill-in mapping information for the modified face.
-    /*
-    setFaceMapping
-    (
-        fIndex,
-        labelList(1, fIndex),
-        scalarField(1, 0.0),
-        (0.5*oldPhi),
-        false
-    );
+    setFaceMapping(fIndex);
 
     // Default mapping for internal faces
     setFaceMapping(newFaceIndex[0]);
 
     // Wedge / empty faces get zero flux.
-    setFaceMapping
-    (
-        newFaceIndex[1],
-        labelList(1, c0BdyIndex[0]),
-        scalarField(1, 0.0),
-        0.0,
-        false
-    );
-
-    setFaceMapping
-    (
-        newFaceIndex[2],
-        labelList(1, c0BdyIndex[1]),
-        scalarField(1, 0.0),
-        0.0,
-        false
-    );
+    // setFaceMapping(newFaceIndex[1]);
+    // setFaceMapping(newFaceIndex[2]);
 
     // Set fill-in mapping information for the new face
-    setFaceMapping
-    (
-        newFaceIndex[3],
-        labelList(1, fIndex),
-        scalarField(1, 0.0),
-        (0.5*oldPhi),
-        false
-    );
+    setFaceMapping(newFaceIndex[3]);
 
     if (c1 != -1)
     {
@@ -1549,25 +1515,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         setFaceMapping(newFaceIndex[4]);
 
         // Wedge / empty faces get zero flux.
-        setFaceMapping
-        (
-            newFaceIndex[5],
-            labelList(1, commonFaceIndex[2]),
-            scalarField(1, 0.0),
-            0.0,
-            false
-        );
-
-        setFaceMapping
-        (
-            newFaceIndex[6],
-            labelList(1, commonFaceIndex[3]),
-            scalarField(1, 0.0),
-            0.0,
-            false
-        );
+        // setFaceMapping(newFaceIndex[5]);
+        // setFaceMapping(newFaceIndex[6]);
     }
-    */
 
     // Modify point labels for common edges
     if (edges_[commonEdgeIndex[0]].start() == otherEdgePoint[0])
@@ -2157,7 +2107,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = addedCellIndices[indexI];
 
-                    iPtr_->setFlip(replaceFace);
+                    setFlip(replaceFace);
                 }
             }
             else
@@ -2603,100 +2553,124 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             continue;
         }
 
-        // Compute the old-volume for this cell
-        scalar newOldVol = tetVolume(addedCellIndices[indexI], true);
+        // Set mapping for both new and modified cells.
+        FixedList<label, 2> cmIndex;
 
-        // Compute old volumes, using old point positions.
-        scalar modOldVol = tetVolume(cellHull[indexI], true);
-
-        if (modOldVol < 0.0 || newOldVol < 0.0)
-        {
-            FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
-                << "Negative old-volumes encountered." << nl
-                << cellHull[indexI] << ": " << modOldVol
-                << addedCellIndices[indexI] << ": " << newOldVol
-                << abort(FatalError);
-        }
+        cmIndex[0] = cellHull[indexI];
+        cmIndex[1] = addedCellIndices[indexI];
 
         // Fill-in candidate mapping information
         labelList mC(1, cellHull[indexI]);
 
-        labelList parents;
-        scalarField weights;
-
-        // Obtain weighting factors for this cell.
-        // Perform several attempts for robustness.
-        bool consistent = false;
-        scalar searchFactor = 1.0;
-
-        for (label attempt = 0; attempt < 5; attempt++)
+        forAll(cmIndex, cmI)
         {
-            consistent =
-            (
-                computeTetWeights
+            // Compute the old-volume for this cell
+            scalar newOldVol = tetVolume(cmIndex[cmI], true);
+
+            if (newOldVol < 0.0)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
+                    << "Negative old-volume encountered." << nl
+                    << cmIndex[cmI] << ": " << newOldVol
+                    << abort(FatalError);
+            }
+
+            labelList parents;
+            scalarField weights;
+
+            // Obtain weighting factors for this cell.
+            // Perform several attempts for robustness.
+            bool consistent = false;
+            scalar searchFactor = 1.0;
+
+            for (label attempt = 0; attempt < 5; attempt++)
+            {
+                consistent =
                 (
-                    addedCellIndices[indexI],
-                    newOldVol,
-                    mC,
-                    searchFactor,
-                    parents,
-                    weights
-                )
-            );
+                    computeTetWeights
+                    (
+                        cmIndex[cmI],
+                        newOldVol,
+                        mC,
+                        searchFactor,
+                        parents,
+                        weights
+                    )
+                );
 
-            if (consistent)
-            {
-                break;
-            }
-            else
-            {
-                // Expand the search radius and try again.
-                searchFactor *= 1.2;
-            }
-        }
-
-        if (!consistent)
-        {
-            // Write out for post-processing
-            label nIdx = addedCellIndices[indexI], uIdx = 0;
-            labelList candid = cellParents(nIdx, searchFactor, mC);
-            labelList unMatch(candid.size() - parents.size(), -1);
-
-            forAll(candid, cI)
-            {
-                if (findIndex(parents, candid[cI]) == -1)
+                if (consistent)
                 {
-                    unMatch[uIdx++] = candid[cI];
+                    break;
+                }
+                else
+                {
+                    // Expand the search radius and try again.
+                    searchFactor *= 1.2;
                 }
             }
 
-            writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
-            writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
-            writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
-            writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
+            if (!consistent)
+            {
+                // Write out for post-processing
+                label nIdx = cmIndex[cmI], uIdx = 0;
+                labelList candid = cellParents(nIdx, searchFactor, mC);
+                labelList unMatch(candid.size() - parents.size(), -1);
 
-            FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
-                << "Encountered non-conservative weighting factors." << nl
-                << " Cell: " << nIdx << nl
-                << " Old volume: " << newOldVol << nl
-                << " Parents: " << parents << nl
-                << " Weights: " << weights << nl
-                << " Sum(Weights): " << sum(weights) << nl
-                << " Error: " << mag(1.0 - sum(weights))
-                << abort(FatalError);
+                forAll(candid, cI)
+                {
+                    if (findIndex(parents, candid[cI]) == -1)
+                    {
+                        unMatch[uIdx++] = candid[cI];
+                    }
+                }
+
+                writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
+                writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
+                writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
+                writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
+
+                FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
+                    << "Encountered non-conservative weighting factors." << nl
+                    << " Cell: " << nIdx << nl
+                    << " Old volume: " << newOldVol << nl
+                    << " Parents: " << parents << nl
+                    << " Weights: " << weights << nl
+                    << " Sum(Weights): " << sum(weights) << nl
+                    << " Error: " << mag(1.0 - sum(weights))
+                    << abort(FatalError);
+            }
+
+            // Set the mapping for this cell
+            setCellMapping(cmIndex[cmI], parents, weights);
+
+            // Set parents for this cell
+            cellParents_.set(cmIndex[cmI], parents);
+
+            if (debug > 2)
+            {
+                Info << " Cell:: " << cmIndex[cmI] << nl
+                     << "  Parents: " << parents << nl
+                     << "  Weights: " << weights << endl;
+            }
+        }
+    }
+
+    // Set mapping information for old / new faces
+    forAll(faceHull, indexI)
+    {
+        if (faceHull[indexI] > -1)
+        {
+            setFaceMapping(faceHull[indexI]);
         }
 
-        // Set the mapping for this cell
-        setCellMapping(addedCellIndices[indexI], parents, weights);
-
-        // Set parents for this cell
-        cellParents_.set(addedCellIndices[indexI], parents);
-
-        if (debug > 2)
+        if (addedFaceIndices[indexI] > -1)
         {
-            Info << " Cell:: " << addedCellIndices[indexI] << nl
-                 << "  Parents: " << parents << nl
-                 << "  Weights: " << weights << endl;
+            setFaceMapping(addedFaceIndices[indexI]);
+        }
+
+        if (addedIntFaceIndices[indexI] > -1)
+        {
+            setFaceMapping(addedIntFaceIndices[indexI]);
         }
     }
 
@@ -3596,7 +3570,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 owner_[faceIndex] = neighbour_[faceIndex];
                 neighbour_[faceIndex] = newIndex;
 
-                iPtr_->setFlip(faceIndex);
+                setFlip(faceIndex);
             }
         }
         else
@@ -4410,7 +4384,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     owner_[faceIndex] = neighbour_[faceIndex];
                     neighbour_[faceIndex] = newIndex;
 
-                    iPtr_->setFlip(faceIndex);
+                    setFlip(faceIndex);
                 }
             }
             else
@@ -4792,37 +4766,20 @@ const changeMap dynamicTopoFvMesh::trisectFace
         removeCell(cIndex);
     }
 
-    /*
-    // Set default mapping for three interior faces.
-    for (label i = 0; i < 3; i++)
+    // Set default mapping for interior faces.
+    for (label i = 0; i < 6; i++)
     {
         setFaceMapping(newFaceIndex[i]);
     }
 
-    // Set new face fluxes.
-    scalar newPhi = (1.0/3.0)*(iPtr_->getPhi(fIndex));
-
-    for (label i = 3; i < 6; i++)
-    {
-        setFaceMapping
-        (
-            newFaceIndex[i],
-            labelList(1, fIndex),
-            scalarField(1, 0.0),
-            newPhi,
-            false
-        );
-    }
-
     if (cellsForRemoval[1] != -1)
     {
-        // Set default mapping for three interior faces.
+        // Set default mapping for interior faces.
         for (label i = 6; i < 9; i++)
         {
             setFaceMapping(newFaceIndex[i]);
         }
     }
-    */
 
     // Now finally remove the face...
     removeFace(fIndex);

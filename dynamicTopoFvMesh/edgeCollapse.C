@@ -25,7 +25,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
-#include "interpolator.H"
 #include "multiThreader.H"
 #include "dynamicTopoFvMesh.H"
 
@@ -1300,7 +1299,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                 neighbour_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
 
-                iPtr_->setFlip(faceToKeep[0]);
+                setFlip(faceToKeep[0]);
             }
             else
             {
@@ -1322,7 +1321,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                     neighbour_[faceToKeep[0]] = -1;
 
-                    iPtr_->setFlip(faceToKeep[0]);
+                    setFlip(faceToKeep[0]);
                 }
             }
         }
@@ -1349,7 +1348,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 neighbour_[faceToKeep[0]] = owner_[faceToKeep[0]];
                 owner_[faceToKeep[0]] = owner_[faceToThrow[0]];
 
-                iPtr_->setFlip(faceToKeep[0]);
+                setFlip(faceToKeep[0]);
             }
             else
             {
@@ -1387,7 +1386,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                     neighbour_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
 
-                    iPtr_->setFlip(faceToKeep[1]);
+                    setFlip(faceToKeep[1]);
                 }
                 else
                 {
@@ -1409,7 +1408,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                         neighbour_[faceToKeep[1]] = -1;
 
-                        iPtr_->setFlip(faceToKeep[1]);
+                        setFlip(faceToKeep[1]);
                     }
                 }
             }
@@ -1436,7 +1435,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     neighbour_[faceToKeep[1]] = owner_[faceToKeep[1]];
                     owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
 
-                    iPtr_->setFlip(faceToKeep[1]);
+                    setFlip(faceToKeep[1]);
                 }
                 else
                 {
@@ -2294,6 +2293,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
     }
 
+    // Maintain a list of modified faces for mapping
+    labelHashSet modifiedFaces;
+
     // Renumber all hull faces and edges
     forAll(faceHull, indexI)
     {
@@ -2364,6 +2366,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 // Renumber the face...
                 faces_[rmvEdgeFaces[faceI]][replaceIndex] = replacePoint;
+
+                // Add an entry for mapping
+                modifiedFaces.set(rmvEdgeFaces[faceI], empty());
             }
 
             // Hull faces should be removed for the replacement edge
@@ -2442,7 +2447,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = neighbour_[faceToRemove];
 
-                    iPtr_->setFlip(replaceFace);
+                    setFlip(replaceFace);
                 }
                 else
                 if
@@ -2468,6 +2473,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             newNeighbour
                         )
                     );
+
+                    // Set this face aside for mapping
+                    modifiedFaces.set(newFaceIndex, empty());
 
                     // Ensure that all edges of this face are
                     // on the boundary.
@@ -2770,7 +2778,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     neighbour_[replaceFace] = owner_[replaceFace];
                     owner_[replaceFace] = owner_[faceToRemove];
 
-                    iPtr_->setFlip(replaceFace);
+                    setFlip(replaceFace);
                 }
                 else
                 {
@@ -2886,6 +2894,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                     // Renumber the face...
                     faces_[eFaces[faceI]][replaceIndex] = replacePoint;
+
+                    // Set this face aside for mapping
+                    modifiedFaces.set(eFaces[faceI], empty());
 
                     // Look for an edge on this face that doesn't
                     // contain collapsePoint or replacePoint.
@@ -3078,6 +3089,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                  << "  Parents: " << parents << nl
                  << "  Weights: " << weights << endl;
         }
+    }
+
+    // Set face mapping information for modified faces
+    forAllConstIter(labelHashSet, modifiedFaces, fIter)
+    {
+        setFaceMapping(fIter.key());
     }
 
     // Set the flag
@@ -3443,8 +3460,11 @@ const changeMap dynamicTopoFvMesh::removeCells
         else
         if (findIndex(cList, owner_[fIter.key()]) != -1)
         {
+            // Face is to be reversed.
             newFace = faces_[fIter.key()].reverseFace();
             newOwner = neighbour_[fIter.key()];
+
+            setFlip(fIter.key());
         }
         else
         {

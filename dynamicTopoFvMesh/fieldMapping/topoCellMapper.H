@@ -1,0 +1,155 @@
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     |
+    \\  /    A nd           | Copyright held by original author
+     \\/     M anipulation  |
+-------------------------------------------------------------------------------
+License
+    This file is part of OpenFOAM.
+
+    OpenFOAM is free software; you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by the
+    Free Software Foundation; either version 2 of the License, or (at your
+    option) any later version.
+
+    OpenFOAM is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+    FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+    for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with OpenFOAM; if not, write to the Free Software Foundation,
+    Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+
+Class
+    topoCellMapper
+
+Description
+    This object provides mapping and fill-in information for cell data
+    between the two meshes after the topological change.  It is
+    constructed from mapPolyMesh.
+
+Author
+    Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
+
+SourceFiles
+    topoCellMapper.C
+
+\*---------------------------------------------------------------------------*/
+
+#ifndef topoCellMapper_H
+#define topoCellMapper_H
+
+#include "FieldMapper.H"
+#include "dynamicTopoFvMesh.H"
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+
+// Class forward declarations
+class mapPolyMesh;
+
+/*---------------------------------------------------------------------------*\
+                        Class topoCellMapper Declaration
+\*---------------------------------------------------------------------------*/
+
+class topoCellMapper
+:
+    public FieldMapper
+{
+    // Private data
+
+        //- Reference to polyMesh
+        const polyMesh& mesh_;
+
+        //- Reference to mapPolyMesh
+        const mapPolyMesh& mpm_;
+
+        //- Is the mapping direct
+        bool direct_;
+
+    // Demand-driven private data
+
+        //- Direct addressing
+        mutable labelList* directAddrPtr_;
+
+        //- Interpolated addressing
+        mutable labelListList* interpolationAddrPtr_;
+
+        //- Interpolation weights
+        mutable scalarListList* weightsPtr_;
+
+        //- Old cell-centre information
+        mutable volVectorField* oldCellCentresPtr_;
+
+
+    // Private Member Functions
+
+        //- Disallow default bitwise copy construct
+        topoCellMapper(const topoCellMapper&);
+
+        //- Disallow default bitwise assignment
+        void operator=(const topoCellMapper&);
+
+        //- Calculate addressing for interpolative mapping
+        void calcAddressing() const;
+
+        //- Clear out local storage
+        void clearOut();
+
+public:
+
+    // Constructors
+
+        //- Construct from mapPolyMesh
+        topoCellMapper(const mapPolyMesh& mpm);
+
+    // Destructor
+
+        virtual ~topoCellMapper();
+
+    // Member Functions
+
+        //- Set old cell-centre information
+        void setOldCellCentres(const volVectorField& oldCentres) const;
+
+        //- Return size
+        virtual label size() const;
+
+        //- Return size before mapping
+        virtual label sizeBeforeMapping() const;
+
+        //- Is the mapping direct
+        virtual bool direct() const
+        {
+            return direct_;
+        }
+
+        //- Return direct addressing
+        virtual const unallocLabelList& directAddressing() const;
+
+        //- Return interpolated addressing
+        virtual const labelListList& addressing() const;
+
+        //- Return interpolaion weights
+        virtual const scalarListList& weights() const;
+};
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+} // End namespace Foam
+
+#ifdef NoRepository
+#    include "topoCellMapper.C"
+#endif
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#endif
+
+// ************************************************************************* //

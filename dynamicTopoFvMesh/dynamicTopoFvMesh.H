@@ -67,9 +67,8 @@ namespace Foam
 
 // Class forward declarations
 class motionSolver;
-class mapPolyMesh;
+class topoMapper;
 class objectMap;
-class interpolator;
 
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration
@@ -128,127 +127,120 @@ class dynamicTopoFvMesh
         //  patches with proximity-based length-scale
         dictionary proximityPatches_;
 
-        //- PolyMesh mapping structure
-        autoPtr<mapPolyMesh> mapper_;
+        //- Field mapper
+        autoPtr<topoMapper> mapper_;
 
         //- Mesh motion solver
         autoPtr<motionSolver> mPtr_;
 
-        //- Field interpolator
-        autoPtr<interpolator> iPtr_;
-
         //- Lists that dynamically resize during topo-changes
-        resizableList<point>     oldPoints_;
-        resizableList<point>     points_;
-        resizableList<face>      faces_;
-        resizableList<label>     owner_;
-        resizableList<label>     neighbour_;
-        resizableList<cell>      cells_;
-        resizableList<edge>      edges_;
-        resizableList<labelList> pointEdges_;
-        resizableList<labelList> edgePoints_;
-        resizableList<labelList> edgeFaces_;
-        resizableList<labelList> faceEdges_;
-        resizableList<scalar>    lengthScale_;
+        resizableList<point> oldPoints_, points_;
+        resizableList<face> faces_;
+        resizableList<label> owner_, neighbour_;
+        resizableList<cell> cells_;
+        resizableList<edge> edges_;
+        resizableList<labelList> pointEdges_, edgePoints_;
+        resizableList<labelList> edgeFaces_, faceEdges_;
+        resizableList<scalar> lengthScale_;
 
         // Edge-mesh to store up-to-date connectivity information
-        autoPtr<eMesh>  eMeshPtr_;
+        autoPtr<eMesh> eMeshPtr_;
 
         //- Size information
-        labelList       oldPatchSizes_, patchSizes_;
-        labelList       oldPatchStarts_, patchStarts_;
-        labelList       oldEdgePatchSizes_, edgePatchSizes_;
-        labelList       oldEdgePatchStarts_, edgePatchStarts_;
-        labelList       oldPatchNMeshPoints_, patchNMeshPoints_;
-        label           nOldPoints_, nPoints_;
-        label           nOldEdges_,  nEdges_;
-        label           nOldFaces_,  nFaces_;
-        label           nOldCells_,  nCells_;
-        label           nOldInternalFaces_, nInternalFaces_;
-        label           nOldInternalEdges_, nInternalEdges_;
+        labelList oldPatchSizes_, patchSizes_;
+        labelList oldPatchStarts_, patchStarts_;
+        labelList oldEdgePatchSizes_, edgePatchSizes_;
+        labelList oldEdgePatchStarts_, edgePatchStarts_;
+        labelList oldPatchNMeshPoints_, patchNMeshPoints_;
+        label nOldPoints_, nPoints_;
+        label nOldEdges_, nEdges_;
+        label nOldFaces_, nFaces_;
+        label nOldCells_, nCells_;
+        label nOldInternalFaces_, nInternalFaces_;
+        label nOldInternalEdges_, nInternalEdges_;
 
-        //- Old-to-New
-        labelList       reversePointMap_;
-        labelList       reverseEdgeMap_;
-        labelList       reverseFaceMap_;
-        labelList       reverseCellMap_;
+        //- Maps [Old-to-New]
+        labelList reversePointMap_;
+        labelList reverseEdgeMap_;
+        labelList reverseFaceMap_;
+        labelList reverseCellMap_;
 
-        //- New-to-Old
-        labelList       pointMap_;
-        labelList       edgeMap_;
-        labelList       faceMap_;
-        labelList       cellMap_;
+        //- Maps [New-to-Old]
+        labelList pointMap_;
+        labelList edgeMap_;
+        labelList faceMap_;
+        labelList cellMap_;
 
         //- Maps for the renumbering of added entities
-        Map<label>      addedPointRenumbering_;
-        Map<label>      addedEdgeRenumbering_;
-        Map<label>      addedFaceRenumbering_;
-        Map<label>      addedCellRenumbering_;
-        Map<label>      addedFacePatches_;
-        Map<label>      addedEdgePatches_;
-        Map<label>      addedPointZones_;
-        Map<label>      addedFaceZones_;
-        Map<label>      addedCellZones_;
+        Map<label> addedPointRenumbering_;
+        Map<label> addedEdgeRenumbering_;
+        Map<label> addedFaceRenumbering_;
+        Map<label> addedCellRenumbering_;
+        Map<label> addedFacePatches_;
+        Map<label> addedEdgePatches_;
+        Map<label> addedPointZones_;
+        Map<label> addedFaceZones_;
+        Map<label> addedCellZones_;
 
         // Information for mapPolyMesh
-        Map<labelList>   faceParents_;
-        Map<labelList>   cellParents_;
-        List<objectMap>  pointsFromPoints_;
-        List<objectMap>  facesFromPoints_;
-        List<objectMap>  facesFromEdges_;
-        List<objectMap>  facesFromFaces_;
-        List<objectMap>  cellsFromPoints_;
-        List<objectMap>  cellsFromEdges_;
-        List<objectMap>  cellsFromFaces_;
-        List<objectMap>  cellsFromCells_;
+        Map<labelList> faceParents_;
+        Map<scalarField> faceWeights_;
+        Map<labelList> cellParents_;
+        Map<scalarField> cellWeights_;
+        List<objectMap> pointsFromPoints_;
+        List<objectMap> facesFromPoints_;
+        List<objectMap> facesFromEdges_;
+        List<objectMap> facesFromFaces_;
+        List<objectMap> cellsFromPoints_;
+        List<objectMap> cellsFromEdges_;
+        List<objectMap> cellsFromFaces_;
+        List<objectMap> cellsFromCells_;
 
         //- Maps to keep track of entities deleted after addition
-        labelHashSet    deletedPoints_;
-        labelHashSet    deletedEdges_;
-        labelHashSet    deletedFaces_;
-        labelHashSet    deletedCells_;
+        labelHashSet deletedPoints_;
+        labelHashSet deletedEdges_;
+        labelHashSet deletedFaces_;
+        labelHashSet deletedCells_;
+
+        // List of flipped faces
+        labelHashSet flipFaces_;
 
         //- Edge bisection/collapse criteria
-        scalar                ratioMin_;
-        scalar                ratioMax_;
-        scalar                growthFactor_;
-        scalar                curvatureDeviation_;
-        scalar                minLengthScale_;
-        scalar                maxLengthScale_;
-        scalar                sliverThreshold_;
-        label                 nModifications_;
-        FixedList<label, 2>   nBisections_;
-        FixedList<label, 2>   nCollapses_;
-        FixedList<label, 2>   nSwaps_;
-        label                 maxModifications_;
-        Map<scalar>           thresholdSlivers_;
-        labelList             noModPatchIDs_;
+        scalar ratioMin_, ratioMax_, growthFactor_;
+        scalar curvatureDeviation_;
+        scalar minLengthScale_, maxLengthScale_;
+        scalar sliverThreshold_;
+        label nModifications_;
+        FixedList<label, 2> nBisections_, nCollapses_, nSwaps_;
+        label maxModifications_;
+        Map<scalar> thresholdSlivers_;
+        labelList noModPatchIDs_;
 
         // Specific to proximity-based refinement
-        label                   spatialRes_;
-        boundBox                proxBoundBox_;
-        labelListList           proximityBins_;
-        scalar                  sliceThreshold_;
-        label                   sliceHoldOff_;
-        mutable List<boundBox>  sliceBoxes_;
+        label spatialRes_;
+        boundBox proxBoundBox_;
+        labelListList proximityBins_;
+        scalar sliceThreshold_;
+        label sliceHoldOff_;
+        mutable List<boundBox> sliceBoxes_;
         mutable List<labelPair> slicePairs_;
 
         // Buffers for parallel length-scale calculations
-        labelListList       sendLblBuffer_;
-        labelListList       recvLblBuffer_;
-        scalarListList      sendSclBuffer_;
-        scalarListList      recvSclBuffer_;
+        labelListList sendLblBuffer_;
+        labelListList recvLblBuffer_;
+        scalarListList sendSclBuffer_;
+        scalarListList recvSclBuffer_;
 
         //- 3D Mesh Flipping data
-        mutable label       maxTetsPerEdge_;
-        Switch              allowTableResize_;
-        labelList           noSwapPatchIDs_;
+        mutable label maxTetsPerEdge_;
+        Switch allowTableResize_;
+        labelList noSwapPatchIDs_;
 
         // Stack-list of faces to be checked for topo-changes [2D].
-        List<stack>         faceStack_;
+        List<stack> faceStack_;
 
         // Stack-list of edges to be checked for topo-changes [3D].
-        List<stack>         edgeStack_;
+        List<stack> edgeStack_;
 
         //- Support for multithreading
         autoPtr<IOmultiThreader> threader_;
@@ -257,7 +249,7 @@ class dynamicTopoFvMesh
         PtrList<threadHandler<dynamicTopoFvMesh> > handlerPtr_;
 
         // Scheduling sequences for thread locking
-        labelList           topoSeq_;
+        labelList topoSeq_;
 
         // Entity mutexes used for synchronization
         // in multi-threaded reOrdering
@@ -589,8 +581,8 @@ class dynamicTopoFvMesh
         // Load the mesh-motion solver
         void loadMotionSolver();
 
-        // Load the interpolator
-        void loadInterpolator();
+        // Load the field mapper
+        void loadFieldMapper();
 
         // Initialize the threading environment
         void initializeThreadingEnvironment
@@ -888,9 +880,7 @@ class dynamicTopoFvMesh
             const scalarField& mapWeights = scalarField(0)
         );
 
-        // Remove the specified cells from the mesh,
-        // (including lower entities like points, edges, faces, etc.)
-        // and add exposed internal faces/edges to the specified patch.
+        // Remove the specified cells from the mesh
         const changeMap
         removeCells
         (
@@ -982,6 +972,14 @@ class dynamicTopoFvMesh
             List<Type>& list
         ) const;
 
+        // Remove an item at a particular index in the list
+        template <class Type>
+        inline void removeIndex
+        (
+            const label index,
+            List<Type>& list
+        ) const;
+
         // Utility method to build a hull of cells connected to the edge [2D]
         void constructPrismHull
         (
@@ -1018,6 +1016,9 @@ class dynamicTopoFvMesh
 
         // Utility to check whether points of an edge lie on a boundary
         const FixedList<bool,2> checkEdgeBoundary(const label eIndex) const;
+
+        // Set a particular face index as flipped.
+        inline void setFlip(const label fIndex);
 
         // Utility method to compute the minimum quality of a vertex hull
         inline scalar computeMinQuality(const label eIndex) const;
@@ -1451,9 +1452,6 @@ public:
     // Declare the name of the class and its debug switch
         TypeName("dynamicTopoFvMesh");
 
-    //- Declare friendship with the interpolator class
-        friend class interpolator;
-
     // Constructors
 
         //- Construct from existing IOobject
@@ -1464,6 +1462,9 @@ public:
         virtual ~dynamicTopoFvMesh();
 
     // Member Functions
+
+        // Map all fields in time using a customized mapper
+        void mapFields(const mapPolyMesh& meshMap);
 
         // Update the mesh for motion / topology changes
         // Return true if topology changes have occurred

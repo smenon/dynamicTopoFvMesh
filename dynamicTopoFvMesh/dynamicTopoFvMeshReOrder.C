@@ -25,7 +25,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
-#include "interpolator.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -117,6 +116,21 @@ void dynamicTopoFvMesh::reOrderPoints
             << " Algorithm did not visit every point in the mesh."
             << " Something's messed up." << nl
             << abort(FatalError);
+    }
+
+    // Renumber all maps.
+    forAll(pointsFromPoints_, indexI)
+    {
+        objectMap& thisMap = pointsFromPoints_[indexI];
+
+        if (thisMap.index() < nOldPoints_)
+        {
+            thisMap.index() = reversePointMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedPointRenumbering_[thisMap.index()];
+        }
     }
 
     // Prepare the pointZoneMap
@@ -918,7 +932,7 @@ void dynamicTopoFvMesh::reOrderFaces
                             << abort(FatalError);
                     }
 
-                    iPtr_->setFlip(curFaces[nextNei]);
+                    setFlip(curFaces[nextNei]);
                 }
 
                 // Insert entities into local lists...
@@ -965,9 +979,6 @@ void dynamicTopoFvMesh::reOrderFaces
         {
             // This boundary face was added during the topology change
             oldIndex = addedFaceReverseRenumbering[i];
-
-            // Ensure that inserted boundary faces have a mapping master.
-            // faceMap_[i] = faceParents_[oldIndex];
         }
         else
         {
@@ -1004,7 +1015,35 @@ void dynamicTopoFvMesh::reOrderFaces
         entityMutex_[2].unlock();
     }
 
-    // Renumber all facesFromFaces maps.
+    // Renumber all maps.
+    forAll(facesFromPoints_, indexI)
+    {
+        objectMap& thisMap = facesFromPoints_[indexI];
+
+        if (thisMap.index() < nOldFaces_)
+        {
+            thisMap.index() = reverseFaceMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedFaceRenumbering_[thisMap.index()];
+        }
+    }
+
+    forAll(facesFromEdges_, indexI)
+    {
+        objectMap& thisMap = facesFromEdges_[indexI];
+
+        if (thisMap.index() < nOldFaces_)
+        {
+            thisMap.index() = reverseFaceMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedFaceRenumbering_[thisMap.index()];
+        }
+    }
+
     forAll(facesFromFaces_, indexI)
     {
         objectMap& thisMap = facesFromFaces_[indexI];
@@ -1018,6 +1057,45 @@ void dynamicTopoFvMesh::reOrderFaces
             thisMap.index() = addedFaceRenumbering_[thisMap.index()];
         }
     }
+
+    // Renumber all flipFaces
+    labelHashSet newFlipFaces;
+
+    forAllIter(labelHashSet, flipFaces_, fIter)
+    {
+        if (fIter.key() < nOldFaces_)
+        {
+            newFlipFaces.insert(reverseFaceMap_[fIter.key()]);
+        }
+        else
+        {
+            // Added faces cannot be flipped.
+            FatalErrorIn("dynamicTopoFvMesh::reOrderFaces()") << nl
+                << " Face: " << fIter.key()
+                << " is new, and shouldn't be flipped." << nl
+                << " nOldFaces: " << nOldFaces_
+                << abort(FatalError);
+        }
+    }
+
+    flipFaces_.transfer(newFlipFaces);
+
+    // Renumber all faceWeights
+    Map<scalarField> newFaceWeights;
+
+    forAllIter(Map<scalarField>, faceWeights_, fIter)
+    {
+        if (fIter.key() < nOldFaces_)
+        {
+            newFaceWeights.insert(reverseFaceMap_[fIter.key()], fIter());
+        }
+        else
+        {
+            newFaceWeights.insert(addedFaceRenumbering_[fIter.key()], fIter());
+        }
+    }
+
+    faceWeights_.transfer(newFaceWeights);
 
     // Renumber all cells with updated face information
     forAll(cells_, cellI)
@@ -1450,6 +1528,80 @@ void dynamicTopoFvMesh::reOrderCells
     {
         entityMutex_[3].unlock();
     }
+
+    // Renumber all maps.
+    forAll(cellsFromPoints_, cellI)
+    {
+        objectMap& thisMap = cellsFromPoints_[cellI];
+
+        if (thisMap.index() < nOldCells_)
+        {
+            thisMap.index() = reverseCellMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedCellRenumbering_[thisMap.index()];
+        }
+    }
+
+    forAll(cellsFromEdges_, cellI)
+    {
+        objectMap& thisMap = cellsFromEdges_[cellI];
+
+        if (thisMap.index() < nOldCells_)
+        {
+            thisMap.index() = reverseCellMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedCellRenumbering_[thisMap.index()];
+        }
+    }
+
+    forAll(cellsFromFaces_, cellI)
+    {
+        objectMap& thisMap = cellsFromFaces_[cellI];
+
+        if (thisMap.index() < nOldCells_)
+        {
+            thisMap.index() = reverseCellMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedCellRenumbering_[thisMap.index()];
+        }
+    }
+
+    forAll(cellsFromCells_, cellI)
+    {
+        objectMap& thisMap = cellsFromCells_[cellI];
+
+        if (thisMap.index() < nOldCells_)
+        {
+            thisMap.index() = reverseCellMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedCellRenumbering_[thisMap.index()];
+        }
+    }
+
+    // Renumber all cellWeights
+    Map<scalarField> newCellWeights;
+
+    forAllIter(Map<scalarField>, cellWeights_, cIter)
+    {
+        if (cIter.key() < nOldCells_)
+        {
+            newCellWeights.insert(reverseCellMap_[cIter.key()], cIter());
+        }
+        else
+        {
+            newCellWeights.insert(addedCellRenumbering_[cIter.key()], cIter());
+        }
+    }
+
+    cellWeights_.transfer(newCellWeights);
 
     // Prepare the cellZoneMap
     cellZoneMesh& cellZones = polyMesh::cellZones();

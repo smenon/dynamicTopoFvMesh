@@ -2069,21 +2069,66 @@ inline void dynamicTopoFvMesh::sizeDownList
     List<Type>& list
 ) const
 {
+    label index = -1;
+
+    if ((index = findIndex(list, item)) > -1)
+    {
+        removeIndex(index, list);
+    }
+    else
+    {
+        FatalErrorIn("dynamicTopoFvMesh::sizeDownList")
+            << "Item: " << item
+            << " was not found in list. " << nl
+            << " List: " << nl << list
+            << abort(FatalError);
+    }
+}
+
+
+// Remove an item at a particular index in the list
+template <class Type>
+inline void dynamicTopoFvMesh::removeIndex
+(
+    const label index,
+    List<Type>& list
+) const
+{
     // Create a new list
     List<Type> newList(list.size() - 1);
 
     // Copy individual items
     label n = 0;
+
     forAll(list, itemI)
     {
-        if (list[itemI] != item)
+        if (itemI == index)
         {
-            newList[n++] = list[itemI];
+            continue;
         }
+
+        newList[n++] = list[itemI];
     }
 
     // Overwrite
     list.transfer(newList);
+}
+
+
+// Set a particular face index as flipped.
+inline void dynamicTopoFvMesh::setFlip(const label fIndex)
+{
+    if (fIndex < nOldFaces_)
+    {
+        if (flipFaces_.found(fIndex))
+        {
+            flipFaces_.erase(fIndex);
+        }
+        else
+        {
+            flipFaces_.insert(fIndex);
+        }
+    }
 }
 
 
