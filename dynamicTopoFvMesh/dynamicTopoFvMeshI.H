@@ -120,6 +120,47 @@ inline vector dynamicTopoFvMesh::triFaceNormal
     return 0.5 * (v ^ w);
 }
 
+// Given a face and cell index, find the apex point for a tet cell.
+inline label dynamicTopoFvMesh::tetApexPoint
+(
+    const label cIndex,
+    const label fIndex
+)
+{
+    label apexPoint = -1;
+    bool foundApex = false;
+
+    const cell& cellToCheck = cells_[cIndex];
+
+    forAll(cellToCheck, faceI)
+    {
+        const face& faceToCheck = faces_[cellToCheck[faceI]];
+
+        forAll(faceToCheck, pointI)
+        {
+            if
+            (
+                faceToCheck[pointI] != faceToCheck[0] &&
+                faceToCheck[pointI] != faceToCheck[1] &&
+                faceToCheck[pointI] != faceToCheck[2]
+            )
+            {
+                apexPoint = faceToCheck[pointI];
+
+                foundApex = true;
+                break;
+            }
+        }
+
+        if (foundApex)
+        {
+            break;
+        }
+    }
+
+    return apexPoint;
+}
+
 // Compare two triangular faces.
 // Identical to triFace definition.
 inline label dynamicTopoFvMesh::compare
@@ -1139,7 +1180,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             cQuality = (*tetMetric_)(a, b, c, d);
 
             // Check if the quality is worse
-            minQuality = cQuality < minQuality ? cQuality : minQuality;
+            minQuality = Foam::min(cQuality, minQuality);
         }
     }
     else
@@ -1155,7 +1196,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             cQuality = (*tetMetric_)(a, b, c, d);
 
             // Check if the quality is worse
-            minQuality = cQuality < minQuality ? cQuality : minQuality;
+            minQuality = Foam::min(cQuality, minQuality);
         }
     }
 
@@ -1180,7 +1221,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
 
             scalar slaveQuality = computeMinQuality(slaveIndex);
 
-            minQuality = slaveQuality < minQuality ? slaveQuality : minQuality;
+            minQuality = Foam::min(slaveQuality, minQuality);
 
             // Turn it back on.
             coupledModification_ = true;

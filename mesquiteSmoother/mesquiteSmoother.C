@@ -1199,7 +1199,7 @@ void Foam::mesquiteSmoother::applyBCs
     if (nFixedBC == 0)
     {
         Random randomizer(1);
-        label nFix = (field.size()*5)/100;
+        label nFix = (field.size()*10)/100;
 
         for(label i = 0; i < nFix; i++)
         {

@@ -117,10 +117,6 @@ class dynamicTopoFvMesh
         //  patches with proximity-based length-scale
         dictionary proximityPatches_;
 
-        //- List of noSwap patch IDs (which specifies patches on
-        //  which 2-2 swaps are to be avoided)
-        labelHashSet noSwapPatchIDs_;
-
         //- PolyMesh mapping structure
         autoPtr<mapPolyMesh> mapper_;
 
@@ -199,7 +195,7 @@ class dynamicTopoFvMesh
         label                 nCollapses_;
         label                 nSwaps_;
         label                 maxModifications_;
-        labelHashSet          thresholdSlivers_;
+        Map<scalar>           thresholdSlivers_;
 
         // Specific to proximity-based refinement
         label               spatialRes_;
@@ -215,6 +211,7 @@ class dynamicTopoFvMesh
         //- 3D Mesh Flipping data
         label               maxTetsPerEdge_;
         Switch              allowTableResize_;
+        labelList           noSwapPatchIDs_;
 
         // Stack-list of faces to be checked for topo-changes [2D].
         List<stack>         faceStack_;
@@ -358,11 +355,7 @@ class dynamicTopoFvMesh
         void operator=(const dynamicTopoFvMesh&);
 
         // Perform a Delaunay test on an internal face
-        void testDelaunay
-        (
-            const label fIndex,
-            bool& failed
-        );
+        bool testDelaunay(const label fIndex);
 
         // Typedef for tetrahedral metrics
         typedef scalar (*tetMetricReturnType)
@@ -390,6 +383,9 @@ class dynamicTopoFvMesh
 
         // Find the normal of a triangle face.
         inline vector triFaceNormal(const face& triFace);
+
+        // Given a face and cell index, find the apex point for a tet cell.
+        inline label tetApexPoint(const label cIndex, const label fIndex);
 
         // Compare two triangular faces
         inline label compare(const face& a, const face& b);
@@ -754,6 +750,10 @@ class dynamicTopoFvMesh
         // around an edge after bisection.
         scalar computeBisectionQuality(const label eIndex);
 
+        // Utility method to compute the quality of cells
+        // around a face after trisection.
+        scalar computeTrisectionQuality(const label fIndex);
+
         // Check whether the given edge is on a bounding curve
         bool checkBoundingCurve(const label eIndex);
 
@@ -1049,21 +1049,6 @@ public:
 
         // Return reference to the dictionary
         const IOdictionary& dynamicMeshDict() const;
-
-        // Return reference to the edge mesh
-        eMesh& EdgeMesh();
-
-        // Return the number of edges in the mesh.
-        // Override of primitiveMesh member function
-        label nEdges() const;
-
-        // Return the number of internal edges in the mesh.
-        // Override of primitiveMesh member function
-        label nInternalEdges() const;
-
-        // Return the list of edges in the mesh.
-        // Override of primitiveMesh member function.
-        const edgeList& edges() const;
 
         // Update the mesh for topology changes
         // Return true if changes have occurred

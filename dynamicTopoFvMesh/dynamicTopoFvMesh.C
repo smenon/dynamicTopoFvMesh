@@ -455,10 +455,8 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
                     }
 
                     // Update statistics
-                    maxQuality = iF[cellI] > maxQuality
-                               ? iF[cellI] : maxQuality;
-                    minQuality = iF[cellI] < minQuality
-                               ? iF[cellI] : minQuality;
+                    maxQuality = Foam::max(iF[cellI], maxQuality);
+                    minQuality = Foam::min(iF[cellI], minQuality);
                     meanQuality += iF[cellI];
 
                     // Add to the list of slivers
@@ -468,7 +466,7 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
                      && (iF[cellI] > 0.0)
                     )
                     {
-                        thresholdSlivers_.insert(cellI);
+                        thresholdSlivers_.insert(cellI, iF[cellI]);
                     }
 
                     break;
@@ -508,13 +506,12 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
 }
 
 // Perform a Delaunay test on an internal face
-void dynamicTopoFvMesh::testDelaunay
+bool dynamicTopoFvMesh::testDelaunay
 (
-    const label fIndex,
-    bool& failed
+    const label fIndex
 )
 {
-    failed = false;
+    bool failed = false;
     label eIndex = -1, pIndex = -1, fLabel = -1;
     FixedList<bool,2> foundTriFace(false);
     FixedList<FixedList<label,3>,2> triFaces(FixedList<label,3>(-1));
@@ -522,7 +519,7 @@ void dynamicTopoFvMesh::testDelaunay
     // Boundary faces are discarded.
     if (whichPatch(fIndex) > -1)
     {
-        return;
+        return failed;
     }
 
     const labelList& fEdges = faceEdges_[fIndex];
@@ -609,6 +606,8 @@ void dynamicTopoFvMesh::testDelaunay
         // Failed the test.
         failed = true;
     }
+
+    return failed;
 }
 
 // Utility method to find the interior/boundary faces
@@ -826,12 +825,6 @@ label dynamicTopoFvMesh::insertFace
         Info << "Inserting face: "
              << newFaceIndex << ": "
              << newFace << endl;
-    }
-
-    if (twoDMesh_ && !coupledModification_)
-    {
-        // Push this onto the stack as well
-        faceStack(self()).push(newFaceIndex);
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -1907,7 +1900,7 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex)
     else
     {
         // Check whether this edge shouldn't be swapped
-        if (noSwapPatchIDs_.found(edgePatch))
+        if (findIndex(noSwapPatchIDs_, edgePatch) > -1)
         {
             return true;
         }
@@ -4346,19 +4339,28 @@ void dynamicTopoFvMesh::readOptionalParameters()
                 ).subDict("noSwapPatches").toc()
             );
 
-            noSwapPatchIDs_.clear();
+            noSwapPatchIDs_.setSize(noSwapPatches.size());
+
+            label indexI = 0;
 
             forAll(noSwapPatches, wordI)
             {
-                word& patchName = noSwapPatches[wordI];
+                const word& patchName = noSwapPatches[wordI];
 
                 forAll(boundaryMesh(), patchI)
                 {
                     if (boundaryMesh()[patchI].name() == patchName)
                     {
-                        noSwapPatchIDs_.insert(patchI);
+                        noSwapPatchIDs_[indexI++] = patchI;
                     }
                 }
+            }
+
+            if (indexI != noSwapPatchIDs_.size())
+            {
+                FatalErrorIn("dynamicTopoFvMesh::readOptionalParameters()")
+                    << "noSwapPatches is incorrectly specified."
+                    << abort(FatalError);
             }
         }
 
@@ -4711,8 +4713,6 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     // Figure out which thread this is...
     label tIndex = mesh.self();
 
-    bool failed = false;
-
     // Pick items off the stack
     while (!mesh.faceStack(tIndex).empty())
     {
@@ -4720,11 +4720,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
         label fIndex = mesh.faceStack(tIndex).pop();
 
         // Perform a Delaunay test and check if a flip is necesary.
-        mesh.testDelaunay
-        (
-            fIndex,
-            failed
-        );
+        bool failed = mesh.testDelaunay(fIndex);
 
         if (failed)
         {
@@ -4988,7 +4984,7 @@ bool dynamicTopoFvMesh::edgeModification()
 }
 
 // Identify coupled patches.
-//  - Also builds global shared edge information.
+//  - Also builds global shared point information.
 //  - Returns true if no coupled patches were found.
 bool dynamicTopoFvMesh::identifyCoupledPatches()
 {
@@ -5591,7 +5587,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     // by regular topo-changes.
     buildEntitiesToAvoid();
 
-    // Reset coupled modifications and stack addition behaviour.
+    // Reset coupled modifications.
     coupledModification_ = false;
     slaveModification_ = false;
 
@@ -5686,42 +5682,39 @@ void dynamicTopoFvMesh::buildCoupledPatchMeshes()
                         << endl;
             }
 
-            if (!twoDMesh_)
+            // Size the buffers.
+            recvMesh.entityBuffer(coupledPatchInfo::POINT).setSize
+            (
+                recvMesh.nEntities(coupledPatchInfo::POINT)
+            );
+
+            recvMesh.entityBuffer(coupledPatchInfo::EDGE).setSize
+            (
+                2*recvMesh.nEntities(coupledPatchInfo::EDGE)
+            );
+
+            recvMesh.entityBuffer(coupledPatchInfo::FACE).setSize
+            (
+                3*recvMesh.nEntities(coupledPatchInfo::FACE)
+            );
+
+            recvMesh.entityBuffer(coupledPatchInfo::CELL).setSize
+            (
+                4*recvMesh.nEntities(coupledPatchInfo::CELL)
+            );
+
+            recvMesh.entityBuffer(coupledPatchInfo::FACE_EDGES).setSize
+            (
+                3*recvMesh.nEntities(coupledPatchInfo::FACE)
+            );
+
+            // Receive the pointBuffer
+            pRead(proc, recvMesh.pointBuffer());
+
+            // Receive connectivity (Common points, edges, faces, cells)
+            forAll(recvMesh.entityBuffer(), bufferI)
             {
-                // Size the buffers.
-                recvMesh.entityBuffer(coupledPatchInfo::POINT).setSize
-                (
-                    recvMesh.nEntities(coupledPatchInfo::POINT)
-                );
-
-                recvMesh.entityBuffer(coupledPatchInfo::EDGE).setSize
-                (
-                    2*recvMesh.nEntities(coupledPatchInfo::EDGE)
-                );
-
-                recvMesh.entityBuffer(coupledPatchInfo::FACE).setSize
-                (
-                    3*recvMesh.nEntities(coupledPatchInfo::FACE)
-                );
-
-                recvMesh.entityBuffer(coupledPatchInfo::CELL).setSize
-                (
-                    4*recvMesh.nEntities(coupledPatchInfo::CELL)
-                );
-
-                recvMesh.entityBuffer(coupledPatchInfo::FACE_EDGES).setSize
-                (
-                    3*recvMesh.nEntities(coupledPatchInfo::FACE)
-                );
-
-                // Receive the pointBuffer
-                pRead(proc, recvMesh.pointBuffer());
-
-                // Receive connectivity (Common points, edges, faces, cells)
-                forAll(recvMesh.entityBuffer(), bufferI)
-                {
-                    pRead(proc, recvMesh.entityBuffer(bufferI));
-                }
+                pRead(proc, recvMesh.entityBuffer(bufferI));
             }
 
             if (edgeModification_)
@@ -6571,7 +6564,7 @@ bool dynamicTopoFvMesh::checkCollapse
     }
 
     // Final quality check
-    if (cQuality < sliverThreshold_)
+    if (cQuality < 0.5)
     {
         if (debug > 2)
         {
@@ -6631,13 +6624,13 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             cQuality = (*tetMetric_)(a, b, midPoint, d);
 
             // Check if the quality is worse
-            minQuality = cQuality < minQuality ? cQuality : minQuality;
+            minQuality = Foam::min(cQuality, minQuality);
 
             // Compute the quality of the lower half.
             cQuality = (*tetMetric_)(midPoint, b, c, d);
 
             // Check if the quality is worse
-            minQuality = cQuality < minQuality ? cQuality : minQuality;
+            minQuality = Foam::min(cQuality, minQuality);
         }
     }
     else
@@ -6653,13 +6646,13 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             cQuality = (*tetMetric_)(a, b, midPoint, d);
 
             // Check if the quality is worse
-            minQuality = cQuality < minQuality ? cQuality : minQuality;
+            minQuality = Foam::min(cQuality, minQuality);
 
             // Compute the quality of the lower half.
             cQuality = (*tetMetric_)(midPoint, b, c, d);
 
             // Check if the quality is worse
-            minQuality = cQuality < minQuality ? cQuality : minQuality;
+            minQuality = Foam::min(cQuality, minQuality);
         }
     }
 
@@ -6699,6 +6692,61 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
                 << "Minimum Quality: " << minQuality << nl
                 << "Mid point: " << midPoint
                 << abort(FatalError);
+        }
+    }
+
+    return minQuality;
+}
+
+// Utility method to compute the quality of cells
+// around a face after trisection.
+scalar dynamicTopoFvMesh::computeTrisectionQuality
+(
+    const label fIndex
+)
+{
+    scalar minQuality = GREAT;
+    scalar cQuality = 0.0;
+
+    point midPoint = triFaceCenter(fIndex);
+
+    FixedList<label,2> apexPoint(-1);
+
+    // Find the apex point
+    apexPoint[0] = tetApexPoint(owner_[fIndex], fIndex);
+
+    const face& faceToCheck = faces_[fIndex];
+
+    forAll(faceToCheck, pointI)
+    {
+        // Pick vertices off the list
+        const point& b = points_[faceToCheck[pointI]];
+        const point& c = points_[apexPoint[0]];
+        const point& d = points_[faceToCheck[faceToCheck.fcIndex(pointI)]];
+
+        // Compute the quality of the upper half.
+        cQuality = (*tetMetric_)(midPoint, b, c, d);
+
+        // Check if the quality is worse
+        minQuality = Foam::min(cQuality, minQuality);
+    }
+
+    if (whichPatch(fIndex) == -1)
+    {
+        apexPoint[1] = tetApexPoint(neighbour_[fIndex], fIndex);
+
+        forAll(faceToCheck, pointI)
+        {
+            // Pick vertices off the list
+            const point& b = points_[faceToCheck[pointI]];
+            const point& c = points_[apexPoint[1]];
+            const point& d = points_[faceToCheck[faceToCheck.rcIndex(pointI)]];
+
+            // Compute the quality of the upper half.
+            cQuality = (*tetMetric_)(midPoint, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
         }
     }
 
@@ -7094,7 +7142,7 @@ void dynamicTopoFvMesh::removeSlivers()
         coupledModification_ = true;
     }
 
-    forAllIter(labelHashSet, thresholdSlivers_, iter)
+    forAllIter(Map<scalar>, thresholdSlivers_, iter)
     {
         // First check if this sliver cell is handled elsewhere.
         if (procIndices_.size())
@@ -7631,73 +7679,6 @@ void dynamicTopoFvMesh::synchronizeThreads()
 const IOdictionary& dynamicTopoFvMesh::dynamicMeshDict() const
 {
     return dict_;
-}
-
-// Return reference to the edge mesh
-eMesh& dynamicTopoFvMesh::EdgeMesh()
-{
-    if (!eMeshPtr_.valid())
-    {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::edges()"
-        )
-            << "eMesh has not been allocated."
-            << abort(FatalError);
-    }
-
-    return eMeshPtr_();
-}
-
-// Return the number of edges in the mesh.
-// Override of primitiveMesh member function
-label dynamicTopoFvMesh::nEdges() const
-{
-    if (!eMeshPtr_.valid())
-    {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::edges()"
-        )
-            << "eMesh has not been allocated."
-            << abort(FatalError);
-    }
-
-    return eMeshPtr_->nEdges();
-}
-
-// Return the number of internal edges in the mesh.
-// Override of primitiveMesh member function
-label dynamicTopoFvMesh::nInternalEdges() const
-{
-    if (!eMeshPtr_.valid())
-    {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::edges()"
-        )
-            << "eMesh has not been allocated."
-            << abort(FatalError);
-    }
-
-    return eMeshPtr_->nInternalEdges();
-}
-
-// Return the ordered list of edges in the mesh.
-// Override of primitiveMesh member function.
-const edgeList& dynamicTopoFvMesh::edges() const
-{
-    if (!eMeshPtr_.valid())
-    {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::edges()"
-        )
-            << "eMesh has not been allocated."
-            << abort(FatalError);
-    }
-
-    return eMeshPtr_->edges();
 }
 
 // Update the mesh for topology changes

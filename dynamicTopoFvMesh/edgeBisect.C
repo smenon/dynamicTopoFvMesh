@@ -890,7 +890,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     // Before we bisect this edge, check whether the operation will
     // yield an acceptable cell-quality.
-    if (computeBisectionQuality(eIndex) < 0.05)
+    if (computeBisectionQuality(eIndex) < 0.5)
     {
         map.type() = -2;
         return map;
@@ -1769,6 +1769,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 // Method for the trisection of a face in 3D
 // - Returns a changeMap with a type specifying:
 //    -1: Bisection failed since max number of topo-changes was reached.
+//    -2: Bisection failed since resulting quality would be really bad.
 // - AddedPoint is the index of the newly added point.
 const changeMap dynamicTopoFvMesh::trisectFace
 (
@@ -1936,8 +1937,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
         }
     }
 
+    // Before we trisect this face, check whether the operation will
+    // yield an acceptable cell-quality.
+    if (computeTrisectionQuality(fIndex) < 0.5)
+    {
+        map.type() = -2;
+        return map;
+    }
+
     // Hull variables
-    bool foundApex;
     face tmpTriFace(3);
     labelList newTriEdgeFaces(3), newTriEdgePoints(3);
     labelList newQuadEdgeFaces(4), newQuadEdgePoints(4);
@@ -1993,17 +2001,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     }
 
     // Add a new point to the end of the list
-    label newPointIndex =
-    (
-        insertPoint
-        (
-            (
-                points_[faces_[fIndex][0]]
-              + points_[faces_[fIndex][1]]
-              + points_[faces_[fIndex][2]]
-            ) / 3.0
-        )
-    );
+    label newPointIndex = insertPoint(triFaceCenter(fIndex));
 
     // Add this point to the map.
     map.addPoint(newPointIndex);
@@ -2033,33 +2031,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     }
 
     // Find the apex point for this cell
-    foundApex = false;
-
-    forAll(cells_[owner_[fIndex]], faceI)
-    {
-        const face& faceToCheck = faces_[cells_[owner_[fIndex]][faceI]];
-
-        forAll(faceToCheck, pointI)
-        {
-            if
-            (
-                faceToCheck[pointI] != faces_[fIndex][0] &&
-                faceToCheck[pointI] != faces_[fIndex][1] &&
-                faceToCheck[pointI] != faces_[fIndex][2]
-            )
-            {
-                apexPoint[0] = faceToCheck[pointI];
-
-                foundApex = true;
-                break;
-            }
-        }
-
-        if (foundApex)
-        {
-            break;
-        }
-    }
+    apexPoint[0] = tetApexPoint(owner_[fIndex], fIndex);
 
     // Insert three new internal faces
 
@@ -2636,33 +2608,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         }
 
         // Find the apex point for this cell
-        foundApex = false;
-
-        forAll(cells_[neighbour_[fIndex]], faceI)
-        {
-            const face& faceToCheck = faces_[cells_[neighbour_[fIndex]][faceI]];
-
-            forAll(faceToCheck, pointI)
-            {
-                if
-                (
-                    faceToCheck[pointI] != faces_[fIndex][0] &&
-                    faceToCheck[pointI] != faces_[fIndex][1] &&
-                    faceToCheck[pointI] != faces_[fIndex][2]
-                )
-                {
-                    apexPoint[1] = faceToCheck[pointI];
-
-                    foundApex = true;
-                    break;
-                }
-            }
-
-            if (foundApex)
-            {
-                break;
-            }
-        }
+        apexPoint[1] = tetApexPoint(neighbour_[fIndex], fIndex);
 
         // Add six new interior faces.
 
