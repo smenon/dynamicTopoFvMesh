@@ -501,6 +501,15 @@ class dynamicTopoFvMesh
         (
             const FixedList<vector,2>& segment,
             const edge& pIndices,
+            const point& checkPoint,
+            const scalar tolFraction
+        ) const;
+
+        // Determine whether a specified point lies on a segment
+        inline bool segmentPointIntersection
+        (
+            const FixedList<vector,2>& segment,
+            const edge& pIndices,
             const label pIndex,
             const scalar tolFraction,
             const bool useOldPoints
@@ -523,7 +532,16 @@ class dynamicTopoFvMesh
         (
             const face& checkFace,
             const point& checkPoint,
-            const scalar tolerance,
+            const bool useOldPoints = false
+        ) const;
+
+        // Determine whether the particular point lies
+        // inside the given tetrahedron
+        inline bool pointInTet
+        (
+            const label cIndex,
+            const point& checkPoint,
+            const bool useOldConnectivity = false,
             const bool useOldPoints = false
         ) const;
 
@@ -536,7 +554,11 @@ class dynamicTopoFvMesh
 
         // Compute the volume of a polyhedron
         // formed by a convex set of points.
-        scalar convexSetVolume(const vectorField& cvxSet) const;
+        scalar convexSetVolume
+        (
+            const word& cvxSetName,
+            const vectorField& cvxSet
+        ) const;
 
         // Obtain a list of possible parent cells from the old mesh
         labelList cellParents(const labelList& mappingCells) const;
@@ -846,9 +868,7 @@ class dynamicTopoFvMesh
         (
             const label fIndex,
             const labelList& mapFaces = labelList(0),
-            const scalarField& mapWeights = scalarField(0),
-            const scalar flux = 0.0,
-            bool interpolateFlux = true
+            const scalarField& mapWeights = scalarField(0)
         );
 
         // Remove the specified cells from the mesh,

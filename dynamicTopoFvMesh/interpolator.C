@@ -38,13 +38,7 @@ Author
 #include "interpolator.H"
 #include "mapPolyMesh.H"
 #include "dynamicTopoFvMesh.H"
-#include "GeometricFields.H"
-#include "volMesh.H"
-#include "surfaceMesh.H"
-#include "fvPatchFieldsFwd.H"
-#include "volFields.H"
-#include "fvsPatchFieldsFwd.H"
-#include "surfaceFields.H"
+#include "fvCFD.H"
 
 namespace Foam
 {
@@ -59,15 +53,15 @@ interpolator::interpolator(dynamicTopoFvMesh& mesh)
 :
     mesh_(mesh),
     fieldsRegistered_(false),
-    Uname_("U"),
+    uName_("U"),
     phiName_("phi")
 {
     // Check if alternatives names for velocity and flux are defined
     const dictionary& meshDict = mesh.dict_.subDict("dynamicTopoFvMesh");
 
-    if (meshDict.found("Uname"))
+    if (meshDict.found("uName"))
     {
-        Uname_ = word(meshDict.lookup("Uname"));
+        uName_ = word(meshDict.lookup("uName"));
     }
 
     if (meshDict.found("phiName"))
@@ -97,6 +91,72 @@ void interpolator::clearOut()
     clearInterpolationMaps(tensor, Tensor);
 
     flipFaces_.clear();
+}
+
+// Correct fluxes after topo-changes
+void interpolator::correctFluxes()
+{
+    bool correctPhi = false;
+
+    // Fetch the solution dictionary entries
+    dictionary piso = mesh_.solutionDict().subDict("PISO");
+
+    if (piso.found("correctPhi"))
+    {
+        correctPhi = Switch(piso.lookup("correctPhi"));
+    }
+
+    if (!correctPhi)
+    {
+        return;
+    }
+
+    // Fetch references
+    dynamicTopoFvMesh& mesh = mesh_;
+    const Time& runTime = mesh.time();
+
+    label pRefCell = 0;
+    scalar pRefValue = 0.0;
+
+    int nNonOrthCorr = 0;
+
+    if (piso.found("nNonOrthogonalCorrectors"))
+    {
+        nNonOrthCorr = readInt(piso.lookup("nNonOrthogonalCorrectors"));
+    }
+
+    word pName("p"), rUAName("rUA");
+
+    // Check if alternatives names are defined
+    const dictionary& meshDict = mesh.dict_.subDict("dynamicTopoFvMesh");
+
+    if (meshDict.found("pName"))
+    {
+        pName = word(meshDict.lookup("pName"));
+    }
+
+    if (meshDict.found("rUAName"))
+    {
+        rUAName = word(meshDict.lookup("rUAName"));
+    }
+
+    // Fetch fields from the registry
+    surfaceScalarField& phi = const_cast<surfaceScalarField&>
+    (
+        mesh_.lookupObject<surfaceScalarField>(phiName_)
+    );
+
+    volScalarField& p = const_cast<volScalarField&>
+    (
+        mesh_.lookupObject<volScalarField>(pName)
+    );
+
+    volScalarField& rUA = const_cast<volScalarField&>
+    (
+        mesh_.lookupObject<volScalarField>(rUAName)
+    );
+
+#   include "correctPhi.H"
 }
 
 //- Post-processing
@@ -313,159 +373,6 @@ void interpolator::removeCell
     removeEntity(tensor, volTensor);
 }
 
-// Get the volume-flux for an existing face
-scalar interpolator::getPhi
-(
-    const label faceIndex
-)
-{
-    scalar phiVal = 0.0;
-
-    if (surfScalarMap_.found(phiName_))
-    {
-        if
-        (
-            (faceIndex < mesh_.nOldFaces_) &&
-            (!surfScalarMap_[phiName_].found(faceIndex))
-        )
-        {
-            // Fetch phi from the registry.
-            const surfaceScalarField& oF =
-            (
-                mesh_.lookupObject<surfaceScalarField>(phiName_)
-            );
-
-            const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
-
-            label oPatch = boundary.whichPatch(faceIndex);
-
-            if (oPatch == -1)
-            {
-                phiVal = oF.internalField()[faceIndex];
-            }
-            else
-            {
-                label i = boundary[oPatch].whichFace(faceIndex);
-
-                phiVal = oF.boundaryField()[oPatch][i];
-            }
-        }
-        else
-        {
-            phiVal = surfScalarMap_[phiName_][faceIndex];
-        }
-    }
-
-    // Check if the flux needs to be flipped.
-    if (flipFaces_.found(faceIndex))
-    {
-        phiVal *= -1.0;
-    }
-
-    return phiVal;
-}
-
-// Set the volume-flux for an existing face
-void interpolator::setPhi
-(
-    const label faceIndex,
-    const scalar facePhi
-)
-{
-    if (surfScalarMap_.found(phiName_))
-    {
-        surfScalarMap_[phiName_].set(faceIndex, facePhi);
-    }
-}
-
-// Interpolate flux for an existing face
-void interpolator::interpolatePhi
-(
-    const label owner,
-    const label neighbour,
-    const label faceIndex,
-    const vector& Sf
-)
-{
-    FixedList<label, 2> c(-1);
-    FixedList<vector,2> U(vector::zero);
-    FixedList<scalar, 2> w(0.0);
-
-    if (neighbour == -1)
-    {
-        w[0] = 1.0;
-        w[1] = 0.0;
-    }
-    else
-    {
-        w[0] = 0.5;
-        w[1] = 0.5;
-    }
-
-    // Set check indices
-    c[0] = owner; c[1] = neighbour;
-
-    // Check volVectorMaps for an entry named 'U'.
-    // If it exists, make an entry (or over-write, if necessary).
-    if (volVectorMap_.found(Uname_))
-    {
-        // Looks like an entry exists.
-        // Check if a new value was set for this cell.
-        forAll(c, indexI)
-        {
-            if (c[indexI] == -1)
-            {
-                continue;
-            }
-
-            if (volVectorMap_[Uname_].found(c[indexI]))
-            {
-                U[indexI] = volVectorMap_[Uname_][c[indexI]];
-            }
-            else
-            if (c[indexI] < mesh_.nOldCells_)
-            {
-                // Fetch old value from the registry.
-                const volVectorField& oF =
-                (
-                    mesh_.lookupObject<volVectorField>(Uname_)
-                );
-
-                U[indexI] = oF.internalField()[c[indexI]];
-            }
-            else
-            {
-                // Couldn't find the cell anywhere.
-                FatalErrorIn("interpolator::interpolatePhi()")
-                    << " Looking for cell: " << c[indexI]
-                    << " in maps, but couldn't find it." << nl
-                    << " faceIndex: " << faceIndex
-                    << " Sf: " << Sf
-                    << abort(FatalError);
-            }
-        }
-
-        if (dynamicTopoFvMesh::debug > 3)
-        {
-            Info << nl
-                 << "Flux for face: " << faceIndex
-                 << " :: " << ((w[0]*U[0] + w[1]*U[1]) & Sf)
-                 << " Using cells: " << c
-                 << " with U: " << U
-                 << " w: " << w
-                 << " and Sf: " << Sf
-                 << endl;
-        }
-
-        // Take the dot-product and assign.
-        setPhi
-        (
-            faceIndex,
-            ((w[0]*U[0] + w[1]*U[1]) & Sf)
-        );
-    }
-}
-
 // Set a particular face index as flipped.
 void interpolator::setFlip(const label fIndex)
 {
@@ -546,46 +453,41 @@ void interpolator::updateMesh(const mapPolyMesh& mpm)
     fillSurfaceMaps(symmTensor, SymmTensor);
     fillSurfaceMaps(tensor, Tensor);
 
-    // Flip fluxes for specific internal faces.
-    forAllConstIter(labelHashSet, flipFaces_, fIter)
+    if (surfScalarMap_.found(phiName_))
     {
-        label newIndex = -1;
+        surfaceScalarField& phi = const_cast<surfaceScalarField&>
+        (
+            mesh_.lookupObject<surfaceScalarField>(phiName_)
+        );
 
-        if (fIter.key() < mpm.nOldFaces())
-        {
-            newIndex = mpm.reverseFaceMap()[fIter.key()];
-        }
-        else
-        {
-            newIndex = mesh_.addedFaceRenumbering_[fIter.key()];
-        }
+        volVectorField& U = const_cast<volVectorField&>
+        (
+            mesh_.lookupObject<volVectorField>(uName_)
+        );
 
-        forAllIter(HashTable<Map<scalar> >, surfScalarMap_, hIter)
+        // Flip fluxes for specific internal faces.
+        forAllConstIter(labelHashSet, flipFaces_, fIter)
         {
-            if (volScalarMap_.found(hIter.key()))
+            label newIndex = -1;
+
+            if (fIter.key() < mpm.nOldFaces())
             {
-                continue;
+                newIndex = mpm.reverseFaceMap()[fIter.key()];
+            }
+            else
+            {
+                newIndex = mesh_.addedFaceRenumbering_[fIter.key()];
             }
 
-            if (!mesh_.foundObject<surfaceScalarField>(hIter.key()))
-            {
-                continue;
-            }
-
-            surfaceScalarField& sf =
-            (
-                const_cast<surfaceScalarField&>
-                (
-                    mesh_.lookupObject<surfaceScalarField>
-                    (
-                        hIter.key()
-                    )
-                )
-            );
-
-            // Flip fux for the internal face.
-            sf.internalField()[newIndex] *= -1.0;
+            // Flip flux for the internal face.
+            phi.internalField()[newIndex] *= -1.0;
         }
+
+        // Interpolate fluxes for new / modified faces.
+        surfaceScalarField phiU = fvc::interpolate(U) & mesh_.Sf();
+
+        // Correct fluxes, if necessary
+        correctFluxes();
     }
 
     // Clear-out demand-driven data.

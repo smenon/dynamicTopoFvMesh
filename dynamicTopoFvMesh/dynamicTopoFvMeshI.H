@@ -626,21 +626,12 @@ inline bool dynamicTopoFvMesh::segmentPointIntersection
 (
     const FixedList<vector,2>& segment,
     const edge& pIndices,
-    const label pIndex,
-    const scalar tolFraction,
-    const bool useOldPoints
+    const point& checkPoint,
+    const scalar tolFraction
 ) const
 {
-    vector te = (segment[1] - segment[0]), pe;
-
-    if (useOldPoints)
-    {
-        pe = (oldPoints_[pIndex] - segment[0]);
-    }
-    else
-    {
-        pe = (points_[pIndex] - segment[0]);
-    }
+    vector te = (segment[1] - segment[0]);
+    vector pe = (checkPoint - segment[0]);
 
     // Compute uValue
     scalar u = (pe & pe) / ((pe & te) + VSMALL);
@@ -666,6 +657,40 @@ inline bool dynamicTopoFvMesh::segmentPointIntersection
 
     // Does not intersect
     return false;
+}
+
+
+// Determine whether a specified point lies on a segment
+inline bool dynamicTopoFvMesh::segmentPointIntersection
+(
+    const FixedList<vector,2>& segment,
+    const edge& pIndices,
+    const label pIndex,
+    const scalar tolFraction,
+    const bool useOldPoints
+) const
+{
+    vector checkPoint;
+
+    if (useOldPoints)
+    {
+        checkPoint = oldPoints_[pIndex];
+    }
+    else
+    {
+        checkPoint = points_[pIndex];
+    }
+
+    return
+    (
+        segmentPointIntersection
+        (
+            segment,
+            pIndices,
+            checkPoint,
+            tolFraction
+        )
+    );
 }
 
 
@@ -712,7 +737,7 @@ inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
                 << " Segment: " << segment << nl
                 << " Face: " << triFace << nl
                 << " tolerance: " << tolerance << nl
-                << abort(FatalError);
+                << endl;
         }
 
         return false;
@@ -727,8 +752,9 @@ inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
         vector p = p1 + u*(p2 - p1);
 
         // Also make sure that 'p' lies within triFace
-        if (pointInTriFace(triFace, p, tolerance, useOldPoints))
+        if (pointInTriFace(triFace, p, useOldPoints))
         {
+            // Record the intersection point
             intersectionPoint = p;
 
             if (debug > 4)
@@ -756,11 +782,11 @@ inline bool dynamicTopoFvMesh::pointInTriFace
 (
     const face& triFace,
     const point& checkPoint,
-    const scalar tolerance,
     const bool useOldPoints
 ) const
 {
     FixedList<bool, 3> sign(false);
+    FixedList<vector, 2> segment(vector::zero);
 
     forAll(triFace, pI)
     {
@@ -774,35 +800,105 @@ inline bool dynamicTopoFvMesh::pointInTriFace
 
         if (useOldPoints)
         {
-            p = oldPoints_[triFace[nI]] - oldPoints_[triFace[pI]];
-            q = checkPoint - oldPoints_[triFace[nI]];
+            segment[0] = oldPoints_[triFace[pI]];
+            segment[1] = oldPoints_[triFace[nI]];
         }
         else
         {
-            p = points_[triFace[nI]] - points_[triFace[pI]];
-            q = checkPoint - points_[triFace[nI]];
+            segment[0] = points_[triFace[pI]];
+            segment[1] = points_[triFace[nI]];
         }
+
+        // Identify vectors
+        p = (segment[1] - segment[0]);
+        q = (checkPoint - segment[1]);
 
         scalar area = 0.5 * ((p ^ q) & n);
 
-        if (Foam::sign(area) < 0.0)
-        {
-            if (mag(area) < tolerance)
-            {
-                sign[pI] = true;
-            }
-            else
-            {
-                sign[pI] = false;
-            }
-        }
-        else
-        {
-            sign[pI] = true;
-        }
+        sign[pI] = (area > 0.0) ? true : false;
     }
 
     if (sign[0] && sign[1] && sign[2])
+    {
+        return true;
+    }
+
+    return false;
+}
+
+
+// Determine whether the particular point lies
+// inside the given tetrahedron
+inline bool dynamicTopoFvMesh::pointInTet
+(
+    const label cIndex,
+    const point& checkPoint,
+    const bool useOldConnectivity,
+    const bool useOldPoints
+) const
+{
+    FixedList<bool, 4> sign(false);
+
+    if (useOldConnectivity)
+    {
+        const cell& oldCell = polyMesh::cells()[cIndex];
+
+        forAll(oldCell, faceI)
+        {
+            const face& oldFace = polyMesh::faces()[oldCell[faceI]];
+
+            vector xf = triFaceCentre(oldFace, useOldPoints);
+            vector nf = triFaceNormal(oldFace, useOldPoints);
+
+            label own = polyMesh::faceOwner()[oldCell[faceI]];
+
+            if (((xf - checkPoint) & nf) > 0.0)
+            {
+                if (own == cIndex)
+                {
+                    sign[faceI] = true;
+                }
+            }
+            else
+            {
+                if (own != cIndex)
+                {
+                    sign[faceI] = true;
+                }
+            }
+        }
+    }
+    else
+    {
+        const cell& newCell = cells_[cIndex];
+
+        forAll(newCell, faceI)
+        {
+            const face& newFace = faces_[newCell[faceI]];
+
+            vector xf = triFaceCentre(newFace, useOldPoints);
+            vector nf = triFaceNormal(newFace, useOldPoints);
+
+            label own = owner_[newCell[faceI]];
+
+            if (((xf - checkPoint) & nf) > 0.0)
+            {
+                if (own == cIndex)
+                {
+                    sign[faceI] = true;
+                }
+            }
+            else
+            {
+                if (own != cIndex)
+                {
+                    sign[faceI] = true;
+                }
+            }
+        }
+    }
+
+    if (sign[0] && sign[1] && sign[2] && sign[3])
     {
         return true;
     }

@@ -86,8 +86,8 @@ class interpolator
 
         labelHashSet flipFaces_;
 
-        // Names of velocity / flux fields
-        word Uname_;
+        // Names of fields
+        word uName_;
         word phiName_;
 
     // Private Member Functions
@@ -137,24 +137,8 @@ public:
         // Remove the cell, if it exists in the map.
         void removeCell(const label index);
 
-        // Get the volume-flux for an existing face
-        scalar getPhi(const label faceIndex);
-
-        // Set the volume-flux for an existing face
-        void setPhi
-        (
-            const label faceIndex,
-            const scalar facePhi
-        );
-
-        // Interpolate flux for an existing face
-        void interpolatePhi
-        (
-            const label owner,
-            const label neighbour,
-            const label faceIndex,
-            const vector& Sf
-        );
+        // Correct fluxes after topo-changes
+        void correctFluxes();
 
         //- Post-processing
         void writeFluxes(const word& name);

@@ -1925,7 +1925,7 @@ bool dynamicTopoFvMesh::checkCollapse
     // Final quality check
     if (cQuality < sliverThreshold_ && !forceOp)
     {
-        if (debug > 2)
+        if (debug > 3)
         {
             InfoIn("dynamicTopoFvMesh::checkCollapse()")
                 << "\nCollapsing cell: " << cellIndex

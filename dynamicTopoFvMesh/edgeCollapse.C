@@ -2822,11 +2822,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Size-up pointEdges for the replacePoint as well.
     const labelList& pEdges = pointEdges_[collapsePoint];
 
-    // While we're at it, compile a set of cells which need
-    // their old-volumes to be modified. Once all faces are
-    // renumbered, old-volumes can be safely computed.
-    labelHashSet modCells;
-
     forAll(pEdges, edgeI)
     {
         // Renumber edges
@@ -2878,22 +2873,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             forAll(eFaces, faceI)
             {
-                // Check owner / neighbour for cells.
-                label own = owner_[eFaces[faceI]];
-                label nei = neighbour_[eFaces[faceI]];
-
-                // Check owner cell
-                if (!modCells.found(own))
-                {
-                    modCells.insert(own);
-                }
-
-                // Check neighbour cell
-                if (!modCells.found(nei) && nei != -1)
-                {
-                    modCells.insert(nei);
-                }
-
                 const face& faceToCheck = faces_[eFaces[faceI]];
 
                 if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
@@ -2939,31 +2918,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     );
                 }
             }
-        }
-    }
-
-    // Loop through accumulated cells and compute old-volumes.
-    forAllConstIter(labelHashSet, modCells, cIter)
-    {
-        scalar modOldVol = tetVolume(cIter.key(), true);
-
-        if (modOldVol < 0.0)
-        {
-            FatalErrorIn
-            (
-                "dynamicTopoFvMesh::collapseEdge()"
-            )
-                << "Negative old-volumes encountered." << nl
-                << cIter.key() << ": " << modOldVol
-                << abort(FatalError);
-        }
-
-        if (debug > 2)
-        {
-            Info << "Cell: " << cIter.key()
-                 << " Old volume: " << modOldVol
-                 << " New volume: " << tetVolume(cIter.key())
-                 << endl;
         }
     }
 
@@ -3022,6 +2976,163 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     // Remove the edge
     removeEdge(eIndex);
+
+    // Now that all old / new cells possess correct connectivity,
+    // compute mapping information.
+    forAllConstIter(labelHashSet, cellsChecked, cIter)
+    {
+        // Avoid hull cells
+        if (findIndex(cellHull, cIter.key()) > -1)
+        {
+            continue;
+        }
+
+        // Fill-in mapping information
+        labelList mC(cellsChecked.toc());
+
+        // Obtain parents for this cell
+        labelList parents = cellParents(mC);
+
+        // Track actual intersections
+        label nIntersects = 0;
+
+        // Compute intersection weights
+        scalarField weights(parents.size(), 0.0);
+
+        forAll(parents, indexJ)
+        {
+            weights[indexJ] =
+            (
+                tetIntersection
+                (
+                    cIter.key(),
+                    parents[indexJ]
+                )
+            );
+
+            if (weights[indexJ] > SMALL)
+            {
+                nIntersects++;
+            }
+        }
+
+        // Now copy only valid intersections.
+        labelList newParents(nIntersects, -1);
+        scalarField newWeights(nIntersects, 0.0);
+
+        // Reset counter
+        nIntersects = 0;
+
+        forAll(weights, indexJ)
+        {
+            if (weights[indexJ] > SMALL)
+            {
+                newParents[nIntersects] = parents[indexJ];
+                newWeights[nIntersects] = weights[indexJ];
+                nIntersects++;
+            }
+        }
+
+        // Transfer lists.
+        parents.transfer(newParents);
+        weights.transfer(newWeights);
+
+        // Compute the old-volume for this cell
+        scalar newOldVol = tetVolume(cIter.key(), true);
+
+        if (newOldVol < 0.0)
+        {
+            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                << "Negative old-volumes encountered." << nl
+                << cIter.key() << ": " << newOldVol
+                << abort(FatalError);
+        }
+
+        scalarField testWeights = (weights/newOldVol);
+
+        if (mag(1.0 - sum(testWeights)) > 1e-10)
+        {
+            // Inconsistent weights. Check whether any edges
+            // lie on boundary patches. These cells can have
+            // relaxed weights to account for mild convexity.
+            bool foundBoundary = false;
+
+            const cell& cellToCheck = cells_[cIter.key()];
+
+            forAll(cellToCheck, faceI)
+            {
+                const labelList& fEdges = faceEdges_[cellToCheck[faceI]];
+
+                forAll(fEdges, edgeI)
+                {
+                    if (whichEdgePatch(fEdges[edgeI]) > -1)
+                    {
+                        foundBoundary = true;
+                        break;
+                    }
+                }
+
+                if (foundBoundary)
+                {
+                    break;
+                }
+            }
+
+            if (foundBoundary)
+            {
+                // Normalize by sum of intersections
+                weights /= sum(weights);
+            }
+            else
+            {
+                // Write out for post-processing
+                label nIdx = cIter.key(), uIdx = 0;
+                labelList candid = cellParents(mC);
+                labelList unMatch(candid.size() - parents.size(), -1);
+
+                forAll(candid, cI)
+                {
+                    if (findIndex(parents, candid[cI]) == -1)
+                    {
+                        unMatch[uIdx++] = candid[cI];
+                    }
+                }
+
+                writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
+                writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
+                writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
+                writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
+
+                FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                    << "Encountered non-conservative weighting factors." << nl
+                    << " Cell: " << nIdx << nl
+                    << " Old volume: " << newOldVol << nl
+                    << " Parents: " << parents << nl
+                    << " Weights: " << testWeights << nl
+                    << " Sum(Weights): " << sum(testWeights) << nl
+                    << " Error: " << mag(1.0 - sum(testWeights))
+                    << abort(FatalError);
+            }
+        }
+        else
+        {
+            // Normalize by current volume
+            weights /= newOldVol;
+        }
+
+        // Set the mapping for this cell
+        setCellMapping(cIter.key(), parents, weights);
+
+        // Set parents for this cell
+        cellParents_.set(cIter.key(), parents);
+
+        if (debug > 2)
+        {
+            Info << " Cell:: " << cIter.key() << nl
+                 << "  Parents: " << parents << nl
+                 << "  Weights: " << weights << endl;
+        }
+    }
 
     // Set the flag
     topoChangeFlag_ = true;
