@@ -2745,6 +2745,9 @@ void mesquiteMotionSolver::solve()
         enforceCylindricalConstraints();
     }
 
+    // Copy refPoints prior to internal smoothing
+    origPoints_ = refPoints_;
+
     // Copy most recent point positions
     forAll(refPoints_, pointI)
     {
@@ -2811,6 +2814,13 @@ void mesquiteMotionSolver::solve()
         refPoints_[pointI][0] = vtxCoords_[(3*pointI)+0];
         refPoints_[pointI][1] = vtxCoords_[(3*pointI)+1];
         refPoints_[pointI][2] = vtxCoords_[(3*pointI)+2];
+
+        // Relax points
+        refPoints_[pointI] =
+        (
+            (relax_ * refPoints_[pointI])
+          + ((1.0 - relax_) * origPoints_[pointI])
+        );
     }
 
     // Copy auxiliary points back to slaves

@@ -496,7 +496,7 @@ void freeSurface::makeFaMesh() const
             << abort(FatalError);
     }
 
-    aMeshPtr_ = new faMesh(mesh());
+    aMeshPtr_ = new faMesh(mesh(), "faMeshDefinition");
 }
 
 void freeSurface::makeUs() const
