@@ -36,12 +36,25 @@ Author
 \*----------------------------------------------------------------------------*/
 
 #include "topoMapper.H"
+#include "topoCellMapper.H"
+#include "faceMapper.H"
+#include "fvSurfaceMapper.H"
+#include "fvBoundaryMeshMapper.H"
 #include "volFields.H"
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+void Foam::topoMapper::clearOut()
+{
+    deleteDemandDrivenData(oldCellCentresPtr_);
+}
 
 // * * * * * * * * * * * * * * * * Destructor * * * * * * * * * * * * * * *  //
 
 Foam::topoMapper::~topoMapper()
-{}
+{
+    clearOut();
+}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -81,7 +94,7 @@ void Foam::topoMapper::setMapper(const mapPolyMesh& mpm)
 
     // Set pointers
     faceMap_.set(new faceMapper(mpm));
-    cellMap_.set(new topoCellMapper(mpm));
+    cellMap_.set(new topoCellMapper(mpm, *this));
     surfaceMap_.set(new fvSurfaceMapper(mesh(), faceMap_()));
     boundaryMap_.set(new fvBoundaryMeshMapper(mesh(), faceMap_()));
 }
@@ -113,16 +126,51 @@ void Foam::topoMapper::setOldCellCentres
     const volVectorField& oldCentres
 )
 {
-    if (!cellMap_.valid())
+    if (oldCellCentresPtr_)
     {
         FatalErrorIn
         (
             "void topoMapper::setOldCellCentres()"
-        ) << nl << " Cell map has not been set. "
+        ) << nl << " Pointer has already been set. "
           << abort(FatalError);
     }
 
-    cellMap_().setOldCellCentres(oldCentres);
+    // Set the pointer.
+    // Only copy values, but don't register the field,
+    // since we don't want it to be mapped like the others
+    oldCellCentresPtr_ =
+    (
+        new volVectorField
+        (
+            IOobject
+            (
+                "OldCellCentres",
+                mesh_.time().timeName(),
+                mesh_,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            oldCentres
+        )
+    );
+}
+
+
+//- Return old cell-centre information
+const Foam::volVectorField&
+Foam::topoMapper::oldCentres() const
+{
+    if (!oldCellCentresPtr_)
+    {
+        FatalErrorIn
+        (
+            "void topoMapper::oldCentres()"
+        ) << nl << " Pointer has not been set. "
+          << abort(FatalError);
+    }
+
+    return *oldCellCentresPtr_;
 }
 
 

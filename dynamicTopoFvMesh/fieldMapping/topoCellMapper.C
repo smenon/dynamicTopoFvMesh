@@ -35,6 +35,7 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
+#include "topoMapper.H"
 #include "topoCellMapper.H"
 #include "demandDrivenData.H"
 #include "mapPolyMesh.H"
@@ -46,7 +47,6 @@ void Foam::topoCellMapper::clearOut()
     deleteDemandDrivenData(directAddrPtr_);
     deleteDemandDrivenData(interpolationAddrPtr_);
     deleteDemandDrivenData(weightsPtr_);
-    deleteDemandDrivenData(oldCellCentresPtr_);
 }
 
 void Foam::topoCellMapper::calcAddressing() const
@@ -60,13 +60,6 @@ void Foam::topoCellMapper::calcAddressing() const
     {
         FatalErrorIn("void topoCellMapper::calcAddressing() const")
             << "Addressing already calculated."
-            << abort(FatalError);
-    }
-    
-    if (!oldCellCentresPtr_)
-    {
-        FatalErrorIn("void topoCellMapper::calcAddressing() const")
-            << "Cell centres has not been set."
             << abort(FatalError);
     }
 
@@ -84,12 +77,12 @@ void Foam::topoCellMapper::calcAddressing() const
         labelListList& addr = *interpolationAddrPtr_;
 
         weightsPtr_ = new scalarListList(mesh_.nCells());
-        scalarListList& w = *weightsPtr_;    
-    
+        scalarListList& w = *weightsPtr_;
+
         // Obtain cell-centre information from old/new meshes
-        const vectorField& oldCentres = oldCellCentresPtr_->internalField();
+        const vectorField& oldCentres = tMapper_.oldCentres().internalField();
         const vectorField& newCentres = mesh_.cellCentres();
-        
+
         const List<objectMap>& cfc = mpm_.cellsFromCellsMap();
 
         forAll (cfc, cfcI)
@@ -112,7 +105,7 @@ void Foam::topoCellMapper::calcAddressing() const
             addr[cellI] = mo;
             scalar totalWeight = 0.0;
             w[cellI] = scalarList(mo.size(), 0.0);
-            
+
             forAll (mo, oldCellI)
             {
                 w[cellI][oldCellI] =
@@ -130,16 +123,16 @@ void Foam::topoCellMapper::calcAddressing() const
 
                 totalWeight += w[cellI][oldCellI];
             }
-            
+
             // Normalize weights
             scalar normFactor = (1.0/totalWeight);
 
             forAll (mo, oldCellI)
-            {            
+            {
                 w[cellI][oldCellI] *= normFactor;
             }
         }
-        
+
         // Do mapped cells. Note that this can already be set by cellsFromCells
         // so check if addressing size still zero.
         const labelList& cm = mpm_.cellMap();
@@ -152,7 +145,7 @@ void Foam::topoCellMapper::calcAddressing() const
                 addr[cellI] = labelList(1, cm[cellI]);
                 w[cellI] = scalarList(1, 1.0);
             }
-        }  
+        }
     }
 }
 
@@ -160,17 +153,18 @@ void Foam::topoCellMapper::calcAddressing() const
 
 // Construct from components
 Foam::topoCellMapper::topoCellMapper
-(         
-    const mapPolyMesh& mpm
+(
+    const mapPolyMesh& mpm,
+    const topoMapper& mapper
 )
 :
     mesh_(mpm.mesh()),
     mpm_(mpm),
+    tMapper_(mapper),
     direct_(false),
     directAddrPtr_(NULL),
     interpolationAddrPtr_(NULL),
-    weightsPtr_(NULL),
-    oldCellCentresPtr_(NULL)
+    weightsPtr_(NULL)
 {}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -181,43 +175,6 @@ Foam::topoCellMapper::~topoCellMapper()
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-//- Set old cell-centre information
-void Foam::topoCellMapper::setOldCellCentres
-(
-    const volVectorField& oldCentres
-) const
-{
-    if (oldCellCentresPtr_)
-    {
-        FatalErrorIn
-        (
-            "void topoCellMapper::setOldCellCentres()"
-        ) << nl << " Pointer has already been set. "
-          << abort(FatalError);
-    }
-
-    // Set the pointer.
-    // Only copy values, but don't register the field,
-    // since we don't want it to be mapped like the others
-    oldCellCentresPtr_ =
-    (
-        new volVectorField
-        (
-            IOobject
-            (
-                "OldCellCentres",
-                mesh_.time().timeName(),
-                mesh_,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            oldCentres
-        )
-    );
-}
-
 
 Foam::label Foam::topoCellMapper::size() const
 {
@@ -231,7 +188,7 @@ Foam::label Foam::topoCellMapper::sizeBeforeMapping() const
 }
 
 
-const Foam::unallocLabelList& 
+const Foam::unallocLabelList&
 Foam::topoCellMapper::directAddressing() const
 {
     if (!direct())

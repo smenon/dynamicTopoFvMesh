@@ -52,6 +52,7 @@ namespace Foam
 {
 
 // Class forward declarations
+class topoMapper;
 class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
@@ -70,6 +71,9 @@ class topoCellMapper
         //- Reference to mapPolyMesh
         const mapPolyMesh& mpm_;
 
+        //- Reference to the topoMapper
+        const topoMapper& tMapper_;
+
         //- Is the mapping direct
         bool direct_;
 
@@ -83,9 +87,6 @@ class topoCellMapper
 
         //- Interpolation weights
         mutable scalarListList* weightsPtr_;
-
-        //- Old cell-centre information
-        mutable volVectorField* oldCellCentresPtr_;
 
 
     // Private Member Functions
@@ -107,16 +108,17 @@ public:
     // Constructors
 
         //- Construct from mapPolyMesh
-        topoCellMapper(const mapPolyMesh& mpm);
+        topoCellMapper
+        (
+            const mapPolyMesh& mpm,
+            const topoMapper& mapper
+        );
 
     // Destructor
 
         virtual ~topoCellMapper();
 
     // Member Functions
-
-        //- Set old cell-centre information
-        void setOldCellCentres(const volVectorField& oldCentres) const;
 
         //- Return size
         virtual label size() const;

@@ -42,17 +42,16 @@ SourceFiles
 #ifndef topoMapper_H
 #define topoMapper_H
 
-#include "faceMapper.H"
-#include "topoCellMapper.H"
-#include "fvSurfaceMapper.H"
-#include "fvBoundaryMeshMapper.H"
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
 // Class forward declarations
+class faceMapper;
+class topoCellMapper;
+class fvSurfaceMapper;
+class fvBoundaryMeshMapper;
 class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
@@ -78,6 +77,11 @@ class topoMapper
         //- Boundary mapper
         autoPtr<fvBoundaryMeshMapper> boundaryMap_;
 
+    // Demand-driven private data
+
+        //- Old cell-centre information
+        mutable volVectorField* oldCellCentresPtr_;
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -86,6 +90,8 @@ class topoMapper
         //- Disallow default bitwise assignment
         void operator=(const topoMapper&);
 
+        //- Clear out local storage
+        void clearOut();
 
 public:
 
@@ -98,7 +104,8 @@ public:
             faceMap_(NULL),
             cellMap_(NULL),
             surfaceMap_(NULL),
-            boundaryMap_(NULL)
+            boundaryMap_(NULL),
+            oldCellCentresPtr_(NULL)
         {}
 
     // Destructor
@@ -124,6 +131,9 @@ public:
 
         //- Set old cell-centre information
         void setOldCellCentres(const volVectorField& oldCentres);
+
+        //- Return old cell-centre information
+        const volVectorField& oldCentres() const;
 
         //- Correct fluxes after topology change
         void correctFluxes();
