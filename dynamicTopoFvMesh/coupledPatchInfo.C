@@ -121,6 +121,23 @@ dynamicTopoFvMesh& coupledPatchInfo::subMesh()
 }
 
 
+const dynamicTopoFvMesh& coupledPatchInfo::subMesh() const
+{
+    if (!subMesh_.valid())
+    {
+        FatalErrorIn
+        (
+            "const dynamicTopoFvMesh& "
+            "coupledPatchInfo::subMesh() const"
+        )
+            << " Sub-mesh pointer has not been set."
+            << abort(FatalError);
+    }
+
+    return subMesh_();
+}
+
+
 bool coupledPatchInfo::builtMaps() const
 {
     return builtMaps_;

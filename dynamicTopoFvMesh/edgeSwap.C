@@ -1210,7 +1210,42 @@ bool dynamicTopoFvMesh::fillTables
         else
         if (processorCoupledEntity(eIndex))
         {
+            label n = 0;
+            const label edgeEnum = coupleMap::EDGE;
 
+            forAll(procIndices_, pI)
+            {
+                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupleMap& cMap = recvMesh.patchMap();
+
+                label sIndex = -1;
+
+                if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                {
+                    if (debug > 3)
+                    {
+                        Pout << "Found " << sIndex
+                             << " for: " << eIndex
+                             << " on " << recvMesh.patchMap().slaveIndex()
+                             << endl;
+                    }
+
+                    // Recursively call for the slave edge.
+                    bool success =
+                    (
+                        recvMesh.subMesh().fillTables
+                        (
+                            sIndex, minQuality, m, Q, K, triangulations, ++n
+                        )
+                    );
+
+                    // If slave table couldn't be resized, don't continue
+                    if (!success)
+                    {
+                        return false;
+                    }
+                }
+            }
         }
     }
 
@@ -1887,6 +1922,22 @@ scalar dynamicTopoFvMesh::computeMinQuality
     const label eIndex
 ) const
 {
+    // If this is a subMesh, we might need to build edgePoints first
+    if (isSubMesh_)
+    {
+        if (edgePoints_[eIndex].empty())
+        {
+            if (debug > 3)
+            {
+                Pout << " Building edgePoints for: " << eIndex
+                     << " :: " << edges_[eIndex]
+                     << endl;
+            }
+
+            buildEdgePoints(eIndex);
+        }
+    }
+
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;
 
@@ -1982,7 +2033,26 @@ scalar dynamicTopoFvMesh::computeMinQuality
         if (processorCoupledEntity(eIndex))
         {
             // Compute the minimum quality across patchSubMeshes.
+            const label edgeEnum = coupleMap::EDGE;
 
+            forAll(procIndices_, pI)
+            {
+                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupleMap& cMap = recvMesh.patchMap();
+
+                label sIndex = -1;
+
+                if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                {
+                    // Recursively call for the slave edge.
+                    scalar slaveQuality =
+                    (
+                        recvMesh.subMesh().computeMinQuality(sIndex)
+                    );
+
+                    minQuality = Foam::min(slaveQuality, minQuality);
+                }
+            }
         }
     }
 

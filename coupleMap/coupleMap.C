@@ -30,8 +30,10 @@ Description
 
 Author
     Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
 
-\*----------------------------------------------------------------------------*/
+\*---------------------------------------------------------------------------*/
 
 #include "coupleMap.H"
 #include "boolList.H"
@@ -81,6 +83,7 @@ coupleMap::coupleMap
     }
 }
 
+
 // Construct as copy
 coupleMap::coupleMap(const coupleMap& cm)
 :
@@ -110,6 +113,7 @@ coupleMap::coupleMap(const coupleMap& cm)
     }
 }
 
+
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
 
 coupleMap::~coupleMap()
@@ -118,6 +122,7 @@ coupleMap::~coupleMap()
     clearBuffers();
     clearAddressing();
 }
+
 
 // * * * * * * * * * * * * * * * Private Functions * * * * * * * * * * * * * //
 
@@ -131,6 +136,7 @@ void coupleMap::clearAddressing() const
     deleteDemandDrivenData(cellsPtr_);
     deleteDemandDrivenData(faceEdgesPtr_);
 }
+
 
 void coupleMap::makeAddressing() const
 {
@@ -190,6 +196,7 @@ void coupleMap::makeAddressing() const
     nei.setSize(nInternalFaces_);
 }
 
+
 void coupleMap::makeEdges() const
 {
     // It is an error to attempt to recalculate
@@ -214,6 +221,7 @@ void coupleMap::makeEdges() const
         edges[edgeI][1] = eBuffer[(2*edgeI)+1];
     }
 }
+
 
 void coupleMap::makeFaces() const
 {
@@ -247,6 +255,7 @@ void coupleMap::makeFaces() const
     }
 }
 
+
 void coupleMap::makeCells() const
 {
     // It is an error to attempt to recalculate
@@ -274,6 +283,7 @@ void coupleMap::makeCells() const
     }
 }
 
+
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 pointField& coupleMap::pointBuffer() const
@@ -281,10 +291,12 @@ pointField& coupleMap::pointBuffer() const
     return pointBuffer_;
 }
 
+
 labelList& coupleMap::subMeshPoints() const
 {
     return subMeshPoints_;
 }
+
 
 void coupleMap::allocateBuffers() const
 {
@@ -308,6 +320,7 @@ void coupleMap::allocateBuffers() const
     entityBuffer(coupleMap::PATCH_ID).setSize(nEntities(coupleMap::FACE));
 }
 
+
 label coupleMap::findSlaveIndex
 (
     const label eType,
@@ -323,6 +336,7 @@ label coupleMap::findSlaveIndex
         return -1;
     }
 }
+
 
 label coupleMap::findMasterIndex
 (
@@ -340,6 +354,7 @@ label coupleMap::findMasterIndex
     }
 }
 
+
 void coupleMap::removeSlaveIndex
 (
     const label eType,
@@ -351,6 +366,7 @@ void coupleMap::removeSlaveIndex
         reverseEntityMap_[eType].erase(Index);
     }
 }
+
 
 void coupleMap::removeMasterIndex
 (
@@ -364,6 +380,7 @@ void coupleMap::removeMasterIndex
     }
 }
 
+
 void coupleMap::mapSlave
 (
     const label eType,
@@ -374,6 +391,7 @@ void coupleMap::mapSlave
     entityMap_[eType].set(master, slave);
 }
 
+
 void coupleMap::mapMaster
 (
     const label eType,
@@ -383,6 +401,7 @@ void coupleMap::mapMaster
 {
     reverseEntityMap_[eType].set(slave, master);
 }
+
 
 void coupleMap::transferMaps
 (
@@ -395,6 +414,7 @@ void coupleMap::transferMaps
     reverseEntityMap_[eType].transfer(newReverseEntityMap);
 }
 
+
 void coupleMap::clearMaps() const
 {
     forAll(entityMap_, mapI)
@@ -403,6 +423,7 @@ void coupleMap::clearMaps() const
         reverseEntityMap_[mapI].clear();
     }
 }
+
 
 void coupleMap::clearBuffers() const
 {
@@ -414,6 +435,7 @@ void coupleMap::clearBuffers() const
     }
 }
 
+
 label coupleMap::nInternalFaces() const
 {
     if (nInternalFaces_ == -1)
@@ -423,6 +445,7 @@ label coupleMap::nInternalFaces() const
 
     return nInternalFaces_;
 }
+
 
 const labelList& coupleMap::owner() const
 {
@@ -434,6 +457,7 @@ const labelList& coupleMap::owner() const
     return *ownerPtr_;
 }
 
+
 const labelList& coupleMap::neighbour() const
 {
     if (!neighbourPtr_)
@@ -443,6 +467,7 @@ const labelList& coupleMap::neighbour() const
 
     return *neighbourPtr_;
 }
+
 
 const edgeList& coupleMap::edges() const
 {
@@ -454,6 +479,7 @@ const edgeList& coupleMap::edges() const
     return *edgesPtr_;
 }
 
+
 const faceList& coupleMap::faces() const
 {
     if (!facesPtr_)
@@ -463,6 +489,7 @@ const faceList& coupleMap::faces() const
 
     return *facesPtr_;
 }
+
 
 const cellList& coupleMap::cells() const
 {
@@ -474,6 +501,7 @@ const cellList& coupleMap::cells() const
     return *cellsPtr_;
 }
 
+
 const labelListList& coupleMap::faceEdges() const
 {
     if (!faceEdgesPtr_)
@@ -483,6 +511,7 @@ const labelListList& coupleMap::faceEdges() const
 
     return *faceEdgesPtr_;
 }
+
 
 bool coupleMap::readData(Istream& is)
 {
@@ -502,6 +531,7 @@ bool coupleMap::readData(Istream& is)
     return !is.bad();
 }
 
+
 bool coupleMap::writeData(Ostream& os) const
 {
     // Only write-out point-map information
@@ -509,6 +539,7 @@ bool coupleMap::writeData(Ostream& os) const
     // The rest can be constructed topologically.
     return (os << entityMap(coupleMap::POINT)).good();;
 }
+
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
@@ -522,6 +553,7 @@ void coupleMap::operator=(const coupleMap& rhs)
             << abort(FatalError);
     }
 }
+
 
 } // End namespace Foam
 

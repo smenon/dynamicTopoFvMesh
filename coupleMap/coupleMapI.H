@@ -82,6 +82,7 @@ coupleMap::pointInterpolate
     return tresult;
 }
 
+
 template<class Type>
 tmp<Field<Type> >
 coupleMap::pointInterpolate
@@ -99,6 +100,7 @@ coupleMap::pointInterpolate
     tpf.clear();
     return tint;
 }
+
 
 //- Interpolate point field
 template<class Type>
@@ -153,6 +155,7 @@ coupleMap::faceInterpolate
     return tresult;
 }
 
+
 template<class Type>
 tmp<Field<Type> >
 coupleMap::faceInterpolate
@@ -171,65 +174,78 @@ coupleMap::faceInterpolate
     return tint;
 }
 
+
 inline label coupleMap::masterIndex() const
 {
     return masterIndex_;
 }
+
 
 inline label coupleMap::slaveIndex() const
 {
     return slaveIndex_;
 }
 
+
 inline bool coupleMap::isLocal() const
 {
     return isLocal_;
 }
+
 
 inline bool coupleMap::isProcessor() const
 {
     return !isLocal_;
 }
 
+
 inline bool coupleMap::isSend() const
 {
     return isSend_;
 }
+
 
 inline bool coupleMap::isRecv() const
 {
     return !isSend_;
 }
 
-inline FixedList<label,7>& coupleMap::nEntities() const
+
+inline FixedList<label,8>& coupleMap::nEntities() const
 {
     return nEntities_;
 }
+
 
 inline label& coupleMap::nEntities(const label eType) const
 {
     return nEntities_[eType];
 }
 
+
 inline Map<label>& coupleMap::entityMap(const label eType) const
 {
     return entityMap_[eType];
 }
+
 
 inline Map<label>& coupleMap::reverseEntityMap(const label eType) const
 {
     return reverseEntityMap_[eType];
 }
 
+
 inline FixedList<labelList,6>& coupleMap::entityBuffer() const
 {
     return entityBuffer_;
 }
 
+
 inline labelList& coupleMap::entityBuffer(const label eType) const
 {
     return entityBuffer_[eType];
 }
+
 
 } // End namespace Foam
 

@@ -403,7 +403,29 @@ bool dynamicTopoFvMesh::checkQuality
         else
         if (processorCoupledEntity(eIndex))
         {
+            label n = 0;
+            const label edgeEnum = coupleMap::EDGE;
 
+            forAll(procIndices_, pI)
+            {
+                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupleMap& cMap = recvMesh.patchMap();
+
+                label sIndex = -1;
+
+                if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                {
+                    // Recursively call for the slave edge.
+                    myResult =
+                    (
+                        myResult &&
+                        recvMesh.subMesh().checkQuality
+                        (
+                            sIndex, m, Q, minQuality, ++n
+                        )
+                    );
+                }
+            }
         }
     }
 
@@ -850,9 +872,8 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         if (min(curCell) < 0 || max(curCell) > (faces_.size()-1))
         {
             Pout << "Cell " << cellI
-                 << " contains vertex labels out of range: "
-                 << curCell
-                 << " Max point index = " << (faces_.size()-1) << endl;
+                 << " contains face labels out of range: " << curCell
+                 << " Max face index = " << (faces_.size()-1) << endl;
 
             nFailedChecks++;
 
@@ -929,9 +950,22 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
             // Internal face is not shared by exactly two cells
             Pout << "Internal Face " << faceI
                  << " :: " << faces_[faceI]
+                 << " Owner: " << owner_[faceI]
+                 << " Neighbour: " << neighbour_[faceI]
                  << " is multiply connected." << nl
                  << " nCellsPerFace: " << nCellsPerFace[faceI]
                  << endl;
+
+            // Loop through cells and find another instance
+            forAll(cells_, cellI)
+            {
+                if (findIndex(cells_[cellI], faceI) > -1)
+                {
+                    Pout << "  Cell: " << cellI
+                         << "  :: " << cells_[cellI]
+                         << endl;
+                }
+            }
 
             nFailedChecks++;
 
@@ -945,9 +979,22 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
             // Boundary face is not shared by exactly one cell
             Pout << "Boundary Face " << faceI
                  << " :: " << faces_[faceI]
+                 << " Owner: " << owner_[faceI]
+                 << " Neighbour: " << neighbour_[faceI]
                  << " is multiply connected." << nl
                  << " nCellsPerFace: " << nCellsPerFace[faceI]
                  << endl;
+
+            // Loop through cells and find another instance
+            forAll(cells_, cellI)
+            {
+                if (findIndex(cells_[cellI], faceI) > -1)
+                {
+                    Pout << "  Cell: " << cellI
+                         << "  :: " << cells_[cellI]
+                         << endl;
+                }
+            }
 
             nFailedChecks++;
 
@@ -1132,8 +1179,10 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                 patchInfo[patchID]++;
             }
 
-            if (nBF > 2)
+            if (nBF > 2 && !isSubMesh_)
             {
+                writeVTK("pinched_" + Foam::name(edgeI), edgeFaces, 2);
+
                 Pout << "Edge: " << edgeI
                      << ": " << edges_[edgeI]
                      << " has " << nBF
@@ -1305,14 +1354,21 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
         forAll(edgePoints_, edgeI)
         {
-            // Do a preliminary size check
-            const labelList& edgePoints = edgePoints_[edgeI];
             const labelList& edgeFaces = edgeFaces_[edgeI];
 
             if (edgeFaces.empty())
             {
                 continue;
             }
+
+            // SubMeshes might require edgePoints to be built
+            if (isSubMesh_ && edgePoints_[edgeI].empty())
+            {
+                buildEdgePoints(edgeI);
+            }
+
+            // Do a preliminary size check
+            const labelList& edgePoints = edgePoints_[edgeI];
 
             if (edgePoints.size() != edgeFaces.size())
             {

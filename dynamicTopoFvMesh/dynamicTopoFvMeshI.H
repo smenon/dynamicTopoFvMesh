@@ -717,21 +717,24 @@ inline void dynamicTopoFvMesh::initCoupledStack()
         }
 
         // Check if this is a locally coupled master face.
-        if (patchCoupling_(pIndex))
+        if (patchCoupling_.size())
         {
-            // Add this to the coupled modification stack.
-            if (twoDMesh_)
+            if (patchCoupling_(pIndex))
             {
-                stack(0).push(faceI);
-            }
-            else
-            {
-                const labelList& mfEdges = faceEdges_[faceI];
-
-                forAll(mfEdges, edgeI)
+                // Add this to the coupled modification stack.
+                if (twoDMesh_)
                 {
-                    // Add this to the coupled modification stack.
-                    stack(0).push(mfEdges[edgeI]);
+                    stack(0).push(faceI);
+                }
+                else
+                {
+                    const labelList& mfEdges = faceEdges_[faceI];
+
+                    forAll(mfEdges, edgeI)
+                    {
+                        // Add this to the coupled modification stack.
+                        stack(0).push(mfEdges[edgeI]);
+                    }
                 }
             }
         }
@@ -765,6 +768,11 @@ inline void dynamicTopoFvMesh::initCoupledStack()
                 }
             }
         }
+    }
+
+    if (debug > 3)
+    {
+        Pout << nl << "Coupled stack size: " << stack(0).size() << endl;
     }
 }
 

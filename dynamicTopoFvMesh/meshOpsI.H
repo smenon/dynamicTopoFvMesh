@@ -895,6 +895,173 @@ inline bool pointInCell
 }
 
 
+// Utility method to check for concurrent points.
+template <class T>
+inline bool checkPointNearness
+(
+    const Field<Vector<T> >& points,
+    const T& magSqrTol
+)
+{
+    forAll(points, pI)
+    {
+        forAll(points, pJ)
+        {
+            if (pI == pJ)
+            {
+                continue;
+            }
+
+            T magSqrDist = magSqr(points[pI] - points[pJ]);
+
+            if (magSqrDist < magSqrTol)
+            {
+                SeriousErrorIn
+                (
+                    "inline bool meshOps::checkPointNearness"
+                    "(const Field<vector<T> >&, const T&)"
+                )
+                    << " Found concurrent points: " << nl
+                    << " pI: " << pI << " pJ: " << pJ << nl
+                    << " point: " << points[pI] << nl
+                    << " Points: " << points << nl
+                    << " distance: " << magSqrDist << nl
+                    << " tolerance: " << magSqrTol
+                    << endl;
+
+                return true;
+            }
+        }
+    }
+
+    // No errors detected.
+    return false;
+}
+
+
+// Parallel blocking send
+inline void pWrite
+(
+    const label toID,
+    const label& data
+)
+{
+    OPstream::write
+    (
+        Pstream::blocking,
+        toID,
+        reinterpret_cast<const char*>
+        (
+            &data
+        ),
+        sizeof(label)
+    );
+}
+
+
+// Parallel blocking receive
+inline void pRead
+(
+    const label fromID,
+    label& data
+)
+{
+    IPstream::read
+    (
+        Pstream::blocking,
+        fromID,
+        reinterpret_cast<char*>
+        (
+            &data
+        ),
+        sizeof(label)
+    );
+}
+
+
+// Parallel non-blocking send for fixed lists
+template <class Type, label Size>
+inline void pWrite
+(
+    const label toID,
+    const FixedList<Type, Size>& data
+)
+{
+    OPstream::write
+    (
+        Pstream::blocking,
+        toID,
+        reinterpret_cast<const char*>(&data[0]),
+        Size*sizeof(Type)
+    );
+}
+
+
+// Parallel non-blocking receive for fixed lists
+template <class Type, label Size>
+inline void pRead
+(
+    const label fromID,
+    FixedList<Type, Size>& data
+)
+{
+    IPstream::read
+    (
+        Pstream::blocking,
+        fromID,
+        reinterpret_cast<char*>(data.begin()),
+        Size*sizeof(Type)
+    );
+}
+
+
+// Parallel non-blocking send for lists
+template <class Type>
+inline void pWrite
+(
+    const label toID,
+    const UList<Type>& data
+)
+{
+    OPstream::write
+    (
+        Pstream::nonBlocking,
+        toID,
+        reinterpret_cast<const char*>(&data[0]),
+        data.size()*sizeof(Type)
+    );
+}
+
+
+// Parallel non-blocking receive for lists
+template <class Type>
+inline void pRead
+(
+    const label fromID,
+    UList<Type>& data
+)
+{
+    IPstream::read
+    (
+        Pstream::nonBlocking,
+        fromID,
+        reinterpret_cast<char*>(&data[0]),
+        data.size()*sizeof(Type)
+    );
+}
+
+
+// Wait for buffer transfer completion.
+inline void waitForBuffers()
+{
+    if (Pstream::parRun())
+    {
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+    }
+}
+
+
 // Method to insert labels in a face, so that
 // right-handedness is preserved.
 template <class T>

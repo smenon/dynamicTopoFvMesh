@@ -106,6 +106,9 @@ public:
         // Return a reference to the subMesh
         inline dynamicTopoFvMesh& subMesh();
 
+        // Return a const reference to the subMesh
+        inline const dynamicTopoFvMesh& subMesh() const;
+
         // Have maps been built?
         inline bool builtMaps() const;
 

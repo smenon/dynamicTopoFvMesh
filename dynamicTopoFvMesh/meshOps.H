@@ -317,14 +317,14 @@ namespace meshOps
 
     // Utility method to check for concurrent points.
     template <class T>
-    bool checkPointNearness
+    inline bool checkPointNearness
     (
         const Field<Vector<T> >& points,
         const T& magSqrTol
     );
 
     // Parallel send
-    void pWrite
+    inline void pWrite
     (
         const label toID,
         const label& data
@@ -332,7 +332,7 @@ namespace meshOps
 
     // Parallel send (for fixed lists)
     template <class Type, label Size>
-    void pWrite
+    inline void pWrite
     (
         const label toID,
         const FixedList<Type,Size>& data
@@ -340,14 +340,14 @@ namespace meshOps
 
     // Parallel send (for lists)
     template <class Type>
-    void pWrite
+    inline void pWrite
     (
         const label toID,
         const UList<Type>& data
     );
 
     // Parallel receive
-    void pRead
+    inline void pRead
     (
         const label fromID,
         label& data
@@ -355,7 +355,7 @@ namespace meshOps
 
     // Parallel receive (for fixed lists)
     template <class Type, label Size>
-    void pRead
+    inline void pRead
     (
         const label fromID,
         FixedList<Type,Size>& data
@@ -363,14 +363,14 @@ namespace meshOps
 
     // Parallel receive (for lists)
     template <class Type>
-    void pRead
+    inline void pRead
     (
         const label fromID,
         UList<Type>& data
     );
 
     // Wait for buffer transfer completion.
-    void waitForBuffers();
+    inline void waitForBuffers();
 
     // Select a list of elements from connectivity,
     // and output to a VTK format

@@ -33,7 +33,7 @@ Author
     University of Massachusetts Amherst
     All rights reserved
 
-\*----------------------------------------------------------------------------*/
+\*---------------------------------------------------------------------------*/
 
 #include "dynamicTopoFvMesh.H"
 #include "addToRunTimeSelectionTable.H"
@@ -215,8 +215,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
         io,
         points,
         faces,
-        owner,
-        neighbour,
+        cells,
         false
     ),
     topoChangeFlag_(false),
@@ -233,10 +232,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     mapper_(NULL),
     motionSolver_(NULL),
     lengthEstimator_(NULL),
-    oldPoints_(points),
-    points_(points),
-    faces_(faces),
-    cells_(cells),
+    oldPoints_(polyMesh::points()),
+    points_(polyMesh::points()),
+    faces_(polyMesh::faces()),
+    cells_(polyMesh::cells()),
     edges_(edges),
     faceEdges_(faceEdges),
     oldPatchSizes_(1, 0),
@@ -249,14 +248,14 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     edgePatchStarts_(1, -1),
     oldPatchNMeshPoints_(1, -1),
     patchNMeshPoints_(1, -1),
-    nOldPoints_(points.size()),
-    nPoints_(points.size()),
+    nOldPoints_(points_.size()),
+    nPoints_(points_.size()),
     nOldEdges_(edges.size()),
     nEdges_(edges.size()),
-    nOldFaces_(faces.size()),
-    nFaces_(faces.size()),
-    nOldCells_(cells.size()),
-    nCells_(cells.size()),
+    nOldFaces_(faces_.size()),
+    nFaces_(faces_.size()),
+    nOldCells_(cells_.size()),
+    nCells_(cells_.size()),
     nOldInternalFaces_(primitiveMesh::nInternalFaces()),
     nInternalFaces_(primitiveMesh::nInternalFaces()),
     nOldInternalEdges_(nInternalEdges),
@@ -1058,7 +1057,7 @@ void dynamicTopoFvMesh::buildEdgePoints
 (
     const label eIndex,
     const label checkIndex
-)
+) const
 {
     bool found = false;
     label faceIndex = -1, cellIndex = -1;
@@ -1069,10 +1068,10 @@ void dynamicTopoFvMesh::buildEdgePoints
     const labelList& eFaces = edgeFaces_[eIndex];
 
     // Re-size the list first
-    labelList& ePoints = edgePoints_[eIndex];
+    labelList& ePoints = const_cast<labelList&>(edgePoints_[eIndex]);
     ePoints.setSize(eFaces.size(), -1);
 
-    if (whichEdgePatch(eIndex) == -1 && !isSubMesh_)
+    if (whichEdgePatch(eIndex) == -1)
     {
         // Internal edge.
         // Pick the first face and start with that
@@ -1102,6 +1101,25 @@ void dynamicTopoFvMesh::buildEdgePoints
         }
     }
 
+    if (faceIndex == -1)
+    {
+        FatalErrorIn
+        (
+            "\n"
+            "void dynamicTopoFvMesh::buildEdgePoints\n"
+            "(\n"
+            "    const label eIndex,\n"
+            "    const label checkIndex\n"
+            ")"
+        )
+            << " Failed to determine a start face. " << nl
+            << " edgeFaces connectivity is inconsistent. " << nl
+            << " Edge: " << eIndex << ":: " << edgeToCheck << nl
+            << " edgeFaces: " << eFaces << nl
+            << " Patch: " << whichEdgePatch(eIndex) << nl
+            << abort(FatalError);
+    }
+
     // Shuffle vertices to appear in CCW order
     forAll(ePoints, indexI)
     {
@@ -1129,8 +1147,63 @@ void dynamicTopoFvMesh::buildEdgePoints
             cellIndex = neighbour_[faceIndex];
         }
         else
+        if (indexI != (ePoints.size() - 1))
         {
-            // Looks like we've hit a boundary face. Break out.
+            // This could be a pinched manifold edge
+            // (situation with more than two boundary faces)
+            // Pick another (properly oriented) boundary face.
+            faceIndex = -1;
+
+            forAll(eFaces, faceI)
+            {
+                if (whichPatch(eFaces[faceI]) > -1)
+                {
+                    meshOps::findIsolatedPoint
+                    (
+                        faces_[eFaces[faceI]],
+                        edgeToCheck,
+                        otherPoint,
+                        nextPoint
+                    );
+
+                    if
+                    (
+                        (nextPoint == edgeToCheck[checkIndex]) &&
+                        (findIndex(ePoints, otherPoint) == -1)
+                    )
+                    {
+                        faceIndex = eFaces[faceI];
+                        break;
+                    }
+                }
+            }
+
+            if (faceIndex == -1)
+            {
+                FatalErrorIn
+                (
+                    "\n"
+                    "void dynamicTopoFvMesh::buildEdgePoints\n"
+                    "(\n"
+                    "    const label eIndex,\n"
+                    "    const label checkIndex\n"
+                    ")\n"
+                )
+                    << " Failed to determine a vertex ring. " << nl
+                    << " edgeFaces connectivity is inconsistent. " << nl
+                    << " (Pinched manifold case)" << nl
+                    << " Edge: " << eIndex << ":: " << edgeToCheck << nl
+                    << " edgeFaces: " << eFaces << nl
+                    << " Patch: " << whichEdgePatch(eIndex) << nl
+                    << " Current edgePoints: " << ePoints
+                    << abort(FatalError);
+            }
+
+            continue;
+        }
+        else
+        {
+            // Looks like we've hit the last boundary face. Break out.
             break;
         }
 
@@ -1874,12 +1947,11 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
 
             if (threadI == 0)
             {
-                handlerPtr_[0].setID(-1);
                 handlerPtr_[0].setMaster();
             }
             else
             {
-                handlerPtr_[threadI].setID(threader_->getID(threadI-1));
+                handlerPtr_[threadI].setID(threader_->getID(threadI - 1));
                 handlerPtr_[threadI].setSlave();
             }
         }

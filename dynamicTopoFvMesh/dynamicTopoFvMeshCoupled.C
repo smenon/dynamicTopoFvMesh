@@ -876,27 +876,66 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         nC++;
     }
 
-    // Allocate the faceMap
-    forAllIter(Map<label>, rCellMap, cIter)
+    // Allocate the faceMap. Interior faces need to be detected
+    // first and added before boundary ones. Do this in two stages.
+    for (label stage = 0; stage < 2; stage++)
     {
-        const cell& thisCell = cells_[cIter.key()];
-
-        forAll(thisCell, faceI)
+        forAllIter(Map<label>, rCellMap, cIter)
         {
-            if (!rFaceMap.found(thisCell[faceI]))
+            const cell& thisCell = cells_[cIter.key()];
+
+            forAll(thisCell, faceI)
             {
-                faceMap.insert(nF, thisCell[faceI]);
-                rFaceMap.insert(thisCell[faceI], nF);
-                nF++;
+                label fIndex = thisCell[faceI];
+
+                if (!rFaceMap.found(fIndex))
+                {
+                    if (stage == 0)
+                    {
+                        // Check if neighbouring cells do not
+                        // belong to the cellMap
+                        bool boundaryFace = true;
+
+                        label own = owner_[fIndex];
+                        label nei = neighbour_[fIndex];
+
+                        if (nei > -1)
+                        {
+                            // Internal face. Does cellMap contain
+                            // both owner and neighbour?
+                            if (rCellMap.found(own) && rCellMap.found(nei))
+                            {
+                                boundaryFace = false;
+                            }
+                        }
+
+                        if (!boundaryFace)
+                        {
+                            faceMap.insert(nF, fIndex);
+                            rFaceMap.insert(fIndex, nF);
+                            nF++;
+                        }
+                    }
+                    else
+                    {
+                        // Adding only boundary faces at this stage
+                        faceMap.insert(nF, fIndex);
+                        rFaceMap.insert(fIndex, nF);
+                        nF++;
+                    }
+                }
             }
+        }
+
+        // Set the number of internal faces at this point
+        if (stage == 0)
+        {
+            cMap.nEntities(coupleMap::INTERNAL_FACE) = nF;
         }
     }
 
     // Allocate the edgeMap. Interior edges need to be detected
     // first and added before boundary ones. Do this in two stages.
-    // - The definition of an 'interior' edge here is one which
-    //   has all its connected faces in the faceMap. In some sense,
-    //   this is a reverse of the traditional definition.
     for (label stage = 0; stage < 2; stage++)
     {
         forAllIter(Map<label>, rFaceMap, fIter)
@@ -905,40 +944,56 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
             forAll(fEdges, edgeI)
             {
-                if (!rEdgeMap.found(fEdges[edgeI]))
+                label eIndex = fEdges[edgeI];
+
+                if (!rEdgeMap.found(eIndex))
                 {
                     if (stage == 0)
                     {
-                        // Check if any of edgeFaces do not belong
-                        // to the faceMap.
-                        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
-
                         bool boundaryEdge = false;
 
-                        forAll(eFaces, faceI)
+                        if (whichEdgePatch(eIndex) == -1)
                         {
-                            if (!rFaceMap.found(eFaces[faceI]))
-                            {
-                                // This face was not found. Designate this
-                                // edge as a 'boundary'.
-                                boundaryEdge = true;
+                            // Check if any cells touching edgeFaces
+                            // do not belong to the cellMap.
+                            const labelList& eFaces = edgeFaces_[eIndex];
 
-                                break;
+                            forAll(eFaces, faceI)
+                            {
+                                label fIndex = eFaces[faceI];
+
+                                label own = owner_[fIndex];
+                                label nei = neighbour_[fIndex];
+
+                                if
+                                (
+                                    !rCellMap.found(own) ||
+                                    !rCellMap.found(nei)
+                                )
+                                {
+                                    boundaryEdge = true;
+                                    break;
+                                }
                             }
+                        }
+                        else
+                        {
+                            // Traditional boundary edge
+                            boundaryEdge = true;
                         }
 
                         if (!boundaryEdge)
                         {
-                            edgeMap.insert(nE, fEdges[edgeI]);
-                            rEdgeMap.insert(fEdges[edgeI], nE);
+                            edgeMap.insert(nE, eIndex);
+                            rEdgeMap.insert(eIndex, nE);
                             nE++;
                         }
                     }
                     else
                     {
                         // Adding only boundary edges at this stage.
-                        edgeMap.insert(nE, fEdges[edgeI]);
-                        rEdgeMap.insert(fEdges[edgeI], nE);
+                        edgeMap.insert(nE, eIndex);
+                        rEdgeMap.insert(eIndex, nE);
                         nE++;
                     }
                 }
@@ -1034,9 +1089,20 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     forAllIter(Map<label>, faceMap, fIter)
     {
-        if (rCellMap.found(owner_[fIter()]))
+        label own = owner_[fIter()];
+        label nei = neighbour_[fIter()];
+
+        if (rCellMap.found(own))
         {
-            thisFace = faces_[fIter()];
+            // Check if this face is pointed the right way
+            if (rCellMap.found(nei) && (rCellMap[nei] < rCellMap[own]))
+            {
+                thisFace = faces_[fIter()].reverseFace();
+            }
+            else
+            {
+                thisFace = faces_[fIter()];
+            }
         }
         else
         {
@@ -1468,7 +1534,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 (*this),
                 IOobject
                 (
-                    "subMesh",
+                    fvMesh::defaultRegion,
                     time().timeName(),
                     time()
                 ),
@@ -1706,7 +1772,14 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
                         const face& sFace = slaveFaces[sfIndex];
 
-                        if (triFace::compare(triFace(cFace), triFace(sFace)))
+                        if
+                        (
+                            triFace::compare
+                            (
+                                triFace(cFace[0], cFace[1], cFace[2]),
+                                triFace(sFace[0], sFace[1], sFace[2])
+                            )
+                        )
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave
@@ -2113,8 +2186,14 @@ label dynamicTopoFvMesh::getMaxCouplingIndex() const
     {
         if (patchCoupling_(patchI))
         {
-            index = index > patchI ? index : patchI;
+            index = Foam::max(index, patchI);
         }
+    }
+
+    // Check processor coupling as well
+    if (Pstream::parRun())
+    {
+        index = Foam::max(index, procIndices_.size());
     }
 
     return index;
@@ -2132,7 +2211,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
     const polyBoundaryMesh& boundary = boundaryMesh();
 
     // Determine locally coupled slave patches.
-    labelHashSet localSlavePatches;
+    labelHashSet localMasterPatches, localSlavePatches;
 
     forAll(patchCoupling_, patchI)
     {
@@ -2140,6 +2219,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
         {
             const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
+            localMasterPatches.insert(cMap.masterIndex());
             localSlavePatches.insert(cMap.slaveIndex());
         }
     }
@@ -2164,7 +2244,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
         // Check if this is a coupled face.
         if
         (
-            patchCoupling_(pIndex) ||
+            localMasterPatches.found(pIndex) ||
             localSlavePatches.found(pIndex) ||
             isA<processorPolyPatch>(boundary[pIndex])
         )

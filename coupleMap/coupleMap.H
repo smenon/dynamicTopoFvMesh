@@ -34,6 +34,7 @@ Author
     All rights reserved
 
 SourceFiles
+    coupleMapI.H
     coupleMap.C
 
 \*---------------------------------------------------------------------------*/
@@ -77,7 +78,7 @@ class coupleMap
     mutable labelList subMeshPoints_;
 
     // Entity sizes (as specified by the entityType enumerant)
-    mutable FixedList<label,7> nEntities_;
+    mutable FixedList<label,8> nEntities_;
 
     // Maps for entities
     mutable FixedList<Map<label>,4> entityMap_;
@@ -116,10 +117,11 @@ public:
         FACE = 2,
         CELL = 3,
         INTERNAL_EDGE = 4,
+        INTERNAL_FACE = 5,
+        SHARED_POINT = 6,
+        UNIQUE_CELL = 7,
         FACE_EDGE = 4,
-        SHARED_POINT = 5,
-        PATCH_ID = 5,
-        UNIQUE_CELL = 6
+        PATCH_ID = 5
     };
 
     //- Runtime type information
@@ -236,7 +238,7 @@ public:
             const label master
         ) const;
 
-        inline FixedList<label,7>& nEntities() const;
+        inline FixedList<label,8>& nEntities() const;
         inline label& nEntities(const label eType) const;
 
         inline Map<label>& entityMap(const label eType) const;
