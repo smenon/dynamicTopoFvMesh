@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
     Info<< "\nStarting time loop\n" << endl;
 
     //mesh.debug = true;
-    polyMesh::debug = true;
+    //polyMesh::debug = true;
     
     while (runTime.run())
     {
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
             phi = (fvc::interpolate(U) & mesh.Sf());
                 //+ fvc::ddtPhiCorr(rUA, U, phi);
 
-            adjustPhi(phi, U, p);
+            //adjustPhi(phi, U, p);
 
             for (int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
             {

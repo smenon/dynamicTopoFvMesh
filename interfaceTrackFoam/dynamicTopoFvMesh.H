@@ -125,6 +125,8 @@ class dynamicTopoFvMesh
         label           nFacesFromPoints_, nFacesFromEdges_, nFacesFromFaces_;
         label           nCellsFromPoints_, nCellsFromEdges_, nCellsFromFaces_, nCellsFromCells_;
         
+        HashTable<objectMap,label>  cellsFromEdges_;
+        HashTable<objectMap,label>  facesFromEdges_;
         HashTable<objectMap,label>  cellsFromFaces_;
         HashTable<objectMap,label>  cellsFromCells_;
         

@@ -88,6 +88,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nCellsFromEdges_(0),
     nCellsFromFaces_(0),
     nCellsFromCells_(0), 
+    facesFromEdges_(10),
+    cellsFromEdges_(10),          
     cellsFromFaces_(10),
     cellsFromCells_(10),
     boundaryPatches_(257),
@@ -100,9 +102,9 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         motionPtr_.set(motionSolver::New(*this).ptr());
     }
     
-    // If topology is not two-dimensional, obtain the
-    // tetrahedral metric to be used.
+    // For tetrahedral meshes...
     if (!twoDMotion_) {
+        // Obtain the tetrahedral metric to be used.        
         word tetMetric(dict_.subDict("dynamicTopoFvMesh").lookup("tetMetric"));
         if (tetMetric == "Knupp") {
             tetMetric_.set(new Knupp);
@@ -656,7 +658,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
         if (cIndex < nOldCells_) {
             cellMap_[cellRenum]     = cIndex;
             reverseCellMap_[cIndex] = cellRenum;
-        } else {
+        } /*else {
             // Renumber the map-list for added cells
             cellsFromFaces_(cIndex).index() = cellRenum;
             if (!cellsFromFaces_.found(cIndex)) {
@@ -665,7 +667,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
                     << " was added to the mesh, but contains no Master."
                     << abort(FatalError);                
             }
-        }
+        }*/
         // Update the counter
         cellRenum++;
         // Update the iterators
@@ -1477,6 +1479,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     edgeToWatch_[findex] = tmpEdge;
 
     // Generate mapping info for the new cell
+    /*
     labelList intCell0(2, -1);
     label intOwn0 = owner_[c0IntIndex[0]];
     label intNei0 = neighbour_[c0IntIndex[0]];
@@ -1499,6 +1502,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     }
     cellsFromFaces_.insert(newCellIndex0,objectMap(newCellIndex0,intCell0));
     nCellsFromFaces_++;
+     */
     
     if (debug) Info << "Modified thisFace: " << findex << ": " << thisFace << endl;
 
@@ -1615,6 +1619,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         }
         
         // Generate mapping info for the new cell
+        /*
         labelList intCell1(2, -1);
         label intOwn1 = owner_[c1IntIndex[0]];
         label intNei1 = neighbour_[c1IntIndex[0]];
@@ -1637,6 +1642,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         }
         cellsFromFaces_.insert(newCellIndex1,objectMap(newCellIndex1,intCell1));        
         nCellsFromFaces_++;
+         */
 
         // Find the interior face that contains secondEdge
         found = false;
@@ -2253,7 +2259,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
         
         // 2D Edge-swapping engine
-        swap2DEdges();
+        //swap2DEdges();
         
         if (debug) Info << nl << "2D Edge Swapping complete." << endl;
         
@@ -2296,16 +2302,35 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reOrderMesh(points, faces, owner, neighbour);
         
         // Copy the object-maps
-        label num=0;
-        for (HashTable<objectMap,label>::iterator cff=cellsFromFaces_.begin(); cff != cellsFromFaces_.end(); ++cff) {
+        label num;
+        num=0;
+        for (HashTable<objectMap,label>::iterator ffe=facesFromEdges_.begin(); 
+             ffe != facesFromEdges_.end(); 
+             ++ffe, num++) 
+        {
+            facesFromEdges[num] = ffe();        
+        } 
+        num=0;
+        for (HashTable<objectMap,label>::iterator cfe=cellsFromEdges_.begin(); 
+             cfe != cellsFromEdges_.end(); 
+             ++cfe, num++) 
+        {
+            cellsFromEdges[num] = cfe();        
+        }        
+        num=0;
+        for (HashTable<objectMap,label>::iterator cff=cellsFromFaces_.begin(); 
+             cff != cellsFromFaces_.end(); 
+             ++cff, num++) 
+        {
             cellsFromFaces[num] = cff();        
-            num++;
         }
         num=0;
-        for (HashTable<objectMap,label>::iterator cfc=cellsFromCells_.begin(); cfc != cellsFromCells_.end(); ++cfc) {
+        for (HashTable<objectMap,label>::iterator cfc=cellsFromCells_.begin(); 
+             cfc != cellsFromCells_.end(); 
+             ++cfc, num++) 
+        {
             cellsFromCells[num] = cfc();        
-            num++;
-        }        
+        }         
         
         // Obtain the patch-point labels for mapping before resetting the mesh
         labelListList oldMeshPointLabels(numPatches_);
@@ -2412,6 +2437,8 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         nCellsFromFaces_   = 0;
         nCellsFromCells_   = 0;   
         
+        facesFromEdges_.clear();
+        cellsFromEdges_.clear();
         cellsFromFaces_.clear();
         cellsFromCells_.clear();
         
