@@ -384,7 +384,8 @@ namespace meshOps
         const UList<edge>& edges,
         const UList<face>& faces,
         const UList<cell>& cells,
-        const UList<label>& owner
+        const UList<label>& owner,
+        const UList<scalar>& field = UList<scalar>()
     );
 
     // Actual routine to write out the VTK file
@@ -399,7 +400,8 @@ namespace meshOps
         const labelListList& cpList = labelListList(0),
         const label primitiveType = 3,
         const Map<label>& reversePointMap = Map<label>(),
-        const Map<label>& reverseCellMap = Map<label>()
+        const Map<label>& reverseCellMap = Map<label>(),
+        const UList<scalar>& field = UList<scalar>()
     );
 
 } // End namespace meshOps

@@ -330,6 +330,7 @@ void lengthScaleEstimator::writeLengthScaleInfo
                 Pout << " Processor patch " << patchI << ' ' << pp.name()
                      << " communicating with " << neiProcNo
                      << "  Sending: " << nSendFaces[patchI]
+                     << "  Recving: " << nRecvFaces[patchI]
                      << endl;
             }
 
@@ -373,7 +374,7 @@ void lengthScaleEstimator::writeLengthScaleInfo
                     Pstream::nonBlocking,
                     neiProcNo,
                     reinterpret_cast<char*>(&(recvSclBuffer_[patchI][0])),
-                    nRecvFaces[patchI]*sizeof(label)
+                    nRecvFaces[patchI]*sizeof(scalar)
                 );
             }
         }
@@ -419,79 +420,94 @@ void lengthScaleEstimator::readLengthScaleInfo
                 if (ngbLevel == 0)
                 {
                     ngbLevel = level + 1;
-                    levelCells.insert(cI);
-                    visitedCells++;
-                }
 
-                // Visit all neighbours and re-calculate length-scale
-                const cell& cellCheck = mesh_.cells()[cI];
+                    // Visit all neighbours and re-calculate length-scale
+                    const cell& cellCheck = mesh_.cells()[cI];
 
-                scalar sumLength = 0.0;
-                label nTouchedNgb = 0;
+                    scalar sumLength = 0.0;
+                    label nTouchedNgb = 0;
 
-                forAll(cellCheck, faceI)
-                {
-                    label sLevel = -1, sLCell = -1;
-                    label pF = boundary.whichPatch(cellCheck[faceI]);
-
-                    if (pF == -1)
+                    forAll(cellCheck, faceI)
                     {
-                        // Internal face. Determine neighbour.
-                        if (own[cellCheck[faceI]] == cI)
+                        label sLevel = -1, sLCell = -1;
+                        label pF = boundary.whichPatch(cellCheck[faceI]);
+
+                        if (pF == -1)
                         {
-                            sLCell = nei[cellCheck[faceI]];
+                            // Internal face. Determine neighbour.
+                            if (own[cellCheck[faceI]] == cI)
+                            {
+                                sLCell = nei[cellCheck[faceI]];
+                            }
+                            else
+                            {
+                                sLCell = own[cellCheck[faceI]];
+                            }
+
+                            sLevel = cellLevels[sLCell];
+
+                            if ((sLevel < ngbLevel) && (sLevel > 0))
+                            {
+                                sumLength += lengthScale[sLCell];
+
+                                nTouchedNgb++;
+                            }
+                        }
+                        else
+                        if (isA<processorPolyPatch>(boundary[pF]))
+                        {
+                            // Determine the local index.
+                            label local =
+                            (
+                                boundary[pF].whichFace(cellCheck[faceI])
+                            );
+
+                            // Is this label present in the list?
+                            forAll(recvLblBuffer_[pF], j)
+                            {
+                                if (recvLblBuffer_[pF][j] == local)
+                                {
+                                    sumLength += recvSclBuffer_[pF][j];
+
+                                    nTouchedNgb++;
+
+                                    break;
+                                }
+                            }
                         }
                         else
                         {
-                            sLCell = own[cellCheck[faceI]];
-                        }
-
-                        sLevel = cellLevels[sLCell];
-
-                        if ((sLevel < ngbLevel) && (sLevel > 0))
-                        {
-                            sumLength += lengthScale[sLCell];
+                            sumLength +=
+                            (
+                                fixedLengthScale(cellCheck[faceI], pF, true)
+                              * growthFactor_
+                            );
 
                             nTouchedNgb++;
                         }
                     }
-                    else
-                    if (isA<processorPolyPatch>(boundary[pF]))
+
+                    sumLength /= nTouchedNgb;
+
+                    // Scale the length and assign to this cell
+                    if (level < maxRefineLevel_)
                     {
-                        // Determine the local index.
-                        label local = boundary[pF].whichFace(cellCheck[faceI]);
-
-                        // Is this label present in the list?
-                        forAll(recvLblBuffer_[pF], j)
-                        {
-                            if (recvLblBuffer_[pF][j] == local)
-                            {
-                                sumLength += recvSclBuffer_[pF][j];
-
-                                nTouchedNgb++;
-
-                                break;
-                            }
-                        }
+                        sumLength *= growthFactor_;
                     }
                     else
-                    if (fixedPatches_.found(boundary[pF].name()))
+                    if (meanScale_ > 0.0)
                     {
-                        sumLength +=
-                        (
-                            fixedPatches_[boundary[pF].name()][0].scalarToken()
-                        );
-
-                        nTouchedNgb++;
+                        // If a mean scale has been specified,
+                        // override the value
+                        sumLength = meanScale_;
                     }
+
+                    lengthScale[cI] = sumLength;
+
+                    levelCells.insert(cI);
+
+                    visitedCells++;
                 }
-
-                sumLength /= nTouchedNgb;
-
-                // Scale the length and assign to this cell
-                scalar sLength = sumLength*growthFactor_;
-
-                lengthScale[cI] = sLength;
             }
         }
     }

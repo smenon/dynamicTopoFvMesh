@@ -847,7 +847,8 @@ class dynamicTopoFvMesh
             const labelList& cList,
             const label primitiveType = 3,
             const bool useOldConnectivity = false,
-            const bool useOldPoints = false
+            const bool useOldPoints = false,
+            const UList<scalar>& field = UList<scalar>()
         ) const;
 
         // Return the status report interval
@@ -874,6 +875,9 @@ class dynamicTopoFvMesh
         // and exchange across processors.
         void exchangeLengthBuffers();
 
+        // Fetch length-scale info for processor entities
+        scalar processorLengthScale(const label index) const;
+
         // Method to determine whether the master entity is locally coupled
         bool locallyCoupledEntity
         (
@@ -882,10 +886,7 @@ class dynamicTopoFvMesh
         ) const;
 
         // Method to determine the locally coupled patch index
-        label locallyCoupledEdgePatch
-        (
-            const label eIndex
-        ) const;
+        label locallyCoupledEdgePatch(const label eIndex) const;
 
         // Method to determine whether the master entity is on a processor
         bool processorCoupledEntity(const label index) const;

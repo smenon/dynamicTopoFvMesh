@@ -525,7 +525,8 @@ void writeVTK
     const UList<edge>& edges,
     const UList<face>& faces,
     const UList<cell>& cells,
-    const UList<label>& owner
+    const UList<label>& owner,
+    const UList<scalar>& field
 )
 {
     label nTotalCells = 0;
@@ -797,7 +798,8 @@ void writeVTK
         cpList,
         primitiveType,
         reversePointMap,
-        reverseCellMap
+        reverseCellMap,
+        field
     );
 }
 
@@ -814,7 +816,8 @@ void writeVTK
     const labelListList& cpList,
     const label primitiveType,
     const Map<label>& reversePointMap,
-    const Map<label>& reverseCellMap
+    const Map<label>& reverseCellMap,
+    const UList<scalar>& field
 )
 {
     // Make the directory
@@ -930,38 +933,90 @@ void writeVTK
         }
     }
 
-    // Write out indices for visualization.
+    label nCellFields = 0, nPointFields = 0;
+
     if (reverseCellMap.size())
     {
-        file << "CELL_DATA " << nCells << endl;
+        nCellFields++;
 
-        file << "FIELD CellFields 1" << endl;
-
-        file << "CellIds 1 " << nCells << " int" << endl;
-
-        for (label i = 0; i < nCells; i++)
+        if (field.size() == reverseCellMap.size())
         {
-            file << reverseCellMap[i] << ' ';
+            nCellFields++;
         }
-
-        file << endl;
     }
 
     // Write out indices for visualization.
+    if (nCellFields)
+    {
+        file << "CELL_DATA " << nCells << endl;
+
+        file << "FIELD CellFields " << nCellFields << endl;
+
+        if (reverseCellMap.size())
+        {
+            file << "CellIds 1 " << nCells << " int" << endl;
+
+            for (label i = 0; i < nCells; i++)
+            {
+                file << reverseCellMap[i] << ' ';
+            }
+
+            file << endl;
+        }
+
+        if (field.size() == reverseCellMap.size())
+        {
+            file << "CellScalar 1 " << nCells << " double" << endl;
+
+            forAll(field, i)
+            {
+                file << field[i] << ' ';
+            }
+
+            file << endl;
+        }
+    }
+
     if (reversePointMap.size())
+    {
+        nPointFields++;
+
+        if (field.size() == reversePointMap.size())
+        {
+            nPointFields++;
+        }
+    }
+
+    // Write out indices for visualization.
+    if (nPointFields)
     {
         file << "POINT_DATA " << nPoints << endl;
 
-        file << "FIELD PointFields 1" << endl;
+        file << "FIELD PointFields " << nPointFields << endl;
 
-        file << "PointIds 1 " << nPoints << " int" << endl;
-
-        for (label i = 0; i < nPoints; i++)
+        if (reversePointMap.size())
         {
-            file << reversePointMap[i] << ' ';
+            file << "PointIds 1 " << nPoints << " int" << endl;
+
+            for (label i = 0; i < nPoints; i++)
+            {
+                file << reversePointMap[i] << ' ';
+            }
+
+            file << endl;
         }
 
-        file << endl;
+        if (field.size() == reversePointMap.size())
+        {
+            file << "PointScalar 1 " << nPoints << " double" << endl;
+
+            forAll(field, i)
+            {
+                file << field[i] << ' ';
+            }
+
+            file << endl;
+        }
     }
 }
 

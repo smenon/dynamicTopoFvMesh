@@ -288,20 +288,15 @@ inline scalar dynamicTopoFvMesh::faceLengthScale
             );
         }
 
-        // Limit scales if necessary
-        lengthEstimator().limitScale(scale);
-    }
-
-    if (coupledModification_)
-    {
-        // Check if this is a coupled processor face.
-        // - Locally coupled faces use length-scale information only
-        //   from the master patch.
+        // If this face lies on a processor patch,
+        // fetch lengthScale info from patchSubMeshes
         if (processorCoupledEntity(fIndex))
         {
-            // Check patchSubMeshes for length-scale info.
-
+            scale = processorLengthScale(fIndex);
         }
+
+        // Limit scales if necessary
+        lengthEstimator().limitScale(scale);
     }
 
     return scale;
@@ -468,6 +463,13 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                     )
                 );
             }
+        }
+
+        // If this edge lies on a processor patch,
+        // fetch lengthScale info from patchSubMeshes
+        if (processorCoupledEntity(eIndex))
+        {
+            scale = processorLengthScale(eIndex);
         }
 
         // Limit scales if necessary

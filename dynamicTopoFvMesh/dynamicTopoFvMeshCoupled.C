@@ -1970,6 +1970,108 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
             }
         }
     }
+
+    // Wait for transfers before continuing.
+    meshOps::waitForBuffers();
+
+    if (debug > 4)
+    {
+        forAll(procIndices_, pI)
+        {
+            const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+            const coupleMap& rcMap = recvMesh.patchMap();
+
+            if (rcMap.masterIndex() == Pstream::myProcNo())
+            {
+                recvMesh.subMesh().writeVTK
+                (
+                    "lengthScale_" + Foam::name(rcMap.slaveIndex()),
+                    identity(recvMesh.subMesh().nCells()),
+                    3,
+                    false,
+                    false,
+                    recvMesh.subMesh().lengthScale_
+                );
+            }
+        }
+    }
+}
+
+
+scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
+{
+    scalar procScale = 0.0;
+
+    if (twoDMesh_)
+    {
+        // First check the master processor
+        procScale += lengthScale_[owner_[index]];
+
+        // Next, check the slave processor
+
+        // Average the scale
+        procScale *= 0.5;
+    }
+    else
+    {
+        const label edgeEnum = coupleMap::EDGE;
+        const labelList& eFaces = edgeFaces_[index];
+
+        // First check the master processor
+        label nC = 0;
+
+        forAll(eFaces, faceI)
+        {
+            label own = owner_[eFaces[faceI]];
+            label nei = neighbour_[eFaces[faceI]];
+
+            procScale += lengthScale_[own];
+            nC++;
+
+            if (nei > -1)
+            {
+                procScale += lengthScale_[nei];
+                nC++;
+            }
+        }
+
+        // Next check slaves
+        forAll(procIndices_, pI)
+        {
+            const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+            const coupleMap& cMap = recvMesh.patchMap();
+
+            label sIndex = -1;
+
+            if ((sIndex = cMap.findSlaveIndex(edgeEnum, index)) > -1)
+            {
+                // Fetch connectivity from patchSubMesh
+                const labelList& peFaces =
+                (
+                    recvMesh.subMesh().edgeFaces_[sIndex]
+                );
+
+                forAll(peFaces, faceI)
+                {
+                    label own = recvMesh.subMesh().owner_[peFaces[faceI]];
+                    label nei = recvMesh.subMesh().neighbour_[peFaces[faceI]];
+
+                    procScale += lengthScale_[own];
+                    nC++;
+
+                    if (nei > -1)
+                    {
+                        procScale += lengthScale_[nei];
+                        nC++;
+                    }
+                }
+            }
+        }
+
+        procScale /= (2.0 * nC);
+    }
+
+    return procScale;
 }
 
 
@@ -2134,6 +2236,12 @@ bool dynamicTopoFvMesh::processorCoupledEntity
     const label index
 ) const
 {
+    // Skip check for serial runs
+    if (!Pstream::parRun())
+    {
+        return false;
+    }
+
     const polyBoundaryMesh& boundary = boundaryMesh();
 
     label patch = -2;

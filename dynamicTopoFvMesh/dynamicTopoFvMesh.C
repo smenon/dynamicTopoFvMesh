@@ -1585,9 +1585,6 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
     {
         // Exchange length-scale buffers across processors.
         exchangeLengthBuffers();
-
-        // Wait for transfers before continuing.
-        meshOps::waitForBuffers();
     }
 }
 

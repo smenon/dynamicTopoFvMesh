@@ -633,7 +633,8 @@ void dynamicTopoFvMesh::writeVTK
     const labelList& cList,
     const label primitiveType,
     const bool useOldConnectivity,
-    const bool useOldPoints
+    const bool useOldPoints,
+    const UList<scalar>& field
 ) const
 {
     if (useOldPoints)
@@ -651,7 +652,8 @@ void dynamicTopoFvMesh::writeVTK
                 polyMesh::edges(),
                 polyMesh::faces(),
                 polyMesh::cells(),
-                polyMesh::faceOwner()
+                polyMesh::faceOwner(),
+                field
             );
         }
         else
@@ -666,7 +668,8 @@ void dynamicTopoFvMesh::writeVTK
                 edges_,
                 faces_,
                 cells_,
-                owner_
+                owner_,
+                field
             );
         }
     }
@@ -682,7 +685,8 @@ void dynamicTopoFvMesh::writeVTK
             edges_,
             faces_,
             cells_,
-            owner_
+            owner_,
+            field
         );
     }
 }
