@@ -47,6 +47,7 @@ Author
 #include "MapFvFields.H"
 #include "MeshObject.H"
 
+#include <iomanip>
 #include <dlfcn.h>
 
 namespace Foam
@@ -430,65 +431,27 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
         // Loop through all cells in the mesh and compute cell quality
         forAll(cells_, cellI)
         {
-            const cell& curCell = cells_[cellI];
-
-            if (curCell.empty())
+            if (cells_[cellI].empty())
             {
                 continue;
             }
 
-            const face& currFace = faces_[curCell[0]];
-            const face& nextFace = faces_[curCell[1]];
+            // Compute cell quality
+            iF[cellI] = tetQuality(cellI);
 
-            // Get the fourth point
-            forAll(nextFace, pointI)
+            // Update statistics
+            maxQuality = Foam::max(iF[cellI], maxQuality);
+            minQuality = Foam::min(iF[cellI], minQuality);
+            meanQuality += iF[cellI];
+
+            // Add to the list of slivers
+            if
+            (
+                (iF[cellI] < sliverThreshold_)
+             && (iF[cellI] > 0.0)
+            )
             {
-                if
-                (
-                    nextFace[pointI] != currFace[0] &&
-                    nextFace[pointI] != currFace[1] &&
-                    nextFace[pointI] != currFace[2]
-                )
-                {
-                    // Compute cell-quality and write-out
-                    if (owner_[curCell[0]] == cellI)
-                    {
-                        iF[cellI] = (*tetMetric_)
-                        (
-                            points_[currFace[2]],
-                            points_[currFace[1]],
-                            points_[currFace[0]],
-                            points_[nextFace[pointI]]
-                        );
-                    }
-                    else
-                    {
-                        iF[cellI] = (*tetMetric_)
-                        (
-                            points_[currFace[0]],
-                            points_[currFace[1]],
-                            points_[currFace[2]],
-                            points_[nextFace[pointI]]
-                        );
-                    }
-
-                    // Update statistics
-                    maxQuality = Foam::max(iF[cellI], maxQuality);
-                    minQuality = Foam::min(iF[cellI], minQuality);
-                    meanQuality += iF[cellI];
-
-                    // Add to the list of slivers
-                    if
-                    (
-                        (iF[cellI] < sliverThreshold_)
-                     && (iF[cellI] > 0.0)
-                    )
-                    {
-                        thresholdSlivers_.insert(cellI, iF[cellI]);
-                    }
-
-                    break;
-                }
+                thresholdSlivers_.insert(cellI, iF[cellI]);
             }
         }
 
@@ -1790,46 +1753,29 @@ dynamicTopoFvMesh::checkEdgeBoundary
         }
     }
 
-    // Check if either point lies on a bounding curve
-    // Used to ensure that collapses happen towards bounding curves.
-    // Note that if the edge itself is on a bounding curve, collapse is valid.
-    if (edgeBoundary[0] && edgeBoundary[1])
+    return edgeBoundary;
+}
+
+// Check whether the given edge should not be bisected/collapsed
+bool dynamicTopoFvMesh::checkEdgeModification(const label eIndex)
+{
+    // Internal edges don't count
+    label edgePatch = -1;
+
+    if ((edgePatch = whichEdgePatch(eIndex)) < 0)
     {
-        FixedList<label, 2> nBoundCurves(0);
-
-        forAll(edgeToCheck, pointI)
+        return false;
+    }
+    else
+    {
+        // Check whether this edge shouldn't be swapped
+        if (findIndex(noModPatchIDs_, edgePatch) > -1)
         {
-            const labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
-
-            forAll(pEdges, edgeI)
-            {
-                if (checkBoundingCurve(pEdges[edgeI]))
-                {
-                    nBoundCurves[pointI]++;
-                }
-            }
-        }
-
-        // Pick the point which is connected to more bounding curves
-        if (nBoundCurves[0] > nBoundCurves[1])
-        {
-            edgeBoundary[0] = true;
-            edgeBoundary[1] = false;
-        }
-        else
-        if (nBoundCurves[1] > nBoundCurves[0])
-        {
-            edgeBoundary[1] = true;
-            edgeBoundary[0] = false;
-        }
-        else
-        {
-            // Bounding edge: collapseEdge can collapse this edge
-            edgeBoundary = true;
+            return true;
         }
     }
 
-    return edgeBoundary;
+    return false;
 }
 
 // Check whether the given edge is on a bounding curve
@@ -2020,6 +1966,7 @@ bool dynamicTopoFvMesh::checkQuality
 bool dynamicTopoFvMesh::fillTables
 (
     const label eIndex,
+    const scalar minQuality,
     labelList& m,
     PtrList<scalarListList>& Q,
     PtrList<labelListList>& K,
@@ -2063,7 +2010,7 @@ bool dynamicTopoFvMesh::fillTables
         {
             for (label k = i+1; k < j; k++)
             {
-                scalar qA = (*tetMetric_)
+                scalar q = (*tetMetric_)
                 (
                     points_[hullVertices[i]],
                     points_[hullVertices[k]],
@@ -2071,15 +2018,25 @@ bool dynamicTopoFvMesh::fillTables
                     points_[edgeToCheck[0]]
                 );
 
-                scalar qB = (*tetMetric_)
-                (
-                    points_[hullVertices[j]],
-                    points_[hullVertices[k]],
-                    points_[hullVertices[i]],
-                    points_[edgeToCheck[1]]
-                );
-
-                scalar q = Foam::min(qA,qB);
+                // For efficiency, check the bottom triangulation
+                // only when the top one if less than the hull quality.
+                if (q > minQuality)
+                {
+                    q =
+                    (
+                        Foam::min
+                        (
+                            q,
+                            (*tetMetric_)
+                            (
+                                points_[hullVertices[j]],
+                                points_[hullVertices[k]],
+                                points_[hullVertices[i]],
+                                points_[edgeToCheck[1]]
+                            )
+                        )
+                    );
+                }
 
                 if (k < j-1)
                 {
@@ -2120,7 +2077,10 @@ bool dynamicTopoFvMesh::fillTables
             coupledModification_ = false;
 
             // Recursively call for the slave edge.
-            bool success = fillTables(slaveIndex, m, Q, K, triangulations, 1);
+            bool success =
+            (
+                fillTables(slaveIndex, minQuality, m, Q, K, triangulations, 1)
+            );
 
             // Turn it back on.
             coupledModification_ = true;
@@ -2134,7 +2094,81 @@ bool dynamicTopoFvMesh::fillTables
         }
     }
 
+    // Print out tables for debugging
+    if (debug > 2)
+    {
+        printTables(m, Q, K, checkIndex);
+    }
+
     return true;
+}
+
+// Print out tables for debugging
+void dynamicTopoFvMesh::printTables
+(
+    const labelList& m,
+    const PtrList<scalarListList>& Q,
+    const PtrList<labelListList>& K,
+    const label checkIndex
+)
+{
+    // Print out Q
+    Info << "===" << endl;
+    Info << " Q " << endl;
+    Info << "===" << endl;
+
+    Info << "   ";
+
+    for (label j = 0; j < m[checkIndex]; j++)
+    {
+        std::cout << std::setfill('-')
+                  << std::setw(12) << j;
+    }
+
+    Info << nl;
+
+    for (label i = 0; i < (m[checkIndex]-2); i++)
+    {
+        Info << i << ": ";
+
+        for (label j = 0; j < m[checkIndex]; j++)
+        {
+            std::cout << std::setfill(' ')
+                      << std::setw(12) << Q[checkIndex][i][j];
+        }
+
+        Info << nl;
+    }
+
+    // Print out K
+    Info << "===" << endl;
+    Info << " K " << endl;
+    Info << "===" << endl;
+
+    Info << "   ";
+
+    for (label j = 0; j < m[checkIndex]; j++)
+    {
+        std::cout << std::setfill('-')
+                  << std::setw(12) << j;
+    }
+
+    Info << nl;
+
+    for (label i = 0; i < (m[checkIndex]-2); i++)
+    {
+        Info << i << ": ";
+
+        for (label j = 0; j < m[checkIndex]; j++)
+        {
+            std::cout << std::setfill(' ')
+                      << std::setw(12) << K[checkIndex][i][j];
+        }
+
+        Info << nl;
+    }
+
+    Info << endl;
 }
 
 // Remove the edge according to the swap sequence.
@@ -2142,16 +2176,19 @@ bool dynamicTopoFvMesh::fillTables
 bool dynamicTopoFvMesh::removeEdgeFlips
 (
     const label eIndex,
+    const scalar minQuality,
     const PtrList<labelListList>& K,
     PtrList<labelListList>& triangulations,
     const label checkIndex
 )
 {
-    // Report the minimum quality around this edge
+    changeMap map;
+    scalar swapQuality = GREAT;
+
     if (debug > 2)
     {
         Info << " Removing edge : " << eIndex << " by flipping."
-             << " minQuality: " << computeMinQuality(eIndex) << endl;
+             << " minQuality: " << minQuality << endl;
     }
 
     // Make a copy of edgePoints, since it will be
@@ -2159,6 +2196,7 @@ bool dynamicTopoFvMesh::removeEdgeFlips
     labelList hullVertices(edgePoints_[eIndex]);
 
     label m = hullVertices.size();
+
     labelList hullFaces(m, -1);
     labelList hullCells(m, -1);
     labelList hullEdges(m, -1);
@@ -2227,7 +2265,10 @@ bool dynamicTopoFvMesh::removeEdgeFlips
             slaveModification_ = true;
 
             // Recursively call for the slave edge.
-            bool success = removeEdgeFlips(slaveIndex, K, triangulations, 1);
+            bool success =
+            (
+                removeEdgeFlips(slaveIndex, minQuality, K, triangulations, 1)
+            );
 
             // Turn it back on.
             coupledModification_ = true;
@@ -2267,17 +2308,34 @@ bool dynamicTopoFvMesh::removeEdgeFlips
                 )
                 {
                     // Perform 2-3 swap
-                    swap23
+                    map =
                     (
-                        isolatedVertex,
-                        eIndex,
-                        i,
-                        numTriangulations,
-                        triangulations[checkIndex],
-                        hullVertices,
-                        hullFaces,
-                        hullCells
+                        swap23
+                        (
+                            isolatedVertex,
+                            eIndex,
+                            i,
+                            numTriangulations,
+                            triangulations[checkIndex],
+                            hullVertices,
+                            hullFaces,
+                            hullCells
+                        )
                     );
+
+                    if (debug > 2)
+                    {
+                        scalar triQuality =
+                        (
+                            Foam::min
+                            (
+                                tetQuality(owner_[map.opposingFace()]),
+                                tetQuality(neighbour_[map.opposingFace()])
+                            )
+                        );
+
+                        swapQuality = Foam::min(triQuality, swapQuality);
+                    }
 
                     // Done with this face, so reset it
                     triangulations[checkIndex][0][i] = -1;
@@ -2305,16 +2363,42 @@ bool dynamicTopoFvMesh::removeEdgeFlips
     }
 
     // Perform the final 3-2 / 2-2 swap
-    swap32
+    map =
     (
-        eIndex,
-        tF,
-        numTriangulations,
-        triangulations[checkIndex],
-        hullVertices,
-        hullFaces,
-        hullCells
+        swap32
+        (
+            eIndex,
+            tF,
+            numTriangulations,
+            triangulations[checkIndex],
+            hullVertices,
+            hullFaces,
+            hullCells
+        )
     );
+
+    if (debug > 2)
+    {
+        scalar triQuality =
+        (
+            Foam::min
+            (
+                tetQuality(owner_[map.opposingFace()]),
+                tetQuality(neighbour_[map.opposingFace()])
+            )
+        );
+
+        swapQuality = Foam::min(triQuality, swapQuality);
+
+        if (swapQuality < minQuality)
+        {
+            WarningIn("dynamicTopoFvMesh::removeEdgeFlips()") << nl
+                << " Swap failed to improve quality." << nl
+                << " MinQuality: " << minQuality << nl
+                << " SwapQuality: " << swapQuality
+                << abort(FatalError);
+        }
+    }
 
     // Done with this face, so reset it
     triangulations[checkIndex][0][tF] = -1;
@@ -3484,7 +3568,7 @@ void dynamicTopoFvMesh::handleMeshSlicing()
 
     Info << "Done." << endl;
 
-    // checkConnectivity(10);
+    checkConnectivity(10);
 
     // Clear out data.
     sliceBoxes_.clear();
@@ -3530,7 +3614,7 @@ scalar dynamicTopoFvMesh::testProximity
 
     DynamicList<label> posIndices(20);
     scalar testStep = edgeLength(eIndex);
-    scalar minDistance = GREAT, minDeviation = -0.5;
+    scalar minDistance = GREAT, minDeviation = -0.9;
     label nD = spatialRes_, binSize = proximityBins_.size();
 
     const point& bMin = proxBoundBox_.min();
@@ -4520,6 +4604,32 @@ void dynamicTopoFvMesh::readEdgeOptions
 
         // Ensure that patches are legitimate.
         checkPatches(fixedPatches_.toc());
+    }
+
+    // Check if swapping is to be avoided on any patches
+    if (edgeOptionDict.found("noModificationPatches") || mandatory_)
+    {
+        wordList noModPatches =
+        (
+            edgeOptionDict.subDict("noModificationPatches").toc()
+        );
+
+        // Ensure that patches are legitimate.
+        checkPatches(noModPatches);
+
+        noModPatchIDs_.setSize(noModPatches.size());
+
+        label indexI = 0;
+
+        forAll(noModPatches, wordI)
+        {
+            const word& patchName = noModPatches[wordI];
+
+            noModPatchIDs_[indexI++] =
+            (
+                boundaryMesh().findPatchID(patchName)
+            );
+        }
     }
 
     // Check local coupled patches for fixed length-scales
@@ -6578,7 +6688,7 @@ void dynamicTopoFvMesh::swap3DEdges
         }
 
         // Fill the dynamic programming tables
-        if (mesh.fillTables(eIndex, m, Q, K, triangulations))
+        if (mesh.fillTables(eIndex, minQuality, m, Q, K, triangulations))
         {
             // Check if edge-swapping is required.
             if (mesh.checkQuality(eIndex, m, Q, minQuality))
@@ -6586,7 +6696,7 @@ void dynamicTopoFvMesh::swap3DEdges
                 if (thread->master())
                 {
                     // Remove this edge according to the swap sequence
-                    mesh.removeEdgeFlips(eIndex, K, triangulations);
+                    mesh.removeEdgeFlips(eIndex, minQuality, K, triangulations);
                 }
                 else
                 {
@@ -6633,6 +6743,12 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     {
         // Retrieve an edge from the stack
         label eIndex = mesh.edgeStack(tIndex).pop();
+
+        // Check if edgeModifications are to be avoided.
+        if (mesh.checkEdgeModification(eIndex))
+        {
+            continue;
+        }
 
         if (mesh.checkEdgeBisection(eIndex))
         {
@@ -6823,7 +6939,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
     // Ensure that the mesh is valid
     if (minQuality < sliverThreshold_)
     {
-        if (debug > 3)
+        if (debug > 3 && minQuality < 0.0)
         {
             // Write out cells for post processing.
             labelHashSet iCells;

@@ -199,6 +199,7 @@ class dynamicTopoFvMesh
         label                 nSwaps_;
         label                 maxModifications_;
         Map<scalar>           thresholdSlivers_;
+        labelList             noModPatchIDs_;
 
         // Specific to proximity-based refinement
         label               spatialRes_;
@@ -402,6 +403,9 @@ class dynamicTopoFvMesh
 
         // Given a face and cell index, find the apex point for a tet cell.
         inline label tetApexPoint(const label cIndex, const label fIndex);
+
+        // Given a cell index, find the centroid of a tet cell.
+        inline vector tetCellCenter(const label cIndex);
 
         // Compare two triangular faces
         inline label compare(const face& a, const face& b);
@@ -806,6 +810,9 @@ class dynamicTopoFvMesh
         // Utility method to compute the minimum quality of a vertex hull
         inline scalar computeMinQuality(const label eIndex);
 
+        // Utility method to compute the quality of a tetrahedral cell
+        inline scalar tetQuality(const label cIndex);
+
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.
         scalar computeBisectionQuality(const label eIndex);
@@ -813,6 +820,9 @@ class dynamicTopoFvMesh
         // Utility method to compute the quality of cells
         // around a face after trisection.
         scalar computeTrisectionQuality(const label fIndex);
+
+        // Check whether the given edge should not be bisected/collapsed
+        bool checkEdgeModification(const label eIndex);
 
         // Check whether the given edge is on a bounding curve
         bool checkBoundingCurve(const label eIndex);
@@ -841,6 +851,7 @@ class dynamicTopoFvMesh
         bool fillTables
         (
             const label eIndex,
+            const scalar minQuality,
             labelList& m,
             PtrList<scalarListList>& Q,
             PtrList<labelListList>& K,
@@ -848,10 +859,20 @@ class dynamicTopoFvMesh
             const label checkIndex = 0
         );
 
+        // Print out tables for debugging
+        void printTables
+        (
+            const labelList& m,
+            const PtrList<scalarListList>& Q,
+            const PtrList<labelListList>& K,
+            const label checkIndex = 0
+        );
+
         // Remove the edge according to the swap sequence
         bool removeEdgeFlips
         (
             const label eIndex,
+            const scalar minQuality,
             const PtrList<labelListList>& K,
             PtrList<labelListList>& triangulations,
             const label checkIndex = 0
@@ -885,7 +906,8 @@ class dynamicTopoFvMesh
         );
 
         // Routine to perform 2-3 swaps
-        void swap23
+        const changeMap
+        swap23
         (
             const label isolatedVertex,
             const label eIndex,
@@ -898,7 +920,8 @@ class dynamicTopoFvMesh
         );
 
         // Routine to perform 3-2 or 2-2 swaps
-        void swap32
+        const changeMap
+        swap32
         (
             const label eIndex,
             const label triangulationIndex,

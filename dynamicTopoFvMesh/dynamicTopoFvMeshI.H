@@ -179,6 +179,26 @@ inline label dynamicTopoFvMesh::tetApexPoint
     return apexPoint;
 }
 
+// Given a cell index, find the centroid of a tet cell.
+inline vector dynamicTopoFvMesh::tetCellCenter
+(
+    const label cIndex
+)
+{
+    vector center = vector::zero;
+
+    const cell& cellToCheck = cells_[cIndex];
+
+    forAll(cellToCheck, faceI)
+    {
+        center += triFaceCenter(cellToCheck[faceI]);
+    }
+
+    center /= cellToCheck.size();
+
+    return center;
+}
+
 // Compare two triangular faces.
 // Identical to triFace definition.
 inline label dynamicTopoFvMesh::compare
@@ -1324,6 +1344,68 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
     }
 
     return minQuality;
+}
+
+// Utility method to compute the quality of a tetrahedral cell
+inline scalar dynamicTopoFvMesh::tetQuality
+(
+    const label cIndex
+)
+{
+    const cell& curCell = cells_[cIndex];
+
+    const face& currFace = faces_[curCell[0]];
+    const face& nextFace = faces_[curCell[1]];
+
+    // Get the fourth point
+    forAll(nextFace, pointI)
+    {
+        if
+        (
+            nextFace[pointI] != currFace[0] &&
+            nextFace[pointI] != currFace[1] &&
+            nextFace[pointI] != currFace[2]
+        )
+        {
+            // Compute cell-quality and write-out
+            if (owner_[curCell[0]] == cIndex)
+            {
+                return
+                (
+                    (*tetMetric_)
+                    (
+                        points_[currFace[2]],
+                        points_[currFace[1]],
+                        points_[currFace[0]],
+                        points_[nextFace[pointI]]
+                    )
+                );
+            }
+            else
+            {
+                return
+                (
+                    (*tetMetric_)
+                    (
+                        points_[currFace[0]],
+                        points_[currFace[1]],
+                        points_[currFace[2]],
+                        points_[nextFace[pointI]]
+                    )
+                );
+            }
+        }
+    }
+
+    // This should never happen.
+    FatalErrorIn
+    (
+        "dynamicTopoFvMesh::tetQuality() "
+    )
+        << nl << " Illegal connectivity."
+        << abort(FatalError);
+
+    return 0.0;
 }
 
 // Method to determine whether the master face is locally coupled

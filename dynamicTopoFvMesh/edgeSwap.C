@@ -699,8 +699,10 @@ void dynamicTopoFvMesh::swapQuadFace
     nSwaps_++;
 }
 
-// Routine to perform 2-3 swaps
-void dynamicTopoFvMesh::swap23
+// Method used to perform a 2-3 swap in 3D
+// - Returns a changeMap with the index of
+//   the triangulated face in opposingFace.
+const changeMap dynamicTopoFvMesh::swap23
 (
     const label isolatedVertex,
     const label eIndex,
@@ -719,6 +721,8 @@ void dynamicTopoFvMesh::swap23
     //      [4] Add three new faces
     //      [5] Add three new cells
     //      Update faceEdges, edgeFaces and edgePoints information
+
+    changeMap map;
 
     // Obtain a copy of the edge
     edge edgeToCheck = edges_[eIndex];
@@ -844,6 +848,9 @@ void dynamicTopoFvMesh::swap23
             newCellIndex[1]
         )
     );
+
+    // Add an entry to the map
+    map.opposingFace() = newFaceIndex[0];
 
     // Second face: Triangle involving edgeToCheck[0]
     tmpTriFace[0] = otherVertices[0];
@@ -1282,10 +1289,15 @@ void dynamicTopoFvMesh::swap23
             );
         }
     }
+
+    // Return the changeMap
+    return map;
 }
 
-// Routine to perform 3-2 or 2-2 swaps
-void dynamicTopoFvMesh::swap32
+// Method used to perform a 2-2 / 3-2 swap in 3D
+// - Returns a changeMap with the index of
+//   the triangulated face in opposingFace.
+const changeMap dynamicTopoFvMesh::swap32
 (
     const label eIndex,
     const label triangulationIndex,
@@ -1304,8 +1316,10 @@ void dynamicTopoFvMesh::swap32
     //      [4] Add two new cells
     //      [5] If edgeToCheck is on a boundary,
     //          add two boundary faces and a boundary edge (2-2 swap)
-    //      edgeToCheck is removed later by swap3DEdges
+    //      eIndex is removed later by removeEdgeFlips
     //      Update faceEdges, edgeFaces and edgePoints information
+
+    changeMap map;
 
     // Obtain a copy of the edge
     edge edgeToCheck = edges_[eIndex];
@@ -1439,6 +1453,9 @@ void dynamicTopoFvMesh::swap32
             newCellIndex[1]
         )
     );
+
+    // Add an entry to the map
+    map.opposingFace() = newFaceIndex;
 
     // Add faceEdges for the new face as well.
     faceEdges_.append(labelList(3));
@@ -1974,6 +1991,9 @@ void dynamicTopoFvMesh::swap32
             );
         }
     }
+
+    // Return the changeMap
+    return map;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1078,6 +1078,40 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             return map;
         }
 
+        // Check if either point lies on a bounding curve
+        // Used to ensure that collapses happen towards bounding curves.
+        // If the edge itself is on a bounding curve, collapse is valid.
+        FixedList<label, 2> nBoundCurves(0);
+
+        forAll(edges_[eIndex], pointI)
+        {
+            const labelList& pEdges = pointEdges_[edges_[eIndex][pointI]];
+
+            forAll(pEdges, edgeI)
+            {
+                if (checkBoundingCurve(pEdges[edgeI]))
+                {
+                    nBoundCurves[pointI]++;
+                }
+            }
+        }
+
+        // Pick the point which is connected to more bounding curves
+        if (nBoundCurves[0] > nBoundCurves[1])
+        {
+            collapseCase = 1;
+        }
+        else
+        if (nBoundCurves[1] > nBoundCurves[0])
+        {
+            collapseCase = 2;
+        }
+        else
+        {
+            // Bounding edge: collapseEdge can collapse this edge
+            collapseCase = 2;
+        }
+
         // Looks like both points are on the boundary.
         // Check if either point touches a hull boundary face, and retain that.
         FixedList<bool,2> faceCheck(false);
@@ -1548,7 +1582,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         {
             FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
                 << "Face: " << replaceFace << ": " << faces_[replaceFace]
-                << " is an orphan, i.e, no owner cell."
+                << " is an orphan, i.e, no owner cell." << nl
+                << " Error occurred while collapsing edge: "
+                << eIndex << " :: " << edges_[eIndex]
+                << " Patch: " << whichEdgePatch(eIndex)
+                << " edgeBoundary: " << edgeBoundary
                 << abort(FatalError);
         }
         else
@@ -1560,7 +1598,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         {
             FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
                 << "Face: " << replaceFace << faces_[replaceFace]
-                << " is being converted to a boundary."
+                << " is being converted to a boundary." << nl
+                << " Error occurred while collapsing edge: "
+                << eIndex << " :: " << edges_[eIndex]
+                << " Patch: " << whichEdgePatch(eIndex)
+                << " edgeBoundary: " << edgeBoundary
                 << abort(FatalError);
         }
     }

@@ -3422,17 +3422,16 @@ void dynamicTopoFvMesh::sliceMesh
         // Obtain centroid of the point cloud
         vector p = S / nPathPoints;
 
-        if (debug > 1)
+        // if (debug > 1)
         {
             Info << nl << nl
-                << " Plane normal: " << N << nl
-                << " Plane point: " << p << endl;
+                 << " Plane point: " << p << nl
+                 << " Plane normal: " << N << endl;
         }
 
         // Mark cells and interior faces that fall
         // within the bounding box.
-        labelHashSet checkFaces, splitFaces;
-        Map<point> checkCells;
+        labelHashSet checkCells, checkFaces, splitFaces;
         Map<bool> cellColors;
 
         forAll(faces_, faceI)
@@ -3454,131 +3453,105 @@ void dynamicTopoFvMesh::sliceMesh
 
                 if (!checkCells.found(own))
                 {
-                    checkCells.insert(own, vector::zero);
+                    vector center = tetCellCenter(own);
+
+                    checkCells.insert(own);
+
+                    if (((center - p) & N) > 0.0)
+                    {
+                        cellColors.insert(own, true);
+                    }
+                    else
+                    {
+                        cellColors.insert(own, false);
+                    }
                 }
 
                 if (!checkCells.found(nei) && nei != -1)
                 {
-                    checkCells.insert(nei, vector::zero);
-                }
-            }
-        }
+                    vector center = tetCellCenter(nei);
 
-        // Compute cell-centres for the selected cells
-        forAllIter(Map<point>, checkCells, cIter)
-        {
-            const cell& cellToCheck = cells_[cIter.key()];
+                    checkCells.insert(nei);
 
-            forAll(cellToCheck, faceI)
-            {
-                cIter() += triFaceCenter(cellToCheck[faceI]);
-            }
-
-            cIter() /= cellToCheck.size();
-
-            // Figure out which side of the plane this cell lies on.
-            if (((cIter() - p) & N) > 0.0)
-            {
-                cellColors.insert(cIter.key(), true);
-            }
-            else
-            {
-                cellColors.insert(cIter.key(), false);
-            }
-        }
-
-        label nOldFaces = checkFaces.size(), n = 2;
-        labelHashSet testFaces;
-
-        while (n > 1)
-        {
-            // Prepare a test list of internal faces for mesh splitting.
-            forAllIter(labelHashSet, checkFaces, fIter)
-            {
-                if
-                (
-                    cellColors[owner_[fIter.key()]]
-                 != cellColors[neighbour_[fIter.key()]]
-                )
-                {
-                    testFaces.insert(fIter.key());
-                }
-            }
-
-            if (testFaces.size() >= nOldFaces)
-            {
-                // Didn't find any reduction in the number of faces.
-                splitFaces = testFaces;
-
-                break;
-            }
-
-            bool flipFlag = false;
-            labelHashSet flipCells;
-            FixedList<label,2> nTotalFound(0);
-
-            forAllIter(Map<point>, checkCells, cIter)
-            {
-                const cell& cellToCheck = cells_[cIter.key()];
-
-                // Check for cells with more than 'n' faces in testFaces.
-                label nFoundFaces = 0;
-
-                forAll(cellToCheck, faceI)
-                {
-                    if (testFaces.found(cellToCheck[faceI]))
+                    if (((center - p) & N) > 0.0)
                     {
-                        nFoundFaces++;
-                    }
-                }
-
-                if (nFoundFaces > n)
-                {
-                    flipCells.insert(cIter.key());
-
-                    if (cellColors[cIter.key()])
-                    {
-                        nTotalFound[1]++;
+                        cellColors.insert(nei, true);
                     }
                     else
                     {
-                        nTotalFound[0]++;
+                        cellColors.insert(nei, false);
                     }
                 }
             }
-
-            if (!nTotalFound[0] && !nTotalFound[1])
-            {
-                // Couldn't find any. Move on to the next test.
-                n--;
-            }
-            else
-            if (nTotalFound[0] > nTotalFound[1])
-            {
-                flipFlag = false;
-            }
-            else
-            if (nTotalFound[0] < nTotalFound[1])
-            {
-                flipFlag = true;
-            }
-
-            // Flip flags for the set of cells.
-            forAllIter(labelHashSet, flipCells, flIter)
-            {
-                if (cellColors[flIter.key()] == flipFlag)
-                {
-                    cellColors[flIter.key()] = !flipFlag;
-                }
-            }
-
-            // Copy from testFaces
-            splitFaces = testFaces;
-            nOldFaces = testFaces.size();
-            testFaces.clear();
         }
 
-        if (debug > 3)
+        // Prepare a list of internal faces for mesh splitting.
+        forAllIter(labelHashSet, checkFaces, fIter)
+        {
+            if
+            (
+                cellColors[owner_[fIter.key()]]
+             != cellColors[neighbour_[fIter.key()]]
+            )
+            {
+                splitFaces.insert(fIter.key());
+            }
+
+            // Loop through all points (and associated pointEdges)
+            // for this face, and check if connected cells are also
+            // present in the checkCells/cellColors list
+            const face& faceToCheck = faces_[fIter.key()];
+
+            forAll(faceToCheck, pointI)
+            {
+                const labelList& pEdges = pointEdges_[faceToCheck[pointI]];
+
+                forAll(pEdges, edgeI)
+                {
+                    const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+
+                    forAll(eFaces, faceI)
+                    {
+                        label own = owner_[eFaces[faceI]];
+                        label nei = neighbour_[eFaces[faceI]];
+
+                        if (!checkCells.found(own))
+                        {
+                            vector center = tetCellCenter(own);
+
+                            checkCells.insert(own);
+
+                            if (((center - p) & N) > 0.0)
+                            {
+                                cellColors.insert(own, true);
+                            }
+                            else
+                            {
+                                cellColors.insert(own, false);
+                            }
+                        }
+
+                        if (!checkCells.found(nei) && nei != -1)
+                        {
+                            vector center = tetCellCenter(nei);
+
+                            checkCells.insert(nei);
+
+                            if (((center - p) & N) > 0.0)
+                            {
+                                cellColors.insert(nei, true);
+                            }
+                            else
+                            {
+                                cellColors.insert(nei, false);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // if (debug > 3)
         {
             writeVTK("splitFaces", splitFaces.toc(), 2);
             writeVTK("checkCells", checkCells.toc(), 3);
@@ -3739,7 +3712,7 @@ bool dynamicTopoFvMesh::Dijkstra
     }
 
     // Write out the path
-    if (debug > 3)
+    // if (debug > 3)
     {
         if (foundEndPoint)
         {
