@@ -41,8 +41,8 @@ SourceFiles
 #ifndef changeMap_H
 #define changeMap_H
 
+#include "Tuple2.H"
 #include "labelList.H"
-#include "FixedList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -85,12 +85,10 @@ class changeMap
     label opposingFace_;
 
     // Entities that were added during the operation.
-    //  - Add a master mapping for slaves.
-    //  - Masters get a map of -1.
-    List<FixedList<label,2> > addedPoints_;
-    List<FixedList<label,2> > addedEdges_;
-    List<FixedList<label,2> > addedFaces_;
-    List<FixedList<label,2> > addedCells_;
+    List<Tuple2<label, labelList> > addedPoints_;
+    List<Tuple2<label, labelList> > addedEdges_;
+    List<Tuple2<label, labelList> > addedFaces_;
+    List<Tuple2<label, labelList> > addedCells_;
 
 public:
 
@@ -138,32 +136,32 @@ public:
         inline void addPoint
         (
             const label pIndex,
-            const label master = -1
+            const labelList& master = labelList()
         );
 
         inline void addEdge
         (
             const label eIndex,
-            const label master = -1
+            const labelList& master = labelList()
         );
 
         inline void addFace
         (
             const label fIndex,
-            const label master = -1
+            const labelList& master = labelList()
         );
 
         inline void addCell
         (
             const label cIndex,
-            const label master = -1
+            const labelList& master = labelList()
         );
 
         // Return the list of added entities
-        inline const List<FixedList<label,2> >& addedPointList() const;
-        inline const List<FixedList<label,2> >& addedEdgeList() const;
-        inline const List<FixedList<label,2> >& addedFaceList() const;
-        inline const List<FixedList<label,2> >& addedCellList() const;
+        inline const List<Tuple2<label, labelList> >& addedPointList() const;
+        inline const List<Tuple2<label, labelList> >& addedEdgeList() const;
+        inline const List<Tuple2<label, labelList> >& addedFaceList() const;
+        inline const List<Tuple2<label, labelList> >& addedCellList() const;
 
     //- Operators
 

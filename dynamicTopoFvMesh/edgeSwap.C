@@ -1578,33 +1578,40 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         // Create a mapping entry for the new edge.
         const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
 
-        if (locallyCoupledEntity(map.addedEdgeList()[0][0]))
+        if (locallyCoupledEntity(map.addedEdgeList()[0].first()))
         {
             cMap.mapSlave
             (
                 coupleMap::EDGE,
-                map.addedEdgeList()[0][0],
-                slaveMap.addedEdgeList()[0][0]
+                map.addedEdgeList()[0].first(),
+                slaveMap.addedEdgeList()[0].first()
             );
 
             cMap.mapMaster
             (
                 coupleMap::EDGE,
-                slaveMap.addedEdgeList()[0][0],
-                map.addedEdgeList()[0][0]
+                slaveMap.addedEdgeList()[0].first(),
+                map.addedEdgeList()[0].first()
             );
         }
 
         // Add a mapping entry for two new faces as well.
         face cF(3);
 
-        const List<FixedList<label,2> >& amfList = map.addedFaceList();
-        const List<FixedList<label,2> >& asfList = slaveMap.addedFaceList();
+        const List<Tuple2<label, labelList> >& amfList =
+        (
+            map.addedFaceList()
+        );
+
+        const List<Tuple2<label, labelList> >& asfList =
+        (
+            slaveMap.addedFaceList()
+        );
 
         forAll(amfList, mfI)
         {
             // Configure a face for comparison.
-            const face& mF = faces_[amfList[mfI][0]];
+            const face& mF = faces_[amfList[mfI].first()];
 
             forAll(mF, pointI)
             {
@@ -1615,22 +1622,22 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             forAll(asfList, sfI)
             {
-                const face& sF = faces_[asfList[sfI][0]];
+                const face& sF = faces_[asfList[sfI].first()];
 
                 if (triFace::compare(triFace(cF), triFace(sF)))
                 {
                     cMap.mapSlave
                     (
                         coupleMap::FACE,
-                        amfList[mfI][0],
-                        asfList[sfI][0]
+                        amfList[mfI].first(),
+                        asfList[sfI].first()
                     );
 
                     cMap.mapMaster
                     (
                         coupleMap::FACE,
-                        asfList[sfI][0],
-                        amfList[mfI][0]
+                        asfList[sfI].first(),
+                        amfList[mfI].first()
                     );
 
                     matched = true;
@@ -1649,15 +1656,15 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
                 forAll(amfList, mfI)
                 {
-                    Info << amfList[mfI][0] << ": "
-                         << faces_[amfList[mfI][0]]
+                    Info << amfList[mfI].first() << ": "
+                         << faces_[amfList[mfI].first()]
                          << endl;
                 }
 
                 forAll(asfList, sfI)
                 {
-                    Info << asfList[sfI][0] << ": "
-                         << faces_[asfList[sfI][0]]
+                    Info << asfList[sfI].first() << ": "
+                         << faces_[asfList[sfI].first()]
                          << endl;
                 }
 

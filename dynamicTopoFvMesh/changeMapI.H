@@ -22,6 +22,17 @@ License
     along with OpenFOAM; if not, write to the Free Software Foundation,
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+Class
+    changeMap
+
+Description
+    Accumulate topology change statistics
+
+Author
+    Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
+
 \*---------------------------------------------------------------------------*/
 
 namespace Foam
@@ -100,65 +111,65 @@ inline label& changeMap::opposingFace()
 inline void changeMap::addPoint
 (
     const label pIndex,
-    const label master
+    const labelList& master
 )
 {
     label curSize = addedPoints_.size();
 
     addedPoints_.setSize(curSize + 1);
 
-    addedPoints_[curSize][0] = pIndex;
-    addedPoints_[curSize][1] = master;
+    addedPoints_[curSize].first() = pIndex;
+    addedPoints_[curSize].second() = master;
 }
 
 
 inline void changeMap::addEdge
 (
     const label eIndex,
-    const label master
+    const labelList& master
 )
 {
     label curSize = addedEdges_.size();
 
     addedEdges_.setSize(curSize + 1);
 
-    addedEdges_[curSize][0] = eIndex;
-    addedEdges_[curSize][1] = master;
+    addedEdges_[curSize].first() = eIndex;
+    addedEdges_[curSize].second() = master;
 }
 
 
 inline void changeMap::addFace
 (
     const label fIndex,
-    const label master
+    const labelList& master
 )
 {
     label curSize = addedFaces_.size();
 
     addedFaces_.setSize(curSize + 1);
 
-    addedFaces_[curSize][0] = fIndex;
-    addedFaces_[curSize][1] = master;
+    addedFaces_[curSize].first() = fIndex;
+    addedFaces_[curSize].second() = master;
 }
 
 
 inline void changeMap::addCell
 (
     const label cIndex,
-    const label master
+    const labelList& master
 )
 {
     label curSize = addedCells_.size();
 
     addedCells_.setSize(curSize + 1);
 
-    addedCells_[curSize][0] = cIndex;
-    addedCells_[curSize][1] = master;
+    addedCells_[curSize].first() = cIndex;
+    addedCells_[curSize].second() = master;
 }
 
 
 // Return an added point
-inline const List<FixedList<label,2> >&
+inline const List<Tuple2<label, labelList> >&
 changeMap::addedPointList() const
 {
     return addedPoints_;
@@ -166,21 +177,21 @@ changeMap::addedPointList() const
 
 
 // Return the list of added entities
-inline const List<FixedList<label,2> >&
+inline const List<Tuple2<label, labelList> >&
 changeMap::addedEdgeList() const
 {
     return addedEdges_;
 }
 
 
-inline const List<FixedList<label,2> >&
+inline const List<Tuple2<label, labelList> >&
 changeMap::addedFaceList() const
 {
     return addedFaces_;
 }
 
 
-inline const List<FixedList<label,2> >&
+inline const List<Tuple2<label, labelList> >&
 changeMap::addedCellList() const
 {
     return addedCells_;
@@ -194,15 +205,44 @@ inline void changeMap::operator=(const changeMap& rhs)
 
     type_ = rhs.type_;
 
-    firstEdge_    = rhs.firstEdge_;
-    secondEdge_   = rhs.secondEdge_;
-    apexPoint_    = rhs.apexPoint_;
+    // Copy sliver-specific information
+    firstEdge_ = rhs.firstEdge_;
+    secondEdge_ = rhs.secondEdge_;
+    apexPoint_ = rhs.apexPoint_;
     opposingFace_ = rhs.opposingFace_;
 
-    addedPoints_  = rhs.addedPoints_;
-    addedEdges_   = rhs.addedEdges_;
-    addedFaces_   = rhs.addedFaces_;
-    addedCells_   = rhs.addedCells_;
+    // Copy maps
+    addedPoints_.setSize(rhs.addedPoints_.size());
+
+    forAll(addedPoints_, indexI)
+    {
+        addedPoints_[indexI].first() = rhs.addedPoints_[indexI].first();
+        addedPoints_[indexI].second() = rhs.addedPoints_[indexI].second();
+    }
+
+    addedEdges_.setSize(rhs.addedEdges_.size());
+
+    forAll(addedEdges_, indexI)
+    {
+        addedEdges_[indexI].first() = rhs.addedEdges_[indexI].first();
+        addedEdges_[indexI].second() = rhs.addedEdges_[indexI].second();
+    }
+
+    addedFaces_.setSize(rhs.addedFaces_.size());
+
+    forAll(addedFaces_, indexI)
+    {
+        addedFaces_[indexI].first() = rhs.addedFaces_[indexI].first();
+        addedFaces_[indexI].second() = rhs.addedFaces_[indexI].second();
+    }
+
+    addedCells_.setSize(rhs.addedCells_.size());
+
+    forAll(addedCells_, indexI)
+    {
+        addedCells_[indexI].first() = rhs.addedCells_[indexI].first();
+        addedCells_[indexI].second() = rhs.addedCells_[indexI].second();
+    }
 }
 
 
