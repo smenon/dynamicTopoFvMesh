@@ -2619,6 +2619,7 @@ bool dynamicTopoFvMesh::boundaryTriangulation
 //   1: List of edges
 //   2: List of faces
 //   3: List of cells
+//   4: List of cells w/ associated connectivity as fields
 void dynamicTopoFvMesh::writeVTK
 (
     const word& name,
@@ -2626,20 +2627,25 @@ void dynamicTopoFvMesh::writeVTK
     const label primitiveType
 )
 {
-    label nCells = 0;
     label nTotalCells = 0;
-    label nPoints = 0;
+    label nPoints = 0, nEdges = 0, nFaces = 0, nCells = 0;
 
     // Estimate a size for points and cellPoints
     List<vector> points(6*cList.size());
+
+    // Connectivity lists
     labelListList cpList(cList.size());
+    labelListList feList, epList, fpList;
 
     // Create a map for local points
-    Map<label> pointMap;
+    Map<label> pointMap, edgeMap, faceMap;
+
+    // Track surface-points, if requested.
+    labelHashSet surfPoints;
 
     forAll(cList, cellI)
     {
-        if (cList[cellI] == -1)
+        if (cList[cellI] < 0)
         {
             continue;
         }
@@ -2689,7 +2695,7 @@ void dynamicTopoFvMesh::writeVTK
         }
 
         // Are we looking at cells?
-        if (primitiveType == 3)
+        if (primitiveType == 3 || primitiveType == 4)
         {
             const cell& thisCell = cells_[cList[cellI]];
 
@@ -2733,6 +2739,47 @@ void dynamicTopoFvMesh::writeVTK
                 }
 
                 nTotalCells += 4;
+            }
+
+            // Add to the list of surface points
+            if (primitiveType == 4)
+            {
+                forAll(thisCell, faceI)
+                {
+                    const face& thisFace = faces_[thisCell[faceI]];
+
+                    if (whichPatch(thisCell[faceI]) > -1)
+                    {
+                        forAll(thisFace, pointI)
+                        {
+                            if (!surfPoints.found(thisFace[pointI]))
+                            {
+                                surfPoints.insert(thisFace[pointI]);
+                            }
+                        }
+                    }
+
+                    // Check if this face was added to the map
+                    if (!faceMap.found(thisCell[faceI]))
+                    {
+                        faceMap.insert(thisCell[faceI], nFaces);
+
+                        nFaces++;
+                    }
+
+                    // Check if edges of this face were added
+                    const labelList& fEdges = faceEdges_[thisCell[faceI]];
+
+                    forAll(fEdges, edgeI)
+                    {
+                        if (!edgeMap.found(fEdges[edgeI]))
+                        {
+                            edgeMap.insert(fEdges[edgeI], nEdges);
+
+                            nEdges++;
+                        }
+                    }
+                }
             }
         }
 
@@ -2832,6 +2879,152 @@ void dynamicTopoFvMesh::writeVTK
         {
             // Wedge
             file << "13" << nl;
+        }
+    }
+
+    // Write out auxiliary connectivity fields, if necessary
+    label nAuxFields = 0;
+
+    if (surfPoints.size())
+    {
+        nAuxFields++;
+    }
+
+    if (nCells)
+    {
+        nAuxFields++;
+    }
+
+    if (nFaces)
+    {
+        nAuxFields += 2;
+
+        // Size the feList and fpList.
+        // Assume a uniform mesh
+        fpList.setSize(nFaces, labelList(3, -1));
+        feList.setSize(nFaces, labelList(3, -1));
+
+        forAllIter(Map<label>, faceMap, fIter)
+        {
+            const face& thisFace = faces_[fIter.key()];
+
+            forAll(thisFace, pointI)
+            {
+                fpList[fIter()][pointI] = pointMap[thisFace[pointI]];
+            }
+
+            const labelList& fEdges = faceEdges_[fIter.key()];
+
+            forAll(fEdges, edgeI)
+            {
+                feList[fIter()][edgeI] = edgeMap[fEdges[edgeI]];
+            }
+        }
+    }
+
+    if (nEdges)
+    {
+        nAuxFields++;
+
+        // Size the epList
+        epList.setSize(nEdges, labelList(2, -1));
+
+        forAllIter(Map<label>, edgeMap, eIter)
+        {
+            const edge& thisEdge = edges_[eIter.key()];
+
+            forAll(thisEdge, pointI)
+            {
+                epList[eIter()][pointI] = pointMap[thisEdge[pointI]];
+            }
+        }
+    }
+
+    if (nAuxFields)
+    {
+        file << "FIELD ConnData " << nAuxFields << endl;
+
+        if (nFaces)
+        {
+            // Write out cellFaces.
+            file << "cellFaces " << 4 << ' ' << nCells << " int" << endl;
+
+            forAll(cList, cellI)
+            {
+                if (cList[cellI] < 0)
+                {
+                    continue;
+                }
+
+                const cell& thisCell = cells_[cList[cellI]];
+
+                forAll(thisCell, faceI)
+                {
+                    file << faceMap[thisCell[faceI]] << " ";
+                }
+
+                file << nl;
+            }
+
+            // Write out facePoints
+            file << "facePoints " << 3 << ' ' << nFaces << " int" << endl;
+
+            forAll(fpList, faceI)
+            {
+                const labelList& list = fpList[faceI];
+
+                forAll(list, indexI)
+                {
+                    file << list[indexI] << " ";
+                }
+
+                file << nl;
+            }
+
+            // Write out faceEdges
+            file << "faceEdges " << 3 << ' ' << nFaces << " int" << endl;
+
+            forAll(feList, faceI)
+            {
+                const labelList& list = feList[faceI];
+
+                forAll(list, indexI)
+                {
+                    file << list[indexI] << " ";
+                }
+
+                file << nl;
+            }
+        }
+
+        // Write out edges
+        if (nEdges)
+        {
+            file << "edgePoints " << 2 << ' ' << nEdges << " int" << endl;
+
+            forAll(epList, edgeI)
+            {
+                const labelList& list = epList[edgeI];
+
+                forAll(list, indexI)
+                {
+                    file << list[indexI] << " ";
+                }
+
+                file << nl;
+            }
+        }
+
+        // Write out surface points
+        if (surfPoints.size())
+        {
+            file << "surfacePoints 1 " << surfPoints.size() << " int" << endl;
+
+            // Write out surface points
+            forAllIter(labelHashSet, surfPoints, spIter)
+            {
+                file << pointMap[spIter.key()] << nl;
+            }
         }
     }
 
@@ -7480,8 +7673,8 @@ void dynamicTopoFvMesh::removeSlivers()
             label secondEdge = map.secondEdge();
 
             // Force bisection on both edges.
-            changeMap firstMap  = bisectEdge(firstEdge, true);
-            changeMap secondMap = bisectEdge(secondEdge, true);
+            changeMap firstMap  = bisectEdge(firstEdge);
+            changeMap secondMap = bisectEdge(secondEdge);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
@@ -7531,7 +7724,7 @@ void dynamicTopoFvMesh::removeSlivers()
             label opposingFace = map.opposingFace();
 
             // Force trisection of the opposing face.
-            changeMap faceMap = trisectFace(opposingFace, true);
+            changeMap faceMap = trisectFace(opposingFace);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
