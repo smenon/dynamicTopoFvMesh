@@ -370,6 +370,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                         new coupledPatchInfo
                         (
                             *this,               // Reference to this mesh
+                            twoDMesh_,           // 2D or 3D
                             false,               // Not local
                             true,                // Sent to neighbour
                             proc,                // Master index
@@ -388,6 +389,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                         new coupledPatchInfo
                         (
                             *this,               // Reference to this mesh
+                            twoDMesh_,           // 2D or 3D
                             false,               // Not local
                             false,               // Not sent to neighbour
                             proc,                // Master index
@@ -408,6 +410,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                         new coupledPatchInfo
                         (
                             *this,               // Reference to this mesh
+                            twoDMesh_,           // 2D or 3D
                             false,               // Not local
                             true,                // Sent to neighbour
                             Pstream::myProcNo(), // Master index
@@ -426,6 +429,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                         new coupledPatchInfo
                         (
                             *this,               // Reference to this mesh
+                            twoDMesh_,           // 2D or 3D
                             false,               // Not local
                             false,               // Not sent to neighbour
                             Pstream::myProcNo(), // Master index
@@ -569,6 +573,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                         IOobject::AUTO_WRITE,
                         true
                     ),
+                    twoDMesh_,
                     true,
                     false,
                     mPatch,
@@ -924,62 +929,100 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     labelHashSet localCommonCells;
 
     // Detect all cells surrounding shared points.
-    forAll(subMeshPoints, pointI)
+    if (twoDMesh_)
     {
-        // Loop through pointEdges for this point.
-        const labelList& pEdges =
-        (
-            pointEdges_[subMeshPoints[pointI]]
-        );
-
-        forAll(pEdges, edgeI)
+        // No pointEdges structure, so loop through all cells
+        // to check for those connected to subMeshPoints
+        forAll(cells_, cellI)
         {
-            const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+            const cell& cellToCheck = cells_[cellI];
+            const labelList cellPoints = cellToCheck.labels(faces_);
 
-            forAll(eFaces, faceI)
+            forAll(cellPoints, pointI)
             {
-                label own = owner_[eFaces[faceI]];
-                label nei = neighbour_[eFaces[faceI]];
-
-                // Check owner cell
-                if (!rCellMap.found(own))
+                if (rPointMap.found(cellPoints[pointI]))
                 {
-                    if (commonCells.found(own))
+                    if (commonCells.found(cellI))
                     {
                         // Add locally common cells at the end.
-                        if (!localCommonCells.found(own))
+                        if (!localCommonCells.found(cellI))
                         {
-                            localCommonCells.insert(own);
+                            localCommonCells.insert(cellI);
                         }
                     }
                     else
                     {
-                        cellMap.insert(nC, own);
-                        rCellMap.insert(own, nC);
+                        cellMap.insert(nC, cellI);
+                        rCellMap.insert(cellI, nC);
                         nC++;
 
-                        commonCells.insert(own);
+                        commonCells.insert(cellI);
                     }
+
+                    break;
                 }
+            }
+        }
+    }
+    else
+    {
+        forAll(subMeshPoints, pointI)
+        {
+            // Loop through pointEdges for this point.
+            const labelList& pEdges =
+            (
+                pointEdges_[subMeshPoints[pointI]]
+            );
 
-                // Check neighbour cell
-                if (!rCellMap.found(nei) && nei != -1)
+            forAll(pEdges, edgeI)
+            {
+                const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+
+                forAll(eFaces, faceI)
                 {
-                    if (commonCells.found(nei))
+                    label own = owner_[eFaces[faceI]];
+                    label nei = neighbour_[eFaces[faceI]];
+
+                    // Check owner cell
+                    if (!rCellMap.found(own))
                     {
-                        // Add locally common cells at the end.
-                        if (!localCommonCells.found(nei))
+                        if (commonCells.found(own))
                         {
-                            localCommonCells.insert(nei);
+                            // Add locally common cells at the end.
+                            if (!localCommonCells.found(own))
+                            {
+                                localCommonCells.insert(own);
+                            }
+                        }
+                        else
+                        {
+                            cellMap.insert(nC, own);
+                            rCellMap.insert(own, nC);
+                            nC++;
+
+                            commonCells.insert(own);
                         }
                     }
-                    else
-                    {
-                        cellMap.insert(nC, nei);
-                        rCellMap.insert(nei, nC);
-                        nC++;
 
-                        commonCells.insert(nei);
+                    // Check neighbour cell
+                    if (!rCellMap.found(nei) && nei != -1)
+                    {
+                        if (commonCells.found(nei))
+                        {
+                            // Add locally common cells at the end.
+                            if (!localCommonCells.found(nei))
+                            {
+                                localCommonCells.insert(nei);
+                            }
+                        }
+                        else
+                        {
+                            cellMap.insert(nC, nei);
+                            rCellMap.insert(nei, nC);
+                            nC++;
+
+                            commonCells.insert(nei);
+                        }
                     }
                 }
             }
@@ -999,9 +1042,11 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     // Allocate the faceMap. Interior faces need to be detected
     // first and added before boundary ones. Do this in two stages.
+    label sumNFE = 0;
+
     for (label stage = 0; stage < 2; stage++)
     {
-        forAllIter(Map<label>, rCellMap, cIter)
+        forAllConstIter(Map<label>, rCellMap, cIter)
         {
             const cell& thisCell = cells_[cIter.key()];
 
@@ -1035,6 +1080,9 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                             faceMap.insert(nF, fIndex);
                             rFaceMap.insert(fIndex, nF);
                             nF++;
+
+                            // Accumulate face sizes
+                            sumNFE += faces_[fIndex].size();
                         }
                     }
                     else
@@ -1043,6 +1091,9 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                         faceMap.insert(nF, fIndex);
                         rFaceMap.insert(fIndex, nF);
                         nF++;
+
+                        // Accumulate face sizes
+                        sumNFE += faces_[fIndex].size();
                     }
                 }
             }
@@ -1059,7 +1110,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     // first and added before boundary ones. Do this in two stages.
     for (label stage = 0; stage < 2; stage++)
     {
-        forAllIter(Map<label>, rFaceMap, fIter)
+        forAllConstIter(Map<label>, rFaceMap, fIter)
         {
             const labelList& fEdges = faceEdges_[fIter.key()];
 
@@ -1129,7 +1180,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     }
 
     // Set additional points in the pointMap
-    forAllIter(Map<label>, rEdgeMap, eIter)
+    forAllConstIter(Map<label>, rEdgeMap, eIter)
     {
         const edge& thisEdge = edges_[eIter.key()];
 
@@ -1154,13 +1205,14 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     cMap.nEntities(coupleMap::FACE)  = nF;
     cMap.nEntities(coupleMap::CELL)  = nC;
     cMap.nEntities(coupleMap::SHARED_POINT) = subMeshPoints.size();
+    cMap.nEntities(coupleMap::NFE_SIZE) = sumNFE;
 
     // Size up buffers and fill them
     cMap.allocateBuffers();
 
     pointField& pBuffer = cMap.pointBuffer();
 
-    forAllIter(Map<label>, pointMap, pIter)
+    forAllConstIter(Map<label>, pointMap, pIter)
     {
         pBuffer[pIter.key()] = points_[pIter()];
     }
@@ -1170,7 +1222,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     label index = 0;
 
-    forAllIter(Map<label>, edgeMap, eIter)
+    forAllConstIter(Map<label>, edgeMap, eIter)
     {
         edge& edgeToCheck = edges_[eIter()];
 
@@ -1182,7 +1234,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     label faceIndex = 0;
 
-    forAllIter(Map<label>, faceMap, fIter)
+    forAllConstIter(Map<label>, faceMap, fIter)
     {
         // Find the actual patchID for this face.
         label pIndex = whichPatch(fIter());
@@ -1208,7 +1260,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     labelList& fBuffer  = cMap.entityBuffer(coupleMap::FACE);
     labelList& feBuffer = cMap.entityBuffer(coupleMap::FACE_EDGE);
 
-    forAllIter(Map<label>, faceMap, fIter)
+    forAllConstIter(Map<label>, faceMap, fIter)
     {
         label own = owner_[fIter()];
         label nei = neighbour_[fIter()];
@@ -1240,10 +1292,21 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         }
     }
 
+    // Fill variable size face-list sizes for 2D
+    if (twoDMesh_)
+    {
+        labelList& nfeBuffer = cMap.entityBuffer(coupleMap::NFE_BUFFER);
+
+        forAllConstIter(Map<label>, faceMap, fIter)
+        {
+            nfeBuffer[fIter.key()] = faces_[fIter()].size();
+        }
+    }
+
     index = 0;
     labelList& cBuffer  = cMap.entityBuffer(coupleMap::CELL);
 
-    forAllIter(Map<label>, cellMap, cIter)
+    forAllConstIter(Map<label>, cellMap, cIter)
     {
         const cell& cellToCheck = cells_[cIter()];
 

@@ -90,6 +90,7 @@ public:
     inline coupledPatchInfo
     (
         const dynamicTopoFvMesh& mesh,
+        const bool isTwoDMesh,
         const bool isLocal,
         const bool isSend,
         const label mPatch,

@@ -65,6 +65,8 @@ class coupleMap
     public regIOobject
 {
     // Private data
+    mutable bool twoDMesh_;
+
     mutable bool isLocal_;
     mutable bool isSend_;
 
@@ -78,14 +80,14 @@ class coupleMap
     mutable labelList subMeshPoints_;
 
     // Entity sizes (as specified by the entityType enumerant)
-    mutable FixedList<label,8> nEntities_;
+    mutable FixedList<label,9> nEntities_;
 
     // Maps for entities
     mutable FixedList<Map<label>,4> entityMap_;
     mutable FixedList<Map<label>,4> reverseEntityMap_;
 
     // Entity Buffers (as specified by the entityType enumerant)
-    mutable FixedList<labelList,6> entityBuffer_;
+    mutable FixedList<labelList,7> entityBuffer_;
 
     //- Demand-driven connectivity data.
         mutable label nInternalFaces_;
@@ -112,16 +114,21 @@ public:
     // Enumerants for entity-types
     enum entityType
     {
+        // Buffers and sizes
         POINT = 0,
         EDGE = 1,
         FACE = 2,
         CELL = 3,
+        // Sizes only
         INTERNAL_EDGE = 4,
         INTERNAL_FACE = 5,
         SHARED_POINT = 6,
         UNIQUE_CELL = 7,
+        NFE_SIZE = 8,
+        // Buffers only
         FACE_EDGE = 4,
-        PATCH_ID = 5
+        PATCH_ID = 5,
+        NFE_BUFFER = 6
     };
 
     //- Runtime type information
@@ -131,6 +138,7 @@ public:
     coupleMap
     (
         const IOobject& io,
+        const bool twoDMesh,
         const bool isLocal,
         const bool isSend,
         const label masterIndex,
@@ -189,6 +197,7 @@ public:
         inline label masterIndex() const;
         inline label slaveIndex() const;
 
+        inline bool isTwoDMesh() const;
         inline bool isLocal() const;
         inline bool isProcessor() const;
         inline bool isSend() const;
@@ -238,13 +247,13 @@ public:
             const label master
         ) const;
 
-        inline FixedList<label,8>& nEntities() const;
+        inline FixedList<label,9>& nEntities() const;
         inline label& nEntities(const label eType) const;
 
         inline Map<label>& entityMap(const label eType) const;
         inline Map<label>& reverseEntityMap(const label eType) const;
 
-        inline FixedList<labelList,6>& entityBuffer() const;
+        inline FixedList<labelList,7>& entityBuffer() const;
         inline labelList& entityBuffer(const label eType) const;
 
         //- Demand-driven data

@@ -51,6 +51,7 @@ defineTypeNameAndDebug(coupleMap, 0);
 coupleMap::coupleMap
 (
     const IOobject& io,
+    const bool twoDMesh,
     const bool isLocal,
     const bool isSend,
     const label masterIndex,
@@ -58,6 +59,7 @@ coupleMap::coupleMap
 )
 :
     regIOobject(io),
+    twoDMesh_(twoDMesh),
     isLocal_(isLocal),
     isSend_(isSend),
     masterIndex_(masterIndex),
@@ -88,6 +90,7 @@ coupleMap::coupleMap
 coupleMap::coupleMap(const coupleMap& cm)
 :
     regIOobject(cm, true),
+    twoDMesh_(cm.twoDMesh_),
     isLocal_(cm.isLocal_),
     isSend_(cm.isSend_),
     masterIndex_(cm.masterIndex_),
@@ -238,20 +241,44 @@ void coupleMap::makeFaces() const
 
     const labelList& fBuffer = entityBuffer(coupleMap::FACE);
     const labelList& feBuffer = entityBuffer(coupleMap::FACE_EDGE);
+    const labelList& nfeBuffer = entityBuffer(coupleMap::NFE_BUFFER);
 
-    facesPtr_ = new faceList(nFaces, face(3));
-    faceEdgesPtr_ = new labelListList(nFaces, face(3));
+    facesPtr_ = new faceList(nFaces);
+    faceEdgesPtr_ = new labelListList(nFaces);
 
     faceList& faces = *facesPtr_;
     labelListList& faceEdges = *faceEdgesPtr_;
 
+    label sumNFE = 0;
+
     forAll(faces, faceI)
     {
-        for (label p = 0; p < 3; p++)
+        face& f = faces[faceI];
+        labelList& fe = faceEdges[faceI];
+
+        // Fetch the buffer value for 2D meshes
+        label nfe = twoDMesh_ ? nfeBuffer[faceI] : 3;
+
+        // Size up the lists
+        f.setSize(nfe, -1);
+        fe.setSize(nfe, -1);
+
+        for (label p = 0; p < nfe; p++)
         {
-            faces[faceI][p] = fBuffer[(3*faceI)+p];
-            faceEdges[faceI][p] = feBuffer[(3*faceI)+p];
+            f[p] = fBuffer[sumNFE + p];
+            fe[p] = feBuffer[sumNFE + p];
         }
+
+        sumNFE += nfe;
+    }
+
+    if (sumNFE != nEntities(coupleMap::NFE_SIZE))
+    {
+        FatalErrorIn("coupleMap::makeFaces()")
+            << " Mismatched buffer." << nl
+            << " sumNFE: " << sumNFE << nl
+            << " NFE_SIZE: " << nEntities(coupleMap::NFE_SIZE) << nl
+            << abort(FatalError);
     }
 }
 
@@ -270,15 +297,18 @@ void coupleMap::makeCells() const
     label nCells = nEntities(coupleMap::CELL);
     const labelList& cBuffer = entityBuffer(coupleMap::CELL);
 
-    cellsPtr_ = new cellList(nCells, cell(4));
+    // Set number of cell faces
+    label ncf = twoDMesh_ ? 5 : 4;
+
+    cellsPtr_ = new cellList(nCells, cell(ncf));
 
     cellList& cells = *cellsPtr_;
 
     forAll(cells, cellI)
     {
-        for (label f = 0; f < 4; f++)
+        for (label f = 0; f < ncf; f++)
         {
-            cells[cellI][f] = cBuffer[(4*cellI)+f];
+            cells[cellI][f] = cBuffer[(ncf*cellI) + f];
         }
     }
 }
@@ -314,10 +344,23 @@ void coupleMap::allocateBuffers() const
     pointBuffer().setSize(nEntities(coupleMap::POINT));
     entityBuffer(coupleMap::POINT).setSize(nEntities(coupleMap::SHARED_POINT));
     entityBuffer(coupleMap::EDGE).setSize(2*nEntities(coupleMap::EDGE));
-    entityBuffer(coupleMap::FACE).setSize(3*nEntities(coupleMap::FACE));
-    entityBuffer(coupleMap::CELL).setSize(4*nEntities(coupleMap::CELL));
-    entityBuffer(coupleMap::FACE_EDGE).setSize(3*nEntities(coupleMap::FACE));
     entityBuffer(coupleMap::PATCH_ID).setSize(nEntities(coupleMap::FACE));
+
+    // nFaceEdges buffer is required only for 2D,
+    // due to a mix of triangle / quad faces
+    if (twoDMesh_)
+    {
+        entityBuffer(coupleMap::NFE_BUFFER).setSize(nEntities(coupleMap::FACE));
+    }
+
+    // Set number of cell faces
+    label ncf = twoDMesh_ ? 5 : 4;
+    entityBuffer(coupleMap::CELL).setSize(ncf*nEntities(coupleMap::CELL));
+
+    // Allocate for variable size face-lists
+    // For 3D, this is always 3 times the number of faces
+    entityBuffer(coupleMap::FACE).setSize(nEntities(coupleMap::NFE_SIZE));
+    entityBuffer(coupleMap::FACE_EDGE).setSize(nEntities(coupleMap::NFE_SIZE));
 }
 
 

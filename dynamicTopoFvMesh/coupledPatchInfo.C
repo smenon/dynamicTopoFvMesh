@@ -53,6 +53,7 @@ coupledPatchInfo::coupledPatchInfo
 coupledPatchInfo::coupledPatchInfo
 (
     const dynamicTopoFvMesh& mesh,
+    const bool isTwoDMesh,
     const bool isLocal,
     const bool isSend,
     const label mPatch,
@@ -79,6 +80,7 @@ coupledPatchInfo::coupledPatchInfo
             IOobject::NO_WRITE,
             true
         ),
+        isTwoDMesh,
         isLocal,
         isSend,
         mPatch,

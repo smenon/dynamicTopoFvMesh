@@ -187,6 +187,12 @@ inline label coupleMap::slaveIndex() const
 }
 
 
+inline bool coupleMap::isTwoDMesh() const
+{
+    return twoDMesh_;
+}
+
+
 inline bool coupleMap::isLocal() const
 {
     return isLocal_;
@@ -211,7 +217,7 @@ inline bool coupleMap::isRecv() const
 }
 
 
-inline FixedList<label,8>& coupleMap::nEntities() const
+inline FixedList<label,9>& coupleMap::nEntities() const
 {
     return nEntities_;
 }
@@ -235,7 +241,7 @@ inline Map<label>& coupleMap::reverseEntityMap(const label eType) const
 }
 
 
-inline FixedList<labelList,6>& coupleMap::entityBuffer() const
+inline FixedList<labelList,7>& coupleMap::entityBuffer() const
 {
     return entityBuffer_;
 }
