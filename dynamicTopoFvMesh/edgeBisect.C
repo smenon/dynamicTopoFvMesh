@@ -2603,67 +2603,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             continue;
         }
 
-        // Fill-in mapping information
-        labelList mC(1, cellHull[indexI]);
-
-        // Obtain parents for this cell
-        labelList parents = cellParents(mC);
-
-        // Track actual intersections
-        label nIntersects = 0;
-
-        // Compute intersection weights
-        scalarField weights(parents.size(), 0.0);
-
-        forAll(parents, indexJ)
-        {
-            weights[indexJ] =
-            (
-                tetIntersection
-                (
-                    addedCellIndices[indexI],
-                    parents[indexJ]
-                )
-            );
-
-            if (weights[indexJ] > SMALL)
-            {
-                nIntersects++;
-            }
-        }
-
-        // Now copy only valid intersections.
-        labelList newParents(nIntersects, -1);
-        scalarField newWeights(nIntersects, 0.0);
-
-        // Reset counter
-        nIntersects = 0;
-
-        forAll(weights, indexJ)
-        {
-            if (weights[indexJ] > SMALL)
-            {
-                newParents[nIntersects] = parents[indexJ];
-                newWeights[nIntersects] = weights[indexJ];
-                nIntersects++;
-            }
-        }
-
-        // Transfer lists.
-        parents.transfer(newParents);
-        weights.transfer(newWeights);
-
         // Compute the old-volume for this cell
         scalar newOldVol = tetVolume(addedCellIndices[indexI], true);
-
-        // Normalize by current volume
-        weights /= newOldVol;
-
-        // Set the mapping for this cell
-        setCellMapping(addedCellIndices[indexI], parents, weights);
-
-        // Set parents for this cell
-        cellParents_.set(addedCellIndices[indexI], parents);
 
         // Compute old volumes, using old point positions.
         scalar modOldVol = tetVolume(cellHull[indexI], true);
@@ -2677,36 +2618,79 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 << abort(FatalError);
         }
 
-        if (mag(1.0 - sum(weights)) > 1e-10)
+        // Fill-in candidate mapping information
+        labelList mC(1, cellHull[indexI]);
+
+        labelList parents;
+        scalarField weights;
+
+        // Obtain weighting factors for this cell.
+        // Perform several attempts for robustness.
+        bool consistent = false;
+        scalar searchFactor = 1.0;
+
+        for (label attempt = 0; attempt < 5; attempt++)
+        {
+            consistent =
+            (
+                computeTetWeights
+                (
+                    addedCellIndices[indexI],
+                    newOldVol,
+                    mC,
+                    searchFactor,
+                    parents,
+                    weights
+                )
+            );
+
+            if (consistent)
+            {
+                break;
+            }
+            else
+            {
+                // Expand the search radius and try again.
+                searchFactor *= 1.2;
+            }
+        }
+
+        if (!consistent)
         {
             // Write out for post-processing
-            label newIdx = addedCellIndices[indexI];
+            label nIdx = addedCellIndices[indexI], uIdx = 0;
+            labelList candid = cellParents(nIdx, searchFactor, mC);
+            labelList unMatch(candid.size() - parents.size(), -1);
 
-            writeVTK
-            (
-                "nCell_" + Foam::name(newIdx),
-                newIdx,
-                3, false, true
-            );
+            forAll(candid, cI)
+            {
+                if (findIndex(parents, candid[cI]) == -1)
+                {
+                    unMatch[uIdx++] = candid[cI];
+                }
+            }
 
-            writeVTK
-            (
-                "oCell_" + Foam::name(newIdx),
-                cellParents(mC),
-                3, true, true
-            );
+            writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
+            writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
+            writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
+            writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
 
             FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
                 << "Encountered non-conservative weighting factors." << nl
-                << " Cell: " << newIdx << nl
+                << " Cell: " << nIdx << nl
                 << " Old volume: " << newOldVol << nl
-                << " Candidate parents: " << cellParents(mC) << nl
                 << " Parents: " << parents << nl
                 << " Weights: " << weights << nl
                 << " Sum(Weights): " << sum(weights) << nl
                 << " Error: " << mag(1.0 - sum(weights))
                 << abort(FatalError);
         }
+
+        // Set the mapping for this cell
+        setCellMapping(addedCellIndices[indexI], parents, weights);
+
+        // Set parents for this cell
+        cellParents_.set(addedCellIndices[indexI], parents);
 
         if (debug > 2)
         {

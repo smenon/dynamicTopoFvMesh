@@ -545,6 +545,17 @@ class dynamicTopoFvMesh
             const bool useOldPoints = false
         ) const;
 
+        // Obtain map weighting factors for a tetrahedral cell.
+        bool computeTetWeights
+        (
+            const label cIndex,
+            const scalar cellVolume,
+            const labelList& mappingCells,
+            const scalar searchFactor,
+            labelList& parents,
+            scalarField& weights
+        ) const;
+
         // Determine the intersection volume between two tetrahedra
         scalar tetIntersection
         (
@@ -557,11 +568,17 @@ class dynamicTopoFvMesh
         scalar convexSetVolume
         (
             const word& cvxSetName,
+            const scalar tolFraction,
             const vectorField& cvxSet
         ) const;
 
         // Obtain a list of possible parent cells from the old mesh
-        labelList cellParents(const labelList& mappingCells) const;
+        labelList cellParents
+        (
+            const label newCellIndex,
+            const scalar searchFactor,
+            const labelList& mappingCells
+        ) const;
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();

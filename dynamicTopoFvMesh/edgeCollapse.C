@@ -2987,56 +2987,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             continue;
         }
 
-        // Fill-in mapping information
-        labelList mC(cellsChecked.toc());
-
-        // Obtain parents for this cell
-        labelList parents = cellParents(mC);
-
-        // Track actual intersections
-        label nIntersects = 0;
-
-        // Compute intersection weights
-        scalarField weights(parents.size(), 0.0);
-
-        forAll(parents, indexJ)
-        {
-            weights[indexJ] =
-            (
-                tetIntersection
-                (
-                    cIter.key(),
-                    parents[indexJ]
-                )
-            );
-
-            if (weights[indexJ] > SMALL)
-            {
-                nIntersects++;
-            }
-        }
-
-        // Now copy only valid intersections.
-        labelList newParents(nIntersects, -1);
-        scalarField newWeights(nIntersects, 0.0);
-
-        // Reset counter
-        nIntersects = 0;
-
-        forAll(weights, indexJ)
-        {
-            if (weights[indexJ] > SMALL)
-            {
-                newParents[nIntersects] = parents[indexJ];
-                newWeights[nIntersects] = weights[indexJ];
-                nIntersects++;
-            }
-        }
-
-        // Transfer lists.
-        parents.transfer(newParents);
-        weights.transfer(newWeights);
-
         // Compute the old-volume for this cell
         scalar newOldVol = tetVolume(cIter.key(), true);
 
@@ -3048,76 +2998,72 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << abort(FatalError);
         }
 
-        scalarField testWeights = (weights/newOldVol);
+        // Fill-in candidate mapping information
+        labelList mC(cellsChecked.toc());
 
-        if (mag(1.0 - sum(testWeights)) > 1e-10)
+        labelList parents;
+        scalarField weights;
+
+        // Obtain weighting factors for this cell.
+        // Perform several attempts for robustness.
+        bool consistent = false;
+        scalar searchFactor = 1.0;
+
+        for (label attempt = 0; attempt < 5; attempt++)
         {
-            // Inconsistent weights. Check whether any edges
-            // lie on boundary patches. These cells can have
-            // relaxed weights to account for mild convexity.
-            bool foundBoundary = false;
+            consistent =
+            (
+                computeTetWeights
+                (
+                    cIter.key(),
+                    newOldVol,
+                    mC,
+                    searchFactor,
+                    parents,
+                    weights
+                )
+            );
 
-            const cell& cellToCheck = cells_[cIter.key()];
-
-            forAll(cellToCheck, faceI)
+            if (consistent)
             {
-                const labelList& fEdges = faceEdges_[cellToCheck[faceI]];
-
-                forAll(fEdges, edgeI)
-                {
-                    if (whichEdgePatch(fEdges[edgeI]) > -1)
-                    {
-                        foundBoundary = true;
-                        break;
-                    }
-                }
-
-                if (foundBoundary)
-                {
-                    break;
-                }
-            }
-
-            if (foundBoundary)
-            {
-                // Normalize by sum of intersections
-                weights /= sum(weights);
+                break;
             }
             else
             {
-                // Write out for post-processing
-                label nIdx = cIter.key(), uIdx = 0;
-                labelList candid = cellParents(mC);
-                labelList unMatch(candid.size() - parents.size(), -1);
-
-                forAll(candid, cI)
-                {
-                    if (findIndex(parents, candid[cI]) == -1)
-                    {
-                        unMatch[uIdx++] = candid[cI];
-                    }
-                }
-
-                writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
-                writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
-                writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
-                writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
-
-                FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                    << "Encountered non-conservative weighting factors." << nl
-                    << " Cell: " << nIdx << nl
-                    << " Old volume: " << newOldVol << nl
-                    << " Parents: " << parents << nl
-                    << " Weights: " << testWeights << nl
-                    << " Sum(Weights): " << sum(testWeights) << nl
-                    << " Error: " << mag(1.0 - sum(testWeights))
-                    << abort(FatalError);
+                // Expand the search radius and try again.
+                searchFactor *= 1.2;
             }
         }
-        else
+
+        if (!consistent)
         {
-            // Normalize by current volume
-            weights /= newOldVol;
+            // Write out for post-processing
+            label nIdx = cIter.key(), uIdx = 0;
+            labelList candid = cellParents(nIdx, searchFactor, mC);
+            labelList unMatch(candid.size() - parents.size(), -1);
+
+            forAll(candid, cI)
+            {
+                if (findIndex(parents, candid[cI]) == -1)
+                {
+                    unMatch[uIdx++] = candid[cI];
+                }
+            }
+
+            writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
+            writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
+            writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
+            writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
+
+            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                << "Encountered non-conservative weighting factors." << nl
+                << " Cell: " << nIdx << nl
+                << " Old volume: " << newOldVol << nl
+                << " Parents: " << parents << nl
+                << " Weights: " << weights << nl
+                << " Sum(Weights): " << sum(weights) << nl
+                << " Error: " << mag(1.0 - sum(weights))
+                << abort(FatalError);
         }
 
         // Set the mapping for this cell
