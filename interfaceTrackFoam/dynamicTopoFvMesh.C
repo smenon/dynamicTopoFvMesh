@@ -80,6 +80,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nCells_(this->nCells()),
     nOldInternalFaces_(this->nInternalFaces()),
     nInternalFaces_(this->nInternalFaces()),
+    nInternalEdges_(0),
     nPointsFromPoints_(0),
     nFacesFromPoints_(0),
     nFacesFromEdges_(0),
@@ -115,6 +116,9 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
                     << " Unrecognized tet-quality metric: " << tetMetric
                     << abort(FatalError);
         }
+        
+        // Initialize internal edges for swapping
+        initInternalEdges();
     }    
         
     // Define edgeModification options
@@ -1290,6 +1294,64 @@ void Foam::dynamicTopoFvMesh::initEdgeLengths()
         }      
                 
     }  
+}
+
+// Initialize internal edges (for 3D tet-meshes)
+void Foam::dynamicTopoFvMesh::initInternalEdges()
+{
+    labelList tmpInternalEdges(this->nEdges(), 1);
+    labelList tmpStartFaceIndices(this->nEdges(), -1);
+    const edgeList& meshEdges           = this->edges();
+    const labelListList& faceToEdgeList = this->faceEdges();
+    const polyBoundaryMesh& boundary    = this->boundaryMesh();
+    
+    // Blank-out boundary edges...
+    for(label i=0; i<numPatches_; i++) {
+        for(label j=boundary[i].start(); j<boundary[i].start()+boundary[i].size(); j++) {
+            const labelList& faceToEdge = faceToEdgeList[j];
+            forAll(faceToEdge, edgeI) 
+                tmpInternalEdges[faceToEdge[edgeI]] = 0; 
+        }
+    }
+
+    // Assign the number of internal-edges
+    nInternalEdges_ = sum(tmpInternalEdges);
+    
+    // Allocate the internal edge list, and provide edge-labels 
+    // for later use
+    edge nullEdge(0,0);
+    label edgeCounter = 0;
+    internalEdges_.setSize(nInternalEdges_, nullEdge);
+    forAll(tmpInternalEdges, edgeI) {
+        if (tmpInternalEdges[edgeI]) {
+            internalEdges_[edgeCounter] = meshEdges[edgeI];
+            tmpInternalEdges[edgeI] = edgeCounter++;
+        } else {
+            tmpInternalEdges[edgeI] = -1;
+        }
+    }
+    
+    // Loop through all internal faces and 
+    // add start-face indices for internal edges
+    startFaceIndex_.setSize(nInternalEdges_, -1);
+    for(label i=0; i<nInternalFaces_; i++) {
+        const labelList& faceToEdge = faceToEdgeList[i];
+        forAll(faceToEdge, edgeI) {
+            label& indexToCheck = tmpInternalEdges[faceToEdge[edgeI]];
+            if (indexToCheck >= 0) {
+                startFaceIndex_[indexToCheck] = i;
+                indexToCheck = -1;
+            }
+        }
+    }
+    
+    // Perform a final-check to ensure that allocation is complete
+#   ifdef FULLDEBUG
+    if (sum(tmpInternalEdges) != -this->nEdges())
+        FatalErrorIn("dynamicTopoFvMesh::initInternalEdges()") << nl
+                << " Internal edge-allocation failed. " << nl
+                << abort(FatalError);
+#   endif                
 }
 
 // 2D Edge-bisection/collapse engine

@@ -105,16 +105,16 @@ int main(int argc, char *argv[])
     argv[1] = new char[100];
     argv[2] = new char[100];
     strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
-    strcpy(argv[2],"street");
+    strcpy(argv[2],"boxincube");
 
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"
-#   include "createStaticFields.H"
+//#   include "createNuFields.H"
 
     // Define the rotation axis and angle (in radians)
-    vector p1(0.75,1.0,0.0), p2(0.75,1.0,1.0), t(0.005,0.0,0.0); // Street
-    //vector p1(0.5,0.5,0.0), p2(0.5,0.5,1.0), t(0.0,0.0,0.0); // OffsetSqr
+    //vector p1(0.75,1.0,0.0), p2(0.75,1.0,1.0), t(0.005,0.0,0.0); // Street
+    vector p1(0.5,0.5,0.0), p2(0.5,0.5,1.0), t(0.0,0.0,0.0); // OffsetSqr
     doubleScalar angle = (0.72*3.14159)/180.0;
     
     // Enable/disable debugging
@@ -129,9 +129,10 @@ int main(int argc, char *argv[])
         p1 += t; p2 += t;
         
         // Update mesh (Solve for motion and topology)
-        mesh.update();
+        mesh.updateTopology();
+        mesh.updateMotion();
         
-#       include "write.H"        
+//#       include "write.H"        
     }
 
     Info << "End\n" << endl;

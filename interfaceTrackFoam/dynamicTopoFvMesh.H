@@ -118,15 +118,15 @@ class dynamicTopoFvMesh
         label           nOldPoints_, nPoints_;
         label           nOldFaces_,  nFaces_;
         label           nOldCells_,  nCells_;
-        label           nOldInternalFaces_, nInternalFaces_;
+        label           nOldInternalFaces_, nInternalFaces_, nInternalEdges_;
         
         // Mapping information
         label           nPointsFromPoints_;
         label           nFacesFromPoints_, nFacesFromEdges_, nFacesFromFaces_;
         label           nCellsFromPoints_, nCellsFromEdges_, nCellsFromFaces_, nCellsFromCells_;
         
-        HashTable<objectMap,label>  cellsFromEdges_;
         HashTable<objectMap,label>  facesFromEdges_;
+        HashTable<objectMap,label>  cellsFromEdges_;
         HashTable<objectMap,label>  cellsFromFaces_;
         HashTable<objectMap,label>  cellsFromCells_;
         
@@ -144,12 +144,16 @@ class dynamicTopoFvMesh
         HashTable<label,label> boundaryPatches_;
         
         //- Edge length cut-off criteria 
-        //- (for all faces[2D]/edges[3D] in the mesh)
+        //- ( for all faces in the mesh [2D] )
         HashList<scalar>    lengthScale_;
         HashList<edge>      edgeToWatch_;
         scalar              ratioMin_;
         scalar              ratioMax_;
         dimensionedScalar   growthFactor_;
+        
+        //- Internal edge-list for 3D tet-meshes
+        HashList<edge>      internalEdges_;
+        HashList<label>     startFaceIndex_;
         
     // Private Member Functions
 
@@ -167,6 +171,9 @@ class dynamicTopoFvMesh
         
         // Initialize the edge-length field
         void initEdgeLengths();
+        
+        // Initialize internal edges (for 3D tet-meshes)
+        void initInternalEdges();
         
         // 2D Edge-swapping engine
         void swap2DEdges();
