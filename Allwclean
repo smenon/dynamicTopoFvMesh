@@ -9,7 +9,7 @@ wclean mesquiteMotionSolver
 wclean freeSurface
 wclean enginePointPatchFields
 wclean dynamicTopoFvMesh
-wclean interfaceTrackFoam
+wclean interTrackFoam
 #wclean mapConservativeFields
 
 # Wipe out all lnInclude directories and re-link

@@ -8,5 +8,5 @@ wmakeLnInclude freeSurface
 wmakeLnInclude enginePointPatchFields
 wmakeLnInclude mesquiteMotionSolver
 wmakeLnInclude dynamicTopoFvMesh
-wmakeLnInclude interfaceTrackFoam
+wmakeLnInclude interTrackFoam
 #wmakeLnInclude mapConservativeFields

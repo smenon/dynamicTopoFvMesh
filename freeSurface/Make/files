@@ -1,0 +1,11 @@
+./correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.C
+./correctedFvPatchFields/basicCorrectedFvPatchFields/fixedValue/fixedValueCorrectedFvPatchFields.C
+./correctedFvPatchFields/basicCorrectedFvPatchFields/fixedGradient/fixedGradientCorrectedFvPatchFields.C
+./correctedFvPatchFields/basicCorrectedFvPatchFields/zeroGradient/zeroGradientCorrectedFvPatchFields.C
+./patchCorrectedSnGrad/patchCorrectedSnGrads.C
+
+freeSurface.C
+makeFreeSurfaceData.C
+freeSurfacePointDisplacement.C
+
+LIB = $(FOAM_LIBBIN)/libfreeSurface

@@ -28,5 +28,5 @@ wmake libso freeSurface
 wmake libso enginePointPatchFields
 wmake libso mesquiteMotionSolver
 wmake libso dynamicTopoFvMesh
-wmake interfaceTrackFoam
+wmake interTrackFoam
 #wmake mapConservativeFields
