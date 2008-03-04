@@ -451,14 +451,15 @@ void Foam::dynamicTopoFvMesh::removeFace(const label index) {
     nFaces_--;
 }
 
-// Utility method to build a hull of faces that are connected to the edge
+// Utility method to build a hull of faces/cells that are connected to the edge
 // This will also determine whether the edge lies on a boundary
 bool Foam::dynamicTopoFvMesh::constructPrismHull(
     const edge& edgeToCheck, 
     const label startFaceIndex, 
     DynamicList<label>& hullFaces,
     DynamicList<label>& hullCells,
-    DynamicList<label>& hullTriFaces
+    DynamicList<label>& hullTriFaces,
+    bool requiresTriFaces
 )
 {
     // Get the two cells on either side...
@@ -486,19 +487,30 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull(
                         }  
                     }
                 }
-                if (faceToCheck.nEdges() == 3 && !foundTriFace) {
+                if (requiresTriFaces && faceToCheck.nEdges() == 3 && !foundTriFace) {
                     hullTriFaces.append(cellToCheck[faceI]);
                     foundTriFace=true;
                 }
             }
             // Found the faces we were looking for, break-out
-            if (foundQuadFace && foundTriFace) break;
+            if (requiresTriFaces) {
+                if (foundQuadFace && foundTriFace) break;
+            } else {
+                if (foundQuadFace) break;
+            }
         }
 #       ifdef FULLDEBUG
-        if (!foundQuadFace || !foundTriFace)
-            FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
-                    << " Failed to find a suitable quad/tri face. Possibly not a prismatic mesh. " << nl
-                    << abort(FatalError);
+        if (requiresTriFaces) {
+            if (!foundQuadFace || !foundTriFace)
+                FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
+                        << " Failed to find a suitable quad/tri face. Possibly not a prismatic mesh. " << nl
+                        << abort(FatalError);
+        } else {
+            if (!foundQuadFace)
+                FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
+                        << " Failed to find a suitable quad face. Possibly not a prismatic mesh. " << nl
+                        << abort(FatalError);            
+        }
 #       endif
         // Decide which cell to check next
         if (owner_[faceToExclude] == cellIndex)
@@ -515,7 +527,8 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull(
     if (c1 == -1) 
         isBoundary = true;
     else {
-        // Check if the previous search came full-circle. If yes, the following is unnecessary.
+        // Check if the previous search hit a boundary. 
+        // If yes, start another search in the reverse direction.
         if (isBoundary) {
             // Start a search from cell[1] and add to the list as we go along
             faceToExclude=startFaceIndex, cellIndex=c1, hullCells.append(c1);
@@ -536,19 +549,30 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull(
                                 }
                             }
                         }
-                        if (faceToCheck.nEdges() == 3 && !foundTriFace) {
+                        if (requiresTriFaces && faceToCheck.nEdges() == 3 && !foundTriFace) {
                             hullTriFaces.append(cellToCheck[faceI]);
                             foundTriFace=true;
                         }
                     }
                     // Found the faces we were looking for, break-out
-                    if (foundQuadFace && foundTriFace) break;
+                    if (requiresTriFaces) {
+                        if (foundQuadFace && foundTriFace) break;
+                    } else {
+                        if (foundQuadFace) break;
+                    }
                 }
 #               ifdef FULLDEBUG
-                if (!foundQuadFace || !foundTriFace)
-                    FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
-                            << " Failed to find a suitable quad/tri face. Possibly not a prismatic mesh. " << nl
-                            << abort(FatalError);
+                if (requiresTriFaces) {
+                    if (!foundQuadFace || !foundTriFace)
+                        FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
+                                << " Failed to find a suitable quad/tri face. Possibly not a prismatic mesh. " << nl
+                                << abort(FatalError);
+                } else {
+                    if (!foundQuadFace)
+                        FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
+                                << " Failed to find a suitable quad face. Possibly not a prismatic mesh. " << nl
+                                << abort(FatalError);            
+                }
 #               endif                
                 // Decide which cell to check next
                 if (owner_[faceToExclude] == cellIndex)
@@ -664,13 +688,13 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
             reverseCellMap_[cIndex] = cellRenum;
         } /*else {
             // Renumber the map-list for added cells
-            cellsFromFaces_(cIndex).index() = cellRenum;
             if (!cellsFromFaces_.found(cIndex)) {
                 FatalErrorIn("dynamicTopoFvMesh::reOrderMesh") << nl
                     << " Cell: " << cIndex 
                     << " was added to the mesh, but contains no Master."
                     << abort(FatalError);                
             }
+            cellsFromFaces_(cIndex).index() = cellRenum;
         }*/
         // Update the counter
         cellRenum++;
@@ -1886,8 +1910,8 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
     DynamicList<label> firstEdgeHull(10), secondEdgeHull(10);
     DynamicList<label> firstCells(10),    secondCells(10);
     DynamicList<label> firstTriFaces(10), secondTriFaces(10);
-    bool firstEdgeBoundary  = constructPrismHull(firstEdge, findex, firstEdgeHull, firstCells, firstTriFaces);
-    bool secondEdgeBoundary = constructPrismHull(secondEdge, findex, secondEdgeHull, secondCells, secondTriFaces);
+    bool firstEdgeBoundary  = constructPrismHull(firstEdge, findex, firstEdgeHull, firstCells, firstTriFaces, true);
+    bool secondEdgeBoundary = constructPrismHull(secondEdge, findex, secondEdgeHull, secondCells, secondTriFaces, true);
 
     if (debug) {
         Info << "-------------------------" << endl;

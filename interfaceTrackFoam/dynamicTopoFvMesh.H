@@ -217,7 +217,7 @@ class dynamicTopoFvMesh
         
         // Utility method to build a hull of faces that are connected to the edge
         // This will also determine whether the edge lies on a boundary
-        bool constructPrismHull(const edge&, const label, DynamicList<label>&, DynamicList<label>&, DynamicList<label>&);
+        bool constructPrismHull(const edge&, const label, DynamicList<label>&, DynamicList<label>&, DynamicList<label>&, bool);
         
         // Reorder the mesh in upper-triangular order, and generate mapping information
         void reOrderMesh(pointField&, faceList&, labelList&, labelList&);
