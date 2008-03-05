@@ -686,7 +686,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
         if (cIndex < nOldCells_) {
             cellMap_[cellRenum]     = cIndex;
             reverseCellMap_[cIndex] = cellRenum;
-        } /*else {
+        }/* else {
             // Renumber the map-list for added cells
             if (!cellsFromFaces_.found(cIndex)) {
                 FatalErrorIn("dynamicTopoFvMesh::reOrderMesh") << nl
@@ -1588,7 +1588,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     }
     cellsFromFaces_.insert(newCellIndex0,objectMap(newCellIndex0,intCell0));
     nCellsFromFaces_++;
-     */
+    */
     
     if (debug) Info << "Modified thisFace: " << findex << ": " << thisFace << endl;
 
@@ -1728,7 +1728,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         }
         cellsFromFaces_.insert(newCellIndex1,objectMap(newCellIndex1,intCell1));        
         nCellsFromFaces_++;
-         */
+        */
 
         // Find the interior face that contains secondEdge
         found = false;
@@ -2345,7 +2345,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
         
         // 2D Edge-swapping engine
-        //swap2DEdges();
+        swap2DEdges();
         
         if (debug) Info << nl << "2D Edge Swapping complete." << endl;
         

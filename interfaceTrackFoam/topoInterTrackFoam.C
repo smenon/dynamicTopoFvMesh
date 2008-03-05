@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
         {
             interface.updateMesh(mesh.meshMap()); 
 #           include "checkTotalVolume.H"
-#           include "volContinuity.H"
+            phi = fvc::interpolate(U) & mesh.Sf();
 #           include "correctPhi.H"
 #           include "CourantNo.H"
         }
@@ -92,6 +92,8 @@ int main(int argc, char *argv[])
         interface.updateDisplacementDirections();
 
         interface.moveMeshPointsForOldFreeSurfDisplacement();
+        
+#       include "volContinuity.H"        
 
         if (smooth) interface.smooth();
 

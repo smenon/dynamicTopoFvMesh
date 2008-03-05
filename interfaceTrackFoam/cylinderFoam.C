@@ -59,15 +59,6 @@ int main(int argc, char *argv[])
 #       include "checkTotalVolume.H"
 #       include "CourantNo.H"
 
-        // Read non-orthogonal correctors for pcorr
-        int nPCorr = 0;
-        if (piso.found("nPCorr")) {
-            nPCorr = readInt(piso.lookup("nPCorr"));
-        }        
-        
-        // Store pressure values for the previous time-step
-        //p.storePrevIter();
-        
         // Make the fluxes absolute
         fvc::makeAbsolute(phi, U);
 
@@ -93,13 +84,15 @@ int main(int argc, char *argv[])
         if (meshChanged)
         {
 #           include "checkTotalVolume.H"
-#           include "volContinuity.H"
+            phi = fvc::interpolate(U) & mesh.Sf();
 #           include "correctPhi.H"
 #           include "CourantNo.H"
         }
 
         // Solve for mesh-motion
         mesh.updateMotion();         
+        
+#       include "volContinuity.H"        
         
         // Make the fluxes relative to the mesh motion
         fvc::makeRelative(phi, U);

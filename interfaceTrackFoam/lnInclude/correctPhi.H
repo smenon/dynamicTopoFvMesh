@@ -26,7 +26,7 @@
 
 #   include "continuityErrs.H"
 
-    for(int nonOrth=0; nonOrth<=nPCorr; nonOrth++)
+    for(int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
     {
         fvScalarMatrix pcorrEqn
         (
@@ -36,7 +36,7 @@
         pcorrEqn.setReference(pRefCell, pRefValue);
         pcorrEqn.solve();
 
-        if (nonOrth == nPCorr)
+        if (nonOrth == nNonOrthCorr)
         {
             phi -= pcorrEqn.flux();
         }
