@@ -129,6 +129,9 @@ class dynamicTopoFvMesh
         HashTable<objectMap,label>  cellsFromEdges_;
         HashTable<objectMap,label>  cellsFromFaces_;
         HashTable<objectMap,label>  cellsFromCells_;
+
+        // Face flux-flip for surface-mapping
+        labelHashSet    flipFaceFlux_;        
         
         //- Old-to-New
         labelList       reversePointMap_;

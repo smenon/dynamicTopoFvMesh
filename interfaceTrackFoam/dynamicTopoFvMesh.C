@@ -1221,7 +1221,16 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_0[c0count++] = commonIntFaceIndex[0];
             cell_0[c0count++] = commonIntFaceIndex[1];
             owner_[commonIntFaceIndex[1]] = newOwn;
-            neighbour_[commonIntFaceIndex[1]] = newNei;                 
+            neighbour_[commonIntFaceIndex[1]] = newNei;
+            if (flipOption) {
+                // If this is a face that's being flipped twice, remove it
+                // from the list of flipFaces, otherwise add it.
+                if (flipFaceFlux_.found(commonIntFaceIndex[1])) {
+                    flipFaceFlux_.erase(commonIntFaceIndex[1]);
+                } else {
+                    flipFaceFlux_.insert(commonIntFaceIndex[1]);
+                }
+            }
 
             // The quad face belonging to cell[0] now becomes a part of cell[1]
             if ( neighbour_[commonIntFaceIndex[2]] == -1 ) {
@@ -1269,7 +1278,16 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_1[c1count++] = commonIntFaceIndex[2];
             cell_1[c1count++] = commonIntFaceIndex[3];
             owner_[commonIntFaceIndex[2]] = newOwn;
-            neighbour_[commonIntFaceIndex[2]] = newNei;                
+            neighbour_[commonIntFaceIndex[2]] = newNei;
+            if (flipOption) {
+                // If this is a face that's being flipped twice, remove it
+                // from the list of flipFaces, otherwise add it.
+                if (flipFaceFlux_.found(commonIntFaceIndex[2])) {
+                    flipFaceFlux_.erase(commonIntFaceIndex[2]);
+                } else {
+                    flipFaceFlux_.insert(commonIntFaceIndex[2]);
+                }
+            }
         }
     }   
 }
@@ -1487,7 +1505,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
 void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
 {
     // Local variables
-    bool found;
+    bool found, flipOption;
     label otherPointIndex[4], nextToOtherPoint[4], replaceFace;
     label c0BdyIndex[2], c0IntIndex[2], c1BdyIndex[2], c1IntIndex[2];
     face  c0BdyFace[2],  c0IntFace[2],  c1BdyFace[2],  c1IntFace[2];
@@ -1611,18 +1629,30 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     // Check if face reversal is necessary for the replacement
     if (owner_[replaceFace] == c0) {
         if (neighbour_[replaceFace] == -1) {
-            // Change the owner
+            // Change the owner (no flux-flipping)
             owner_[replaceFace] = newCellIndex0;
+            flipOption = false;
         } else {
-            // This face has to be reversed
+            // This face has to be reversed (and flux is to be flipped)
             faces_[replaceFace] = faces_[replaceFace].reverseFace();
             owner_[replaceFace] = neighbour_[replaceFace];
             neighbour_[replaceFace] = newCellIndex0;
+            flipOption = true;
         }
     } else {
-        // Keep owner, but change neighbour
+        // Keep owner, but change neighbour (no flux-flipping)
         neighbour_[replaceFace] = newCellIndex0;
-    }              
+        flipOption = false;
+    }
+    if (flipOption) {
+        // If this is a face that's being flipped twice, remove it
+        // from the list of flipFaces, otherwise add it.
+        if (flipFaceFlux_.found(replaceFace)) {
+            flipFaceFlux_.erase(replaceFace);
+        } else {
+            flipFaceFlux_.insert(replaceFace);
+        }
+    }    
 
     // Define the faces for the new cell
     newCell0[0] = c0BdyIndex[1];
@@ -1749,19 +1779,31 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         // Check if face reversal is necessary for the replacement
         if (owner_[replaceFace] == c1) {
             if (neighbour_[replaceFace] == -1) {
-                // Change the owner
+                // Change the owner (no flux-flipping)
                 owner_[replaceFace] = newCellIndex1;
+                flipOption = false;
             } else {                        
-                // This face has to be reversed
+                // This face has to be reversed (and flux is to be flipped)
                 faces_[replaceFace] = faces_[replaceFace].reverseFace();
                 owner_[replaceFace] = neighbour_[replaceFace];
                 neighbour_[replaceFace] = newCellIndex1;
+                flipOption = true;
             }
         } else {
-            // Keep owner, but change neighbour
+            // Keep owner, but change neighbour (no flux-flipping)
             neighbour_[replaceFace] = newCellIndex1;
-        }                    
-
+            flipOption = false;
+        }
+        if (flipOption) {
+            // If this is a face that's being flipped twice, remove it
+            // from the list of flipFaces, otherwise add it.
+            if (flipFaceFlux_.found(replaceFace)) {
+                flipFaceFlux_.erase(replaceFace);
+            } else {
+                flipFaceFlux_.insert(replaceFace);
+            }
+        }
+        
         // Define attributes for the new prism cell
         newCell1[0] = replaceFace;
 
@@ -1882,6 +1924,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
     if (debug) Info << nl << nl << "Face: " << findex << ": " << thisFace << " is to be collapsed. " << endl;
     
     // Local variables
+    bool flipOption;
     label c0BdyIndex[2], c0IntIndex[2], c1BdyIndex[2], c1IntIndex[2];
     face  c0BdyFace[2],  c0IntFace[2],  c1BdyFace[2],  c1IntFace[2];
     edge  tmpEdge(0, 0), firstEdge, secondEdge;
@@ -2165,13 +2208,16 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
                 faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
                 owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                 neighbour_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
+                flipOption = true;
             } else {
                 // Keep orientation intact, and update the owner
                 owner_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
+                flipOption = false;
             }
         } else {
             // Keep orientation intact, and update the neighbour
             neighbour_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
+            flipOption = false;
         }
     } else {
         cellCheck[0] = owner_[faceToThrow[0]];
@@ -2181,15 +2227,28 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
                 faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
                 neighbour_[faceToKeep[0]] = owner_[faceToKeep[0]];
                 owner_[faceToKeep[0]] = owner_[faceToThrow[0]];
+                flipOption = true;
             } else {
                 // Keep orientation intact, and update the neighbour
                 neighbour_[faceToKeep[0]] = owner_[faceToThrow[0]];
+                flipOption = false;
             }                
         } else {
             // Keep orientation intact, and update the owner
             owner_[faceToKeep[0]] = owner_[faceToThrow[0]];
+            flipOption = false;
         }
     }
+    if (flipOption) {
+        // If this is a face that's being flipped twice, remove it
+        // from the list of flipFaces, otherwise add it.
+        if (flipFaceFlux_.found(faceToKeep[0])) {
+            flipFaceFlux_.erase(faceToKeep[0]);
+        } else {
+            flipFaceFlux_.insert(faceToKeep[0]);
+        }
+    }        
+    
     if (c1 != -1) {
         if (owner_[faceToThrow[1]] == c1) {
             cellCheck[1] = neighbour_[faceToThrow[1]];
@@ -2203,13 +2262,16 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
                     faces_[faceToKeep[1]] = faces_[faceToKeep[1]].reverseFace();
                     owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                     neighbour_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
+                    flipOption = true;
                 } else {
                     // Keep orientation intact, and update the owner
                     owner_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
+                    flipOption = false;
                 }
             } else {
                 // Keep orientation intact, and update the neighbour
                 neighbour_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
+                flipOption = false;
             }
         } else {
             cellCheck[1] = owner_[faceToThrow[1]];
@@ -2219,15 +2281,27 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
                     faces_[faceToKeep[1]] = faces_[faceToKeep[1]].reverseFace();
                     neighbour_[faceToKeep[1]] = owner_[faceToKeep[1]];
                     owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
+                    flipOption = true;
                 } else {
                     // Keep orientation intact, and update the neighbour
                     neighbour_[faceToKeep[1]] = owner_[faceToThrow[1]];
+                    flipOption = false;
                 }
             } else {
                 // Keep orientation intact, and update the owner
                 owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
+                flipOption = false;
             }
         }
+        if (flipOption) {
+            // If this is a face that's being flipped twice, remove it
+            // from the list of flipFaces, otherwise add it.
+            if (flipFaceFlux_.found(faceToKeep[1])) {
+                flipFaceFlux_.erase(faceToKeep[1]);
+            } else {
+                flipFaceFlux_.insert(faceToKeep[1]);
+            }
+        }                
     }
 
     // Remove the unwanted faces in the cell(s) adjacent to this face,
@@ -2303,7 +2377,7 @@ void Foam::dynamicTopoFvMesh::updateMotion()
         }
 
         // Solve for motion
-        this->movePoints(motionPtr_->newPoints());    
+        movePoints(motionPtr_->newPoints());    
     }    
 }
 
@@ -2377,7 +2451,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         List<objectMap> cellsFromCells(nCellsFromCells_);   
         
         // Null temporaries
-        labelHashSet flipFaceFlux(0);
         labelListList pointZoneMap(0);
         labelListList faceZonePointMap(0);
         labelListList faceZoneFaceMap(0);
@@ -2496,7 +2569,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
                 reversePointMap_,
                 reverseFaceMap_,
                 reverseCellMap_,
-                flipFaceFlux,
+                flipFaceFlux_,
                 patchPointMap,
                 pointZoneMap,
                 faceZonePointMap,
@@ -2508,10 +2581,11 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
             )
         );
         
-        // Update the mesh and the motion-solver
+        // Update the motion-solver, if necessary
         if (motionPtr_.valid()) motionPtr_().updateMesh(mapper_);
         
-        this->updateMesh(mapper_);
+        // Update the underlying mesh, and map all related fields
+        updateMesh(mapper_);
         
         // Clear the current and reverse maps
         nPointsFromPoints_ = 0;
@@ -2535,6 +2609,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseFaceMap_.clear(); 
         reverseCellMap_.clear();
         boundaryPatches_.clear();
+        flipFaceFlux_.clear();
         
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_);
@@ -2543,7 +2618,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     }    
     
     // Basic checks for mesh-validity
-    if (debug) this->checkMesh(true);
+    if (debug) checkMesh(true);
     
     return topoChangeFlag_;
 }
