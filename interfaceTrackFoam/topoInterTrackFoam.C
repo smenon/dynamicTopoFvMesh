@@ -83,7 +83,6 @@ int main(int argc, char *argv[])
         {
             interface.updateMesh(mesh.meshMap()); 
 #           include "checkTotalVolume.H"
-            phi = fvc::interpolate(U) & mesh.Sf();
 #           include "correctPhi.H"
 #           include "CourantNo.H"
         }

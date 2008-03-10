@@ -711,7 +711,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
     // Keep track of inserted boundary face indices
     labelList boundaryPatchIndices(patchStarts_);
     
-    // Temporaries
+    // Visit cells in the mesh and renumber outward faces sequentially
     DynamicList<label> cfList(10), neiList(10);
     for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++) {
         // Obtain the index for this cell
@@ -848,6 +848,24 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
             replaceFaceLabel(faceIndex, replaceIndex, cells_[c1]);
         // Increment the iterators
         fIter++; ownIter++; neiIter++;
+    }
+    
+    // Loop through all flip-flux faces and renumber
+    labelList oldFlipFaces = flipFaceFlux_.toc();
+    flipFaceFlux_.clear();
+    forAll(oldFlipFaces, faceI) {
+        label index = oldFlipFaces[faceI];
+        if (index < nOldFaces_) {
+            flipFaceFlux_.insert(reverseFaceMap_[index]);
+        } else {
+            // Something is wrong. New faces shouldn't appear in this list.
+            FatalErrorIn("dynamicTopoFvMesh::reOrderMesh") << nl
+                    << " Face: " << index
+                    << " was added to the flipFaceFlux list."
+                    << " But the number of faces in the old mesh is: "
+                    << nOldFaces_
+                    << abort(FatalError);            
+        }
     }
     
     // Sort face-lists in ascending order. 
@@ -1222,7 +1240,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_0[c0count++] = commonIntFaceIndex[1];
             owner_[commonIntFaceIndex[1]] = newOwn;
             neighbour_[commonIntFaceIndex[1]] = newNei;
-            if (flipOption) {
+            if (flipOption && (commonIntFaceIndex[1] < nOldFaces_)) {
                 // If this is a face that's being flipped twice, remove it
                 // from the list of flipFaces, otherwise add it.
                 if (flipFaceFlux_.found(commonIntFaceIndex[1])) {
@@ -1279,7 +1297,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_1[c1count++] = commonIntFaceIndex[3];
             owner_[commonIntFaceIndex[2]] = newOwn;
             neighbour_[commonIntFaceIndex[2]] = newNei;
-            if (flipOption) {
+            if (flipOption && (commonIntFaceIndex[2] < nOldFaces_)) {
                 // If this is a face that's being flipped twice, remove it
                 // from the list of flipFaces, otherwise add it.
                 if (flipFaceFlux_.found(commonIntFaceIndex[2])) {
@@ -1644,7 +1662,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         neighbour_[replaceFace] = newCellIndex0;
         flipOption = false;
     }
-    if (flipOption) {
+    if (flipOption && (replaceFace < nOldFaces_)) {
         // If this is a face that's being flipped twice, remove it
         // from the list of flipFaces, otherwise add it.
         if (flipFaceFlux_.found(replaceFace)) {
@@ -1794,7 +1812,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
             neighbour_[replaceFace] = newCellIndex1;
             flipOption = false;
         }
-        if (flipOption) {
+        if (flipOption && (replaceFace < nOldFaces_)) {
             // If this is a face that's being flipped twice, remove it
             // from the list of flipFaces, otherwise add it.
             if (flipFaceFlux_.found(replaceFace)) {
@@ -2239,7 +2257,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
             flipOption = false;
         }
     }
-    if (flipOption) {
+    if (flipOption && (faceToKeep[0] < nOldFaces_)) {
         // If this is a face that's being flipped twice, remove it
         // from the list of flipFaces, otherwise add it.
         if (flipFaceFlux_.found(faceToKeep[0])) {
@@ -2293,7 +2311,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
                 flipOption = false;
             }
         }
-        if (flipOption) {
+        if (flipOption && (faceToKeep[1] < nOldFaces_)) {
             // If this is a face that's being flipped twice, remove it
             // from the list of flipFaces, otherwise add it.
             if (flipFaceFlux_.found(faceToKeep[1])) {

@@ -84,7 +84,6 @@ int main(int argc, char *argv[])
         if (meshChanged)
         {
 #           include "checkTotalVolume.H"
-            phi = fvc::interpolate(U) & mesh.Sf();
 #           include "correctPhi.H"
 #           include "CourantNo.H"
         }
