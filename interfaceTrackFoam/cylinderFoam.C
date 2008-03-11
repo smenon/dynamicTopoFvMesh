@@ -79,8 +79,8 @@ int main(int argc, char *argv[])
         }         
         mesh.boundaryDisplacementPatch(patchID) = vector(0,-0.05,0)*mesh.time().deltaT().value();          
         
-        bool meshChanged = mesh.updateTopology();
-
+        bool meshChanged = mesh.updateTopology(); 
+        
         if (meshChanged)
         {
 #           include "checkTotalVolume.H"

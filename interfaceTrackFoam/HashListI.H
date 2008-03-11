@@ -369,6 +369,22 @@ inline label HashList<T>::append(const T& data)
     return index;
 }
 
+//- Clear contents of the list
+template<class T>
+void HashList<T>::clear()
+{
+    Item<T> *current, *node;
+    current = startIdx_;
+    while (current) {
+        node = current->nextidx_;
+        delete current;
+        current = node;
+    }
+    if (table_) delete [] table_;
+    size_ = 0; startIdx_ = 0; endIdx_ = 0;
+    rehash_ = false; rehashIndex_ = -1;    
+}
+
 //- Renumber (and rehash) indices after insertion/deletion
 /*
 template<class T>
@@ -435,16 +451,9 @@ void HashList<T>::sort()
 template<class T>
 HashList<T>::~HashList()
 {
-    Item<T> *current, *node;
-    current = startIdx_;
-    while (current) {
-        node = current->nextidx_;
-        delete current;
-        current = node;
+    if (table_) {
+        clear();
     }
-    if (table_) delete [] table_;
-    size_ = 0; startIdx_ = 0; endIdx_ = 0;
-    rehash_ = false; rehashIndex_ = -1;
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //

@@ -58,7 +58,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ),            
     twoDMotion_(dict_.subDict("dynamicTopoFvMesh").lookup("twoD")), 
     edgeModification_(dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")),
-    solveForMotion_(dict_.subDict("dynamicTopoFvMesh").lookup("solveForMotion")), 
+    solveForMotion_(dict_.subDict("dynamicTopoFvMesh").lookup("solveForMotion")),
+    fluxInterpolation_(dict_.subDict("dynamicTopoFvMesh").lookup("fluxInterpolation")),
     mapper_(NULL),
     quality_(*this),
     meshPoints_(this->points()),   
@@ -89,11 +90,6 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nCellsFromEdges_(0),
     nCellsFromFaces_(0),
     nCellsFromCells_(0), 
-    facesFromEdges_(10),
-    cellsFromEdges_(10),          
-    cellsFromFaces_(10),
-    cellsFromCells_(10),
-    boundaryPatches_(257),
     ratioMin_(0.0),
     ratioMax_(0.0),
     growthFactor_("growthFactor",dimensionSet(0,2,-1,0,0),0.0)
@@ -101,6 +97,11 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Initialize the motion-solver, if it was requested
     if (solveForMotion_) {
         motionPtr_.set(motionSolver::New(*this).ptr());
+    }
+    
+    // Obtain the name of the registered flux-field
+    if (fluxInterpolation_) {        
+        fluxFieldName_ = word(dict_.subDict("dynamicTopoFvMesh").lookup("fluxField"));
     }
     
     // For tetrahedral meshes...
@@ -393,6 +394,9 @@ Foam::label Foam::dynamicTopoFvMesh::insertFace(
     if (edgeModification_ && twoDMotion_) {
         edgeToWatch_.append(edgeToWatch);
     }
+    if (fluxInterpolation_) {
+        localPhi_.append(0.0);
+    }
     
     // Keep track of added boundary faces in a separate hash-table
     // This information will be required at the reordering stage
@@ -441,6 +445,9 @@ void Foam::dynamicTopoFvMesh::removeFace(const label index) {
     if (edgeModification_ && twoDMotion_) {
         edgeToWatch_.remove(index);
     }  
+    if (fluxInterpolation_) {
+        localPhi_.remove(index);
+    }
     
     // Update the reverse face-map, but only if this is a face that existed
     // at time [n]. Added faces which are deleted during the topology change
@@ -822,6 +829,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
     HashList<label>::iterator ownIter = owner_.begin();
     HashList<label>::iterator neiIter = neighbour_.begin();
     HashList<edge>::iterator etwIter  = edgeToWatch_.begin();
+    HashList<scalar>::iterator flIter = localPhi_.begin();
     label replaceIndex;
     while (fIter != faces_.end()) {
         label faceIndex = fIter.index();
@@ -841,6 +849,10 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
             edgeToWatch_.reNumber(replaceIndex, etwIter);
             etwIter++;
         }
+        if (fluxInterpolation_) {
+            localPhi_.reNumber(replaceIndex, flIter);
+            flIter++;
+        }
         // Update the cell list
         label c0 = ownIter(), c1 = neiIter();
         replaceFaceLabel(faceIndex, replaceIndex, cells_[c0]);
@@ -855,9 +867,8 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
     flipFaceFlux_.clear();
     forAll(oldFlipFaces, faceI) {
         label index = oldFlipFaces[faceI];
-        if (index < nOldFaces_) {
-            flipFaceFlux_.insert(reverseFaceMap_[index]);
-        } else {
+#       ifdef FULLDEBUG
+        if (index >= nOldFaces_) {
             // Something is wrong. New faces shouldn't appear in this list.
             FatalErrorIn("dynamicTopoFvMesh::reOrderMesh") << nl
                     << " Face: " << index
@@ -865,7 +876,9 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
                     << " But the number of faces in the old mesh is: "
                     << nOldFaces_
                     << abort(FatalError);            
-        }
+        }            
+#       endif
+        flipFaceFlux_.insert(reverseFaceMap_[index]);
     }
     
     // Sort face-lists in ascending order. 
@@ -876,6 +889,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
     if (edgeModification_ && twoDMotion_) {
         edgeToWatch_.sort();
     }
+    if (fluxInterpolation_) localPhi_.sort();
 }
 
 // Calculate the edge length-scale for the mesh
@@ -1249,6 +1263,10 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                     flipFaceFlux_.insert(commonIntFaceIndex[1]);
                 }
             }
+            // Modify the local-flux field
+            if (flipOption && fluxInterpolation_) {
+                localPhi_[commonIntFaceIndex[1]] *= -1.0;
+            }            
 
             // The quad face belonging to cell[0] now becomes a part of cell[1]
             if ( neighbour_[commonIntFaceIndex[2]] == -1 ) {
@@ -1306,6 +1324,10 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                     flipFaceFlux_.insert(commonIntFaceIndex[2]);
                 }
             }
+            // Modify the local-flux field
+            if (flipOption && fluxInterpolation_) {
+                localPhi_[commonIntFaceIndex[2]] *= -1.0;
+            }             
         }
     }   
 }
@@ -1670,6 +1692,10 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         } else {
             flipFaceFlux_.insert(replaceFace);
         }
+    }
+    // Modify the local-flux field
+    if (flipOption && fluxInterpolation_) {
+        localPhi_[replaceFace] *= -1.0;
     }    
 
     // Define the faces for the new cell
@@ -1821,6 +1847,10 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
                 flipFaceFlux_.insert(replaceFace);
             }
         }
+        // Modify the local-flux field
+        if (flipOption && fluxInterpolation_) {
+            localPhi_[replaceFace] *= -1.0;
+        }        
         
         // Define attributes for the new prism cell
         newCell1[0] = replaceFace;
@@ -2265,7 +2295,11 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
         } else {
             flipFaceFlux_.insert(faceToKeep[0]);
         }
-    }        
+    }  
+    // Modify the local-flux field
+    if (flipOption && fluxInterpolation_) {
+        localPhi_[faceToKeep[0]] *= -1.0;
+    }      
     
     if (c1 != -1) {
         if (owner_[faceToThrow[1]] == c1) {
@@ -2319,7 +2353,11 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
             } else {
                 flipFaceFlux_.insert(faceToKeep[1]);
             }
-        }                
+        }   
+        // Modify the local-flux field
+        if (flipOption && fluxInterpolation_) {
+            localPhi_[faceToKeep[1]] *= -1.0;
+        }
     }
 
     // Remove the unwanted faces in the cell(s) adjacent to this face,
@@ -2416,13 +2454,23 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         oldPatchSizes_[i] = patchSizes_[i];
         oldPatchStarts_[i] = patchStarts_[i]; 
         oldPatchNMeshPoints_[i] = patchNMeshPoints_[i]; 
-    }
+    }   
     
     // Obtain the most recent point-positions
     const pointField& currentPoints = this->points();
     for(HashList<point>::iterator p = meshPoints_.begin(); p != meshPoints_.end(); p++) {
         p() = currentPoints[p.index()];
     }
+
+    // Obtain recent fluxes from the object-registry and make a local-copy
+    if (fluxInterpolation_) {
+        if (localPhi_.empty()) localPhi_.setSize(nFaces_,0.0);
+        surfaceScalarField& phi = const_cast<surfaceScalarField&>
+                (this->objectRegistry::lookupObject<surfaceScalarField>(fluxFieldName_));
+        for(HashList<scalar>::iterator phiIter = localPhi_.begin(); phiIter != localPhi_.end(); phiIter++) {
+            phiIter() = phi[phiIter.index()];
+        }        
+    }    
     
     //== Connectivity changes ==//
     
@@ -2627,6 +2675,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseFaceMap_.clear(); 
         reverseCellMap_.clear();
         boundaryPatches_.clear();
+        
         flipFaceFlux_.clear();
         
         // Set new sizes for the reverse maps

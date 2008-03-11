@@ -92,6 +92,12 @@ class dynamicTopoFvMesh
         //- Should the mesh solve for motion on update?
         Switch solveForMotion_;
         
+        //- Should the mesh interpolate fluxes on update?
+        Switch fluxInterpolation_;
+        
+        //- Name of the flux field specified in the registry
+        word fluxFieldName_;
+        
         //- The motion solver pointer
         autoPtr<motionSolver> motionPtr_;
         
@@ -130,8 +136,9 @@ class dynamicTopoFvMesh
         HashTable<objectMap,label>  cellsFromFaces_;
         HashTable<objectMap,label>  cellsFromCells_;
 
-        // Face flux-flip for surface-mapping
-        labelHashSet    flipFaceFlux_;        
+        // Face flux interpolation
+        labelHashSet        flipFaceFlux_;
+        HashList<scalar>    localPhi_;
         
         //- Old-to-New
         labelList       reversePointMap_;

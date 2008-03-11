@@ -196,6 +196,9 @@ public:
             //- Returns the index of the added element
             inline label append(const T&);
             
+            //- Clear contents of the list
+            void clear();
+            
             //- Rehash indices after insertion/deletion
             //inline void rehash();
             
