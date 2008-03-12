@@ -271,6 +271,11 @@ public:
             return lengthScale_;
         }
         
+        HashList<scalar>& interpolatedFluxes()
+        {
+            return localPhi_;
+        }        
+        
         tmp<scalarField> skewness()
         {
             return quality_.skewness();            

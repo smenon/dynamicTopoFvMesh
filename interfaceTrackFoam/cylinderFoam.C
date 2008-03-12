@@ -38,6 +38,13 @@ Description
 
 int main(int argc, char *argv[])
 {
+    // For debug purposes, assign <root> and <case>
+    argc = 3; 
+    argv[1] = new char[100];
+    argv[2] = new char[100];
+    strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
+    strcpy(argv[2],"cylinder");     
+    
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"
@@ -84,7 +91,17 @@ int main(int argc, char *argv[])
         if (meshChanged)
         {
 #           include "checkTotalVolume.H"
-#           include "correctPhi.H"
+            // Obtain interpolated fluxes from the mesh, and reconstruct U
+            forAll(phi.internalField(),faceI) {
+                phi.internalField()[faceI] = mesh.interpolatedFluxes()[faceI];
+            }
+            forAll(mesh.boundaryMesh(),patchI) {
+                label start=mesh.boundaryMesh()[patchI].start();
+                forAll(phi.boundaryField()[patchI],faceI)
+                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedFluxes()[start+faceI];
+            }
+            U = fvc::reconstruct(phi);
+//#           include "correctPhi.H"
 #           include "CourantNo.H"
         }
 
