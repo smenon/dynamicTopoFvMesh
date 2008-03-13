@@ -1201,8 +1201,22 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                 Info << "New boundary face[1]" << commonFaceIndex[1] << ": " << newBdyFace1 << endl;
                 Info << "New boundary face[2]" << commonFaceIndex[2] << ": " << newBdyFace2 << endl;
                 Info << "New boundary face[3]" << commonFaceIndex[3] << ": " << newBdyFace3 << endl;
-            }
 
+                if (fluxInterpolation_) {
+                    // Output fluxes
+                    Info << "This face: " << findex << " Phi:" << localPhi_[findex] 
+                         << " Owner: " << owner_[findex] << " Neighbour:" << neighbour_[findex] << endl;
+                    Info << "commonIntFaces[0]:" << commonIntFaceIndex[0] << " Phi:" << localPhi_[commonIntFaceIndex[0]]
+                         << " Owner: " << owner_[commonIntFaceIndex[0]] << " Neighbour:" << neighbour_[commonIntFaceIndex[0]] << endl; 
+                    Info << "commonIntFaces[1]:" << commonIntFaceIndex[1] << " Phi:" << localPhi_[commonIntFaceIndex[1]]
+                         << " Owner: " << owner_[commonIntFaceIndex[1]] << " Neighbour:" << neighbour_[commonIntFaceIndex[1]] << endl;
+                    Info << "commonIntFaces[2]:" << commonIntFaceIndex[2] << " Phi:" << localPhi_[commonIntFaceIndex[2]]
+                         << " Owner: " << owner_[commonIntFaceIndex[2]] << " Neighbour:" << neighbour_[commonIntFaceIndex[2]] << endl;
+                    Info << "commonIntFaces[3]:" << commonIntFaceIndex[3] << " Phi:" << localPhi_[commonIntFaceIndex[3]]
+                         << " Owner: " << owner_[commonIntFaceIndex[3]] << " Neighbour:" << neighbour_[commonIntFaceIndex[3]] << endl;
+                }
+            }
+            
             // Check the orientation of the two quad faces, and modify as necessary
             label newOwn=0, newNei=0;
             bool flipOption;
@@ -1331,7 +1345,11 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             
             // Calculate flux for the flipped face
             if (fluxInterpolation_) {
-                localPhi_[findex] = -localPhi_[commonIntFaceIndex[0]] - localPhi_[commonIntFaceIndex[1]];
+                scalar sign1, sign2;                
+                sign1 = (owner_[commonIntFaceIndex[0]] == c0) ? 1.0 : -1.0;
+                sign2 = (owner_[commonIntFaceIndex[1]] == c0) ? 1.0 : -1.0;
+                localPhi_[findex] = - (sign1*localPhi_[commonIntFaceIndex[0]]) 
+                                    - (sign2*localPhi_[commonIntFaceIndex[1]]);
             }
         }
     }   
@@ -2562,6 +2580,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         List<objectMap> cellsFromCells(nCellsFromCells_);   
         
         // Null temporaries
+        labelHashSet flipFaceFlux(0);
         labelListList pointZoneMap(0);
         labelListList faceZonePointMap(0);
         labelListList faceZoneFaceMap(0);
@@ -2680,7 +2699,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
                 reversePointMap_,
                 reverseFaceMap_,
                 reverseCellMap_,
-                flipFaceFlux_,
+                flipFaceFlux,
                 patchPointMap,
                 pointZoneMap,
                 faceZonePointMap,

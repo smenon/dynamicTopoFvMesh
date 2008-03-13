@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 
     Info<< "\nStarting time loop\n" << endl;
 
-    //mesh.debug = true;
+    mesh.debug = true;
     //polyMesh::debug = true;
     
     while (runTime.run())
@@ -104,6 +104,9 @@ int main(int argc, char *argv[])
 //#           include "correctPhi.H"
 #           include "CourantNo.H"
         }
+        
+        volScalarField divPhi = fvc::div(phi);
+        divPhi.write();        
 
         // Solve for mesh-motion
         mesh.updateMotion();         
