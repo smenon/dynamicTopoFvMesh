@@ -125,19 +125,8 @@ class dynamicTopoFvMesh
         label           nOldFaces_,  nFaces_;
         label           nOldCells_,  nCells_;
         label           nOldInternalFaces_, nInternalFaces_, nInternalEdges_;
-        
-        // Mapping information
-        label           nPointsFromPoints_;
-        label           nFacesFromPoints_, nFacesFromEdges_, nFacesFromFaces_;
-        label           nCellsFromPoints_, nCellsFromEdges_, nCellsFromFaces_, nCellsFromCells_;
-        
-        HashTable<objectMap,label>  facesFromEdges_;
-        HashTable<objectMap,label>  cellsFromEdges_;
-        HashTable<objectMap,label>  cellsFromFaces_;
-        HashTable<objectMap,label>  cellsFromCells_;
 
         // Face flux interpolation
-        labelHashSet        flipFaceFlux_;
         HashList<scalar>    localPhi_;
         
         //- Old-to-New

@@ -81,15 +81,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nCells_(this->nCells()),
     nOldInternalFaces_(this->nInternalFaces()),
     nInternalFaces_(this->nInternalFaces()),
-    nInternalEdges_(0),
-    nPointsFromPoints_(0),
-    nFacesFromPoints_(0),
-    nFacesFromEdges_(0),
-    nFacesFromFaces_(0),
-    nCellsFromPoints_(0),
-    nCellsFromEdges_(0),
-    nCellsFromFaces_(0),
-    nCellsFromCells_(0), 
+    nInternalEdges_(0), 
     ratioMin_(0.0),
     ratioMax_(0.0),
     growthFactor_("growthFactor",dimensionSet(0,2,-1,0,0),0.0)
@@ -693,16 +685,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
         if (cIndex < nOldCells_) {
             cellMap_[cellRenum]     = cIndex;
             reverseCellMap_[cIndex] = cellRenum;
-        }/* else {
-            // Renumber the map-list for added cells
-            if (!cellsFromFaces_.found(cIndex)) {
-                FatalErrorIn("dynamicTopoFvMesh::reOrderMesh") << nl
-                    << " Cell: " << cIndex 
-                    << " was added to the mesh, but contains no Master."
-                    << abort(FatalError);                
-            }
-            cellsFromFaces_(cIndex).index() = cellRenum;
-        }*/
+        }
         // Update the counter
         cellRenum++;
         // Update the iterators
@@ -862,33 +845,12 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
         fIter++; ownIter++; neiIter++;
     }
     
-    // Loop through all flip-flux faces and renumber
-    labelList oldFlipFaces = flipFaceFlux_.toc();
-    flipFaceFlux_.clear();
-    forAll(oldFlipFaces, faceI) {
-        label index = oldFlipFaces[faceI];
-#       ifdef FULLDEBUG
-        if (index >= nOldFaces_) {
-            // Something is wrong. New faces shouldn't appear in this list.
-            FatalErrorIn("dynamicTopoFvMesh::reOrderMesh") << nl
-                    << " Face: " << index
-                    << " was added to the flipFaceFlux list."
-                    << " But the number of faces in the old mesh is: "
-                    << nOldFaces_
-                    << abort(FatalError);            
-        }            
-#       endif
-        flipFaceFlux_.insert(reverseFaceMap_[index]);
-    }
-    
     // Sort face-lists in ascending order. 
     // (This may be inefficient, since each list has O[n] cost)
     faces_.sort();
     owner_.sort();
     neighbour_.sort();
-    if (edgeModification_ && twoDMotion_) {
-        edgeToWatch_.sort();
-    }
+    if (edgeModification_ && twoDMotion_) edgeToWatch_.sort();
     if (fluxInterpolation_) localPhi_.sort();
 }
 
@@ -1268,15 +1230,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_0[c0count++] = commonIntFaceIndex[1];
             owner_[commonIntFaceIndex[1]] = newOwn;
             neighbour_[commonIntFaceIndex[1]] = newNei;
-            if (flipOption && (commonIntFaceIndex[1] < nOldFaces_)) {
-                // If this is a face that's being flipped twice, remove it
-                // from the list of flipFaces, otherwise add it.
-                if (flipFaceFlux_.found(commonIntFaceIndex[1])) {
-                    flipFaceFlux_.erase(commonIntFaceIndex[1]);
-                } else {
-                    flipFaceFlux_.insert(commonIntFaceIndex[1]);
-                }
-            }
             // Modify the local-flux field
             if (flipOption && fluxInterpolation_) {
                 localPhi_[commonIntFaceIndex[1]] *= -1.0;
@@ -1329,15 +1282,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_1[c1count++] = commonIntFaceIndex[3];
             owner_[commonIntFaceIndex[2]] = newOwn;
             neighbour_[commonIntFaceIndex[2]] = newNei;
-            if (flipOption && (commonIntFaceIndex[2] < nOldFaces_)) {
-                // If this is a face that's being flipped twice, remove it
-                // from the list of flipFaces, otherwise add it.
-                if (flipFaceFlux_.found(commonIntFaceIndex[2])) {
-                    flipFaceFlux_.erase(commonIntFaceIndex[2]);
-                } else {
-                    flipFaceFlux_.insert(commonIntFaceIndex[2]);
-                }
-            }
             // Modify the local-flux field
             if (flipOption && fluxInterpolation_) {
                 localPhi_[commonIntFaceIndex[2]] *= -1.0;
@@ -1659,32 +1603,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     tmpEdge[0] = nextToOtherPoint[0];
     tmpEdge[1] = newPtIndex0;
     edgeToWatch_[findex] = tmpEdge;
-
-    // Generate mapping info for the new cell
-    /*
-    labelList intCell0(2, -1);
-    label intOwn0 = owner_[c0IntIndex[0]];
-    label intNei0 = neighbour_[c0IntIndex[0]];
-    if ( (intOwn0 >= nOldCells_) || (intNei0 >= nOldCells_) ) {
-        intOwn0 = owner_[c0IntIndex[1]];
-        intNei0 = neighbour_[c0IntIndex[1]];  
-        if ( (intOwn0 >= nOldCells_) || (intNei0 >= nOldCells_) ) {
-            FatalErrorIn("dynamicTopoFvMesh::bisectQuadFace") << nl
-                    << " Cell: " << c0
-                    << " has faces adjacent to two newly added cells in this morph, "
-                    << " so cellFromFace mapping cannot continue."
-                    << abort(FatalError);            
-        }
-    }
-    intCell0[0] = intOwn0;
-    if (intNei0 == -1) {
-        intCell0.setSize(1);
-    } else {
-        intCell0[1] = intNei0;
-    }
-    cellsFromFaces_.insert(newCellIndex0,objectMap(newCellIndex0,intCell0));
-    nCellsFromFaces_++;
-    */
     
     if (debug) Info << "Modified thisFace: " << findex << ": " << thisFace << endl;
 
@@ -1705,31 +1623,23 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     }
 
     // Check if face reversal is necessary for the replacement
+    scalar sign = 0.0;
     if (owner_[replaceFace] == c0) {
         if (neighbour_[replaceFace] == -1) {
             // Change the owner (no flux-flipping)
             owner_[replaceFace] = newCellIndex0;
-            flipOption = false;
+            sign = 1.0; flipOption = false;
         } else {
             // This face has to be reversed (and flux is to be flipped)
             faces_[replaceFace] = faces_[replaceFace].reverseFace();
             owner_[replaceFace] = neighbour_[replaceFace];
             neighbour_[replaceFace] = newCellIndex0;
-            flipOption = true;
+            sign = -1.0; flipOption = true;
         }
     } else {
         // Keep owner, but change neighbour (no flux-flipping)
         neighbour_[replaceFace] = newCellIndex0;
-        flipOption = false;
-    }
-    if (flipOption && (replaceFace < nOldFaces_)) {
-        // If this is a face that's being flipped twice, remove it
-        // from the list of flipFaces, otherwise add it.
-        if (flipFaceFlux_.found(replaceFace)) {
-            flipFaceFlux_.erase(replaceFace);
-        } else {
-            flipFaceFlux_.insert(replaceFace);
-        }
+        sign = -1.0; flipOption = false;
     }
     // Modify the local-flux field
     if (flipOption && fluxInterpolation_) {
@@ -1761,7 +1671,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     // Calculate fluxes for this face to satisfy zero-divergence. 
     // Assumes that no fluxes are present on boundary triangle faces    
     if (fluxInterpolation_) {
-        localPhi_[newFaceIndex] = -newBisectFlux - localPhi_[replaceFace];
+        localPhi_[newFaceIndex] = newBisectFlux + (sign*localPhi_[replaceFace]);
     }    
 
     // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
@@ -1826,32 +1736,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
                 Info << cell_1[faceI] << ": " << faces_[cell_1[faceI]] << endl;
         }
         
-        // Generate mapping info for the new cell
-        /*
-        labelList intCell1(2, -1);
-        label intOwn1 = owner_[c1IntIndex[0]];
-        label intNei1 = neighbour_[c1IntIndex[0]];
-        if ( (intOwn1 >= nOldCells_) || (intNei1 >= nOldCells_) ) {
-            intOwn1 = owner_[c1IntIndex[1]];
-            intNei1 = neighbour_[c1IntIndex[1]];  
-            if ( (intOwn1 >= nOldCells_) || (intNei1 >= nOldCells_) ) {
-                FatalErrorIn("dynamicTopoFvMesh::bisectQuadFace") << nl
-                        << " Cell: " << c1
-                        << " has faces adjacent to two newly added cells in this morph, "
-                        << " so cellFromFace mapping cannot continue."
-                        << abort(FatalError);            
-            }
-        }
-        intCell1[0] = intOwn1;
-        if (intNei1 == -1) {
-            intCell1.setSize(1);
-        } else {
-            intCell1[1] = intNei1;
-        }
-        cellsFromFaces_.insert(newCellIndex1,objectMap(newCellIndex1,intCell1));        
-        nCellsFromFaces_++;
-        */
-
         // Find the interior face that contains secondEdge
         found = false;
         edgeList e2 = c1IntFace[0].edges();
@@ -1873,27 +1757,18 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
             if (neighbour_[replaceFace] == -1) {
                 // Change the owner (no flux-flipping)
                 owner_[replaceFace] = newCellIndex1;
-                flipOption = false;
+                sign = 1.0; flipOption = false;
             } else {                        
                 // This face has to be reversed (and flux is to be flipped)
                 faces_[replaceFace] = faces_[replaceFace].reverseFace();
                 owner_[replaceFace] = neighbour_[replaceFace];
                 neighbour_[replaceFace] = newCellIndex1;
-                flipOption = true;
+                sign = -1.0; flipOption = true;
             }
         } else {
             // Keep owner, but change neighbour (no flux-flipping)
             neighbour_[replaceFace] = newCellIndex1;
-            flipOption = false;
-        }
-        if (flipOption && (replaceFace < nOldFaces_)) {
-            // If this is a face that's being flipped twice, remove it
-            // from the list of flipFaces, otherwise add it.
-            if (flipFaceFlux_.found(replaceFace)) {
-                flipFaceFlux_.erase(replaceFace);
-            } else {
-                flipFaceFlux_.insert(replaceFace);
-            }
+            sign = -1.0; flipOption = false;
         }
         // Modify the local-flux field
         if (flipOption && fluxInterpolation_) {
@@ -1982,7 +1857,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         // Calculate fluxes for this face to satisfy zero-divergence. 
         // Assumes that no fluxes are present on boundary triangle faces 
         if (fluxInterpolation_) {
-            localPhi_[newFaceIndex] = -newBisectFlux - localPhi_[replaceFace];
+            localPhi_[newFaceIndex] = - newBisectFlux + (sign*localPhi_[replaceFace]);
         }        
 
         // Second boundary face; Owner = cell[1] & Neighbour [-1]
@@ -2345,15 +2220,6 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
             flipOption = false;
         }
     }
-    if (flipOption && (faceToKeep[0] < nOldFaces_)) {
-        // If this is a face that's being flipped twice, remove it
-        // from the list of flipFaces, otherwise add it.
-        if (flipFaceFlux_.found(faceToKeep[0])) {
-            flipFaceFlux_.erase(faceToKeep[0]);
-        } else {
-            flipFaceFlux_.insert(faceToKeep[0]);
-        }
-    }  
     // Modify the local-flux field
     if (flipOption && fluxInterpolation_) {
         localPhi_[faceToKeep[0]] *= -1.0;
@@ -2401,15 +2267,6 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
                 // Keep orientation intact, and update the owner
                 owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
                 flipOption = false;
-            }
-        }
-        if (flipOption && (faceToKeep[1] < nOldFaces_)) {
-            // If this is a face that's being flipped twice, remove it
-            // from the list of flipFaces, otherwise add it.
-            if (flipFaceFlux_.found(faceToKeep[1])) {
-                flipFaceFlux_.erase(faceToKeep[1]);
-            } else {
-                flipFaceFlux_.insert(faceToKeep[1]);
             }
         }   
         // Modify the local-flux field
@@ -2567,19 +2424,17 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         pointField points(nPoints_);
         faceList faces(nFaces_);
         labelList owner(nFaces_);
-        labelList neighbour(nFaces_);    
-        
-        // Object maps
-        List<objectMap> pointsFromPoints(nPointsFromPoints_);
-        List<objectMap> facesFromPoints(nFacesFromPoints_);
-        List<objectMap> facesFromEdges(nFacesFromEdges_);
-        List<objectMap> facesFromFaces(nFacesFromFaces_);
-        List<objectMap> cellsFromPoints(nCellsFromPoints_);
-        List<objectMap> cellsFromEdges(nCellsFromEdges_);
-        List<objectMap> cellsFromFaces(nCellsFromFaces_);
-        List<objectMap> cellsFromCells(nCellsFromCells_);   
+        labelList neighbour(nFaces_);      
         
         // Null temporaries
+        List<objectMap> pointsFromPoints(0);
+        List<objectMap> facesFromPoints(0);
+        List<objectMap> facesFromEdges(0);
+        List<objectMap> facesFromFaces(0);
+        List<objectMap> cellsFromPoints(0);
+        List<objectMap> cellsFromEdges(0);
+        List<objectMap> cellsFromFaces(0);
+        List<objectMap> cellsFromCells(0);         
         labelHashSet flipFaceFlux(0);
         labelListList pointZoneMap(0);
         labelListList faceZonePointMap(0);
@@ -2588,38 +2443,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         pointField preMotionPoints(0);
         
         // Reorder the mesh and obtain current topological information
-        reOrderMesh(points, faces, owner, neighbour);
-        
-        // Copy the object-maps
-        label num;
-        num=0;
-        for (HashTable<objectMap,label>::iterator ffe=facesFromEdges_.begin(); 
-             ffe != facesFromEdges_.end(); 
-             ++ffe, num++) 
-        {
-            facesFromEdges[num] = ffe();        
-        } 
-        num=0;
-        for (HashTable<objectMap,label>::iterator cfe=cellsFromEdges_.begin(); 
-             cfe != cellsFromEdges_.end(); 
-             ++cfe, num++) 
-        {
-            cellsFromEdges[num] = cfe();        
-        }        
-        num=0;
-        for (HashTable<objectMap,label>::iterator cff=cellsFromFaces_.begin(); 
-             cff != cellsFromFaces_.end(); 
-             ++cff, num++) 
-        {
-            cellsFromFaces[num] = cff();        
-        }
-        num=0;
-        for (HashTable<objectMap,label>::iterator cfc=cellsFromCells_.begin(); 
-             cfc != cellsFromCells_.end(); 
-             ++cfc, num++) 
-        {
-            cellsFromCells[num] = cfc();        
-        }         
+        reOrderMesh(points, faces, owner, neighbour);  
         
         // Obtain the patch-point labels for mapping before resetting the mesh
         labelListList oldMeshPointLabels(numPatches_);
@@ -2717,21 +2541,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         // Update the underlying mesh, and map all related fields
         updateMesh(mapper_);
         
-        // Clear the current and reverse maps
-        nPointsFromPoints_ = 0;
-        nFacesFromPoints_  = 0;
-        nFacesFromEdges_   = 0;
-        nFacesFromFaces_   = 0;
-        nCellsFromPoints_  = 0;
-        nCellsFromEdges_   = 0;
-        nCellsFromFaces_   = 0;
-        nCellsFromCells_   = 0;   
-        
-        facesFromEdges_.clear();
-        cellsFromEdges_.clear();
-        cellsFromFaces_.clear();
-        cellsFromCells_.clear();
-        
+        // Clear the current and reverse maps         
         pointMap_.clear(); 
         faceMap_.clear(); 
         cellMap_.clear();
@@ -2739,8 +2549,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseFaceMap_.clear(); 
         reverseCellMap_.clear();
         boundaryPatches_.clear();
-        
-        flipFaceFlux_.clear();
         
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_);

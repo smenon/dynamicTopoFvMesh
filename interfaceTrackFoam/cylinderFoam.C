@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
 #       include "readTimeControls.H"
 #       include "checkTotalVolume.H"
 #       include "CourantNo.H"
-
+        
         // Make the fluxes absolute
         fvc::makeAbsolute(phi, U);
 
@@ -100,13 +100,13 @@ int main(int argc, char *argv[])
                 forAll(phi.boundaryField()[patchI],faceI)
                     phi.boundaryField()[patchI][faceI] = mesh.interpolatedFluxes()[start+faceI];
             }
-            U = fvc::reconstruct(phi);
+            U = fvc::reconstruct(phi);           
 //#           include "correctPhi.H"
 #           include "CourantNo.H"
         }
         
         volScalarField divPhi = fvc::div(phi);
-        divPhi.write();        
+        divPhi.write();
 
         // Solve for mesh-motion
         mesh.updateMotion();         
@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
 
             U = rUA*UEqn.H();
             phi = (fvc::interpolate(U) & mesh.Sf());
-                //+ fvc::ddtPhiCorr(rUA, U, phi);
+                 //+ fvc::ddtPhiCorr(rUA, U, phi);
 
             //adjustPhi(phi, U, p);
 
