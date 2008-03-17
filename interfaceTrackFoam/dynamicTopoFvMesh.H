@@ -126,8 +126,10 @@ class dynamicTopoFvMesh
         label           nOldCells_,  nCells_;
         label           nOldInternalFaces_, nInternalFaces_, nInternalEdges_;
 
-        // Face flux interpolation
+        // Flux / pressure interpolation
         HashList<scalar>    localPhi_;
+        //HashList<scalar>    localP_;
+        //vectorField         localGradP_;
         
         //- Old-to-New
         labelList       reversePointMap_;
@@ -164,6 +166,9 @@ class dynamicTopoFvMesh
 
         // Find the circumcenter, given three points
         inline vector circumCenter(point&, point&, point&, label&, label&, label&);
+        
+        // Find the cell center
+        inline vector cellCenter(const cell&);
         
         // Find the area of a triangle face.
         inline scalar triFaceArea(const face&);
@@ -263,7 +268,14 @@ public:
         HashList<scalar>& interpolatedFluxes()
         {
             return localPhi_;
-        }        
+        }  
+        
+        /*
+        HashList<scalar>& interpolatedPressure()
+        {
+            return localP_;
+        }
+        */
         
         tmp<scalarField> skewness()
         {
