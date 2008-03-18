@@ -57,7 +57,7 @@ int main(int argc, char *argv[])
     Info<< "\nStarting time loop\n" << endl;
 
     mesh.debug = true;
-    //polyMesh::debug = true;
+    polyMesh::debug = true;
     
     while (runTime.run())
     {
@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 #       include "CourantNo.H"
         
         // Make the fluxes absolute
-        fvc::makeAbsolute(phi, U);
+        fvc::makeAbsolute(phi, U);       
 
 #       include "setDeltaT.H"
 
@@ -93,20 +93,24 @@ int main(int argc, char *argv[])
 #           include "checkTotalVolume.H"
             // Obtain interpolated fluxes from the mesh, and reconstruct U
             forAll(phi.internalField(),faceI) {
-                phi.internalField()[faceI] = mesh.interpolatedFluxes()[faceI];
+                phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
+                phiOld.internalField()[faceI] = mesh.interpolatedPhiOld()[faceI];
             }
             forAll(mesh.boundaryMesh(),patchI) {
                 label start=mesh.boundaryMesh()[patchI].start();
-                forAll(phi.boundaryField()[patchI],faceI)
-                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedFluxes()[start+faceI];
+                forAll(phi.boundaryField()[patchI],faceI) {
+                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
+                    phiOld.boundaryField()[patchI][faceI] = mesh.interpolatedPhiOld()[start+faceI];
+                }
             }
-            U = fvc::reconstruct(phi);           
+            U = fvc::reconstruct(phi);
+            U.oldTime() = fvc::reconstruct(phiOld);
 //#           include "correctPhi.H"
 #           include "CourantNo.H"
         }
         
-        volScalarField divPhi = fvc::div(phi);
-        divPhi.write();
+        volScalarField divPhi = fvc::div(phiOld);
+        divPhi.write(); 
 
         // Solve for mesh-motion
         mesh.updateMotion();         
@@ -161,8 +165,8 @@ int main(int argc, char *argv[])
 
             U -= rUA*fvc::grad(p);
             U.correctBoundaryConditions();
-        }
-
+        }       
+        
         runTime.write();
 
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"

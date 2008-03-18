@@ -8,6 +8,7 @@
       <itemPath>lnInclude/createDynamicMesh.H</itemPath>
       <itemPath>lnInclude/createFields.H</itemPath>
       <itemPath>lnInclude/createNuFields.H</itemPath>
+      <itemPath>lnInclude/createPhiOld.H</itemPath>
       <itemPath>Dihedral.H</itemPath>
       <itemPath>dynamicTopoFvMesh.H</itemPath>
       <itemPath>HashList.H</itemPath>
@@ -123,6 +124,9 @@
       <item path="lnInclude/createNuFields.H">
         <itemTool>3</itemTool>
       </item>
+      <item path="lnInclude/createPhiOld.H">
+        <itemTool>3</itemTool>
+      </item>
       <item path="lnInclude/meshInfo.H">
         <itemTool>3</itemTool>
       </item>
@@ -215,6 +219,9 @@
         <itemTool>3</itemTool>
       </item>
       <item path="lnInclude/createNuFields.H">
+        <itemTool>3</itemTool>
+      </item>
+      <item path="lnInclude/createPhiOld.H">
         <itemTool>3</itemTool>
       </item>
       <item path="lnInclude/meshInfo.H">
