@@ -84,7 +84,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nInternalEdges_(0), 
     ratioMin_(0.0),
     ratioMax_(0.0),
-    growthFactor_("growthFactor",dimensionSet(0,2,-1,0,0),0.0)
+    growthFactor_("growthFactor",dimensionSet(0,2,-1,0,0),0.0),
+    debug(false)
 {
     // Initialize the motion-solver, if it was requested
     if (solveForMotion_) {
@@ -403,7 +404,6 @@ Foam::label Foam::dynamicTopoFvMesh::insertFace(
     }
     if (fluxInterpolation_) {
         localPhi_.append(0.0);
-        localPhiOld_.append(0.0);
     }
     
     // Keep track of added boundary faces in a separate hash-table
@@ -455,7 +455,6 @@ void Foam::dynamicTopoFvMesh::removeFace(const label index) {
     }  
     if (fluxInterpolation_) {
         localPhi_.remove(index);
-        localPhiOld_.remove(index);
     }
     
     // Update the reverse face-map, but only if this is a face that existed
@@ -830,7 +829,6 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
     HashList<label>::iterator neiIter = neighbour_.begin();
     HashList<edge>::iterator etwIter  = edgeToWatch_.begin();
     HashList<scalar>::iterator flIter = localPhi_.begin();
-    HashList<scalar>::iterator floIter = localPhiOld_.begin();
     label replaceIndex;
     while (fIter != faces_.end()) {
         label faceIndex = fIter.index();
@@ -852,8 +850,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
         }
         if (fluxInterpolation_) {
             localPhi_.reNumber(replaceIndex, flIter);
-            localPhiOld_.reNumber(replaceIndex, floIter);
-            flIter++; floIter++;
+            flIter++; 
         }
         // Update the cell list
         label c0 = ownIter(), c1 = neiIter();
@@ -872,7 +869,6 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
     if (edgeModification_ && twoDMotion_) edgeToWatch_.sort();
     if (fluxInterpolation_) {
         localPhi_.sort();
-        localPhiOld_.sort();
     }
 }
 
@@ -1255,7 +1251,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             // Modify the local-flux field
             if (flipOption && fluxInterpolation_) {
                 localPhi_[commonIntFaceIndex[1]] *= -1.0;
-                localPhiOld_[commonIntFaceIndex[1]] *= -1.0;
             }            
 
             // The quad face belonging to cell[0] now becomes a part of cell[1]
@@ -1308,7 +1303,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             // Modify the local-flux field
             if (flipOption && fluxInterpolation_) {
                 localPhi_[commonIntFaceIndex[2]] *= -1.0;
-                localPhiOld_[commonIntFaceIndex[2]] *= -1.0;
             } 
             
             // Calculate flux for the flipped face
@@ -1317,9 +1311,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                 sign1 = (owner_[commonIntFaceIndex[0]] == c0) ? 1.0 : -1.0;
                 sign2 = (owner_[commonIntFaceIndex[1]] == c0) ? 1.0 : -1.0;
                 localPhi_[findex] = - (sign1*localPhi_[commonIntFaceIndex[0]]) 
-                                    - (sign2*localPhi_[commonIntFaceIndex[1]]);
-                localPhiOld_[findex] = - (sign1*localPhiOld_[commonIntFaceIndex[0]]) 
-                                       - (sign2*localPhiOld_[commonIntFaceIndex[1]]);                
+                                    - (sign2*localPhi_[commonIntFaceIndex[1]]);               
             }
         }
     }   
@@ -1619,12 +1611,10 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
                          ^(meshPoints_[thisFace[2]]-meshPoints_[thisFace[1]]) );  
     
     // Modify the flux for this face...
-    scalar newBisectFlux=0.0, newBisectFluxOld=0.0;
+    scalar newBisectFlux=0.0;
     if (fluxInterpolation_) {
         newBisectFlux = (1.0-(newArea/oldArea))*localPhi_[findex];
-        newBisectFluxOld = (1.0-(newArea/oldArea))*localPhiOld_[findex];
         localPhi_[findex] *= (newArea/oldArea);
-        localPhiOld_[findex] *= (newArea/oldArea);
     }
 
     // Change the edge-length criteria for this face
@@ -1672,7 +1662,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     // Modify the local-flux field
     if (flipOption && fluxInterpolation_) {
         localPhi_[replaceFace] *= -1.0;
-        localPhiOld_[replaceFace] *= -1.0;
     }    
 
     // Define the faces for the new cell
@@ -1701,7 +1690,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     // Assumes that no fluxes are present on boundary triangle faces    
     if (fluxInterpolation_) {
         localPhi_[newFaceIndex] = newBisectFlux + (sign*localPhi_[replaceFace]);
-        localPhiOld_[newFaceIndex] = newBisectFluxOld + (sign*localPhiOld_[replaceFace]);
     }    
 
     // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
@@ -1734,7 +1722,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         
         if (fluxInterpolation_) {
             localPhi_[newFaceIndex] = newBisectFlux;
-            localPhiOld_[newFaceIndex] = newBisectFluxOld;
         }
 
         if (debug) {
@@ -1804,7 +1791,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         // Modify the local-flux field
         if (flipOption && fluxInterpolation_) {
             localPhi_[replaceFace] *= -1.0;
-            localPhiOld_[replaceFace] *= -1.0;
         }        
         
         // Define attributes for the new prism cell
@@ -1824,7 +1810,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         
         if (fluxInterpolation_) {
             localPhi_[newFaceIndex] = newBisectFlux;
-            localPhiOld_[newFaceIndex] = newBisectFluxOld;
         }        
 
         // Check for common edges among the two boundary faces
@@ -1891,7 +1876,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         // Assumes that no fluxes are present on boundary triangle faces 
         if (fluxInterpolation_) {
             localPhi_[newFaceIndex] = - newBisectFlux + (sign*localPhi_[replaceFace]);
-            localPhiOld_[newFaceIndex] = - newBisectFluxOld + (sign*localPhiOld_[replaceFace]);
         }        
 
         // Second boundary face; Owner = cell[1] & Neighbour [-1]
@@ -2415,9 +2399,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     // Obtain recent fluxes from the object-registry and make a local-copy
     if (fluxInterpolation_) {
         if (localPhi_.empty()) localPhi_.setSize(nFaces_,0.0);
-        if (localPhiOld_.empty()) localPhiOld_.setSize(nFaces_,0.0);
         // Copy old conservative fluxes
-        localPhiOld_ = localPhi_;
         surfaceScalarField& phi = const_cast<surfaceScalarField&>
                 (this->objectRegistry::lookupObject<surfaceScalarField>(fluxFieldName_));
         forAll(phi.internalField(),faceI) {

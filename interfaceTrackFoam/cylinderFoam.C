@@ -56,8 +56,8 @@ int main(int argc, char *argv[])
 
     Info<< "\nStarting time loop\n" << endl;
 
-    mesh.debug = true;
-    polyMesh::debug = true;
+    //mesh.debug = true;
+    //polyMesh::debug = true;
     
     while (runTime.run())
     {
@@ -94,23 +94,21 @@ int main(int argc, char *argv[])
             // Obtain interpolated fluxes from the mesh, and reconstruct U
             forAll(phi.internalField(),faceI) {
                 phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
-                phiOld.internalField()[faceI] = mesh.interpolatedPhiOld()[faceI];
             }
             forAll(mesh.boundaryMesh(),patchI) {
                 label start=mesh.boundaryMesh()[patchI].start();
                 forAll(phi.boundaryField()[patchI],faceI) {
                     phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
-                    phiOld.boundaryField()[patchI][faceI] = mesh.interpolatedPhiOld()[start+faceI];
                 }
             }
             U = fvc::reconstruct(phi);
-            U.oldTime() = fvc::reconstruct(phiOld);
 //#           include "correctPhi.H"
 #           include "CourantNo.H"
         }
         
-        volScalarField divPhi = fvc::div(phiOld);
-        divPhi.write(); 
+        volVectorField gradP = fvc::grad(p);
+        gradP *= -1;
+        gradP.write(); 
 
         // Solve for mesh-motion
         mesh.updateMotion();         
