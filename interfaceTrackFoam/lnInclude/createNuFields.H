@@ -48,7 +48,6 @@
     );
 
 #   include "createPhi.H"
-#   include "createPhiOld.H"
 
     label pRefCell = 0;
     scalar pRefValue = 0.0;

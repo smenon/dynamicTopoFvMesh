@@ -128,6 +128,7 @@ class dynamicTopoFvMesh
 
         // Flux / pressure interpolation
         HashList<scalar>    localPhi_;
+        HashList<scalar>    localp_;
         
         //- Old-to-New
         labelList       reversePointMap_;
@@ -266,6 +267,11 @@ public:
         HashList<scalar>& interpolatedPhi()
         {
             return localPhi_;
+        }   
+        
+        HashList<scalar>& interpolatedP()
+        {
+            return localp_;
         }          
         
         tmp<scalarField> skewness()
