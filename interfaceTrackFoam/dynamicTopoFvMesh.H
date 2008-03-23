@@ -129,6 +129,7 @@ class dynamicTopoFvMesh
         // Flux / pressure interpolation
         HashList<scalar>    localPhi_;
         HashList<scalar>    localp_;
+        HashList<vector>    localGradp_;
         
         //- Old-to-New
         labelList       reversePointMap_;

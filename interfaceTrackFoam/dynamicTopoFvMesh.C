@@ -192,7 +192,7 @@ inline Foam::vector Foam::dynamicTopoFvMesh::cellCenter(const cell& checkCell)
 {
     vector fC, cC = vector::zero;
     forAll(checkCell,faceI) {
-        face& faceCheck = faces_[faceI];
+        face& faceCheck = faces_[checkCell[faceI]];
         fC = vector::zero;
         forAll(faceCheck,pointI) {
             fC += meshPoints_[faceCheck[pointI]];
@@ -680,6 +680,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
     HashList<cell>::iterator cIter = cells_.begin();
     HashList<scalar>::iterator lIter = lengthScale_.begin();
     HashList<scalar>::iterator pIter = localp_.begin();
+    HashList<vector>::iterator gpIter = localGradp_.begin();
     while (cIter != cells_.end()) {
         // Obtain the index for this cell
         label cIndex = cIter.index();
@@ -693,7 +694,8 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
         }
         if (fluxInterpolation_) {
             localp_.reNumber(cellRenum, pIter);
-            pIter++;
+            localGradp_.reNumber(cellRenum, gpIter);
+            pIter++; gpIter++;
         }        
         forAll(thisCell, faceI) {
             if (owner_[thisCell[faceI]] == cIndex)
@@ -1322,8 +1324,8 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             if (fluxInterpolation_) {
                 xC0n = cellCenter(cell_0);
                 xC1n = cellCenter(cell_1);
-                //localp_[c0] += ;
-                //localp_[c1] += ;                
+                localp_[c0] += ((xC0n - xC0o)&localGradp_[c0]);
+                localp_[c1] += ((xC1n - xC1o)&localGradp_[c1]);              
             }             
             
             // Calculate flux for the flipped face
@@ -1478,19 +1480,6 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
             else
                 scale = 0.5*(lengthScale_[c0]+lengthScale_[c1]);
             
-            //-- For testing --//
-            if ((this->time().value() > 0.5) && (this->time().value() < 0.6) && (findex == 155)) {
-                // Set the flag
-                topoChangeFlag_ = true;
-                
-                // Bisect this face
-                bisectQuadFace(findex, thisFace);   
-                
-                // Move on to the next face
-                fIter++;
-            }
-            //-- For testing --//
-            
             //== Edge Bisection ==//
             if(length > ratioMax_*scale) {                                  
                 
@@ -1600,6 +1589,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     if (fluxInterpolation_) {
         xC0o = cellCenter(cell_0);
         localp_.append(localp_[c0]);
+        localGradp_.append(localGradp_[c0]);
     }     
     
     // Add two new points to the end of the list
@@ -1768,8 +1758,8 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
             // Obtain the new cell centers and interpolate for pressure
             xC0n   = cellCenter(cell_0); 
             xnewC0 = cellCenter(newCell0);
-            //localP_[newCellIndex0] = localP_[c0] + ((xnewC0 - xC0o)&localGradP_[c0]);
-            //localP_[c0] += ((xC0n - xC0o)&localGradP_[c0]);            
+            localp_[newCellIndex0] = localp_[c0] + ((xnewC0 - xC0o)&localGradp_[c0]);
+            localp_[c0] += ((xC0n - xC0o)&localGradp_[c0]);            
         }
 
         if (debug) {
@@ -1807,6 +1797,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         if (fluxInterpolation_) { 
             xC1o = cellCenter(cell_1);
             localp_.append(localp_[c1]);
+            localGradp_.append(localGradp_[c1]);
         }         
         
         // Find the interior face that contains secondEdge
@@ -1951,10 +1942,14 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         
         // Obtain the new cell centers and interpolate for pressure
         if (fluxInterpolation_) {
+            xC0n   = cellCenter(cell_0);             
             xC1n   = cellCenter(cell_1); 
+            xnewC0 = cellCenter(newCell0); 
             xnewC1 = cellCenter(newCell1);
-            //localp_[newCellIndex1] = localP_[c1] + ((xnewC1 - xC1o)&localGradP_[c1]);
-            //localp_[c1] += ((xC1n - xC1o)&localGradP_[c1]);            
+            localp_[newCellIndex0] = localp_[c0] + ((xnewC0 - xC0o)&localGradp_[c0]);
+            localp_[newCellIndex1] = localp_[c1] + ((xnewC1 - xC1o)&localGradp_[c1]);
+            localp_[c0] += ((xC0n - xC0o)&localGradp_[c0]);
+            localp_[c1] += ((xC1n - xC1o)&localGradp_[c1]);
         }
         
         if (debug) {
@@ -2462,6 +2457,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     if (fluxInterpolation_) {
         if (localPhi_.empty()) localPhi_.setSize(nFaces_,0.0);
         if (localp_.empty()) localp_.setSize(nCells_,0.0);
+        if (localGradp_.empty()) localGradp_.setSize(nCells_,vector::zero);
         // Copy old conservative fluxes
         surfaceScalarField& phi = const_cast<surfaceScalarField&>
                 (this->objectRegistry::lookupObject<surfaceScalarField>(fluxFieldName_));
@@ -2473,11 +2469,13 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
             forAll(phi.boundaryField()[i],faceI)
                 localPhi_[start+faceI] = phi.boundaryField()[i][faceI];
         }
-        // Copy old pressure
+        // Copy old pressure and its gradient
         volScalarField& p = const_cast<volScalarField&>
                 (this->objectRegistry::lookupObject<volScalarField>("p"));
+        volVectorField gradp = fvc::grad(p);
         forAll(p.internalField(),cellI) {
             localp_[cellI] = p.internalField()[cellI];
+            localGradp_[cellI] = gradp.internalField()[cellI];
         }          
     }    
     
@@ -2644,8 +2642,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseFaceMap_.setSize(nFaces_);
         reverseCellMap_.setSize(nCells_);
 
-        // Override old volumes
-        //setV0();
     }    
     
     // Basic checks for mesh-validity

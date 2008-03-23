@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 #       include "CourantNo.H"
         
         // Make the fluxes absolute
-        //fvc::makeAbsolute(phi, U);       
+        fvc::makeAbsolute(phi, U);       
 
 #       include "setDeltaT.H"
 
@@ -76,7 +76,6 @@ int main(int argc, char *argv[])
         Info<< "Time = " << runTime.timeName() << nl << endl;
 
         // Assign boundary conditions to the motion solver
-        /*
         label patchID = -1;
         forAll (mesh.boundary(), patchI)
         {
@@ -86,7 +85,6 @@ int main(int argc, char *argv[])
             }
         }         
         mesh.boundaryDisplacementPatch(patchID) = vector(0,-0.05,0)*mesh.time().deltaT().value();  
-        */        
         
         bool meshChanged = mesh.updateTopology(); 
         
@@ -104,28 +102,31 @@ int main(int argc, char *argv[])
                 }
             }
             U = fvc::reconstruct(phi);
-            // Obtain interpolated pressure as well
+            // Obtain the interpolated pressure
             forAll(p.internalField(),cellI) {
                 p.internalField()[cellI] = mesh.interpolatedP()[cellI];
             }
 //#           include "correctPhi.H"
+            
 #           include "CourantNo.H"
         }
                     
+        /*
         volScalarField P = p;
         volVectorField Unew = U;
         volVectorField gradP = fvc::grad(p);
         gradP *= -1;
         P.rename("P"); Unew.rename("Unew");
         P.write(); Unew.write(); gradP.write();
+        */
 
         // Solve for mesh-motion
-        //mesh.updateMotion();         
+        mesh.updateMotion();         
         
-//#       include "volContinuity.H"        
+#       include "volContinuity.H"        
         
         // Make the fluxes relative to the mesh motion
-        //fvc::makeRelative(phi, U);
+        fvc::makeRelative(phi, U);
 
 #       include "NuUEqn.H"
 

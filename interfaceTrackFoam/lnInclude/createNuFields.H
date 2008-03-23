@@ -59,7 +59,9 @@
         (
             "rUA",
             runTime.timeName(),
-            mesh            
+            mesh,
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE            
         ),
         mesh,
         dimensionedScalar("rUA", dimTime, 1),
