@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 
     Info<< "\nStarting time loop\n" << endl;
 
-    mesh.debug = true;
+    //mesh.debug = true;
     
     while (runTime.run())
     {
@@ -83,6 +83,20 @@ int main(int argc, char *argv[])
         {
             interface.updateMesh(mesh.meshMap()); 
 #           include "checkTotalVolume.H"
+            /*
+            // Obtain interpolated fluxes from the mesh, and reconstruct U
+            forAll(phi.internalField(),faceI) {
+                phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
+            }
+            forAll(mesh.boundaryMesh(),patchI) {
+                label start=mesh.boundaryMesh()[patchI].start();
+                forAll(phi.boundaryField()[patchI],faceI) {
+                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
+                }
+            }
+            */
+            //U = fvc::reconstruct(phi);
+            //U.oldTime() = fvc::reconstruct(phi);            
 #           include "correctPhi.H"
 #           include "CourantNo.H"
         }

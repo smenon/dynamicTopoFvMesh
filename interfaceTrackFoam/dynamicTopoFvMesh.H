@@ -44,7 +44,6 @@ SourceFiles
 #include "fvCFD.H"
 #include "motionSolver.H"
 #include "mapPolyMesh.H"
-#include "cellQuality.H"
 #include "fvMotionSolver.H"
 #include "tetDecompositionMotionSolver.H"
 
@@ -103,21 +102,20 @@ class dynamicTopoFvMesh
         
         //- PolyMesh mapping structure
         autoPtr<mapPolyMesh> mapper_;
-        
-        //- Cell-quality measures
-        cellQuality quality_;
-        
+                
         //- References to the boundary-displacement 
         PtrList< vectorField > displacementPtr_;
                 
         //- Local copies of connectivity information
         HashList<point> meshPoints_;
+        HashList<point> pointsZeroVol_;
         HashList<face>  faces_;
         HashList<label> owner_;        
         HashList<label> neighbour_;
         HashList<cell>  cells_;
         
         //- Size information
+        pointField      pointsZeroVolume_;
         labelList       oldPatchSizes_, patchSizes_;
         labelList       oldPatchStarts_, patchStarts_;
         labelList       oldPatchNMeshPoints_, patchNMeshPoints_;
@@ -128,8 +126,8 @@ class dynamicTopoFvMesh
 
         // Flux / pressure interpolation
         HashList<scalar>    localPhi_;
-        HashList<scalar>    localp_;
-        HashList<vector>    localGradp_;
+        //HashList<scalar>    localp_;
+        //HashList<vector>    localGradp_;
         
         //- Old-to-New
         labelList       reversePointMap_;
@@ -224,7 +222,7 @@ class dynamicTopoFvMesh
         bool constructPrismHull(const edge&, const label, DynamicList<label>&, DynamicList<label>&, DynamicList<label>&, bool);
         
         // Reorder the mesh in upper-triangular order, and generate mapping information
-        void reOrderMesh(pointField&, faceList&, labelList&, labelList&);
+        void reOrderMesh(pointField&, pointField&, faceList&, labelList&, labelList&);
         
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
@@ -270,15 +268,6 @@ public:
             return localPhi_;
         }   
         
-        HashList<scalar>& interpolatedP()
-        {
-            return localp_;
-        }          
-        
-        tmp<scalarField> skewness()
-        {
-            return quality_.skewness();            
-        }
 };
 
 

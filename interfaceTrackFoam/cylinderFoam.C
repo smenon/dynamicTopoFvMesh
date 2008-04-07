@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 
     Info<< "\nStarting time loop\n" << endl;
 
-    //mesh.debug = true;
+    mesh.debug = true;
     //polyMesh::debug = true;
     
     while (runTime.run())
@@ -102,10 +102,6 @@ int main(int argc, char *argv[])
                 }
             }
             U = fvc::reconstruct(phi);
-            // Obtain the interpolated pressure
-            forAll(p.internalField(),cellI) {
-                p.internalField()[cellI] = mesh.interpolatedP()[cellI];
-            }
 //#           include "correctPhi.H"
             
 #           include "CourantNo.H"
@@ -169,7 +165,7 @@ int main(int argc, char *argv[])
 #           include "continuityErrs.H"            
 
             // Make the fluxes relative to the mesh motion
-            //fvc::makeRelative(phi, U);
+            fvc::makeRelative(phi, U);
 
             U -= rUA*fvc::grad(p);
             U.correctBoundaryConditions();
