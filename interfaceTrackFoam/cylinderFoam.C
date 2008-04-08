@@ -101,20 +101,17 @@ int main(int argc, char *argv[])
                     phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
                 }
             }
-            U = fvc::reconstruct(phi);
-//#           include "correctPhi.H"
-            
+            //U = fvc::reconstruct(phi);
+#           include "correctPhi.H"            
 #           include "CourantNo.H"
         }
-                    
-        /*
+            
         volScalarField P = p;
         volVectorField Unew = U;
         volVectorField gradP = fvc::grad(p);
         gradP *= -1;
         P.rename("P"); Unew.rename("Unew");
         P.write(); Unew.write(); gradP.write();
-        */
 
         // Solve for mesh-motion
         mesh.updateMotion();         
@@ -125,6 +122,10 @@ int main(int argc, char *argv[])
         fvc::makeRelative(phi, U);
 
 #       include "NuUEqn.H"
+        
+        volVectorField UafterSolve = U;
+        UafterSolve.rename("UafterSolve");
+        UafterSolve.write();
 
         // --- PISO loop
 

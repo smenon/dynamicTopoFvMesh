@@ -248,7 +248,7 @@ public:
         bool updateTopology();
         
         // Update the mesh for motion
-        void updateMotion();
+        void updateMotion();       
         
         // Access
         vectorField& boundaryDisplacementPatch(label& index);

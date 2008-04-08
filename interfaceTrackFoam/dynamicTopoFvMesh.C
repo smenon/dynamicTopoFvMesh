@@ -1498,6 +1498,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
             else
                 scale = 0.5*(lengthScale_[c0]+lengthScale_[c1]);
             
+            /*
             //-- For testing
             if (this->time().value() > 1.0 && this->time().value() < 1.02 && findex == 62) {
                 // Set the flag
@@ -1510,6 +1511,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
                 fIter++;                
             }
             //-- For testing
+            */
             
             //== Edge Bisection ==//
             if(length > ratioMax_*scale) {                                  
@@ -1794,7 +1796,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         edgeToWatch[1] = nextToOtherPoint[1];
         newFaceIndex = insertFace(whichPatch(findex), tmpQuadFace, newCellIndex0, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, newCell0);
-        
+
         /*
         if (fluxInterpolation_) {
             localPhi_[newFaceIndex] = newBisectFlux;
@@ -1903,8 +1905,8 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         /*
         if (fluxInterpolation_) {
             localPhi_[newFaceIndex] = newBisectFlux;
-        }        
-        */
+        } 
+        */       
 
         // Check for common edges among the two boundary faces
         // Find the isolated point on both boundary faces of cell[1]
@@ -2445,7 +2447,9 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
 // This routine assumes that all boundary motions have been defined 
 // and incorporated into the mesh for the current time-step.
 void Foam::dynamicTopoFvMesh::updateMotion()
-{ 
+{     
+    tmp<pointField> newPoints;
+            
     if (solveForMotion_) {
         
         // Determine the kind of motion solver in use
@@ -2483,8 +2487,24 @@ void Foam::dynamicTopoFvMesh::updateMotion()
         }
 
         // Solve for motion
-        movePoints(motionPtr_->newPoints());    
-    }    
+        newPoints = motionPtr_->newPoints();    
+        
+    } else {
+        
+        // Keep the points at the present state for a static mesh
+        newPoints = this->points();
+        
+    }
+    
+    if (topoChangeFlag_) {
+        // Move mesh points to state containing zero-volume cells
+        movePoints(pointsZeroVolume_);
+        resetMotion();
+        setV0();        
+    } 
+    
+    // Now move points to the present state, and solve for mesh motion fluxes
+    movePoints(newPoints);
 }
 
 // Update the mesh for topology changes
@@ -2556,15 +2576,15 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     
     if ( twoDMotion_ ) {        
 
+        // 2D Edge-swapping engine
+        //swap2DEdges();
+        
+        if (debug) Info << nl << "2D Edge Swapping complete." << endl;        
+        
         // 2D Edge-bisection/collapse engine
         if ( edgeModification_ ) edgeBisectCollapse2D();
         
         if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
-        
-        // 2D Edge-swapping engine
-        //swap2DEdges();
-        
-        if (debug) Info << nl << "2D Edge Swapping complete." << endl;
         
     } else {
         
