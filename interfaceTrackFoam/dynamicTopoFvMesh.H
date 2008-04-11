@@ -126,7 +126,7 @@ class dynamicTopoFvMesh
 
         // Flux / pressure interpolation
         HashList<scalar>    localPhi_;
-        //HashList<scalar>    localp_;
+        HashList<scalar>    localp_;
         //HashList<vector>    localGradp_;
         
         //- Old-to-New
@@ -268,6 +268,10 @@ public:
             return localPhi_;
         }   
         
+        HashList<scalar>& interpolatedP()
+        {
+            return localp_;
+        }        
 };
 
 

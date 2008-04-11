@@ -64,17 +64,14 @@ int main(int argc, char *argv[])
 #       include "readPISOControls.H"
 #       include "readTimeControls.H"
 #       include "checkTotalVolume.H"
-#       include "CourantNo.H"
+#       include "CourantNo.H"       
+
+#       include "setDeltaT.H"       
         
-        // Make the fluxes absolute
-        fvc::makeAbsolute(phi, U);       
-
-#       include "setDeltaT.H"
-
         runTime++;
 
-        Info<< "Time = " << runTime.timeName() << nl << endl;
-
+        Info<< "Time = " << runTime.timeName() << nl << endl;        
+        
         // Assign boundary conditions to the motion solver
         label patchID = -1;
         forAll (mesh.boundary(), patchI)
@@ -84,48 +81,17 @@ int main(int argc, char *argv[])
                 break;
             }
         }         
-        mesh.boundaryDisplacementPatch(patchID) = vector(0,-0.05,0)*mesh.time().deltaT().value();  
+        mesh.boundaryDisplacementPatch(patchID) = vector(0,-0.3,0)*mesh.time().deltaT().value();         
         
-        bool meshChanged = mesh.updateTopology(); 
-        
-        if (meshChanged)
-        {
-#           include "checkTotalVolume.H"
-            // Obtain interpolated fluxes from the mesh, and reconstruct U
-            forAll(phi.internalField(),faceI) {
-                phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
-            }
-            forAll(mesh.boundaryMesh(),patchI) {
-                label start=mesh.boundaryMesh()[patchI].start();
-                forAll(phi.boundaryField()[patchI],faceI) {
-                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
-                }
-            }
-            //U = fvc::reconstruct(phi);
-#           include "correctPhi.H"            
-#           include "CourantNo.H"
-        }
-            
-        volScalarField P = p;
-        volVectorField Unew = U;
-        volVectorField gradP = fvc::grad(p);
-        gradP *= -1;
-        P.rename("P"); Unew.rename("Unew");
-        P.write(); Unew.write(); gradP.write();
-
         // Solve for mesh-motion
         mesh.updateMotion();         
         
 #       include "volContinuity.H"        
-        
+
         // Make the fluxes relative to the mesh motion
         fvc::makeRelative(phi, U);
 
 #       include "NuUEqn.H"
-        
-        volVectorField UafterSolve = U;
-        UafterSolve.rename("UafterSolve");
-        UafterSolve.write();
 
         // --- PISO loop
 
@@ -170,13 +136,51 @@ int main(int argc, char *argv[])
 
             U -= rUA*fvc::grad(p);
             U.correctBoundaryConditions();
-        }       
+        }  
         
         runTime.write();
 
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
-            << nl << endl;
+            << nl << endl;        
+        
+        // Make the fluxes absolute
+        fvc::makeAbsolute(phi, U);        
+        
+        bool meshChanged = mesh.updateTopology(); 
+        
+        if (meshChanged)
+        {
+#           include "checkTotalVolume.H"
+            // Obtain interpolated fluxes from the mesh, and reconstruct U
+            forAll(phi.internalField(),faceI) {
+                phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
+            }
+            forAll(mesh.boundaryMesh(),patchI) {
+                label start=mesh.boundaryMesh()[patchI].start();
+                forAll(phi.boundaryField()[patchI],faceI) {
+                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
+                }
+            }
+            forAll(p.internalField(),cellI) {
+                p.internalField()[cellI] = mesh.interpolatedP()[cellI];
+            } 
+            //U = fvc::reconstruct(phi);  
+     
+//#           include "correctPhi.H"            
+#           include "CourantNo.H"
+        }
+            
+        /*
+        volScalarField divPhi = fvc::div(phi);  
+        divPhi.write();        
+        volScalarField P = p;
+        volVectorField Unew = U;
+        volVectorField gradP = fvc::grad(p);
+        gradP *= -1;
+        P.rename("P"); Unew.rename("Unew");
+        P.write(); Unew.write(); gradP.write(); 
+        */        
     }
 
     Info<< "End\n" << endl;
