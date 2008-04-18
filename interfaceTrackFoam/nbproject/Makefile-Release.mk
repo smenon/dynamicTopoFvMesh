@@ -47,11 +47,11 @@ FFLAGS=
 LDLIBSOPTIONS=
 
 # Build Targets
-.build-conf: ${BUILD_SUBPROJECTS} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam
+.build-conf: ${BUILD_SUBPROJECTS} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam
 
-/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam: ${OBJECTFILES}
+/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam: ${OBJECTFILES}
 	${MKDIR} -p /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt
-	${LINK.cc} -o /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam ${OBJECTFILES} ${LDLIBSOPTIONS} 
+	${LINK.cc} -o /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam ${OBJECTFILES} ${LDLIBSOPTIONS} 
 
 ${OBJECTDIR}/dynamicTopoFvMesh.o: dynamicTopoFvMesh.C 
 	${MKDIR} -p ${OBJECTDIR}
@@ -87,7 +87,7 @@ ${OBJECTDIR}/cylinderFoam.o: cylinderFoam.C
 # Clean Targets
 .clean-conf:
 	${RM} -r build/Release
-	${RM} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam
+	${RM} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam
 
 # Subprojects
 .clean-subprojects:

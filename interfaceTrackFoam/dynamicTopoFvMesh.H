@@ -139,7 +139,9 @@ class dynamicTopoFvMesh
         labelList       faceMap_;
         labelList       cellMap_;
         
-        //- Patch info for added boundary faces  
+        // Hash-tables for the renumbering of added entities
+        HashTable<label,label> addedPointRenumbering_; 
+        HashTable<label,label> addedCellRenumbering_;
         HashTable<label,label> boundaryPatches_;
         
         //- Edge length cut-off criteria 
@@ -220,6 +222,15 @@ class dynamicTopoFvMesh
         // Utility method to build a hull of faces that are connected to the edge
         // This will also determine whether the edge lies on a boundary
         bool constructPrismHull(const edge&, const label, DynamicList<label>&, DynamicList<label>&, DynamicList<label>&, bool);
+        
+        // Reorder points after a topology change
+        void reOrderPoints(pointField&, pointField&);
+        
+        // Reorder faces in upper-triangular order after a topology change
+        void reOrderFaces(faceList&, labelList&, labelList&);
+        
+        // Reorder & renumber cells with bandwidth reduction after a topology change
+        void reOrderCells();
         
         // Reorder the mesh in upper-triangular order, and generate mapping information
         void reOrderMesh(pointField&, pointField&, faceList&, labelList&, labelList&);

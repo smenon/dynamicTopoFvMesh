@@ -216,6 +216,9 @@ public:
             //- Rehash the index of an iterator to a new value
             inline void reNumber(const label, iterator&);
 
+            //- Return the index of the last element
+            inline label lastIndex() const;
+            
             //- Return the index at which rehashing begins
             inline label rehashIndex() const;
             

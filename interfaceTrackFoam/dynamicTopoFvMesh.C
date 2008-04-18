@@ -218,13 +218,13 @@ inline Foam::scalar Foam::dynamicTopoFvMesh::triFaceArea(const face& triFace)
 // Similar to the polyBoundaryMesh routine, but works on local information
 inline Foam::label Foam::dynamicTopoFvMesh::whichPatch(const label& index) const
 {    
-    if (index < nOldInternalFaces_) return -1;
+    if (index < nInternalFaces_) return -1;
     
     for(label i=0; i<numPatches_; i++) {
         if
         (
-            index >= oldPatchStarts_[i]
-         && index < oldPatchStarts_[i] + oldPatchSizes_[i]
+            index >= patchStarts_[i]
+         && index < patchStarts_[i] + patchSizes_[i]
         )
         {
             return i;
@@ -608,6 +608,434 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull(
     return isBoundary;
 }
 
+// Reorder points after a topology change
+void Foam::dynamicTopoFvMesh::reOrderPoints(pointField& points, pointField& pointsZeroVolume)
+{
+    // *** Point renumbering *** //
+    // If points were deleted during topology change, the numerical order ceases to be continuous.
+    // Loop through all points and renumber sequentially. Possible scope for bandwidth-reduction
+    // on the motion-solver.
+    
+    label pointRenum = 0;
+    
+    addedPointRenumbering_.clear();
+    
+    HashList<point>::iterator ptIter = meshPoints_.begin();
+    HashList<point>::iterator pzvIter = pointsZeroVol_.begin();
+    while(ptIter != meshPoints_.end()) {       
+        // Obtain the index for this point
+        label pIndex = ptIter.index();      
+        // Update the point info
+        points[pointRenum] = ptIter();
+        pointsZeroVolume[pointRenum] = pzvIter();
+        // Renumber the point index
+        meshPoints_.reNumber(pointRenum, ptIter);
+        pointsZeroVol_.reNumber(pointRenum,pzvIter);
+        // Added points are always numbered after nOldPoints_ 
+        // (by virtue of the HashList append method)
+        if (pIndex < nOldPoints_) {
+            pointMap_[pointRenum]    = pIndex;
+            reversePointMap_[pIndex] = pointRenum;
+        } else {
+            addedPointRenumbering_.insert(pIndex,pointRenum);
+        }
+        // Update the counter
+        pointRenum++;
+        // Update the iterators
+        ptIter++; pzvIter++;
+    }    
+}
+
+// Reorder faces in upper-triangular order after a topology change
+void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, labelList& neighbour)
+{
+    // *** Face renumbering *** //
+    // Faces have to be renumbered if any were added/deleted/modified
+    // Boundary faces are added to respective patches.
+    // Internal faces, however, have to be added in upper-triangular ordering;
+    // i.e., in the increasing order of neighbours
+    
+    label faceInOrder = 0, allFaces = faces_.lastIndex() + 1;
+    faceList oldFaces(allFaces);
+    labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces,0);
+    edgeList oldEdgeToWatch(0);
+    scalarField oldPhi(0);
+    
+    HashTable<label,label> addedFaceRenumbering;
+    HashTable<label,label> addedReverseFaceRenumbering;
+    
+    // Make a copy of the old face-based HashLists, and clear them
+    HashList<face>::iterator fIter = faces_.begin();
+    HashList<label>::iterator oIter = owner_.begin();
+    HashList<label>::iterator nIter = neighbour_.begin();
+    while(fIter != faces_.end()) {
+        oldFaces[fIter.index()] = fIter();
+        oldOwner[oIter.index()] = oIter();
+        oldNeighbour[nIter.index()] = nIter();
+        fIter++; oIter++; nIter++;
+    }
+    faces_.clear(); owner_.clear(); neighbour_.clear();
+    if (edgeModification_ && twoDMotion_) {
+        oldEdgeToWatch.setSize(allFaces);
+        for(HashList<edge>::iterator eIter = edgeToWatch_.begin(); eIter != edgeToWatch_.end(); eIter++)
+            oldEdgeToWatch[eIter.index()] = eIter();
+        edgeToWatch_.clear();
+    }
+    if (fluxInterpolation_) {
+        oldPhi.setSize(allFaces);
+        for(HashList<scalar>::iterator pIter = localPhi_.begin(); pIter != localPhi_.end(); pIter++)
+            oldPhi[pIter.index()] = pIter();
+        localPhi_.clear();        
+    }
+    
+    // Mark the internal faces with -2 so that they are inserted first
+    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++) {
+        const cell& curFaces = cIter();
+        forAll(curFaces, faceI) 
+            visited[curFaces[faceI]]--;
+    }
+    
+    // Upper-triangular ordering of faces:
+    
+    // Keep track of inserted boundary face indices
+    labelList boundaryPatchIndices(patchStarts_);    
+    
+    // Insertion cannot be done in one go as the faces need to be
+    // added into the list in the increasing order of neighbour
+    // cells.  Therefore, all neighbours will be detected first
+    // and then added in the correct order.
+    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++) {
+        
+        // Record the neighbour cell
+        label cellI = cIter.index();
+        const cell& curFaces = cIter();
+        labelList neiCells(curFaces.size(), -1);
+        
+        label nNeighbours = 0;
+        
+        forAll (curFaces, faceI) {
+            
+            if (visited[curFaces[faceI]] == -2) {
+                
+                // Face is internal and gets reordered
+                label own =   oldOwner[curFaces[faceI]] < nOldCells_ 
+                            ? reverseCellMap_[oldOwner[curFaces[faceI]]] 
+                            : addedCellRenumbering_[oldOwner[curFaces[faceI]]];
+                label nei =   oldNeighbour[curFaces[faceI]] < nOldCells_ 
+                            ? reverseCellMap_[oldNeighbour[curFaces[faceI]]]
+                            : addedCellRenumbering_[oldNeighbour[curFaces[faceI]]];
+                
+                if (cellI == own)
+                    neiCells[faceI] = nei;                    
+                else if (cellI == nei)
+                    neiCells[faceI] = own;                    
+                else
+                    FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderFaces()") << nl
+                            << " Could not determine neighbour faces."
+                            << " Something's messed up." << nl
+                            << abort(FatalError);
+
+                nNeighbours++;
+            }
+            
+            // Boundary faces are inserted normally. Update maps for now.
+            // Face insertion for boundaries will be done after internal faces.
+            if (visited[curFaces[faceI]] == -1) {
+                label patchID = whichPatch(curFaces[faceI]);
+                label bFaceIndex = boundaryPatchIndices[patchID]++;
+                // Renumber the point-labels for this boundary-face
+                face& faceRenumber = oldFaces[curFaces[faceI]];
+                forAll(faceRenumber,pointI) {
+                    if (faceRenumber[pointI] < nOldPoints_)
+                        faceRenumber[pointI] = reversePointMap_[faceRenumber[pointI]];
+                    else
+                        faceRenumber[pointI] = addedPointRenumbering_[faceRenumber[pointI]];
+                }
+                // Renumber the edges in edgeToWatch
+                if (edgeModification_ && twoDMotion_) {
+                    edge& edgeRenumber = oldEdgeToWatch[curFaces[faceI]];
+                    if (edgeRenumber[0] < nOldPoints_)
+                        edgeRenumber[0] = reversePointMap_[edgeRenumber[0]];
+                    else
+                        edgeRenumber[0] = addedPointRenumbering_[edgeRenumber[0]];
+                    if (edgeRenumber[1] < nOldPoints_)
+                        edgeRenumber[1] = reversePointMap_[edgeRenumber[1]];
+                    else
+                        edgeRenumber[1] = addedPointRenumbering_[edgeRenumber[1]];
+                }
+                // Update the maps
+                if (curFaces[faceI] < nOldFaces_){
+                    faceMap_[bFaceIndex] = curFaces[faceI];
+                    reverseFaceMap_[curFaces[faceI]] = bFaceIndex;
+                } else {
+                    addedFaceRenumbering.insert(curFaces[faceI],bFaceIndex);
+                    addedReverseFaceRenumbering.insert(bFaceIndex,curFaces[faceI]);
+                }                
+            }
+        }
+        
+        // Add internal faces in the increasing order of neighbours
+        for (label neiSearch = 0; neiSearch < nNeighbours; neiSearch++) {
+            
+            // Find the lowest neighbour which is still valid
+            label nextNei = -1;
+            label minNei = nCells_;
+
+            forAll (neiCells, ncI) {
+                if (neiCells[ncI] > -1 && neiCells[ncI] < minNei) {
+                    nextNei = ncI;
+                    minNei = neiCells[ncI];
+                }
+            }
+
+            if (nextNei > -1) {
+                // Face is internal and gets reordered
+                faceMap_[faceInOrder] = curFaces[nextNei];
+                if (curFaces[nextNei] < nOldFaces_)
+                    reverseFaceMap_[curFaces[nextNei]] = faceInOrder;
+                
+                // Renumber the point labels in this face
+                face& faceRenumber = oldFaces[curFaces[nextNei]];
+                forAll(faceRenumber, pointI) {
+                    if (faceRenumber[pointI] < nOldPoints_)
+                        faceRenumber[pointI] = reversePointMap_[faceRenumber[pointI]];
+                    else
+                        faceRenumber[pointI] = addedPointRenumbering_[faceRenumber[pointI]];
+                }                
+                
+                // Renumber owner/neighbour
+                label ownerRenumber =   oldOwner[curFaces[nextNei]] < nOldCells_ 
+                                      ? reverseCellMap_[oldOwner[curFaces[nextNei]]] 
+                                      : addedCellRenumbering_[oldOwner[curFaces[nextNei]]];
+                label neighbourRenumber =   oldNeighbour[curFaces[nextNei]] < nOldCells_ 
+                                          ? reverseCellMap_[oldNeighbour[curFaces[nextNei]]]
+                                          : addedCellRenumbering_[oldNeighbour[curFaces[nextNei]]];
+                     
+                // Cell-reordering may require face-flipping..
+                if (neighbourRenumber > ownerRenumber) {
+                    faceRenumber.reverseFace();
+                    if (fluxInterpolation_)
+                        oldPhi[curFaces[nextNei]] *= -1.0;
+                }
+                
+                // Insert entities into HashLists...
+                faces_.append(faceRenumber);                
+                owner_.append(ownerRenumber);
+                neighbour_.append(neighbourRenumber);
+                if (edgeModification_ && twoDMotion_) {
+                    edge& edgeRenumber = oldEdgeToWatch[curFaces[nextNei]];
+                    if (edgeRenumber[0] < nOldPoints_)
+                        edgeRenumber[0] = reversePointMap_[edgeRenumber[0]];
+                    else
+                        edgeRenumber[0] = addedPointRenumbering_[edgeRenumber[0]];
+                    if (edgeRenumber[1] < nOldPoints_)
+                        edgeRenumber[1] = reversePointMap_[edgeRenumber[1]];
+                    else
+                        edgeRenumber[1] = addedPointRenumbering_[edgeRenumber[1]];                    
+                    edgeToWatch_.append(edgeRenumber);
+                }
+                if (fluxInterpolation_)
+                    localPhi_.append(oldPhi[curFaces[nextNei]]);
+                
+                // Insert entities into mesh-reset lists
+                faces[faceInOrder] = faceRenumber;                
+                owner[faceInOrder] = ownerRenumber;
+                neighbour[faceInOrder] = neighbourRenumber;
+
+                // Stop the neighbour from being used again
+                neiCells[nextNei] = -1;
+                
+                // Mark this face as visited
+                visited[curFaces[nextNei]] = 0;
+
+                faceInOrder++;
+            } else {
+                FatalErrorIn("dynamicTopoFvMesh::reOrderFaces()") << nl
+                    << "Error in internal face insertion" << nl
+                    << abort(FatalError);
+            }
+        }        
+    }
+    
+    // All internal faces have been inserted. Now insert boundary faces.
+    label oldIndex;
+    for(label i=nInternalFaces_; i<nFaces_; i++) {
+        if (faceMap_[i] == -1) {
+            // This boundary face was added during the topology change
+            oldIndex = addedFaceRenumbering[i];
+        } else {
+            oldIndex = faceMap_[i];
+        }
+        // Renumber owner/neighbour
+        label ownerRenumber =   oldOwner[oldIndex] < nOldCells_ 
+                              ? reverseCellMap_[oldOwner[oldIndex]] 
+                              : addedCellRenumbering_[oldOwner[oldIndex]];
+        
+        // Insert entities into HashLists...
+        faces_.append(oldFaces[oldIndex]);                
+        owner_.append(ownerRenumber);
+        neighbour_.append(-1);
+        if (edgeModification_ && twoDMotion_)
+            edgeToWatch_.append(oldEdgeToWatch[oldIndex]);
+        if (fluxInterpolation_)
+            localPhi_.append(oldPhi[oldIndex]);        
+        
+        // Insert entities into mesh-reset lists
+        faces[faceInOrder] = oldFaces[oldIndex];                
+        owner[faceInOrder] = ownerRenumber;
+        neighbour[faceInOrder] = -1;        
+        
+        // Mark this face as visited
+        visited[oldIndex] = 0;
+        
+        faceInOrder++;
+    }
+    
+    // Renumber all cells
+    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++) {
+        
+        cell& cellFaces = cIter();
+        
+        forAll(cellFaces,faceI) {
+            if (cellFaces[faceI] < nOldFaces_) {
+                cellFaces[faceI] = reverseFaceMap_[cellFaces[faceI]];
+            } else {
+                cellFaces[faceI] = addedFaceRenumbering[cellFaces[faceI]];
+            }
+        }
+    }
+    
+    // Final check to ensure everything went okay
+    if (debug) {
+        if (sum(visited) != 0)
+            FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderFaces()") << nl
+                    << " Algorithm did not visit every face in the mesh."
+                    << " Something's messed up." << nl
+                    << abort(FatalError);         
+    }
+}
+
+// Reorder & renumber cells with bandwidth reduction after a topology change
+void Foam::dynamicTopoFvMesh::reOrderCells()
+{
+    // *** Cell renumbering *** //
+    // If cells were deleted during topology change, the numerical order ceases to be continuous.
+    // Also, cells are always added at the end of the list by virtue of the HashList append 
+    // method. Thus, cells would now have to be reordered so that bandwidth is reduced and 
+    // renumbered to be sequential again.
+    
+    label currentCell, cellInOrder = 0, allCells = cells_.lastIndex() + 1; 
+    SLList<label> nextCell; 
+    labelList ncc(allCells, 0);
+    labelList visited(allCells, 0);
+    labelListList cellCellAddr(allCells);
+    cellList oldCells(allCells);
+    scalarField oldLengthScale(0), oldPressure(0);
+    
+    addedCellRenumbering_.clear();
+    
+    // Make a copy of the old cell-based HashLists, and clear them
+    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++)
+        oldCells[cIter.index()] = cIter();
+    cells_.clear();
+    if (edgeModification_) {
+        oldLengthScale.setSize(allCells);
+        for(HashList<scalar>::iterator cIter = lengthScale_.begin(); cIter != lengthScale_.end(); cIter++)
+            oldLengthScale[cIter.index()] = cIter();
+        lengthScale_.clear();
+    }
+    if (fluxInterpolation_) {
+        oldPressure.setSize(allCells);
+        for(HashList<scalar>::iterator cIter = localp_.begin(); cIter != localp_.end(); cIter++)
+            oldLengthScale[cIter.index()] = cIter(); 
+        localp_.clear();
+    }    
+    
+    // Build a cell-cell addressing list
+    HashList<label>::iterator ownIter = owner_.begin();
+    HashList<label>::iterator neiIter = neighbour_.begin();    
+    while(ownIter != owner_.end()) {
+        if (neiIter() != -1) {
+            ncc[ownIter()]++;
+            ncc[neiIter()]++;     
+        }
+        ownIter++; neiIter++;
+    }     
+    forAll (cellCellAddr, cellI) {
+        cellCellAddr[cellI].setSize(ncc[cellI]); 
+        // Mark off deleted cells as "visited"
+        if (ncc[cellI] == 0) visited[cellI] = 1;
+    }
+    ncc = 0;
+    ownIter = owner_.begin(); neiIter = neighbour_.begin();
+    while(ownIter != owner_.end()) {
+        if (neiIter() != -1) {
+            cellCellAddr[ownIter()][ncc[ownIter()]++] = neiIter();
+            cellCellAddr[neiIter()][ncc[neiIter()]++] = ownIter();
+        }
+        ownIter++; neiIter++;
+    }
+    
+    // Let's get to the "business bit" of the band-compression
+    forAll (visited, cellI) {
+        
+        // Find the first cell that has not been visited yet
+        if (visited[cellI] == 0) {
+            
+            // Use this cell as a start            
+            currentCell = cellI;
+            nextCell.append(currentCell);
+
+            // Loop through the nextCell list. Add the first cell into the
+            // cell order if it has not already been visited and ask for its
+            // neighbours. If the neighbour in question has not been visited,
+            // add it to the end of the nextCell list
+            while (nextCell.size() > 0) {
+                
+                currentCell = nextCell.removeHead();
+                
+                if (visited[currentCell] == 0) {
+                    
+                    // Mark as visited and update cell mapping info
+                    visited[currentCell] = 1;
+                    cellMap_[cellInOrder] = currentCell;
+                    if (currentCell < nOldCells_)
+                        reverseCellMap_[currentCell] = cellInOrder;
+                    else
+                        addedCellRenumbering_.insert(currentCell,cellInOrder);
+                    
+                    // Insert entities into HashLists...
+                    cells_.append(oldCells[currentCell]);
+                    if (edgeModification_) 
+                        lengthScale_.append(oldLengthScale[currentCell]);
+                    if (fluxInterpolation_) 
+                        localp_.append(oldPressure[currentCell]);
+                    
+                    cellInOrder++;
+
+                    // Find if the neighbours have been visited
+                    const labelList& neighbours = cellCellAddr[currentCell];
+
+                    forAll (neighbours, nI) {
+                        if (visited[neighbours[nI]] == 0) {
+                            // Not visited, add to the list
+                            nextCell.append(neighbours[nI]);
+                        }
+                    }
+                }
+            }
+        }
+    }        
+    
+    if(debug) {
+        if (sum(visited) != allCells)
+            FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderCells()") << nl
+                    << " Algorithm did not visit every cell in the mesh."
+                    << " Something's messed up." << nl
+                    << abort(FatalError);         
+    }
+}
+
 // Reorder the faces in upper-triangular order, and generate mapping information
 void Foam::dynamicTopoFvMesh::reOrderMesh(
     pointField& points,
@@ -645,250 +1073,14 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
         Info << "=================" << endl;
     }
     
-    label pointRenum = 0;
-    label faceRenum = 0;
-    label cellRenum = 0;
-
-    // Maintain a hash-table for the renumbering of added entities
-    HashTable<label,label> addedPointRenumbering;
-    HashTable<label,label> addedFaceRenumbering;
-    HashTable<label,label> addedCellRenumbering;
+    // Reorder the points
+    reOrderPoints(points, pointsZeroVolume);
     
-    // *** Point renumbering *** //
-    // If points were deleted during topology change, the numerical order ceases to be continuous.
-    // Loop through all points and renumber sequentially
-    HashList<point>::iterator ptIter = meshPoints_.begin();
-    HashList<point>::iterator pzvIter = pointsZeroVol_.begin();
-    while(ptIter != meshPoints_.end()) {       
-        // Obtain the index for this point
-        label pIndex = ptIter.index();      
-        // Update the point info
-        points[pointRenum] = ptIter();
-        pointsZeroVolume[pointRenum] = pzvIter();
-        // Renumber the point index
-        meshPoints_.reNumber(pointRenum, ptIter);
-        pointsZeroVol_.reNumber(pointRenum,pzvIter);
-        // Added points are always numbered after nOldPoints_ 
-        // (by virtue of the HashList append method)
-        if (pIndex < nOldPoints_) {
-            pointMap_[pointRenum]    = pIndex;
-            reversePointMap_[pIndex] = pointRenum;
-        } else {
-            addedPointRenumbering.insert(pIndex,pointRenum);
-        }
-        // Update the counter
-        pointRenum++;
-        // Update the iterators
-        ptIter++; pzvIter++;
-    }
+    // Reorder the cells
+    reOrderCells();
     
-    // *** Cell renumbering *** //    
-    // If cells were deleted during topology change, the numerical order ceases to be continuous.
-    // Loop through all cells and renumber sequentially
-    HashList<cell>::iterator cIter = cells_.begin();
-    HashList<scalar>::iterator lIter = lengthScale_.begin();
-    HashList<scalar>::iterator pIter = localp_.begin();
-    /*    
-    HashList<vector>::iterator gpIter = localGradp_.begin();
-    */
-    while (cIter != cells_.end()) {
-        // Obtain the index for this cell
-        label cIndex = cIter.index();
-        // Obtain a reference to this cell
-        cell &thisCell = cIter();
-        // Renumber this cell, update maps and corresponding face owners/neighbours
-        cells_.reNumber(cellRenum, cIter);
-        if (edgeModification_ && twoDMotion_) {
-            lengthScale_.reNumber(cellRenum, lIter);
-            lIter++;
-        }
-        if (fluxInterpolation_) {
-            localp_.reNumber(cellRenum, pIter);
-            //localGradp_.reNumber(cellRenum, gpIter);
-            pIter++; //gpIter++;
-        }       
-        forAll(thisCell, faceI) {
-            if (owner_[thisCell[faceI]] == cIndex)
-                owner_[thisCell[faceI]] = cellRenum;
-            else
-                neighbour_[thisCell[faceI]] = cellRenum;
-        }
-        // Added cells are always numbered after nOldCells_
-        // (by virtue of the HashList append method)
-        if (cIndex < nOldCells_) {
-            cellMap_[cellRenum]     = cIndex;
-            reverseCellMap_[cIndex] = cellRenum;
-        } else {
-            addedCellRenumbering.insert(cIndex,cellRenum);
-        }
-        // Update the counter
-        cellRenum++;
-        // Update the iterators
-        cIter++;
-    }
-    
-    // *** Face renumbering *** //
-    // Faces have to be renumbered if any were added/deleted/modified
-    // Boundary faces are added to respective patches.
-    // Internal faces, however, have to be added in upper-triangular ordering;
-    // i.e., in the increasing order of neighbours
-    
-    // Keep track of inserted boundary face indices
-    labelList boundaryPatchIndices(patchStarts_);
-    
-    // Visit cells in the mesh and renumber outward faces sequentially
-    DynamicList<label> cfList(10), neiList(10);
-    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++) {
-        // Obtain the index for this cell
-        label cIndex = cIter.index();
-        // Obtain a reference to this cell
-        cell &cellFaces = cIter();
-        // Build a list of outward-pointing interior faces for this cell
-        label maxNei = -1;
-        forAll(cellFaces,faceI) {
-            label cellFace = cellFaces[faceI];
-            HashList<label>::iterator OwnIter = owner_(cellFace);
-            HashList<label>::iterator NeiIter = neighbour_(cellFace);
-            if (NeiIter() == -1) {
-                // Insert boundary faces normally
-                HashList<face>::iterator bFaceIter = faces_(cellFace);
-                label patchID = whichPatch(bFaceIter.index());
-                if (patchID == -2) {
-                    // This boundary face was added during a topology change
-                    // Find its patchID in the boundaryPatches_ list and add appropriately
-                    patchID = boundaryPatches_[cellFace];
-                }
-                label bFaceIndex = boundaryPatchIndices[patchID]++;
-                // Renumber the point-labels for this boundary-face
-                forAll(bFaceIter(),pointI) {
-                    label pointID = bFaceIter()[pointI];
-                    if (pointID < nOldPoints_)
-                        bFaceIter()[pointI] = reversePointMap_[pointID];
-                    else
-                        bFaceIter()[pointI] = addedPointRenumbering[pointID];
-                }
-                // Renumber the edges in edgeToWatch
-                if (edgeModification_ && twoDMotion_) {
-                    HashList<edge>::iterator etwIter = edgeToWatch_(cellFace);
-                    label edgePoint0 = etwIter()[0];
-                    if (edgePoint0 < nOldPoints_)
-                        etwIter()[0] = reversePointMap_[edgePoint0];
-                    else
-                        etwIter()[0] = addedPointRenumbering[edgePoint0];
-                    label edgePoint1 = etwIter()[1];
-                    if (edgePoint1 < nOldPoints_)
-                        etwIter()[1] = reversePointMap_[edgePoint1];
-                    else
-                        etwIter()[1] = addedPointRenumbering[edgePoint1];
-                }
-                // Update the maps
-                if (cellFace < nOldFaces_){
-                    faceMap_[bFaceIndex] = cellFace;
-                    reverseFaceMap_[cellFace] = bFaceIndex;
-                } else {
-                    addedFaceRenumbering.insert(cellFace,bFaceIndex);
-                }
-            } else if (OwnIter() == cIndex) {
-                // Add this internal face and its neighbour to the list
-                cfList.append(cellFace);
-                neiList.append(NeiIter());
-                maxNei = maxNei > NeiIter() ? maxNei : NeiIter();
-            }
-        }    
-        // Now loop through the list and add faces in ascending order of neighbours
-        label minNei, curNei = -1, minIndex = -1;
-        for (label i=0; i < neiList.size(); i++) {  
-            minNei = maxNei;
-            forAll(neiList, indexI) {
-                if (neiList[indexI] <= minNei && neiList[indexI] > curNei) {
-                    minIndex = indexI;
-                    minNei   = neiList[indexI];
-                }
-            }            
-            curNei = minNei;
-            HashList<face>::iterator faceIter = faces_(cfList[minIndex]);
-            HashList<label>::iterator ownIter = owner_(cfList[minIndex]);
-            HashList<label>::iterator neiIter = neighbour_(cfList[minIndex]);
-            // Renumber the point-labels for this face
-            forAll(faceIter(), pointI) {
-                label pointID = faceIter()[pointI];
-                if (pointID < nOldPoints_)
-                    faceIter()[pointI] = reversePointMap_[pointID];
-                else
-                    faceIter()[pointI] = addedPointRenumbering[pointID];
-            }
-            // Renumber the edges in edgeToWatch
-            if (edgeModification_ && twoDMotion_) {
-                HashList<edge>::iterator etwIter = edgeToWatch_(cfList[minIndex]);
-                label edgePoint0 = etwIter()[0];
-                if (edgePoint0 < nOldPoints_)
-                    etwIter()[0] = reversePointMap_[edgePoint0];
-                else
-                    etwIter()[0] = addedPointRenumbering[edgePoint0];
-                label edgePoint1 = etwIter()[1];
-                if (edgePoint1 < nOldPoints_)
-                    etwIter()[1] = reversePointMap_[edgePoint1];
-                else
-                    etwIter()[1] = addedPointRenumbering[edgePoint1];
-            }
-            // Update the maps
-            if (cfList[minIndex] < nOldFaces_){                
-                faceMap_[faceRenum] = cfList[minIndex];
-                reverseFaceMap_[cfList[minIndex]] = faceRenum;
-            } else {
-                addedFaceRenumbering.insert(cfList[minIndex],faceRenum);
-            }
-            faceRenum++;
-        }
-        cfList.clear(); neiList.clear();        
-    }  
-    
-    HashList<face>::iterator fIter    = faces_.begin();
-    HashList<label>::iterator ownIter = owner_.begin();
-    HashList<label>::iterator neiIter = neighbour_.begin();
-    HashList<edge>::iterator etwIter  = edgeToWatch_.begin();
-    HashList<scalar>::iterator flIter = localPhi_.begin();
-    label replaceIndex;
-    while (fIter != faces_.end()) {
-        label faceIndex = fIter.index();
-        if (faceIndex < nOldFaces_)
-            replaceIndex = reverseFaceMap_[faceIndex];
-        else
-            replaceIndex = addedFaceRenumbering[faceIndex];
-        // Copy to the mesh-reset lists
-        faces[replaceIndex]     = fIter();
-        owner[replaceIndex]     = ownIter();
-        neighbour[replaceIndex] = neiIter();
-        // Renumber the face
-        faces_.reNumber(replaceIndex, fIter);
-        owner_.reNumber(replaceIndex, ownIter);
-        neighbour_.reNumber(replaceIndex, neiIter);
-        if (edgeModification_ && twoDMotion_) {
-            edgeToWatch_.reNumber(replaceIndex, etwIter);
-            etwIter++;
-        }
-        if (fluxInterpolation_) {
-            localPhi_.reNumber(replaceIndex, flIter);
-            flIter++; 
-        }
-        // Update the cell list
-        label c0 = ownIter(), c1 = neiIter();
-        replaceFaceLabel(faceIndex, replaceIndex, cells_[c0]);
-        if (c1 != -1)
-            replaceFaceLabel(faceIndex, replaceIndex, cells_[c1]);
-        // Increment the iterators
-        fIter++; ownIter++; neiIter++;
-    }
-        
-    // Sort face-lists in ascending order. 
-    // (This may be inefficient, since each list has O[n] cost)
-    faces_.sort();
-    owner_.sort();
-    neighbour_.sort();
-    if (edgeModification_ && twoDMotion_) edgeToWatch_.sort();
-    if (fluxInterpolation_) {
-        localPhi_.sort();
-    }
+    // Reorder the faces
+    reOrderFaces(faces, owner, neighbour);
 }
 
 // Calculate the edge length-scale for the mesh
@@ -2589,7 +2781,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     if ( twoDMotion_ ) {        
 
         // 2D Edge-swapping engine
-        swap2DEdges();
+        //swap2DEdges();
         
         if (debug) Info << nl << "2D Edge Swapping complete." << endl;        
         

@@ -348,14 +348,20 @@ inline label HashList<T>::append(const T& data)
     // Index this item as an increment from the last index
     // This will allow random deletions from the list, while
     // keeping appends as valid
-    label index = endIdx_->idx_+1;
+    label index=0;
+    if (endIdx_) index = endIdx_->idx_+1;
     // Allocate and set the index
     Item<T> *newPtr = new Item<T>;
     newPtr->data_ = data;
     newPtr->idx_ = index;
     // Update the last element index
-    newPtr->previdx_ = endIdx_;
-    endIdx_->nextidx_ = newPtr;
+    if (endIdx_) {
+        newPtr->previdx_ = endIdx_;
+        endIdx_->nextidx_ = newPtr;
+    } else {
+        // A null endIdx_ occurs only in null-constructed HashLists
+        startIdx_ = newPtr;
+    }
     endIdx_ = newPtr;
     // Hash the new index, and update the table
     label loc = hash(index)%hash_table_size_;
@@ -374,13 +380,16 @@ template<class T>
 void HashList<T>::clear()
 {
     Item<T> *current, *node;
+    // Delete all links sequentially
     current = startIdx_;
     while (current) {
         node = current->nextidx_;
         delete current;
         current = node;
     }
-    if (table_) delete [] table_;
+    // Clean out the hash table
+    for(label i=0; i<hash_table_size_; i++)
+        table_[i] = 0;
     size_ = 0; startIdx_ = 0; endIdx_ = 0;
     rehash_ = false; rehashIndex_ = -1;    
 }
@@ -453,6 +462,7 @@ HashList<T>::~HashList()
 {
     if (table_) {
         clear();
+        delete [] table_;
     }
 }
 
@@ -560,6 +570,13 @@ template<class T>
 inline typename HashList<T>::iterator HashList<T>::end()
 {
     return iterator(0);
+}
+
+//- Return the index of the last element
+template<class T>
+inline label HashList<T>::lastIndex() const
+{
+    return endIdx_->idx_;
 }
 
 //- Return the index at which rehashing begins
