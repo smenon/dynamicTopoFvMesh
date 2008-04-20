@@ -8,7 +8,6 @@ EXE_INC = \
     -I$(LIB_SRC)/fvMotionSolver/lnInclude \
     -I./lnInclude \
     -I../include \
-    -I../newFreeSurface/lnInclude \
     $(WM_DECOMP_INC) \
 
 EXE_LIBS = \
@@ -18,5 +17,4 @@ EXE_LIBS = \
     -lcellDecompositionMotionSolver \
     -lfvMotionSolver \
     -L$(FOAM_USER_LIBBIN) \
-    -lnewFreeSurface \
     $(WM_DECOMP_LIBS) 

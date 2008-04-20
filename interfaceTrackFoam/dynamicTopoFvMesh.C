@@ -218,13 +218,13 @@ inline Foam::scalar Foam::dynamicTopoFvMesh::triFaceArea(const face& triFace)
 // Similar to the polyBoundaryMesh routine, but works on local information
 inline Foam::label Foam::dynamicTopoFvMesh::whichPatch(const label& index) const
 {    
-    if (index < nInternalFaces_) return -1;
+    if (index < nOldInternalFaces_) return -1;
     
     for(label i=0; i<numPatches_; i++) {
         if
         (
-            index >= patchStarts_[i]
-         && index < patchStarts_[i] + patchSizes_[i]
+            index >= oldPatchStarts_[i]
+         && index < oldPatchStarts_[i] + oldPatchSizes_[i]
         )
         {
             return i;
@@ -239,7 +239,7 @@ inline Foam::label Foam::dynamicTopoFvMesh::whichPatch(const label& index) const
         FatalErrorIn
             (
             "label dynamicTopoFvMesh::whichPatch(const label& index) const"
-            ) << "Cannot find patch information for face index " << index << ": " << faces_[index] 
+            ) << "Cannot find patch information for face index " << index  
             << nl << " It appears that face ordering is inconsistent with patch information."    
             << abort(FatalError);        
     
@@ -662,7 +662,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
     scalarField oldPhi(0);
     
     HashTable<label,label> addedFaceRenumbering;
-    HashTable<label,label> addedReverseFaceRenumbering;
+    HashTable<label,label> addedFaceReverseRenumbering;
     
     // Make a copy of the old face-based HashLists, and clear them
     HashList<face>::iterator fIter = faces_.begin();
@@ -725,22 +725,19 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
                             ? reverseCellMap_[oldNeighbour[curFaces[faceI]]]
                             : addedCellRenumbering_[oldNeighbour[curFaces[faceI]]];
                 
-                if (cellI == own)
-                    neiCells[faceI] = nei;                    
-                else if (cellI == nei)
-                    neiCells[faceI] = own;                    
-                else
-                    FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderFaces()") << nl
-                            << " Could not determine neighbour faces."
-                            << " Something's messed up." << nl
-                            << abort(FatalError);
+                label smallerIndex = own < nei ? own : nei;
+                label largerIndex  = own > nei ? own : nei;
+                
+                if (cellI == smallerIndex) {
+                    neiCells[faceI] = largerIndex;
+                    nNeighbours++;
+                }
 
-                nNeighbours++;
             }
             
             // Boundary faces are inserted normally. Update maps for now.
             // Face insertion for boundaries will be done after internal faces.
-            if (visited[curFaces[faceI]] == -1) {
+            if (visited[curFaces[faceI]] == -1) {                
                 label patchID = whichPatch(curFaces[faceI]);
                 label bFaceIndex = boundaryPatchIndices[patchID]++;
                 // Renumber the point-labels for this boundary-face
@@ -769,8 +766,10 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
                     reverseFaceMap_[curFaces[faceI]] = bFaceIndex;
                 } else {
                     addedFaceRenumbering.insert(curFaces[faceI],bFaceIndex);
-                    addedReverseFaceRenumbering.insert(bFaceIndex,curFaces[faceI]);
-                }                
+                    addedFaceReverseRenumbering.insert(bFaceIndex,curFaces[faceI]);
+                }  
+                // Mark this face as visited
+                visited[curFaces[faceI]] = 0;                
             }
         }
         
@@ -790,9 +789,12 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
 
             if (nextNei > -1) {
                 // Face is internal and gets reordered
-                faceMap_[faceInOrder] = curFaces[nextNei];
-                if (curFaces[nextNei] < nOldFaces_)
+                if (curFaces[nextNei] < nOldFaces_) {
+                    faceMap_[faceInOrder] = curFaces[nextNei];
                     reverseFaceMap_[curFaces[nextNei]] = faceInOrder;
+                } else {
+                    addedFaceRenumbering.insert(curFaces[nextNei],faceInOrder);
+                }
                 
                 // Renumber the point labels in this face
                 face& faceRenumber = oldFaces[curFaces[nextNei]];
@@ -804,24 +806,24 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
                 }                
                 
                 // Renumber owner/neighbour
+                label oldOwn = oldOwner[curFaces[nextNei]];
+                label oldNei = oldNeighbour[curFaces[nextNei]];
                 label ownerRenumber =   oldOwner[curFaces[nextNei]] < nOldCells_ 
-                                      ? reverseCellMap_[oldOwner[curFaces[nextNei]]] 
-                                      : addedCellRenumbering_[oldOwner[curFaces[nextNei]]];
+                                      ? reverseCellMap_[oldOwn] : addedCellRenumbering_[oldOwn];
                 label neighbourRenumber =   oldNeighbour[curFaces[nextNei]] < nOldCells_ 
-                                          ? reverseCellMap_[oldNeighbour[curFaces[nextNei]]]
-                                          : addedCellRenumbering_[oldNeighbour[curFaces[nextNei]]];
+                                          ? reverseCellMap_[oldNei] : addedCellRenumbering_[oldNei];
                      
-                // Cell-reordering may require face-flipping..
-                if (neighbourRenumber > ownerRenumber) {
-                    faceRenumber.reverseFace();
+                // Cell-reordering may have cause flipped faces.. Correct them.
+                if (neighbourRenumber < ownerRenumber) {
+                    faceRenumber = faceRenumber.reverseFace();
                     if (fluxInterpolation_)
                         oldPhi[curFaces[nextNei]] *= -1.0;
                 }
                 
                 // Insert entities into HashLists...
                 faces_.append(faceRenumber);                
-                owner_.append(ownerRenumber);
-                neighbour_.append(neighbourRenumber);
+                owner_.append(cellI);
+                neighbour_.append(minNei);
                 if (edgeModification_ && twoDMotion_) {
                     edge& edgeRenumber = oldEdgeToWatch[curFaces[nextNei]];
                     if (edgeRenumber[0] < nOldPoints_)
@@ -839,8 +841,8 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
                 
                 // Insert entities into mesh-reset lists
                 faces[faceInOrder] = faceRenumber;                
-                owner[faceInOrder] = ownerRenumber;
-                neighbour[faceInOrder] = neighbourRenumber;
+                owner[faceInOrder] = cellI; 
+                neighbour[faceInOrder] = minNei; 
 
                 // Stop the neighbour from being used again
                 neiCells[nextNei] = -1;
@@ -862,7 +864,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
     for(label i=nInternalFaces_; i<nFaces_; i++) {
         if (faceMap_[i] == -1) {
             // This boundary face was added during the topology change
-            oldIndex = addedFaceRenumbering[i];
+            oldIndex = addedFaceReverseRenumbering[i];
         } else {
             oldIndex = faceMap_[i];
         }
@@ -885,17 +887,12 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
         owner[faceInOrder] = ownerRenumber;
         neighbour[faceInOrder] = -1;        
         
-        // Mark this face as visited
-        visited[oldIndex] = 0;
-        
         faceInOrder++;
-    }
+    }   
     
     // Renumber all cells
-    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++) {
-        
-        cell& cellFaces = cIter();
-        
+    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++) {        
+        cell& cellFaces = cIter();        
         forAll(cellFaces,faceI) {
             if (cellFaces[faceI] < nOldFaces_) {
                 cellFaces[faceI] = reverseFaceMap_[cellFaces[faceI]];
@@ -998,11 +995,12 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
                     
                     // Mark as visited and update cell mapping info
                     visited[currentCell] = 1;
-                    cellMap_[cellInOrder] = currentCell;
-                    if (currentCell < nOldCells_)
+                    if (currentCell < nOldCells_) {
+                        cellMap_[cellInOrder] = currentCell;
                         reverseCellMap_[currentCell] = cellInOrder;
-                    else
+                    } else {
                         addedCellRenumbering_.insert(currentCell,cellInOrder);
+                    }
                     
                     // Insert entities into HashLists...
                     cells_.append(oldCells[currentCell]);
@@ -2640,7 +2638,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
 // and incorporated into the mesh for the current time-step.
 void Foam::dynamicTopoFvMesh::updateMotion()
 {     
-    tmp<pointField> newPoints;
+    //tmp<pointField> newPoints;
            
     if (solveForMotion_) {
         
@@ -2679,12 +2677,12 @@ void Foam::dynamicTopoFvMesh::updateMotion()
         }
 
         // Solve for motion   
-        newPoints = motionPtr_->newPoints();
-        //movePoints(motionPtr_->newPoints());
-    } else {
+        //newPoints = motionPtr_->newPoints();
+        movePoints(motionPtr_->newPoints());
+    } /*else {
         
         // Keep the points at the present state for a static mesh
-        newPoints = this->points();
+        newPoints() = this->points();
         
     }
 
@@ -2698,6 +2696,7 @@ void Foam::dynamicTopoFvMesh::updateMotion()
     
     // Now move points to the present state, and solve for mesh motion fluxes
     movePoints(newPoints);
+    */
 }
 
 // Update the mesh for topology changes
@@ -2778,17 +2777,17 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     // Reset the flag
     topoChangeFlag_ = false;    
     
-    if ( twoDMotion_ ) {        
-
-        // 2D Edge-swapping engine
-        //swap2DEdges();
-        
-        if (debug) Info << nl << "2D Edge Swapping complete." << endl;        
+    if ( twoDMotion_ ) {                
         
         // 2D Edge-bisection/collapse engine
         if ( edgeModification_ ) edgeBisectCollapse2D();
         
         if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
+
+        // 2D Edge-swapping engine
+        swap2DEdges();
+        
+        if (debug) Info << nl << "2D Edge Swapping complete." << endl;        
         
     } else {
         
