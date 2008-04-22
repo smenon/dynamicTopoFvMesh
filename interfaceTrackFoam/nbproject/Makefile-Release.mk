@@ -25,11 +25,11 @@ OBJECTDIR=build/Release/GNU-Linux-x86
 
 # Object Files
 OBJECTFILES= \
-	${OBJECTDIR}/dynamicTopoFvMesh.o \
 	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/makeFreeSurfaceData.o \
 	${OBJECTDIR}/topoInterTrackFoam.o \
 	${OBJECTDIR}/flippingFoam.o \
 	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/freeSurface.o \
+	${OBJECTDIR}/dynamicTopoFvMesh.o \
 	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/freeSurfacePointDisplacement.o \
 	${OBJECTDIR}/cylinderFoam.o
 
@@ -47,15 +47,11 @@ FFLAGS=
 LDLIBSOPTIONS=
 
 # Build Targets
-.build-conf: ${BUILD_SUBPROJECTS} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam
+.build-conf: ${BUILD_SUBPROJECTS} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam
 
-/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam: ${OBJECTFILES}
+/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam: ${OBJECTFILES}
 	${MKDIR} -p /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt
-	${LINK.cc} -o /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam ${OBJECTFILES} ${LDLIBSOPTIONS} 
-
-${OBJECTDIR}/dynamicTopoFvMesh.o: dynamicTopoFvMesh.C 
-	${MKDIR} -p ${OBJECTDIR}
-	$(COMPILE.cc) -O2 -o ${OBJECTDIR}/dynamicTopoFvMesh.o dynamicTopoFvMesh.C
+	${LINK.cc} -o /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam ${OBJECTFILES} ${LDLIBSOPTIONS} 
 
 ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/makeFreeSurfaceData.o: ../newFreeSurface/makeFreeSurfaceData.C 
 	${MKDIR} -p ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface
@@ -73,6 +69,10 @@ ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/int
 	${MKDIR} -p ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface
 	$(COMPILE.cc) -O2 -o ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/freeSurface.o ../newFreeSurface/freeSurface.C
 
+${OBJECTDIR}/dynamicTopoFvMesh.o: dynamicTopoFvMesh.C 
+	${MKDIR} -p ${OBJECTDIR}
+	$(COMPILE.cc) -O2 -o ${OBJECTDIR}/dynamicTopoFvMesh.o dynamicTopoFvMesh.C
+
 ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/freeSurfacePointDisplacement.o: ../newFreeSurface/freeSurfacePointDisplacement.C 
 	${MKDIR} -p ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface
 	$(COMPILE.cc) -O2 -o ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/freeSurfacePointDisplacement.o ../newFreeSurface/freeSurfacePointDisplacement.C
@@ -87,7 +87,7 @@ ${OBJECTDIR}/cylinderFoam.o: cylinderFoam.C
 # Clean Targets
 .clean-conf:
 	${RM} -r build/Release
-	${RM} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam
+	${RM} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam
 
 # Subprojects
 .clean-subprojects:

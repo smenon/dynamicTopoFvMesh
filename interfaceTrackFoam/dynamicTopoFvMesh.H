@@ -108,14 +108,12 @@ class dynamicTopoFvMesh
                 
         //- Local copies of connectivity information
         HashList<point> meshPoints_;
-        HashList<point> pointsZeroVol_;
         HashList<face>  faces_;
         HashList<label> owner_;        
         HashList<label> neighbour_;
         HashList<cell>  cells_;
         
         //- Size information
-        pointField      pointsZeroVolume_;
         labelList       oldPatchSizes_, patchSizes_;
         labelList       oldPatchStarts_, patchStarts_;
         labelList       oldPatchNMeshPoints_, patchNMeshPoints_;
@@ -126,8 +124,6 @@ class dynamicTopoFvMesh
 
         // Flux / pressure interpolation
         HashList<scalar>    localPhi_;
-        HashList<scalar>    localp_;
-        //HashList<vector>    localGradp_;
         
         //- Old-to-New
         labelList       reversePointMap_;
@@ -140,6 +136,7 @@ class dynamicTopoFvMesh
         labelList       cellMap_;
         
         // Hash-tables for the renumbering of added entities
+        DynamicList<objectMap> cellsFromCells_;
         HashTable<label,label> addedPointRenumbering_; 
         HashTable<label,label> addedCellRenumbering_;
         HashTable<label,label> boundaryPatches_;
@@ -224,7 +221,7 @@ class dynamicTopoFvMesh
         bool constructPrismHull(const edge&, const label, DynamicList<label>&, DynamicList<label>&, DynamicList<label>&, bool);
         
         // Reorder points after a topology change
-        void reOrderPoints(pointField&, pointField&);
+        void reOrderPoints(pointField&);
         
         // Reorder faces in upper-triangular order after a topology change
         void reOrderFaces(faceList&, labelList&, labelList&);
@@ -233,7 +230,7 @@ class dynamicTopoFvMesh
         void reOrderCells();
         
         // Reorder the mesh in upper-triangular order, and generate mapping information
-        void reOrderMesh(pointField&, pointField&, faceList&, labelList&, labelList&);
+        void reOrderMesh(pointField&, faceList&, labelList&, labelList&);
         
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
@@ -277,12 +274,7 @@ public:
         HashList<scalar>& interpolatedPhi()
         {
             return localPhi_;
-        }   
-        
-        HashList<scalar>& interpolatedP()
-        {
-            return localp_;
-        }        
+        }           
 };
 
 

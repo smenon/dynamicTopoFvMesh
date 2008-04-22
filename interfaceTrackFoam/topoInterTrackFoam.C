@@ -170,7 +170,8 @@ int main(int argc, char *argv[])
             
             // Move the free-surface
             interface.movePoints();
-            
+
+#           include "hEqn.H"            
 #           include "freeSurfaceContinuityErrs.H"            
             
             Info << endl;

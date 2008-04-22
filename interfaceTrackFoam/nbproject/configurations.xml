@@ -8,11 +8,11 @@
       <itemPath>lnInclude/createDynamicMesh.H</itemPath>
       <itemPath>lnInclude/createFields.H</itemPath>
       <itemPath>lnInclude/createNuFields.H</itemPath>
-      <itemPath>lnInclude/createPhiOld.H</itemPath>
       <itemPath>Dihedral.H</itemPath>
       <itemPath>dynamicTopoFvMesh.H</itemPath>
       <itemPath>HashList.H</itemPath>
       <itemPath>HashListI.H</itemPath>
+      <itemPath>lnInclude/hEqn.H</itemPath>
       <itemPath>Knupp.H</itemPath>
       <itemPath>lnInclude/meshInfo.H</itemPath>
       <itemPath>lnInclude/NuUEqn.H</itemPath>
@@ -59,7 +59,7 @@
       </toolsSet>
       <compileType>
         <linkerTool>
-          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam</output>
+          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam</output>
           <linkerLibItems>
           </linkerLibItems>
         </linkerTool>
@@ -124,7 +124,7 @@
       <item path="lnInclude/createNuFields.H">
         <itemTool>3</itemTool>
       </item>
-      <item path="lnInclude/createPhiOld.H">
+      <item path="lnInclude/hEqn.H">
         <itemTool>3</itemTool>
       </item>
       <item path="lnInclude/meshInfo.H">
@@ -156,7 +156,7 @@
           <developmentMode>5</developmentMode>
         </fortranCompilerTool>
         <linkerTool>
-          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam</output>
+          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam</output>
           <linkerLibItems>
           </linkerLibItems>
         </linkerTool>
@@ -221,7 +221,7 @@
       <item path="lnInclude/createNuFields.H">
         <itemTool>3</itemTool>
       </item>
-      <item path="lnInclude/createPhiOld.H">
+      <item path="lnInclude/hEqn.H">
         <itemTool>3</itemTool>
       </item>
       <item path="lnInclude/meshInfo.H">

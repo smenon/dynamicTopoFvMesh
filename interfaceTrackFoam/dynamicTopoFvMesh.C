@@ -62,7 +62,6 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     fluxInterpolation_(dict_.subDict("dynamicTopoFvMesh").lookup("fluxInterpolation")),
     mapper_(NULL),
     meshPoints_(this->points()),
-    pointsZeroVol_(this->points()),
     faces_(this->faces()),
     owner_(this->allOwner()),
     neighbour_(this->allNeighbour()),
@@ -609,7 +608,7 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull(
 }
 
 // Reorder points after a topology change
-void Foam::dynamicTopoFvMesh::reOrderPoints(pointField& points, pointField& pointsZeroVolume)
+void Foam::dynamicTopoFvMesh::reOrderPoints(pointField& points)
 {
     // *** Point renumbering *** //
     // If points were deleted during topology change, the numerical order ceases to be continuous.
@@ -621,16 +620,13 @@ void Foam::dynamicTopoFvMesh::reOrderPoints(pointField& points, pointField& poin
     addedPointRenumbering_.clear();
     
     HashList<point>::iterator ptIter = meshPoints_.begin();
-    HashList<point>::iterator pzvIter = pointsZeroVol_.begin();
     while(ptIter != meshPoints_.end()) {       
         // Obtain the index for this point
         label pIndex = ptIter.index();      
         // Update the point info
         points[pointRenum] = ptIter();
-        pointsZeroVolume[pointRenum] = pzvIter();
         // Renumber the point index
         meshPoints_.reNumber(pointRenum, ptIter);
-        pointsZeroVol_.reNumber(pointRenum,pzvIter);
         // Added points are always numbered after nOldPoints_ 
         // (by virtue of the HashList append method)
         if (pIndex < nOldPoints_) {
@@ -642,7 +638,7 @@ void Foam::dynamicTopoFvMesh::reOrderPoints(pointField& points, pointField& poin
         // Update the counter
         pointRenum++;
         // Update the iterators
-        ptIter++; pzvIter++;
+        ptIter++;
     }    
 }
 
@@ -927,7 +923,7 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
     labelList visited(allCells, 0);
     labelListList cellCellAddr(allCells);
     cellList oldCells(allCells);
-    scalarField oldLengthScale(0), oldPressure(0);
+    scalarField oldLengthScale(0);
     
     addedCellRenumbering_.clear();
     
@@ -940,13 +936,7 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
         for(HashList<scalar>::iterator cIter = lengthScale_.begin(); cIter != lengthScale_.end(); cIter++)
             oldLengthScale[cIter.index()] = cIter();
         lengthScale_.clear();
-    }
-    if (fluxInterpolation_) {
-        oldPressure.setSize(allCells);
-        for(HashList<scalar>::iterator cIter = localp_.begin(); cIter != localp_.end(); cIter++)
-            oldLengthScale[cIter.index()] = cIter(); 
-        localp_.clear();
-    }    
+    }   
     
     // Build a cell-cell addressing list
     HashList<label>::iterator ownIter = owner_.begin();
@@ -1006,8 +996,6 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
                     cells_.append(oldCells[currentCell]);
                     if (edgeModification_) 
                         lengthScale_.append(oldLengthScale[currentCell]);
-                    if (fluxInterpolation_) 
-                        localp_.append(oldPressure[currentCell]);
                     
                     cellInOrder++;
 
@@ -1023,7 +1011,19 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
                 }
             }
         }
-    }        
+    }    
+    
+    // Loop through the cellsFromCells list, and fill up the cellMap
+    forAll(cellsFromCells_,cellI) {
+        objectMap& thisMap = cellsFromCells_[cellI];
+        if (cellMap_[addedCellRenumbering_[thisMap.index()]] == -1)
+            cellMap_[addedCellRenumbering_[thisMap.index()]] = thisMap.masterObjects()[0];
+        else
+            FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderCells()") << nl
+                    << " Mapping's messed up." << nl
+                    << abort(FatalError);            
+    }
+    cellsFromCells_.clear();
     
     if(debug) {
         if (sum(visited) != allCells)
@@ -1037,7 +1037,6 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
 // Reorder the faces in upper-triangular order, and generate mapping information
 void Foam::dynamicTopoFvMesh::reOrderMesh(
     pointField& points,
-    pointField& pointsZeroVolume,
     faceList& faces, 
     labelList& owner, 
     labelList& neighbour
@@ -1072,7 +1071,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh(
     }
     
     // Reorder the points
-    reOrderPoints(points, pointsZeroVolume);
+    reOrderPoints(points);
     
     // Reorder the cells
     reOrderCells();
@@ -1142,9 +1141,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
     label c0BdyIndex[2], c0IntIndex[2], c1BdyIndex[2], c1IntIndex[2];
     face  c0BdyFace[2],  c0IntFace[2],  c1BdyFace[2],  c1IntFace[2];
     face f, commonFaces[4], commonIntFaces[4];       
-    edge commonEdges[2], firstEdge(0,0);
-    //vector xC0o = vector::zero, xC0n = vector::zero;
-    //vector xC1o = vector::zero, xC1n = vector::zero;    
+    edge commonEdges[2], firstEdge(0,0);   
 
     for(HashList<face>::iterator fIter = faces_.begin(); fIter != faces_.end(); fIter++) {
         
@@ -1325,14 +1322,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                 commonIntFaces[1] = c1IntFace[1]; commonIntFaces[3] = c1IntFace[0];
                 commonIntFaceIndex[1] = c1IntIndex[1]; commonIntFaceIndex[3] = c1IntIndex[0];
             }       
-
-            /*
-            // Obtain the cell centers for both cells before their faces are modified
-            if (fluxInterpolation_) {
-                xC0o = cellCenter(cell_0);
-                xC1o = cellCenter(cell_1);
-            }            
-            */
             
             // Modify the five faces belonging to this hull
             face& newFace = faces_[findex];
@@ -1522,17 +1511,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             // Modify the local-flux field
             if (flipOption && fluxInterpolation_) {
                 localPhi_[commonIntFaceIndex[2]] *= -1.0;
-            } 
-            
-            /*
-            // Obtain the cell centers for both cells after modification and interpolate pressure
-            if (fluxInterpolation_) {
-                xC0n = cellCenter(cell_0);
-                xC1n = cellCenter(cell_1);
-                localp_[c0] += ((xC0n - xC0o)&localGradp_[c0]);
-                localp_[c1] += ((xC1n - xC1o)&localGradp_[c1]);              
-            }
-            */            
+            }            
             
             // Calculate flux for the flipped face
             if (fluxInterpolation_) {
@@ -1685,21 +1664,6 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
                 scale = lengthScale_[c0];
             else
                 scale = 0.5*(lengthScale_[c0]+lengthScale_[c1]);
-
-            /*
-            //-- For testing
-            if (this->time().value() > 1.0 && this->time().value() < 1.02 && findex == 62) {
-                // Set the flag
-                topoChangeFlag_ = true;
-                
-                // Bisect this face
-                bisectQuadFace(findex, thisFace);
-                
-                // Move on to the next face
-                fIter++;                
-            }
-            //-- For testing
-            */
             
             //== Edge Bisection ==//
             if(length > ratioMax_*scale) {                                  
@@ -1778,12 +1742,14 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     label otherPointIndex[4], nextToOtherPoint[4], replaceFace, n0=-1, n1=-1;
     label c0BdyIndex[2], c0IntIndex[2], c1BdyIndex[2], c1IntIndex[2];
     face  c0BdyFace[2],  c0IntFace[2],  c1BdyFace[2],  c1IntFace[2];
-    edge  tmpEdge(0,0), commonEdges[2], firstEdge(0,0), secondEdge(0,0);
-    //vector xC0o = vector::zero, xC0n = vector::zero, xnewC0 = vector::zero;
-    //vector xC1o = vector::zero, xC1n = vector::zero, xnewC1 = vector::zero;    
+    edge  tmpEdge(0,0), commonEdges[2], firstEdge(0,0), secondEdge(0,0);   
     
     // Get the two cells on either side...
     label c0 = owner_[findex], c1 = neighbour_[findex];
+    
+    // Temporary fix: Currently avoid bisecting faces that are adjacent to
+    // added cells
+    if ( (c0 >= nOldCells_) || (c1 >= nOldCells_) ) return;
     
     // Find the prism faces for cell[0].
     cell &cell_0 = cells_[c0];    
@@ -1803,15 +1769,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
 
     // Find the isolated point on both boundary faces of cell[0]
     findIsolatedPoint(c0BdyFace[0], commonEdges[0], otherPointIndex[0], nextToOtherPoint[0]);
-    findIsolatedPoint(c0BdyFace[1], commonEdges[1], otherPointIndex[1], nextToOtherPoint[1]);
-
-    // Obtain the cell center before the faces are modified,
-    // and add a new cell for the local pressure field
-    if (fluxInterpolation_) {
-        //xC0o = cellCenter(cell_0);
-        localp_.append(localp_[c0]);
-        //localGradp_.append(localGradp_[c0]);
-    }    
+    findIsolatedPoint(c0BdyFace[1], commonEdges[1], otherPointIndex[1], nextToOtherPoint[1]);   
     
     // Add two new points to the end of the list
     label newPtIndex0 = meshPoints_.append(0.5*(meshPoints_[commonEdges[0][0]] + meshPoints_[commonEdges[0][1]]));
@@ -1822,6 +1780,9 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     cell tmpPrismCell(5);
     label newCellIndex0 = cells_.append(tmpPrismCell);
     cell &newCell0 = cells_[newCellIndex0];
+    
+    // Generate mapping information for this new cell
+    cellsFromCells_.append(objectMap(newCellIndex0,labelList(1,c0)));
 
     // Add a new element to the lengthScale field
     // (Currently the same as cell[0])
@@ -1852,17 +1813,14 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         }
     }
 
-    /*
     // Obtain face-area from the cross-product
     scalar oldArea = mag( (meshPoints_[thisFace[1]]-meshPoints_[thisFace[0]])
                          ^(meshPoints_[thisFace[2]]-meshPoints_[thisFace[1]]) );
-    */
     
     // Modify point-labels on the quad face under consideration
     replacePointLabel(commonEdges[0].otherVertex(nextToOtherPoint[0]), newPtIndex0, thisFace);
     replacePointLabel(nextToOtherPoint[1], newPtIndex1, thisFace);
     
-    /*
     // Recalculate for new area after bisection
     scalar newArea = mag( (meshPoints_[thisFace[1]]-meshPoints_[thisFace[0]])
                          ^(meshPoints_[thisFace[2]]-meshPoints_[thisFace[1]]) );  
@@ -1873,7 +1831,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         newBisectFlux = (1.0-(newArea/oldArea))*localPhi_[findex];
         localPhi_[findex] *= (newArea/oldArea);
     }
-    */
 
     // Change the edge-length criteria for this face
     tmpEdge[0] = nextToOtherPoint[0];
@@ -1896,11 +1853,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         // The edge was obviously not found before
         replaceFaceLabel(c0IntIndex[1],-1,cell_0);
         replaceFace = c0IntIndex[1];
-    }
-    
-    // Add two new points for the zero-volume point-list
-    pointsZeroVol_.append(meshPoints_[secondEdge.commonVertex(commonEdges[0])]);
-    pointsZeroVol_.append(meshPoints_[secondEdge.commonVertex(commonEdges[1])]);    
+    }   
 
     // Check if face reversal is necessary for the replacement
     scalar sign = 0.0;
@@ -1953,8 +1906,8 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     // Calculate fluxes for this face to satisfy zero-divergence. 
     // Assumes that no fluxes are present on boundary triangle faces    
     if (fluxInterpolation_) {
-        //localPhi_[newFaceIndex] = newBisectFlux + (sign*localPhi_[replaceFace]);
-        localPhi_[newFaceIndex] = -1.0*localPhi_[replaceFace];
+        localPhi_[newFaceIndex] = newBisectFlux + (sign*localPhi_[replaceFace]);
+        //localPhi_[newFaceIndex] = -1.0*localPhi_[replaceFace];
     }    
 
     // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
@@ -1985,16 +1938,9 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         newFaceIndex = insertFace(whichPatch(findex), tmpQuadFace, newCellIndex0, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, newCell0);
      
-        /*
         if (fluxInterpolation_) {
             localPhi_[newFaceIndex] = newBisectFlux;
-            // Obtain the new cell centers and interpolate for pressure
-            xC0n   = cellCenter(cell_0); 
-            xnewC0 = cellCenter(newCell0);
-            localp_[newCellIndex0] = localp_[c0] + ((xnewC0 - xC0o)&localGradp_[c0]);
-            localp_[c0] += ((xC0n - xC0o)&localGradp_[c0]);
         }
-        */
 
         if (debug) {
             Info << "Modified Cell[0]: " << c0 << ": " << cell_0 << endl;
@@ -2016,6 +1962,9 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         label newCellIndex1 = cells_.append(tmpPrismCell);
         cell &newCell1 = cells_[newCellIndex1];
         
+        // Generate mapping information for this new cell
+        cellsFromCells_.append(objectMap(newCellIndex1,labelList(1,c1)));        
+        
         // Add a new element to the lengthScale field
         // (Currently the same as cell[1])
         lengthScale_.append(lengthScale_[c1]);
@@ -2024,15 +1973,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
             Info << "Cell[1]: " << c1 << ": " << cell_1 << endl;
             forAll(cell_1, faceI)
                 Info << cell_1[faceI] << ": " << faces_[cell_1[faceI]] << endl;
-        }   
-        
-        // Obtain the cell center before the faces are modified,
-        // and add a new cell for the local pressure field
-        if (fluxInterpolation_) { 
-            //xC1o = cellCenter(cell_1);
-            localp_.append(localp_[c1]);
-            //localGradp_.append(localGradp_[c1]);
-        }        
+        }          
         
         // Find the interior face that contains secondEdge
         found = false;
@@ -2090,11 +2031,9 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         replaceFaceLabel(-1, newFaceIndex, newCell1);
         newCell1[1] = newFaceIndex;
         
-        /*
         if (fluxInterpolation_) {
             localPhi_[newFaceIndex] = newBisectFlux;
         } 
-        */
 
         // Check for common edges among the two boundary faces
         // Find the isolated point on both boundary faces of cell[1]
@@ -2159,10 +2098,8 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         // Calculate fluxes for this face to satisfy zero-divergence. 
         // Assumes that no fluxes are present on boundary triangle faces 
         if (fluxInterpolation_) {
-            //localPhi_[newFaceIndex] = - newBisectFlux + (sign*localPhi_[replaceFace]);
-            localPhi_[newFaceIndex] = -1.0*localPhi_[replaceFace];
-            if (n0!=-1) localp_[newCellIndex0] = (0.5*localp_[c0]) + (0.5*localp_[n0]);
-            if (n1!=-1) localp_[newCellIndex1] = (0.5*localp_[c1]) + (0.5*localp_[n1]);
+            localPhi_[newFaceIndex] = - newBisectFlux + (sign*localPhi_[replaceFace]);
+            //localPhi_[newFaceIndex] = -1.0*localPhi_[replaceFace];
         }        
 
         // Second boundary face; Owner = cell[1] & Neighbour [-1]
@@ -2181,20 +2118,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
         newFaceIndex = insertFace(whichPatch(c1BdyIndex[1]), tmpTriFace, newCellIndex1, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, newCell1);
         
-        // Obtain the new cell centers and interpolate for pressure
-        /*
-        if (fluxInterpolation_) {
-            xC0n   = cellCenter(cell_0);             
-            xC1n   = cellCenter(cell_1); 
-            xnewC0 = cellCenter(newCell0); 
-            xnewC1 = cellCenter(newCell1);
-            localp_[newCellIndex0] = localp_[c0] + ((xnewC0 - xC0o)&localGradp_[c0]);
-            localp_[newCellIndex1] = localp_[c1] + ((xnewC1 - xC1o)&localGradp_[c1]);
-            localp_[c0] += ((xC0n - xC0o)&localGradp_[c0]);
-            localp_[c1] += ((xC1n - xC1o)&localGradp_[c1]);
-        }
-        */
-        
         if (debug) {
             Info << "Modified Cell[0]: " << c0 << ": " << cell_0 << endl;
             forAll(cell_0, faceI)
@@ -2208,14 +2131,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
             Info << "New Cell[1]: " << newCellIndex1 << ": " << newCell1 << endl;
             forAll(newCell1, faceI)
                 Info << newCell1[faceI] << ": " << faces_[newCell1[faceI]] << endl;
-            /*
-            if (fluxInterpolation_) {
-                Info << "Pressure["<< c0 << "] = " << localp_[c0] << endl;
-                Info << "Pressure["<< c1 << "] = " << localp_[c1] << endl;
-                Info << "Pressure["<< newCellIndex0 << "] = " << localp_[newCellIndex0] << endl;
-                Info << "Pressure["<< newCellIndex1 << "] = " << localp_[newCellIndex1] << endl;
-            }
-            */
         }
     }    
     
@@ -2638,8 +2553,6 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
 // and incorporated into the mesh for the current time-step.
 void Foam::dynamicTopoFvMesh::updateMotion()
 {     
-    //tmp<pointField> newPoints;
-           
     if (solveForMotion_) {
         
         // Determine the kind of motion solver in use
@@ -2677,26 +2590,8 @@ void Foam::dynamicTopoFvMesh::updateMotion()
         }
 
         // Solve for motion   
-        //newPoints = motionPtr_->newPoints();
         movePoints(motionPtr_->newPoints());
-    } /*else {
-        
-        // Keep the points at the present state for a static mesh
-        newPoints() = this->points();
-        
     }
-
-    if (topoChangeFlag_) {
-        // Move mesh points to state containing zero-volume cells
-        movePoints(pointsZeroVolume_);
-        //movePoints(points());
-        resetMotion();
-        setV0();        
-    }
-    
-    // Now move points to the present state, and solve for mesh motion fluxes
-    movePoints(newPoints);
-    */
 }
 
 // Update the mesh for topology changes
@@ -2732,25 +2627,17 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     }    
     
     // Obtain the most recent point-positions
-    pointsZeroVolume_.clear(); pointsZeroVolume_.setSize(nPoints_);
     const pointField& currentPoints = this->points();
-    HashList<point>::iterator pIter = meshPoints_.begin();
-    HashList<point>::iterator pzvIter = pointsZeroVol_.begin(); 
+    HashList<point>::iterator pIter = meshPoints_.begin(); 
     while (pIter != meshPoints_.end()) {
         pIter() = currentPoints[pIter.index()];
-        pzvIter() = currentPoints[pzvIter.index()];
-        pointsZeroVolume_[pIter.index()] = currentPoints[pIter.index()];
         // Update the iterators
-        pIter++; pzvIter++;
+        pIter++;
     }
 
     // Obtain recent fluxes from the object-registry and make a local-copy
     if (fluxInterpolation_) {
         if (localPhi_.empty()) localPhi_.setSize(nFaces_,0.0);
-        if (localp_.empty()) localp_.setSize(nCells_,0.0);
-        /*
-        if (localGradp_.empty()) localGradp_.setSize(nCells_,vector::zero);
-        */
         // Copy old conservative fluxes
         surfaceScalarField& phi = const_cast<surfaceScalarField&>
                 (this->objectRegistry::lookupObject<surfaceScalarField>(fluxFieldName_));
@@ -2762,14 +2649,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
             forAll(phi.boundaryField()[i],faceI)
                 localPhi_[start+faceI] = phi.boundaryField()[i][faceI];
         }
-        // Copy old pressure and its gradient
-        volScalarField& p = const_cast<volScalarField&>
-                (this->objectRegistry::lookupObject<volScalarField>("p"));
-        //volVectorField gradp = fvc::grad(p);
-        forAll(p.internalField(),cellI) {
-            localp_[cellI] = p.internalField()[cellI];
-            //localGradp_[cellI] = gradp.internalField()[cellI];
-        }
     }    
     
     //== Connectivity changes ==//
@@ -2779,15 +2658,15 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     
     if ( twoDMotion_ ) {                
         
-        // 2D Edge-bisection/collapse engine
-        if ( edgeModification_ ) edgeBisectCollapse2D();
-        
-        if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
-
         // 2D Edge-swapping engine
         swap2DEdges();
         
         if (debug) Info << nl << "2D Edge Swapping complete." << endl;        
+        
+        // 2D Edge-bisection/collapse engine
+        if ( edgeModification_ ) edgeBisectCollapse2D();
+        
+        if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;        
         
     } else {
         
@@ -2799,9 +2678,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     
     // Apply all pending topology changes, if necessary
     if (topoChangeFlag_) {
-        
-        // Reset and allocate for zero-volume points
-        pointsZeroVolume_.clear(); pointsZeroVolume_.setSize(nPoints_);
         
         // Allocate temporary lists for mesh-reset
         pointField points(nPoints_);
@@ -2826,7 +2702,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         pointField preMotionPoints(0);
         
         // Reorder the mesh and obtain current topological information
-        reOrderMesh(points, pointsZeroVolume_, faces, owner, neighbour);  
+        reOrderMesh(points, faces, owner, neighbour);  
         
         // Obtain the patch-point labels for mapping before resetting the mesh
         labelListList oldMeshPointLabels(numPatches_);
@@ -2948,6 +2824,10 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reversePointMap_.setSize(nPoints_);
         reverseFaceMap_.setSize(nFaces_);
         reverseCellMap_.setSize(nCells_);
+        
+        movePoints(points);
+        resetMotion();
+        setV0();        
     }    
     
     // Basic checks for mesh-validity

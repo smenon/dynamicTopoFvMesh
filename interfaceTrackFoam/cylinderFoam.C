@@ -100,10 +100,10 @@ int main(int argc, char *argv[])
             rUA = 1.0/UEqn.A();
 
             U = rUA*UEqn.H();
-            phi = (fvc::interpolate(U) & mesh.Sf());
-                 //+ fvc::ddtPhiCorr(rUA, U, phi);
+            phi = (fvc::interpolate(U) & mesh.Sf())
+                 + fvc::ddtPhiCorr(rUA, U, phi);
 
-            //adjustPhi(phi, U, p);
+            adjustPhi(phi, U, p);
 
             for (int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
             {
@@ -137,8 +137,6 @@ int main(int argc, char *argv[])
             U -= rUA*fvc::grad(p);
             U.correctBoundaryConditions();
         }  
-        
-        runTime.write();
 
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
@@ -162,25 +160,16 @@ int main(int argc, char *argv[])
                     phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
                 }
             }
-            forAll(p.internalField(),cellI) {
-                p.internalField()[cellI] = mesh.interpolatedP()[cellI];
-            } 
-            //U = fvc::reconstruct(phi);  
-     
+            U = fvc::reconstruct(phi);             
 //#           include "correctPhi.H"            
 #           include "CourantNo.H"
         }
             
-        /*
-        volScalarField divPhi = fvc::div(phi);  
-        divPhi.write();        
-        volScalarField P = p;
-        volVectorField Unew = U;
+        volScalarField divPhi = fvc::div(phi);          
         volVectorField gradP = fvc::grad(p);
-        gradP *= -1;
-        P.rename("P"); Unew.rename("Unew");
-        P.write(); Unew.write(); gradP.write(); 
-        */        
+        gradP *= -1; gradP.write(); divPhi.write();
+        
+        runTime.write();
     }
 
     Info<< "End\n" << endl;
