@@ -59,7 +59,7 @@
       </toolsSet>
       <compileType>
         <linkerTool>
-          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam</output>
+          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/topoInterTrackFoam</output>
           <linkerLibItems>
           </linkerLibItems>
         </linkerTool>
@@ -156,7 +156,7 @@
           <developmentMode>5</developmentMode>
         </fortranCompilerTool>
         <linkerTool>
-          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/cylinderFoam</output>
+          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/topoInterTrackFoam</output>
           <linkerLibItems>
           </linkerLibItems>
         </linkerTool>

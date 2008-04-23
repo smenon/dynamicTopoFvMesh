@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
     argv[1] = new char[100];
     argv[2] = new char[100];
     strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
-    strcpy(argv[2],"inkJet");  
+    strcpy(argv[2],"smaller");  
     
 #   include "setRootCase.H"
 #   include "createTime.H"
@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 
     Info<< "\nStarting time loop\n" << endl;
 
-    //mesh.debug = true;
+    mesh.debug = true;
     
     while (runTime.run())
     {
@@ -68,38 +68,11 @@ int main(int argc, char *argv[])
 #       include "checkTotalVolume.H"
 #       include "CourantNo.H"
 
-        // Make the fluxes absolute
-        fvc::makeAbsolute(phi, rho, U);
-
 #       include "setDeltaT.H"
 
         runTime++;
 
         Info<< "Time = " << runTime.timeName() << nl << endl;       
-        
-        bool meshChanged = mesh.updateTopology();
-
-        if (meshChanged)
-        {
-            interface.updateMesh(mesh.meshMap()); 
-#           include "checkTotalVolume.H"
-            /*
-            // Obtain interpolated fluxes from the mesh, and reconstruct U
-            forAll(phi.internalField(),faceI) {
-                phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
-            }
-            forAll(mesh.boundaryMesh(),patchI) {
-                label start=mesh.boundaryMesh()[patchI].start();
-                forAll(phi.boundaryField()[patchI],faceI) {
-                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
-                }
-            }
-            */
-            //U = fvc::reconstruct(phi);
-            //U.oldTime() = fvc::reconstruct(phi);            
-#           include "correctPhi.H"
-#           include "CourantNo.H"
-        }
 
         // Update the free-surface
         interface.updateDisplacementDirections();
@@ -134,7 +107,7 @@ int main(int argc, char *argv[])
                 U = rUA*UEqn.H();
                 
                 phi = (fvc::interpolate(U) & mesh.Sf());
-                  //+ fvc::ddtPhiCorr(rUA, U, phi);
+                     //+ fvc::ddtPhiCorr(rUA, U, phi);
 
                 //adjustPhi(phi, U, p);
 
@@ -170,20 +143,47 @@ int main(int argc, char *argv[])
             
             // Move the free-surface
             interface.movePoints();
+            
+            // Update motion fluxes - fluxes are still relative at this point
+            phiNet = fvc::interpolate(rho)*phi;            
 
 #           include "hEqn.H"            
 #           include "freeSurfaceContinuityErrs.H"            
             
             Info << endl;
-        }
-        
-#       include "meshInfo.H"        
-        
-        runTime.write();
+        }       
 
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
             << nl << endl;
+        
+        // Make the fluxes absolute
+        fvc::makeAbsolute(phi, rho, U);  
+        
+        bool meshChanged = mesh.updateTopology(); 
+        
+        if (meshChanged)
+        {
+#           include "checkTotalVolume.H"
+            /*
+            // Obtain interpolated fluxes from the mesh, and reconstruct U
+            forAll(phi.internalField(),faceI) {
+                phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
+            }
+            forAll(mesh.boundaryMesh(),patchI) {
+                label start=mesh.boundaryMesh()[patchI].start();
+                forAll(phi.boundaryField()[patchI],faceI) {
+                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
+                }
+            }
+            U = fvc::reconstruct(phi); 
+            */
+            interface.updateMesh(mesh.meshMap());
+#           include "correctPhi.H"            
+#           include "CourantNo.H"
+        }        
+        
+        runTime.write();        
     }
 
     Info<< "End\n" << endl;

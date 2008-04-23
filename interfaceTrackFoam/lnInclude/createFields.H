@@ -41,6 +41,19 @@
         mesh,
         dimensionedScalar("0", dimMass/dimVolume, 0)
     );
+    
+    volScalarField T
+    (
+        IOobject
+        (
+            "T",
+            runTime.timeName(),
+            mesh,
+            IOobject::MUST_READ,
+            IOobject::AUTO_WRITE
+        ),
+        mesh
+    );    
 
     freeSurface interface(mesh, rho, U, p, phi);
 
@@ -80,11 +93,11 @@
     volScalarField& fluidIndicator = *fluidIndicatorPtr;
 
     rho = fluidIndicator*
-        (
+         (
             interface.rhoFluidA()
           - interface.rhoFluidB()
-        )
-      + interface.rhoFluidB();
+         )
+          + interface.rhoFluidB();
 
     volScalarField mu
     (
@@ -103,6 +116,45 @@
         )
       + interface.muFluidB()
     );
+    
+    volScalarField cond
+    (
+        IOobject
+        (
+            "cond",
+            runTime.timeName(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        fluidIndicator*
+        (
+            interface.condFluidA()
+          - interface.condFluidB()
+        )
+      + interface.condFluidB()
+    );
+
+    volScalarField Cp
+    (
+        IOobject
+        (
+            "Cp",
+            runTime.timeName(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        fluidIndicator*
+        (
+            interface.CpFluidA()
+          - interface.CpFluidB()
+        )
+      + interface.CpFluidB()
+    );
+
+    surfaceScalarField phiNet = fvc::interpolate(rho)*phi;
+    phiNet.rename("phiNet");    
 
     label pRefCell = 0;
     scalar pRefValue = 0.0;

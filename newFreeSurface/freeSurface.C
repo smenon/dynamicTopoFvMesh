@@ -146,6 +146,22 @@ freeSurface::freeSurface
     (
         this->lookup("rhoFluidB")
     ),
+    condFluidA_
+    (
+        this->lookup("condFluidA")
+    ),
+    condFluidB_
+    (
+        this->lookup("condFluidB")
+    ),
+    CpFluidA_
+    (
+        this->lookup("CpFluidA")
+    ),
+    CpFluidB_
+    (
+        this->lookup("CpFluidB")
+    ),            
     g_(this->lookup("g")),
     cleanInterfaceSurfTension_
     (

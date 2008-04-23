@@ -112,6 +112,18 @@ class freeSurface
     
         //- Density of fluid B
         dimensionedScalar rhoFluidB_;
+        
+        //- Conductivity of fluid A
+        dimensionedScalar condFluidA_;
+
+        //- Conductivity of fluid B
+        dimensionedScalar condFluidB_;
+
+        //- Specific Heat of fluid A
+        dimensionedScalar CpFluidA_;
+
+        //- Specific Heat of fluid B
+        dimensionedScalar CpFluidB_;        
 
         //- Reference to gravitational acceleration
         dimensionedVector g_;
@@ -336,6 +348,30 @@ public:
         {
             return rhoFluidB_;
         }
+        
+        //- Conductivity of fluid A
+        const dimensionedScalar& condFluidA() const
+        {
+            return condFluidA_;
+        }
+
+        //- Conductivity of fluid B
+        const dimensionedScalar& condFluidB() const
+        {
+            return condFluidB_;
+        }
+
+        //- Specific Heat of fluid A
+        const dimensionedScalar& CpFluidA() const
+        {
+            return CpFluidA_;
+        }
+
+        //- Specific Heat of fluid B
+        const dimensionedScalar& CpFluidB() const
+        {
+            return CpFluidB_;
+        }        
 
         //- Gravity
         const dimensionedVector& g() const
