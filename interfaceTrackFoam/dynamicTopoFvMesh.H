@@ -46,6 +46,8 @@ SourceFiles
 #include "mapPolyMesh.H"
 #include "fvMotionSolver.H"
 #include "tetDecompositionMotionSolver.H"
+#include "faceTetPolyPatch.H"
+#include "tetPolyPatchInterpolation.H"
 
 // Tetrahedral mesh-quality metrics
 #include "tetQuality.H"
@@ -87,6 +89,9 @@ class dynamicTopoFvMesh
         
         //- Edge bisection/collapse option
         Switch edgeModification_;
+        
+        //- Sub-dictionary which specifies fixed length-scales for patches
+        dictionary fixedLengthScalePatches_;
         
         //- Should the mesh solve for motion on update?
         Switch solveForMotion_;
@@ -235,6 +240,9 @@ class dynamicTopoFvMesh
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
         
+        // Return the appropriate length-scale for boundary face
+        scalar boundaryLengthScale(const label);
+        
 public:
     
     // Debug option
@@ -259,7 +267,7 @@ public:
         void updateMotion();       
         
         // Access
-        vectorField& boundaryDisplacementPatch(label& index);
+        vectorField& boundaryDisplacementPatch(const label& index);
         
         const autoPtr<mapPolyMesh> meshMap()
         {

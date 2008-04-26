@@ -24,14 +24,14 @@
     (
         IOobject
         (
-            "lengthDensity",
+            "lengthScale",
             runTime.timeName(),
             mesh,
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
         mesh,
-        dimensionedScalar("lDensity", dimless, 0),
+        dimensionedScalar("lScale", dimless, 0),
         zeroGradientFvPatchScalarField::typeName            
     );
     
@@ -40,3 +40,5 @@
     for(HashList<scalar>::iterator ldIter = meshLengthDensity.begin(); ldIter != meshLengthDensity.end(); ldIter++) {
         lDensity.internalField()[ldIter.index()] = ldIter();
     }
+    
+    if (runTime.outputTime()) lDensity.write();

@@ -57,7 +57,7 @@ int main(int argc, char *argv[])
     Info<< "\nStarting time loop\n" << endl;
 
     mesh.debug = true;
-    //polyMesh::debug = true;
+    polyMesh::debug = true;
     
     while (runTime.run())
     {
@@ -81,13 +81,13 @@ int main(int argc, char *argv[])
                 break;
             }
         }         
-        mesh.boundaryDisplacementPatch(patchID) = vector(0,-0.3,0)*mesh.time().deltaT().value();         
+        mesh.boundaryDisplacementPatch(patchID) = vector(0,0.3,0)*mesh.time().deltaT().value();         
         
         // Solve for mesh-motion
         mesh.updateMotion();         
         
 #       include "volContinuity.H"        
-
+/*
         // Make the fluxes relative to the mesh motion
         fvc::makeRelative(phi, U);
 
@@ -144,12 +144,13 @@ int main(int argc, char *argv[])
         
         // Make the fluxes absolute
         fvc::makeAbsolute(phi, U);        
-        
+*/        
         bool meshChanged = mesh.updateTopology(); 
         
         if (meshChanged)
         {
 #           include "checkTotalVolume.H"
+            /*
             // Obtain interpolated fluxes from the mesh, and reconstruct U
             forAll(phi.internalField(),faceI) {
                 phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
@@ -160,7 +161,8 @@ int main(int argc, char *argv[])
                     phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
                 }
             }
-            U = fvc::reconstruct(phi);             
+            U = fvc::reconstruct(phi); 
+            */            
 //#           include "correctPhi.H"            
 #           include "CourantNo.H"
         }
@@ -170,6 +172,7 @@ int main(int argc, char *argv[])
         gradP *= -1; gradP.write(); divPhi.write();
         
         runTime.write();
+#       include "meshInfo.H"         
     }
 
     Info<< "End\n" << endl;

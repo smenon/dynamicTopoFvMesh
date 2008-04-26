@@ -120,6 +120,9 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
         ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
         growthFactor_.value() = readScalar(edgeOptionDict.lookup("growthFactor"));
+        if (edgeOptionDict.found("fixedLengthScalePatches")) {
+            fixedLengthScalePatches_ = edgeOptionDict.subDict("fixedLengthScalePatches");
+        }
         initEdgeLengths();
     }
     
@@ -150,13 +153,8 @@ Foam::dynamicTopoFvMesh::~dynamicTopoFvMesh()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-// Access
-Foam::vectorField& Foam::dynamicTopoFvMesh::boundaryDisplacementPatch(label& index) {
-    // Reallocate if the number of boundary points have changed
-    if (displacementPtr_[index].size() != this->boundaryMesh()[index].nPoints()) {
-        displacementPtr_[index].clear();
-        displacementPtr_[index].setSize(this->boundaryMesh()[index].nPoints(), vector::zero);        
-    }
+// Access a particular boundary displacement patch
+Foam::vectorField& Foam::dynamicTopoFvMesh::boundaryDisplacementPatch(const label& index) {
     return displacementPtr_[index];
 }
 
@@ -1102,6 +1100,7 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
         );
         
         // Set the boundary conditions for the Laplace's equation for length-density 
+        scalar maxMag = 0.0;
         forAll(lengthDensity.boundaryField(), patchI) {  
             fvPatchField<scalar> &bPatch = lengthDensity.boundaryField()[patchI];
             if ((bPatch.type() == "wedge")) {
@@ -1110,17 +1109,25 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                 label start = patchStarts_[patchI];
                 forAll(bPatch, faceI) {
                     edge& etw = edgeToWatch_[start+faceI];
-                    bPatch[faceI] = 1.0/mag(meshPoints_[etw[0]] - meshPoints_[etw[1]]);
+                    scalar magLength = mag(meshPoints_[etw[0]] - meshPoints_[etw[1]]);
+                    bPatch[faceI] = 1.0/magLength;
+                    maxMag = magLength > maxMag ? magLength : maxMag;
                 }
             }
         }
         
+        // Scale the length-scale diffusion by mesh-parameters
+        dimensionedScalar growthFactorScaled("growthFactor",dimensionSet(0,2,-1,0,0),
+                                              (growthFactor_.value()*maxMag)/time().deltaT().value()
+                                             );
+        
         // Solve for the length-density function
         Foam::solve
         (
-            fvm::laplacian
+            fvm::ddt(lengthDensity)
+          - fvm::laplacian
             (
-                growthFactor_,
+                growthFactorScaled,
                 lengthDensity,
                 "laplacian(growthFactor,lengthDensity)"
             )
@@ -1131,6 +1138,22 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
             l() = 1.0/lengthDensity.internalField()[l.index()];
         }
     }
+}
+
+// Return the appropriate length-scale for boundary face
+scalar Foam::dynamicTopoFvMesh::boundaryLengthScale(const label faceIndex)
+{
+    label bFacePatch = whichPatch(faceIndex);
+    
+    // Loop through all fixed length-scale patches, and return the fixed value if specified
+    wordList toc = fixedLengthScalePatches_.toc();
+    forAll(toc,wordI) {
+        word& patchName = toc[wordI];
+        if(boundary()[bFacePatch].name() == patchName)
+            return (fixedLengthScalePatches_[patchName][0].scalarToken());
+    }
+    
+    return lengthScale_[owner_[faceIndex]];
 }
 
 // 2D Edge-swapping engine (for wedge meshes one-cell thick, w/o collapseEdges)
@@ -1661,7 +1684,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
             // Determine the length-scale at this face
             scalar scale=0;
             if (c1 == -1)
-                scale = lengthScale_[c0];
+                scale = boundaryLengthScale(findex);
             else
                 scale = 0.5*(lengthScale_[c0]+lengthScale_[c1]);
             
@@ -2558,12 +2581,11 @@ void Foam::dynamicTopoFvMesh::updateMotion()
         // Determine the kind of motion solver in use
         word solverType(dict_.lookup("solver"));
 
+        //- Cell decomposition FEM motion solver
         if 
         (    
             (solverType == "laplaceCellDecomposition")
-         || (solverType == "laplaceFaceDecomposition")
          || (solverType == "pseudoSolidCellDecomposition")
-         || (solverType == "pseudoSolidFaceDecomposition")
         ) 
         {
             // Boundary motion specified for the tetDecompositionMotionSolver
@@ -2572,9 +2594,57 @@ void Foam::dynamicTopoFvMesh::updateMotion()
 
             // Assign boundary conditions to the motion solver
             for(label i=0; i<numPatches_; i++) 
-                motionU.boundaryField()[i] == displacementPtr_[i]/this->time().deltaT().value();
-        }
+                motionU.boundaryField()[i] == displacementPtr_[i]/time().deltaT().value();
+            
+            // Solve for motion   
+            movePoints(motionPtr_->newPoints());
 
+            // Reset motion 
+            for(label i=0; i<numPatches_; i++) 
+                motionU.boundaryField()[i] == vector::zero;            
+        }
+        
+        //- Face decomposition FEM motion solver
+        if 
+        (    
+            (solverType == "laplaceFaceDecomposition")
+         || (solverType == "pseudoSolidFaceDecomposition")
+        ) 
+        {
+            // Boundary motion specified for the tetDecompositionMotionSolver
+            tetPointVectorField& motionU = const_cast<tetPointVectorField&>
+                    (this->objectRegistry::lookupObject<tetPointVectorField>("motionU"));               
+            
+            // Assign boundary conditions to the motion solver
+            for(label i=0; i<numPatches_; i++) {
+                
+                // The face-decomposition solver includes points at face-centres,
+                // thus point motion has to be interpolated to these points                
+                tetPolyPatchInterpolation interpolator
+                (
+                    refCast<const faceTetPolyPatch>
+                    (
+                        motionU.boundaryField()[i].patch()
+                    )
+                );                
+                
+                motionU.boundaryField()[i] == 
+                    interpolator.pointToPointInterpolate
+                    (                
+                        displacementPtr_[i]/time().deltaT().value()
+                    );
+                
+            }
+            
+            // Solve for motion   
+            movePoints(motionPtr_->newPoints());
+
+            // Reset motion 
+            for(label i=0; i<numPatches_; i++) 
+                motionU.boundaryField()[i] == vector::zero;            
+        }        
+
+        //- Velocity Laplacian FV motion solver
         if 
         (    
             (solverType == "velocityLaplacian")
@@ -2586,11 +2656,15 @@ void Foam::dynamicTopoFvMesh::updateMotion()
 
             // Assign boundary conditions to the motion solver
             for(label i=0; i<numPatches_; i++)
-                motionU.boundaryField()[i] == displacementPtr_[i]/this->time().deltaT().value();
-        }
+                motionU.boundaryField()[i] == displacementPtr_[i]/time().deltaT().value();
+            
+            // Solve for motion   
+            movePoints(motionPtr_->newPoints());
 
-        // Solve for motion   
-        movePoints(motionPtr_->newPoints());
+            // Reset motion 
+            for(label i=0; i<numPatches_; i++) 
+                motionU.boundaryField()[i] == vector::zero;            
+        }        
     }
 }
 
@@ -2753,7 +2827,8 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         }
         
         if (debug) {
-            Info << "Patch MeshPoints: " << patchNMeshPoints_ << endl;
+            Info << "Old Patch MeshPoints: " << oldPatchNMeshPoints_ << endl;
+            Info << "New Patch MeshPoints: " << patchNMeshPoints_ << endl;
         }
         
         // Clear the existing mapper
@@ -2825,13 +2900,22 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseFaceMap_.setSize(nFaces_);
         reverseCellMap_.setSize(nCells_);
         
+        // Reallocate the boundary displacement patches 
+        // if the number of boundary points have changed   
+        for(label i=0; i<numPatches_; i++) {
+            if (displacementPtr_[i].size() != boundaryMesh()[i].nPoints()) {
+                displacementPtr_[i].clear();
+                displacementPtr_[i].setSize(boundaryMesh()[i].nPoints(), vector::zero);        
+            }        
+        }
+        
         movePoints(points);
         resetMotion();
         setV0();        
-    }    
     
-    // Basic checks for mesh-validity
-    if (debug) checkMesh(true);
+        // Basic checks for mesh-validity
+        if (debug) checkMesh(true);    
+    }    
     
     return topoChangeFlag_;
 }
