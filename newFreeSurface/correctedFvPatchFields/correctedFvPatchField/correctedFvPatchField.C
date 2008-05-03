@@ -146,6 +146,21 @@ correctedFvPatchField<Type>::correctedFvPatchField
     updateCorrectionVectors();
 }
 
+// Map from self
+template<class Type>
+void correctedFvPatchField<Type>::autoMap
+(
+    const fvPatchFieldMapper& m
+)
+{
+    Field<Type>::autoMap(m);
+    corrVecGrad_.autoMap(m);
+    correctionVectors_.setSize(m.size());
+    
+    // Delete the fvMeshSubset and reconstruct
+    deleteDemandDrivenData(patchSubMeshPtr_);
+    makePatchSubMesh();
+}
 
 template<class Type>
 void correctedFvPatchField<Type>::updateCoeffs()
@@ -340,6 +355,9 @@ void correctedFvPatchField<Type>::updateCorrVecGrad()
 {
     GeometricField<Type, fvPatchField, volMesh> subVolField =
         patchSubMesh().interpolate(volField());
+    
+    // Update the correction vectors
+    updateCorrectionVectors();
 
     typedef typename 
         outerProduct<vector, typename pTraits<Type>::cmptType>::type 

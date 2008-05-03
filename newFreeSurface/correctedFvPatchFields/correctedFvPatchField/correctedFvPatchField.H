@@ -150,6 +150,14 @@ public:
 
     // Member functions
 
+        // Mapping functions
+
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
+
         // Access
 
         const GeometricField<Type, fvPatchField, volMesh>& volField() const;
