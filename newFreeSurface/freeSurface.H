@@ -46,7 +46,6 @@ SourceFiles
 #include "surfaceFieldsFwd.H"
 #include "faCFD.H"
 #include "patchToPatchInterpolation.H"
-#include "tetDecompositionMotionSolver.H"
 #include "surfactantProperties.H"
 #include "mapPolyMesh.H"
 
@@ -138,9 +137,6 @@ class freeSurface
         //  must be corrected
         wordList pointNormalsCorrectionPatches_;
 
-//         //- Switch the fluid flux correction
-//         Switch ddtPhiCorr_;
-
     // Demand-driven data
 
         //- Patch to patch interpolation object which deals with
@@ -175,9 +171,6 @@ class freeSurface
         //  free-surface side A faces
         mutable faMesh* aMeshPtr_;
 
-        //- Reference to mesh motion solver
-        mutable tetDecompositionMotionSolver* mSolverPtr_;
-
         //- Free-surface velocity field
         mutable areaVectorField* UsPtr_;
 
@@ -207,7 +200,6 @@ class freeSurface
             void makeTotalDisplacement();
             void readTotalDisplacement();
             void makeFaMesh();
-            void makeMeshMotionSolver();
             void makeUs();
             void makePhis();
             void makeSurfactConc();
@@ -385,12 +377,6 @@ public:
             return cleanInterfaceSurfTension_;
         }
 
-//         //- Switch for fluid flux correction
-//         bool ddtPhiCorr() const
-//         {
-//             return ddtPhiCorr_;
-//         }
-
         //- Return reference to interpolator from free surface side A to
         //  free surface side B
         const patchToPatchInterpolation& interpolatorAB();
@@ -416,9 +402,6 @@ public:
 
         //- Return reference to finite area mesh
         faMesh& aMesh();
-
-        //- Return reference to motion solver
-        tetDecompositionMotionSolver& meshMotionSolver();
     
         //- Return free-surface velocity field
         areaVectorField& Us();
@@ -447,17 +430,11 @@ public:
         //- Move only free-surface points
         bool movePoints();
 
-        //- Move only free-surface points for uniform displacement 
-        bool movePoints(scalar displ);
-
         //- Move mesh points for old time free-surface points displacement
         bool moveMeshPointsForOldFreeSurfDisplacement();
-
-        //- Move mesh points
-        bool moveMeshPoints();
-
-        //- Move mesh points for given displacement filed
-        bool moveMeshPoints(const scalarField& delta);
+        
+        //- Move correctedFvPatchField fvSubMeshes
+        void moveFvSubMeshes();
 
         //- Update mesh corresponding to the given map
         void updateMesh(const mapPolyMesh& mpm);
