@@ -1,1 +1,0 @@
-../patchCorrectedSnGrad/patchCorrectedSnGrad.C
