@@ -392,8 +392,7 @@ void freeSurface::makeTotalDisplacement()
         Info<< "freeSurface::makeTotalDisplacement() : "
             << "making zero total points displacement"
             << endl;
-    }
-
+    }    
 
     // It is an error to attempt to recalculate
     // if the pointer is already set
@@ -736,33 +735,6 @@ void freeSurface::makeFaMesh()
     }
 
     aMeshPtr_->addFaPatches(List<faPatch*>(faPatchLst));
-}
-
-
-void freeSurface::makeMeshMotionSolver()
-{
-    if (debug)
-    {
-        Info<< "freeSurface::makeMeshMotionSolver() : "
-            << "making mesh motion solver"
-            << endl;
-    }
-
-
-    // It is an error to attempt to recalculate
-    // if the pointer is already set
-    if (mSolverPtr_)
-    {
-        FatalErrorIn("freeSurface::makeMeshMotionSolver()")
-            << "mesh motion solver already exists"
-            << abort(FatalError);
-    }
-
-
-    mSolverPtr_ = dynamic_cast<tetDecompositionMotionSolver*>
-    (
-        motionSolver::New(mesh()).ptr()
-    );
 }
 
 
@@ -1109,6 +1081,14 @@ vectorField& freeSurface::facesDisplacementDir()
 
 vectorField& freeSurface::totalDisplacement()
 {
+    // Reallocate total displacement if the mesh has changed
+    if (    totalDisplacementPtr_ 
+         && (totalDisplacementPtr_->size() != mesh().boundaryMesh()[aPatchID()].nPoints())
+       )
+    {
+        deleteDemandDrivenData(totalDisplacementPtr_);
+    }
+    
     if (!totalDisplacementPtr_)
     {
         makeTotalDisplacement();
@@ -1126,17 +1106,6 @@ faMesh& freeSurface::aMesh()
     }
     
     return *aMeshPtr_;
-}
-
-
-tetDecompositionMotionSolver& freeSurface::meshMotionSolver()
-{
-    if (!mSolverPtr_)
-    {
-        makeMeshMotionSolver();
-    }
-
-    return *mSolverPtr_;
 }
 
 

@@ -96,7 +96,6 @@ tmp<vectorField> freeSurface::pointDisplacement(const scalarField& deltaH)
         {
             label curFace = curPointFaces[faceI];
 
-//             M += sqr(w[faceI])*sqr(controlPoints()[curFace]);
             M = M + sqr(w[faceI])*sqr(controlPoints()[curFace]);
 
             S += sqr(w[faceI])*controlPoints()[curFace];
@@ -237,7 +236,6 @@ tmp<vectorField> freeSurface::pointDisplacement(const scalarField& deltaH)
             {
                 label curFace = curPointFaces[faceI];
 
-//                 M += sqr(w[faceI])*sqr(controlPoints()[curFace]);
                 M = M + sqr(w[faceI])*sqr(controlPoints()[curFace]);
 
                 S += sqr(w[faceI])*controlPoints()[curFace];
@@ -245,7 +243,6 @@ tmp<vectorField> freeSurface::pointDisplacement(const scalarField& deltaH)
 
             forAll (mirrorPoints, pI)
             {
-//                 M += sqr(w[curPointFaces.size()+pI])*sqr(mirrorPoints[pI]);
                 M = M + sqr(w[curPointFaces.size()+pI])*sqr(mirrorPoints[pI]);
             
                 S += sqr(w[curPointFaces.size()+pI])*mirrorPoints[pI];
@@ -319,10 +316,6 @@ tmp<vectorField> freeSurface::pointDisplacement(const scalarField& deltaH)
                 {
                     label curEdge = patchPointEdges[pointI][edgeI];
 
-//                     displacement[patchPoints[pointI]] += 
-//                         pointsDisplacementDir()[patchPoints[pointI]]*
-//                         deltaH[patchEdgeFaces[curEdge]];
-
                     displacement[patchPoints[pointI]] +=
                         pointsDisplacementDir()[patchPoints[pointI]]
                        *(
@@ -373,62 +366,6 @@ tmp<vectorField> freeSurface::pointDisplacement(const scalarField& deltaH)
 
     return tdisplacement;
 }
-
-
-
-// tmp<vectorField> freeSurface::pointDisplacementSM()
-// {
-//     const pointField& points = aMesh().patch().localPoints();
-//     const labelListList& pointFaces = aMesh().patch().pointFaces();
-
-
-//     tmp<vectorField> tdisplacement
-//     (
-//         new vectorField
-//         (
-//             points.size(),
-//             vector::zero
-//         )
-//     );
-    
-//     vectorField& displacement = tdisplacement();
-
-
-//     forAll (pointFaces, pointI)
-//     {
-//         scalar weightsSum = 0.0;
-
-//         const labelList& curPointFaces = pointFaces[pointI];
-
-//         forAll (curPointFaces, faceI)
-//         {
-//             label curFace = curPointFaces[faceI];
-
-//             scalar weight = 1.0/mag
-//             (
-//                 points[pointI]
-//               - controlPoints()[curFace]
-//             );
-
-//             displacement[pointI] += weight*controlPoints()[curFace];
-            
-//             weightsSum += weight;
-//         }
-
-//         displacement[pointI] /= weightsSum;
-        
-//         displacement[pointI] -= points[pointI];
-//     }
-
-
-//     displacement = motionPointsMask()*
-//         (pointsDisplacementDir()&displacement)*
-//         pointsDisplacementDir();
-
-
-//     return tdisplacement;
-// }
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

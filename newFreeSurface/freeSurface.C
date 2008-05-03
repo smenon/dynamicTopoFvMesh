@@ -79,7 +79,6 @@ void freeSurface::clearOut()
     deleteDemandDrivenData(facesDisplacementDirPtr_);
     deleteDemandDrivenData(totalDisplacementPtr_);
     deleteDemandDrivenData(aMeshPtr_);
-    deleteDemandDrivenData(mSolverPtr_);
     deleteDemandDrivenData(UsPtr_);
     deleteDemandDrivenData(phisPtr_);
     deleteDemandDrivenData(surfactConcPtr_);
@@ -183,7 +182,6 @@ freeSurface::freeSurface
     facesDisplacementDirPtr_(NULL),
     totalDisplacementPtr_(NULL),
     aMeshPtr_(NULL),
-    mSolverPtr_(NULL),
     UsPtr_(NULL),
     phisPtr_(NULL),
     surfactConcPtr_(NULL),
@@ -195,12 +193,6 @@ freeSurface::freeSurface
     if (!aMeshPtr_)
     {
         makeFaMesh();
-    }
-
-    // Make mesh motion solver
-    if (!mSolverPtr_)
-    {
-        makeMeshMotionSolver();
     }
 
     // Create free-surface velocity field
@@ -540,7 +532,7 @@ bool freeSurface::movePoints()
     }
 
     // Update total displacement field
-
+    /*
     if(totalDisplacementPtr_ && (curTimeIndex_ < DB().timeIndex()))
     {
         FatalErrorIn("freeSurface::movePoints()")
@@ -548,7 +540,7 @@ bool freeSurface::movePoints()
                 << "from previous time step is not absorbed by the mesh."
                 << abort(FatalError);
     }
-    else if (curTimeIndex_ < DB().timeIndex())
+    else*/ if (curTimeIndex_ < DB().timeIndex())
     {
         totalDisplacement() = displacement;
 
@@ -567,6 +559,15 @@ bool freeSurface::movePoints()
 
     aMesh().movePoints(mesh().points());
 
+    // Move correctedFvPatchField fvSubMeshes
+    moveFvSubMeshes();
+
+    return true;
+}
+
+//- Move correctedFvPatchField fvSubMeshes
+void freeSurface::moveFvSubMeshes()
+{
     // Move correctedFvPatchField fvSubMeshes
     forAll(U().boundaryField(), patchI)
     {
@@ -626,9 +627,7 @@ bool freeSurface::movePoints()
 
             pP.movePatchSubMesh();
         }
-    }
-
-    return true;
+    }    
 }
 
 
@@ -636,6 +635,7 @@ bool freeSurface::moveMeshPointsForOldFreeSurfDisplacement()
 {
     if(totalDisplacementPtr_)
     {
+        
         pointField newPoints = mesh().points();
 
         const labelList& meshPointsA = 
@@ -646,6 +646,7 @@ bool freeSurface::moveMeshPointsForOldFreeSurfDisplacement()
             newPoints[meshPointsA[pointI]] -= totalDisplacement()[pointI]; 
         }
 
+        /*
         tetPointVectorField& motionU =
             const_cast<tetPointVectorField&>
             (
@@ -711,428 +712,17 @@ bool freeSurface::moveMeshPointsForOldFreeSurfDisplacement()
         twoDPointCorrector twoDPointCorr(mesh());
 
         twoDPointCorr.correctPoints(newPoints);
+        */
 
         mesh().movePoints(newPoints);
 
-
-        deleteDemandDrivenData(totalDisplacementPtr_);
-
-
-        mesh().movePoints(meshMotionSolver().newPoints());
+        //deleteDemandDrivenData(totalDisplacementPtr_);
 
         aMesh().movePoints(mesh().points());
-
-
-        // ?
-        meshMotionSolver().motionU().boundaryField()[aPatchID()] == 
-            vector::zero;
-
-        if(twoFluids_)
-        {
-            meshMotionSolver().motionU().boundaryField()[bPatchID()] ==
-                vector::zero;
-        }
-        
-        
-        // Move correctedFvPatchField fvSubMeshes
-
-        forAll(U().boundaryField(), patchI)
-        {
-            if
-            (
-                (
-                    U().boundaryField()[patchI].type()
-                 == fixedGradientCorrectedFvPatchField<vector>::typeName
-                )
-                ||
-                (
-                    U().boundaryField()[patchI].type()
-                 == fixedValueCorrectedFvPatchField<vector>::typeName
-                )
-                ||
-                (
-                    U().boundaryField()[patchI].type()
-                 == zeroGradientCorrectedFvPatchField<vector>::typeName
-                )
-            )
-            {
-                correctedFvPatchField<vector>& aU =
-                    refCast<correctedFvPatchField<vector> >
-                    (
-                        U().boundaryField()[patchI]
-                    );
-
-                aU.movePatchSubMesh();
-            }
-        }
-
-        forAll(p().boundaryField(), patchI)
-        {
-            if
-            (
-                (
-                    p().boundaryField()[patchI].type()
-                 == fixedGradientCorrectedFvPatchField<scalar>::typeName
-                )
-                ||
-                (
-                    p().boundaryField()[patchI].type()
-                 == fixedValueCorrectedFvPatchField<scalar>::typeName
-                )
-                ||
-                (
-                    p().boundaryField()[patchI].type()
-                 == zeroGradientCorrectedFvPatchField<scalar>::typeName
-                )
-            )
-            {
-                correctedFvPatchField<scalar>& aP =
-                    refCast<correctedFvPatchField<scalar> >
-                    (
-                        p().boundaryField()[patchI]
-                    );
-
-                aP.movePatchSubMesh();
-            }
-        }
-    }
-
-    return true;
-}
-
-
-bool freeSurface::moveMeshPoints()
-{
-    if(Pstream::master())
-    {
-        scalarField sweptVolCorr = 
-            phi().boundaryField()[aPatchID()]
-          - fvc::meshPhi(rho(),U())().boundaryField()[aPatchID()];
-
-        word ddtScheme
-        (
-            mesh().ddtScheme("ddt(" + rho().name() + ',' + U().name()+')')
-        );
-
-        if 
-        (
-            ddtScheme
-         == fv::CrankNicholsonDdtScheme<vector>::typeName
-        )
-        {
-            sweptVolCorr *= (1.0/2.0)*DB().deltaT().value();
-        }
-        else if
-        (
-            ddtScheme
-         == fv::EulerDdtScheme<vector>::typeName
-        )
-        {
-            sweptVolCorr *= DB().deltaT().value();
-        }
-        else if
-        (
-            ddtScheme
-         == fv::backwardDdtScheme<vector>::typeName
-        )
-        {
-            sweptVolCorr *= (2.0/3.0)*DB().deltaT().value();
-        }   
-        else
-        {
-            FatalErrorIn("freeSurface::movePoints()")
-                << "Unsupported temporal differencing scheme : "
-                << ddtScheme
-                << abort(FatalError);
-        }
-
-
-        const scalarField& Sf = aMesh().S();
-        const vectorField& Nf = aMesh().faceAreaNormals().internalField();
-
-        scalarField deltaH =
-            sweptVolCorr/(Sf*(Nf & facesDisplacementDir()));
-
-
-        pointField displacement = pointDisplacement(deltaH);
-
-
-        //-- Set mesh motion boundary conditions
-
-        tetPointVectorField& motionU =
-            const_cast<tetPointVectorField&>
-            (
-                meshMotionSolver().motionU()
-            );
-
-        fixedValueTetPolyPatchVectorField& motionUaPatch =
-            refCast<fixedValueTetPolyPatchVectorField>
-            (
-                motionU.boundaryField()[aPatchID()]
-            );
-
-        tetPolyPatchInterpolation tppiAPatch
-        (
-            refCast<const faceTetPolyPatch>
-            (
-                motionUaPatch.patch()
-            )
-        );
-
-        motionUaPatch ==
-            tppiAPatch.pointToPointInterpolate
-            (
-                displacement/DB().deltaT().value()
-            );
-
-//         meshMotionSolver().motionU().boundaryField()[aPatchID()] ==
-//             displacement/DB().deltaT().value();
-
-
-        if (twoFluids())
-        {
-            fixedValueTetPolyPatchVectorField& motionUbPatch =
-                refCast<fixedValueTetPolyPatchVectorField>
-                (
-                    motionU.boundaryField()[bPatchID()]
-                );
-
-            tetPolyPatchInterpolation tppiBPatch
-            (
-                refCast<const faceTetPolyPatch>(motionUbPatch.patch())
-            );
-
-            motionUbPatch == 
-                tppiBPatch.pointToPointInterpolate
-                (
-                    interpolatorAB().pointInterpolate
-                    (
-                        displacement/DB().deltaT().value()
-                    )
-                );
-
-//             meshMotionSolver().motionU().boundaryField()[bPatchID()] ==
-//                 interpolatorAB().pointInterpolate
-//                 (
-//                     displacement/DB().deltaT().value()
-//                 );
-        }
-    }
-
-
-    //-- Update finite volume mesh
-
-    mesh().movePoints(meshMotionSolver().newPoints());
-
-
-    //-- Update finite area mesh
-
-    if(Pstream::master())
-    {
-        aMesh().movePoints(mesh().points());
-
-
-        meshMotionSolver().motionU().boundaryField()[aPatchID()] == 
-            vector::zero;
-
-        if(twoFluids_)
-        {
-            meshMotionSolver().motionU().boundaryField()[bPatchID()] ==
-                vector::zero;
-        }        
-    }
-
 
         // Move correctedFvPatchField fvSubMeshes
-
-        forAll(U().boundaryField(), patchI)
-        {
-            if
-            (
-                (
-                    U().boundaryField()[patchI].type()
-                 == fixedGradientCorrectedFvPatchField<vector>::typeName
-                )
-                ||
-                (
-                    U().boundaryField()[patchI].type()
-                 == fixedValueCorrectedFvPatchField<vector>::typeName
-                )
-                ||
-                (
-                    U().boundaryField()[patchI].type()
-                 == zeroGradientCorrectedFvPatchField<vector>::typeName
-                )
-            )
-            {
-                correctedFvPatchField<vector>& aU =
-                    refCast<correctedFvPatchField<vector> >
-                    (
-                        U().boundaryField()[patchI]
-                    );
-
-                aU.movePatchSubMesh();
-            }
-        }
-
-        forAll(p().boundaryField(), patchI)
-        {
-            if
-            (
-                (
-                    p().boundaryField()[patchI].type()
-                 == fixedGradientCorrectedFvPatchField<scalar>::typeName
-                )
-                ||
-                (
-                    p().boundaryField()[patchI].type()
-                 == fixedValueCorrectedFvPatchField<scalar>::typeName
-                )
-                ||
-                (
-                    p().boundaryField()[patchI].type()
-                 == zeroGradientCorrectedFvPatchField<scalar>::typeName
-                )
-            )
-            {
-                correctedFvPatchField<scalar>& aP =
-                    refCast<correctedFvPatchField<scalar> >
-                    (
-                        p().boundaryField()[patchI]
-                    );
-
-                aP.movePatchSubMesh();
-            }
-        }
-
-    return true;
-}
-
-
-bool freeSurface::moveMeshPoints(const scalarField& delta)
-{
-#ifdef CELL_DECOMP
-
-    if(Pstream::master())
-    {
-        pointField displacement = delta*pointsDisplacementDir();
-
-
-        //-- Set mesh motion boundary conditions
-
-        meshMotionSolver().motionU().boundaryField()[aPatchID()] ==
-            displacement/DB().deltaT().value();
-
-
-        if (twoFluids())
-        {
-            meshMotionSolver().motionU().boundaryField()[bPatchID()] ==
-                interpolatorAB().pointInterpolate
-                (
-                    displacement/DB().deltaT().value()
-                );
-        }
-    }
-
-
-    //-- Update finite volume mesh
-
-    mesh().movePoints(meshMotionSolver().newPoints());
-
-
-    //-- Update finite area mesh
-
-    if(Pstream::master())
-    {
-        aMesh().movePoints(mesh().points());
-
-        meshMotionSolver().motionU().boundaryField()[aPatchID()] == 
-            vector::zero;
-
-        if(twoFluids_)
-        {
-            meshMotionSolver().motionU().boundaryField()[bPatchID()] ==
-                vector::zero;
-        }        
-    }
-
-
-    return true;
-
-#else
-
-    FatalErrorIn("void freeSurface::moveMeshPoints()") 
-        << "not implemented for face decomposition" << abort(FatalError);
-
-    return false;
-
-#endif
-}
-
-
-bool freeSurface::movePoints(scalar displ)
-{
-    if(Pstream::master())
-    {
-        controlPoints() += displ*facesDisplacementDir();
-
-        pointField displacement = displ*pointsDisplacementDir();
-
-
-        // Move only free-surface points
-
-        pointField newMeshPoints = mesh().points();
-
-        const labelList& meshPointsA = 
-            mesh().boundaryMesh()[aPatchID()].meshPoints();
-
-        forAll (displacement, pointI)
-        {
-            newMeshPoints[meshPointsA[pointI]] += displacement[pointI]; 
-        }
-
-        if(twoFluids())
-        {
-            const labelList& meshPointsB = 
-                mesh().boundaryMesh()[bPatchID_].meshPoints();
-
-            pointField displacementB =
-                interpolatorAB().pointInterpolate
-                (
-                    displacement
-                );
-        
-            forAll (displacementB, pointI)
-            {
-                newMeshPoints[meshPointsB[pointI]] += displacementB[pointI]; 
-            }
-        }
-
-        mesh().movePoints(newMeshPoints);
-
-        aMesh().movePoints(mesh().points());
-
-
-        // Update total displacement field
-
-        if(totalDisplacementPtr_ && (curTimeIndex_ < DB().timeIndex()))
-        {
-            FatalErrorIn("freeSurface::movePoints()")
-                << "Total displacement of free surface points "
-                << "from previous time step is not absorbed by the mesh."
-                << abort(FatalError);
-        }
-        else if (curTimeIndex_ < DB().timeIndex())
-        {
-            totalDisplacement() = displacement;
-            
-            curTimeIndex_ = DB().timeIndex();
-        }
-        else
-        {
-            totalDisplacement() += displacement;
-        }
-    }
+        moveFvSubMeshes();        
+    }      
 
     return true;
 }
@@ -1140,9 +730,6 @@ bool freeSurface::movePoints(scalar displ)
 //- Update mesh corresponding to the given map
 void freeSurface::updateMesh(const mapPolyMesh& mpm)
 {
-    // Update the motionSolver for topology changes.
-    meshMotionSolver().updateMesh(mpm);
-
     // For the moment, wipe-out existing data and re-create.
     
     // Re-make faMesh.
@@ -1152,17 +739,11 @@ void freeSurface::updateMesh(const mapPolyMesh& mpm)
     // Re-make the freeSurface velocity field
     deleteDemandDrivenData(UsPtr_);
     makeUs();
-
-    // Re-make the displacement directions
-    deleteDemandDrivenData(controlPointsPtr_);
-    deleteDemandDrivenData(pointsDisplacementDirPtr_);
-    deleteDemandDrivenData(facesDisplacementDirPtr_);    
-    makeDirections();
     
     // Re-make the motionPointsMask
     deleteDemandDrivenData(motionPointsMaskPtr_);
-    makeMotionPointsMask();
-    
+    makeMotionPointsMask();    
+
     // Mark free surface boundary points 
     // which do not belong to empty and wedge patches
     forAll(aMesh().boundary(), patchI)
@@ -1187,7 +768,13 @@ void freeSurface::updateMesh(const mapPolyMesh& mpm)
                 motionPointsMask()[patchPoints[pointI]] = 0.0;
             }                
         }
-    }
+    }    
+    
+    // Re-make the displacement directions
+    deleteDemandDrivenData(controlPointsPtr_);
+    deleteDemandDrivenData(pointsDisplacementDirPtr_);
+    deleteDemandDrivenData(facesDisplacementDirPtr_);    
+    makeDirections();
 
     // Mark free-surface boundary point 
     // at the axis of 2-D axisymmetic cases
@@ -1233,7 +820,7 @@ void freeSurface::updateMesh(const mapPolyMesh& mpm)
         }
 
         correction[patchID] = true;
-    }    
+    }          
 }
 
 void freeSurface::updateBoundaryConditions()
@@ -1319,8 +906,6 @@ void freeSurface::updateVelocity()
 
         UtFs -= (muFluidA().value() - muFluidB().value())*
             (fac::grad(Us())&aMesh().faceAreaNormals())().internalField();
-
-//             fac::grad(Us()&aMesh().faceAreaNormals())().internalField();
 
         if(!cleanInterface())
         {
@@ -1439,9 +1024,6 @@ void freeSurface::updateVelocity()
             muFluidA().value()
            *(UtFs - UtPA)*mesh().boundary()[aPatchID()].deltaCoeffs();
 
-//         vectorField nGradU = 
-//             muFluidA().value()
-//            *(UtFs - UtPA)*mesh().boundary()[aPatchID()].deltaCoeffs();
 
         nGradU /= muFluidA().value() + VSMALL;
 
@@ -1623,126 +1205,7 @@ void freeSurface::updatePressure()
 
 void freeSurface::updateSurfaceFlux()
 {
-        Phis() = fac::interpolate(Us()) & aMesh().Le();
-
-//     if(Pstream::master())
-//     {
-//         const areaVectorField& nA = aMesh().faceAreaNormals();
-
-//         areaScalarField nnGradU
-//         (
-//             IOobject
-//             (
-//                 "nnGradU",
-//                 DB().timeName(),
-//                 mesh(),
-//                 IOobject::NO_READ,
-//                 IOobject::NO_WRITE
-//             ),
-//             aMesh(),
-//             dimensioned<scalar>("nnGradU", dimless/dimTime, 0),
-//             zeroGradientFaPatchScalarField::typeName
-//         );
-
-//         nnGradU.internalField() =  nA.internalField() &
-//             U().boundaryField()[aPatchID()].snGrad();
-
-//         nnGradU.correctBoundaryConditions();
-
-
-
-//         areaScalarField pCorr
-//         (
-//             IOobject
-//             (
-//                 "pCorr",
-//                 DB().timeName(),
-//                 mesh(),
-//                 IOobject::NO_READ,
-//                 IOobject::NO_WRITE
-//             ),
-//             aMesh(),
-//             dimensioned<scalar>("pCorr", dimArea/dimTime, 0),
-//             zeroGradientFaPatchScalarField::typeName
-//         );
-
-
-//         Phis() = fac::interpolate(Us()) & aMesh().Le();
-
-
-//         const scalarField& Sf = aMesh().S();
-//         const areaScalarField& K = aMesh().faceCurvatures();
-//         areaScalarField Un = nA&Us();
-
-
-//         scalar corr = sum((K*Un - nnGradU)().internalField()*Sf);
-
-//         scalarField w = mag(nnGradU.internalField())/
-//             (sum(mag(nnGradU.internalField())) + SMALL);
-
-//         areaScalarField rhsCorr
-//         (
-//             IOobject
-//             (
-//                 "rhsCorr",
-//                 DB().timeName(),
-//                 mesh(),
-//                 IOobject::NO_READ,
-//                 IOobject::NO_WRITE
-//             ),
-//             aMesh(),
-//             dimensioned<scalar>("0", dimless/dimTime, 0),
-//             zeroGradientFaPatchScalarField::typeName
-//         );
-
-//         rhsCorr.internalField() = w*corr/Sf;
-
-//         rhsCorr.correctBoundaryConditions();
-
-
-
-//         label nNonOrthCorr = 1;
-
-//         for (label nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
-//         {
-//             faScalarMatrix pCorrEqn
-//             (
-//                 fam::laplacian(pCorr) ==
-//                 fac::div(Phis())
-//               - K*Un
-//               + nnGradU
-//               + rhsCorr
-//             );
-
-
-//             autoPtr<constraint<scalar> > ref =
-//                 pCorrEqn.setReference(0, 0.0);
-
-//             pCorrEqn.solve();
-
-//             pCorrEqn.unsetReference(ref);
-
-
-//             if(nonOrth == nNonOrthCorr)
-//             {
-//                 Phis() -= pCorrEqn.flux();
-//             }
-//         }
-
-
-//         scalarField divPhiErr =
-//             mag
-//             (
-//                 fac::div(Phis())
-//               - K*Un
-//               + nnGradU
-//               + rhsCorr
-//             );
-
-//         Info << "Surface flux continuity error, max: "
-//             << max(divPhiErr) << ", min: " << min(divPhiErr)
-//             << ", avr: " << average(divPhiErr) << endl;
-//     }
+    Phis() = fac::interpolate(Us()) & aMesh().Le();
 }
 
 
@@ -2086,44 +1549,11 @@ void freeSurface::smooth()
     if
     (
         Pstream::master()
-//      && !meshMotionSolver().twoDMotion() &&
-//      && (min(flatness)<0.999)
     )
     {
         Info << "Smooting free-surface faces...";
 
         const faceList& faces = aMesh().faces();
-//         const labelListList& pointFaces = aMesh().patch().pointFaces();
-
-//         scalarField ctrlPointMask(aMesh().nFaces(), 0);
-//         scalarField pointMask(aMesh().nPoints(), 0);
-
-//         forAll(faces, faceI)
-//         {
-//             if(flatness[faceI] < 0.999)
-//             {
-//                 face curFace = faces[faceI];
-
-//                 forAll(curFace, pointI)
-//                 {
-//                     pointMask[curFace[pointI]] = 1;
-//                 }
-//             }
-//         }
-
-//         forAll(pointFaces, pointI)
-//         {
-//             const labelList& curPointFaces = pointFaces[pointI];
-
-//             forAll(curPointFaces, faceI)
-//             {
-//                 label curFace = curPointFaces[faceI];
-
-//                 ctrlPointMask[curFace] = 1;
-//             }
-//         }
-
-//         pointField oldCtrlPoints = controlPoints();
 
         scalarField deltaH = facesDisplacementDir()&
         (
@@ -2133,8 +1563,6 @@ void freeSurface::smooth()
 
         pointField displacement = pointDisplacement(deltaH);
 
-
-//         const faceList& faces = aMesh().faces();
         const pointField& points = aMesh().points();
 
 
@@ -2162,12 +1590,6 @@ void freeSurface::smooth()
 
 
         displacement = pointDisplacement(deltaH);
-
-//         displacement *= pointMask;
-
-//         controlPoints() = 
-//             (1 - ctrlPointMask)*oldCtrlPoints 
-//           + ctrlPointMask*controlPoints();
 
         // Move only free-surface points
 
@@ -2233,21 +1655,6 @@ void freeSurface::initializeControlPointsPosition()
     scalarField deltaH = scalarField(aMesh().nFaces(), 0.0);
 
     pointField displacement = pointDisplacement(deltaH);
-
-//     scalarField magDispl = mag(displacement);
-
-//     Info << "Point displacement, max: " << max(magDispl)
-// 	 << ", average: " << average(magDispl)
-// 	 << ", min: " << min(magDispl) << endl;
-
-//     forAll(magDispl, pointI)
-//     {
-// 	if(magDispl[pointI] > 0.0003)
-// 	{
-// 	    Info << "maxID: " << pointI << endl;
-// 	    break;
-// 	}
-//     }
 
 
     const faceList& faces = aMesh().faces();
