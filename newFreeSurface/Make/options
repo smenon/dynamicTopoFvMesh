@@ -14,4 +14,4 @@ EXE_LIBS = \
     -ldynamicMesh \
     -ltetDecompositionMotionSolver \
     $(WM_DECOMP_LIBS) \
-    -L$(FOAM_USER_LIBBIN) \
+    -L$(FOAM_USER_LIBBIN) 
