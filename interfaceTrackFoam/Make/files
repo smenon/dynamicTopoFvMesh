@@ -1,4 +1,4 @@
 dynamicTopoFvMesh.C
-cylinderFoam.C
+topoInterTrackFoam.C
 
-EXE = $(FOAM_USER_APPBIN)/cylinderFoam
+EXE = $(FOAM_USER_APPBIN)/topoInterTrackFoam

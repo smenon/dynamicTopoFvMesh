@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 
     Info<< "\nStarting time loop\n" << endl;
 
-    polyMesh::debug = true;
+    //polyMesh::debug = true;
     mesh.debug = true;
     
     while (runTime.run())
@@ -75,21 +75,17 @@ int main(int argc, char *argv[])
 
         Info<< "Time = " << runTime.timeName() << nl << endl;       
 
-        // Update the free-surface
-        interface.updateDisplacementDirections();
+        // Update free-surface displacement directions
+        interface.updateDisplacementDirections();        
 
-        // Set boundary conditions for the motionSolver
-        vectorField& Displacement = mesh.boundaryDisplacementPatch(interface.aPatchID());
-        Displacement = interface.totalDisplacement();
-        
-        // Solve for mesh-motion
-        mesh.updateMotion();        
+        // Set boundary conditions for the motionSolver and solve for mesh-motion
         interface.moveMeshPointsForOldFreeSurfDisplacement();
+        mesh.setMotionBC(interface.aPatchID()) = interface.totalDisplacement();
+        mesh.updateMotion();  
         
-#       include "volContinuity.H"        
-
-        if (smooth) interface.smooth();
-
+#       include "volContinuity.H"     
+        
+        // Update the free-surface
         interface.movePoints();
 
         Info<< "\nMax surface Courant Number = " 

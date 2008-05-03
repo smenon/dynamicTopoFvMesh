@@ -81,13 +81,13 @@ int main(int argc, char *argv[])
                 break;
             }
         }         
-        mesh.boundaryDisplacementPatch(patchID) = vector(0,0.3,0)*mesh.time().deltaT().value();         
+        mesh.setMotionBC(patchID) = vector(0,0.3,0)*mesh.time().deltaT().value();         
         
         // Solve for mesh-motion
         mesh.updateMotion();         
         
 #       include "volContinuity.H"        
-/*
+
         // Make the fluxes relative to the mesh motion
         fvc::makeRelative(phi, U);
 
@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
         
         // Make the fluxes absolute
         fvc::makeAbsolute(phi, U);        
-*/        
+       
         bool meshChanged = mesh.updateTopology(); 
         
         if (meshChanged)
@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
             }
             U = fvc::reconstruct(phi); 
             */            
-//#           include "correctPhi.H"            
+#           include "correctPhi.H"            
 #           include "CourantNo.H"
         }
             

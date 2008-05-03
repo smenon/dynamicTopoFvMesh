@@ -62,7 +62,7 @@ void rotatePoints(dynamicTopoFvMesh& mesh, doubleScalar theta, vector p1, vector
     
     // Move points that lie on the box patch
     const labelList& boxPoints = mesh.boundaryMesh()[patchID].meshPoints();  
-    List<vector>& Displacement = mesh.boundaryDisplacementPatch(patchID);
+    List<vector>& Displacement = mesh.setMotionBC(patchID);
     
     forAll (boxPoints, index)
     {

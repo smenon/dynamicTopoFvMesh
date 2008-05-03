@@ -1,23 +1,3 @@
-
-    // Cell-skewness values
-    /*
-    volScalarField skewness
-    (
-        IOobject
-        (
-            "skewness",
-            runTime.timeName(),
-            mesh,
-            IOobject::NO_READ,
-            IOobject::AUTO_WRITE
-        ),
-        mesh,
-        dimensionedScalar("cellSkewness", dimless, 0),
-        zeroGradientFvPatchScalarField::typeName
-    );        
-    scalarField meshskewness = mesh.skewness()();
-    forAll(skewness,index) skewness[index] = meshskewness[index];
-    */
     
     // Mesh length-density function
     volScalarField lDensity
