@@ -646,77 +646,7 @@ bool freeSurface::moveMeshPointsForOldFreeSurfDisplacement()
             newPoints[meshPointsA[pointI]] -= totalDisplacement()[pointI]; 
         }
 
-        /*
-        tetPointVectorField& motionU =
-            const_cast<tetPointVectorField&>
-            (
-                meshMotionSolver().motionU()
-            );
-
-        fixedValueTetPolyPatchVectorField& motionUaPatch =
-            refCast<fixedValueTetPolyPatchVectorField>
-            (
-                motionU.boundaryField()[aPatchID()]
-            );
-
-        tetPolyPatchInterpolation tppiAPatch
-        (
-            refCast<const faceTetPolyPatch>
-            (
-                motionUaPatch.patch()
-            )
-        );
-
-        motionUaPatch ==
-            tppiAPatch.pointToPointInterpolate
-            (
-                totalDisplacement()/DB().deltaT().value()
-            );
-
-    
-        if(twoFluids_)
-        {
-            const labelList& meshPointsB = 
-                mesh().boundaryMesh()[bPatchID()].meshPoints();
-
-            pointField totDisplacementB =
-                interpolatorAB().pointInterpolate
-                (
-                    totalDisplacement()
-                );
-        
-            forAll (totDisplacementB, pointI)
-            {
-                newPoints[meshPointsB[pointI]] -= totDisplacementB[pointI]; 
-            }
-            
-            fixedValueTetPolyPatchVectorField& motionUbPatch =
-                refCast<fixedValueTetPolyPatchVectorField>
-                (
-                    motionU.boundaryField()[bPatchID()]
-                );
-
-            tetPolyPatchInterpolation tppiBPatch
-            (
-                refCast<const faceTetPolyPatch>(motionUbPatch.patch())
-            );
-
-            motionUbPatch == 
-                tppiBPatch.pointToPointInterpolate
-                (
-                    totDisplacementB/DB().deltaT().value()
-                );
-        }
-
-
-        twoDPointCorrector twoDPointCorr(mesh());
-
-        twoDPointCorr.correctPoints(newPoints);
-        */
-
         mesh().movePoints(newPoints);
-
-        //deleteDemandDrivenData(totalDisplacementPtr_);
 
         aMesh().movePoints(mesh().points());
 
@@ -1544,14 +1474,12 @@ tmp<scalarField> freeSurface::undulationIndicator()
 
 void freeSurface::smooth()
 {
-//     scalarField flatness = checkFaceFlatness();
-
     if
     (
         Pstream::master()
     )
     {
-        Info << "Smooting free-surface faces...";
+        Info << "Smoothing free-surface faces...";
 
         const faceList& faces = aMesh().faces();
 

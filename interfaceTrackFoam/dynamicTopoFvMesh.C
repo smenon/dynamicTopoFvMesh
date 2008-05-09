@@ -1122,6 +1122,73 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
 {
     if (edgeModification_) {
         
+        label level = 1, visitedCells = 0;
+        labelList cellLevels(nCells(),0);
+        scalarField lengthScale(nCells(),0.0);
+        
+        // Obtain the cellCells addressing list
+        const labelListList& cc = cellCells();
+        
+        // Loop through all boundaries and mark adjacent cells
+        const fvBoundaryMesh& bdy = boundary();
+        const labelList& own = allOwner();
+        const pointField& pList = points();
+        forAll(bdy,patchI) {
+            const polyPatch& bdyPatch = bdy[patchI].patch();
+            if ( (bdyPatch.type() != "wedge") && (bdyPatch.type() != "empty") ) {
+                label pStart = bdyPatch.start();
+                forAll(bdyPatch,faceI) {
+                    label ownCell = own[pStart+faceI];
+                    edge& etw = edgeToWatch_[pStart+faceI];
+                    cellLevels[ownCell] = level;
+                    lengthScale[ownCell] = mag(pList[etw[0]] - pList[etw[1]]);
+                    visitedCells++;
+                }
+            }
+        }
+        
+        // Perform multiple sweeps through the mesh...
+        while (visitedCells < nCells()) {            
+            // Loop through cells, and increment neighbour cells of the current level
+            forAll(cellLevels,cellI) {
+                if (cellLevels[cellI] == level) {
+                    // Obtain the cells neighbouring this one
+                    const labelList& cList = cc[cellI];
+                    forAll(cList, indexI) {
+                        label& ngbLevel = cellLevels[cList[indexI]];
+                        if (ngbLevel == 0) {
+                            ngbLevel = level+1;
+                            // Compute the mean of the existing neighbour length-scales
+                            const labelList& ncList = cc[cList[indexI]];
+                            scalar sumLength = 0.0;
+                            label nTouchedNgb = 0;
+                            forAll(ncList, indexJ) {
+                                label sLevel = cellLevels[ncList[indexJ]];
+                                if ((sLevel < ngbLevel) && (sLevel > 0)) {
+                                    sumLength += lengthScale[ncList[indexJ]];
+                                    nTouchedNgb++;                                    
+                                }
+                            }
+                            sumLength /= nTouchedNgb;
+                            // Scale the length and assign to this cell
+                            lengthScale[cList[indexI]] = sumLength*growthFactor_.value();
+                            visitedCells++;
+                        }
+                    }
+                }
+            }   
+            // Move on to the next level
+            level++;
+        } 
+        
+        if (debug) Info << "Length Scale sweeps: " << level << endl;
+        
+        // Copy the most recent length-scale values
+        for(HashList<scalar>::iterator l = lengthScale_.begin(); l != lengthScale_.end(); l++) {
+            l() = lengthScale[l.index()];
+        }        
+        
+        /*        
         // Initialize the length-density field for the current time-step
         volScalarField lengthDensity
         (
@@ -1179,7 +1246,6 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
             )
         );
         
-        /*
         // Initialize the field for the current time-step
         volVectorField I
         (
@@ -1207,12 +1273,12 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
         
         // Calculate the resultant length-scale
         volScalarField lengthDensity = mag(fvc::grad(I))/growthFactor_.value();
-        */
 
         // Copy the most recent length-scale values
         for(HashList<scalar>::iterator l = lengthScale_.begin(); l != lengthScale_.end(); l++) {
             l() = 1.0/lengthDensity.internalField()[l.index()];
         }
+        */
     }
 }
 
