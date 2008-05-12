@@ -41,11 +41,13 @@ int main(int argc, char *argv[])
 {
 
     // For debug purposes, assign <root> and <case>
+    /*
     argc = 3; 
     argv[1] = new char[100];
     argv[2] = new char[100];
     strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
     strcpy(argv[2],"smaller");  
+    */
     
 #   include "setRootCase.H"
 #   include "createTime.H"
@@ -59,7 +61,7 @@ int main(int argc, char *argv[])
     Info<< "\nStarting time loop\n" << endl;
 
     //polyMesh::debug = true;
-    mesh.debug = true;
+    //mesh.debug = true;
     
     while (runTime.run())
     {
@@ -83,7 +85,9 @@ int main(int argc, char *argv[])
         mesh.setMotionBC(interface.aPatchID()) = interface.totalDisplacement();
         mesh.updateMotion();  
         
-#       include "volContinuity.H"     
+#       include "volContinuity.H"
+        
+        if (smooth) interface.smooth();        
         
         // Update the free-surface
         interface.movePoints();

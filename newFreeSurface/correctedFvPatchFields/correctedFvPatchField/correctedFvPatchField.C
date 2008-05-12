@@ -160,6 +160,7 @@ void correctedFvPatchField<Type>::autoMap
     // Delete the fvMeshSubset and reconstruct
     deleteDemandDrivenData(patchSubMeshPtr_);
     makePatchSubMesh();
+    subMeshPatchID_ = -1;
 }
 
 template<class Type>
@@ -371,7 +372,7 @@ void correctedFvPatchField<Type>::updateCorrVecGrad()
                 subVolField.component(cmpt),
                 "snGradCorr(" + volField().name() + ')'
             );
-
+        
         if(this->patch().size()>0)
         {
             corrVecGrad_.replace

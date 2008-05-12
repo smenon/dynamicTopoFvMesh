@@ -153,7 +153,7 @@ class dynamicTopoFvMesh
         HashList<edge>      edgeToWatch_;
         scalar              ratioMin_;
         scalar              ratioMax_;
-        dimensionedScalar   growthFactor_;
+        scalar              growthFactor_;
         
         //- Internal edge-list for 3D tet-meshes
         HashList<edge>      internalEdges_;

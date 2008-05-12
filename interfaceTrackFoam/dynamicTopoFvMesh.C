@@ -84,7 +84,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nInternalEdges_(0), 
     ratioMin_(0.0),
     ratioMax_(0.0),
-    growthFactor_("growthFactor",dimensionSet(0,2,-1,0,0),0.0),
+    growthFactor_(1.0),
     debug(false)
 {
     // Initialize the motion-solver, if it was requested
@@ -120,7 +120,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         const dictionary& edgeOptionDict = dict_.subDict("dynamicTopoFvMesh").subDict("edgeOptions");
         ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
         ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
-        growthFactor_.value() = readScalar(edgeOptionDict.lookup("growthFactor"));
+        growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
         if (edgeOptionDict.found("fixedLengthScalePatches")) {
             fixedLengthScalePatches_ = edgeOptionDict.subDict("fixedLengthScalePatches");
         }
@@ -1171,7 +1171,7 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                             }
                             sumLength /= nTouchedNgb;
                             // Scale the length and assign to this cell
-                            lengthScale[cList[indexI]] = sumLength*growthFactor_.value();
+                            lengthScale[cList[indexI]] = sumLength*growthFactor_;
                             visitedCells++;
                         }
                     }
@@ -1187,98 +1187,6 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
         for(HashList<scalar>::iterator l = lengthScale_.begin(); l != lengthScale_.end(); l++) {
             l() = lengthScale[l.index()];
         }        
-        
-        /*        
-        // Initialize the length-density field for the current time-step
-        volScalarField lengthDensity
-        (
-            IOobject
-            (
-                "lengthDensity",
-                time().timeName(),
-                (*this),
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
-            ),
-            (*this),
-            dimensionedScalar("length", dimensionSet(0,1,0,0,0), 0),
-            fixedValueFvPatchScalarField::typeName
-        );
-        
-        // Set the boundary conditions for the Laplace's equation for length-density 
-        scalar maxMag = 0.0;
-        forAll(lengthDensity.boundaryField(), patchI) {  
-            fvPatchField<scalar> &bPatch = lengthDensity.boundaryField()[patchI];
-            if ((bPatch.type() == "wedge") || (bPatch.type() == "empty")) {
-                bPatch == 0.0;
-            } else {
-                label start = patchStarts_[patchI];
-                scalar avgMag = 0.0;
-                forAll(bPatch, faceI) {
-                    edge& etw = edgeToWatch_[start+faceI];
-                    avgMag += mag(meshPoints_[etw[0]] - meshPoints_[etw[1]]);
-                    //scalar magLength = mag(meshPoints_[etw[0]] - meshPoints_[etw[1]]);
-                    //bPatch[faceI] = 1.0/magLength;
-                    //maxMag = magLength > maxMag ? magLength : maxMag;
-                }
-                avgMag /= patchSizes_[patchI];
-                bPatch == 1.0/avgMag;
-                maxMag = avgMag > maxMag ? avgMag : maxMag;
-            }
-        }
-        
-        // Scale the length-scale diffusion by mesh-parameters
-        dimensionedScalar growthFactorScaled("growthFactor",dimensionSet(0,2,-1,0,0),
-                                              (growthFactor_.value()*maxMag)/time().deltaT().value()
-                                             );
-        
-        Info << "GrowthFactor (scaled): " << growthFactorScaled << endl;
-        
-        // Solve for the length-density function
-        Foam::solve
-        (
-            fvm::ddt(lengthDensity)
-          - fvm::laplacian
-            (
-                growthFactorScaled,
-                lengthDensity,
-                "laplacian(growthFactor,lengthDensity)"
-            )
-        );
-        
-        // Initialize the field for the current time-step
-        volVectorField I
-        (
-            IOobject
-            (
-                "I",
-                time().timeName(),
-                (*this),
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
-            ),
-            (*this),
-            dimensionedVector("length", dimless, vector::zero),
-            fixedValueFvPatchVectorField::typeName
-        );  
-        
-        // Set the face-normals as boundary conditions for Laplace's equation
-        surfaceVectorField nSf = Sf()/mag(Sf());
-        forAll(I.boundaryField(), patchI) { 
-            I.boundaryField()[patchI] == nSf.boundaryField()[patchI];
-        }
-        
-        // Solve for the function
-        Foam::solve(fvm::laplacian(I)); 
-        
-        // Calculate the resultant length-scale
-        volScalarField lengthDensity = mag(fvc::grad(I))/growthFactor_.value();
-
-        // Copy the most recent length-scale values
-        for(HashList<scalar>::iterator l = lengthScale_.begin(); l != lengthScale_.end(); l++) {
-            l() = 1.0/lengthDensity.internalField()[l.index()];
-        }
-        */
     }
 }
 
@@ -2378,7 +2286,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
 
     // Check if this is an edge (face) that lies on a boundary
     // Might cause pinching of the boundary, and so, disabled for the moment
-    if (firstEdgeBoundary && secondEdgeBoundary && debug) {
+    if (firstEdgeBoundary && secondEdgeBoundary) {
         Info << "Collapsing a boundary edge..." << endl;
         return false;
     }
@@ -2415,7 +2323,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
             // Compute the area and check if it's zero/negative
             scalar origArea = triFaceArea(triFace);
             scalar newArea  = triFaceArea(tmpTriFace);
-            if ((Foam::sign(origArea) != Foam::sign(newArea)) || mag(newArea) < SMALL) return false;
+            if ((Foam::sign(origArea) != Foam::sign(newArea)) || mag(newArea) < VSMALL) return false;
         }
         // Collapse to the second node...
         forAll(firstEdgeHull,faceI) {
@@ -2483,7 +2391,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
             // Compute the area and check if it's zero/negative
             scalar origArea = triFaceArea(triFace);
             scalar newArea  = triFaceArea(tmpTriFace);
-            if ((Foam::sign(origArea) != Foam::sign(newArea)) || mag(newArea) < SMALL) return false;
+            if ((Foam::sign(origArea) != Foam::sign(newArea)) || mag(newArea) < VSMALL) return false;
         }
         // Collapse to the first node by default...
         forAll(secondEdgeHull,faceI) {

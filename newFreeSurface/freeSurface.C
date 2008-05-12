@@ -1555,14 +1555,14 @@ void freeSurface::smooth()
 
         // Update total displacement field
 
-        if(totalDisplacementPtr_ && (curTimeIndex_ < DB().timeIndex()))
+        /*if(totalDisplacementPtr_ && (curTimeIndex_ < DB().timeIndex()))
         {
             FatalErrorIn("freeSurface::movePoints()")
                 << "Total displacement of free surface points "
                 << "from previous time step is not absorbed by the mesh."
                 << abort(FatalError);
         }
-        else if (curTimeIndex_ < DB().timeIndex())
+        else*/ if (curTimeIndex_ < DB().timeIndex())
         {
             totalDisplacement() = displacement;
         
