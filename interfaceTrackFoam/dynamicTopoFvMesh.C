@@ -85,6 +85,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ratioMin_(0.0),
     ratioMax_(0.0),
     growthFactor_(1.0),
+    bisectInteriorFace_(-1),
     debug(false)
 {
     // Initialize the motion-solver, if it was requested
@@ -1733,10 +1734,29 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
             
             // Determine the length-scale at this face
             scalar scale=0;
-            if (c1 == -1)
-                scale = boundaryLengthScale(findex);
-            else
+            if (c1 == -1) {
+                
+                scale = boundaryLengthScale(findex);                
+
+                // Check if this boundary face is adjacent to a sliver-cell,
+                // and remove it by a two-step bisection/collapse operation.
+                bool sliverRemoved = remove2DSliver(findex, thisFace);
+                
+                if (sliverRemoved) {
+
+                    // Set the flag
+                    topoChangeFlag_ = true;                    
+                    
+                    // Move on to the next face
+                    fIter++; continue;                   
+                    
+                }
+                
+            } else {
+
                 scale = 0.5*(lengthScale_[c0]+lengthScale_[c1]);
+            
+            }
             
             //== Edge Bisection ==//
             if(length > ratioMax_*scale) {                                  
@@ -1975,6 +1995,9 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace(const label findex, face& thisFace)
     newFaceIndex = insertFace(-1, tmpQuadFace, c0, newCellIndex0, edgeToWatch);
     replaceFaceLabel(-1, newFaceIndex, newCell0);
     replaceFaceLabel(-1, newFaceIndex, cell_0);
+    
+    // remove2DSliver requires this face index for removal
+    bisectInteriorFace_ = newFaceIndex;
 
     // Calculate fluxes for this face to satisfy zero-divergence. 
     // Assumes that no fluxes are present on boundary triangle faces    
@@ -2653,6 +2676,55 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace(const label findex, face& thisFac
     
     // Return a successful collapse
     return true;
+}
+
+// Check if the boundary face is adjacent to a sliver-cell,
+// and remove it by a two-step bisection/collapse operation.
+bool Foam::dynamicTopoFvMesh::remove2DSliver(const label findex, face& thisFace)
+{
+    label c0BdyIndex[2], c0IntIndex[2];
+    face  c0BdyFace[2],  c0IntFace[2];  
+    
+    // Measure the boundary edge-length of the face in question
+    edge& checkEdge = edgeToWatch_[findex];
+    point& a = meshPoints_[checkEdge[0]];
+    point& b = meshPoints_[checkEdge[1]];
+    scalar length = mag(b-a);     
+    
+    // Determine the neighbouring cell
+    label c0 = owner_[findex];    
+    
+    // Find the prism-faces
+    cell &cell_0 = cells_[c0];
+    findPrismFaces(findex, cell_0, c0BdyFace, c0BdyIndex, c0IntFace, c0IntIndex);  
+    
+    // Determine the boundary triangular face area
+    scalar area = triFaceArea(c0BdyFace[0]);
+    
+    // This cell has to be removed...
+    if (mag(area) < (0.05*length*length)) {
+        
+        // Step 1: Bisect the boundary quad face
+        bisectInteriorFace_ = -1;
+        bisectQuadFace(findex, thisFace);
+        
+        // Step 2: Collapse the newly created internal quad face
+        face& newFace = faces_[bisectInteriorFace_];
+        bool success = collapseQuadFace(bisectInteriorFace_, newFace);
+        
+        // If this failed, something is terribly wrong
+        if (!success) {
+            FatalErrorIn("Foam::dynamicTopoFvMesh::remove2DSliver(const label, face&)")
+                << "Attempt to remove sliver cell: "
+                << c0 << ": " << cell_0
+                << " failed. Possibly a highly skewed mesh."
+                << abort(FatalError);            
+        }
+        
+        return true;
+    }
+    
+    return false;
 }
 
 // Update the mesh for motion

@@ -154,6 +154,7 @@ class dynamicTopoFvMesh
         scalar              ratioMin_;
         scalar              ratioMax_;
         scalar              growthFactor_;
+        label               bisectInteriorFace_;
         
         //- Internal edge-list for 3D tet-meshes
         HashList<edge>      internalEdges_;
@@ -197,6 +198,10 @@ class dynamicTopoFvMesh
         // Method for the collapse of a quad-face in 2D
         // Returns a boolean value indicating whether the collapse was valid
         bool collapseQuadFace(const label, face&);
+        
+        // Check if the boundary face is adjacent to a sliver-cell,
+        // and remove it by a two-step bisection/collapse operation.
+        bool remove2DSliver(const label, face&);        
         
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
