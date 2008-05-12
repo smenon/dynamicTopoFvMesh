@@ -1748,7 +1748,12 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
                     topoChangeFlag_ = true;                    
                     
                     // Move on to the next face
-                    fIter++; continue;                   
+                    fIter++; 
+                    
+                    // Remove the temporary interior face
+                    removeFace(bisectInteriorFace_);
+                    
+                    continue;                   
                     
                 }
                 
