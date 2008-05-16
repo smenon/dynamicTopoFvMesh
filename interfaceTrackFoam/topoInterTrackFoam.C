@@ -27,11 +27,12 @@ Application
 
 Description
     Incompressible laminar CFD code for interface between fluid phases using 
-    a dynamic mesh.
+    a dynamic mesh, including non-Newtonian effects.
 
 \*---------------------------------------------------------------------------*/
 
 #include "fvCFD.H"
+#include "viscosityModel.H"
 #include "dynamicTopoFvMesh.H"
 #include "freeSurface.H"
 
@@ -87,7 +88,8 @@ int main(int argc, char *argv[])
         
 #       include "volContinuity.H"
         
-        if (smooth) interface.smooth();        
+        // Update the viscosity
+        nuModel->correct();
         
         // Update the free-surface
         interface.movePoints();

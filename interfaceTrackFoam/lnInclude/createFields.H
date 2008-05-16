@@ -117,6 +117,9 @@
       + interface.muFluidB()
     );
     
+    // Introduce the non-Newtonian transport model
+    autoPtr<viscosityModel> nuModel = viscosityModel::New("nu",interface,U,phi);
+    
     volScalarField cond
     (
         IOobject

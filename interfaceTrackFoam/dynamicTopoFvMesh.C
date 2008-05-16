@@ -2825,6 +2825,28 @@ void Foam::dynamicTopoFvMesh::updateMotion()
             // Reset motion 
             for(label i=0; i<numPatches_; i++) 
                 motionU.boundaryField()[i] == vector::zero;            
+        }     
+        
+        //- Velocity Laplacian FV motion solver
+        if 
+        (    
+            (solverType == "displacementLaplacian")
+        ) 
+        {
+            // Boundary motion specified for the fvMotionSolver
+            pointVectorField& pointDisplacement = const_cast<pointVectorField&>
+                    (this->objectRegistry::lookupObject<pointVectorField>("pointDisplacement"));    
+
+            // Assign boundary conditions to the motion solver
+            for(label i=0; i<numPatches_; i++)
+                pointDisplacement.boundaryField()[i] == displacementPtr_[i];
+            
+            // Solve for motion   
+            movePoints(motionPtr_->newPoints());
+
+            // Reset motion 
+            for(label i=0; i<numPatches_; i++) 
+                pointDisplacement.boundaryField()[i] == vector::zero;            
         }        
     }
 }
@@ -3029,13 +3051,13 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
                 oldPatchStarts_,
                 oldPatchNMeshPoints_
             )
-        );
-        
-        // Update the motion-solver, if necessary
-        if (motionPtr_.valid()) motionPtr_().updateMesh(mapper_);       
+        );      
         
         // Update the underlying mesh, and map all related fields
         updateMesh(mapper_);
+        
+        // Update the motion-solver, if necessary
+        if (motionPtr_.valid()) motionPtr_().updateMesh(mapper_);         
         
         // Print out the mesh bandwidth
         if (debug) {
