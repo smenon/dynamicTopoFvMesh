@@ -1130,13 +1130,36 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
         // Obtain the cellCells addressing list
         const labelListList& cc = cellCells();
         
+        // Obtain the list of patches for which the length-scale is fixed
+        wordList toc = fixedLengthScalePatches_.toc();       
+        
         // Loop through all boundaries and mark adjacent cells
         const fvBoundaryMesh& bdy = boundary();
         const labelList& own = allOwner();
         const pointField& pList = points();
         forAll(bdy,patchI) {
             const polyPatch& bdyPatch = bdy[patchI].patch();
-            if ( (bdyPatch.type() != "wedge") && (bdyPatch.type() != "empty") ) {
+            // Loop through all fixed length-scale patches first
+            bool fixed = false;
+            forAll(toc,wordI) {
+                word& patchName = toc[wordI];
+                if (bdy[patchI].name() == patchName) {
+                    label pStart = bdyPatch.start();
+                    forAll(bdyPatch,faceI) {
+                        label ownCell = own[pStart+faceI];
+                        cellLevels[ownCell] = level;
+                        lengthScale[ownCell] = fixedLengthScalePatches_[patchName][0].scalarToken();
+                        visitedCells++;
+                    }                    
+                    fixed = true; break;
+                }
+            }                        
+            if (    (!fixed)
+                 && (bdyPatch.type() != "wedge") 
+                 && (bdyPatch.type() != "empty") 
+                 && (bdyPatch.type() != "symmetryPlane")
+               ) 
+            {
                 label pStart = bdyPatch.start();
                 forAll(bdyPatch,faceI) {
                     label ownCell = own[pStart+faceI];
