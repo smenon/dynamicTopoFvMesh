@@ -394,6 +394,29 @@ void freeSurface::updateDisplacementDirections()
         // Correct point displacement direction 
         // at the "centerline" symmetryPlane which represents the axis
         // of an axisymmetric case
+        forAll(aMesh().boundary(), patchI)
+        {
+            label centerLinePatchID = 
+                aMesh().boundary().findPatchID("right");
+
+            if(centerLinePatchID != -1)
+            {
+		const labelList& pointLabels = 
+                    aMesh().boundary()[centerLinePatchID].pointLabels();
+
+                forAll(pointLabels, pointI)
+                {
+		    pointsDisplacementDir()[pointLabels[pointI]] = vector(1,0,0);
+		}
+
+	    } else {
+                    Info << "Warning: right polyPatch does not exist. " 
+                        << "Free surface points displacement directions "
+                        << "will not be corrected at the axis (centerline)" 
+                        << endl;
+	    }	    
+	}	
+
         /*
         forAll(aMesh().boundary(), patchI)
         {
