@@ -1504,7 +1504,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             
             // Check the orientation of the two quad faces, and modify as necessary
             label newOwn=0, newNei=0;
-            bool flipOption;
+            bool flipOption = false;
 
             // The quad face belonging to cell[1] now becomes a part of cell[0]
             if ( neighbour_[commonIntFaceIndex[1]] == -1 ) {
@@ -1513,7 +1513,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                 f          = commonIntFaces[1];
                 newOwn     = c0;
                 newNei     = -1;
-                flipOption = false;
             } else if ( owner_[commonIntFaceIndex[1]] == c1 ) {
                 // This face is on the interior, check for previous owner 
                 // Upper-triangular ordering has to be maintained, however...
@@ -1528,7 +1527,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                     f          = commonIntFaces[1];
                     newOwn     = c0;
                     newNei     = neighbour_[commonIntFaceIndex[1]];
-                    flipOption = false;
                 }
             } else if ( neighbour_[commonIntFaceIndex[1]] == c1 ) {
                 // This face is on the interior, check for previous neighbour
@@ -1544,7 +1542,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                     f          = commonIntFaces[1];
                     newOwn     = owner_[commonIntFaceIndex[1]];
                     newNei     = c0;
-                    flipOption = false;
                 }                    
             }
 
@@ -1559,13 +1556,13 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             }            
 
             // The quad face belonging to cell[0] now becomes a part of cell[1]
+            flipOption = false;
             if ( neighbour_[commonIntFaceIndex[2]] == -1 ) {
                 // Boundary face
                 // Face doesn't need to be flipped, just update the owner
                 f          = commonIntFaces[2];
                 newOwn     = c1;
                 newNei     = -1;
-                flipOption = false;
             } else if ( owner_[commonIntFaceIndex[2]] == c0 ) {
                 // This face is on the interior, check for previous owner 
                 // Upper-triangular ordering has to be maintained, however...
@@ -1580,7 +1577,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                     f          = commonIntFaces[2];
                     newOwn     = c1;
                     newNei     = neighbour_[commonIntFaceIndex[2]];
-                    flipOption = false;
                 }
             } else if ( neighbour_[commonIntFaceIndex[2]] == c0 ) {
                 // This face is on the interior, check for previous neighbour
@@ -1596,7 +1592,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                     f          = commonIntFaces[2];
                     newOwn     = owner_[commonIntFaceIndex[2]];
                     newNei     = c1;
-                    flipOption = false;
                 }                    
             }
 
