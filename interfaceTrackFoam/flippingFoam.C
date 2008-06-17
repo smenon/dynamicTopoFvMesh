@@ -105,20 +105,20 @@ int main(int argc, char *argv[])
     argv[1] = new char[100];
     argv[2] = new char[100];
     strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
-    strcpy(argv[2],"street");
+    strcpy(argv[2],"holeinslab");
 
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"
-//#   include "createNuFields.H"
 
     // Define the rotation axis and angle (in radians)
-    vector p1(0.75,1.0,0.0), p2(0.75,1.0,1.0), t(0.005,0.0,0.0); // Street
+    vector p1(1.0,0.5,0.0), p2(1.0,0.5,1.0), t(0.0,0.0,0.0); // holeinslab
+    //vector p1(0.75,1.0,0.0), p2(0.75,1.0,1.0), t(0.005,0.0,0.0); // Street
     //vector p1(0.5,0.5,0.0), p2(0.5,0.5,1.0), t(0.0,0.0,0.0); // OffsetSqr
     doubleScalar angle = (0.72*3.14159)/180.0;
     
     // Enable/disable debugging
-    mesh.debug = false;
+    mesh.debug = true;
 
     for (runTime++; !runTime.end(); runTime++)
     {    

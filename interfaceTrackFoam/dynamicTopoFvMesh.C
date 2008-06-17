@@ -33,7 +33,6 @@ Author
 \*----------------------------------------------------------------------------*/
 
 #include "dynamicTopoFvMesh.H"
-#include "fvMeshMapper.H"
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
@@ -57,7 +56,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         IOobject::NO_WRITE
         )
     ),            
-    twoDMotion_(dict_.subDict("dynamicTopoFvMesh").lookup("twoD")), 
+    twoDMotion_(this->nGeometricD() == 2 ? true : false), 
     edgeModification_(dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")),
     solveForMotion_(dict_.subDict("dynamicTopoFvMesh").lookup("solveForMotion")),
     fluxInterpolation_(dict_.subDict("dynamicTopoFvMesh").lookup("fluxInterpolation")),
@@ -2821,51 +2820,17 @@ void Foam::dynamicTopoFvMesh::updateMotion()
             // Reset motion 
             for(label i=0; i<numPatches_; i++) 
                 motionU.boundaryField()[i] == vector::zero;            
-        }        
-
-        //- Velocity Laplacian FV motion solver
-        if 
-        (    
-            (solverType == "velocityLaplacian")
-        ) 
-        {
-            // Boundary motion specified for the fvMotionSolver
-            pointVectorField& motionU = const_cast<pointVectorField&>
-                    (this->objectRegistry::lookupObject<pointVectorField>("pointMotionU"));    
-
-            // Assign boundary conditions to the motion solver
-            for(label i=0; i<numPatches_; i++)
-                motionU.boundaryField()[i] == displacementPtr_[i]/time().deltaT().value();
-            
-            // Solve for motion   
-            movePoints(motionPtr_->newPoints());
-
-            // Reset motion 
-            for(label i=0; i<numPatches_; i++) 
-                motionU.boundaryField()[i] == vector::zero;            
-        }     
+        }          
         
-        //- Velocity Laplacian FV motion solver
+        //- Spring-based Laplacian motion solver
         if 
         (    
-            (solverType == "displacementLaplacian")
+            (solverType == "springMotionSolver")
         ) 
-        {
-            // Boundary motion specified for the fvMotionSolver
-            pointVectorField& pointDisplacement = const_cast<pointVectorField&>
-                    (this->objectRegistry::lookupObject<pointVectorField>("pointDisplacement"));    
-
-            // Assign boundary conditions to the motion solver
-            for(label i=0; i<numPatches_; i++)
-                pointDisplacement.boundaryField()[i] == displacementPtr_[i];
-            
+        {        
             // Solve for motion   
-            movePoints(motionPtr_->newPoints());
-
-            // Reset motion 
-            for(label i=0; i<numPatches_; i++) 
-                pointDisplacement.boundaryField()[i] == vector::zero;            
-        }        
+            movePoints(motionPtr_->newPoints());            
+        }
     }
 }
 
@@ -3123,20 +3088,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         movePoints(points);
         resetMotion();
         setV0();  
-        
-        /*
-        fvMeshMapper mapping(*this, mapper_);
-        for(label i=0; i<numPatches_; i++) {
-            Info << "Direct: " << mapping.boundaryMap()[i].direct() << endl;
-            Info << "Size: " << mapping.boundaryMap()[i].size() << endl;
-            if (mapping.boundaryMap()[i].direct()) {
-                Info << "Addressing: " << mapping.boundaryMap()[i].directAddressing() << endl;
-            } else {
-                Info << "Addressing: " << mapping.boundaryMap()[i].addressing() << endl;
-                Info << "Weights: " << mapping.boundaryMap()[i].weights() << endl;
-            }
-        }
-        */
     
         // Basic checks for mesh-validity
         if (debug) checkMesh(true);    

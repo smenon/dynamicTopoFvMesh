@@ -30,8 +30,8 @@ OBJECTFILES= \
 	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/basicCorrectedFvPatchFields/fixedValue/fixedValueCorrectedFvPatchFields.o \
 	${OBJECTDIR}/topoInterTrackFoam.o \
 	${OBJECTDIR}/flippingFoam.o \
-	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.o \
 	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/freeSurface.o \
+	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.o \
 	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchField.o \
 	${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/basicCorrectedFvPatchFields/fixedValue/fixedValueCorrectedFvPatchField.o \
 	${OBJECTDIR}/dynamicTopoFvMesh.o \
@@ -55,11 +55,11 @@ FFLAGS=
 LDLIBSOPTIONS=
 
 # Build Targets
-.build-conf: ${BUILD_SUBPROJECTS} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/topoInterTrackFoam
+.build-conf: ${BUILD_SUBPROJECTS} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam
 
-/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/topoInterTrackFoam: ${OBJECTFILES}
+/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam: ${OBJECTFILES}
 	${MKDIR} -p /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt
-	${LINK.cc} -o /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/topoInterTrackFoam ${OBJECTFILES} ${LDLIBSOPTIONS} 
+	${LINK.cc} -o /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam ${OBJECTFILES} ${LDLIBSOPTIONS} 
 
 ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/basicCorrectedFvPatchFields/fixedGradient/fixedGradientCorrectedFvPatchFields.o: ../newFreeSurface/correctedFvPatchFields/basicCorrectedFvPatchFields/fixedGradient/fixedGradientCorrectedFvPatchFields.C 
 	${MKDIR} -p ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/basicCorrectedFvPatchFields/fixedGradient
@@ -81,13 +81,13 @@ ${OBJECTDIR}/flippingFoam.o: flippingFoam.C
 	${MKDIR} -p ${OBJECTDIR}
 	$(COMPILE.cc) -g -o ${OBJECTDIR}/flippingFoam.o flippingFoam.C
 
-${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.o: ../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.C 
-	${MKDIR} -p ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField
-	$(COMPILE.cc) -g -o ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.o ../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.C
-
 ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/freeSurface.o: ../newFreeSurface/freeSurface.C 
 	${MKDIR} -p ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface
 	$(COMPILE.cc) -g -o ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/freeSurface.o ../newFreeSurface/freeSurface.C
+
+${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.o: ../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.C 
+	${MKDIR} -p ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField
+	$(COMPILE.cc) -g -o ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.o ../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchFields.C
 
 ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchField.o: ../newFreeSurface/correctedFvPatchFields/correctedFvPatchField/correctedFvPatchField.C 
 	${MKDIR} -p ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/interfaceTrackFoam/../newFreeSurface/correctedFvPatchFields/correctedFvPatchField
@@ -127,7 +127,7 @@ ${OBJECTDIR}/_ext/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/solvers/int
 # Clean Targets
 .clean-conf:
 	${RM} -r build/Debug
-	${RM} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/topoInterTrackFoam
+	${RM} /home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam
 
 # Subprojects
 .clean-subprojects:

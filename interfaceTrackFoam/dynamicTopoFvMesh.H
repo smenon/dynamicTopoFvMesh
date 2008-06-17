@@ -44,7 +44,6 @@ SourceFiles
 #include "fvCFD.H"
 #include "motionSolver.H"
 #include "mapPolyMesh.H"
-#include "fvMotionSolver.H"
 #include "tetDecompositionMotionSolver.H"
 #include "faceTetPolyPatch.H"
 #include "tetPolyPatchInterpolation.H"
