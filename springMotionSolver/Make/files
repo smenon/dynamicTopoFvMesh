@@ -1,0 +1,3 @@
+springMotionSolver.C
+
+LIB = $(FOAM_LIBBIN)/libspringMotionSolver
