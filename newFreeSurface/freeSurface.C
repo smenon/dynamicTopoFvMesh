@@ -394,6 +394,7 @@ void freeSurface::updateDisplacementDirections()
         // Correct point displacement direction 
         // at the "centerline" symmetryPlane which represents the axis
         // of an axisymmetric case
+        /*
         forAll(aMesh().boundary(), patchI)
         {
             label centerLinePatchID = 
@@ -417,7 +418,6 @@ void freeSurface::updateDisplacementDirections()
 	    }	    
 	}	
 
-        /*
         forAll(aMesh().boundary(), patchI)
         {
             if(aMesh().boundary()[patchI].type() == wedgeFaPatch::typeName)

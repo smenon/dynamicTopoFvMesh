@@ -97,7 +97,7 @@
       </toolsSet>
       <compileType>
         <linkerTool>
-          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/flippingFoam</output>
+          <output>/home/smenon/OpenFOAM/smenon-1.4.1-dev/applications/bin/linux64GccDPOpt/topoInterTrackFoam</output>
           <linkerLibItems>
           </linkerLibItems>
         </linkerTool>

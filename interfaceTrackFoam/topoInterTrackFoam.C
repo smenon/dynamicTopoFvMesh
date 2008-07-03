@@ -42,13 +42,11 @@ int main(int argc, char *argv[])
 {
 
     // For debug purposes, assign <root> and <case>
-    /*
     argc = 3; 
     argv[1] = new char[100];
     argv[2] = new char[100];
     strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
     strcpy(argv[2],"smaller");  
-    */
     
 #   include "setRootCase.H"
 #   include "createTime.H"
@@ -82,8 +80,8 @@ int main(int argc, char *argv[])
         interface.updateDisplacementDirections();        
 
         // Set boundary conditions for the motionSolver and solve for mesh-motion
-        interface.moveMeshPointsForOldFreeSurfDisplacement();
-        mesh.setMotionBC(interface.aPatchID()) = interface.totalDisplacement();
+        //interface.moveMeshPointsForOldFreeSurfDisplacement();
+        //mesh.setMotionBC(interface.aPatchID()) = interface.totalDisplacement();
         mesh.updateMotion();  
         
 #       include "volContinuity.H"
@@ -191,7 +189,7 @@ int main(int argc, char *argv[])
 #           include "correctPhi.H"            
 #           include "CourantNo.H"
         }        
-
+ 
         runTime.write(); 
 #       include "meshInfo.H"        
     }

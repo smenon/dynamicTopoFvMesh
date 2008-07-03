@@ -24,8 +24,6 @@
         pcorrTypes
     );
 
-#   include "continuityErrs.H"
-
     for(int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
     {
         fvScalarMatrix pcorrEqn

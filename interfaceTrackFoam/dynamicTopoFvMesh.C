@@ -71,7 +71,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     oldPatchStarts_(numPatches_,-1),
     patchStarts_(numPatches_,-1),
     oldPatchNMeshPoints_(numPatches_,-1),
-    patchNMeshPoints_(numPatches_,-1),            
+    patchNMeshPoints_(numPatches_,-1),  
     nOldPoints_(this->nPoints()),
     nPoints_(this->nPoints()),
     nOldFaces_(this->nFaces()),
@@ -1229,7 +1229,7 @@ scalar Foam::dynamicTopoFvMesh::boundaryLengthScale(const label faceIndex)
     return lengthScale_[owner_[faceIndex]];
 }
 
-// 2D Edge-swapping engine (for wedge meshes one-cell thick, w/o collapseEdges)
+// 2D Edge-swapping engine
 void Foam::dynamicTopoFvMesh::swap2DEdges()
 {
     bool found, foundinner;       
@@ -1260,7 +1260,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
         if (cell_0.nFaces() > 5 || cell_1.nFaces() > 5) continue;
 
         // Find the interior/boundary faces.
-        // Note: This will NOT work for pure-wedge meshes
         findPrismFaces(findex,cell_0,c0BdyFace,c0BdyIndex,c0IntFace,c0IntIndex);
         findPrismFaces(findex,cell_1,c1BdyFace,c1BdyIndex,c1IntFace,c1IntIndex);
 
@@ -3087,7 +3086,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         
         movePoints(points);
         resetMotion();
-        setV0();  
+        setV0();          
     
         // Basic checks for mesh-validity
         if (debug) checkMesh(true);    
