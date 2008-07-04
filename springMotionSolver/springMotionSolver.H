@@ -38,9 +38,6 @@ SourceFiles
 
 #include "motionSolver.H"
 
-#include "edgeList.H"
-#include "mapPolyMesh.H"
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -73,6 +70,9 @@ protected:
     
     // ID of the patch being smoothed
     label pID_;
+
+    // Y-direction constraint
+    scalar fixedY_;
     
     // Variables used in the CG solver
     scalarField b_;
@@ -92,6 +92,9 @@ protected:
     // Initialize fields for the CG solver
     void initCG(label);
     
+    // Set Dirichlet conditions for the solution field (if any)
+    void setDirichlet(scalarField &x);
+
     // Apply boundary conditions
     void applyBCs(scalarField &field);
 

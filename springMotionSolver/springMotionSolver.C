@@ -51,7 +51,8 @@ motionSolver(mesh),
 polyMesh_(mesh),
 refPoints_(mesh.points()),       
 cmpt_(-1),
-pID_(-1)
+pID_(-1),
+fixedY_(readScalar(lookup("fixedY")))
 {}
 
 
@@ -61,7 +62,8 @@ motionSolver(mesh),
 polyMesh_(mesh),
 refPoints_(mesh.points()),
 cmpt_(-1),
-pID_(-1)       
+pID_(-1),
+fixedY_(readScalar(lookup("fixedY")))
 {}
 
 
@@ -79,6 +81,9 @@ Foam::label Foam::springMotionSolver::CG(const scalarField& b, scalarField& x)
     // Local variables
     scalar alpha, beta, delta_old, delta_new, tolerance = 1e-16;
     label maxIter = x.size(), iter = 0;
+
+    // Set Dirichlet conditions on the solution field (if any)
+    setDirichlet(x);
     
     A(x,w_);
     r_ = b - w_; 
@@ -124,29 +129,44 @@ void Foam::springMotionSolver::A(const scalarField& p, scalarField& w)
     applyBCs(w);    
 }
 
+// Set Dirichlet conditions on the solution field (if any)
+void Foam::springMotionSolver::setDirichlet(scalarField &x)
+{
+    // For wedges, loop through boundaries, and fix y-direction on the axis
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+    if (boundary[pID_].type() == "wedge") {
+        for(label i = boundary[pID_].nInternalEdges(); 
+            i < boundary[pID_].edges().size(); 
+            i++)
+        {
+            if (    
+                    boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1] < (fixedY_+SMALL)
+                 && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1] < (fixedY_+SMALL)
+                 && cmpt_ == 1
+               )
+            {
+                // This edge lies on the axis. 
+                x[boundary[pID_].edges()[i][0]] = fixedY_;
+                x[boundary[pID_].edges()[i][1]] = fixedY_; 
+            }	    
+        }    
+    }
+}
+
 // Apply boundary conditions
 void Foam::springMotionSolver::applyBCs(scalarField &field)
 {
-    // Loop through boundary edges and set dirichlet conditions
+    // Loop through boundary edges and blank-out residuals
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-    /*
-    scalar yMin = min(boundary[pID_].localPoints().component(1));
-    if (yMin < 0.0) {
-        FatalErrorIn("springMotionSolver::applyBCs(scalarField &field)") << nl
-            << " Something's wrong. yMin = " << yMin << nl
-            << abort(FatalError);        
-    }    
-    */
     for(label i = boundary[pID_].nInternalEdges(); 
         i < boundary[pID_].edges().size(); 
         i++)
     {
         // If wedge patches are present, set axis nodes to slip
-        /*
-        if (boundary[pID_].type() == "empty") {            
+        if (boundary[pID_].type() == "wedge") {            
             if (    
-                    boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1] < (yMin+SMALL)
-                 && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1] < (yMin+SMALL)
+                    boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1] < (fixedY_+SMALL)
+                 && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1] < (fixedY_+SMALL)
                )
             {
                 // This edge lies on the axis. If the Y component is being solved for,
@@ -158,7 +178,6 @@ void Foam::springMotionSolver::applyBCs(scalarField &field)
                 continue;
             }
         }
-        */
         field[boundary[pID_].edges()[i][0]] = 0.0;
         field[boundary[pID_].edges()[i][1]] = 0.0;
     }
