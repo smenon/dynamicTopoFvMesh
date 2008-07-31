@@ -52,8 +52,13 @@ polyMesh_(mesh),
 refPoints_(mesh.points()),       
 cmpt_(-1),
 pID_(-1),
-fixedY_(readScalar(lookup("fixedY")))
-{}
+fixedY_(0.0)
+{
+    // Check if points on certain axes need to be maintained
+    if (found("fixedY")) {
+        fixedY_ = readScalar(lookup("fixedY"));
+    }
+}
 
 
 Foam::springMotionSolver::springMotionSolver(const polyMesh& mesh, Istream& msData)
@@ -63,8 +68,13 @@ polyMesh_(mesh),
 refPoints_(mesh.points()),
 cmpt_(-1),
 pID_(-1),
-fixedY_(readScalar(lookup("fixedY")))
-{}
+fixedY_(0.0)
+{
+    // Check if points on certain axes need to be maintained
+    if (found("fixedY")) {
+        fixedY_ = readScalar(lookup("fixedY"));
+    }
+}
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -134,7 +144,7 @@ void Foam::springMotionSolver::setDirichlet(scalarField &x)
 {
     // For wedges, loop through boundaries, and fix y-direction on the axis
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-    if (boundary[pID_].type() == "wedge") {
+    if (boundary[pID_].type() == "wedge" && cmpt_ == 1) {
         for(label i = boundary[pID_].nInternalEdges(); 
             i < boundary[pID_].edges().size(); 
             i++)
@@ -142,7 +152,6 @@ void Foam::springMotionSolver::setDirichlet(scalarField &x)
             if (    
                     boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1] < (fixedY_+SMALL)
                  && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1] < (fixedY_+SMALL)
-                 && cmpt_ == 1
                )
             {
                 // This edge lies on the axis. 
@@ -173,9 +182,9 @@ void Foam::springMotionSolver::applyBCs(scalarField &field)
                 // blank out the residual.
                 if (cmpt_ == 1) {
                     field[boundary[pID_].edges()[i][0]] = 0.0;
-                    field[boundary[pID_].edges()[i][1]] = 0.0; 
-                }               
-                continue;
+                    field[boundary[pID_].edges()[i][1]] = 0.0;
+                }
+		continue;
             }
         }
         field[boundary[pID_].edges()[i][0]] = 0.0;
@@ -233,8 +242,9 @@ void Foam::springMotionSolver::solve()
                     label iters = CG(b_,x_);
                     Info << " No Iterations: " << iters << endl;                    
                     // Map the points
-                    forAll(refPoints_,pointI) {
-                        refPoints_[pointI][cmpt_] = x_[boundary[pID_].whichPoint(pointI)];
+                    const labelList& mshPts = boundary[pID_].meshPoints();
+                    forAll(mshPts,pointI) {
+                        refPoints_[mshPts[pointI]][cmpt_] = x_[pointI];
                     }
                 }
             }
