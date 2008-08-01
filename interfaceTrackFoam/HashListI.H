@@ -67,10 +67,14 @@ HashList<T>::HashList()
     rehash_(false),
     rehashIndex_(-1)
 {}
-    
+
 //- Allocation for a null-constructed object, given size/value
 template<class T>
-void HashList<T>::setSize(const label size, const T& data)
+void HashList<T>::setSize
+(
+    const label size,
+    const T& data
+)
 {
     if (size<=0)
     {
@@ -86,37 +90,52 @@ void HashList<T>::setSize(const label size, const T& data)
 
     // Allocate the hash-table and initialize
     table_ = new Item<T>*[hash_table_size_];
-    for(label i=0; i<hash_table_size_; i++) table_[i] = 0;   
+    for(label i=0; i<hash_table_size_; i++)
+    {
+        table_[i] = 0;
+    }
 
     // Allocate
     Item<T> *thisPtr=0, *prevPtr=0;
-    for (label i=0; i<size_; i++) {
-        thisPtr = new Item<T>;      
+    for (label i=0; i<size_; i++)
+    {
+        thisPtr = new Item<T>;
         thisPtr->data_ = data;
         thisPtr->idx_ = i;
+
         // Update the hash-table
         label loc = hash(i)%hash_table_size_;
-        if (table_[loc]) {
+        if (table_[loc])
+        {
             table_[loc]->prev_ = thisPtr;
             thisPtr->next_ = table_[loc];
         }
         table_[loc] = thisPtr;
+
         // Update the numerical indexing
-        if (i==0) {
+        if (i==0)
+        {
             startIdx_ = thisPtr;
-        } else {
+        }
+        else
+        {
             prevPtr->nextidx_ = thisPtr;
             thisPtr->previdx_ = prevPtr;
         }
-        prevPtr = thisPtr;        
-    }  
+        prevPtr = thisPtr;
+    }
+
     // Update the last element
     endIdx_=prevPtr;
 }
 
 //- Construct given a size and value for all elements
 template<class T>
-HashList<T>::HashList(const label size, const T& data)
+HashList<T>::HashList
+(
+    const label size,
+    const T& data
+)
 {
     if (size<=0)
     {
@@ -132,37 +151,51 @@ HashList<T>::HashList(const label size, const T& data)
 
     // Allocate the hash-table and initialize
     table_ = new Item<T>*[hash_table_size_];
-    for(label i=0; i<hash_table_size_; i++) table_[i] = 0;  
+    for(label i=0; i<hash_table_size_; i++)
+    {
+        table_[i] = 0;
+    }
 
     // Allocate
     Item<T> *thisPtr=0, *prevPtr=0;
-    for (label i=0; i<size_; i++) {
-        thisPtr = new Item<T>;      
+    for (label i=0; i<size_; i++)
+    {
+        thisPtr = new Item<T>;
         thisPtr->data_ = data;
         thisPtr->idx_  = i;
+
         // Update the hash-table
         label loc = hash(i)%hash_table_size_;
-        if (table_[loc]) {
+        if (table_[loc])
+        {
             table_[loc]->prev_ = thisPtr;
             thisPtr->next_ = table_[loc];
         }
         table_[loc] = thisPtr;
+
         // Update the numerical indexing
-        if (i==0) {
+        if (i==0)
+        {
             startIdx_ = thisPtr;
-        } else {
+        }
+        else
+        {
             prevPtr->nextidx_ = thisPtr;
             thisPtr->previdx_ = prevPtr;
         }
-        prevPtr = thisPtr;        
-    }  
+        prevPtr = thisPtr;
+    }
+
     // Update the last element
-    endIdx_=prevPtr;   
+    endIdx_=prevPtr;
 }
 
 //- Construct from an existing List<T> structure
 template<class T>
-HashList<T>::HashList(const List<T>& data)
+HashList<T>::HashList
+(
+    const List<T>& data
+)
 {
     if (data.size()<=0)
     {
@@ -178,37 +211,51 @@ HashList<T>::HashList(const List<T>& data)
 
     // Allocate the hash-table and initialize
     table_ = new Item<T>*[hash_table_size_];
-    for(label i=0; i<hash_table_size_; i++) table_[i] = 0; 
-    
+    for(label i=0; i<hash_table_size_; i++)
+    {
+        table_[i] = 0;
+    }
+
     // Allocate
     Item<T> *thisPtr=0, *prevPtr=0;
-    for (label i=0; i<size_; i++) {
-        thisPtr = new Item<T>;      
+    for (label i=0; i<size_; i++)
+    {
+        thisPtr = new Item<T>;
         thisPtr->data_ = data[i];
         thisPtr->idx_  = i;
+
         // Update the hash-table
         label loc = hash(i)%hash_table_size_;
-        if (table_[loc]) {
+        if (table_[loc])
+        {
             table_[loc]->prev_ = thisPtr;
             thisPtr->next_ = table_[loc];
         }
         table_[loc] = thisPtr;
+
         // Update the numerical indexing
-        if (i==0) {
+        if (i==0)
+        {
             startIdx_ = thisPtr;
-        } else {
+        }
+        else
+        {
             prevPtr->nextidx_ = thisPtr;
             thisPtr->previdx_ = prevPtr;
         }
-        prevPtr = thisPtr;        
-    }  
+        prevPtr = thisPtr;
+    }
+
     // Update the last element
-    endIdx_=prevPtr;  
+    endIdx_=prevPtr;
 }
 
 //- Construct as copy
 template<class T>
-HashList<T>::HashList(const HashList<T>& data)
+HashList<T>::HashList
+(
+    const HashList<T>& data
+)
 {
     if (data.size()<=0)
     {
@@ -216,7 +263,7 @@ HashList<T>::HashList(const HashList<T>& data)
             << " Cannot allocate to size " << data.size()
             << abort(FatalError);
     }
- 
+
     // Initialize member data
     size_   = data.size();
     rehash_ = data.rehashRequired();
@@ -224,55 +271,76 @@ HashList<T>::HashList(const HashList<T>& data)
 
     // Allocate the hash-table and initialize
     table_ = new Item<T>*[hash_table_size_];
-    for(label i=0; i<hash_table_size_; i++) table_[i] = 0; 
+    for(label i=0; i<hash_table_size_; i++)
+    {
+        table_[i] = 0;
+    }
 
     // Allocate
     Item<T> *thisPtr=0, *prevPtr=0;
-    for (label i=0; i<size_; i++) {
-        thisPtr = new Item<T>;      
+    for (label i=0; i<size_; i++)
+    {
+        thisPtr = new Item<T>;
         thisPtr->data_ = data[i];
         thisPtr->idx_  = i;
+
         // Update the hash-table
         label loc = hash(i)%hash_table_size_;
-        if (table_[loc]) {
+        if (table_[loc])
+        {
             table_[loc]->prev_ = thisPtr;
             thisPtr->next_ = table_[loc];
         }
         table_[loc] = thisPtr;
+
         // Update the numerical indexing
-        if (i==0) {
+        if (i==0)
+        {
             startIdx_ = thisPtr;
-        } else {
+        }
+        else
+        {
             prevPtr->nextidx_ = thisPtr;
             thisPtr->previdx_ = prevPtr;
         }
-        prevPtr = thisPtr;        
-    }  
+        prevPtr = thisPtr;
+    }
+
     // Update the last element
-    endIdx_=prevPtr;   
+    endIdx_=prevPtr;
 }
 
 //- Insertion of a new element at the given label
 //- This will require a rehash() call
 template<class T>
-inline typename HashList<T>::iterator HashList<T>::insert(const label index, const T& data)
-{    
+inline typename HashList<T>::iterator HashList<T>::insert
+(
+    const label index,
+    const T& data
+)
+{
     // Hash the index
-    label loc = hash(index)%hash_table_size_, rhIndex; 
+    label loc = hash(index)%hash_table_size_, rhIndex;
     rehash_   = true;
+
     // Loop through chained linked-list
     Item<T> *thisPtr=0, *newPtr=0, *searchPtr=0; 
-    for (thisPtr=table_[loc]; thisPtr; thisPtr=thisPtr->next_) {
-        if (index == thisPtr->idx_) {
+    for (thisPtr=table_[loc]; thisPtr; thisPtr=thisPtr->next_)
+    {
+        if (index == thisPtr->idx_)
+        {
             // Allocate 
             newPtr = new Item<T>;
             newPtr->data_ = data;
-            // Update index pointers and set the rehash index      
-            if (thisPtr->previdx_) {
+
+            // Update index pointers and set the rehash index
+            if (thisPtr->previdx_)
+            {
                 thisPtr->previdx_->nextidx_ = newPtr;
                 // Look for a previous index which is sane
                 searchPtr=thisPtr;
-                do {
+                do
+                {
                     searchPtr = searchPtr->previdx_;
                     rhIndex   = searchPtr->idx_;
                 } while ((rhIndex == -1) && (searchPtr != startIdx_));
@@ -281,11 +349,13 @@ inline typename HashList<T>::iterator HashList<T>::insert(const label index, con
             newPtr->previdx_ = thisPtr->previdx_;
             newPtr->nextidx_ = thisPtr;
             thisPtr->previdx_ = newPtr;
+
             // Increment size and return pointer
             size_++;
             return iterator(newPtr);
         }
-    }   
+    }
+
     // The following line should never happen, just keeps gcc happy
 #   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::insert(const label, const T&) ") << nl
@@ -293,83 +363,110 @@ inline typename HashList<T>::iterator HashList<T>::insert(const label index, con
             << " Attempt to access an element that doesn't exist. "
             << abort(FatalError);
 #   endif
-    return iterator(newPtr);    
+    return iterator(newPtr);
 }
 
 //- Deletion of an element at the given label
 //- This will require a rehash() call
 template<class T>
-inline void HashList<T>::remove(const label index)
+inline void HashList<T>::remove
+(
+    const label index
+)
 {
     label rhIndex;
     Item<T> *thisPtr=getLinkItem(index), *searchPtr=thisPtr;
+
     // Set the rehash flag
-    rehash_ = true; 
+    rehash_ = true;
+
     // Update pointers, set the rehash index, and delete the item
-    if (thisPtr->prev_) {
+    if (thisPtr->prev_)
+    {
         thisPtr->prev_->next_ = thisPtr->next_;
-    } else {
+    }
+    else
+    {
         // The table entry points to this item
         label loc = hash(index)%hash_table_size_;
         table_[loc] = thisPtr->next_;
     }
-    if (thisPtr->next_) {
+    if (thisPtr->next_)
+    {
         thisPtr->next_->prev_ = thisPtr->prev_;
     }
-    if (thisPtr->previdx_) {
+    if (thisPtr->previdx_)
+    {
         thisPtr->previdx_->nextidx_ = thisPtr->nextidx_;
         // Look for a previous index which is sane
-        do {
+        do
+        {
             searchPtr = searchPtr->previdx_;
             rhIndex   = searchPtr->idx_;
-        } while ((rhIndex == -1) && (searchPtr != startIdx_));   
+        } while ((rhIndex == -1) && (searchPtr != startIdx_));
         rehashIndex_ = rhIndex < rehashIndex_ ? rhIndex : rehashIndex_;
-    } else {
+    }
+    else
+    {
         // The first item is to be removed; update the first item
         rehashIndex_ = -1;
         startIdx_ = thisPtr->nextidx_;
     }
-    if (thisPtr->nextidx_) {
+    if (thisPtr->nextidx_)
+    {
         thisPtr->nextidx_->previdx_ = thisPtr->previdx_;
-    } else {
+    }
+    else
+    {
         // The last item is being removed; update the last item
         endIdx_ = thisPtr->previdx_;
     }
     delete thisPtr;
 
     // Decrement size
-    size_--;     
+    size_--;
 }
 
 //- Append an element to the end of the list
 template<class T>
-inline label HashList<T>::append(const T& data)
+inline label HashList<T>::append
+(
+    const T& data
+)
 {
     // Index this item as an increment from the last index
     // This will allow random deletions from the list, while
     // keeping appends as valid
     label index=0;
     if (endIdx_) index = endIdx_->idx_+1;
+
     // Allocate and set the index
     Item<T> *newPtr = new Item<T>;
     newPtr->data_ = data;
     newPtr->idx_ = index;
+
     // Update the last element index
-    if (endIdx_) {
+    if (endIdx_)
+    {
         newPtr->previdx_ = endIdx_;
         endIdx_->nextidx_ = newPtr;
-    } else {
+    }
+    else
+    {
         // A null endIdx_ occurs only in null-constructed HashLists
         startIdx_ = newPtr;
     }
     endIdx_ = newPtr;
+
     // Hash the new index, and update the table
     label loc = hash(index)%hash_table_size_;
-    if (table_[loc]) {
+    if (table_[loc])
+    {
         table_[loc]->prev_ = newPtr;
         newPtr->next_ = table_[loc];
     }
     table_[loc] = newPtr;
+
     // Increment the size and return the index
     size_++;
     return index;
@@ -380,51 +477,64 @@ template<class T>
 void HashList<T>::clear()
 {
     Item<T> *current, *node;
+
     // Delete all links sequentially
     current = startIdx_;
-    while (current) {
+    while (current)
+    {
         node = current->nextidx_;
         delete current;
         current = node;
     }
+
     // Clean out the hash table
     for(label i=0; i<hash_table_size_; i++)
+    {
         table_[i] = 0;
+    }
     size_ = 0; startIdx_ = 0; endIdx_ = 0;
-    rehash_ = false; rehashIndex_ = -1;    
+    rehash_ = false; rehashIndex_ = -1;
 }
 
 //- Renumber (and rehash) indices after insertion/deletion
 /*
 template<class T>
 inline void HashList<T>::rehash()
-{    
-    if (this->rehash_) {
+{
+    if (this->rehash_)
+    {
         // A rehashIndex less than zero implies that the entire list is to be rehashed
         Item<T> *thisPtr = (rehashIndex_ < 0) ? startIdx_ : getLinkItem(rehashIndex_);
         for(
-             label idx = (thisPtr == startIdx_) ? 0 : rehashIndex_; 
-             thisPtr; 
+             label idx = (thisPtr == startIdx_) ? 0 : rehashIndex_;
+             thisPtr;
              thisPtr=thisPtr->nextidx_
-           ) 
+           )
         {
             // Renumber the HashList in a sequential fashion
-            thisPtr->idx_ = idx; 
+            thisPtr->idx_ = idx;
+
             // Remove the old links
             if (thisPtr->prev_) thisPtr->prev_->next_ = thisPtr->next_;
             if (thisPtr->next_) thisPtr->next_->prev_ = thisPtr->prev_;
+
             // Hash the new index, and update the table
             label loc = hash(idx)%hash_table_size_;
-            if (table_[loc] == thisPtr) {
+            if (table_[loc] == thisPtr)
+            {
                 table_[loc] = thisPtr->next_;
-            } else if (table_[loc]) {
+            }
+            else
+            if (table_[loc])
+            {
                 table_[loc]->prev_ = thisPtr;
                 thisPtr->next_ = table_[loc];
             }
             thisPtr->prev_ = 0;
             table_[loc] = thisPtr;
             idx++;
-        }  
+        }
+
         // Reset the rehash flag and index
         rehash_      = false;
         rehashIndex_ = size_;
@@ -440,15 +550,16 @@ void HashList<T>::sort()
     Item<T> *tmpItem = getLinkItem(0);
     tmpItem->previdx_ = 0;
     startIdx_ = tmpItem;
-    
+
     // Loop through the rest of the elements and set accordingly
-    for(label i=1; i<size_; i++) {
+    for(label i=1; i<size_; i++)
+    {
         Item<T> *item = getLinkItem(i);
         tmpItem->nextidx_ = item;
         item->previdx_    = tmpItem;
         tmpItem = item;
     }
-    
+
     // Set the ending index
     tmpItem->nextidx_ = 0;
     endIdx_ = tmpItem;
@@ -460,7 +571,8 @@ void HashList<T>::sort()
 template<class T>
 HashList<T>::~HashList()
 {
-    if (table_) {
+    if (table_)
+    {
         clear();
         delete [] table_;
     }
@@ -470,15 +582,21 @@ HashList<T>::~HashList()
 
 //- Return an item of the HashList
 template<class T>
-inline Item<T>* HashList<T>::getLinkItem(const label index)
+inline Item<T>* HashList<T>::getLinkItem
+(
+    const label index
+)
 {
     // Hash the index
     label loc = hash(index)%hash_table_size_;
+
     // Loop through chained linked-list
     Item<T> *item=0;
-    for (item=table_[loc]; item; item=item->next_) {
+    for (item=table_[loc]; item; item=item->next_)
+    {
         if (index == item->idx_) return item;
     }
+
     // The following line should never happen, just keeps gcc happy
 #   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::getLinkItem(const label index) ") << nl
@@ -486,7 +604,7 @@ inline Item<T>* HashList<T>::getLinkItem(const label index)
             << " Attempt to access an element that doesn't exist. "
             << abort(FatalError);
 #   endif
-    return item;    
+    return item;
 }
 
 //- Member function for the iterator
@@ -498,23 +616,30 @@ inline label HashList<T>::iterator::index()
 
 //- Rehash the index of an iterator to a new value
 template<class T>
-inline void HashList<T>::reNumber(const label newIndex, iterator& iter)
+inline void HashList<T>::reNumber
+(
+    const label newIndex, iterator& iter
+)
 {
     // Hash the old index
     label oldloc = hash(iter.index())%hash_table_size_;
+
     // Reset the index for the item
     iter.curItem->idx_ = newIndex;
     label newloc = hash(newIndex)%hash_table_size_;
+
     // Change the hash-table pointers
     // Remove the old links
-    if (iter.curItem->prev_) 
+    if (iter.curItem->prev_)
         iter.curItem->prev_->next_ = iter.curItem->next_;
-    if (iter.curItem->next_) 
+    if (iter.curItem->next_)
         iter.curItem->next_->prev_ = iter.curItem->prev_;
+
     // Update the table
     if (table_[oldloc] == iter.curItem)
         table_[oldloc] = iter.curItem->next_;
-    if (table_[newloc]) {
+    if (table_[newloc])
+    {
         table_[newloc]->prev_  = iter.curItem;
         iter.curItem->next_ = table_[newloc];
     }
@@ -531,27 +656,42 @@ inline T& HashList<T>::iterator::operator()()
 
 // Iterator operator overload - Assignment 
 template<class T>
-inline void HashList<T>::iterator::operator=(const iterator& rhs)
+inline void HashList<T>::iterator::operator=
+(
+    const iterator& rhs
+)
 {
     curItem = rhs.curItem;
 }
 
 // Iterator operator overload - Check for inequality
 template<class T>
-inline bool HashList<T>::iterator::operator!=(const iterator& rhs) const
+inline bool HashList<T>::iterator::operator!=
+(
+    const iterator& rhs
+) const
 {
     return !(curItem == rhs.curItem);
 }
 
 // Iterator operator overload - Check for equality
 template<class T>
-inline bool HashList<T>::iterator::operator==(const iterator& rhs) const {
+inline bool HashList<T>::iterator::operator==
+(
+    const iterator& rhs
+) const
+{
     return (curItem == rhs.curItem);
 }
 
 // Iterator operator overload - Increment to next item in the list
 template<class T>
-inline typename HashList<T>::iterator& HashList<T>::iterator::operator++(int)
+inline typename
+HashList<T>::iterator&
+HashList<T>::iterator::operator++
+(
+    int
+)
 {
     curItem = curItem->nextidx_;
     return (*this);
@@ -616,47 +756,33 @@ inline bool HashList<T>::empty() const
 
 //- Check the validity of an index
 template<class T>
-inline bool HashList<T>::checkIndex(const label index) const
+inline bool HashList<T>::checkIndex
+(
+    const label index
+) const
 {
     // Hash the index
-    label loc = hash(index)%hash_table_size_;    
-    // Loop through chained linked-list 
-    for (Item<T> *item=table_[loc]; item; item=item->next_) {
+    label loc = hash(index)%hash_table_size_;
+
+    // Loop through chained linked-list
+    for (Item<T> *item=table_[loc]; item; item=item->next_)
+    {
         if (index == item->idx_) return true;
-    } 
+    }
     return false;
-}
-
-template<class T>
-Ostream& operator<<(Ostream& os, HashList<T>& L) 
-{
-    // Write size of HashList
-    os << nl << L.size();
-
-    // Write beginning of contents
-    os << nl << token::BEGIN_LIST << nl;  
-    
-    // Write HashList contents
-    for(typename HashList<T>::iterator iter = L.begin(); iter != L.end(); iter++)
-        os << iter.index() << token::SPACE << iter() << nl;    
-    
-    // Write end of contents
-    os << token::END_LIST;
-
-    // Check state of IOstream
-    os.check("Ostream& operator<<(Ostream&, const HashList&)");
-
-    return os;    
 }
 
 //- Print out the link-list structure
 template<class T>
 void HashList<T>::toc() const
 {
-    for(label i=0; i<hash_table_size_; i++) {
+    for(label i=0; i<hash_table_size_; i++)
+    {
         Info << i << ": ";
-        if (table_[i]) {
-            for(Item<T> *item = table_[i]; item; item=item->next_) {
+        if (table_[i])
+        {
+            for(Item<T> *item = table_[i]; item; item=item->next_)
+            {
                 Info << item->idx_ << "->";
             }
         }
@@ -667,12 +793,15 @@ void HashList<T>::toc() const
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 template<class T>
-HashList<T>& HashList<T>::operator=(const HashList& HLrhs)
+HashList<T>& HashList<T>::operator=
+(
+    const HashList& HLrhs
+)
 {
     Item<T> *lhs, *rhs;
     for(lhs=startIdx_, rhs=HLrhs.startIdx_;
         lhs;
-        lhs=lhs->nextidx_, rhs=rhs->nextidx_) 
+        lhs=lhs->nextidx_, rhs=rhs->nextidx_)
     {
         lhs->data_ = rhs->data_;
     }
@@ -681,15 +810,21 @@ HashList<T>& HashList<T>::operator=(const HashList& HLrhs)
 
 //- Return subscript-checked iterator of HashList.
 template<class T>
-inline typename HashList<T>::iterator HashList<T>::operator()(const label index)
+inline typename HashList<T>::iterator HashList<T>::operator()
+(
+    const label index
+)
 {
     // Hash the index
     label loc = hash(index)%hash_table_size_;
+
     // Loop through chained linked-list
     Item<T> *item=0;
-    for (item=table_[loc]; item; item=item->next_) {
+    for (item=table_[loc]; item; item=item->next_)
+    {
         if (index == item->idx_) return iterator(item);
     }
+
     // The following line should never happen, just keeps gcc happy
 #   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::operator()(const label index) ") << nl
@@ -697,20 +832,28 @@ inline typename HashList<T>::iterator HashList<T>::operator()(const label index)
             << " Attempt to access an element that doesn't exist. "
             << abort(FatalError);
 #   endif
-    return iterator(item);    
+    return iterator(item);
 }
 
 //- Return subscript-checked iterator of constant HashList.
 template<class T>
-inline const typename HashList<T>::iterator HashList<T>::operator()(const label index) const
+inline const typename
+HashList<T>::iterator
+HashList<T>::operator()
+(
+    const label index
+) const
 {
     // Hash the index
     label loc = hash(index)%hash_table_size_;
+
     // Loop through chained linked-list
     Item<T> *item=0;
-    for (item=table_[loc]; item; item=item->next_) {
+    for (item=table_[loc]; item; item=item->next_)
+    {
         if (index == item->idx_) return iterator(item);
     }
+
     // The following line should never happen, just keeps gcc happy
 #   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::operator()(const label index) const") << nl
@@ -718,54 +861,69 @@ inline const typename HashList<T>::iterator HashList<T>::operator()(const label 
             << " Attempt to access an element that doesn't exist. "
             << abort(FatalError);
 #   endif
-    return iterator(item);    
+    return iterator(item);
 }
 
 //- Return element of HashList.
 template<class T>
-inline T& HashList<T>::operator[](const label index)
-{   
+inline T& HashList<T>::operator[]
+(
+    const label index
+)
+{
     // Hash the index
     label loc = hash(index)%hash_table_size_;
+
     // Loop through chained linked-list
     Item<T> *item=0; 
-    for (item=table_[loc]; item; item=item->next_) {
+    for (item=table_[loc]; item; item=item->next_)
+    {
         if (index == item->idx_) return item->data_;
-    } 
+    }
+
     // The following line should never happen, just keeps gcc happy
 #   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::operator[](const label index) ") << nl
         << " Index: " << index 
         << " Attempt to access an element that doesn't exist. "
-        << abort(FatalError);    
-#   endif 
+        << abort(FatalError);
+#   endif
     return item->data_;
 }
 
 //- Return element of constant HashList.
 template<class T>
-inline const T& HashList<T>::operator[](const label index) const
+inline const T& HashList<T>::operator[]
+(
+    const label index
+) const
 {
     // Hash the index
     label loc = hash(index)%hash_table_size_;
+
     // Loop through chained linked-list
     Item<T> *item=0; 
-    for (item=table_[loc]; item; item=item->next_) {
+    for (item=table_[loc]; item; item=item->next_)
+    {
         if (index == item->idx_) return item->data_;
-    }   
+    }
+
     // The following line should never happen, just keeps gcc happy
 #   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::operator[](const label index) const ") << nl
         << " Index: " << index 
         << " Attempt to access an element that doesn't exist. "
-        << abort(FatalError);    
-#   endif     
+        << abort(FatalError);
+#   endif
     return item->data_;
 }
 
 //- Assignment of all entries to the given value
 template<class T>
-inline void HashList<T>::operator=(const T& rhs)
+inline void HashList<T>::operator=
+(
+    const T& rhs
+)
 {
     for(Item<T> *item=startIdx_; item; item=item->nextidx_) item->data_ = rhs;
     return (*this);
@@ -773,6 +931,27 @@ inline void HashList<T>::operator=(const T& rhs)
 
 // * * * * * * * * * * * * * * * Ostream Operator  * * * * * * * * * * * * * //
 
+template<class T>
+Ostream& operator<<(Ostream& os, HashList<T>& L)
+{
+    // Write size of HashList
+    os << nl << L.size();
+
+    // Write beginning of contents
+    os << nl << token::BEGIN_LIST << nl;
+
+    // Write HashList contents
+    for(typename HashList<T>::iterator iter = L.begin(); iter != L.end(); iter++)
+        os << iter.index() << token::SPACE << iter() << nl;
+
+    // Write end of contents
+    os << token::END_LIST;
+
+    // Check state of IOstream
+    os.check("Ostream& operator<<(Ostream&, const HashList&)");
+
+    return os;
+}
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
