@@ -204,11 +204,11 @@ class dynamicTopoFvMesh
         
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
-        void findPrismFaces(const label&, const cell&, face[], label[], face[], label[]);
+        void findPrismFaces(const label&, const cell&, faceList&, labelList&, faceList&, labelList&);
         
         // Method to find the interior/boundary faces
         // for an input tri-face and adjacent tet/pyramid cell.
-        void findTetPyramidFaces(const label&, const cell&, face[], label[], face[], label[]);
+        void findTetPyramidFaces(const label&, const cell&, faceList&, labelList&, faceList&, labelList&);
         
         // Method to find the common-edge between two faces.
         // If an edge is found, returns the common edge on the first face in the argument

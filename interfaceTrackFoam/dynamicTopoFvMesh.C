@@ -172,7 +172,10 @@ Foam::dynamicTopoFvMesh::~dynamicTopoFvMesh()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Access a particular boundary displacement patch
-Foam::vectorField& Foam::dynamicTopoFvMesh::setMotionBC(const label& index)
+Foam::vectorField& Foam::dynamicTopoFvMesh::setMotionBC
+(
+    const label& index
+)
 {
     return displacementPtr_[index];
 }
@@ -218,10 +221,12 @@ inline Foam::vector Foam::dynamicTopoFvMesh::cellCenter
 )
 {
     vector fC, cC = vector::zero;
-    forAll(checkCell,faceI) {
+    forAll(checkCell,faceI) 
+    {
         face& faceCheck = faces_[checkCell[faceI]];
         fC = vector::zero;
-        forAll(faceCheck,pointI) {
+        forAll(faceCheck,pointI) 
+        {
             fC += meshPoints_[faceCheck[pointI]];
         }
         cC += (fC/faceCheck.size());
@@ -287,10 +292,10 @@ void Foam::dynamicTopoFvMesh::findPrismFaces
 (
     const label& findex,
     const cell& c,
-    face bdyf[],
-    label bidx[],
-    face intf[],
-    label iidx[]
+    faceList& bdyf,
+    labelList& bidx,
+    faceList& intf,
+    labelList& iidx
 )
 {
     label indexO=0, indexI=0;
@@ -337,13 +342,16 @@ void Foam::dynamicTopoFvMesh::findTetPyramidFaces
 (
     const label& findex,
     const cell& c,
-    face bdyf[],
-    label bidx[],
-    face intf[],
-    label iidx[]
+    faceList& bdyf,
+    labelList& bidx,
+    faceList& intf,
+    labelList& iidx
 )
 {
-
+    forAll(c, i)
+    {
+        
+    }    
 }
 
 // Utility method to find the common edge between two faces.
@@ -566,15 +574,19 @@ void Foam::dynamicTopoFvMesh::removeFace
     {
         // Check if this face was added from another entity, and remove if found.
         bool found=false;
-        forAll(facesFromFaces_,faceI) {
-            if (facesFromFaces_[faceI].index() == index) {
+        forAll(facesFromFaces_,faceI) 
+        {
+            if (facesFromFaces_[faceI].index() == index) 
+            {
                 found=true; break;
             }
         }
-        if (found) {
+        if (found) 
+        {
             List<objectMap> fffCopy(facesFromFaces_.size()-1);
             label count=0;
-            forAll(facesFromFaces_,faceI) {
+            forAll(facesFromFaces_,faceI) 
+            {
                 if (facesFromFaces_[faceI].index() != index)
                     fffCopy[count++] = facesFromFaces_[faceI];
             }
@@ -1453,8 +1465,8 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
 {
     bool found, foundinner;
     label otherPointIndex[4], nextToOtherPoint[4], commonFaceIndex[4], commonIntFaceIndex[4];
-    label c0BdyIndex[2], c0IntIndex[2], c1BdyIndex[2], c1IntIndex[2];
-    face  c0BdyFace[2],  c0IntFace[2],  c1BdyFace[2],  c1IntFace[2];
+    labelList c0BdyIndex(2), c0IntIndex(2), c1BdyIndex(2), c1IntIndex(2);
+    faceList  c0BdyFace(2),  c0IntFace(2),  c1BdyFace(2),  c1IntFace(2);
     face f, commonFaces[4], commonIntFaces[4];
     edge commonEdges[2], firstEdge(0,0);
 
@@ -2141,8 +2153,8 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     // Local variables
     bool found, flipOption;
     label otherPointIndex[4], nextToOtherPoint[4], replaceFace, n0=-1, n1=-1;
-    label c0BdyIndex[2], c0IntIndex[2], c1BdyIndex[2], c1IntIndex[2];
-    face  c0BdyFace[2],  c0IntFace[2],  c1BdyFace[2],  c1IntFace[2];
+    labelList c0BdyIndex(2), c0IntIndex(2), c1BdyIndex(2), c1IntIndex(2);
+    faceList  c0BdyFace(2),  c0IntFace(2),  c1BdyFace(2),  c1IntFace(2);
     edge  tmpEdge(0,0), commonEdges[2], firstEdge(0,0), secondEdge(0,0);
 
     // Get the two cells on either side...
@@ -2592,8 +2604,8 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
 
     // Local variables
     bool flipOption;
-    label c0BdyIndex[2], c0IntIndex[2], c1BdyIndex[2], c1IntIndex[2];
-    face  c0BdyFace[2],  c0IntFace[2],  c1BdyFace[2],  c1IntFace[2];
+    labelList c0BdyIndex(2), c0IntIndex(2), c1BdyIndex(2), c1IntIndex(2);
+    faceList  c0BdyFace(2),  c0IntFace(2),  c1BdyFace(2),  c1IntFace(2);
     edge  tmpEdge(0, 0), firstEdge, secondEdge;
     face  tmpTriFace(3);
 
@@ -3112,8 +3124,8 @@ bool Foam::dynamicTopoFvMesh::remove2DSliver
     face& thisFace
 )
 {
-    label c0BdyIndex[2], c0IntIndex[2];
-    face  c0BdyFace[2],  c0IntFace[2];
+    labelList c0BdyIndex(2), c0IntIndex(2);
+    faceList  c0BdyFace(2),  c0IntFace(2);
 
     // Measure the boundary edge-length of the face in question
     edge& checkEdge = edgeToWatch_[findex];
