@@ -1464,11 +1464,13 @@ scalar Foam::dynamicTopoFvMesh::boundaryLengthScale
 void Foam::dynamicTopoFvMesh::swap2DEdges()
 {
     bool found, foundinner;
-    label otherPointIndex[4], nextToOtherPoint[4], commonFaceIndex[4], commonIntFaceIndex[4];
+    face f;
+    edge firstEdge(0,0);
+    labelList otherPointIndex(4), nextToOtherPoint(4), commonFaceIndex(4), commonIntFaceIndex(4);
     labelList c0BdyIndex(2), c0IntIndex(2), c1BdyIndex(2), c1IntIndex(2);
     faceList  c0BdyFace(2),  c0IntFace(2),  c1BdyFace(2),  c1IntFace(2);
-    face f, commonFaces[4], commonIntFaces[4];
-    edge commonEdges[2], firstEdge(0,0);
+    faceList  commonFaces(4), commonIntFaces(4);
+    edgeList  commonEdges(2);
 
     for(HashList<face>::iterator fIter = faces_.begin(); fIter != faces_.end(); fIter++)
     {
@@ -2152,10 +2154,12 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
 {
     // Local variables
     bool found, flipOption;
-    label otherPointIndex[4], nextToOtherPoint[4], replaceFace, n0=-1, n1=-1;
+    label replaceFace, n0=-1, n1=-1;
+    edgeList commonEdges(2);
+    labelList otherPointIndex(4), nextToOtherPoint(4);
     labelList c0BdyIndex(2), c0IntIndex(2), c1BdyIndex(2), c1IntIndex(2);
     faceList  c0BdyFace(2),  c0IntFace(2),  c1BdyFace(2),  c1IntFace(2);
-    edge  tmpEdge(0,0), commonEdges[2], firstEdge(0,0), secondEdge(0,0);
+    edge tmpEdge(0,0), firstEdge(0,0), secondEdge(0,0);
 
     // Get the two cells on either side...
     label c0 = owner_[findex], c1 = neighbour_[findex];
