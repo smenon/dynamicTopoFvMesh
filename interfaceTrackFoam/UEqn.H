@@ -1,8 +1,8 @@
     fvVectorMatrix UEqn
     (
-        fvm::ddt(rho, U)
-      + fvm::div(fvc::interpolate(rho)*phi, U)
-      - fvm::laplacian(nuModel->nu()*rho, U)
+        fvm::ddt(U)
+      + fvm::div(phi, U)
+      - fvm::laplacian(nu, U)
     );
 
     if (momentumPredictor)
