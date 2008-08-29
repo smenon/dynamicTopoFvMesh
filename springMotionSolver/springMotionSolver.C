@@ -27,8 +27,6 @@ License
 #include "springMotionSolver.H"
 #include "addToRunTimeSelectionTable.H"
 
-#include "polyMesh.H"
-
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
@@ -47,12 +45,23 @@ namespace Foam
 
 Foam::springMotionSolver::springMotionSolver(const polyMesh& mesh)
 :
-motionSolver(mesh),
-polyMesh_(mesh),
-refPoints_(mesh.points()),       
-cmpt_(-1),
-pID_(-1),
-fixedY_(0.0)
+    motionSolver(mesh),
+    polyMesh_(mesh),
+    refPoints_
+    (
+        IOobject
+        (
+            "refPoints",
+            mesh.instance(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),            
+        mesh.points()
+    ),       
+    cmpt_(-1),
+    pID_(-1),
+    fixedY_(0.0)
 {
     // Check if points on certain axes need to be maintained
     if (found("fixedY")) {
@@ -63,15 +72,27 @@ fixedY_(0.0)
 
 Foam::springMotionSolver::springMotionSolver(const polyMesh& mesh, Istream& msData)
 :
-motionSolver(mesh),
-polyMesh_(mesh),
-refPoints_(mesh.points()),
-cmpt_(-1),
-pID_(-1),
-fixedY_(0.0)
+    motionSolver(mesh),
+    polyMesh_(mesh),
+    refPoints_
+    (
+        IOobject
+        (
+            "refPoints",
+            mesh.instance(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),            
+        mesh.points()
+    ), 
+    cmpt_(-1),
+    pID_(-1),
+    fixedY_(0.0)
 {
     // Check if points on certain axes need to be maintained
-    if (found("fixedY")) {
+    if (found("fixedY")) 
+    {
         fixedY_ = readScalar(lookup("fixedY"));
     }
 }
@@ -100,7 +121,8 @@ Foam::label Foam::springMotionSolver::CG(const scalarField& b, scalarField& x)
     p_ = r_;    
     delta_new = gSumProd(r_,r_);  
     Info << " Initial residual: " << delta_new;
-    while ( (iter < maxIter) && (delta_new > tolerance) ) {
+    while ( (iter < maxIter) && (delta_new > tolerance) ) 
+    {
         A(p_,w_);
         alpha = delta_new / gSumProd(p_,w_);
         x  += (alpha*p_);
@@ -124,13 +146,15 @@ void Foam::springMotionSolver::A(const scalarField& p, scalarField& w)
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
     
     // Gradient (n2e)
-    forAll(boundary[pID_].edges(),edgeI) {
+    forAll(boundary[pID_].edges(),edgeI) 
+    {
         gradEdge_[edgeI] =   p[boundary[pID_].edges()[edgeI][1]] 
                            - p[boundary[pID_].edges()[edgeI][0]];
     }
     
     // Divergence (e2n)
-    forAll(boundary[pID_].edges(),edgeI) {
+    forAll(boundary[pID_].edges(),edgeI) 
+    {
         w[boundary[pID_].edges()[edgeI][0]] += gradEdge_[edgeI];
         w[boundary[pID_].edges()[edgeI][1]] -= gradEdge_[edgeI];
     }
@@ -144,7 +168,8 @@ void Foam::springMotionSolver::setDirichlet(scalarField &x)
 {
     // For wedges, loop through boundaries, and fix y-direction on the axis
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-    if (boundary[pID_].type() == "wedge" && cmpt_ == 1) {
+    if (boundary[pID_].type() == "wedge" && cmpt_ == 1) 
+    {
         for(label i = boundary[pID_].nInternalEdges(); 
             i < boundary[pID_].edges().size(); 
             i++)
@@ -172,7 +197,8 @@ void Foam::springMotionSolver::applyBCs(scalarField &field)
         i++)
     {
         // If wedge patches are present, set axis nodes to slip
-        if (boundary[pID_].type() == "wedge") {            
+        if (boundary[pID_].type() == "wedge") 
+        {            
             if (    
                     boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1] < (fixedY_+SMALL)
                  && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1] < (fixedY_+SMALL)
@@ -195,7 +221,8 @@ void Foam::springMotionSolver::applyBCs(scalarField &field)
 // Initialize fields for the CG solver
 void Foam::springMotionSolver::initCG(label nUnknowns)
 {
-    if (r_.size() != nUnknowns) {
+    if (r_.size() != nUnknowns) 
+    {
         b_.setSize(nUnknowns, 0.0);
         x_.setSize(nUnknowns, 0.0);
         p_.setSize(nUnknowns, 0.0);
@@ -204,7 +231,8 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
     }
 
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();    
-    if (gradEdge_.size() != boundary[pID_].edges().size()) {
+    if (gradEdge_.size() != boundary[pID_].edges().size()) 
+    {
         gradEdge_.setSize(boundary[pID_].edges().size(), 0.0);
     }
 }
@@ -231,20 +259,31 @@ void Foam::springMotionSolver::solve()
     if (twoDMotion()) {
         // Loop through patches, check for empty/wedge, and smooth them
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-        for(label i=0; i<boundary.size(); i++) {
-            if(boundary[i].type() == "wedge" || boundary[i].type() == "empty") { 
+        for(label i=0; i<boundary.size(); i++) 
+        {
+            if(boundary[i].type() == "wedge" || boundary[i].type() == "empty") 
+            { 
                 pID_ = i;
+                
                 // Initialize the solver variables
-                initCG(boundary[pID_].localPoints().size());
-                for(cmpt_=0; cmpt_<2; cmpt_++) {
-                    x_ = boundary[pID_].localPoints().component(cmpt_);
+                const labelList& meshPts = boundary[pID_].meshPoints();
+                
+                initCG(meshPts.size());
+                
+                for(cmpt_=0; cmpt_<2; cmpt_++) 
+                {
+                    forAll(meshPts,pointI) 
+                    {
+                        x_[pointI] = refPoints_[meshPts[pointI]][cmpt_];
+                    }
+
                     Info << "Solving for component: " << cmpt_;
                     label iters = CG(b_,x_);
                     Info << " No Iterations: " << iters << endl;                    
-                    // Map the points
-                    const labelList& mshPts = boundary[pID_].meshPoints();
-                    forAll(mshPts,pointI) {
-                        refPoints_[mshPts[pointI]][cmpt_] = x_[pointI];
+
+                    forAll(meshPts,pointI) 
+                    {
+                        refPoints_[meshPts[pointI]][cmpt_] = x_[pointI];
                     }
                 }
             }

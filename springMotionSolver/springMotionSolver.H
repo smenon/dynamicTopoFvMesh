@@ -37,11 +37,12 @@ SourceFiles
 #define springMotionSolver_H
 
 #include "motionSolver.H"
+#include "polyMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
-{
+{    
 
 /*---------------------------------------------------------------------------*\
                            Class fvMotionSolver Declaration
@@ -60,7 +61,7 @@ protected:
     const polyMesh& polyMesh_;
     
     // Reference points
-    mutable pointField refPoints_;
+    mutable pointIOField refPoints_;
     
     // Edge gradient field
     scalarField gradEdge_;
@@ -101,7 +102,7 @@ protected:
 public:
 
     //- Runtime type information
-    TypeName("springMotionSolver");
+    ClassName("springMotionSolver");
 
 
     // Constructors
