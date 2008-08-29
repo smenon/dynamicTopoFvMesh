@@ -150,14 +150,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Create a displacement field for all boundaries defined in the mesh
     // and initialize values to zero
     const polyBoundaryMesh& boundary = this->boundaryMesh();
-    displacementPtr_.setSize(numPatches_);
     for(label i=0; i<numPatches_; i++)
     {
-        displacementPtr_.set
-        (
-           i,
-           new vectorField(boundary[i].nPoints(), vector::zero)
-        );
         oldPatchSizes_[i]  = patchSizes_[i]  = boundary[i].size();
         oldPatchStarts_[i] = patchStarts_[i] = boundary[i].start();
         oldPatchNMeshPoints_[i] = patchNMeshPoints_[i] = boundary[i].meshPoints().size();
@@ -172,12 +166,80 @@ Foam::dynamicTopoFvMesh::~dynamicTopoFvMesh()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Access a particular boundary displacement patch
-Foam::vectorField& Foam::dynamicTopoFvMesh::setMotionBC
+void Foam::dynamicTopoFvMesh::setMotionBC
 (
-    const label& index
+    const label& index,
+    const vectorField& dispField
 )
 {
-    return displacementPtr_[index];
+    if (solveForMotion_)
+    {
+        // Determine the kind of motion solver in use
+        word solverType(dict_.lookup("solver"));
+
+        //- Cell decomposition FEM motion solver
+        if
+        (
+            (solverType == "laplaceCellDecomposition")
+         || (solverType == "pseudoSolidCellDecomposition")
+        )
+        {
+            // Boundary motion specified for the tetDecompositionMotionSolver
+            tetPointVectorField& motionU = const_cast<tetPointVectorField&>
+                    (objectRegistry::lookupObject<tetPointVectorField>("motionU"));
+
+            // Assign boundary conditions to the motion solver
+            motionU.boundaryField()[index] == dispField/time().deltaT().value();
+        }
+
+        //- Face decomposition FEM motion solver
+        if
+        (
+            (solverType == "laplaceFaceDecomposition")
+         || (solverType == "pseudoSolidFaceDecomposition")
+        )
+        {
+            // Boundary motion specified for the tetDecompositionMotionSolver
+            tetPointVectorField& motionU = const_cast<tetPointVectorField&>
+                    (objectRegistry::lookupObject<tetPointVectorField>("motionU"));
+
+            // Assign boundary conditions to the motion solver
+
+            // The face-decomposition solver includes points at face-centres,
+            // thus point motion has to be interpolated to these points
+            tetPolyPatchInterpolation interpolator
+            (
+                refCast<const faceTetPolyPatch>
+                (
+                    motionU.boundaryField()[index].patch()
+                )
+            );
+
+            motionU.boundaryField()[index] ==
+                interpolator.pointToPointInterpolate
+                (
+                    dispField/time().deltaT().value()
+                );
+        }
+
+        //- Spring-based Laplacian motion solver
+        if
+        (
+            (solverType == "springMotionSolver")
+        )
+        {
+            // Boundary motion specified for the springMotionSolver
+            pointField& refPoints = const_cast<pointField&>
+                    (objectRegistry::lookupObject<pointField>("refPoints"));
+            
+            // Assign boundary conditions to the motion solver
+            const labelList& meshPts = boundaryMesh()[index].meshPoints();
+            forAll(meshPts,pointI) 
+            {
+                refPoints[meshPts[pointI]] += dispField[pointI];
+            }           
+        }
+    }    
 }
 
 // Find the circumcenter, given three points
@@ -3179,81 +3241,9 @@ bool Foam::dynamicTopoFvMesh::remove2DSliver
 void Foam::dynamicTopoFvMesh::updateMotion()
 {
     if (solveForMotion_)
-    {
-        // Determine the kind of motion solver in use
-        word solverType(dict_.lookup("solver"));
-
-        //- Cell decomposition FEM motion solver
-        if
-        (
-            (solverType == "laplaceCellDecomposition")
-         || (solverType == "pseudoSolidCellDecomposition")
-        )
-        {
-            // Boundary motion specified for the tetDecompositionMotionSolver
-            tetPointVectorField& motionU = const_cast<tetPointVectorField&>
-                    (this->objectRegistry::lookupObject<tetPointVectorField>("motionU"));
-
-            // Assign boundary conditions to the motion solver
-            for(label i=0; i<numPatches_; i++)
-                motionU.boundaryField()[i] == displacementPtr_[i]/time().deltaT().value();
-
-            // Solve for motion   
-            movePoints(motionPtr_->newPoints());
-
-            // Reset motion 
-            for(label i=0; i<numPatches_; i++) 
-                motionU.boundaryField()[i] == vector::zero;
-        }
-
-        //- Face decomposition FEM motion solver
-        if
-        (
-            (solverType == "laplaceFaceDecomposition")
-         || (solverType == "pseudoSolidFaceDecomposition")
-        )
-        {
-            // Boundary motion specified for the tetDecompositionMotionSolver
-            tetPointVectorField& motionU = const_cast<tetPointVectorField&>
-                    (this->objectRegistry::lookupObject<tetPointVectorField>("motionU"));
-
-            // Assign boundary conditions to the motion solver
-            for(label i=0; i<numPatches_; i++)
-            {
-                // The face-decomposition solver includes points at face-centres,
-                // thus point motion has to be interpolated to these points
-                tetPolyPatchInterpolation interpolator
-                (
-                    refCast<const faceTetPolyPatch>
-                    (
-                        motionU.boundaryField()[i].patch()
-                    )
-                );
-
-                motionU.boundaryField()[i] ==
-                    interpolator.pointToPointInterpolate
-                    (
-                        displacementPtr_[i]/time().deltaT().value()
-                    );
-            }
-
-            // Solve for motion   
-            movePoints(motionPtr_->newPoints());
-
-            // Reset motion 
-            for(label i=0; i<numPatches_; i++) 
-                motionU.boundaryField()[i] == vector::zero;
-        }
-
-        //- Spring-based Laplacian motion solver
-        if
-        (
-            (solverType == "springMotionSolver")
-        )
-        {
-            // Solve for motion   
-            movePoints(motionPtr_->newPoints());
-        }
+    {    
+        // Solve for motion   
+        movePoints(motionPtr_->newPoints());
     }
 }
 
@@ -3515,17 +3505,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reversePointMap_.setSize(nPoints_);
         reverseFaceMap_.setSize(nFaces_);
         reverseCellMap_.setSize(nCells_);
-
-        // Reallocate the boundary displacement patches
-        // if the number of boundary points have changed
-        for(label i=0; i<numPatches_; i++)
-        {
-            if (displacementPtr_[i].size() != boundaryMesh()[i].nPoints())
-            {
-                displacementPtr_[i].clear();
-                displacementPtr_[i].setSize(boundaryMesh()[i].nPoints(), vector::zero);
-            }
-        }
 
         movePoints(points);
         resetMotion();

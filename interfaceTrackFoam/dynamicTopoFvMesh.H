@@ -107,9 +107,6 @@ class dynamicTopoFvMesh
         //- PolyMesh mapping structure
         autoPtr<mapPolyMesh> mapper_;
                 
-        //- References to the boundary-displacement 
-        PtrList< vectorField > displacementPtr_;
-                
         //- Local copies of connectivity information
         HashList<point> meshPoints_;
         HashList<face>  faces_;
@@ -276,7 +273,7 @@ public:
         void updateMotion();       
         
         // Access
-        vectorField& setMotionBC(const label& index);
+        void setMotionBC(const label&, const vectorField&);
         
         const autoPtr<mapPolyMesh> meshMap()
         {
