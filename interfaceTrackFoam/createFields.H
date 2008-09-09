@@ -40,124 +40,27 @@
         ),
         mesh,
         dimensionedScalar("0", dimMass/dimVolume, 0)
-    );
-    
-    volScalarField T
-    (
-        IOobject
-        (
-            "T",
-            runTime.timeName(),
-            mesh,
-            IOobject::MUST_READ,
-            IOobject::AUTO_WRITE
-        ),
-        mesh
-    );    
+    );   
 
-    freeSurface interface(mesh, rho, U, p, phi);
-
-    volScalarField* fluidIndicatorPtr = NULL;
-
-    if(args.options().found("parallel"))
-    {
-        fluidIndicatorPtr = new volScalarField
-        (
-            IOobject
-            (
-                "fluidIndicator",
-                runTime.timeName(),
-                mesh,
-                IOobject::MUST_READ,
-                IOobject::AUTO_WRITE
-            ),
-            mesh
-        );
-    }
-    else
-    {
-        fluidIndicatorPtr = new volScalarField
-        (
-            IOobject
-            (
-                "fluidIndicator",
-                runTime.timeName(),
-                mesh,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
-            ),
-            interface.fluidIndicator()
-        );
-    }
-
-    volScalarField& fluidIndicator = *fluidIndicatorPtr;
-
-    rho = fluidIndicator*
-         (
-            interface.rhoFluidA()
-          - interface.rhoFluidB()
-         )
-          + interface.rhoFluidB();
-
-    volScalarField mu
-    (
-        IOobject
-        (
-            "mu",
-            runTime.timeName(),
-            mesh,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
-        ),
-        fluidIndicator*
-        (
-            interface.muFluidA() 
-          - interface.muFluidB()
-        )
-      + interface.muFluidB()
-    );
+    fluidInterface interface(mesh, rho, U, p, phi);   
     
     // Introduce the non-Newtonian transport model
-    autoPtr<viscosityModel> nuModel = viscosityModel::New("nu",interface,U,phi);
+    // autoPtr<viscosityModel> nuModel = viscosityModel::New("nu",interface,U,phi);
     
-    volScalarField cond
+    dimensionedScalar nu
     (
-        IOobject
+        IOdictionary
         (
-            "cond",
-            runTime.timeName(),
-            mesh,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
-        ),
-        fluidIndicator*
-        (
-            interface.condFluidA()
-          - interface.condFluidB()
-        )
-      + interface.condFluidB()
-    );
-
-    volScalarField Cp
-    (
-        IOobject
-        (
-            "Cp",
-            runTime.timeName(),
-            mesh,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
-        ),
-        fluidIndicator*
-        (
-            interface.CpFluidA()
-          - interface.CpFluidB()
-        )
-      + interface.CpFluidB()
-    );
-
-    surfaceScalarField phiNet = fvc::interpolate(rho)*phi;
-    phiNet.rename("phiNet");    
+            IOobject
+            (
+                "fluidInterfaceProperties",
+                runTime.constant(),
+                mesh,
+                IOobject::MUST_READ,
+                IOobject::NO_WRITE
+            )
+        ).lookup("nu")
+    );    
 
     label pRefCell = 0;
     scalar pRefValue = 0.0;
@@ -172,7 +75,7 @@
             mesh
         ),
         mesh,
-        dimensionedScalar("rUA", dimTime/dimDensity, 1),
+        dimensionedScalar("rUA", dimTime, 1),
         zeroGradientFvPatchScalarField::typeName
     );
 
