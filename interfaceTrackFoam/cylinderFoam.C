@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 #   include "createDynamicMesh.H"
 #   include "initContinuityErrs.H"
 #   include "initTotalVolume.H"
-#   include "createNuFields.H"
+#   include "createFields.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -76,12 +76,21 @@ int main(int argc, char *argv[])
         label patchID = -1;
         forAll (mesh.boundary(), patchI)
         {
-            if(mesh.boundary()[patchI].name() == "topWall") {
+            if(mesh.boundary()[patchI].name() == "topWall") 
+            {
                 patchID = patchI;
                 break;
             }
         }         
-        mesh.setMotionBC(patchID) = vector(0,0.3,0)*mesh.time().deltaT().value();         
+        mesh.setMotionBC
+        (
+            patchID, 
+            vectorField
+            (
+                mesh.boundaryMesh()[patchID].nPoints(),
+                vector(0,-0.3,0)*mesh.time().deltaT().value()
+            )
+        );
         
         // Solve for mesh-motion
         mesh.updateMotion();         
@@ -91,7 +100,7 @@ int main(int argc, char *argv[])
         // Make the fluxes relative to the mesh motion
         fvc::makeRelative(phi, U);
 
-#       include "NuUEqn.H"
+#       include "UEqn.H"
 
         // --- PISO loop
 
@@ -100,10 +109,10 @@ int main(int argc, char *argv[])
             rUA = 1.0/UEqn.A();
 
             U = rUA*UEqn.H();
-            phi = (fvc::interpolate(U) & mesh.Sf())
-                 + fvc::ddtPhiCorr(rUA, U, phi);
+            phi = (fvc::interpolate(U) & mesh.Sf());
+            //     + fvc::ddtPhiCorr(rUA, U, phi);
 
-            adjustPhi(phi, U, p);
+            //adjustPhi(phi, U, p);
 
             for (int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
             {
@@ -149,20 +158,7 @@ int main(int argc, char *argv[])
         
         if (meshChanged)
         {
-#           include "checkTotalVolume.H"
-            /*
-            // Obtain interpolated fluxes from the mesh, and reconstruct U
-            forAll(phi.internalField(),faceI) {
-                phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
-            }
-            forAll(mesh.boundaryMesh(),patchI) {
-                label start=mesh.boundaryMesh()[patchI].start();
-                forAll(phi.boundaryField()[patchI],faceI) {
-                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
-                }
-            }
-            U = fvc::reconstruct(phi); 
-            */            
+#           include "checkTotalVolume.H"           
 #           include "correctPhi.H"            
 #           include "CourantNo.H"
         }

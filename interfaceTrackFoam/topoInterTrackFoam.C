@@ -34,7 +34,7 @@ Description
 #include "fvCFD.H"
 #include "viscosityModel.H"
 #include "dynamicTopoFvMesh.H"
-#include "freeSurface.H"
+#include "fluidInterface.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -46,8 +46,8 @@ int main(int argc, char *argv[])
     argv[1] = new char[100];
     argv[2] = new char[100];
     strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
-    strcpy(argv[2],"smaller");  
-    
+    strcpy(argv[2],"ligament");  
+
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"
@@ -64,12 +64,10 @@ int main(int argc, char *argv[])
     
     while (runTime.run())
     {
-#       include "readPISOControls.H"
-#       include "readFreeSurfaceControls.H"        
+#       include "readPISOControls.H"       
 #       include "readTimeControls.H"
 #       include "checkTotalVolume.H"
 #       include "CourantNo.H"
-
 #       include "setDeltaT.H"
 
         runTime++;
@@ -77,42 +75,33 @@ int main(int argc, char *argv[])
         Info<< "Time = " << runTime.timeName() << nl << endl;       
 
         // Update free-surface displacement directions
-        interface.updateDisplacementDirections();        
+        interface.updateDisplacementDirections();      
 
         // Set boundary conditions for the motionSolver and solve for mesh-motion
-        //interface.moveMeshPointsForOldFreeSurfDisplacement();
-        //mesh.setMotionBC(interface.aPatchID()) = interface.totalDisplacement();
+        interface.restorePosition();
+        mesh.setMotionBC(interface.patchID(), interface.displacement());
         mesh.updateMotion();  
         
-#       include "volContinuity.H"
-        
-        // Update the viscosity
-        nuModel->correct();
-        
-        // Update the free-surface
-        interface.movePoints();
-
-        Info<< "\nMax surface Courant Number = " 
-            << interface.maxCourantNumber() << endl << endl;        
+#       include "volContinuity.H"         
         
         for (int corr=0; corr<nOuterCorr; corr++)
         {        
-            // Update interface BCs
-            interface.updateBoundaryConditions();            
+            // Update boundary conditions on velocity and pressure
+            interface.updateBoundaryConditions();         
             
             // Make the fluxes relative to the mesh motion
-            fvc::makeRelative(phi, rho, U);
+            fvc::makeRelative(phi, U);
 
 #           include "UEqn.H"
 
             rUA = 1.0/UEqn.A();            
-            
+
             // --- PISO loop
 
             for (int corr=0; corr<nCorr; corr++)
             {
                 U = rUA*UEqn.H();
-                
+
                 phi = (fvc::interpolate(U) & mesh.Sf());
                      //+ fvc::ddtPhiCorr(rUA, U, phi);
 
@@ -147,48 +136,28 @@ int main(int argc, char *argv[])
                 U -= rUA*fvc::grad(p);
                 U.correctBoundaryConditions();
             }
-            
-            // Move the free-surface
-            interface.movePoints();
-            
-            // Update motion fluxes - fluxes are still relative at this point
-            phiNet = fvc::interpolate(rho)*phi;            
 
-#           include "hEqn.H"            
-#           include "freeSurfaceContinuityErrs.H"            
+            // Update the interface with the fluid velocity
+            interface.movePoints();            
+            
+#           include "freeSurfaceContinuityErrs.H"  
             
             Info << endl;
-        }       
-
-        Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
-            << "  ClockTime = " << runTime.elapsedClockTime() << " s"
-            << nl << endl;
-        
-        // Make the fluxes absolute
-        fvc::makeAbsolute(phi, rho, U);  
+        }
         
         bool meshChanged = mesh.updateTopology(); 
         
         if (meshChanged)
-        {
+        {      
 #           include "checkTotalVolume.H"
-            /*
-            // Obtain interpolated fluxes from the mesh, and reconstruct U
-            forAll(phi.internalField(),faceI) {
-                phi.internalField()[faceI] = mesh.interpolatedPhi()[faceI];
-            }
-            forAll(mesh.boundaryMesh(),patchI) {
-                label start=mesh.boundaryMesh()[patchI].start();
-                forAll(phi.boundaryField()[patchI],faceI) {
-                    phi.boundaryField()[patchI][faceI] = mesh.interpolatedPhi()[start+faceI];
-                }
-            }
-            U = fvc::reconstruct(phi); 
-            */
-            interface.updateMesh(mesh.meshMap());
 #           include "correctPhi.H"            
 #           include "CourantNo.H"
-        }        
+            interface.updateMesh(mesh.meshMap());            
+        }     
+        
+        Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
+            << "  ClockTime = " << runTime.elapsedClockTime() << " s"
+            << nl << endl;        
  
         runTime.write(); 
 #       include "meshInfo.H"        
