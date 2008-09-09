@@ -1,5 +1,5 @@
+fluidInterface.C
 dynamicTopoFvMesh.C
-../springMotionSolver/springMotionSolver.C
 topoInterTrackFoam.C
 
 EXE = $(FOAM_USER_APPBIN)/topoInterTrackFoam

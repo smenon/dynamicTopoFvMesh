@@ -6,18 +6,13 @@ EXE_INC = \
     -I$(LIB_SRC)/tetDecompositionMotionSolver/lnInclude \
     -I$(LIB_SRC)/tetDecompositionFiniteElement/lnInclude \
     -I$(LIB_SRC)/transportModels/incompressible/lnInclude \
-    -I./lnInclude \
-    -I../include \
-    -I../newFreeSurface/lnInclude \
-    -I../springMotionSolver/lnInclude \
     $(WM_DECOMP_INC) \
 
 EXE_LIBS = \
     -lfiniteVolume \
     -lfiniteArea \
-    -ldynamicMesh \
-    -lspringMotionSolver \
-    -lincompressibleTransportModels \
     -L$(FOAM_USER_LIBBIN) \
-    -lnewFreeSurface \
+    -lspringMotionSolver \
+    -ldynamicMesh \
+    -lincompressibleTransportModels \
     $(WM_DECOMP_LIBS) 
