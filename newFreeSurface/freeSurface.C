@@ -47,12 +47,6 @@ Description
 #include "slipFvPatchFields.H"
 #include "symmetryFvPatchFields.H"
 #include "transformField.H"
-
-#include "tetFemMatrices.H"
-#include "tetPointFields.H"
-#include "faceTetPolyPatch.H"
-#include "tetPolyPatchInterpolation.H"
-#include "fixedValueTetPolyPatchFields.H"
 #include "twoDPointCorrector.H"
 
 
@@ -392,9 +386,8 @@ void freeSurface::updateDisplacementDirections()
 
         // TEMPORARY FIX:
         // Correct point displacement direction 
-        // at the "centerline" symmetryPlane which represents the axis
+        // at the "right" symmetryPlane which represents the axis
         // of an axisymmetric case
-        /*
         forAll(aMesh().boundary(), patchI)
         {
             label centerLinePatchID = 
@@ -428,7 +421,7 @@ void freeSurface::updateDisplacementDirections()
                 vector axis = wedgePatch.axis();
 
                 label centerLinePatchID = 
-                    aMesh().boundary().findPatchID("centerline");
+                    aMesh().boundary().findPatchID("right");
 	
                 if(centerLinePatchID != -1)
                 {
@@ -450,14 +443,13 @@ void freeSurface::updateDisplacementDirections()
                 {
                     Info << "Warning: centerline polyPatch does not exist. " 
                         << "Free surface points displacement directions "
-                        << "will not be corrected at the axis (centerline)" 
+                        << "will not be corrected at the axis (right)" 
                         << endl; 
                 }
             
                 break;   
             }
         }
-        */
 
 	// Update face displacement direction
         facesDisplacementDir() =
