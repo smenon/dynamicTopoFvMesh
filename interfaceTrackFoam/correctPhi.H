@@ -28,7 +28,7 @@
     {
         fvScalarMatrix pcorrEqn
         (
-            fvm::laplacian(rUA, pcorr) == fvc::div(phi)
+            fvm::laplacian(runTime.deltaT(), pcorr) == fvc::div(phi)
         );
 
         pcorrEqn.setReference(pRefCell, pRefValue);
