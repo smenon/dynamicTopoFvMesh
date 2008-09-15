@@ -35,8 +35,9 @@ Author
 #include "dynamicTopoFvMesh.H"
 
 
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
+defineTypeNameAndDebug(dynamicTopoFvMesh,0);
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -60,7 +61,6 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     twoDMotion_(this->nGeometricD() == 2 ? true : false),
     edgeModification_(dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")),
     solveForMotion_(dict_.subDict("dynamicTopoFvMesh").lookup("solveForMotion")),
-    fluxInterpolation_(dict_.subDict("dynamicTopoFvMesh").lookup("fluxInterpolation")),
     mapper_(NULL),
     meshPoints_(this->points()),
     faces_(this->faces()),
@@ -85,19 +85,12 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ratioMin_(0.0),
     ratioMax_(0.0),
     growthFactor_(1.0),
-    bisectInteriorFace_(-1),
-    debug(false)
+    bisectInteriorFace_(-1)
 {
     // Initialize the motion-solver, if it was requested
     if (solveForMotion_)
     {
         motionPtr_.set(motionSolver::New(*this).ptr());
-    }
-
-    // Obtain the name of the registered flux-field
-    if (fluxInterpolation_)
-    {
-        fluxFieldName_ = word(dict_.subDict("dynamicTopoFvMesh").lookup("fluxField"));
     }
 
     // For tetrahedral meshes...
@@ -556,10 +549,6 @@ Foam::label Foam::dynamicTopoFvMesh::insertFace
     {
         edgeToWatch_.append(edgeToWatch);
     }
-    if (fluxInterpolation_)
-    {
-        localPhi_.append(0.0);
-    }
 
     // Keep track of added boundary faces in a separate hash-table
     // This information will be required at the reordering stage
@@ -619,10 +608,6 @@ void Foam::dynamicTopoFvMesh::removeFace
     if (edgeModification_ && twoDMotion_)
     {
         edgeToWatch_.remove(index);
-    }
-    if (fluxInterpolation_)
-    {
-        localPhi_.remove(index);
     }
 
     // Update the reverse face-map, but only if this is a face that existed
@@ -918,13 +903,6 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
             oldEdgeToWatch[eIter.index()] = eIter();
         edgeToWatch_.clear();
     }
-    if (fluxInterpolation_)
-    {
-        oldPhi.setSize(allFaces);
-        for(HashList<scalar>::iterator pIter = localPhi_.begin(); pIter != localPhi_.end(); pIter++)
-            oldPhi[pIter.index()] = pIter();
-        localPhi_.clear();
-    }
 
     // Mark the internal faces with -2 so that they are inserted first
     for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++)
@@ -1073,8 +1051,6 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
                 if (neighbourRenumber < ownerRenumber)
                 {
                     faceRenumber = faceRenumber.reverseFace();
-                    if (fluxInterpolation_)
-                        oldPhi[curFaces[nextNei]] *= -1.0;
                 }
 
                 // Insert entities into HashLists...
@@ -1094,8 +1070,6 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
                         edgeRenumber[1] = addedPointRenumbering_[edgeRenumber[1]];
                     edgeToWatch_.append(edgeRenumber);
                 }
-                if (fluxInterpolation_)
-                    localPhi_.append(oldPhi[curFaces[nextNei]]);
 
                 // Insert entities into mesh-reset lists
                 faces[faceInOrder] = faceRenumber;
@@ -1143,8 +1117,6 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
         neighbour_.append(-1);
         if (edgeModification_ && twoDMotion_)
             edgeToWatch_.append(oldEdgeToWatch[oldIndex]);
-        if (fluxInterpolation_)
-            localPhi_.append(oldPhi[oldIndex]);
 
         // Insert entities into mesh-reset lists
         faces[faceInOrder] = oldFaces[oldIndex];
@@ -1803,21 +1775,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
                 Info << "New boundary face[1]" << commonFaceIndex[1] << ": " << newBdyFace1 << endl;
                 Info << "New boundary face[2]" << commonFaceIndex[2] << ": " << newBdyFace2 << endl;
                 Info << "New boundary face[3]" << commonFaceIndex[3] << ": " << newBdyFace3 << endl;
-
-                if (fluxInterpolation_)
-                {
-                    // Output fluxes
-                    Info << "This face: " << findex << " Phi:" << localPhi_[findex] 
-                         << " Owner: " << owner_[findex] << " Neighbour:" << neighbour_[findex] << endl;
-                    Info << "commonIntFaces[0]:" << commonIntFaceIndex[0] << " Phi:" << localPhi_[commonIntFaceIndex[0]]
-                         << " Owner: " << owner_[commonIntFaceIndex[0]] << " Neighbour:" << neighbour_[commonIntFaceIndex[0]] << endl; 
-                    Info << "commonIntFaces[1]:" << commonIntFaceIndex[1] << " Phi:" << localPhi_[commonIntFaceIndex[1]]
-                         << " Owner: " << owner_[commonIntFaceIndex[1]] << " Neighbour:" << neighbour_[commonIntFaceIndex[1]] << endl;
-                    Info << "commonIntFaces[2]:" << commonIntFaceIndex[2] << " Phi:" << localPhi_[commonIntFaceIndex[2]]
-                         << " Owner: " << owner_[commonIntFaceIndex[2]] << " Neighbour:" << neighbour_[commonIntFaceIndex[2]] << endl;
-                    Info << "commonIntFaces[3]:" << commonIntFaceIndex[3] << " Phi:" << localPhi_[commonIntFaceIndex[3]]
-                         << " Owner: " << owner_[commonIntFaceIndex[3]] << " Neighbour:" << neighbour_[commonIntFaceIndex[3]] << endl;
-                }
             }
 
             // Check the orientation of the two quad faces, and modify as necessary
@@ -1881,11 +1838,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_0[c0count++] = commonIntFaceIndex[1];
             owner_[commonIntFaceIndex[1]] = newOwn;
             neighbour_[commonIntFaceIndex[1]] = newNei;
-            // Modify the local-flux field
-            if (flipOption && fluxInterpolation_)
-            {
-                localPhi_[commonIntFaceIndex[1]] *= -1.0;
-            }
 
             // The quad face belonging to cell[0] now becomes a part of cell[1]
             flipOption = false;
@@ -1945,21 +1897,6 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_1[c1count++] = commonIntFaceIndex[3];
             owner_[commonIntFaceIndex[2]] = newOwn;
             neighbour_[commonIntFaceIndex[2]] = newNei;
-            // Modify the local-flux field
-            if (flipOption && fluxInterpolation_)
-            {
-                localPhi_[commonIntFaceIndex[2]] *= -1.0;
-            }
-
-            // Calculate flux for the flipped face
-            if (fluxInterpolation_)
-            {
-                scalar sign1, sign2;
-                sign1 = (owner_[commonIntFaceIndex[0]] == c0) ? 1.0 : -1.0;
-                sign2 = (owner_[commonIntFaceIndex[1]] == c0) ? 1.0 : -1.0;
-                localPhi_[findex] = - (sign1*localPhi_[commonIntFaceIndex[0]]) 
-                                    - (sign2*localPhi_[commonIntFaceIndex[1]]);
-            }
         }
     }
 }
@@ -2295,25 +2232,9 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         }
     }
 
-    // Obtain face-area from the cross-product
-    scalar oldArea = mag( (meshPoints_[thisFace[1]]-meshPoints_[thisFace[0]])
-                         ^(meshPoints_[thisFace[2]]-meshPoints_[thisFace[1]]) );
-
     // Modify point-labels on the quad face under consideration
     replacePointLabel(commonEdges[0].otherVertex(nextToOtherPoint[0]), newPtIndex0, thisFace);
     replacePointLabel(nextToOtherPoint[1], newPtIndex1, thisFace);
-
-    // Recalculate for new area after bisection
-    scalar newArea = mag( (meshPoints_[thisFace[1]]-meshPoints_[thisFace[0]])
-                         ^(meshPoints_[thisFace[2]]-meshPoints_[thisFace[1]]) );
-
-    // Modify the flux for this face...
-    scalar newBisectFlux=0.0;
-    if (fluxInterpolation_)
-    {
-        newBisectFlux = (1.0-(newArea/oldArea))*localPhi_[findex];
-        localPhi_[findex] *= (newArea/oldArea);
-    }
 
     // Change the edge-length criteria for this face
     tmpEdge[0] = nextToOtherPoint[0];
@@ -2368,11 +2289,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         neighbour_[replaceFace] = newCellIndex0;
         sign = -1.0; flipOption = false;
     }
-    // Modify the local-flux field
-    if (flipOption && fluxInterpolation_)
-    {
-        localPhi_[replaceFace] *= -1.0;
-    }
 
     // Define the faces for the new cell
     newCell0[0] = c0BdyIndex[1];
@@ -2398,14 +2314,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
 
     // remove2DSliver requires this face index for removal
     bisectInteriorFace_ = newFaceIndex;
-
-    // Calculate fluxes for this face to satisfy zero-divergence. 
-    // Assumes that no fluxes are present on boundary triangle faces    
-    if (fluxInterpolation_)
-    {
-        localPhi_[newFaceIndex] = newBisectFlux + (sign*localPhi_[replaceFace]);
-        //localPhi_[newFaceIndex] = -1.0*localPhi_[replaceFace];
-    }
 
     // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
     tmpTriFace[0] = otherPointIndex[0];
@@ -2437,11 +2345,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         newFaceIndex = insertFace(whichPatch(findex), tmpQuadFace, newCellIndex0, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, newCell0);
         facesFromFaces_.append(objectMap(newFaceIndex,labelList(1,findex)));
-
-        if (fluxInterpolation_)
-        {
-            localPhi_[newFaceIndex] = newBisectFlux;
-        }
 
         if (debug)
         {
@@ -2523,11 +2426,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
             neighbour_[replaceFace] = newCellIndex1;
             sign = -1.0; flipOption = false;
         }
-        // Modify the local-flux field
-        if (flipOption && fluxInterpolation_)
-        {
-            localPhi_[replaceFace] *= -1.0;
-        }
 
         // Define attributes for the new prism cell
         newCell1[0] = replaceFace;
@@ -2544,11 +2442,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         replaceFaceLabel(-1, newFaceIndex, newCell1);
         newCell1[1] = newFaceIndex;
         facesFromFaces_.append(objectMap(newFaceIndex,labelList(1,findex)));
-
-        if (fluxInterpolation_)
-        {
-            localPhi_[newFaceIndex] = newBisectFlux;
-        }
 
         // Check for common edges among the two boundary faces
         // Find the isolated point on both boundary faces of cell[1]
@@ -2608,14 +2501,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         newFaceIndex = insertFace(-1, tmpQuadFace, c1, newCellIndex1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, newCell1);
         replaceFaceLabel(-1, newFaceIndex, cell_1);
-
-        // Calculate fluxes for this face to satisfy zero-divergence. 
-        // Assumes that no fluxes are present on boundary triangle faces 
-        if (fluxInterpolation_)
-        {
-            localPhi_[newFaceIndex] = - newBisectFlux + (sign*localPhi_[replaceFace]);
-            //localPhi_[newFaceIndex] = -1.0*localPhi_[replaceFace];
-        }
 
         // Second boundary face; Owner = cell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[2];
@@ -3040,11 +2925,6 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
             flipOption = false;
         }
     }
-    // Modify the local-flux field
-    if (flipOption && fluxInterpolation_)
-    {
-        localPhi_[faceToKeep[0]] *= -1.0;
-    }
 
     if (c1 != -1)
     {
@@ -3104,11 +2984,6 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
                 flipOption = false;
             }
-        }
-        // Modify the local-flux field
-        if (flipOption && fluxInterpolation_)
-        {
-            localPhi_[faceToKeep[1]] *= -1.0;
         }
     }
 
@@ -3235,6 +3110,54 @@ bool Foam::dynamicTopoFvMesh::remove2DSliver
     return false;
 }
 
+// Update mesh corresponding to the given map
+void Foam::dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
+{
+    // Delete oldPoints in polyMesh
+    polyMesh::resetMotion();
+    
+    // Update polyMesh. 
+    polyMesh::updateMesh(mpm);
+
+    // Clear out surface-interpolation 
+    surfaceInterpolation::movePoints();
+
+    // Map all fields
+    mapFields(mpm);
+
+    // Clear-out fvMesh geometry and addressing    
+    fvMesh::clearOut();
+}
+
+// Map all fields in time using the given map
+void Foam::dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
+{
+    if (debug)
+    {
+        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshmMap): "
+             << "Mapping fvFields."
+             << endl;
+    }
+   
+    //- Field mapping class
+    dynamicTopoFvMeshMapper fieldMapper(*this,meshMap);
+
+    // Map all the volFields in the objectRegistry
+    MapGeometricFields<scalar, fvPatchField, dynamicTopoFvMeshMapper, volMesh>
+        (fieldMapper);
+    MapGeometricFields<vector, fvPatchField, dynamicTopoFvMeshMapper, volMesh>
+        (fieldMapper);
+
+    // Map all the surfaceFields in the objectRegistry
+    MapGeometricFields<scalar, fvsPatchField, dynamicTopoFvMeshMapper, surfaceMesh>
+        (fieldMapper);
+    MapGeometricFields<vector, fvsPatchField, dynamicTopoFvMeshMapper, surfaceMesh>
+        (fieldMapper);
+     
+    // Old volumes are not mapped since interpolation is 
+    // performed at the same time level.
+}
+
 // Update the mesh for motion
 // This routine assumes that all boundary motions have been defined
 // and incorporated into the mesh for the current time-step.
@@ -3289,25 +3212,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         pIter() = currentPoints[pIter.index()];
         // Update the iterators
         pIter++;
-    }
-
-    // Obtain recent fluxes from the object-registry and make a local-copy
-    if (fluxInterpolation_)
-    {
-        if (localPhi_.empty()) localPhi_.setSize(nFaces_,0.0);
-        // Copy old conservative fluxes
-        surfaceScalarField& phi = const_cast<surfaceScalarField&>
-                (this->objectRegistry::lookupObject<surfaceScalarField>(fluxFieldName_));
-        forAll(phi.internalField(),faceI)
-        {
-            localPhi_[faceI] = phi.internalField()[faceI];
-        }
-        for(label i=0; i<numPatches_; i++)
-        {
-            label start=patchStarts_[i];
-            forAll(phi.boundaryField()[i],faceI)
-                localPhi_[start+faceI] = phi.boundaryField()[i][faceI];
-        }
     }
 
     //== Connectivity changes ==//
@@ -3375,7 +3279,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
             oldMeshPointLabels[i] = boundaryMesh()[i].meshPoints();
 
         // Reset the mesh
-        resetPrimitives
+        polyMesh::resetPrimitives
         (
             nFaces_,
             points,
@@ -3506,8 +3410,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseFaceMap_.setSize(nFaces_);
         reverseCellMap_.setSize(nCells_);
 
-        movePoints(points);
-        resetMotion();
+        // Reset old cell-volumes
         setV0();
 
         // Basic checks for mesh-validity

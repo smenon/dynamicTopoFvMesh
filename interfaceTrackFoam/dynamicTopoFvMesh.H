@@ -36,14 +36,12 @@ SourceFiles
 #ifndef dynamicTopoFvMesh_H
 #define dynamicTopoFvMesh_H
 
-#include "fvMesh.H"
-#include "autoPtr.H"
-#include "PtrList.H"
 #include "HashList.H"
-#include "HashTable.H"
 #include "fvCFD.H"
 #include "motionSolver.H"
 #include "mapPolyMesh.H"
+#include "MapFvFields.H"
+#include "dynamicTopoFvMeshMapper.H"
 #include "tetDecompositionMotionSolver.H"
 #include "faceTetPolyPatch.H"
 #include "tetPolyPatchInterpolation.H"
@@ -59,8 +57,7 @@ namespace Foam
 {
 
 // Class forward declarations
-class motionSolver;
-
+    
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration
 \*---------------------------------------------------------------------------*/
@@ -95,18 +92,12 @@ class dynamicTopoFvMesh
         //- Should the mesh solve for motion on update?
         Switch solveForMotion_;
         
-        //- Should the mesh interpolate fluxes on update?
-        Switch fluxInterpolation_;
-        
-        //- Name of the flux field specified in the registry
-        word fluxFieldName_;
-        
         //- The motion solver pointer
         autoPtr<motionSolver> motionPtr_;
         
         //- PolyMesh mapping structure
         autoPtr<mapPolyMesh> mapper_;
-                
+
         //- Local copies of connectivity information
         HashList<point> meshPoints_;
         HashList<face>  faces_;
@@ -122,9 +113,6 @@ class dynamicTopoFvMesh
         label           nOldFaces_,  nFaces_;
         label           nOldCells_,  nCells_;
         label           nOldInternalFaces_, nInternalFaces_, nInternalEdges_;
-
-        // Flux / pressure interpolation
-        HashList<scalar>    localPhi_;
         
         //- Old-to-New
         labelList       reversePointMap_;
@@ -251,8 +239,8 @@ class dynamicTopoFvMesh
         
 public:
     
-    // Debug option
-        bool debug;
+    // Declare the name of the class and its debug switch
+        ClassName("dynamicTopoFvMesh");
     
     // Constructors
 
@@ -271,6 +259,12 @@ public:
         
         // Update the mesh for motion
         void updateMotion();       
+
+        //- Update mesh corresponding to the given map
+        virtual void updateMesh(const mapPolyMesh& mpm);
+
+        // Map all fields in time using the given map.
+        virtual void mapFields(const mapPolyMesh& mpm);
         
         // Access
         void setMotionBC(const label&, const vectorField&);
@@ -283,11 +277,6 @@ public:
         HashList<scalar>& lengthDensity()
         {
             return lengthScale_;
-        }
-        
-        HashList<scalar>& interpolatedPhi()
-        {
-            return localPhi_;
         }           
 };
 
@@ -295,6 +284,10 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+#ifdef NoRepository
+#   include "dynamicTopoFvMesh.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
