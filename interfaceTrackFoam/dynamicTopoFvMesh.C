@@ -617,31 +617,6 @@ void Foam::dynamicTopoFvMesh::removeFace
     {
         reverseFaceMap_[index] = -1;
     }
-    else
-    {
-        // Check if this face was added from another entity, and remove if found.
-        bool found=false;
-        forAll(facesFromFaces_,faceI) 
-        {
-            if (facesFromFaces_[faceI].index() == index) 
-            {
-                found=true; break;
-            }
-        }
-        if (found) 
-        {
-            List<objectMap> fffCopy(facesFromFaces_.size()-1);
-            label count=0;
-            forAll(facesFromFaces_,faceI) 
-            {
-                if (facesFromFaces_[faceI].index() != index)
-                    fffCopy[count++] = facesFromFaces_[faceI];
-            }
-            facesFromFaces_.clear();
-            forAll(fffCopy,faceI)
-                facesFromFaces_.append(fffCopy[faceI]);
-        }
-    }
 
     // Decrement the total face-count
     nFaces_--;
@@ -1140,23 +1115,6 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
             {
                 cellFaces[faceI] = addedFaceRenumbering[cellFaces[faceI]];
             }
-        }
-    }
-
-    // Loop through the facesFromFaces list, and fill up the faceMap
-    forAll(facesFromFaces_,faceI)
-    {
-        objectMap& thisMap = facesFromFaces_[faceI];
-        if (faceMap_[addedFaceRenumbering[thisMap.index()]] == -1)
-        {
-            faceMap_[addedFaceRenumbering[thisMap.index()]] = thisMap.masterObjects()[0];
-            thisMap.index() = addedFaceRenumbering[thisMap.index()];
-        }
-        else
-        {
-            FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderFaces()") << nl
-                    << " Mapping's messed up." << nl
-                    << abort(FatalError); 
         }
     }
 
@@ -2322,7 +2280,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     edgeToWatch[0] = edgeToWatch[1] = 0;
     newFaceIndex = insertFace(whichPatch(c0BdyIndex[0]), tmpTriFace, newCellIndex0, -1, edgeToWatch);
     replaceFaceLabel(-1, newFaceIndex, newCell0);
-    facesFromFaces_.append(objectMap(newFaceIndex,labelList(1,c0BdyIndex[0])));
 
     // Third boundary face; Owner = c[0] & Neighbour = [-1] 
     tmpTriFace[0] = otherPointIndex[1];
@@ -2331,7 +2288,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     edgeToWatch[0] = edgeToWatch[1] = 0;
     newFaceIndex = insertFace(whichPatch(c0BdyIndex[1]), tmpTriFace, c0, -1, edgeToWatch);
     replaceFaceLabel(-1, newFaceIndex, cell_0);
-    facesFromFaces_.append(objectMap(newFaceIndex,labelList(1,c0BdyIndex[1])));
 
     if (c1 == -1)
     {
@@ -2344,7 +2300,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[1] = nextToOtherPoint[1];
         newFaceIndex = insertFace(whichPatch(findex), tmpQuadFace, newCellIndex0, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, newCell0);
-        facesFromFaces_.append(objectMap(newFaceIndex,labelList(1,findex)));
 
         if (debug)
         {
@@ -2441,7 +2396,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         replaceFaceLabel(-1, newFaceIndex, newCell0);
         replaceFaceLabel(-1, newFaceIndex, newCell1);
         newCell1[1] = newFaceIndex;
-        facesFromFaces_.append(objectMap(newFaceIndex,labelList(1,findex)));
 
         // Check for common edges among the two boundary faces
         // Find the isolated point on both boundary faces of cell[1]
@@ -2509,7 +2463,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[0] = edgeToWatch[1] = 0;
         newFaceIndex = insertFace(whichPatch(c1BdyIndex[0]), tmpTriFace, c1, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, cell_1);
-        facesFromFaces_.append(objectMap(newFaceIndex,labelList(1,c1BdyIndex[0])));
 
         // Third boundary face; Owner = newCell[1] & Neighbour [-1] 
         tmpTriFace[0] = otherPointIndex[3];
@@ -2518,7 +2471,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[0] = edgeToWatch[1] = 0;
         newFaceIndex = insertFace(whichPatch(c1BdyIndex[1]), tmpTriFace, newCellIndex1, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, newCell1);
-        facesFromFaces_.append(objectMap(newFaceIndex,labelList(1,c1BdyIndex[1])));
 
         if (debug)
         {
@@ -3252,7 +3204,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         List<objectMap> pointsFromPoints(0);
         List<objectMap> facesFromPoints(0);
         List<objectMap> facesFromEdges(0);
-        List<objectMap> facesFromFaces(facesFromFaces_.size());
+        List<objectMap> facesFromFaces(0);
         List<objectMap> cellsFromPoints(0);
         List<objectMap> cellsFromEdges(0);
         List<objectMap> cellsFromFaces(0);
@@ -3268,8 +3220,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reOrderMesh(points, faces, owner, neighbour);
 
         // Copy mapping information
-        forAll(facesFromFaces_, faceI) 
-            facesFromFaces[faceI] = facesFromFaces_[faceI];
         forAll(cellsFromCells_, cellI)
             cellsFromCells[cellI] = cellsFromCells_[cellI];
 
@@ -3402,7 +3352,6 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseFaceMap_.clear();
         reverseCellMap_.clear();
         boundaryPatches_.clear();
-        facesFromFaces_.clear();
         cellsFromCells_.clear();
 
         // Set new sizes for the reverse maps

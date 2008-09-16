@@ -126,7 +126,6 @@ class dynamicTopoFvMesh
         
         // Hash-tables for the renumbering of added entities
         DynamicList<objectMap> cellsFromCells_;
-        DynamicList<objectMap> facesFromFaces_;
         HashTable<label,label> addedPointRenumbering_; 
         HashTable<label,label> addedCellRenumbering_;
         HashTable<label,label> boundaryPatches_;
