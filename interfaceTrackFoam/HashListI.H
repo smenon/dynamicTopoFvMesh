@@ -58,12 +58,13 @@ inline label HashList<T>::hash(label key) const
 
 //- Construct null
 template<class T>
-HashList<T>::HashList()
+HashList<T>::HashList(const label tableSize)
 :
     size_(0),
     startIdx_(0),
     endIdx_(0),
     table_(0),
+    hash_table_size_(tableSize),
     rehash_(false),
     rehashIndex_(-1)
 {}
@@ -73,7 +74,8 @@ template<class T>
 void HashList<T>::setSize
 (
     const label size,
-    const T& data
+    const T& data,
+    const label tableSize
 )
 {
     if (size<=0)
@@ -85,21 +87,22 @@ void HashList<T>::setSize
 
     // Initialize member data
     size_   = size;
+    hash_table_size_ = tableSize;
     rehash_ = false;
     rehashIndex_ = size_;
 
     // Allocate the hash-table and initialize
-    table_ = new Item<T>*[hash_table_size_];
+    table_ = new Item*[hash_table_size_];
     for(label i=0; i<hash_table_size_; i++)
     {
         table_[i] = 0;
     }
 
     // Allocate
-    Item<T> *thisPtr=0, *prevPtr=0;
+    Item *thisPtr=0, *prevPtr=0;
     for (label i=0; i<size_; i++)
     {
-        thisPtr = new Item<T>;
+        thisPtr = new Item;
         thisPtr->data_ = data;
         thisPtr->idx_ = i;
 
@@ -134,7 +137,8 @@ template<class T>
 HashList<T>::HashList
 (
     const label size,
-    const T& data
+    const T& data,
+    const label tableSize
 )
 {
     if (size<=0)
@@ -146,21 +150,22 @@ HashList<T>::HashList
 
     // Initialize member data
     size_   = size;
+    hash_table_size_ = tableSize;
     rehash_ = false;
     rehashIndex_ = size_;
 
     // Allocate the hash-table and initialize
-    table_ = new Item<T>*[hash_table_size_];
+    table_ = new Item*[hash_table_size_];
     for(label i=0; i<hash_table_size_; i++)
     {
         table_[i] = 0;
     }
 
     // Allocate
-    Item<T> *thisPtr=0, *prevPtr=0;
+    Item *thisPtr=0, *prevPtr=0;
     for (label i=0; i<size_; i++)
     {
-        thisPtr = new Item<T>;
+        thisPtr = new Item;
         thisPtr->data_ = data;
         thisPtr->idx_  = i;
 
@@ -194,7 +199,8 @@ HashList<T>::HashList
 template<class T>
 HashList<T>::HashList
 (
-    const List<T>& data
+    const List<T>& data,
+    const label tableSize
 )
 {
     if (data.size()<=0)
@@ -206,21 +212,22 @@ HashList<T>::HashList
 
     // Initialize member data
     size_   = data.size();
+    hash_table_size_ = tableSize;
     rehash_ = false;
     rehashIndex_ = size_;
 
     // Allocate the hash-table and initialize
-    table_ = new Item<T>*[hash_table_size_];
+    table_ = new Item*[hash_table_size_];
     for(label i=0; i<hash_table_size_; i++)
     {
         table_[i] = 0;
     }
 
     // Allocate
-    Item<T> *thisPtr=0, *prevPtr=0;
+    Item *thisPtr=0, *prevPtr=0;
     for (label i=0; i<size_; i++)
     {
-        thisPtr = new Item<T>;
+        thisPtr = new Item;
         thisPtr->data_ = data[i];
         thisPtr->idx_  = i;
 
@@ -266,21 +273,22 @@ HashList<T>::HashList
 
     // Initialize member data
     size_   = data.size();
+    hash_table_size_ = data.table_size();
     rehash_ = data.rehashRequired();
     rehashIndex_ = data.rehashIndex();
 
     // Allocate the hash-table and initialize
-    table_ = new Item<T>*[hash_table_size_];
+    table_ = new Item*[hash_table_size_];
     for(label i=0; i<hash_table_size_; i++)
     {
         table_[i] = 0;
     }
 
     // Allocate
-    Item<T> *thisPtr=0, *prevPtr=0;
+    Item *thisPtr=0, *prevPtr=0;
     for (label i=0; i<size_; i++)
     {
-        thisPtr = new Item<T>;
+        thisPtr = new Item;
         thisPtr->data_ = data[i];
         thisPtr->idx_  = i;
 
@@ -324,13 +332,13 @@ inline typename HashList<T>::iterator HashList<T>::insert
     rehash_   = true;
 
     // Loop through chained linked-list
-    Item<T> *thisPtr=0, *newPtr=0, *searchPtr=0; 
+    Item *thisPtr=0, *newPtr=0, *searchPtr=0; 
     for (thisPtr=table_[loc]; thisPtr; thisPtr=thisPtr->next_)
     {
         if (index == thisPtr->idx_)
         {
             // Allocate 
-            newPtr = new Item<T>;
+            newPtr = new Item;
             newPtr->data_ = data;
 
             // Update index pointers and set the rehash index
@@ -375,7 +383,7 @@ inline void HashList<T>::remove
 )
 {
     label rhIndex;
-    Item<T> *thisPtr=getLinkItem(index), *searchPtr=thisPtr;
+    Item *thisPtr=getLinkItem(index), *searchPtr=thisPtr;
 
     // Set the rehash flag
     rehash_ = true;
@@ -441,7 +449,7 @@ inline label HashList<T>::append
     if (endIdx_) index = endIdx_->idx_+1;
 
     // Allocate and set the index
-    Item<T> *newPtr = new Item<T>;
+    Item *newPtr = new Item;
     newPtr->data_ = data;
     newPtr->idx_ = index;
 
@@ -476,7 +484,7 @@ inline label HashList<T>::append
 template<class T>
 void HashList<T>::clear()
 {
-    Item<T> *current, *node;
+    Item *current, *node;
 
     // Delete all links sequentially
     current = startIdx_;
@@ -504,7 +512,7 @@ inline void HashList<T>::rehash()
     if (this->rehash_)
     {
         // A rehashIndex less than zero implies that the entire list is to be rehashed
-        Item<T> *thisPtr = (rehashIndex_ < 0) ? startIdx_ : getLinkItem(rehashIndex_);
+        Item *thisPtr = (rehashIndex_ < 0) ? startIdx_ : getLinkItem(rehashIndex_);
         for(
              label idx = (thisPtr == startIdx_) ? 0 : rehashIndex_;
              thisPtr;
@@ -547,14 +555,14 @@ template<class T>
 void HashList<T>::sort()
 {
     // Set the starting index
-    Item<T> *tmpItem = getLinkItem(0);
+    Item *tmpItem = getLinkItem(0);
     tmpItem->previdx_ = 0;
     startIdx_ = tmpItem;
 
     // Loop through the rest of the elements and set accordingly
     for(label i=1; i<size_; i++)
     {
-        Item<T> *item = getLinkItem(i);
+        Item *item = getLinkItem(i);
         tmpItem->nextidx_ = item;
         item->previdx_    = tmpItem;
         tmpItem = item;
@@ -582,7 +590,7 @@ HashList<T>::~HashList()
 
 //- Return an item of the HashList
 template<class T>
-inline Item<T>* HashList<T>::getLinkItem
+inline typename HashList<T>::Item* HashList<T>::getLinkItem
 (
     const label index
 )
@@ -591,7 +599,7 @@ inline Item<T>* HashList<T>::getLinkItem
     label loc = hash(index)%hash_table_size_;
 
     // Loop through chained linked-list
-    Item<T> *item=0;
+    Item *item=0;
     for (item=table_[loc]; item; item=item->next_)
     {
         if (index == item->idx_) return item;
@@ -697,6 +705,16 @@ HashList<T>::iterator::operator++
     return (*this);
 }
 
+// Iterator operator overload - Increment to next item in the list
+template<class T>
+inline typename
+HashList<T>::iterator&
+HashList<T>::iterator::operator++()
+{
+    curItem = curItem->nextidx_;
+    return (*this);
+}
+
 //- Return an iterator to the start of the list
 template<class T>
 inline typename HashList<T>::iterator HashList<T>::begin()
@@ -765,7 +783,7 @@ inline bool HashList<T>::checkIndex
     label loc = hash(index)%hash_table_size_;
 
     // Loop through chained linked-list
-    for (Item<T> *item=table_[loc]; item; item=item->next_)
+    for (Item *item=table_[loc]; item; item=item->next_)
     {
         if (index == item->idx_) return true;
     }
@@ -781,7 +799,7 @@ void HashList<T>::toc() const
         Info << i << ": ";
         if (table_[i])
         {
-            for(Item<T> *item = table_[i]; item; item=item->next_)
+            for(Item *item = table_[i]; item; item=item->next_)
             {
                 Info << item->idx_ << "->";
             }
@@ -798,7 +816,7 @@ HashList<T>& HashList<T>::operator=
     const HashList& HLrhs
 )
 {
-    Item<T> *lhs, *rhs;
+    Item *lhs, *rhs;
     for(lhs=startIdx_, rhs=HLrhs.startIdx_;
         lhs;
         lhs=lhs->nextidx_, rhs=rhs->nextidx_)
@@ -819,7 +837,7 @@ inline typename HashList<T>::iterator HashList<T>::operator()
     label loc = hash(index)%hash_table_size_;
 
     // Loop through chained linked-list
-    Item<T> *item=0;
+    Item *item=0;
     for (item=table_[loc]; item; item=item->next_)
     {
         if (index == item->idx_) return iterator(item);
@@ -848,7 +866,7 @@ HashList<T>::operator()
     label loc = hash(index)%hash_table_size_;
 
     // Loop through chained linked-list
-    Item<T> *item=0;
+    Item *item=0;
     for (item=table_[loc]; item; item=item->next_)
     {
         if (index == item->idx_) return iterator(item);
@@ -875,7 +893,7 @@ inline T& HashList<T>::operator[]
     label loc = hash(index)%hash_table_size_;
 
     // Loop through chained linked-list
-    Item<T> *item=0; 
+    Item *item=0; 
     for (item=table_[loc]; item; item=item->next_)
     {
         if (index == item->idx_) return item->data_;
@@ -902,7 +920,7 @@ inline const T& HashList<T>::operator[]
     label loc = hash(index)%hash_table_size_;
 
     // Loop through chained linked-list
-    Item<T> *item=0; 
+    Item *item=0; 
     for (item=table_[loc]; item; item=item->next_)
     {
         if (index == item->idx_) return item->data_;
@@ -925,7 +943,7 @@ inline void HashList<T>::operator=
     const T& rhs
 )
 {
-    for(Item<T> *item=startIdx_; item; item=item->nextidx_) item->data_ = rhs;
+    for(Item *item=startIdx_; item; item=item->nextidx_) item->data_ = rhs;
     return (*this);
 }
 

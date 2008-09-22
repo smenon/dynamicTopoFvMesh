@@ -55,24 +55,6 @@ template<class T> class List;
 
 template<class T> class HashList;
 
-// Structure that holds one element of the linked-list
-template<class T> struct Item
-{
-    label   idx_;
-    T       data_;
-    // Next and previous item (in hash-table link-list)
-    Item<T> *prev_, *next_;
-    // Next and previous item (by index)
-    Item<T> *previdx_, *nextidx_;
-    // Default initialization
-    Item<T>()
-    {
-        idx_     = -1;
-        prev_    = next_    = 0;
-        previdx_ = nextidx_ = 0;
-    }
-};
-
 // * * * * * * Forward declaration of template friend fuctions * * * * * * * //
 
 template<class T> Ostream& operator<<
@@ -91,19 +73,37 @@ class HashList
 {
     // Private data
 
+        // Structure that holds one element of the linked-list
+        struct Item
+        {
+            label   idx_;
+            T       data_;
+            // Next and previous item (in hash-table link-list)
+            Item    *prev_, *next_;
+            // Next and previous item (by index)
+            Item    *previdx_, *nextidx_;
+            // Default initialization
+            Item()
+            {
+                idx_     = -1;
+                prev_    = next_    = 0;
+                previdx_ = nextidx_ = 0;
+            }
+        };    
+    
         // Size of the list
-        label size_;
+        label size_;        
 
         // Pointer to element[0] and element[N] of the list
-        Item<T> *startIdx_, *endIdx_;
+        Item *startIdx_, *endIdx_;
 
         // Hash-table
         // Holds the pointer to the start of the linked-list
-        Item<T> **table_;
+        Item **table_;
 
         // Hash-table size. (Must be prime!)
-        // Change only if collision rates are unmanageable
-        static label hash_table_size_;
+        // Change if collision rates are unmanageable
+        label hash_table_size_;
 
         // Rehash flag for automatic rehashing
         bool rehash_;
@@ -117,7 +117,7 @@ class HashList
         inline label hash(label) const;
 
         //- Return an item of the HashList
-        inline Item<T>* getLinkItem(const label);
+        inline Item* getLinkItem(const label);
 
 public:
 
@@ -126,13 +126,13 @@ public:
     // Constructors
 
         //- Construct null
-        HashList();
+        HashList(const label tableSize = 257);
 
         //- Construct given a size and value for all elements
-        HashList(const label, const T&);
+        HashList(const label, const T&, const label tableSize = 257);
 
         //- Construct from an existing List<T> structure
-        HashList(const List<T>&);
+        HashList(const List<T>&, const label tableSize = 257);
 
         //- Construct as copy
         HashList(const HashList<T>&);
@@ -144,7 +144,7 @@ public:
             friend class HashList;
 
             // Private data
-            Item<T> *curItem;
+            Item *curItem;
 
         public:
 
@@ -152,7 +152,7 @@ public:
             iterator() : curItem(0) {}
 
             // Constructor with input
-            iterator(Item<T>* p) : curItem(p) {}
+            iterator(Item* p) : curItem(p) {}
 
             // Member functions
 
@@ -171,8 +171,9 @@ public:
             inline bool operator!=(const iterator&) const;
             inline bool operator==(const iterator&) const;
 
-            //- Postfix overload
+            //- Postfix/prefix overload
             inline iterator& operator++(int);
+            inline iterator& operator++();
         };
 
     // Destructor
@@ -184,7 +185,7 @@ public:
         // Memory allocation
 
             //- Allocation for a null-constructed object, given size/value
-            void setSize(const label, const T&);
+            void setSize(const label, const T&, const label tableSize = 257);
 
             //- Insertion of a new element at the given label
             //- This will require a rehash
@@ -276,13 +277,6 @@ public:
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-// Initialize static member data
-
-// Larger table-sizes probably improve access-rates on larger lists, but can be
-// wasteful in terms of memory. If collision rates are too high, either increase
-// this value (preferred), or modify the hash-function.
-template<class T> label HashList<T>::hash_table_size_ = 257;
 
 } // End namespace Foam
 
