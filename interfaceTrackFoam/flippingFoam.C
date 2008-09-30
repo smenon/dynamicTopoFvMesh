@@ -26,8 +26,7 @@ Application
     flippingFoam
 
 Description
-    An implementation of dynamic changes to mesh-topology based on 
-    cell-skewness metrics. 
+    Driver routine to test mesh-motion and topology changes. 
  
 Author
     Sandeep Menon
@@ -62,7 +61,7 @@ void rotatePoints(dynamicTopoFvMesh& mesh, doubleScalar theta, vector p1, vector
     
     // Move points that lie on the box patch
     const labelList& boxPoints = mesh.boundaryMesh()[patchID].meshPoints();  
-    List<vector>& Displacement = mesh.setMotionBC(patchID);
+    vectorField Displacement(boxPoints.size(),vector::zero);
     
     forAll (boxPoints, index)
     {
@@ -90,6 +89,9 @@ void rotatePoints(dynamicTopoFvMesh& mesh, doubleScalar theta, vector p1, vector
         // Change displacement conditions as well
         Displacement[index] = q-p_orig;
     }   
+    
+    // Update the displacement
+    mesh.setMotionBC(patchID, Displacement);
     
     // Move the boundary points
     mesh.movePoints(meshPoints);      
