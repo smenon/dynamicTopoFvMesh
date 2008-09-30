@@ -85,12 +85,30 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ratioMin_(0.0),
     ratioMax_(0.0),
     growthFactor_(1.0),
+    maxLengthScale_(GREAT),
     bisectInteriorFace_(-1)
 {
     // Initialize the motion-solver, if it was requested
     if (solveForMotion_)
     {
         motionPtr_.set(motionSolver::New(*this).ptr());
+    }
+    
+    // Initialize the multiThreading environment
+    threader_.set
+    (
+        multiThreader::New
+        (
+            dict_.subDict("dynamicTopoFvMesh")
+        ).ptr()
+    );
+    
+    // Get the number of threads and allocate topoMeshStructures
+    label nThreads = threader_->getNumThreads();
+    structPtr_ = new topoMeshStruct[nThreads];
+    for (label i=0; i<nThreads; i++)
+    {
+        structPtr_[i].mesh = this;
     }
 
     // For tetrahedral meshes...
@@ -126,6 +144,11 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
         ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
         growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
+        
+        if (edgeOptionDict.found("maxLengthScale"))
+        {
+            maxLengthScale_ = readScalar(edgeOptionDict.lookup("maxLengthScale"));
+        }
 
         if (edgeOptionDict.found("fixedLengthScalePatches"))
         {
@@ -1245,22 +1268,20 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
         }
     }
 
-    // Loop through the cellsFromCells list, and fill up the cellMap
-    forAll(cellsFromCells_,cellI)
+    // Loop through the cellsFromCells list, and renumber the map indices
+    // HashTable keys, however, are not altered.
+    forAllIter(Map<objectMap>, cellsFromCells_, cellI)
     {
-        objectMap& thisMap = cellsFromCells_[cellI];
-        if (cellMap_[addedCellRenumbering_[thisMap.index()]] == -1)
+        objectMap& thisMap = cellI(); 
+        if (thisMap.index() < nOldCells_)
         {
-            cellMap_[addedCellRenumbering_[thisMap.index()]] = thisMap.masterObjects()[0];
-            thisMap.index() = addedCellRenumbering_[thisMap.index()];
+            thisMap.index() = reverseCellMap_[thisMap.index()];
         }
         else
         {
-            FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderCells()") << nl
-                    << " Mapping's messed up." << nl
-                    << abort(FatalError);
+            thisMap.index() = addedCellRenumbering_[thisMap.index()];
         }
-    }
+    }   
 
     if(debug)
     {
@@ -1412,7 +1433,9 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                             }
                             sumLength /= nTouchedNgb;
                             // Scale the length and assign to this cell
-                            lengthScale[cList[indexI]] = sumLength*growthFactor_;
+                            scalar sLength = sumLength*growthFactor_;
+                            sLength = (sLength < maxLengthScale_) ? sLength : maxLengthScale_;
+                            lengthScale[cList[indexI]] = sLength;
                             visitedCells++;
                         }
                     }
@@ -1425,9 +1448,9 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
         if (debug) Info << "Length Scale sweeps: " << level << endl;
 
         // Copy the most recent length-scale values
-        for(HashList<scalar>::iterator l = lengthScale_.begin(); l != lengthScale_.end(); l++)
+        forAllIter(HashList<scalar>, lengthScale_, lIter)
         {
-            l() = lengthScale[l.index()];
+            lIter() = lengthScale[lIter.index()];
         }
     }
 }
@@ -1453,7 +1476,7 @@ scalar Foam::dynamicTopoFvMesh::boundaryLengthScale
 }
 
 // 2D Edge-swapping engine
-void Foam::dynamicTopoFvMesh::swap2DEdges()
+void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *meshStructure)
 {
     bool found, foundinner;
     face f;
@@ -1855,6 +1878,57 @@ void Foam::dynamicTopoFvMesh::swap2DEdges()
             cell_1[c1count++] = commonIntFaceIndex[3];
             owner_[commonIntFaceIndex[2]] = newOwn;
             neighbour_[commonIntFaceIndex[2]] = newNei;
+            
+            // Generate mapping information for both cells
+            label firstParent, secondParent;
+            const labelListList& cc = cellCells();
+            labelHashSet c0MasterObjects(6);
+            labelHashSet c1MasterObjects(6);
+            
+            if (c0 < nOldCells_)
+                firstParent = c0;
+            else
+                firstParent = cellParents_[c0];
+
+            if (c1 < nOldCells_)
+                secondParent = c1;
+            else
+                secondParent = cellParents_[c1];               
+            
+            // Find the cell's neighbours in the old mesh
+            c0MasterObjects.insert(firstParent);
+            c1MasterObjects.insert(firstParent);
+            
+            forAll(cc[firstParent],cellI)
+            {
+                if (!c0MasterObjects.found(cc[firstParent][cellI]))
+                {
+                    c0MasterObjects.insert(cc[firstParent][cellI]);
+                }
+                if (!c1MasterObjects.found(cc[firstParent][cellI]))
+                {
+                    c1MasterObjects.insert(cc[firstParent][cellI]);
+                }                
+            }
+
+            c0MasterObjects.insert(secondParent);            
+            c1MasterObjects.insert(secondParent);
+            
+            forAll(cc[secondParent],cellI)
+            {
+                if (!c0MasterObjects.found(cc[secondParent][cellI]))
+                {
+                    c0MasterObjects.insert(cc[secondParent][cellI]);
+                }
+                if (!c1MasterObjects.found(cc[secondParent][cellI]))
+                {
+                    c1MasterObjects.insert(cc[secondParent][cellI]);
+                }
+            }   
+
+            // Insert mapping info into the HashTable
+            cellsFromCells_.insert(c0,objectMap(c0,c0MasterObjects.toc()));
+            cellsFromCells_.insert(c1,objectMap(c1,c1MasterObjects.toc()));
         }
     }
 }
@@ -1978,8 +2052,17 @@ void Foam::dynamicTopoFvMesh::initInternalEdges()
 #   endif
 }
 
+// Does the mesh perform edge-modification?
+bool Foam::dynamicTopoFvMesh::edgeModification()
+{
+    return edgeModification_;
+}
+
 // 2D Edge-bisection/collapse engine
-void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D()
+void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
+(
+    const topoMeshStruct *meshStructure
+)
 {
     // Loop through all quad-faces and bisect/collapse 
     // edges (quad-faces) by the criterion:
@@ -2121,10 +2204,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     // Get the two cells on either side...
     label c0 = owner_[findex], c1 = neighbour_[findex];
 
-    // Temporary fix: Currently avoid bisecting faces that are adjacent to
-    // added cells
-    if ( (c0 >= nOldCells_) || (c1 >= nOldCells_) ) return;
-
     // Find the prism faces for cell[0].
     cell &cell_0 = cells_[c0];
     findPrismFaces(findex,cell_0,c0BdyFace,c0BdyIndex,c0IntFace,c0IntIndex);
@@ -2157,7 +2236,32 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     cell &newCell0 = cells_[newCellIndex0];
 
     // Generate mapping information for this new cell
-    cellsFromCells_.append(objectMap(newCellIndex0,labelList(1,c0)));
+    label firstParent;
+    const labelListList& cc = cellCells();
+    labelHashSet c0MasterObjects(6);
+
+    if (c0 < nOldCells_)
+    {
+        firstParent = c0;
+    }
+    else
+    {
+        firstParent = cellParents_[c0];
+        cellParents_.insert(newCellIndex0,firstParent);
+    }
+
+    // Find the cell's neighbours in the old mesh
+    c0MasterObjects.insert(firstParent);
+    forAll(cc[firstParent],cellI)
+    {
+        if (!c0MasterObjects.found(cc[firstParent][cellI]))
+        {
+            c0MasterObjects.insert(cc[firstParent][cellI]);
+        }
+    }
+
+    // Insert mapping info into the HashTable
+    cellsFromCells_.insert(newCellIndex0,objectMap(newCellIndex0,c0MasterObjects.toc()));
 
     // Add a new element to the lengthScale field
     // (Currently the same as cell[0])
@@ -2323,7 +2427,31 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         cell &newCell1 = cells_[newCellIndex1];
 
         // Generate mapping information for this new cell
-        cellsFromCells_.append(objectMap(newCellIndex1,labelList(1,c1)));
+        label secondParent;
+        labelHashSet c1MasterObjects(6);
+
+        if (c1 < nOldCells_)
+        {
+            secondParent = c1;
+        }
+        else
+        {
+            secondParent = cellParents_[c0];
+            cellParents_.insert(newCellIndex1,secondParent);
+        }
+
+        // Find the cell's neighbours in the old mesh
+        c1MasterObjects.insert(secondParent);
+        forAll(cc[secondParent],cellI)
+        {
+            if (!c1MasterObjects.found(cc[secondParent][cellI]))
+            {
+                c1MasterObjects.insert(cc[secondParent][cellI]);
+            }
+        }
+
+        // Insert mapping info into the HashTable
+        cellsFromCells_.insert(newCellIndex1,objectMap(newCellIndex1,c1MasterObjects.toc()));
 
         // Add a new element to the lengthScale field
         // (Currently the same as cell[1])
@@ -2578,7 +2706,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
     if (firstEdgeBoundary && secondEdgeBoundary)
     {
         Info << "Collapsing a boundary edge..." << endl;
-        return false;
+        // return false;
     }
 
     // Determine the common vertices for the first and second edges
@@ -2949,26 +3077,18 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
     cells_.remove(c0);
     lengthScale_.remove(c0);
     replaceFaceLabel(faceToThrow[0], faceToKeep[0], cells_[cellCheck[0]]);
+    
     // Update the number of cells, and the reverse map
     nCells_--;
     if (c0 < nOldCells_)
     {
         reverseCellMap_[c0] = -1;
     }
-    else
+
+    // Check if the cell was added in the current morph, and delete
+    if (cellsFromCells_.found(c0))
     {
-        // This cell was added during the current morph. 
-        // Remove it from the cellsFromCells_ list.
-        List<objectMap> cfcCopy(cellsFromCells_.size()-1);
-        label index=0;
-        forAll(cellsFromCells_,cellI)
-        {
-            if (cellsFromCells_[cellI].index() != c0)
-                cfcCopy[index++] = cellsFromCells_[cellI];
-        }
-        cellsFromCells_.clear();
-        forAll(cfcCopy,cellI)
-            cellsFromCells_.append(cfcCopy[cellI]);
+        cellsFromCells_.erase(c0);
     }
 
     if (c1 != -1)
@@ -2982,27 +3102,19 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         cells_.remove(c1);
         lengthScale_.remove(c1);
         replaceFaceLabel(faceToThrow[1], faceToKeep[1], cells_[cellCheck[1]]);
+
         // Update the number of cells, and the reverse map
         nCells_--;
         if (c1 < nOldCells_)
         {
             reverseCellMap_[c1] = -1;
         }
-        else
+
+        // Check if the cell was added in the current morph, and delete
+        if (cellsFromCells_.found(c1))
         {
-            // This cell was added during the current morph. 
-            // Remove it from the cellsFromCells_ list.
-            List<objectMap> cfcCopy(cellsFromCells_.size()-1);
-            label index=0;
-            forAll(cellsFromCells_,cellI)
-            {
-                if (cellsFromCells_[cellI].index() != c1)
-                    cfcCopy[index++] = cellsFromCells_[cellI];
-            }
-            cellsFromCells_.clear();
-            forAll(cfcCopy,cellI)
-                cellsFromCells_.append(cfcCopy[cellI]);
-        }
+            cellsFromCells_.erase(c1);
+        }        
     }
 
     // Return a successful collapse
@@ -3062,6 +3174,44 @@ bool Foam::dynamicTopoFvMesh::remove2DSliver
     return false;
 }
 
+// Prepare thread structures
+void Foam::dynamicTopoFvMesh::prepareThreads()
+{
+    // Fill in required thread-info
+    label numThreads = threader_().getNumThreads(); 
+    label pointsPerBlock = (nPoints_+1)/numThreads;
+    label facesPerBlock  = (nFaces_+1)/numThreads;
+    label cellsPerBlock  = (nCells_+1)/numThreads;
+
+    // Information for the master thread
+    structPtr_[0].pointSize  = pointsPerBlock;
+    structPtr_[0].faceSize   = facesPerBlock;
+    structPtr_[0].cellSize   = cellsPerBlock;
+    threader_().setData(0, &(structPtr_[0]));
+
+    // Information for all subsequent threads
+    label pointsLeft = nPoints_, facesLeft = nFaces_, cellsLeft = nCells_;
+    for (label i = 1; i < numThreads; i++)
+    {
+        pointsLeft -= pointsPerBlock;
+        facesLeft -= facesPerBlock;
+        cellsLeft -= cellsPerBlock;
+        structPtr_[i].pointStart = 
+            structPtr_[i-1].pointStart + structPtr_[i-1].pointSize;
+        structPtr_[i].faceStart = 
+            structPtr_[i-1].faceStart + structPtr_[i-1].faceSize;
+        structPtr_[i].cellStart =
+            structPtr_[i-1].cellStart + structPtr_[i-1].cellSize;
+        structPtr_[i].pointSize = 
+            (pointsLeft < pointsPerBlock) ? pointsLeft : pointsPerBlock;
+        structPtr_[i].faceSize =
+            (facesLeft < facesPerBlock) ? facesLeft : facesPerBlock;
+        structPtr_[i].cellSize =
+            (cellsLeft < cellsPerBlock) ? cellsLeft : cellsPerBlock;
+        threader_().setData(i, &(structPtr_[i]));
+    }    
+}
+
 // Update mesh corresponding to the given map
 void Foam::dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
 {
@@ -3103,8 +3253,6 @@ void Foam::dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
     // Map all the surfaceFields in the objectRegistry
     MapGeometricFields<scalar, fvsPatchField, dynamicTopoFvMeshMapper, surfaceMesh>
         (fieldMapper);
-    MapGeometricFields<vector, fvsPatchField, dynamicTopoFvMeshMapper, surfaceMesh>
-        (fieldMapper);
      
     // Old volumes are not mapped since interpolation is 
     // performed at the same time level.
@@ -3120,6 +3268,52 @@ void Foam::dynamicTopoFvMesh::updateMotion()
         // Solve for motion   
         movePoints(motionPtr_->newPoints());
     }
+}
+
+// MultiThreaded topology modifier [2D]
+threadReturnType Foam::dynamicTopoFvMesh::threadedTopoModifier2D(void *arg)
+{
+    // Typecast the argument into the required structure
+    multiThreader::threadInfo *threadStruct =
+        reinterpret_cast<multiThreader::threadInfo *>(arg);            
+    
+    topoMeshStruct *meshStructure = 
+        reinterpret_cast<topoMeshStruct*>(threadStruct->methodArg);
+    
+    dynamicTopoFvMesh *mesh = meshStructure->mesh;
+    
+    if (debug)
+    {
+        Info << " Point start: " 
+             << meshStructure->pointStart 
+             << " Point size: " 
+             << meshStructure->pointSize 
+             << endl;
+
+        Info << " Face start: " 
+             << meshStructure->faceStart 
+             << " Face size: " 
+             << meshStructure->faceSize 
+             << endl;
+
+        Info << " Cell start: " 
+             << meshStructure->cellStart 
+             << " Cell size: " 
+             << meshStructure->cellSize 
+             << endl;    
+    }
+    
+    // 2D Edge-bisection/collapse engine
+    if (mesh->edgeModification()) mesh->edgeBisectCollapse2D(meshStructure);
+
+    if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
+
+    // 2D Edge-swapping engine
+    mesh->swap2DEdges(meshStructure);
+
+    if (debug) Info << nl << "2D Edge Swapping complete." << endl;    
+    
+    return threadReturnValue;
 }
 
 // Update the mesh for topology changes
@@ -3172,16 +3366,15 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     topoChangeFlag_ = false;
 
     if ( twoDMotion_ )
-    {
-        // 2D Edge-swapping engine
-        swap2DEdges();
+    {        
+        // Set the mesh-modifier static method
+        threader_().setMethod(threadedTopoModifier2D);
 
-        if (debug) Info << nl << "2D Edge Swapping complete." << endl;
-
-        // 2D Edge-bisection/collapse engine
-        if ( edgeModification_ ) edgeBisectCollapse2D();
-
-        if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
+        // Prepare threads for execution
+        prepareThreads();
+        
+        // Start all threads
+        threader_().executeThreads();
     }
     else
     {
@@ -3219,10 +3412,13 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         // Reorder the mesh and obtain current topological information
         reOrderMesh(points, faces, owner, neighbour);
 
-        // Copy mapping information
-        forAll(cellsFromCells_, cellI)
-            cellsFromCells[cellI] = cellsFromCells_[cellI];
-
+        // Copy cell-mapping information
+        label indexI=0;
+        forAllIter(Map<objectMap>, cellsFromCells_, cellI)
+        {
+            cellsFromCells[indexI++] = cellI();
+        }
+        
         // Obtain the patch-point labels for mapping before resetting the mesh
         labelListList oldMeshPointLabels(numPatches_);
         for(label i=0; i<numPatches_; i++)
@@ -3353,14 +3549,12 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseCellMap_.clear();
         boundaryPatches_.clear();
         cellsFromCells_.clear();
+        cellParents_.clear();
 
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_);
         reverseFaceMap_.setSize(nFaces_);
         reverseCellMap_.setSize(nCells_);
-
-        // Reset old cell-volumes
-        setV0();
 
         // Basic checks for mesh-validity
         if (debug) checkMesh(true);

@@ -46,6 +46,9 @@ SourceFiles
 #include "faceTetPolyPatch.H"
 #include "tetPolyPatchInterpolation.H"
 
+// Multithreading support
+#include "multiThreader.H"
+
 // Tetrahedral mesh-quality metrics
 #include "tetQuality.H"
 #include "Knupp.H"
@@ -124,11 +127,12 @@ class dynamicTopoFvMesh
         labelList       faceMap_;
         labelList       cellMap_;
         
-        // Hash-tables for the renumbering of added entities
-        DynamicList<objectMap> cellsFromCells_;
-        HashTable<label,label> addedPointRenumbering_; 
-        HashTable<label,label> addedCellRenumbering_;
-        HashTable<label,label> boundaryPatches_;
+        //- Maps for the renumbering of added entities
+        Map<objectMap>  cellsFromCells_;
+        Map<label>      addedPointRenumbering_; 
+        Map<label>      addedCellRenumbering_;
+        Map<label>      boundaryPatches_;
+        Map<label>      cellParents_;
         
         //- Edge length cut-off criteria 
         //- ( for all faces in the mesh [2D] )
@@ -137,11 +141,37 @@ class dynamicTopoFvMesh
         scalar              ratioMin_;
         scalar              ratioMax_;
         scalar              growthFactor_;
+        scalar              maxLengthScale_;
         label               bisectInteriorFace_;
         
         //- Internal edge-list for 3D tet-meshes
         HashList<edge>      internalEdges_;
         HashList<label>     startFaceIndex_;
+        
+        //- Support for multithreading
+        autoPtr<multiThreader> threader_;
+        
+        //- Structure used for multiThreading
+        struct topoMeshStruct
+        {
+            // Pointer to this class
+            dynamicTopoFvMesh *mesh;
+            
+            // Entity start positions & sizes
+            label pointStart, faceStart, cellStart;
+            label pointSize, faceSize, cellSize;
+            
+            // Default constructor
+            topoMeshStruct()
+            {
+                mesh = 0;
+                pointStart = faceStart = cellStart = 0;
+                pointSize  = faceSize  = cellSize  = 0;
+            }
+        };
+        
+        // Structure array pointer
+        topoMeshStruct *structPtr_;
         
     // Private Member Functions
 
@@ -166,11 +196,14 @@ class dynamicTopoFvMesh
         // Initialize internal edges (for 3D tet-meshes)
         void initInternalEdges();
         
+        // MultiThreaded topology modifier [2D]
+        static threadReturnType threadedTopoModifier2D(void *arg);
+        
         // 2D Edge-swapping engine
-        void swap2DEdges();
+        void swap2DEdges(const topoMeshStruct *);
         
         // 2D Edge-bisection/collapse engine
-        void edgeBisectCollapse2D();
+        void edgeBisectCollapse2D(const topoMeshStruct *);
         
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label&) const;
@@ -235,6 +268,12 @@ class dynamicTopoFvMesh
         
         // Return the appropriate length-scale for boundary face
         scalar boundaryLengthScale(const label);
+        
+        // Prepare thread structures
+        void prepareThreads();
+        
+        // Does the mesh perform edge-modification?
+        bool edgeModification();
         
 public:
     
