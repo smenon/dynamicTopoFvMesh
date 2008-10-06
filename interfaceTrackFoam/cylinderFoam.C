@@ -32,6 +32,7 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "fvCFD.H"
+#include "fluidInterface.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -57,7 +58,9 @@ int main(int argc, char *argv[])
     Info<< "\nStarting time loop\n" << endl;
 
     mesh.debug = true;
+    primitiveMesh::debug = true;
     polyMesh::debug = true;
+    fvMesh::debug = true;
     
     while (runTime.run())
     {
@@ -106,7 +109,7 @@ int main(int argc, char *argv[])
 
         for (int corr=0; corr<nCorr; corr++)
         {
-            rUA = 1.0/UEqn.A();
+            volScalarField rUA = 1.0/UEqn.A();
 
             U = rUA*UEqn.H();
             phi = (fvc::interpolate(U) & mesh.Sf());
@@ -131,35 +134,31 @@ int main(int argc, char *argv[])
                 {
                     pEqn.solve(mesh.solver(p.name()));
                 }
-                
+                                
                 if (nonOrth == nNonOrthCorr)
                 {
                     phi -= pEqn.flux();
                 }
             }
-
+            
 #           include "continuityErrs.H"            
-
-            // Make the fluxes relative to the mesh motion
-            fvc::makeRelative(phi, U);
 
             U -= rUA*fvc::grad(p);
             U.correctBoundaryConditions();
         }  
-
+        
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
-            << nl << endl;        
+            << nl << endl;           
         
-        // Make the fluxes absolute
-        fvc::makeAbsolute(phi, U);        
-       
         bool meshChanged = mesh.updateTopology(); 
-        
+  
         if (meshChanged)
         {
-#           include "checkTotalVolume.H"           
-#           include "correctPhi.H"            
+#           include "checkTotalVolume.H"            
+            // Obtain flux from mapped velocity        
+            phi = (fvc::interpolate(U) & mesh.Sf());              
+#           include "correctPhi.H"           
 #           include "CourantNo.H"
         }
             

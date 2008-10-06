@@ -94,7 +94,7 @@ int main(int argc, char *argv[])
 
 #           include "UEqn.H"
 
-            rUA = 1.0/UEqn.A();            
+            volScalarField rUA = 1.0/UEqn.A();            
 
             // --- PISO loop
 
@@ -150,6 +150,7 @@ int main(int argc, char *argv[])
         if (meshChanged)
         {      
 #           include "checkTotalVolume.H"
+            phi = linearInterpolate(U) & mesh.Sf();
 #           include "correctPhi.H"            
 #           include "CourantNo.H"
             interface.updateMesh(mesh.meshMap());            

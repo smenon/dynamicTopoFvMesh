@@ -33,7 +33,7 @@ Author
 \*----------------------------------------------------------------------------*/
 
 #include "dynamicTopoFvMesh.H"
-
+#include "dynamicTopoFvMeshMapper.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -109,6 +109,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     for (label i=0; i<nThreads; i++)
     {
         structPtr_[i].mesh = this;
+        structPtr_[i].nThreads = nThreads;
+        structPtr_[i].threadID = i;
     }
 
     // For tetrahedral meshes...
@@ -258,15 +260,38 @@ void Foam::dynamicTopoFvMesh::setMotionBC
     }    
 }
 
+// Return the mesh-mapper
+const Foam::autoPtr<mapPolyMesh> Foam::dynamicTopoFvMesh::meshMap()
+{
+    return mapper_;
+}
+
+// Return old cell-centre information (prior to a topology change)
+const Foam::vectorField& Foam::dynamicTopoFvMesh::oldCellCentres() const
+{
+    if (cellCentresPtr_.valid())
+    {
+        return cellCentresPtr_();
+    }
+    else
+    {
+        FatalErrorIn("dynamicTopoFvMesh::oldCellCentres() ") << nl
+                << " Illegal request for old cell centres. " << nl
+                << abort(FatalError);        
+    }
+    
+    return Foam::vectorField::null();
+}
+
 // Find the circumcenter, given three points
 inline Foam::vector Foam::dynamicTopoFvMesh::circumCenter
 (
-    point& a,
-    point& b,
-    point& c,
-    label& one,
-    label& two,
-    label& three
+    const point& a,
+    const point& b,
+    const point& c,
+    const label& one,
+    const label& two,
+    const label& three
 )
 {
     scalar d1 =  (c - a)&(b - a);
@@ -290,26 +315,6 @@ inline Foam::vector Foam::dynamicTopoFvMesh::circumCenter
 #   endif
 
     return ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
-}
-
-// Find the cell center
-inline Foam::vector Foam::dynamicTopoFvMesh::cellCenter
-(
-    const cell& checkCell
-)
-{
-    vector fC, cC = vector::zero;
-    forAll(checkCell,faceI) 
-    {
-        face& faceCheck = faces_[checkCell[faceI]];
-        fC = vector::zero;
-        forAll(faceCheck,pointI) 
-        {
-            fC += meshPoints_[faceCheck[pointI]];
-        }
-        cC += (fC/faceCheck.size());
-    }
-    return (cC/checkCell.size());
 }
 
 // Find the area of a triangle face. This function also assumes face right-handedness
@@ -1476,7 +1481,7 @@ scalar Foam::dynamicTopoFvMesh::boundaryLengthScale
 }
 
 // 2D Edge-swapping engine
-void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *meshStructure)
+void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
 {
     bool found, foundinner;
     face f;
@@ -1487,7 +1492,12 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *meshStructure)
     faceList  commonFaces(4), commonIntFaces(4);
     edgeList  commonEdges(2);
 
-    for(HashList<face>::iterator fIter = faces_.begin(); fIter != faces_.end(); fIter++)
+    // Loop through faces assigned to this thread
+    HashList<face>::iterator fBegin = faces_(thread->faceStart), fEnd;
+    if (thread->threadID != thread->nThreads-1)
+        fEnd = faces_(thread->faceStart+thread->faceSize);
+    
+    for(HashList<face>::iterator fIter = fBegin; fIter != fEnd; fIter++) 
     {
         // Retrieve the index for this iterator
         label findex = fIter.index();
@@ -1511,20 +1521,19 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *meshStructure)
         findPrismFaces(findex,cell_0,c0BdyFace,c0BdyIndex,c0IntFace,c0IntIndex);
         findPrismFaces(findex,cell_1,c1BdyFace,c1BdyIndex,c1IntFace,c1IntIndex);
 
-        /*
-        if (debug) {
-            Info << "Cell: " << c0 << endl;
-            Info << "Boundary faces: " << c0BdyIndex[0] << ": " << c0BdyFace[0] << endl;
-            Info << "Boundary faces: " << c0BdyIndex[1] << ": " << c0BdyFace[1] << endl;
-            Info << "Interior faces: " << c0IntIndex[0] << ": " << c0IntFace[0] << endl;
-            Info << "Interior faces: " << c0IntIndex[1] << ": " << c0IntFace[1] << endl;
-            Info << "Cell: " << c1 << endl;
-            Info << "Boundary faces: " << c1BdyIndex[0] << ": " << c1BdyFace[0] << endl;
-            Info << "Boundary faces: " << c1BdyIndex[1] << ": " << c1BdyFace[1] << endl;
-            Info << "Interior faces: " << c1IntIndex[0] << ": " << c1IntFace[0] << endl;
-            Info << "Interior faces: " << c1IntIndex[1] << ": " << c1IntFace[1] << endl;
-        }
-        */
+//      if (debug) 
+//      {
+//          Info << "Cell: " << c0 << endl;
+//          Info << "Boundary faces: " << c0BdyIndex[0] << ": " << c0BdyFace[0] << endl;
+//          Info << "Boundary faces: " << c0BdyIndex[1] << ": " << c0BdyFace[1] << endl;
+//          Info << "Interior faces: " << c0IntIndex[0] << ": " << c0IntFace[0] << endl;
+//          Info << "Interior faces: " << c0IntIndex[1] << ": " << c0IntFace[1] << endl;
+//          Info << "Cell: " << c1 << endl;
+//          Info << "Boundary faces: " << c1BdyIndex[0] << ": " << c1BdyFace[0] << endl;
+//          Info << "Boundary faces: " << c1BdyIndex[1] << ": " << c1BdyFace[1] << endl;
+//          Info << "Interior faces: " << c1IntIndex[0] << ": " << c1IntFace[0] << endl;
+//          Info << "Interior faces: " << c1IntIndex[1] << ": " << c1IntFace[1] << endl;
+//      }
 
         // Find the common faces / edges on the boundary
         // At the end of this loop, commonFaces [0] & [1] share commonEdge [0]
@@ -2061,16 +2070,21 @@ bool Foam::dynamicTopoFvMesh::edgeModification()
 // 2D Edge-bisection/collapse engine
 void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
 (
-    const topoMeshStruct *meshStructure
+    const topoMeshStruct *thread
 )
 {
     // Loop through all quad-faces and bisect/collapse 
     // edges (quad-faces) by the criterion:
     // Bisect when boundary edge-length > ratioMax_*originalLength
     // Collapse when boundary edge-length < ratioMin_*originalLength
+    
+    // Loop through faces assigned to this thread
+    HashList<face>::iterator fEnd;
+    if (thread->threadID != thread->nThreads-1)
+        fEnd = faces_(thread->faceStart+thread->faceSize);    
 
-    HashList<face>::iterator fIter = faces_.begin();
-    while(fIter != faces_.end())
+    HashList<face>::iterator fIter = faces_(thread->faceStart);
+    while(fIter != fEnd)
     {
         // Retrieve the index for this iterator
         label findex = fIter.index();
@@ -3179,9 +3193,9 @@ void Foam::dynamicTopoFvMesh::prepareThreads()
 {
     // Fill in required thread-info
     label numThreads = threader_().getNumThreads(); 
-    label pointsPerBlock = (nPoints_+1)/numThreads;
-    label facesPerBlock  = (nFaces_+1)/numThreads;
-    label cellsPerBlock  = (nCells_+1)/numThreads;
+    label pointsPerBlock = (nPoints_/numThreads)+1;
+    label facesPerBlock  = (nFaces_/numThreads)+1;
+    label cellsPerBlock  = (nCells_/numThreads)+1;
 
     // Information for the master thread
     structPtr_[0].pointSize  = pointsPerBlock;
@@ -3224,11 +3238,14 @@ void Foam::dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
     // Clear out surface-interpolation 
     surfaceInterpolation::movePoints();
 
-    // Map all fields
-    mapFields(mpm);
-
     // Clear-out fvMesh geometry and addressing    
     fvMesh::clearOut();
+    
+    // Update topology for all registered classes
+    meshObjectBase::allUpdateTopology<fvMesh>(*this);
+    
+    // Map all fields
+    mapFields(mpm);
 }
 
 // Map all fields in time using the given map
@@ -3281,27 +3298,6 @@ threadReturnType Foam::dynamicTopoFvMesh::threadedTopoModifier2D(void *arg)
         reinterpret_cast<topoMeshStruct*>(threadStruct->methodArg);
     
     dynamicTopoFvMesh *mesh = meshStructure->mesh;
-    
-    if (debug)
-    {
-        Info << " Point start: " 
-             << meshStructure->pointStart 
-             << " Point size: " 
-             << meshStructure->pointSize 
-             << endl;
-
-        Info << " Face start: " 
-             << meshStructure->faceStart 
-             << " Face size: " 
-             << meshStructure->faceSize 
-             << endl;
-
-        Info << " Cell start: " 
-             << meshStructure->cellStart 
-             << " Cell size: " 
-             << meshStructure->cellSize 
-             << endl;    
-    }
     
     // 2D Edge-bisection/collapse engine
     if (mesh->edgeModification()) mesh->edgeBisectCollapse2D(meshStructure);
@@ -3423,6 +3419,12 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         labelListList oldMeshPointLabels(numPatches_);
         for(label i=0; i<numPatches_; i++)
             oldMeshPointLabels[i] = boundaryMesh()[i].meshPoints();
+        
+        // Obtain cell-centre information as well
+        cellCentresPtr_.set
+        (
+            new vectorField(polyMesh::cellCentres())
+        );
 
         // Reset the mesh
         polyMesh::resetPrimitives
@@ -3516,6 +3518,9 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
 
         // Update the underlying mesh, and map all related fields
         updateMesh(mapper_);
+        
+        // Discard old cell-centre information after mapping
+        cellCentresPtr_.clear();
 
         // Update the motion-solver, if necessary
         if (motionPtr_.valid()) motionPtr_().updateMesh(mapper_);

@@ -41,10 +41,10 @@ SourceFiles
 #include "motionSolver.H"
 #include "mapPolyMesh.H"
 #include "MapFvFields.H"
-#include "dynamicTopoFvMeshMapper.H"
 #include "tetDecompositionMotionSolver.H"
 #include "faceTetPolyPatch.H"
 #include "tetPolyPatchInterpolation.H"
+#include "MeshObject.H"
 
 // Multithreading support
 #include "multiThreader.H"
@@ -134,6 +134,9 @@ class dynamicTopoFvMesh
         Map<label>      boundaryPatches_;
         Map<label>      cellParents_;
         
+        // Cell-centre field
+        autoPtr<vectorField> cellCentresPtr_;
+        
         //- Edge length cut-off criteria 
         //- ( for all faces in the mesh [2D] )
         HashList<scalar>    lengthScale_;
@@ -157,6 +160,9 @@ class dynamicTopoFvMesh
             // Pointer to this class
             dynamicTopoFvMesh *mesh;
             
+            // Total number of threads and thread ID
+            label nThreads, threadID;
+            
             // Entity start positions & sizes
             label pointStart, faceStart, cellStart;
             label pointSize, faceSize, cellSize;
@@ -165,6 +171,7 @@ class dynamicTopoFvMesh
             topoMeshStruct()
             {
                 mesh = 0;
+                nThreads = threadID = -1;
                 pointStart = faceStart = cellStart = 0;
                 pointSize  = faceSize  = cellSize  = 0;
             }
@@ -182,10 +189,15 @@ class dynamicTopoFvMesh
         void operator=(const dynamicTopoFvMesh&);
 
         // Find the circumcenter, given three points
-        inline vector circumCenter(point&, point&, point&, label&, label&, label&);
-        
-        // Find the cell center
-        inline vector cellCenter(const cell&);
+        inline vector circumCenter
+        (
+            const point& a,
+            const point& b,
+            const point& c,
+            const label& one,
+            const label& two,
+            const label& three
+        );
         
         // Find the area of a triangle face.
         inline scalar triFaceArea(const face&);
@@ -221,14 +233,30 @@ class dynamicTopoFvMesh
         
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
-        void findPrismFaces(const label&, const cell&, faceList&, labelList&, faceList&, labelList&);
+        void findPrismFaces
+        (
+            const label& findex,
+            const cell& c,
+            faceList& bdyf,
+            labelList& bidx,
+            faceList& intf,
+            labelList& iidx
+        );
         
         // Method to find the interior/boundary faces
         // for an input tri-face and adjacent tet/pyramid cell.
-        void findTetPyramidFaces(const label&, const cell&, faceList&, labelList&, faceList&, labelList&);
+        void findTetPyramidFaces
+        (
+            const label& findex,
+            const cell& c,
+            faceList& bdyf,
+            labelList& bidx,
+            faceList& intf,
+            labelList& iidx
+        );
         
         // Method to find the common-edge between two faces.
-        // If an edge is found, returns the common edge on the first face in the argument
+        // If found, returns the common edge on the first face in the argument
         bool findCommonEdge(const face&, const face&, edge&);
         
         // Method to find the isolated point on a triangular face
@@ -242,14 +270,29 @@ class dynamicTopoFvMesh
         inline void replacePointLabel(const label&, const label&, face&);
         
         // Insert the specified face to the mesh
-        label insertFace(const label, const face&, const label, const label, const edge&);
+        label insertFace
+        (
+            const label patch,
+            const face& newFace,
+            const label newOwner,
+            const label newNeighbour,
+            const edge& edgeToWatch
+        );
         
         // Remove the specified face from the mesh
         void removeFace(const label);
         
-        // Utility method to build a hull of faces that are connected to the edge
+        // Utility method to build a hull of faces connected to the edge
         // This will also determine whether the edge lies on a boundary
-        bool constructPrismHull(const edge&, const label, DynamicList<label>&, DynamicList<label>&, DynamicList<label>&, bool);
+        bool constructPrismHull
+        (
+            const edge& edgeToCheck,
+            const label startFaceIndex,
+            DynamicList<label>& hullFaces,
+            DynamicList<label>& hullCells,
+            DynamicList<label>& hullTriFaces,
+            bool requiresTriFaces
+        );
         
         // Reorder points after a topology change
         void reOrderPoints(pointField&);
@@ -307,10 +350,11 @@ public:
         // Access
         void setMotionBC(const label&, const vectorField&);
         
-        const autoPtr<mapPolyMesh> meshMap()
-        {
-            return mapper_;
-        }
+        // Return the mesh-mapper
+        const autoPtr<mapPolyMesh> meshMap();
+        
+        // Return old cell-centre information (prior to a topology change)
+        const vectorField& oldCellCentres() const;
         
         HashList<scalar>& lengthDensity()
         {
