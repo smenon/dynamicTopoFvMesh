@@ -2261,8 +2261,10 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     else
     {
         firstParent = cellParents_[c0];
-        cellParents_.insert(newCellIndex0,firstParent);
     }
+    
+    // Insert the parent cell
+    cellParents_.insert(newCellIndex0,firstParent);
 
     // Find the cell's neighbours in the old mesh
     c0MasterObjects.insert(firstParent);
@@ -2450,9 +2452,11 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         }
         else
         {
-            secondParent = cellParents_[c0];
-            cellParents_.insert(newCellIndex1,secondParent);
+            secondParent = cellParents_[c1];
         }
+        
+        // Insert the parent cell
+        cellParents_.insert(newCellIndex1,secondParent);        
 
         // Find the cell's neighbours in the old mesh
         c1MasterObjects.insert(secondParent);
