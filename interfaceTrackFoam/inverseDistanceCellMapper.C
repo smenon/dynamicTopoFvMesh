@@ -109,8 +109,14 @@ void Foam::inverseDistanceCellMapper::calcAddressing() const
                      << ": " << mo[oldCellI]<< ": " 
                      << oldCentres[mo[oldCellI]] << endl;
                 */
-                w[cellI][oldCellI] = 
-                   1.0/magSqr(newCentres[cellI] - oldCentres[mo[oldCellI]]);
+                w[cellI][oldCellI] = 1.0/stabilise
+                                     (
+                                        magSqr
+                                        (
+                                            newCentres[cellI] 
+                                          - oldCentres[mo[oldCellI]]
+                                        ), VSMALL
+                                     );
                 totalWeight += w[cellI][oldCellI];
             }
             

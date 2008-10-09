@@ -1450,7 +1450,11 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
             level++;
         }
 
-        if (debug) Info << "Length Scale sweeps: " << level << endl;
+        if (debug) 
+        {
+            Info << "Max Length Scale: " << maxLengthScale_ << endl;
+            Info << "Length Scale sweeps: " << level << endl;
+        }
 
         // Copy the most recent length-scale values
         forAllIter(HashList<scalar>, lengthScale_, lIter)
@@ -1493,9 +1497,9 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
     edgeList  commonEdges(2);
 
     // Loop through faces assigned to this thread
-    HashList<face>::iterator fBegin = faces_(thread->faceStart), fEnd;
+    HashList<face>::iterator fBegin = faces_.getIterator(thread->faceStart), fEnd;
     if (thread->threadID != thread->nThreads-1)
-        fEnd = faces_(thread->faceStart+thread->faceSize);
+        fEnd = faces_.getIterator(thread->faceStart+thread->faceSize);
     
     for(HashList<face>::iterator fIter = fBegin; fIter != fEnd; fIter++) 
     {

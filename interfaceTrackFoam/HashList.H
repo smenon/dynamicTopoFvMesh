@@ -210,11 +210,14 @@ public:
 
         // Access
 
-            //- Return const iterator to element[0]
+            //- Return iterator to element[0]
             inline iterator begin();
 
-            //- Return const iterator to element[N]
+            //- Return iterator to element[N]
             inline iterator end();
+            
+            //- Return nearest iterator to the specified index
+            inline iterator getIterator(const label);
 
             //- Rehash the index of an iterator to a new value
             inline void reNumber(const label, iterator&);

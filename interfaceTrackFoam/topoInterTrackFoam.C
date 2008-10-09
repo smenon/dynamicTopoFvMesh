@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     Info<< "\nStarting time loop\n" << endl;
 
     //polyMesh::debug = true;
-    //mesh.debug = true;
+    mesh.debug = true;
     
     while (runTime.run())
     {

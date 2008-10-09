@@ -42,7 +42,7 @@
         dimensionedScalar("0", dimMass/dimVolume, 0)
     );   
 
-    //fluidInterface interface(mesh, rho, U, p, phi);   
+    fluidInterface interface(mesh, rho, U, p, phi);   
     
     // Introduce the non-Newtonian transport model
     // autoPtr<viscosityModel> nuModel = viscosityModel::New("nu",interface,U,phi);

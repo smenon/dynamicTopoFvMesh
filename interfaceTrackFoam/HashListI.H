@@ -730,6 +730,22 @@ inline typename HashList<T>::iterator HashList<T>::end()
     return iterator(0);
 }
 
+//- Return nearest iterator to the specified index
+template<class T>
+inline typename HashList<T>::iterator HashList<T>::getIterator
+(
+    const label index
+)
+{
+    label nearestIndex = index;
+    while (!checkIndex(nearestIndex))
+    {
+        nearestIndex += 1;
+    }
+    
+    return iterator(getLinkItem(nearestIndex));
+}
+
 //- Return the index of the last element
 template<class T>
 inline label HashList<T>::lastIndex() const
@@ -779,6 +795,20 @@ inline bool HashList<T>::checkIndex
     const label index
 ) const
 {
+    // Out-of-bounds check
+    if (!size_)
+    {
+        FatalErrorIn("HashList<T>::checkIndex(const label)")
+            << "attempt to access element from zero sized list"
+            << abort(FatalError);
+    }
+    else if (index<0 || index>=size_)
+    {
+        FatalErrorIn("HashList<T>::checkIndex(const label)")
+            << "index " << index << " out of range 0 ... " << size_-1
+            << abort(FatalError);
+    }    
+    
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
