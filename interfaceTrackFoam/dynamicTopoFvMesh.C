@@ -80,8 +80,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nOldCells_(this->nCells()),
     nCells_(this->nCells()),
     nOldInternalFaces_(this->nInternalFaces()),
-    nInternalFaces_(this->nInternalFaces()),
-    nInternalEdges_(0), 
+    nInternalFaces_(this->nInternalFaces()), 
     ratioMin_(0.0),
     ratioMax_(0.0),
     growthFactor_(1.0),
@@ -134,10 +133,11 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
                     << " Unrecognized tet-quality metric: " << tetMetric
                     << abort(FatalError);
         }
-
-        // Initialize internal edges for swapping
-        initInternalEdges();
     }
+    
+    // Initialize edge-related connectivity structures
+    if (debug) Info << "Building edges..." << endl;
+    //initEdges();
 
     // Define edgeModification options
     if (edgeModification_)
@@ -165,8 +165,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     reverseFaceMap_.setSize(nFaces_);
     reverseCellMap_.setSize(nCells_);
 
-    // Create a displacement field for all boundaries defined in the mesh
-    // and initialize values to zero
+    // Initialize patch-size information
     const polyBoundaryMesh& boundary = this->boundaryMesh();
     for(label i=0; i<numPatches_; i++)
     {
@@ -1998,71 +1997,50 @@ void Foam::dynamicTopoFvMesh::initEdgeLengths()
     }
 }
 
-// Initialize internal edges (for 3D tet-meshes)
-void Foam::dynamicTopoFvMesh::initInternalEdges()
+// Initialize mesh edges and related connectivity lists
+void Foam::dynamicTopoFvMesh::initEdges()
 {
-    labelList tmpInternalEdges(this->nEdges(), 1);
-    labelList tmpStartFaceIndices(this->nEdges(), -1);
-    const edgeList& meshEdges = this->edges();
-    const labelListList& faceToEdgeList = this->faceEdges();
-    const polyBoundaryMesh& boundary = this->boundaryMesh();
-
-    // Blank-out boundary edges...
-    for(label i=0; i<numPatches_; i++)
+    /*
+    label edgeIndex = 0;
+    
+    // List that keeps track of added edges
+    List<labelHashSet> pointPoints(nPoints());
+    
+    // Initialize faceEdges
+    faceEdges_.setSize(nFaces_, SLList<label>());
+    
+    // Loop through all faces in the mesh and add edges in order
+    const faceList& fList = faces();
+    forAll(fList, faceI)
     {
-        for(label j=boundary[i].start(); j<boundary[i].start()+boundary[i].size(); j++)
+        edgeList eList = fList[faceI].edges();
+        forAll(eList, edgeI)
         {
-            const labelList& faceToEdge = faceToEdgeList[j];
-            forAll(faceToEdge, edgeI) 
-                tmpInternalEdges[faceToEdge[edgeI]] = 0;
-        }
-    }
-
-    // Assign the number of internal-edges
-    nInternalEdges_ = sum(tmpInternalEdges);
-
-    // Allocate the internal edge list, and provide edge-labels 
-    // for later use
-    edge nullEdge(0,0);
-    label edgeCounter = 0;
-    internalEdges_.setSize(nInternalEdges_, nullEdge);
-    forAll(tmpInternalEdges, edgeI)
-    {
-        if (tmpInternalEdges[edgeI])
-        {
-            internalEdges_[edgeCounter] = meshEdges[edgeI];
-            tmpInternalEdges[edgeI] = edgeCounter++;
-        }
-        else
-        {
-            tmpInternalEdges[edgeI] = -1;
-        }
-    }
-
-    // Loop through all internal faces and 
-    // add start-face indices for internal edges
-    startFaceIndex_.setSize(nInternalEdges_, -1);
-    for(label i=0; i<nInternalFaces_; i++)
-    {
-        const labelList& faceToEdge = faceToEdgeList[i];
-        forAll(faceToEdge, edgeI)
-        {
-            label& indexToCheck = tmpInternalEdges[faceToEdge[edgeI]];
-            if (indexToCheck >= 0)
+            if 
+            (
+                (!pointPoints[eList[edgeI][0]].found(eList[edgeI][1]))
+             && (!pointPoints[eList[edgeI][1]].found(eList[edgeI][0]))
+            )
             {
-                startFaceIndex_[indexToCheck] = i;
-                indexToCheck = -1;
+                // Add this edge to the HashList
+                edges_.append(eList[edgeI]);
+                edgeFaces_.append(SLList<label>());
+                
+                // Insert edge-face and face-edge
+                faceEdges_[faceI].insert(edgeIndex);
+                edgeFaces_[edgeIndex].insert(faceI);
+                
+                // Update the pointPoints list
+                pointPoints[eList[edgeI][0]].insert(eList[edgeI][1]);
+                pointPoints[eList[edgeI][1]].insert(eList[edgeI][0]);
+                edgeIndex++;
             }
         }
     }
-
-    // Perform a final-check to ensure that allocation is complete
-#   ifdef FULLDEBUG
-    if (sum(tmpInternalEdges) != -this->nEdges())
-        FatalErrorIn("dynamicTopoFvMesh::initInternalEdges()") << nl
-                << " Internal edge-allocation failed. " << nl
-                << abort(FatalError);
-#   endif
+    
+    Info << "Mesh edges: " << edgeIndex << endl;
+    Info << "Mesh edges (polyMesh): " << this->edges().size() << endl;
+    */
 }
 
 // Does the mesh perform edge-modification?

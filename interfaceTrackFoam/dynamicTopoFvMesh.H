@@ -107,6 +107,7 @@ class dynamicTopoFvMesh
         HashList<label> owner_;        
         HashList<label> neighbour_;
         HashList<cell>  cells_;
+        HashList<edge>  edges_;
         
         //- Size information
         labelList       oldPatchSizes_, patchSizes_;
@@ -115,7 +116,7 @@ class dynamicTopoFvMesh
         label           nOldPoints_, nPoints_;
         label           nOldFaces_,  nFaces_;
         label           nOldCells_,  nCells_;
-        label           nOldInternalFaces_, nInternalFaces_, nInternalEdges_;
+        label           nOldInternalFaces_, nInternalFaces_;
         
         //- Old-to-New
         labelList       reversePointMap_;
@@ -147,9 +148,9 @@ class dynamicTopoFvMesh
         scalar              maxLengthScale_;
         label               bisectInteriorFace_;
         
-        //- Internal edge-list for 3D tet-meshes
-        HashList<edge>      internalEdges_;
-        HashList<label>     startFaceIndex_;
+        //- Edge-face connectivity lists
+        HashList<SLList<label> > faceEdges_;
+        HashList<SLList<label> > edgeFaces_;
         
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
@@ -205,8 +206,8 @@ class dynamicTopoFvMesh
         // Initialize the edge-length field
         void initEdgeLengths();
         
-        // Initialize internal edges (for 3D tet-meshes)
-        void initInternalEdges();
+        // Initialize mesh edges and related connectivity lists
+        void initEdges();
         
         // MultiThreaded topology modifier [2D]
         static threadReturnType threadedTopoModifier2D(void *arg);
