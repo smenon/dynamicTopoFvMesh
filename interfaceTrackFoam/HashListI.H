@@ -67,7 +67,14 @@ HashList<T>::HashList(const label tableSize)
     hash_table_size_(tableSize),
     rehash_(false),
     rehashIndex_(-1)
-{}
+{
+    // Allocate the hash-table and initialize
+    table_ = new Item*[hash_table_size_];
+    for(label i=0; i<hash_table_size_; i++)
+    {
+        table_[i] = 0;
+    }
+}
 
 //- Allocation for a null-constructed object, given size/value
 template<class T>
