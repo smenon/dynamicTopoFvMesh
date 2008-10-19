@@ -246,9 +246,7 @@ Foam::tmp<Foam::pointField> Foam::springMotionSolver::newPoints()
 //- Return point location obtained from the current motion field
 Foam::tmp<Foam::pointField> 
 Foam::springMotionSolver::curPoints() const
-{    
-    twoDCorrectPoints(refPoints_);
- 
+{      
     tmp<pointField> tcurPoints(refPoints_);    
     
     return tcurPoints;
@@ -276,7 +274,7 @@ void Foam::springMotionSolver::solve()
                     {
                         x_[pointI] = refPoints_[meshPts[pointI]][cmpt_];
                     }
-
+                    
                     Info << "Solving for component: " << cmpt_;
                     label iters = CG(b_,x_);
                     Info << " No Iterations: " << iters << endl;                    
@@ -285,6 +283,23 @@ void Foam::springMotionSolver::solve()
                     {
                         refPoints_[meshPts[pointI]][cmpt_] = x_[pointI];
                     }
+                }
+                
+                // Correct z-direction for wedge-patches
+                if(boundary[i].type() == "wedge")
+                {
+                    const wedgePolyPatch& wedgePatch = 
+                        refCast<const wedgePolyPatch>(boundary[i]);                                                
+                    
+                    vector centrePoint = vector::zero;
+                    forAll(meshPts,pointI) 
+                    {
+                        centrePoint.x() = refPoints_[meshPts[pointI]][0];
+                        centrePoint.y() = refPoints_[meshPts[pointI]][1];
+                        // Transform using the wedge transform tensor
+                        refPoints_[meshPts[pointI]][2] 
+                            = (wedgePatch.faceT()&centrePoint)[2];
+                    }                    
                 }
             }
         }

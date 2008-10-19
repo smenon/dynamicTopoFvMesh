@@ -38,6 +38,7 @@ SourceFiles
 
 #include "motionSolver.H"
 #include "polyMesh.H"
+#include "wedgePolyPatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -98,7 +99,7 @@ protected:
 
     // Apply boundary conditions
     void applyBCs(scalarField &field);
-
+    
 public:
 
     //- Runtime type information
