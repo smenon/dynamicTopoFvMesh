@@ -881,8 +881,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
     faceList oldFaces(allFaces);
     labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces,0);
     edgeList oldEdgeToWatch(0);
-    scalarField oldPhi(0);
-
+    
     HashTable<label,label> addedFaceRenumbering;
     HashTable<label,label> addedFaceReverseRenumbering;
 

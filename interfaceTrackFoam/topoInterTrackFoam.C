@@ -39,14 +39,7 @@ Description
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 int main(int argc, char *argv[])
-{
-
-    // For debug purposes, assign <root> and <case>
-    argc = 3; 
-    argv[1] = new char[100];
-    argv[2] = new char[100];
-    strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
-    strcpy(argv[2],"ligament");  
+{ 
 
 #   include "setRootCase.H"
 #   include "createTime.H"
@@ -59,7 +52,7 @@ int main(int argc, char *argv[])
 
     Info<< "\nStarting time loop\n" << endl;
 
-    //polyMesh::debug = true;
+    polyMesh::debug = true;
     mesh.debug = true;
     
     while (runTime.run())
@@ -82,7 +75,7 @@ int main(int argc, char *argv[])
         mesh.setMotionBC(interface.patchID(), interface.displacement());
         mesh.updateMotion();  
         
-#       include "volContinuity.H"         
+#       include "volContinuity.H"     
         
         for (int corr=0; corr<nOuterCorr; corr++)
         {        
@@ -143,7 +136,7 @@ int main(int argc, char *argv[])
 #           include "freeSurfaceContinuityErrs.H"  
             
             Info << endl;
-        }
+        }       
         
         bool meshChanged = mesh.updateTopology(); 
         
@@ -159,7 +152,7 @@ int main(int argc, char *argv[])
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
             << nl << endl;        
- 
+         
         runTime.write(); 
 #       include "meshInfo.H"        
     }

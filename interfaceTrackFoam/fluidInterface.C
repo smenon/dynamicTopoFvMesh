@@ -353,7 +353,7 @@ void Foam::fluidInterface::makeDirections()
             mesh().boundaryMesh()[patchID()].size(),
             vector::zero
         );
-
+    
     updateDisplacementDirections();    
 }
 
@@ -362,7 +362,34 @@ void Foam::fluidInterface::updateDisplacementDirections()
 {
     // Update point displacement correction
     pointsDisplacementDir() = 
-        areaMesh().pointAreaNormals();    
+        areaMesh().pointAreaNormals();   
+    
+    // TEMPORARY FIX:
+    // Correct point displacement direction
+    // at the "right" symmetryPlane which represents the axis
+    // of an axisymmetric case
+    forAll(areaMesh().boundary(), patchI)
+    {
+        label centerLinePatchID =
+            areaMesh().boundary().findPatchID("right");
+
+        if(centerLinePatchID != -1)
+        {
+            const labelList& pointLabels =
+                areaMesh().boundary()[centerLinePatchID].pointLabels();
+
+            forAll(pointLabels, pointI)
+            {
+                pointsDisplacementDir()[pointLabels[pointI]] = vector(1,0,0);
+            }
+
+        } else {
+                Info << "Warning: right polyPatch does not exist. "
+                    << "Free surface points displacement directions "
+                    << "will not be corrected at the axis (centerline)"
+                    << endl;
+        }
+    }    
     
     // Update face displacement direction
     facesDisplacementDir() =
@@ -371,7 +398,7 @@ void Foam::fluidInterface::updateDisplacementDirections()
     // Correction of control points postion
     const vectorField& Cf = 
         areaMesh().centres().internalField();
-
+    
     controlPoints() =
         facesDisplacementDir()
        *(facesDisplacementDir()&(controlPoints() - Cf))

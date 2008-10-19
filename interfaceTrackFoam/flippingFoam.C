@@ -36,9 +36,17 @@ Author
 #include "fvCFD.H"
 #include "dynamicTopoFvMesh.H"
 
-// Rotate all points belonging to the "box" patch by 'theta' 
+// Rotate all points belonging to the patch-name 'patchName' by 'theta' 
 // about an axis p1-p2, translate by a distance defined by 't', and update the mesh
-void rotatePoints(dynamicTopoFvMesh& mesh, doubleScalar theta, vector p1, vector p2, vector t)
+void rotatePoints
+(
+    dynamicTopoFvMesh& mesh, 
+    word patchName, 
+    doubleScalar theta, 
+    vector p1, 
+    vector p2, 
+    vector t
+)
 {
     label patchID = -1;
     vector p_orig, p, q;
@@ -53,7 +61,7 @@ void rotatePoints(dynamicTopoFvMesh& mesh, doubleScalar theta, vector p1, vector
     // Find the box patch
     forAll (mesh.boundary(), patchI)
     {
-        if(mesh.boundary()[patchI].name() == "box") {
+        if(mesh.boundary()[patchI].name() == patchName) {
             patchID = patchI;
             break;
         }
@@ -102,22 +110,31 @@ void rotatePoints(dynamicTopoFvMesh& mesh, doubleScalar theta, vector p1, vector
 
 int main(int argc, char *argv[])
 {
-    // For debug purposes, assign <root> and <case>
-    argc = 3; 
-    argv[1] = new char[100];
-    argv[2] = new char[100];
-    strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
-    strcpy(argv[2],"holeinsqr");
-
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"
 
-    // Define the rotation axis and angle (in radians)
-    //vector p1(1.0,0.5,0.0), p2(1.0,0.5,1.0), t(0.0,0.0,0.0); // holeinslab
-    //vector p1(0.75,1.0,0.0), p2(0.75,1.0,1.0), t(0.005,0.0,0.0); // Street
-    vector p1(0.5,0.5,0.0), p2(0.5,0.5,1.0), t(0.0,0.0,0.0); // OffsetSqr
-    doubleScalar angle = (0.72*3.14159)/180.0;
+    // Define the rotation axis and angle from the dictionary
+    IOdictionary rotationParams
+                 (
+                    IOobject
+                    (
+                    "flippingFoamDict",
+                    runTime.constant(),
+                    mesh,
+                    IOobject::MUST_READ,
+                    IOobject::NO_WRITE
+                    )            
+                 );
+
+    word patchName(rotationParams.lookup("patchName"));
+    vector p1(rotationParams.lookup("axisPointStart"));
+    vector p2(rotationParams.lookup("axisPointEnd"));
+    vector t(rotationParams.lookup("translation"));
+    doubleScalar angle = readScalar(rotationParams.lookup("angle"));
+    
+    // Convert angle to radians
+    angle *= (3.14159/180.0);
     
     // Enable/disable debugging
     mesh.debug = true;
@@ -127,7 +144,7 @@ int main(int argc, char *argv[])
         Info << "Time = " << runTime.value() << endl << endl;
         
         // Update boundary points and move them
-        rotatePoints(mesh, angle, p1, p2, t);
+        rotatePoints(mesh, patchName, angle, p1, p2, t);
         p1 += t; p2 += t;
         
         // Update mesh (Solve for motion and topology)        
@@ -138,9 +155,6 @@ int main(int argc, char *argv[])
     }
 
     Info << "End\n" << endl;
-    
-    delete [] argv[1];
-    delete [] argv[2];
 
     return 0;
 }
