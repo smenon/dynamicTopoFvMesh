@@ -1,3 +1,4 @@
-flippingFoam.C
+fluidInterface.C
+topoInterTrackFoam.C
 
-EXE = $(FOAM_USER_APPBIN)/flippingFoam
+EXE = $(FOAM_USER_APPBIN)/surfaceTrackingFoam

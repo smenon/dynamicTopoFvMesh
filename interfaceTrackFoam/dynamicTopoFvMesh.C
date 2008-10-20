@@ -2526,6 +2526,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
 
         // Check for common edges among the two boundary faces
         // Find the isolated point on both boundary faces of cell[1]
+        label patch_0 = -2, patch_1 = -2;
         if(findCommonEdge(c1BdyFace[0],c0BdyFace[0],commonEdges[0]))
         {
             findCommonEdge(c1BdyFace[1],c0BdyFace[1],commonEdges[1]);
@@ -2547,6 +2548,10 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
             BdyFace3[0] = otherPointIndex[3];
             BdyFace3[1] = nextToOtherPoint[3];
             BdyFace3[2] = newPtIndex1;
+            
+            // Obtain patch info
+            patch_0 = whichPatch(c1BdyIndex[0]);
+            patch_1 = whichPatch(c1BdyIndex[1]);
         }
         else
         {
@@ -2570,6 +2575,10 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
             BdyFace3[0] = otherPointIndex[3];
             BdyFace3[1] = nextToOtherPoint[3];
             BdyFace3[2] = newPtIndex1;
+            
+            // Obtain patch info
+            patch_0 = whichPatch(c1BdyIndex[1]);
+            patch_1 = whichPatch(c1BdyIndex[0]);            
         }
 
         // New interior face; Owner = cell[1] & Neighbour = newCell[1]
@@ -2588,7 +2597,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         tmpTriFace[1] = newPtIndex0;
         tmpTriFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[2]);
         edgeToWatch[0] = edgeToWatch[1] = 0;
-        newFaceIndex = insertFace(whichPatch(c1BdyIndex[0]), tmpTriFace, c1, -1, edgeToWatch);
+        newFaceIndex = insertFace(patch_0, tmpTriFace, c1, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, cell_1);
 
         // Third boundary face; Owner = newCell[1] & Neighbour [-1] 
@@ -2596,7 +2605,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         tmpTriFace[1] = newPtIndex1;
         tmpTriFace[2] = commonEdges[1].otherVertex(nextToOtherPoint[3]);
         edgeToWatch[0] = edgeToWatch[1] = 0;
-        newFaceIndex = insertFace(whichPatch(c1BdyIndex[1]), tmpTriFace, newCellIndex1, -1, edgeToWatch);
+        newFaceIndex = insertFace(patch_1, tmpTriFace, newCellIndex1, -1, edgeToWatch);
         replaceFaceLabel(-1, newFaceIndex, newCell1);
 
         if (debug)
