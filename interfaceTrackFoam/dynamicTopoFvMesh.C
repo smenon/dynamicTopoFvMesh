@@ -370,7 +370,7 @@ inline Foam::label Foam::dynamicTopoFvMesh::whichPatch
 
 // Utility method to find the interior/boundary faces
 // for an input quad-face and adjacent triangle-prism cell.
-void Foam::dynamicTopoFvMesh::findPrismFaces
+inline void Foam::dynamicTopoFvMesh::findPrismFaces
 (
     const label& findex,
     const cell& c,
@@ -385,32 +385,29 @@ void Foam::dynamicTopoFvMesh::findPrismFaces
     forAll(c, i)
     {
         label faceIndex = c[i];
-        face& fi=faces_[faceIndex];
-        if (neighbour_[faceIndex] == -1)
-        {
-            if (fi.size() == 3)
+        // Don't count the face under consideration
+        if (faceIndex != findex)
+        {        
+            face& fi=faces_[faceIndex];
+            if (neighbour_[faceIndex] == -1)
             {
-                // Triangular face on the boundary
-                bidx[indexO] = faceIndex;
-                bdyf[indexO++] = fi;
-            }
-            else
-            {
-                // This seems to be a non-triangular face on the boundary
-                // Consider this as "interior" and move on
-                // (Don't count the face under consideration)
-                if (faceIndex != findex)
+                if (fi.size() == 3)
                 {
+                    // Triangular face on the boundary
+                    bidx[indexO] = faceIndex;
+                    bdyf[indexO++] = fi;
+                }
+                else
+                {
+                    // This seems to be a non-triangular face on the boundary
+                    // Consider this as "interior" and move on
                     iidx[indexI] = faceIndex;
                     intf[indexI++] = fi;
                 }
             }
-        }
-        else
-        {
-            // Face on the interior (Don't count the face under consideration)
-            if (faceIndex != findex)
+            else
             {
+                // Face on the interior
                 iidx[indexI] = faceIndex;
                 intf[indexI++] = fi;
             }
@@ -420,7 +417,7 @@ void Foam::dynamicTopoFvMesh::findPrismFaces
 
 // Method to find the interior/boundary faces
 // for an input tri-face and adjacent tet/pyramid cell.
-void Foam::dynamicTopoFvMesh::findTetPyramidFaces
+inline void Foam::dynamicTopoFvMesh::findTetPyramidFaces
 (
     const label& findex,
     const cell& c,

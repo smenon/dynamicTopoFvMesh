@@ -234,7 +234,7 @@ class dynamicTopoFvMesh
         
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
-        void findPrismFaces
+        inline void findPrismFaces
         (
             const label& findex,
             const cell& c,
@@ -246,7 +246,7 @@ class dynamicTopoFvMesh
         
         // Method to find the interior/boundary faces
         // for an input tri-face and adjacent tet/pyramid cell.
-        void findTetPyramidFaces
+        inline void findTetPyramidFaces
         (
             const label& findex,
             const cell& c,
