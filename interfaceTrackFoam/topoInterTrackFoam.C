@@ -36,6 +36,11 @@ Description
 #include "dynamicTopoFvMesh.H"
 #include "fluidInterface.H"
 
+// Included for point-normals post-processing
+#include "pointMesh.H"
+#include "pointFields.H"
+#include "fixedValuePointPatchFields.H"        
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 int main(int argc, char *argv[])
