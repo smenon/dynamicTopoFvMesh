@@ -82,7 +82,7 @@ Foam::fluidInterface::fluidInterface
     fixedFreeSurfacePatches_
     (
         lookup("fixedFreeSurfacePatches")
-    )            
+    )
 {
     // Loop through all boundary patches and determine the patchID
     const fvBoundaryMesh& bdy = mesh().boundary();
@@ -181,6 +181,33 @@ void Foam::fluidInterface::makeFaMesh()
         mesh(),
         "faMeshDefinition"
     );
+    
+    // Lookup for point-normals correction
+    wordList pointNormalsCorrectionPatches
+    (
+        lookup("pointNormalsCorrectionPatches")
+    );
+    
+    // Set point normal correction patches
+    boolList& correction = aMeshPtr_->correctPatchPointNormals();
+
+    forAll(pointNormalsCorrectionPatches, patchI)
+    {
+        word patchName = pointNormalsCorrectionPatches[patchI];
+
+        label patchID = aMeshPtr_->boundary().findPatchID(patchName);
+
+        if(patchID == -1)
+        {
+            FatalErrorIn
+            (
+                "fluidInterface::makeFaMesh()"
+            )   << "patch name for point normals correction don't exist"
+                << abort(FatalError);
+        }
+
+        correction[patchID] = true;
+    }    
 }
 
 void Foam::fluidInterface::makeMotionPointsMask()
@@ -362,34 +389,7 @@ void Foam::fluidInterface::updateDisplacementDirections()
 {
     // Update point displacement correction
     pointsDisplacementDir() = 
-        areaMesh().pointAreaNormals();   
-    
-    // TEMPORARY FIX:
-    // Correct point displacement direction
-    // at the "right" symmetryPlane which represents the axis
-    // of an axisymmetric case
-    forAll(areaMesh().boundary(), patchI)
-    {
-        label centerLinePatchID =
-            areaMesh().boundary().findPatchID("right");
-
-        if(centerLinePatchID != -1)
-        {
-            const labelList& pointLabels =
-                areaMesh().boundary()[centerLinePatchID].pointLabels();
-
-            forAll(pointLabels, pointI)
-            {
-                pointsDisplacementDir()[pointLabels[pointI]] = vector(1,0,0);
-            }
-
-        } else {
-                Info << "Warning: right polyPatch does not exist. "
-                    << "Free surface points displacement directions "
-                    << "will not be corrected at the axis (centerline)"
-                    << endl;
-        }
-    }    
+        areaMesh().pointAreaNormals();    
     
     // Update face displacement direction
     facesDisplacementDir() =
