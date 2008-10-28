@@ -357,10 +357,8 @@ public:
         // Return old cell-centre information (prior to a topology change)
         const vectorField& oldCellCentres() const;
         
-        HashList<scalar>& lengthDensity()
-        {
-            return lengthScale_;
-        }           
+        // Return mesh length-scale values
+        tmp<volScalarField> lengthScale();
 };
 
 

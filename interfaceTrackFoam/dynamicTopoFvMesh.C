@@ -282,6 +282,38 @@ const Foam::vectorField& Foam::dynamicTopoFvMesh::oldCellCentres() const
     return Foam::vectorField::null();
 }
 
+// Return mesh length-scale values
+Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::lengthScale()
+{
+    tmp<volScalarField> tlengthScale
+    (
+        new volScalarField
+        (
+            IOobject
+            (
+                "lengthScale",
+                time().timeName(),
+                *this,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            *this,
+            dimensionedScalar("lScale", dimLength, 0),
+            zeroGradientFvPatchScalarField::typeName            
+        )
+    );
+
+    scalarField& internalField = tlengthScale().internalField();
+    
+    // Obtain length-scale values from the mesh
+    forAllIter(HashList<scalar>, lengthScale_, lIter)
+    {
+        internalField[lIter.index()] = lIter();
+    }    
+    
+    return tlengthScale;
+}
+
 // Find the circumcenter, given three points
 inline Foam::vector Foam::dynamicTopoFvMesh::circumCenter
 (

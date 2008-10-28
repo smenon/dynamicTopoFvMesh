@@ -163,8 +163,7 @@ int main(int argc, char *argv[])
         }
             
         volScalarField divPhi = fvc::div(phi);          
-        volVectorField gradP = fvc::grad(p);
-        gradP *= -1; gradP.write(); divPhi.write();
+        divPhi.write();
         
         runTime.write();
 #       include "meshInfo.H"         
