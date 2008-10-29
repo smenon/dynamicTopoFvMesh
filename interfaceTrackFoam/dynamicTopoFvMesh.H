@@ -292,7 +292,8 @@ class dynamicTopoFvMesh
             DynamicList<label>& hullFaces,
             DynamicList<label>& hullCells,
             DynamicList<label>& hullTriFaces,
-            bool requiresTriFaces
+            bool requiresTriFaces,
+            label& patchID
         );
         
         // Reorder points after a topology change

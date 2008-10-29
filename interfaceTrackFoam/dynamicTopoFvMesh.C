@@ -687,7 +687,8 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
     DynamicList<label>& hullFaces,
     DynamicList<label>& hullCells,
     DynamicList<label>& hullTriFaces,
-    bool requiresTriFaces
+    bool requiresTriFaces,
+    label& patchID        
 )
 {
     // Get the two cells on either side...
@@ -741,26 +742,41 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
         if (requiresTriFaces)
         {
             if (!foundQuadFace || !foundTriFace)
-                FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
-                        << " Failed to find a suitable quad/tri face. Possibly not a prismatic mesh. " << nl
-                        << abort(FatalError);
+                FatalErrorIn
+                (
+                    "dynamicTopoFvMesh::constructPrismHull(...)"
+                ) 
+                << nl << " Failed to find a suitable quad/tri face. "
+                << " Possibly not a prismatic mesh. " << nl
+                << abort(FatalError);
         }
         else
         {
             if (!foundQuadFace)
-                FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
-                        << " Failed to find a suitable quad face. Possibly not a prismatic mesh. " << nl
-                        << abort(FatalError);            
+                FatalErrorIn
+                (
+                    "dynamicTopoFvMesh::constructPrismHull(...)"
+                ) 
+                << nl << " Failed to find a suitable quad face. "
+                << " Possibly not a prismatic mesh. " << nl
+                << abort(FatalError);            
         }
 #       endif
         // Decide which cell to check next
         if (owner_[faceToExclude] == cellIndex)
+        {
             cellIndex = neighbour_[faceToExclude];
+        }
         else
+        {
             cellIndex = owner_[faceToExclude];
+        }
         if (cellIndex == -1)
         {
-            isBoundary=true; break; 
+            isBoundary=true; 
+            // Determine the patchID
+            patchID = whichPatch(faceToExclude);
+            break; 
         }
         else
         {
@@ -769,9 +785,14 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
         }
     } while ( faceToExclude != startFaceIndex );
 
-    if (c1 == -1) 
+    if (c1 == -1)
+    {
         isBoundary = true;
-    else {
+        // Determine the patchID
+        patchID = whichPatch(startFaceIndex);        
+    }
+    else 
+    {
         // Check if the previous search hit a boundary. 
         // If yes, start another search in the reverse direction.
         if (isBoundary)
@@ -794,14 +815,19 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                             {
                                 if (indexEdges[edgeI] == edgeToCheck)
                                 {
-                                    // Bingo... We have a match. Add to the dynamic list
+                                    // Bingo... We have a match. Add to the list
                                     hullFaces.append(cellToCheck[faceI]);
                                     faceToExclude = cellToCheck[faceI];
                                     foundQuadFace=true; break;
                                 }
                             }
                         }
-                        if (requiresTriFaces && faceToCheck.nEdges() == 3 && !foundTriFace)
+                        if 
+                        (
+                            requiresTriFaces 
+                         && faceToCheck.nEdges() == 3 
+                         && !foundTriFace
+                        )
                         {
                             hullTriFaces.append(cellToCheck[faceI]);
                             foundTriFace=true;
@@ -821,16 +847,24 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                 if (requiresTriFaces)
                 {
                     if (!foundQuadFace || !foundTriFace)
-                        FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
-                                << " Failed to find a suitable quad/tri face. Possibly not a prismatic mesh. " << nl
-                                << abort(FatalError);
+                        FatalErrorIn
+                        (
+                            "dynamicTopoFvMesh::constructPrismHull(...)"
+                        ) 
+                        << nl << " Failed to find a suitable quad/tri face. "
+                        << " Possibly not a prismatic mesh. " << nl
+                        << abort(FatalError);
                 }
                 else
                 {
                     if (!foundQuadFace)
-                        FatalErrorIn("dynamicTopoFvMesh::constructPrismHull(...)") << nl
-                                << " Failed to find a suitable quad face. Possibly not a prismatic mesh. " << nl
-                                << abort(FatalError);
+                        FatalErrorIn
+                        (
+                            "dynamicTopoFvMesh::constructPrismHull(...)"
+                        ) 
+                        << nl << " Failed to find a suitable quad face. "
+                        << " Possibly not a prismatic mesh. " << nl
+                        << abort(FatalError);
                 }
 #               endif
                 // Decide which cell to check next
@@ -862,9 +896,9 @@ void Foam::dynamicTopoFvMesh::reOrderPoints
 )
 {
     // *** Point renumbering *** //
-    // If points were deleted during topology change, the numerical order ceases to be continuous.
-    // Loop through all points and renumber sequentially. Possible scope for bandwidth-reduction
-    // on the motion-solver.
+    // If points were deleted during topology change, the numerical order ceases 
+    // to be continuous. Loop through all points and renumber sequentially. 
+    // Possible scope for bandwidth-reduction on the motion-solver.
 
     label pointRenum = 0;
 
@@ -898,7 +932,12 @@ void Foam::dynamicTopoFvMesh::reOrderPoints
 }
 
 // Reorder faces in upper-triangular order after a topology change
-void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, labelList& neighbour)
+void Foam::dynamicTopoFvMesh::reOrderFaces
+(
+    faceList& faces, 
+    labelList& owner, 
+    labelList& neighbour
+)
 {
     // *** Face renumbering *** //
     // Faces have to be renumbered if any were added/deleted/modified
@@ -929,13 +968,13 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
     if (edgeModification_ && twoDMotion_)
     {
         oldEdgeToWatch.setSize(allFaces);
-        for(HashList<edge>::iterator eIter = edgeToWatch_.begin(); eIter != edgeToWatch_.end(); eIter++)
+        forAllIter(HashList<edge>::iterator, edgeToWatch_, eIter)
             oldEdgeToWatch[eIter.index()] = eIter();
         edgeToWatch_.clear();
     }
 
     // Mark the internal faces with -2 so that they are inserted first
-    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++)
+    forAllIter(HashList<cell>::iterator, cells_, cIter)
     {
         const cell& curFaces = cIter();
         forAll(curFaces, faceI) 
@@ -951,7 +990,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
     // added into the list in the increasing order of neighbour
     // cells.  Therefore, all neighbours will be detected first
     // and then added in the correct order.
-    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++)
+    forAllIter(HashList<cell>::iterator, cells_, cIter)
     {
         // Record the neighbour cell
         label cellI = cIter.index();
@@ -1157,7 +1196,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
     }
 
     // Renumber all cells
-    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++)
+    forAllIter(HashList<cell>::iterator, cells_, cIter)
     {
         cell& cellFaces = cIter();
         forAll(cellFaces,faceI)
@@ -1188,10 +1227,10 @@ void Foam::dynamicTopoFvMesh::reOrderFaces(faceList& faces, labelList& owner, la
 void Foam::dynamicTopoFvMesh::reOrderCells()
 {
     // *** Cell renumbering *** //
-    // If cells were deleted during topology change, the numerical order ceases to be continuous.
-    // Also, cells are always added at the end of the list by virtue of the HashList append 
-    // method. Thus, cells would now have to be reordered so that bandwidth is reduced and 
-    // renumbered to be sequential again.
+    // If cells were deleted during topology change, the numerical order ceases 
+    // to be continuous. Also, cells are always added at the end of the list by 
+    // virtue of the HashList append method. Thus, cells would now have to be 
+    // reordered so that bandwidth is reduced and renumbered to be sequential.
 
     label currentCell, cellInOrder = 0, allCells = cells_.lastIndex() + 1;
     SLList<label> nextCell; 
@@ -1204,13 +1243,13 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
     addedCellRenumbering_.clear();
 
     // Make a copy of the old cell-based HashLists, and clear them
-    for(HashList<cell>::iterator cIter = cells_.begin(); cIter != cells_.end(); cIter++)
+    forAllIter(HashList<cell>::iterator, cells_, cIter)
         oldCells[cIter.index()] = cIter();
     cells_.clear();
     if (edgeModification_)
     {
         oldLengthScale.setSize(allCells);
-        for(HashList<scalar>::iterator cIter = lengthScale_.begin(); cIter != lengthScale_.end(); cIter++)
+        forAllIter(HashList<scalar>::iterator, lengthScale_, cIter)
             oldLengthScale[cIter.index()] = cIter();
         lengthScale_.clear();
     }
@@ -1466,7 +1505,8 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                             sumLength /= nTouchedNgb;
                             // Scale the length and assign to this cell
                             scalar sLength = sumLength*growthFactor_;
-                            sLength = (sLength < maxLengthScale_) ? sLength : maxLengthScale_;
+                            sLength = (sLength < maxLengthScale_) 
+                                    ? sLength : maxLengthScale_;
                             lengthScale[cList[indexI]] = sLength;
                             visitedCells++;
                         }
@@ -1499,7 +1539,7 @@ scalar Foam::dynamicTopoFvMesh::boundaryLengthScale
 {
     label bFacePatch = whichPatch(faceIndex);
 
-    // Loop through all fixed length-scale patches, and return the fixed value if specified
+    // Loop through all fixed length-scale patches, and return the fixed value 
     wordList toc = fixedLengthScalePatches_.toc();
     forAll(toc,wordI)
     {
@@ -1517,7 +1557,8 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
     bool found, foundinner;
     face f;
     edge firstEdge(0,0);
-    labelList otherPointIndex(4), nextToOtherPoint(4), commonFaceIndex(4), commonIntFaceIndex(4);
+    labelList otherPointIndex(4), nextToOtherPoint(4);
+    labelList commonFaceIndex(4), commonIntFaceIndex(4);
     labelList c0BdyIndex(2), c0IntIndex(2), c1BdyIndex(2), c1IntIndex(2);
     faceList  c0BdyFace(2),  c0IntFace(2),  c1BdyFace(2),  c1IntFace(2);
     faceList  commonFaces(4), commonIntFaces(4);
@@ -1581,10 +1622,14 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
                 if (e1[edgeI] == e2[edgeJ])
                 {
                     // These two faces share an edge, store for posterity
-                    commonFaces[0] = c0BdyFace[0]; commonFaces[1] = c1BdyFace[0];
-                    commonFaces[2] = c0BdyFace[1]; commonFaces[3] = c1BdyFace[1];
-                    commonFaceIndex[0] = c0BdyIndex[0]; commonFaceIndex[1] = c1BdyIndex[0];
-                    commonFaceIndex[2] = c0BdyIndex[1]; commonFaceIndex[3] = c1BdyIndex[1];
+                    commonFaces[0] = c0BdyFace[0]; 
+                    commonFaces[1] = c1BdyFace[0];
+                    commonFaces[2] = c0BdyFace[1]; 
+                    commonFaces[3] = c1BdyFace[1];
+                    commonFaceIndex[0] = c0BdyIndex[0]; 
+                    commonFaceIndex[1] = c1BdyIndex[0];
+                    commonFaceIndex[2] = c0BdyIndex[1]; 
+                    commonFaceIndex[3] = c1BdyIndex[1];
                     commonEdges[0] = e1[edgeI];
                     forAll(e3,edgeK)
                     {
@@ -1605,11 +1650,16 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
         }
         if (!found)
         {
-            // A match was obviously not found before, but we know the common faces now.
-            commonFaces[0] = c0BdyFace[0]; commonFaces[1] = c1BdyFace[1];
-            commonFaces[2] = c0BdyFace[1]; commonFaces[3] = c1BdyFace[0];
-            commonFaceIndex[0] = c0BdyIndex[0]; commonFaceIndex[1] = c1BdyIndex[1];
-            commonFaceIndex[2] = c0BdyIndex[1]; commonFaceIndex[3] = c1BdyIndex[0];
+            // A match was obviously not found before, 
+            // but we know the common faces now.
+            commonFaces[0] = c0BdyFace[0]; 
+            commonFaces[1] = c1BdyFace[1];
+            commonFaces[2] = c0BdyFace[1]; 
+            commonFaces[3] = c1BdyFace[0];
+            commonFaceIndex[0] = c0BdyIndex[0]; 
+            commonFaceIndex[1] = c1BdyIndex[1];
+            commonFaceIndex[2] = c0BdyIndex[1]; 
+            commonFaceIndex[3] = c1BdyIndex[0];
             // Start a new search for common edges
             forAll(e1,edgeI)
             {
@@ -1637,18 +1687,33 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             }
         }
 
-        // Construct a circle passing through the three points of the first face, define its radius
+        // Construct a circle passing through the three 
+        // points of the first face, define its radius
         label zeroIndex  = commonFaces[0][0];
         label oneIndex   = commonFaces[0][1];
         label twoIndex   = commonFaces[0][2];
         point& pointZero = meshPoints_[zeroIndex];
         point& pointOne  = meshPoints_[oneIndex];
         point& pointTwo  = meshPoints_[twoIndex];
-        point  center    = circumCenter(pointZero, pointOne, pointTwo, zeroIndex, oneIndex, twoIndex);
+        point  center    = circumCenter
+                           (
+                               pointZero, 
+                               pointOne, 
+                               pointTwo, 
+                               zeroIndex, 
+                               oneIndex, 
+                               twoIndex
+                           );
         scalar radius    = (pointZero - center)&(pointZero - center);
 
-        // Find the isolated point on the other face, and the point next to it (for orientation)
-        findIsolatedPoint(commonFaces[1], commonEdges[0], otherPointIndex[1], nextToOtherPoint[1]);
+        // Find the isolated point on the other face, and the point next to it 
+        findIsolatedPoint
+        (
+            commonFaces[1], 
+            commonEdges[0], 
+            otherPointIndex[1], 
+            nextToOtherPoint[1]
+        );
 
         // ...and determine whether it lies in this circle
         point otherPoint = meshPoints_[otherPointIndex[1]];
@@ -1657,13 +1722,16 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             // This face needs to be flipped... 
             if (debug)
             {
-                Info << nl << nl << "Face: " << findex << " needs to be flipped. " << endl;
+                Info << nl << nl << "Face: " << findex 
+                     << " needs to be flipped. " << endl;
                 Info << "Cell[0]: " << c0 << ": " << cell_0 << endl;                
                 Info << "Cell[1]: " << c1 << ": " << cell_1 << endl;                 
-                Info << "Common Faces: Set 1: " << commonFaceIndex[0] << ": " << commonFaces[0] << ", " 
-                                                << commonFaceIndex[1] << ": " << commonFaces[1] << endl;
-                Info << "Common Faces: Set 2: " << commonFaceIndex[2] << ": " << commonFaces[2] << ", " 
-                                                << commonFaceIndex[3] << ": " << commonFaces[3] << endl; 
+                Info << "Common Faces: Set 1: " 
+                     << commonFaceIndex[0] << ": " << commonFaces[0] << ", " 
+                     << commonFaceIndex[1] << ": " << commonFaces[1] << endl;
+                Info << "Common Faces: Set 2: " 
+                     << commonFaceIndex[2] << ": " << commonFaces[2] << ", " 
+                     << commonFaceIndex[3] << ": " << commonFaces[3] << endl; 
                 Info << "Old face: " << faces_[findex] << endl;                
             }
 
@@ -1672,19 +1740,49 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
 
             // Find the other three points that don't lie on shared edges
             // and the points next to them (for orientation)
-            findIsolatedPoint(commonFaces[0], commonEdges[0], otherPointIndex[0], nextToOtherPoint[0]);
-            findIsolatedPoint(commonFaces[2], commonEdges[1], otherPointIndex[2], nextToOtherPoint[2]);
-            findIsolatedPoint(commonFaces[3], commonEdges[1], otherPointIndex[3], nextToOtherPoint[3]);
+            findIsolatedPoint
+            (
+                commonFaces[0], 
+                commonEdges[0], 
+                otherPointIndex[0], 
+                nextToOtherPoint[0]
+            );
+            
+            findIsolatedPoint
+            (
+                commonFaces[2], 
+                commonEdges[1], 
+                otherPointIndex[2], 
+                nextToOtherPoint[2]
+            );
+            
+            findIsolatedPoint
+            (
+                commonFaces[3], 
+                commonEdges[1], 
+                otherPointIndex[3], 
+                nextToOtherPoint[3]
+            );
 
-            // Find the other two edges on the face being flipped (besides the common edges)
+            // Find the other two edges on the face being flipped 
             // First edge detected belongs to cell[0] by default
             edgeList eThis = thisFace.edges();
             forAll(eThis,edgeI)
             {
-                if ( eThis[edgeI] != commonEdges[0] && eThis[edgeI] != commonEdges[1] )
+                if 
+                ( 
+                    eThis[edgeI] != commonEdges[0] 
+                 && eThis[edgeI] != commonEdges[1] 
+                )
                 {
-                    if (eThis[edgeI][0] == nextToOtherPoint[0] || eThis[edgeI][1] == nextToOtherPoint[0])
+                    if 
+                    (
+                        eThis[edgeI][0] == nextToOtherPoint[0] 
+                     || eThis[edgeI][1] == nextToOtherPoint[0]
+                    )
+                    {
                         firstEdge = eThis[edgeI];
+                    }
                 }
             }
 
@@ -1698,16 +1796,20 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             {
                 if ( e1[edgeI] == firstEdge )
                 {
-                    commonIntFaces[0] = c0IntFace[0]; commonIntFaces[2] = c0IntFace[1];
-                    commonIntFaceIndex[0] = c0IntIndex[0]; commonIntFaceIndex[2] = c0IntIndex[1];
+                    commonIntFaces[0] = c0IntFace[0]; 
+                    commonIntFaces[2] = c0IntFace[1];
+                    commonIntFaceIndex[0] = c0IntIndex[0]; 
+                    commonIntFaceIndex[2] = c0IntIndex[1];
                     found = true; break; 
                 }
             }
             if (!found)
             {
                 // The edge was obviously not found before
-                commonIntFaces[0] = c0IntFace[1]; commonIntFaces[2] = c0IntFace[0];
-                commonIntFaceIndex[0] = c0IntIndex[1]; commonIntFaceIndex[2] = c0IntIndex[0];
+                commonIntFaces[0] = c0IntFace[1]; 
+                commonIntFaces[2] = c0IntFace[0];
+                commonIntFaceIndex[0] = c0IntIndex[1]; 
+                commonIntFaceIndex[2] = c0IntIndex[0];
             }
 
             found = false;
@@ -1716,16 +1818,20 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             {
                 if ( e3[edgeI] == firstEdge )
                 {
-                    commonIntFaces[1] = c1IntFace[0]; commonIntFaces[3] = c1IntFace[1];
-                    commonIntFaceIndex[1] = c1IntIndex[0]; commonIntFaceIndex[3] = c1IntIndex[1];
+                    commonIntFaces[1] = c1IntFace[0]; 
+                    commonIntFaces[3] = c1IntFace[1];
+                    commonIntFaceIndex[1] = c1IntIndex[0]; 
+                    commonIntFaceIndex[3] = c1IntIndex[1];
                     found = true; break; 
                 }
             }
             if (!found)
             {
                 // The edge was obviously not found before
-                commonIntFaces[1] = c1IntFace[1]; commonIntFaces[3] = c1IntFace[0];
-                commonIntFaceIndex[1] = c1IntIndex[1]; commonIntFaceIndex[3] = c1IntIndex[0];
+                commonIntFaces[1] = c1IntFace[1]; 
+                commonIntFaces[3] = c1IntFace[0];
+                commonIntFaceIndex[1] = c1IntIndex[1]; 
+                commonIntFaceIndex[3] = c1IntIndex[0];
             }
 
             // Modify the five faces belonging to this hull
@@ -1754,7 +1860,8 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
                 edgeToModify[1] = otherPointIndex[1];
             }
 
-            // Four modified boundary faces need to be constructed, but right-handedness is also important
+            // Four modified boundary faces need to be constructed, 
+            // but right-handedness is also important.
             // Take a cue from the existing boundary-face orientation
 
             // Zeroth boundary face - Owner c[0], Neighbour -1
@@ -1792,10 +1899,14 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             if (debug)
             {
                 Info << "New flipped face: " << newFace << endl;
-                Info << "New boundary face[0]" << commonFaceIndex[0] << ": " << newBdyFace0 << endl;
-                Info << "New boundary face[1]" << commonFaceIndex[1] << ": " << newBdyFace1 << endl;
-                Info << "New boundary face[2]" << commonFaceIndex[2] << ": " << newBdyFace2 << endl;
-                Info << "New boundary face[3]" << commonFaceIndex[3] << ": " << newBdyFace3 << endl;
+                Info << "New boundary face[0]" << commonFaceIndex[0] 
+                     << ": " << newBdyFace0 << endl;
+                Info << "New boundary face[1]" << commonFaceIndex[1] 
+                     << ": " << newBdyFace1 << endl;
+                Info << "New boundary face[2]" << commonFaceIndex[2] 
+                     << ": " << newBdyFace2 << endl;
+                Info << "New boundary face[3]" << commonFaceIndex[3] 
+                     << ": " << newBdyFace3 << endl;
             }
 
             // Check the orientation of the two quad faces, and modify as necessary
@@ -2217,7 +2328,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
 )
 {
     // Local variables
-    bool found, flipOption;
+    bool found;
     label replaceFace, n0=-1, n1=-1;
     edgeList commonEdges(2);
     labelList otherPointIndex(4), nextToOtherPoint(4);
@@ -2230,14 +2341,25 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
 
     // Find the prism faces for cell[0].
     cell &cell_0 = cells_[c0];
-    findPrismFaces(findex,cell_0,c0BdyFace,c0BdyIndex,c0IntFace,c0IntIndex);
+    findPrismFaces
+    (
+        findex,
+        cell_0,
+        c0BdyFace,
+        c0BdyIndex,
+        c0IntFace,
+        c0IntIndex
+    );
 
     if (debug)
     {
-        Info << nl << nl << "Face: " << findex << ": " << thisFace << " is to be bisected. " << endl;
+        Info << nl << nl << "Face: " << findex 
+             << ": " << thisFace << " is to be bisected. " << endl;
         Info << "Cell[0]: " << c0 << ": " << cell_0 << endl;
         forAll(cell_0, faceI)
+        {
             Info << cell_0[faceI] << ": " << faces_[cell_0[faceI]] << endl;
+        }
     }
 
     // Find the common-edge between the triangular boundary faces
@@ -2246,12 +2368,40 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     findCommonEdge(c0BdyFace[1],thisFace,commonEdges[1]);
 
     // Find the isolated point on both boundary faces of cell[0]
-    findIsolatedPoint(c0BdyFace[0], commonEdges[0], otherPointIndex[0], nextToOtherPoint[0]);
-    findIsolatedPoint(c0BdyFace[1], commonEdges[1], otherPointIndex[1], nextToOtherPoint[1]);
+    findIsolatedPoint
+    (
+        c0BdyFace[0], 
+        commonEdges[0], 
+        otherPointIndex[0], 
+        nextToOtherPoint[0]
+    );
+    
+    findIsolatedPoint
+    (
+        c0BdyFace[1], 
+        commonEdges[1], 
+        otherPointIndex[1], 
+        nextToOtherPoint[1]
+    );
 
     // Add two new points to the end of the list
-    label newPtIndex0 = meshPoints_.append(0.5*(meshPoints_[commonEdges[0][0]] + meshPoints_[commonEdges[0][1]]));
-    label newPtIndex1 = meshPoints_.append(0.5*(meshPoints_[commonEdges[1][0]] + meshPoints_[commonEdges[1][1]]));
+    label newPtIndex0 = meshPoints_.append
+                        (
+                            0.5*
+                            (
+                                meshPoints_[commonEdges[0][0]] 
+                              + meshPoints_[commonEdges[0][1]]
+                            )
+                        );
+    
+    label newPtIndex1 = meshPoints_.append
+                        (
+                            0.5*
+                            (
+                                meshPoints_[commonEdges[1][0]] 
+                              + meshPoints_[commonEdges[1][1]]
+                            )
+                        );
     nPoints_ += 2; 
 
     // Add a new prism cell to the end of the list
@@ -2287,18 +2437,28 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Insert mapping info into the HashTable
-    cellsFromCells_.insert(newCellIndex0,objectMap(newCellIndex0,c0MasterObjects.toc()));
+    cellsFromCells_.insert
+    (
+        newCellIndex0,
+        objectMap
+        (
+            newCellIndex0,
+            c0MasterObjects.toc()
+        )
+    );
 
     // Add a new element to the lengthScale field
     // (Currently the same as cell[0])
     lengthScale_.append(lengthScale_[c0]);
 
     // Modify the two existing triangle boundary faces
+    
     // Zeroth boundary face - Owner = c[0] & Neighbour [-1] (unchanged)
     face& BdyFace0 = faces_[c0BdyIndex[0]];
     BdyFace0[0] = otherPointIndex[0];
     BdyFace0[1] = nextToOtherPoint[0];
     BdyFace0[2] = newPtIndex0;
+    
     // First boundary face - Owner = newCell[0], Neighbour = -1
     face& BdyFace1 = faces_[c0BdyIndex[1]];
     BdyFace1[0] = otherPointIndex[1];
@@ -2313,23 +2473,50 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     {
         if (eThis[edgeI] != commonEdges[0] && eThis[edgeI] != commonEdges[1])
         {
-            if (eThis[edgeI][0] == nextToOtherPoint[0] || eThis[edgeI][1] == nextToOtherPoint[0])
+            if 
+            (
+                eThis[edgeI][0] == nextToOtherPoint[0] 
+             || eThis[edgeI][1] == nextToOtherPoint[0]
+            )
+            {
                 firstEdge = eThis[edgeI];
-            if (eThis[edgeI][0] == nextToOtherPoint[1] || eThis[edgeI][1] == nextToOtherPoint[1])
+            }
+            
+            if 
+            (
+                eThis[edgeI][0] == nextToOtherPoint[1] 
+             || eThis[edgeI][1] == nextToOtherPoint[1]
+            )
+            {
                 secondEdge = eThis[edgeI];
+            }
         }
     }
 
     // Modify point-labels on the quad face under consideration
-    replacePointLabel(commonEdges[0].otherVertex(nextToOtherPoint[0]), newPtIndex0, thisFace);
-    replacePointLabel(nextToOtherPoint[1], newPtIndex1, thisFace);
+    replacePointLabel
+    (
+        commonEdges[0].otherVertex(nextToOtherPoint[0]), 
+        newPtIndex0, 
+        thisFace
+    );
+    
+    replacePointLabel
+    (
+        nextToOtherPoint[1], 
+        newPtIndex1, 
+        thisFace
+    );
 
     // Change the edge-length criteria for this face
     tmpEdge[0] = nextToOtherPoint[0];
     tmpEdge[1] = newPtIndex0;
     edgeToWatch_[findex] = tmpEdge;
 
-    if (debug) Info << "Modified thisFace: " << findex << ": " << thisFace << endl;
+    if (debug) 
+    {
+        Info << "Modified thisFace: " << findex << ": " << thisFace << endl;
+    }
 
     // Find the interior face that contains secondEdge
     found = false;
@@ -2351,31 +2538,27 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Check if face reversal is necessary for the replacement
-    scalar sign = 0.0;
     if (owner_[replaceFace] == c0)
     {
         if (neighbour_[replaceFace] == -1)
         {
-            // Change the owner (no flux-flipping)
+            // Change the owner
             owner_[replaceFace] = newCellIndex0;
-            sign = 1.0; flipOption = false;
         }
         else
         {
             n0 = neighbour_[replaceFace];
-            // This face has to be reversed (and flux is to be flipped)
+            // This face has to be reversed
             faces_[replaceFace] = faces_[replaceFace].reverseFace();
             owner_[replaceFace] = neighbour_[replaceFace];
             neighbour_[replaceFace] = newCellIndex0;
-            sign = -1.0; flipOption = true;
         }
     }
     else
     {
         n0 = owner_[replaceFace];
-        // Keep owner, but change neighbour (no flux-flipping)
+        // Keep owner, but change neighbour
         neighbour_[replaceFace] = newCellIndex0;
-        sign = -1.0; flipOption = false;
     }
 
     // Define the faces for the new cell
@@ -2396,7 +2579,14 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     tmpQuadFace[3] = otherPointIndex[1];
     edgeToWatch[0] = otherPointIndex[0];
     edgeToWatch[1] = newPtIndex0;
-    newFaceIndex = insertFace(-1, tmpQuadFace, c0, newCellIndex0, edgeToWatch);
+    newFaceIndex = insertFace
+                   (
+                       -1, 
+                       tmpQuadFace, 
+                       c0, 
+                       newCellIndex0, 
+                       edgeToWatch
+                   );
     replaceFaceLabel(-1, newFaceIndex, newCell0);
     replaceFaceLabel(-1, newFaceIndex, cell_0);
 
@@ -2408,7 +2598,14 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     tmpTriFace[1] = newPtIndex0;
     tmpTriFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
     edgeToWatch[0] = edgeToWatch[1] = 0;
-    newFaceIndex = insertFace(whichPatch(c0BdyIndex[0]), tmpTriFace, newCellIndex0, -1, edgeToWatch);
+    newFaceIndex = insertFace
+                   (
+                       whichPatch(c0BdyIndex[0]), 
+                       tmpTriFace, 
+                       newCellIndex0, 
+                       -1, 
+                       edgeToWatch
+                   );
     replaceFaceLabel(-1, newFaceIndex, newCell0);
 
     // Third boundary face; Owner = c[0] & Neighbour = [-1] 
@@ -2416,29 +2613,50 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     tmpTriFace[1] = newPtIndex1;
     tmpTriFace[2] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
     edgeToWatch[0] = edgeToWatch[1] = 0;
-    newFaceIndex = insertFace(whichPatch(c0BdyIndex[1]), tmpTriFace, c0, -1, edgeToWatch);
+    newFaceIndex = insertFace
+                   (
+                       whichPatch(c0BdyIndex[1]), 
+                       tmpTriFace, 
+                       c0, 
+                       -1, 
+                       edgeToWatch
+                   );
     replaceFaceLabel(-1, newFaceIndex, cell_0);
 
     if (c1 == -1)
     {
-        // The quad boundary face resulting from bisection; Owner = newCell[0] & Neighbour = [-1]
+        // The quad boundary face resulting from bisection; 
+        // Owner = newCell[0] & Neighbour = [-1]
         tmpQuadFace[0] = newPtIndex1;
         tmpQuadFace[1] = nextToOtherPoint[1];
         tmpQuadFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
         tmpQuadFace[3] = newPtIndex0;
         edgeToWatch[0] = newPtIndex1;
         edgeToWatch[1] = nextToOtherPoint[1];
-        newFaceIndex = insertFace(whichPatch(findex), tmpQuadFace, newCellIndex0, -1, edgeToWatch);
+        newFaceIndex = insertFace
+                       (
+                           whichPatch(findex), 
+                           tmpQuadFace, 
+                           newCellIndex0, 
+                           -1, 
+                           edgeToWatch
+                       );
         replaceFaceLabel(-1, newFaceIndex, newCell0);
 
         if (debug)
         {
             Info << "Modified Cell[0]: " << c0 << ": " << cell_0 << endl;
             forAll(cell_0, faceI)
-                Info << cell_0[faceI] << ": " << faces_[cell_0[faceI]] << endl;
+            {
+                Info << cell_0[faceI] 
+                     << ": " << faces_[cell_0[faceI]] << endl;
+            }
             Info << "New Cell[0]: " << newCellIndex0 << ": " << newCell0 << endl;
             forAll(newCell0, faceI)
-                Info << newCell0[faceI] << ": " << faces_[newCell0[faceI]] << endl;
+            {
+                Info << newCell0[faceI] 
+                     << ": " << faces_[newCell0[faceI]] << endl;
+            }
         }
     }
     else
@@ -2446,7 +2664,15 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         cell &cell_1 = cells_[c1];
 
         // Find the prism faces for cell[1].
-        findPrismFaces(findex, cell_1, c1BdyFace, c1BdyIndex, c1IntFace, c1IntIndex);
+        findPrismFaces
+        (
+            findex, 
+            cell_1, 
+            c1BdyFace, 
+            c1BdyIndex, 
+            c1IntFace, 
+            c1IntIndex
+        );
 
         // Add a new prism cell to the end of the list
         label newCellIndex1 = cells_.append(tmpPrismCell);
@@ -2479,7 +2705,15 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         }
 
         // Insert mapping info into the HashTable
-        cellsFromCells_.insert(newCellIndex1,objectMap(newCellIndex1,c1MasterObjects.toc()));
+        cellsFromCells_.insert
+        (
+            newCellIndex1,
+            objectMap
+            (
+                newCellIndex1,
+                c1MasterObjects.toc()
+            )
+        );
 
         // Add a new element to the lengthScale field
         // (Currently the same as cell[1])
@@ -2516,39 +2750,44 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         {
             if (neighbour_[replaceFace] == -1)
             {
-                // Change the owner (no flux-flipping)
+                // Change the owner
                 owner_[replaceFace] = newCellIndex1;
-                sign = 1.0; flipOption = false;
             }
             else
             {
                 n1 = neighbour_[replaceFace];
-                // This face has to be reversed (and flux is to be flipped)
+                // This face has to be reversed
                 faces_[replaceFace] = faces_[replaceFace].reverseFace();
                 owner_[replaceFace] = neighbour_[replaceFace];
                 neighbour_[replaceFace] = newCellIndex1;
-                sign = -1.0; flipOption = true;
             }
         }
         else
         {
             n1 = owner_[replaceFace];
-            // Keep owner, but change neighbour (no flux-flipping)
+            // Keep owner, but change neighbour
             neighbour_[replaceFace] = newCellIndex1;
-            sign = -1.0; flipOption = false;
         }
 
         // Define attributes for the new prism cell
         newCell1[0] = replaceFace;
 
-        // The interior face resulting from bisection; Owner = newCell[0] & Neighbour = newCell[1]
+        // The interior face resulting from bisection; 
+        // Owner = newCell[0] & Neighbour = newCell[1]
         tmpQuadFace[0] = newPtIndex1;
         tmpQuadFace[1] = nextToOtherPoint[1];
         tmpQuadFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
         tmpQuadFace[3] = newPtIndex0;
         edgeToWatch[0] = newPtIndex1;
         edgeToWatch[1] = nextToOtherPoint[1];
-        newFaceIndex = insertFace(-1, tmpQuadFace, newCellIndex0, newCellIndex1, edgeToWatch);
+        newFaceIndex = insertFace
+                       (
+                           -1, 
+                           tmpQuadFace, 
+                           newCellIndex0, 
+                           newCellIndex1, 
+                           edgeToWatch
+                       );
         replaceFaceLabel(-1, newFaceIndex, newCell0);
         replaceFaceLabel(-1, newFaceIndex, newCell1);
         newCell1[1] = newFaceIndex;
@@ -2559,8 +2798,22 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         if(findCommonEdge(c1BdyFace[0],c0BdyFace[0],commonEdges[0]))
         {
             findCommonEdge(c1BdyFace[1],c0BdyFace[1],commonEdges[1]);
-            findIsolatedPoint(c1BdyFace[0], commonEdges[0], otherPointIndex[2], nextToOtherPoint[2]);
-            findIsolatedPoint(c1BdyFace[1], commonEdges[1], otherPointIndex[3], nextToOtherPoint[3]);
+            
+            findIsolatedPoint
+            (
+                c1BdyFace[0], 
+                commonEdges[0], 
+                otherPointIndex[2], 
+                nextToOtherPoint[2]
+            );
+            
+            findIsolatedPoint
+            (
+                c1BdyFace[1], 
+                commonEdges[1], 
+                otherPointIndex[3], 
+                nextToOtherPoint[3]
+            );
 
             // Modify the two existing triangle boundary faces
             // Zeroth boundary face - Owner = newCell[1], Neighbour = -1
@@ -2586,8 +2839,22 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         {
             findCommonEdge(c1BdyFace[0],c0BdyFace[1],commonEdges[1]);
             findCommonEdge(c1BdyFace[1],c0BdyFace[0],commonEdges[0]);
-            findIsolatedPoint(c1BdyFace[0], commonEdges[1], otherPointIndex[3], nextToOtherPoint[3]);
-            findIsolatedPoint(c1BdyFace[1], commonEdges[0], otherPointIndex[2], nextToOtherPoint[2]);
+            
+            findIsolatedPoint
+            (
+                c1BdyFace[0], 
+                commonEdges[1], 
+                otherPointIndex[3], 
+                nextToOtherPoint[3]
+            );
+            
+            findIsolatedPoint
+            (
+                c1BdyFace[1], 
+                commonEdges[0], 
+                otherPointIndex[2], 
+                nextToOtherPoint[2]
+            );
 
             // Modify the two existing triangle boundary faces
             // Zeroth boundary face - Owner = newCell[1], Neighbour = -1
@@ -2617,7 +2884,14 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         tmpQuadFace[3] = newPtIndex1;
         edgeToWatch[0] = newPtIndex1;
         edgeToWatch[1] = otherPointIndex[3];
-        newFaceIndex = insertFace(-1, tmpQuadFace, c1, newCellIndex1, edgeToWatch);
+        newFaceIndex = insertFace
+                       (
+                           -1, 
+                           tmpQuadFace, 
+                           c1, 
+                           newCellIndex1, 
+                           edgeToWatch
+                       );
         replaceFaceLabel(-1, newFaceIndex, newCell1);
         replaceFaceLabel(-1, newFaceIndex, cell_1);
 
@@ -2626,7 +2900,14 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         tmpTriFace[1] = newPtIndex0;
         tmpTriFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[2]);
         edgeToWatch[0] = edgeToWatch[1] = 0;
-        newFaceIndex = insertFace(patch_0, tmpTriFace, c1, -1, edgeToWatch);
+        newFaceIndex = insertFace
+                       (
+                           patch_0, 
+                           tmpTriFace, 
+                           c1, 
+                           -1, 
+                           edgeToWatch
+                       );
         replaceFaceLabel(-1, newFaceIndex, cell_1);
 
         // Third boundary face; Owner = newCell[1] & Neighbour [-1] 
@@ -2634,23 +2915,45 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         tmpTriFace[1] = newPtIndex1;
         tmpTriFace[2] = commonEdges[1].otherVertex(nextToOtherPoint[3]);
         edgeToWatch[0] = edgeToWatch[1] = 0;
-        newFaceIndex = insertFace(patch_1, tmpTriFace, newCellIndex1, -1, edgeToWatch);
+        newFaceIndex = insertFace
+                       (
+                           patch_1, 
+                           tmpTriFace, 
+                           newCellIndex1, 
+                           -1, 
+                           edgeToWatch
+                       );
         replaceFaceLabel(-1, newFaceIndex, newCell1);
 
         if (debug)
         {
-            Info << "Modified Cell[0]: " << c0 << ": " << cell_0 << endl;
+            Info << nl << "Modified Cell[0]: " << c0 << ": " << cell_0 << endl;
             forAll(cell_0, faceI)
-                Info << cell_0[faceI] << ": " << faces_[cell_0[faceI]] << endl;
+            {
+                Info << cell_0[faceI] 
+                     << ": " << faces_[cell_0[faceI]] << endl;
+            }
+            
             Info << "New Cell[0]: " << newCellIndex0 << ": " << newCell0 << endl;
             forAll(newCell0, faceI)
-                Info << newCell0[faceI] << ": " << faces_[newCell0[faceI]] << endl;
-            Info << "Modified Cell[1]: " << c1 << ": " << cell_1 << endl;
+            {
+                Info << newCell0[faceI] << ": " 
+                     << faces_[newCell0[faceI]] << endl;
+            }
+            
+            Info << nl << "Modified Cell[1]: " << c1 << ": " << cell_1 << endl;
             forAll(cell_1, faceI)
-                Info << cell_1[faceI] << ": " << faces_[cell_1[faceI]] << endl;
+            {
+                Info << cell_1[faceI] << ": " 
+                     << faces_[cell_1[faceI]] << endl;
+            }
+            
             Info << "New Cell[1]: " << newCellIndex1 << ": " << newCell1 << endl;
             forAll(newCell1, faceI)
-                Info << newCell1[faceI] << ": " << faces_[newCell1[faceI]] << endl;
+            {
+                Info << newCell1[faceI] << ": " 
+                     << faces_[newCell1[faceI]] << endl;
+            }
         }
     }
 
@@ -2668,10 +2971,14 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
 )
 {
     // This face is to be collapsed...
-    if (debug) Info << nl << nl << "Face: " << findex << ": " << thisFace << " is to be collapsed. " << endl;
+    if (debug) 
+    {
+        Info << nl << nl 
+             << "Face: " << findex << ": " << thisFace 
+             << " is to be collapsed. " << endl;
+    }
 
     // Local variables
-    bool flipOption;
     labelList c0BdyIndex(2), c0IntIndex(2), c1BdyIndex(2), c1IntIndex(2);
     faceList  c0BdyFace(2),  c0IntFace(2),  c1BdyFace(2),  c1IntFace(2);
     edge  tmpEdge(0, 0), firstEdge, secondEdge;
@@ -2682,14 +2989,26 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
     edgeList thisEdges = thisFace.edges();
     forAll(thisEdges,edgeI)
     {
-        if ( (checkEdge[0] == thisEdges[edgeI][0] || checkEdge[0] == thisEdges[edgeI][1])
-             && !(checkEdge == thisEdges[edgeI]) )
+        if 
+        ( 
+            (
+                checkEdge[0] == thisEdges[edgeI][0] 
+             || checkEdge[0] == thisEdges[edgeI][1]
+            )
+         && !(checkEdge == thisEdges[edgeI]) 
+        )
         {
             firstEdge = thisEdges[edgeI];
         }
         else
-        if ( (checkEdge[1] == thisEdges[edgeI][0] || checkEdge[1] == thisEdges[edgeI][1])
-             && !(checkEdge == thisEdges[edgeI]) )
+        if 
+        ( 
+            (
+                checkEdge[1] == thisEdges[edgeI][0] 
+             || checkEdge[1] == thisEdges[edgeI][1]
+            )
+         && !(checkEdge == thisEdges[edgeI]) 
+        )
         {
             secondEdge = thisEdges[edgeI];
         }
@@ -2703,48 +3022,84 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
 
     // Build a hull of faces that are connected to each edge
     // This will also determine whether the edge lies on a boundary
+    label edgePatch1 = -1, edgePatch2 = -1;
     DynamicList<label> firstEdgeHull(10), secondEdgeHull(10);
     DynamicList<label> firstCells(10),    secondCells(10);
     DynamicList<label> firstTriFaces(10), secondTriFaces(10);
-    bool firstEdgeBoundary  = constructPrismHull(firstEdge, findex, firstEdgeHull, firstCells, firstTriFaces, true);
-    bool secondEdgeBoundary = constructPrismHull(secondEdge, findex, secondEdgeHull, secondCells, secondTriFaces, true);
+    
+    bool firstEdgeBoundary  = constructPrismHull
+                              (
+                                  firstEdge, 
+                                  findex, 
+                                  firstEdgeHull, 
+                                  firstCells, 
+                                  firstTriFaces, 
+                                  true,
+                                  edgePatch1
+                              );
+
+    bool secondEdgeBoundary = constructPrismHull
+                              (
+                                  secondEdge, 
+                                  findex, 
+                                  secondEdgeHull, 
+                                  secondCells, 
+                                  secondTriFaces, 
+                                  true,
+                                  edgePatch2            
+                              );
 
     if (debug)
     {
+        Info << endl;        
         Info << "-------------------------" << endl;
         Info << "Hulls before modification" << endl;
         Info << "-------------------------" << endl;
-        Info << "Cells belonging to first Edge Hull: " << firstCells << endl;
+        
+        Info << nl << "Cells belonging to first Edge Hull: " 
+             << firstCells << endl;
+        
         forAll(firstCells,cellI)
         {
             cell &firstCurCell = cells_[firstCells[cellI]];
-            Info << "Cell:: " << firstCurCell << endl;
+            Info << "Cell: " << firstCells[cellI] 
+                 << ": " << firstCurCell << endl;
             forAll(firstCurCell,faceI)
-                Info << firstCurCell[faceI] << ": " << faces_[firstCurCell[faceI]] << endl;
+            {
+                Info << firstCurCell[faceI] 
+                     << ": " << faces_[firstCurCell[faceI]] << endl;
+            }
         }
-        Info << "First Edge Hull: " << firstEdgeHull << endl;
+        
+        Info << nl << "First Edge Hull: " << firstEdgeHull << endl;
         forAll(firstEdgeHull,indexI)
-            Info << firstEdgeHull[indexI] << ": " << faces_[firstEdgeHull[indexI]] << endl;
-        Info << "Cells belonging to second Edge Hull: " << secondCells << endl;
+        {
+            Info << firstEdgeHull[indexI] 
+                 << ": " << faces_[firstEdgeHull[indexI]] << endl;
+        }
+        
+        Info << nl << "Cells belonging to second Edge Hull: " 
+             << secondCells << endl;
+        
         forAll(secondCells, cellI)
         {
             cell &secondCurCell = cells_[secondCells[cellI]];
-            Info << "Cell:: " << secondCurCell << endl;
+            Info << "Cell: " << secondCells[cellI] 
+                 << ": " << secondCurCell << endl;
             forAll(secondCurCell, faceI)
-                Info << secondCurCell[faceI] << ": " << faces_[secondCurCell[faceI]] << endl;
+            {
+                Info << secondCurCell[faceI] 
+                     << ": " << faces_[secondCurCell[faceI]] << endl;
+            }
         }
-        Info << "Second Edge Hull: " << secondEdgeHull << endl;
+        
+        Info << nl << "Second Edge Hull: " << secondEdgeHull << endl;
         forAll(secondEdgeHull, indexI)
-            Info << secondEdgeHull[indexI] << ": " << faces_[secondEdgeHull[indexI]] << endl;
+        {
+            Info << secondEdgeHull[indexI] 
+                 << ": " << faces_[secondEdgeHull[indexI]] << endl;
+        }
     } 
-
-    // Check if this is an edge (face) that lies on a boundary
-    // Might cause pinching of the boundary, and so, disabled for the moment
-    if (firstEdgeBoundary && secondEdgeBoundary)
-    {
-        Info << "Collapsing a boundary edge..." << endl;
-        // return false;
-    }
 
     // Determine the common vertices for the first and second edges
     label cv0 = firstEdge.commonVertex(checkEdge);
@@ -2757,21 +3112,72 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
 
     // Find the prism-faces
     label faceToKeep[2] = {0,0}, faceToThrow[2] = {0,0};
+    
     cell &cell_0 = cells_[c0];
-    findPrismFaces(findex, cell_0, c0BdyFace, c0BdyIndex, c0IntFace, c0IntIndex);
+    findPrismFaces
+    (
+        findex, 
+        cell_0, 
+        c0BdyFace, 
+        c0BdyIndex, 
+        c0IntFace, 
+        c0IntIndex
+    );
+
     if (c1 != -1)
     {
         cell &cell_1 = cells_[c1];
-        findPrismFaces(findex, cell_1, c1BdyFace, c1BdyIndex, c1IntFace, c1IntIndex);
+        findPrismFaces
+        (
+            findex, 
+            cell_1, 
+            c1BdyFace, 
+            c1BdyIndex, 
+            c1IntFace, 
+            c1IntIndex
+        );
     }
+    
+    // Collapse preferentially towards a symmetryPlane.
+    if (firstEdgeBoundary && secondEdgeBoundary)
+    {
+        WarningIn
+        (
+            "dynamicTopoFvMesh::collapseQuadFace"
+            "(const label, face&)"
+        )   << "Collapsing a face that lies on two boundary patches. "
+            << "Algorithm will look for a symmetryPlane and collapse "
+            << "the face preferentially towards it.\n" << endl
+            << "Face: " << findex << ": " << thisFace << endl;
+        
+        if (boundaryMesh()[edgePatch1].type() == "symmetryPlane")
+        {
+            secondEdgeBoundary = false;
+        }
+        else if (boundaryMesh()[edgePatch2].type() == "symmetryPlane")
+        {
+            firstEdgeBoundary = false;
+        }        
+    }    
 
     if (!firstEdgeBoundary && secondEdgeBoundary)
     {
         // Check whether the collapse is possible. 
         forAll(firstTriFaces, indexI)
         {
-            if (firstTriFaces[indexI] == c0BdyIndex[0] || firstTriFaces[indexI] == c0BdyIndex[1]) continue;
-            if (c1 != -1) if (firstTriFaces[indexI] == c1BdyIndex[0] || firstTriFaces[indexI] == c1BdyIndex[1]) continue;
+            if 
+            (
+                firstTriFaces[indexI] == c0BdyIndex[0] 
+             || firstTriFaces[indexI] == c0BdyIndex[1]
+            ) continue;
+            if (c1 != -1) 
+            {
+                if 
+                (
+                    firstTriFaces[indexI] == c1BdyIndex[0] 
+                 || firstTriFaces[indexI] == c1BdyIndex[1]
+                ) continue;
+            }
             face &triFace = faces_[firstTriFaces[indexI]];
             forAll(triFace, pointI)
             {
@@ -2782,7 +3188,11 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
             // Compute the area and check if it's zero/negative
             scalar origArea = triFaceArea(triFace);
             scalar newArea  = triFaceArea(tmpTriFace);
-            if ((Foam::sign(origArea) != Foam::sign(newArea)) || mag(newArea) < VSMALL) return false;
+            if 
+            (
+                (Foam::sign(origArea) != Foam::sign(newArea)) 
+             || mag(newArea) < VSMALL
+            ) return false;
         }
         // Collapse to the second node...
         forAll(firstEdgeHull,faceI)
@@ -2833,8 +3243,14 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 {
                     forAll(faceToCheck,pointI)
                     {
-                        if (faceToCheck[pointI] == cv0) faceToCheck[pointI] = cv2;
-                        if (faceToCheck[pointI] == cv1) faceToCheck[pointI] = cv3;
+                        if (faceToCheck[pointI] == cv0) 
+                        {
+                            faceToCheck[pointI] = cv2;
+                        }
+                        if (faceToCheck[pointI] == cv1) 
+                        {
+                            faceToCheck[pointI] = cv3;
+                        }
                     }
                 }
             }
@@ -2852,8 +3268,19 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         // Check whether the collapse is possible.
         forAll(secondTriFaces, indexI)
         {
-            if (secondTriFaces[indexI] == c0BdyIndex[0] || secondTriFaces[indexI] == c0BdyIndex[1]) continue;
-            if (c1 != -1) if (secondTriFaces[indexI] == c1BdyIndex[0] || secondTriFaces[indexI] == c1BdyIndex[1]) continue;
+            if 
+            (
+                secondTriFaces[indexI] == c0BdyIndex[0] 
+             || secondTriFaces[indexI] == c0BdyIndex[1]
+            ) continue;
+            if (c1 != -1)
+            {
+                if 
+                (
+                    secondTriFaces[indexI] == c1BdyIndex[0] 
+                 || secondTriFaces[indexI] == c1BdyIndex[1]
+                ) continue;
+            }
             face &triFace = faces_[secondTriFaces[indexI]];
             forAll(triFace, pointI)
             {
@@ -2864,7 +3291,11 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
             // Compute the area and check if it's zero/negative
             scalar origArea = triFaceArea(triFace);
             scalar newArea  = triFaceArea(tmpTriFace);
-            if ((Foam::sign(origArea) != Foam::sign(newArea)) || mag(newArea) < VSMALL) return false;
+            if 
+            (
+                (Foam::sign(origArea) != Foam::sign(newArea)) 
+             || mag(newArea) < VSMALL
+            ) return false;
         }
         // Collapse to the first node by default...
         forAll(secondEdgeHull,faceI)
@@ -2915,8 +3346,14 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 {
                     forAll(faceToCheck, pointI)
                     {
-                        if (faceToCheck[pointI] == cv2) faceToCheck[pointI] = cv0;
-                        if (faceToCheck[pointI] == cv3) faceToCheck[pointI] = cv1;
+                        if (faceToCheck[pointI] == cv2) 
+                        {
+                            faceToCheck[pointI] = cv0;
+                        }
+                        if (faceToCheck[pointI] == cv3) 
+                        {
+                            faceToCheck[pointI] = cv1;
+                        }
                     }
                 }
             }
@@ -2932,32 +3369,56 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
 
     if (debug)
     {
+        Info << endl;
         Info << "------------------------" << endl;
         Info << "Hulls after modification" << endl;
         Info << "------------------------" << endl;
-        Info << "Cells belonging to first Edge Hull: " << firstCells << endl;
+        
+        Info << nl << "Cells belonging to first Edge Hull: " 
+             << firstCells << endl;
+        
         forAll(firstCells, cellI)
         {
             cell &firstCurCell = cells_[firstCells[cellI]];
-            Info << "Cell:: " << firstCurCell << endl;
+            Info << "Cell: " << firstCells[cellI] 
+                 << ": " << firstCurCell << endl;
             forAll(firstCurCell, faceI)
-                Info << firstCurCell[faceI] << ": " << faces_[firstCurCell[faceI]] << endl;
+            {
+                Info << firstCurCell[faceI] 
+                     << ": " << faces_[firstCurCell[faceI]] << endl;
+            }
         }
-        Info << "First Edge Hull: " << firstEdgeHull << endl;
+        
+        Info << nl << "First Edge Hull: " << firstEdgeHull << endl;
         forAll(firstEdgeHull, indexI)
-            Info << firstEdgeHull[indexI] << ": " << faces_[firstEdgeHull[indexI]] << endl;
-        Info << "Cells belonging to second Edge Hull: " << secondCells << endl;
+        {
+            Info << firstEdgeHull[indexI] 
+                 << ": " << faces_[firstEdgeHull[indexI]] << endl;
+        }
+        
+        Info << nl << "Cells belonging to second Edge Hull: " 
+             << secondCells << endl;
+        
         forAll(secondCells, cellI)
         {
             cell &secondCurCell = cells_[secondCells[cellI]];
-            Info << "Cell:: " << secondCurCell << endl;
+            Info << "Cell: " << secondCells[cellI] 
+                 << ": " << secondCurCell << endl;
             forAll(secondCurCell, faceI)
-                Info << secondCurCell[faceI] << ": " << faces_[secondCurCell[faceI]] << endl;
+            {
+                Info << secondCurCell[faceI] 
+                     << ": " << faces_[secondCurCell[faceI]] << endl;
+            }
         }
-        Info << "Second Edge Hull: " << secondEdgeHull << endl;
-        forAll(secondEdgeHull, indexI)
-            Info << secondEdgeHull[indexI] << ": " << faces_[secondEdgeHull[indexI]] << endl;
 
+        Info << nl << "Second Edge Hull: " << secondEdgeHull << endl;
+        forAll(secondEdgeHull, indexI)
+        {
+            Info << secondEdgeHull[indexI] 
+                 << ": " << faces_[secondEdgeHull[indexI]] << endl;
+        }
+
+        Info << endl;
         Info << "Retained face: " 
              << faceToKeep[0] << ": " 
              << " owner: " << owner_[faceToKeep[0]] 
@@ -2999,20 +3460,17 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
                 owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                 neighbour_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
-                flipOption = true;
             }
             else
             {
                 // Keep orientation intact, and update the owner
                 owner_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
-                flipOption = false;
             }
         }
         else
         {
             // Keep orientation intact, and update the neighbour
             neighbour_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
-            flipOption = false;
         }
     }
     else
@@ -3026,20 +3484,17 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
                 neighbour_[faceToKeep[0]] = owner_[faceToKeep[0]];
                 owner_[faceToKeep[0]] = owner_[faceToThrow[0]];
-                flipOption = true;
             }
             else
             {
                 // Keep orientation intact, and update the neighbour
                 neighbour_[faceToKeep[0]] = owner_[faceToThrow[0]];
-                flipOption = false;
             }
         }
         else
         {
             // Keep orientation intact, and update the owner
             owner_[faceToKeep[0]] = owner_[faceToThrow[0]];
-            flipOption = false;
         }
     }
 
@@ -3059,20 +3514,17 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                     faces_[faceToKeep[1]] = faces_[faceToKeep[1]].reverseFace();
                     owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                     neighbour_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
-                    flipOption = true;
                 }
                 else
                 {
                     // Keep orientation intact, and update the owner
                     owner_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
-                    flipOption = false;
                 }
             }
             else
             {
                 // Keep orientation intact, and update the neighbour
                 neighbour_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
-                flipOption = false;
             }
         }
         else
@@ -3086,20 +3538,17 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                     faces_[faceToKeep[1]] = faces_[faceToKeep[1]].reverseFace();
                     neighbour_[faceToKeep[1]] = owner_[faceToKeep[1]];
                     owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
-                    flipOption = true;
                 }
                 else
                 {
                     // Keep orientation intact, and update the neighbour
                     neighbour_[faceToKeep[1]] = owner_[faceToThrow[1]];
-                    flipOption = false;
                 }
             }
             else
             {
                 // Keep orientation intact, and update the owner
                 owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
-                flipOption = false;
             }
         }
     }
