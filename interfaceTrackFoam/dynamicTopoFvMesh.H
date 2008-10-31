@@ -244,18 +244,6 @@ class dynamicTopoFvMesh
             labelList& iidx
         );
         
-        // Method to find the interior/boundary faces
-        // for an input tri-face and adjacent tet/pyramid cell.
-        inline void findTetPyramidFaces
-        (
-            const label& findex,
-            const cell& c,
-            faceList& bdyf,
-            labelList& bidx,
-            faceList& intf,
-            labelList& iidx
-        );
-        
         // Method to find the common-edge between two faces.
         // If found, returns the common edge on the first face in the argument
         bool findCommonEdge(const face&, const face&, edge&);
@@ -292,8 +280,8 @@ class dynamicTopoFvMesh
             DynamicList<label>& hullFaces,
             DynamicList<label>& hullCells,
             DynamicList<label>& hullTriFaces,
-            bool requiresTriFaces,
-            label& patchID
+            DynamicList<label>& edgePatches,
+            bool requiresTriFaces
         );
         
         // Reorder points after a topology change

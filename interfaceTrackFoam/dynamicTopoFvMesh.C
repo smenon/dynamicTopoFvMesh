@@ -447,24 +447,6 @@ inline void Foam::dynamicTopoFvMesh::findPrismFaces
     }
 }
 
-// Method to find the interior/boundary faces
-// for an input tri-face and adjacent tet/pyramid cell.
-inline void Foam::dynamicTopoFvMesh::findTetPyramidFaces
-(
-    const label& findex,
-    const cell& c,
-    faceList& bdyf,
-    labelList& bidx,
-    faceList& intf,
-    labelList& iidx
-)
-{
-    forAll(c, i)
-    {
-        
-    }    
-}
-
 // Utility method to find the common edge between two faces.
 // If an edge is found, returns the common edge on the first face in the argument
 bool Foam::dynamicTopoFvMesh::findCommonEdge
@@ -687,8 +669,8 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
     DynamicList<label>& hullFaces,
     DynamicList<label>& hullCells,
     DynamicList<label>& hullTriFaces,
-    bool requiresTriFaces,
-    label& patchID        
+    DynamicList<label>& edgePatches,
+    bool requiresTriFaces
 )
 {
     // Get the two cells on either side...
@@ -774,8 +756,8 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
         if (cellIndex == -1)
         {
             isBoundary=true; 
-            // Determine the patchID
-            patchID = whichPatch(faceToExclude);
+            // Add the patchID to the list
+            edgePatches.append(whichPatch(faceToExclude));
             break; 
         }
         else
@@ -788,8 +770,8 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
     if (c1 == -1)
     {
         isBoundary = true;
-        // Determine the patchID
-        patchID = whichPatch(startFaceIndex);        
+        // Add the patchID to the list
+        edgePatches.append(whichPatch(startFaceIndex));
     }
     else 
     {
@@ -3022,10 +3004,10 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
 
     // Build a hull of faces that are connected to each edge
     // This will also determine whether the edge lies on a boundary
-    label edgePatch1 = -1, edgePatch2 = -1;
     DynamicList<label> firstEdgeHull(10), secondEdgeHull(10);
     DynamicList<label> firstCells(10),    secondCells(10);
     DynamicList<label> firstTriFaces(10), secondTriFaces(10);
+    DynamicList<label> firstEdgePatches(2), secondEdgePatches(2);
     
     bool firstEdgeBoundary  = constructPrismHull
                               (
@@ -3034,8 +3016,8 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                                   firstEdgeHull, 
                                   firstCells, 
                                   firstTriFaces, 
-                                  true,
-                                  edgePatch1
+                                  firstEdgePatches,
+                                  true
                               );
 
     bool secondEdgeBoundary = constructPrismHull
@@ -3045,8 +3027,8 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                                   secondEdgeHull, 
                                   secondCells, 
                                   secondTriFaces, 
-                                  true,
-                                  edgePatch2            
+                                  secondEdgePatches,
+                                  true
                               );
 
     if (debug)
@@ -3147,17 +3129,35 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
             "(const label, face&)"
         )   << "Collapsing a face that lies on two boundary patches. "
             << "Algorithm will look for a symmetryPlane and collapse "
-            << "the face preferentially towards it.\n" << endl
+            << "the face preferentially towards it.\n"
             << "Face: " << findex << ": " << thisFace << endl;
         
-        if (boundaryMesh()[edgePatch1].type() == "symmetryPlane")
+        forAll(firstEdgePatches, patchI)
         {
-            secondEdgeBoundary = false;
+            if 
+            (
+                boundaryMesh()[firstEdgePatches[patchI]].type() 
+                == "symmetryPlane"
+            )
+            {
+                secondEdgeBoundary = false;
+            }
         }
-        else if (boundaryMesh()[edgePatch2].type() == "symmetryPlane")
+        
+        if (secondEdgeBoundary)
         {
-            firstEdgeBoundary = false;
-        }        
+            forAll(secondEdgePatches, patchI)
+            {
+                if 
+                (
+                    boundaryMesh()[secondEdgePatches[patchI]].type() 
+                    == "symmetryPlane"
+                )
+                {
+                    firstEdgeBoundary = false;
+                }        
+            }
+        }
     }    
 
     if (!firstEdgeBoundary && secondEdgeBoundary)
@@ -3451,10 +3451,11 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         cellCheck[0] = neighbour_[faceToThrow[0]];
         if (owner_[faceToKeep[0]] == c0)
         {
-            if (
-                   (neighbour_[faceToThrow[0]] > neighbour_[faceToKeep[0]])
-                && (neighbour_[faceToKeep[0]] != -1)
-               )
+            if 
+            (
+                (neighbour_[faceToThrow[0]] > neighbour_[faceToKeep[0]])
+             && (neighbour_[faceToKeep[0]] != -1)
+            )
             {
                 // This face is to be flipped
                 faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
@@ -3505,10 +3506,11 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
             cellCheck[1] = neighbour_[faceToThrow[1]];
             if (owner_[faceToKeep[1]] == c1)
             {
-                if (
-                       (neighbour_[faceToThrow[1]] > neighbour_[faceToKeep[1]])
-                    && (neighbour_[faceToKeep[1]] != -1)
-                   ) 
+                if 
+                (
+                    (neighbour_[faceToThrow[1]] > neighbour_[faceToKeep[1]])
+                 && (neighbour_[faceToKeep[1]] != -1)
+                ) 
                 {
                     // This face is to be flipped
                     faces_[faceToKeep[1]] = faces_[faceToKeep[1]].reverseFace();
@@ -3553,6 +3555,41 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         }
     }
 
+    // Remove orphaned faces
+    if (owner_[faceToKeep[0]] == -1)
+    {
+        removeFace(faceToKeep[0]);
+    }
+    else 
+    if 
+    (
+        (neighbour_[faceToKeep[0]] == -1) 
+     && (faceToKeep[0] < nInternalFaces_)
+    )
+    {
+        // This face is being converted from interior to boundary. Remove
+        // from the interior list and add as a boundary face to the end.
+        label newFaceIndex0 = insertFace
+                              (
+                                  whichPatch(faceToThrow[0]),
+                                  faces_[faceToKeep[0]],
+                                  owner_[faceToKeep[0]],
+                                  -1,
+                                  edgeToWatch_[faceToKeep[0]]
+                              );
+
+        replaceFaceLabel
+        (
+            faceToKeep[0], 
+            newFaceIndex0, 
+            cells_[owner_[faceToKeep[0]]]
+        );
+
+        // Renumber the neighbour so that this face is removed correctly.
+        neighbour_[faceToKeep[0]] = 0;
+        removeFace(faceToKeep[0]);        
+    }    
+    
     // Remove the unwanted faces in the cell(s) adjacent to this face,
     // and correct the cells that contain discarded faces
     forAll(cell_0,faceI)
@@ -3562,7 +3599,10 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
     }
     cells_.remove(c0);
     lengthScale_.remove(c0);
-    replaceFaceLabel(faceToThrow[0], faceToKeep[0], cells_[cellCheck[0]]);
+    if (cellCheck[0] != -1)
+    {
+        replaceFaceLabel(faceToThrow[0], faceToKeep[0], cells_[cellCheck[0]]);
+    }
     
     // Update the number of cells, and the reverse map
     nCells_--;
@@ -3579,6 +3619,41 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
 
     if (c1 != -1)
     {
+        // Remove orphaned faces
+        if (owner_[faceToKeep[1]] == -1)
+        {
+            removeFace(faceToKeep[1]);
+        }      
+        else 
+        if 
+        (
+            (neighbour_[faceToKeep[1]] == -1) 
+         && (faceToKeep[1] < nInternalFaces_)
+        )
+        {
+            // This face is being converted from interior to boundary. Remove
+            // from the interior list and add as a boundary face to the end.
+            label newFaceIndex1 = insertFace
+                                  (
+                                      whichPatch(faceToThrow[1]),
+                                      faces_[faceToKeep[1]],
+                                      owner_[faceToKeep[1]],
+                                      -1,
+                                      edgeToWatch_[faceToKeep[1]]
+                                  );
+
+            replaceFaceLabel
+            (
+                faceToKeep[1], 
+                newFaceIndex1, 
+                cells_[owner_[faceToKeep[1]]]
+            );
+
+            // Renumber the neighbour so that this face is removed correctly.
+            neighbour_[faceToKeep[1]] = 0;            
+            removeFace(faceToKeep[1]);        
+        }         
+        
         cell &cell_1 = cells_[c1];
         forAll(cell_1, faceI)
         {
@@ -3587,7 +3662,10 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         }
         cells_.remove(c1);
         lengthScale_.remove(c1);
-        replaceFaceLabel(faceToThrow[1], faceToKeep[1], cells_[cellCheck[1]]);
+        if (cellCheck[1] != -1)
+        {        
+            replaceFaceLabel(faceToThrow[1], faceToKeep[1], cells_[cellCheck[1]]);
+        }        
 
         // Update the number of cells, and the reverse map
         nCells_--;
@@ -3645,16 +3723,23 @@ bool Foam::dynamicTopoFvMesh::remove2DSliver
         face& newFace = faces_[bisectInteriorFace_];
         bool success = collapseQuadFace(bisectInteriorFace_, newFace);
 
-        // If this failed, something is terribly wrong
         if (!success)
         {
-            FatalErrorIn("Foam::dynamicTopoFvMesh::remove2DSliver(const label, face&)")
-                << "Attempt to remove sliver cell: "
-                << c0 << ": " << cell_0
-                << " failed. Possibly a highly skewed mesh."
-                << abort(FatalError);
+            WarningIn
+            (
+                "Foam::dynamicTopoFvMesh::remove2DSliver(const label, face&)"
+            )
+            << "Attempt to remove sliver cell: "
+            << c0 << ": " << cell_0
+            << " failed. Simulation will continue."
+            << endl;
+            
+            return false;
         }
-        return true;
+        else
+        {
+            return true;
+        }
     }
 
     return false;
