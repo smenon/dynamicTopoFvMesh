@@ -178,7 +178,9 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 Foam::dynamicTopoFvMesh::~dynamicTopoFvMesh()
-{}
+{
+    delete [] structPtr_;
+}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -1534,8 +1536,12 @@ scalar Foam::dynamicTopoFvMesh::boundaryLengthScale
 }
 
 // 2D Edge-swapping engine
-void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
+void Foam::dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
+    // Recast the argument 
+    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument); 
+    dynamicTopoFvMesh *mesh = thread->mesh;    
+    
     bool found, foundinner;
     face f;
     edge firstEdge(0,0);
@@ -1547,9 +1553,13 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
     edgeList  commonEdges(2);
 
     // Loop through faces assigned to this thread
-    HashList<face>::iterator fBegin = faces_.getIterator(thread->faceStart), fEnd;
+    HashList<face>::iterator fBegin 
+        = mesh->meshFaces().getIterator(thread->faceStart);
+    HashList<face>::iterator fEnd;
     if (thread->threadID != thread->nThreads-1)
-        fEnd = faces_.getIterator(thread->faceStart+thread->faceSize);
+    {
+        fEnd = mesh->meshFaces().getIterator(thread->faceStart+thread->faceSize);
+    }
     
     for(HashList<face>::iterator fIter = fBegin; fIter != fEnd; fIter++) 
     {
@@ -1560,20 +1570,37 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
         face& thisFace = fIter();
 
         // Get the two cells on either side...
-        label c0 = owner_[findex], c1 = neighbour_[findex];
+        label c0 = mesh->meshOwner()[findex];
+        label c1 = mesh->meshNeighbour()[findex];
 
         // Consider only internal faces..
         if (c1 == -1) continue;
 
         // Get cell references
-        cell &cell_0 = cells_[c0], &cell_1 = cells_[c1];
+        cell &cell_0 = mesh->meshCells()[c0], &cell_1 = mesh->meshCells()[c1];
 
         // Consider only triangle-prisms
         if (cell_0.nFaces() > 5 || cell_1.nFaces() > 5) continue;
 
         // Find the interior/boundary faces.
-        findPrismFaces(findex,cell_0,c0BdyFace,c0BdyIndex,c0IntFace,c0IntIndex);
-        findPrismFaces(findex,cell_1,c1BdyFace,c1BdyIndex,c1IntFace,c1IntIndex);
+        mesh->findPrismFaces
+        (
+            findex,
+            cell_0,
+            c0BdyFace,
+            c0BdyIndex,
+            c0IntFace,
+            c0IntIndex
+        );
+        mesh->findPrismFaces
+        (
+            findex,
+            cell_1,
+            c1BdyFace,
+            c1BdyIndex,
+            c1IntFace,
+            c1IntIndex
+        );
 
 //      if (debug) 
 //      {
@@ -1674,10 +1701,10 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
         label zeroIndex  = commonFaces[0][0];
         label oneIndex   = commonFaces[0][1];
         label twoIndex   = commonFaces[0][2];
-        point& pointZero = meshPoints_[zeroIndex];
-        point& pointOne  = meshPoints_[oneIndex];
-        point& pointTwo  = meshPoints_[twoIndex];
-        point  center    = circumCenter
+        point& pointZero = mesh->meshPoints()[zeroIndex];
+        point& pointOne  = mesh->meshPoints()[oneIndex];
+        point& pointTwo  = mesh->meshPoints()[twoIndex];
+        point  center    = mesh->circumCenter
                            (
                                pointZero, 
                                pointOne, 
@@ -1689,7 +1716,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
         scalar radius    = (pointZero - center)&(pointZero - center);
 
         // Find the isolated point on the other face, and the point next to it 
-        findIsolatedPoint
+        mesh->findIsolatedPoint
         (
             commonFaces[1], 
             commonEdges[0], 
@@ -1698,8 +1725,11 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
         );
 
         // ...and determine whether it lies in this circle
-        point otherPoint = meshPoints_[otherPointIndex[1]];
-        if ( ((otherPoint - center)&(otherPoint - center)) < radius )
+        point otherPoint = mesh->meshPoints()[otherPointIndex[1]];
+        if 
+        ( 
+            ((otherPoint - center)&(otherPoint - center)) < radius 
+        )
         {
             // This face needs to be flipped... 
             if (debug)
@@ -1714,15 +1744,15 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
                 Info << "Common Faces: Set 2: " 
                      << commonFaceIndex[2] << ": " << commonFaces[2] << ", " 
                      << commonFaceIndex[3] << ": " << commonFaces[3] << endl; 
-                Info << "Old face: " << faces_[findex] << endl;                
+                Info << "Old face: " << mesh->meshFaces()[findex] << endl;                
             }
 
             // Set the flag
-            topoChangeFlag_ = true;
+            mesh->topoChangeFlag() = true;
 
             // Find the other three points that don't lie on shared edges
             // and the points next to them (for orientation)
-            findIsolatedPoint
+            mesh->findIsolatedPoint
             (
                 commonFaces[0], 
                 commonEdges[0], 
@@ -1730,7 +1760,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
                 nextToOtherPoint[0]
             );
             
-            findIsolatedPoint
+            mesh->findIsolatedPoint
             (
                 commonFaces[2], 
                 commonEdges[1], 
@@ -1738,7 +1768,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
                 nextToOtherPoint[2]
             );
             
-            findIsolatedPoint
+            mesh->findIsolatedPoint
             (
                 commonFaces[3], 
                 commonEdges[1], 
@@ -1817,11 +1847,11 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             }
 
             // Modify the five faces belonging to this hull
-            face& newFace = faces_[findex];
-            face& newBdyFace0 = faces_[commonFaceIndex[0]];
-            face& newBdyFace1 = faces_[commonFaceIndex[1]];
-            face& newBdyFace2 = faces_[commonFaceIndex[2]];
-            face& newBdyFace3 = faces_[commonFaceIndex[3]];
+            face& newFace = mesh->meshFaces()[findex];
+            face& newBdyFace0 = mesh->meshFaces()[commonFaceIndex[0]];
+            face& newBdyFace1 = mesh->meshFaces()[commonFaceIndex[1]];
+            face& newBdyFace2 = mesh->meshFaces()[commonFaceIndex[2]];
+            face& newBdyFace3 = mesh->meshFaces()[commonFaceIndex[3]];
             label c0count=0, c1count=0;
 
             // Define parameters for the new flipped face
@@ -1831,13 +1861,13 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             newFace[3] = otherPointIndex[2];
             cell_0[c0count++] = findex;
             cell_1[c1count++] = findex;
-            owner_[findex] = c0;
-            neighbour_[findex] = c1;
+            mesh->meshOwner()[findex] = c0;
+            mesh->meshNeighbour()[findex] = c1;
 
             // Modify the edge-to-watch
-            if (edgeModification_)
+            if (mesh->edgeModification())
             {
-                edge& edgeToModify = edgeToWatch_[findex];
+                edge& edgeToModify = mesh->edgeToWatch()[findex];
                 edgeToModify[0] = otherPointIndex[0];
                 edgeToModify[1] = otherPointIndex[1];
             }
@@ -1851,32 +1881,32 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             newBdyFace0[1] = nextToOtherPoint[0];
             newBdyFace0[2] = otherPointIndex[1];
             cell_0[c0count++] = commonFaceIndex[0];
-            owner_[commonFaceIndex[0]] = c0;
-            neighbour_[commonFaceIndex[0]] = -1;
+            mesh->meshOwner()[commonFaceIndex[0]] = c0;
+            mesh->meshNeighbour()[commonFaceIndex[0]] = -1;
 
             // First boundary face - Owner c[1], Neighbour -1
             newBdyFace1[0] = otherPointIndex[1];
             newBdyFace1[1] = nextToOtherPoint[1];
             newBdyFace1[2] = otherPointIndex[0];
             cell_1[c1count++] = commonFaceIndex[1];
-            owner_[commonFaceIndex[1]] = c1;
-            neighbour_[commonFaceIndex[1]] = -1;
+            mesh->meshOwner()[commonFaceIndex[1]] = c1;
+            mesh->meshNeighbour()[commonFaceIndex[1]] = -1;
 
             // Second boundary face - Owner c[0], Neighbour -1
             newBdyFace2[0] = otherPointIndex[3];
             newBdyFace2[1] = nextToOtherPoint[3];
             newBdyFace2[2] = otherPointIndex[2];
             cell_0[c0count++] = commonFaceIndex[2];
-            owner_[commonFaceIndex[2]] = c0;
-            neighbour_[commonFaceIndex[2]] = -1;
+            mesh->meshOwner()[commonFaceIndex[2]] = c0;
+            mesh->meshNeighbour()[commonFaceIndex[2]] = -1;
 
             // Third boundary face - Owner c[1], Neighbour -1
             newBdyFace3[0] = otherPointIndex[2];
             newBdyFace3[1] = nextToOtherPoint[2];
             newBdyFace3[2] = otherPointIndex[3];
             cell_1[c1count++] = commonFaceIndex[3];
-            owner_[commonFaceIndex[3]] = c1;
-            neighbour_[commonFaceIndex[3]] = -1;
+            mesh->meshOwner()[commonFaceIndex[3]] = c1;
+            mesh->meshNeighbour()[commonFaceIndex[3]] = -1;
 
             if (debug)
             {
@@ -1893,10 +1923,9 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
 
             // Check the orientation of the two quad faces, and modify as necessary
             label newOwn=0, newNei=0;
-            bool flipOption = false;
 
             // The quad face belonging to cell[1] now becomes a part of cell[0]
-            if ( neighbour_[commonIntFaceIndex[1]] == -1 )
+            if ( mesh->meshNeighbour()[commonIntFaceIndex[1]] == -1 )
             {
                 // Boundary face
                 // Face doesn't need to be flipped, just update the owner
@@ -1905,57 +1934,54 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
                 newNei     = -1;
             }
             else
-            if ( owner_[commonIntFaceIndex[1]] == c1 )
+            if ( mesh->meshOwner()[commonIntFaceIndex[1]] == c1 )
             {
                 // This face is on the interior, check for previous owner 
                 // Upper-triangular ordering has to be maintained, however...
-                if ( c0 > neighbour_[commonIntFaceIndex[1]] )
+                if ( c0 > mesh->meshNeighbour()[commonIntFaceIndex[1]] )
                 {
                     // Flip is necessary
                     f          = commonIntFaces[1].reverseFace();
-                    newOwn     = neighbour_[commonIntFaceIndex[1]];
+                    newOwn     = mesh->meshNeighbour()[commonIntFaceIndex[1]];
                     newNei     = c0;
-                    flipOption = true;
                 }
                 else
                 {
                     // Flip isn't necessary, just change the owner
                     f          = commonIntFaces[1];
                     newOwn     = c0;
-                    newNei     = neighbour_[commonIntFaceIndex[1]];
+                    newNei     = mesh->meshNeighbour()[commonIntFaceIndex[1]];
                 }
             }
             else
-            if ( neighbour_[commonIntFaceIndex[1]] == c1 )
+            if ( mesh->meshNeighbour()[commonIntFaceIndex[1]] == c1 )
             {
                 // This face is on the interior, check for previous neighbour
                 // Upper-triangular ordering has to be maintained, however...
-                if ( c0 < owner_[commonIntFaceIndex[1]] )
+                if ( c0 < mesh->meshOwner()[commonIntFaceIndex[1]] )
                 {
                     // Flip is necessary
                     f          = commonIntFaces[1].reverseFace();
                     newOwn     = c0;
-                    newNei     = owner_[commonIntFaceIndex[1]];
-                    flipOption = true;
+                    newNei     = mesh->meshOwner()[commonIntFaceIndex[1]];
                 }
                 else
                 {
                     // Flip isn't necessary, just change the neighbour
                     f          = commonIntFaces[1];
-                    newOwn     = owner_[commonIntFaceIndex[1]];
+                    newOwn     = mesh->meshOwner()[commonIntFaceIndex[1]];
                     newNei     = c0;
                 }
             }
 
-            faces_[commonIntFaceIndex[1]] = f;
+            mesh->meshFaces()[commonIntFaceIndex[1]] = f;
             cell_0[c0count++] = commonIntFaceIndex[0];
             cell_0[c0count++] = commonIntFaceIndex[1];
-            owner_[commonIntFaceIndex[1]] = newOwn;
-            neighbour_[commonIntFaceIndex[1]] = newNei;
+            mesh->meshOwner()[commonIntFaceIndex[1]] = newOwn;
+            mesh->meshNeighbour()[commonIntFaceIndex[1]] = newNei;
 
             // The quad face belonging to cell[0] now becomes a part of cell[1]
-            flipOption = false;
-            if ( neighbour_[commonIntFaceIndex[2]] == -1 )
+            if ( mesh->meshNeighbour()[commonIntFaceIndex[2]] == -1 )
             {
                 // Boundary face
                 // Face doesn't need to be flipped, just update the owner
@@ -1964,69 +1990,75 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
                 newNei     = -1;
             }
             else
-            if ( owner_[commonIntFaceIndex[2]] == c0 )
+            if ( mesh->meshOwner()[commonIntFaceIndex[2]] == c0 )
             {
                 // This face is on the interior, check for previous owner 
                 // Upper-triangular ordering has to be maintained, however...
-                if ( c1 > neighbour_[commonIntFaceIndex[2]] )
+                if ( c1 > mesh->meshNeighbour()[commonIntFaceIndex[2]] )
                 {
                     // Flip is necessary
                     f          = commonIntFaces[2].reverseFace();
-                    newOwn     = neighbour_[commonIntFaceIndex[2]];
+                    newOwn     = mesh->meshNeighbour()[commonIntFaceIndex[2]];
                     newNei     = c1;
-                    flipOption = true;
                 }
                 else
                 {
                     // Flip isn't necessary, just change the owner
                     f          = commonIntFaces[2];
                     newOwn     = c1;
-                    newNei     = neighbour_[commonIntFaceIndex[2]];
+                    newNei     = mesh->meshNeighbour()[commonIntFaceIndex[2]];
                 }
             }
             else
-            if ( neighbour_[commonIntFaceIndex[2]] == c0 )
+            if ( mesh->meshNeighbour()[commonIntFaceIndex[2]] == c0 )
             {
                 // This face is on the interior, check for previous neighbour
                 // Upper-triangular ordering has to be maintained, however...
-                if ( c1 < owner_[commonIntFaceIndex[2]] )
+                if ( c1 < mesh->meshOwner()[commonIntFaceIndex[2]] )
                 {
                     // Flip is necessary
                     f          = commonIntFaces[2].reverseFace();
                     newOwn     = c1;
-                    newNei     = owner_[commonIntFaceIndex[2]];
-                    flipOption = true;
+                    newNei     = mesh->meshOwner()[commonIntFaceIndex[2]];
                 }
                 else
                 {
                     // Flip isn't necessary, just change the neighbour
                     f          = commonIntFaces[2];
-                    newOwn     = owner_[commonIntFaceIndex[2]];
+                    newOwn     = mesh->meshOwner()[commonIntFaceIndex[2]];
                     newNei     = c1;
                 }
             }
 
-            faces_[commonIntFaceIndex[2]] = f;
+            mesh->meshFaces()[commonIntFaceIndex[2]] = f;
             cell_1[c1count++] = commonIntFaceIndex[2];
             cell_1[c1count++] = commonIntFaceIndex[3];
-            owner_[commonIntFaceIndex[2]] = newOwn;
-            neighbour_[commonIntFaceIndex[2]] = newNei;
+            mesh->meshOwner()[commonIntFaceIndex[2]] = newOwn;
+            mesh->meshNeighbour()[commonIntFaceIndex[2]] = newNei;
             
             // Generate mapping information for both cells
             label firstParent, secondParent;
-            const labelListList& cc = cellCells();
+            const labelListList& cc = mesh->cellCells();
             labelHashSet c0MasterObjects(6);
             labelHashSet c1MasterObjects(6);
             
-            if (c0 < nOldCells_)
+            if (c0 < mesh->nOldCells())
+            {
                 firstParent = c0;
+            }
             else
-                firstParent = cellParents_[c0];
+            {
+                firstParent = mesh->cellParents()[c0];
+            }
 
-            if (c1 < nOldCells_)
+            if (c1 < mesh->nOldCells())
+            {
                 secondParent = c1;
+            }
             else
-                secondParent = cellParents_[c1];               
+            {
+                secondParent = mesh->cellParents()[c1];
+            }
             
             // Find the cell's neighbours in the old mesh
             c0MasterObjects.insert(firstParent);
@@ -2060,8 +2092,8 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(const topoMeshStruct *thread)
             }   
 
             // Insert mapping info into the HashTable
-            cellsFromCells_.insert(c0,objectMap(c0,c0MasterObjects.toc()));
-            cellsFromCells_.insert(c1,objectMap(c1,c1MasterObjects.toc()));
+            mesh->cellsFromCells().insert(c0,objectMap(c0,c0MasterObjects.toc()));
+            mesh->cellsFromCells().insert(c1,objectMap(c1,c1MasterObjects.toc()));
         }
     }
 }
@@ -2173,9 +2205,13 @@ bool Foam::dynamicTopoFvMesh::edgeModification()
 // 2D Edge-bisection/collapse engine
 void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
 (
-    const topoMeshStruct *thread
+    void *argument
 )
 {
+    // Recast the argument 
+    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+    dynamicTopoFvMesh *mesh = thread->mesh;
+    
     // Loop through all quad-faces and bisect/collapse 
     // edges (quad-faces) by the criterion:
     // Bisect when boundary edge-length > ratioMax_*originalLength
@@ -2184,9 +2220,11 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
     // Loop through faces assigned to this thread
     HashList<face>::iterator fEnd;
     if (thread->threadID != thread->nThreads-1)
-        fEnd = faces_(thread->faceStart+thread->faceSize);    
+    {
+        fEnd = mesh->meshFaces()(thread->faceStart+thread->faceSize);    
+    }
 
-    HashList<face>::iterator fIter = faces_(thread->faceStart);
+    HashList<face>::iterator fIter = mesh->meshFaces()(thread->faceStart);
     while(fIter != fEnd)
     {
         // Retrieve the index for this iterator
@@ -2199,79 +2237,84 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
         if (thisFace.size() == 4)
         {
             // Measure the boundary edge-length of the face in question
-            edge& checkEdge = edgeToWatch_[findex];
-            point& a = meshPoints_[checkEdge[0]];
-            point& b = meshPoints_[checkEdge[1]];
+            edge& checkEdge = mesh->edgeToWatch()[findex];
+            point& a = mesh->meshPoints()[checkEdge[0]];
+            point& b = mesh->meshPoints()[checkEdge[1]];
             scalar length = mag(b-a);
 
             // Get the two cells on either side...
-            label c0 = owner_[findex], c1 = neighbour_[findex];
+            label c0 = mesh->meshOwner()[findex];
+            label c1 = mesh->meshNeighbour()[findex];
 
             // Determine the length-scale at this face
             scalar scale=0;
             if (c1 == -1)
             {
-                scale = boundaryLengthScale(findex);
+                scale = mesh->boundaryLengthScale(findex);
 
                 // Check if this boundary face is adjacent to a sliver-cell,
                 // and remove it by a two-step bisection/collapse operation.
-                bool sliverRemoved = remove2DSliver(findex, thisFace);
+                bool sliverRemoved = mesh->remove2DSliver(findex, thisFace);
 
                 if (sliverRemoved)
                 {
                     // Set the flag
-                    topoChangeFlag_ = true;
+                    mesh->topoChangeFlag() = true;
 
                     // Move on to the next face
                     fIter++; 
 
                     // Remove the temporary interior face
-                    removeFace(bisectInteriorFace_);
+                    mesh->removeFace(mesh->bisectInteriorFace());
 
                     continue;
                 }
             }
             else
             {
-                scale = 0.5*(lengthScale_[c0]+lengthScale_[c1]);
+                scale = 0.5*
+                        (
+                            mesh->meshLengthScale()[c0]
+                          + mesh->meshLengthScale()[c1]
+                        );
             }
 
             //== Edge Bisection ==//
-            if(length > ratioMax_*scale)
+            if(length > mesh->ratioMax()*scale)
             {
                 // Consider only triangle-prisms
-                cell &cell_0 = cells_[c0];
+                cell &cell_0 = mesh->meshCells()[c0];
                 if (cell_0.nFaces() > 5) continue;
                 if (c1 != -1)
                 {
-                    cell &cell_1 = cells_[c1];
+                    cell &cell_1 = mesh->meshCells()[c1];
                     if (cell_1.nFaces() > 5) continue;
                 }
 
                 // Set the flag
-                topoChangeFlag_ = true;
+                mesh->topoChangeFlag() = true;
 
                 // Bisect this face
-                bisectQuadFace(findex, thisFace);
+                mesh->bisectQuadFace(findex, thisFace);
 
                 // Move on to the next face
                 fIter++;
             }
             else
             //== Edge Collapse ==//
-            if(length < ratioMin_*scale)
+            if(length < mesh->ratioMin()*scale)
             {
                 // Consider only triangle-prisms
-                cell &cell_0 = cells_[c0];
+                cell &cell_0 = mesh->meshCells()[c0];
                 if (cell_0.nFaces() > 5) continue;
                 if (c1 != -1)
                 {
-                    cell &cell_1 = cells_[c1];
+                    cell &cell_1 = mesh->meshCells()[c1];
                     if (cell_1.nFaces() > 5) continue;
                 }
 
                 // Collapse this face
-                bool success = collapseQuadFace(findex, thisFace);
+                bool success = mesh->collapseQuadFace(findex, thisFace);
 
                 // Increment the iterator to move on to the next face...
                 fIter++;
@@ -2280,17 +2323,17 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
                 // to the next valid face on the face-list.
                 if (success)
                 {
-                    removeFace(findex);
+                    mesh->removeFace(findex);
 
                     // Set the flag
-                    topoChangeFlag_ = true;
+                    mesh->topoChangeFlag() = true;
                 }
             }
             else
             {
                 // Move on to the next face. Increments are done within the 
-                // for-loop, since the face might actually be deleted (due to a collapse) 
-                // within the loop-body.
+                // for-loop, since the face might actually be deleted 
+                // (due to a collapse) within the loop-body.
                 fIter++;
             }
         }
@@ -3746,10 +3789,9 @@ bool Foam::dynamicTopoFvMesh::remove2DSliver
 }
 
 // Prepare thread structures
-void Foam::dynamicTopoFvMesh::prepareThreads()
+void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
 {
     // Fill in required thread-info
-    label numThreads = threader_().getNumThreads(); 
     label pointsPerBlock = (nPoints_/numThreads)+1;
     label facesPerBlock  = (nFaces_/numThreads)+1;
     label cellsPerBlock  = (nCells_/numThreads)+1;
@@ -3758,7 +3800,6 @@ void Foam::dynamicTopoFvMesh::prepareThreads()
     structPtr_[0].pointSize  = pointsPerBlock;
     structPtr_[0].faceSize   = facesPerBlock;
     structPtr_[0].cellSize   = cellsPerBlock;
-    threader_().setData(0, &(structPtr_[0]));
 
     // Information for all subsequent threads
     label pointsLeft = nPoints_, facesLeft = nFaces_, cellsLeft = nCells_;
@@ -3779,7 +3820,6 @@ void Foam::dynamicTopoFvMesh::prepareThreads()
             (facesLeft < facesPerBlock) ? facesLeft : facesPerBlock;
         structPtr_[i].cellSize =
             (cellsLeft < cellsPerBlock) ? cellsLeft : cellsPerBlock;
-        threader_().setData(i, &(structPtr_[i]));
     }    
 }
 
@@ -3845,28 +3885,51 @@ void Foam::dynamicTopoFvMesh::updateMotion()
 }
 
 // MultiThreaded topology modifier [2D]
-threadReturnType Foam::dynamicTopoFvMesh::threadedTopoModifier2D(void *arg)
-{
-    // Typecast the argument into the required structure
-    multiThreader::threadInfo *threadStruct =
-        reinterpret_cast<multiThreader::threadInfo *>(arg);            
-    
-    topoMeshStruct *meshStructure = 
-        reinterpret_cast<topoMeshStruct*>(threadStruct->methodArg);
-    
-    dynamicTopoFvMesh *mesh = meshStructure->mesh;
-    
-    // 2D Edge-bisection/collapse engine
-    if (mesh->edgeModification()) mesh->edgeBisectCollapse2D(meshStructure);
+void Foam::dynamicTopoFvMesh::threadedTopoModifier2D()
+{                  
+    if (edgeModification_) 
+    {
+        // Prepare for multi-threading
+        prepareThreads(1);
+        
+        // Submit jobs to the work queue
+        threader_().addToWorkQueue
+                    (
+                         &edgeBisectCollapse2D,
+                         reinterpret_cast<void *>
+                         (
+                             &(structPtr_[0])
+                         )
+                    );
+    }
 
     if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
 
-    // 2D Edge-swapping engine
-    mesh->swap2DEdges(meshStructure);
+    // Prepare for multi-threading
+    prepareThreads(threader_().getNumThreads());    
+    
+    // Submit jobs to the work queue
+    for (label i = 0; i < threader_().getNumThreads(); i++)
+    {
+        threader_().addToWorkQueue
+                    (
+                         &swap2DEdges,
+                         reinterpret_cast<void *>
+                         (
+                             &(structPtr_[i])
+                         )
+                    );        
+    }
 
     if (debug) Info << nl << "2D Edge Swapping complete." << endl;    
-    
-    return threadReturnValue;
+}
+
+// MultiThreaded topology modifier [3D]
+void Foam::dynamicTopoFvMesh::threadedTopoModifier3D()
+{ 
+    if (debug) Info << nl << "3D Edge Bisection/Collapse complete." << endl;
+
+    if (debug) Info << nl << "3D Edge Swapping complete." << endl;     
 }
 
 // Update the mesh for topology changes
@@ -3918,22 +3981,14 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
     // Reset the flag
     topoChangeFlag_ = false;
 
+    // Invoke the threaded topoModifier
     if ( twoDMotion_ )
     {        
-        // Set the mesh-modifier static method
-        threader_().setMethod(threadedTopoModifier2D);
-
-        // Prepare threads for execution
-        prepareThreads();
-        
-        // Start all threads
-        threader_().executeThreads();
+        threadedTopoModifier2D();
     }
     else
     {
-        if (debug) Info << nl << "3D Edge Bisection/Collapse complete." << endl;
-
-        if (debug) Info << nl << "3D Edge Swapping complete." << endl;
+        threadedTopoModifier3D();
     }
 
     // Apply all pending topology changes, if necessary

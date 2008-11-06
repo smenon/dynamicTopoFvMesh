@@ -29,6 +29,11 @@ Description
     Class which provides support for generic multithreaded execution of class
     methods using POSIX threads.
 
+    Thread-pooling is implemented as described in:
+   "Using POSIX Threads: Programming with Pthreads"
+    by Brad nichols, Dick Buttlar, Jackie Farrell
+      O'Reilly & Associates, Inc.
+ 
 Author
     Sandeep Menon
 
@@ -51,7 +56,6 @@ extern "C"
 }
 typedef void *(*threadFunctionType)(void *);
 
-#define MT_MAX_THREADS 32
 #define threadReturnType void *
 #define threadReturnValue NULL
 
@@ -65,18 +69,117 @@ namespace Foam
 \*---------------------------------------------------------------------------*/
 
 class multiThreader
-{
-public:    
+{    
+public:
     
-        // Common structure that holds function / data information
-        // for all instantiated threads. The methodArg pointer contains
-        // any arguments that the multithreaded class method may require.
-        struct threadInfo
+    // Mutex sub-class
+    class Mutex
+    {
+        // Private data
+            pthread_mutex_t lock_;
+            
+    public:
+        
+        // Constructor
+        Mutex();
+        
+        // Destructor
+        ~Mutex();
+        
+        // Lock the mutex
+        void lock();
+        
+        // Unlock the mutex
+        void unlock();
+        
+        // Operator overload
+        inline pthread_mutex_t* operator()()
         {
-            label   ID;
-            label   numThreads;
-            void    *methodArg;
-        };     
+            return &lock_;
+        }
+    };
+    
+    // Conditional sub-class
+    class Conditional
+    {
+        // Private data
+            pthread_cond_t condition_;
+            
+    public:
+        
+        // Constructor
+        Conditional();
+        
+        // Destructor
+        ~Conditional();
+        
+        // Operator overload
+        inline pthread_cond_t* operator()()
+        {
+            return &condition_;
+        }        
+    };
+        
+private:
+    // Private data
+    
+        label numThreads_;
+        
+        label maxQueueSize_;
+
+        // Work-queue item: Holds a pointer to the method and its argument
+        struct workQueueItem
+        {
+            void (*function)(void*);
+            void *arg;
+            workQueueItem *next;
+        };            
+        
+        // Common structure for all threads in the pool.
+        struct threadPool
+        {
+            multiThreader   *threader;
+            label           numThreads;
+            label           queueSize;
+            pthread_t       *threads;
+            workQueueItem   *head, *tail;
+            
+            // Flags
+            bool queueClosed;
+            bool shutDown;
+            
+            // Synchronization
+            Mutex       queueLock;
+            Conditional queueNotEmpty;
+            Conditional queueNotFull;
+            Conditional queueEmpty;            
+        } *poolInfo_;           
+
+    // Private Member Functions
+        
+        void initializeThreadPool();
+        
+        static threadReturnType poolThread(void *arg);
+        
+        void destroyThreadPool();
+        
+        void waitForCondition(Conditional&, Mutex&);
+        
+        void broadCast(Conditional&);
+        
+        void signal(Conditional&);
+
+        //- Disallow default bitwise copy construct
+        multiThreader(const multiThreader&);
+
+        //- Disallow default bitwise assignment
+        void operator=(const multiThreader&);
+
+    // Private constructor
+
+        multiThreader(const dictionary&);             
+    
+public:      
     
     // Selectors
 
@@ -90,38 +193,15 @@ public:
         
 
     // Member Functions
-
-        //- Set the method for multithreaded execution
-        void setMethod(threadFunctionType);
-        
-        //- Set the method argument for a specific index
-        void setData(label, void *);
-        
-        //- Execute threads
-        void executeThreads(); 
         
         //- Return the number of threads
-        label getNumThreads();
+        label getNumThreads();   
         
-private:
-    
-    // Private data
-        label                   numThreads_;
-        threadFunctionType      threadedMethod_;
-        threadInfo              infoList_[MT_MAX_THREADS];
-        void                    *dataList_[MT_MAX_THREADS];
-
-    // Private Member Functions
-
-        //- Disallow default bitwise copy construct
-        multiThreader(const multiThreader&);
-
-        //- Disallow default bitwise assignment
-        void operator=(const multiThreader&);
-
-    // Constructors
-
-        multiThreader(const dictionary&);    
+        //- Return the maxQueueSize
+        label getMaxQueueSize();
+        
+        //- Add a function to the work queue
+        void addToWorkQueue(void (*tFunction)(void*), void *arg);        
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

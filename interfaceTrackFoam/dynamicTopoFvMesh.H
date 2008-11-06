@@ -176,11 +176,8 @@ class dynamicTopoFvMesh
                 pointStart = faceStart = cellStart = 0;
                 pointSize  = faceSize  = cellSize  = 0;
             }
-        };
-        
-        // Structure array pointer
-        topoMeshStruct *structPtr_;
-        
+        } *structPtr_;
+                
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -210,13 +207,16 @@ class dynamicTopoFvMesh
         void initEdges();
         
         // MultiThreaded topology modifier [2D]
-        static threadReturnType threadedTopoModifier2D(void *arg);
+        void threadedTopoModifier2D();
+        
+        // MultiThreaded topology modifier [3D]
+        void threadedTopoModifier3D();        
         
         // 2D Edge-swapping engine
-        void swap2DEdges(const topoMeshStruct *);
+        static void swap2DEdges(void *);
         
         // 2D Edge-bisection/collapse engine
-        void edgeBisectCollapse2D(const topoMeshStruct *);
+        static void edgeBisectCollapse2D(void *);
         
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label&) const;
@@ -303,10 +303,29 @@ class dynamicTopoFvMesh
         scalar boundaryLengthScale(const label);
         
         // Prepare thread structures
-        void prepareThreads();
+        void prepareThreads(const label);
         
         // Does the mesh perform edge-modification?
         bool edgeModification();
+        
+        // Private internal access to member data for static members
+        HashList<point>& meshPoints() { return meshPoints_; }
+        HashList<face>&  meshFaces() { return faces_; }
+        HashList<label>& meshOwner() { return owner_; }
+        HashList<label>& meshNeighbour() { return neighbour_; }
+        HashList<cell>&  meshCells() { return cells_; }
+        bool& topoChangeFlag() { return topoChangeFlag_; }
+        
+        HashList<scalar>& meshLengthScale() { return lengthScale_; }
+        HashList<edge>& edgeToWatch() { return edgeToWatch_; }
+        const scalar ratioMin() { return ratioMin_; }
+        const scalar ratioMax() { return ratioMax_; }
+        const scalar growthFactor() { return growthFactor_; }
+        const label bisectInteriorFace() { return bisectInteriorFace_; }
+        const label nOldCells() { return nOldCells_; }
+        
+        Map<objectMap>& cellsFromCells() { return cellsFromCells_; }
+        Map<label>& cellParents() { return cellParents_; }
         
 public:
     

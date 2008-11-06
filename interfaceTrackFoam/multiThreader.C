@@ -40,15 +40,9 @@ Author
 Foam::multiThreader::multiThreader(const dictionary& threadDict)
 :
     numThreads_(-1),
-    threadedMethod_(NULL)
-{
-    // Initialize members
-    for (label index=0; index < MT_MAX_THREADS; index++)
-    {
-        this->dataList_[index] = NULL;
-        this->infoList_[index].ID = index;
-    }
-        
+    maxQueueSize_(-1),
+    poolInfo_(NULL)
+{        
     // Obtain numThreads from the specified dictionary.
     if (threadDict.found("threads"))
     {
@@ -63,8 +57,38 @@ Foam::multiThreader::multiThreader(const dictionary& threadDict)
         Info << "Defaulting threading environment to one thread." << endl;        
     }
     
-    // Limit the number of threads to the global maximum
-    numThreads_ = (numThreads_ < MT_MAX_THREADS) ? numThreads_ : MT_MAX_THREADS;
+    // Obtain maxQueueSize from the specified dictionary.
+    if (threadDict.found("maxQueueSize"))
+    {
+        maxQueueSize_ = readLabel(threadDict.lookup("maxQueueSize"));
+    }
+    else
+    {
+        maxQueueSize_ = 10;
+    }
+    
+    // Initialize the thread pool
+    initializeThreadPool();
+}
+
+Foam::multiThreader::Mutex::Mutex()
+{
+    if (pthread_mutex_init(&lock_, NULL))
+    {
+        FatalErrorIn("multiThreader::Mutex::Mutex()")
+            << "Unable to initialize mutex"
+            << abort(FatalError);        
+    }    
+}
+
+Foam::multiThreader::Conditional::Conditional()
+{
+    if (pthread_cond_init(&condition_, NULL))
+    {
+        FatalErrorIn("multiThreader::Conditional::Conditional()")
+            << "Unable to initialize condition"
+            << abort(FatalError);        
+    }    
 }
 
 // * * * * * * * * * * * * * * * * Selectors * * * * * * * * * * * * * * * * //
@@ -78,104 +102,310 @@ Foam::multiThreader::New
     return autoPtr<multiThreader>(new multiThreader(threadDict));
 }
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
 
 Foam::multiThreader::~multiThreader()
-{}
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-//- Set the method for multithreaded execution
-void Foam::multiThreader::setMethod
-(
-    threadFunctionType function 
-)
 {
-    this->threadedMethod_ = function;    
+    destroyThreadPool();
 }
 
-//- Set the method argument for a specific index
-void Foam::multiThreader::setData
-(
-    label index, 
-    void *argument
-)
+Foam::multiThreader::Mutex::~Mutex()
 {
-    if (index >= numThreads_)
+    if (pthread_mutex_destroy(&lock_))
     {
-        FatalErrorIn("multiThreader::setData(label index, void *argument)")
-            << "Index out of range: 0 to "
-            << (numThreads_ - 1)
-            << abort(FatalError);
-        return;        
-    }
-    else
-    {
-        this->dataList_[index] = argument;
-    }
+        FatalErrorIn("multiThreader::Mutex::~Mutex()")
+            << "Unable to destroy mutex"
+            << abort(FatalError);        
+    }    
 }
 
-//- Execute threads
-void Foam::multiThreader::executeThreads()
+Foam::multiThreader::Conditional::~Conditional()
 {
-    if (!this->threadedMethod_)
+    if (pthread_cond_destroy(&condition_))
     {
-        FatalErrorIn("multiThreader::executeThreads()")
-            << "Method was not set."
-            << abort(FatalError);
-        return;
-    }
+        FatalErrorIn("multiThreader::Conditional::Conditional()")
+            << "Unable to destroy condition"
+            << abort(FatalError);        
+    }     
+}
+
+// * * * * * * * * * * * * * * * Private Functions * * * * * * * * * * * * * //
+
+void Foam::multiThreader::initializeThreadPool()
+{
+    // Allocate the threadPool structure
+    poolInfo_ = new threadPool;
     
-    // Initialize the pthread attributes
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);    
-    pthread_t pid[MT_MAX_THREADS];
+    // Initialize fields
+    poolInfo_->threader = this;
+    poolInfo_->numThreads = numThreads_;
+    poolInfo_->queueSize = 0;
+    poolInfo_->threads = new pthread_t[numThreads_];
+    poolInfo_->head = NULL;
+    poolInfo_->tail = NULL;
     
-    for (label tIndex = 1; tIndex < numThreads_; tIndex++)
-    {
-        // Set the appropriate argument structures
-        this->infoList_[tIndex].methodArg = this->dataList_[tIndex];
-        this->infoList_[tIndex].numThreads = this->numThreads_;
-        
+    // Initialize flags
+    poolInfo_->queueClosed = false;
+    poolInfo_->shutDown = false;
+    
+    // Create worker threads and have them wait for jobs
+    for (label tIndex = 0; tIndex < numThreads_; tIndex++)
+    {        
         int status = pthread_create
                      ( 
-                        &(pid[tIndex]), 
-                        &attr,
-                        reinterpret_cast<externThreadFunctionType>
-                        (
-                            this->threadedMethod_
-                        ),
-                        reinterpret_cast<void *>
-                        (
-                            &this->infoList_[tIndex]
-                        ) 
+                         &(poolInfo_->threads[tIndex]), 
+                         NULL,
+                         reinterpret_cast<externThreadFunctionType>
+                         (
+                             poolThread
+                         ),
+                         reinterpret_cast<void *>
+                         (
+                             poolInfo_
+                         ) 
                      );
         
         if (status != 0)
         {
-            FatalErrorIn("multiThreader::executeThreads()")
+            FatalErrorIn("multiThreader::initThreadPool()")
                 << "pthread_create could not initialize thread: "
                 << tIndex
                 << abort(FatalError);
         }        
+    }   
+}
+
+threadReturnType Foam::multiThreader::poolThread(void *arg)
+{
+    // Typecast the argument into the required structure
+    threadPool *poolInfo = reinterpret_cast<threadPool *>(arg);
+    
+    // Work queue loop
+    while (true)
+    {
+        // Lock the work queue
+        poolInfo->queueLock.lock();
+        
+        // Wait for work to arrive in the queue
+        while ((poolInfo->queueSize == 0) && (!poolInfo->shutDown)) 
+        {
+            poolInfo->threader->waitForCondition
+                                (
+                                    poolInfo->queueNotEmpty,
+                                    poolInfo->queueLock
+                                );
+        }  
+        
+        // Check for shutdown
+        if (poolInfo->shutDown) 
+        {
+            poolInfo->queueLock.unlock();
+            pthread_exit(NULL);
+        }  
+        
+        // Pick an item off the queue, and get to work
+        workQueueItem *myWorkItem = poolInfo->head;
+        poolInfo->queueSize--;
+        if (poolInfo->queueSize == 0)
+        {
+            poolInfo->head = poolInfo->tail = NULL;
+        }
+        else
+        {
+            poolInfo->head = myWorkItem->next;
+        }
+        
+        // Handle a waiting destructor
+        if (poolInfo->queueSize == 0)
+        {
+            poolInfo->threader->signal(poolInfo->queueEmpty);
+        }
+        
+        // Unlock the work queue
+        poolInfo->queueLock.unlock();
+        
+        // Perform the work
+        myWorkItem->function(myWorkItem->arg);
+        
+        // Free up the work item
+        delete myWorkItem;
     }
     
-    // Primary thread also calls the method (default single-threaded behaviour)
-    this->infoList_[0].methodArg = this->dataList_[0];
-    this->infoList_[0].numThreads = this->numThreads_;  
-    this->threadedMethod_(reinterpret_cast<void *>(&this->infoList_[0]));
+    return threadReturnValue;
+}
+
+void Foam::multiThreader::addToWorkQueue
+(
+    void (*tFunction)(void*), 
+    void *arg
+)
+{
+    // Lock the work queue
+    poolInfo_->queueLock.lock();
     
-    // Wait for all threads to exit
-    for (label tIndex = 1; tIndex < numThreads_; tIndex++)
+    // If occupied, wait for the queue to free-up
+    while
+    (
+         (poolInfo_->queueSize == maxQueueSize_) 
+      && (!(poolInfo_->shutDown || poolInfo_->queueClosed))  
+    ) 
     {
-        pthread_join(pid[tIndex], NULL);
+        waitForCondition(poolInfo_->queueNotFull, poolInfo_->queueLock);
+    } 
+    
+    // Is the pool in the process of being destroyed?
+    // Unlock the mutex and return to caller.
+    if (poolInfo_->shutDown || poolInfo_->queueClosed) 
+    {
+        poolInfo_->queueLock.unlock();
+        return;
+    }  
+    
+    // Allocate a new work structure
+    workQueueItem *newWorkItem = new workQueueItem;
+    newWorkItem->function = tFunction;
+    newWorkItem->arg = arg;
+    newWorkItem->next = NULL;    
+    
+    // Add new work structure to the queue
+    if (poolInfo_->queueSize == 0) 
+    {
+        poolInfo_->tail = poolInfo_->head = newWorkItem;
+        broadCast(poolInfo_->queueNotEmpty);
+    } 
+    else 
+    {
+        poolInfo_->tail->next = newWorkItem;
+        poolInfo_->tail = newWorkItem;
+    }
+
+    poolInfo_->queueSize++;    
+    
+    // Unlock the work queue
+    poolInfo_->queueLock.unlock();    
+}
+
+void Foam::multiThreader::destroyThreadPool()
+{
+    // Lock the work queue
+    poolInfo_->queueLock.lock();
+    
+    // Is a shutdown already in progress?
+    if (poolInfo_->queueClosed || poolInfo_->shutDown) 
+    {
+        // Unlock the mutex and return
+        poolInfo_->queueLock.unlock();
+        return;
+    }    
+    
+    poolInfo_->queueClosed = true;
+
+    // Wait for workers to drain the queue
+    while (poolInfo_->queueSize != 0) 
+    {
+        waitForCondition(poolInfo_->queueEmpty, poolInfo_->queueLock);
+    }
+
+    poolInfo_->shutDown = true;        
+    
+    // Unlock the work queue
+    poolInfo_->queueLock.unlock();
+    
+    // Wake up workers so that they check the shutdown flag
+    broadCast(poolInfo_->queueNotEmpty);
+    broadCast(poolInfo_->queueNotFull);
+
+    // Wait for all workers to exit
+    for(label i=0; i < numThreads_; i++) 
+    {
+        if (pthread_join(poolInfo_->threads[i],NULL))
+        {
+            FatalErrorIn("multiThreader::destroyThreadPool()")
+                << "pthread_join failed."
+                << abort(FatalError);            
+        }
+    }    
+    
+    // Deallocate the work-queue and pool structure
+    delete [] poolInfo_->threads;
+    
+    workQueueItem *currentNode;
+    while(poolInfo_->head != NULL) 
+    {
+        currentNode = poolInfo_->head->next; 
+        poolInfo_->head = poolInfo_->head->next;
+        delete currentNode;
+    }
+    
+    delete poolInfo_;     
+}
+
+void Foam::multiThreader::waitForCondition
+(
+    Conditional& condition, 
+    Mutex& mutex
+)
+{
+    if (pthread_cond_wait(condition(),mutex()))
+    {
+        FatalErrorIn("multiThreader::waitForCondition(..)")
+            << "Conditional wait failed."
+            << abort(FatalError);            
     }    
 }
+
+void Foam::multiThreader::broadCast(Conditional& condition)
+{
+    if (pthread_cond_broadcast(condition()))
+    {
+        FatalErrorIn("multiThreader::broadCast()")
+            << "Unable to broadcast."
+            << abort(FatalError);                
+    }    
+}
+
+void Foam::multiThreader::signal(Conditional& condition)
+{
+    if (pthread_cond_signal(condition()))
+    {
+        FatalErrorIn("multiThreader::signal()")
+            << "Unable to signal."
+            << abort(FatalError);                
+    }    
+}
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 //- Return the number of threads
 label Foam::multiThreader::getNumThreads()
 {
     return numThreads_;
+}
+
+//- Return the maxQueueSize
+label Foam::multiThreader::getMaxQueueSize()
+{
+    return maxQueueSize_;
+}
+
+void Foam::multiThreader::Mutex::lock()
+{
+    if (pthread_mutex_lock(&lock_))
+    {
+        FatalErrorIn("multiThreader::destroyThreadPool()")
+            << "Unable to lock the work queue."
+            << abort(FatalError);
+    }     
+}
+
+void Foam::multiThreader::Mutex::unlock()
+{
+    if (pthread_mutex_unlock(&lock_))
+    {
+        FatalErrorIn("multiThreader::Mutex::unlock()")
+            << "Unable to unlock the mutex."
+            << abort(FatalError);            
+    }    
 }
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
