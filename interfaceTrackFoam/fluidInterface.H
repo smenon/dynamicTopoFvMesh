@@ -59,9 +59,6 @@ class fluidInterface
         
         //- Reference to the underlying mesh
         fvMesh& mesh_;
-        
-        //- Reference to the density field
-        volScalarField& rho_;
 
         //- Reference to the velocity field
         volVectorField& U_;
@@ -82,10 +79,16 @@ class fluidInterface
         label curTimeIndex_;
         
         //- Viscosity of fluid A
-        dimensionedScalar muA_;
+        dimensionedScalar muFluidA_;
         
         //- Density of fluid A
-        dimensionedScalar rhoA_;
+        dimensionedScalar rhoFluidA_;
+        
+        //- Conductivity of fluid A
+        dimensionedScalar condFluidA_;
+
+        //- Specific Heat of fluid A
+        dimensionedScalar CpFluidA_;       
         
         //- Surface tension
         dimensionedScalar surfaceTension_;
@@ -103,9 +106,12 @@ class fluidInterface
         mutable vectorField* pointsDisplacementDirPtr_;
 
         //- Displacement direction of interface control points
-        mutable vectorField* facesDisplacementDirPtr_;        
+        mutable vectorField* facesDisplacementDirPtr_; 
         
-        //- Finite area mesh which consists
+        //- Surface tension field
+        mutable scalarField* surfaceTensionPtr_;
+        
+        //- Finite area mesh
         mutable faMesh* aMeshPtr_;    
         
         //- Free surface patches which do not move
@@ -120,6 +126,7 @@ class fluidInterface
             void makeDisplacement();
             void makeDirections();            
             void makeFaMesh();
+            void makeSurfaceTension();
             
         //- Clear all demand-driven data
         void clearOut();   
@@ -166,7 +173,6 @@ public:
         fluidInterface
         (
             fvMesh& m,
-            volScalarField& rho,
             volVectorField& U,
             volScalarField& p,
             surfaceScalarField& phi
@@ -188,6 +194,36 @@ public:
 
         // Return the interface patchID
         const label patchID();
+        
+        //- Viscosity of fluid A
+        const dimensionedScalar& muFluidA() const
+        {
+            return muFluidA_;
+        }
+
+        //- Density of fluid A
+        const dimensionedScalar& rhoFluidA() const
+        {
+            return rhoFluidA_;
+        }
+
+        //- Conductivity of fluid A
+        const dimensionedScalar& condFluidA() const
+        {
+            return condFluidA_;
+        }
+
+        //- Specific Heat of fluid A
+        const dimensionedScalar& CpFluidA() const
+        {
+            return CpFluidA_;
+        }     
+        
+        //- Return the surface tension field
+        scalarField& surfaceTension();
+        
+        //- Adjust the surface-tension for temperature
+        void adjustSurfaceTension(const volScalarField& T);
 
         // Return reference to the displacement field
         vectorField& displacement();

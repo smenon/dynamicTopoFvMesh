@@ -45,7 +45,6 @@ Author
 Foam::fluidInterface::fluidInterface
 (
     fvMesh& m,
-    volScalarField& rho,
     volVectorField& U,
     volScalarField& p,
     surfaceScalarField& phi
@@ -63,21 +62,23 @@ Foam::fluidInterface::fluidInterface
         )
     ),
     mesh_(m),
-    rho_(rho),
     U_(U),
     p_(p),
     phi_(phi),
     interfacePatch_(word(lookup("interfacePatch"))),
     patchID_(-1),
     curTimeIndex_(U.mesh().time().timeIndex()),
-    muA_(lookup("muA")),
-    rhoA_(lookup("rhoA")),
+    muFluidA_(lookup("muFluidA")),
+    rhoFluidA_(lookup("rhoFluidA")),
+    condFluidA_(lookup("condFluidA")),
+    CpFluidA_(lookup("CpFluidA")),
     surfaceTension_(lookup("surfaceTension")),
     displacementPtr_(NULL),
     motionPointsMaskPtr_(NULL),
     controlPointsPtr_(NULL),            
     pointsDisplacementDirPtr_(NULL),
     facesDisplacementDirPtr_(NULL),
+    surfaceTensionPtr_(NULL),
     aMeshPtr_(NULL),
     fixedFreeSurfacePatches_
     (
@@ -116,6 +117,7 @@ void Foam::fluidInterface::clearOut()
     deleteDemandDrivenData(pointsDisplacementDirPtr_);
     deleteDemandDrivenData(facesDisplacementDirPtr_);
     deleteDemandDrivenData(aMeshPtr_);
+    deleteDemandDrivenData(surfaceTensionPtr_);
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -208,6 +210,25 @@ void Foam::fluidInterface::makeFaMesh()
 
         correction[patchID] = true;
     }    
+}
+
+void Foam::fluidInterface::makeSurfaceTension()
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (surfaceTensionPtr_)
+    {
+        FatalErrorIn("fluidInterface::makeSurfaceTension()")
+            << "Surface tension field already exists."
+            << abort(FatalError);
+    }   
+    
+    surfaceTensionPtr_ =
+        new scalarField
+        (
+            mesh().boundaryMesh()[patchID()].size(),
+            surfaceTension_.value()
+        );    
 }
 
 void Foam::fluidInterface::makeMotionPointsMask()
@@ -786,6 +807,39 @@ scalarField& Foam::fluidInterface::motionPointsMask()
     return *motionPointsMaskPtr_;
 }
 
+scalarField& Foam::fluidInterface::surfaceTension()
+{
+    if (!surfaceTensionPtr_)
+    {
+        makeSurfaceTension();
+    }
+    
+    return *surfaceTensionPtr_;
+}
+
+//- Adjust the surface-tension for temperature
+void Foam::fluidInterface::adjustSurfaceTension(const volScalarField& T)
+{
+    const labelList& fCells = mesh().boundaryMesh()[patchID()].faceCells();
+
+    // Set the surface tension field according to temperature
+    forAll(fCells, faceI)
+    {
+        surfaceTension()[faceI] = 
+            surfaceTension_.value()*
+            (
+                1.0
+              - (0.002*(T.internalField()[fCells[faceI]] - 291))
+            );
+    }
+    
+    Info << "Surface Tension: " 
+         << " Min: " << min(surfaceTension()) 
+         << " Max: " << max(surfaceTension()) 
+         << " Average: " << average(surfaceTension())
+         << endl;
+}
+
 // Update the interface with the fluid velocity
 void Foam::fluidInterface::movePoints()
 {
@@ -870,8 +924,43 @@ void Foam::fluidInterface::updatePressure()
         << ", max = " << max(K) << ", average = " << average(K)
         << endl;
 
-    pA -= surfaceTension_.value()*(K - average(K));
+    scalarField surfTensionK = surfaceTension()*K;
+
+    dimensionSet dimSurfaceTension = (dimForce/dimLength);
     
+    // Check the dimensions of pressure and 
+    // adjust surface-tension accordingly        
+    if (p_.dimensions() == (dimPressure/dimDensity))
+    {
+        if (surfaceTension_.dimensions() == dimSurfaceTension)
+        {
+            surfTensionK /= rhoFluidA().value();
+        }
+        else 
+        if 
+        (
+            surfaceTension_.dimensions() != (dimSurfaceTension/dimDensity)
+        )
+        {
+            FatalErrorIn("fluidInterface::updatePressure()")
+                << "Dimensions for surface tension are inconsistent."
+                << abort(FatalError);            
+        }
+    }
+    
+    if 
+    (
+         (p_.dimensions() == dimPressure)
+      && (surfaceTension_.dimensions() != dimSurfaceTension)
+    )
+    {
+        FatalErrorIn("fluidInterface::updatePressure()")
+            << "Dimensions for surface tension are inconsistent."
+            << abort(FatalError);         
+    }
+    
+    pA -= (surfTensionK - average(surfTensionK));
+        
     p_.boundaryField()[patchID()] == pA;
 }
 

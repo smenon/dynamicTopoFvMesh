@@ -49,11 +49,6 @@ SourceFiles
 // Multithreading support
 #include "multiThreader.H"
 
-// Tetrahedral mesh-quality metrics
-#include "tetQuality.H"
-#include "Knupp.H"
-#include "Dihedral.H"
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -81,11 +76,8 @@ class dynamicTopoFvMesh
         IOdictionary dict_;
         
         //- Motion characteristics [2D/3D]
-        Switch twoDMotion_; 
-        
-        //- Quality metric for tetrahedra in 3D
-        autoPtr<tetQuality> tetMetric_;        
-        
+        Switch twoDMotion_;        
+                
         //- Edge bisection/collapse option
         Switch edgeModification_;
         
@@ -114,6 +106,7 @@ class dynamicTopoFvMesh
         labelList       oldPatchStarts_, patchStarts_;
         labelList       oldPatchNMeshPoints_, patchNMeshPoints_;
         label           nOldPoints_, nPoints_;
+        label           nOldEdges_,  nEdges_;
         label           nOldFaces_,  nFaces_;
         label           nOldCells_,  nCells_;
         label           nOldInternalFaces_, nInternalFaces_;
@@ -165,16 +158,16 @@ class dynamicTopoFvMesh
             label nThreads, threadID;
             
             // Entity start positions & sizes
-            label pointStart, faceStart, cellStart;
-            label pointSize, faceSize, cellSize;
+            label pointStart, edgeStart, faceStart, cellStart;
+            label pointSize, edgeSize, faceSize, cellSize;
             
             // Default constructor
             topoMeshStruct()
             {
                 mesh = 0;
                 nThreads = threadID = -1;
-                pointStart = faceStart = cellStart = 0;
-                pointSize  = faceSize  = cellSize  = 0;
+                pointStart = edgeStart = faceStart = cellStart = 0;
+                pointSize  = edgeSize = faceSize  = cellSize  = 0;
             }
         } *structPtr_;
                 
@@ -197,8 +190,33 @@ class dynamicTopoFvMesh
             const label& three
         );
         
+        //- Quality metrics for tetrahedra in 3D
+        scalar (*tetMetric_)
+        (
+            const point p0, 
+            const point p1, 
+            const point p2, 
+            const point p3
+        );                
+        
+        static scalar Knupp
+        (
+            const point p0, 
+            const point p1, 
+            const point p2, 
+            const point p3
+        );
+
+        static scalar Dihedral
+        (
+            const point p0, 
+            const point p1, 
+            const point p2, 
+            const point p3
+        );        
+        
         // Find the area of a triangle face.
-        inline scalar triFaceArea(const face&);
+        inline scalar triFaceArea(const face& triFace);
         
         // Initialize the edge-length field
         void initEdgeLengths();
@@ -213,24 +231,42 @@ class dynamicTopoFvMesh
         void threadedTopoModifier3D();        
         
         // 2D Edge-swapping engine
-        static void swap2DEdges(void *);
+        static void swap2DEdges(void *argument);
         
         // 2D Edge-bisection/collapse engine
-        static void edgeBisectCollapse2D(void *);
+        static void edgeBisectCollapse2D(void *argument);
+        
+        // 3D Edge-swapping engine
+        static void swap3DEdges(void *argument);
+        
+        // 3D Edge-bisection/collapse engine
+        static void edgeBisectCollapse3D(void *argument);        
         
         // Method to determine the boundary patch index for a given face
-        inline label whichPatch(const label&) const;
+        inline label whichPatch(const label& index) const;
         
         // Method for the bisection of a quad-face in 2D
-        void bisectQuadFace(const label, face&);
+        void bisectQuadFace
+        (
+            const label findex, 
+            face& thisFace
+        );
         
         // Method for the collapse of a quad-face in 2D
         // Returns a boolean value indicating whether the collapse was valid
-        bool collapseQuadFace(const label, face&);
+        bool collapseQuadFace
+        (
+            const label findex, 
+            face& thisFace
+        );
         
         // Check if the boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.
-        bool remove2DSliver(const label, face&);        
+        bool remove2DSliver
+        (
+            const label findex, 
+            face& thisFace
+        );        
         
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
@@ -246,17 +282,38 @@ class dynamicTopoFvMesh
         
         // Method to find the common-edge between two faces.
         // If found, returns the common edge on the first face in the argument
-        bool findCommonEdge(const face&, const face&, edge&);
+        bool findCommonEdge
+        (
+            const face& first, 
+            const face& second, 
+            edge& common
+        );
         
         // Method to find the isolated point on a triangular face
         // that doesn't lie on the specified edge
-        void findIsolatedPoint(const face&, const edge&, label&, label&);
+        void findIsolatedPoint
+        (
+            const face& f, 
+            const edge& e, 
+            label& ptIndex, 
+            label& nextPtIndex
+        );
         
         // Method to replace a face-label in a given cell
-        inline void replaceFaceLabel(const label&, const label&, cell&);
+        inline void replaceFaceLabel
+        (
+            const label& original, 
+            const label& replacement, 
+            cell& c
+        );
         
         // Method to replace a point-label in a given face
-        inline void replacePointLabel(const label&, const label&, face&);
+        inline void replacePointLabel
+        (
+            const label& original, 
+            const label& replacement, 
+            face& f
+        );
         
         // Insert the specified face to the mesh
         label insertFace
@@ -269,7 +326,7 @@ class dynamicTopoFvMesh
         );
         
         // Remove the specified face from the mesh
-        void removeFace(const label);
+        void removeFace(const label index);
         
         // Utility method to build a hull of faces connected to the edge
         // This will also determine whether the edge lies on a boundary
@@ -285,25 +342,36 @@ class dynamicTopoFvMesh
         );
         
         // Reorder points after a topology change
-        void reOrderPoints(pointField&);
+        void reOrderPoints(pointField& points);
         
         // Reorder faces in upper-triangular order after a topology change
-        void reOrderFaces(faceList&, labelList&, labelList&);
+        void reOrderFaces
+        (
+            faceList& faces, 
+            labelList& owner, 
+            labelList& neighbour
+        );
         
         // Reorder & renumber cells with bandwidth reduction after a topology change
         void reOrderCells();
         
         // Reorder the mesh in upper-triangular order, and generate mapping information
-        void reOrderMesh(pointField&, faceList&, labelList&, labelList&);
+        void reOrderMesh
+        (
+            pointField& points, 
+            faceList& faces, 
+            labelList& owner, 
+            labelList& neighbour
+        );
         
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
         
         // Return the appropriate length-scale for boundary face
-        scalar boundaryLengthScale(const label);
+        scalar boundaryLengthScale(const label faceIndex);
         
         // Prepare thread structures
-        void prepareThreads(const label);
+        void prepareThreads(const label numThreads);
         
         // Does the mesh perform edge-modification?
         bool edgeModification();
@@ -356,8 +424,12 @@ public:
         // Map all fields in time using the given map.
         virtual void mapFields(const mapPolyMesh& mpm);
         
-        // Access
-        void setMotionBC(const label&, const vectorField&);
+        // Set mesh-motion displacement boundary conditions
+        void setMotionBC
+        (
+            const label& index, 
+            const vectorField& dispField
+        );
         
         // Return the mesh-mapper
         const autoPtr<mapPolyMesh> meshMap();

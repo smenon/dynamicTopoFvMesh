@@ -67,6 +67,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     owner_(this->allOwner()),
     neighbour_(this->allNeighbour()),
     cells_(this->cells()),
+    edges_(this->edges()),
     oldPatchSizes_(numPatches_,0),
     patchSizes_(numPatches_,0),
     oldPatchStarts_(numPatches_,-1),
@@ -75,6 +76,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     patchNMeshPoints_(numPatches_,-1),
     nOldPoints_(this->nPoints()),
     nPoints_(this->nPoints()),
+    nOldEdges_(this->nEdges()),
+    nEdges_(this->nEdges()),        
     nOldFaces_(this->nFaces()),
     nFaces_(this->nFaces()),
     nOldCells_(this->nCells()),
@@ -94,13 +97,23 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     }
     
     // Initialize the multiThreading environment
-    threader_.set
-    (
-        multiThreader::New
+    if (dict_.subDict("dynamicTopoFvMesh").found("threads"))
+    {
+        threader_.set
         (
-            dict_.subDict("dynamicTopoFvMesh")
-        ).ptr()
-    );
+            new multiThreader
+            (
+                readLabel
+                (
+                    dict_.subDict("dynamicTopoFvMesh").lookup("threads")
+                )        
+            )
+        );
+    }
+    else
+    {
+        threader_.set(new multiThreader(1));
+    }    
     
     // Get the number of threads and allocate topoMeshStructures
     label nThreads = threader_->getNumThreads();
@@ -117,15 +130,15 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     {
         // Obtain the tetrahedral metric to be used.
         word tetMetric(dict_.subDict("dynamicTopoFvMesh").lookup("tetMetric"));
-
+        
         if (tetMetric == "Knupp")
         {
-            tetMetric_.set(new Knupp);
+            tetMetric_ = &Knupp;
         }
         else
         if (tetMetric == "Dihedral")
         {
-            tetMetric_.set(new Dihedral);
+            tetMetric_ = &Dihedral;
         }
         else
         {
@@ -137,7 +150,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     
     // Initialize edge-related connectivity structures
     if (debug) Info << "Building edges..." << endl;
-    //initEdges();
+    initEdges();
 
     // Define edgeModification options
     if (edgeModification_)
@@ -348,6 +361,29 @@ inline Foam::vector Foam::dynamicTopoFvMesh::circumCenter
 #   endif
 
     return ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
+}
+
+// Quality metrics:
+scalar Foam::dynamicTopoFvMesh::Knupp
+(
+    const point p0, 
+    const point p1, 
+    const point p2, 
+    const point p3
+)
+{
+    return 0.0;
+}
+
+scalar Foam::dynamicTopoFvMesh::Dihedral
+(
+    const point p0, 
+    const point p1, 
+    const point p2, 
+    const point p3
+)
+{
+    return 0.0;    
 }
 
 // Find the area of a triangle face. This function also assumes face right-handedness
@@ -2150,50 +2186,27 @@ void Foam::dynamicTopoFvMesh::initEdgeLengths()
     }
 }
 
-// Initialize mesh edges and related connectivity lists
+// Initialize edge related connectivity lists
 void Foam::dynamicTopoFvMesh::initEdges()
 {
-    /*
-    label edgeIndex = 0;
-    
-    // List that keeps track of added edges
-    List<labelHashSet> pointPoints(nPoints());
-    
-    // Initialize faceEdges
+    // Build faceEdges and edgeFaces
     faceEdges_.setSize(nFaces_, SLList<label>());
+    edgeFaces_.setSize(nEdges_, SLList<label>());    
+
+    // Obtain faceEdges from primitive mesh
+    const labelListList& fEdges = faceEdges();
     
-    // Loop through all faces in the mesh and add edges in order
-    const faceList& fList = faces();
-    forAll(fList, faceI)
+    forAll(fEdges, faceI)
     {
-        edgeList eList = fList[faceI].edges();
+        const labelList& eList = fEdges[faceI];
+        SLList<label>& eLList = faceEdges_[faceI];
+        
         forAll(eList, edgeI)
         {
-            if 
-            (
-                (!pointPoints[eList[edgeI][0]].found(eList[edgeI][1]))
-             && (!pointPoints[eList[edgeI][1]].found(eList[edgeI][0]))
-            )
-            {
-                // Add this edge to the HashList
-                edges_.append(eList[edgeI]);
-                edgeFaces_.append(SLList<label>());
-                
-                // Insert edge-face and face-edge
-                faceEdges_[faceI].insert(edgeIndex);
-                edgeFaces_[edgeIndex].insert(faceI);
-                
-                // Update the pointPoints list
-                pointPoints[eList[edgeI][0]].insert(eList[edgeI][1]);
-                pointPoints[eList[edgeI][1]].insert(eList[edgeI][0]);
-                edgeIndex++;
-            }
+            eLList.insert(eList[edgeI]);
+            edgeFaces_[eList[edgeI]].insert(faceI);
         }
-    }
-    
-    Info << "Mesh edges: " << edgeIndex << endl;
-    Info << "Mesh edges (polyMesh): " << this->edges().size() << endl;
-    */
+    }    
 }
 
 // Does the mesh perform edge-modification?
@@ -2343,6 +2356,24 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
             fIter++;
         }
     }
+}
+
+// 3D Edge-swapping engine
+void Foam::dynamicTopoFvMesh::swap3DEdges
+(
+    void *argument
+)
+{
+    
+}
+
+// 3D Edge-bisection/collapse engine
+void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
+(
+    void *argument
+)
+{
+    
 }
 
 // Method for the bisection of a quad-face in 2D
@@ -3793,29 +3824,37 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
 {
     // Fill in required thread-info
     label pointsPerBlock = (nPoints_/numThreads)+1;
+    label edgesPerBlock  = (nEdges_/numThreads)+1;
     label facesPerBlock  = (nFaces_/numThreads)+1;
     label cellsPerBlock  = (nCells_/numThreads)+1;
 
     // Information for the master thread
     structPtr_[0].pointSize  = pointsPerBlock;
+    structPtr_[0].edgeSize   = edgesPerBlock;
     structPtr_[0].faceSize   = facesPerBlock;
     structPtr_[0].cellSize   = cellsPerBlock;
 
     // Information for all subsequent threads
-    label pointsLeft = nPoints_, facesLeft = nFaces_, cellsLeft = nCells_;
+    label pointsLeft = nPoints_, edgesLeft = nEdges_;
+    label facesLeft = nFaces_, cellsLeft = nCells_;
     for (label i = 1; i < numThreads; i++)
     {
         pointsLeft -= pointsPerBlock;
+        edgesLeft -= edgesPerBlock;
         facesLeft -= facesPerBlock;
         cellsLeft -= cellsPerBlock;
         structPtr_[i].pointStart = 
             structPtr_[i-1].pointStart + structPtr_[i-1].pointSize;
+        structPtr_[i].edgeStart = 
+            structPtr_[i-1].edgeStart + structPtr_[i-1].edgeSize;        
         structPtr_[i].faceStart = 
             structPtr_[i-1].faceStart + structPtr_[i-1].faceSize;
         structPtr_[i].cellStart =
             structPtr_[i-1].cellStart + structPtr_[i-1].cellSize;
         structPtr_[i].pointSize = 
             (pointsLeft < pointsPerBlock) ? pointsLeft : pointsPerBlock;
+        structPtr_[i].edgeSize = 
+            (edgesLeft < edgesPerBlock) ? edgesLeft : edgesPerBlock;        
         structPtr_[i].faceSize =
             (facesLeft < facesPerBlock) ? facesLeft : facesPerBlock;
         structPtr_[i].cellSize =
@@ -3887,49 +3926,75 @@ void Foam::dynamicTopoFvMesh::updateMotion()
 // MultiThreaded topology modifier [2D]
 void Foam::dynamicTopoFvMesh::threadedTopoModifier2D()
 {                  
+    // Prepare for multi-threading
+    prepareThreads(threader_->getNumThreads());    
+    
     if (edgeModification_) 
     {
-        // Prepare for multi-threading
-        prepareThreads(1);
-        
         // Submit jobs to the work queue
-        threader_().addToWorkQueue
-                    (
-                         &edgeBisectCollapse2D,
-                         reinterpret_cast<void *>
-                         (
-                             &(structPtr_[0])
-                         )
-                    );
+        for (label i = 0; i < threader_().getNumThreads(); i++)
+        {
+            threader_().addToWorkQueue
+                        (
+                            &edgeBisectCollapse2D, 
+                            reinterpret_cast<void *>(&(structPtr_[i]))
+                        );
+        }
     }
 
-    if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
-
-    // Prepare for multi-threading
-    prepareThreads(threader_().getNumThreads());    
+    if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;    
     
     // Submit jobs to the work queue
     for (label i = 0; i < threader_().getNumThreads(); i++)
     {
         threader_().addToWorkQueue
                     (
-                         &swap2DEdges,
-                         reinterpret_cast<void *>
-                         (
-                             &(structPtr_[i])
-                         )
+                        &swap2DEdges,
+                        reinterpret_cast<void *>(&(structPtr_[i]))
                     );        
     }
 
-    if (debug) Info << nl << "2D Edge Swapping complete." << endl;    
+    if (debug) Info << nl << "2D Edge Swapping complete." << endl; 
+    
+    // Wait for all work to complete
+    threader_().waitForCompletion();
 }
 
 // MultiThreaded topology modifier [3D]
 void Foam::dynamicTopoFvMesh::threadedTopoModifier3D()
 { 
+    // Prepare for multi-threading
+    prepareThreads(threader_->getNumThreads());    
+    
+    if (edgeModification_) 
+    {
+        // Submit jobs to the work queue
+        for (label i = 0; i < threader_().getNumThreads(); i++)
+        {
+            threader_().addToWorkQueue
+                        (
+                            &edgeBisectCollapse3D, 
+                            reinterpret_cast<void *>(&(structPtr_[i]))
+                        );
+        }
+    }
+    
     if (debug) Info << nl << "3D Edge Bisection/Collapse complete." << endl;
+    
+    // Submit jobs to the work queue
+    for (label i = 0; i < threader_().getNumThreads(); i++)
+    {
+        threader_().addToWorkQueue
+                    (
+                        &swap3DEdges,
+                        reinterpret_cast<void *>(&(structPtr_[i]))
+                    );        
+    }    
 
     if (debug) Info << nl << "3D Edge Swapping complete." << endl;     
+    
+    // Wait for all work to complete
+    threader_().waitForCompletion();    
 }
 
 // Update the mesh for topology changes

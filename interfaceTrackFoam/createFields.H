@@ -25,43 +25,28 @@
         ),
         mesh
     );
-
-#   include "createPhi.H"   
-
-    volScalarField rho
+    
+    Info<< "Reading field T\n" << endl << flush;
+    volScalarField T
     (
         IOobject
         (
-            "rho",
+            "T",
             runTime.timeName(),
             mesh,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
+            IOobject::MUST_READ,
+            IOobject::AUTO_WRITE
         ),
-        mesh,
-        dimensionedScalar("0", dimMass/dimVolume, 0)
-    );   
+        mesh
+    );    
 
-    fluidInterface interface(mesh, rho, U, p, phi);   
+#   include "createPhi.H"     
+
+    fluidInterface interface(mesh, U, p, phi); 
     
     // Introduce the non-Newtonian transport model
     // autoPtr<viscosityModel> nuModel = viscosityModel::New("nu",interface,U,phi);
     
-    dimensionedScalar nu
-    (
-        IOdictionary
-        (
-            IOobject
-            (
-                "fluidInterfaceProperties",
-                runTime.constant(),
-                mesh,
-                IOobject::MUST_READ,
-                IOobject::NO_WRITE
-            )
-        ).lookup("nu")
-    );    
-
     label pRefCell = 0;
     scalar pRefValue = 0.0;
     setRefCell(p,mesh.solutionDict().subDict("PISO"), pRefCell, pRefValue);

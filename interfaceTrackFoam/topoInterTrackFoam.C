@@ -73,7 +73,10 @@ int main(int argc, char *argv[])
         Info<< "Time = " << runTime.timeName() << nl << endl;       
 
         // Update free-surface displacement directions
-        interface.updateDisplacementDirections();      
+        interface.updateDisplacementDirections();  
+        
+        // Modify surface-tension for temperature
+        interface.adjustSurfaceTension(T);         
 
         // Set boundary conditions for the motionSolver and solve for mesh-motion
         interface.restorePosition();
@@ -89,6 +92,8 @@ int main(int argc, char *argv[])
             
             // Make the fluxes relative to the mesh motion
             fvc::makeRelative(phi, U);
+            
+            dimensionedScalar nu("nu", interface.muFluidA()/interface.rhoFluidA());
 
 #           include "UEqn.H"
 
@@ -141,9 +146,33 @@ int main(int argc, char *argv[])
 #           include "freeSurfaceContinuityErrs.H"  
             
             Info << endl;
-        }       
+        } 
         
-        bool meshChanged = mesh.updateTopology(); 
+        // Make the fluxes relative
+        fvc::makeRelative(phi, U);  
+        
+        dimensionedScalar DT
+        (
+            "DT", 
+            interface.condFluidA()/
+            (interface.CpFluidA()*interface.rhoFluidA())
+        );
+        
+        // Passive heat-transfer
+        solve
+        (
+            fvm::ddt(T)
+          + fvm::div(phi, T)
+          - fvm::laplacian(DT, T) 
+        );        
+        
+        // Make the fluxes absolute
+        fvc::makeAbsolute(phi, U);        
+        
+        runTime.write(); 
+#       include "meshInfo.H"          
+        
+        bool meshChanged = mesh.updateTopology();         
         
         if (meshChanged)
         {      
@@ -158,8 +187,6 @@ int main(int argc, char *argv[])
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
             << nl << endl;        
          
-        runTime.write(); 
-#       include "meshInfo.H"        
     }
 
     Info<< "End\n" << endl;
