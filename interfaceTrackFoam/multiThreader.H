@@ -45,7 +45,7 @@ SourceFiles
 #ifndef multiThreader_H
 #define multiThreader_H
 
-#include "IOdictionary.H"
+#include "error.H"
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -123,9 +123,9 @@ public:
 private:
     // Private data
     
-        label numThreads_;
+        int numThreads_;
         
-        label maxQueueSize_;
+        int maxQueueSize_;
 
         // Work-queue item: Holds a pointer to the method and its argument
         struct workQueueItem
@@ -139,9 +139,11 @@ private:
         struct threadPool
         {
             multiThreader   *threader;
-            label           numThreads;
-            label           queueSize;
+            int             numThreads;
+            int             queueSize;
+            int             busyThreads;
             pthread_t       *threads;
+            pthread_attr_t  attr;
             workQueueItem   *head, *tail;
             
             // Flags
@@ -152,7 +154,8 @@ private:
             Mutex       queueLock;
             Conditional queueNotEmpty;
             Conditional queueNotFull;
-            Conditional queueEmpty;            
+            Conditional queueEmpty;   
+            Conditional noBusyThreads;
         } *poolInfo_;           
 
     // Private Member Functions
@@ -173,18 +176,18 @@ private:
         multiThreader(const multiThreader&);
 
         //- Disallow default bitwise assignment
-        void operator=(const multiThreader&);
-
-    // Private constructor
-
-        multiThreader(const dictionary&);             
+        void operator=(const multiThreader&);            
     
 public:      
     
-    // Selectors
+    // Debug switch
+    
+        static bool debug;
+    
+    // Constructor
 
-        //- Construct from specified dictionary
-        static autoPtr<multiThreader> New(const dictionary&);
+        //- Construct with specified number of threads
+        multiThreader(int numThreads);
 
 
     // Destructor
@@ -195,13 +198,19 @@ public:
     // Member Functions
         
         //- Return the number of threads
-        label getNumThreads();   
+        int getNumThreads();   
         
         //- Return the maxQueueSize
-        label getMaxQueueSize();
+        int getMaxQueueSize();
+        
+        //- Set the maxQueueSize
+        void setMaxQueueSize(int size);
         
         //- Add a function to the work queue
-        void addToWorkQueue(void (*tFunction)(void*), void *arg);        
+        void addToWorkQueue(void (*tFunction)(void*), void *arg);
+        
+        //- Wait for all worker threads to complete
+        void waitForCompletion();
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
