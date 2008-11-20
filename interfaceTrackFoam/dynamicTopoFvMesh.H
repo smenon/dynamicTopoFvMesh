@@ -36,6 +36,7 @@ SourceFiles
 #ifndef dynamicTopoFvMesh_H
 #define dynamicTopoFvMesh_H
 
+#include <iomanip>
 #include "HashList.H"
 #include "fvCFD.H"
 #include "motionSolver.H"
@@ -140,10 +141,13 @@ class dynamicTopoFvMesh
         scalar              growthFactor_;
         scalar              maxLengthScale_;
         label               bisectInteriorFace_;
-        
-        //- Edge-face connectivity lists
-        HashList<SLList<label> > faceEdges_;
-        HashList<SLList<label> > edgeFaces_;
+
+        //- Edge-face connectivity list
+        HashList<label>     edgeStartFace_;
+
+        //- Maximum number of tets around an edge
+        //  for 3D mesh flipping
+        label               maxTetsPerEdge_;
         
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
@@ -298,6 +302,13 @@ class dynamicTopoFvMesh
             label& ptIndex, 
             label& nextPtIndex
         );
+
+        // Method to determine whether the face contains the edge
+        inline bool edgeOnFace
+        (
+            const face& f,
+            const edge& e
+        );
         
         // Method to replace a face-label in a given cell
         inline void replaceFaceLabel
@@ -327,6 +338,9 @@ class dynamicTopoFvMesh
         
         // Remove the specified face from the mesh
         void removeFace(const label index);
+
+        // Remove the specified edge from the mesh
+        void removeEdge(const label index);
         
         // Utility method to build a hull of faces connected to the edge
         // This will also determine whether the edge lies on a boundary
@@ -339,6 +353,41 @@ class dynamicTopoFvMesh
             DynamicList<label>& hullTriFaces,
             DynamicList<label>& edgePatches,
             bool requiresTriFaces
+        );
+
+        // Utility method to build a ring of vertices around the edge
+        // Returns whether the edge lies on a boundary 
+        inline bool constructVertexRing
+        (
+            const label eIndex,
+            const edge& edgeToCheck,
+            DynamicList<label>& hullVertices,
+            scalar& minQuality
+        );
+
+        // Utility method to fill the dynamic programming tables
+        void fillTables
+        (
+            const edge& edgeToCheck,
+            const DynamicList<label>& hullVertices,
+            const scalar minQuality,
+            scalarListList& Q,
+            labelListList& K
+        );
+
+        // Print out tables for debugging
+        void printTables
+        (
+            const label m,
+            const scalarListList& Q,
+            const labelListList& K
+        );
+
+        // Remove the edge according to the swap sequence
+        void removeEdgeFlips
+        (
+            const edge& edgeToCheck,
+            const labelListList& K
         );
         
         // Reorder points after a topology change
@@ -378,10 +427,11 @@ class dynamicTopoFvMesh
         
         // Private internal access to member data for static members
         HashList<point>& meshPoints() { return meshPoints_; }
+        HashList<edge>&  meshEdges() { return edges_; }
         HashList<face>&  meshFaces() { return faces_; }
+        HashList<cell>&  meshCells() { return cells_; }
         HashList<label>& meshOwner() { return owner_; }
         HashList<label>& meshNeighbour() { return neighbour_; }
-        HashList<cell>&  meshCells() { return cells_; }
         bool& topoChangeFlag() { return topoChangeFlag_; }
         
         HashList<scalar>& meshLengthScale() { return lengthScale_; }
@@ -391,6 +441,7 @@ class dynamicTopoFvMesh
         const scalar growthFactor() { return growthFactor_; }
         const label bisectInteriorFace() { return bisectInteriorFace_; }
         const label nOldCells() { return nOldCells_; }
+        const label maxTetsPerEdge() { return maxTetsPerEdge_; }
         
         Map<objectMap>& cellsFromCells() { return cellsFromCells_; }
         Map<label>& cellParents() { return cellParents_; }

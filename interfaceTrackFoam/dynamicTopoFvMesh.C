@@ -88,7 +88,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ratioMax_(0.0),
     growthFactor_(1.0),
     maxLengthScale_(GREAT),
-    bisectInteriorFace_(-1)
+    bisectInteriorFace_(-1),
+    maxTetsPerEdge_(-1)
 {
     // Initialize the motion-solver, if it was requested
     if (solveForMotion_)
@@ -142,15 +143,31 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         }
         else
         {
-            FatalErrorIn("dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io) ") << nl
-                    << " Unrecognized tet-quality metric: " << tetMetric
-                    << abort(FatalError);
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io) "
+            ) << nl
+            << " Unrecognized tet-quality metric: " << tetMetric
+            << abort(FatalError);
         }
+
+        // Check if a limit has been imposed on maxTetsPerEdge
+        if (dict_.subDict("dynamicTopoFvMesh").found("maxTetsPerEdge"))
+        {
+            maxTetsPerEdge_ = readLabel
+                              (
+                                 dict_.subDict("dynamicTopoFvMesh").lookup("maxTetsPerEdge")
+                              );
+        }
+        else
+        {
+            maxTetsPerEdge_ = 7;
+        }
+
+        // Initialize edge-related connectivity structures
+        if (debug) Info << "Building edges..." << endl;
+        initEdges();
     }
-    
-    // Initialize edge-related connectivity structures
-    if (debug) Info << "Building edges..." << endl;
-    initEdges();
 
     // Define edgeModification options
     if (edgeModification_)
@@ -372,7 +389,23 @@ scalar Foam::dynamicTopoFvMesh::Knupp
     const point p3
 )
 {
-    return 0.0;
+    tensor A
+    (
+        p3[0]-p0[0], p2[0]-p0[0], p1[0]-p0[0],
+        p3[1]-p0[1], p2[1]-p0[1], p1[1]-p0[1],
+        p3[2]-p0[2], p2[2]-p0[2], p1[2]-p0[2]
+    );
+
+    tensor AA = A.T()&A;
+
+    return 
+    (
+        (3.0*Foam::pow(det(AA)*1.414213, 0.666666))
+      / (
+            (1.5*(AA.xx() + AA.yy() + AA.zz()))
+          - (AA.xy() + AA.xz() + AA.yz())
+        )
+    );
 }
 
 scalar Foam::dynamicTopoFvMesh::Dihedral
@@ -425,8 +458,11 @@ inline Foam::label Foam::dynamicTopoFvMesh::whichPatch
     // If not in any of the above, it's possible that the face was added
     // at the end of the list. Check boundaryPatches_ for the patch info
     if (boundaryPatches_.found(index))
+    {
         return boundaryPatches_[index];
+    }
     else
+    {
         FatalErrorIn
             (
             "label dynamicTopoFvMesh::whichPatch(const label& index) const"
@@ -434,6 +470,7 @@ inline Foam::label Foam::dynamicTopoFvMesh::whichPatch
             << nl
             << " It appears that face ordering is inconsistent with patch information."
             << abort(FatalError);
+    }
 
     return -2;
 }
@@ -542,6 +579,26 @@ void Foam::dynamicTopoFvMesh::findIsolatedPoint
             << " Using edge: " << e
             << abort(FatalError);
     }
+}
+
+// Method to determine whether the face contains the edge
+inline bool Foam::dynamicTopoFvMesh::edgeOnFace
+(
+    const face& f,
+    const edge& e
+)
+{
+    const edgeList eList = f.edges();
+
+    forAll(eList, edgeI)
+    {
+        if (eList[edgeI] == e)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // Utility method to replace a face-label in a given cell
@@ -698,6 +755,24 @@ void Foam::dynamicTopoFvMesh::removeFace
     nFaces_--;
 }
 
+// Remove the specified edge from the mesh
+void Foam::dynamicTopoFvMesh::removeEdge
+(
+    const label index
+)
+{
+    if (debug)
+    {
+        Info << "Removed edge: " << index << endl;
+        Info << edges_[index] << endl;
+    }
+
+    edges_.remove(index);
+
+    // Decrement the total edge-count
+    nEdges_--;
+}
+
 // Utility method to build a hull of faces/cells that are connected to the edge
 // This will also determine whether the edge lies on a boundary
 bool Foam::dynamicTopoFvMesh::constructPrismHull
@@ -742,12 +817,14 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                         }
                     }
                 }
+                
                 if (requiresTriFaces && faceToCheck.nEdges() == 3 && !foundTriFace)
                 {
                     hullTriFaces.append(cellToCheck[faceI]);
                     foundTriFace=true;
                 }
             }
+
             // Found the faces we were looking for, break-out
             if (requiresTriFaces)
             {
@@ -757,11 +834,13 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
             {
                 if (foundQuadFace) break;
             }
+
         }
 #       ifdef FULLDEBUG
         if (requiresTriFaces)
         {
             if (!foundQuadFace || !foundTriFace)
+            {
                 FatalErrorIn
                 (
                     "dynamicTopoFvMesh::constructPrismHull(...)"
@@ -769,19 +848,23 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                 << nl << " Failed to find a suitable quad/tri face. "
                 << " Possibly not a prismatic mesh. " << nl
                 << abort(FatalError);
+            }
         }
         else
         {
             if (!foundQuadFace)
+            {
                 FatalErrorIn
                 (
                     "dynamicTopoFvMesh::constructPrismHull(...)"
                 ) 
                 << nl << " Failed to find a suitable quad face. "
                 << " Possibly not a prismatic mesh. " << nl
-                << abort(FatalError);            
+                << abort(FatalError);
+            }
         }
 #       endif
+
         // Decide which cell to check next
         if (owner_[faceToExclude] == cellIndex)
         {
@@ -791,6 +874,7 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
         {
             cellIndex = owner_[faceToExclude];
         }
+
         if (cellIndex == -1)
         {
             isBoundary=true; 
@@ -801,8 +885,11 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
         else
         {
             if (cellIndex != c0)
+            {
                 hullCells.append(cellIndex);
+            }
         }
+
     } while ( faceToExclude != startFaceIndex );
 
     if (c1 == -1)
@@ -828,6 +915,7 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                     if (cellToCheck[faceI] != faceToExclude)
                     {
                         face& faceToCheck = faces_[cellToCheck[faceI]];
+
                         if (faceToCheck.nEdges() == 4 && !foundQuadFace)
                         {
                             edgeList indexEdges = faceToCheck.edges();
@@ -842,6 +930,7 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                                 }
                             }
                         }
+
                         if 
                         (
                             requiresTriFaces 
@@ -853,6 +942,7 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                             foundTriFace=true;
                         }
                     }
+
                     // Found the faces we were looking for, break-out
                     if (requiresTriFaces)
                     {
@@ -862,11 +952,13 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                     {
                         if (foundQuadFace) break;
                     }
+
                 }
 #               ifdef FULLDEBUG
                 if (requiresTriFaces)
                 {
                     if (!foundQuadFace || !foundTriFace)
+                    {
                         FatalErrorIn
                         (
                             "dynamicTopoFvMesh::constructPrismHull(...)"
@@ -874,10 +966,12 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                         << nl << " Failed to find a suitable quad/tri face. "
                         << " Possibly not a prismatic mesh. " << nl
                         << abort(FatalError);
+                    }
                 }
                 else
                 {
                     if (!foundQuadFace)
+                    {
                         FatalErrorIn
                         (
                             "dynamicTopoFvMesh::constructPrismHull(...)"
@@ -885,21 +979,32 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                         << nl << " Failed to find a suitable quad face. "
                         << " Possibly not a prismatic mesh. " << nl
                         << abort(FatalError);
+                    }
                 }
 #               endif
+
                 // Decide which cell to check next
                 if (owner_[faceToExclude] == cellIndex)
+                {
                     cellIndex = neighbour_[faceToExclude];
+                }
                 else
+                {
                     cellIndex = owner_[faceToExclude];
+                }
+
                 if (cellIndex == -1)
                 {
                     break;
                 }
                 else
                 {
-                    if (cellIndex != c0) hullCells.append(cellIndex);
+                    if (cellIndex != c0)
+                    {
+                        hullCells.append(cellIndex);
+                    }
                 }
+
             } while ( faceToExclude != startFaceIndex );
             // Add the starting Face index to the list as well
             hullFaces.append(startFaceIndex);
@@ -907,6 +1012,285 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
     }
 
     return isBoundary;
+}
+
+// Utility method to build a counter-clockwise ring of vertices
+// around the edge a-b (when viewed from vertex 'a')
+// Returns whether the edge lies on a boundary
+inline bool Foam::dynamicTopoFvMesh::constructVertexRing
+(
+    const label eIndex,
+    const edge& edgeToCheck,
+    DynamicList<label>& hullVertices,
+    scalar& minQuality
+)
+{
+    minQuality = GREAT;
+    label otherPoint = -1, nextPoint = -1, cellIndex = -1;
+    label faceToExclude = -1, numPoints = 0;
+
+    // -- Debugging --
+    // DynamicList<label> hullCells(10);
+    // -- Debugging --
+
+    // Decide which face to start with...
+    label startFaceIndex = edgeStartFace_[eIndex];
+
+    // Determine the orientation of the start-face
+    findIsolatedPoint
+    (
+        faces_[startFaceIndex],
+        edgeToCheck,
+        otherPoint,
+        nextPoint
+    );
+
+    // Figure out the next cell to check
+    if (nextPoint == edgeToCheck[0])
+    {
+        cellIndex = owner_[startFaceIndex];
+    }
+    else if (nextPoint == edgeToCheck[1])
+    {
+        cellIndex = neighbour_[startFaceIndex];
+    }
+    else
+    {
+        // Something's terribly wrong
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::constructVertexRing(...)"
+        ) 
+        << nl << " Failed to determine a vertex ring. "
+        << " Possibly not a tetrahedral mesh. " << nl
+        << abort(FatalError);
+    }
+
+    // Check if this is a boundary
+    if (cellIndex == -1)
+    {
+        return true;
+    }
+
+    // Start a search and add to the list as we go along
+    faceToExclude = startFaceIndex;
+    do
+    {
+        cell& cellToCheck = cells_[cellIndex];
+
+        // -- Debugging --
+        // hullCells.append(cellIndex);
+        // -- Debugging --
+        
+        forAll(cellToCheck, faceI)
+        {
+            if (cellToCheck[faceI] != faceToExclude)
+            {
+                face& faceToCheck = faces_[cellToCheck[faceI]];
+
+                // Check if this face contains the edge
+                if (edgeOnFace(faceToCheck, edgeToCheck))
+                {
+                    // Compute the quality of this cell
+                    scalar cQuality = (*tetMetric_)
+                                      (
+                                          meshPoints_[faceToCheck[0]],
+                                          meshPoints_[faceToCheck[1]],
+                                          meshPoints_[faceToCheck[2]],
+                                          meshPoints_[otherPoint]
+                                      );
+
+                    // Check if the quality is worse
+                    minQuality = cQuality < minQuality ? cQuality : minQuality;
+
+                    // Find the isolated point
+                    findIsolatedPoint
+                    (
+                        faceToCheck,
+                        edgeToCheck,
+                        otherPoint,
+                        nextPoint
+                    );
+
+                    // Increment the point count
+                    hullVertices(numPoints++) = otherPoint;
+
+                    // Update faceToExclude
+                    faceToExclude = cellToCheck[faceI];
+
+                    break;
+                }
+            }
+        }
+
+        // Decide which cell to check next
+        if (nextPoint == edgeToCheck[0])
+        {
+            cellIndex = owner_[faceToExclude];
+        }
+        else if (nextPoint == edgeToCheck[1])
+        {
+            cellIndex = neighbour_[faceToExclude];
+        }
+        else
+        {
+            // Something's terribly wrong
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::constructVertexRing(...)"
+            )
+            << nl << " Failed to determine a vertex ring. "
+            << " Possibly not a tetrahedral mesh. " << nl
+            << abort(FatalError);
+        }
+
+        // Check if this is a boundary
+        if (cellIndex == -1)
+        {
+            return true;
+        }
+
+    } while ( faceToExclude != startFaceIndex );
+
+//    if (debug)
+//    {
+//        // Print out the ring
+//        Info << "Edge: " << edgeToCheck << endl;
+//        Info << "Ring: " << hullVertices << endl;
+//        Info << "Cells: " << hullCells << endl;
+//    }
+
+    // Not a boundary edge, so return false
+    return false;
+}
+
+// Utility method to fill the dynamic programming tables
+void Foam::dynamicTopoFvMesh::fillTables
+(
+    const edge& edgeToCheck,
+    const DynamicList<label>& hullVertices,
+    const scalar minQuality,
+    scalarListList& Q,
+    labelListList& K
+)
+{
+    label m = hullVertices.size();
+
+    for (label i = m-3; i >= 0; i--)
+    {
+        for (label j = i+2; j < m; j++)
+        {
+            for (label k = i+1; k < j; k++)
+            {
+                scalar qA = (*tetMetric_)
+                            (
+                                meshPoints_[hullVertices[i]],
+                                meshPoints_[hullVertices[k]],
+                                meshPoints_[hullVertices[j]],
+                                meshPoints_[edgeToCheck[0]]
+                            );
+
+                if (qA < minQuality)
+                {
+                    Q[i][j] = qA;
+                    break;
+                }
+
+                scalar qB = (*tetMetric_)
+                            (
+                                meshPoints_[hullVertices[i]],
+                                meshPoints_[hullVertices[k]],
+                                meshPoints_[hullVertices[j]],
+                                meshPoints_[edgeToCheck[1]]
+                            );
+
+                scalar q = Foam::min(qA,qB);
+
+                if (k < j-1)
+                {
+                    q = Foam::min(q,Q[k][j]);
+                }
+
+                if (k > i+1)
+                {
+                    q = Foam::min(q,Q[i][k]);
+                }
+
+                if ((k == i+1) || (q > Q[i][j]))
+                {
+                    Q[i][j] = q;
+                    K[i][j] = k;
+                }
+            }
+        }
+    }
+}
+
+// Print out tables for debugging
+void Foam::dynamicTopoFvMesh::printTables
+(
+    const label m,
+    const scalarListList& Q,
+    const labelListList& K
+)
+{
+    // Print out Q
+    Info << "===" << endl;
+    Info << " Q " << endl;
+    Info << "===" << endl;
+
+    Info << "   ";
+    for(label j = 0; j < m; j++)
+    {
+        std::cout << std::setfill('-')
+                  << std::setw(12) << j;
+    }
+    Info << nl;
+
+    for(label i = 0; i < m-1; i++)
+    {
+        Info << i << ": ";
+        for(label j = 0; j < m; j++)
+        {
+            std::cout << std::setfill(' ')
+                      << std::setw(12) << Q[i][j];
+        }
+        Info << nl;
+    }
+
+    // Print out K
+    Info << "===" << endl;
+    Info << " K " << endl;
+    Info << "===" << endl;
+
+    Info << "   ";
+    for(label j = 0; j < m; j++)
+    {
+        std::cout << std::setfill('-')
+                  << std::setw(12) << j;
+    }
+    Info << nl;
+
+    for(label i = 0; i < m-1; i++)
+    {
+        Info << i << ": ";
+        for(label j = 0; j < m; j++)
+        {
+            std::cout << std::setfill(' ')
+                      << std::setw(12) << K[i][j];
+        }
+        Info << nl;
+    }
+}
+
+// Remove the edge according to the swap sequence
+void Foam::dynamicTopoFvMesh::removeEdgeFlips
+(
+    const edge& edgeToCheck,
+    const labelListList& K
+)
+{
+
 }
 
 // Reorder points after a topology change
@@ -2189,22 +2573,18 @@ void Foam::dynamicTopoFvMesh::initEdgeLengths()
 // Initialize edge related connectivity lists
 void Foam::dynamicTopoFvMesh::initEdges()
 {
-    // Build faceEdges and edgeFaces
-    faceEdges_.setSize(nFaces_, SLList<label>());
-    edgeFaces_.setSize(nEdges_, SLList<label>());    
+    // Build edgeStartFace
+    edgeStartFace_.setSize(nEdges_, -1);
 
     // Obtain faceEdges from primitive mesh
     const labelListList& fEdges = faceEdges();
     
     forAll(fEdges, faceI)
     {
-        const labelList& eList = fEdges[faceI];
-        SLList<label>& eLList = faceEdges_[faceI];
-        
+        const labelList& eList = fEdges[faceI];        
         forAll(eList, edgeI)
         {
-            eLList.insert(eList[edgeI]);
-            edgeFaces_[eList[edgeI]].insert(faceI);
+            edgeStartFace_[eList[edgeI]] = faceI;
         }
     }    
 }
@@ -2344,8 +2724,8 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
             }
             else
             {
-                // Move on to the next face. Increments are done within the 
-                // for-loop, since the face might actually be deleted 
+                // Move on to the next face. Increments are done within
+                // the loop, since the face might actually be deleted
                 // (due to a collapse) within the loop-body.
                 fIter++;
             }
@@ -2364,7 +2744,84 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
     void *argument
 )
 {
-    
+    // Recast the argument
+    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+    dynamicTopoFvMesh *mesh = thread->mesh;
+
+    // Loop through edges assigned to this thread
+    HashList<edge>::iterator eEnd;
+    if (thread->threadID != thread->nThreads-1)
+    {
+        eEnd = mesh->meshEdges()(thread->edgeStart+thread->edgeSize);
+    }
+
+    // Obtain maxTetsPerEdge
+    const label mMax = mesh->maxTetsPerEdge();
+
+    // Allocate dynamic programming tables
+    scalar minQuality;
+    DynamicList<label> vertexHull(mMax);
+    scalarListList Q((mMax-2),scalarList(mMax,-1.0));
+    labelListList K((mMax-2),labelList(mMax,-1));
+
+    HashList<edge>::iterator eIter = mesh->meshEdges()(thread->edgeStart);
+    while(eIter != eEnd)
+    {
+        // Retrieve the index for this iterator
+        label eIndex = eIter.index();
+
+        // Reference to this edge...
+        edge& thisEdge = eIter();
+
+        // Obtain a ring of vertices around this edge
+        if 
+        (
+            mesh->constructVertexRing
+            (
+                eIndex,
+                thisEdge,
+                vertexHull,
+	        minQuality
+            )
+        )
+	{
+            // This is a boundary edge, move on
+            vertexHull.clear();
+            eIter++;
+            continue;
+        }
+
+        // Fill the dynamic programming tables
+        mesh->fillTables(thisEdge, vertexHull, minQuality, Q, K);
+
+        label m = vertexHull.size();
+
+        // Remove this edge if necessary...
+        if (Q[0][m-1] > minQuality)
+        {
+            // Remove this edge according to the swap sequence
+            mesh->removeEdgeFlips(thisEdge, K);
+
+            // Move on to the next edge
+            vertexHull.clear();
+            eIter++;
+
+            // The edge can safely be deleted, since the iterator points
+            // to the next valid edge on the edge-list.
+            mesh->removeEdge(eIndex);
+
+            // Set the flag
+            mesh->topoChangeFlag() = true;
+        }
+        else
+        {
+            // Move on to the next edge. Increments are done within
+            // the loop, since the edge might actually be deleted
+            // within the loop-body.
+            vertexHull.clear();
+            eIter++;
+        }
+    }
 }
 
 // 3D Edge-bisection/collapse engine
