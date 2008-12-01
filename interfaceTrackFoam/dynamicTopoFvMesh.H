@@ -197,30 +197,42 @@ class dynamicTopoFvMesh
         //- Quality metrics for tetrahedra in 3D
         scalar (*tetMetric_)
         (
-            const point p0, 
-            const point p1, 
-            const point p2, 
-            const point p3
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
         );                
         
         static scalar Knupp
         (
-            const point p0, 
-            const point p1, 
-            const point p2, 
-            const point p3
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
         );
 
         static scalar Dihedral
         (
-            const point p0, 
-            const point p1, 
-            const point p2, 
-            const point p3
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
         );        
         
         // Find the area of a triangle face.
         inline scalar triFaceArea(const face& triFace);
+
+        // Find the normal of a triangle face.
+        inline vector triFaceNormal(const face& triFace);
+
+        // Find the volume of a tetrahedron.
+        inline scalar tetVolume
+        (
+            const point& a,
+            const point& b,
+            const point& c,
+            const point& d
+        );
         
         // Initialize the edge-length field
         void initEdgeLengths();

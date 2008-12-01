@@ -383,10 +383,10 @@ inline Foam::vector Foam::dynamicTopoFvMesh::circumCenter
 // Quality metrics:
 scalar Foam::dynamicTopoFvMesh::Knupp
 (
-    const point p0, 
-    const point p1, 
-    const point p2, 
-    const point p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
     tensor A
@@ -410,10 +410,10 @@ scalar Foam::dynamicTopoFvMesh::Knupp
 
 scalar Foam::dynamicTopoFvMesh::Dihedral
 (
-    const point p0, 
-    const point p1, 
-    const point p2, 
-    const point p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
     return 0.0;    
@@ -425,13 +425,32 @@ inline Foam::scalar Foam::dynamicTopoFvMesh::triFaceArea
     const face& triFace
 )
 {
+    return Foam::mag(triFaceNormal(triFace));
+}
+
+// Find the normal of a triangle face. This function also assumes face right-handedness
+inline Foam::vector Foam::dynamicTopoFvMesh::triFaceNormal
+(
+    const face& triFace
+)
+{
     vector v = meshPoints_[triFace[1]] - meshPoints_[triFace[0]];
     vector w = meshPoints_[triFace[2]] - meshPoints_[triFace[0]];
 
-    vector area = (v^w);
+    return 0.5 * (v ^ w);
+}
 
-    // Return the cross-product of the vectors
-    return 0.5 * (area.z());
+// Find the volume of a tetrahedron. This function assumes proper orientation
+// of the vertices, and will give negative values otherwise.
+inline Foam::scalar Foam::dynamicTopoFvMesh::tetVolume
+(
+    const point& a,
+    const point& b,
+    const point& c,
+    const point& d
+)
+{
+    return (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
 }
 
 // Method to determine the old boundary patch index for a given face
@@ -1184,10 +1203,10 @@ void Foam::dynamicTopoFvMesh::fillTables
             {
                 scalar qA = (*tetMetric_)
                             (
+                                meshPoints_[edgeToCheck[0]],
                                 meshPoints_[hullVertices[i]],
                                 meshPoints_[hullVertices[k]],
-                                meshPoints_[hullVertices[j]],
-                                meshPoints_[edgeToCheck[0]]
+                                meshPoints_[hullVertices[j]]
                             );
 
                 if (qA < minQuality)
@@ -3698,32 +3717,50 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         {
             if 
             (
-                firstTriFaces[indexI] == c0BdyIndex[0] 
-             || firstTriFaces[indexI] == c0BdyIndex[1]
-            ) continue;
+                (firstTriFaces[indexI] == c0BdyIndex[0])
+             || (firstTriFaces[indexI] == c0BdyIndex[1])
+            )
+            {
+                continue;
+            }
+
             if (c1 != -1) 
             {
                 if 
                 (
-                    firstTriFaces[indexI] == c1BdyIndex[0] 
-                 || firstTriFaces[indexI] == c1BdyIndex[1]
-                ) continue;
+                    (firstTriFaces[indexI] == c1BdyIndex[0])
+                 || (firstTriFaces[indexI] == c1BdyIndex[1])
+                )
+                {
+                    continue;
+                }
             }
+
             face &triFace = faces_[firstTriFaces[indexI]];
             forAll(triFace, pointI)
             {
                 tmpTriFace[pointI] = triFace[pointI];
-                if (triFace[pointI] == cv0) tmpTriFace[pointI] = cv2;
-                if (triFace[pointI] == cv1) tmpTriFace[pointI] = cv3;
+                if (triFace[pointI] == cv0)
+                {
+                    tmpTriFace[pointI] = cv2;
+                }
+                if (triFace[pointI] == cv1)
+                {
+                    tmpTriFace[pointI] = cv3;
+                }
             }
+
             // Compute the area and check if it's zero/negative
             scalar origArea = triFaceArea(triFace);
             scalar newArea  = triFaceArea(tmpTriFace);
             if 
             (
                 (Foam::sign(origArea) != Foam::sign(newArea)) 
-             || mag(newArea) < VSMALL
-            ) return false;
+             || (mag(newArea) < VSMALL)
+            )
+            {
+                return false;
+            }
         }
         // Collapse to the second node...
         forAll(firstEdgeHull,faceI)
@@ -3801,32 +3838,50 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         {
             if 
             (
-                secondTriFaces[indexI] == c0BdyIndex[0] 
-             || secondTriFaces[indexI] == c0BdyIndex[1]
-            ) continue;
+                (secondTriFaces[indexI] == c0BdyIndex[0])
+             || (secondTriFaces[indexI] == c0BdyIndex[1])
+            )
+            {
+                continue;
+            }
+
             if (c1 != -1)
             {
                 if 
                 (
-                    secondTriFaces[indexI] == c1BdyIndex[0] 
-                 || secondTriFaces[indexI] == c1BdyIndex[1]
-                ) continue;
+                    (secondTriFaces[indexI] == c1BdyIndex[0])
+                 || (secondTriFaces[indexI] == c1BdyIndex[1])
+                )
+                {
+                    continue;
+                }
             }
+
             face &triFace = faces_[secondTriFaces[indexI]];
             forAll(triFace, pointI)
             {
                 tmpTriFace[pointI] = triFace[pointI];
-                if (triFace[pointI] == cv2) tmpTriFace[pointI] = cv0;
-                if (triFace[pointI] == cv3) tmpTriFace[pointI] = cv1;
+                if (triFace[pointI] == cv2)
+                {
+                    tmpTriFace[pointI] = cv0;
+                }
+                if (triFace[pointI] == cv3)
+                {
+                    tmpTriFace[pointI] = cv1;
+                }
             }
+            
             // Compute the area and check if it's zero/negative
             scalar origArea = triFaceArea(triFace);
             scalar newArea  = triFaceArea(tmpTriFace);
             if 
             (
                 (Foam::sign(origArea) != Foam::sign(newArea)) 
-             || mag(newArea) < VSMALL
-            ) return false;
+             || (mag(newArea) < VSMALL)
+            )
+            {
+                return false;
+            }
         }
         // Collapse to the first node by default...
         forAll(secondEdgeHull,faceI)
