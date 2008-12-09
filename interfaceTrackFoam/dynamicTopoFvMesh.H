@@ -55,8 +55,6 @@ SourceFiles
 namespace Foam
 {
 
-// Class forward declarations
-    
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration
 \*---------------------------------------------------------------------------*/
@@ -193,17 +191,9 @@ class dynamicTopoFvMesh
             const label& two,
             const label& three
         );
-        
-        //- Quality metrics for tetrahedra in 3D
-        scalar (*tetMetric_)
-        (
-            const point& p0,
-            const point& p1,
-            const point& p2,
-            const point& p3
-        );                
-        
-        static scalar Knupp
+
+        // Typedef for tetrahedral metrics 
+        typedef scalar (*tetMetricReturnType)
         (
             const point& p0,
             const point& p1,
@@ -211,13 +201,8 @@ class dynamicTopoFvMesh
             const point& p3
         );
 
-        static scalar Dihedral
-        (
-            const point& p0,
-            const point& p1,
-            const point& p2,
-            const point& p3
-        );        
+        //- Quality metric for tetrahedra in 3D
+        tetMetricReturnType tetMetric_;
         
         // Find the area of a triangle face.
         inline scalar triFaceArea(const face& triFace);
@@ -378,7 +363,8 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to fill the dynamic programming tables
-        void fillTables
+        // Returns the number of triangulations
+        inline label fillTables
         (
             const edge& edgeToCheck,
             const DynamicList<label>& hullVertices,
@@ -398,8 +384,29 @@ class dynamicTopoFvMesh
         // Remove the edge according to the swap sequence
         void removeEdgeFlips
         (
+            const label m,
             const edge& edgeToCheck,
-            const labelListList& K
+            const labelListList& K,
+            const DynamicList<label>& hullVertices,
+            labelListList& triangulations
+        );
+
+        // Extract triangulations from the programming table
+        void extractTriangulation
+        (
+            const label i,
+            const label j,
+            const labelListList& K,
+            labelListList& triangulations
+        );
+
+        // Identify the 3-2 swap from the triangulation sequence
+        label identify32Swap
+        (
+            const label m,
+            const edge& edgeToCheck,
+            const DynamicList<label>& hullVertices,
+            const labelListList& triangulations
         );
         
         // Reorder points after a topology change

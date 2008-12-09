@@ -15,4 +15,5 @@ EXE_LIBS = \
     -lspringMotionSolver \
     -ldynamicMesh \
     -lincompressibleTransportModels \
+    -ltetMetrics \
     $(WM_DECOMP_LIBS) 
