@@ -90,7 +90,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     growthFactor_(1.0),
     maxLengthScale_(GREAT),
     bisectInteriorFace_(-1),
-    maxTetsPerEdge_(-1)
+    maxTetsPerEdge_(-1),
+    allowTableResize_(false)
 {
     // Initialize the motion-solver, if it was requested
     if (solveForMotion_)
@@ -204,6 +205,16 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         else
         {
             maxTetsPerEdge_ = 7;
+        }
+
+        // Check if programming tables can be resized at runtime
+        if (dict_.subDict("dynamicTopoFvMesh").found("allowTableResize"))
+        {
+            allowTableResize_ =
+                readBool
+                (
+                    dict_.subDict("dynamicTopoFvMesh").lookup("allowTableResize")
+                );
         }
 
         // Initialize edge-related connectivity structures
@@ -1044,18 +1055,16 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
 (
     const label eIndex,
     const edge& edgeToCheck,
+    DynamicList<label>& hullCells,
+    DynamicList<label>& hullFaces,
     DynamicList<label>& hullVertices,
     scalar& minQuality
 )
 {
     minQuality = GREAT;
     label otherPoint = -1, nextPoint = -1, cellIndex = -1;
-    label faceToExclude = -1, numPoints = 0;
+    label faceToExclude = -1, numPoints = 0, numFaces = 0;
     scalar cQuality = 0.0;
-
-    // -- Debugging --
-    DynamicList<label> hullCells(10);
-    // -- Debugging --
 
     // Decide which face to start with...
     label startFaceIndex = edgeStartFace_[eIndex];
@@ -1102,9 +1111,8 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     {
         cell& cellToCheck = cells_[cellIndex];
 
-        // -- Debugging --
+        // Add this cell to the hull
         hullCells.append(cellIndex);
-        // -- Debugging --
         
         forAll(cellToCheck, faceI)
         {
@@ -1152,6 +1160,9 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
                     // Increment the point count
                     hullVertices(numPoints++) = otherPoint;
 
+                    // Increment the face count
+                    hullFaces(numFaces++) = cellToCheck[faceI];
+
                     // Update faceToExclude
                     faceToExclude = cellToCheck[faceI];
 
@@ -1189,16 +1200,33 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
 
     } while ( faceToExclude != startFaceIndex );
 
+#   ifdef FULLDEBUG
     if (debug)
     {
         // Print out the ring
-        Info << "Edge: " << edgeToCheck << endl;
-        Info << "Ring: " << hullVertices << endl;
-        Info << "Cells: " << hullCells << endl;
+        // Info << endl;
+        // Info << "Edge: " << edgeToCheck << endl;
+        // Info << "Ring: " << hullVertices << endl;
+        // Info << "Cells: " << hullCells << endl;
     }
+#   endif
 
     // Not a boundary edge, so return false
     return false;
+}
+
+// Allocate dynamic programming tables
+inline void Foam::dynamicTopoFvMesh::initTables
+(
+    const label mMax,
+    scalarListList& Q,
+    labelListList& K,
+    labelListList& triangulations
+)
+{
+    Q.setSize((mMax-2),scalarList(mMax,-1.0));
+    K.setSize((mMax-2),labelList(mMax,-1));
+    triangulations.setSize(3,labelList((mMax-2),-1));
 }
 
 // Utility method to fill the dynamic programming tables
@@ -1228,11 +1256,13 @@ inline label Foam::dynamicTopoFvMesh::fillTables
                     meshPoints_[edgeToCheck[0]]
                 );
 
+                /*
                 if (qA < minQuality)
                 {
                     Q[i][j] = qA;
                     break;
                 }
+                */
 
                 scalar qB = (*tetMetric_)
                 (
@@ -1287,7 +1317,7 @@ void Foam::dynamicTopoFvMesh::printTables
     }
     Info << nl;
 
-    for(label i = 0; i < m-1; i++)
+    for(label i = 0; i < (m-2); i++)
     {
         Info << i << ": ";
         for(label j = 0; j < m; j++)
@@ -1311,7 +1341,7 @@ void Foam::dynamicTopoFvMesh::printTables
     }
     Info << nl;
 
-    for(label i = 0; i < m-1; i++)
+    for(label i = 0; i < (m-2); i++)
     {
         Info << i << ": ";
         for(label j = 0; j < m; j++)
@@ -1329,12 +1359,17 @@ void Foam::dynamicTopoFvMesh::removeEdgeFlips
     const label m,
     const edge& edgeToCheck,
     const labelListList& K,
+    const DynamicList<label>& hullCells,
+    const DynamicList<label>& hullFaces,
     const DynamicList<label>& hullVertices,
     labelListList& triangulations
 )
 {
+    face tmpTriFace(3);
+    label numTriangulations = 0;
+
     // Extract the appropriate triangulations
-    extractTriangulation(0, (m-1), K, triangulations);
+    extractTriangulation(0, (m-1), K, numTriangulations, triangulations);
 
     // Determine the 3-2 swap triangulation
     label t32 = identify32Swap(m, edgeToCheck, hullVertices, triangulations);
@@ -1345,15 +1380,39 @@ void Foam::dynamicTopoFvMesh::removeEdgeFlips
     {
         for (label i = 0; i < (m-2); i++)
         {
-            if (i != t32)
+            if ( (i != t32) && (triangulations[0][i] != -1) )
             {
                 // Check if triangulation is on the boundary
-                
+                if
+                (
+                    boundaryTriangulation
+                    (
+                        i,
+                        triangulations
+                    )
+                )
+                {
+                    // Perform 2-3 swap
+                    tmpTriFace[0] = hullVertices[triangulations[0][i]];
+                    tmpTriFace[1] = hullVertices[triangulations[1][i]];
+                    tmpTriFace[2] = hullVertices[triangulations[2][i]];
+
+                    // Done with this face, so reset it
+                    triangulations[0][i] = -1;
+                    triangulations[1][i] = -1;
+                    triangulations[2][i] = -1;
+                    
+                    numSwaps++;
+                }
             }
         }
     }
 
     // Perform the final 3-2 swap
+    tmpTriFace[0] = hullVertices[triangulations[0][t32]];
+    tmpTriFace[1] = hullVertices[triangulations[1][t32]];
+    tmpTriFace[2] = hullVertices[triangulations[2][t32]];
+
 }
 
 // Extract triangulations from the programming table
@@ -1362,6 +1421,7 @@ void Foam::dynamicTopoFvMesh::extractTriangulation
     const label i,
     const label j,
     const labelListList& K,
+    label& numTriangulations,
     labelListList& triangulations
 )
 {
@@ -1370,13 +1430,16 @@ void Foam::dynamicTopoFvMesh::extractTriangulation
         label k = K[i][j];
 
         // Fill in the triangulation list
-        triangulations[0][j-i-2] = i;
-        triangulations[1][j-i-2] = k;
-        triangulations[2][j-i-2] = j;
+        triangulations[0][numTriangulations] = i;
+        triangulations[1][numTriangulations] = k;
+        triangulations[2][numTriangulations] = j;
+
+        // Increment triangulation count
+        numTriangulations++;
 
         // Recursively call the function for the two sub-triangulations
-        extractTriangulation(i,k,K,triangulations);
-        extractTriangulation(k,j,K,triangulations);
+        extractTriangulation(i,k,K,numTriangulations,triangulations);
+        extractTriangulation(k,j,K,numTriangulations,triangulations);
     }
 }
 
@@ -1427,6 +1490,57 @@ label Foam::dynamicTopoFvMesh::identify32Swap
         << abort(FatalError);
 
     return -1;
+}
+
+// Routine to check whether the triangulation at the
+// index lies on the boundary of the vertex ring.
+bool Foam::dynamicTopoFvMesh::boundaryTriangulation
+(
+    const label index,
+    labelListList& triangulations
+)
+{
+    label first = 0, second = 0, third = 0;
+
+    // Count for occurrences
+    forAll(triangulations, row)
+    {
+        forAll(triangulations[row], col)
+        {
+            if (triangulations[row][col] == triangulations[0][index])
+            {
+                first++;
+            }
+
+            if (triangulations[row][col] == triangulations[1][index])
+            {
+                second++;
+            }
+
+            if (triangulations[row][col] == triangulations[2][index])
+            {
+                third++;
+            }
+        }
+    }
+
+    if (first == 1)
+    {
+        return true;
+    }
+
+    if (second == 1)
+    {
+        return true;        
+    }
+
+    if (third == 1)
+    {
+        return true;
+    }
+
+    // This isn't a boundary triangulation
+    return false;
 }
 
 // Reorder points after a topology change
@@ -2892,14 +3006,20 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
     }
 
     // Obtain maxTetsPerEdge
-    const label mMax = mesh->maxTetsPerEdge();
+    label mMax = mesh->maxTetsPerEdge();
+
+    // Hull variables
+    scalar minQuality;
+    DynamicList<label> cellHull(mMax);
+    DynamicList<label> faceHull(mMax);
+    DynamicList<label> vertexHull(mMax);
+
+    // Dynamic programming variables
+    scalarListList Q;
+    labelListList K, triangulations;
 
     // Allocate dynamic programming tables
-    scalar minQuality;
-    DynamicList<label> vertexHull(mMax);
-    scalarListList Q((mMax-2),scalarList(mMax,-1.0));
-    labelListList K((mMax-2),labelList(mMax,-1));
-    labelListList triangulations(3,labelList(mMax,-1));
+    mesh->initTables(mMax, Q, K, triangulations);
 
     HashList<edge>::iterator eIter = mesh->meshEdges()(thread->edgeStart);
     while(eIter != eEnd)
@@ -2917,15 +3037,37 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
             (
                 eIndex,
                 thisEdge,
+                cellHull,
+                faceHull,
                 vertexHull,
 	        minQuality
             )
         )
 	{
             // This is a boundary edge, move on
-            vertexHull.clear();
+            cellHull.clear(); faceHull.clear(); vertexHull.clear();
             eIter++;
             continue;
+        }
+
+        // Check if a table-resize is necessary
+        if (vertexHull.size() > mMax)
+        {
+            if (mesh->allowTableResize())
+            {
+                // Resize the tables to account for
+                // more tets per edge
+                mMax = vertexHull.size();
+                Q.clear(); K.clear(); triangulations.clear();
+                mesh->initTables(mMax, Q, K, triangulations);
+            }
+            else
+            {
+                // Move on to the next edge
+                cellHull.clear(); faceHull.clear(); vertexHull.clear();
+                eIter++;
+                continue;
+            }
         }
 
         // Fill the dynamic programming tables
@@ -2934,23 +3076,33 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
         // Remove this edge if necessary...
         if (Q[0][m-1] > minQuality)
         {
+#           ifdef FULLDEBUG
+            if (debug)
+            {
+                Info << "Old Hull Quality: " << minQuality << endl;
+                Info << "New Hull Quality: " << Q[0][m-1] << endl;
+            }
+#           endif
+
             // Remove this edge according to the swap sequence
             mesh->removeEdgeFlips
             (
                 m,
                 thisEdge,
                 K,
+                cellHull,
+                faceHull,
                 vertexHull,
                 triangulations
             );
 
             // Move on to the next edge
-            vertexHull.clear();
+            cellHull.clear(); faceHull.clear(); vertexHull.clear();
             eIter++;
 
             // The edge can safely be deleted, since the iterator points
             // to the next valid edge on the edge-list.
-            mesh->removeEdge(eIndex);
+            //mesh->removeEdge(eIndex);
 
             // Set the flag
             mesh->topoChangeFlag() = true;
@@ -2960,7 +3112,7 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
             // Move on to the next edge. Increments are done within
             // the loop, since the edge might actually be deleted
             // within the loop-body.
-            vertexHull.clear();
+            cellHull.clear(); faceHull.clear(); vertexHull.clear();
             eIter++;
         }
     }

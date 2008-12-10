@@ -146,6 +146,7 @@ class dynamicTopoFvMesh
         //- Maximum number of tets around an edge
         //  for 3D mesh flipping
         label               maxTetsPerEdge_;
+        Switch              allowTableResize_;
         
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
@@ -358,8 +359,19 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             const edge& edgeToCheck,
+            DynamicList<label>& hullCells,
+            DynamicList<label>& hullFaces,
             DynamicList<label>& hullVertices,
             scalar& minQuality
+        );
+
+        // Allocate dynamic programming tables
+        inline void initTables
+        (
+            const label mMax,
+            scalarListList& Q,
+            labelListList& K,
+            labelListList& triangulations
         );
 
         // Utility method to fill the dynamic programming tables
@@ -387,6 +399,8 @@ class dynamicTopoFvMesh
             const label m,
             const edge& edgeToCheck,
             const labelListList& K,
+            const DynamicList<label>& hullCells,
+            const DynamicList<label>& hullFaces,
             const DynamicList<label>& hullVertices,
             labelListList& triangulations
         );
@@ -397,6 +411,7 @@ class dynamicTopoFvMesh
             const label i,
             const label j,
             const labelListList& K,
+            label& numTriangulations,
             labelListList& triangulations
         );
 
@@ -407,6 +422,14 @@ class dynamicTopoFvMesh
             const edge& edgeToCheck,
             const DynamicList<label>& hullVertices,
             const labelListList& triangulations
+        );
+
+        // Routine to check whether the triangulation at the
+        // index lies on the boundary of the vertex ring.
+        bool boundaryTriangulation
+        (
+            const label index,
+            labelListList& triangulations
         );
         
         // Reorder points after a topology change
@@ -461,6 +484,7 @@ class dynamicTopoFvMesh
         const label bisectInteriorFace() { return bisectInteriorFace_; }
         const label nOldCells() { return nOldCells_; }
         const label maxTetsPerEdge() { return maxTetsPerEdge_; }
+        const bool allowTableResize() { return allowTableResize_; }
         
         Map<objectMap>& cellsFromCells() { return cellsFromCells_; }
         Map<label>& cellParents() { return cellParents_; }

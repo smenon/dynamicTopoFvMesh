@@ -33,6 +33,9 @@ Author
 
 \*---------------------------------------------------------------------------*/
 
+#include "HashList.H"
+
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -989,18 +992,48 @@ inline void HashList<T>::operator=
 template<class T>
 Ostream& operator<<(Ostream& os, HashList<T>& L)
 {
-    // Write size of HashList
-    os << nl << L.size();
+    if (L.size() < 11)
+    {
+        // Write size of HashList
+        os << L.size() << token::BEGIN_LIST;
 
-    // Write beginning of contents
-    os << nl << token::BEGIN_LIST << nl;
+        // Write HashList contents
+        for
+        (
+            typename HashList<T>::iterator iter = L.begin();
+            iter != L.end();
+            iter++
+        )
+        {
+            if (iter.index() > 0) os << token::SPACE;
+            os << iter();
+        }
 
-    // Write HashList contents
-    for(typename HashList<T>::iterator iter = L.begin(); iter != L.end(); iter++)
-        os << iter.index() << token::SPACE << iter() << nl;
+        // Write end of contents
+        os << token::END_LIST;
+    }
+    else
+    {
+        // Write size of HashList
+        os << nl << L.size();
 
-    // Write end of contents
-    os << token::END_LIST;
+        // Write beginning of contents
+        os << nl << token::BEGIN_LIST << nl;
+
+        // Write HashList contents
+        for
+        (
+            typename HashList<T>::iterator iter = L.begin();
+            iter != L.end();
+            iter++
+        )
+        {
+            os << iter.index() << token::SPACE << iter() << nl;
+        }
+
+        // Write end of contents
+        os << token::END_LIST;
+    }
 
     // Check state of IOstream
     os.check("Ostream& operator<<(Ostream&, const HashList&)");
