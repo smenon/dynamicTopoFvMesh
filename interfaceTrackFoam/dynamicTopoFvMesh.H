@@ -74,8 +74,8 @@ class dynamicTopoFvMesh
         //- Dynamic mesh dictionary
         IOdictionary dict_;
         
-        //- Motion characteristics [2D/3D]
-        Switch twoDMotion_;        
+        //- Mesh characteristics [2D/3D]
+        Switch twoDMesh_;
                 
         //- Edge bisection/collapse option
         Switch edgeModification_;
@@ -99,6 +99,8 @@ class dynamicTopoFvMesh
         HashList<label> neighbour_;
         HashList<cell>  cells_;
         HashList<edge>  edges_;
+        HashList<labelList> edgeFace_;
+        HashList<labelList> faceEdge_;
         
         //- Size information
         labelList       oldPatchSizes_, patchSizes_;
@@ -112,17 +114,21 @@ class dynamicTopoFvMesh
         
         //- Old-to-New
         labelList       reversePointMap_;
+        labelList       reverseEdgeMap_;
         labelList       reverseFaceMap_;
         labelList       reverseCellMap_;
         
         //- New-to-Old
         labelList       pointMap_;
+        labelList       edgeMap_;
         labelList       faceMap_;
         labelList       cellMap_;
         
         //- Maps for the renumbering of added entities
         Map<objectMap>  cellsFromCells_;
-        Map<label>      addedPointRenumbering_; 
+        Map<label>      addedPointRenumbering_;
+        Map<label>      addedEdgeRenumbering_;
+        Map<label>      addedFaceRenumbering_;
         Map<label>      addedCellRenumbering_;
         Map<label>      boundaryPatches_;
         Map<label>      cellParents_;
@@ -139,9 +145,6 @@ class dynamicTopoFvMesh
         scalar              growthFactor_;
         scalar              maxLengthScale_;
         label               bisectInteriorFace_;
-
-        //- Edge-face connectivity list
-        HashList<label>     edgeStartFace_;
 
         //- Maximum number of tets around an edge
         //  for 3D mesh flipping
@@ -276,10 +279,10 @@ class dynamicTopoFvMesh
         (
             const label& findex,
             const cell& c,
-            faceList& bdyf,
-            labelList& bidx,
-            faceList& intf,
-            labelList& iidx
+            FixedList<face,2>& bdyf,
+            FixedList<label,2>& bidx,
+            FixedList<face,2>& intf,
+            FixedList<label,2>& iidx
         );
         
         // Method to find the common-edge between two faces.
@@ -336,6 +339,12 @@ class dynamicTopoFvMesh
         
         // Remove the specified face from the mesh
         void removeFace(const label index);
+
+        // Insert the specified edge to the mesh
+        label insertEdge
+        (
+            const edge& newEdge
+        );
 
         // Remove the specified edge from the mesh
         void removeEdge(const label index);
@@ -429,11 +438,38 @@ class dynamicTopoFvMesh
         bool boundaryTriangulation
         (
             const label index,
+            label& isolatedVertex,
             labelListList& triangulations
+        );
+
+        // Routine to perform 2-3 swaps
+        void swap23
+        (
+            const label isolatedVertex,
+            const edge& edgeToCheck,
+            const label triangulationIndex,
+            const labelListList& triangulations,
+            const DynamicList<label>& hullCells,
+            const DynamicList<label>& hullFaces,
+            const DynamicList<label>& hullVertices
+        );
+
+        // Routine to perform 3-2 swaps
+        void swap32
+        (
+            const edge& edgeToCheck,
+            const label triangulationIndex,
+            const labelListList& triangulations,
+            const DynamicList<label>& hullCells,
+            const DynamicList<label>& hullFaces,
+            const DynamicList<label>& hullVertices
         );
         
         // Reorder points after a topology change
         void reOrderPoints(pointField& points);
+
+        // Reorder edges after a topology change
+        void reOrderEdges();
         
         // Reorder faces in upper-triangular order after a topology change
         void reOrderFaces
