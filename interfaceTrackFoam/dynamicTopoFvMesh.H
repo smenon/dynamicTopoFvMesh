@@ -343,7 +343,8 @@ class dynamicTopoFvMesh
         // Insert the specified edge to the mesh
         label insertEdge
         (
-            const edge& newEdge
+            const edge& newEdge,
+            const labelList& edgeFaces
         );
 
         // Remove the specified edge from the mesh
@@ -406,6 +407,7 @@ class dynamicTopoFvMesh
         void removeEdgeFlips
         (
             const label m,
+            const label edgeToCheckIndex,
             const edge& edgeToCheck,
             const labelListList& K,
             const DynamicList<label>& hullCells,
@@ -457,6 +459,7 @@ class dynamicTopoFvMesh
         // Routine to perform 3-2 swaps
         void swap32
         (
+            const label edgeToCheckIndex,
             const edge& edgeToCheck,
             const label triangulationIndex,
             const labelListList& triangulations,

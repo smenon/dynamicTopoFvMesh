@@ -804,10 +804,12 @@ void Foam::dynamicTopoFvMesh::removeFace
 // Insert the specified edge to the mesh
 label Foam::dynamicTopoFvMesh::insertEdge
 (
-    const edge& newEdge
+    const edge& newEdge,
+    const labelList& edgeFaces
 )
 {
     label newEdgeIndex = edges_.append(newEdge);
+    edgeFace_.append(edgeFaces);
 
     // Increment the total edge count
     nEdges_++;
@@ -823,11 +825,13 @@ void Foam::dynamicTopoFvMesh::removeEdge
 {
     if (debug)
     {
-        Info << "Removed edge: " << index << endl;
-        Info << edges_[index] << endl;
+        Info << "Removed edge: "
+             << index << ": "
+             << edges_[index] << endl;
     }
 
     edges_.remove(index);
+    edgeFace_.remove(index);
 
     // Update reverse edge-map, but only if this is an edge that existed
     // at time [n]. Added edges which are deleted during the topology change
@@ -1392,6 +1396,7 @@ void Foam::dynamicTopoFvMesh::printTables
 void Foam::dynamicTopoFvMesh::removeEdgeFlips
 (
     const label m,
+    const label edgeToCheckIndex,
     const edge& edgeToCheck,
     const labelListList& K,
     const DynamicList<label>& hullCells,
@@ -1453,6 +1458,7 @@ void Foam::dynamicTopoFvMesh::removeEdgeFlips
     // Perform the final 3-2 swap
     swap32
     (
+        edgeToCheckIndex,
         edgeToCheck,
         t32,
         triangulations,
@@ -1838,25 +1844,51 @@ void Foam::dynamicTopoFvMesh::swap23
         }
     }
 
-    // Add a new edge to the mesh
+    // Add an entry to edgeFaces
     labelList newEdgeFaces(3);
     newEdgeFaces[0] = newFaceIndex0;
     newEdgeFaces[1] = newFaceIndex1;
     newEdgeFaces[2] = newFaceIndex2;
 
-    insertEdge
-    (
-        edge
-        (
-            hullVertices[otherVertices[0]],
-            hullVertices[otherVertices[1]]
-        )
-    );
+    // Add a new edge to the mesh
+    label newEdgeIndex = insertEdge
+                         (
+                             edge
+                             (
+                                 hullVertices[otherVertices[0]],
+                                 hullVertices[otherVertices[1]]
+                             ),
+                             newEdgeFaces
+                         );
     
     // Generate mapping information for the three new cells    
     
     // Remove the face
     removeFace(faceForRemoval);
+
+    // Update edgeFaces for edges of the removed face
+    labelList& fEdges = faceEdge_[faceForRemoval];
+    forAll(fEdges, edgeI)
+    {
+        label nF = 0;
+        label edgeIndex = fEdges[edgeI];
+        labelList& eFaces = edgeFace_[edgeIndex];
+
+        // Create a new list
+        labelList newEdgeFaces(eFaces.size()-1);
+        forAll(eFaces, faceI)
+        {
+            if (eFaces[faceI] != faceForRemoval)
+            {
+                newEdgeFaces[nF++] = eFaces[faceI];
+            }
+        }
+
+        edgeFace_[edgeIndex] = newEdgeFaces;
+    }
+
+    // Now remove the faceEdge entry
+    faceEdge_.remove(faceForRemoval);
 
     // Update the number of cells, and the reverse cell map
     nCells_++;
@@ -1892,6 +1924,7 @@ void Foam::dynamicTopoFvMesh::swap23
 // Routine to perform 3-2 swaps
 void Foam::dynamicTopoFvMesh::swap32
 (
+    const label edgeToCheckIndex,
     const edge& edgeToCheck,
     const label triangulationIndex,
     const labelListList& triangulations,
@@ -2065,10 +2098,38 @@ void Foam::dynamicTopoFvMesh::swap32
 
     // Generate mapping information for the two new cells
 
-    // Remove the three faces
+    // Remove the three faces and update associated edges
     forAll(facesForRemoval, faceI)
     {
         removeFace(facesForRemoval[faceI]);
+
+        // Update edgeFaces for edges of the removed face
+        labelList& fEdges = faceEdge_[facesForRemoval[faceI]];
+        forAll(fEdges, edgeI)
+        {
+            label nF = 0;
+            label edgeIndex = fEdges[edgeI];
+
+            if (edgeIndex != edgeToCheckIndex)
+            {
+                labelList& eFaces = edgeFace_[edgeIndex];
+
+                // Create a new list
+                labelList newEdgeFaces(eFaces.size()-1);
+                forAll(eFaces, faceI)
+                {
+                    if (eFaces[faceI] != facesForRemoval[faceI])
+                    {
+                        newEdgeFaces[nF++] = eFaces[faceI];
+                    }
+                }
+
+                edgeFace_[edgeIndex] = newEdgeFaces;
+            }
+        }
+
+        // Now remove the faceEdge entry
+        faceEdge_.remove(facesForRemoval[faceI]);
     }
 
     // Update the number of cells, and the reverse cell map
@@ -2837,7 +2898,8 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                     {
                         label ownCell = own[pStart+faceI];
                         cellLevels[ownCell] = level;
-                        lengthScale[ownCell] = fixedLengthScalePatches_[patchName][0].scalarToken();
+                        lengthScale[ownCell] =
+                            fixedLengthScalePatches_[patchName][0].scalarToken();
                         visitedCells++;
                     }
                     fixed = true; break;
@@ -3513,8 +3575,7 @@ void Foam::dynamicTopoFvMesh::initEdgeLengths()
     if (twoDMesh_)
     {
         // Allocate fields
-        edge nullEdge(0,0);  
-        edgeToWatch_.setSize(nFaces_,nullEdge);
+        edgeToWatch_.setSize(nFaces_,edge(0,0));
 
         // Loop through all quad-faces and build initial edge-lengths
         bool found;
@@ -3827,6 +3888,7 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
             mesh->removeEdgeFlips
             (
                 m,
+                eIndex,
                 thisEdge,
                 K,
                 cellHull,
@@ -5531,7 +5593,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
 
     // Keep a copy of existing sizes
     nOldPoints_ = nPoints_;
-    nEdges_     = nOldEdges_;
+    nOldEdges_  = nEdges_;
     nOldFaces_  = nFaces_;
     nOldCells_  = nCells_;
     nOldInternalFaces_ = nInternalFaces_;
