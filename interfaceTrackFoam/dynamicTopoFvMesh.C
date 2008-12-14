@@ -1878,10 +1878,18 @@ void Foam::dynamicTopoFvMesh::swap23
                 // Check if a face-flip is necessary
                 if(owner_[faceIndex] == cellIndex)
                 {
-                    // Flip this face
-                    faces_[faceIndex] = faceToCheck.reverseFace();
-                    owner_[faceIndex] = neighbour_[faceIndex];
-                    neighbour_[faceIndex] = newCellIndex1;
+                    if (neighbour_[faceIndex] == -1)
+                    {
+                        // Change the owner
+                        owner_[faceIndex] = newCellIndex1;
+                    }
+                    else
+                    {
+                        // Flip this face
+                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        owner_[faceIndex] = neighbour_[faceIndex];
+                        neighbour_[faceIndex] = newCellIndex1;
+                    }
                 }
                 else
                 {
@@ -1928,10 +1936,18 @@ void Foam::dynamicTopoFvMesh::swap23
                 // Check if a face-flip is necessary
                 if(owner_[faceIndex] == cellIndex)
                 {
-                    // Flip this face
-                    faces_[faceIndex] = faceToCheck.reverseFace();
-                    owner_[faceIndex] = neighbour_[faceIndex];
-                    neighbour_[faceIndex] = newCellIndex0;
+                    if (neighbour_[faceIndex] == -1)
+                    {
+                        // Change the owner
+                        owner_[faceIndex] = newCellIndex0;
+                    }
+                    else
+                    {
+                        // Flip this face
+                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        owner_[faceIndex] = neighbour_[faceIndex];
+                        neighbour_[faceIndex] = newCellIndex0;
+                    }
                 }
                 else
                 {
@@ -1970,10 +1986,18 @@ void Foam::dynamicTopoFvMesh::swap23
                 // Check if a face-flip is necessary
                 if(owner_[faceIndex] == cellIndex)
                 {
-                    // Flip this face
-                    faces_[faceIndex] = faceToCheck.reverseFace();
-                    owner_[faceIndex] = neighbour_[faceIndex];
-                    neighbour_[faceIndex] = newCellIndex2;
+                    if (neighbour_[faceIndex] == -1)
+                    {
+                        // Change the owner
+                        owner_[faceIndex] = newCellIndex2;
+                    }
+                    else
+                    {
+                        // Flip this face
+                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        owner_[faceIndex] = neighbour_[faceIndex];
+                        neighbour_[faceIndex] = newCellIndex2;
+                    }
                 }
                 else
                 {
@@ -2186,10 +2210,18 @@ void Foam::dynamicTopoFvMesh::swap32
                 // Check if a face-flip is necessary
                 if(owner_[faceIndex] == cellIndex)
                 {
-                    // Flip this face
-                    faces_[faceIndex] = faceToCheck.reverseFace();
-                    owner_[faceIndex] = neighbour_[faceIndex];
-                    neighbour_[faceIndex] = newCellIndex1;
+                    if (neighbour_[faceIndex] == -1)
+                    {
+                        // Change the owner
+                        owner_[faceIndex] = newCellIndex1;
+                    }
+                    else
+                    {
+                        // Flip this face
+                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        owner_[faceIndex] = neighbour_[faceIndex];
+                        neighbour_[faceIndex] = newCellIndex1;
+                    }
                 }
                 else
                 {
@@ -2213,6 +2245,7 @@ void Foam::dynamicTopoFvMesh::swap32
                     {
                         newFaceEdges[nE++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex, edgeFaces_[fEdges[edgeI]]);
+                        break;
                     }
                 }
             }
@@ -2223,10 +2256,18 @@ void Foam::dynamicTopoFvMesh::swap32
                 // Check if a face-flip is necessary
                 if(owner_[faceIndex] == cellIndex)
                 {
-                    // Flip this face
-                    faces_[faceIndex] = faceToCheck.reverseFace();
-                    owner_[faceIndex] = neighbour_[faceIndex];
-                    neighbour_[faceIndex] = newCellIndex0;
+                    if (neighbour_[faceIndex] == -1)
+                    {
+                        // Change the owner
+                        owner_[faceIndex] = newCellIndex0;
+                    }
+                    else
+                    {
+                        // Flip this face
+                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        owner_[faceIndex] = neighbour_[faceIndex];
+                        neighbour_[faceIndex] = newCellIndex0;
+                    }
                 }
                 else
                 {
@@ -2696,6 +2737,11 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
                     edgeToWatch_.append(edgeRenumber);
                 }
 
+                if (!twoDMesh_)
+                {
+                    faceEdges_.append(oldFaceEdge[curFaces[nextNei]]);
+                }
+
                 // Insert entities into mesh-reset lists
                 faces[faceInOrder] = faceRenumber;
                 owner[faceInOrder] = cellI; 
@@ -2745,6 +2791,11 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
         if (edgeModification_ && twoDMesh_)
         {
             edgeToWatch_.append(oldEdgeToWatch[oldIndex]);
+        }
+
+        if (!twoDMesh_)
+        {
+            faceEdges_.append(oldFaceEdge[oldIndex]);
         }
 
         // Insert entities into mesh-reset lists
@@ -3756,8 +3807,8 @@ void Foam::dynamicTopoFvMesh::initEdgeLengths()
 void Foam::dynamicTopoFvMesh::initEdges()
 {
     // Build edgeFaces and faceEdges
-    faceEdges_.setSize(nFaces_, labelList::null());
-    edgeFaces_.setSize(nEdges_, labelList::null());
+    faceEdges_.setSize(nFaces_, labelList(0));
+    edgeFaces_.setSize(nEdges_, labelList(0));
 
     // Obtain connectivity from primitive mesh
     const labelListList& fEdges = faceEdges();    
