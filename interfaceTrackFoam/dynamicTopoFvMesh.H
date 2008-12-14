@@ -99,8 +99,8 @@ class dynamicTopoFvMesh
         HashList<label> neighbour_;
         HashList<cell>  cells_;
         HashList<edge>  edges_;
-        HashList<labelList> edgeFace_;
-        HashList<labelList> faceEdge_;
+        HashList<labelList> edgeFaces_;
+        HashList<labelList> faceEdges_;
         
         //- Size information
         labelList       oldPatchSizes_, patchSizes_;
@@ -349,6 +349,20 @@ class dynamicTopoFvMesh
 
         // Remove the specified edge from the mesh
         void removeEdge(const label index);
+
+        // Utility method to size-up the list to include an item
+        inline void sizeUpList
+        (
+            const label item,
+            labelList& list
+        );
+
+        // Utility method to size-down the list to remove an item
+        inline void sizeDownList
+        (
+            const label item,
+            labelList& list
+        );
         
         // Utility method to build a hull of faces connected to the edge
         // This will also determine whether the edge lies on a boundary
@@ -448,6 +462,7 @@ class dynamicTopoFvMesh
         void swap23
         (
             const label isolatedVertex,
+            const label edgeToCheckIndex,
             const edge& edgeToCheck,
             const label triangulationIndex,
             const labelListList& triangulations,
