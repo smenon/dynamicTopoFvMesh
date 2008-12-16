@@ -36,6 +36,7 @@ Author
 #include "fluidInterface.H"
 
 #include "wedgeFaPatch.H"
+#include "fixedGradientFvPatchFields.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -80,6 +81,7 @@ Foam::fluidInterface::fluidInterface
     facesDisplacementDirPtr_(NULL),
     surfaceTensionPtr_(NULL),
     aMeshPtr_(NULL),
+    UsPtr_(NULL),
     fixedFreeSurfacePatches_
     (
         lookup("fixedFreeSurfacePatches")
@@ -118,6 +120,7 @@ void Foam::fluidInterface::clearOut()
     deleteDemandDrivenData(facesDisplacementDirPtr_);
     deleteDemandDrivenData(aMeshPtr_);
     deleteDemandDrivenData(surfaceTensionPtr_);
+    deleteDemandDrivenData(UsPtr_);
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -222,13 +225,65 @@ void Foam::fluidInterface::makeSurfaceTension()
             << "Surface tension field already exists."
             << abort(FatalError);
     }   
-    
-    surfaceTensionPtr_ =
-        new scalarField
+
+    surfaceTensionPtr_ = new areaScalarField
+    (
+        IOobject
         (
-            mesh().boundaryMesh()[patchID()].size(),
-            surfaceTension_.value()
-        );    
+            "surfaceTension",
+            mesh().time().timeName(),
+            mesh(),
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        areaMesh(),
+        surfaceTension_
+    );
+}
+
+void Foam::fluidInterface::makeUs()
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (UsPtr_)
+    {
+        FatalErrorIn("Foam::fluidInterface::makeUs()")
+            << "Free-surface velocity field already exists"
+            << abort(FatalError);
+    }
+
+    wordList patchFieldTypes
+    (
+        areaMesh().boundary().size(),
+        calculatedFaPatchVectorField::typeName
+    );
+
+    forAll(areaMesh().boundary(), patchI)
+    {
+        if
+        (
+            areaMesh().boundary()[patchI].type()
+         == "wedge"
+        )
+        {
+            patchFieldTypes[patchI] = "wedge";
+        }
+    }
+
+    UsPtr_ = new areaVectorField
+    (
+        IOobject
+        (
+            "Us",
+            mesh().time().timeName(),
+            mesh(),
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        areaMesh(),
+        dimensioned<vector>("Us", dimVelocity, vector::zero),
+        patchFieldTypes
+    );
 }
 
 void Foam::fluidInterface::makeMotionPointsMask()
@@ -807,7 +862,7 @@ scalarField& Foam::fluidInterface::motionPointsMask()
     return *motionPointsMaskPtr_;
 }
 
-scalarField& Foam::fluidInterface::surfaceTension()
+areaScalarField& Foam::fluidInterface::surfaceTension()
 {
     if (!surfaceTensionPtr_)
     {
@@ -817,27 +872,46 @@ scalarField& Foam::fluidInterface::surfaceTension()
     return *surfaceTensionPtr_;
 }
 
+areaVectorField& Foam::fluidInterface::Us()
+{
+    if (!UsPtr_)
+    {
+        makeUs();
+    }
+
+    return *UsPtr_;
+}
+
 //- Adjust the surface-tension for temperature
 void Foam::fluidInterface::adjustSurfaceTension(const volScalarField& T)
 {
     const labelList& fCells = mesh().boundaryMesh()[patchID()].faceCells();
 
+    scalar adjustedValue = 0.0;
+
     // Set the surface tension field according to temperature
     forAll(fCells, faceI)
     {
-        surfaceTension()[faceI] = 
-            surfaceTension_.value()*
-            (
-                1.0
-              - (0.002*(T.internalField()[fCells[faceI]] - 291))
-            );
+        adjustedValue =
+            surfaceTension_.value()
+            - (0.00018*(T.internalField()[fCells[faceI]] - 298));
+
+        surfaceTension().internalField()[faceI] =
+            adjustedValue < 0 ? surfaceTension_.value() : adjustedValue;
     }
     
     Info << "Surface Tension: " 
-         << " Min: " << min(surfaceTension()) 
-         << " Max: " << max(surfaceTension()) 
-         << " Average: " << average(surfaceTension())
+         << " Min: " << min(surfaceTension().internalField())
+         << " Max: " << max(surfaceTension().internalField())
+         << " Average: " << average(surfaceTension().internalField())
          << endl;
+
+    if (min(surfaceTension().internalField()) < 0)
+    {
+        FatalErrorIn("fluidInterface::adjustSurfaceTension()")
+            << "Negative surface-tension!"
+            << abort(FatalError);
+    }
 }
 
 // Update the interface with the fluid velocity
@@ -906,6 +980,50 @@ void Foam::fluidInterface::restorePosition()
     areaMesh().movePoints(newMeshPoints);    
 }
 
+void Foam::fluidInterface::correctUsBoundaryConditions()
+{
+    forAll(Us().boundaryField(), patchI)
+    {
+        if
+        (
+            Us().boundaryField()[patchI].type()
+         == "calculated"
+        )
+        {
+            vectorField& pUs = Us().boundaryField()[patchI];
+
+            pUs = Us().boundaryField()[patchI].patchInternalField();
+
+            label ngbPolyPatchID =
+                areaMesh().boundary()[patchI].ngbPolyPatchIndex();
+
+            if(ngbPolyPatchID != -1)
+            {
+                if
+                (
+                    (
+                        U_.boundaryField()[ngbPolyPatchID].type()
+                     == "slip"
+                    )
+                 ||
+                    (
+                        U_.boundaryField()[ngbPolyPatchID].type()
+                     == "symmetryPlane"
+                    )
+                )
+                {
+                    vectorField N =
+                        areaMesh().boundary()[patchI].ngbPolyPatchFaceNormals();
+
+                    pUs -= N*(N&pUs);
+                }
+            }
+        }
+    }
+
+    Us().correctBoundaryConditions();
+}
+
 // Update boundary conditions on velocity and pressure
 void Foam::fluidInterface::updateBoundaryConditions()
 {
@@ -924,7 +1042,7 @@ void Foam::fluidInterface::updatePressure()
         << ", max = " << max(K) << ", average = " << average(K)
         << endl;
 
-    scalarField surfTensionK = surfaceTension()*K;
+    scalarField surfTensionK = surfaceTension().internalField()*K;
 
     dimensionSet dimSurfaceTension = (dimForce/dimLength);
     
@@ -967,7 +1085,91 @@ void Foam::fluidInterface::updatePressure()
 //- Update velocity boundary conditions
 void Foam::fluidInterface::updateVelocity()
 {
+    vectorField nA = areaMesh().faceAreaNormals().internalField();
+
+    scalarField DnA = mesh().boundary()[patchID()].deltaCoeffs();
+
+    vectorField UtPA = U_.boundaryField()[patchID()].patchInternalField();
+
+    // Obtain the tangential component of velocity
+    UtPA -= nA*(nA & UtPA);
+
+    // Tangential force
+    vectorField UtFs = muFluidA().value()*DnA*UtPA;
+
+    // Add effects of surface-tension gradient
+    UtFs += surfaceTensionGrad()().internalField();
+
+    // Normal
+    vectorField UnFs =
+        nA*phi_.boundaryField()[patchID()]/mesh().boundary()[patchID()].magSf();
+
+    Us().internalField() += UnFs - nA*(nA&Us().internalField());
+    correctUsBoundaryConditions();
+
+    UtFs -= muFluidA().value()*
+        (fac::grad(Us())&areaMesh().faceAreaNormals())().internalField();
+
+    UtFs /= muFluidA().value()*DnA + VSMALL;
+
+    // Update free-surface velocity
+    Us().internalField() = UtFs + UnFs;
+    correctUsBoundaryConditions();
+
+    // Update fixedGradient boundary condition on the free-surface
+    vectorField nGradU =
+        -nA*muFluidA().value()*fac::div(Us())().internalField();
+
+    nGradU += muFluidA().value()*
+        (UtFs - UtPA)*mesh().boundary()[patchID()].deltaCoeffs();
+
+    nGradU /= muFluidA().value() + VSMALL;
+
+    if
+    (
+        U_.boundaryField()[patchID()].type()
+     == "fixedGradient"
+    )
+    {
+        fixedGradientFvPatchField<vector>& aU =
+            refCast<fixedGradientFvPatchField<vector> >
+            (
+                U_.boundaryField()[patchID()]
+            );
+
+        aU.gradient() == nGradU;
+    }
+    else
+    {
+        FatalErrorIn("fluidInterface::updateVelocity()")
+            << "Boundary condition on " << U_.name()
+            << " is " << U_.boundaryField()[patchID()].type()
+            << ", instead of "
+            << fixedGradientFvPatchField<vector>::typeName
+            << abort(FatalError);
+    }
     
+}
+
+tmp<areaVectorField> Foam::fluidInterface::surfaceTensionGrad()
+{
+    tmp<areaVectorField> tgrad
+    (
+        new areaVectorField
+        (
+            IOobject
+            (
+                "surfaceTensionGrad",
+                mesh().time().timeName(),
+                mesh(),
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            -fac::grad(surfaceTension())()
+        )
+    );
+
+    return tgrad;
 }
 
 // Update on topology change

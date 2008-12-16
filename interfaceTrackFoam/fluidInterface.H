@@ -109,10 +109,13 @@ class fluidInterface
         mutable vectorField* facesDisplacementDirPtr_; 
         
         //- Surface tension field
-        mutable scalarField* surfaceTensionPtr_;
+        mutable areaScalarField* surfaceTensionPtr_;
         
         //- Finite area mesh
-        mutable faMesh* aMeshPtr_;    
+        mutable faMesh* aMeshPtr_;
+
+        //- Free-surface velocity field
+        mutable areaVectorField* UsPtr_;
         
         //- Free surface patches which do not move
         wordList fixedFreeSurfacePatches_;        
@@ -127,6 +130,7 @@ class fluidInterface
             void makeDirections();            
             void makeFaMesh();
             void makeSurfaceTension();
+            void makeUs();
             
         //- Clear all demand-driven data
         void clearOut();   
@@ -136,6 +140,9 @@ class fluidInterface
         
         //- Update velocity boundary conditions
         void updateVelocity();
+
+        //- Compute and return the gradient of surface-tension
+        tmp<areaVectorField> surfaceTensionGrad();
         
         //- Initialize control points 
         void initializeControlPointsPosition();
@@ -151,6 +158,12 @@ class fluidInterface
         
         //- Return reference to the point-mask
         scalarField& motionPointsMask();
+
+        //- Return reference to the free-surface velocity field
+        areaVectorField& Us();
+
+        //- Correct boundary conditions for Us
+        void correctUsBoundaryConditions();
         
         //- Move control points by deltaH and calculate interface 
         //  points displacement for the new control points position
@@ -194,7 +207,7 @@ public:
 
         // Return the interface patchID
         const label patchID();
-        
+
         //- Viscosity of fluid A
         const dimensionedScalar& muFluidA() const
         {
@@ -220,7 +233,7 @@ public:
         }     
         
         //- Return the surface tension field
-        scalarField& surfaceTension();
+        areaScalarField& surfaceTension();
         
         //- Adjust the surface-tension for temperature
         void adjustSurfaceTension(const volScalarField& T);
