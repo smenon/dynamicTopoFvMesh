@@ -129,9 +129,9 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     structPtr_ = new topoMeshStruct[nThreads];
     for (label i=0; i<nThreads; i++)
     {
-        structPtr_[i].mesh = this;
-        structPtr_[i].nThreads = nThreads;
-        structPtr_[i].threadID = i;
+        structPtr_[i].mesh_ = this;
+        structPtr_[i].nThreads_ = nThreads;
+        structPtr_[i].threadID_ = i;
     }
 
     // For tetrahedral meshes...
@@ -266,6 +266,91 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         oldPatchSizes_[i]  = patchSizes_[i]  = boundary[i].size();
         oldPatchStarts_[i] = patchStarts_[i] = boundary[i].start();
         oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
+    }
+}
+
+// Default topoMeshStruct constructor
+Foam::dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct()
+{
+    mesh_ = 0;
+    nThreads_ = threadID_ = -1;
+    pointStart_ = edgeStart_ = faceStart_ = cellStart_ = 0;
+    pointSize_  = edgeSize_ = faceSize_  = cellSize_  = 0;
+}
+
+// Point start iterator
+HashList<point>::iterator Foam::dynamicTopoFvMesh::topoMeshStruct::pointStart()
+{
+    return mesh_->meshPoints_.getIterator(pointStart_);
+}
+
+// Point end iterator
+HashList<point>::iterator Foam::dynamicTopoFvMesh::topoMeshStruct::pointEnd()
+{
+    if (threadID_ != nThreads_ - 1)
+    {
+        return mesh_->meshPoints_.getIterator(pointStart_+pointSize_);
+    }
+    else
+    {
+        return HashList<point>::iterator();
+    }
+}
+
+// Edge start iterator
+HashList<edge>::iterator Foam::dynamicTopoFvMesh::topoMeshStruct::edgeStart()
+{
+    return mesh_->edges_.getIterator(edgeStart_);
+}
+
+// Edge end iterator
+HashList<edge>::iterator Foam::dynamicTopoFvMesh::topoMeshStruct::edgeEnd()
+{
+    if (threadID_ != nThreads_ - 1)
+    {
+        return mesh_->edges_.getIterator(edgeStart_+edgeSize_);
+    }
+    else
+    {
+        return HashList<edge>::iterator();
+    }
+}
+
+// Face start iterator
+HashList<face>::iterator Foam::dynamicTopoFvMesh::topoMeshStruct::faceStart()
+{
+    return mesh_->faces_.getIterator(faceStart_);
+}
+
+// Face end iterator
+HashList<face>::iterator Foam::dynamicTopoFvMesh::topoMeshStruct::faceEnd()
+{
+    if (threadID_ != nThreads_ - 1)
+    {
+        return mesh_->faces_.getIterator(faceStart_+faceSize_);
+    }
+    else
+    {
+        return HashList<face>::iterator();
+    }
+}
+
+// Cell start iterator
+HashList<cell>::iterator Foam::dynamicTopoFvMesh::topoMeshStruct::cellStart()
+{
+    return mesh_->cells_.getIterator(cellStart_);
+}
+
+// Cell end iterator
+HashList<cell>::iterator Foam::dynamicTopoFvMesh::topoMeshStruct::cellEnd()
+{
+    if (threadID_ != nThreads_ - 1)
+    {
+        return mesh_->cells_.getIterator(cellStart_+cellSize_);
+    }
+    else
+    {
+        return HashList<cell>::iterator();
     }
 }
 
@@ -408,6 +493,92 @@ Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::lengthScale()
     }    
     
     return tlengthScale;
+}
+
+// Return mesh cell-quality values
+// Valid for 3D tetrahedral meshes only...
+Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::meshQuality()
+{
+    tmp<volScalarField> tQuality
+    (
+        new volScalarField
+        (
+            IOobject
+            (
+                "cellQuality",
+                time().timeName(),
+                *this,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            *this,
+            dimensionedScalar("Q", dimless, 0),
+            zeroGradientFvPatchScalarField::typeName
+        )
+    );
+
+    // Valid for 3D tetrahedral meshes only...
+    if (!twoDMesh_)
+    {
+        scalarField& iF = tQuality().internalField();
+
+        FixedList<label,4> cellPoints(-1);
+
+        const pointField& meshPoints = points();
+        const faceList& meshFaces = faces();
+        const cellList& meshCells = cells();
+
+        const labelList& owner = allOwner();
+
+        // Loop through all cells in the mesh and compute cell quality
+        forAll(meshCells, cellI)
+        {
+            const cell& curCell = meshCells[cellI];
+            const face& currFace = meshFaces[curCell[0]];
+            const face& nextFace = meshFaces[curCell[1]];
+
+            // Check if the face-neighbour is the current cell
+            if (owner[curCell[0]] == cellI)
+            {
+                face rFace = currFace.reverseFace();
+                cellPoints[0] = rFace[0];
+                cellPoints[1] = rFace[1];
+                cellPoints[2] = rFace[2];
+            }
+            else
+            {
+                cellPoints[0] = currFace[0];
+                cellPoints[1] = currFace[1];
+                cellPoints[2] = currFace[2];
+            }
+
+            // Get the fourth point
+            forAll(nextFace, pointI)
+            {
+                if
+                (
+                    nextFace[pointI] != currFace[0]
+                 && nextFace[pointI] != currFace[1]
+                 && nextFace[pointI] != currFace[2]
+                )
+                {
+                    cellPoints[3] = nextFace[pointI];
+                    break;
+                }
+            }
+
+            // Compute cell-quality and write-out
+            iF[cellI] = (*tetMetric_)
+            (
+                meshPoints[cellPoints[0]],
+                meshPoints[cellPoints[1]],
+                meshPoints[cellPoints[2]],
+                meshPoints[cellPoints[3]]
+            );
+        }
+    }
+
+    return tQuality;
 }
 
 // Find the circumcenter, given three points
@@ -767,13 +938,14 @@ void Foam::dynamicTopoFvMesh::removeFace
     const label index
 )
 {
-
+#   ifdef FULLDEBUG
     if (debug)
     {
         Info << "Removed face: " 
              << index << ": "
              << faces_[index] << endl;
     }
+#   endif
 
     faces_.remove(index);
     owner_.remove(index);
@@ -839,12 +1011,14 @@ void Foam::dynamicTopoFvMesh::removeEdge
     const label index
 )
 {
+#   ifdef FULLDEBUG
     if (debug)
     {
         Info << "Removed edge: "
              << index << ": "
              << edges_[index] << endl;
     }
+#   endif
 
     edges_.remove(index);
     edgeFaces_.remove(index);
@@ -3194,7 +3368,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
     // Recast the argument 
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument); 
-    dynamicTopoFvMesh *mesh = thread->mesh;    
+    dynamicTopoFvMesh *mesh = thread->mesh_;
     
     bool found, foundinner;
     face f;
@@ -3207,13 +3381,8 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(void *argument)
     FixedList<edge,2>  commonEdges;
 
     // Loop through faces assigned to this thread
-    HashList<face>::iterator fBegin 
-        = mesh->meshFaces().getIterator(thread->faceStart);
-    HashList<face>::iterator fEnd;
-    if (thread->threadID != thread->nThreads-1)
-    {
-        fEnd = mesh->meshFaces().getIterator(thread->faceStart+thread->faceSize);
-    }
+    HashList<face>::iterator fBegin = thread->faceStart();
+    HashList<face>::iterator fEnd   = thread->faceEnd();
     
     for(HashList<face>::iterator fIter = fBegin; fIter != fEnd; fIter++) 
     {
@@ -3838,7 +4007,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
 {
     // Recast the argument 
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
-    dynamicTopoFvMesh *mesh = thread->mesh;
+    dynamicTopoFvMesh *mesh = thread->mesh_;
     
     // Loop through all quad-faces and bisect/collapse 
     // edges (quad-faces) by the criterion:
@@ -3846,13 +4015,9 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
     // Collapse when boundary edge-length < ratioMin_*originalLength
     
     // Loop through faces assigned to this thread
-    HashList<face>::iterator fEnd;
-    if (thread->threadID != thread->nThreads-1)
-    {
-        fEnd = mesh->meshFaces()(thread->faceStart+thread->faceSize);    
-    }
+    HashList<face>::iterator fIter = thread->faceStart();
+    HashList<face>::iterator fEnd = thread->faceEnd();
 
-    HashList<face>::iterator fIter = mesh->meshFaces()(thread->faceStart);
     while(fIter != fEnd)
     {
         // Retrieve the index for this iterator
@@ -3981,14 +4146,11 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
 {
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
-    dynamicTopoFvMesh *mesh = thread->mesh;
+    dynamicTopoFvMesh *mesh = thread->mesh_;
 
     // Loop through edges assigned to this thread
-    HashList<edge>::iterator eEnd;
-    if (thread->threadID != thread->nThreads-1)
-    {
-        eEnd = mesh->meshEdges()(thread->edgeStart+thread->edgeSize);
-    }
+    HashList<edge>::iterator eIter = thread->edgeStart();
+    HashList<edge>::iterator eEnd = thread->edgeEnd();
 
     // Obtain maxTetsPerEdge
     label mMax = mesh->maxTetsPerEdge();
@@ -4006,7 +4168,6 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
     // Allocate dynamic programming tables
     mesh->initTables(mMax, Q, K, triangulations);
 
-    HashList<edge>::iterator eIter = mesh->meshEdges()(thread->edgeStart);
     while(eIter != eEnd)
     {
         // Retrieve the index for this iterator
@@ -4064,6 +4225,7 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
 #           ifdef FULLDEBUG
             if (debug)
             {
+                Info << endl;
                 Info << "Old Hull Quality: " << minQuality << endl;
                 Info << "New Hull Quality: " << Q[0][m-1] << endl;
             }
@@ -4110,7 +4272,74 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
     void *argument
 )
 {
-    
+    // Recast the argument
+    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+    dynamicTopoFvMesh *mesh = thread->mesh_;
+
+    // Loop through all edges and bisect/collapse by the criterion:
+    // Bisect when edge-length > ratioMax_*originalLength
+    // Collapse when edge-length < ratioMin_*originalLength
+
+    // Loop through edges assigned to this thread
+    HashList<edge>::iterator eIter = thread->edgeStart();
+    HashList<edge>::iterator eEnd = thread->edgeEnd();
+
+    while(eIter != eEnd)
+    {
+        // Retrieve the index for this iterator
+        label eindex = eIter.index();
+
+        // Reference to this edge...
+        edge& thisEdge = eIter();
+
+        // Measure the edge-length
+        point& a = mesh->meshPoints()[thisEdge[0]];
+        point& b = mesh->meshPoints()[thisEdge[1]];
+        scalar length = mag(b-a);
+
+        // Determine the length-scale at this point in the mesh
+        scalar scale = 0;
+
+        //== Edge Bisection ==//
+        if(length > mesh->ratioMax()*scale)
+        {
+            // Set the flag
+            mesh->topoChangeFlag() = true;
+
+            // Bisect this edge
+
+
+            // Move on to the next edge
+            eIter++;
+        }
+        else
+        //== Edge Collapse ==//
+        if(length < mesh->ratioMin()*scale)
+        {
+            // Collapse this edge
+            bool success = false;
+
+            // Increment the iterator to move on to the next edge...
+            eIter++;
+
+            // The edge can safely be deleted, since the iterator points
+            // to the next valid edge on the list.
+            if (success)
+            {
+                mesh->removeEdge(eindex);
+
+                // Set the flag
+                mesh->topoChangeFlag() = true;
+            }
+        }
+        else
+        {
+            // Move on to the next edge. Increments are done within
+            // the loop, since the edge might actually be deleted
+            // (due to a collapse) within the loop-body.
+            eIter++;
+        }
+    }
 }
 
 // Method for the bisection of a quad-face in 2D
@@ -5601,10 +5830,10 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
     label cellsPerBlock  = (nCells_/numThreads)+1;
 
     // Information for the master thread
-    structPtr_[0].pointSize  = pointsPerBlock;
-    structPtr_[0].edgeSize   = edgesPerBlock;
-    structPtr_[0].faceSize   = facesPerBlock;
-    structPtr_[0].cellSize   = cellsPerBlock;
+    structPtr_[0].pointSize_  = pointsPerBlock;
+    structPtr_[0].edgeSize_   = edgesPerBlock;
+    structPtr_[0].faceSize_   = facesPerBlock;
+    structPtr_[0].cellSize_   = cellsPerBlock;
 
     // Information for all subsequent threads
     label pointsLeft = nPoints_, edgesLeft = nEdges_;
@@ -5615,21 +5844,21 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
         edgesLeft -= edgesPerBlock;
         facesLeft -= facesPerBlock;
         cellsLeft -= cellsPerBlock;
-        structPtr_[i].pointStart = 
-            structPtr_[i-1].pointStart + structPtr_[i-1].pointSize;
-        structPtr_[i].edgeStart = 
-            structPtr_[i-1].edgeStart + structPtr_[i-1].edgeSize;        
-        structPtr_[i].faceStart = 
-            structPtr_[i-1].faceStart + structPtr_[i-1].faceSize;
-        structPtr_[i].cellStart =
-            structPtr_[i-1].cellStart + structPtr_[i-1].cellSize;
-        structPtr_[i].pointSize = 
+        structPtr_[i].pointStart_ =
+            structPtr_[i-1].pointStart_ + structPtr_[i-1].pointSize_;
+        structPtr_[i].edgeStart_ =
+            structPtr_[i-1].edgeStart_ + structPtr_[i-1].edgeSize_;
+        structPtr_[i].faceStart_ =
+            structPtr_[i-1].faceStart_ + structPtr_[i-1].faceSize_;
+        structPtr_[i].cellStart_ =
+            structPtr_[i-1].cellStart_ + structPtr_[i-1].cellSize_;
+        structPtr_[i].pointSize_ =
             (pointsLeft < pointsPerBlock) ? pointsLeft : pointsPerBlock;
-        structPtr_[i].edgeSize = 
+        structPtr_[i].edgeSize_ =
             (edgesLeft < edgesPerBlock) ? edgesLeft : edgesPerBlock;        
-        structPtr_[i].faceSize =
+        structPtr_[i].faceSize_ =
             (facesLeft < facesPerBlock) ? facesLeft : facesPerBlock;
-        structPtr_[i].cellSize =
+        structPtr_[i].cellSize_ =
             (cellsLeft < cellsPerBlock) ? cellsLeft : cellsPerBlock;
     }    
 }
@@ -5706,11 +5935,14 @@ void Foam::dynamicTopoFvMesh::threadedTopoModifier2D()
         // Submit jobs to the work queue
         for (label i = 0; i < threader_().getNumThreads(); i++)
         {
+            /*
             threader_().addToWorkQueue
                         (
                             &edgeBisectCollapse2D, 
                             reinterpret_cast<void *>(&(structPtr_[i]))
                         );
+            */
+            edgeBisectCollapse2D(reinterpret_cast<void *>(&(structPtr_[i])));
         }
     }
 
@@ -5719,17 +5951,20 @@ void Foam::dynamicTopoFvMesh::threadedTopoModifier2D()
     // Submit jobs to the work queue
     for (label i = 0; i < threader_().getNumThreads(); i++)
     {
+        /*
         threader_().addToWorkQueue
                     (
                         &swap2DEdges,
                         reinterpret_cast<void *>(&(structPtr_[i]))
-                    );        
+                    );
+        */
+        swap2DEdges(reinterpret_cast<void *>(&(structPtr_[i])));
     }
 
     if (debug) Info << nl << "2D Edge Swapping complete." << endl; 
     
     // Wait for all work to complete
-    threader_().waitForCompletion();
+    //threader_().waitForCompletion();
 }
 
 // MultiThreaded topology modifier [3D]
@@ -5743,11 +5978,14 @@ void Foam::dynamicTopoFvMesh::threadedTopoModifier3D()
         // Submit jobs to the work queue
         for (label i = 0; i < threader_().getNumThreads(); i++)
         {
+            /*
             threader_().addToWorkQueue
                         (
                             &edgeBisectCollapse3D, 
                             reinterpret_cast<void *>(&(structPtr_[i]))
                         );
+            */
+            edgeBisectCollapse3D(reinterpret_cast<void *>(&(structPtr_[i])));
         }
     }
     
@@ -5756,17 +5994,20 @@ void Foam::dynamicTopoFvMesh::threadedTopoModifier3D()
     // Submit jobs to the work queue
     for (label i = 0; i < threader_().getNumThreads(); i++)
     {
+        /*
         threader_().addToWorkQueue
                     (
                         &swap3DEdges,
                         reinterpret_cast<void *>(&(structPtr_[i]))
-                    );        
+                    );
+        */
+        swap3DEdges(reinterpret_cast<void *>(&(structPtr_[i])));
     }    
 
     if (debug) Info << nl << "3D Edge Swapping complete." << endl;     
     
     // Wait for all work to complete
-    threader_().waitForCompletion();    
+    //threader_().waitForCompletion();
 }
 
 // Update the mesh for topology changes

@@ -152,6 +152,12 @@ int main(int argc, char *argv[])
         mesh.updateTopology();
         
         runTime.write();
+
+        if (runTime.outputTime())
+        {
+            // Write out mesh quality
+            mesh.meshQuality()().write();
+        }
     }
 
     Info << "End\n" << endl;

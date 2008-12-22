@@ -158,23 +158,36 @@ class dynamicTopoFvMesh
         struct topoMeshStruct
         {
             // Pointer to this class
-            dynamicTopoFvMesh *mesh;
+            dynamicTopoFvMesh *mesh_;
             
             // Total number of threads and thread ID
-            label nThreads, threadID;
+            label nThreads_, threadID_;
             
             // Entity start positions & sizes
-            label pointStart, edgeStart, faceStart, cellStart;
-            label pointSize, edgeSize, faceSize, cellSize;
+            label pointStart_, edgeStart_, faceStart_, cellStart_;
+            label pointSize_, edgeSize_, faceSize_, cellSize_;
             
             // Default constructor
-            topoMeshStruct()
-            {
-                mesh = 0;
-                nThreads = threadID = -1;
-                pointStart = edgeStart = faceStart = cellStart = 0;
-                pointSize  = edgeSize = faceSize  = cellSize  = 0;
-            }
+            topoMeshStruct();
+
+            // Return iterators for each entity-type
+
+                //- Point
+                HashList<point>::iterator pointStart();
+                HashList<point>::iterator pointEnd();
+
+                //- Edge
+                HashList<edge>::iterator edgeStart();
+                HashList<edge>::iterator edgeEnd();
+
+                //- Face
+                HashList<face>::iterator faceStart();
+                HashList<face>::iterator faceEnd();
+
+                //- Cell
+                HashList<cell>::iterator cellStart();
+                HashList<cell>::iterator cellEnd();
+                
         } *structPtr_;
                 
     // Private Member Functions
@@ -587,6 +600,9 @@ public:
         
         // Return mesh length-scale values
         tmp<volScalarField> lengthScale();
+
+        // Return mesh cell-quality values
+        tmp<volScalarField> meshQuality();
 };
 
 
