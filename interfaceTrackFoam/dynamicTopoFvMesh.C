@@ -2673,73 +2673,135 @@ void Foam::dynamicTopoFvMesh::reOrderEdges()
 {
     // *** Edge renumbering *** //
     // If edges were deleted during topology change, the numerical order ceases
-    // to be continuous. Loop through all edges and renumber sequentially.
+    // to be continuous. Edges are added to respective internal/boundary patches
 
-    label edgeRenum = 0;
+    label edgeInOrder = 0, allEdges = edges_.lastIndex() + 1;
+    edgeList oldEdges(allEdges);
+    labelListList oldEdgeFaces(allEdges);
 
     addedEdgeRenumbering_.clear();
+    Map<label> addedEdgeReverseRenumbering;
 
+    // Make a copy of the old edge-based HashLists, and clear them
     HashList<edge>::iterator eIter = edges_.begin();
     HashList<labelList>::iterator efIter = edgeFaces_.begin();
 
-    while(eIter != edges_.end())
+    while (eIter != edges_.end())
     {
-        // Obtain the index for this edge
-        label eIndex = eIter.index();
+        oldEdges[eIter.index()] = eIter();
+        oldEdgeFaces[efIter.index()] = efIter();
+        eIter++; efIter++;
+    }
 
-        // Renumber the edge index
-        edges_.reNumber(edgeRenum, eIter);
-        edgeFaces_.reNumber(edgeRenum, efIter);
+    edges_.clear(); edgeFaces_.clear();
 
-        // Added edges are always numbered after nOldEdges_
-        // (by virtue of the HashList append method)
-        if (eIndex < nOldEdges_)
-        {
-            edgeMap_[edgeRenum]     = eIndex;
-            reverseEdgeMap_[eIndex] = edgeRenum;
-        }
-        else
-        {
-            addedEdgeRenumbering_.insert(eIndex,edgeRenum);
-        }
+    // Keep track of inserted boundary edge indices
+    labelList boundaryPatchIndices(edgePatchStarts_);
 
-        // Renumber edges
-        if (eIter()[0] < nOldPoints_)
+    // Loop through all edges and add internal ones first
+    forAll(oldEdges, edgeI)
+    {
+        // Ensure that we're adding valid edges
+        if (oldEdgeFaces[edgeI].size() > 0)
         {
-            eIter()[0] = reversePointMap_[eIter()[0]];
-        }
-        else
-        {
-            eIter()[0] = addedPointRenumbering_[eIter()[0]];
-        }
+            // Determine which patch this edge belongs to
+            label patch = whichEdgePatch(edgeI);
 
-        if (eIter()[1] < nOldPoints_)
-        {
-            eIter()[1] = reversePointMap_[eIter()[1]];
-        }
-        else
-        {
-            eIter()[1] = addedPointRenumbering_[eIter()[1]];
-        }
+            // Obtain references
+            edge& thisEdge = oldEdges[edgeI];
+            labelList& thisEF = oldEdgeFaces[edgeI];
 
-        // Renumber edgeFaces
-        forAll(efIter(),faceI)
-        {
-            if (efIter()[faceI] < nOldFaces_)
+            // Renumber edges
+            if (thisEdge[0] < nOldPoints_)
             {
-                efIter()[faceI] = reverseFaceMap_[efIter()[faceI]];
+                thisEdge[0] = reversePointMap_[thisEdge[0]];
             }
             else
             {
-                efIter()[faceI] = addedFaceRenumbering_[efIter()[faceI]];
+                thisEdge[0] = addedPointRenumbering_[thisEdge[0]];
+            }
+
+            if (thisEdge[1] < nOldPoints_)
+            {
+                thisEdge[1] = reversePointMap_[thisEdge[1]];
+            }
+            else
+            {
+                thisEdge[1] = addedPointRenumbering_[thisEdge[1]];
+            }
+
+            // Renumber edgeFaces
+            forAll(thisEF,faceI)
+            {
+                if (thisEF[faceI] < nOldFaces_)
+                {
+                    thisEF[faceI] = reverseFaceMap_[thisEF[faceI]];
+                }
+                else
+                {
+                    thisEF[faceI] = addedFaceRenumbering_[thisEF[faceI]];
+                }
+            }
+
+            // Update maps for boundary edges. Edge insertion for
+            // boundaries will be done after internal edges.
+            if (patch >= 0)
+            {
+                label bEdgeIndex = boundaryPatchIndices[patch]++;
+
+                // Update the maps
+                if (edgeI < nOldEdges_)
+                {
+                    edgeMap_[bEdgeIndex] = edgeI;
+                    reverseEdgeMap_[edgeI] = bEdgeIndex;
+                }
+                else
+                {
+                    addedEdgeRenumbering_.insert(edgeI,bEdgeIndex);
+                    addedEdgeReverseRenumbering.insert(bEdgeIndex,edgeI);
+                }
+            }
+            else
+            {
+                // Renumber internal edges and add normally.
+                if (edgeI < nOldEdges_)
+                {
+                    edgeMap_[edgeInOrder] = edgeI;
+                    reverseEdgeMap_[edgeI] = edgeInOrder;
+                }
+                else
+                {
+                    addedEdgeRenumbering_.insert(edgeI,edgeInOrder);
+                }
+
+                // Insert entities into HashLists...
+                edges_.append(thisEdge);
+                edgeFaces_.append(thisEF);
+
+                edgeInOrder++;
             }
         }
+    }
 
-        // Update the counter
-        edgeRenum++;
+    // All internal edges have been inserted. Now insert boundary edges.
+    label oldIndex;
+    for(label i=nInternalEdges_; i<nEdges_; i++)
+    {
+        if (edgeMap_[i] == -1)
+        {
+            // This boundary edge was added during the topology change
+            oldIndex = addedEdgeReverseRenumbering[i];
+        }
+        else
+        {
+            oldIndex = edgeMap_[i];
+        }
 
-        // Update the iterators
-        eIter++; efIter++;
+        // Insert entities into HashLists...
+        edges_.append(oldEdges[oldIndex]);
+        edgeFaces_.append(oldEdgeFaces[oldIndex]);
+
+        edgeInOrder++;
     }
 
     // Renumber faceEdges
@@ -2778,7 +2840,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
     faceList oldFaces(allFaces);
     labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces,0);
     edgeList oldEdgeToWatch(0);
-    labelListList oldFaceEdge(0);
+    labelListList oldFaceEdges(0);
     
     addedFaceRenumbering_.clear();
     Map<label> addedFaceReverseRenumbering;
@@ -2812,11 +2874,11 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
 
     if (!twoDMesh_)
     {
-        oldFaceEdge.setSize(allFaces);
+        oldFaceEdges.setSize(allFaces);
 
         forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
         {
-            oldFaceEdge[feIter.index()] = feIter();
+            oldFaceEdges[feIter.index()] = feIter();
         }
 
         faceEdges_.clear();
@@ -3027,7 +3089,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
 
                 if (!twoDMesh_)
                 {
-                    faceEdges_.append(oldFaceEdge[curFaces[nextNei]]);
+                    faceEdges_.append(oldFaceEdges[curFaces[nextNei]]);
                 }
 
                 // Insert entities into mesh-reset lists
@@ -3083,7 +3145,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
 
         if (!twoDMesh_)
         {
-            faceEdges_.append(oldFaceEdge[oldIndex]);
+            faceEdges_.append(oldFaceEdges[oldIndex]);
         }
 
         // Insert entities into mesh-reset lists
