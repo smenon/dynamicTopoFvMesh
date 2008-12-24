@@ -1,3 +1,3 @@
-tetMetrics.c
+springMotionSolver.C
 
-LIB = $(FOAM_USER_LIBBIN)/libtetMetrics
+LIB = $(FOAM_USER_LIBBIN)/libspringMotionSolver

@@ -134,6 +134,7 @@ class dynamicTopoFvMesh
         Map<label>      addedFaceRenumbering_;
         Map<label>      addedCellRenumbering_;
         Map<label>      boundaryPatches_;
+        Map<label>      addedEdgePatches_;
         Map<label>      cellParents_;
         
         // Cell-centre field
@@ -268,6 +269,9 @@ class dynamicTopoFvMesh
         
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label& index) const;
+
+        // Method to determine the boundary patch index for a given edge
+        inline label whichEdgePatch(const label& index) const;
         
         // Method for the bisection of a quad-face in 2D
         void bisectQuadFace
@@ -362,6 +366,7 @@ class dynamicTopoFvMesh
         // Insert the specified edge to the mesh
         label insertEdge
         (
+            const label patch,
             const edge& newEdge,
             const labelList& edgeFaces
         );
@@ -551,13 +556,13 @@ class dynamicTopoFvMesh
         
         HashList<scalar>& meshLengthScale() { return lengthScale_; }
         HashList<edge>& edgeToWatch() { return edgeToWatch_; }
-        const scalar ratioMin() { return ratioMin_; }
-        const scalar ratioMax() { return ratioMax_; }
-        const scalar growthFactor() { return growthFactor_; }
-        const label bisectInteriorFace() { return bisectInteriorFace_; }
-        const label nOldCells() { return nOldCells_; }
-        const label maxTetsPerEdge() { return maxTetsPerEdge_; }
-        const bool allowTableResize() { return allowTableResize_; }
+        scalar ratioMin() { return ratioMin_; }
+        scalar ratioMax() { return ratioMax_; }
+        scalar growthFactor() { return growthFactor_; }
+        label bisectInteriorFace() { return bisectInteriorFace_; }
+        label nOldCells() { return nOldCells_; }
+        label maxTetsPerEdge() { return maxTetsPerEdge_; }
+        bool allowTableResize() { return allowTableResize_; }
         
         Map<objectMap>& cellsFromCells() { return cellsFromCells_; }
         Map<label>& cellParents() { return cellParents_; }

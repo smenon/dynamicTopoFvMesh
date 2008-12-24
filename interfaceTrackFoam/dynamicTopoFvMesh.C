@@ -723,6 +723,46 @@ inline Foam::label Foam::dynamicTopoFvMesh::whichPatch
     return -2;
 }
 
+// Method to determine the old boundary patch index for a given edge
+inline Foam::label Foam::dynamicTopoFvMesh::whichEdgePatch
+(
+    const label& index
+) const
+{
+    if (index < nOldInternalEdges_) return -1;
+
+    for(label i=0; i<numPatches_; i++)
+    {
+        if
+        (
+            index >= oldEdgePatchStarts_[i]
+         && index < oldEdgePatchStarts_[i] + oldEdgePatchSizes_[i]
+        )
+        {
+            return i;
+        }
+    }
+
+    // If not in any of the above, it's possible that the edge was added
+    // at the end of the list. Check addedEdgePatches_ for the patch info
+    if (addedEdgePatches_.found(index))
+    {
+        return addedEdgePatches_[index];
+    }
+    else
+    {
+        FatalErrorIn
+        (
+            "label dynamicTopoFvMesh::whichEdgePatch(const label& index) const"
+        )
+        << "Cannot find patch information for edge index " << index
+        << " It appears that edge ordering is inconsistent with patch information."
+        << abort(FatalError);
+    }
+
+    return -2;
+}
+
 // Utility method to find the interior/boundary faces
 // for an input quad-face and adjacent triangle-prism cell.
 inline void Foam::dynamicTopoFvMesh::findPrismFaces
@@ -1019,12 +1059,36 @@ void Foam::dynamicTopoFvMesh::removeFace
 // Insert the specified edge to the mesh
 label Foam::dynamicTopoFvMesh::insertEdge
 (
+    const label patch,
     const edge& newEdge,
     const labelList& edgeFaces
 )
 {
     label newEdgeIndex = edges_.append(newEdge);
     edgeFaces_.append(edgeFaces);
+
+    // Keep track of added edges in a separate hash-table
+    // This information will be required at the reordering stage
+    addedEdgePatches_.insert(newEdgeIndex,patch);
+
+    if (patch >= 0)
+    {
+        // Modify patch information for this boundary edge
+        edgePatchSizes_[patch]++;
+        for(label i=patch+1; i<numPatches_; i++)
+        {
+            edgePatchStarts_[i]++;
+        }
+    }
+    else
+    {
+        // Increment the number of internal edges, and subsequent patch-starts
+        nInternalEdges_++;
+        for(label i=0; i<numPatches_; i++)
+        {
+            edgePatchStarts_[i]++;
+        }
+    }
 
     // Increment the total edge count
     nEdges_++;
@@ -1049,6 +1113,28 @@ void Foam::dynamicTopoFvMesh::removeEdge
 
     edges_.remove(index);
     edgeFaces_.remove(index);
+
+    // Identify the patch for this edge
+    label patch = whichEdgePatch(index);
+
+    if (patch >= 0)
+    {
+        // Modify patch information for this boundary edge
+        edgePatchSizes_[patch]--;
+        for(label i=patch+1; i<numPatches_; i++)
+        {
+            edgePatchStarts_[i]--;
+        }
+    }
+    else
+    {
+        // Decrement the internal edge count, and subsequent patch-starts
+        nInternalEdges_--;
+        for(label i=0; i<numPatches_; i++)
+        {
+            edgePatchStarts_[i]--;
+        }
+    }
 
     // Update reverse edge-map, but only if this is an edge that existed
     // at time [n]. Added edges which are deleted during the topology change
@@ -2004,9 +2090,10 @@ void Foam::dynamicTopoFvMesh::swap23
     newEdgeFaces[1] = newFaceIndex[1];
     newEdgeFaces[2] = newFaceIndex[2];
 
-    // Add a new edge to the mesh
+    // Add a new internal edge to the mesh
     label newEdgeIndex = insertEdge
                          (
+                             -1,
                              edge
                              (
                                  otherVertices[0],
@@ -6375,6 +6462,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseFaceMap_.clear();
         reverseCellMap_.clear();
         boundaryPatches_.clear();
+        addedEdgePatches_.clear();
         cellsFromCells_.clear();
         cellParents_.clear();
 
