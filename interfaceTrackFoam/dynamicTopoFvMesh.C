@@ -839,7 +839,7 @@ bool Foam::dynamicTopoFvMesh::findCommonEdge
 
 // Utility method to find the isolated point on a triangular face
 // that doesn't lie on the specified edge. Also returns the point next to it.
-void Foam::dynamicTopoFvMesh::findIsolatedPoint
+inline void Foam::dynamicTopoFvMesh::findIsolatedPoint
 (
     const face& f,
     const edge& e,
@@ -1425,7 +1425,8 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     DynamicList<label>& hullCells,
     DynamicList<label>& hullFaces,
     DynamicList<label>& hullVertices,
-    scalar& minQuality
+    scalar& minQuality,
+    bool requiresQuality = true
 )
 {
     bool found, isBoundary = false;
@@ -1501,30 +1502,34 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
                 {
                     face& faceToCheck = faces_[cellToCheck[faceI]];
 
-                    // Check face-orientation and compute cell-quality
-                    if (owner_[cellToCheck[faceI]] == cellIndex)
+                    if (requiresQuality)
                     {
-                        cQuality = (*tetMetric_)
-                        (
-                            meshPoints_[faceToCheck[2]],
-                            meshPoints_[faceToCheck[1]],
-                            meshPoints_[faceToCheck[0]],
-                            meshPoints_[otherPoint]
-                        );
-                    }
-                    else
-                    {
-                        cQuality = (*tetMetric_)
-                        (
-                            meshPoints_[faceToCheck[0]],
-                            meshPoints_[faceToCheck[1]],
-                            meshPoints_[faceToCheck[2]],
-                            meshPoints_[otherPoint]
-                        );
-                    }
+                        // Check face-orientation and compute cell-quality
+                        if (owner_[cellToCheck[faceI]] == cellIndex)
+                        {
+                            cQuality = (*tetMetric_)
+                            (
+                                meshPoints_[faceToCheck[2]],
+                                meshPoints_[faceToCheck[1]],
+                                meshPoints_[faceToCheck[0]],
+                                meshPoints_[otherPoint]
+                            );
+                        }
+                        else
+                        {
+                            cQuality = (*tetMetric_)
+                            (
+                                meshPoints_[faceToCheck[0]],
+                                meshPoints_[faceToCheck[1]],
+                                meshPoints_[faceToCheck[2]],
+                                meshPoints_[otherPoint]
+                            );
+                        }
 
-                    // Check if the quality is worse
-                    minQuality = cQuality < minQuality ? cQuality : minQuality;
+                        // Check if the quality is worse
+                        minQuality = cQuality < minQuality
+                                   ? cQuality : minQuality;
+                    }
 
                     // Find the isolated point
                     findIsolatedPoint
@@ -3574,13 +3579,11 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(void *argument)
     dynamicTopoFvMesh *mesh = thread->mesh_;
     
     bool found, foundinner;
-    face f;
-    edge firstEdge(0,0);
-    FixedList<label,4> otherPointIndex, nextToOtherPoint;
-    FixedList<label,4> commonFaceIndex, commonIntFaceIndex;
+    label otherPointIndex = -1, nextPoint = -1;
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
-    FixedList<face,4>  commonFaces, commonIntFaces;
+    FixedList<label,4> commonFaceIndex;
+    FixedList<face,4>  commonFaces;
     FixedList<edge,2>  commonEdges;
 
     // Loop through faces assigned to this thread
@@ -3618,6 +3621,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(void *argument)
             c0IntFace,
             c0IntIndex
         );
+
         mesh->findPrismFaces
         (
             findex,
@@ -3730,396 +3734,45 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(void *argument)
         point& pointZero = mesh->meshPoints()[zeroIndex];
         point& pointOne  = mesh->meshPoints()[oneIndex];
         point& pointTwo  = mesh->meshPoints()[twoIndex];
-        point  center    = mesh->circumCenter
-                           (
-                               pointZero, 
-                               pointOne, 
-                               pointTwo, 
-                               zeroIndex, 
-                               oneIndex, 
-                               twoIndex
-                           );
-        scalar radius    = (pointZero - center)&(pointZero - center);
+
+        // Determine the circumcenter
+        point center = mesh->circumCenter
+                       (
+                           pointZero,
+                           pointOne,
+                           pointTwo,
+                           zeroIndex,
+                           oneIndex,
+                           twoIndex
+                       );
+
+        scalar radius = (pointZero - center)&(pointZero - center);
 
         // Find the isolated point on the other face, and the point next to it 
         mesh->findIsolatedPoint
         (
             commonFaces[1], 
             commonEdges[0], 
-            otherPointIndex[1], 
-            nextToOtherPoint[1]
+            otherPointIndex,
+            nextPoint
         );
 
         // ...and determine whether it lies in this circle
-        point otherPoint = mesh->meshPoints()[otherPointIndex[1]];
+        point otherPoint = mesh->meshPoints()[otherPointIndex];
+
         if 
         ( 
             ((otherPoint - center)&(otherPoint - center)) < radius 
         )
         {
-            // This face needs to be flipped... 
-            if (debug)
-            {
-                Info << nl << nl << "Face: " << findex 
-                     << " needs to be flipped. " << endl;
-                Info << "Cell[0]: " << c0 << ": " << cell_0 << endl;                
-                Info << "Cell[1]: " << c1 << ": " << cell_1 << endl;                 
-                Info << "Common Faces: Set 1: " 
-                     << commonFaceIndex[0] << ": " << commonFaces[0] << ", " 
-                     << commonFaceIndex[1] << ": " << commonFaces[1] << endl;
-                Info << "Common Faces: Set 2: " 
-                     << commonFaceIndex[2] << ": " << commonFaces[2] << ", " 
-                     << commonFaceIndex[3] << ": " << commonFaces[3] << endl; 
-                Info << "Old face: " << mesh->meshFaces()[findex] << endl;                
-            }
-
-            // Set the flag
-            mesh->topoChangeFlag() = true;
-
-            // Find the other three points that don't lie on shared edges
-            // and the points next to them (for orientation)
-            mesh->findIsolatedPoint
+            mesh->swapQuadFace
             (
-                commonFaces[0], 
-                commonEdges[0], 
-                otherPointIndex[0], 
-                nextToOtherPoint[0]
+                findex,
+                thisFace,
+                commonFaceIndex,
+                commonFaces,
+                commonEdges
             );
-            
-            mesh->findIsolatedPoint
-            (
-                commonFaces[2], 
-                commonEdges[1], 
-                otherPointIndex[2], 
-                nextToOtherPoint[2]
-            );
-            
-            mesh->findIsolatedPoint
-            (
-                commonFaces[3], 
-                commonEdges[1], 
-                otherPointIndex[3], 
-                nextToOtherPoint[3]
-            );
-
-            // Find the other two edges on the face being flipped 
-            // First edge detected belongs to cell[0] by default
-            edgeList eThis = thisFace.edges();
-            forAll(eThis,edgeI)
-            {
-                if 
-                ( 
-                    eThis[edgeI] != commonEdges[0] 
-                 && eThis[edgeI] != commonEdges[1] 
-                )
-                {
-                    if 
-                    (
-                        eThis[edgeI][0] == nextToOtherPoint[0] 
-                     || eThis[edgeI][1] == nextToOtherPoint[0]
-                    )
-                    {
-                        firstEdge = eThis[edgeI];
-                    }
-                }
-            }
-
-            // Find the interior faces that share the first edge
-            // At the end of this loop, commonIntFaces [0] & [1] share firstEdge 
-            // and commonIntFaces [2] & [3] share the secondEdge,
-            // where [0],[2] lie on cell[0] and [1],[3] lie on cell[1]
-            found = false;
-            edgeList e1 = c0IntFace[0].edges();
-            forAll(e1,edgeI)
-            {
-                if ( e1[edgeI] == firstEdge )
-                {
-                    commonIntFaces[0] = c0IntFace[0]; 
-                    commonIntFaces[2] = c0IntFace[1];
-                    commonIntFaceIndex[0] = c0IntIndex[0]; 
-                    commonIntFaceIndex[2] = c0IntIndex[1];
-                    found = true; break; 
-                }
-            }
-            if (!found)
-            {
-                // The edge was obviously not found before
-                commonIntFaces[0] = c0IntFace[1]; 
-                commonIntFaces[2] = c0IntFace[0];
-                commonIntFaceIndex[0] = c0IntIndex[1]; 
-                commonIntFaceIndex[2] = c0IntIndex[0];
-            }
-
-            found = false;
-            edgeList e3 = c1IntFace[0].edges();
-            forAll(e3,edgeI)
-            {
-                if ( e3[edgeI] == firstEdge )
-                {
-                    commonIntFaces[1] = c1IntFace[0]; 
-                    commonIntFaces[3] = c1IntFace[1];
-                    commonIntFaceIndex[1] = c1IntIndex[0]; 
-                    commonIntFaceIndex[3] = c1IntIndex[1];
-                    found = true; break; 
-                }
-            }
-            if (!found)
-            {
-                // The edge was obviously not found before
-                commonIntFaces[1] = c1IntFace[1]; 
-                commonIntFaces[3] = c1IntFace[0];
-                commonIntFaceIndex[1] = c1IntIndex[1]; 
-                commonIntFaceIndex[3] = c1IntIndex[0];
-            }
-
-            // Modify the five faces belonging to this hull
-            face& newFace = mesh->meshFaces()[findex];
-            face& newBdyFace0 = mesh->meshFaces()[commonFaceIndex[0]];
-            face& newBdyFace1 = mesh->meshFaces()[commonFaceIndex[1]];
-            face& newBdyFace2 = mesh->meshFaces()[commonFaceIndex[2]];
-            face& newBdyFace3 = mesh->meshFaces()[commonFaceIndex[3]];
-            label c0count=0, c1count=0;
-
-            // Define parameters for the new flipped face
-            newFace[0] = otherPointIndex[0];
-            newFace[1] = otherPointIndex[1];
-            newFace[2] = otherPointIndex[3];
-            newFace[3] = otherPointIndex[2];
-            cell_0[c0count++] = findex;
-            cell_1[c1count++] = findex;
-            mesh->meshOwner()[findex] = c0;
-            mesh->meshNeighbour()[findex] = c1;
-
-            // Modify the edge-to-watch
-            if (mesh->edgeModification())
-            {
-                edge& edgeToModify = mesh->edgeToWatch()[findex];
-                edgeToModify[0] = otherPointIndex[0];
-                edgeToModify[1] = otherPointIndex[1];
-            }
-
-            // Four modified boundary faces need to be constructed, 
-            // but right-handedness is also important.
-            // Take a cue from the existing boundary-face orientation
-
-            // Zeroth boundary face - Owner c[0], Neighbour -1
-            newBdyFace0[0] = otherPointIndex[0];
-            newBdyFace0[1] = nextToOtherPoint[0];
-            newBdyFace0[2] = otherPointIndex[1];
-            cell_0[c0count++] = commonFaceIndex[0];
-            mesh->meshOwner()[commonFaceIndex[0]] = c0;
-            mesh->meshNeighbour()[commonFaceIndex[0]] = -1;
-
-            // First boundary face - Owner c[1], Neighbour -1
-            newBdyFace1[0] = otherPointIndex[1];
-            newBdyFace1[1] = nextToOtherPoint[1];
-            newBdyFace1[2] = otherPointIndex[0];
-            cell_1[c1count++] = commonFaceIndex[1];
-            mesh->meshOwner()[commonFaceIndex[1]] = c1;
-            mesh->meshNeighbour()[commonFaceIndex[1]] = -1;
-
-            // Second boundary face - Owner c[0], Neighbour -1
-            newBdyFace2[0] = otherPointIndex[3];
-            newBdyFace2[1] = nextToOtherPoint[3];
-            newBdyFace2[2] = otherPointIndex[2];
-            cell_0[c0count++] = commonFaceIndex[2];
-            mesh->meshOwner()[commonFaceIndex[2]] = c0;
-            mesh->meshNeighbour()[commonFaceIndex[2]] = -1;
-
-            // Third boundary face - Owner c[1], Neighbour -1
-            newBdyFace3[0] = otherPointIndex[2];
-            newBdyFace3[1] = nextToOtherPoint[2];
-            newBdyFace3[2] = otherPointIndex[3];
-            cell_1[c1count++] = commonFaceIndex[3];
-            mesh->meshOwner()[commonFaceIndex[3]] = c1;
-            mesh->meshNeighbour()[commonFaceIndex[3]] = -1;
-
-            if (debug)
-            {
-                Info << "New flipped face: " << newFace << endl;
-                Info << "New boundary face[0]" << commonFaceIndex[0] 
-                     << ": " << newBdyFace0 << endl;
-                Info << "New boundary face[1]" << commonFaceIndex[1] 
-                     << ": " << newBdyFace1 << endl;
-                Info << "New boundary face[2]" << commonFaceIndex[2] 
-                     << ": " << newBdyFace2 << endl;
-                Info << "New boundary face[3]" << commonFaceIndex[3] 
-                     << ": " << newBdyFace3 << endl;
-            }
-
-            // Check the orientation of the two quad faces, and modify as necessary
-            label newOwn=0, newNei=0;
-
-            // The quad face belonging to cell[1] now becomes a part of cell[0]
-            if ( mesh->meshNeighbour()[commonIntFaceIndex[1]] == -1 )
-            {
-                // Boundary face
-                // Face doesn't need to be flipped, just update the owner
-                f          = commonIntFaces[1];
-                newOwn     = c0;
-                newNei     = -1;
-            }
-            else
-            if ( mesh->meshOwner()[commonIntFaceIndex[1]] == c1 )
-            {
-                // This face is on the interior, check for previous owner 
-                // Upper-triangular ordering has to be maintained, however...
-                if ( c0 > mesh->meshNeighbour()[commonIntFaceIndex[1]] )
-                {
-                    // Flip is necessary
-                    f          = commonIntFaces[1].reverseFace();
-                    newOwn     = mesh->meshNeighbour()[commonIntFaceIndex[1]];
-                    newNei     = c0;
-                }
-                else
-                {
-                    // Flip isn't necessary, just change the owner
-                    f          = commonIntFaces[1];
-                    newOwn     = c0;
-                    newNei     = mesh->meshNeighbour()[commonIntFaceIndex[1]];
-                }
-            }
-            else
-            if ( mesh->meshNeighbour()[commonIntFaceIndex[1]] == c1 )
-            {
-                // This face is on the interior, check for previous neighbour
-                // Upper-triangular ordering has to be maintained, however...
-                if ( c0 < mesh->meshOwner()[commonIntFaceIndex[1]] )
-                {
-                    // Flip is necessary
-                    f          = commonIntFaces[1].reverseFace();
-                    newOwn     = c0;
-                    newNei     = mesh->meshOwner()[commonIntFaceIndex[1]];
-                }
-                else
-                {
-                    // Flip isn't necessary, just change the neighbour
-                    f          = commonIntFaces[1];
-                    newOwn     = mesh->meshOwner()[commonIntFaceIndex[1]];
-                    newNei     = c0;
-                }
-            }
-
-            mesh->meshFaces()[commonIntFaceIndex[1]] = f;
-            cell_0[c0count++] = commonIntFaceIndex[0];
-            cell_0[c0count++] = commonIntFaceIndex[1];
-            mesh->meshOwner()[commonIntFaceIndex[1]] = newOwn;
-            mesh->meshNeighbour()[commonIntFaceIndex[1]] = newNei;
-
-            // The quad face belonging to cell[0] now becomes a part of cell[1]
-            if ( mesh->meshNeighbour()[commonIntFaceIndex[2]] == -1 )
-            {
-                // Boundary face
-                // Face doesn't need to be flipped, just update the owner
-                f          = commonIntFaces[2];
-                newOwn     = c1;
-                newNei     = -1;
-            }
-            else
-            if ( mesh->meshOwner()[commonIntFaceIndex[2]] == c0 )
-            {
-                // This face is on the interior, check for previous owner 
-                // Upper-triangular ordering has to be maintained, however...
-                if ( c1 > mesh->meshNeighbour()[commonIntFaceIndex[2]] )
-                {
-                    // Flip is necessary
-                    f          = commonIntFaces[2].reverseFace();
-                    newOwn     = mesh->meshNeighbour()[commonIntFaceIndex[2]];
-                    newNei     = c1;
-                }
-                else
-                {
-                    // Flip isn't necessary, just change the owner
-                    f          = commonIntFaces[2];
-                    newOwn     = c1;
-                    newNei     = mesh->meshNeighbour()[commonIntFaceIndex[2]];
-                }
-            }
-            else
-            if ( mesh->meshNeighbour()[commonIntFaceIndex[2]] == c0 )
-            {
-                // This face is on the interior, check for previous neighbour
-                // Upper-triangular ordering has to be maintained, however...
-                if ( c1 < mesh->meshOwner()[commonIntFaceIndex[2]] )
-                {
-                    // Flip is necessary
-                    f          = commonIntFaces[2].reverseFace();
-                    newOwn     = c1;
-                    newNei     = mesh->meshOwner()[commonIntFaceIndex[2]];
-                }
-                else
-                {
-                    // Flip isn't necessary, just change the neighbour
-                    f          = commonIntFaces[2];
-                    newOwn     = mesh->meshOwner()[commonIntFaceIndex[2]];
-                    newNei     = c1;
-                }
-            }
-
-            mesh->meshFaces()[commonIntFaceIndex[2]] = f;
-            cell_1[c1count++] = commonIntFaceIndex[2];
-            cell_1[c1count++] = commonIntFaceIndex[3];
-            mesh->meshOwner()[commonIntFaceIndex[2]] = newOwn;
-            mesh->meshNeighbour()[commonIntFaceIndex[2]] = newNei;
-            
-            // Generate mapping information for both cells
-            label firstParent, secondParent;
-            const labelListList& cc = mesh->cellCells();
-            labelHashSet c0MasterObjects(6);
-            labelHashSet c1MasterObjects(6);
-            
-            if (c0 < mesh->nOldCells())
-            {
-                firstParent = c0;
-            }
-            else
-            {
-                firstParent = mesh->cellParents()[c0];
-            }
-
-            if (c1 < mesh->nOldCells())
-            {
-                secondParent = c1;
-            }
-            else
-            {
-                secondParent = mesh->cellParents()[c1];
-            }
-            
-            // Find the cell's neighbours in the old mesh
-            c0MasterObjects.insert(firstParent);
-            c1MasterObjects.insert(firstParent);
-            
-            forAll(cc[firstParent],cellI)
-            {
-                if (!c0MasterObjects.found(cc[firstParent][cellI]))
-                {
-                    c0MasterObjects.insert(cc[firstParent][cellI]);
-                }
-                if (!c1MasterObjects.found(cc[firstParent][cellI]))
-                {
-                    c1MasterObjects.insert(cc[firstParent][cellI]);
-                }                
-            }
-
-            c0MasterObjects.insert(secondParent);            
-            c1MasterObjects.insert(secondParent);
-            
-            forAll(cc[secondParent],cellI)
-            {
-                if (!c0MasterObjects.found(cc[secondParent][cellI]))
-                {
-                    c0MasterObjects.insert(cc[secondParent][cellI]);
-                }
-                if (!c1MasterObjects.found(cc[secondParent][cellI]))
-                {
-                    c1MasterObjects.insert(cc[secondParent][cellI]);
-                }
-            }   
-
-            // Insert mapping info into the HashTable
-            mesh->cellsFromCells().insert(c0,objectMap(c0,c0MasterObjects.toc()));
-            mesh->cellsFromCells().insert(c1,objectMap(c1,c1MasterObjects.toc()));
         }
     }
 }
@@ -4289,7 +3942,7 @@ void Foam::dynamicTopoFvMesh::initEdges()
 }
 
 // Return length-scale at an edge-location in the mesh [3D]
-inline scalar Foam::dynamicTopoFvMesh::meshLengthScale
+inline scalar Foam::dynamicTopoFvMesh::meshEdgeLengthScale
 (
     const label eIndex
 )
@@ -4322,6 +3975,15 @@ inline scalar Foam::dynamicTopoFvMesh::meshLengthScale
     }
 
     return scale;
+}
+
+// Return length-scale at an cell-location in the mesh
+inline scalar Foam::dynamicTopoFvMesh::meshCellLengthScale
+(
+    const label cIndex
+)
+{
+    return lengthScale_[cIndex];
 }
 
 // Does the mesh perform edge-modification?
@@ -4398,8 +4060,8 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
             {
                 scale = 0.5*
                         (
-                            mesh->meshLengthScale()[c0]
-                          + mesh->meshLengthScale()[c1]
+                            mesh->meshCellLengthScale(c0)
+                          + mesh->meshCellLengthScale(c1)
                         );
             }
 
@@ -4632,7 +4294,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
         scalar length = mag(b-a);
 
         // Determine the length-scale at this point in the mesh
-        scalar scale = mesh->meshLengthScale(eIndex);
+        scalar scale = mesh->meshEdgeLengthScale(eIndex);
 
         //== Edge Bisection ==//
         if(length > mesh->ratioMax()*scale)
@@ -4674,6 +4336,427 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
             eIter++;
         }
     }
+}
+
+// Method for the swapping of a quad-face in 2D
+void Foam::dynamicTopoFvMesh::swapQuadFace
+(
+    const label findex,
+    face& thisFace,
+    const FixedList<label,4>& commonFaceIndex,
+    const FixedList<face,4>&  commonFaces,
+    const FixedList<edge,2>&  commonEdges
+)
+{
+    face f;
+    edge firstEdge(0,0);
+    bool found = false;
+    FixedList<label,4> otherPointIndex, nextToOtherPoint;
+    FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
+    FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
+    FixedList<label,4> commonIntFaceIndex;
+    FixedList<face,4>  commonIntFaces;
+
+    // Get the two cells on either side...
+    label c0 = owner_[findex];
+    label c1 = neighbour_[findex];
+
+    // Get cell references
+    cell &cell_0 = cells_[c0];
+    cell &cell_1 = cells_[c1];
+
+    // This face needs to be flipped...
+    if (debug)
+    {
+        Info << nl << nl << "Face: " << findex
+             << " needs to be flipped. " << endl;
+        Info << "Cell[0]: " << c0 << ": " << cell_0 << endl;
+        Info << "Cell[1]: " << c1 << ": " << cell_1 << endl;
+        Info << "Common Faces: Set 1: "
+             << commonFaceIndex[0] << ": " << commonFaces[0] << ", "
+             << commonFaceIndex[1] << ": " << commonFaces[1] << endl;
+        Info << "Common Faces: Set 2: "
+             << commonFaceIndex[2] << ": " << commonFaces[2] << ", "
+             << commonFaceIndex[3] << ": " << commonFaces[3] << endl;
+        Info << "Old face: " << faces_[findex] << endl;
+    }
+
+    // Find the interior/boundary faces.
+    findPrismFaces
+    (
+        findex,
+        cell_0,
+        c0BdyFace,
+        c0BdyIndex,
+        c0IntFace,
+        c0IntIndex
+    );
+
+    findPrismFaces
+    (
+        findex,
+        cell_1,
+        c1BdyFace,
+        c1BdyIndex,
+        c1IntFace,
+        c1IntIndex
+    );
+
+    // Set the flag
+    topoChangeFlag_ = true;
+
+    // Find the points that don't lie on shared edges
+    // and the points next to them (for orientation)
+    findIsolatedPoint
+    (
+        commonFaces[1],
+        commonEdges[0],
+        otherPointIndex[1],
+        nextToOtherPoint[1]
+    );
+
+    findIsolatedPoint
+    (
+        commonFaces[0],
+        commonEdges[0],
+        otherPointIndex[0],
+        nextToOtherPoint[0]
+    );
+
+    findIsolatedPoint
+    (
+        commonFaces[2],
+        commonEdges[1],
+        otherPointIndex[2],
+        nextToOtherPoint[2]
+    );
+
+    findIsolatedPoint
+    (
+        commonFaces[3],
+        commonEdges[1],
+        otherPointIndex[3],
+        nextToOtherPoint[3]
+    );
+
+    // Find the other two edges on the face being flipped
+    // First edge detected belongs to cell[0] by default
+    edgeList eThis = thisFace.edges();
+    forAll(eThis,edgeI)
+    {
+        if
+        (
+            eThis[edgeI] != commonEdges[0]
+         && eThis[edgeI] != commonEdges[1]
+        )
+        {
+            if
+            (
+                eThis[edgeI][0] == nextToOtherPoint[0]
+             || eThis[edgeI][1] == nextToOtherPoint[0]
+            )
+            {
+                firstEdge = eThis[edgeI];
+            }
+        }
+    }
+
+    // Find the interior faces that share the first edge
+    // At the end of this loop, commonIntFaces [0] & [1] share firstEdge
+    // and commonIntFaces [2] & [3] share the secondEdge,
+    // where [0],[2] lie on cell[0] and [1],[3] lie on cell[1]
+    found = false;
+    edgeList e1 = c0IntFace[0].edges();
+    forAll(e1,edgeI)
+    {
+        if ( e1[edgeI] == firstEdge )
+        {
+            commonIntFaces[0] = c0IntFace[0];
+            commonIntFaces[2] = c0IntFace[1];
+            commonIntFaceIndex[0] = c0IntIndex[0];
+            commonIntFaceIndex[2] = c0IntIndex[1];
+            found = true; break;
+        }
+    }
+    if (!found)
+    {
+        // The edge was obviously not found before
+        commonIntFaces[0] = c0IntFace[1];
+        commonIntFaces[2] = c0IntFace[0];
+        commonIntFaceIndex[0] = c0IntIndex[1];
+        commonIntFaceIndex[2] = c0IntIndex[0];
+    }
+
+    found = false;
+    edgeList e3 = c1IntFace[0].edges();
+    forAll(e3,edgeI)
+    {
+        if ( e3[edgeI] == firstEdge )
+        {
+            commonIntFaces[1] = c1IntFace[0];
+            commonIntFaces[3] = c1IntFace[1];
+            commonIntFaceIndex[1] = c1IntIndex[0];
+            commonIntFaceIndex[3] = c1IntIndex[1];
+            found = true; break;
+        }
+    }
+    if (!found)
+    {
+        // The edge was obviously not found before
+        commonIntFaces[1] = c1IntFace[1];
+        commonIntFaces[3] = c1IntFace[0];
+        commonIntFaceIndex[1] = c1IntIndex[1];
+        commonIntFaceIndex[3] = c1IntIndex[0];
+    }
+
+    // Modify the five faces belonging to this hull
+    face& newFace = faces_[findex];
+    face& newBdyFace0 = faces_[commonFaceIndex[0]];
+    face& newBdyFace1 = faces_[commonFaceIndex[1]];
+    face& newBdyFace2 = faces_[commonFaceIndex[2]];
+    face& newBdyFace3 = faces_[commonFaceIndex[3]];
+    label c0count=0, c1count=0;
+
+    // Define parameters for the new flipped face
+    newFace[0] = otherPointIndex[0];
+    newFace[1] = otherPointIndex[1];
+    newFace[2] = otherPointIndex[3];
+    newFace[3] = otherPointIndex[2];
+    cell_0[c0count++] = findex;
+    cell_1[c1count++] = findex;
+    owner_[findex] = c0;
+    neighbour_[findex] = c1;
+
+    // Modify the edge-to-watch
+    if (edgeModification_)
+    {
+        edge& edgeToModify = edgeToWatch_[findex];
+        edgeToModify[0] = otherPointIndex[0];
+        edgeToModify[1] = otherPointIndex[1];
+    }
+
+    // Four modified boundary faces need to be constructed,
+    // but right-handedness is also important.
+    // Take a cue from the existing boundary-face orientation
+
+    // Zeroth boundary face - Owner c[0], Neighbour -1
+    newBdyFace0[0] = otherPointIndex[0];
+    newBdyFace0[1] = nextToOtherPoint[0];
+    newBdyFace0[2] = otherPointIndex[1];
+    cell_0[c0count++] = commonFaceIndex[0];
+    owner_[commonFaceIndex[0]] = c0;
+    neighbour_[commonFaceIndex[0]] = -1;
+
+    // First boundary face - Owner c[1], Neighbour -1
+    newBdyFace1[0] = otherPointIndex[1];
+    newBdyFace1[1] = nextToOtherPoint[1];
+    newBdyFace1[2] = otherPointIndex[0];
+    cell_1[c1count++] = commonFaceIndex[1];
+    owner_[commonFaceIndex[1]] = c1;
+    neighbour_[commonFaceIndex[1]] = -1;
+
+    // Second boundary face - Owner c[0], Neighbour -1
+    newBdyFace2[0] = otherPointIndex[3];
+    newBdyFace2[1] = nextToOtherPoint[3];
+    newBdyFace2[2] = otherPointIndex[2];
+    cell_0[c0count++] = commonFaceIndex[2];
+    owner_[commonFaceIndex[2]] = c0;
+    neighbour_[commonFaceIndex[2]] = -1;
+
+    // Third boundary face - Owner c[1], Neighbour -1
+    newBdyFace3[0] = otherPointIndex[2];
+    newBdyFace3[1] = nextToOtherPoint[2];
+    newBdyFace3[2] = otherPointIndex[3];
+    cell_1[c1count++] = commonFaceIndex[3];
+    owner_[commonFaceIndex[3]] = c1;
+    neighbour_[commonFaceIndex[3]] = -1;
+
+    if (debug)
+    {
+        Info << "New flipped face: " << newFace << endl;
+        Info << "New boundary face[0]" << commonFaceIndex[0]
+             << ": " << newBdyFace0 << endl;
+        Info << "New boundary face[1]" << commonFaceIndex[1]
+             << ": " << newBdyFace1 << endl;
+        Info << "New boundary face[2]" << commonFaceIndex[2]
+             << ": " << newBdyFace2 << endl;
+        Info << "New boundary face[3]" << commonFaceIndex[3]
+             << ": " << newBdyFace3 << endl;
+    }
+
+    // Check the orientation of the two quad faces, and modify as necessary
+    label newOwn=0, newNei=0;
+
+    // The quad face belonging to cell[1] now becomes a part of cell[0]
+    if ( neighbour_[commonIntFaceIndex[1]] == -1 )
+    {
+        // Boundary face
+        // Face doesn't need to be flipped, just update the owner
+        f          = commonIntFaces[1];
+        newOwn     = c0;
+        newNei     = -1;
+    }
+    else
+    if ( owner_[commonIntFaceIndex[1]] == c1 )
+    {
+        // This face is on the interior, check for previous owner
+        // Upper-triangular ordering has to be maintained, however...
+        if ( c0 > neighbour_[commonIntFaceIndex[1]] )
+        {
+            // Flip is necessary
+            f          = commonIntFaces[1].reverseFace();
+            newOwn     = neighbour_[commonIntFaceIndex[1]];
+            newNei     = c0;
+        }
+        else
+        {
+            // Flip isn't necessary, just change the owner
+            f          = commonIntFaces[1];
+            newOwn     = c0;
+            newNei     = neighbour_[commonIntFaceIndex[1]];
+        }
+    }
+    else
+    if ( neighbour_[commonIntFaceIndex[1]] == c1 )
+    {
+        // This face is on the interior, check for previous neighbour
+        // Upper-triangular ordering has to be maintained, however...
+        if ( c0 < owner_[commonIntFaceIndex[1]] )
+        {
+            // Flip is necessary
+            f          = commonIntFaces[1].reverseFace();
+            newOwn     = c0;
+            newNei     = owner_[commonIntFaceIndex[1]];
+        }
+        else
+        {
+            // Flip isn't necessary, just change the neighbour
+            f          = commonIntFaces[1];
+            newOwn     = owner_[commonIntFaceIndex[1]];
+            newNei     = c0;
+        }
+    }
+
+    faces_[commonIntFaceIndex[1]] = f;
+    cell_0[c0count++] = commonIntFaceIndex[0];
+    cell_0[c0count++] = commonIntFaceIndex[1];
+    owner_[commonIntFaceIndex[1]] = newOwn;
+    neighbour_[commonIntFaceIndex[1]] = newNei;
+
+    // The quad face belonging to cell[0] now becomes a part of cell[1]
+    if ( neighbour_[commonIntFaceIndex[2]] == -1 )
+    {
+        // Boundary face
+        // Face doesn't need to be flipped, just update the owner
+        f          = commonIntFaces[2];
+        newOwn     = c1;
+        newNei     = -1;
+    }
+    else
+    if ( owner_[commonIntFaceIndex[2]] == c0 )
+    {
+        // This face is on the interior, check for previous owner
+        // Upper-triangular ordering has to be maintained, however...
+        if ( c1 > neighbour_[commonIntFaceIndex[2]] )
+        {
+            // Flip is necessary
+            f          = commonIntFaces[2].reverseFace();
+            newOwn     = neighbour_[commonIntFaceIndex[2]];
+            newNei     = c1;
+        }
+        else
+        {
+            // Flip isn't necessary, just change the owner
+            f          = commonIntFaces[2];
+            newOwn     = c1;
+            newNei     = neighbour_[commonIntFaceIndex[2]];
+        }
+    }
+    else
+    if ( neighbour_[commonIntFaceIndex[2]] == c0 )
+    {
+        // This face is on the interior, check for previous neighbour
+        // Upper-triangular ordering has to be maintained, however...
+        if ( c1 < owner_[commonIntFaceIndex[2]] )
+        {
+            // Flip is necessary
+            f          = commonIntFaces[2].reverseFace();
+            newOwn     = c1;
+            newNei     = owner_[commonIntFaceIndex[2]];
+        }
+        else
+        {
+            // Flip isn't necessary, just change the neighbour
+            f          = commonIntFaces[2];
+            newOwn     = owner_[commonIntFaceIndex[2]];
+            newNei     = c1;
+        }
+    }
+
+    faces_[commonIntFaceIndex[2]] = f;
+    cell_1[c1count++] = commonIntFaceIndex[2];
+    cell_1[c1count++] = commonIntFaceIndex[3];
+    owner_[commonIntFaceIndex[2]] = newOwn;
+    neighbour_[commonIntFaceIndex[2]] = newNei;
+
+    // Generate mapping information for both cells
+    label firstParent, secondParent;
+    const labelListList& cc = cellCells();
+    labelHashSet c0MasterObjects(6);
+    labelHashSet c1MasterObjects(6);
+
+    if (c0 < nOldCells_)
+    {
+        firstParent = c0;
+    }
+    else
+    {
+        firstParent = cellParents_[c0];
+    }
+
+    if (c1 < nOldCells_)
+    {
+        secondParent = c1;
+    }
+    else
+    {
+        secondParent = cellParents_[c1];
+    }
+
+    // Find the cell's neighbours in the old mesh
+    c0MasterObjects.insert(firstParent);
+    c1MasterObjects.insert(firstParent);
+
+    forAll(cc[firstParent],cellI)
+    {
+        if (!c0MasterObjects.found(cc[firstParent][cellI]))
+        {
+            c0MasterObjects.insert(cc[firstParent][cellI]);
+        }
+        if (!c1MasterObjects.found(cc[firstParent][cellI]))
+        {
+            c1MasterObjects.insert(cc[firstParent][cellI]);
+        }
+    }
+
+    c0MasterObjects.insert(secondParent);
+    c1MasterObjects.insert(secondParent);
+
+    forAll(cc[secondParent],cellI)
+    {
+        if (!c0MasterObjects.found(cc[secondParent][cellI]))
+        {
+            c0MasterObjects.insert(cc[secondParent][cellI]);
+        }
+        if (!c1MasterObjects.found(cc[secondParent][cellI]))
+        {
+            c1MasterObjects.insert(cc[secondParent][cellI]);
+        }
+    }
+
+    // Insert mapping info into the HashTable
+    cellsFromCells_.insert(c0,objectMap(c0,c0MasterObjects.toc()));
+    cellsFromCells_.insert(c1,objectMap(c1,c1MasterObjects.toc()));
 }
 
 // Method for the bisection of a quad-face in 2D
@@ -6100,6 +6183,34 @@ void Foam::dynamicTopoFvMesh::bisectEdge
     const label eIndex
 )
 {
+    edge& thisEdge = edges_[eIndex];
+
+    if (debug)
+    {
+        Info << nl << nl << "Edge: " << eIndex
+             << ": " << thisEdge << " is to be bisected. " << endl;
+    }
+
+    // Obtain maxTetsPerEdge
+    label mMax = maxTetsPerEdge();
+
+    // Hull variables
+    scalar minQuality;
+    DynamicList<label> cellHull(mMax);
+    DynamicList<label> faceHull(mMax);
+    DynamicList<label> vertexHull(mMax);
+
+    // Obtain a ring of vertices around this edge
+    constructVertexRing
+    (
+        eIndex,
+        thisEdge,
+        cellHull,
+        faceHull,
+        vertexHull,
+        minQuality,
+        false
+    );
 
 }
 
@@ -6110,7 +6221,35 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
     const label eIndex
 )
 {
-    
+    edge& thisEdge = edges_[eIndex];
+
+    if (debug)
+    {
+        Info << nl << nl << "Edge: " << eIndex 
+             << ": " << thisEdge << " is to be collapsed. " << endl;
+    }
+
+    // Obtain maxTetsPerEdge
+    label mMax = maxTetsPerEdge();
+
+    // Hull variables
+    scalar minQuality;
+    DynamicList<label> cellHull(mMax);
+    DynamicList<label> faceHull(mMax);
+    DynamicList<label> vertexHull(mMax);
+
+    // Obtain a ring of vertices around this edge
+    constructVertexRing
+    (
+        eIndex,
+        thisEdge,
+        cellHull,
+        faceHull,
+        vertexHull,
+        minQuality,
+        false
+    );
+
     // Return a successful collapse
     return true;
 }
