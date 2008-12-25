@@ -248,6 +248,9 @@ class dynamicTopoFvMesh
         
         // Initialize mesh edges and related connectivity lists
         void initEdges();
+
+        // Return length-scale at an edge-location in the mesh [3D]
+        inline scalar meshLengthScale(const label eIndex);
         
         // MultiThreaded topology modifier [2D]
         void threadedTopoModifier2D();
@@ -287,6 +290,19 @@ class dynamicTopoFvMesh
             const label findex, 
             face& thisFace
         );
+
+        // Method for the bisection of an edge in 3D
+        void bisectEdge
+        (
+            const label eIndex
+        );
+
+        // Method for the collapse of an edge in 3D
+        // Returns a boolean value indicating whether the collapse was valid
+        bool collapseEdge
+        (
+            const label eIndex
+        );
         
         // Check if the boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.
@@ -325,13 +341,6 @@ class dynamicTopoFvMesh
             const edge& e, 
             label& ptIndex, 
             label& nextPtIndex
-        );
-
-        // Method to determine whether the face contains the edge
-        inline bool edgeOnFace
-        (
-            const face& f,
-            const edge& e
         );
         
         // Method to replace a face-label in a given cell

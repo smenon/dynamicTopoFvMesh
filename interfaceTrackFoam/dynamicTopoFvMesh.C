@@ -870,26 +870,6 @@ void Foam::dynamicTopoFvMesh::findIsolatedPoint
     }
 }
 
-// Method to determine whether the face contains the edge
-inline bool Foam::dynamicTopoFvMesh::edgeOnFace
-(
-    const face& f,
-    const edge& e
-)
-{
-    const edgeList eList = f.edges();
-
-    forAll(eList, edgeI)
-    {
-        if (eList[edgeI] == e)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 // Utility method to replace a face-label in a given cell
 inline void Foam::dynamicTopoFvMesh::replaceFaceLabel
 (
@@ -1448,6 +1428,7 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     scalar& minQuality
 )
 {
+    bool found, isBoundary = false;
     minQuality = GREAT;
     label otherPoint = -1, nextPoint = -1, cellIndex = -1;
     label faceToExclude = -1, numPoints = 0, numFaces = 0;
@@ -1470,7 +1451,8 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     {
         cellIndex = owner_[startFaceIndex];
     }
-    else if (nextPoint == edgeToCheck[1])
+    else
+    if (nextPoint == edgeToCheck[1])
     {
         cellIndex = neighbour_[startFaceIndex];
     }
@@ -1489,27 +1471,36 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     // Check if this is a boundary
     if (cellIndex == -1)
     {
-        return true;
+        isBoundary = true;
     }
 
     // Start a search and add to the list as we go along
+    labelList& eFaces = edgeFaces_[eIndex];
     faceToExclude = startFaceIndex;
+
     do
     {
         cell& cellToCheck = cells_[cellIndex];
 
         // Add this cell to the hull
         hullCells.append(cellIndex);
-        
+
+        found = false;
+
+        // Loop through faces of this cell
         forAll(cellToCheck, faceI)
         {
-            if (cellToCheck[faceI] != faceToExclude)
+            // Loop through edgeFaces and get the next face
+            forAll(eFaces, faceII)
             {
-                face& faceToCheck = faces_[cellToCheck[faceI]];
-
-                // Check if this face contains the edge
-                if (edgeOnFace(faceToCheck, edgeToCheck))
+                if
+                (
+                    eFaces[faceII] != faceToExclude
+                 && eFaces[faceII] == cellToCheck[faceI]
+                )
                 {
+                    face& faceToCheck = faces_[cellToCheck[faceI]];
+
                     // Check face-orientation and compute cell-quality
                     if (owner_[cellToCheck[faceI]] == cellIndex)
                     {
@@ -1553,9 +1544,23 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
                     // Update faceToExclude
                     faceToExclude = cellToCheck[faceI];
 
-                    break;
+                    found = true; break;
                 }
             }
+
+            if (found) break;
+        }
+
+        if (!found)
+        {
+            // Something's terribly wrong
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::constructVertexRing(...)"
+            )
+            << " Failed to determine a vertex ring. " << nl
+            << " edgeFaces connectivity is inconsistent. "
+            << abort(FatalError);
         }
 
         // Decide which cell to check next
@@ -1574,15 +1579,16 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
             (
                 "dynamicTopoFvMesh::constructVertexRing(...)"
             )
-            << nl << " Failed to determine a vertex ring. "
-            << " Possibly not a tetrahedral mesh. " << nl
+            << " Failed to determine a vertex ring. " << nl
+            << " Possibly not a valid tetrahedral mesh. "
             << abort(FatalError);
         }
 
         // Check if this is a boundary
         if (cellIndex == -1)
         {
-            return true;
+            isBoundary = true;
+            break;
         }
 
     } while ( faceToExclude != startFaceIndex );
@@ -1598,8 +1604,7 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     }
 #   endif
 
-    // Not a boundary edge, so return false
-    return false;
+    return isBoundary;
 }
 
 // Allocate dynamic programming tables
@@ -3364,6 +3369,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh
         Info << "Edges: " << nOldEdges_ << endl;
         Info << "Faces: " << nOldFaces_ << endl;
         Info << "Cells: " << nOldCells_ << endl;
+        Info << "Internal Edges: " << nOldInternalEdges_ << endl;
         Info << "Internal Faces: " << nOldInternalFaces_ << endl;
         Info << "Patch Starts: " << oldPatchStarts_ << endl;
         Info << "Patch Sizes: " << oldPatchSizes_ << endl;
@@ -3373,6 +3379,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh
         Info << "Edges: " << nEdges_ << endl;
         Info << "Faces: " << nFaces_ << endl;
         Info << "Cells: " << nCells_ << endl;
+        Info << "Internal Edges: " << nInternalEdges_ << endl;
         Info << "Internal Faces: " << nInternalFaces_ << endl;
         Info << "Patch Starts: " << patchStarts_ << endl;
         Info << "Patch Sizes: " << patchSizes_ << endl;
@@ -3440,20 +3447,39 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                     fixed = true; break;
                 }
             }
-            if (
-                    (!fixed)
-                 && (bdyPatch.type() != "wedge")
-                 && (bdyPatch.type() != "empty")
-                 && (bdyPatch.type() != "symmetryPlane")
-               )
+            if
+            (
+                (!fixed)
+                && (bdyPatch.type() != "wedge")
+                && (bdyPatch.type() != "empty")
+                && (bdyPatch.type() != "symmetryPlane")
+            )
             {
                 label pStart = bdyPatch.start();
                 forAll(bdyPatch,faceI)
                 {
                     label ownCell = own[pStart+faceI];
-                    edge& etw = edgeToWatch_[pStart+faceI];
                     cellLevels[ownCell] = level;
-                    lengthScale[ownCell] = mag(pList[etw[0]] - pList[etw[1]]);
+
+                    if (twoDMesh_)
+                    {
+                        // Get length-scale from edgeToWatch
+                        edge& e = edgeToWatch_[pStart+faceI];
+                        lengthScale[ownCell] = mag(pList[e[0]] - pList[e[1]]);
+                    }
+                    else
+                    {
+                        // Average edge-lengths for this face
+                        scalar edgeLength = 0.0;
+                        labelList& fEdges = faceEdges_[pStart+faceI];
+                        forAll(fEdges, edgeI)
+                        {
+                            edge& e = edges_[fEdges[edgeI]];
+                            edgeLength += mag(pList[e[0]] - pList[e[1]]);
+                        }
+                        lengthScale[ownCell] = (edgeLength/fEdges.size());
+                    }
+                    
                     visitedCells++;
                 }
             }
@@ -3469,7 +3495,8 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                 {
                     // Obtain the cells neighbouring this one
                     const labelList& cList = cc[cellI];
-                    forAll(cList, indexI) {
+                    forAll(cList, indexI)
+                    {
                         label& ngbLevel = cellLevels[cList[indexI]];
                         if (ngbLevel == 0)
                         {
@@ -4152,6 +4179,7 @@ void Foam::dynamicTopoFvMesh::initLengthScale()
 void Foam::dynamicTopoFvMesh::initEdges()
 {
     // Obtain connectivity from primitive mesh
+    const faceList& faces = primitiveMesh::faces();
     const edgeList& edges = primitiveMesh::edges();
     const labelListList& fEdges = primitiveMesh::faceEdges();
     const labelListList& eFaces = primitiveMesh::edgeFaces();
@@ -4220,17 +4248,33 @@ void Foam::dynamicTopoFvMesh::initEdges()
 
     forAll(edges, edgeI)
     {
-        // Shuffle edgeFaces so that a boundary face comes first
+        // Shuffle edgeFaces so that a correctly oriented
+        // boundary face comes first
         const labelList& eFace = eFaces[edgeI];
         labelList shuffleEdgeFace(eFace.size(), -1);
-        label shuffleIndex = -1;
+        label shuffleIndex = -1, otherPoint = -1, nextPoint = -1;
 
         forAll(eFace, faceI)
         {
             if (eFace[faceI] >= nInternalFaces_)
             {
-                shuffleIndex = faceI;
+                const edge& edgeToCheck = edges[edgeI];
+
+                // Determine face orientation
+                findIsolatedPoint
+                (
+                    faces[eFace[faceI]],
+                    edgeToCheck,
+                    otherPoint,
+                    nextPoint
+                );
+
+                if (nextPoint == edgeToCheck[0])
+                {
+                    shuffleIndex = faceI;
+                }
             }
+            
             shuffleEdgeFace[faceI] = eFace[faceI];
         }
 
@@ -4242,6 +4286,42 @@ void Foam::dynamicTopoFvMesh::initEdges()
         edges_[reverseEdgeMap_[edgeI]] = edges[edgeI];
         edgeFaces_[reverseEdgeMap_[edgeI]] = shuffleEdgeFace;
     }
+}
+
+// Return length-scale at an edge-location in the mesh [3D]
+inline scalar Foam::dynamicTopoFvMesh::meshLengthScale
+(
+    const label eIndex
+)
+{
+    scalar scale = 0.0;
+    labelList& eFaces = edgeFaces_[eIndex];
+
+    if (eIndex < nInternalEdges_)
+    {
+        forAll(eFaces, faceI)
+        {
+            scale += lengthScale_[owner_[eFaces[faceI]]];
+            scale += lengthScale_[neighbour_[eFaces[faceI]]];
+        }
+
+        scale /= (2.0*eFaces.size());
+    }
+    else
+    {
+        // Search for boundary faces, and average their scale
+        forAll(eFaces, faceI)
+        {
+            if (neighbour_[eFaces[faceI]] == -1)
+            {
+                scale += lengthScale_[owner_[eFaces[faceI]]];
+            }
+        }
+
+        scale /= 2.0;
+    }
+
+    return scale;
 }
 
 // Does the mesh perform edge-modification?
@@ -4428,7 +4508,7 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
         edge& thisEdge = eIter();
 
         // Obtain a ring of vertices around this edge
-        if 
+        if
         (
             mesh->constructVertexRing
             (
@@ -4441,10 +4521,13 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
             )
         )
 	{
-            // This is a boundary edge, move on
-            cellHull.clear(); faceHull.clear(); vertexHull.clear();
-            eIter++;
-            continue;
+            // This is a boundary edge, but this routine doesn't handle them
+            FatalErrorIn("Foam::dynamicTopoFvMesh::swap3DEdges()") << nl
+                    << " Encountered a boundary edge."
+                    << "Edge: " << eIndex << ": " << thisEdge << nl
+                    << "cellHull: " << cellHull << nl
+                    << "vertexHull: " << vertexHull << nl
+                    << abort(FatalError);
         }
 
         // Check if a table-resize is necessary
@@ -4538,7 +4621,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
     while(eIter != eEnd)
     {
         // Retrieve the index for this iterator
-        label eindex = eIter.index();
+        label eIndex = eIter.index();
 
         // Reference to this edge...
         edge& thisEdge = eIter();
@@ -4549,7 +4632,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
         scalar length = mag(b-a);
 
         // Determine the length-scale at this point in the mesh
-        scalar scale = 0;
+        scalar scale = mesh->meshLengthScale(eIndex);
 
         //== Edge Bisection ==//
         if(length > mesh->ratioMax()*scale)
@@ -4558,7 +4641,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
             mesh->topoChangeFlag() = true;
 
             // Bisect this edge
-
+            mesh->bisectEdge(eIndex);
 
             // Move on to the next edge
             eIter++;
@@ -4568,7 +4651,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
         if(length < mesh->ratioMin()*scale)
         {
             // Collapse this edge
-            bool success = false;
+            bool success = mesh->collapseEdge(eIndex);
 
             // Increment the iterator to move on to the next edge...
             eIter++;
@@ -4577,7 +4660,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
             // to the next valid edge on the list.
             if (success)
             {
-                mesh->removeEdge(eindex);
+                mesh->removeEdge(eIndex);
 
                 // Set the flag
                 mesh->topoChangeFlag() = true;
@@ -6007,6 +6090,27 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         }        
     }
 
+    // Return a successful collapse
+    return true;
+}
+
+// Method for the bisection of an edge in 3D
+void Foam::dynamicTopoFvMesh::bisectEdge
+(
+    const label eIndex
+)
+{
+
+}
+
+// Method for the collapse of an edge in 3D
+// Returns a boolean value indicating whether the collapse was valid
+bool Foam::dynamicTopoFvMesh::collapseEdge
+(
+    const label eIndex
+)
+{
+    
     // Return a successful collapse
     return true;
 }
