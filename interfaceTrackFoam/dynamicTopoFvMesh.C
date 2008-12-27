@@ -1469,12 +1469,6 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
         << abort(FatalError);
     }
 
-    // Check if this is a boundary
-    if (cellIndex == -1)
-    {
-        isBoundary = true;
-    }
-
     // Start a search and add to the list as we go along
     labelList& eFaces = edgeFaces_[eIndex];
     faceToExclude = startFaceIndex;
@@ -1482,6 +1476,12 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     do
     {
         cell& cellToCheck = cells_[cellIndex];
+
+        // Add this point to the hull
+        hullVertices(numPoints++) = otherPoint;
+
+        // Add this face to the hull
+        hullFaces(numFaces++) = faceToExclude;
 
         // Add this cell to the hull
         hullCells.append(cellIndex);
@@ -1540,12 +1540,6 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
                         nextPoint
                     );
 
-                    // Increment the point count
-                    hullVertices(numPoints++) = otherPoint;
-
-                    // Increment the face count
-                    hullFaces(numFaces++) = cellToCheck[faceI];
-
                     // Update faceToExclude
                     faceToExclude = cellToCheck[faceI];
 
@@ -1592,7 +1586,17 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
         // Check if this is a boundary
         if (cellIndex == -1)
         {
+            // Add this point to the hull
+            hullVertices(numPoints++) = otherPoint;
+
+            // Add this face to the hull
+            hullFaces(numFaces++) = faceToExclude;
+
+            // Add this cell to the hull
+            hullCells.append(cellIndex);
+
             isBoundary = true;
+
             break;
         }
 
@@ -1608,6 +1612,11 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
         // Info << "Cells: " << hullCells << endl;
     }
 #   endif
+
+    // Shrink all dynamic lists
+    hullVertices.shrink();
+    hullFaces.shrink();
+    hullCells.shrink();
 
     return isBoundary;
 }
@@ -4351,7 +4360,7 @@ void Foam::dynamicTopoFvMesh::swapQuadFace
     face f;
     edge firstEdge(0,0);
     bool found = false;
-    FixedList<label,4> otherPointIndex, nextToOtherPoint;
+    FixedList<label,4> otherPointIndex(-1), nextToOtherPoint(-1);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
     FixedList<label,4> commonIntFaceIndex;
@@ -4768,9 +4777,9 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
 {
     // Local variables
     bool found;
-    label replaceFace, n0=-1, n1=-1;
+    label replaceFace;
     FixedList<edge,2> commonEdges;
-    FixedList<label,4> otherPointIndex, nextToOtherPoint;
+    FixedList<label,4> otherPointIndex(-1), nextToOtherPoint(-1);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
     edge tmpEdge(0,0), firstEdge(0,0), secondEdge(0,0);
@@ -4985,7 +4994,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         }
         else
         {
-            n0 = neighbour_[replaceFace];
             // This face has to be reversed
             faces_[replaceFace] = faces_[replaceFace].reverseFace();
             owner_[replaceFace] = neighbour_[replaceFace];
@@ -4994,7 +5002,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     }
     else
     {
-        n0 = owner_[replaceFace];
         // Keep owner, but change neighbour
         neighbour_[replaceFace] = newCellIndex0;
     }
@@ -5193,7 +5200,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
             }
             else
             {
-                n1 = neighbour_[replaceFace];
                 // This face has to be reversed
                 faces_[replaceFace] = faces_[replaceFace].reverseFace();
                 owner_[replaceFace] = neighbour_[replaceFace];
@@ -5202,7 +5208,6 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         }
         else
         {
-            n1 = owner_[replaceFace];
             // Keep owner, but change neighbour
             neighbour_[replaceFace] = newCellIndex1;
         }
@@ -6212,6 +6217,280 @@ void Foam::dynamicTopoFvMesh::bisectEdge
         false
     );
 
+    // Add a new point to the end of the list
+    label newPointIndex =
+        meshPoints_.append
+        (
+            0.5*
+            (
+                meshPoints_[thisEdge[0]]
+              + meshPoints_[thisEdge[1]]
+            )
+        );
+
+    nPoints_++;
+    
+    // Add a new edge to the end of the list
+    label newEdgeIndex = 
+        insertEdge
+        (
+            whichEdgePatch(eIndex),
+            edge(newPointIndex,thisEdge[1]),
+            labelList(faceHull.size(),-1)
+        );
+    
+    // Modify the existing edge
+    thisEdge[1] = newPointIndex;    
+    
+    // Obtain new references
+    face tmpTriFace(3);
+    edge& newEdge = edges_[newEdgeIndex];
+    labelList& newEdgeFaces = edgeFaces_[newEdgeIndex];
+
+    // Keep track of added entities
+    labelList addedCellIndices(cellHull.size(),-1);
+    labelList addedFaceIndices(faceHull.size(),-1);
+    labelList addedEdgeIndices(faceHull.size(),-1);
+    labelList addedIntFaceIndices(faceHull.size(),-1);
+
+    // Now loop through the hull and bisect individual entities
+    forAll(vertexHull, indexI)
+    {
+        // Fetch the existing face
+        face& currFace = faces_[faceHull[indexI]];
+
+        // Modify the existing face
+        replacePointLabel
+        (
+            newEdge[1],
+            newPointIndex,
+            currFace
+        );
+
+        // Check if this is an interior/boundary face
+        if (cellHull[indexI] != -1)
+        {
+            cell& currCell = cells_[cellHull[indexI]];
+
+            // Create a new cell
+            addedCellIndices[indexI] = cells_.append(cell(4));
+            cell& newCell = cells_[addedCellIndices[indexI]];
+
+            // Add a new element to the lengthScale field
+            lengthScale_.append(lengthScale_[cellHull[indexI]]);
+
+            // Obtain circular indices
+            label nextI = vertexHull.fcIndex(indexI);
+            label prevI = vertexHull.rcIndex(indexI);
+
+            // Create an interior face
+            tmpTriFace[0] = vertexHull[nextI];
+            tmpTriFace[1] = vertexHull[indexI];
+            tmpTriFace[2] = newPointIndex;
+
+            addedIntFaceIndices[indexI] =
+                insertFace
+                (
+                    -1,
+                    tmpTriFace,
+                    cellHull[indexI],
+                    addedCellIndices[indexI]
+                );
+
+            // Add to the new cell
+            newCell[0] = addedIntFaceIndices[indexI];
+
+            // Modify the existing face
+            forAll(currCell, faceI)
+            {
+                // Check if this face contains newEdge[1]
+                if
+                (
+                    (currCell[faceI] != faceHull[indexI])
+                 && (currCell[faceI] != faceHull[nextI])
+                 && (faces_[currCell[faceI]].which(newEdge[1]) > -1)
+                )
+                {
+                    label replaceFace = currCell[faceI];
+
+                    // Check if face reversal is necessary
+                    if (owner_[replaceFace] == cellHull[indexI])
+                    {
+                        if (neighbour_[replaceFace] == -1)
+                        {
+                            // Change the owner
+                            owner_[replaceFace] = addedCellIndices[indexI];
+                        }
+                        else
+                        {
+                            // This face has to be reversed
+                            faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                            owner_[replaceFace] = neighbour_[replaceFace];
+                            neighbour_[replaceFace] = addedCellIndices[indexI];
+                        }
+                    }
+                    else
+                    {
+                        // Keep owner, but change neighbour
+                        neighbour_[replaceFace] = addedCellIndices[indexI];
+                    }
+                    
+                    // Replace face labels
+                    replaceFaceLabel
+                    (
+                        replaceFace,
+                        addedIntFaceIndices[indexI],
+                        currCell
+                    );
+                    
+                    // Add to the new cell
+                    newCell[1] = replaceFace;
+
+                    break;
+                }
+            }
+
+            // Check if this is a boundary face
+            if (cellHull[prevI] == -1)
+            {
+                // Configure the boundary face
+                tmpTriFace[0] = newPointIndex;
+                tmpTriFace[1] = newEdge[1];
+                tmpTriFace[2] = vertexHull[indexI];
+
+                // Insert the face
+                addedFaceIndices[indexI] =
+                    insertFace
+                    (
+                        whichPatch(faceHull[indexI]),
+                        tmpTriFace,
+                        addedCellIndices[indexI],
+                        -1
+                    );
+
+                // Add an entry to newEdgeFaces
+                newEdgeFaces[indexI] = addedFaceIndices[indexI];
+
+                // Add an entry for this cell
+                newCell[2] = addedFaceIndices[indexI];
+            }
+            else
+            // Check if a cell was added before this
+            if (addedCellIndices[prevI] != -1)
+            {
+                // Configure the interior face
+                tmpTriFace[0] = vertexHull[indexI];
+                tmpTriFace[1] = newEdge[1];
+                tmpTriFace[2] = newPointIndex;
+
+                // Insert the face
+                addedFaceIndices[indexI] =
+                    insertFace
+                    (
+                        -1,
+                        tmpTriFace,
+                        addedCellIndices[prevI],
+                        addedCellIndices[indexI]
+                    );
+
+                // Add an entry to newEdgeFaces
+                newEdgeFaces[indexI] = addedFaceIndices[indexI];
+                
+                // Add an entry for this cell
+                newCell[2] = addedFaceIndices[indexI];
+
+                // Make the final entry for the previous cell
+                cells_[addedCellIndices[prevI]][3] = addedFaceIndices[indexI];
+            }
+
+            // Do the first interior face at the end
+            if (indexI == vertexHull.size() - 1)
+            {
+                // Configure the interior face
+                tmpTriFace[0] = newPointIndex;
+                tmpTriFace[1] = newEdge[1];
+                tmpTriFace[2] = vertexHull[0];
+
+                // Insert the face
+                addedFaceIndices[0] =
+                    insertFace
+                    (
+                        -1,
+                        tmpTriFace,
+                        addedCellIndices[0],
+                        addedCellIndices[indexI]
+                    );
+
+                // Add an entry to newEdgeFaces
+                newEdgeFaces[0] = addedFaceIndices[0];
+
+                // Add an entry for this cell
+                newCell[3] = addedFaceIndices[0];
+
+                // Make the final entry for the first cell
+                cells_[addedCellIndices[0]][2] = addedFaceIndices[0];
+            }
+        }
+        else
+        {
+            label prevI = vertexHull.rcIndex(indexI);
+
+            // Configure the final boundary face
+            tmpTriFace[0] = vertexHull[indexI];
+            tmpTriFace[1] = newEdge[1];
+            tmpTriFace[2] = newPointIndex;
+
+            // Insert the face
+            addedFaceIndices[indexI] =
+                insertFace
+                (
+                    whichPatch(faceHull[indexI]),
+                    tmpTriFace,
+                    addedCellIndices[prevI],
+                    -1
+                );
+
+            // Add an entry to newEdgeFaces
+            newEdgeFaces[indexI] = addedFaceIndices[indexI];
+
+            // Make the final entry for the previous cell
+            cells_[addedCellIndices[prevI]][3] = addedFaceIndices[indexI];
+        }
+    }
+
+#   ifdef FULLDEBUG
+    if (debug)
+    {
+        Info << "Added cells: " << endl;
+        forAll(addedCellIndices, cellI)
+        {
+            if (addedCellIndices[cellI] != -1)
+            {
+                Info << addedCellIndices[cellI] << ":: "
+                     << cells_[addedCellIndices[cellI]]
+                     << endl;
+            }
+        }
+        Info << "Added faces: " << endl;
+        forAll(addedFaceIndices, faceI)
+        {
+            Info << addedFaceIndices[faceI] << ":: "
+                 << faces_[addedFaceIndices[faceI]] << ": "
+                 << owner_[addedFaceIndices[faceI]] << ": "
+                 << neighbour_[addedFaceIndices[faceI]]
+                 << endl;
+        }
+        forAll(addedIntFaceIndices, faceI)
+        {
+            Info << addedIntFaceIndices[faceI] << ":: "
+                 << faces_[addedIntFaceIndices[faceI]] << ": "
+                 << owner_[addedIntFaceIndices[faceI]] << ": "
+                 << neighbour_[addedIntFaceIndices[faceI]]
+                 << endl;
+        }
+        Info << "newEdgeFaces: " << newEdgeFaces << endl;
+    }
+#   endif
 }
 
 // Method for the collapse of an edge in 3D
