@@ -356,20 +356,12 @@ class dynamicTopoFvMesh
             label& nextPtIndex
         );
         
-        // Method to replace a face-label in a given cell
-        inline void replaceFaceLabel
+        // Method to replace a label in a given list
+        inline void replaceLabel
         (
             const label& original, 
             const label& replacement, 
-            cell& c
-        );
-        
-        // Method to replace a point-label in a given face
-        inline void replacePointLabel
-        (
-            const label& original, 
-            const label& replacement, 
-            face& f
+            labelList& list
         );
         
         // Insert the specified face to the mesh

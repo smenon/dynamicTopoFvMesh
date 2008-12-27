@@ -870,20 +870,20 @@ inline void Foam::dynamicTopoFvMesh::findIsolatedPoint
     }
 }
 
-// Utility method to replace a face-label in a given cell
-inline void Foam::dynamicTopoFvMesh::replaceFaceLabel
+// Utility method to replace a label in a given list
+inline void Foam::dynamicTopoFvMesh::replaceLabel
 (
      const label& original,
      const label& replacement,
-     cell& c
+     labelList& list
 )
 {
     bool found = false;
-    forAll(c, faceI)
+    forAll(list, indexI)
     {
-        if (c[faceI] == original)
+        if (list[indexI] == original)
         {
-            c[faceI] = replacement;
+            list[indexI] = replacement;
             found = true;
             break; 
         }
@@ -892,38 +892,9 @@ inline void Foam::dynamicTopoFvMesh::replaceFaceLabel
     {
         FatalErrorIn
         (
-            "label dynamicTopoFvMesh::replaceFaceLabel()"
-        )   << "Cannot find face " << original << " in cell: " << c << endl
-            << " Face: " << replacement << " was not used in replacement."
-            << abort(FatalError);
-    }
-}
-
-// Utility method to replace a point-label in a given face
-inline void Foam::dynamicTopoFvMesh::replacePointLabel
-(
-     const label& original,
-     const label& replacement,
-     face& f
-)
-{
-    bool found = false;
-    forAll(f, pointI)
-    {
-        if (f[pointI] == original)
-        {
-            f[pointI] = replacement;
-            found = true;
-            break;
-        }
-    }
-    if (!found)
-    {
-        FatalErrorIn
-        (
-            "label dynamicTopoFvMesh::replacePointLabel()"
-        )   << "Cannot find point " << original << " in face: " << f << endl
-            << " Point: " << replacement << " was not used in replacement."
+            "label dynamicTopoFvMesh::replaceLabel()"
+        )   << "Cannot find " << original << " in list: " << list << endl
+            << " Label: " << replacement << " was not used in replacement."
             << abort(FatalError);
     }
 }
@@ -4912,7 +4883,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     BdyFace1[1] = nextToOtherPoint[1];
     BdyFace1[2] = newPtIndex1; 
     owner_[c0BdyIndex[1]] = newCellIndex0;
-    replaceFaceLabel(c0BdyIndex[1],-1,cell_0);
+    replaceLabel(c0BdyIndex[1],-1,cell_0);
 
     // Detect edges other than commonEdges
     edgeList eThis = thisFace.edges();
@@ -4941,14 +4912,14 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Modify point-labels on the quad face under consideration
-    replacePointLabel
+    replaceLabel
     (
         commonEdges[0].otherVertex(nextToOtherPoint[0]), 
         newPtIndex0, 
         thisFace
     );
     
-    replacePointLabel
+    replaceLabel
     (
         nextToOtherPoint[1], 
         newPtIndex1, 
@@ -4972,7 +4943,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     {
         if ( e1[edgeI] == secondEdge )
         {
-            replaceFaceLabel(c0IntIndex[0],-1,cell_0);
+            replaceLabel(c0IntIndex[0],-1,cell_0);
             replaceFace = c0IntIndex[0];
             found = true; break;
         }
@@ -4980,7 +4951,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
     if (!found)
     {
         // The edge was obviously not found before
-        replaceFaceLabel(c0IntIndex[1],-1,cell_0);
+        replaceLabel(c0IntIndex[1],-1,cell_0);
         replaceFace = c0IntIndex[1];
     }
 
@@ -5032,8 +5003,8 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
                        newCellIndex0, 
                        edgeToWatch
                    );
-    replaceFaceLabel(-1, newFaceIndex, newCell0);
-    replaceFaceLabel(-1, newFaceIndex, cell_0);
+    replaceLabel(-1, newFaceIndex, newCell0);
+    replaceLabel(-1, newFaceIndex, cell_0);
 
     // remove2DSliver requires this face index for removal
     bisectInteriorFace_ = newFaceIndex;
@@ -5051,7 +5022,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
                        -1, 
                        edgeToWatch
                    );
-    replaceFaceLabel(-1, newFaceIndex, newCell0);
+    replaceLabel(-1, newFaceIndex, newCell0);
 
     // Third boundary face; Owner = c[0] & Neighbour = [-1] 
     tmpTriFace[0] = otherPointIndex[1];
@@ -5066,7 +5037,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
                        -1, 
                        edgeToWatch
                    );
-    replaceFaceLabel(-1, newFaceIndex, cell_0);
+    replaceLabel(-1, newFaceIndex, cell_0);
 
     if (c1 == -1)
     {
@@ -5086,7 +5057,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
                            -1, 
                            edgeToWatch
                        );
-        replaceFaceLabel(-1, newFaceIndex, newCell0);
+        replaceLabel(-1, newFaceIndex, newCell0);
 
         if (debug)
         {
@@ -5178,7 +5149,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         {
             if ( e2[edgeI] == secondEdge )
             {
-                replaceFaceLabel(c1IntIndex[0], -1, cell_1);
+                replaceLabel(c1IntIndex[0], -1, cell_1);
                 replaceFace = c1IntIndex[0];
                 found = true; break;
             }
@@ -5186,7 +5157,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
         if (!found)
         {
             // The edge was obviously not found before
-            replaceFaceLabel(c1IntIndex[1], -1, cell_1);
+            replaceLabel(c1IntIndex[1], -1, cell_1);
             replaceFace = c1IntIndex[1];
         }
 
@@ -5231,8 +5202,8 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
                            newCellIndex1, 
                            edgeToWatch
                        );
-        replaceFaceLabel(-1, newFaceIndex, newCell0);
-        replaceFaceLabel(-1, newFaceIndex, newCell1);
+        replaceLabel(-1, newFaceIndex, newCell0);
+        replaceLabel(-1, newFaceIndex, newCell1);
         newCell1[1] = newFaceIndex;
 
         // Check for common edges among the two boundary faces
@@ -5265,7 +5236,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
             BdyFace2[1] = nextToOtherPoint[2];
             BdyFace2[2] = newPtIndex0;
             owner_[c1BdyIndex[0]] = newCellIndex1;
-            replaceFaceLabel(c1BdyIndex[0], -1, cell_1);
+            replaceLabel(c1BdyIndex[0], -1, cell_1);
             newCell1[2] = c1BdyIndex[0];
 
             // First boundary face - Owner = c[1] & Neighbour [-1] (unchanged)
@@ -5306,7 +5277,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
             BdyFace2[1] = nextToOtherPoint[2];
             BdyFace2[2] = newPtIndex0;
             owner_[c1BdyIndex[1]] = newCellIndex1;
-            replaceFaceLabel(c1BdyIndex[1], -1, cell_1);
+            replaceLabel(c1BdyIndex[1], -1, cell_1);
             newCell1[2] = c1BdyIndex[1];
 
             // First boundary face - Owner = c[1] & Neighbour [-1] (unchanged)
@@ -5335,8 +5306,8 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
                            newCellIndex1, 
                            edgeToWatch
                        );
-        replaceFaceLabel(-1, newFaceIndex, newCell1);
-        replaceFaceLabel(-1, newFaceIndex, cell_1);
+        replaceLabel(-1, newFaceIndex, newCell1);
+        replaceLabel(-1, newFaceIndex, cell_1);
 
         // Second boundary face; Owner = cell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[2];
@@ -5351,7 +5322,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
                            -1, 
                            edgeToWatch
                        );
-        replaceFaceLabel(-1, newFaceIndex, cell_1);
+        replaceLabel(-1, newFaceIndex, cell_1);
 
         // Third boundary face; Owner = newCell[1] & Neighbour [-1] 
         tmpTriFace[0] = otherPointIndex[3];
@@ -5366,7 +5337,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
                            -1, 
                            edgeToWatch
                        );
-        replaceFaceLabel(-1, newFaceIndex, newCell1);
+        replaceLabel(-1, newFaceIndex, newCell1);
 
         if (debug)
         {
@@ -5677,8 +5648,8 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         forAll(firstEdgeHull,faceI)
         {
             face& replacementFace = faces_[firstEdgeHull[faceI]];
-            replacePointLabel(cv0,cv2,replacementFace);
-            replacePointLabel(cv1,cv3,replacementFace);
+            replaceLabel(cv0,cv2,replacementFace);
+            replaceLabel(cv1,cv3,replacementFace);
             // Modify edgeToWatch as well
             edge& replacementCheckEdge = edgeToWatch_[firstEdgeHull[faceI]];
             if (replacementCheckEdge[0] == cv0) replacementCheckEdge[0] = cv2;
@@ -5798,8 +5769,8 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         forAll(secondEdgeHull,faceI)
         {
             face& replacementFace = faces_[secondEdgeHull[faceI]];
-            replacePointLabel(cv2, cv0, replacementFace);
-            replacePointLabel(cv3, cv1, replacementFace);
+            replaceLabel(cv2, cv0, replacementFace);
+            replaceLabel(cv3, cv1, replacementFace);
             // Modify edgeToWatch as well
             edge& replacementCheckEdge = edgeToWatch_[secondEdgeHull[faceI]];
             if (replacementCheckEdge[0] == cv2) replacementCheckEdge[0] = cv0;
@@ -6075,7 +6046,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                                   edgeToWatch_[faceToKeep[0]]
                               );
 
-        replaceFaceLabel
+        replaceLabel
         (
             faceToKeep[0], 
             newFaceIndex0, 
@@ -6098,7 +6069,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
     lengthScale_.remove(c0);
     if (cellCheck[0] != -1)
     {
-        replaceFaceLabel(faceToThrow[0], faceToKeep[0], cells_[cellCheck[0]]);
+        replaceLabel(faceToThrow[0], faceToKeep[0], cells_[cellCheck[0]]);
     }
     
     // Update the number of cells, and the reverse map
@@ -6139,7 +6110,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                                       edgeToWatch_[faceToKeep[1]]
                                   );
 
-            replaceFaceLabel
+            replaceLabel
             (
                 faceToKeep[1], 
                 newFaceIndex1, 
@@ -6161,7 +6132,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         lengthScale_.remove(c1);
         if (cellCheck[1] != -1)
         {        
-            replaceFaceLabel(faceToThrow[1], faceToKeep[1], cells_[cellCheck[1]]);
+            replaceLabel(faceToThrow[1], faceToKeep[1], cells_[cellCheck[1]]);
         }        
 
         // Update the number of cells, and the reverse map
@@ -6188,6 +6159,10 @@ void Foam::dynamicTopoFvMesh::bisectEdge
     const label eIndex
 )
 {
+    face tmpTriFace(3);
+    labelList tmpEdgeFaces(3,-1);
+    labelList tmpIntEdgeFaces(4,-1);
+    labelList tmpFaceEdges(3,-1);
     edge& thisEdge = edges_[eIndex];
 
     if (debug)
@@ -6243,7 +6218,6 @@ void Foam::dynamicTopoFvMesh::bisectEdge
     thisEdge[1] = newPointIndex;    
     
     // Obtain new references
-    face tmpTriFace(3);
     edge& newEdge = edges_[newEdgeIndex];
     labelList& newEdgeFaces = edgeFaces_[newEdgeIndex];
 
@@ -6260,7 +6234,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
         face& currFace = faces_[faceHull[indexI]];
 
         // Modify the existing face
-        replacePointLabel
+        replaceLabel
         (
             newEdge[1],
             newPointIndex,
@@ -6275,6 +6249,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
             // Create a new cell
             addedCellIndices[indexI] = cells_.append(cell(4));
             cell& newCell = cells_[addedCellIndices[indexI]];
+            nCells_++;
 
             // Add a new element to the lengthScale field
             lengthScale_.append(lengthScale_[cellHull[indexI]]);
@@ -6283,11 +6258,12 @@ void Foam::dynamicTopoFvMesh::bisectEdge
             label nextI = vertexHull.fcIndex(indexI);
             label prevI = vertexHull.rcIndex(indexI);
 
-            // Create an interior face
+            // Configure the interior face
             tmpTriFace[0] = vertexHull[nextI];
             tmpTriFace[1] = vertexHull[indexI];
             tmpTriFace[2] = newPointIndex;
 
+            // Insert the face
             addedIntFaceIndices[indexI] =
                 insertFace
                 (
@@ -6296,6 +6272,9 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                     cellHull[indexI],
                     addedCellIndices[indexI]
                 );
+
+            // Add a faceEdges entry as well
+            faceEdges_.append(tmpFaceEdges);
 
             // Add to the new cell
             newCell[0] = addedIntFaceIndices[indexI];
@@ -6334,9 +6313,35 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                         // Keep owner, but change neighbour
                         neighbour_[replaceFace] = addedCellIndices[indexI];
                     }
+
+                    // Look for the edge on the ring
+                    labelList& rFaceEdges = faceEdges_[replaceFace];
+
+                    forAll(rFaceEdges, edgeI)
+                    {
+                        if
+                        (
+                            edges_[rFaceEdges[edgeI]]
+                         == edge(vertexHull[indexI],vertexHull[nextI])
+                        )
+                        {
+                            // Modify edgeFaces to add the
+                            // new interior face
+                            sizeUpList
+                            (
+                                addedIntFaceIndices[indexI],
+                                edgeFaces_[rFaceEdges[edgeI]]
+                            );
+
+                            // Add this edge to faceEdges
+                            // for the new interior face
+                            faceEdges_[addedIntFaceIndices[indexI]][0] =
+                                rFaceEdges[edgeI];
+                        }
+                    }
                     
                     // Replace face labels
-                    replaceFaceLabel
+                    replaceLabel
                     (
                         replaceFace,
                         addedIntFaceIndices[indexI],
@@ -6367,6 +6372,65 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                         addedCellIndices[indexI],
                         -1
                     );
+                
+                // Configure edgeFaces (notice the counter-clockwise ordering)
+                tmpEdgeFaces[0] = faceHull[indexI];
+                tmpEdgeFaces[1] = addedIntFaceIndices[indexI];
+                tmpEdgeFaces[2] = addedFaceIndices[indexI];
+
+                // Add an edge
+                addedEdgeIndices[indexI] =
+                    insertEdge
+                    (
+                        whichPatch(faceHull[indexI]),
+                        edge(newPointIndex,vertexHull[indexI]),
+                        tmpEdgeFaces
+                    );
+
+                // Add this edge to the interior-face faceEdges entry
+                faceEdges_[addedIntFaceIndices[indexI]][1] =
+                    addedEdgeIndices[indexI];
+
+                // Configure faceEdges for this boundary face
+                tmpFaceEdges[0] = addedEdgeIndices[indexI];
+                tmpFaceEdges[1] = newEdgeIndex;
+
+                // Find the third edge
+                labelList& rFaceEdges = faceEdges_[faceHull[indexI]];
+
+                forAll(rFaceEdges, edgeI)
+                {
+                    if
+                    (
+                        edges_[rFaceEdges[edgeI]]
+                     == edge(newEdge[1],vertexHull[indexI])
+                    )
+                    {
+                        // Add this edge to faceEdges for this face
+                        tmpFaceEdges[2] = rFaceEdges[edgeI];
+
+                        // Modify faceEdges
+                        replaceLabel
+                        (
+                            rFaceEdges[edgeI],
+                            addedEdgeIndices[indexI],
+                            rFaceEdges
+                        );
+
+                        // Modify edgeFaces
+                        replaceLabel
+                        (
+                            faceHull[indexI],
+                            addedFaceIndices[indexI],
+                            edgeFaces_[rFaceEdges[edgeI]]
+                        );
+
+                        break;
+                    }
+                }
+
+                // Add the faceEdges entry
+                faceEdges_.append(tmpFaceEdges);
 
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[indexI] = addedFaceIndices[indexI];
@@ -6392,6 +6456,70 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                         addedCellIndices[prevI],
                         addedCellIndices[indexI]
                     );
+
+                // Configure edgeFaces
+                tmpIntEdgeFaces[0] = faceHull[indexI];
+                tmpIntEdgeFaces[1] = addedIntFaceIndices[indexI];
+                tmpIntEdgeFaces[2] = addedFaceIndices[indexI];
+                tmpIntEdgeFaces[3] = addedIntFaceIndices[prevI];
+
+                // Add an internal edge
+                addedEdgeIndices[indexI] =
+                    insertEdge
+                    (
+                        -1,
+                        edge(newPointIndex,vertexHull[indexI]),
+                        tmpIntEdgeFaces
+                    );
+
+                // Add this edge to the interior-face faceEdges entry..
+                faceEdges_[addedIntFaceIndices[indexI]][1] =
+                    addedEdgeIndices[indexI];
+
+                // ... and to the previous interior face as well
+                faceEdges_[addedIntFaceIndices[prevI]][2] =
+                    addedEdgeIndices[indexI];
+
+                // Configure faceEdges for this split interior face
+                tmpFaceEdges[0] = addedEdgeIndices[indexI];
+                tmpFaceEdges[1] = newEdgeIndex;
+
+                // Find the third edge
+                labelList& rFaceEdges = faceEdges_[faceHull[indexI]];
+
+                forAll(rFaceEdges, edgeI)
+                {
+                    if
+                    (
+                        edges_[rFaceEdges[edgeI]]
+                     == edge(newEdge[1],vertexHull[indexI])
+                    )
+                    {
+                        // Add this edge to faceEdges for this face
+                        tmpFaceEdges[2] = rFaceEdges[edgeI];
+
+                        // Modify faceEdges
+                        replaceLabel
+                        (
+                            rFaceEdges[edgeI],
+                            addedEdgeIndices[indexI],
+                            rFaceEdges
+                        );
+
+                        // Modify edgeFaces
+                        replaceLabel
+                        (
+                            faceHull[indexI],
+                            addedFaceIndices[indexI],
+                            edgeFaces_[rFaceEdges[edgeI]]
+                        );
+
+                        break;
+                    }
+                }
+
+                // Add the faceEdges entry
+                faceEdges_.append(tmpFaceEdges);
 
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[indexI] = addedFaceIndices[indexI];
@@ -6421,6 +6549,70 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                         addedCellIndices[indexI]
                     );
 
+                // Configure edgeFaces
+                tmpIntEdgeFaces[0] = faceHull[0];
+                tmpIntEdgeFaces[1] = addedIntFaceIndices[0];
+                tmpIntEdgeFaces[2] = addedFaceIndices[0];
+                tmpIntEdgeFaces[3] = addedIntFaceIndices[indexI];
+
+                // Add an internal edge
+                addedEdgeIndices[0] =
+                    insertEdge
+                    (
+                        -1,
+                        edge(newPointIndex,vertexHull[0]),
+                        tmpIntEdgeFaces
+                    );
+
+                // Add this edge to the interior-face faceEdges entry..
+                faceEdges_[addedIntFaceIndices[0]][1] =
+                    addedEdgeIndices[0];
+
+                // ... and to the previous interior face as well
+                faceEdges_[addedIntFaceIndices[indexI]][2] =
+                    addedEdgeIndices[0];
+
+                // Configure faceEdges for the first split face
+                tmpFaceEdges[0] = addedEdgeIndices[0];
+                tmpFaceEdges[1] = newEdgeIndex;
+
+                // Find the third edge
+                labelList& rFaceEdges = faceEdges_[faceHull[0]];
+
+                forAll(rFaceEdges, edgeI)
+                {
+                    if
+                    (
+                        edges_[rFaceEdges[edgeI]]
+                     == edge(newEdge[1],vertexHull[0])
+                    )
+                    {
+                        // Add this edge to faceEdges for this face
+                        tmpFaceEdges[2] = rFaceEdges[edgeI];
+
+                        // Modify faceEdges
+                        replaceLabel
+                        (
+                            rFaceEdges[edgeI],
+                            addedEdgeIndices[0],
+                            rFaceEdges
+                        );
+
+                        // Modify edgeFaces
+                        replaceLabel
+                        (
+                            faceHull[0],
+                            addedFaceIndices[0],
+                            edgeFaces_[rFaceEdges[edgeI]]
+                        );
+
+                        break;
+                    }
+                }
+
+                // Add the faceEdges entry
+                faceEdges_.append(tmpFaceEdges);
+
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[0] = addedFaceIndices[0];
 
@@ -6449,6 +6641,65 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                     addedCellIndices[prevI],
                     -1
                 );
+
+            // Configure edgeFaces (notice the counter-clockwise ordering)
+            tmpEdgeFaces[0] = addedFaceIndices[indexI];
+            tmpEdgeFaces[1] = addedIntFaceIndices[prevI];
+            tmpEdgeFaces[2] = faceHull[indexI];
+
+            // Add an edge
+            addedEdgeIndices[indexI] =
+                insertEdge
+                (
+                    whichPatch(faceHull[indexI]),
+                    edge(newPointIndex,vertexHull[indexI]),
+                    tmpEdgeFaces
+                );
+
+            // Add a faceEdges entry to the previous interior face
+            faceEdges_[addedIntFaceIndices[prevI]][2] =
+                addedEdgeIndices[indexI];
+
+            // Configure faceEdges for the final boundary face
+            tmpFaceEdges[0] = addedEdgeIndices[indexI];
+            tmpFaceEdges[1] = newEdgeIndex;
+
+            // Find the third edge
+            labelList& rFaceEdges = faceEdges_[faceHull[indexI]];
+
+            forAll(rFaceEdges, edgeI)
+            {
+                if
+                (
+                    edges_[rFaceEdges[edgeI]]
+                 == edge(newEdge[1],vertexHull[indexI])
+                )
+                {
+                    // Add this edge to faceEdges for this face
+                    tmpFaceEdges[2] = rFaceEdges[edgeI];
+
+                    // Modify faceEdges
+                    replaceLabel
+                    (
+                        rFaceEdges[edgeI],
+                        addedEdgeIndices[indexI],
+                        rFaceEdges
+                    );
+
+                    // Modify edgeFaces
+                    replaceLabel
+                    (
+                        faceHull[indexI],
+                        addedFaceIndices[indexI],
+                        edgeFaces_[rFaceEdges[edgeI]]
+                    );
+
+                    break;
+                }
+            }
+
+            // Add the faceEdges entry
+            faceEdges_.append(tmpFaceEdges);
 
             // Add an entry to newEdgeFaces
             newEdgeFaces[indexI] = addedFaceIndices[indexI];
