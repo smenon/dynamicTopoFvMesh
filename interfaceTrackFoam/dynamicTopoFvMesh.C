@@ -1579,7 +1579,8 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
         // Print out the ring
         // Info << endl;
         // Info << "Edge: " << edgeToCheck << endl;
-        // Info << "Ring: " << hullVertices << endl;
+        // Info << "Points: " << hullVertices << endl;
+        // Info << "Faces: " << hullFaces << endl;
         // Info << "Cells: " << hullCells << endl;
     }
 #   endif
@@ -3424,10 +3425,13 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                     forAll(bdyPatch,faceI)
                     {
                         label ownCell = own[pStart+faceI];
-                        cellLevels[ownCell] = level;
-                        lengthScale[ownCell] =
-                            fixedLengthScalePatches_[patchName][0].scalarToken();
-                        visitedCells++;
+                        if (cellLevels[ownCell] == 0)
+                        {
+                            cellLevels[ownCell] = level;
+                            lengthScale[ownCell] =
+                                fixedLengthScalePatches_[patchName][0].scalarToken();
+                            visitedCells++;
+                        }
                     }
                     fixed = true; break;
                 }
@@ -3444,28 +3448,32 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                 forAll(bdyPatch,faceI)
                 {
                     label ownCell = own[pStart+faceI];
-                    cellLevels[ownCell] = level;
 
-                    if (twoDMesh_)
+                    if (cellLevels[ownCell] == 0)
                     {
-                        // Get length-scale from edgeToWatch
-                        edge& e = edgeToWatch_[pStart+faceI];
-                        lengthScale[ownCell] = mag(pList[e[0]] - pList[e[1]]);
-                    }
-                    else
-                    {
-                        // Average edge-lengths for this face
-                        scalar edgeLength = 0.0;
-                        labelList& fEdges = faceEdges_[pStart+faceI];
-                        forAll(fEdges, edgeI)
+                        cellLevels[ownCell] = level;
+
+                        if (twoDMesh_)
                         {
-                            edge& e = edges_[fEdges[edgeI]];
-                            edgeLength += mag(pList[e[0]] - pList[e[1]]);
+                            // Get length-scale from edgeToWatch
+                            edge& e = edgeToWatch_[pStart+faceI];
+                            lengthScale[ownCell] = mag(pList[e[0]] - pList[e[1]]);
                         }
-                        lengthScale[ownCell] = (edgeLength/fEdges.size());
+                        else
+                        {
+                            // Average edge-lengths for this face
+                            scalar edgeLength = 0.0;
+                            labelList& fEdges = faceEdges_[pStart+faceI];
+                            forAll(fEdges, edgeI)
+                            {
+                                edge& e = edges_[fEdges[edgeI]];
+                                edgeLength += mag(pList[e[0]] - pList[e[1]]);
+                            }
+                            lengthScale[ownCell] = (edgeLength/fEdges.size());
+                        }
+
+                        visitedCells++;
                     }
-                    
-                    visitedCells++;
                 }
             }
         }
@@ -3518,6 +3526,17 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
         {
             Info << "Max Length Scale: " << maxLengthScale_ << endl;
             Info << "Length Scale sweeps: " << level << endl;
+        }
+
+        // Check if everything went okay
+        if (visitedCells != nCells())
+        {
+            FatalErrorIn("Foam::dynamicTopoFvMesh::calculateLengthScale()")
+                    << " Algorithm did not visit every cell in the mesh."
+                    << " Something's messed up." << nl
+                    << " Visited cells: " << visitedCells
+                    << " nCells: " << nCells()
+                    << abort(FatalError);
         }
 
         // Copy the most recent length-scale values
@@ -3930,7 +3949,8 @@ inline scalar Foam::dynamicTopoFvMesh::meshEdgeLengthScale
     scalar scale = 0.0;
     labelList& eFaces = edgeFaces_[eIndex];
 
-    if (eIndex < nInternalEdges_)
+    // Determine whether the edge is internal
+    if (whichEdgePatch(eIndex) < 0)
     {
         forAll(eFaces, faceI)
         {
@@ -3947,7 +3967,7 @@ inline scalar Foam::dynamicTopoFvMesh::meshEdgeLengthScale
         {
             if (neighbour_[eFaces[faceI]] == -1)
             {
-                scale += lengthScale_[owner_[eFaces[faceI]]];
+                scale += boundaryLengthScale(eFaces[faceI]);
             }
         }
 
@@ -6241,6 +6261,10 @@ void Foam::dynamicTopoFvMesh::bisectEdge
             currFace
         );
 
+        // Obtain circular indices
+        label nextI = vertexHull.fcIndex(indexI);
+        label prevI = vertexHull.rcIndex(indexI);
+
         // Check if this is an interior/boundary face
         if (cellHull[indexI] != -1)
         {
@@ -6253,10 +6277,6 @@ void Foam::dynamicTopoFvMesh::bisectEdge
 
             // Add a new element to the lengthScale field
             lengthScale_.append(lengthScale_[cellHull[indexI]]);
-
-            // Obtain circular indices
-            label nextI = vertexHull.fcIndex(indexI);
-            label prevI = vertexHull.rcIndex(indexI);
 
             // Configure the interior face
             tmpTriFace[0] = vertexHull[nextI];
@@ -6422,7 +6442,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                         (
                             faceHull[indexI],
                             addedFaceIndices[indexI],
-                            edgeFaces_[rFaceEdges[edgeI]]
+                            edgeFaces_[tmpFaceEdges[2]]
                         );
 
                         break;
@@ -6511,7 +6531,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                         (
                             faceHull[indexI],
                             addedFaceIndices[indexI],
-                            edgeFaces_[rFaceEdges[edgeI]]
+                            edgeFaces_[tmpFaceEdges[2]]
                         );
 
                         break;
@@ -6603,7 +6623,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                         (
                             faceHull[0],
                             addedFaceIndices[0],
-                            edgeFaces_[rFaceEdges[edgeI]]
+                            edgeFaces_[tmpFaceEdges[2]]
                         );
 
                         break;
@@ -6625,8 +6645,6 @@ void Foam::dynamicTopoFvMesh::bisectEdge
         }
         else
         {
-            label prevI = vertexHull.rcIndex(indexI);
-
             // Configure the final boundary face
             tmpTriFace[0] = vertexHull[indexI];
             tmpTriFace[1] = newEdge[1];
@@ -6691,7 +6709,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                     (
                         faceHull[indexI],
                         addedFaceIndices[indexI],
-                        edgeFaces_[rFaceEdges[edgeI]]
+                        edgeFaces_[tmpFaceEdges[2]]
                     );
 
                     break;
@@ -6712,6 +6730,17 @@ void Foam::dynamicTopoFvMesh::bisectEdge
 #   ifdef FULLDEBUG
     if (debug)
     {
+        Info << "Modified cells: " << endl;
+        forAll(cellHull, cellI)
+        {
+            if (cellHull[cellI] != -1)
+            {
+                Info << cellHull[cellI] << ":: "
+                     << cells_[cellHull[cellI]]
+                     << endl;
+            }
+        }
+
         Info << "Added cells: " << endl;
         forAll(addedCellIndices, cellI)
         {
@@ -6722,24 +6751,54 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                      << endl;
             }
         }
+
+        Info << "Modified faces: " << endl;
+        forAll(faceHull, faceI)
+        {
+            Info << faceHull[faceI] << ":: "
+                 << faces_[faceHull[faceI]] << ": "
+                 << owner_[faceHull[faceI]] << ": "
+                 << neighbour_[faceHull[faceI]] << " "
+                 << "faceEdges:: " << faceEdges_[faceHull[faceI]]
+                 << endl;
+        }
+
         Info << "Added faces: " << endl;
         forAll(addedFaceIndices, faceI)
         {
             Info << addedFaceIndices[faceI] << ":: "
                  << faces_[addedFaceIndices[faceI]] << ": "
                  << owner_[addedFaceIndices[faceI]] << ": "
-                 << neighbour_[addedFaceIndices[faceI]]
+                 << neighbour_[addedFaceIndices[faceI]] << " "
+                 << "faceEdges:: " << faceEdges_[addedFaceIndices[faceI]]
                  << endl;
         }
         forAll(addedIntFaceIndices, faceI)
         {
-            Info << addedIntFaceIndices[faceI] << ":: "
-                 << faces_[addedIntFaceIndices[faceI]] << ": "
-                 << owner_[addedIntFaceIndices[faceI]] << ": "
-                 << neighbour_[addedIntFaceIndices[faceI]]
+            if (addedIntFaceIndices[faceI] != -1)
+            {
+                Info << addedIntFaceIndices[faceI] << ":: "
+                     << faces_[addedIntFaceIndices[faceI]] << ": "
+                     << owner_[addedIntFaceIndices[faceI]] << ": "
+                     << neighbour_[addedIntFaceIndices[faceI]] << " "
+                     << "faceEdges:: "
+                     << faceEdges_[addedIntFaceIndices[faceI]]
+                     << endl;
+            }
+        }
+
+        Info << "New edge:: " << newEdgeIndex
+             << ": " << edges_[newEdgeIndex]
+             << " edgeFaces:: " << newEdgeFaces << endl;
+
+        Info << "Added edges: " << endl;
+        forAll(addedEdgeIndices, edgeI)
+        {
+            Info << addedEdgeIndices[edgeI]
+                 << ":: " << edges_[addedEdgeIndices[edgeI]]
+                 << " edgeFaces:: " << edgeFaces_[addedEdgeIndices[edgeI]]
                  << endl;
         }
-        Info << "newEdgeFaces: " << newEdgeFaces << endl;
     }
 #   endif
 }
@@ -6781,7 +6840,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
     );
 
     // Return a successful collapse
-    return true;
+    return false;
 }
 
 // Check if the boundary face is adjacent to a sliver-cell,

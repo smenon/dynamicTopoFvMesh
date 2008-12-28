@@ -58,7 +58,7 @@ void rotatePoints
     // Fetch the mesh-points
     pointField meshPoints = mesh.points();
     
-    // Find the box patch
+    // Find the patch
     forAll (mesh.boundary(), patchI)
     {
         if(mesh.boundary()[patchI].name() == patchName) {
@@ -67,15 +67,16 @@ void rotatePoints
         }
     }   
     
-    // Move points that lie on the box patch
-    const labelList& boxPoints = mesh.boundaryMesh()[patchID].meshPoints();  
-    vectorField Displacement(boxPoints.size(),vector::zero);
+    // Move points that lie on the patch
+    const labelList& patchPoints = mesh.boundaryMesh()[patchID].meshPoints();
+    vectorField Displacement(patchPoints.size(),vector::zero);
     
-    forAll (boxPoints, index)
+    forAll (patchPoints, index)
     {
         q = vector::zero;
         // Fetch the point
-        p_orig = p = meshPoints[boxPoints[index]] + t;
+        p_orig = meshPoints[patchPoints[index]];
+        p = p_orig + t;
         // Translate to the origin
         p -= p1;
         // Apply the rotation matrix
@@ -93,11 +94,11 @@ void rotatePoints
         // Translate back to original location
         q += p1;
         // Assign to the mesh
-        meshPoints[boxPoints[index]] = q;
+        meshPoints[patchPoints[index]] = q;
         // Change displacement conditions as well
         Displacement[index] = q-p_orig;
     }   
-    
+
     // Update the displacement
     mesh.setMotionBC(patchID, Displacement);
     
@@ -157,6 +158,9 @@ int main(int argc, char *argv[])
         {
             // Write out mesh quality
             mesh.meshQuality()().write();
+
+            // Write out the mesh length scales
+            mesh.lengthScale()().write();
         }
     }
 

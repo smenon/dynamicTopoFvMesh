@@ -250,6 +250,9 @@ public:
             //- Print out the link-list structure
             void toc() const;
 
+            //- Print out the link-list at a particular location
+            void toc(const label) const;
+
     // Member Operators
 
         HashList<T>& operator=(const HashList&);

@@ -375,12 +375,11 @@ inline typename HashList<T>::iterator HashList<T>::insert
     }
 
     // The following line should never happen, just keeps gcc happy
-#   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::insert(const label, const T&) ") << nl
             << " Index: " << index
             << " Attempt to access an element that doesn't exist. "
             << abort(FatalError);
-#   endif
+
     return iterator(newPtr);
 }
 
@@ -616,12 +615,11 @@ inline typename HashList<T>::Item* HashList<T>::getLinkItem
     }
 
     // The following line should never happen, just keeps gcc happy
-#   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::getLinkItem(const label index) ") << nl
             << " Index: " << index
             << " Attempt to access an element that doesn't exist. "
             << abort(FatalError);
-#   endif
+
     return item;
 }
 
@@ -848,6 +846,21 @@ void HashList<T>::toc() const
     }
 }
 
+//- Print out the link-list at a particular location
+template<class T>
+void HashList<T>::toc(const label loc) const
+{
+        Info << loc << ": ";
+        if (table_[loc])
+        {
+            for(Item *item = table_[loc]; item; item=item->next_)
+            {
+                Info << item->idx_ << "->";
+            }
+        }
+        Info << "NULL" << endl;
+}
+
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 template<class T>
@@ -884,12 +897,11 @@ inline typename HashList<T>::iterator HashList<T>::operator()
     }
 
     // The following line should never happen, just keeps gcc happy
-#   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::operator()(const label index) ") << nl
             << " Index: " << index
             << " Attempt to access an element that doesn't exist. "
             << abort(FatalError);
-#   endif
+
     return iterator(item);
 }
 
@@ -913,12 +925,11 @@ HashList<T>::operator()
     }
 
     // The following line should never happen, just keeps gcc happy
-#   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::operator()(const label index) const") << nl
             << " Index: " << index
             << " Attempt to access an element that doesn't exist. "
             << abort(FatalError);
-#   endif
+
     return iterator(item);
 }
 
@@ -940,12 +951,11 @@ inline T& HashList<T>::operator[]
     }
 
     // The following line should never happen, just keeps gcc happy
-#   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::operator[](const label index) ") << nl
-        << " Index: " << index 
-        << " Attempt to access an element that doesn't exist. "
-        << abort(FatalError);
-#   endif
+            << " Index: " << index
+            << " Attempt to access an element that doesn't exist. "
+            << abort(FatalError);
+
     return item->data_;
 }
 
@@ -967,12 +977,11 @@ inline const T& HashList<T>::operator[]
     }
 
     // The following line should never happen, just keeps gcc happy
-#   ifdef FULLDEBUG
     FatalErrorIn("HashList<T>::operator[](const label index) const ") << nl
-        << " Index: " << index 
-        << " Attempt to access an element that doesn't exist. "
-        << abort(FatalError);
-#   endif
+            << " Index: " << index
+            << " Attempt to access an element that doesn't exist. "
+            << abort(FatalError);
+
     return item->data_;
 }
 
