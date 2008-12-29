@@ -1793,6 +1793,20 @@ void Foam::dynamicTopoFvMesh::removeEdgeFlips
                 }
             }
         }
+
+        if (numSwaps == 0)
+        {
+            Info << "Triangulations: " << endl;
+            forAll(triangulations, row)
+            {
+                Info << triangulations[row] << endl;
+            }
+            
+            // Should have performed at least one swap
+            FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips()") << nl
+                << "Did not perform any 2-3 swaps" << nl
+                << abort(FatalError);
+        }
     }
 
     // Perform the final 3-2 swap
@@ -1806,6 +1820,11 @@ void Foam::dynamicTopoFvMesh::removeEdgeFlips
         hullFaces,
         hullVertices
     );
+
+    // Done with this face, so reset it
+    triangulations[0][t32] = -1;
+    triangulations[1][t32] = -1;
+    triangulations[2][t32] = -1;
 
 }
 
