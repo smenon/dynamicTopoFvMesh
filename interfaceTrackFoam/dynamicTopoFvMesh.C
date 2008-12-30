@@ -1037,6 +1037,10 @@ label Foam::dynamicTopoFvMesh::insertEdge
         }
     }
 
+    // Size-up the pointEdges list
+    sizeUpList(newEdgeIndex, pointEdges_[newEdge[0]]);
+    sizeUpList(newEdgeIndex, pointEdges_[newEdge[1]]);
+
     // Increment the total edge count
     nEdges_++;
 
@@ -1049,14 +1053,20 @@ void Foam::dynamicTopoFvMesh::removeEdge
     const label index
 )
 {
+    edge& thisEdge = edges_[index];
+
 #   ifdef FULLDEBUG
     if (debug)
     {
         Info << "Removed edge: "
              << index << ": "
-             << edges_[index] << endl;
+             << thisEdge << endl;
     }
 #   endif
+
+    // Size-down the pointEdges list
+    sizeDownList(index, pointEdges_[thisEdge[0]]);
+    sizeDownList(index, pointEdges_[thisEdge[1]]);
 
     edges_.remove(index);
     edgeFaces_.remove(index);
@@ -2648,14 +2658,30 @@ void Foam::dynamicTopoFvMesh::reOrderPoints
     addedPointRenumbering_.clear();
 
     HashList<point>::iterator ptIter = meshPoints_.begin();
+    HashList<labelList>::iterator peIter;
+    
+    if (!twoDMesh_)
+    {
+        peIter = pointEdges_.begin();
+    }
+
     while(ptIter != meshPoints_.end())
     {
         // Obtain the index for this point
         label pIndex = ptIter.index();
+
         // Update the point info
         points[pointRenum] = ptIter();
+
         // Renumber the point index
         meshPoints_.reNumber(pointRenum, ptIter);
+
+        if (!twoDMesh_)
+        {
+            pointEdges_.reNumber(pointRenum, peIter);
+            peIter++;
+        }
+
         // Added points are always numbered after nOldPoints_ 
         // (by virtue of the HashList append method)
         if (pIndex < nOldPoints_)
@@ -2667,8 +2693,10 @@ void Foam::dynamicTopoFvMesh::reOrderPoints
         {
             addedPointRenumbering_.insert(pIndex,pointRenum);
         }
+
         // Update the counter
         pointRenum++;
+
         // Update the iterators
         ptIter++;
     }
@@ -2823,6 +2851,23 @@ void Foam::dynamicTopoFvMesh::reOrderEdges()
             else
             {
                 faceEdges[edgeI] = addedEdgeRenumbering_[faceEdges[edgeI]];
+            }
+        }
+    }
+
+    // Renumber pointEdges
+    forAllIter(HashList<labelList>::iterator, pointEdges_, peIter)
+    {
+        labelList& pointEdges = peIter();
+        forAll(pointEdges,edgeI)
+        {
+            if (pointEdges[edgeI] < nOldEdges_)
+            {
+                pointEdges[edgeI] = reverseEdgeMap_[pointEdges[edgeI]];
+            }
+            else
+            {
+                pointEdges[edgeI] = addedEdgeRenumbering_[pointEdges[edgeI]];
             }
         }
     }
@@ -3848,6 +3893,7 @@ void Foam::dynamicTopoFvMesh::initEdges()
     // Obtain connectivity from primitive mesh
     const faceList& faces = primitiveMesh::faces();
     const edgeList& edges = primitiveMesh::edges();
+    const labelListList& pEdges = primitiveMesh::pointEdges();
     const labelListList& fEdges = primitiveMesh::faceEdges();
     const labelListList& eFaces = primitiveMesh::edgeFaces();
 
@@ -3909,6 +3955,20 @@ void Foam::dynamicTopoFvMesh::initEdges()
         faceEdges_.append(renumberFaceEdge);
     }
 
+    // Renumber and fill in pointEdges
+    forAll(pEdges, pointI)
+    {
+        const labelList& pEdge = pEdges[pointI];
+        labelList renumberPointEdges(pEdge.size(), -1);
+
+        forAll(pEdge, edgeI)
+        {
+            renumberPointEdges[edgeI] = reverseEdgeMap_[pEdge[edgeI]];
+        }
+
+        pointEdges_.append(renumberPointEdges);
+    }
+
     // Renumber and fill in edges and edgeFaces
     edges_.setSize(nEdges_, edge(-1,-1));
     edgeFaces_.setSize(nEdges_, labelList(0));
@@ -3951,7 +4011,7 @@ void Foam::dynamicTopoFvMesh::initEdges()
         }
 
         edges_[reverseEdgeMap_[edgeI]] = edges[edgeI];
-        edgeFaces_[reverseEdgeMap_[edgeI]] = shuffleEdgeFace;
+        edgeFaces_[reverseEdgeMap_[edgeI]].transfer(shuffleEdgeFace);
     }
 }
 
@@ -6194,6 +6254,14 @@ void Foam::dynamicTopoFvMesh::bisectEdge
     const label eIndex
 )
 {
+    // Edge bisection performs the following operations:
+    //      [1] Add a point at middle of the edge
+    //      [2] Bisect all faces surrounding this edge
+    //      [3] Bisect all cells surrounding this edge
+    //      [4] Create internal/external edges for each bisected face
+    //      [5] Create internal faces for each bisected cell
+    //      Update faceEdges and edgeFaces information
+
     face tmpTriFace(3);
     labelList tmpEdgeFaces(3,-1);
     labelList tmpIntEdgeFaces(4,-1);
@@ -6238,6 +6306,9 @@ void Foam::dynamicTopoFvMesh::bisectEdge
             )
         );
 
+    // Add an entry to pointEdges as well
+    pointEdges_.append(labelList(0));
+
     nPoints_++;
     
     // Add a new edge to the end of the list
@@ -6248,9 +6319,13 @@ void Foam::dynamicTopoFvMesh::bisectEdge
             edge(newPointIndex,thisEdge[1]),
             labelList(faceHull.size(),-1)
         );
+
+    // Remove the existing edge from the pointEdges list
+    // of the modified point
+    sizeDownList(eIndex, pointEdges_[thisEdge[1]]);
     
     // Modify the existing edge
-    thisEdge[1] = newPointIndex;    
+    thisEdge[1] = newPointIndex;
     
     // Obtain new references
     edge& newEdge = edges_[newEdgeIndex];
@@ -6980,6 +7055,80 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         }
     }
 
+    // Decide which point to remove
+    label collapsePoint = -1, replacePoint = -1;
+
+    if (edgeBoundary[0] && !edgeBoundary[1])
+    {
+        // Collapse to the first node
+        replacePoint = thisEdge[0];
+        collapsePoint = thisEdge[1];
+    }
+    else
+    if (!edgeBoundary[0] && edgeBoundary[1])
+    {
+        // Collapse to the second node
+        replacePoint = thisEdge[1];
+        collapsePoint = thisEdge[0];
+    }
+    else
+    {
+        // Collapse to the second by default
+        replacePoint = thisEdge[1];
+        collapsePoint = thisEdge[0];
+    }
+
+    // Loop through pointEdges for the collapsePoint,
+    // and replace all occurrences with replacePoint
+    labelList& pEdges = pointEdges_[collapsePoint];
+
+    forAll(pEdges, edgeI)
+    {
+        // Renumber edges
+        edge& edgeToCheck = edges_[pEdges[edgeI]];
+        labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+
+        if (edgeToCheck[0] == collapsePoint)
+        {
+            edgeToCheck[0] = replacePoint;
+        }
+        else
+        if (edgeToCheck[1] == collapsePoint)
+        {
+            edgeToCheck[1] = replacePoint;
+        }
+        else
+        {
+            // Looks like pointEdges is inconsistent
+            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()") << nl
+                << "pointEdges is inconsistent." << nl
+                << "Point: " << collapsePoint << nl
+                << "pointEdges: " << pEdges << nl
+                << abort(FatalError);
+        }
+
+        // Loop through faces associated with this edge,
+        // and renumber them as well.
+        label replaceIndex = -1;
+        forAll(eFaces, faceI)
+        {
+            face& faceToCheck = faces_[eFaces[faceI]];
+
+            if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
+            {
+                faceToCheck[replaceIndex] = replacePoint;
+            }
+        }
+    }
+
+    // Move to the new point
+    meshPoints_[replacePoint] = newPoint;
+
+    // Remove the point
+    meshPoints_.remove(collapsePoint);
+    pointEdges_.remove(collapsePoint);
+    nPoints_--;
+
     // Return a successful collapse
     return true;
 }
@@ -7065,8 +7214,12 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
     }
 }
 
-// Utility method 
-inline bool Foam::dynamicTopoFvMesh::checkCellVolume
+// Utility method to check whether the cell given by 'cellIndex' will yield
+// a valid cell when 'edgeToCheck' is collapsed to 'newPoint'. The routine
+// tests for various combinations of edge-boundary cases and performs
+// volume-based tests. Returns 'true' if the collapse in NOT feasible, and
+// makes entries in cellsChecked and cellsToSkip to avoid repetitive checks.
+bool Foam::dynamicTopoFvMesh::checkCellVolume
 (
     const point& newPoint,
     const edge& edgeToCheck,
@@ -7076,35 +7229,123 @@ inline bool Foam::dynamicTopoFvMesh::checkCellVolume
     labelHashSet& cellsToSkip
 )
 {
-    bool found = false;
-    /*
+    bool foundTop = false, foundBottom = false;
+    label faceIndex = -1, pointIndex = -1;
     scalar cellVolume = 0.0;
     cell& cellToCheck = cells_[cellIndex];
 
+    // Check if this cell contains either edge[0] or edge[1]
+    // Doesn't check for both, since that would be a wierd non-convex cell
     forAll(cellToCheck, faceI)
     {
         face& currFace = faces_[cellToCheck[faceI]];
 
-        if (currFace.which(edgeToCheck[0]) > 0)
+        if (currFace.which(edgeToCheck[0]) > -1)
         {
-            face& nextFace = faces_[cellToCheck[cellToCheck.fcIndex(faceI)]];
+            foundTop = true;
+            break;
         }
 
-        if (currFace.which(edgeToCheck[1]) > 0)
+        if (currFace.which(edgeToCheck[1]) > -1)
         {
-
+            foundBottom = true;
+            break;
         }
     }
-    */
 
     // Couldn't find the points, so this cell isn't affected.
     // Skip it later on.
-    if (!found)
+    if (!foundTop && !foundBottom)
     {
         cellsToSkip.insert(cellIndex);
+        return false;
+    }
+
+    // Found a point. Check if this cell is affected by the collapse
+
+    // Collapse to the first node, but cell won't be affected
+    if (edgeBoundary[0] && !edgeBoundary[1] && foundTop)
+    {
+        cellsChecked.insert(cellIndex);
+        return false;
+    }
+
+    // Collapse to the first node, needs a volume check
+    if (edgeBoundary[0] && !edgeBoundary[1] && foundBottom)
+    {
+        pointIndex = edgeToCheck[1];
+    }
+
+    // Collapse to the second node, needs a volume check
+    if (!edgeBoundary[0] && edgeBoundary[1] && foundTop)
+    {
+        pointIndex = edgeToCheck[0];
+    }
+
+    // Collapse to the second node, but cell won't be affected
+    if (!edgeBoundary[0] && edgeBoundary[1] && foundBottom)
+    {
+        cellsChecked.insert(cellIndex);
+        return false;
+    }
+
+    // Collapse to the mid-point, needs a volume check
+    if (!edgeBoundary[0] && !edgeBoundary[1])
+    {
+        if (foundTop)
+        {
+            pointIndex = edgeToCheck[0];
+        }
+        else
+        {
+            pointIndex = edgeToCheck[1];
+        }
+    }
+
+    // Look for a face that doesn't contain 'pointIndex'
+    forAll(cellToCheck, faceI)
+    {
+        face& currFace = faces_[cellToCheck[faceI]];
+
+        if (currFace.which(pointIndex) < 0)
+        {
+            faceIndex = cellToCheck[faceI];
+            break;
+        }
+    }
+
+    // Compute cell-volume
+    face& faceToCheck = faces_[faceIndex];
+    
+    if (owner_[faceIndex] == cellIndex)
+    {
+        cellVolume = tetVolume
+        (
+            meshPoints_[faceToCheck[2]],
+            meshPoints_[faceToCheck[1]],
+            meshPoints_[faceToCheck[0]],
+            newPoint
+        );
+    }
+    else
+    {
+        cellVolume = tetVolume
+        (
+            meshPoints_[faceToCheck[0]],
+            meshPoints_[faceToCheck[1]],
+            meshPoints_[faceToCheck[2]],
+            newPoint
+        );
+    }
+
+    // Final cell-volume check
+    if (cellVolume < VSMALL)
+    {
+        return true;
     }
 
     // No problems, so a collapse is feasible
+    cellsChecked.insert(cellIndex);
     return false;
 }
 

@@ -101,6 +101,7 @@ class dynamicTopoFvMesh
         HashList<edge>  edges_;
         HashList<labelList> edgeFaces_;
         HashList<labelList> faceEdges_;
+        HashList<labelList> pointEdges_;
         
         //- Size information
         labelList       oldPatchSizes_, patchSizes_;
@@ -331,8 +332,8 @@ class dynamicTopoFvMesh
             FixedList<bool,2>& edgeBoundary
         );
 
-        // Utility method 
-        inline bool checkCellVolume
+        // Utility method to check for invalid edge-collapse.
+        bool checkCellVolume
         (
             const point& newPoint,
             const edge& edgeToCheck,
