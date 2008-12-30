@@ -549,8 +549,6 @@ Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::meshQuality()
     {
         scalarField& iF = tQuality().internalField();
 
-        FixedList<label,4> cellPoints(-1);
-
         const pointField& meshPoints = points();
         const faceList& meshFaces = faces();
         const cellList& meshCells = cells();
@@ -564,21 +562,6 @@ Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::meshQuality()
             const face& currFace = meshFaces[curCell[0]];
             const face& nextFace = meshFaces[curCell[1]];
 
-            // Check if the face-neighbour is the current cell
-            if (owner[curCell[0]] == cellI)
-            {
-                face rFace = currFace.reverseFace();
-                cellPoints[0] = rFace[0];
-                cellPoints[1] = rFace[1];
-                cellPoints[2] = rFace[2];
-            }
-            else
-            {
-                cellPoints[0] = currFace[0];
-                cellPoints[1] = currFace[1];
-                cellPoints[2] = currFace[2];
-            }
-
             // Get the fourth point
             forAll(nextFace, pointI)
             {
@@ -589,19 +572,31 @@ Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::meshQuality()
                  && nextFace[pointI] != currFace[2]
                 )
                 {
-                    cellPoints[3] = nextFace[pointI];
+                    // Compute cell-quality and write-out
+                    if (owner[curCell[0]] == cellI)
+                    {
+                        iF[cellI] = (*tetMetric_)
+                        (
+                            meshPoints[currFace[2]],
+                            meshPoints[currFace[1]],
+                            meshPoints[currFace[0]],
+                            meshPoints[nextFace[pointI]]
+                        );
+                    }
+                    else
+                    {
+                        iF[cellI] = (*tetMetric_)
+                        (
+                            meshPoints[currFace[0]],
+                            meshPoints[currFace[1]],
+                            meshPoints[currFace[2]],
+                            meshPoints[nextFace[pointI]]
+                        );
+                    }
+
                     break;
                 }
             }
-
-            // Compute cell-quality and write-out
-            iF[cellI] = (*tetMetric_)
-            (
-                meshPoints[cellPoints[0]],
-                meshPoints[cellPoints[1]],
-                meshPoints[cellPoints[2]],
-                meshPoints[cellPoints[3]]
-            );
         }
     }
 
@@ -704,10 +699,10 @@ inline Foam::label Foam::dynamicTopoFvMesh::whichPatch
     }
 
     // If not in any of the above, it's possible that the face was added
-    // at the end of the list. Check boundaryPatches_ for the patch info
-    if (boundaryPatches_.found(index))
+    // at the end of the list. Check addedFacePatches_ for the patch info
+    if (addedFacePatches_.found(index))
     {
-        return boundaryPatches_[index];
+        return addedFacePatches_[index];
     }
     else
     {
@@ -924,9 +919,10 @@ Foam::label Foam::dynamicTopoFvMesh::insertFace
 
     // Keep track of added boundary faces in a separate hash-table
     // This information will be required at the reordering stage
+    addedFacePatches_.insert(newFaceIndex,patch);
+
     if (newNeighbour == -1)
     {
-        boundaryPatches_.insert(newFaceIndex,patch);
         // Modify patch information for this boundary face
         patchSizes_[patch]++;
         for(label i=patch+1; i<numPatches_; i++)
@@ -6830,6 +6826,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
 )
 {
     edge& thisEdge = edges_[eIndex];
+    FixedList<bool,2> edgeBoundary(false);
 
     if (debug)
     {
@@ -6858,7 +6855,256 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         false
     );
 
+    // Determine ring edges and the hull faces connected to them
+    labelList edgeHull(vertexHull.size(), -1);
+    labelList topFaces(faceHull.size(), -1);
+    labelList bottomFaces(faceHull.size(), -1);
+
+    constructEdgeRing
+    (
+        eIndex,
+        thisEdge,
+        vertexHull,
+        faceHull,
+        cellHull,
+        edgeHull,
+        topFaces,
+        bottomFaces,
+        edgeBoundary
+    );
+
+    // Configure the new point-position
+    point newPoint = vector::zero;
+
+    if (edgeBoundary[0] && !edgeBoundary[1])
+    {
+        // Collapse to the first node
+        newPoint = meshPoints_[thisEdge[0]];
+    }
+    else
+    if (!edgeBoundary[0] && edgeBoundary[1])
+    {
+        // Collapse to the second node
+        newPoint = meshPoints_[thisEdge[1]];
+    }
+    else
+    {
+        // Collapse to the mid-point
+        newPoint = 0.5*(meshPoints_[thisEdge[0]] + meshPoints_[thisEdge[1]]);
+    }
+
+#   ifdef FULLDEBUG
+    if (debug)
+    {
+        Info << "Vertices: " << vertexHull << endl;
+        Info << "Edges: " << edgeHull << endl;
+        Info << "Faces: " << faceHull << endl;
+        Info << "Cells: " << cellHull << endl;
+    }
+#   endif
+
+    // Loop through edges and check for feasibility of collapse
+    labelHashSet cellsChecked(mMax);
+    labelHashSet cellsToSkip(mMax);
+
+    // Compute volumes of cells around edges with the re-configured point
+    forAll(edgeHull, indexI)
+    {
+        if (edgeHull[indexI] != -1)
+        {
+            labelList& eFaces = edgeFaces_[edgeHull[indexI]];
+
+            // Build a list of cells to check
+            forAll(eFaces, faceI)
+            {
+                label own = owner_[eFaces[faceI]];
+                label nei = neighbour_[eFaces[faceI]];
+
+                // Check owner cell
+                if
+                (
+                    !cellsChecked.found(own)
+                 && !cellsToSkip.found(own)
+                 && own != cellHull[indexI]
+                )
+                {
+                    // Check if a collapse is feasible
+                    if
+                    (
+                        checkCellVolume
+                        (
+                            newPoint,
+                            thisEdge,
+                            own,
+                            edgeBoundary,
+                            cellsChecked,
+                            cellsToSkip
+                        )
+                    )
+                    {
+                        return false;
+                    }
+                }
+
+                // Check neighbour cell
+                if
+                (
+                    !cellsChecked.found(nei)
+                 && !cellsToSkip.found(nei)
+                 && nei != cellHull[indexI]
+                 && nei != -1
+                )
+                {
+                    // Check if a collapse is feasible
+                    if
+                    (
+                        checkCellVolume
+                        (
+                            newPoint,
+                            thisEdge,
+                            nei,
+                            edgeBoundary,
+                            cellsChecked,
+                            cellsToSkip
+                        )
+                    )
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            // Clear the cell-lists
+            cellsChecked.clear();
+            cellsToSkip.clear();
+        }
+    }
+
     // Return a successful collapse
+    return true;
+}
+
+// Utility to determine ring edges and the hull faces connected to them.
+void Foam::dynamicTopoFvMesh::constructEdgeRing
+(
+    const label eIndex,
+    const edge& edgeToCheck,
+    const labelList& hullVertices,
+    const labelList& hullFaces,
+    const labelList& hullCells,
+    labelList& ringEdges,
+    labelList& topFaces,
+    labelList& bottomFaces,
+    FixedList<bool,2>& edgeBoundary
+)
+{
+    forAll(hullVertices, indexI)
+    {
+        // Obtain circular indices
+        label nextI = hullVertices.fcIndex(indexI);
+
+        if (hullCells[indexI] != -1)
+        {
+            cell& currCell = cells_[hullCells[indexI]];
+
+            // Look for the ring-edge
+            forAll(currCell, faceI)
+            {
+                // Check if this face contains edgeToCheck[0]
+                if
+                (
+                    (currCell[faceI] != hullFaces[indexI])
+                 && (currCell[faceI] != hullFaces[nextI])
+                 && (faces_[currCell[faceI]].which(edgeToCheck[0]) > -1)
+                )
+                {
+                    topFaces[indexI] = currCell[faceI];
+
+                    // Determine the patch this face belongs to
+                    if (whichPatch(currCell[faceI]) > -1)
+                    {
+                        edgeBoundary[0] = true;
+                    }
+
+                    // Look for the edge on the ring
+                    labelList& rFaceEdges = faceEdges_[currCell[faceI]];
+
+                    forAll(rFaceEdges, edgeI)
+                    {
+                        if
+                        (
+                            edges_[rFaceEdges[edgeI]]
+                         == edge(hullVertices[indexI],hullVertices[nextI])
+                        )
+                        {
+                            ringEdges[indexI] = rFaceEdges[edgeI];
+
+                            break;
+                        }
+                    }
+                }
+
+                // Check if this face contains edgeToCheck[1]
+                if
+                (
+                    (currCell[faceI] != hullFaces[indexI])
+                 && (currCell[faceI] != hullFaces[nextI])
+                 && (faces_[currCell[faceI]].which(edgeToCheck[1]) > -1)
+                )
+                {
+                    bottomFaces[indexI] = currCell[faceI];
+
+                    // Determine the patch this face belongs to
+                    if (whichPatch(currCell[faceI]) > -1)
+                    {
+                        edgeBoundary[1] = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Utility method 
+inline bool Foam::dynamicTopoFvMesh::checkCellVolume
+(
+    const point& newPoint,
+    const edge& edgeToCheck,
+    const label cellIndex,
+    const FixedList<bool,2>& edgeBoundary,
+    labelHashSet& cellsChecked,
+    labelHashSet& cellsToSkip
+)
+{
+    bool found = false;
+    /*
+    scalar cellVolume = 0.0;
+    cell& cellToCheck = cells_[cellIndex];
+
+    forAll(cellToCheck, faceI)
+    {
+        face& currFace = faces_[cellToCheck[faceI]];
+
+        if (currFace.which(edgeToCheck[0]) > 0)
+        {
+            face& nextFace = faces_[cellToCheck[cellToCheck.fcIndex(faceI)]];
+        }
+
+        if (currFace.which(edgeToCheck[1]) > 0)
+        {
+
+        }
+    }
+    */
+
+    // Couldn't find the points, so this cell isn't affected.
+    // Skip it later on.
+    if (!found)
+    {
+        cellsToSkip.insert(cellIndex);
+    }
+
+    // No problems, so a collapse is feasible
     return false;
 }
 
@@ -7374,7 +7620,7 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
         reverseEdgeMap_.clear();
         reverseFaceMap_.clear();
         reverseCellMap_.clear();
-        boundaryPatches_.clear();
+        addedFacePatches_.clear();
         addedEdgePatches_.clear();
         cellsFromCells_.clear();
         cellParents_.clear();

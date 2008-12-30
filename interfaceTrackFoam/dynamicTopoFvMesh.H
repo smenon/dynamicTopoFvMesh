@@ -133,7 +133,7 @@ class dynamicTopoFvMesh
         Map<label>      addedEdgeRenumbering_;
         Map<label>      addedFaceRenumbering_;
         Map<label>      addedCellRenumbering_;
-        Map<label>      boundaryPatches_;
+        Map<label>      addedFacePatches_;
         Map<label>      addedEdgePatches_;
         Map<label>      cellParents_;
         
@@ -315,6 +315,31 @@ class dynamicTopoFvMesh
         bool collapseEdge
         (
             const label eIndex
+        );
+
+        // Utility to determine ring edges and the hull faces connected to them.
+        void constructEdgeRing
+        (
+            const label eIndex,
+            const edge& edgeToCheck,
+            const labelList& hullVertices,
+            const labelList& hullFaces,
+            const labelList& hullCells,
+            labelList& ringEdges,
+            labelList& topFaces,
+            labelList& bottomFaces,
+            FixedList<bool,2>& edgeBoundary
+        );
+
+        // Utility method 
+        inline bool checkCellVolume
+        (
+            const point& newPoint,
+            const edge& edgeToCheck,
+            const label cellIndex,
+            const FixedList<bool,2>& edgeBoundary,
+            labelHashSet& cellsChecked,
+            labelHashSet& cellsToSkip
         );
         
         // Check if the boundary face is adjacent to a sliver-cell,
