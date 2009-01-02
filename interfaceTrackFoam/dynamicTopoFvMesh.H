@@ -327,8 +327,7 @@ class dynamicTopoFvMesh
             const labelList& hullFaces,
             const labelList& hullCells,
             labelList& ringEdges,
-            labelList& topFaces,
-            labelList& bottomFaces,
+            labelListList& hullEdgesAndFaces,
             FixedList<bool,2>& edgeBoundary
         );
 

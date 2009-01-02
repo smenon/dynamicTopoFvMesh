@@ -1413,16 +1413,47 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     scalar cQuality = 0.0;
 
     // Decide which face to start with...
-    label startFaceIndex = edgeFaces_[eIndex][0];
+    labelList& eFaces = edgeFaces_[eIndex];
+    label startFaceIndex = -1;
 
-    // Determine the orientation of the start-face
-    findIsolatedPoint
-    (
-        faces_[startFaceIndex],
-        edgeToCheck,
-        otherPoint,
-        nextPoint
-    );
+    // Check for an interior/boundary edge
+    if (whichEdgePatch(eIndex) < 0)
+    {
+        // No orientation check, start with first entry
+        startFaceIndex = eFaces[0];
+        
+        // Determine the orientation of the start-face
+        findIsolatedPoint
+        (
+            faces_[startFaceIndex],
+            edgeToCheck,
+            otherPoint,
+            nextPoint
+        );
+    }
+    else
+    {
+        // Need to find a properly oriented start-face
+        forAll(eFaces, faceI)
+        {
+            if (neighbour_[eFaces[faceI]] == -1)
+            {
+                findIsolatedPoint
+                (
+                    faces_[eFaces[faceI]],
+                    edgeToCheck,
+                    otherPoint,
+                    nextPoint
+                );
+
+                if (nextPoint == edgeToCheck[0])
+                {
+                    startFaceIndex = eFaces[faceI];
+                    break;
+                }
+            }
+        }
+    }
 
     // Figure out the next cell to check
     if (nextPoint == edgeToCheck[0])
@@ -1447,7 +1478,6 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     }
 
     // Start a search and add to the list as we go along
-    labelList& eFaces = edgeFaces_[eIndex];
     faceToExclude = startFaceIndex;
 
     do
@@ -3891,7 +3921,6 @@ void Foam::dynamicTopoFvMesh::initLengthScale()
 void Foam::dynamicTopoFvMesh::initEdges()
 {
     // Obtain connectivity from primitive mesh
-    const faceList& faces = primitiveMesh::faces();
     const edgeList& edges = primitiveMesh::edges();
     const labelListList& pEdges = primitiveMesh::pointEdges();
     const labelListList& fEdges = primitiveMesh::faceEdges();
@@ -3975,43 +4004,8 @@ void Foam::dynamicTopoFvMesh::initEdges()
 
     forAll(edges, edgeI)
     {
-        // Shuffle edgeFaces so that a correctly oriented
-        // boundary face comes first
-        const labelList& eFace = eFaces[edgeI];
-        labelList shuffleEdgeFace(eFace.size(), -1);
-        label shuffleIndex = -1, otherPoint = -1, nextPoint = -1;
-
-        forAll(eFace, faceI)
-        {
-            if (eFace[faceI] >= nInternalFaces_)
-            {
-                const edge& edgeToCheck = edges[edgeI];
-
-                // Determine face orientation
-                findIsolatedPoint
-                (
-                    faces[eFace[faceI]],
-                    edgeToCheck,
-                    otherPoint,
-                    nextPoint
-                );
-
-                if (nextPoint == edgeToCheck[0])
-                {
-                    shuffleIndex = faceI;
-                }
-            }
-            
-            shuffleEdgeFace[faceI] = eFace[faceI];
-        }
-
-        if (shuffleIndex != -1)
-        {
-            Swap(shuffleEdgeFace[0], shuffleEdgeFace[shuffleIndex]);
-        }
-
         edges_[reverseEdgeMap_[edgeI]] = edges[edgeI];
-        edgeFaces_[reverseEdgeMap_[edgeI]].transfer(shuffleEdgeFace);
+        edgeFaces_[reverseEdgeMap_[edgeI]] = eFaces[edgeI];
     }
 }
 
@@ -5620,7 +5614,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
     label c0 = owner_[findex], c1 = neighbour_[findex];
 
     // Find the prism-faces
-    label faceToKeep[2] = {0,0}, faceToThrow[2] = {0,0};
+    FixedList<label,2> faceToKeep(0), faceToThrow(0);
     
     cell &cell_0 = cells_[c0];
     findPrismFaces
@@ -5739,18 +5733,21 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 return false;
             }
         }
+
         // Collapse to the second node...
         forAll(firstEdgeHull,faceI)
         {
             face& replacementFace = faces_[firstEdgeHull[faceI]];
             replaceLabel(cv0,cv2,replacementFace);
             replaceLabel(cv1,cv3,replacementFace);
+
             // Modify edgeToWatch as well
             edge& replacementCheckEdge = edgeToWatch_[firstEdgeHull[faceI]];
             if (replacementCheckEdge[0] == cv0) replacementCheckEdge[0] = cv2;
             if (replacementCheckEdge[1] == cv0) replacementCheckEdge[1] = cv2;
             if (replacementCheckEdge[0] == cv1) replacementCheckEdge[0] = cv3;
             if (replacementCheckEdge[1] == cv1) replacementCheckEdge[1] = cv3;
+
             // Determine the quad-face in cell[0] & cell[1]
             // that belongs to firstEdgeHull
             if (firstEdgeHull[faceI] == c0IntIndex[0])
@@ -5758,11 +5755,13 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 faceToKeep[0]  = c0IntIndex[1];
                 faceToThrow[0] = c0IntIndex[0];
             }
+
             if (firstEdgeHull[faceI] == c0IntIndex[1])
             {
                 faceToKeep[0]  = c0IntIndex[0];
                 faceToThrow[0] = c0IntIndex[1];
             }
+
             if (c1 != -1)
             {
                 if (firstEdgeHull[faceI] == c1IntIndex[0])
@@ -5777,6 +5776,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 }
             }
         }
+
         // All triangular boundary faces also need to have point labels replaced
         forAll(firstCells,cellI)
         {
@@ -5800,10 +5800,12 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 }
             }
         }
+
         // Delete the two points...
         meshPoints_.remove(cv0);
         meshPoints_.remove(cv1);
         nPoints_ -= 2;
+        
         // Update the reverse point map
         if (cv0 < nOldPoints_) reversePointMap_[cv0] = -1;
         if (cv1 < nOldPoints_) reversePointMap_[cv1] = -1;
@@ -5860,18 +5862,21 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 return false;
             }
         }
+
         // Collapse to the first node by default...
         forAll(secondEdgeHull,faceI)
         {
             face& replacementFace = faces_[secondEdgeHull[faceI]];
             replaceLabel(cv2, cv0, replacementFace);
             replaceLabel(cv3, cv1, replacementFace);
+
             // Modify edgeToWatch as well
             edge& replacementCheckEdge = edgeToWatch_[secondEdgeHull[faceI]];
             if (replacementCheckEdge[0] == cv2) replacementCheckEdge[0] = cv0;
             if (replacementCheckEdge[1] == cv2) replacementCheckEdge[1] = cv0;
             if (replacementCheckEdge[0] == cv3) replacementCheckEdge[0] = cv1;
             if (replacementCheckEdge[1] == cv3) replacementCheckEdge[1] = cv1;
+
             // Determine the quad-face(s) in cell[0] & cell[1]
             // that belongs to secondEdgeHull
             if (secondEdgeHull[faceI] == c0IntIndex[0])
@@ -5879,11 +5884,13 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 faceToKeep[0]  = c0IntIndex[1];
                 faceToThrow[0] = c0IntIndex[0];
             }
+
             if (secondEdgeHull[faceI] == c0IntIndex[1])
             {
                 faceToKeep[0]  = c0IntIndex[0];
                 faceToThrow[0] = c0IntIndex[1];
             }
+
             if (c1 != -1)
             {
                 if (secondEdgeHull[faceI] == c1IntIndex[0])
@@ -5921,10 +5928,12 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
                 }
             }
         }
+
         // Delete the two points...
         meshPoints_.remove(cv2);
         meshPoints_.remove(cv3);
         nPoints_ -= 2;
+
         // Update the reverse point map
         if (cv2 < nOldPoints_) reversePointMap_[cv2] = -1;
         if (cv3 < nOldPoints_) reversePointMap_[cv3] = -1;
@@ -6008,7 +6017,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Ensure proper orientation for the two retained faces
-    label cellCheck[2] = {0,0};
+    FixedList<label,2> cellCheck(0);
     if (owner_[faceToThrow[0]] == c0)
     {
         cellCheck[0] = neighbour_[faceToThrow[0]];
@@ -6158,7 +6167,9 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
     forAll(cell_0,faceI)
     {
         if (cell_0[faceI] != findex && cell_0[faceI] != faceToKeep[0])
+        {
            removeFace(cell_0[faceI]);
+        }
     }
     cells_.remove(c0);
     lengthScale_.remove(c0);
@@ -6221,7 +6232,9 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
         forAll(cell_1, faceI)
         {
             if (cell_1[faceI] != findex && cell_1[faceI] != faceToKeep[1])
+            {
                removeFace(cell_1[faceI]);
+            }
         }
         cells_.remove(c1);
         lengthScale_.remove(c1);
@@ -6900,6 +6913,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
     const label eIndex
 )
 {
+    bool found = false;
     edge& thisEdge = edges_[eIndex];
     FixedList<bool,2> edgeBoundary(false);
 
@@ -6932,8 +6946,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
 
     // Determine ring edges and the hull faces connected to them
     labelList edgeHull(vertexHull.size(), -1);
-    labelList topFaces(faceHull.size(), -1);
-    labelList bottomFaces(faceHull.size(), -1);
+    labelListList hullEdgesAndFaces(4, labelList(faceHull.size(), -1));
 
     constructEdgeRing
     (
@@ -6943,8 +6956,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         faceHull,
         cellHull,
         edgeHull,
-        topFaces,
-        bottomFaces,
+        hullEdgesAndFaces,
         edgeBoundary
     );
 
@@ -7057,12 +7069,18 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
 
     // Decide which point to remove
     label collapsePoint = -1, replacePoint = -1;
+    label removeEdgeIndex = -1, removeFaceIndex = -1;
+    label replaceEdgeIndex = -1, replaceFaceIndex = -1;
 
     if (edgeBoundary[0] && !edgeBoundary[1])
     {
         // Collapse to the first node
         replacePoint = thisEdge[0];
         collapsePoint = thisEdge[1];
+        replaceEdgeIndex = 0;
+        replaceFaceIndex = 1;
+        removeEdgeIndex = 2;
+        removeFaceIndex = 3;
     }
     else
     if (!edgeBoundary[0] && edgeBoundary[1])
@@ -7070,12 +7088,20 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         // Collapse to the second node
         replacePoint = thisEdge[1];
         collapsePoint = thisEdge[0];
+        removeEdgeIndex = 0;
+        removeFaceIndex = 1;
+        replaceEdgeIndex = 2;
+        replaceFaceIndex = 3;
     }
     else
     {
         // Collapse to the second by default
         replacePoint = thisEdge[1];
         collapsePoint = thisEdge[0];
+        removeEdgeIndex = 0;
+        removeFaceIndex = 1;
+        replaceEdgeIndex = 2;
+        replaceFaceIndex = 3;
     }
 
     // Loop through pointEdges for the collapsePoint,
@@ -7121,13 +7147,166 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         }
     }
 
+    // Remove all hull faces and edges
+    forAll(faceHull, indexI)
+    {
+        // Loop through all faces of the edge to be removed
+        // and reassign them to the replacement edge
+        label edgeToRemove = hullEdgesAndFaces[removeEdgeIndex][indexI];
+        label faceToRemove = hullEdgesAndFaces[removeFaceIndex][indexI];
+        label cellToRemove = cellHull[indexI];
+        label replaceEdge = hullEdgesAndFaces[replaceEdgeIndex][indexI];
+        label replaceFace = hullEdgesAndFaces[replaceFaceIndex][indexI];
+
+        labelList& rmvEdgeFaces = edgeFaces_[edgeToRemove];
+        labelList& rplEdgeFaces = edgeFaces_[replaceEdge];
+
+        // Replace edge labels
+        forAll(rmvEdgeFaces, faceI)
+        {
+            replaceLabel
+            (
+                edgeToRemove,
+                replaceEdge,
+                faceEdges_[rmvEdgeFaces[faceI]]
+            );
+        }
+
+        // Size up existing edgeFaces
+        forAll(rmvEdgeFaces, faceI)
+        {
+            found = false;
+
+            // Avoid hull faces
+            forAll(hullEdgesAndFaces[removeFaceIndex], faceII)
+            {
+                if (rmvEdgeFaces[faceI] == faceHull[indexI])
+                {
+                    found = true;
+                    break;
+                }
+
+                if
+                (
+                    rmvEdgeFaces[faceI]
+                 == hullEdgesAndFaces[removeFaceIndex][faceII]
+                )
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            // Size-up the list if the face hasn't been found
+            if (!found)
+            {
+                sizeUpList
+                (
+                    rmvEdgeFaces[faceI],
+                    rplEdgeFaces
+                );
+            }
+        }
+
+        if (cellToRemove != -1)
+        {
+            // Size down edgeFaces for the ring edges
+            sizeDownList
+            (
+                faceToRemove,
+                edgeFaces_[edgeHull[indexI]]
+            );
+
+            // Ensure proper orientation of retained faces
+            if (owner_[faceToRemove] == cellToRemove)
+            {
+                if (owner_[replaceFace] == cellToRemove)
+                {
+                    if
+                    (
+                        (neighbour_[faceToRemove] > neighbour_[replaceFace])
+                     && (neighbour_[replaceFace] != -1)
+                    )
+                    {
+                        // This face is to be flipped
+                        faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                        owner_[replaceFace] = neighbour_[replaceFace];
+                        neighbour_[replaceFace] = neighbour_[faceToRemove];
+                    }
+                    else
+                    {
+                        // Keep orientation intact, and update the owner
+                        owner_[replaceFace] = neighbour_[faceToRemove];
+                    }
+                }
+                else
+                {
+                    // Keep orientation intact, and update the neighbour
+                    neighbour_[replaceFace] = neighbour_[faceToRemove];
+                }
+            }
+            else
+            {
+                if (neighbour_[replaceFace] == cellToRemove)
+                {
+                    if (owner_[faceToRemove] < owner_[replaceFace])
+                    {
+                        // This face is to be flipped
+                        faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                        neighbour_[replaceFace] = owner_[replaceFace];
+                        owner_[replaceFace] = owner_[faceToRemove];
+                    }
+                    else
+                    {
+                        // Keep orientation intact, and update the neighbour
+                        neighbour_[replaceFace] = owner_[faceToRemove];
+                    }
+                }
+                else
+                {
+                    // Keep orientation intact, and update the owner
+                    owner_[replaceFace] = owner_[faceToRemove];
+                }
+            }
+
+            // Remove faceToRemove and associated faceEdges
+            removeFace(faceToRemove);
+            faceEdges_.remove(faceToRemove);
+
+            // Remove the hull cell
+            cells_.remove(cellToRemove);
+            lengthScale_.remove(cellToRemove);
+
+            // Update the number of cells, and the reverse cell map
+            nCells_--;
+
+            if (cellToRemove < nOldCells_)
+            {
+                reverseCellMap_[cellToRemove] = -1;
+            }
+        }
+
+        // Remove the hull edge and associated edgeFaces
+        removeEdge(edgeToRemove);
+
+        // Remove the hull face and associated faceEdges
+        removeFace(faceHull[indexI]);
+        faceEdges_.remove(faceHull[indexI]);
+    }
+
     // Move to the new point
     meshPoints_[replacePoint] = newPoint;
 
-    // Remove the point
+    // Remove the collapse point
     meshPoints_.remove(collapsePoint);
     pointEdges_.remove(collapsePoint);
     nPoints_--;
+
+    // Update the reverse point map
+    if (collapsePoint < nOldPoints_)
+    {
+        reversePointMap_[collapsePoint] = -1;
+    }
 
     // Return a successful collapse
     return true;
@@ -7142,8 +7321,7 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
     const labelList& hullFaces,
     const labelList& hullCells,
     labelList& ringEdges,
-    labelList& topFaces,
-    labelList& bottomFaces,
+    labelListList& hullEdgesAndFaces,
     FixedList<bool,2>& edgeBoundary
 )
 {
@@ -7151,6 +7329,30 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
     {
         // Obtain circular indices
         label nextI = hullVertices.fcIndex(indexI);
+
+        // Obtain edges connected to top and bottom
+        // vertices of edgeToCheck
+        labelList& fEdges = faceEdges_[hullFaces[indexI]];
+        forAll(fEdges, edgeI)
+        {
+            if
+            (
+                edges_[fEdges[edgeI]]
+             == edge(edgeToCheck[0],hullVertices[indexI])
+            )
+            {
+                hullEdgesAndFaces[0][indexI] = fEdges[edgeI];
+            }
+
+            if
+            (
+                edges_[fEdges[edgeI]]
+             == edge(edgeToCheck[1],hullVertices[indexI])
+            )
+            {
+                hullEdgesAndFaces[2][indexI] = fEdges[edgeI];
+            }
+        }
 
         if (hullCells[indexI] != -1)
         {
@@ -7167,7 +7369,7 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
                  && (faces_[currCell[faceI]].which(edgeToCheck[0]) > -1)
                 )
                 {
-                    topFaces[indexI] = currCell[faceI];
+                    hullEdgesAndFaces[1][indexI] = currCell[faceI];
 
                     // Determine the patch this face belongs to
                     if (whichPatch(currCell[faceI]) > -1)
@@ -7201,7 +7403,7 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
                  && (faces_[currCell[faceI]].which(edgeToCheck[1]) > -1)
                 )
                 {
-                    bottomFaces[indexI] = currCell[faceI];
+                    hullEdgesAndFaces[3][indexI] = currCell[faceI];
 
                     // Determine the patch this face belongs to
                     if (whichPatch(currCell[faceI]) > -1)
