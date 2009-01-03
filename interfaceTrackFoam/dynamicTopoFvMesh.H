@@ -332,14 +332,13 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to check for invalid edge-collapse.
-        bool checkCellVolume
+        bool checkCollapse
         (
             const point& newPoint,
-            const edge& edgeToCheck,
+            const label pointIndex,
             const label cellIndex,
             const FixedList<bool,2>& edgeBoundary,
-            labelHashSet& cellsChecked,
-            labelHashSet& cellsToSkip
+            labelHashSet& cellsChecked
         );
         
         // Check if the boundary face is adjacent to a sliver-cell,

@@ -6963,20 +6963,49 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
     // Configure the new point-position
     point newPoint = vector::zero;
 
+    // Decide which point to remove
+    FixedList<label,2> checkPoints(-1);
+    label collapsePoint = -1, replacePoint = -1;
+    label removeEdgeIndex = -1, removeFaceIndex = -1;
+    label replaceEdgeIndex = -1, replaceFaceIndex = -1;
+
     if (edgeBoundary[0] && !edgeBoundary[1])
     {
         // Collapse to the first node
+        replacePoint = thisEdge[0];
+        collapsePoint = thisEdge[1];
+        replaceEdgeIndex = 0;
+        replaceFaceIndex = 1;
+        removeEdgeIndex = 2;
+        removeFaceIndex = 3;
+        checkPoints[0] = collapsePoint;
         newPoint = meshPoints_[thisEdge[0]];
     }
     else
     if (!edgeBoundary[0] && edgeBoundary[1])
     {
         // Collapse to the second node
+        replacePoint = thisEdge[1];
+        collapsePoint = thisEdge[0];
+        removeEdgeIndex = 0;
+        removeFaceIndex = 1;
+        replaceEdgeIndex = 2;
+        replaceFaceIndex = 3;
+        checkPoints[0] = collapsePoint;
         newPoint = meshPoints_[thisEdge[1]];
     }
     else
     {
-        // Collapse to the mid-point
+        // Collapse to the second node by default
+        replacePoint = thisEdge[1];
+        collapsePoint = thisEdge[0];
+        removeEdgeIndex = 0;
+        removeFaceIndex = 1;
+        replaceEdgeIndex = 2;
+        replaceFaceIndex = 3;
+        checkPoints[0] = collapsePoint;
+        checkPoints[1] = replacePoint;
+        // Position collapse to the mid-point
         newPoint = 0.5*(meshPoints_[thisEdge[0]] + meshPoints_[thisEdge[1]]);
     }
 
@@ -6992,14 +7021,29 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
 
     // Loop through edges and check for feasibility of collapse
     labelHashSet cellsChecked(mMax);
-    labelHashSet cellsToSkip(mMax);
 
-    // Compute volumes of cells around edges with the re-configured point
-    forAll(edgeHull, indexI)
+    // Add all hull cells as 'checked'
+    forAll(cellHull, cellI)
     {
-        if (edgeHull[indexI] != -1)
+        if (cellHull[cellI] != -1)
         {
-            labelList& eFaces = edgeFaces_[edgeHull[indexI]];
+            cellsChecked.insert(cellHull[cellI]);
+        }
+    }
+
+    // Check collapsibility of cells around edges with the re-configured point
+    forAll(checkPoints, pointI)
+    {
+        if (checkPoints[pointI] == -1)
+        {
+            continue;
+        }
+
+        labelList& checkPointEdges = pointEdges_[checkPoints[pointI]];
+
+        forAll(checkPointEdges, edgeI)
+        {
+            labelList& eFaces = edgeFaces_[checkPointEdges[edgeI]];
 
             // Build a list of cells to check
             forAll(eFaces, faceI)
@@ -7008,24 +7052,18 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
                 label nei = neighbour_[eFaces[faceI]];
 
                 // Check owner cell
-                if
-                (
-                    !cellsChecked.found(own)
-                 && !cellsToSkip.found(own)
-                 && own != cellHull[indexI]
-                )
+                if (!cellsChecked.found(own))
                 {
                     // Check if a collapse is feasible
                     if
                     (
-                        checkCellVolume
+                        checkCollapse
                         (
                             newPoint,
-                            thisEdge,
+                            checkPoints[pointI],
                             own,
                             edgeBoundary,
-                            cellsChecked,
-                            cellsToSkip
+                            cellsChecked
                         )
                     )
                     {
@@ -7034,25 +7072,18 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
                 }
 
                 // Check neighbour cell
-                if
-                (
-                    !cellsChecked.found(nei)
-                 && !cellsToSkip.found(nei)
-                 && nei != cellHull[indexI]
-                 && nei != -1
-                )
+                if (!cellsChecked.found(nei) && nei != -1)
                 {
                     // Check if a collapse is feasible
                     if
                     (
-                        checkCellVolume
+                        checkCollapse
                         (
                             newPoint,
-                            thisEdge,
+                            checkPoints[pointI],
                             nei,
                             edgeBoundary,
-                            cellsChecked,
-                            cellsToSkip
+                            cellsChecked
                         )
                     )
                     {
@@ -7060,48 +7091,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
                     }
                 }
             }
-
-            // Clear the cell-lists
-            cellsChecked.clear();
-            cellsToSkip.clear();
         }
-    }
-
-    // Decide which point to remove
-    label collapsePoint = -1, replacePoint = -1;
-    label removeEdgeIndex = -1, removeFaceIndex = -1;
-    label replaceEdgeIndex = -1, replaceFaceIndex = -1;
-
-    if (edgeBoundary[0] && !edgeBoundary[1])
-    {
-        // Collapse to the first node
-        replacePoint = thisEdge[0];
-        collapsePoint = thisEdge[1];
-        replaceEdgeIndex = 0;
-        replaceFaceIndex = 1;
-        removeEdgeIndex = 2;
-        removeFaceIndex = 3;
-    }
-    else
-    if (!edgeBoundary[0] && edgeBoundary[1])
-    {
-        // Collapse to the second node
-        replacePoint = thisEdge[1];
-        collapsePoint = thisEdge[0];
-        removeEdgeIndex = 0;
-        removeFaceIndex = 1;
-        replaceEdgeIndex = 2;
-        replaceFaceIndex = 3;
-    }
-    else
-    {
-        // Collapse to the second by default
-        replacePoint = thisEdge[1];
-        collapsePoint = thisEdge[0];
-        removeEdgeIndex = 0;
-        removeFaceIndex = 1;
-        replaceEdgeIndex = 2;
-        replaceFaceIndex = 3;
     }
 
     // Loop through pointEdges for the collapsePoint,
@@ -7175,17 +7165,16 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         // Size up existing edgeFaces
         forAll(rmvEdgeFaces, faceI)
         {
+            // Avoid hull faces
+            if (rmvEdgeFaces[faceI] == faceHull[indexI])
+            {
+                continue;
+            }
+
             found = false;
 
-            // Avoid hull faces
             forAll(hullEdgesAndFaces[removeFaceIndex], faceII)
             {
-                if (rmvEdgeFaces[faceI] == faceHull[indexI])
-                {
-                    found = true;
-                    break;
-                }
-
                 if
                 (
                     rmvEdgeFaces[faceI]
@@ -7312,7 +7301,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
     return true;
 }
 
-// Utility to determine ring edges and the hull faces connected to them.
+// Utility to determine ring edges and the hull edges/faces connected to them.
 void Foam::dynamicTopoFvMesh::constructEdgeRing
 (
     const label eIndex,
@@ -7417,92 +7406,22 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
 }
 
 // Utility method to check whether the cell given by 'cellIndex' will yield
-// a valid cell when 'edgeToCheck' is collapsed to 'newPoint'. The routine
+// a valid cell when 'pointIndex' is moved to 'newPoint'. The routine
 // tests for various combinations of edge-boundary cases and performs
-// volume-based tests. Returns 'true' if the collapse in NOT feasible, and
-// makes entries in cellsChecked and cellsToSkip to avoid repetitive checks.
-bool Foam::dynamicTopoFvMesh::checkCellVolume
+// volume-based checks. Returns 'true' if the collapse in NOT feasible, and
+// makes entries in cellsChecked to avoid repetitive checks.
+bool Foam::dynamicTopoFvMesh::checkCollapse
 (
     const point& newPoint,
-    const edge& edgeToCheck,
+    const label pointIndex,
     const label cellIndex,
     const FixedList<bool,2>& edgeBoundary,
-    labelHashSet& cellsChecked,
-    labelHashSet& cellsToSkip
+    labelHashSet& cellsChecked
 )
 {
-    bool foundTop = false, foundBottom = false;
-    label faceIndex = -1, pointIndex = -1;
+    label faceIndex = -1;
     scalar cellVolume = 0.0;
     cell& cellToCheck = cells_[cellIndex];
-
-    // Check if this cell contains either edge[0] or edge[1]
-    // Doesn't check for both, since that would be a wierd non-convex cell
-    forAll(cellToCheck, faceI)
-    {
-        face& currFace = faces_[cellToCheck[faceI]];
-
-        if (currFace.which(edgeToCheck[0]) > -1)
-        {
-            foundTop = true;
-            break;
-        }
-
-        if (currFace.which(edgeToCheck[1]) > -1)
-        {
-            foundBottom = true;
-            break;
-        }
-    }
-
-    // Couldn't find the points, so this cell isn't affected.
-    // Skip it later on.
-    if (!foundTop && !foundBottom)
-    {
-        cellsToSkip.insert(cellIndex);
-        return false;
-    }
-
-    // Found a point. Check if this cell is affected by the collapse
-
-    // Collapse to the first node, but cell won't be affected
-    if (edgeBoundary[0] && !edgeBoundary[1] && foundTop)
-    {
-        cellsChecked.insert(cellIndex);
-        return false;
-    }
-
-    // Collapse to the first node, needs a volume check
-    if (edgeBoundary[0] && !edgeBoundary[1] && foundBottom)
-    {
-        pointIndex = edgeToCheck[1];
-    }
-
-    // Collapse to the second node, needs a volume check
-    if (!edgeBoundary[0] && edgeBoundary[1] && foundTop)
-    {
-        pointIndex = edgeToCheck[0];
-    }
-
-    // Collapse to the second node, but cell won't be affected
-    if (!edgeBoundary[0] && edgeBoundary[1] && foundBottom)
-    {
-        cellsChecked.insert(cellIndex);
-        return false;
-    }
-
-    // Collapse to the mid-point, needs a volume check
-    if (!edgeBoundary[0] && !edgeBoundary[1])
-    {
-        if (foundTop)
-        {
-            pointIndex = edgeToCheck[0];
-        }
-        else
-        {
-            pointIndex = edgeToCheck[1];
-        }
-    }
 
     // Look for a face that doesn't contain 'pointIndex'
     forAll(cellToCheck, faceI)
