@@ -185,9 +185,7 @@ class dynamicTopoFvMesh
                 //- Edge
                 HashList<edge>::iterator edgeStart();
                 HashList<edge>::iterator edgeEnd();
-                HashList<edge>::iterator internalEdgeStart();
-                HashList<edge>::iterator internalEdgeEnd();
-
+                
                 //- Face
                 HashList<face>::iterator faceStart();
                 HashList<face>::iterator faceEnd();
@@ -440,8 +438,7 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to build a ring of vertices around the edge
-        // Returns whether the edge lies on a boundary 
-        inline bool constructVertexRing
+        inline void constructVertexRing
         (
             const label eIndex,
             const edge& edgeToCheck,

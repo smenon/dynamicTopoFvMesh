@@ -325,20 +325,6 @@ Foam::dynamicTopoFvMesh::topoMeshStruct::edgeEnd()
     }
 }
 
-// Internal edge start iterator
-HashList<edge>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::internalEdgeStart()
-{
-    return mesh_->edges_.getIterator(internalEdgeStart_);
-}
-
-// Internal edge end iterator
-HashList<edge>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::internalEdgeEnd()
-{
-    return mesh_->edges_.getIterator(internalEdgeStart_+internalEdgeSize_);
-}
-
 // Face start iterator
 HashList<face>::iterator
 Foam::dynamicTopoFvMesh::topoMeshStruct::faceStart()
@@ -1398,8 +1384,7 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
 
 // Utility method to build a counter-clockwise ring of vertices
 // around the edge a-b (when viewed from vertex 'a')
-// Returns whether the edge lies on a boundary
-inline bool Foam::dynamicTopoFvMesh::constructVertexRing
+inline void Foam::dynamicTopoFvMesh::constructVertexRing
 (
     const label eIndex,
     const edge& edgeToCheck,
@@ -1410,7 +1395,7 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     bool requiresQuality = true
 )
 {
-    bool found, isBoundary = false;
+    bool found;
     minQuality = GREAT;
     label otherPoint = -1, nextPoint = -1, cellIndex = -1;
     label faceToExclude = -1, numPoints = 0, numFaces = 0;
@@ -1606,8 +1591,6 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
             // Add this cell to the hull
             hullCells.append(cellIndex);
 
-            isBoundary = true;
-
             break;
         }
 
@@ -1629,8 +1612,6 @@ inline bool Foam::dynamicTopoFvMesh::constructVertexRing
     hullVertices.shrink();
     hullFaces.shrink();
     hullCells.shrink();
-
-    return isBoundary;
 }
 
 // Allocate dynamic programming tables
@@ -2401,7 +2382,7 @@ void Foam::dynamicTopoFvMesh::swap23
     }
 }
 
-// Routine to perform 3-2 swaps
+// Routine to perform 3-2 or 2-2 swaps
 void Foam::dynamicTopoFvMesh::swap32
 (
     const label edgeToCheckIndex,
@@ -2413,20 +2394,33 @@ void Foam::dynamicTopoFvMesh::swap32
     const DynamicList<label>& hullVertices
 )
 {
-    // A 3-2 swap performs the following operations:
+    // A 2-2 / 3-2 swap performs the following operations:
     //      [1] Remove three faces surrounding edgeToCheck
-    //      [2] Remove three cells surrounding edgeToCheck
-    //      [3] Add one face
+    //      [2] Remove two (2-2 swap) or three(3-2 swap)
+    //          cells surrounding edgeToCheck
+    //      [3] Add one internal face
     //      [4] Add two new cells
-    //      Edge is removed later by swap3DEdges
+    //      [5] If edgeToCheck is on a boundary,
+    //          add two boundary faces and a boundary edge (2-2 swap)
+    //      edgeToCheck is removed later by swap3DEdges
     //      Update faceEdges and edgeFaces information
+
+    // Determine the patch this edge belongs to
+    label edgePatch = whichEdgePatch(edgeToCheckIndex);
 
 #   ifdef FULLDEBUG
     if (debug)
     {
         // Print out arguments
         Info << endl;
-        Info << "== Swapping 3-2 ==" << endl;
+        if (edgePatch < 0)
+        {
+            Info << "== Swapping 3-2 ==" << endl;
+        }
+        else
+        {
+            Info << "== Swapping 2-2 ==" << endl;
+        }
         Info << "Edge: " << edgeToCheck << endl;
         Info << "Ring: " << hullVertices << endl;
         Info << "Triangulation: "
@@ -2503,14 +2497,122 @@ void Foam::dynamicTopoFvMesh::swap32
     check[1][0] = newTriFace[1]; check[1][1] = newTriFace[2];
     check[2][0] = newTriFace[2]; check[2][1] = newTriFace[0];
 
-    // New faceEdge entry
+    // New faceEdge entry for the interior face
     label nE = 0;
     labelList newFaceEdges(3);
+    
+    // For 2-2 swaps, two faces are introduced
+    FixedList<label,2> nBE(0);
+    labelListList bdyFaceEdges(2, labelList(3, -1));
 
     // Fill-in information for the two new cells,
     // and correct info on existing neighbouring cells
     label nF0 = 0, nF1 = 0;
     FixedList<bool,2> foundEdge;
+
+    // For a 2-2 swap on a boundary edge,
+    // add two boundary faces and an edge
+    FixedList<label,2> newBdyFaceIndex(-1);
+    label newEdgeIndex = -1;
+
+    if (edgePatch > -1)
+    {
+        // Temporary local variables
+        label otherPoint = -1, nextPoint = -1, facePatch = -1;
+        face newBdyTriFace0(3), newBdyTriFace1(3);
+        edge newEdge(-1, -1);
+
+        // Get a cue for face orientation from existing faces
+        forAll(facesForRemoval, faceI)
+        {
+            if (neighbour_[facesForRemoval[faceI]] == -1)
+            {
+                facePatch = whichPatch(facesForRemoval[faceI]);
+                face& faceToCheck = faces_[facesForRemoval[faceI]];
+
+                findIsolatedPoint
+                (
+                    faceToCheck,
+                    edgeToCheck,
+                    otherPoint,
+                    nextPoint
+                );
+
+                if (nextPoint == edgeToCheck[0])
+                {
+                    newEdge[1] = otherPoint;
+                    newBdyTriFace0[0] = otherPoint;
+                    newBdyTriFace0[1] = edgeToCheck[0];
+                    newBdyTriFace1[2] = otherPoint;
+                }
+                else
+                {
+                    newEdge[0] = otherPoint;
+                    newBdyTriFace1[0] = otherPoint;
+                    newBdyTriFace1[1] = edgeToCheck[1];
+                    newBdyTriFace0[2] = otherPoint;
+                }
+
+                // Also update faceEdges for the new boundary faces
+                labelList& fEdges = faceEdges_[facesForRemoval[faceI]];
+
+                forAll(fEdges, edgeI)
+                {
+                    if
+                    (
+                        edges_[fEdges[edgeI]]
+                     == edge(edgeToCheck[0], otherPoint)
+                    )
+                    {
+                        bdyFaceEdges[0][nBE[0]++] = fEdges[edgeI];
+                    }
+
+                    if
+                    (
+                        edges_[fEdges[edgeI]]
+                     == edge(edgeToCheck[1], otherPoint)
+                    )
+                    {
+                        bdyFaceEdges[1][nBE[1]++] = fEdges[edgeI];
+                    }
+                }
+            }
+        }
+
+        // Insert the two new faces
+        newBdyFaceIndex[0] = insertFace
+                             (
+                                 facePatch,
+                                 newBdyTriFace0,
+                                 newCellIndex1,
+                                 -1
+                             );
+
+        newBdyFaceIndex[1] = insertFace
+                             (
+                                 facePatch,
+                                 newBdyTriFace1,
+                                 newCellIndex0,
+                                 -1
+                             );
+
+        // Update the new cells
+        newTetCell0[nF0++] = newBdyFaceIndex[1];
+        newTetCell1[nF1++] = newBdyFaceIndex[0];
+
+        // Insert the new edge
+        labelList newBdyEdgeFaces(3, -1);
+        newBdyEdgeFaces[0] = newBdyFaceIndex[0];
+        newBdyEdgeFaces[1] = newFaceIndex;
+        newBdyEdgeFaces[2] = newBdyFaceIndex[1];
+
+        newEdgeIndex = insertEdge(edgePatch, newEdge, newBdyEdgeFaces);
+
+        // Update faceEdges with the new edge
+        newFaceEdges[nE++] = newEdgeIndex;
+        bdyFaceEdges[0][nBE[0]++] = newEdgeIndex;
+        bdyFaceEdges[1][nBE[1]++] = newEdgeIndex;
+    }
 
     newTetCell0[nF0++] = newFaceIndex;
     newTetCell1[nF1++] = newFaceIndex;
@@ -2619,12 +2721,9 @@ void Foam::dynamicTopoFvMesh::swap32
         }
     }
 
-    // Now append faceEdges for the new face
-    faceEdges_.append(newFaceEdges);
-
     // Generate mapping information for the two new cells
 
-    // Remove the three faces and update associated edges
+    // Remove the faces and update associated edges
     forAll(facesForRemoval, faceI)
     {
         removeFace(facesForRemoval[faceI]);
@@ -2645,8 +2744,21 @@ void Foam::dynamicTopoFvMesh::swap32
         faceEdges_.remove(facesForRemoval[faceI]);
     }
 
-    // Update the number of cells, and the reverse cell map
-    nCells_--;
+    // Now append faceEdges for the new faces.
+    faceEdges_.append(newFaceEdges);
+
+    if (edgePatch > -1)
+    {
+        // Add boundary faceEdges only for 2-2 swaps
+        // Notice the order is the same as face insertion
+        faceEdges_.append(bdyFaceEdges[0]);
+        faceEdges_.append(bdyFaceEdges[1]);
+    }
+    else
+    {
+        // Update the number of cells only for 3-2 swaps
+        nCells_--;
+    }
 
     forAll(cellRemovalList, cellI)
     {
@@ -4228,8 +4340,8 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
     // Loop through edges assigned to this thread
-    HashList<edge>::iterator eIter = thread->internalEdgeStart();
-    HashList<edge>::iterator eEnd = thread->internalEdgeEnd();
+    HashList<edge>::iterator eIter = thread->edgeStart();
+    HashList<edge>::iterator eEnd = thread->edgeEnd();
 
     // Obtain maxTetsPerEdge
     label mMax = mesh->maxTetsPerEdge();
@@ -4256,27 +4368,15 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
         edge& thisEdge = eIter();
 
         // Obtain a ring of vertices around this edge
-        if
+        mesh->constructVertexRing
         (
-            mesh->constructVertexRing
-            (
-                eIndex,
-                thisEdge,
-                cellHull,
-                faceHull,
-                vertexHull,
-	        minQuality
-            )
-        )
-	{
-            // This is a boundary edge, but this routine doesn't handle them
-            FatalErrorIn("Foam::dynamicTopoFvMesh::swap3DEdges()") << nl
-                    << " Encountered a boundary edge."
-                    << "Edge: " << eIndex << ": " << thisEdge << nl
-                    << "cellHull: " << cellHull << nl
-                    << "vertexHull: " << vertexHull << nl
-                    << abort(FatalError);
-        }
+            eIndex,
+            thisEdge,
+            cellHull,
+            faceHull,
+            vertexHull,
+            minQuality
+        );
 
         // Check if a table-resize is necessary
         if (vertexHull.size() > mMax)
