@@ -411,7 +411,7 @@ void Foam::dynamicTopoFvMesh::setMotionBC
         {
             // Boundary motion specified for the tetDecompositionMotionSolver
             tetPointVectorField& motionU = const_cast<tetPointVectorField&>
-                    (objectRegistry::lookupObject<tetPointVectorField>("motionU"));
+                (objectRegistry::lookupObject<tetPointVectorField>("motionU"));
 
             // Assign boundary conditions to the motion solver
             motionU.boundaryField()[index] == dispField/time().deltaT().value();
@@ -426,7 +426,7 @@ void Foam::dynamicTopoFvMesh::setMotionBC
         {
             // Boundary motion specified for the tetDecompositionMotionSolver
             tetPointVectorField& motionU = const_cast<tetPointVectorField&>
-                    (objectRegistry::lookupObject<tetPointVectorField>("motionU"));
+                (objectRegistry::lookupObject<tetPointVectorField>("motionU"));
 
             // Assign boundary conditions to the motion solver
 
@@ -455,7 +455,7 @@ void Foam::dynamicTopoFvMesh::setMotionBC
         {
             // Boundary motion specified for the springMotionSolver
             pointField& refPoints = const_cast<pointField&>
-                    (objectRegistry::lookupObject<pointField>("refPoints"));
+                (objectRegistry::lookupObject<pointField>("refPoints"));
             
             // Assign boundary conditions to the motion solver
             const labelList& meshPts = boundaryMesh()[index].meshPoints();
@@ -905,8 +905,8 @@ Foam::label Foam::dynamicTopoFvMesh::insertFace
 )
 {
     // Append the specified face to each face-related list.
-    // This will avoid rehashing of existing structures, but ordering is not maintained
-    // Reordering is performed after all pending changes 
+    // This will avoid rehashing of existing structures, but ordering is not 
+    // maintained. Reordering is performed after all pending changes
     // (flips, bisections, contractions, etc) have been made to the mesh
     label newFaceIndex = faces_.append(newFace);
     owner_.append(newOwner);
@@ -1195,7 +1195,11 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
                     }
                 }
                 
-                if (requiresTriFaces && faceToCheck.nEdges() == 3 && !foundTriFace)
+                if 
+                (
+                    requiresTriFaces && faceToCheck.nEdges() == 3
+                 && !foundTriFace
+                )
                 {
                     hullTriFaces.append(cellToCheck[faceI]);
                     foundTriFace=true;
@@ -3028,11 +3032,13 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
                 {
                     if (faceRenumber[pointI] < nOldPoints_)
                     {
-                        faceRenumber[pointI] = reversePointMap_[faceRenumber[pointI]];
+                        faceRenumber[pointI] =
+                            reversePointMap_[faceRenumber[pointI]];
                     }
                     else
                     {
-                        faceRenumber[pointI] = addedPointRenumbering_[faceRenumber[pointI]];
+                        faceRenumber[pointI] =
+                            addedPointRenumbering_[faceRenumber[pointI]];
                     }
                 }
 
@@ -3112,11 +3118,13 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
                 {
                     if (faceRenumber[pointI] < nOldPoints_)
                     {
-                        faceRenumber[pointI] = reversePointMap_[faceRenumber[pointI]];
+                        faceRenumber[pointI] =
+                            reversePointMap_[faceRenumber[pointI]];
                     }
                     else
                     {
-                        faceRenumber[pointI] = addedPointRenumbering_[faceRenumber[pointI]];
+                        faceRenumber[pointI] =
+                            addedPointRenumbering_[faceRenumber[pointI]];
                     }
                 }
 
@@ -3318,8 +3326,12 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
     forAll (cellCellAddr, cellI)
     {
         cellCellAddr[cellI].setSize(ncc[cellI]);
+
         // Mark off deleted cells as "visited"
-        if (ncc[cellI] == 0) visited[cellI] = 1;
+        if (ncc[cellI] == 0)
+        {
+            visited[cellI] = 1;
+        }
     }
 
     ncc = 0;
@@ -3571,7 +3583,8 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
         // Perform multiple sweeps through the mesh...
         while (visitedCells < nCells())
         {
-            // Loop through cells, and increment neighbour cells of the current level
+            // Loop through cells, and increment neighbour
+            // cells of the current level
             forAll(cellLevels,cellI)
             {
                 if (cellLevels[cellI] == level)
@@ -3584,7 +3597,9 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                         if (ngbLevel == 0)
                         {
                             ngbLevel = level+1;
-                            // Compute the mean of the existing neighbour length-scales
+
+                            // Compute the mean of the existing
+                            // neighbour length-scales
                             const labelList& ncList = cc[cList[indexI]];
                             scalar sumLength = 0.0;
                             label nTouchedNgb = 0;
@@ -3598,6 +3613,7 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                                 }
                             }
                             sumLength /= nTouchedNgb;
+
                             // Scale the length and assign to this cell
                             scalar sLength = sumLength*growthFactor_;
                             sLength = (sLength < maxLengthScale_) 
@@ -3608,6 +3624,7 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
                     }
                 }
             }
+
             // Move on to the next level
             level++;
         }
@@ -6334,8 +6351,9 @@ void Foam::dynamicTopoFvMesh::bisectEdge
         );
 
     // Remove the existing edge from the pointEdges list
-    // of the modified point
+    // of the modified point, and add it to the new point
     sizeDownList(eIndex, pointEdges_[thisEdge[1]]);
+    sizeUpList(eIndex, pointEdges_[newPointIndex]);
     
     // Modify the existing edge
     thisEdge[1] = newPointIndex;
@@ -6496,7 +6514,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                         -1
                     );
                 
-                // Configure edgeFaces (notice the counter-clockwise ordering)
+                // Configure edgeFaces
                 tmpEdgeFaces[0] = faceHull[indexI];
                 tmpEdgeFaces[1] = addedIntFaceIndices[indexI];
                 tmpEdgeFaces[2] = addedFaceIndices[indexI];
@@ -6763,7 +6781,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                     -1
                 );
 
-            // Configure edgeFaces (notice the counter-clockwise ordering)
+            // Configure edgeFaces
             tmpEdgeFaces[0] = addedFaceIndices[indexI];
             tmpEdgeFaces[1] = addedIntFaceIndices[prevI];
             tmpEdgeFaces[2] = faceHull[indexI];
@@ -6913,6 +6931,20 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
     const label eIndex
 )
 {
+    // Edge collapse performs the following operations:
+    //      [1] Checks if either vertex of the edge is on a boundary
+    //      [2] Checks whether cells attached to deleted vertices will be valid
+    //          after the edge-collapse operation
+    //      [3] Deletes all cells surrounding this edge
+    //      [4] Deletes all faces surrounding this edge
+    //      [5] Deletes all faces surrounding the deleted vertex attached
+    //          to the cells in [3]
+    //      [6] Checks the orientation of faces connected to the retained
+    //          vertices
+    //      [7] Remove one of the vertices of the edge
+    //      Update faceEdges and edgeFaces information
+    //      The edge will be removed later by edgeBisectCollapse3D
+
     bool found = false;
     edge& thisEdge = edges_[eIndex];
     FixedList<bool,2> edgeBoundary(false);
@@ -7360,12 +7392,6 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
                 {
                     hullEdgesAndFaces[1][indexI] = currCell[faceI];
 
-                    // Determine the patch this face belongs to
-                    if (whichPatch(currCell[faceI]) > -1)
-                    {
-                        edgeBoundary[0] = true;
-                    }
-
                     // Look for the edge on the ring
                     labelList& rFaceEdges = faceEdges_[currCell[faceI]];
 
@@ -7393,21 +7419,31 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
                 )
                 {
                     hullEdgesAndFaces[3][indexI] = currCell[faceI];
-
-                    // Determine the patch this face belongs to
-                    if (whichPatch(currCell[faceI]) > -1)
-                    {
-                        edgeBoundary[1] = true;
-                    }
                 }
+            }
+        }
+    }
+
+    // Loop through edges connected to both points and check if any of them
+    // lie on boundaries
+    forAll(edgeToCheck, pointI)
+    {
+        labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
+
+        forAll(pEdges, edgeI)
+        {
+            // Determine the patch this edge belongs to
+            if (whichEdgePatch(pEdges[edgeI]) > -1)
+            {
+                edgeBoundary[pointI] = true;
+                break;
             }
         }
     }
 }
 
 // Utility method to check whether the cell given by 'cellIndex' will yield
-// a valid cell when 'pointIndex' is moved to 'newPoint'. The routine
-// tests for various combinations of edge-boundary cases and performs
+// a valid cell when 'pointIndex' is moved to 'newPoint'. The routine performs
 // volume-based checks. Returns 'true' if the collapse in NOT feasible, and
 // makes entries in cellsChecked to avoid repetitive checks.
 bool Foam::dynamicTopoFvMesh::checkCollapse
@@ -7462,6 +7498,20 @@ bool Foam::dynamicTopoFvMesh::checkCollapse
     // Final cell-volume check
     if (cellVolume < VSMALL)
     {
+#       ifdef FULLDEBUG
+        if (debug)
+        {
+            WarningIn
+            (
+                "dynamicTopoFvMesh::checkCollapse"
+            )   << "\nCollapsing cell: " << cellIndex << " containing points:\n"
+                << faceToCheck[0] << "," << faceToCheck[1] << ","
+                << faceToCheck[2] << "," << pointIndex << nl
+                << "will yield a negative volume: " << cellVolume
+                << ", when " << pointIndex << " is moved to location: " << nl
+                << newPoint << endl;
+        }
+#       endif
         return true;
     }
 
