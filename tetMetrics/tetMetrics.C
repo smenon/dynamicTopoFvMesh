@@ -47,6 +47,19 @@ Author
 #include "point.H"
 #include "scalar.H"
 
+// Enumeration for tets
+Foam::label tetEnum[6][4] =
+{
+    {0,1,2,3},
+    {0,2,3,1},
+    {0,3,1,2},
+    {1,2,0,3},
+    {1,3,0,2},
+    {2,3,0,1}
+};
+
+// Minimum dihedral angle among six edges of the tetrahedron. Normalized
+// by 70.529 degrees (equilateral tet) and signed by volume.
 Foam::scalar Dihedral
 (
     const Foam::point& p0, 
@@ -55,7 +68,45 @@ Foam::scalar Dihedral
     const Foam::point& p3
 )
 {
-    return 0.0;
+    Foam::scalar minAngle = 0.0;
+    Foam::FixedList<Foam::scalar,6> cosAngles(1.0);
+    Foam::FixedList<Foam::vector,4> pts(Foam::vector::zero);
+    
+    // Assign point-positions
+    pts[0] = p0;
+    pts[1] = p1;
+    pts[2] = p2;
+    pts[3] = p3;
+
+    // Permute over all six edges
+    for (Foam::label i = 0; i < 6; i++)
+    {
+        // Normalize the axis
+        Foam::vector v0 = (pts[tetEnum[i][1]] - pts[tetEnum[i][0]])
+                      /mag(pts[tetEnum[i][1]] - pts[tetEnum[i][0]]);
+
+        // Obtain plane-vectors
+        Foam::vector v1 = (pts[tetEnum[i][2]] - pts[tetEnum[i][0]]);
+        Foam::vector v2 = (pts[tetEnum[i][3]] - pts[tetEnum[i][0]]);
+
+        v1 -= (v1 & v0)*v0;
+        v2 -= (v2 & v0)*v0;
+
+        cosAngles[i] = acos((v1/mag(v1)) & (v2/mag(v2)));
+        
+        // Compute minimum angle on-the-fly
+        if (i > 0)
+        {
+            minAngle = minAngle < cosAngles[i] ? minAngle : cosAngles[i];
+        }
+        else
+        {
+            minAngle = cosAngles[0];
+        }
+    }
+
+    // Compute signed volume and multiply by the normalized angle
+    return Foam::sign(((p1 - p0) ^ (p2 - p0)) & (p3 - p0))*(minAngle/1.2309632);
 }
 
 // Tetrahedral mesh-quality metric suggested by Knupp [2003].
