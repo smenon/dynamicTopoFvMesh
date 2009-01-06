@@ -1044,7 +1044,7 @@ void Foam::dynamicTopoFvMesh::removeEdge
 #   ifdef FULLDEBUG
     if (debug)
     {
-        Info << "Removed edge: "
+        Info << "Removing edge: "
              << index << ": "
              << thisEdge << endl;
     }
@@ -2545,6 +2545,9 @@ void Foam::dynamicTopoFvMesh::swap32
                              newCellIndex[1]
                          );
 
+    // Add faceEdges for the new face as well.
+    faceEdges_.append(labelList(3));
+
     // Define the three edges to check while building faceEdges:
     FixedList<edge,3> check;
 
@@ -2554,7 +2557,7 @@ void Foam::dynamicTopoFvMesh::swap32
 
     // New faceEdge entry for the interior face
     label nE = 0;
-    labelList newFaceEdges(3);
+    labelList& newFaceEdges = faceEdges_[newFaceIndex];
     
     // For 2-2 swaps, two faces are introduced
     FixedList<label,2> nBE(0);
@@ -2678,6 +2681,10 @@ void Foam::dynamicTopoFvMesh::swap32
             sizeUpList(newBdyFaceIndex[0], edgeFaces_[bdyEdges0[edgeI]]);
             sizeUpList(newBdyFaceIndex[1], edgeFaces_[bdyEdges1[edgeI]]);
         }
+
+        // Add faceEdges for the two new boundary faces
+        faceEdges_.append(bdyFaceEdges[0]);
+        faceEdges_.append(bdyFaceEdges[1]);
     }
 
     newTetCell0[nF0++] = newFaceIndex;
@@ -2810,17 +2817,7 @@ void Foam::dynamicTopoFvMesh::swap32
         faceEdges_.remove(facesForRemoval[faceI]);
     }
 
-    // Now append faceEdges for the new faces.
-    faceEdges_.append(newFaceEdges);
-
-    if (edgePatch > -1)
-    {
-        // Add boundary faceEdges only for 2-2 swaps
-        // Notice the order is the same as face insertion
-        faceEdges_.append(bdyFaceEdges[0]);
-        faceEdges_.append(bdyFaceEdges[1]);
-    }
-    else
+    if (edgePatch < 0)
     {
         // Update the number of cells only for 3-2 swaps
         nCells_--;
@@ -3122,6 +3119,59 @@ void Foam::dynamicTopoFvMesh::reOrderEdges()
             }
         }
     }
+
+#   ifdef FULLDEBUG
+    if (debug)
+    {
+        // Final check to see that everything went okay
+        Info << "Checking edge-face connectivity...";
+        labelList nEdgeFaces(nEdges_, 0);
+        forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
+        {
+            labelList& faceEdges = feIter();
+            forAll(faceEdges,edgeI)
+            {
+                nEdgeFaces[faceEdges[edgeI]]++;
+            }
+        }
+        forAllIter(HashList<labelList>::iterator, edgeFaces_, efIter)
+        {
+            labelList& edgeFaces = efIter();
+            if (edgeFaces.size() != nEdgeFaces[efIter.index()])
+            {
+                Info << "Edge: " << efIter.index()
+                     << " Old index: " << edgeMap_[efIter.index()] << nl
+                     << "edgeFaces: " << edgeFaces << endl;
+                FatalErrorIn("dynamicTopoFvMesh::reOrderEdges()") << nl
+                     << "Edge-Face connectivity is inconsistent." << nl
+                     << abort(FatalError);
+            }
+        }
+        Info << "Done." << endl;
+
+        Info << "Checking point-edge connectivity...";
+        labelList nPointEdges(nPoints_, 0);
+        forAllIter(HashList<edge>::iterator, edges_, eIter)
+        {
+            nPointEdges[eIter()[0]]++;
+            nPointEdges[eIter()[1]]++;
+        }
+        forAllIter(HashList<labelList>::iterator, pointEdges_, peIter)
+        {
+            labelList& pointEdges = peIter();
+            if (pointEdges.size() != nPointEdges[peIter.index()])
+            {
+                Info << "Point: " << peIter.index()
+                     << " Old index: " << pointMap_[peIter.index()] << nl
+                     << "pointEdges: " << pointEdges << endl;
+                FatalErrorIn("dynamicTopoFvMesh::reOrderEdges()") << nl
+                     << "Point-Edge connectivity is inconsistent."
+                     << abort(FatalError);
+            }
+        }
+        Info << "Done." << endl;
+    }
+#   endif
 }
 
 // Reorder faces in upper-triangular order after a topology change
@@ -3483,10 +3533,12 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
     if (debug)
     {
         if (sum(visited) != 0)
+        {
             FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderFaces()") << nl
                     << " Algorithm did not visit every face in the mesh."
                     << " Something's messed up." << nl
-                    << abort(FatalError);         
+                    << abort(FatalError);
+        }
     }
 }
 
@@ -7534,7 +7586,8 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
     }
 
     // Loop through pointEdges for the collapsePoint,
-    // and replace all occurrences with replacePoint
+    // and replace all occurrences with replacePoint.
+    // Size-up pointEdges for the replacePoint as well.
     labelList& pEdges = pointEdges_[collapsePoint];
 
     forAll(pEdges, edgeI)
@@ -7548,11 +7601,23 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
             if (edgeToCheck[0] == collapsePoint)
             {
                 edgeToCheck[0] = replacePoint;
+
+                sizeUpList
+                (
+                    pEdges[edgeI],
+                    pointEdges_[replacePoint]
+                );
             }
             else
             if (edgeToCheck[1] == collapsePoint)
             {
                 edgeToCheck[1] = replacePoint;
+
+                sizeUpList
+                (
+                    pEdges[edgeI],
+                    pointEdges_[replacePoint]
+                );
             }
             else
             {
