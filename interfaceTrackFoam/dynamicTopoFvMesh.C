@@ -1554,7 +1554,9 @@ inline void Foam::dynamicTopoFvMesh::constructVertexRing
                 "dynamicTopoFvMesh::constructVertexRing(...)"
             )
             << " Failed to determine a vertex ring. " << nl
-            << " edgeFaces connectivity is inconsistent. "
+            << " edgeFaces connectivity is inconsistent. " << nl
+            << "Edge: " << eIndex << ":: " << edgeToCheck << nl
+            << "edgeFaces: " << eFaces
             << abort(FatalError);
         }
 
@@ -1846,7 +1848,6 @@ void Foam::dynamicTopoFvMesh::removeEdgeFlips
     triangulations[0][t32] = -1;
     triangulations[1][t32] = -1;
     triangulations[2][t32] = -1;
-
 }
 
 // Extract triangulations from the programming table
@@ -2008,8 +2009,10 @@ void Foam::dynamicTopoFvMesh::swap23
         // Print out arguments
         Info << endl;
         Info << "== Swapping 2-3 ==" << endl;
-        Info << "Edge: " << edgeToCheck << endl;
+        Info << "Edge: " << edgeToCheckIndex << ": " << edgeToCheck << endl;
         Info << "Ring: " << hullVertices << endl;
+        Info << "Faces: " << hullFaces << endl;
+        Info << "Cells: " << hullCells << endl;
         Info << "Triangulation: "
              << triangulations[0][triangulationIndex] << " "
              << triangulations[1][triangulationIndex] << " "
@@ -2421,8 +2424,10 @@ void Foam::dynamicTopoFvMesh::swap32
         {
             Info << "== Swapping 2-2 ==" << endl;
         }
-        Info << "Edge: " << edgeToCheck << endl;
+        Info << "Edge: " << edgeToCheckIndex << ": " << edgeToCheck << endl;
         Info << "Ring: " << hullVertices << endl;
+        Info << "Faces: " << hullFaces << endl;
+        Info << "Cells: " << hullCells << endl;
         Info << "Triangulation: "
              << triangulations[0][triangulationIndex] << " "
              << triangulations[1][triangulationIndex] << " "
@@ -2440,15 +2445,18 @@ void Foam::dynamicTopoFvMesh::swap32
         facesForRemoval[faceI] 
             = hullFaces[triangulations[faceI][triangulationIndex]];
 
+        label own = owner_[facesForRemoval[faceI]];
+        label nei = neighbour_[facesForRemoval[faceI]];
+
         // Check and add cells as well
-        if (!cellsForRemoval.found(owner_[facesForRemoval[faceI]]))
+        if (!cellsForRemoval.found(own))
         {
-            cellsForRemoval.insert(owner_[facesForRemoval[faceI]]);
+            cellsForRemoval.insert(own);
         }
 
-        if (!cellsForRemoval.found(neighbour_[facesForRemoval[faceI]]))
+        if (!cellsForRemoval.found(nei) && nei != -1)
         {
-            cellsForRemoval.insert(neighbour_[facesForRemoval[faceI]]);
+            cellsForRemoval.insert(nei);
         }
     }
 
@@ -2464,12 +2472,14 @@ void Foam::dynamicTopoFvMesh::swap32
     // Update length-scale info
     if (edgeModification_)
     {
-        scalar avgScale =
-        (
-             lengthScale_[cellRemovalList[0]]
-           + lengthScale_[cellRemovalList[1]]
-           + lengthScale_[cellRemovalList[2]]
-        )/3.0;
+        scalar avgScale = 0.0;
+
+        forAll(cellRemovalList, cellI)
+        {
+            avgScale += lengthScale_[cellRemovalList[cellI]];
+        }
+        
+        avgScale /= cellRemovalList.size();
 
         lengthScale_.append(avgScale);
         lengthScale_.append(avgScale);
@@ -2518,7 +2528,9 @@ void Foam::dynamicTopoFvMesh::swap32
     if (edgePatch > -1)
     {
         // Temporary local variables
+        label nBE0 = 0, nBE1 = 0;
         label otherPoint = -1, nextPoint = -1, facePatch = -1;
+        FixedList<label,2> bdyEdges0(-1), bdyEdges1(-1);
         face newBdyTriFace0(3), newBdyTriFace1(3);
         edge newEdge(-1, -1);
 
@@ -2565,6 +2577,7 @@ void Foam::dynamicTopoFvMesh::swap32
                     )
                     {
                         bdyFaceEdges[0][nBE[0]++] = fEdges[edgeI];
+                        bdyEdges0[nBE0++] = fEdges[edgeI];
                     }
 
                     if
@@ -2574,6 +2587,7 @@ void Foam::dynamicTopoFvMesh::swap32
                     )
                     {
                         bdyFaceEdges[1][nBE[1]++] = fEdges[edgeI];
+                        bdyEdges1[nBE1++] = fEdges[edgeI];
                     }
                 }
             }
@@ -2612,6 +2626,13 @@ void Foam::dynamicTopoFvMesh::swap32
         newFaceEdges[nE++] = newEdgeIndex;
         bdyFaceEdges[0][nBE[0]++] = newEdgeIndex;
         bdyFaceEdges[1][nBE[1]++] = newEdgeIndex;
+
+        // Update edgeFaces with the two new faces
+        forAll(bdyEdges0, edgeI)
+        {
+            sizeUpList(newBdyFaceIndex[0], edgeFaces_[bdyEdges0[edgeI]]);
+            sizeUpList(newBdyFaceIndex[1], edgeFaces_[bdyEdges1[edgeI]]);
+        }
     }
 
     newTetCell0[nF0++] = newFaceIndex;
@@ -4498,18 +4519,14 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
         //== Edge Collapse ==//
         if(length < mesh->ratioMin()*scale)
         {
-            // Collapse this edge
-            bool success = mesh->collapseEdge(eIndex);
-
             // Increment the iterator to move on to the next edge...
             eIter++;
 
-            // The edge can safely be deleted, since the iterator points
-            // to the next valid edge on the list.
+            // Collapse this edge
+            bool success = mesh->collapseEdge(eIndex);
+
             if (success)
             {
-                mesh->removeEdge(eIndex);
-
                 // Set the flag
                 mesh->topoChangeFlag() = true;
             }
@@ -7020,6 +7037,9 @@ void Foam::dynamicTopoFvMesh::bisectEdge
                  << " edgeFaces:: " << edgeFaces_[addedEdgeIndices[edgeI]]
                  << endl;
         }
+
+        Info << "New Point:: " << newPointIndex << endl;
+        Info << "pointEdges:: " << pointEdges_[newPointIndex] << endl;
     }
 #   endif
 }
@@ -7148,6 +7168,20 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         Info << "Edges: " << edgeHull << endl;
         Info << "Faces: " << faceHull << endl;
         Info << "Cells: " << cellHull << endl;
+        Info << "replacePoint: " << replacePoint << endl;
+        Info << "collapsePoint: " << collapsePoint << endl;
+        Info << "hullEdgesAndFaces (removed faces): "
+             << hullEdgesAndFaces[removeFaceIndex]
+             << endl;
+        Info << "hullEdgesAndFaces (removed edges): "
+             << hullEdgesAndFaces[removeEdgeIndex]
+             << endl;
+        Info << "hullEdgesAndFaces (replaced faces): "
+             << hullEdgesAndFaces[replaceFaceIndex]
+             << endl;
+        Info << "hullEdgesAndFaces (replaced edges): "
+             << hullEdgesAndFaces[replaceEdgeIndex]
+             << endl;
     }
 #   endif
 
@@ -7226,50 +7260,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         }
     }
 
-    // Loop through pointEdges for the collapsePoint,
-    // and replace all occurrences with replacePoint
-    labelList& pEdges = pointEdges_[collapsePoint];
-
-    forAll(pEdges, edgeI)
-    {
-        // Renumber edges
-        edge& edgeToCheck = edges_[pEdges[edgeI]];
-        labelList& eFaces = edgeFaces_[pEdges[edgeI]];
-
-        if (edgeToCheck[0] == collapsePoint)
-        {
-            edgeToCheck[0] = replacePoint;
-        }
-        else
-        if (edgeToCheck[1] == collapsePoint)
-        {
-            edgeToCheck[1] = replacePoint;
-        }
-        else
-        {
-            // Looks like pointEdges is inconsistent
-            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()") << nl
-                << "pointEdges is inconsistent." << nl
-                << "Point: " << collapsePoint << nl
-                << "pointEdges: " << pEdges << nl
-                << abort(FatalError);
-        }
-
-        // Loop through faces associated with this edge,
-        // and renumber them as well.
-        label replaceIndex = -1;
-        forAll(eFaces, faceI)
-        {
-            face& faceToCheck = faces_[eFaces[faceI]];
-
-            if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
-            {
-                faceToCheck[replaceIndex] = replacePoint;
-            }
-        }
-    }
-
-    // Remove all hull faces and edges
+    // Renumber all hull faces and edges
     forAll(faceHull, indexI)
     {
         // Loop through all faces of the edge to be removed
@@ -7300,6 +7291,12 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
             // Avoid hull faces
             if (rmvEdgeFaces[faceI] == faceHull[indexI])
             {
+                sizeDownList
+                (
+                    faceHull[indexI],
+                    rplEdgeFaces
+                );
+
                 continue;
             }
 
@@ -7365,6 +7362,17 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
                     // Keep orientation intact, and update the neighbour
                     neighbour_[replaceFace] = neighbour_[faceToRemove];
                 }
+
+                // Update the cell
+                if (neighbour_[faceToRemove] != -1)
+                {
+                    replaceLabel
+                    (
+                        faceToRemove,
+                        replaceFace,
+                        cells_[neighbour_[faceToRemove]]
+                    );
+                }
             }
             else
             {
@@ -7388,8 +7396,30 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
                     // Keep orientation intact, and update the owner
                     owner_[replaceFace] = owner_[faceToRemove];
                 }
-            }
 
+                // Update the cell
+                if (owner_[faceToRemove] != -1)
+                {
+                    replaceLabel
+                    (
+                        faceToRemove,
+                        replaceFace,
+                        cells_[owner_[faceToRemove]]
+                    );
+                }
+            }
+        }
+    }
+
+    // Remove all hull entities
+    forAll(faceHull, indexI)
+    {
+        label edgeToRemove = hullEdgesAndFaces[removeEdgeIndex][indexI];
+        label faceToRemove = hullEdgesAndFaces[removeFaceIndex][indexI];
+        label cellToRemove = cellHull[indexI];
+
+        if (cellToRemove != -1)
+        {
             // Remove faceToRemove and associated faceEdges
             removeFace(faceToRemove);
             faceEdges_.remove(faceToRemove);
@@ -7415,8 +7445,57 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         faceEdges_.remove(faceHull[indexI]);
     }
 
+    // Loop through pointEdges for the collapsePoint,
+    // and replace all occurrences with replacePoint
+    labelList& pEdges = pointEdges_[collapsePoint];
+
+    forAll(pEdges, edgeI)
+    {
+        // Renumber edges
+        edge& edgeToCheck = edges_[pEdges[edgeI]];
+        labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+
+        if (pEdges[edgeI] != eIndex)
+        {
+            if (edgeToCheck[0] == collapsePoint)
+            {
+                edgeToCheck[0] = replacePoint;
+            }
+            else
+            if (edgeToCheck[1] == collapsePoint)
+            {
+                edgeToCheck[1] = replacePoint;
+            }
+            else
+            {
+                // Looks like pointEdges is inconsistent
+                FatalErrorIn("dynamicTopoFvMesh::collapseEdge()") << nl
+                    << "pointEdges is inconsistent." << nl
+                    << "Point: " << collapsePoint << nl
+                    << "pointEdges: " << pEdges << nl
+                    << abort(FatalError);
+            }
+
+            // Loop through faces associated with this edge,
+            // and renumber them as well.
+            label replaceIndex = -1;
+            forAll(eFaces, faceI)
+            {
+                face& faceToCheck = faces_[eFaces[faceI]];
+
+                if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
+                {
+                    faceToCheck[replaceIndex] = replacePoint;
+                }
+            }
+        }
+    }
+
     // Move to the new point
     meshPoints_[replacePoint] = newPoint;
+
+    // Remove the edge
+    removeEdge(eIndex);
 
     // Remove the collapse point
     meshPoints_.remove(collapsePoint);
