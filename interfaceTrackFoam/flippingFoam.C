@@ -61,7 +61,8 @@ void rotatePoints
     // Find the patch
     forAll (mesh.boundary(), patchI)
     {
-        if(mesh.boundary()[patchI].name() == patchName) {
+        if(mesh.boundary()[patchI].name() == patchName)
+        {
             patchID = patchI;
             break;
         }
@@ -128,7 +129,9 @@ int main(int argc, char *argv[])
                     )            
                  );
 
-    word patchName(rotationParams.lookup("patchName"));
+    dictionary patchNames(rotationParams.subDict("patchNames"));
+    wordList toc = patchNames.toc();
+
     vector p1(rotationParams.lookup("axisPointStart"));
     vector p2(rotationParams.lookup("axisPointEnd"));
     vector t(rotationParams.lookup("translation"));
@@ -143,10 +146,14 @@ int main(int argc, char *argv[])
     for (runTime++; !runTime.end(); runTime++)
     {    
         Info << "Time = " << runTime.value() << endl << endl;
+
+        p1 += t; p2 += t;
         
         // Update boundary points and move them
-        rotatePoints(mesh, patchName, angle, p1, p2, t);
-        p1 += t; p2 += t;
+        forAll(toc, wordI)
+        {
+            rotatePoints(mesh, toc[wordI], angle, p1, p2, t);
+        }
         
         // Update mesh (Solve for motion and topology)        
         mesh.updateMotion();        

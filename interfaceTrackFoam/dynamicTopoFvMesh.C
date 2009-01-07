@@ -220,6 +220,29 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
             << abort(FatalError);
         }
 
+        // Check if swapping is to be avoided on any patches
+        if (dict_.subDict("dynamicTopoFvMesh").found("noSwapPatches"))
+        {
+            wordList noSwapPatches =
+                dict_.subDict
+                (
+                    "dynamicTopoFvMesh"
+                ).subDict("noSwapPatches").toc();
+
+            forAll(noSwapPatches, wordI)
+            {
+                word& patchName = noSwapPatches[wordI];
+
+                forAll(boundaryMesh(), patchI)
+                {
+                    if (boundaryMesh()[patchI].name() == patchName)
+                    {
+                        noSwapPatchIDs_.insert(patchI);
+                    }
+                }
+            }
+        }
+
         // Check if a limit has been imposed on maxTetsPerEdge
         if (dict_.subDict("dynamicTopoFvMesh").found("maxTetsPerEdge"))
         {
@@ -1623,6 +1646,17 @@ inline void Foam::dynamicTopoFvMesh::constructVertexRing
         // Info << "Faces: " << hullFaces << endl;
         // Info << "Cells: " << hullCells << endl;
     }
+    if (minQuality < 0)
+    {
+        // Something's terribly wrong
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::constructVertexRing(...)"
+        )
+        << " Detected negative cell-quality! " << nl
+        << " Not a valid tetrahedral mesh. "
+        << abort(FatalError);
+    }
 #   endif
 
     // Shrink all dynamic lists
@@ -1635,9 +1669,18 @@ inline void Foam::dynamicTopoFvMesh::constructVertexRing
 inline bool Foam::dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
 {
     // Internal edges don't count
-    if (whichEdgePatch(eIndex) < 0)
+    label edgePatch = -1;
+    if ((edgePatch = whichEdgePatch(eIndex)) < 0)
     {
         return false;
+    }
+    else
+    {
+        // Check whether this edge shouldn't be swapped
+        if (noSwapPatchIDs_.found(edgePatch))
+        {
+            return true;
+        }
     }
 
     // Check if two boundary faces lie on different face-patches
@@ -1956,6 +1999,11 @@ label Foam::dynamicTopoFvMesh::identify32Swap
         );
 
         if (curHit.hit())
+        {
+            return i;
+        }
+        else
+        if (curHit.eligibleMiss())
         {
             return i;
         }

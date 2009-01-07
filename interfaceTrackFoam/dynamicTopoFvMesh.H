@@ -82,6 +82,10 @@ class dynamicTopoFvMesh
         
         //- Sub-dictionary which specifies fixed length-scales for patches
         dictionary fixedLengthScalePatches_;
+
+        //- List of noSwap patch IDs (which specifies patches on
+        //  which 2-2 swaps are to be avoided)
+        labelHashSet noSwapPatchIDs_;
         
         //- Should the mesh solve for motion on update?
         Switch solveForMotion_;
