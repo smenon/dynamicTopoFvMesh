@@ -1631,6 +1631,46 @@ inline void Foam::dynamicTopoFvMesh::constructVertexRing
     hullCells.shrink();
 }
 
+// Check whether the given edge is on a bounding curve
+inline bool Foam::dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
+{
+    // Internal edges don't count
+    if (whichEdgePatch(eIndex) < 0)
+    {
+        return false;
+    }
+
+    // Check if two boundary faces lie on different face-patches
+    label fPatch, firstPatch = -1, secondPatch = -1;
+    labelList& edgeFaces = edgeFaces_[eIndex];
+    forAll(edgeFaces, faceI)
+    {
+        if
+        (
+            (fPatch = whichPatch(edgeFaces[faceI])) > -1
+        )
+        {
+            if (firstPatch == -1)
+            {
+                firstPatch = fPatch;
+            }
+            else
+            {
+                secondPatch = fPatch;
+                break;
+            }
+        }
+    }
+
+    if (firstPatch != secondPatch)
+    {
+        return true;
+    }
+
+    // Not on a bounding curve
+    return false;
+}
+
 // Allocate dynamic programming tables
 inline void Foam::dynamicTopoFvMesh::initTables
 (
@@ -4523,6 +4563,13 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
 
         // Reference to this edge...
         edge& thisEdge = eIter();
+
+        // Check if this edge is on a bounding curve
+        if (mesh->checkBoundingCurve(eIndex))
+        {
+            eIter++;
+            continue;
+        }
 
         // Obtain a ring of vertices around this edge
         mesh->constructVertexRing

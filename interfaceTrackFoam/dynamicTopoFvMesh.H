@@ -449,6 +449,9 @@ class dynamicTopoFvMesh
             bool requiresQuality
         );
 
+        // Check whether the given edge is on a bounding curve
+        inline bool checkBoundingCurve(label eIndex);
+
         // Allocate dynamic programming tables
         inline void initTables
         (
