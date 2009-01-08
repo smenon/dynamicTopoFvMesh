@@ -53,13 +53,13 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         IOobject
         (
             "dynamicMeshDict",
-            this->time().constant(),
+            polyMesh::time().constant(),
             (*this),
             IOobject::MUST_READ,
             IOobject::NO_WRITE
         )
     ),
-    twoDMesh_(this->nGeometricD() == 2 ? true : false),
+    twoDMesh_(polyMesh::nGeometricD() == 2 ? true : false),
     edgeModification_
     (
         dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")
@@ -74,6 +74,78 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     owner_(polyMesh::allOwner()),
     neighbour_(polyMesh::allNeighbour()),
     cells_(primitiveMesh::cells()),
+    IOedges_
+    (
+        IOobject
+        (
+            "edges",
+            time().findInstance(meshDir(), "faces"),
+            meshSubDir,
+            *this,
+            IOobject::READ_IF_PRESENT,
+            IOobject::NO_WRITE
+        )
+    ),
+    IOpointEdges_
+    (
+        IOobject
+        (
+            "pointEdges",
+            time().findInstance(meshDir(), "faces"),
+            meshSubDir,
+            *this,
+            IOobject::READ_IF_PRESENT,
+            IOobject::NO_WRITE
+        )
+    ),
+    IOedgeFaces_
+    (
+        IOobject
+        (
+            "edgeFaces",
+            time().findInstance(meshDir(), "faces"),
+            meshSubDir,
+            *this,
+            IOobject::READ_IF_PRESENT,
+            IOobject::NO_WRITE
+        )
+    ),
+    IOfaceEdges_
+    (
+        IOobject
+        (
+            "faceEdges",
+            time().findInstance(meshDir(), "faces"),
+            meshSubDir,
+            *this,
+            IOobject::READ_IF_PRESENT,
+            IOobject::NO_WRITE
+        )
+    ),
+    IOedgePatchStarts_
+    (
+        IOobject
+        (
+            "edgePatchStarts",
+            time().findInstance(meshDir(), "faces"),
+            meshSubDir,
+            *this,
+            IOobject::READ_IF_PRESENT,
+            IOobject::NO_WRITE
+        )
+    ),
+    IOedgePatchSizes_
+    (
+        IOobject
+        (
+            "edgePatchSizes",
+            time().findInstance(meshDir(), "faces"),
+            meshSubDir,
+            *this,
+            IOobject::READ_IF_PRESENT,
+            IOobject::NO_WRITE
+        )
+    ),
     oldPatchSizes_(numPatches_,0),
     patchSizes_(numPatches_,0),
     oldPatchStarts_(numPatches_,-1),
@@ -86,8 +158,8 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     patchNMeshPoints_(numPatches_,-1),
     nOldPoints_(primitiveMesh::nPoints()),
     nPoints_(primitiveMesh::nPoints()),
-    nOldEdges_(primitiveMesh::nEdges()),
-    nEdges_(primitiveMesh::nEdges()),
+    nOldEdges_(0),
+    nEdges_(0),
     nOldFaces_(primitiveMesh::nFaces()),
     nFaces_(primitiveMesh::nFaces()),
     nOldCells_(primitiveMesh::nCells()),
@@ -151,7 +223,6 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 
     // Set sizes for the reverse maps
     reversePointMap_.setSize(nPoints_);
-    reverseEdgeMap_.setSize(nEdges_);
     reverseFaceMap_.setSize(nFaces_);
     reverseCellMap_.setSize(nCells_);
 
@@ -303,7 +374,6 @@ Foam::dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct()
     nThreads_ = threadID_ = -1;
     pointStart_ = edgeStart_ = faceStart_ = cellStart_ = 0;
     pointSize_  = edgeSize_ = faceSize_  = cellSize_  = 0;
-    internalEdgeStart_ = internalEdgeSize_ = 0;
 }
 
 // Point start iterator
@@ -3799,7 +3869,6 @@ void Foam::dynamicTopoFvMesh::reOrderMesh
 {
     // Allocate for the mapping information
     pointMap_.setSize(nPoints_, -1);
-    edgeMap_.setSize(nEdges_, -1);
     faceMap_.setSize(nFaces_, -1);
     cellMap_.setSize(nCells_, -1);
 
@@ -3847,8 +3916,59 @@ void Foam::dynamicTopoFvMesh::reOrderMesh
     if (!twoDMesh_)
     {
         if (debug) Info << "ReOrdering edges..." << endl;
+        edgeMap_.setSize(nEdges_, -1);
         reOrderEdges();
+        setEdgeConnectivity();
     }
+}
+
+// Copy edge-based connectivity from HashLists
+void Foam::dynamicTopoFvMesh::setEdgeConnectivity()
+{
+    IOedges_.setSize(nEdges_);
+    forAllIter(HashList<edge>::iterator, edges_, eIter)
+    {
+        IOedges_[eIter.index()] = eIter();
+    }
+
+    IOpointEdges_.setSize(nPoints_);
+    forAllIter(HashList<labelList>::iterator, pointEdges_, peIter)
+    {
+        IOpointEdges_[peIter.index()] = peIter();
+    }
+
+    IOedgeFaces_.setSize(nEdges_);
+    forAllIter(HashList<labelList>::iterator, edgeFaces_, efIter)
+    {
+        IOedgeFaces_[efIter.index()] = efIter();
+    }
+
+    IOfaceEdges_.setSize(nFaces_);
+    forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
+    {
+        IOfaceEdges_[feIter.index()] = feIter();
+    }
+
+    IOedgePatchSizes_ = edgePatchSizes_;
+    IOedgePatchStarts_ = edgePatchStarts_;
+
+    IOedges_.writeOpt() = IOobject::AUTO_WRITE;
+    IOedges_.instance() = time().timeName();
+
+    IOpointEdges_.writeOpt() = IOobject::AUTO_WRITE;
+    IOpointEdges_.instance() = time().timeName();
+
+    IOedgeFaces_.writeOpt() = IOobject::AUTO_WRITE;
+    IOedgeFaces_.instance() = time().timeName();
+
+    IOfaceEdges_.writeOpt() = IOobject::AUTO_WRITE;
+    IOfaceEdges_.instance() = time().timeName();
+
+    IOedgePatchSizes_.writeOpt() = IOobject::AUTO_WRITE;
+    IOedgePatchSizes_.instance() = time().timeName();
+
+    IOedgePatchStarts_.writeOpt() = IOobject::AUTO_WRITE;
+    IOedgePatchStarts_.instance() = time().timeName();
 }
 
 // Calculate the edge length-scale for the mesh
@@ -4294,92 +4414,134 @@ void Foam::dynamicTopoFvMesh::initLengthScale()
 // Initialize edge related connectivity lists
 void Foam::dynamicTopoFvMesh::initEdges()
 {
-    // Obtain connectivity from primitive mesh
-    const edgeList& edges = primitiveMesh::edges();
-    const labelListList& pEdges = primitiveMesh::pointEdges();
-    const labelListList& fEdges = primitiveMesh::faceEdges();
-    const labelListList& eFaces = primitiveMesh::edgeFaces();
-
-    // Allocate lists for re-ordering
-    labelList edgePatch(nEdges_, -1);
-
-    // Edge-patches are the same as faces
-    for(label i = nInternalFaces_; i < nFaces_; i++)
+    if (IOedges_.headerOk())
     {
-        const labelList& fEdge = fEdges[i];
-        forAll(fEdge, edgeI)
+        // Connectivity is already read in from disk, so copy to HashLists.
+        forAll(IOedges_, edgeI)
         {
-            edgePatch[fEdge[edgeI]] = whichPatch(i);
-        }
-    }
-
-    // Loop through edgePatch and renumber internal edges
-    forAll(edgePatch, edgeI)
-    {
-        if (edgePatch[edgeI] == -1)
-        {
-            reverseEdgeMap_[edgeI] = nInternalEdges_++;
-        }
-        else
-        {
-            edgePatchSizes_[edgePatch[edgeI]]++;
-        }
-    }
-
-    // Calculate patch-starts
-    label startCount = nInternalEdges_;
-    forAll(edgePatchStarts_, patchI)
-    {
-        edgePatchStarts_[patchI] = startCount;
-        startCount += edgePatchSizes_[patchI];
-    }
-
-    // Now renumber boundary edges
-    labelList patchCount(edgePatchStarts_);
-    forAll(edgePatch, edgeI)
-    {
-        if (edgePatch[edgeI] >= 0)
-        {
-            reverseEdgeMap_[edgeI] = patchCount[edgePatch[edgeI]]++;
-        }
-    }
-
-    // Renumber and fill in faceEdges
-    forAll(fEdges, faceI)
-    {
-        const labelList& fEdge = fEdges[faceI];
-        labelList renumberFaceEdge(fEdge.size(),-1);
-
-        forAll(fEdge, edgeI)
-        {
-            renumberFaceEdge[edgeI] = reverseEdgeMap_[fEdge[edgeI]];
+            edges_.append(IOedges_[edgeI]);
         }
 
-        faceEdges_.append(renumberFaceEdge);
-    }
-
-    // Renumber and fill in pointEdges
-    forAll(pEdges, pointI)
-    {
-        const labelList& pEdge = pEdges[pointI];
-        labelList renumberPointEdges(pEdge.size(), -1);
-
-        forAll(pEdge, edgeI)
+        forAll(IOpointEdges_, pointI)
         {
-            renumberPointEdges[edgeI] = reverseEdgeMap_[pEdge[edgeI]];
+            pointEdges_.append(IOpointEdges_[pointI]);
         }
 
-        pointEdges_.append(renumberPointEdges);
+        forAll(IOedgeFaces_, edgeI)
+        {
+            edgeFaces_.append(IOedgeFaces_[edgeI]);
+        }
+
+        forAll(IOfaceEdges_, faceI)
+        {
+            faceEdges_.append(IOfaceEdges_[faceI]);
+        }
+
+        edgePatchSizes_ = IOedgePatchSizes_;
+        edgePatchStarts_ = IOedgePatchStarts_;
+
+        // Obtain nEdges_ and nInternalEdges_ from patches and set sizes
+        label lastPatch = numPatches_-1;
+        nEdges_ = edgePatchStarts_[lastPatch] + edgePatchSizes_[lastPatch];
+        nInternalEdges_ = edgePatchStarts_[0];
+        reverseEdgeMap_.setSize(nEdges_);
     }
-
-    // Renumber and fill in edges and edgeFaces
-    edges_.setSize(nEdges_, edge(-1,-1));
-    edgeFaces_.setSize(nEdges_, labelList(0));
-
-    forAll(edges, edgeI)
+    else
     {
-        edges_[reverseEdgeMap_[edgeI]] = edges[edgeI];
-        edgeFaces_[reverseEdgeMap_[edgeI]] = eFaces[edgeI];
+        // Set sizes first.
+        nEdges_ = primitiveMesh::nEdges();
+        reverseEdgeMap_.setSize(nEdges_);
+
+        // Obtain connectivity from primitive mesh
+        const edgeList& edges = primitiveMesh::edges();
+        const labelListList& pEdges = primitiveMesh::pointEdges();
+        const labelListList& fEdges = primitiveMesh::faceEdges();
+        const labelListList& eFaces = primitiveMesh::edgeFaces();
+
+        // Allocate lists for re-ordering
+        labelList edgePatch(nEdges_, -1);
+
+        // Edge-patches are the same as faces
+        for(label i = nInternalFaces_; i < nFaces_; i++)
+        {
+            const labelList& fEdge = fEdges[i];
+            forAll(fEdge, edgeI)
+            {
+                edgePatch[fEdge[edgeI]] = whichPatch(i);
+            }
+        }
+
+        // Loop through edgePatch and renumber internal edges
+        forAll(edgePatch, edgeI)
+        {
+            if (edgePatch[edgeI] == -1)
+            {
+                reverseEdgeMap_[edgeI] = nInternalEdges_++;
+            }
+            else
+            {
+                edgePatchSizes_[edgePatch[edgeI]]++;
+            }
+        }
+
+        // Calculate patch-starts
+        label startCount = nInternalEdges_;
+        forAll(edgePatchStarts_, patchI)
+        {
+            edgePatchStarts_[patchI] = startCount;
+            startCount += edgePatchSizes_[patchI];
+        }
+
+        // Now renumber boundary edges
+        labelList patchCount(edgePatchStarts_);
+        forAll(edgePatch, edgeI)
+        {
+            if (edgePatch[edgeI] >= 0)
+            {
+                reverseEdgeMap_[edgeI] = patchCount[edgePatch[edgeI]]++;
+            }
+        }
+
+        // Renumber and fill in faceEdges
+        forAll(fEdges, faceI)
+        {
+            const labelList& fEdge = fEdges[faceI];
+            labelList renumberFaceEdge(fEdge.size(),-1);
+
+            forAll(fEdge, edgeI)
+            {
+                renumberFaceEdge[edgeI] = reverseEdgeMap_[fEdge[edgeI]];
+            }
+
+            faceEdges_.append(renumberFaceEdge);
+        }
+
+        // Renumber and fill in pointEdges
+        forAll(pEdges, pointI)
+        {
+            const labelList& pEdge = pEdges[pointI];
+            labelList renumberPointEdges(pEdge.size(), -1);
+
+            forAll(pEdge, edgeI)
+            {
+                renumberPointEdges[edgeI] = reverseEdgeMap_[pEdge[edgeI]];
+            }
+
+            pointEdges_.append(renumberPointEdges);
+        }
+
+        // Renumber and fill in edges and edgeFaces
+        edges_.setSize(nEdges_, edge(-1,-1));
+        edgeFaces_.setSize(nEdges_, labelList(0));
+
+        forAll(edges, edgeI)
+        {
+            edges_[reverseEdgeMap_[edgeI]] = edges[edgeI];
+            edgeFaces_[reverseEdgeMap_[edgeI]] = eFaces[edgeI];
+        }
+        
+        // Now that connectivity is constructed, copy and set the output-option
+        setEdgeConnectivity();
     }
 }
 
@@ -7405,18 +7567,37 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
         Info << "Cells: " << cellHull << endl;
         Info << "replacePoint: " << replacePoint << endl;
         Info << "collapsePoint: " << collapsePoint << endl;
-        Info << "hullEdgesAndFaces (removed faces): "
-             << hullEdgesAndFaces[removeFaceIndex]
-             << endl;
-        Info << "hullEdgesAndFaces (removed edges): "
-             << hullEdgesAndFaces[removeEdgeIndex]
-             << endl;
-        Info << "hullEdgesAndFaces (replaced faces): "
-             << hullEdgesAndFaces[replaceFaceIndex]
-             << endl;
-        Info << "hullEdgesAndFaces (replaced edges): "
-             << hullEdgesAndFaces[replaceEdgeIndex]
-             << endl;
+        Info << "hullEdgesAndFaces (removed faces): " << endl;
+        forAll(hullEdgesAndFaces[removeFaceIndex], faceI)
+        {
+            Info << hullEdgesAndFaces[removeFaceIndex][faceI] << ": "
+                 << faces_[hullEdgesAndFaces[removeFaceIndex][faceI]] << endl;
+        }
+        Info << "hullEdgesAndFaces (removed edges): " << endl;
+        forAll(hullEdgesAndFaces[removeEdgeIndex], edgeI)
+        {
+            Info << hullEdgesAndFaces[removeEdgeIndex][edgeI] << ": "
+                 << edges_[hullEdgesAndFaces[removeEdgeIndex][edgeI]] << endl;
+        }
+        Info << "hullEdgesAndFaces (replaced faces): " << endl;
+        forAll(hullEdgesAndFaces[replaceFaceIndex], faceI)
+        {
+            Info << hullEdgesAndFaces[replaceFaceIndex][faceI] << ": "
+                 << faces_[hullEdgesAndFaces[replaceFaceIndex][faceI]] << endl;
+        }
+        Info << "hullEdgesAndFaces (replaced edges): " << endl;
+        forAll(hullEdgesAndFaces[replaceEdgeIndex], edgeI)
+        {
+            Info << hullEdgesAndFaces[replaceEdgeIndex][edgeI] << ": "
+                 << edges_[hullEdgesAndFaces[replaceEdgeIndex][edgeI]] << endl;
+        }
+        labelList& collapsePointEdges = pointEdges_[collapsePoint];
+        Info << "pointEdges (collapsePoint): ";
+        forAll(collapsePointEdges, edgeI)
+        {
+            Info << collapsePointEdges[edgeI] << " ";
+        }
+        Info << endl;
     }
 #   endif
 
@@ -8014,7 +8195,6 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
     label edgesPerBlock  = (nEdges_/numThreads) + 1;
     label facesPerBlock  = (nFaces_/numThreads) + 1;
     label cellsPerBlock  = (nCells_/numThreads) + 1;
-    label iEdgesPerBlock = (nInternalEdges_/numThreads) + 1;
 
     // Information for the master thread
     if (numThreads == 1)
@@ -8023,7 +8203,6 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
         structPtr_[0].edgeSize_   = edgesPerBlock - 1;
         structPtr_[0].faceSize_   = facesPerBlock - 1;
         structPtr_[0].cellSize_   = cellsPerBlock - 1;
-        structPtr_[0].internalEdgeSize_ = iEdgesPerBlock - 1;
     }
     else
     {
@@ -8031,20 +8210,17 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
         structPtr_[0].edgeSize_   = edgesPerBlock;
         structPtr_[0].faceSize_   = facesPerBlock;
         structPtr_[0].cellSize_   = cellsPerBlock;
-        structPtr_[0].internalEdgeSize_ = iEdgesPerBlock;
     }
 
     // Information for all subsequent threads
     label pointsLeft = nPoints_, edgesLeft = nEdges_;
     label facesLeft = nFaces_, cellsLeft = nCells_;
-    label iEdgesLeft = nInternalEdges_;
     for (label i = 1; i < numThreads; i++)
     {
         pointsLeft -= pointsPerBlock;
         edgesLeft -= edgesPerBlock;
         facesLeft -= facesPerBlock;
         cellsLeft -= cellsPerBlock;
-        iEdgesLeft -= iEdgesPerBlock;
 
         structPtr_[i].pointStart_ =
             structPtr_[i-1].pointStart_ + structPtr_[i-1].pointSize_;
@@ -8054,9 +8230,6 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
             structPtr_[i-1].faceStart_ + structPtr_[i-1].faceSize_;
         structPtr_[i].cellStart_ =
             structPtr_[i-1].cellStart_ + structPtr_[i-1].cellSize_;
-        structPtr_[i].internalEdgeStart_ =
-            structPtr_[i-1].internalEdgeStart_
-          + structPtr_[i-1].internalEdgeSize_;
 
         structPtr_[i].pointSize_ =
             (pointsLeft < pointsPerBlock) ? pointsLeft : pointsPerBlock;
@@ -8066,8 +8239,6 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
             (facesLeft < facesPerBlock) ? facesLeft : facesPerBlock;
         structPtr_[i].cellSize_ =
             (cellsLeft < cellsPerBlock) ? cellsLeft : cellsPerBlock;
-        structPtr_[i].internalEdgeSize_ =
-            (iEdgesLeft < iEdgesPerBlock) ? iEdgesLeft : iEdgesPerBlock;
     }
 }
 
@@ -8491,12 +8662,5 @@ void Foam::dynamicTopoFvMesh::operator=(const dynamicTopoFvMesh& rhs)
             << abort(FatalError);
     }
 }
-
-
-// * * * * * * * * * * * * * * * Friend Functions  * * * * * * * * * * * * * //
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
 
 // ************************************************************************* //

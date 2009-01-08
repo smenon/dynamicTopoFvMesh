@@ -103,9 +103,17 @@ class dynamicTopoFvMesh
         HashList<label> neighbour_;
         HashList<cell>  cells_;
         HashList<edge>  edges_;
+        HashList<labelList> pointEdges_;
         HashList<labelList> edgeFaces_;
         HashList<labelList> faceEdges_;
-        HashList<labelList> pointEdges_;
+
+        //- Up-to-date edge connectivity information (with IO support)
+        IOList<edge>        IOedges_;
+        IOList<labelList>   IOpointEdges_;
+        IOList<labelList>   IOedgeFaces_;
+        IOList<labelList>   IOfaceEdges_;
+        IOList<label>       IOedgePatchStarts_;
+        IOList<label>       IOedgePatchSizes_;
         
         //- Size information
         labelList       oldPatchSizes_, patchSizes_;
@@ -175,7 +183,6 @@ class dynamicTopoFvMesh
             // Entity start positions & sizes
             label pointStart_, edgeStart_, faceStart_, cellStart_;
             label pointSize_, edgeSize_, faceSize_, cellSize_;
-            label internalEdgeStart_, internalEdgeSize_;
             
             // Default constructor
             topoMeshStruct();
@@ -575,6 +582,9 @@ class dynamicTopoFvMesh
             labelList& owner, 
             labelList& neighbour
         );
+
+        // Copy edge-based connectivity from HashLists
+        void setEdgeConnectivity();
         
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
