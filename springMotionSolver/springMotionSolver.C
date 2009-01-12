@@ -43,10 +43,13 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::springMotionSolver::springMotionSolver(const polyMesh& mesh)
+Foam::springMotionSolver::springMotionSolver
+(
+    const polyMesh& mesh
+)
 :
     motionSolver(mesh),
-    polyMesh_(mesh),
+    Mesh_(mesh),
     refPoints_
     (
         IOobject
@@ -64,16 +67,21 @@ Foam::springMotionSolver::springMotionSolver(const polyMesh& mesh)
     fixedY_(0.0)
 {
     // Check if points on certain axes need to be maintained
-    if (found("fixedY")) {
+    if (found("fixedY"))
+    {
         fixedY_ = readScalar(lookup("fixedY"));
     }
 }
 
 
-Foam::springMotionSolver::springMotionSolver(const polyMesh& mesh, Istream& msData)
+Foam::springMotionSolver::springMotionSolver
+(
+    const polyMesh& mesh,
+    Istream& msData
+)
 :
     motionSolver(mesh),
-    polyMesh_(mesh),
+    Mesh_(mesh),
     refPoints_
     (
         IOobject
@@ -141,80 +149,116 @@ Foam::label Foam::springMotionSolver::CG(const scalarField& b, scalarField& x)
 // Sparse matrix-vector multiply
 void Foam::springMotionSolver::A(const scalarField& p, scalarField& w)
 {
-    w = 0.0;
-    
-    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-    
-    // Gradient (n2e)
-    forAll(boundary[pID_].edges(),edgeI) 
+    if (twoDMotion())
     {
-        gradEdge_[edgeI] =   p[boundary[pID_].edges()[edgeI][1]] 
+        computeA2D(p,w);
+    }
+    else
+    {
+        computeA3D(p,w);
+    }
+}
+
+void Foam::springMotionSolver::computeA2D(const scalarField& p, scalarField& w)
+{
+    w = 0.0;
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    // Gradient (n2e)
+    forAll(boundary[pID_].edges(),edgeI)
+    {
+        gradEdge_[edgeI] =   p[boundary[pID_].edges()[edgeI][1]]
                            - p[boundary[pID_].edges()[edgeI][0]];
     }
-    
+
     // Divergence (e2n)
-    forAll(boundary[pID_].edges(),edgeI) 
+    forAll(boundary[pID_].edges(),edgeI)
     {
         w[boundary[pID_].edges()[edgeI][0]] += gradEdge_[edgeI];
         w[boundary[pID_].edges()[edgeI][1]] -= gradEdge_[edgeI];
     }
-    
+
     // Apply boundary conditions
-    applyBCs(w);    
+    applyBCs(w);
+}
+
+void Foam::springMotionSolver::computeA3D(const scalarField& p, scalarField& w)
+{
+
 }
 
 // Set Dirichlet conditions on the solution field (if any)
 void Foam::springMotionSolver::setDirichlet(scalarField &x)
 {
-    // For wedges, loop through boundaries, and fix y-direction on the axis
-    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-    if (boundary[pID_].type() == "wedge" && cmpt_ == 1) 
+    if (twoDMotion())
     {
-        for(label i = boundary[pID_].nInternalEdges(); 
-            i < boundary[pID_].edges().size(); 
-            i++)
+        // For wedges, loop through boundaries, and fix y-direction on the axis
+        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+        if (boundary[pID_].type() == "wedge" && cmpt_ == 1)
         {
-            if (    
-                    boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1] < (fixedY_+SMALL)
-                 && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1] < (fixedY_+SMALL)
-               )
+            for
+            (
+                label i = boundary[pID_].nInternalEdges();
+                i < boundary[pID_].edges().size();
+                i++
+            )
             {
-                // This edge lies on the axis. 
-                x[boundary[pID_].edges()[i][0]] = fixedY_;
-                x[boundary[pID_].edges()[i][1]] = fixedY_; 
-            }	    
-        }    
+                if
+                (
+                    boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1]
+                    < (fixedY_+SMALL)
+                 && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1]
+                    < (fixedY_+SMALL)
+                )
+                {
+                    // This edge lies on the axis.
+                    x[boundary[pID_].edges()[i][0]] = fixedY_;
+                    x[boundary[pID_].edges()[i][1]] = fixedY_;
+                }
+            }
+        }
     }
 }
 
 // Apply boundary conditions
 void Foam::springMotionSolver::applyBCs(scalarField &field)
 {
-    // Loop through boundary edges and blank-out residuals
-    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-    for(label i = boundary[pID_].nInternalEdges(); 
-        i < boundary[pID_].edges().size(); 
-        i++)
+    if (twoDMotion())
     {
-        // If wedge patches are present, set axis nodes to slip
-        if (boundary[pID_].type() == "wedge") 
-        {            
-            if (    
-                    boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1] < (fixedY_+SMALL)
-                 && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1] < (fixedY_+SMALL)
-               )
+        // Loop through boundary edges and blank-out residuals
+        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+        for
+        (
+            label i = boundary[pID_].nInternalEdges();
+            i < boundary[pID_].edges().size();
+            i++
+        )
+        {
+            // If wedge patches are present, set axis nodes to slip
+            if (boundary[pID_].type() == "wedge")
             {
-                // This edge lies on the axis. If the Y component is being solved for,
-                // blank out the residual.
-                if (cmpt_ == 1) {
-                    field[boundary[pID_].edges()[i][0]] = 0.0;
-                    field[boundary[pID_].edges()[i][1]] = 0.0;
+                if
+                (
+                    boundary[pID_].localPoints()[boundary[pID_].edges()[i][0]][1]
+                    < (fixedY_+SMALL)
+                 && boundary[pID_].localPoints()[boundary[pID_].edges()[i][1]][1]
+                    < (fixedY_+SMALL)
+                )
+                {
+                    // This edge lies on the axis. If the Y component is being
+                    // solved for, blank out the residual.
+                    if (cmpt_ == 1)
+                    {
+                        field[boundary[pID_].edges()[i][0]] = 0.0;
+                        field[boundary[pID_].edges()[i][1]] = 0.0;
+                    }
+                    continue;
                 }
-		continue;
             }
+            field[boundary[pID_].edges()[i][0]] = 0.0;
+            field[boundary[pID_].edges()[i][1]] = 0.0;
         }
-        field[boundary[pID_].edges()[i][0]] = 0.0;
-        field[boundary[pID_].edges()[i][1]] = 0.0;
     }
 }
 
@@ -230,16 +274,20 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
         w_.setSize(nUnknowns, 0.0);
     }
 
-    const polyBoundaryMesh& boundary = mesh().boundaryMesh();    
-    if (gradEdge_.size() != boundary[pID_].edges().size()) 
+    if (twoDMotion())
     {
-        gradEdge_.setSize(boundary[pID_].edges().size(), 0.0);
+        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+        if (gradEdge_.size() != boundary[pID_].edges().size())
+        {
+            gradEdge_.setSize(boundary[pID_].edges().size(), 0.0);
+        }
     }
 }
 
 Foam::tmp<Foam::pointField> Foam::springMotionSolver::newPoints()
 {
     solve();
+    
     return curPoints();
 }
 
@@ -254,12 +302,13 @@ Foam::springMotionSolver::curPoints() const
 
 void Foam::springMotionSolver::solve()
 {
-    if (twoDMotion()) {
+    if (twoDMotion())
+    {
         // Loop through patches, check for empty/wedge, and smooth them
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
         for(label i=0; i<boundary.size(); i++) 
         {
-            if(boundary[i].type() == "wedge" || boundary[i].type() == "empty") 
+            if (boundary[i].type() == "wedge" || boundary[i].type() == "empty")
             { 
                 pID_ = i;
                 
@@ -277,7 +326,7 @@ void Foam::springMotionSolver::solve()
                     
                     Info << "Solving for component: " << cmpt_;
                     label iters = CG(b_,x_);
-                    Info << " No Iterations: " << iters << endl;                    
+                    Info << " No Iterations: " << iters << endl;
 
                     forAll(meshPts,pointI) 
                     {
@@ -286,7 +335,7 @@ void Foam::springMotionSolver::solve()
                 }
                 
                 // Correct z-direction for wedge-patches
-                if(boundary[i].type() == "wedge")
+                if (boundary[i].type() == "wedge")
                 {
                     const wedgePolyPatch& wedgePatch = 
                         refCast<const wedgePolyPatch>(boundary[i]);                                                
@@ -303,7 +352,27 @@ void Foam::springMotionSolver::solve()
                 }
             }
         }
-    }    
+    }
+    else
+    {
+        // Initialize the solver variables
+        const pointField& points = mesh().points();
+
+        initCG(points.size());
+
+        for(cmpt_=0; cmpt_<3; cmpt_++)
+        {
+            // Copy existing point-positions
+            x_ = refPoints_.component(cmpt_);
+
+            Info << "Solving for component: " << cmpt_;
+            label iters = CG(b_,x_);
+            Info << " No Iterations: " << iters << endl;
+
+            // Update refPoints
+            refPoints_.component(cmpt_) = x_;
+        }
+    }
 }
 
 void Foam::springMotionSolver::updateMesh(const mapPolyMesh& mpm)
@@ -318,7 +387,7 @@ void Foam::springMotionSolver::updateMesh(const mapPolyMesh& mpm)
     w_.clear();  
     gradEdge_.clear();
     
-    refPoints_ = polyMesh_.points();
+    refPoints_ = Mesh_.points();
 }
 
 // ************************************************************************* //

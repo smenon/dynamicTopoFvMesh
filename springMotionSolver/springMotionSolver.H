@@ -23,10 +23,10 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    fvMotionSolver
+    springMotionSolver
 
 Description
-    Virtual base class for spring-analogy mesh motion solver.
+    Class for the spring-analogy [2D] / ball-vertex [3D] mesh motion solver.
 
 SourceFiles
     springMotionSolver.C
@@ -58,14 +58,17 @@ protected:
 
     // Protected data
 
-    //- The polyMesh to be moved
-    const polyMesh& polyMesh_;
+    //- The mesh to be moved
+    const polyMesh& Mesh_;
     
     // Reference points
     mutable pointIOField refPoints_;
     
     // Edge gradient field
     scalarField gradEdge_;
+
+    // Edge stiffness field
+    scalarField stiffness_;
     
     // Component being solved for (0,1 or 2)
     label cmpt_;
@@ -86,7 +89,13 @@ protected:
     // Protected member functions
     
     // Sparse matrix-vector multiply
-    void A(const scalarField&, scalarField&);
+    void A(const scalarField& p, scalarField& w);
+
+    // Matrix multiply [2D]
+    void computeA2D(const scalarField& p, scalarField& w);
+
+    // Matrix multiply [3D]
+    void computeA3D(const scalarField& p, scalarField& w);
     
     // Basic CG solver
     label CG(const scalarField&, scalarField&);
@@ -120,10 +129,10 @@ public:
 
     // Member Functions
 
-        //- Return reference to the fvMesh to be moved
+        //- Return reference to the mesh to be moved
         const polyMesh& mesh() const
         {
-            return polyMesh_;
+            return Mesh_;
         }
 
         //- Provide new points for motion.  Solves for motion
