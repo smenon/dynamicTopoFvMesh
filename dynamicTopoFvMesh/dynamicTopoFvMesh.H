@@ -38,22 +38,18 @@ SourceFiles
 
 #include <iomanip>
 #include "HashList.H"
-#include "fvCFD.H"
-#include "motionSolver.H"
-#include "mapPolyMesh.H"
-#include "MapFvFields.H"
-#include "tetDecompositionMotionSolver.H"
-#include "faceTetPolyPatch.H"
-#include "tetPolyPatchInterpolation.H"
-#include "MeshObject.H"
-
-// Multithreading support
-#include "multiThreader.H"
+#include "fvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
+
+// Class forward declarations
+class multiThreader;
+class mapPolyMesh;
+class objectMap;
+class motionSolver;
 
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration

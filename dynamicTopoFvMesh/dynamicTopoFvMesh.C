@@ -34,7 +34,20 @@ Author
 
 #include "dynamicTopoFvMesh.H"
 #include "dynamicTopoFvMeshMapper.H"
+#include "multiThreader.H"
+#include "tetDecompositionMotionSolver.H"
+#include "faceTetPolyPatch.H"
+#include "tetPolyPatchInterpolation.H"
+#include "motionSolver.H"
+#include "fvCFD.H"
+#include "mapPolyMesh.H"
+#include "MapFvFields.H"
+#include "MeshObject.H"
+
 #include <dlfcn.h>
+
+namespace Foam
+{
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -43,7 +56,7 @@ defineTypeNameAndDebug(dynamicTopoFvMesh,0);
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
-Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
+dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 :
     fvMesh(io),
     numPatches_(polyMesh::boundaryMesh().size()),
@@ -368,7 +381,7 @@ Foam::dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 }
 
 // Default topoMeshStruct constructor
-Foam::dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct()
+dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct()
 {
     mesh_ = 0;
     nThreads_ = threadID_ = -1;
@@ -378,14 +391,14 @@ Foam::dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct()
 
 // Point start iterator
 HashList<point>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::pointStart()
+dynamicTopoFvMesh::topoMeshStruct::pointStart()
 {
     return mesh_->meshPoints_.getIterator(pointStart_);
 }
 
 // Point end iterator
 HashList<point>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::pointEnd()
+dynamicTopoFvMesh::topoMeshStruct::pointEnd()
 {
     if (threadID_ != nThreads_ - 1)
     {
@@ -399,14 +412,14 @@ Foam::dynamicTopoFvMesh::topoMeshStruct::pointEnd()
 
 // Edge start iterator
 HashList<edge>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::edgeStart()
+dynamicTopoFvMesh::topoMeshStruct::edgeStart()
 {
     return mesh_->edges_.getIterator(edgeStart_);
 }
 
 // Edge end iterator
 HashList<edge>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::edgeEnd()
+dynamicTopoFvMesh::topoMeshStruct::edgeEnd()
 {
     if (threadID_ != nThreads_ - 1)
     {
@@ -420,14 +433,14 @@ Foam::dynamicTopoFvMesh::topoMeshStruct::edgeEnd()
 
 // Face start iterator
 HashList<face>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::faceStart()
+dynamicTopoFvMesh::topoMeshStruct::faceStart()
 {
     return mesh_->faces_.getIterator(faceStart_);
 }
 
 // Face end iterator
 HashList<face>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::faceEnd()
+dynamicTopoFvMesh::topoMeshStruct::faceEnd()
 {
     if (threadID_ != nThreads_ - 1)
     {
@@ -441,14 +454,14 @@ Foam::dynamicTopoFvMesh::topoMeshStruct::faceEnd()
 
 // Cell start iterator
 HashList<cell>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::cellStart()
+dynamicTopoFvMesh::topoMeshStruct::cellStart()
 {
     return mesh_->cells_.getIterator(cellStart_);
 }
 
 // Cell end iterator
 HashList<cell>::iterator
-Foam::dynamicTopoFvMesh::topoMeshStruct::cellEnd()
+dynamicTopoFvMesh::topoMeshStruct::cellEnd()
 {
     if (threadID_ != nThreads_ - 1)
     {
@@ -462,7 +475,7 @@ Foam::dynamicTopoFvMesh::topoMeshStruct::cellEnd()
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-Foam::dynamicTopoFvMesh::~dynamicTopoFvMesh()
+dynamicTopoFvMesh::~dynamicTopoFvMesh()
 {
     delete [] structPtr_;
 }
@@ -470,7 +483,7 @@ Foam::dynamicTopoFvMesh::~dynamicTopoFvMesh()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Access a particular boundary displacement patch
-void Foam::dynamicTopoFvMesh::setMotionBC
+void dynamicTopoFvMesh::setMotionBC
 (
     const label& index,
     const vectorField& dispField
@@ -547,13 +560,13 @@ void Foam::dynamicTopoFvMesh::setMotionBC
 }
 
 // Return the mesh-mapper
-const Foam::autoPtr<mapPolyMesh> Foam::dynamicTopoFvMesh::meshMap()
+const autoPtr<mapPolyMesh> dynamicTopoFvMesh::meshMap()
 {
     return mapper_;
 }
 
 // Return old cell-centre information (prior to a topology change)
-const Foam::vectorField& Foam::dynamicTopoFvMesh::oldCellCentres() const
+const vectorField& dynamicTopoFvMesh::oldCellCentres() const
 {
     if (cellCentresPtr_.valid())
     {
@@ -566,11 +579,11 @@ const Foam::vectorField& Foam::dynamicTopoFvMesh::oldCellCentres() const
                 << abort(FatalError);        
     }
     
-    return Foam::vectorField::null();
+    return vectorField::null();
 }
 
 // Return mesh length-scale values
-Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::lengthScale()
+tmp<volScalarField> dynamicTopoFvMesh::lengthScale()
 {
     tmp<volScalarField> tlengthScale
     (
@@ -586,7 +599,7 @@ Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::lengthScale()
             ),
             *this,
             dimensionedScalar("lScale", dimLength, 0),
-            zeroGradientFvPatchScalarField::typeName            
+            "zeroGradient"            
         )
     );
 
@@ -603,7 +616,7 @@ Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::lengthScale()
 
 // Return mesh cell-quality values
 // Valid for 3D tetrahedral meshes only...
-Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::meshQuality()
+tmp<volScalarField> dynamicTopoFvMesh::meshQuality()
 {
     tmp<volScalarField> tQuality
     (
@@ -619,7 +632,7 @@ Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::meshQuality()
             ),
             *this,
             dimensionedScalar("Q", dimless, 0),
-            zeroGradientFvPatchScalarField::typeName
+            "zeroGradient"
         )
     );
 
@@ -683,7 +696,7 @@ Foam::tmp<volScalarField> Foam::dynamicTopoFvMesh::meshQuality()
 }
 
 // Find the circumcenter, given three points
-inline Foam::vector Foam::dynamicTopoFvMesh::circumCenter
+inline vector dynamicTopoFvMesh::circumCenter
 (
     const point& a,
     const point& b,
@@ -722,7 +735,7 @@ inline Foam::vector Foam::dynamicTopoFvMesh::circumCenter
 
 // Find the area of a triangle face.
 // This function also assumes face right-handedness
-inline Foam::scalar Foam::dynamicTopoFvMesh::triFaceArea
+inline scalar dynamicTopoFvMesh::triFaceArea
 (
     const face& triFace
 )
@@ -732,7 +745,7 @@ inline Foam::scalar Foam::dynamicTopoFvMesh::triFaceArea
 
 // Find the normal of a triangle face.
 // This function also assumes face right-handedness
-inline Foam::vector Foam::dynamicTopoFvMesh::triFaceNormal
+inline vector dynamicTopoFvMesh::triFaceNormal
 (
     const face& triFace
 )
@@ -745,7 +758,7 @@ inline Foam::vector Foam::dynamicTopoFvMesh::triFaceNormal
 
 // Find the volume of a tetrahedron. This function assumes proper orientation
 // of the vertices, and will give negative values otherwise.
-inline Foam::scalar Foam::dynamicTopoFvMesh::tetVolume
+inline scalar dynamicTopoFvMesh::tetVolume
 (
     const point& a,
     const point& b,
@@ -758,7 +771,7 @@ inline Foam::scalar Foam::dynamicTopoFvMesh::tetVolume
 
 // Method to determine the old boundary patch index for a given face
 // Similar to the polyBoundaryMesh routine, but works on local information
-inline Foam::label Foam::dynamicTopoFvMesh::whichPatch
+inline label dynamicTopoFvMesh::whichPatch
 (
     const label& index
 ) const
@@ -798,7 +811,7 @@ inline Foam::label Foam::dynamicTopoFvMesh::whichPatch
 }
 
 // Method to determine the old boundary patch index for a given edge
-inline Foam::label Foam::dynamicTopoFvMesh::whichEdgePatch
+inline label dynamicTopoFvMesh::whichEdgePatch
 (
     const label& index
 ) const
@@ -839,7 +852,7 @@ inline Foam::label Foam::dynamicTopoFvMesh::whichEdgePatch
 
 // Utility method to find the interior/boundary faces
 // for an input quad-face and adjacent triangle-prism cell.
-inline void Foam::dynamicTopoFvMesh::findPrismFaces
+inline void dynamicTopoFvMesh::findPrismFaces
 (
     const label& findex,
     const cell& c,
@@ -886,7 +899,7 @@ inline void Foam::dynamicTopoFvMesh::findPrismFaces
 
 // Utility method to find the common edge between two faces.
 // If an edge is found, returns the common edge on the first face in the argument
-bool Foam::dynamicTopoFvMesh::findCommonEdge
+bool dynamicTopoFvMesh::findCommonEdge
 (
     const face& first,
     const face& second,
@@ -913,7 +926,7 @@ bool Foam::dynamicTopoFvMesh::findCommonEdge
 
 // Utility method to find the isolated point on a triangular face
 // that doesn't lie on the specified edge. Also returns the point next to it.
-inline void Foam::dynamicTopoFvMesh::findIsolatedPoint
+inline void dynamicTopoFvMesh::findIsolatedPoint
 (
     const face& f,
     const edge& e,
@@ -945,7 +958,7 @@ inline void Foam::dynamicTopoFvMesh::findIsolatedPoint
 }
 
 // Utility method to replace a label in a given list
-inline void Foam::dynamicTopoFvMesh::replaceLabel
+inline void dynamicTopoFvMesh::replaceLabel
 (
      const label& original,
      const label& replacement,
@@ -974,7 +987,7 @@ inline void Foam::dynamicTopoFvMesh::replaceLabel
 }
 
 // Utility method for face-insertion
-Foam::label Foam::dynamicTopoFvMesh::insertFace
+label dynamicTopoFvMesh::insertFace
 (
     const label patch,
     const face& newFace,
@@ -1026,7 +1039,7 @@ Foam::label Foam::dynamicTopoFvMesh::insertFace
 }
 
 // Remove the specified face from the mesh
-void Foam::dynamicTopoFvMesh::removeFace
+void dynamicTopoFvMesh::removeFace
 (
     const label index
 )
@@ -1083,7 +1096,7 @@ void Foam::dynamicTopoFvMesh::removeFace
 }
 
 // Insert the specified edge to the mesh
-label Foam::dynamicTopoFvMesh::insertEdge
+label dynamicTopoFvMesh::insertEdge
 (
     const label patch,
     const edge& newEdge,
@@ -1127,7 +1140,7 @@ label Foam::dynamicTopoFvMesh::insertEdge
 }
 
 // Remove the specified edge from the mesh
-void Foam::dynamicTopoFvMesh::removeEdge
+void dynamicTopoFvMesh::removeEdge
 (
     const label index
 )
@@ -1200,7 +1213,7 @@ void Foam::dynamicTopoFvMesh::removeEdge
 }
 
 // Utility method to size-up the list to include an item
-inline void Foam::dynamicTopoFvMesh::sizeUpList
+inline void dynamicTopoFvMesh::sizeUpList
 (
     const label item,
     labelList& list
@@ -1221,7 +1234,7 @@ inline void Foam::dynamicTopoFvMesh::sizeUpList
 }
 
 // Utility method to size-down the list to remove an item
-inline void Foam::dynamicTopoFvMesh::sizeDownList
+inline void dynamicTopoFvMesh::sizeDownList
 (
     const label item,
     labelList& list
@@ -1246,7 +1259,7 @@ inline void Foam::dynamicTopoFvMesh::sizeDownList
 
 // Utility method to build a hull of faces/cells that are connected to the edge
 // This will also determine whether the edge lies on a boundary
-bool Foam::dynamicTopoFvMesh::constructPrismHull
+bool dynamicTopoFvMesh::constructPrismHull
 (
     const edge& edgeToCheck,
     const label startFaceIndex,
@@ -1492,7 +1505,7 @@ bool Foam::dynamicTopoFvMesh::constructPrismHull
 
 // Utility method to build a counter-clockwise ring of vertices
 // around the edge a-b (when viewed from vertex 'a')
-inline void Foam::dynamicTopoFvMesh::constructVertexRing
+inline void dynamicTopoFvMesh::constructVertexRing
 (
     const label eIndex,
     const edge& edgeToCheck,
@@ -1736,7 +1749,7 @@ inline void Foam::dynamicTopoFvMesh::constructVertexRing
 }
 
 // Check whether the given edge is on a bounding curve
-inline bool Foam::dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
+inline bool dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
 {
     // Internal edges don't count
     label edgePatch = -1;
@@ -1785,7 +1798,7 @@ inline bool Foam::dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
 }
 
 // Allocate dynamic programming tables
-inline void Foam::dynamicTopoFvMesh::initTables
+inline void dynamicTopoFvMesh::initTables
 (
     const label mMax,
     scalarListList& Q,
@@ -1800,7 +1813,7 @@ inline void Foam::dynamicTopoFvMesh::initTables
 
 // Utility method to fill the dynamic programming tables
 // Returns the number of triangulations
-inline label Foam::dynamicTopoFvMesh::fillTables
+inline label dynamicTopoFvMesh::fillTables
 (
     const edge& edgeToCheck,
     const DynamicList<label>& hullVertices,
@@ -1866,7 +1879,7 @@ inline label Foam::dynamicTopoFvMesh::fillTables
 }
 
 // Print out tables for debugging
-void Foam::dynamicTopoFvMesh::printTables
+void dynamicTopoFvMesh::printTables
 (
     const label m,
     const scalarListList& Q,
@@ -1923,7 +1936,7 @@ void Foam::dynamicTopoFvMesh::printTables
 }
 
 // Remove the edge according to the swap sequence
-void Foam::dynamicTopoFvMesh::removeEdgeFlips
+void dynamicTopoFvMesh::removeEdgeFlips
 (
     const label m,
     const label edgeToCheckIndex,
@@ -2019,7 +2032,7 @@ void Foam::dynamicTopoFvMesh::removeEdgeFlips
 }
 
 // Extract triangulations from the programming table
-void Foam::dynamicTopoFvMesh::extractTriangulation
+void dynamicTopoFvMesh::extractTriangulation
 (
     const label i,
     const label j,
@@ -2047,7 +2060,7 @@ void Foam::dynamicTopoFvMesh::extractTriangulation
 }
 
 // Identify the 3-2 swap from the triangulation sequence
-label Foam::dynamicTopoFvMesh::identify32Swap
+label dynamicTopoFvMesh::identify32Swap
 (
     const label m,
     const edge& edgeToCheck,
@@ -2102,7 +2115,7 @@ label Foam::dynamicTopoFvMesh::identify32Swap
 
 // Routine to check whether the triangulation at the
 // index lies on the boundary of the vertex ring.
-bool Foam::dynamicTopoFvMesh::boundaryTriangulation
+bool dynamicTopoFvMesh::boundaryTriangulation
 (
     const label index,
     label& isolatedVertex,
@@ -2156,7 +2169,7 @@ bool Foam::dynamicTopoFvMesh::boundaryTriangulation
 }
 
 // Routine to perform 2-3 swaps
-void Foam::dynamicTopoFvMesh::swap23
+void dynamicTopoFvMesh::swap23
 (
     const label isolatedVertex,
     const label edgeToCheckIndex,
@@ -2588,7 +2601,7 @@ void Foam::dynamicTopoFvMesh::swap23
 }
 
 // Routine to perform 3-2 or 2-2 swaps
-void Foam::dynamicTopoFvMesh::swap32
+void dynamicTopoFvMesh::swap32
 (
     const label edgeToCheckIndex,
     const edge& edgeToCheck,
@@ -3049,7 +3062,7 @@ void Foam::dynamicTopoFvMesh::swap32
 }
 
 // Reorder points after a topology change
-void Foam::dynamicTopoFvMesh::reOrderPoints
+void dynamicTopoFvMesh::reOrderPoints
 (
     pointField& points
 )
@@ -3109,7 +3122,7 @@ void Foam::dynamicTopoFvMesh::reOrderPoints
 }
 
 // Reorder edges after a topology change
-void Foam::dynamicTopoFvMesh::reOrderEdges()
+void dynamicTopoFvMesh::reOrderEdges()
 {
     // *** Edge renumbering *** //
     // If edges were deleted during topology change, the numerical order ceases
@@ -3333,7 +3346,7 @@ void Foam::dynamicTopoFvMesh::reOrderEdges()
 }
 
 // Reorder faces in upper-triangular order after a topology change
-void Foam::dynamicTopoFvMesh::reOrderFaces
+void dynamicTopoFvMesh::reOrderFaces
 (
     faceList& faces, 
     labelList& owner, 
@@ -3692,7 +3705,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
     {
         if (sum(visited) != 0)
         {
-            FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderFaces()") << nl
+            FatalErrorIn("dynamicTopoFvMesh::reOrderFaces()") << nl
                     << " Algorithm did not visit every face in the mesh."
                     << " Something's messed up." << nl
                     << abort(FatalError);
@@ -3701,7 +3714,7 @@ void Foam::dynamicTopoFvMesh::reOrderFaces
 }
 
 // Reorder & renumber cells with bandwidth reduction after a topology change
-void Foam::dynamicTopoFvMesh::reOrderCells()
+void dynamicTopoFvMesh::reOrderCells()
 {
     // *** Cell renumbering *** //
     // If cells were deleted during topology change, the numerical order ceases 
@@ -3850,7 +3863,7 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
     {
         if (sum(visited) != allCells)
         {
-            FatalErrorIn("Foam::dynamicTopoFvMesh::reOrderCells()") << nl
+            FatalErrorIn("dynamicTopoFvMesh::reOrderCells()") << nl
                     << " Algorithm did not visit every cell in the mesh."
                     << " Something's messed up." << nl
                     << abort(FatalError);
@@ -3859,7 +3872,7 @@ void Foam::dynamicTopoFvMesh::reOrderCells()
 }
 
 // Reorder the faces in upper-triangular order, and generate mapping information
-void Foam::dynamicTopoFvMesh::reOrderMesh
+void dynamicTopoFvMesh::reOrderMesh
 (
     pointField& points,
     faceList& faces,
@@ -3923,7 +3936,7 @@ void Foam::dynamicTopoFvMesh::reOrderMesh
 }
 
 // Copy edge-based connectivity from HashLists
-void Foam::dynamicTopoFvMesh::setEdgeConnectivity()
+void dynamicTopoFvMesh::setEdgeConnectivity()
 {
     IOedges_.setSize(nEdges_);
     forAllIter(HashList<edge>::iterator, edges_, eIter)
@@ -3972,7 +3985,7 @@ void Foam::dynamicTopoFvMesh::setEdgeConnectivity()
 }
 
 // Calculate the edge length-scale for the mesh
-void Foam::dynamicTopoFvMesh::calculateLengthScale()
+void dynamicTopoFvMesh::calculateLengthScale()
 {
     if (edgeModification_)
     {
@@ -4115,7 +4128,7 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
         // Check if everything went okay
         if (visitedCells != nCells())
         {
-            FatalErrorIn("Foam::dynamicTopoFvMesh::calculateLengthScale()")
+            FatalErrorIn("dynamicTopoFvMesh::calculateLengthScale()")
                     << " Algorithm did not visit every cell in the mesh."
                     << " Something's messed up." << nl
                     << " Visited cells: " << visitedCells
@@ -4132,7 +4145,7 @@ void Foam::dynamicTopoFvMesh::calculateLengthScale()
 }
 
 // Return the appropriate length-scale for boundary face
-scalar Foam::dynamicTopoFvMesh::boundaryLengthScale
+scalar dynamicTopoFvMesh::boundaryLengthScale
 (
     const label faceIndex
 )
@@ -4155,7 +4168,7 @@ scalar Foam::dynamicTopoFvMesh::boundaryLengthScale
 }
 
 // 2D Edge-swapping engine
-void Foam::dynamicTopoFvMesh::swap2DEdges(void *argument)
+void dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
     // Recast the argument 
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument); 
@@ -4361,7 +4374,7 @@ void Foam::dynamicTopoFvMesh::swap2DEdges(void *argument)
 }
 
 // Initialize the length-scale field
-void Foam::dynamicTopoFvMesh::initLengthScale()
+void dynamicTopoFvMesh::initLengthScale()
 {
     lengthScale_.setSize(nCells_, 0.0);
 
@@ -4412,7 +4425,7 @@ void Foam::dynamicTopoFvMesh::initLengthScale()
 }
 
 // Initialize edge related connectivity lists
-void Foam::dynamicTopoFvMesh::initEdges()
+void dynamicTopoFvMesh::initEdges()
 {
     if (IOedges_.headerOk())
     {
@@ -4546,7 +4559,7 @@ void Foam::dynamicTopoFvMesh::initEdges()
 }
 
 // Return length-scale at an edge-location in the mesh [3D]
-inline scalar Foam::dynamicTopoFvMesh::meshEdgeLengthScale
+inline scalar dynamicTopoFvMesh::meshEdgeLengthScale
 (
     const label eIndex
 )
@@ -4583,7 +4596,7 @@ inline scalar Foam::dynamicTopoFvMesh::meshEdgeLengthScale
 }
 
 // Return length-scale at an cell-location in the mesh
-inline scalar Foam::dynamicTopoFvMesh::meshCellLengthScale
+inline scalar dynamicTopoFvMesh::meshCellLengthScale
 (
     const label cIndex
 )
@@ -4592,13 +4605,13 @@ inline scalar Foam::dynamicTopoFvMesh::meshCellLengthScale
 }
 
 // Does the mesh perform edge-modification?
-bool Foam::dynamicTopoFvMesh::edgeModification()
+bool dynamicTopoFvMesh::edgeModification()
 {
     return edgeModification_;
 }
 
 // 2D Edge-bisection/collapse engine
-void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
+void dynamicTopoFvMesh::edgeBisectCollapse2D
 (
     void *argument
 )
@@ -4737,7 +4750,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse2D
 }
 
 // 3D Edge-swapping engine
-void Foam::dynamicTopoFvMesh::swap3DEdges
+void dynamicTopoFvMesh::swap3DEdges
 (
     void *argument
 )
@@ -4863,7 +4876,7 @@ void Foam::dynamicTopoFvMesh::swap3DEdges
 }
 
 // 3D Edge-bisection/collapse engine
-void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
+void dynamicTopoFvMesh::edgeBisectCollapse3D
 (
     void *argument
 )
@@ -4939,7 +4952,7 @@ void Foam::dynamicTopoFvMesh::edgeBisectCollapse3D
 }
 
 // Method for the swapping of a quad-face in 2D
-void Foam::dynamicTopoFvMesh::swapQuadFace
+void dynamicTopoFvMesh::swapQuadFace
 (
     const label findex,
     face& thisFace,
@@ -5360,7 +5373,7 @@ void Foam::dynamicTopoFvMesh::swapQuadFace
 }
 
 // Method for the bisection of a quad-face in 2D
-void Foam::dynamicTopoFvMesh::bisectQuadFace
+void dynamicTopoFvMesh::bisectQuadFace
 (
     const label findex,
     face& thisFace
@@ -5998,7 +6011,7 @@ void Foam::dynamicTopoFvMesh::bisectQuadFace
 
 // Method for the collapse of a quad-face in 2D
 // Returns a boolean value indicating whether the collapse was valid
-bool Foam::dynamicTopoFvMesh::collapseQuadFace
+bool dynamicTopoFvMesh::collapseQuadFace
 (
     const label findex,
     face& thisFace
@@ -6793,7 +6806,7 @@ bool Foam::dynamicTopoFvMesh::collapseQuadFace
 }
 
 // Method for the bisection of an edge in 3D
-void Foam::dynamicTopoFvMesh::bisectEdge
+void dynamicTopoFvMesh::bisectEdge
 (
     const label eIndex
 )
@@ -7443,7 +7456,7 @@ void Foam::dynamicTopoFvMesh::bisectEdge
 
 // Method for the collapse of an edge in 3D
 // Returns a boolean value indicating whether the collapse was valid
-bool Foam::dynamicTopoFvMesh::collapseEdge
+bool dynamicTopoFvMesh::collapseEdge
 (
     const label eIndex
 )
@@ -7941,7 +7954,7 @@ bool Foam::dynamicTopoFvMesh::collapseEdge
 }
 
 // Utility to determine ring edges and the hull edges/faces connected to them.
-void Foam::dynamicTopoFvMesh::constructEdgeRing
+void dynamicTopoFvMesh::constructEdgeRing
 (
     const label eIndex,
     const edge& edgeToCheck,
@@ -8053,7 +8066,7 @@ void Foam::dynamicTopoFvMesh::constructEdgeRing
 // a valid cell when 'pointIndex' is moved to 'newPoint'. The routine performs
 // volume-based checks. Returns 'true' if the collapse in NOT feasible, and
 // makes entries in cellsChecked to avoid repetitive checks.
-bool Foam::dynamicTopoFvMesh::checkCollapse
+bool dynamicTopoFvMesh::checkCollapse
 (
     const point& newPoint,
     const label pointIndex,
@@ -8129,7 +8142,7 @@ bool Foam::dynamicTopoFvMesh::checkCollapse
 
 // Check if the boundary face is adjacent to a sliver-cell,
 // and remove it by a two-step bisection/collapse operation.
-bool Foam::dynamicTopoFvMesh::remove2DSliver
+bool dynamicTopoFvMesh::remove2DSliver
 (
     const label findex,
     face& thisFace
@@ -8169,7 +8182,7 @@ bool Foam::dynamicTopoFvMesh::remove2DSliver
         {
             WarningIn
             (
-                "Foam::dynamicTopoFvMesh::remove2DSliver(const label, face&)"
+                "dynamicTopoFvMesh::remove2DSliver(const label, face&)"
             )
             << "Attempt to remove sliver cell: "
             << c0 << ": " << cell_0
@@ -8188,7 +8201,7 @@ bool Foam::dynamicTopoFvMesh::remove2DSliver
 }
 
 // Prepare thread structures
-void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
+void dynamicTopoFvMesh::prepareThreads(const label numThreads)
 {
     // Fill in required thread-info
     label pointsPerBlock = (nPoints_/numThreads) + 1;
@@ -8243,7 +8256,7 @@ void Foam::dynamicTopoFvMesh::prepareThreads(const label numThreads)
 }
 
 // Update mesh corresponding to the given map
-void Foam::dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
+void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
 {
     // Delete oldPoints in polyMesh
     polyMesh::resetMotion();
@@ -8265,7 +8278,7 @@ void Foam::dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
 }
 
 // Map all fields in time using the given map
-void Foam::dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
+void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 {
     if (debug)
     {
@@ -8294,7 +8307,7 @@ void Foam::dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 // Update the mesh for motion
 // This routine assumes that all boundary motions have been defined
 // and incorporated into the mesh for the current time-step.
-void Foam::dynamicTopoFvMesh::updateMotion()
+void dynamicTopoFvMesh::updateMotion()
 {
     if (solveForMotion_)
     {    
@@ -8304,7 +8317,7 @@ void Foam::dynamicTopoFvMesh::updateMotion()
 }
 
 // MultiThreaded topology modifier [2D]
-void Foam::dynamicTopoFvMesh::threadedTopoModifier2D()
+void dynamicTopoFvMesh::threadedTopoModifier2D()
 {                  
     // Prepare for multi-threading
     prepareThreads(threader_->getNumThreads());    
@@ -8347,7 +8360,7 @@ void Foam::dynamicTopoFvMesh::threadedTopoModifier2D()
 }
 
 // MultiThreaded topology modifier [3D]
-void Foam::dynamicTopoFvMesh::threadedTopoModifier3D()
+void dynamicTopoFvMesh::threadedTopoModifier3D()
 { 
     // Prepare for multi-threading
     prepareThreads(threader_->getNumThreads());    
@@ -8391,7 +8404,7 @@ void Foam::dynamicTopoFvMesh::threadedTopoModifier3D()
 
 // Update the mesh for topology changes
 // Return true if changes have occurred
-bool Foam::dynamicTopoFvMesh::updateTopology()
+bool dynamicTopoFvMesh::updateTopology()
 {
     // Calculate the edge length-scale for the mesh
     calculateLengthScale();
@@ -8649,18 +8662,20 @@ bool Foam::dynamicTopoFvMesh::updateTopology()
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void Foam::dynamicTopoFvMesh::operator=(const dynamicTopoFvMesh& rhs)
+void dynamicTopoFvMesh::operator=(const dynamicTopoFvMesh& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)
     {
         FatalErrorIn
         (
-            "Foam::dynamicTopoFvMesh::operator=(const Foam::dynamicTopoFvMesh&)"
+            "dynamicTopoFvMesh::operator=(const dynamicTopoFvMesh&)"
         )
             << "Attempted assignment to self"
             << abort(FatalError);
     }
 }
+
+} // End namespace Foam
 
 // ************************************************************************* //
