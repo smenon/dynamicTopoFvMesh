@@ -38,6 +38,7 @@ SourceFiles
 
 #include "motionSolver.H"
 #include "polyMesh.H"
+#include "dynamicTopoFvMesh.H"
 #include "wedgePolyPatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -59,7 +60,7 @@ protected:
     // Protected data
 
     //- The mesh to be moved
-    const polyMesh& Mesh_;
+    const dynamicTopoFvMesh& Mesh_;
     
     // Reference points
     mutable pointIOField refPoints_;
@@ -130,7 +131,7 @@ public:
     // Member Functions
 
         //- Return reference to the mesh to be moved
-        const polyMesh& mesh() const
+        const dynamicTopoFvMesh& mesh() const
         {
             return Mesh_;
         }

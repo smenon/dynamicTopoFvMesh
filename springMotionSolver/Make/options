@@ -1,7 +1,17 @@
 EXE_INC = \
+    -I../dynamicTopoFvMesh/lnInclude \
+    -I../multiThreader/lnInclude \
+    -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/meshTools/lnInclude \
     -I$(LIB_SRC)/dynamicMesh/lnInclude \
+    -I$(LIB_SRC)/tetDecompositionMotionSolver/lnInclude \
+    -I$(LIB_SRC)/tetDecompositionFiniteElement/lnInclude \
+    $(WM_DECOMP_INC) \
 
 LIB_LIBS = \
+    -L$(FOAM_USER_LIBBIN) \
+    -lmultiThreader \
+    -lfiniteVolume \
     -lmeshTools \
-    -ldynamicMesh 
+    -ldynamicMesh \
+    $(WM_DECOMP_LIBS)

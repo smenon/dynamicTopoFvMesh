@@ -49,7 +49,7 @@ Foam::springMotionSolver::springMotionSolver
 )
 :
     motionSolver(mesh),
-    Mesh_(mesh),
+    Mesh_(refCast<const dynamicTopoFvMesh>(mesh)),
     refPoints_
     (
         IOobject
@@ -81,7 +81,7 @@ Foam::springMotionSolver::springMotionSolver
 )
 :
     motionSolver(mesh),
-    Mesh_(mesh),
+    Mesh_(refCast<const dynamicTopoFvMesh>(mesh)),
     refPoints_
     (
         IOobject
