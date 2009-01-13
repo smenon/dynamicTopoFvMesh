@@ -1,6 +1,12 @@
 #!/bin/sh
 set -x
 
-wmake libso newFreeSurface
+wmakeLnInclude tetMetrics
+wmakeLnInclude multiThreader
+wmakeLnInclude springMotionSolver
+wmakeLnInclude dynamicTopoFvMesh
 
-wmake interfaceTrackFoam
+wmake libso tetMetrics
+wmake libso multiThreader
+wmake libso springMotionSolver
+wmake libso dynamicTopoFvMesh

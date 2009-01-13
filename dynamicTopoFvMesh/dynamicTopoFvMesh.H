@@ -626,6 +626,18 @@ public:
 
     // Member Functions
 
+        // Return the number of edges in the mesh.
+        // Override of primitiveMesh member function
+        label nEdges() const;
+
+        // Return the number of internal edges in the mesh.
+        // Override of primitiveMesh member function
+        label nInternalEdges() const;
+
+        // Return the list of edges in the mesh.
+        // Override of primitiveMesh member function.
+        const edgeList& edges() const;
+
         // Update the mesh for topology changes
         // Return true if changes have occurred
         bool updateTopology();

@@ -3072,6 +3072,9 @@ void dynamicTopoFvMesh::reOrderPoints
     // to be continuous. Loop through all points and renumber sequentially. 
     // Possible scope for bandwidth-reduction on the motion-solver.
 
+    // Allocate for the mapping information
+    pointMap_.setSize(nPoints_, -1);
+
     label pointRenum = 0;
 
     addedPointRenumbering_.clear();
@@ -3127,6 +3130,9 @@ void dynamicTopoFvMesh::reOrderEdges()
     // *** Edge renumbering *** //
     // If edges were deleted during topology change, the numerical order ceases
     // to be continuous. Edges are added to respective internal/boundary patches
+
+    // Allocate for mapping information
+    edgeMap_.setSize(nEdges_, -1);
 
     label edgeInOrder = 0, allEdges = edges_.lastIndex() + 1;
     edgeList oldEdges(allEdges);
@@ -3343,6 +3349,9 @@ void dynamicTopoFvMesh::reOrderEdges()
         Info << "Done." << endl;
     }
 #   endif
+
+    // Set edge connectivity in IOLists
+    setEdgeConnectivity();
 }
 
 // Reorder faces in upper-triangular order after a topology change
@@ -3358,6 +3367,9 @@ void dynamicTopoFvMesh::reOrderFaces
     // Boundary faces are added to respective patches.
     // Internal faces, however, have to be added in upper-triangular ordering;
     // i.e., in the increasing order of neighbours
+
+    // Allocate for mapping information
+    faceMap_.setSize(nFaces_, -1);
 
     label faceInOrder = 0, allFaces = faces_.lastIndex() + 1;
     faceList oldFaces(allFaces);
@@ -3722,6 +3734,9 @@ void dynamicTopoFvMesh::reOrderCells()
     // virtue of the HashList append method. Thus, cells would now have to be 
     // reordered so that bandwidth is reduced and renumbered to be sequential.
 
+    // Allocate for mapping information
+    cellMap_.setSize(nCells_, -1);
+
     label currentCell, cellInOrder = 0, allCells = cells_.lastIndex() + 1;
     SLList<label> nextCell; 
     labelList ncc(allCells, 0);
@@ -3880,11 +3895,6 @@ void dynamicTopoFvMesh::reOrderMesh
     labelList& neighbour
 )
 {
-    // Allocate for the mapping information
-    pointMap_.setSize(nPoints_, -1);
-    faceMap_.setSize(nFaces_, -1);
-    cellMap_.setSize(nCells_, -1);
-
     if (debug)
     {
         Info << endl;
@@ -3929,9 +3939,7 @@ void dynamicTopoFvMesh::reOrderMesh
     if (!twoDMesh_)
     {
         if (debug) Info << "ReOrdering edges..." << endl;
-        edgeMap_.setSize(nEdges_, -1);
         reOrderEdges();
-        setEdgeConnectivity();
     }
 }
 
@@ -8400,6 +8408,27 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     
     // Wait for all work to complete
     //threader_().waitForCompletion();
+}
+
+// Return the number of edges in the mesh.
+// Override of primitiveMesh member function
+label dynamicTopoFvMesh::nEdges() const
+{
+    return nEdges_;
+}
+
+// Return the number of internal edges in the mesh.
+// Override of primitiveMesh member function
+label dynamicTopoFvMesh::nInternalEdges() const
+{
+    return nInternalEdges_;
+}
+
+// Return the list of edges in the mesh.
+// Override of primitiveMesh member function.
+const edgeList& dynamicTopoFvMesh::edges() const
+{
+    return IOedges_;
 }
 
 // Update the mesh for topology changes

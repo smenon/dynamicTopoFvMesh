@@ -12,11 +12,11 @@ EXE_INC = \
     $(WM_DECOMP_INC) \
 
 EXE_LIBS = \
+    -L$(FOAM_USER_LIBBIN) \
     -ldynamicTopoFvMesh \
     -lmultiThreader \
     -lfiniteVolume \
     -lfiniteArea \
-    -L$(FOAM_USER_LIBBIN) \
     -lspringMotionSolver \
     -ldynamicMesh \
     -lincompressibleTransportModels \

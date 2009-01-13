@@ -24,8 +24,12 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include <polyMesh.H>
+
 #include "springMotionSolver.H"
 #include "addToRunTimeSelectionTable.H"
+#include "wedgePolyPatch.H"
+#include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -185,7 +189,31 @@ void Foam::springMotionSolver::computeA2D(const scalarField& p, scalarField& w)
 
 void Foam::springMotionSolver::computeA3D(const scalarField& p, scalarField& w)
 {
+    w = 0.0;
 
+    // Obtain the edge-list from dynamicTopoFvMesh
+    const edgeList& edges = mesh().edges();
+
+    // Gradient (n2e)
+    forAll(edges, edgeI)
+    {
+        gradEdge_[edgeI] = p[edges[edgeI][1]] - p[edges[edgeI][0]];
+    }
+
+    // Apply stiffness
+    gradEdge_ *= stiffness_;
+
+    // Divergence (e2n)
+    forAll(edges, edgeI)
+    {
+        w[edges[edgeI][0]] += gradEdge_[edgeI];
+        w[edges[edgeI][1]] -= gradEdge_[edgeI];
+    }
+
+    // Add contributions for opposing faces
+
+    // Apply boundary conditions
+    applyBCs(w);
 }
 
 // Set Dirichlet conditions on the solution field (if any)
@@ -260,6 +288,63 @@ void Foam::springMotionSolver::applyBCs(scalarField &field)
             field[boundary[pID_].edges()[i][1]] = 0.0;
         }
     }
+    else
+    {
+        // Blank out residuals at boundary nodes
+        const edgeList& edges = mesh().edges();
+
+        for (label i = mesh().nInternalEdges(); i < mesh().nEdges(); i++)
+        {
+            field[edges[i][0]] = 0.0;
+            field[edges[i][1]] = 0.0;
+        }
+    }
+}
+
+// Compute point-to-opposing face connectivity
+void Foam::springMotionSolver::computePointFaces()
+{
+    // Obtain connectivity from mesh
+    const labelListList& pointCells = mesh().pointCells();
+    const labelList& owner = mesh().allOwner();
+    const faceList& faces = mesh().faces();
+    const cellList& cells = mesh().cells();
+
+    pointFaces_.setSize(pointCells.size());
+    pfStiffness_.setSize(pointCells.size());
+
+    forAll(pointFaces_, pointI)
+    {
+        pointFaces_[pointI].setSize(pointCells[pointI].size());
+        pfStiffness_[pointI].setSize(pointCells[pointI].size());
+
+        forAll(pointCells[pointI], cellI)
+        {
+            // Loop through faces of cells in pointCells and find a face which
+            // doesn't contain the point in question
+            const cell& cellToCheck = cells[pointCells[pointI][cellI]];
+
+            forAll(cellToCheck, faceI)
+            {
+                if (faces[cellToCheck[faceI]].which(pointI) < 0)
+                {
+                    // Assign a correctly oriented face
+                    if (pointCells[pointI][cellI] == owner[cellToCheck[faceI]])
+                    {
+                        pointFaces_[pointI][cellI] =
+                            faces[cellToCheck[faceI]].reverseFace();
+                    }
+                    else
+                    {
+                        pointFaces_[pointI][cellI] =
+                            faces[cellToCheck[faceI]];
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
 }
 
 // Initialize fields for the CG solver
@@ -277,9 +362,35 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
     if (twoDMotion())
     {
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+        
         if (gradEdge_.size() != boundary[pID_].edges().size())
         {
             gradEdge_.setSize(boundary[pID_].edges().size(), 0.0);
+        }
+    }
+    else
+    {
+        const label nPoints = mesh().nPoints();
+        const label nEdges = mesh().nEdges();
+        const edgeList& edges = mesh().edges();
+
+        if (gradEdge_.size() != nEdges)
+        {
+            gradEdge_.setSize(nEdges, 0.0);
+            stiffness_.setSize(nEdges, 0.0);
+        }
+
+        if (pointFaces_.size() != nPoints)
+        {
+            // Compute connectivity
+            computePointFaces();
+        }
+
+        // Compute stiffness from current point-positions
+        forAll (edges, edgeI)
+        {
+            stiffness_[edgeI] = 1.0/
+                mag(refPoints_[edges[edgeI][1]] - refPoints_[edges[edgeI][0]]);
         }
     }
 }
@@ -356,9 +467,7 @@ void Foam::springMotionSolver::solve()
     else
     {
         // Initialize the solver variables
-        const pointField& points = mesh().points();
-
-        initCG(points.size());
+        initCG(mesh().nPoints());
 
         for(cmpt_=0; cmpt_<3; cmpt_++)
         {
@@ -386,6 +495,8 @@ void Foam::springMotionSolver::updateMesh(const mapPolyMesh& mpm)
     r_.clear();
     w_.clear();  
     gradEdge_.clear();
+    stiffness_.clear();
+    pointFaces_.clear();
     
     refPoints_ = Mesh_.points();
 }

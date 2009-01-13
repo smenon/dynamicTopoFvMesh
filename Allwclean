@@ -1,0 +1,12 @@
+#!/bin/sh
+set -x
+
+# Clean out existing object files
+wclean tetMetrics
+wclean multiThreader
+wclean springMotionSolver
+wclean dynamicTopoFvMesh
+
+# Wipe out all lnInclude directories and re-link
+wcleanLnIncludeAll
+

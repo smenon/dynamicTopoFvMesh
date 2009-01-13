@@ -37,14 +37,16 @@ SourceFiles
 #define springMotionSolver_H
 
 #include "motionSolver.H"
-#include "polyMesh.H"
-#include "dynamicTopoFvMesh.H"
-#include "wedgePolyPatch.H"
+#include "pointIOField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {    
+
+// Class forward declarations
+class polyMesh;
+class dynamicTopoFvMesh;
 
 /*---------------------------------------------------------------------------*\
                            Class fvMotionSolver Declaration
@@ -70,6 +72,12 @@ protected:
 
     // Edge stiffness field
     scalarField stiffness_;
+
+    // Point-to-opposing face connectivity
+    List<faceList> pointFaces_;
+
+    // Stiffness of edge between point and virtual-point
+    scalarListList pfStiffness_;
     
     // Component being solved for (0,1 or 2)
     label cmpt_;
@@ -109,6 +117,9 @@ protected:
 
     // Apply boundary conditions
     void applyBCs(scalarField &field);
+
+    // Compute point-to-opposing face connectivity
+    void computePointFaces();
     
 public:
 
