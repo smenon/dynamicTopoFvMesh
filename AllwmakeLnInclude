@@ -1,0 +1,7 @@
+#!/bin/sh
+set -x
+
+wmakeLnInclude tetMetrics
+wmakeLnInclude multiThreader
+wmakeLnInclude springMotionSolver
+wmakeLnInclude dynamicTopoFvMesh

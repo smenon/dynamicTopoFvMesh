@@ -37,6 +37,8 @@ SourceFiles
 #define springMotionSolver_H
 
 #include "motionSolver.H"
+#include "faceList.H"
+#include "labelHashSet.H"
 #include "pointIOField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -78,6 +80,13 @@ protected:
 
     // Stiffness of edge between point and virtual-point
     scalarListList pfStiffness_;
+
+    // Interpolation coefficients for the virtual point
+    scalarListList xi_;
+    scalarListList eta_;
+
+    // Specify patches on which slip BCs are applied
+    labelHashSet slipPatchIDs_;
     
     // Component being solved for (0,1 or 2)
     label cmpt_;

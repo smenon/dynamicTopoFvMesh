@@ -24,8 +24,6 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include <polyMesh.H>
-
 #include "springMotionSolver.H"
 #include "addToRunTimeSelectionTable.H"
 #include "wedgePolyPatch.H"
@@ -65,7 +63,7 @@ Foam::springMotionSolver::springMotionSolver
             IOobject::NO_WRITE
         ),            
         mesh.points()
-    ),       
+    ),
     cmpt_(-1),
     pID_(-1),
     fixedY_(0.0)
@@ -74,6 +72,25 @@ Foam::springMotionSolver::springMotionSolver
     if (found("fixedY"))
     {
         fixedY_ = readScalar(lookup("fixedY"));
+    }
+
+    // Check if any slip patches are specified
+    if (found("slipPatches"))
+    {
+        wordList slipPatches = subDict("slipPatches").toc();
+
+        forAll(slipPatches, wordI)
+        {
+            word& patchName = slipPatches[wordI];
+
+            forAll(mesh.boundaryMesh(), patchI)
+            {
+                if (mesh.boundaryMesh()[patchI].name() == patchName)
+                {
+                    slipPatchIDs_.insert(patchI);
+                }
+            }
+        }
     }
 }
 
@@ -106,6 +123,25 @@ Foam::springMotionSolver::springMotionSolver
     if (found("fixedY")) 
     {
         fixedY_ = readScalar(lookup("fixedY"));
+    }
+
+    // Check if any slip patches are specified
+    if (found("slipPatches"))
+    {
+        wordList slipPatches = subDict("slipPatches").toc();
+
+        forAll(slipPatches, wordI)
+        {
+            word& patchName = slipPatches[wordI];
+
+            forAll(mesh.boundaryMesh(), patchI)
+            {
+                if (mesh.boundaryMesh()[patchI].name() == patchName)
+                {
+                    slipPatchIDs_.insert(patchI);
+                }
+            }
+        }
     }
 }
 
@@ -211,6 +247,28 @@ void Foam::springMotionSolver::computeA3D(const scalarField& p, scalarField& w)
     }
 
     // Add contributions for opposing faces
+    /*
+    forAll(w, pointI)
+    {
+        const faceList& pFaces = pointFaces_[pointI];
+        const scalarList& k = pfStiffness_[pointI];
+        const scalarList& xi = xi_[pointI];
+        const scalarList& eta = eta_[pointI];
+
+        forAll(pFaces, faceI)
+        {
+            const face& faceToCheck = pFaces[faceI];
+
+            // Interpolate to find the virtual point
+            w[pointI] += k[faceI]*
+                (
+                    xi[faceI]*w[faceToCheck[0]]
+                  + eta[faceI]*w[faceToCheck[1]]
+                  + (1 - xi[faceI] - eta[faceI])*w[faceToCheck[2]]
+                );
+        }
+    }
+    */
 
     // Apply boundary conditions
     applyBCs(w);
@@ -291,12 +349,39 @@ void Foam::springMotionSolver::applyBCs(scalarField &field)
     else
     {
         // Blank out residuals at boundary nodes
-        const edgeList& edges = mesh().edges();
+        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
-        for (label i = mesh().nInternalEdges(); i < mesh().nEdges(); i++)
+        forAll(boundary, patchI)
         {
-            field[edges[i][0]] = 0.0;
-            field[edges[i][1]] = 0.0;
+            const labelList& meshPts = boundary[patchI].meshPoints();
+
+            // No-slip wall. Blank out residual completely.
+            forAll(meshPts, pointI)
+            {
+                field[meshPts[pointI]] = 0.0;
+            }
+
+            /*
+            if (slipPatchIDs_.found(patchI))
+            {
+                const vectorField& pn = boundary[patchI].pointNormals();
+
+                // Subtract the point-normal component
+                forAll(meshPts, pointI)
+                {
+                    const vector& n = pn[pointI];
+                    field[meshPts[pointI]] -= field[meshPts[pointI]]*n[cmpt_];
+                }
+            }
+            else
+            {
+                // No-slip wall. Blank out residual completely.
+                forAll(meshPts, pointI)
+                {
+                    field[meshPts[pointI]] = 0.0;
+                }
+            }
+            */
         }
     }
 }
@@ -312,11 +397,15 @@ void Foam::springMotionSolver::computePointFaces()
 
     pointFaces_.setSize(pointCells.size());
     pfStiffness_.setSize(pointCells.size());
+    xi_.setSize(pointCells.size());
+    eta_.setSize(pointCells.size());
 
     forAll(pointFaces_, pointI)
     {
         pointFaces_[pointI].setSize(pointCells[pointI].size());
         pfStiffness_[pointI].setSize(pointCells[pointI].size());
+        xi_[pointI].setSize(pointCells[pointI].size());
+        eta_[pointI].setSize(pointCells[pointI].size());
 
         forAll(pointCells[pointI], cellI)
         {
@@ -370,6 +459,7 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
     }
     else
     {
+        vector v1, v2, p, n, xp;
         const label nPoints = mesh().nPoints();
         const label nEdges = mesh().nEdges();
         const edgeList& edges = mesh().edges();
@@ -391,6 +481,43 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
         {
             stiffness_[edgeI] = 1.0/
                 mag(refPoints_[edges[edgeI][1]] - refPoints_[edges[edgeI][0]]);
+        }
+
+        // Compute ballVertex stiffness from current point-positions
+        forAll(pointFaces_, pointI)
+        {
+            faceList& pFaces = pointFaces_[pointI];
+            scalarList& k = pfStiffness_[pointI];
+            scalarList& xi = xi_[pointI];
+            scalarList& eta = eta_[pointI];
+
+            forAll(pFaces, faceI)
+            {
+                const face& faceToCheck = pFaces[faceI];
+
+                // Compute the unit normal for this face
+                v1 = refPoints_[faceToCheck[1]] - refPoints_[faceToCheck[0]];
+                v2 = refPoints_[faceToCheck[2]] - refPoints_[faceToCheck[0]];
+                n = (v1 ^ v2) / mag(v1 ^ v2);
+
+                // Compute the projection on face-normal
+                p = ((refPoints_[pointI] - refPoints_[faceToCheck[0]]) & n)*n;
+
+                // Compute the position of the virtual point
+                xp = refPoints_[pointI] - p;
+
+                // Stiffness is the inverse magnitude
+                k[faceI] = 1.0/mag(p);
+
+                // Compute interpolation coefficients
+                v2 = xp - refPoints_[faceToCheck[2]];
+
+                v1 = refPoints_[faceToCheck[0]] - refPoints_[faceToCheck[2]];
+                xi[faceI] = (v1 & v2) / mag(v1);
+
+                v1 = refPoints_[faceToCheck[1]] - refPoints_[faceToCheck[2]];
+                eta[faceI] = (v1 & v2) / mag(v1);
+            }
         }
     }
 }
@@ -479,7 +606,10 @@ void Foam::springMotionSolver::solve()
             Info << " No Iterations: " << iters << endl;
 
             // Update refPoints
-            refPoints_.component(cmpt_) = x_;
+            forAll(refPoints_, pointI)
+            {
+                refPoints_[pointI][cmpt_] = x_[pointI];
+            }
         }
     }
 }
