@@ -1,7 +1,7 @@
 #!/bin/sh
 set -x
 
-AllwmakeLnInclude
+./AllwmakeLnInclude
 
 wmake libso tetMetrics
 wmake libso multiThreader

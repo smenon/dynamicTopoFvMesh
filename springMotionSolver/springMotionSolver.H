@@ -69,8 +69,9 @@ protected:
     // Reference points
     mutable pointIOField refPoints_;
     
-    // Edge gradient field
+    // Edge gradient fields
     scalarField gradEdge_;
+    vectorField gradEdgeV_;
 
     // Edge stiffness field
     scalarField stiffness_;
@@ -87,6 +88,9 @@ protected:
 
     // Specify patches on which slip BCs are applied
     labelHashSet slipPatchIDs_;
+
+    // Specify tolerance for the CG solver
+    scalar tolerance_;
     
     // Component being solved for (0,1 or 2)
     label cmpt_;
@@ -97,35 +101,51 @@ protected:
     // Y-direction constraint
     scalar fixedY_;
     
-    // Variables used in the CG solver
+    // Variables used in the CG solver [2D]
     scalarField b_;
     scalarField x_;
     scalarField p_;
     scalarField r_;
     scalarField w_;
+
+    // Variables used in the CG solver [3D]
+    vectorField bV_;
+    vectorField xV_;
+    vectorField pV_;
+    vectorField rV_;
+    vectorField wV_;
     
     // Protected member functions
-    
-    // Sparse matrix-vector multiply
+
+    // Sparse Matrix multiply
     void A(const scalarField& p, scalarField& w);
+    void A(const vectorField& p, vectorField& w);
 
-    // Matrix multiply [2D]
-    void computeA2D(const scalarField& p, scalarField& w);
+    // Dot-product
+    scalar dot(const scalarField& f1, const scalarField& f2);
+    scalar dot(const vectorField& f1, const vectorField& f2);
 
-    // Matrix multiply [3D]
-    void computeA3D(const scalarField& p, scalarField& w);
-    
-    // Basic CG solver
-    label CG(const scalarField&, scalarField&);
+    // Templated CG solver
+    template <class Type>
+    label CG
+    (
+        const Field<Type>& b,
+        Field<Type>& p,
+        Field<Type>& r,
+        Field<Type>& w,
+        Field<Type>& x
+    );
     
     // Initialize fields for the CG solver
-    void initCG(label);
+    void initCG(label nUnknowns);
     
     // Set Dirichlet conditions for the solution field (if any)
     void setDirichlet(scalarField &x);
+    void setDirichlet(vectorField &x);
 
     // Apply boundary conditions
     void applyBCs(scalarField &field);
+    void applyBCs(vectorField &field);
 
     // Compute point-to-opposing face connectivity
     void computePointFaces();
