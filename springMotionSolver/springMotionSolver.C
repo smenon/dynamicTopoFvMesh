@@ -281,6 +281,8 @@ void Foam::springMotionSolver::A(const vectorField& p, vectorField& w)
 {
     w = vector::zero;
 
+    vector gradient = vector::zero;
+
     // Obtain the edge-list from dynamicTopoFvMesh
     const edgeList& edges = mesh().edges();
 
@@ -310,10 +312,10 @@ void Foam::springMotionSolver::A(const vectorField& p, vectorField& w)
         {
             const face& faceToCheck = pFaces[faceI];
 
-            w[pointI] +=
+            // Edge Gradient to interpolated point
+            gradient =
                 k[faceI]*
                 (
-                    // Edge Gradient to interpolated point
                     (
                         xi[faceI]*p[faceToCheck[0]]
                       + eta[faceI]*p[faceToCheck[1]]
@@ -321,6 +323,14 @@ void Foam::springMotionSolver::A(const vectorField& p, vectorField& w)
                     )
                   - p[pointI]
                 );
+
+            // Apply force to pointI
+            w[pointI] += gradient;
+
+            // Apply distributed forces to vertices of the opposing face
+            w[faceToCheck[0]] -= xi[faceI]*gradient;
+            w[faceToCheck[1]] -= eta[faceI]*gradient;
+            w[faceToCheck[2]] -= (1.0 - xi[faceI] - eta[faceI])*gradient;
         }
     }
 
