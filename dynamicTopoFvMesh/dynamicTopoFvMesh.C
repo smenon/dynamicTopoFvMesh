@@ -27,7 +27,7 @@ Class
 
 Description
     An implementation of dynamic changes to mesh-topology (w/ smoothing)
- 
+
 Author
     Sandeep Menon
 \*----------------------------------------------------------------------------*/
@@ -194,7 +194,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     {
         motionPtr_.set(motionSolver::New(*this).ptr());
     }
-    
+
     // Initialize the multiThreading environment
     if (dict_.subDict("dynamicTopoFvMesh").found("threads"))
     {
@@ -205,15 +205,15 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
                 readLabel
                 (
                     dict_.subDict("dynamicTopoFvMesh").lookup("threads")
-                )        
+                )
             )
         );
     }
     else
     {
         threader_.set(new multiThreader(1));
-    }    
-    
+    }
+
     // Get the number of threads and allocate topoMeshStructures
     label nThreads = threader_->getNumThreads();
     structPtr_ = new topoMeshStruct[nThreads];
@@ -283,7 +283,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         );
 
         // Obtain function address from the dll.
-        tetMetric_ = 
+        tetMetric_ =
             reinterpret_cast<tetMetricReturnType>
             (
                 dlsym
@@ -363,7 +363,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
         ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
         growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
-        
+
         if (edgeOptionDict.found("maxLengthScale"))
         {
             maxLengthScale_ =
@@ -548,15 +548,15 @@ void dynamicTopoFvMesh::setMotionBC
             // Boundary motion specified for the springMotionSolver
             pointField& refPoints = const_cast<pointField&>
                 (objectRegistry::lookupObject<pointField>("refPoints"));
-            
+
             // Assign boundary conditions to the motion solver
             const labelList& meshPts = boundaryMesh()[index].meshPoints();
-            forAll(meshPts,pointI) 
+            forAll(meshPts,pointI)
             {
                 refPoints[meshPts[pointI]] += dispField[pointI];
-            }           
+            }
         }
-    }    
+    }
 }
 
 // Return the mesh-mapper
@@ -576,9 +576,9 @@ const vectorField& dynamicTopoFvMesh::oldCellCentres() const
     {
         FatalErrorIn("dynamicTopoFvMesh::oldCellCentres() ") << nl
                 << " Illegal request for old cell centres. " << nl
-                << abort(FatalError);        
+                << abort(FatalError);
     }
-    
+
     return vectorField::null();
 }
 
@@ -599,18 +599,18 @@ tmp<volScalarField> dynamicTopoFvMesh::lengthScale()
             ),
             *this,
             dimensionedScalar("lScale", dimLength, 0),
-            "zeroGradient"            
+            "zeroGradient"
         )
     );
 
     scalarField& internalField = tlengthScale().internalField();
-    
+
     // Obtain length-scale values from the mesh
     forAllIter(HashList<scalar>, lengthScale_, lIter)
     {
         internalField[lIter.index()] = lIter();
-    }    
-    
+    }
+
     return tlengthScale;
 }
 
@@ -716,7 +716,7 @@ inline vector dynamicTopoFvMesh::circumCenter
 
     scalar cd = c1 + c2 + c3;
 
-#   ifdef FULLDEBUG  
+#   ifdef FULLDEBUG
     if (cd < VSMALL)
     {
         FatalErrorIn
@@ -869,7 +869,7 @@ inline void dynamicTopoFvMesh::findPrismFaces
         label faceIndex = c[i];
         // Don't count the face under consideration
         if (faceIndex != findex)
-        {        
+        {
             face& fi=faces_[faceIndex];
             if (neighbour_[faceIndex] == -1)
             {
@@ -972,7 +972,7 @@ inline void dynamicTopoFvMesh::replaceLabel
         {
             list[indexI] = replacement;
             found = true;
-            break; 
+            break;
         }
     }
     if (!found)
@@ -997,7 +997,7 @@ label dynamicTopoFvMesh::insertFace
 )
 {
     // Append the specified face to each face-related list.
-    // This will avoid rehashing of existing structures, but ordering is not 
+    // This will avoid rehashing of existing structures, but ordering is not
     // maintained. Reordering is performed after all pending changes
     // (flips, bisections, contractions, etc) have been made to the mesh
     label newFaceIndex = faces_.append(newFace);
@@ -1047,7 +1047,7 @@ void dynamicTopoFvMesh::removeFace
 #   ifdef FULLDEBUG
     if (debug)
     {
-        Info << "Removed face: " 
+        Info << "Removed face: "
              << index << ": "
              << faces_[index] << endl;
     }
@@ -1301,8 +1301,8 @@ bool dynamicTopoFvMesh::constructPrismHull
                         }
                     }
                 }
-                
-                if 
+
+                if
                 (
                     requiresTriFaces && faceToCheck.nEdges() == 3
                  && !foundTriFace
@@ -1332,7 +1332,7 @@ bool dynamicTopoFvMesh::constructPrismHull
                 FatalErrorIn
                 (
                     "dynamicTopoFvMesh::constructPrismHull(...)"
-                ) 
+                )
                 << nl << " Failed to find a suitable quad/tri face. "
                 << " Possibly not a prismatic mesh. " << nl
                 << abort(FatalError);
@@ -1345,7 +1345,7 @@ bool dynamicTopoFvMesh::constructPrismHull
                 FatalErrorIn
                 (
                     "dynamicTopoFvMesh::constructPrismHull(...)"
-                ) 
+                )
                 << nl << " Failed to find a suitable quad face. "
                 << " Possibly not a prismatic mesh. " << nl
                 << abort(FatalError);
@@ -1365,10 +1365,10 @@ bool dynamicTopoFvMesh::constructPrismHull
 
         if (cellIndex == -1)
         {
-            isBoundary=true; 
+            isBoundary=true;
             // Add the patchID to the list
             edgePatches.append(whichPatch(faceToExclude));
-            break; 
+            break;
         }
         else
         {
@@ -1386,9 +1386,9 @@ bool dynamicTopoFvMesh::constructPrismHull
         // Add the patchID to the list
         edgePatches.append(whichPatch(startFaceIndex));
     }
-    else 
+    else
     {
-        // Check if the previous search hit a boundary. 
+        // Check if the previous search hit a boundary.
         // If yes, start another search in the reverse direction.
         if (isBoundary)
         {
@@ -1419,10 +1419,10 @@ bool dynamicTopoFvMesh::constructPrismHull
                             }
                         }
 
-                        if 
+                        if
                         (
-                            requiresTriFaces 
-                         && faceToCheck.nEdges() == 3 
+                            requiresTriFaces
+                         && faceToCheck.nEdges() == 3
                          && !foundTriFace
                         )
                         {
@@ -1450,7 +1450,7 @@ bool dynamicTopoFvMesh::constructPrismHull
                         FatalErrorIn
                         (
                             "dynamicTopoFvMesh::constructPrismHull(...)"
-                        ) 
+                        )
                         << nl << " Failed to find a suitable quad/tri face. "
                         << " Possibly not a prismatic mesh. " << nl
                         << abort(FatalError);
@@ -1463,7 +1463,7 @@ bool dynamicTopoFvMesh::constructPrismHull
                         FatalErrorIn
                         (
                             "dynamicTopoFvMesh::constructPrismHull(...)"
-                        ) 
+                        )
                         << nl << " Failed to find a suitable quad face. "
                         << " Possibly not a prismatic mesh. " << nl
                         << abort(FatalError);
@@ -1494,7 +1494,7 @@ bool dynamicTopoFvMesh::constructPrismHull
                 }
 
             } while ( faceToExclude != startFaceIndex );
-            
+
             // Add the starting Face index to the list as well
             hullFaces.append(startFaceIndex);
         }
@@ -1531,7 +1531,7 @@ inline void dynamicTopoFvMesh::constructVertexRing
     {
         // No orientation check, start with first entry
         startFaceIndex = eFaces[0];
-        
+
         // Determine the orientation of the start-face
         findIsolatedPoint
         (
@@ -1581,7 +1581,7 @@ inline void dynamicTopoFvMesh::constructVertexRing
         FatalErrorIn
         (
             "dynamicTopoFvMesh::constructVertexRing(...)"
-        ) 
+        )
         << nl << " Failed to determine a vertex ring. "
         << " Possibly not a tetrahedral mesh. " << nl
         << abort(FatalError);
@@ -1646,6 +1646,38 @@ inline void dynamicTopoFvMesh::constructVertexRing
                         // Check if the quality is worse
                         minQuality = cQuality < minQuality
                                    ? cQuality : minQuality;
+
+#                       ifdef FULLDEBUG
+                        if (minQuality < 0)
+                        {
+                            Info << nl << nl
+                                 << "**Detected negative cell-quality!**" << nl
+                                 << "Cell: " << cellIndex << ": " << cellToCheck
+                                 << nl << "when using face: " << faceToCheck
+                                 << " and point: " << otherPoint
+                                 << nl << "Owner: "
+                                 << owner_[cellToCheck[faceI]]
+                                 << nl << "Neighbour: "
+                                 << neighbour_[cellToCheck[faceI]]
+                                 << endl;
+
+                            Info << "Faces: " << endl;
+                            forAll(cellToCheck, faceI)
+                            {
+                                Info << cellToCheck[faceI] << ": "
+                                     << faces_[cellToCheck[faceI]]
+                                     << endl;
+                            }
+
+                            // Something's terribly wrong
+                            FatalErrorIn
+                            (
+                                "dynamicTopoFvMesh::constructVertexRing(...)"
+                            )
+                            << " Not a valid tetrahedral mesh. "
+                            << abort(FatalError);
+                        }
+#                       endif
                     }
 
                     // Find the isolated point
@@ -1728,17 +1760,6 @@ inline void dynamicTopoFvMesh::constructVertexRing
         // Info << "Points: " << hullVertices << endl;
         // Info << "Faces: " << hullFaces << endl;
         // Info << "Cells: " << hullCells << endl;
-    }
-    if (minQuality < 0)
-    {
-        // Something's terribly wrong
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::constructVertexRing(...)"
-        )
-        << " Detected negative cell-quality! " << nl
-        << " Not a valid tetrahedral mesh. "
-        << abort(FatalError);
     }
 #   endif
 
@@ -1992,7 +2013,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
                     triangulations[0][i] = -1;
                     triangulations[1][i] = -1;
                     triangulations[2][i] = -1;
-                    
+
                     numSwaps++;
                 }
             }
@@ -2005,7 +2026,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
             {
                 Info << triangulations[row] << endl;
             }
-            
+
             // Should have performed at least one swap
             FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips()") << nl
                 << "Did not perform any 2-3 swaps" << nl
@@ -2155,7 +2176,7 @@ bool dynamicTopoFvMesh::boundaryTriangulation
     if (second == 1)
     {
         isolatedVertex = triangulations[1][index];
-        return true;        
+        return true;
     }
 
     if (third == 1)
@@ -2207,15 +2228,15 @@ void dynamicTopoFvMesh::swap23
         Info << "Isolated vertex: " << isolatedVertex << endl;
     }
 #   endif
-    
+
     label faceForRemoval = hullFaces[isolatedVertex];
     label vertexForRemoval = hullVertices[isolatedVertex];
-    
+
     // Determine the two cells to be removed
     FixedList<label,2> cellsForRemoval;
     cellsForRemoval[0] = owner_[faceForRemoval];
     cellsForRemoval[1] = neighbour_[faceForRemoval];
-    
+
     // Add three new cells to the end of the cell list
     FixedList<label,3> newCellIndex(-1);
     newCellIndex[0] = cells_.append(cell(4));
@@ -2237,7 +2258,7 @@ void dynamicTopoFvMesh::swap23
 
         lengthScale_.append(avgScale);
         lengthScale_.append(avgScale);
-        lengthScale_.append(avgScale);        
+        lengthScale_.append(avgScale);
     }
 
     // Obtain point-ordering for the other vertices
@@ -2525,9 +2546,9 @@ void dynamicTopoFvMesh::swap23
     {
         faceEdges_.append(newFaceEdges[faceI]);
     }
-    
-    // Generate mapping information for the three new cells    
-    
+
+    // Generate mapping information for the three new cells
+
     // Remove the face
     removeFace(faceForRemoval);
 
@@ -2657,7 +2678,7 @@ void dynamicTopoFvMesh::swap32
 
     forAll(facesForRemoval, faceI)
     {
-        facesForRemoval[faceI] 
+        facesForRemoval[faceI]
             = hullFaces[triangulations[faceI][triangulationIndex]];
 
         label own = owner_[facesForRemoval[faceI]];
@@ -2694,13 +2715,13 @@ void dynamicTopoFvMesh::swap32
         {
             avgScale += lengthScale_[cellRemovalList[cellI]];
         }
-        
+
         avgScale /= cellRemovalList.size();
 
         lengthScale_.append(avgScale);
         lengthScale_.append(avgScale);
     }
-    
+
     // Insert a new internal face
     face newTriFace(3);
 
@@ -2729,7 +2750,7 @@ void dynamicTopoFvMesh::swap32
     // New faceEdge entry for the interior face
     label nE = 0;
     labelList& newFaceEdges = faceEdges_[newFaceIndex];
-    
+
     // For 2-2 swaps, two faces are introduced
     FixedList<label,2> nBE(0);
     labelListList bdyFaceEdges(2, labelList(3, -1));
@@ -3068,8 +3089,8 @@ void dynamicTopoFvMesh::reOrderPoints
 )
 {
     // *** Point renumbering *** //
-    // If points were deleted during topology change, the numerical order ceases 
-    // to be continuous. Loop through all points and renumber sequentially. 
+    // If points were deleted during topology change, the numerical order ceases
+    // to be continuous. Loop through all points and renumber sequentially.
     // Possible scope for bandwidth-reduction on the motion-solver.
 
     // Allocate for the mapping information
@@ -3081,7 +3102,7 @@ void dynamicTopoFvMesh::reOrderPoints
 
     HashList<point>::iterator ptIter = meshPoints_.begin();
     HashList<labelList>::iterator peIter;
-    
+
     if (!twoDMesh_)
     {
         peIter = pointEdges_.begin();
@@ -3104,7 +3125,7 @@ void dynamicTopoFvMesh::reOrderPoints
             peIter++;
         }
 
-        // Added points are always numbered after nOldPoints_ 
+        // Added points are always numbered after nOldPoints_
         // (by virtue of the HashList append method)
         if (pIndex < nOldPoints_)
         {
@@ -3311,8 +3332,8 @@ void dynamicTopoFvMesh::reOrderEdges()
 // Reorder faces in upper-triangular order after a topology change
 void dynamicTopoFvMesh::reOrderFaces
 (
-    faceList& faces, 
-    labelList& owner, 
+    faceList& faces,
+    labelList& owner,
     labelList& neighbour
 )
 {
@@ -3330,7 +3351,7 @@ void dynamicTopoFvMesh::reOrderFaces
     labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces,0);
     edgeList oldEdgeToWatch(0);
     labelListList oldFaceEdges(0);
-    
+
     addedFaceRenumbering_.clear();
     Map<label> addedFaceReverseRenumbering;
 
@@ -3587,8 +3608,8 @@ void dynamicTopoFvMesh::reOrderFaces
 
                 // Insert entities into mesh-reset lists
                 faces[faceInOrder] = faceRenumber;
-                owner[faceInOrder] = cellI; 
-                neighbour[faceInOrder] = minNei; 
+                owner[faceInOrder] = cellI;
+                neighbour[faceInOrder] = minNei;
 
                 // Stop the neighbour from being used again
                 neiCells[nextNei] = -1;
@@ -3622,8 +3643,8 @@ void dynamicTopoFvMesh::reOrderFaces
         }
 
         // Renumber owner/neighbour
-        label ownerRenumber =   oldOwner[oldIndex] < nOldCells_ 
-                              ? reverseCellMap_[oldOwner[oldIndex]] 
+        label ownerRenumber =   oldOwner[oldIndex] < nOldCells_
+                              ? reverseCellMap_[oldOwner[oldIndex]]
                               : addedCellRenumbering_[oldOwner[oldIndex]];
 
         // Insert entities into HashLists...
@@ -3683,16 +3704,16 @@ void dynamicTopoFvMesh::reOrderFaces
 void dynamicTopoFvMesh::reOrderCells()
 {
     // *** Cell renumbering *** //
-    // If cells were deleted during topology change, the numerical order ceases 
-    // to be continuous. Also, cells are always added at the end of the list by 
-    // virtue of the HashList append method. Thus, cells would now have to be 
+    // If cells were deleted during topology change, the numerical order ceases
+    // to be continuous. Also, cells are always added at the end of the list by
+    // virtue of the HashList append method. Thus, cells would now have to be
     // reordered so that bandwidth is reduced and renumbered to be sequential.
 
     // Allocate for mapping information
     cellMap_.setSize(nCells_, -1);
 
     label currentCell, cellInOrder = 0, allCells = cells_.lastIndex() + 1;
-    SLList<label> nextCell; 
+    SLList<label> nextCell;
     labelList ncc(allCells, 0);
     labelList visited(allCells, 0);
     labelListList cellCellAddr(allCells);
@@ -3817,7 +3838,7 @@ void dynamicTopoFvMesh::reOrderCells()
     // HashTable keys, however, are not altered.
     forAllIter(Map<objectMap>, cellsFromCells_, cellI)
     {
-        objectMap& thisMap = cellI(); 
+        objectMap& thisMap = cellI();
         if (thisMap.index() < nOldCells_)
         {
             thisMap.index() = reverseCellMap_[thisMap.index()];
@@ -3826,7 +3847,7 @@ void dynamicTopoFvMesh::reOrderCells()
         {
             thisMap.index() = addedCellRenumbering_[thisMap.index()];
         }
-    }   
+    }
 
     if(debug)
     {
@@ -3864,7 +3885,7 @@ void dynamicTopoFvMesh::reOrderMesh
         Info << "Internal Faces: " << nOldInternalFaces_ << endl;
         Info << "Patch Starts: " << oldPatchStarts_ << endl;
         Info << "Patch Sizes: " << oldPatchSizes_ << endl;
-        Info << "=================" << endl;        
+        Info << "=================" << endl;
         Info << "Mesh Info [n+1]:" << endl;
         Info << "Points: " << nPoints_ << endl;
         Info << "Edges: " << nEdges_ << endl;
@@ -4146,7 +4167,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
                             // Scale the length and assign to this cell
                             scalar sLength = sumLength*growthFactor_;
-                            sLength = (sLength < maxLengthScale_) 
+                            sLength = (sLength < maxLengthScale_)
                                     ? sLength : maxLengthScale_;
                             lengthScale[cList[indexI]] = sLength;
                             visitedCells++;
@@ -4159,7 +4180,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
             level++;
         }
 
-        if (debug) 
+        if (debug)
         {
             Info << "Max Length Scale: " << maxLengthScale_ << endl;
             Info << "Length Scale sweeps: " << level << endl;
@@ -4192,7 +4213,7 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
 {
     label bFacePatch = whichPatch(faceIndex);
 
-    // Loop through all fixed length-scale patches, and return the fixed value 
+    // Loop through all fixed length-scale patches, and return the fixed value
     wordList toc = fixedLengthScalePatches_.toc();
     forAll(toc,wordI)
     {
@@ -4210,10 +4231,10 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
 // 2D Edge-swapping engine
 void dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
-    // Recast the argument 
-    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument); 
+    // Recast the argument
+    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
     dynamicTopoFvMesh *mesh = thread->mesh_;
-    
+
     bool found, foundinner;
     label otherPointIndex = -1, nextPoint = -1;
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
@@ -4225,8 +4246,8 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     // Loop through faces assigned to this thread
     HashList<face>::iterator fBegin = thread->faceStart();
     HashList<face>::iterator fEnd   = thread->faceEnd();
-    
-    for(HashList<face>::iterator fIter = fBegin; fIter != fEnd; fIter++) 
+
+    for(HashList<face>::iterator fIter = fBegin; fIter != fEnd; fIter++)
     {
         // Retrieve the index for this iterator
         label findex = fIter.index();
@@ -4268,7 +4289,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
             c1IntIndex
         );
 
-//      if (debug) 
+//      if (debug)
 //      {
 //          Info << "Cell: " << c0 << endl;
 //          Info << "Boundary faces: " << c0BdyIndex[0] << ": " << c0BdyFace[0] << endl;
@@ -4297,13 +4318,13 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
                 if (e1[edgeI] == e2[edgeJ])
                 {
                     // These two faces share an edge, store for posterity
-                    commonFaces[0] = c0BdyFace[0]; 
+                    commonFaces[0] = c0BdyFace[0];
                     commonFaces[1] = c1BdyFace[0];
-                    commonFaces[2] = c0BdyFace[1]; 
+                    commonFaces[2] = c0BdyFace[1];
                     commonFaces[3] = c1BdyFace[1];
-                    commonFaceIndex[0] = c0BdyIndex[0]; 
+                    commonFaceIndex[0] = c0BdyIndex[0];
                     commonFaceIndex[1] = c1BdyIndex[0];
-                    commonFaceIndex[2] = c0BdyIndex[1]; 
+                    commonFaceIndex[2] = c0BdyIndex[1];
                     commonFaceIndex[3] = c1BdyIndex[1];
                     commonEdges[0] = e1[edgeI];
                     forAll(e3,edgeK)
@@ -4325,15 +4346,15 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
         }
         if (!found)
         {
-            // A match was obviously not found before, 
+            // A match was obviously not found before,
             // but we know the common faces now.
-            commonFaces[0] = c0BdyFace[0]; 
+            commonFaces[0] = c0BdyFace[0];
             commonFaces[1] = c1BdyFace[1];
-            commonFaces[2] = c0BdyFace[1]; 
+            commonFaces[2] = c0BdyFace[1];
             commonFaces[3] = c1BdyFace[0];
-            commonFaceIndex[0] = c0BdyIndex[0]; 
+            commonFaceIndex[0] = c0BdyIndex[0];
             commonFaceIndex[1] = c1BdyIndex[1];
-            commonFaceIndex[2] = c0BdyIndex[1]; 
+            commonFaceIndex[2] = c0BdyIndex[1];
             commonFaceIndex[3] = c1BdyIndex[0];
             // Start a new search for common edges
             forAll(e1,edgeI)
@@ -4362,7 +4383,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
             }
         }
 
-        // Construct a circle passing through the three 
+        // Construct a circle passing through the three
         // points of the first face, define its radius
         label zeroIndex  = commonFaces[0][0];
         label oneIndex   = commonFaces[0][1];
@@ -4384,11 +4405,11 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
         scalar radius = (pointZero - center)&(pointZero - center);
 
-        // Find the isolated point on the other face, and the point next to it 
+        // Find the isolated point on the other face, and the point next to it
         mesh->findIsolatedPoint
         (
-            commonFaces[1], 
-            commonEdges[0], 
+            commonFaces[1],
+            commonEdges[0],
             otherPointIndex,
             nextPoint
         );
@@ -4396,9 +4417,9 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
         // ...and determine whether it lies in this circle
         point otherPoint = mesh->meshPoints()[otherPointIndex];
 
-        if 
-        ( 
-            ((otherPoint - center)&(otherPoint - center)) < radius 
+        if
+        (
+            ((otherPoint - center)&(otherPoint - center)) < radius
         )
         {
             mesh->swapQuadFace
@@ -4597,7 +4618,7 @@ void dynamicTopoFvMesh::initEdges()
             edges_[reverseEdgeMap_[edgeI]] = edges[edgeI];
             edgeFaces_[reverseEdgeMap_[edgeI]] = eFaces[edgeI];
         }
-        
+
         // Now that connectivity is constructed, copy and set the output-option
         setEdgeConnectivity();
     }
@@ -4661,15 +4682,15 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     void *argument
 )
 {
-    // Recast the argument 
+    // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
     dynamicTopoFvMesh *mesh = thread->mesh_;
-    
-    // Loop through all quad-faces and bisect/collapse 
+
+    // Loop through all quad-faces and bisect/collapse
     // edges (quad-faces) by the criterion:
     // Bisect when boundary edge-length > ratioMax_*originalLength
     // Collapse when boundary edge-length < ratioMin_*originalLength
-    
+
     // Loop through faces assigned to this thread
     HashList<face>::iterator fIter = thread->faceStart();
     HashList<face>::iterator fEnd = thread->faceEnd();
@@ -4711,7 +4732,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
                     mesh->topoChangeFlag() = true;
 
                     // Move on to the next face
-                    fIter++; 
+                    fIter++;
 
                     // Remove the temporary interior face
                     mesh->removeFace(mesh->bisectInteriorFace());
@@ -5450,7 +5471,7 @@ void dynamicTopoFvMesh::bisectQuadFace
 
     if (debug)
     {
-        Info << nl << nl << "Face: " << findex 
+        Info << nl << nl << "Face: " << findex
              << ": " << thisFace << " is to be bisected. " << endl;
         Info << "Cell[0]: " << c0 << ": " << cell_0 << endl;
         forAll(cell_0, faceI)
@@ -5467,17 +5488,17 @@ void dynamicTopoFvMesh::bisectQuadFace
     // Find the isolated point on both boundary faces of cell[0]
     findIsolatedPoint
     (
-        c0BdyFace[0], 
-        commonEdges[0], 
-        otherPointIndex[0], 
+        c0BdyFace[0],
+        commonEdges[0],
+        otherPointIndex[0],
         nextToOtherPoint[0]
     );
-    
+
     findIsolatedPoint
     (
-        c0BdyFace[1], 
-        commonEdges[1], 
-        otherPointIndex[1], 
+        c0BdyFace[1],
+        commonEdges[1],
+        otherPointIndex[1],
         nextToOtherPoint[1]
     );
 
@@ -5486,20 +5507,20 @@ void dynamicTopoFvMesh::bisectQuadFace
                         (
                             0.5*
                             (
-                                meshPoints_[commonEdges[0][0]] 
+                                meshPoints_[commonEdges[0][0]]
                               + meshPoints_[commonEdges[0][1]]
                             )
                         );
-    
+
     label newPtIndex1 = meshPoints_.append
                         (
                             0.5*
                             (
-                                meshPoints_[commonEdges[1][0]] 
+                                meshPoints_[commonEdges[1][0]]
                               + meshPoints_[commonEdges[1][1]]
                             )
                         );
-    nPoints_ += 2; 
+    nPoints_ += 2;
 
     // Add a new prism cell to the end of the list
     label newCellIndex0 = cells_.append(cell(5));
@@ -5518,7 +5539,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     {
         firstParent = cellParents_[c0];
     }
-    
+
     // Insert the parent cell
     cellParents_.insert(newCellIndex0,firstParent);
 
@@ -5548,18 +5569,18 @@ void dynamicTopoFvMesh::bisectQuadFace
     lengthScale_.append(lengthScale_[c0]);
 
     // Modify the two existing triangle boundary faces
-    
+
     // Zeroth boundary face - Owner = c[0] & Neighbour [-1] (unchanged)
     face& BdyFace0 = faces_[c0BdyIndex[0]];
     BdyFace0[0] = otherPointIndex[0];
     BdyFace0[1] = nextToOtherPoint[0];
     BdyFace0[2] = newPtIndex0;
-    
+
     // First boundary face - Owner = newCell[0], Neighbour = -1
     face& BdyFace1 = faces_[c0BdyIndex[1]];
     BdyFace1[0] = otherPointIndex[1];
     BdyFace1[1] = nextToOtherPoint[1];
-    BdyFace1[2] = newPtIndex1; 
+    BdyFace1[2] = newPtIndex1;
     owner_[c0BdyIndex[1]] = newCellIndex0;
     replaceLabel(c0BdyIndex[1],-1,cell_0);
 
@@ -5569,18 +5590,18 @@ void dynamicTopoFvMesh::bisectQuadFace
     {
         if (eThis[edgeI] != commonEdges[0] && eThis[edgeI] != commonEdges[1])
         {
-            if 
+            if
             (
-                eThis[edgeI][0] == nextToOtherPoint[0] 
+                eThis[edgeI][0] == nextToOtherPoint[0]
              || eThis[edgeI][1] == nextToOtherPoint[0]
             )
             {
                 firstEdge = eThis[edgeI];
             }
-            
-            if 
+
+            if
             (
-                eThis[edgeI][0] == nextToOtherPoint[1] 
+                eThis[edgeI][0] == nextToOtherPoint[1]
              || eThis[edgeI][1] == nextToOtherPoint[1]
             )
             {
@@ -5592,15 +5613,15 @@ void dynamicTopoFvMesh::bisectQuadFace
     // Modify point-labels on the quad face under consideration
     replaceLabel
     (
-        commonEdges[0].otherVertex(nextToOtherPoint[0]), 
-        newPtIndex0, 
+        commonEdges[0].otherVertex(nextToOtherPoint[0]),
+        newPtIndex0,
         thisFace
     );
-    
+
     replaceLabel
     (
-        nextToOtherPoint[1], 
-        newPtIndex1, 
+        nextToOtherPoint[1],
+        newPtIndex1,
         thisFace
     );
 
@@ -5609,7 +5630,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     tmpEdge[1] = newPtIndex0;
     edgeToWatch_[findex] = tmpEdge;
 
-    if (debug) 
+    if (debug)
     {
         Info << "Modified thisFace: " << findex << ": " << thisFace << endl;
     }
@@ -5675,10 +5696,10 @@ void dynamicTopoFvMesh::bisectQuadFace
     edgeToWatch[1] = newPtIndex0;
     newFaceIndex = insertFace
                    (
-                       -1, 
-                       tmpQuadFace, 
-                       c0, 
-                       newCellIndex0, 
+                       -1,
+                       tmpQuadFace,
+                       c0,
+                       newCellIndex0,
                        edgeToWatch
                    );
     replaceLabel(-1, newFaceIndex, newCell0);
@@ -5694,32 +5715,32 @@ void dynamicTopoFvMesh::bisectQuadFace
     edgeToWatch[0] = edgeToWatch[1] = 0;
     newFaceIndex = insertFace
                    (
-                       whichPatch(c0BdyIndex[0]), 
-                       tmpTriFace, 
-                       newCellIndex0, 
-                       -1, 
+                       whichPatch(c0BdyIndex[0]),
+                       tmpTriFace,
+                       newCellIndex0,
+                       -1,
                        edgeToWatch
                    );
     replaceLabel(-1, newFaceIndex, newCell0);
 
-    // Third boundary face; Owner = c[0] & Neighbour = [-1] 
+    // Third boundary face; Owner = c[0] & Neighbour = [-1]
     tmpTriFace[0] = otherPointIndex[1];
     tmpTriFace[1] = newPtIndex1;
     tmpTriFace[2] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
     edgeToWatch[0] = edgeToWatch[1] = 0;
     newFaceIndex = insertFace
                    (
-                       whichPatch(c0BdyIndex[1]), 
-                       tmpTriFace, 
-                       c0, 
-                       -1, 
+                       whichPatch(c0BdyIndex[1]),
+                       tmpTriFace,
+                       c0,
+                       -1,
                        edgeToWatch
                    );
     replaceLabel(-1, newFaceIndex, cell_0);
 
     if (c1 == -1)
     {
-        // The quad boundary face resulting from bisection; 
+        // The quad boundary face resulting from bisection;
         // Owner = newCell[0] & Neighbour = [-1]
         tmpQuadFace[0] = newPtIndex1;
         tmpQuadFace[1] = nextToOtherPoint[1];
@@ -5729,10 +5750,10 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[1] = nextToOtherPoint[1];
         newFaceIndex = insertFace
                        (
-                           whichPatch(findex), 
-                           tmpQuadFace, 
-                           newCellIndex0, 
-                           -1, 
+                           whichPatch(findex),
+                           tmpQuadFace,
+                           newCellIndex0,
+                           -1,
                            edgeToWatch
                        );
         replaceLabel(-1, newFaceIndex, newCell0);
@@ -5742,13 +5763,13 @@ void dynamicTopoFvMesh::bisectQuadFace
             Info << "Modified Cell[0]: " << c0 << ": " << cell_0 << endl;
             forAll(cell_0, faceI)
             {
-                Info << cell_0[faceI] 
+                Info << cell_0[faceI]
                      << ": " << faces_[cell_0[faceI]] << endl;
             }
             Info << "New Cell[0]: " << newCellIndex0 << ": " << newCell0 << endl;
             forAll(newCell0, faceI)
             {
-                Info << newCell0[faceI] 
+                Info << newCell0[faceI]
                      << ": " << faces_[newCell0[faceI]] << endl;
             }
         }
@@ -5760,11 +5781,11 @@ void dynamicTopoFvMesh::bisectQuadFace
         // Find the prism faces for cell[1].
         findPrismFaces
         (
-            findex, 
-            cell_1, 
-            c1BdyFace, 
-            c1BdyIndex, 
-            c1IntFace, 
+            findex,
+            cell_1,
+            c1BdyFace,
+            c1BdyIndex,
+            c1IntFace,
             c1IntIndex
         );
 
@@ -5784,9 +5805,9 @@ void dynamicTopoFvMesh::bisectQuadFace
         {
             secondParent = cellParents_[c1];
         }
-        
+
         // Insert the parent cell
-        cellParents_.insert(newCellIndex1,secondParent);        
+        cellParents_.insert(newCellIndex1,secondParent);
 
         // Find the cell's neighbours in the old mesh
         c1MasterObjects.insert(secondParent);
@@ -5864,7 +5885,7 @@ void dynamicTopoFvMesh::bisectQuadFace
         // Define attributes for the new prism cell
         newCell1[0] = replaceFace;
 
-        // The interior face resulting from bisection; 
+        // The interior face resulting from bisection;
         // Owner = newCell[0] & Neighbour = newCell[1]
         tmpQuadFace[0] = newPtIndex1;
         tmpQuadFace[1] = nextToOtherPoint[1];
@@ -5874,10 +5895,10 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[1] = nextToOtherPoint[1];
         newFaceIndex = insertFace
                        (
-                           -1, 
-                           tmpQuadFace, 
-                           newCellIndex0, 
-                           newCellIndex1, 
+                           -1,
+                           tmpQuadFace,
+                           newCellIndex0,
+                           newCellIndex1,
                            edgeToWatch
                        );
         replaceLabel(-1, newFaceIndex, newCell0);
@@ -5890,20 +5911,20 @@ void dynamicTopoFvMesh::bisectQuadFace
         if(findCommonEdge(c1BdyFace[0],c0BdyFace[0],commonEdges[0]))
         {
             findCommonEdge(c1BdyFace[1],c0BdyFace[1],commonEdges[1]);
-            
+
             findIsolatedPoint
             (
-                c1BdyFace[0], 
-                commonEdges[0], 
-                otherPointIndex[2], 
+                c1BdyFace[0],
+                commonEdges[0],
+                otherPointIndex[2],
                 nextToOtherPoint[2]
             );
-            
+
             findIsolatedPoint
             (
-                c1BdyFace[1], 
-                commonEdges[1], 
-                otherPointIndex[3], 
+                c1BdyFace[1],
+                commonEdges[1],
+                otherPointIndex[3],
                 nextToOtherPoint[3]
             );
 
@@ -5922,7 +5943,7 @@ void dynamicTopoFvMesh::bisectQuadFace
             BdyFace3[0] = otherPointIndex[3];
             BdyFace3[1] = nextToOtherPoint[3];
             BdyFace3[2] = newPtIndex1;
-            
+
             // Obtain patch info
             patch_0 = whichPatch(c1BdyIndex[0]);
             patch_1 = whichPatch(c1BdyIndex[1]);
@@ -5931,20 +5952,20 @@ void dynamicTopoFvMesh::bisectQuadFace
         {
             findCommonEdge(c1BdyFace[0],c0BdyFace[1],commonEdges[1]);
             findCommonEdge(c1BdyFace[1],c0BdyFace[0],commonEdges[0]);
-            
+
             findIsolatedPoint
             (
-                c1BdyFace[0], 
-                commonEdges[1], 
-                otherPointIndex[3], 
+                c1BdyFace[0],
+                commonEdges[1],
+                otherPointIndex[3],
                 nextToOtherPoint[3]
             );
-            
+
             findIsolatedPoint
             (
-                c1BdyFace[1], 
-                commonEdges[0], 
-                otherPointIndex[2], 
+                c1BdyFace[1],
+                commonEdges[0],
+                otherPointIndex[2],
                 nextToOtherPoint[2]
             );
 
@@ -5963,10 +5984,10 @@ void dynamicTopoFvMesh::bisectQuadFace
             BdyFace3[0] = otherPointIndex[3];
             BdyFace3[1] = nextToOtherPoint[3];
             BdyFace3[2] = newPtIndex1;
-            
+
             // Obtain patch info
             patch_0 = whichPatch(c1BdyIndex[1]);
-            patch_1 = whichPatch(c1BdyIndex[0]);            
+            patch_1 = whichPatch(c1BdyIndex[0]);
         }
 
         // New interior face; Owner = cell[1] & Neighbour = newCell[1]
@@ -5978,10 +5999,10 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[1] = otherPointIndex[3];
         newFaceIndex = insertFace
                        (
-                           -1, 
-                           tmpQuadFace, 
-                           c1, 
-                           newCellIndex1, 
+                           -1,
+                           tmpQuadFace,
+                           c1,
+                           newCellIndex1,
                            edgeToWatch
                        );
         replaceLabel(-1, newFaceIndex, newCell1);
@@ -5994,25 +6015,25 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[0] = edgeToWatch[1] = 0;
         newFaceIndex = insertFace
                        (
-                           patch_0, 
-                           tmpTriFace, 
-                           c1, 
-                           -1, 
+                           patch_0,
+                           tmpTriFace,
+                           c1,
+                           -1,
                            edgeToWatch
                        );
         replaceLabel(-1, newFaceIndex, cell_1);
 
-        // Third boundary face; Owner = newCell[1] & Neighbour [-1] 
+        // Third boundary face; Owner = newCell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[3];
         tmpTriFace[1] = newPtIndex1;
         tmpTriFace[2] = commonEdges[1].otherVertex(nextToOtherPoint[3]);
         edgeToWatch[0] = edgeToWatch[1] = 0;
         newFaceIndex = insertFace
                        (
-                           patch_1, 
-                           tmpTriFace, 
-                           newCellIndex1, 
-                           -1, 
+                           patch_1,
+                           tmpTriFace,
+                           newCellIndex1,
+                           -1,
                            edgeToWatch
                        );
         replaceLabel(-1, newFaceIndex, newCell1);
@@ -6022,28 +6043,28 @@ void dynamicTopoFvMesh::bisectQuadFace
             Info << nl << "Modified Cell[0]: " << c0 << ": " << cell_0 << endl;
             forAll(cell_0, faceI)
             {
-                Info << cell_0[faceI] 
+                Info << cell_0[faceI]
                      << ": " << faces_[cell_0[faceI]] << endl;
             }
-            
+
             Info << "New Cell[0]: " << newCellIndex0 << ": " << newCell0 << endl;
             forAll(newCell0, faceI)
             {
-                Info << newCell0[faceI] << ": " 
+                Info << newCell0[faceI] << ": "
                      << faces_[newCell0[faceI]] << endl;
             }
-            
+
             Info << nl << "Modified Cell[1]: " << c1 << ": " << cell_1 << endl;
             forAll(cell_1, faceI)
             {
-                Info << cell_1[faceI] << ": " 
+                Info << cell_1[faceI] << ": "
                      << faces_[cell_1[faceI]] << endl;
             }
-            
+
             Info << "New Cell[1]: " << newCellIndex1 << ": " << newCell1 << endl;
             forAll(newCell1, faceI)
             {
-                Info << newCell1[faceI] << ": " 
+                Info << newCell1[faceI] << ": "
                      << faces_[newCell1[faceI]] << endl;
             }
         }
@@ -6051,7 +6072,7 @@ void dynamicTopoFvMesh::bisectQuadFace
 
     // Update the number of cells
     nCells_++;
-    if (c1 != -1) nCells_++;   
+    if (c1 != -1) nCells_++;
 }
 
 // Method for the collapse of a quad-face in 2D
@@ -6063,10 +6084,10 @@ bool dynamicTopoFvMesh::collapseQuadFace
 )
 {
     // This face is to be collapsed...
-    if (debug) 
+    if (debug)
     {
-        Info << nl << nl 
-             << "Face: " << findex << ": " << thisFace 
+        Info << nl << nl
+             << "Face: " << findex << ": " << thisFace
              << " is to be collapsed. " << endl;
     }
 
@@ -6081,25 +6102,25 @@ bool dynamicTopoFvMesh::collapseQuadFace
     edgeList thisEdges = thisFace.edges();
     forAll(thisEdges,edgeI)
     {
-        if 
-        ( 
+        if
+        (
             (
-                checkEdge[0] == thisEdges[edgeI][0] 
+                checkEdge[0] == thisEdges[edgeI][0]
              || checkEdge[0] == thisEdges[edgeI][1]
             )
-         && !(checkEdge == thisEdges[edgeI]) 
+         && !(checkEdge == thisEdges[edgeI])
         )
         {
             firstEdge = thisEdges[edgeI];
         }
         else
-        if 
-        ( 
+        if
+        (
             (
-                checkEdge[1] == thisEdges[edgeI][0] 
+                checkEdge[1] == thisEdges[edgeI][0]
              || checkEdge[1] == thisEdges[edgeI][1]
             )
-         && !(checkEdge == thisEdges[edgeI]) 
+         && !(checkEdge == thisEdges[edgeI])
         )
         {
             secondEdge = thisEdges[edgeI];
@@ -6118,80 +6139,80 @@ bool dynamicTopoFvMesh::collapseQuadFace
     DynamicList<label> firstCells(10),    secondCells(10);
     DynamicList<label> firstTriFaces(10), secondTriFaces(10);
     DynamicList<label> firstEdgePatches(2), secondEdgePatches(2);
-    
+
     bool firstEdgeBoundary  = constructPrismHull
                               (
-                                  firstEdge, 
-                                  findex, 
-                                  firstEdgeHull, 
-                                  firstCells, 
-                                  firstTriFaces, 
+                                  firstEdge,
+                                  findex,
+                                  firstEdgeHull,
+                                  firstCells,
+                                  firstTriFaces,
                                   firstEdgePatches,
                                   true
                               );
 
     bool secondEdgeBoundary = constructPrismHull
                               (
-                                  secondEdge, 
-                                  findex, 
-                                  secondEdgeHull, 
-                                  secondCells, 
-                                  secondTriFaces, 
+                                  secondEdge,
+                                  findex,
+                                  secondEdgeHull,
+                                  secondCells,
+                                  secondTriFaces,
                                   secondEdgePatches,
                                   true
                               );
 
     if (debug)
     {
-        Info << endl;        
+        Info << endl;
         Info << "-------------------------" << endl;
         Info << "Hulls before modification" << endl;
         Info << "-------------------------" << endl;
-        
-        Info << nl << "Cells belonging to first Edge Hull: " 
+
+        Info << nl << "Cells belonging to first Edge Hull: "
              << firstCells << endl;
-        
+
         forAll(firstCells,cellI)
         {
             cell &firstCurCell = cells_[firstCells[cellI]];
-            Info << "Cell: " << firstCells[cellI] 
+            Info << "Cell: " << firstCells[cellI]
                  << ": " << firstCurCell << endl;
             forAll(firstCurCell,faceI)
             {
-                Info << firstCurCell[faceI] 
+                Info << firstCurCell[faceI]
                      << ": " << faces_[firstCurCell[faceI]] << endl;
             }
         }
-        
+
         Info << nl << "First Edge Hull: " << firstEdgeHull << endl;
         forAll(firstEdgeHull,indexI)
         {
-            Info << firstEdgeHull[indexI] 
+            Info << firstEdgeHull[indexI]
                  << ": " << faces_[firstEdgeHull[indexI]] << endl;
         }
-        
-        Info << nl << "Cells belonging to second Edge Hull: " 
+
+        Info << nl << "Cells belonging to second Edge Hull: "
              << secondCells << endl;
-        
+
         forAll(secondCells, cellI)
         {
             cell &secondCurCell = cells_[secondCells[cellI]];
-            Info << "Cell: " << secondCells[cellI] 
+            Info << "Cell: " << secondCells[cellI]
                  << ": " << secondCurCell << endl;
             forAll(secondCurCell, faceI)
             {
-                Info << secondCurCell[faceI] 
+                Info << secondCurCell[faceI]
                      << ": " << faces_[secondCurCell[faceI]] << endl;
             }
         }
-        
+
         Info << nl << "Second Edge Hull: " << secondEdgeHull << endl;
         forAll(secondEdgeHull, indexI)
         {
-            Info << secondEdgeHull[indexI] 
+            Info << secondEdgeHull[indexI]
                  << ": " << faces_[secondEdgeHull[indexI]] << endl;
         }
-    } 
+    }
 
     // Determine the common vertices for the first and second edges
     label cv0 = firstEdge.commonVertex(checkEdge);
@@ -6204,15 +6225,15 @@ bool dynamicTopoFvMesh::collapseQuadFace
 
     // Find the prism-faces
     FixedList<label,2> faceToKeep(0), faceToThrow(0);
-    
+
     cell &cell_0 = cells_[c0];
     findPrismFaces
     (
-        findex, 
-        cell_0, 
-        c0BdyFace, 
-        c0BdyIndex, 
-        c0IntFace, 
+        findex,
+        cell_0,
+        c0BdyFace,
+        c0BdyIndex,
+        c0IntFace,
         c0IntIndex
     );
 
@@ -6221,15 +6242,15 @@ bool dynamicTopoFvMesh::collapseQuadFace
         cell &cell_1 = cells_[c1];
         findPrismFaces
         (
-            findex, 
-            cell_1, 
-            c1BdyFace, 
-            c1BdyIndex, 
-            c1IntFace, 
+            findex,
+            cell_1,
+            c1BdyFace,
+            c1BdyIndex,
+            c1IntFace,
             c1IntIndex
         );
     }
-    
+
     // Collapse preferentially towards a symmetryPlane.
     if (firstEdgeBoundary && secondEdgeBoundary)
     {
@@ -6241,41 +6262,41 @@ bool dynamicTopoFvMesh::collapseQuadFace
             << "Algorithm will look for a symmetryPlane and collapse "
             << "the face preferentially towards it.\n"
             << "Face: " << findex << ": " << thisFace << endl;
-        
+
         forAll(firstEdgePatches, patchI)
         {
-            if 
+            if
             (
-                boundaryMesh()[firstEdgePatches[patchI]].type() 
+                boundaryMesh()[firstEdgePatches[patchI]].type()
                 == "symmetryPlane"
             )
             {
                 secondEdgeBoundary = false;
             }
         }
-        
+
         if (secondEdgeBoundary)
         {
             forAll(secondEdgePatches, patchI)
             {
-                if 
+                if
                 (
-                    boundaryMesh()[secondEdgePatches[patchI]].type() 
+                    boundaryMesh()[secondEdgePatches[patchI]].type()
                     == "symmetryPlane"
                 )
                 {
                     firstEdgeBoundary = false;
-                }        
+                }
             }
         }
-    }    
+    }
 
     if (!firstEdgeBoundary && secondEdgeBoundary)
     {
-        // Check whether the collapse is possible. 
+        // Check whether the collapse is possible.
         forAll(firstTriFaces, indexI)
         {
-            if 
+            if
             (
                 (firstTriFaces[indexI] == c0BdyIndex[0])
              || (firstTriFaces[indexI] == c0BdyIndex[1])
@@ -6284,9 +6305,9 @@ bool dynamicTopoFvMesh::collapseQuadFace
                 continue;
             }
 
-            if (c1 != -1) 
+            if (c1 != -1)
             {
-                if 
+                if
                 (
                     (firstTriFaces[indexI] == c1BdyIndex[0])
                  || (firstTriFaces[indexI] == c1BdyIndex[1])
@@ -6313,9 +6334,9 @@ bool dynamicTopoFvMesh::collapseQuadFace
             // Compute the area and check if it's zero/negative
             scalar origArea = triFaceArea(triFace);
             scalar newArea  = triFaceArea(tmpTriFace);
-            if 
+            if
             (
-                (Foam::sign(origArea) != Foam::sign(newArea)) 
+                (Foam::sign(origArea) != Foam::sign(newArea))
              || (mag(newArea) < VSMALL)
             )
             {
@@ -6377,11 +6398,11 @@ bool dynamicTopoFvMesh::collapseQuadFace
                 {
                     forAll(faceToCheck,pointI)
                     {
-                        if (faceToCheck[pointI] == cv0) 
+                        if (faceToCheck[pointI] == cv0)
                         {
                             faceToCheck[pointI] = cv2;
                         }
-                        if (faceToCheck[pointI] == cv1) 
+                        if (faceToCheck[pointI] == cv1)
                         {
                             faceToCheck[pointI] = cv3;
                         }
@@ -6394,7 +6415,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         meshPoints_.remove(cv0);
         meshPoints_.remove(cv1);
         nPoints_ -= 2;
-        
+
         // Update the reverse point map
         if (cv0 < nOldPoints_) reversePointMap_[cv0] = -1;
         if (cv1 < nOldPoints_) reversePointMap_[cv1] = -1;
@@ -6404,7 +6425,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         // Check whether the collapse is possible.
         forAll(secondTriFaces, indexI)
         {
-            if 
+            if
             (
                 (secondTriFaces[indexI] == c0BdyIndex[0])
              || (secondTriFaces[indexI] == c0BdyIndex[1])
@@ -6415,7 +6436,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
 
             if (c1 != -1)
             {
-                if 
+                if
                 (
                     (secondTriFaces[indexI] == c1BdyIndex[0])
                  || (secondTriFaces[indexI] == c1BdyIndex[1])
@@ -6438,13 +6459,13 @@ bool dynamicTopoFvMesh::collapseQuadFace
                     tmpTriFace[pointI] = cv1;
                 }
             }
-            
+
             // Compute the area and check if it's zero/negative
             scalar origArea = triFaceArea(triFace);
             scalar newArea  = triFaceArea(tmpTriFace);
-            if 
+            if
             (
-                (Foam::sign(origArea) != Foam::sign(newArea)) 
+                (Foam::sign(origArea) != Foam::sign(newArea))
              || (mag(newArea) < VSMALL)
             )
             {
@@ -6505,11 +6526,11 @@ bool dynamicTopoFvMesh::collapseQuadFace
                 {
                     forAll(faceToCheck, pointI)
                     {
-                        if (faceToCheck[pointI] == cv2) 
+                        if (faceToCheck[pointI] == cv2)
                         {
                             faceToCheck[pointI] = cv0;
                         }
-                        if (faceToCheck[pointI] == cv3) 
+                        if (faceToCheck[pointI] == cv3)
                         {
                             faceToCheck[pointI] = cv1;
                         }
@@ -6534,40 +6555,40 @@ bool dynamicTopoFvMesh::collapseQuadFace
         Info << "------------------------" << endl;
         Info << "Hulls after modification" << endl;
         Info << "------------------------" << endl;
-        
-        Info << nl << "Cells belonging to first Edge Hull: " 
+
+        Info << nl << "Cells belonging to first Edge Hull: "
              << firstCells << endl;
-        
+
         forAll(firstCells, cellI)
         {
             cell &firstCurCell = cells_[firstCells[cellI]];
-            Info << "Cell: " << firstCells[cellI] 
+            Info << "Cell: " << firstCells[cellI]
                  << ": " << firstCurCell << endl;
             forAll(firstCurCell, faceI)
             {
-                Info << firstCurCell[faceI] 
+                Info << firstCurCell[faceI]
                      << ": " << faces_[firstCurCell[faceI]] << endl;
             }
         }
-        
+
         Info << nl << "First Edge Hull: " << firstEdgeHull << endl;
         forAll(firstEdgeHull, indexI)
         {
-            Info << firstEdgeHull[indexI] 
+            Info << firstEdgeHull[indexI]
                  << ": " << faces_[firstEdgeHull[indexI]] << endl;
         }
-        
-        Info << nl << "Cells belonging to second Edge Hull: " 
+
+        Info << nl << "Cells belonging to second Edge Hull: "
              << secondCells << endl;
-        
+
         forAll(secondCells, cellI)
         {
             cell &secondCurCell = cells_[secondCells[cellI]];
-            Info << "Cell: " << secondCells[cellI] 
+            Info << "Cell: " << secondCells[cellI]
                  << ": " << secondCurCell << endl;
             forAll(secondCurCell, faceI)
             {
-                Info << secondCurCell[faceI] 
+                Info << secondCurCell[faceI]
                      << ": " << faces_[secondCurCell[faceI]] << endl;
             }
         }
@@ -6575,32 +6596,32 @@ bool dynamicTopoFvMesh::collapseQuadFace
         Info << nl << "Second Edge Hull: " << secondEdgeHull << endl;
         forAll(secondEdgeHull, indexI)
         {
-            Info << secondEdgeHull[indexI] 
+            Info << secondEdgeHull[indexI]
                  << ": " << faces_[secondEdgeHull[indexI]] << endl;
         }
 
         Info << endl;
-        Info << "Retained face: " 
-             << faceToKeep[0] << ": " 
-             << " owner: " << owner_[faceToKeep[0]] 
-             << " neighbour: " << neighbour_[faceToKeep[0]] 
+        Info << "Retained face: "
+             << faceToKeep[0] << ": "
+             << " owner: " << owner_[faceToKeep[0]]
+             << " neighbour: " << neighbour_[faceToKeep[0]]
              << endl;
         Info << "Discarded face: "
              << faceToThrow[0] << ": "
-             << " owner: " << owner_[faceToThrow[0]] 
-             << " neighbour: " << neighbour_[faceToThrow[0]] 
+             << " owner: " << owner_[faceToThrow[0]]
+             << " neighbour: " << neighbour_[faceToThrow[0]]
              << endl;
         if (c1 != -1)
         {
             Info << "Retained face: "
                  << faceToKeep[1] << ": "
-                 << " owner: " << owner_[faceToKeep[1]] 
+                 << " owner: " << owner_[faceToKeep[1]]
                  << " neighbour: " << neighbour_[faceToKeep[1]]
                  << endl;
             Info << "Discarded face: "
                  << faceToThrow[1] << ": "
-                 << " owner: " << owner_[faceToThrow[1]] 
-                 << " neighbour: " << neighbour_[faceToThrow[1]] 
+                 << " owner: " << owner_[faceToThrow[1]]
+                 << " neighbour: " << neighbour_[faceToThrow[1]]
                  << endl;
         }
     }
@@ -6612,7 +6633,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         cellCheck[0] = neighbour_[faceToThrow[0]];
         if (owner_[faceToKeep[0]] == c0)
         {
-            if 
+            if
             (
                 (neighbour_[faceToThrow[0]] > neighbour_[faceToKeep[0]])
              && (neighbour_[faceToKeep[0]] != -1)
@@ -6667,11 +6688,11 @@ bool dynamicTopoFvMesh::collapseQuadFace
             cellCheck[1] = neighbour_[faceToThrow[1]];
             if (owner_[faceToKeep[1]] == c1)
             {
-                if 
+                if
                 (
                     (neighbour_[faceToThrow[1]] > neighbour_[faceToKeep[1]])
                  && (neighbour_[faceToKeep[1]] != -1)
-                ) 
+                )
                 {
                     // This face is to be flipped
                     faces_[faceToKeep[1]] = faces_[faceToKeep[1]].reverseFace();
@@ -6721,11 +6742,11 @@ bool dynamicTopoFvMesh::collapseQuadFace
     {
         removeFace(faceToKeep[0]);
     }
-    else 
-    if 
+    else
+    if
     (
-        (neighbour_[faceToKeep[0]] == -1) 
-     && (faceToKeep[0] < nInternalFaces_)
+        (neighbour_[faceToKeep[0]] == -1)
+     && (whichPatch(faceToKeep[0]) < 0)
     )
     {
         // This face is being converted from interior to boundary. Remove
@@ -6741,16 +6762,16 @@ bool dynamicTopoFvMesh::collapseQuadFace
 
         replaceLabel
         (
-            faceToKeep[0], 
-            newFaceIndex0, 
+            faceToKeep[0],
+            newFaceIndex0,
             cells_[owner_[faceToKeep[0]]]
         );
 
         // Renumber the neighbour so that this face is removed correctly.
         neighbour_[faceToKeep[0]] = 0;
-        removeFace(faceToKeep[0]);        
-    }    
-    
+        removeFace(faceToKeep[0]);
+    }
+
     // Remove the unwanted faces in the cell(s) adjacent to this face,
     // and correct the cells that contain discarded faces
     forAll(cell_0,faceI)
@@ -6766,7 +6787,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
     {
         replaceLabel(faceToThrow[0], faceToKeep[0], cells_[cellCheck[0]]);
     }
-    
+
     // Update the number of cells, and the reverse map
     nCells_--;
     if (c0 < nOldCells_)
@@ -6786,11 +6807,11 @@ bool dynamicTopoFvMesh::collapseQuadFace
         if (owner_[faceToKeep[1]] == -1)
         {
             removeFace(faceToKeep[1]);
-        }      
-        else 
-        if 
+        }
+        else
+        if
         (
-            (neighbour_[faceToKeep[1]] == -1) 
+            (neighbour_[faceToKeep[1]] == -1)
          && (faceToKeep[1] < nInternalFaces_)
         )
         {
@@ -6807,16 +6828,16 @@ bool dynamicTopoFvMesh::collapseQuadFace
 
             replaceLabel
             (
-                faceToKeep[1], 
-                newFaceIndex1, 
+                faceToKeep[1],
+                newFaceIndex1,
                 cells_[owner_[faceToKeep[1]]]
             );
 
             // Renumber the neighbour so that this face is removed correctly.
-            neighbour_[faceToKeep[1]] = 0;            
-            removeFace(faceToKeep[1]);        
-        }         
-        
+            neighbour_[faceToKeep[1]] = 0;
+            removeFace(faceToKeep[1]);
+        }
+
         cell &cell_1 = cells_[c1];
         forAll(cell_1, faceI)
         {
@@ -6828,9 +6849,9 @@ bool dynamicTopoFvMesh::collapseQuadFace
         cells_.remove(c1);
         lengthScale_.remove(c1);
         if (cellCheck[1] != -1)
-        {        
+        {
             replaceLabel(faceToThrow[1], faceToKeep[1], cells_[cellCheck[1]]);
-        }        
+        }
 
         // Update the number of cells, and the reverse map
         nCells_--;
@@ -6843,7 +6864,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         if (cellsFromCells_.found(c1))
         {
             cellsFromCells_.erase(c1);
-        }        
+        }
     }
 
     // Return a successful collapse
@@ -6912,9 +6933,9 @@ void dynamicTopoFvMesh::bisectEdge
     pointEdges_.append(labelList(0));
 
     nPoints_++;
-    
+
     // Add a new edge to the end of the list
-    label newEdgeIndex = 
+    label newEdgeIndex =
         insertEdge
         (
             whichEdgePatch(eIndex),
@@ -6926,10 +6947,10 @@ void dynamicTopoFvMesh::bisectEdge
     // of the modified point, and add it to the new point
     sizeDownList(eIndex, pointEdges_[thisEdge[1]]);
     sizeUpList(eIndex, pointEdges_[newPointIndex]);
-    
+
     // Modify the existing edge
     thisEdge[1] = newPointIndex;
-    
+
     // Obtain new references
     edge& newEdge = edges_[newEdgeIndex];
     labelList& newEdgeFaces = edgeFaces_[newEdgeIndex];
@@ -7052,7 +7073,7 @@ void dynamicTopoFvMesh::bisectEdge
                                 rFaceEdges[edgeI];
                         }
                     }
-                    
+
                     // Replace face labels
                     replaceLabel
                     (
@@ -7060,7 +7081,7 @@ void dynamicTopoFvMesh::bisectEdge
                         addedIntFaceIndices[indexI],
                         currCell
                     );
-                    
+
                     // Add to the new cell
                     newCell[1] = replaceFace;
 
@@ -7085,7 +7106,7 @@ void dynamicTopoFvMesh::bisectEdge
                         addedCellIndices[indexI],
                         -1
                     );
-                
+
                 // Configure edgeFaces
                 tmpEdgeFaces[0] = faceHull[indexI];
                 tmpEdgeFaces[1] = addedIntFaceIndices[indexI];
@@ -7236,7 +7257,7 @@ void dynamicTopoFvMesh::bisectEdge
 
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[indexI] = addedFaceIndices[indexI];
-                
+
                 // Add an entry for this cell
                 newCell[2] = addedFaceIndices[indexI];
 
@@ -7521,12 +7542,13 @@ bool dynamicTopoFvMesh::collapseEdge
     //      The edge will be removed later by edgeBisectCollapse3D
 
     bool found = false;
+    label replaceIndex = -1;
     edge& thisEdge = edges_[eIndex];
     FixedList<bool,2> edgeBoundary(false);
 
     if (debug)
     {
-        Info << nl << nl << "Edge: " << eIndex 
+        Info << nl << nl << "Edge: " << eIndex
              << ": " << thisEdge << " is to be collapsed. " << endl;
     }
 
@@ -7626,29 +7648,50 @@ bool dynamicTopoFvMesh::collapseEdge
         Info << "replacePoint: " << replacePoint << endl;
         Info << "collapsePoint: " << collapsePoint << endl;
         Info << "hullEdgesAndFaces (removed faces): " << endl;
+
         forAll(hullEdgesAndFaces[removeFaceIndex], faceI)
         {
-            Info << hullEdgesAndFaces[removeFaceIndex][faceI] << ": "
-                 << faces_[hullEdgesAndFaces[removeFaceIndex][faceI]] << endl;
+            label fIndex = hullEdgesAndFaces[removeFaceIndex][faceI];
+
+            if (fIndex != -1)
+            {
+                Info << fIndex << ": " << faces_[fIndex] << endl;
+            }
         }
+
         Info << "hullEdgesAndFaces (removed edges): " << endl;
         forAll(hullEdgesAndFaces[removeEdgeIndex], edgeI)
         {
-            Info << hullEdgesAndFaces[removeEdgeIndex][edgeI] << ": "
-                 << edges_[hullEdgesAndFaces[removeEdgeIndex][edgeI]] << endl;
+            label ieIndex = hullEdgesAndFaces[removeEdgeIndex][edgeI];
+
+            if (ieIndex != -1)
+            {
+                Info << ieIndex << ": " << edges_[ieIndex] << endl;
+            }
         }
+
         Info << "hullEdgesAndFaces (replaced faces): " << endl;
         forAll(hullEdgesAndFaces[replaceFaceIndex], faceI)
         {
-            Info << hullEdgesAndFaces[replaceFaceIndex][faceI] << ": "
-                 << faces_[hullEdgesAndFaces[replaceFaceIndex][faceI]] << endl;
+            label fIndex = hullEdgesAndFaces[replaceFaceIndex][faceI];
+
+            if (fIndex != -1)
+            {
+                Info << fIndex << ": " << faces_[fIndex] << endl;
+            }
         }
+
         Info << "hullEdgesAndFaces (replaced edges): " << endl;
         forAll(hullEdgesAndFaces[replaceEdgeIndex], edgeI)
         {
-            Info << hullEdgesAndFaces[replaceEdgeIndex][edgeI] << ": "
-                 << edges_[hullEdgesAndFaces[replaceEdgeIndex][edgeI]] << endl;
+            label ieIndex = hullEdgesAndFaces[replaceEdgeIndex][edgeI];
+
+            if (ieIndex != -1)
+            {
+                Info << ieIndex << ": " << edges_[ieIndex] << endl;
+            }
         }
+
         labelList& collapsePointEdges = pointEdges_[collapsePoint];
         Info << "pointEdges (collapsePoint): ";
         forAll(collapsePointEdges, edgeI)
@@ -7757,6 +7800,23 @@ bool dynamicTopoFvMesh::collapseEdge
                 replaceEdge,
                 faceEdges_[rmvEdgeFaces[faceI]]
             );
+
+            // Loop through faces associated with this edge,
+            // and renumber them as well.
+            face& faceToCheck = faces_[rmvEdgeFaces[faceI]];
+            if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
+            {
+#               ifdef FULLDEBUG
+                if (debug)
+                {
+                    Info << "Renumbering face: "
+                         << rmvEdgeFaces[faceI] << ": "
+                         << faceToCheck << endl;
+                }
+#               endif
+
+                faceToCheck[replaceIndex] = replacePoint;
+            }
         }
 
         // Size up existing edgeFaces
@@ -7882,6 +7942,27 @@ bool dynamicTopoFvMesh::collapseEdge
                     );
                 }
             }
+
+            // Check orientation of faces
+            if (owner_[replaceFace] == -1)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                    << "Face: " << replaceFace << ": " << faces_[replaceFace]
+                    << " is an orphan, i.e, no owner cell."
+                    << abort(FatalError);
+            }
+            else
+            if
+            (
+                (neighbour_[replaceFace] == -1)
+             && (whichPatch(replaceFace) < 0)
+            )
+            {
+                FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                    << "Face: " << replaceFace << faces_[replaceFace]
+                    << " is being converted to a boundary."
+                    << abort(FatalError);
+            }
         }
     }
 
@@ -7932,6 +8013,15 @@ bool dynamicTopoFvMesh::collapseEdge
 
         if (pEdges[edgeI] != eIndex)
         {
+#           ifdef FULLDEBUG
+            if (debug)
+            {
+                Info << "Renumbering [edge]: "
+                     << pEdges[edgeI] << ": "
+                     << edgeToCheck << endl;
+            }
+#           endif
+
             if (edgeToCheck[0] == collapsePoint)
             {
                 edgeToCheck[0] = replacePoint;
@@ -7965,13 +8055,21 @@ bool dynamicTopoFvMesh::collapseEdge
 
             // Loop through faces associated with this edge,
             // and renumber them as well.
-            label replaceIndex = -1;
             forAll(eFaces, faceI)
             {
                 face& faceToCheck = faces_[eFaces[faceI]];
 
                 if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
                 {
+#                   ifdef FULLDEBUG
+                    if (debug)
+                    {
+                        Info << "Renumbering face: "
+                             << eFaces[faceI] << ": "
+                             << faceToCheck << endl;
+                    }
+#                   endif
+
                     faceToCheck[replaceIndex] = replacePoint;
                 }
             }
@@ -8120,6 +8218,26 @@ void dynamicTopoFvMesh::constructEdgeRing
             }
         }
     }
+
+    // Check if either point lies on a bounding curve
+    if (edgeBoundary[0] && edgeBoundary[1])
+    {
+        edgeBoundary = false;
+
+        forAll(edgeToCheck, pointI)
+        {
+            labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
+
+            forAll(pEdges, edgeI)
+            {
+                if (checkBoundingCurve(pEdges[edgeI]))
+                {
+                    edgeBoundary[pointI] = true;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 // Utility method to check whether the cell given by 'cellIndex' will yield
@@ -8153,7 +8271,7 @@ bool dynamicTopoFvMesh::checkCollapse
 
     // Compute cell-volume
     face& faceToCheck = faces_[faceIndex];
-    
+
     if (owner_[faceIndex] == cellIndex)
     {
         cellVolume = tetVolume
@@ -8248,7 +8366,7 @@ bool dynamicTopoFvMesh::remove2DSliver
             << c0 << ": " << cell_0
             << " failed. Simulation will continue."
             << endl;
-            
+
             return false;
         }
         else
@@ -8307,7 +8425,7 @@ void dynamicTopoFvMesh::prepareThreads(const label numThreads)
         structPtr_[i].pointSize_ =
             (pointsLeft < pointsPerBlock) ? pointsLeft : pointsPerBlock;
         structPtr_[i].edgeSize_ =
-            (edgesLeft < edgesPerBlock) ? edgesLeft : edgesPerBlock;        
+            (edgesLeft < edgesPerBlock) ? edgesLeft : edgesPerBlock;
         structPtr_[i].faceSize_ =
             (facesLeft < facesPerBlock) ? facesLeft : facesPerBlock;
         structPtr_[i].cellSize_ =
@@ -8320,19 +8438,19 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
 {
     // Delete oldPoints in polyMesh
     polyMesh::resetMotion();
-    
-    // Update polyMesh. 
+
+    // Update polyMesh.
     polyMesh::updateMesh(mpm);
 
-    // Clear out surface-interpolation 
+    // Clear out surface-interpolation
     surfaceInterpolation::movePoints();
 
-    // Clear-out fvMesh geometry and addressing    
+    // Clear-out fvMesh geometry and addressing
     fvMesh::clearOut();
-    
+
     // Update topology for all registered classes
     meshObjectBase::allUpdateTopology<fvMesh>(*this);
-    
+
     // Map all fields
     mapFields(mpm);
 }
@@ -8346,7 +8464,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
              << "Mapping fvFields."
              << endl;
     }
-   
+
     //- Field mapping class
     dynamicTopoFvMeshMapper fieldMapper(*this,meshMap);
 
@@ -8359,8 +8477,8 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
     // Map all the surfaceFields in the objectRegistry
     MapGeometricFields<scalar, fvsPatchField, dynamicTopoFvMeshMapper, surfaceMesh>
         (fieldMapper);
-     
-    // Old volumes are not mapped since interpolation is 
+
+    // Old volumes are not mapped since interpolation is
     // performed at the same time level.
 }
 
@@ -8370,19 +8488,19 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 void dynamicTopoFvMesh::updateMotion()
 {
     if (solveForMotion_)
-    {    
-        // Solve for motion   
+    {
+        // Solve for motion
         movePoints(motionPtr_->newPoints());
     }
 }
 
 // MultiThreaded topology modifier [2D]
 void dynamicTopoFvMesh::threadedTopoModifier2D()
-{                  
+{
     // Prepare for multi-threading
-    prepareThreads(threader_->getNumThreads());    
-    
-    if (edgeModification_) 
+    prepareThreads(threader_->getNumThreads());
+
+    if (edgeModification_)
     {
         // Submit jobs to the work queue
         for (label i = 0; i < threader_().getNumThreads(); i++)
@@ -8390,7 +8508,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
             /*
             threader_().addToWorkQueue
                         (
-                            &edgeBisectCollapse2D, 
+                            &edgeBisectCollapse2D,
                             reinterpret_cast<void *>(&(structPtr_[i]))
                         );
             */
@@ -8398,8 +8516,8 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
         }
     }
 
-    if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;    
-    
+    if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
+
     // Submit jobs to the work queue
     for (label i = 0; i < threader_().getNumThreads(); i++)
     {
@@ -8413,19 +8531,19 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
         swap2DEdges(reinterpret_cast<void *>(&(structPtr_[i])));
     }
 
-    if (debug) Info << nl << "2D Edge Swapping complete." << endl; 
-    
+    if (debug) Info << nl << "2D Edge Swapping complete." << endl;
+
     // Wait for all work to complete
     //threader_().waitForCompletion();
 }
 
 // MultiThreaded topology modifier [3D]
 void dynamicTopoFvMesh::threadedTopoModifier3D()
-{ 
+{
     // Prepare for multi-threading
-    prepareThreads(threader_->getNumThreads());    
-    
-    if (edgeModification_) 
+    prepareThreads(threader_->getNumThreads());
+
+    if (edgeModification_)
     {
         // Submit jobs to the work queue
         for (label i = 0; i < threader_().getNumThreads(); i++)
@@ -8433,16 +8551,16 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
             /*
             threader_().addToWorkQueue
                         (
-                            &edgeBisectCollapse3D, 
+                            &edgeBisectCollapse3D,
                             reinterpret_cast<void *>(&(structPtr_[i]))
                         );
             */
             edgeBisectCollapse3D(reinterpret_cast<void *>(&(structPtr_[i])));
         }
     }
-    
+
     if (debug) Info << nl << "3D Edge Bisection/Collapse complete." << endl;
-    
+
     // Submit jobs to the work queue
     for (label i = 0; i < threader_().getNumThreads(); i++)
     {
@@ -8454,10 +8572,10 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
                     );
         */
         swap3DEdges(reinterpret_cast<void *>(&(structPtr_[i])));
-    }    
+    }
 
-    if (debug) Info << nl << "3D Edge Swapping complete." << endl;     
-    
+    if (debug) Info << nl << "3D Edge Swapping complete." << endl;
+
     // Wait for all work to complete
     //threader_().waitForCompletion();
 }
@@ -8538,7 +8656,7 @@ bool dynamicTopoFvMesh::updateTopology()
 
     // Invoke the threaded topoModifier
     if ( twoDMesh_ )
-    {        
+    {
         threadedTopoModifier2D();
     }
     else
@@ -8581,14 +8699,14 @@ bool dynamicTopoFvMesh::updateTopology()
         {
             cellsFromCells[indexI++] = cellI();
         }
-        
+
         // Obtain the patch-point labels for mapping before resetting the mesh
         labelListList oldMeshPointLabels(numPatches_);
         for(label i=0; i<numPatches_; i++)
         {
             oldMeshPointLabels[i] = boundaryMesh()[i].meshPoints();
         }
-        
+
         // Obtain cell-centre information as well
         cellCentresPtr_.set
         (
@@ -8687,7 +8805,7 @@ bool dynamicTopoFvMesh::updateTopology()
 
         // Update the underlying mesh, and map all related fields
         updateMesh(mapper_);
-        
+
         // Discard old cell-centre information after mapping
         cellCentresPtr_.clear();
 
