@@ -3300,53 +3300,7 @@ void dynamicTopoFvMesh::reOrderEdges()
 #   ifdef FULLDEBUG
     if (debug)
     {
-        // Final check to see that everything went okay
-        Info << "Checking edge-face connectivity...";
-        labelList nEdgeFaces(nEdges_, 0);
-        forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
-        {
-            labelList& faceEdges = feIter();
-            forAll(faceEdges,edgeI)
-            {
-                nEdgeFaces[faceEdges[edgeI]]++;
-            }
-        }
-        forAllIter(HashList<labelList>::iterator, edgeFaces_, efIter)
-        {
-            labelList& edgeFaces = efIter();
-            if (edgeFaces.size() != nEdgeFaces[efIter.index()])
-            {
-                Info << "Edge: " << efIter.index()
-                     << " Old index: " << edgeMap_[efIter.index()] << nl
-                     << "edgeFaces: " << edgeFaces << endl;
-                FatalErrorIn("dynamicTopoFvMesh::reOrderEdges()") << nl
-                     << "Edge-Face connectivity is inconsistent." << nl
-                     << abort(FatalError);
-            }
-        }
-        Info << "Done." << endl;
-
-        Info << "Checking point-edge connectivity...";
-        labelList nPointEdges(nPoints_, 0);
-        forAllIter(HashList<edge>::iterator, edges_, eIter)
-        {
-            nPointEdges[eIter()[0]]++;
-            nPointEdges[eIter()[1]]++;
-        }
-        forAllIter(HashList<labelList>::iterator, pointEdges_, peIter)
-        {
-            labelList& pointEdges = peIter();
-            if (pointEdges.size() != nPointEdges[peIter.index()])
-            {
-                Info << "Point: " << peIter.index()
-                     << " Old index: " << pointMap_[peIter.index()] << nl
-                     << "pointEdges: " << pointEdges << endl;
-                FatalErrorIn("dynamicTopoFvMesh::reOrderEdges()") << nl
-                     << "Point-Edge connectivity is inconsistent."
-                     << abort(FatalError);
-            }
-        }
-        Info << "Done." << endl;
+        checkEdgeConnectivity();
     }
 #   endif
 
@@ -3992,6 +3946,84 @@ void dynamicTopoFvMesh::setEdgeConnectivity()
     IOedgePatchStarts_.instance() = time().timeName();
 }
 
+// Check the state of edge-based connectivity HashLists
+void dynamicTopoFvMesh::checkEdgeConnectivity()
+{
+    Info << "Checking edge-face connectivity...";
+    labelList nEdgeFaces(nEdges_, 0);
+    forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
+    {
+        // Check consistency of face-edge-points as well
+        edgeList eList = faces_[feIter.index()].edges();
+
+        labelList& faceEdges = feIter();
+
+        forAll(faceEdges,edgeI)
+        {
+            nEdgeFaces[faceEdges[edgeI]]++;
+
+            // Check if this edge actually belongs to this face
+            bool found = false;
+            edge& edgeToCheck = edges_[faceEdges[edgeI]];
+
+            forAll(eList, edgeII)
+            {
+                if (edgeToCheck == eList[edgeII])
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                Info << "Edge: " << faceEdges[edgeI] << ": " << edgeToCheck
+                     << " Was not found in face: " << feIter.index()
+                     << ": " << faces_[feIter.index()] << endl;
+                FatalErrorIn("dynamicTopoFvMesh::checkEdgeConnectivity()") << nl
+                     << "Edge-Face connectivity is inconsistent." << nl
+                     << abort(FatalError);
+            }
+        }
+    }
+    forAllIter(HashList<labelList>::iterator, edgeFaces_, efIter)
+    {
+        labelList& edgeFaces = efIter();
+        if (edgeFaces.size() != nEdgeFaces[efIter.index()])
+        {
+            Info << "Edge: " << efIter.index()
+                 << " Old index: " << edgeMap_[efIter.index()] << nl
+                 << "edgeFaces: " << edgeFaces << endl;
+            FatalErrorIn("dynamicTopoFvMesh::checkEdgeConnectivity()") << nl
+                 << "Edge-Face connectivity is inconsistent." << nl
+                 << abort(FatalError);
+        }
+    }
+    Info << "Done." << endl;
+
+    Info << "Checking point-edge connectivity...";
+    labelList nPointEdges(nPoints_, 0);
+    forAllIter(HashList<edge>::iterator, edges_, eIter)
+    {
+        nPointEdges[eIter()[0]]++;
+        nPointEdges[eIter()[1]]++;
+    }
+    forAllIter(HashList<labelList>::iterator, pointEdges_, peIter)
+    {
+        labelList& pointEdges = peIter();
+        if (pointEdges.size() != nPointEdges[peIter.index()])
+        {
+            Info << "Point: " << peIter.index()
+                 << " Old index: " << pointMap_[peIter.index()] << nl
+                 << "pointEdges: " << pointEdges << endl;
+            FatalErrorIn("dynamicTopoFvMesh::checkEdgeConnectivity()") << nl
+                 << "Point-Edge connectivity is inconsistent."
+                 << abort(FatalError);
+        }
+    }
+    Info << "Done." << endl;
+}
+
 // Calculate the edge length-scale for the mesh
 void dynamicTopoFvMesh::calculateLengthScale()
 {
@@ -4466,6 +4498,11 @@ void dynamicTopoFvMesh::initEdges()
         nEdges_ = edgePatchStarts_[lastPatch] + edgePatchSizes_[lastPatch];
         nInternalEdges_ = edgePatchStarts_[0];
         reverseEdgeMap_.setSize(nEdges_);
+
+        // Check to see that everything is okay
+#       ifdef FULLDEBUG
+        checkEdgeConnectivity();
+#       endif
     }
     else
     {
@@ -8023,6 +8060,8 @@ void dynamicTopoFvMesh::constructEdgeRing
                     // Look for the edge on the ring
                     labelList& rFaceEdges = faceEdges_[currCell[faceI]];
 
+                    bool found = false;
+
                     forAll(rFaceEdges, edgeI)
                     {
                         if
@@ -8033,8 +8072,21 @@ void dynamicTopoFvMesh::constructEdgeRing
                         {
                             ringEdges[indexI] = rFaceEdges[edgeI];
 
+                            found = true;
                             break;
                         }
+                    }
+
+                    if (!found)
+                    {
+                        // Looks like faceEdges is inconsistent
+                        FatalErrorIn("dynamicTopoFvMesh::constructEdgeRing()")
+                            << nl << "Unable to find ring edge: " << nl
+                            << edge(hullVertices[indexI],hullVertices[nextI])
+                            << " in face: " << currCell[faceI]
+                            << ": " << faces_[currCell[faceI]] << nl
+                            << " faceEdges: " << rFaceEdges << nl
+                            << abort(FatalError);
                     }
                 }
 

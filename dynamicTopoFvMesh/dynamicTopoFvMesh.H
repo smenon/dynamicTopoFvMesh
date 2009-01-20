@@ -581,6 +581,9 @@ class dynamicTopoFvMesh
 
         // Copy edge-based connectivity from HashLists
         void setEdgeConnectivity();
+
+        // Check the state of edge-based connectivity HashLists
+        void checkEdgeConnectivity();
         
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
