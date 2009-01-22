@@ -644,6 +644,11 @@ tmp<volScalarField> dynamicTopoFvMesh::meshQuality()
     {
         scalarField& iF = tQuality().internalField();
 
+        // Compute statistics on the fly
+        scalar maxQuality = -GREAT;
+        scalar minQuality =  GREAT;
+        scalar meanQuality = 0.0;
+
         const pointField& meshPoints = points();
         const faceList& meshFaces = faces();
         const cellList& meshCells = cells();
@@ -689,9 +694,24 @@ tmp<volScalarField> dynamicTopoFvMesh::meshQuality()
                         );
                     }
 
+                    // Update statistics
+                    maxQuality = iF[cellI] > maxQuality ? iF[cellI] : maxQuality;
+                    minQuality = iF[cellI] < minQuality ? iF[cellI] : minQuality;
+                    meanQuality += iF[cellI];
+
                     break;
                 }
             }
+        }
+
+        // Output statistics:
+        if (debug)
+        {
+            Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
+            Info << " Min: " << minQuality << endl;
+            Info << " Max: " << maxQuality << endl;
+            Info << " Mean: " << meanQuality/iF.size() << endl;
+            Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
         }
     }
 
@@ -2400,7 +2420,7 @@ void dynamicTopoFvMesh::swap23
                 // Add this face to the cell
                 newTetCell1[nF1++] = faceIndex;
 
-                // Update faceEdges and edgeFaces
+                // Update faceEdges and edgeFaces, and add them to the stack
                 const labelList& fEdges = faceEdges_[faceIndex];
                 forAll(fEdges, edgeI)
                 {
@@ -2408,24 +2428,28 @@ void dynamicTopoFvMesh::swap23
                     {
                         newFaceEdges[0][nE0++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[0], edgeFaces_[fEdges[edgeI]]);
+                        edgeStack().push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[1])
                     {
                         newFaceEdges[0][nE0++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[0], edgeFaces_[fEdges[edgeI]]);
+                        edgeStack().push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[2])
                     {
                         newFaceEdges[1][nE1++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[1], edgeFaces_[fEdges[edgeI]]);
+                        edgeStack().push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[4])
                     {
                         newFaceEdges[1][nE1++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[1], edgeFaces_[fEdges[edgeI]]);
+                        edgeStack().push(fEdges[edgeI]);
                     }
                 }
             }
@@ -2466,12 +2490,14 @@ void dynamicTopoFvMesh::swap23
                     {
                         newFaceEdges[2][nE2++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[2], edgeFaces_[fEdges[edgeI]]);
+                        edgeStack().push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[5])
                     {
                         newFaceEdges[2][nE2++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[2], edgeFaces_[fEdges[edgeI]]);
+                        edgeStack().push(fEdges[edgeI]);
                     }
                 }
             }
@@ -2527,6 +2553,7 @@ void dynamicTopoFvMesh::swap23
     forAll(fEdges, edgeI)
     {
         sizeDownList(faceForRemoval, edgeFaces_[fEdges[edgeI]]);
+        edgeStack().push(fEdges[edgeI]);
     }
 
     // Now remove the faceEdges entry
@@ -2788,6 +2815,7 @@ void dynamicTopoFvMesh::swap32
                     {
                         bdyFaceEdges[0][nBE[0]++] = fEdges[edgeI];
                         bdyEdges0[nBE0++] = fEdges[edgeI];
+                        edgeStack().push(fEdges[edgeI]);
                     }
 
                     if
@@ -2798,6 +2826,7 @@ void dynamicTopoFvMesh::swap32
                     {
                         bdyFaceEdges[1][nBE[1]++] = fEdges[edgeI];
                         bdyEdges1[nBE1++] = fEdges[edgeI];
+                        edgeStack().push(fEdges[edgeI]);
                     }
                 }
             }
@@ -2920,6 +2949,7 @@ void dynamicTopoFvMesh::swap32
                     {
                         newFaceEdges[nE++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex, edgeFaces_[fEdges[edgeI]]);
+                        edgeStack().push(fEdges[edgeI]);
                         break;
                     }
                 }
@@ -2972,6 +3002,7 @@ void dynamicTopoFvMesh::swap32
             if (edgeIndex != edgeToCheckIndex)
             {
                 sizeDownList(facesForRemoval[faceI],edgeFaces_[edgeIndex]);
+                edgeStack().push(edgeIndex);
             }
         }
 
@@ -4599,7 +4630,7 @@ void dynamicTopoFvMesh::stack::initStack(const label size)
 {
     for (label i = 0; i < size; i++)
     {
-        push(i);
+        stack::push(i);
     }
 }
 
@@ -4608,16 +4639,16 @@ inline void dynamicTopoFvMesh::stack::push(const label index)
 {
     if (!stack_.found(index))
     {
-        stack_.append(index);
+        stack_.insert(index);
     }
 }
 
 // Pop an item off the stack
 inline label dynamicTopoFvMesh::stack::pop()
 {
-    label index = stack_.begin().index();
+    const label index = stack_.begin().key();
 
-    stack_.remove(index);
+    stack::remove(index);
 
     return index;
 }
@@ -4627,14 +4658,20 @@ inline void dynamicTopoFvMesh::stack::remove(const label index)
 {
     if (stack_.found(index))
     {
-        stack_.remove(index);
+        stack_.erase(index);
     }
 }
 
 // Return if the stack is empty or not
 inline bool dynamicTopoFvMesh::stack::empty()
 {
-    return stack_.empty();
+    return (stack_.size() == 0);
+}
+
+//- Print out the stack
+inline void dynamicTopoFvMesh::stack::print()
+{
+    Info << stack_ << endl;
 }
 
 // Return length-scale at an edge-location in the mesh [3D]
@@ -5008,7 +5045,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 }
 
 // Return the edge-stack
-dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack()
+inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack()
 {
     return edgeStack_;
 }
@@ -6808,7 +6845,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         if
         (
             (neighbour_[faceToKeep[1]] == -1)
-         && (faceToKeep[1] < nInternalFaces_)
+         && (whichPatch(faceToKeep[1]) < 0)
         )
         {
             // This face is being converted from interior to boundary. Remove

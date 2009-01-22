@@ -102,6 +102,16 @@ Foam::springMotionSolver::springMotionSolver
     {
         tolerance_ = 1e-15;
     }
+
+    // Check if multiple sweeps have been requested
+    if (found("nSweeps"))
+    {
+        nSweeps_ = readLabel(lookup("nSweeps"));
+    }
+    else
+    {
+        nSweeps_ = 1;
+    }
 }
 
 
@@ -162,6 +172,16 @@ Foam::springMotionSolver::springMotionSolver
     else
     {
         tolerance_ = 1e-15;
+    }
+
+    // Check if multiple sweeps have been requested
+    if (found("nSweeps"))
+    {
+        nSweeps_ = readLabel(lookup("nSweeps"));
+    }
+    else
+    {
+        nSweeps_ = 1;
     }
 }
 
@@ -664,20 +684,23 @@ void Foam::springMotionSolver::solve()
     }
     else
     {
-        // Initialize the solver variables
-        initCG(mesh().nPoints());
+        for (label i = 0; i < nSweeps_; i++)
+        {
+            // Initialize the solver variables
+            initCG(mesh().nPoints());
 
-        // Copy existing point-positions
-        xV_ = refPoints_;
+            // Copy existing point-positions
+            xV_ = refPoints_;
 
-        Info << "Solving for point motion: ";
+            Info << "Solving for point motion: ";
 
-        label iters = CG(bV_, pV_, rV_, wV_, xV_);
+            label iters = CG(bV_, pV_, rV_, wV_, xV_);
 
-        Info << " No Iterations: " << iters << endl;
+            Info << " No Iterations: " << iters << endl;
 
-        // Update refPoints
-        refPoints_ = xV_;
+            // Update refPoints
+            refPoints_ = xV_;
+        }
     }
 }
 

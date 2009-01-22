@@ -91,6 +91,9 @@ protected:
 
     // Specify tolerance for the CG solver
     scalar tolerance_;
+
+    // Specify multiple mesh-motion sweeps
+    label nSweeps_;
     
     // Component being solved for (0,1 or 2)
     label cmpt_;

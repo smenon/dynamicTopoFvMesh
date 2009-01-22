@@ -167,7 +167,7 @@ class dynamicTopoFvMesh
         class stack
         {
             // Private data
-            HashList<label> stack_;
+            labelHashSet stack_;
 
         public:
 
@@ -190,6 +190,9 @@ class dynamicTopoFvMesh
 
                 //- Return if a stack is empty or not
                 inline bool empty();
+
+                //- Print out the stack
+                inline void print();
         };
 
         // Stack of edges to be checked during flipping
@@ -311,7 +314,7 @@ class dynamicTopoFvMesh
         static void edgeBisectCollapse3D(void *argument);
 
         // Return the edge-stack
-        stack& edgeStack();
+        inline stack& edgeStack();
 
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label& index) const;
