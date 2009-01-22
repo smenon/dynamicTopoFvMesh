@@ -815,8 +815,18 @@ inline bool HashList<T>::checkIndex
         FatalErrorIn("HashList<T>::checkIndex(const label)")
             << "index " << index << " out of range 0 ... " << size_-1
             << abort(FatalError);
-    }    
-    
+    }
+
+    return found(index);
+}
+
+//- Check if an index exists
+template<class T>
+inline bool HashList<T>::found
+(
+    const label index
+) const
+{
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
@@ -825,6 +835,7 @@ inline bool HashList<T>::checkIndex
     {
         if (index == item->idx_) return true;
     }
+
     return false;
 }
 

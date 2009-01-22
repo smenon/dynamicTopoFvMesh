@@ -245,6 +245,9 @@ public:
             //- Check the validity of an index
             inline bool checkIndex(const label) const;
 
+            //- Check if an index exists
+            inline bool found(const label) const;
+
         // Output
 
             //- Print out the link-list structure

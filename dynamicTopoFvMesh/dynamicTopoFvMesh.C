@@ -32,6 +32,9 @@ Author
     Sandeep Menon
 \*----------------------------------------------------------------------------*/
 
+#include "HashList.H"
+
+
 #include "dynamicTopoFvMesh.H"
 #include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
@@ -1106,6 +1109,9 @@ label dynamicTopoFvMesh::insertEdge
     label newEdgeIndex = edges_.append(newEdge);
     edgeFaces_.append(edgeFaces);
 
+    // Add to the stack as well
+    edgeStack_.push(newEdgeIndex);
+
     // Keep track of added edges in a separate hash-table
     // This information will be required at the reordering stage
     addedEdgePatches_.insert(newEdgeIndex,patch);
@@ -1177,6 +1183,9 @@ void dynamicTopoFvMesh::removeEdge
 
     edges_.remove(index);
     edgeFaces_.remove(index);
+
+    // Remove from the stack as well
+    edgeStack_.remove(index);
 
     // Identify the patch for this edge
     label patch = whichEdgePatch(index);
@@ -1508,7 +1517,6 @@ bool dynamicTopoFvMesh::constructPrismHull
 inline void dynamicTopoFvMesh::constructVertexRing
 (
     const label eIndex,
-    const edge& edgeToCheck,
     DynamicList<label>& hullCells,
     DynamicList<label>& hullFaces,
     DynamicList<label>& hullVertices,
@@ -1521,6 +1529,9 @@ inline void dynamicTopoFvMesh::constructVertexRing
     label otherPoint = -1, nextPoint = -1, cellIndex = -1;
     label faceToExclude = -1, numPoints = 0, numFaces = 0;
     scalar cQuality = 0.0;
+
+    // Obtain a reference to this edge
+    edge& edgeToCheck = edges_[eIndex];
 
     // Decide which face to start with...
     labelList& eFaces = edgeFaces_[eIndex];
@@ -1651,7 +1662,8 @@ inline void dynamicTopoFvMesh::constructVertexRing
                         if (minQuality < 0)
                         {
                             Info << nl << nl
-                                 << "**Detected negative cell-quality!**" << nl
+                                 << "*** Detected negative cell-quality! ***"
+                                 << nl << "Quality: " << minQuality << nl
                                  << "Cell: " << cellIndex << ": " << cellToCheck
                                  << nl << "when using face: " << faceToCheck
                                  << " and point: " << otherPoint
@@ -1659,6 +1671,17 @@ inline void dynamicTopoFvMesh::constructVertexRing
                                  << owner_[cellToCheck[faceI]]
                                  << nl << "Neighbour: "
                                  << neighbour_[cellToCheck[faceI]]
+                                 << endl;
+
+                            Info << "Points: " << endl;
+                            forAll(faceToCheck, pointI)
+                            {
+                                Info << faceToCheck[pointI]
+                                     << ": " << meshPoints_[faceToCheck[pointI]]
+                                     << endl;
+                            }
+                            Info << otherPoint
+                                 << ": " << meshPoints_[otherPoint]
                                  << endl;
 
                             Info << "Faces: " << endl;
@@ -1836,7 +1859,7 @@ inline void dynamicTopoFvMesh::initTables
 // Returns the number of triangulations
 inline label dynamicTopoFvMesh::fillTables
 (
-    const edge& edgeToCheck,
+    const label eIndex,
     const DynamicList<label>& hullVertices,
     const scalar minQuality,
     scalarListList& Q,
@@ -1844,6 +1867,7 @@ inline label dynamicTopoFvMesh::fillTables
 )
 {
     label m = hullVertices.size();
+    edge& edgeToCheck = edges_[eIndex];
 
     for (label i = m-3; i >= 0; i--)
     {
@@ -1899,69 +1923,11 @@ inline label dynamicTopoFvMesh::fillTables
     return m;
 }
 
-// Print out tables for debugging
-void dynamicTopoFvMesh::printTables
-(
-    const label m,
-    const scalarListList& Q,
-    const labelListList& K
-)
-{
-    // Print out Q
-    Info << "===" << endl;
-    Info << " Q " << endl;
-    Info << "===" << endl;
-
-    Info << "   ";
-    for(label j = 0; j < m; j++)
-    {
-        std::cout << std::setfill('-')
-                  << std::setw(12) << j;
-    }
-    Info << nl;
-
-    for(label i = 0; i < (m-2); i++)
-    {
-        Info << i << ": ";
-        for(label j = 0; j < m; j++)
-        {
-            std::cout << std::setfill(' ')
-                      << std::setw(12) << Q[i][j];
-        }
-        Info << nl;
-    }
-
-    // Print out K
-    Info << "===" << endl;
-    Info << " K " << endl;
-    Info << "===" << endl;
-
-    Info << "   ";
-    for(label j = 0; j < m; j++)
-    {
-        std::cout << std::setfill('-')
-                  << std::setw(12) << j;
-    }
-    Info << nl;
-
-    for(label i = 0; i < (m-2); i++)
-    {
-        Info << i << ": ";
-        for(label j = 0; j < m; j++)
-        {
-            std::cout << std::setfill(' ')
-                      << std::setw(12) << K[i][j];
-        }
-        Info << nl;
-    }
-}
-
 // Remove the edge according to the swap sequence
 void dynamicTopoFvMesh::removeEdgeFlips
 (
     const label m,
-    const label edgeToCheckIndex,
-    const edge& edgeToCheck,
+    const label eIndex,
     const labelListList& K,
     const DynamicList<label>& hullCells,
     const DynamicList<label>& hullFaces,
@@ -1970,6 +1936,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
 )
 {
     label numTriangulations = 0, isolatedVertex = -1;
+    edge& edgeToCheck = edges_[eIndex];
 
     // Extract the appropriate triangulations
     extractTriangulation(0, (m-1), K, numTriangulations, triangulations);
@@ -2000,7 +1967,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
                     swap23
                     (
                         isolatedVertex,
-                        edgeToCheckIndex,
+                        eIndex,
                         edgeToCheck,
                         i,
                         triangulations,
@@ -2037,7 +2004,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
     // Perform the final 3-2 swap
     swap32
     (
-        edgeToCheckIndex,
+        eIndex,
         edgeToCheck,
         t32,
         triangulations,
@@ -2050,6 +2017,9 @@ void dynamicTopoFvMesh::removeEdgeFlips
     triangulations[0][t32] = -1;
     triangulations[1][t32] = -1;
     triangulations[2][t32] = -1;
+
+    // Finally remove the edge
+    removeEdge(eIndex);
 }
 
 // Extract triangulations from the programming table
@@ -4624,6 +4594,49 @@ void dynamicTopoFvMesh::initEdges()
     }
 }
 
+// Initialize the stack with a specified size 
+void dynamicTopoFvMesh::stack::initStack(const label size)
+{
+    for (label i = 0; i < size; i++)
+    {
+        push(i);
+    }
+}
+
+// Push items on to the stack
+inline void dynamicTopoFvMesh::stack::push(const label index)
+{
+    if (!stack_.found(index))
+    {
+        stack_.append(index);
+    }
+}
+
+// Pop an item off the stack
+inline label dynamicTopoFvMesh::stack::pop()
+{
+    label index = stack_.begin().index();
+
+    stack_.remove(index);
+
+    return index;
+}
+
+// Remove a specific item off the stack
+inline void dynamicTopoFvMesh::stack::remove(const label index)
+{
+    if (stack_.found(index))
+    {
+        stack_.remove(index);
+    }
+}
+
+// Return if the stack is empty or not
+inline bool dynamicTopoFvMesh::stack::empty()
+{
+    return stack_.empty();
+}
+
 // Return length-scale at an edge-location in the mesh [3D]
 inline scalar dynamicTopoFvMesh::meshEdgeLengthScale
 (
@@ -4825,10 +4838,6 @@ void dynamicTopoFvMesh::swap3DEdges
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
-    // Loop through edges assigned to this thread
-    HashList<edge>::iterator eIter = thread->edgeStart();
-    HashList<edge>::iterator eEnd = thread->edgeEnd();
-
     // Obtain maxTetsPerEdge
     label mMax = mesh->maxTetsPerEdge();
 
@@ -4845,18 +4854,15 @@ void dynamicTopoFvMesh::swap3DEdges
     // Allocate dynamic programming tables
     mesh->initTables(mMax, Q, K, triangulations);
 
-    while(eIter != eEnd)
+    // Pick edges off the stack
+    while(!mesh->edgeStack().empty())
     {
-        // Retrieve the index for this iterator
-        label eIndex = eIter.index();
-
-        // Reference to this edge...
-        edge& thisEdge = eIter();
+        // Retrieve the index for this edge
+        const label eIndex = mesh->edgeStack().pop();
 
         // Check if this edge is on a bounding curve
         if (mesh->checkBoundingCurve(eIndex))
         {
-            eIter++;
             continue;
         }
 
@@ -4864,7 +4870,6 @@ void dynamicTopoFvMesh::swap3DEdges
         mesh->constructVertexRing
         (
             eIndex,
-            thisEdge,
             cellHull,
             faceHull,
             vertexHull,
@@ -4886,13 +4891,12 @@ void dynamicTopoFvMesh::swap3DEdges
             {
                 // Move on to the next edge
                 cellHull.clear(); faceHull.clear(); vertexHull.clear();
-                eIter++;
                 continue;
             }
         }
 
         // Fill the dynamic programming tables
-        label m = mesh->fillTables(thisEdge, vertexHull, minQuality, Q, K);
+        label m = mesh->fillTables(eIndex, vertexHull, minQuality, Q, K);
 
         // Remove this edge if necessary...
         if (Q[0][m-1] > minQuality)
@@ -4911,7 +4915,6 @@ void dynamicTopoFvMesh::swap3DEdges
             (
                 m,
                 eIndex,
-                thisEdge,
                 K,
                 cellHull,
                 faceHull,
@@ -4919,25 +4922,12 @@ void dynamicTopoFvMesh::swap3DEdges
                 triangulations
             );
 
-            // Move on to the next edge
-            cellHull.clear(); faceHull.clear(); vertexHull.clear();
-            eIter++;
-
-            // The edge can safely be deleted, since the iterator points
-            // to the next valid edge on the edge-list.
-            mesh->removeEdge(eIndex);
-
             // Set the flag
             mesh->topoChangeFlag() = true;
         }
-        else
-        {
-            // Move on to the next edge. Increments are done within
-            // the loop, since the edge might actually be deleted
-            // within the loop-body.
-            cellHull.clear(); faceHull.clear(); vertexHull.clear();
-            eIter++;
-        }
+
+        // Move on to the next edge.
+        cellHull.clear(); faceHull.clear(); vertexHull.clear();
     }
 }
 
@@ -5015,6 +5005,12 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
             eIter++;
         }
     }
+}
+
+// Return the edge-stack
+dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack()
+{
+    return edgeStack_;
 }
 
 // Method for the swapping of a quad-face in 2D
@@ -6910,7 +6906,6 @@ void dynamicTopoFvMesh::bisectEdge
     constructVertexRing
     (
         eIndex,
-        thisEdge,
         cellHull,
         faceHull,
         vertexHull,
@@ -7565,7 +7560,6 @@ bool dynamicTopoFvMesh::collapseEdge
     constructVertexRing
     (
         eIndex,
-        thisEdge,
         cellHull,
         faceHull,
         vertexHull,
@@ -8542,6 +8536,9 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 {
     // Prepare for multi-threading
     prepareThreads(threader_->getNumThreads());
+
+    // Initialize the edge stack
+    edgeStack_.initStack(nEdges_);
 
     if (edgeModification_)
     {
