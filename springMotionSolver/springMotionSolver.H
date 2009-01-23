@@ -124,6 +124,10 @@ protected:
     void A(const scalarField& p, scalarField& w);
     void A(const vectorField& p, vectorField& w);
 
+    // Preconditioner
+    void M(const scalarField& r, scalarField& w);
+    void M(const vectorField& r, vectorField& w);
+
     // Dot-product
     scalar dot(const scalarField& f1, const scalarField& f2);
     scalar dot(const vectorField& f1, const vectorField& f2);
@@ -136,7 +140,8 @@ protected:
         Field<Type>& p,
         Field<Type>& r,
         Field<Type>& w,
-        Field<Type>& x
+        Field<Type>& x,
+        bool preCondition
     );
     
     // Initialize fields for the CG solver

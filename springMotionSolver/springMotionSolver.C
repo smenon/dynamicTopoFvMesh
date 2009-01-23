@@ -236,7 +236,8 @@ Foam::label Foam::springMotionSolver::CG
     Field<Type>& p,
     Field<Type>& r,
     Field<Type>& w,
-    Field<Type>& x
+    Field<Type>& x,
+    bool preCondition = false
 )
 {
     // Local variables
@@ -248,21 +249,53 @@ Foam::label Foam::springMotionSolver::CG
     
     A(x,w);
     r = b - w;
-    p = r;
-    delta_new = dot(r,r);
+
+    if (preCondition)
+    {
+        M(r,w);
+        p = w;
+    }
+    else
+    {
+        p = r;
+    }
+
+    delta_new = dot(r,p);
 
     Info << " Initial residual: " << delta_new;
 
     while ( (iter < maxIter) && (delta_new > tolerance_) )
     {
         A(p,w);
+
         alpha = delta_new / dot(p,w);
+
         x += (alpha*p);
         r -= (alpha*w);
+
         delta_old = delta_new;
-        delta_new = dot(r,r);
+
+        if (preCondition)
+        {
+            M(r,w);
+            delta_new = dot(r,w);
+        }
+        else
+        {
+            delta_new = dot(r,r);
+        }
+
         beta = delta_new / delta_old;
-        p = r + (beta*p);
+
+        if (preCondition)
+        {
+            p = w + (beta*p);
+        }
+        else
+        {
+            p = r + (beta*p);
+        }
+
         iter++;
     }
 
@@ -356,6 +389,16 @@ void Foam::springMotionSolver::A(const vectorField& p, vectorField& w)
 
     // Apply boundary conditions
     applyBCs(w);
+}
+
+// Preconditioner
+void Foam::springMotionSolver::M(const scalarField& r, scalarField& w)
+{}
+
+// Preconditioner
+void Foam::springMotionSolver::M(const vectorField& r, vectorField& w)
+{
+    w = r;
 }
 
 // Set Dirichlet conditions on the solution field (if any)
@@ -694,7 +737,7 @@ void Foam::springMotionSolver::solve()
 
             Info << "Solving for point motion: ";
 
-            label iters = CG(bV_, pV_, rV_, wV_, xV_);
+            label iters = CG(bV_, pV_, rV_, wV_, xV_, true);
 
             Info << " No Iterations: " << iters << endl;
 
