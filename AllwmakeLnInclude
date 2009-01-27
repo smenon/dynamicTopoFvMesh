@@ -3,5 +3,6 @@ set -x
 
 wmakeLnInclude tetMetrics
 wmakeLnInclude multiThreader
+wmakeLnInclude fluidInterface
 wmakeLnInclude springMotionSolver
 wmakeLnInclude dynamicTopoFvMesh

@@ -42,11 +42,22 @@
 
 #   include "createPhi.H"     
 
-    fluidInterface interface(mesh, U, p, phi); 
-    
-    // Introduce the non-Newtonian transport model
-    // autoPtr<viscosityModel> nuModel = viscosityModel::New("nu",interface,U,phi);
-    
+    fluidInterface interface(mesh, U, p, phi);
+
+    volScalarField nu
+    (
+        IOobject
+        (
+            "nu",
+            runTime.timeName(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        mesh,
+        interface.muFluidA()/interface.rhoFluidA()
+    );
+        
     label pRefCell = 0;
     scalar pRefValue = 0.0;
     setRefCell(p,mesh.solutionDict().subDict("PISO"), pRefCell, pRefValue);

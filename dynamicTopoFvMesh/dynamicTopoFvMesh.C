@@ -33,8 +33,6 @@ Author
 \*----------------------------------------------------------------------------*/
 
 #include "HashList.H"
-
-
 #include "dynamicTopoFvMesh.H"
 #include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
@@ -563,9 +561,20 @@ void dynamicTopoFvMesh::setMotionBC
 }
 
 // Return the mesh-mapper
-const autoPtr<mapPolyMesh> dynamicTopoFvMesh::meshMap()
+const mapPolyMesh& dynamicTopoFvMesh::meshMap()
 {
-    return mapper_;
+    if (mapper_.valid())
+    {
+        return mapper_();
+    }
+    else
+    {
+        FatalErrorIn("dynamicTopoFvMesh::meshMap() ") << nl
+                << " Illegal request for the mesh mapper. " << nl
+                << abort(FatalError);
+    }
+
+    return mapper_();
 }
 
 // Return old cell-centre information (prior to a topology change)

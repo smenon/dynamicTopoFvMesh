@@ -5,6 +5,7 @@ set -x
 wclean tetMetrics
 wclean multiThreader
 wclean springMotionSolver
+wclean fluidInterface
 wclean dynamicTopoFvMesh
 
 # Wipe out all lnInclude directories and re-link

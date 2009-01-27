@@ -2,6 +2,7 @@ EXE_INC = \
     -I../include \
     -I../multiThreader/lnInclude \
     -I../dynamicTopoFvMesh/lnInclude \
+    -I../fluidInterface/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/finiteArea/lnInclude \
     -I$(LIB_SRC)/dynamicMesh/lnInclude \
@@ -14,6 +15,7 @@ EXE_INC = \
 EXE_LIBS = \
     -L$(FOAM_USER_LIBBIN) \
     -ldynamicTopoFvMesh \
+    -lfluidInterface \
     -lmultiThreader \
     -lfiniteVolume \
     -lfiniteArea \

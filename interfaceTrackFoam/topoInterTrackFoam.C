@@ -26,7 +26,7 @@ Application
     topoInterTrackFoam
 
 Description
-    Incompressible laminar CFD code for interface between fluid phases using 
+    Incompressible laminar CFD code for interface between fluid phases using
     a dynamic mesh, including non-Newtonian effects.
 
 \*---------------------------------------------------------------------------*/
@@ -39,30 +39,89 @@ Description
 // Included for point-normals post-processing
 #include "pointMesh.H"
 #include "pointFields.H"
-#include "fixedValuePointPatchFields.H"        
+#include "fixedValuePointPatchFields.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+// Adjust fluid viscosity for temperature variations
+// according to the Vogel-Fulcher-Tammann (VFT) model
+void adjustViscosity
+(
+    const dictionary& coeffDict,
+    const volScalarField& T,
+    const scalar nuRef,
+    volScalarField& nu
+)
+{
+    // Read coeffiecients for the VFT model
+    dictionary vftCoeffs(coeffDict.subDict("vftCoeffs"));
+
+    scalar Tref = readScalar(vftCoeffs.lookup("Tref"));
+    scalar Tv   = readScalar(vftCoeffs.lookup("Tv"));
+    scalar Ta   = readScalar(vftCoeffs.lookup("Ta"));
+
+    // Compute constants for the model
+    scalar a = (Ta / Tref);
+    scalar b = Tv;
+    scalar c = (Tref / (Tref - Tv));
+
+    // Correct the internalField
+    forAll(nu.internalField(), cellI)
+    {
+        scalar Tcell = T.internalField()[cellI];
+
+        nu.internalField()[cellI] =
+            nuRef*::exp(a*((Tref / (Tcell - b)) - c));
+    }
+}
+
 int main(int argc, char *argv[])
-{ 
+{
 
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"
 #   include "initContinuityErrs.H"
-#   include "initTotalVolume.H"    
+#   include "initTotalVolume.H"
 #   include "createFields.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
     Info<< "\nStarting time loop\n" << endl;
 
+    bool nonNewtonian = false;
+    if (interface.found("nonNewtonian"))
+    {
+        nonNewtonian = Switch(interface.lookup("nonNewtonian"));
+    }
+
+    bool adjustNuForTemperature = false;
+    if (interface.found("adjustNuForTemperature"))
+    {
+        adjustNuForTemperature =
+            Switch(interface.lookup("adjustNuForTemperature"));
+    }
+
+    bool adjustSigmaForTemperature = false;
+    if (interface.found("adjustSigmaForTemperature"))
+    {
+        adjustSigmaForTemperature =
+            Switch(interface.lookup("adjustSigmaForTemperature"));
+    }
+
+    // Introduce the non-Newtonian transport model
+    autoPtr<viscosityModel> nuModel(NULL);
+    if (nonNewtonian)
+    {
+        nuModel = viscosityModel::New("nu",interface,U,phi);
+    }
+
     //polyMesh::debug = true;
     //mesh.debug = true;
-    
+
     while (runTime.run())
     {
-#       include "readPISOControls.H"       
+#       include "readPISOControls.H"
 #       include "readTimeControls.H"
 #       include "checkTotalVolume.H"
 #       include "CourantNo.H"
@@ -70,34 +129,45 @@ int main(int argc, char *argv[])
 
         runTime++;
 
-        Info<< "Time = " << runTime.timeName() << nl << endl;       
+        Info<< "Time = " << runTime.timeName() << nl << endl;
 
         // Update free-surface displacement directions
-        interface.updateDisplacementDirections();  
-        
-        // Modify surface-tension for temperature
-        interface.adjustSurfaceTension(T);         
+        interface.updateDisplacementDirections();
+
+        if (adjustSigmaForTemperature)
+        {
+            interface.adjustSurfaceTension(T);
+        }
+
+        if (adjustNuForTemperature)
+        {
+            adjustViscosity
+            (
+                interface,
+                T,
+                (interface.muFluidA()/interface.rhoFluidA()).value(),
+                nu
+            );
+        }
 
         // Set boundary conditions for the motionSolver and solve for mesh-motion
         interface.restorePosition();
         mesh.setMotionBC(interface.patchID(), interface.displacement());
-        mesh.updateMotion();  
-        
-#       include "volContinuity.H"     
-        
+        mesh.updateMotion();
+
+#       include "volContinuity.H"
+
         for (int corr=0; corr<nOuterCorr; corr++)
-        {        
+        {
             // Update boundary conditions on velocity and pressure
-            interface.updateBoundaryConditions();         
-            
+            interface.updateBoundaryConditions();
+
             // Make the fluxes relative to the mesh motion
             fvc::makeRelative(phi, U);
-            
-            dimensionedScalar nu("nu", interface.muFluidA()/interface.rhoFluidA());
 
 #           include "UEqn.H"
 
-            volScalarField rUA = 1.0/UEqn.A();            
+            volScalarField rUA = 1.0/UEqn.A();
 
             // --- PISO loop
 
@@ -141,52 +211,58 @@ int main(int argc, char *argv[])
             }
 
             // Update the interface with the fluid velocity
-            interface.movePoints();            
-            
-#           include "freeSurfaceContinuityErrs.H"  
-            
+            interface.movePoints();
+
+#           include "freeSurfaceContinuityErrs.H"
+
             Info << endl;
-        } 
-        
+        }
+
+        if (nonNewtonian)
+        {
+            nuModel->correct();
+            nu = nuModel->nu();
+        }
+
         // Make the fluxes relative
-        fvc::makeRelative(phi, U);  
-        
+        fvc::makeRelative(phi, U);
+
         dimensionedScalar DT
         (
-            "DT", 
+            "DT",
             interface.condFluidA()/
             (interface.CpFluidA()*interface.rhoFluidA())
         );
-        
+
         // Passive heat-transfer
         solve
         (
             fvm::ddt(T)
           + fvm::div(phi, T)
-          - fvm::laplacian(DT, T) 
-        );        
-        
+          - fvm::laplacian(DT, T)
+        );
+
         // Make the fluxes absolute
-        fvc::makeAbsolute(phi, U);        
-        
-        runTime.write(); 
-#       include "meshInfo.H"          
-        
-        bool meshChanged = mesh.updateTopology();         
-        
+        fvc::makeAbsolute(phi, U);
+
+        runTime.write();
+#       include "meshInfo.H"
+
+        bool meshChanged = mesh.updateTopology();
+
         if (meshChanged)
-        {      
+        {
 #           include "checkTotalVolume.H"
             phi = linearInterpolate(U) & mesh.Sf();
-#           include "correctPhi.H"            
+#           include "correctPhi.H"
 #           include "CourantNo.H"
-            interface.updateMesh(mesh.meshMap());            
-        }     
-        
+            interface.updateMesh(mesh.meshMap());
+        }
+
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
-            << nl << endl;        
-         
+            << nl << endl;
+
     }
 
     Info<< "End\n" << endl;

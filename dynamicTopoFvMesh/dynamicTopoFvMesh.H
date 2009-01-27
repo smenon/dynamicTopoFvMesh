@@ -688,7 +688,7 @@ public:
         );
 
         // Return the mesh-mapper
-        const autoPtr<mapPolyMesh> meshMap();
+        const mapPolyMesh& meshMap();
 
         // Return old cell-centre information (prior to a topology change)
         const vectorField& oldCellCentres() const;
