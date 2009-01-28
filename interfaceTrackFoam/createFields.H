@@ -52,7 +52,7 @@
             runTime.timeName(),
             mesh,
             IOobject::NO_READ,
-            IOobject::NO_WRITE
+            IOobject::AUTO_WRITE
         ),
         mesh,
         interface.muFluidA()/interface.rhoFluidA()

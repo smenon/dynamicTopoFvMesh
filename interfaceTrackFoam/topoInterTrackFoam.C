@@ -136,11 +136,13 @@ int main(int argc, char *argv[])
 
         if (adjustSigmaForTemperature)
         {
+            Info << "Adjusting surface tension for temperature." << endl;
             interface.adjustSurfaceTension(T);
         }
 
         if (adjustNuForTemperature)
         {
+            Info << "Adjusting viscosity for temperature." << endl;
             adjustViscosity
             (
                 interface,

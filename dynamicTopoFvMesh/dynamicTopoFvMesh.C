@@ -6688,8 +6688,20 @@ bool dynamicTopoFvMesh::collapseQuadFace
             }
             else
             {
-                // Keep orientation intact, and update the owner
-                owner_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
+                if (neighbour_[faceToThrow[1]] != -1)
+                {
+                    // Keep orientation intact, and update the owner
+                    owner_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
+                }
+                else
+                {
+                    // This face will need to be flipped and converted
+                    // to a boundary face. Flip it now, so that conversion
+                    // happens later.
+                    faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
+                    owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
+                    neighbour_[faceToKeep[0]] = -1;
+                }
             }
         }
         else
@@ -6743,8 +6755,21 @@ bool dynamicTopoFvMesh::collapseQuadFace
                 }
                 else
                 {
-                    // Keep orientation intact, and update the owner
-                    owner_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
+                    if (neighbour_[faceToThrow[1]] != -1)
+                    {
+                        // Keep orientation intact, and update the owner
+                        owner_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
+                    }
+                    else
+                    {
+                        // This face will need to be flipped and converted
+                        // to a boundary face. Flip it now, so that conversion
+                        // happens later.
+                        faces_[faceToKeep[1]] =
+                            faces_[faceToKeep[1]].reverseFace();
+                        owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
+                        neighbour_[faceToKeep[1]] = -1;
+                    }
                 }
             }
             else
@@ -6782,7 +6807,11 @@ bool dynamicTopoFvMesh::collapseQuadFace
     // Remove orphaned faces
     if (owner_[faceToKeep[0]] == -1)
     {
-        removeFace(faceToKeep[0]);
+        FatalErrorIn("dynamicTopoFvMesh::collapseQuadFace()")
+                << " Invalid face! Owner is -1."
+                << " Something's messed up." << nl
+                << " Face: " << faceToKeep[0]
+                << abort(FatalError);
     }
     else
     if
@@ -6848,7 +6877,11 @@ bool dynamicTopoFvMesh::collapseQuadFace
         // Remove orphaned faces
         if (owner_[faceToKeep[1]] == -1)
         {
-            removeFace(faceToKeep[1]);
+            FatalErrorIn("dynamicTopoFvMesh::collapseQuadFace()")
+                    << " Invalid face! Owner is -1."
+                    << " Something's messed up." << nl
+                    << " Face: " << faceToKeep[1]
+                    << abort(FatalError);
         }
         else
         if
@@ -8627,6 +8660,11 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 // Override of primitiveMesh member function
 label dynamicTopoFvMesh::nEdges() const
 {
+    if (!nEdges_)
+    {
+        return primitiveMesh::nEdges();
+    }
+
     return nEdges_;
 }
 
@@ -8641,6 +8679,11 @@ label dynamicTopoFvMesh::nInternalEdges() const
 // Override of primitiveMesh member function.
 const edgeList& dynamicTopoFvMesh::edges() const
 {
+    if (!nEdges_)
+    {
+        return primitiveMesh::edges();
+    }
+
     return IOedges_;
 }
 
