@@ -177,8 +177,12 @@ class dynamicTopoFvMesh
 
             // Member functions for access to the stack
 
-                //- Initialize the stack with a sequential list
+                //- Initialize the stack with a prescribed size
                 void initStack(const label size);
+
+                //- Initialize the stack with a list
+                template <class Type>
+                void initStack(HashList<Type>& list);
 
                 //- Push items on to the stack
                 inline void push(const label index);
@@ -196,7 +200,10 @@ class dynamicTopoFvMesh
                 inline void print();
         };
 
-        // Stack of edges to be checked during flipping
+        // Stack of faces to be checked for topo-changes [2D]
+        stack faceStack_;
+
+        // Stack of edges to be checked for topo-changes [3D]
         stack edgeStack_;
 
         //- Support for multithreading
@@ -211,31 +218,9 @@ class dynamicTopoFvMesh
             // Total number of threads and thread ID
             label nThreads_, threadID_;
 
-            // Entity start positions & sizes
-            label pointStart_, edgeStart_, faceStart_, cellStart_;
-            label pointSize_, edgeSize_, faceSize_, cellSize_;
-
             // Default constructor
             topoMeshStruct();
-
-            // Return iterators for each entity-type
-
-                //- Point
-                HashList<point>::iterator pointStart();
-                HashList<point>::iterator pointEnd();
-
-                //- Edge
-                HashList<edge>::iterator edgeStart();
-                HashList<edge>::iterator edgeEnd();
-
-                //- Face
-                HashList<face>::iterator faceStart();
-                HashList<face>::iterator faceEnd();
-
-                //- Cell
-                HashList<cell>::iterator cellStart();
-                HashList<cell>::iterator cellEnd();
-
+            
         } *structPtr_;
 
     // Private Member Functions
@@ -293,6 +278,19 @@ class dynamicTopoFvMesh
         // Return length-scale at an edge-location in the mesh [3D]
         inline scalar meshEdgeLengthScale(const label eIndex);
 
+        // Check if a given face is a quad
+        inline bool checkQuadFace(const label fIndex);
+
+        // Return the length of an edge
+        inline scalar edgeLength(const label eIndex);
+
+        // Return cell-labels on either side of the face
+        inline void faceCells
+        (
+            const label fIndex,
+            FixedList<label,2> cellLabels
+        );
+
         // Return length-scale at an cell-location in the mesh
         inline scalar meshCellLengthScale(const label cIndex);
 
@@ -314,6 +312,9 @@ class dynamicTopoFvMesh
         // 3D Edge-bisection/collapse engine
         static void edgeBisectCollapse3D(void *argument);
 
+        // Return the face-stack
+        inline stack& faceStack();
+
         // Return the edge-stack
         inline stack& edgeStack();
 
@@ -327,7 +328,6 @@ class dynamicTopoFvMesh
         void swapQuadFace
         (
             const label findex,
-            face& thisFace,
             const FixedList<label,4>& commonFaceIndex,
             const FixedList<face,4>&  commonFaces,
             const FixedList<edge,2>&  commonEdges
@@ -336,16 +336,14 @@ class dynamicTopoFvMesh
         // Method for the bisection of a quad-face in 2D
         void bisectQuadFace
         (
-            const label findex,
-            face& thisFace
+            const label findex
         );
 
         // Method for the collapse of a quad-face in 2D
         // Returns a boolean value indicating whether the collapse was valid
         bool collapseQuadFace
         (
-            const label findex,
-            face& thisFace
+            const label findex
         );
 
         // Method for the bisection of an edge in 3D
@@ -388,16 +386,15 @@ class dynamicTopoFvMesh
         // and remove it by a two-step bisection/collapse operation.
         bool remove2DSliver
         (
-            const label findex,
-            face& thisFace
+            const label findex
         );
 
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
         inline void findPrismFaces
         (
-            const label& findex,
-            const cell& c,
+            const label findex,
+            const label cindex,
             FixedList<face,2>& bdyf,
             FixedList<label,2>& bidx,
             FixedList<face,2>& intf,
@@ -619,24 +616,16 @@ class dynamicTopoFvMesh
         // Return the appropriate length-scale for boundary face
         scalar boundaryLengthScale(const label faceIndex);
 
-        // Prepare thread structures
-        void prepareThreads(const label numThreads);
-
         // Does the mesh perform edge-modification?
         bool edgeModification();
 
         // Private internal access to member data for static members
         HashList<point>& meshPoints() { return meshPoints_; }
-        HashList<cell>&  meshCells() { return cells_; }
-        HashList<label>& meshOwner() { return owner_; }
-        HashList<label>& meshNeighbour() { return neighbour_; }
-        bool& topoChangeFlag() { return topoChangeFlag_; }
-
         HashList<edge>& edgeToWatch() { return edgeToWatch_; }
+        bool& topoChangeFlag() { return topoChangeFlag_; }
         scalar ratioMin() { return ratioMin_; }
         scalar ratioMax() { return ratioMax_; }
         scalar growthFactor() { return growthFactor_; }
-        label bisectInteriorFace() { return bisectInteriorFace_; }
         label maxTetsPerEdge() { return maxTetsPerEdge_; }
         bool allowTableResize() { return allowTableResize_; }
 
