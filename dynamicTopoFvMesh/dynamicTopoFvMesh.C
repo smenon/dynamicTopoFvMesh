@@ -186,6 +186,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ratioMax_(0.0),
     growthFactor_(1.0),
     maxLengthScale_(GREAT),
+    sliverThreshold_(0.05),
     bisectInteriorFace_(-1),
     maxTetsPerEdge_(-1),
     allowTableResize_(false)
@@ -375,6 +376,12 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         {
             fixedLengthScalePatches_ =
                 edgeOptionDict.subDict("fixedLengthScalePatches");
+        }
+
+        if (edgeOptionDict.found("sliverThreshold"))
+        {
+            sliverThreshold_ =
+                readScalar(edgeOptionDict.lookup("sliverThreshold"));
         }
 
         initLengthScale();
@@ -1036,6 +1043,15 @@ label dynamicTopoFvMesh::insertFace
     owner_.append(newOwner);
     neighbour_.append(newNeighbour);
 
+#   ifdef FULLDEBUG
+    if (debug)
+    {
+        Info << "Inserting face: "
+             << newFaceIndex << ": "
+             << newFace << endl;
+    }
+#   endif
+
     if (edgeModification_ && twoDMesh_)
     {
         edgeToWatch_.append(edgeToWatch);
@@ -1140,6 +1156,15 @@ label dynamicTopoFvMesh::insertEdge
 
     // Add to the stack as well
     edgeStack_.push(newEdgeIndex);
+
+#   ifdef FULLDEBUG
+    if (debug)
+    {
+        Info << "Inserting edge: "
+             << newEdgeIndex << ": "
+             << newEdge << endl;
+    }
+#   endif
 
     // Keep track of added edges in a separate hash-table
     // This information will be required at the reordering stage
@@ -6688,7 +6713,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
             }
             else
             {
-                if (neighbour_[faceToThrow[1]] != -1)
+                if (neighbour_[faceToThrow[0]] != -1)
                 {
                     // Keep orientation intact, and update the owner
                     owner_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
@@ -6807,11 +6832,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
     // Remove orphaned faces
     if (owner_[faceToKeep[0]] == -1)
     {
-        FatalErrorIn("dynamicTopoFvMesh::collapseQuadFace()")
-                << " Invalid face! Owner is -1."
-                << " Something's messed up." << nl
-                << " Face: " << faceToKeep[0]
-                << abort(FatalError);
+        removeFace(faceToKeep[0]);
     }
     else
     if
@@ -6877,11 +6898,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         // Remove orphaned faces
         if (owner_[faceToKeep[1]] == -1)
         {
-            FatalErrorIn("dynamicTopoFvMesh::collapseQuadFace()")
-                    << " Invalid face! Owner is -1."
-                    << " Something's messed up." << nl
-                    << " Face: " << faceToKeep[1]
-                    << abort(FatalError);
+            removeFace(faceToKeep[1]);
         }
         else
         if
@@ -8419,7 +8436,7 @@ bool dynamicTopoFvMesh::remove2DSliver
     scalar area = triFaceArea(c0BdyFace[0]);
 
     // This cell has to be removed...
-    if (mag(area) < (0.05*length*length))
+    if (mag(area) < (sliverThreshold_*length*length))
     {
         // Step 1: Bisect the boundary quad face
         bisectInteriorFace_ = -1;

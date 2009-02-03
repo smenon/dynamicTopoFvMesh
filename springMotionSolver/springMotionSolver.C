@@ -228,6 +228,58 @@ Foam::scalar Foam::springMotionSolver::dot
     return s;
 }
 
+// Compute the normalization factor for the matrix
+Foam::scalar Foam::springMotionSolver::normFactor
+(
+    const scalarField& x,
+    const scalarField& b,
+    const scalarField& w,
+    scalarField& tmpField
+)
+{
+    scalar xRef = average(x);
+
+    A(scalarField(x.size(), xRef),tmpField);
+
+    return sum(mag(w - tmpField) + mag(b - tmpField)) + 1.0e-20;
+}
+
+Foam::scalar Foam::springMotionSolver::normFactor
+(
+    const vectorField& x,
+    const vectorField& b,
+    const vectorField& w,
+    vectorField& tmpField
+)
+{
+    vector xRef = average(x);
+
+    A(vectorField(x.size(), xRef),tmpField);
+
+    vectorField nFw = (w - tmpField);
+    vectorField nFb = (b - tmpField);
+
+    return cmptSumMag(nFw) + cmptSumMag(nFb) + 1.0e-20;
+}
+
+// Component-wise sumMag
+Foam::scalar Foam::springMotionSolver::cmptSumMag(const vectorField& field)
+{
+    scalar cSum = 0.0;
+
+    forAll(field,i)
+    {
+        cSum += mag(field[i].x()) + mag(field[i].y()) + mag(field[i].z());
+    }
+
+    return cSum;
+}
+
+Foam::scalar Foam::springMotionSolver::cmptSumMag(const scalarField& field)
+{
+    return sumMag(field);
+}
+
 // Templated CG solver
 template <class Type>
 Foam::label Foam::springMotionSolver::CG
@@ -241,13 +293,17 @@ Foam::label Foam::springMotionSolver::CG
 )
 {
     // Local variables
-    scalar alpha, beta, delta_old, delta_new;
+    scalar alpha, beta, rho, rhoOld, residual;
     label maxIter = x.size(), iter = 0;
 
     // Set Dirichlet conditions on the solution field (if any)
     setDirichlet(x);
     
     A(x,w);
+
+    // Compute the normFactor, using 'r' as scratch-space
+    scalar norm = this->normFactor(x,b,w,r);
+
     r = b - w;
 
     if (preCondition)
@@ -260,46 +316,60 @@ Foam::label Foam::springMotionSolver::CG
         p = r;
     }
 
-    delta_new = dot(r,p);
+    rho = dot(r,p);
 
-    Info << " Initial residual: " << delta_new;
+    // Obtain the normalized residual
+    residual = cmptSumMag(r)/norm;
 
-    while ( (iter < maxIter) && (delta_new > tolerance_) )
+    Info << " Initial residual: " << residual;
+
+    while ( (iter < maxIter) && (residual > tolerance_) )
     {
         A(p,w);
 
-        alpha = delta_new / dot(p,w);
+        alpha = rho / dot(p,w);
 
-        x += (alpha*p);
-        r -= (alpha*w);
+        forAll (x, i)
+        {
+            x[i] += (alpha*p[i]);
+            r[i] -= (alpha*w[i]);
+        }
 
-        delta_old = delta_new;
+        rhoOld = rho;
 
         if (preCondition)
         {
             M(r,w);
-            delta_new = dot(r,w);
+            rho = dot(r,w);
         }
         else
         {
-            delta_new = dot(r,r);
+            rho = dot(r,r);
         }
 
-        beta = delta_new / delta_old;
+        beta = rho / rhoOld;
 
         if (preCondition)
         {
-            p = w + (beta*p);
+            forAll (p, i)
+            {
+                p[i] = w[i] + (beta*p[i]);
+            }
         }
         else
         {
-            p = r + (beta*p);
+            forAll (p, i)
+            {
+                p[i] = r[i] + (beta*p[i]);
+            }
         }
 
+        // Update the normalized residual
+        residual = cmptSumMag(r)/norm;
         iter++;
     }
 
-    Info << " Final residual: " << delta_new;
+    Info << " Final residual: " << residual;
     
     return iter;
 }
@@ -608,7 +678,7 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
         forAll (edges, edgeI)
         {
             stiffness_[edgeI] =
-                magSqr
+                mag
                 (
                     refPoints_[edges[edgeI][1]]
                   - refPoints_[edges[edgeI][0]]
@@ -639,7 +709,7 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
                 xp = refPoints_[pointI] - p;
 
                 // Stiffness is the inverse magnitude
-                k[faceI] = 10.0*magSqr(p);
+                k[faceI] = mag(p);
 
                 // Compute interpolation coefficients
                 v2 = xp - refPoints_[faceToCheck[2]];
@@ -737,7 +807,7 @@ void Foam::springMotionSolver::solve()
 
             Info << "Solving for point motion: ";
 
-            label iters = CG(bV_, pV_, rV_, wV_, xV_, true);
+            label iters = CG(bV_, pV_, rV_, wV_, xV_);
 
             Info << " No Iterations: " << iters << endl;
 

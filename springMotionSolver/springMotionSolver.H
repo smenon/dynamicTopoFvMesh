@@ -143,9 +143,30 @@ protected:
         Field<Type>& x,
         bool preCondition
     );
-    
+
     // Initialize fields for the CG solver
     void initCG(label nUnknowns);
+
+    // Compute the normalization factor for the matrix
+    scalar normFactor
+    (
+        const scalarField& x,
+        const scalarField& b,
+        const scalarField& w,
+        scalarField& tmpField
+    );
+
+    scalar normFactor
+    (
+        const vectorField& x,
+        const vectorField& b,
+        const vectorField& w,
+        vectorField& tmpField
+    );
+
+    // Component-wise sumMag
+    scalar cmptSumMag(const scalarField& field);
+    scalar cmptSumMag(const vectorField& field);
     
     // Set Dirichlet conditions for the solution field (if any)
     void setDirichlet(scalarField &x);

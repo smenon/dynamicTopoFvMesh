@@ -156,6 +156,7 @@ class dynamicTopoFvMesh
         scalar              ratioMax_;
         scalar              growthFactor_;
         scalar              maxLengthScale_;
+        scalar              sliverThreshold_;
         label               bisectInteriorFace_;
 
         //- Maximum number of tets around an edge
