@@ -610,6 +610,9 @@ class dynamicTopoFvMesh
         // Check the state of edge-based connectivity HashLists
         void checkEdgeConnectivity();
 
+        // Check tet-specific connectivity structures
+        void checkTetConnectivity();
+
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
 

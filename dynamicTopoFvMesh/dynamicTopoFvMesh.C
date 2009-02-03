@@ -3996,6 +3996,82 @@ void dynamicTopoFvMesh::checkEdgeConnectivity()
     Info << "Done." << endl;
 }
 
+// Check tet-specific connectivity structures
+void dynamicTopoFvMesh::checkTetConnectivity()
+{
+    // Loop through all cells and construct cell-to-node
+    label cIndex = 0;
+    labelList cellIndex(nCells_);
+    List<labelHashSet> cellToNode(nCells_);
+
+    forAllIter(HashList<cell>, cells_, cIter)
+    {
+        label cellI = cIter.index();
+        cellIndex[cIndex] = cellI;
+        cell& thisCell = cells_[cellI];
+
+        forAll(thisCell, faceI)
+        {
+            labelList& fEdges = faceEdges_[thisCell[faceI]];
+
+            forAll(fEdges, edgeI)
+            {
+                edge& thisEdge = edges_[fEdges[edgeI]];
+
+                if (!cellToNode[cIndex].found(thisEdge[0]))
+                {
+                    cellToNode[cIndex].insert(thisEdge[0]);
+                }
+
+                if (!cellToNode[cIndex].found(thisEdge[1]))
+                {
+                    cellToNode[cIndex].insert(thisEdge[1]);
+                }
+            }
+        }
+
+        cIndex++;
+    }
+
+    // Preliminary check for size
+    label nFailedChecks = 0;
+    forAll(cellToNode, cellI)
+    {
+        if (cellToNode[cellI].size() != 4)
+        {
+            Info << "Warning: Cell: " 
+                 << cellIndex[cellI] << " is inconsistent. " << endl;
+
+            cell& failedCell = cells_[cellIndex[cellI]];
+            Info << "Cell faces: " << failedCell << endl;
+            forAll(failedCell, faceI)
+            {
+                Info << "\tFace: " << failedCell[faceI]
+                     << " :: " << faces_[failedCell[faceI]] << endl;
+
+                labelList& fEdges = faceEdges_[failedCell[faceI]];
+                forAll(fEdges, edgeI)
+                {
+                    Info << "\t\tEdge: " << fEdges[edgeI]
+                         << " :: " << edges_[fEdges[edgeI]] << endl;
+                }
+            }
+
+            nFailedChecks++;
+        }
+    }
+
+    if (nFailedChecks)
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::checkTetConnectivity()"
+        )
+            << nFailedChecks << " cells failed connectivity checks."
+            << abort(FatalError);
+    }
+}
+
 // Calculate the edge length-scale for the mesh
 void dynamicTopoFvMesh::calculateLengthScale()
 {
