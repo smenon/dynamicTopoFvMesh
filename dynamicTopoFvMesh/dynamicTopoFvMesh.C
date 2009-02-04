@@ -2494,6 +2494,50 @@ void dynamicTopoFvMesh::swap23
     }
 
     // Generate mapping information for the three new cells
+    // Prepare a list of master-objects to map from
+    const labelListList& cc = cellCells();
+    labelHashSet masterObjects;
+    FixedList<label,2> parents(-1);
+
+    forAll (cellsForRemoval, indexI)
+    {
+        // Determine an appropriate parent cell
+        if (cellsForRemoval[indexI] < nOldCells_)
+        {
+            parents[indexI] = cellsForRemoval[indexI];
+        }
+        else
+        {
+            parents[indexI] = cellParents_[cellsForRemoval[indexI]];
+        }
+
+        // Find the cell's neighbours in the old mesh
+        masterObjects.insert(parents[indexI]);
+        forAll(cc[parents[indexI]],cellI)
+        {
+            if (!masterObjects.found(cc[parents[indexI]][cellI]))
+            {
+                masterObjects.insert(cc[parents[indexI]][cellI]);
+            }
+        }
+    }
+
+    forAll(newCellIndex, cellI)
+    {
+        // Insert the parent cell [from first by default]
+        cellParents_.insert(newCellIndex[cellI], parents[0]);
+
+        // Insert mapping info into the HashTable
+        cellsFromCells_.insert
+        (
+            newCellIndex[cellI],
+            objectMap
+            (
+                newCellIndex[cellI],
+                masterObjects.toc()
+            )
+        );
+    }
 
     // Remove the face
     removeFace(faceForRemoval);
@@ -2536,6 +2580,12 @@ void dynamicTopoFvMesh::swap23
         if (cIndex < nOldCells_)
         {
             reverseCellMap_[cIndex] = -1;
+        }
+
+        // Check if the cell was added in the current morph, and delete
+        if (cellsFromCells_.found(cIndex))
+        {
+            cellsFromCells_.erase(cIndex);
         }
     }
 
@@ -2937,6 +2987,49 @@ void dynamicTopoFvMesh::swap32
     }
 
     // Generate mapping information for the two new cells
+    const labelListList& cc = cellCells();
+    labelHashSet masterObjects;
+    FixedList<label,3> parents(-1);
+
+    forAll (cellRemovalList, indexI)
+    {
+        // Determine an appropriate parent cell
+        if (cellRemovalList[indexI] < nOldCells_)
+        {
+            parents[indexI] = cellRemovalList[indexI];
+        }
+        else
+        {
+            parents[indexI] = cellParents_[cellRemovalList[indexI]];
+        }
+
+        // Find the cell's neighbours in the old mesh
+        masterObjects.insert(parents[indexI]);
+        forAll(cc[parents[indexI]],cellI)
+        {
+            if (!masterObjects.found(cc[parents[indexI]][cellI]))
+            {
+                masterObjects.insert(cc[parents[indexI]][cellI]);
+            }
+        }
+    }
+
+    forAll(newCellIndex, cellI)
+    {
+        // Insert the parent cell [from first by default]
+        cellParents_.insert(newCellIndex[cellI], parents[0]);
+
+        // Insert mapping info into the HashTable
+        cellsFromCells_.insert
+        (
+            newCellIndex[cellI],
+            objectMap
+            (
+                newCellIndex[cellI],
+                masterObjects.toc()
+            )
+        );
+    }
 
     // Remove the faces and update associated edges
     forAll(facesForRemoval, faceI)
@@ -2990,6 +3083,12 @@ void dynamicTopoFvMesh::swap32
         if (cIndex < nOldCells_)
         {
             reverseCellMap_[cIndex] = -1;
+        }
+
+        // Check if the cell was added in the current morph, and delete
+        if (cellsFromCells_.found(cIndex))
+        {
+            cellsFromCells_.erase(cIndex);
         }
     }
 
@@ -4631,7 +4730,7 @@ void dynamicTopoFvMesh::stack::initStack(const label size)
 {
     for (label i = 0; i < size; i++)
     {
-        stack::push(i);
+        stack_.insert(i);
     }
 }
 
@@ -4646,7 +4745,7 @@ void dynamicTopoFvMesh::stack::initStack(HashList<Type>& list)
         iter++
     )
     {
-        stack::push(iter.index());
+        stack_.insert(iter.index());
     }
 }
 
@@ -5541,7 +5640,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     // Generate mapping information for this new cell
     label firstParent;
     const labelListList& cc = cellCells();
-    labelHashSet c0MasterObjects(6);
+    labelHashSet c0MasterObjects;
 
     if (c0 < nOldCells_)
     {
@@ -5807,7 +5906,7 @@ void dynamicTopoFvMesh::bisectQuadFace
 
         // Generate mapping information for this new cell
         label secondParent;
-        labelHashSet c1MasterObjects(6);
+        labelHashSet c1MasterObjects;
 
         if (c1 < nOldCells_)
         {
@@ -6932,11 +7031,13 @@ void dynamicTopoFvMesh::bisectEdge
     labelList tmpFaceEdges(3,-1);
     edge& thisEdge = edges_[eIndex];
 
+#   ifdef FULLDEBUG
     if (debug)
     {
         Info << nl << nl << "Edge: " << eIndex
              << ": " << thisEdge << " is to be bisected. " << endl;
     }
+#   endif
 
     // Obtain maxTetsPerEdge
     label mMax = maxTetsPerEdge();
@@ -7001,6 +7102,9 @@ void dynamicTopoFvMesh::bisectEdge
     labelList addedEdgeIndices(faceHull.size(),-1);
     labelList addedIntFaceIndices(faceHull.size(),-1);
 
+    // Obtain cellCells for mapping information
+    const labelListList& cc = cellCells();
+
     // Now loop through the hull and bisect individual entities
     forAll(vertexHull, indexI)
     {
@@ -7028,6 +7132,43 @@ void dynamicTopoFvMesh::bisectEdge
             addedCellIndices[indexI] = cells_.append(cell(4));
             cell& newCell = cells_[addedCellIndices[indexI]];
             nCells_++;
+
+            // Generate mapping information for this new cell
+            label parent;
+            labelHashSet masterObjects;
+
+            if (cellHull[indexI] < nOldCells_)
+            {
+                parent = cellHull[indexI];
+            }
+            else
+            {
+                parent = cellParents_[cellHull[indexI]];
+            }
+
+            // Insert the parent cell
+            cellParents_.insert(addedCellIndices[indexI], parent);
+
+            // Find the cell's neighbours in the old mesh
+            masterObjects.insert(parent);
+            forAll(cc[parent], cellI)
+            {
+                if (!masterObjects.found(cc[parent][cellI]))
+                {
+                    masterObjects.insert(cc[parent][cellI]);
+                }
+            }
+
+            // Insert mapping info into the HashTable
+            cellsFromCells_.insert
+            (
+                addedCellIndices[indexI],
+                objectMap
+                (
+                    addedCellIndices[indexI],
+                    masterObjects.toc()
+                )
+            );
 
             // Add a new element to the lengthScale field
             lengthScale_.append(lengthScale_[cellHull[indexI]]);
@@ -7585,11 +7726,13 @@ bool dynamicTopoFvMesh::collapseEdge
     edge& thisEdge = edges_[eIndex];
     FixedList<bool,2> edgeBoundary(false);
 
+#   ifdef FULLDEBUG
     if (debug)
     {
         Info << nl << nl << "Edge: " << eIndex
              << ": " << thisEdge << " is to be collapsed. " << endl;
     }
+#   endif
 
     // Obtain maxTetsPerEdge
     label mMax = maxTetsPerEdge();
@@ -8027,6 +8170,12 @@ bool dynamicTopoFvMesh::collapseEdge
             if (cellToRemove < nOldCells_)
             {
                 reverseCellMap_[cellToRemove] = -1;
+            }
+
+            // Check if the cell was added in the current morph, and delete
+            if (cellsFromCells_.found(cellToRemove))
+            {
+                cellsFromCells_.erase(cellToRemove);
             }
         }
 
@@ -8661,7 +8810,6 @@ bool dynamicTopoFvMesh::updateTopology()
     while (pIter != meshPoints_.end())
     {
         pIter() = currentPoints[pIter.index()];
-        // Update the iterators
         pIter++;
     }
 

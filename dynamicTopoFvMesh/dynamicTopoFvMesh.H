@@ -592,10 +592,12 @@ class dynamicTopoFvMesh
             labelList& neighbour
         );
 
-        // Reorder & renumber cells with bandwidth reduction after a topology change
+        // Reorder & renumber cells with bandwidth
+        // reduction after a topology change
         void reOrderCells();
 
-        // Reorder the mesh in upper-triangular order, and generate mapping information
+        // Reorder the mesh in upper-triangular order,
+        // and generate mapping information
         void reOrderMesh
         (
             pointField& points,
