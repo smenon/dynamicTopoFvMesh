@@ -37,6 +37,7 @@ SourceFiles
 #define dynamicTopoFvMesh_H
 
 #include "HashList.H"
+#include "multiThreader.H"
 #include "fvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -45,8 +46,6 @@ namespace Foam
 {
 
 // Class forward declarations
-class multiThreader;
-class Mutex;
 class mapPolyMesh;
 class objectMap;
 class motionSolver;
@@ -169,7 +168,9 @@ class dynamicTopoFvMesh
         class stack
         {
             // Private data
-            labelHashSet stack_;
+            labelHashSet    stack_;
+
+            Mutex           stackMutex_;
 
         public:
 
@@ -196,6 +197,12 @@ class dynamicTopoFvMesh
 
                 //- Return if a stack is empty or not
                 inline bool empty();
+
+                //- Mutex lock (for multiThreading)
+                inline void lock();
+
+                //- Mutex unlock (for multiThreading)
+                inline void unlock();
 
                 //- Print out the stack
                 inline void print();
@@ -224,11 +231,17 @@ class dynamicTopoFvMesh
             
         } *structPtr_;
 
+        //- Mutexes for all entities in the mesh
+        Mutex           pMutex_;
+        Mutex           eMutex_;
+        Mutex           fMutex_;
+        Mutex           cMutex_;
+
         //- Mutex lists for all entities in the mesh
-        HashList<Mutex> pointMutex_;
-        HashList<Mutex> edgeMutex_;
-        HashList<Mutex> faceMutex_;
-        HashList<Mutex> cellMutex_;
+        HashList<label> pointMutex_;
+        HashList<label> edgeMutex_;
+        HashList<label> faceMutex_;
+        HashList<label> cellMutex_;
 
     // Private Member Functions
 
@@ -356,14 +369,16 @@ class dynamicTopoFvMesh
         // Method for the bisection of an edge in 3D
         void bisectEdge
         (
-            const label eIndex
+            const label eIndex,
+            const label threadID
         );
 
         // Method for the collapse of an edge in 3D
         // Returns a boolean value indicating whether the collapse was valid
         bool collapseEdge
         (
-            const label eIndex
+            const label eIndex,
+            const label threadID
         );
 
         // Utility to determine ring edges and the hull faces connected to them.
@@ -583,6 +598,18 @@ class dynamicTopoFvMesh
             const DynamicList<label>& hullCells,
             const DynamicList<label>& hullFaces,
             const DynamicList<label>& hullVertices
+        );
+
+        // Try to acquire locks for given entities.
+        // Return true on success. HashSets contain locked entities.
+        bool tryLock
+        (
+            const label threadID,
+            const DynamicList<label>& cells,
+            labelHashSet& pLocks,
+            labelHashSet& eLocks,
+            labelHashSet& fLocks,
+            labelHashSet& cLocks
         );
 
         // Reorder points after a topology change

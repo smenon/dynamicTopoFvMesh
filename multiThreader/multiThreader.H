@@ -80,6 +80,10 @@ public:
     // Lock the mutex
     void lock();
 
+    // Try to acquire the mutex.
+    // Returns true if successful
+    bool tryLock();
+
     // Unlock the mutex
     void unlock();
 
@@ -149,7 +153,7 @@ class multiThreader
             Mutex       queueLock;
             Conditional queueNotEmpty;
             Conditional queueNotFull;
-            Conditional queueEmpty;   
+            Conditional queueEmpty;
             Conditional noBusyThreads;
         } *poolInfo_;           
 

@@ -250,7 +250,7 @@ threadReturnType Foam::multiThreader::poolThread(void *arg)
         }     
         
         // Unlock the work queue
-        poolInfo->queueLock.unlock();        
+        poolInfo->queueLock.unlock();
     }
     
     return threadReturnValue;
@@ -461,6 +461,18 @@ void Foam::Mutex::lock()
             << "Unable to lock the work queue."
             << abort(FatalError);
     }     
+}
+
+bool Foam::Mutex::tryLock()
+{
+    if (pthread_mutex_trylock(&lock_))
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
 }
 
 void Foam::Mutex::unlock()
