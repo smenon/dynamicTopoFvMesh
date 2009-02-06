@@ -386,6 +386,15 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 
         initLengthScale();
     }
+
+    // Initialize mutex lists for multi-threading, if necessary
+    if (threader_->multiThreaded())
+    {
+        pointMutex_.setSize(nPoints_);
+        edgeMutex_.setSize(nEdges_);
+        faceMutex_.setSize(nFaces_);
+        cellMutex_.setSize(nCells_);
+    }
 }
 
 // Default topoMeshStruct constructor

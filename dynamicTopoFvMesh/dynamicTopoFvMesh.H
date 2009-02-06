@@ -46,6 +46,7 @@ namespace Foam
 
 // Class forward declarations
 class multiThreader;
+class Mutex;
 class mapPolyMesh;
 class objectMap;
 class motionSolver;
@@ -222,6 +223,12 @@ class dynamicTopoFvMesh
             topoMeshStruct();
             
         } *structPtr_;
+
+        //- Mutex lists for all entities in the mesh
+        HashList<Mutex> pointMutex_;
+        HashList<Mutex> edgeMutex_;
+        HashList<Mutex> faceMutex_;
+        HashList<Mutex> cellMutex_;
 
     // Private Member Functions
 

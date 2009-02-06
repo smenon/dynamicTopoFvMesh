@@ -63,7 +63,7 @@ Foam::multiThreader::multiThreader(int numThreads)
     initializeThreadPool();
 }
 
-Foam::multiThreader::Mutex::Mutex()
+Foam::Mutex::Mutex()
 {
     if (pthread_mutex_init(&lock_, NULL))
     {
@@ -73,7 +73,7 @@ Foam::multiThreader::Mutex::Mutex()
     }    
 }
 
-Foam::multiThreader::Conditional::Conditional()
+Foam::Conditional::Conditional()
 {
     if (pthread_cond_init(&condition_, NULL))
     {
@@ -90,7 +90,7 @@ Foam::multiThreader::~multiThreader()
     destroyThreadPool();
 }
 
-Foam::multiThreader::Mutex::~Mutex()
+Foam::Mutex::~Mutex()
 {
     if (pthread_mutex_destroy(&lock_))
     {
@@ -100,7 +100,7 @@ Foam::multiThreader::Mutex::~Mutex()
     }    
 }
 
-Foam::multiThreader::Conditional::~Conditional()
+Foam::Conditional::~Conditional()
 {
     if (pthread_cond_destroy(&condition_))
     {
@@ -426,6 +426,12 @@ int Foam::multiThreader::getNumThreads()
     return numThreads_;
 }
 
+//- Return true if the number of threads is more than one.
+bool Foam::multiThreader::multiThreaded()
+{
+    return (numThreads_ > 1);
+}
+
 //- Return the maxQueueSize
 int Foam::multiThreader::getMaxQueueSize()
 {
@@ -447,7 +453,7 @@ void Foam::multiThreader::setMaxQueueSize(int size)
     }
 }
 
-void Foam::multiThreader::Mutex::lock()
+void Foam::Mutex::lock()
 {
     if (pthread_mutex_lock(&lock_))
     {
@@ -457,7 +463,7 @@ void Foam::multiThreader::Mutex::lock()
     }     
 }
 
-void Foam::multiThreader::Mutex::unlock()
+void Foam::Mutex::unlock()
 {
     if (pthread_mutex_unlock(&lock_))
     {

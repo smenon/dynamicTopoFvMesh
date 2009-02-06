@@ -67,9 +67,7 @@ HashList<T>::HashList(const label tableSize)
     startIdx_(0),
     endIdx_(0),
     table_(0),
-    hash_table_size_(tableSize),
-    rehash_(false),
-    rehashIndex_(-1)
+    hash_table_size_(tableSize)
 {
     // Allocate the hash-table and initialize
     table_ = new Item*[hash_table_size_];
@@ -77,6 +75,75 @@ HashList<T>::HashList(const label tableSize)
     {
         table_[i] = 0;
     }
+}
+
+//- Allocation for a null-constructed object, given size
+template<class T>
+void HashList<T>::setSize
+(
+    const label size,
+    const label tableSize
+)
+{
+    if (size < 0)
+    {
+        FatalErrorIn("HashList<T>::allocate(const size, const T&)") << nl
+            << " Cannot allocate to size " << size
+            << abort(FatalError);
+    }
+
+    if (size == 0)
+    {
+        return;
+    }
+
+    // Allocate the hash-table and initialize
+    if (table_ && (tableSize != hash_table_size_))
+    {
+        delete [] table_;
+        table_ = new Item*[tableSize];
+    }
+
+    // Initialize member data
+    size_   = size;
+    hash_table_size_ = tableSize;
+    
+    for(label i=0; i<hash_table_size_; i++)
+    {
+        table_[i] = 0;
+    }
+
+    // Allocate
+    Item *thisPtr=0, *prevPtr=0;
+    for (label i=0; i<size_; i++)
+    {
+        thisPtr = new Item;
+        thisPtr->idx_ = i;
+
+        // Update the hash-table
+        label loc = hash(i)%hash_table_size_;
+        if (table_[loc])
+        {
+            table_[loc]->prev_ = thisPtr;
+            thisPtr->next_ = table_[loc];
+        }
+        table_[loc] = thisPtr;
+
+        // Update the numerical indexing
+        if (i==0)
+        {
+            startIdx_ = thisPtr;
+        }
+        else
+        {
+            prevPtr->nextidx_ = thisPtr;
+            thisPtr->previdx_ = prevPtr;
+        }
+        prevPtr = thisPtr;
+    }
+
+    // Update the last element
+    endIdx_=prevPtr;
 }
 
 //- Allocation for a null-constructed object, given size/value
@@ -88,21 +155,30 @@ void HashList<T>::setSize
     const label tableSize
 )
 {
-    if (size<=0)
+    if (size < 0)
     {
         FatalErrorIn("HashList<T>::allocate(const size, const T&)") << nl
             << " Cannot allocate to size " << size
             << abort(FatalError);
     }
 
+    if (size == 0)
+    {
+        return;
+    }
+
+    // Allocate the hash-table and initialize
+    if (table_ && (tableSize != hash_table_size_))
+    {
+        delete [] table_;
+        table_ = new Item*[tableSize];
+    }
+
     // Initialize member data
     size_   = size;
     hash_table_size_ = tableSize;
-    rehash_ = false;
-    rehashIndex_ = size_;
 
     // Allocate the hash-table and initialize
-    table_ = new Item*[hash_table_size_];
     for(label i=0; i<hash_table_size_; i++)
     {
         table_[i] = 0;
@@ -151,7 +227,7 @@ HashList<T>::HashList
     const label tableSize
 )
 {
-    if (size<=0)
+    if (size < 0)
     {
         FatalErrorIn("HashList<T>::HashList(const size, const T&)") << nl
             << " Cannot allocate to size " << size
@@ -161,8 +237,11 @@ HashList<T>::HashList
     // Initialize member data
     size_   = size;
     hash_table_size_ = tableSize;
-    rehash_ = false;
-    rehashIndex_ = size_;
+
+    if (size == 0)
+    {
+        return;
+    }
 
     // Allocate the hash-table and initialize
     table_ = new Item*[hash_table_size_];
@@ -223,8 +302,11 @@ HashList<T>::HashList
     // Initialize member data
     size_   = data.size();
     hash_table_size_ = tableSize;
-    rehash_ = false;
-    rehashIndex_ = size_;
+
+    if (size_ == 0)
+    {
+        return;
+    }
 
     // Allocate the hash-table and initialize
     table_ = new Item*[hash_table_size_];
@@ -274,7 +356,7 @@ HashList<T>::HashList
     const HashList<T>& data
 )
 {
-    if (data.size()<=0)
+    if (data.size() < 0)
     {
         FatalErrorIn("HashList<T>::HashList(const HashList<T>& data)") << nl
             << " Cannot allocate to size " << data.size()
@@ -284,8 +366,11 @@ HashList<T>::HashList
     // Initialize member data
     size_   = data.size();
     hash_table_size_ = data.table_size();
-    rehash_ = data.rehashRequired();
-    rehashIndex_ = data.rehashIndex();
+
+    if (size == 0)
+    {
+        return;
+    }
 
     // Allocate the hash-table and initialize
     table_ = new Item*[hash_table_size_];
@@ -329,7 +414,6 @@ HashList<T>::HashList
 }
 
 //- Insertion of a new element at the given label
-//- This will require a rehash() call
 template<class T>
 inline typename HashList<T>::iterator HashList<T>::insert
 (
@@ -338,11 +422,10 @@ inline typename HashList<T>::iterator HashList<T>::insert
 )
 {
     // Hash the index
-    label loc = hash(index)%hash_table_size_, rhIndex;
-    rehash_   = true;
+    label loc = hash(index)%hash_table_size_;
 
     // Loop through chained linked-list
-    Item *thisPtr=0, *newPtr=0, *searchPtr=0; 
+    Item *thisPtr=0, *newPtr=0; 
     for (thisPtr=table_[loc]; thisPtr; thisPtr=thisPtr->next_)
     {
         if (index == thisPtr->idx_)
@@ -351,18 +434,10 @@ inline typename HashList<T>::iterator HashList<T>::insert
             newPtr = new Item;
             newPtr->data_ = data;
 
-            // Update index pointers and set the rehash index
+            // Update index pointers
             if (thisPtr->previdx_)
             {
                 thisPtr->previdx_->nextidx_ = newPtr;
-                // Look for a previous index which is sane
-                searchPtr=thisPtr;
-                do
-                {
-                    searchPtr = searchPtr->previdx_;
-                    rhIndex   = searchPtr->idx_;
-                } while ((rhIndex == -1) && (searchPtr != startIdx_));
-                rehashIndex_ = rhIndex < rehashIndex_ ? rhIndex : rehashIndex_;
             }
             newPtr->previdx_ = thisPtr->previdx_;
             newPtr->nextidx_ = thisPtr;
@@ -384,20 +459,15 @@ inline typename HashList<T>::iterator HashList<T>::insert
 }
 
 //- Deletion of an element at the given label
-//- This will require a rehash() call
 template<class T>
 inline void HashList<T>::remove
 (
     const label index
 )
 {
-    label rhIndex;
-    Item *thisPtr=getLinkItem(index), *searchPtr=thisPtr;
+    Item *thisPtr=getLinkItem(index);
 
-    // Set the rehash flag
-    rehash_ = true;
-
-    // Update pointers, set the rehash index, and delete the item
+    // Update pointers and delete the item
     if (thisPtr->prev_)
     {
         thisPtr->prev_->next_ = thisPtr->next_;
@@ -415,18 +485,10 @@ inline void HashList<T>::remove
     if (thisPtr->previdx_)
     {
         thisPtr->previdx_->nextidx_ = thisPtr->nextidx_;
-        // Look for a previous index which is sane
-        do
-        {
-            searchPtr = searchPtr->previdx_;
-            rhIndex   = searchPtr->idx_;
-        } while ((rhIndex == -1) && (searchPtr != startIdx_));
-        rehashIndex_ = rhIndex < rehashIndex_ ? rhIndex : rehashIndex_;
     }
     else
     {
         // The first item is to be removed; update the first item
-        rehashIndex_ = -1;
         startIdx_ = thisPtr->nextidx_;
     }
     if (thisPtr->nextidx_)
@@ -510,54 +572,7 @@ void HashList<T>::clear()
         table_[i] = 0;
     }
     size_ = 0; startIdx_ = 0; endIdx_ = 0;
-    rehash_ = false; rehashIndex_ = -1;
 }
-
-//- Renumber (and rehash) indices after insertion/deletion
-/*
-template<class T>
-inline void HashList<T>::rehash()
-{
-    if (this->rehash_)
-    {
-        // A rehashIndex less than zero implies that the entire list is to be rehashed
-        Item *thisPtr = (rehashIndex_ < 0) ? startIdx_ : getLinkItem(rehashIndex_);
-        for(
-             label idx = (thisPtr == startIdx_) ? 0 : rehashIndex_;
-             thisPtr;
-             thisPtr=thisPtr->nextidx_
-           )
-        {
-            // Renumber the HashList in a sequential fashion
-            thisPtr->idx_ = idx;
-
-            // Remove the old links
-            if (thisPtr->prev_) thisPtr->prev_->next_ = thisPtr->next_;
-            if (thisPtr->next_) thisPtr->next_->prev_ = thisPtr->prev_;
-
-            // Hash the new index, and update the table
-            label loc = hash(idx)%hash_table_size_;
-            if (table_[loc] == thisPtr)
-            {
-                table_[loc] = thisPtr->next_;
-            }
-            else
-            if (table_[loc])
-            {
-                table_[loc]->prev_ = thisPtr;
-                thisPtr->next_ = table_[loc];
-            }
-            thisPtr->prev_ = 0;
-            table_[loc] = thisPtr;
-            idx++;
-        }
-
-        // Reset the rehash flag and index
-        rehash_      = false;
-        rehashIndex_ = size_;
-    }
-}
-*/
 
 //- Sort the list in ascending order of indices
 template<class T>
@@ -630,7 +645,7 @@ inline label HashList<T>::iterator::index()
     return curItem->idx_;
 }
 
-//- Rehash the index of an iterator to a new value
+//- Renumber the index of an iterator to a new value
 template<class T>
 inline void HashList<T>::reNumber
 (
@@ -761,13 +776,6 @@ inline label HashList<T>::lastIndex() const
     return endIdx_->idx_;
 }
 
-//- Return the index at which rehashing begins
-template<class T>
-inline label HashList<T>::rehashIndex() const
-{
-    return rehashIndex_;
-}
-
 //- Return the table-size of the HashList.
 template<class T>
 inline label HashList<T>::table_size() const
@@ -780,13 +788,6 @@ template<class T>
 inline label HashList<T>::size() const
 {
     return size_;
-}
-
-//- Return the rehash status of the list
-template<class T>
-inline bool HashList<T>::rehashRequired() const
-{
-    return rehash_;
 }
 
 //- Return true if the HashList is empty (i.e., if size() == 0).

@@ -63,64 +63,59 @@ typedef void *(*threadFunctionType)(void *);
 
 namespace Foam
 {
-    
+
+class Mutex
+{
+    // Private data
+        pthread_mutex_t lock_;
+
+public:
+
+    // Constructor
+    Mutex();
+
+    // Destructor
+    ~Mutex();
+
+    // Lock the mutex
+    void lock();
+
+    // Unlock the mutex
+    void unlock();
+
+    // Operator overload
+    inline pthread_mutex_t* operator()()
+    {
+        return &lock_;
+    }
+};
+
+class Conditional
+{
+    // Private data
+        pthread_cond_t condition_;
+
+public:
+
+    // Constructor
+    Conditional();
+
+    // Destructor
+    ~Conditional();
+
+    // Operator overload
+    inline pthread_cond_t* operator()()
+    {
+        return &condition_;
+    }        
+};
+
 /*---------------------------------------------------------------------------*\
                            Class multiThreader Declaration
 \*---------------------------------------------------------------------------*/
 
 class multiThreader
-{    
-public:
-    
-    // Mutex sub-class
-    class Mutex
-    {
-        // Private data
-            pthread_mutex_t lock_;
-            
-    public:
-        
-        // Constructor
-        Mutex();
-        
-        // Destructor
-        ~Mutex();
-        
-        // Lock the mutex
-        void lock();
-        
-        // Unlock the mutex
-        void unlock();
-        
-        // Operator overload
-        inline pthread_mutex_t* operator()()
-        {
-            return &lock_;
-        }
-    };
-    
-    // Conditional sub-class
-    class Conditional
-    {
-        // Private data
-            pthread_cond_t condition_;
-            
-    public:
-        
-        // Constructor
-        Conditional();
-        
-        // Destructor
-        ~Conditional();
-        
-        // Operator overload
-        inline pthread_cond_t* operator()()
-        {
-            return &condition_;
-        }        
-    };
-        
-private:
+{            
     // Private data
     
         int numThreads_;
@@ -198,7 +193,10 @@ public:
     // Member Functions
         
         //- Return the number of threads
-        int getNumThreads();   
+        int getNumThreads();
+
+        //- Return true if the number of threads is more than one.
+        bool multiThreaded();
         
         //- Return the maxQueueSize
         int getMaxQueueSize();

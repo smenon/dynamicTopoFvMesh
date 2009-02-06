@@ -105,12 +105,6 @@ class HashList
         // Change if collision rates are unmanageable
         label hash_table_size_;
 
-        // Rehash flag for automatic rehashing
-        bool rehash_;
-
-        // Index from which rehashing begins
-        label rehashIndex_;
-
     // Private Member Functions
 
         // Hash to the table-entry
@@ -184,15 +178,16 @@ public:
 
         // Memory allocation
 
+            //- Allocation for a null-constructed object, given size
+            void setSize(const label, const label tableSize = 257);
+
             //- Allocation for a null-constructed object, given size/value
             void setSize(const label, const T&, const label tableSize = 257);
 
             //- Insertion of a new element at the given label
-            //- This will require a rehash
             inline iterator insert(const label, const T&);
 
             //- Deletion of an element at the given label
-            //- This will require a rehash
             inline void remove(const label);
 
             //- Append an element to the end of the list
@@ -201,9 +196,6 @@ public:
 
             //- Clear contents of the list
             void clear();
-
-            //- Rehash indices after insertion/deletion
-            //inline void rehash();
 
             //- Sort the list in ascending order of indices
             void sort();
@@ -219,14 +211,11 @@ public:
             //- Return nearest iterator to the specified index
             inline iterator getIterator(const label);
 
-            //- Rehash the index of an iterator to a new value
+            //- Renumber the index of an iterator to a new value
             inline void reNumber(const label, iterator&);
 
             //- Return the index of the last element
             inline label lastIndex() const;
-
-            //- Return the index at which rehashing begins
-            inline label rehashIndex() const;
 
             //- Return the table-size of the HashList.
             inline label table_size() const;
@@ -235,9 +224,6 @@ public:
             inline label size() const;
 
         // Check
-
-            //- Return the rehash status of the list
-            inline bool rehashRequired() const;
 
             //- Return true if the HashList is empty (i.e., if size() == 0).
             inline bool empty() const;
