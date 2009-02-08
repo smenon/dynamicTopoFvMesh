@@ -75,6 +75,9 @@ HashList<T>::HashList(const label tableSize)
     {
         table_[i] = 0;
     }
+
+    // Allocate the mutex-list as well
+    tableMutex_ = new Mutex[hash_table_size_];
 }
 
 //- Allocation for a null-constructed object, given size
@@ -102,12 +105,16 @@ void HashList<T>::setSize
     {
         delete [] table_;
         table_ = new Item*[tableSize];
+
+        // Allocate the mutex-list as well
+        delete [] tableMutex_;
+        tableMutex_ = new Mutex[tableSize];
     }
 
     // Initialize member data
     size_   = size;
     hash_table_size_ = tableSize;
-    
+
     for(label i=0; i<hash_table_size_; i++)
     {
         table_[i] = 0;
@@ -172,6 +179,10 @@ void HashList<T>::setSize
     {
         delete [] table_;
         table_ = new Item*[tableSize];
+
+        // Allocate the mutex-list as well
+        delete [] tableMutex_;
+        tableMutex_ = new Mutex[tableSize];
     }
 
     // Initialize member data
@@ -250,6 +261,9 @@ HashList<T>::HashList
         table_[i] = 0;
     }
 
+    // Allocate the mutex-list as well
+    tableMutex_ = new Mutex[hash_table_size_];
+
     // Allocate
     Item *thisPtr=0, *prevPtr=0;
     for (label i=0; i<size_; i++)
@@ -292,7 +306,7 @@ HashList<T>::HashList
     const label tableSize
 )
 {
-    if (data.size()<=0)
+    if (data.size() < 0)
     {
         FatalErrorIn("HashList<T>::HashList(const List<T>& data)") << nl
             << " Cannot allocate to size " << data.size()
@@ -314,6 +328,9 @@ HashList<T>::HashList
     {
         table_[i] = 0;
     }
+
+    // Allocate the mutex-list as well
+    tableMutex_ = new Mutex[hash_table_size_];
 
     // Allocate
     Item *thisPtr=0, *prevPtr=0;
@@ -379,6 +396,9 @@ HashList<T>::HashList
         table_[i] = 0;
     }
 
+    // Allocate the mutex-list as well
+    tableMutex_ = new Mutex[hash_table_size_];
+
     // Allocate
     Item *thisPtr=0, *prevPtr=0;
     for (label i=0; i<size_; i++)
@@ -424,27 +444,43 @@ inline typename HashList<T>::iterator HashList<T>::insert
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
+    // Lock the table at the index
+    tableMutex_[loc].lock();
+
     // Loop through chained linked-list
-    Item *thisPtr=0, *newPtr=0; 
+    Item *thisPtr=0, *newPtr=0;
     for (thisPtr=table_[loc]; thisPtr; thisPtr=thisPtr->next_)
     {
         if (index == thisPtr->idx_)
         {
-            // Allocate 
+            // Allocate
             newPtr = new Item;
             newPtr->data_ = data;
 
             // Update index pointers
             if (thisPtr->previdx_)
             {
+                // Lock item
+                thisPtr->previdx_->lock();
+
                 thisPtr->previdx_->nextidx_ = newPtr;
+
+                // Unlock item
+                thisPtr->previdx_->unlock();
             }
+
             newPtr->previdx_ = thisPtr->previdx_;
             newPtr->nextidx_ = thisPtr;
             thisPtr->previdx_ = newPtr;
 
             // Increment size and return pointer
+            lock();
             size_++;
+            unlock();
+
+            // Unlock the table at the index
+            tableMutex_[loc].unlock();
+
             return iterator(newPtr);
         }
     }
@@ -470,40 +506,89 @@ inline void HashList<T>::remove
     // Update pointers and delete the item
     if (thisPtr->prev_)
     {
+        // Lock items
+        thisPtr->lock();
+        thisPtr->prev_->lock();
+
         thisPtr->prev_->next_ = thisPtr->next_;
+
+        // Unlock items
+        thisPtr->prev_->unlock();
+        thisPtr->unlock();
     }
     else
     {
         // The table entry points to this item
         label loc = hash(index)%hash_table_size_;
+
+        // Lock table
+        tableMutex_[loc].lock();
+
         table_[loc] = thisPtr->next_;
+
+        // Unlock table
+        tableMutex_[loc].unlock();
     }
+
     if (thisPtr->next_)
     {
+        // Lock items
+        thisPtr->lock();
+        thisPtr->next_->lock();
+
         thisPtr->next_->prev_ = thisPtr->prev_;
+
+        // Unlock items
+        thisPtr->next_->unlock();
+        thisPtr->unlock();
     }
+
     if (thisPtr->previdx_)
     {
+        // Lock items
+        thisPtr->lock();
+        thisPtr->previdx_->lock();
+
         thisPtr->previdx_->nextidx_ = thisPtr->nextidx_;
+
+        // Unlock items
+        thisPtr->previdx_->unlock();
+        thisPtr->unlock();
     }
     else
     {
         // The first item is to be removed; update the first item
+        lock();
         startIdx_ = thisPtr->nextidx_;
+        unlock();
     }
+
     if (thisPtr->nextidx_)
     {
+        // Lock items
+        thisPtr->lock();
+        thisPtr->nextidx_->lock();
+
         thisPtr->nextidx_->previdx_ = thisPtr->previdx_;
+
+        // Unlock items
+        thisPtr->nextidx_->unlock();
+        thisPtr->unlock();
     }
     else
     {
         // The last item is being removed; update the last item
+        lock();
         endIdx_ = thisPtr->previdx_;
+        unlock();
     }
+
     delete thisPtr;
 
     // Decrement size
+    lock();
     size_--;
+    unlock();
 }
 
 //- Append an element to the end of the list
@@ -516,8 +601,12 @@ inline label HashList<T>::append
     // Index this item as an increment from the last index
     // This will allow random deletions from the list, while
     // keeping appends as valid
-    label index=0;
-    if (endIdx_) index = endIdx_->idx_+1;
+    label index = 0;
+
+    if (endIdx_)
+    {
+        index = endIdx_->idx_ + 1;
+    }
 
     // Allocate and set the index
     Item *newPtr = new Item;
@@ -527,27 +616,57 @@ inline label HashList<T>::append
     // Update the last element index
     if (endIdx_)
     {
+        // Lock end item
+        endIdx_->lock();
+
         newPtr->previdx_ = endIdx_;
         endIdx_->nextidx_ = newPtr;
+
+        // Unlock end item
+        endIdx_->unlock();
     }
     else
     {
         // A null endIdx_ occurs only in null-constructed HashLists
+        lock();
         startIdx_ = newPtr;
+        unlock();
     }
+
+    // Update the last index item
+    lock();
     endIdx_ = newPtr;
+    unlock();
 
     // Hash the new index, and update the table
     label loc = hash(index)%hash_table_size_;
+
+    // Lock table index
+    tableMutex_[loc].lock();
+
     if (table_[loc])
     {
+        // Lock previous item
+        table_[loc]->prev_->lock();
+
         table_[loc]->prev_ = newPtr;
         newPtr->next_ = table_[loc];
+
+        // Unlock previous item
+        table_[loc]->prev_->unlock();
     }
+
+    // Start table with the new item
     table_[loc] = newPtr;
 
+    // Unlock table index
+    tableMutex_[loc].unlock();
+
     // Increment the size and return the index
+    lock();
     size_++;
+    unlock();
+
     return index;
 }
 
@@ -607,6 +726,7 @@ HashList<T>::~HashList()
     {
         clear();
         delete [] table_;
+        delete [] tableMutex_;
     }
 }
 
@@ -622,11 +742,20 @@ inline typename HashList<T>::Item* HashList<T>::getLinkItem
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
+    // Lock the table index
+    tableMutex_[loc].lock();
+
     // Loop through chained linked-list
     Item *item=0;
     for (item=table_[loc]; item; item=item->next_)
     {
-        if (index == item->idx_) return item;
+        if (index == item->idx_)
+        {
+            // Unlock the table index
+            tableMutex_[loc].unlock();
+
+            return item;
+        }
     }
 
     // The following line should never happen, just keeps gcc happy
@@ -662,18 +791,27 @@ inline void HashList<T>::reNumber
     // Change the hash-table pointers
     // Remove the old links
     if (iter.curItem->prev_)
+    {
         iter.curItem->prev_->next_ = iter.curItem->next_;
+    }
+
     if (iter.curItem->next_)
+    {
         iter.curItem->next_->prev_ = iter.curItem->prev_;
+    }
 
     // Update the table
     if (table_[oldloc] == iter.curItem)
+    {
         table_[oldloc] = iter.curItem->next_;
+    }
+
     if (table_[newloc])
     {
         table_[newloc]->prev_  = iter.curItem;
         iter.curItem->next_ = table_[newloc];
     }
+
     iter.curItem->prev_ = 0;
     table_[newloc] = iter.curItem;
 }
@@ -685,7 +823,7 @@ inline T& HashList<T>::iterator::operator()()
     return curItem->data_;
 }
 
-// Iterator operator overload - Assignment 
+// Iterator operator overload - Assignment
 template<class T>
 inline void HashList<T>::iterator::operator=
 (
@@ -765,7 +903,7 @@ inline typename HashList<T>::iterator HashList<T>::getIterator
     {
         nearestIndex += 1;
     }
-    
+
     return iterator(getLinkItem(nearestIndex));
 }
 
@@ -790,6 +928,20 @@ inline label HashList<T>::size() const
     return size_;
 }
 
+//- Lock the entire list [multi-threading]
+template<class T>
+inline void HashList<T>::lock()
+{
+    listMutex_.lock();
+}
+
+//- Unlock the entire list [multi-threading]
+template<class T>
+inline void HashList<T>::unlock()
+{
+    listMutex_.unlock();
+}
+
 //- Return true if the HashList is empty (i.e., if size() == 0).
 template<class T>
 inline bool HashList<T>::empty() const
@@ -811,7 +963,8 @@ inline bool HashList<T>::checkIndex
             << "attempt to access element from zero sized list"
             << abort(FatalError);
     }
-    else if (index<0 || index>=size_)
+    else
+    if (index < 0 || index >= size_)
     {
         FatalErrorIn("HashList<T>::checkIndex(const label)")
             << "index " << index << " out of range 0 ... " << size_-1
@@ -831,11 +984,23 @@ inline bool HashList<T>::found
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
+    // Lock the table index
+    tableMutex_[loc].lock();
+
     // Loop through chained linked-list
     for (Item *item=table_[loc]; item; item=item->next_)
     {
-        if (index == item->idx_) return true;
+        if (index == item->idx_)
+        {
+            // Unlock the table index
+            tableMutex_[loc].unlock();
+
+            return true;
+        }
     }
+
+    // Unlock the table index
+    tableMutex_[loc].unlock();
 
     return false;
 }
@@ -847,6 +1012,7 @@ void HashList<T>::toc() const
     for(label i=0; i<hash_table_size_; i++)
     {
         Info << i << ": ";
+
         if (table_[i])
         {
             for(Item *item = table_[i]; item; item=item->next_)
@@ -854,6 +1020,7 @@ void HashList<T>::toc() const
                 Info << item->idx_ << "->";
             }
         }
+
         Info << "NULL" << endl;
     }
 }
@@ -862,15 +1029,17 @@ void HashList<T>::toc() const
 template<class T>
 void HashList<T>::toc(const label loc) const
 {
-        Info << loc << ": ";
-        if (table_[loc])
+    Info << loc << ": ";
+
+    if (table_[loc])
+    {
+        for(Item *item = table_[loc]; item; item=item->next_)
         {
-            for(Item *item = table_[loc]; item; item=item->next_)
-            {
-                Info << item->idx_ << "->";
-            }
+            Info << item->idx_ << "->";
         }
-        Info << "NULL" << endl;
+    }
+
+    Info << "NULL" << endl;
 }
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
@@ -882,12 +1051,17 @@ HashList<T>& HashList<T>::operator=
 )
 {
     Item *lhs, *rhs;
-    for(lhs=startIdx_, rhs=HLrhs.startIdx_;
+
+    for
+    (
+        lhs=startIdx_, rhs=HLrhs.startIdx_;
         lhs;
-        lhs=lhs->nextidx_, rhs=rhs->nextidx_)
+        lhs=lhs->nextidx_, rhs=rhs->nextidx_
+    )
     {
         lhs->data_ = rhs->data_;
     }
+
     return (*this);
 }
 
@@ -901,11 +1075,20 @@ inline typename HashList<T>::iterator HashList<T>::operator()
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
+    // Lock the table index
+    tableMutex_[loc].lock();
+
     // Loop through chained linked-list
     Item *item=0;
     for (item=table_[loc]; item; item=item->next_)
     {
-        if (index == item->idx_) return iterator(item);
+        if (index == item->idx_)
+        {
+            // Unlock the table index
+            tableMutex_[loc].unlock();
+
+            return iterator(item);
+        }
     }
 
     // The following line should never happen, just keeps gcc happy
@@ -929,11 +1112,20 @@ HashList<T>::operator()
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
+    // Lock the table index
+    tableMutex_[loc].lock();
+
     // Loop through chained linked-list
     Item *item=0;
     for (item=table_[loc]; item; item=item->next_)
     {
-        if (index == item->idx_) return iterator(item);
+        if (index == item->idx_)
+        {
+            // Unlock the table index
+            tableMutex_[loc].unlock();
+
+            return iterator(item);
+        }
     }
 
     // The following line should never happen, just keeps gcc happy
@@ -955,11 +1147,20 @@ inline T& HashList<T>::operator[]
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
+    // Lock the table index
+    tableMutex_[loc].lock();
+
     // Loop through chained linked-list
-    Item *item=0; 
+    Item *item=0;
     for (item=table_[loc]; item; item=item->next_)
     {
-        if (index == item->idx_) return item->data_;
+        if (index == item->idx_)
+        {
+            // Unlock the table index
+            tableMutex_[loc].unlock();
+
+            return item->data_;
+        }
     }
 
     // The following line should never happen, just keeps gcc happy
@@ -981,11 +1182,20 @@ inline const T& HashList<T>::operator[]
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
+    // Lock the table index
+    tableMutex_[loc].lock();
+
     // Loop through chained linked-list
-    Item *item=0; 
+    Item *item=0;
     for (item=table_[loc]; item; item=item->next_)
     {
-        if (index == item->idx_) return item->data_;
+        if (index == item->idx_)
+        {
+            // Unlock the table index
+            tableMutex_[loc].unlock();
+
+            return item->data_;
+        }
     }
 
     // The following line should never happen, just keeps gcc happy
@@ -1004,7 +1214,16 @@ inline void HashList<T>::operator=
     const T& rhs
 )
 {
-    for(Item *item=startIdx_; item; item=item->nextidx_) item->data_ = rhs;
+    for
+    (
+        Item *item=startIdx_;
+        item;
+        item=item->nextidx_
+    )
+    {
+        item->data_ = rhs;
+    }
+
     return (*this);
 }
 
