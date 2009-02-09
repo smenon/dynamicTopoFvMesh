@@ -44,6 +44,24 @@
 
     fluidInterface interface(mesh, U, p, phi);
 
+    // Obtain fluid indicator from the interface
+    volScalarField* fluidIndicatorPtr = NULL;
+
+    fluidIndicatorPtr = new volScalarField
+    (
+        IOobject
+        (
+            "fluidIndicator",
+            runTime.timeName(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        interface.fluidIndicator()
+    );
+
+    volScalarField& fluidIndicator = *fluidIndicatorPtr;
+
     volScalarField nu
     (
         IOobject
@@ -54,8 +72,12 @@
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        mesh,
-        interface.muFluidA()/interface.rhoFluidA()
+        fluidIndicator*
+        (
+            (interface.muFluidA()/interface.rhoFluidA())
+          - (interface.muFluidB()/interface.rhoFluidB())
+        )
+      + (interface.muFluidB()/interface.rhoFluidB())
     );
         
     label pRefCell = 0;

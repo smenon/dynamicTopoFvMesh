@@ -147,11 +147,15 @@ class fluidInterface
 
         //- Patch to patch interpolation (B to A)
         mutable patchToPatchInterpolation* interpolatorBAPtr_;
+
+        //- Fluid indicator
+        mutable volScalarField* fluidIndicatorPtr_;
         
     // Private Member Functions
         
         // Make demand-driven data
 
+            void makeFluidIndicator();
             void makeInterpolators();
             void makeControlPoints();
             void makeMotionPointsMask();
@@ -305,6 +309,9 @@ public:
         
         //- Return the surface tension field
         areaScalarField& surfaceTension();
+
+        //- Return an indicator field for two fluids
+        const volScalarField& fluidIndicator();
         
         //- Adjust the surface-tension for temperature
         void adjustSurfaceTension(const volScalarField& T);

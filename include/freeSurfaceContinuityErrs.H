@@ -1,11 +1,11 @@
 Info<< "Free surface flux: sum local = "
-    << sum(mag(phi.boundaryField()[interface.patchID()])) 
+    << sum(mag(phi.boundaryField()[interface.aPatchID()]))
     << ", global = "
-    << sum(phi.boundaryField()[interface.patchID()]) << endl;
+    << sum(phi.boundaryField()[interface.aPatchID()]) << endl;
 
 scalarField netPhiA =
-    phi.boundaryField()[interface.patchID()]
-  - fvc::meshPhi(U)().boundaryField()[interface.patchID()];
+    phi.boundaryField()[interface.aPatchID()]
+  - fvc::meshPhi(U)().boundaryField()[interface.aPatchID()];
 
 Info<< "Free surface continuity error : sum local = " 
     << sum(mag(netPhiA)) << ", global = " << sum(netPhiA) 

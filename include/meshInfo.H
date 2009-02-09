@@ -19,7 +19,7 @@
             fixedValuePointPatchVectorField::typeName          
         );
 
-        pNormals.boundaryField()[interface.patchID()] == interface.areaMesh().pointAreaNormals();
+        pNormals.boundaryField()[interface.aPatchID()] == interface.areaMesh().pointAreaNormals();
     
         pNormals.write();
 

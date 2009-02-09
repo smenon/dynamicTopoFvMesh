@@ -154,7 +154,11 @@ int main(int argc, char *argv[])
 
         // Set boundary conditions for the motionSolver and solve for mesh-motion
         interface.restorePosition();
-        mesh.setMotionBC(interface.patchID(), interface.displacement());
+        mesh.setMotionBC(interface.aPatchID(), interface.displacement());
+        if (interface.twoFluids())
+        {
+            mesh.setMotionBC(interface.bPatchID(), interface.displacement());
+        }
         mesh.updateMotion();
 
 #       include "volContinuity.H"

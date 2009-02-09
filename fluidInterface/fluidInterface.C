@@ -148,6 +148,7 @@ Foam::fluidInterface::~fluidInterface()
 
 void Foam::fluidInterface::clearOut()
 {
+    deleteDemandDrivenData(fluidIndicatorPtr_);
     deleteDemandDrivenData(interpolatorABPtr_);
     deleteDemandDrivenData(interpolatorBAPtr_);
     deleteDemandDrivenData(displacementPtr_);
@@ -398,6 +399,65 @@ void Foam::fluidInterface::makeMotionPointsMask()
             }
         }
     }    
+}
+
+void Foam::fluidInterface::makeFluidIndicator()
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (fluidIndicatorPtr_)
+    {
+        FatalErrorIn("fluidInterface::makeFluidIndicator()")
+            << "fluid indicator already exists"
+            << abort(FatalError);
+    }
+
+    fluidIndicatorPtr_ = new volScalarField
+    (
+        IOobject
+        (
+            "fluidIndicator",
+            mesh().time().timeName(),
+            mesh(),
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        mesh(),
+        dimensionedScalar("1", dimless, 1.0),
+        "zeroGradient"
+    );
+
+    volScalarField& fluidIndicator = *fluidIndicatorPtr_;
+
+    if (twoFluids_)
+    {
+        // Find start cell
+        label pointOnShadowPatch = mesh().boundaryMesh()[bPatchID()][0][0];
+
+        label startCell = mesh().pointCells()[pointOnShadowPatch][0];
+
+        // get cell-cells addressing
+        const labelListList& cellCells = mesh().cellCells();
+
+        SLList<label> slList(startCell);
+
+        while (slList.size())
+        {
+            label curCell = slList.removeHead();
+
+            if (fluidIndicator[curCell] == 1)
+            {
+                fluidIndicator[curCell] = 0.0;
+
+                for (int i = 0; i < cellCells[curCell].size(); i++)
+                {
+                    slList.append(cellCells[curCell][i]);
+                }
+            }
+        }
+    }
+
+    fluidIndicator.correctBoundaryConditions();
 }
 
 void Foam::fluidInterface::makeInterpolators()
@@ -1025,6 +1085,16 @@ vectorField& Foam::fluidInterface::displacement()
     }
 
     return *displacementPtr_;    
+}
+
+const volScalarField& Foam::fluidInterface::fluidIndicator()
+{
+    if (!fluidIndicatorPtr_)
+    {
+        makeFluidIndicator();
+    }
+
+    return *fluidIndicatorPtr_;
 }
 
 //- Return reference to interpolator (A to B)
