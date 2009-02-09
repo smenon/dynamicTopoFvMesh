@@ -41,6 +41,7 @@ SourceFiles
 
 #include "fvCFD.H"
 #include "faCFD.H"
+#include "patchToPatchInterpolation.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -71,9 +72,18 @@ class fluidInterface
         
         //- Name of the interface patch
         word interfacePatch_;
+
+        //- Name of the interface shadow patch
+        word shadowPatch_;
+
+        //- Switch for one/two fluids
+        Switch twoFluids_;
         
-        //- Patch ID of the interface
-        label patchID_;
+        //- Patch ID of the interface (side A)
+        label aPatchID_;
+
+        //- Patch ID of the interface (side B)
+        label bPatchID_;
         
         //- Time index for the interface
         label curTimeIndex_;
@@ -88,7 +98,19 @@ class fluidInterface
         dimensionedScalar condFluidA_;
 
         //- Specific Heat of fluid A
-        dimensionedScalar CpFluidA_;       
+        dimensionedScalar CpFluidA_;
+
+        //- Viscosity of fluid B
+        dimensionedScalar muFluidB_;
+
+        //- Density of fluid B
+        dimensionedScalar rhoFluidB_;
+
+        //- Conductivity of fluid B
+        dimensionedScalar condFluidB_;
+
+        //- Specific Heat of fluid B
+        dimensionedScalar CpFluidB_;
         
         //- Surface tension
         dimensionedScalar surfaceTension_;
@@ -118,12 +140,19 @@ class fluidInterface
         mutable areaVectorField* UsPtr_;
         
         //- Free surface patches which do not move
-        wordList fixedFreeSurfacePatches_;        
+        wordList fixedFreeSurfacePatches_;
+
+        //- Patch to patch interpolation (A to B)
+        mutable patchToPatchInterpolation* interpolatorABPtr_;
+
+        //- Patch to patch interpolation (B to A)
+        mutable patchToPatchInterpolation* interpolatorBAPtr_;
         
     // Private Member Functions
         
         // Make demand-driven data
-        
+
+            void makeInterpolators();
             void makeControlPoints();
             void makeMotionPointsMask();
             void makeDisplacement();
@@ -146,6 +175,12 @@ class fluidInterface
         
         //- Initialize control points 
         void initializeControlPointsPosition();
+
+        //- Return reference to interpolator (A to B)
+        const patchToPatchInterpolation& interpolatorAB();
+
+        //- Return reference to interpolator (B to A)
+        const patchToPatchInterpolation& interpolatorBA();
         
         //- Return reference to the control points
         vectorField& controlPoints();        
@@ -164,6 +199,9 @@ class fluidInterface
 
         //- Correct boundary conditions for Us
         void correctUsBoundaryConditions();
+
+        //- Move correctedFvPatchField fvSubMeshes
+        void moveFvSubMeshes();
         
         //- Move control points by deltaH and calculate interface 
         //  points displacement for the new control points position
@@ -205,8 +243,17 @@ public:
         // Return constant reference to the area mesh
         faMesh& areaMesh();
 
+        // Return true if two fluids are present
+        bool twoFluids() const
+        {
+            return twoFluids_;
+        }
+
         // Return the interface patchID
-        const label patchID();
+        const label aPatchID();
+
+        // Return the shadow patchID
+        const label bPatchID();
 
         //- Viscosity of fluid A
         const dimensionedScalar& muFluidA() const
@@ -230,7 +277,31 @@ public:
         const dimensionedScalar& CpFluidA() const
         {
             return CpFluidA_;
-        }     
+        }
+
+        //- Viscosity of fluid B
+        const dimensionedScalar& muFluidB() const
+        {
+            return muFluidB_;
+        }
+
+        //- Density of fluid B
+        const dimensionedScalar& rhoFluidB() const
+        {
+            return rhoFluidB_;
+        }
+
+        //- Conductivity of fluid B
+        const dimensionedScalar& condFluidB() const
+        {
+            return condFluidB_;
+        }
+
+        //- Specific Heat of fluid B
+        const dimensionedScalar& CpFluidB() const
+        {
+            return CpFluidB_;
+        }
         
         //- Return the surface tension field
         areaScalarField& surfaceTension();

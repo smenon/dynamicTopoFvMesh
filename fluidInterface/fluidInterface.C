@@ -37,6 +37,7 @@ Author
 
 #include "wedgeFaPatch.H"
 #include "fixedGradientFvPatchFields.H"
+#include "fixedGradientCorrectedFvPatchFields.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -67,12 +68,21 @@ Foam::fluidInterface::fluidInterface
     p_(p),
     phi_(phi),
     interfacePatch_(word(lookup("interfacePatch"))),
-    patchID_(-1),
+    twoFluids_
+    (
+        lookup("twoFluids")
+    ),
+    aPatchID_(-1),
+    bPatchID_(-1),
     curTimeIndex_(U.mesh().time().timeIndex()),
     muFluidA_(lookup("muFluidA")),
     rhoFluidA_(lookup("rhoFluidA")),
     condFluidA_(lookup("condFluidA")),
     CpFluidA_(lookup("CpFluidA")),
+    muFluidB_(lookup("muFluidB")),
+    rhoFluidB_(lookup("rhoFluidB")),
+    condFluidB_(lookup("condFluidB")),
+    CpFluidB_(lookup("CpFluidB")),
     surfaceTension_(lookup("surfaceTension")),
     displacementPtr_(NULL),
     motionPointsMaskPtr_(NULL),
@@ -85,25 +95,50 @@ Foam::fluidInterface::fluidInterface
     fixedFreeSurfacePatches_
     (
         lookup("fixedFreeSurfacePatches")
-    )
+    ),
+    interpolatorABPtr_(NULL),
+    interpolatorBAPtr_(NULL)
 {
-    // Loop through all boundary patches and determine the patchID
+    if (twoFluids_)
+    {
+        // Obtain the shadow patch name
+        shadowPatch_ = word(lookup("shadowPatch"));
+    }
+
+    // Loop through all boundary patches and determine the interface patchID
     const fvBoundaryMesh& bdy = mesh().boundary();
     forAll (bdy, patchI)
     {
-        if(bdy[patchI].name() == interfacePatch_)
+        if (bdy[patchI].name() == interfacePatch_)
         {
-            patchID_ = patchI;
+            aPatchID_ = patchI;
+        }
+
+        if (twoFluids_)
+        {
+            if (bdy[patchI].name() == shadowPatch_)
+            {
+                bPatchID_ = patchI;
+            }
         }
     }
 
-    if(patchID_ == -1)
+    if (aPatchID_ == -1)
     {
         FatalErrorIn("fluidInterface::fluidInterface()")
             << "Patch with name " << interfacePatch_ << " is not defined."
             << abort(FatalError);
     }
-    
+
+    if (twoFluids_)
+    {
+        if (bPatchID_ == -1)
+        {
+            FatalErrorIn("fluidInterface::fluidInterface()")
+                << "Patch with name " << shadowPatch_ << " is not defined."
+                << abort(FatalError);
+        }
+    }
 }
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -113,6 +148,8 @@ Foam::fluidInterface::~fluidInterface()
 
 void Foam::fluidInterface::clearOut()
 {
+    deleteDemandDrivenData(interpolatorABPtr_);
+    deleteDemandDrivenData(interpolatorBAPtr_);
     deleteDemandDrivenData(displacementPtr_);
     deleteDemandDrivenData(controlPointsPtr_);
     deleteDemandDrivenData(motionPointsMaskPtr_);
@@ -143,9 +180,15 @@ faMesh& Foam::fluidInterface::areaMesh()
 }
 
 // Return the interface patchID
-const label Foam::fluidInterface::patchID()
+const label Foam::fluidInterface::aPatchID()
 {
-    return patchID_;
+    return aPatchID_;
+}
+
+// Return the shadow patchID
+const label Foam::fluidInterface::bPatchID()
+{
+    return bPatchID_;
 }
 
 // Make the displacement field
@@ -163,7 +206,7 @@ void Foam::fluidInterface::makeDisplacement()
     displacementPtr_ =
         new vectorField
         (
-            mesh().boundaryMesh()[patchID()].nPoints(),
+            mesh().boundaryMesh()[aPatchID()].nPoints(),
             vector::zero
         );
 }
@@ -297,7 +340,7 @@ void Foam::fluidInterface::makeMotionPointsMask()
             << abort(FatalError);
     }
 
-    if(patchID() == -1)
+    if(aPatchID() == -1)
     {
         FatalErrorIn("Foam::fluidInterface::makeMotionPointsMask()")
             << "Interface patch is not defined."
@@ -306,7 +349,7 @@ void Foam::fluidInterface::makeMotionPointsMask()
 
     motionPointsMaskPtr_ = new scalarField
     (
-        mesh().boundaryMesh()[patchID()].nPoints(),
+        mesh().boundaryMesh()[aPatchID()].nPoints(),
         1.0
     );
     
@@ -355,6 +398,171 @@ void Foam::fluidInterface::makeMotionPointsMask()
             }
         }
     }    
+}
+
+void Foam::fluidInterface::makeInterpolators()
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if
+    (
+        interpolatorBAPtr_
+     || interpolatorABPtr_
+    )
+    {
+        FatalErrorIn("fluidInterface::makeInterpolators()")
+            << "patch to patch interpolators already exist."
+            << abort(FatalError);
+    }
+
+    if (aPatchID() == -1)
+    {
+        FatalErrorIn("fluidInterface::makeInterpolators()")
+            << "Free surface patch A not defined."
+            << abort(FatalError);
+    }
+
+    if (bPatchID() == -1)
+    {
+        FatalErrorIn("fluidInterface::makeInterpolators()")
+            << "Free surface patch B not defined."
+            << abort(FatalError);
+    }
+
+    interpolatorBAPtr_ = new patchToPatchInterpolation
+    (
+        mesh().boundaryMesh()[bPatchID()],
+        mesh().boundaryMesh()[aPatchID()],
+        intersection::VISIBLE
+    );
+
+    const scalarField& faceDistBA =
+        interpolatorBAPtr_->faceDistanceToIntersection();
+
+    forAll(faceDistBA, faceI)
+    {
+        if (mag(faceDistBA[faceI] - GREAT) < SMALL)
+        {
+            FatalErrorIn("freeSurface::makeInterpolators()")
+                << "Error in B-to-A face patchToPatchInterpolation."
+                << abort(FatalError);
+        }
+    }
+
+    const scalarField& pointDistBA =
+        interpolatorBAPtr_->pointDistanceToIntersection();
+
+    forAll(pointDistBA, pointI)
+    {
+        if (mag(pointDistBA[pointI] - GREAT) < SMALL)
+        {
+            FatalErrorIn("freeSurface::makeInterpolators()")
+                << "Error in B-to-A point patchToPatchInterpolation."
+                << abort(FatalError);
+        }
+    }
+
+    interpolatorABPtr_ = new patchToPatchInterpolation
+    (
+        mesh().boundaryMesh()[aPatchID()],
+        mesh().boundaryMesh()[bPatchID()],
+        intersection::VISIBLE
+        // intersection::HALF_RAY
+    );
+
+    const scalarField& faceDistAB =
+        interpolatorABPtr_->faceDistanceToIntersection();
+
+    forAll(faceDistAB, faceI)
+    {
+        if(mag(faceDistAB[faceI] - GREAT) < SMALL)
+        {
+            FatalErrorIn("freeSurface::makeInterpolators()")
+                << "Error in A-to-B face patchToPatchInterpolation."
+                << abort(FatalError);
+        }
+    }
+
+    const scalarField& pointDistAB =
+        interpolatorABPtr_->pointDistanceToIntersection();
+
+    forAll(pointDistAB, pointI)
+    {
+        if(mag(pointDistAB[pointI] - GREAT)<SMALL)
+        {
+            FatalErrorIn("freeSurface::makeInterpolators()")
+                << "Error in A-to-B point patchToPatchInterpolation."
+                << abort(FatalError);
+        }
+    }
+
+    Info << "Checking A-to-B and B-to-A interpolators..." << endl;
+
+    scalar maxDist = max
+    (
+        mag
+        (
+            interpolatorABPtr_->faceInterpolate
+            (
+                vectorField
+                (
+                    mesh().boundaryMesh()[aPatchID()].faceCentres()
+                )
+            )
+          - mesh().boundaryMesh()[bPatchID()].faceCentres()
+        )
+    );
+
+    scalar maxDistPt = max
+    (
+        mag
+        (
+            interpolatorABPtr_->pointInterpolate
+            (
+                vectorField
+                (
+                    mesh().boundaryMesh()[aPatchID()].localPoints()
+                )
+            )
+          - mesh().boundaryMesh()[bPatchID()].localPoints()
+        )
+    );
+
+    Info << "A-to-B interpolation error, face: " << maxDist
+         << ", point: " << maxDistPt << endl;
+
+    maxDist = max
+    (
+        mag
+        (
+            interpolatorBAPtr_->faceInterpolate
+            (
+                vectorField
+                (
+                    mesh().boundaryMesh()[bPatchID()].faceCentres()
+                )
+            )
+          - mesh().boundaryMesh()[aPatchID()].faceCentres()
+        )
+    );
+
+    maxDistPt = max
+    (
+        mag
+        (
+            interpolatorBAPtr_->pointInterpolate
+            (
+                vectorField
+                (
+                    mesh().boundaryMesh()[bPatchID()].localPoints()
+                )
+            )
+          - mesh().boundaryMesh()[aPatchID()].localPoints()
+        )
+    );
+
+    Info << "B-to-A interpolation error, face: " << maxDist
+         << ", point: " << maxDistPt << endl;
 }
 
 void Foam::fluidInterface::makeControlPoints()
@@ -436,7 +644,7 @@ void Foam::fluidInterface::makeDirections()
             << abort(FatalError);
     }
     
-    if(patchID() == -1)
+    if(aPatchID() == -1)
     {
         FatalErrorIn("freeSurface::makeDirections()")
             << "Interface patch is not defined."
@@ -446,14 +654,14 @@ void Foam::fluidInterface::makeDirections()
     pointsDisplacementDirPtr_ =
         new vectorField
         (
-            mesh().boundaryMesh()[patchID()].nPoints(),
+            mesh().boundaryMesh()[aPatchID()].nPoints(),
             vector::zero
         );
 
     facesDisplacementDirPtr_ =
         new vectorField
         (
-            mesh().boundaryMesh()[patchID()].size(),
+            mesh().boundaryMesh()[aPatchID()].size(),
             vector::zero
         );
     
@@ -819,6 +1027,28 @@ vectorField& Foam::fluidInterface::displacement()
     return *displacementPtr_;    
 }
 
+//- Return reference to interpolator (A to B)
+const patchToPatchInterpolation& Foam::fluidInterface::interpolatorAB()
+{
+    if (!interpolatorABPtr_)
+    {
+        makeInterpolators();
+    }
+
+    return *interpolatorABPtr_;
+}
+
+//- Return reference to interpolator (B to A)
+const patchToPatchInterpolation& Foam::fluidInterface::interpolatorBA()
+{
+    if (!interpolatorBAPtr_)
+    {
+        makeInterpolators();
+    }
+
+    return *interpolatorBAPtr_;
+}
+
 //- Return reference to the control points
 vectorField& Foam::fluidInterface::controlPoints()
 {
@@ -885,7 +1115,7 @@ areaVectorField& Foam::fluidInterface::Us()
 //- Adjust the surface-tension for temperature
 void Foam::fluidInterface::adjustSurfaceTension(const volScalarField& T)
 {
-    const labelList& fCells = mesh().boundaryMesh()[patchID()].faceCells();
+    const labelList& fCells = mesh().boundaryMesh()[aPatchID()].faceCells();
 
     scalar adjustedValue = 0.0;
 
@@ -923,8 +1153,8 @@ void Foam::fluidInterface::movePoints()
     // Swept-volume correction for the explicit-Euler scheme
     scalarField sweptVolCorr = 
     (
-        phi_.boundaryField()[patchID()]
-      - fvc::meshPhi(U_)().boundaryField()[patchID()]
+        phi_.boundaryField()[aPatchID()]
+      - fvc::meshPhi(U_)().boundaryField()[aPatchID()]
     )*dt;
 
     const scalarField& Sf = areaMesh().S();
@@ -949,16 +1179,33 @@ void Foam::fluidInterface::movePoints()
     // Move the areaMesh to recalculate surface curvature
     pointField newMeshPoints = mesh().points();
     
-    const labelList& meshPts = mesh().boundaryMesh()[patchID()].meshPoints();
+    const labelList& meshPtsA = mesh().boundaryMesh()[aPatchID()].meshPoints();
     
-    forAll(meshPts,pointI)
+    forAll(meshPtsA,pointI)
     {
-        newMeshPoints[meshPts[pointI]] += disp[pointI];
+        newMeshPoints[meshPtsA[pointI]] += disp[pointI];
+    }
+
+    if (twoFluids_)
+    {
+        const labelList& meshPtsB = 
+            mesh().boundaryMesh()[bPatchID()].meshPoints();
+
+        // Interpolate displacement to the shadow patch
+        pointField dispB = interpolatorAB().pointInterpolate(disp);
+
+        forAll(meshPtsB,pointI)
+        {
+            newMeshPoints[meshPtsB[pointI]] += dispB[pointI];
+        }
     }
     
     mesh().movePoints(newMeshPoints);
     
     areaMesh().movePoints(newMeshPoints);
+
+    // Move fvSubMeshes for corrected patches
+    moveFvSubMeshes();
 }
 
 // Restore interface position
@@ -968,16 +1215,33 @@ void Foam::fluidInterface::restorePosition()
     
     pointField newMeshPoints = mesh().points();
     
-    const labelList& meshPts = mesh().boundaryMesh()[patchID()].meshPoints();
+    const labelList& meshPtsA = mesh().boundaryMesh()[aPatchID()].meshPoints();
     
-    forAll (meshPts, pointI)
+    forAll (meshPtsA, pointI)
     {
-        newMeshPoints[meshPts[pointI]] -= disp[pointI];
+        newMeshPoints[meshPtsA[pointI]] -= disp[pointI];
+    }
+
+    if (twoFluids_)
+    {
+        const labelList& meshPtsB = 
+            mesh().boundaryMesh()[bPatchID()].meshPoints();
+
+        // Interpolate displacement to the shadow patch
+        pointField dispB = interpolatorAB().pointInterpolate(disp);
+
+        forAll(meshPtsB,pointI)
+        {
+            newMeshPoints[meshPtsB[pointI]] -= dispB[pointI];
+        }
     }
 
     mesh().movePoints(newMeshPoints);
 
-    areaMesh().movePoints(newMeshPoints);    
+    areaMesh().movePoints(newMeshPoints);
+
+    // Move fvSubMeshes for corrected patches
+    moveFvSubMeshes();
 }
 
 void Foam::fluidInterface::correctUsBoundaryConditions()
@@ -1024,6 +1288,71 @@ void Foam::fluidInterface::correctUsBoundaryConditions()
     Us().correctBoundaryConditions();
 }
 
+//- Move correctedFvPatchField fvSubMeshes
+void Foam::fluidInterface::moveFvSubMeshes()
+{
+    // Move correctedFvPatchField fvSubMeshes
+    forAll(U_.boundaryField(), patchI)
+    {
+        if
+        (
+            (
+                U_.boundaryField()[patchI].type()
+             == "fixedGradientCorrected"
+            )
+            ||
+            (
+                U_.boundaryField()[patchI].type()
+             == "fixedValueCorrected"
+            )
+            ||
+            (
+                U_.boundaryField()[patchI].type()
+             == "zeroGradientCorrected"
+            )
+        )
+        {
+            correctedFvPatchField<vector>& pU =
+                refCast<correctedFvPatchField<vector> >
+                (
+                    U_.boundaryField()[patchI]
+                );
+
+            pU.movePatchSubMesh();
+        }
+    }
+
+    forAll(p_.boundaryField(), patchI)
+    {
+        if
+        (
+            (
+                p_.boundaryField()[patchI].type()
+             == "fixedGradientCorrected"
+            )
+            ||
+            (
+                p_.boundaryField()[patchI].type()
+             == "fixedValueCorrected"
+            )
+            ||
+            (
+                p_.boundaryField()[patchI].type()
+             == "zeroGradientCorrected"
+            )
+        )
+        {
+            correctedFvPatchField<scalar>& pP =
+                refCast<correctedFvPatchField<scalar> >
+                (
+                    p_.boundaryField()[patchI]
+                );
+
+            pP.movePatchSubMesh();
+        }
+    }
+}
+
 // Update boundary conditions on velocity and pressure
 void Foam::fluidInterface::updateBoundaryConditions()
 {
@@ -1035,9 +1364,10 @@ void Foam::fluidInterface::updateBoundaryConditions()
 void Foam::fluidInterface::updatePressure()
 {
     const scalarField& K = areaMesh().faceCurvatures().internalField();
+    vectorField nA = mesh().boundary()[aPatchID()].nf();
 
-    scalarField pA(K.size(),0.0);    
-    
+    scalarField pA(K.size(),0.0);
+
     Info << "Free surface curvature: min = " << min(K)
         << ", max = " << max(K) << ", average = " << average(K)
         << endl;
@@ -1045,28 +1375,28 @@ void Foam::fluidInterface::updatePressure()
     scalarField surfTensionK = surfaceTension().internalField()*K;
 
     dimensionSet dimSurfaceTension = (dimForce/dimLength);
-    
-    // Check the dimensions of pressure and 
-    // adjust surface-tension accordingly        
+
+    // Check the dimensions of pressure and
+    // adjust surface-tension accordingly
     if (p_.dimensions() == (dimPressure/dimDensity))
     {
         if (surfaceTension_.dimensions() == dimSurfaceTension)
         {
             surfTensionK /= rhoFluidA().value();
         }
-        else 
-        if 
+        else
+        if
         (
             surfaceTension_.dimensions() != (dimSurfaceTension/dimDensity)
         )
         {
             FatalErrorIn("fluidInterface::updatePressure()")
                 << "Dimensions for surface tension are inconsistent."
-                << abort(FatalError);            
+                << abort(FatalError);
         }
     }
-    
-    if 
+
+    if
     (
          (p_.dimensions() == dimPressure)
       && (surfaceTension_.dimensions() != dimSurfaceTension)
@@ -1074,81 +1404,223 @@ void Foam::fluidInterface::updatePressure()
     {
         FatalErrorIn("fluidInterface::updatePressure()")
             << "Dimensions for surface tension are inconsistent."
-            << abort(FatalError);         
+            << abort(FatalError);
     }
-    
-    pA -= (surfTensionK - average(surfTensionK));
-        
-    p_.boundaryField()[patchID()] == pA;
+
+    // Normal velocity gradient
+    scalarField nnGradU = nA&U_.boundaryField()[aPatchID()].snGrad();
+
+    if (twoFluids_)
+    {
+        pA = interpolatorBA().faceInterpolate
+             (
+                 p_.boundaryField()[bPatchID()]
+             );
+
+        // Surface tension
+        pA -= (surfTensionK - average(surfTensionK));
+
+        // Add normal velocity gradient
+        pA += 2.0*(muFluidA().value() - muFluidB().value())*nnGradU;
+    }
+    else
+    {
+        // Surface tension
+        pA -= (surfTensionK - average(surfTensionK));
+
+        // Add normal velocity gradient
+        pA += 2.0*muFluidA().value()*nnGradU;
+    }
+
+    p_.boundaryField()[aPatchID()] == pA;
 }
 
 //- Update velocity boundary conditions
 void Foam::fluidInterface::updateVelocity()
 {
-    vectorField nA = areaMesh().faceAreaNormals().internalField();
-
-    scalarField DnA = mesh().boundary()[patchID()].deltaCoeffs();
-
-    vectorField UtPA = U_.boundaryField()[patchID()].patchInternalField();
-
-    // Obtain the tangential component of velocity
-    UtPA -= nA*(nA & UtPA);
-
-    // Tangential force
-    vectorField UtFs = muFluidA().value()*DnA*UtPA;
-
-    // Add effects of surface-tension gradient
-    UtFs += surfaceTensionGrad()().internalField();
-
-    // Normal
-    vectorField UnFs =
-        nA*phi_.boundaryField()[patchID()]/mesh().boundary()[patchID()].magSf();
-
-    Us().internalField() += UnFs - nA*(nA&Us().internalField());
-    correctUsBoundaryConditions();
-
-    UtFs -= muFluidA().value()*
-        (fac::grad(Us())&areaMesh().faceAreaNormals())().internalField();
-
-    UtFs /= muFluidA().value()*DnA + VSMALL;
-
-    // Update free-surface velocity
-    Us().internalField() = UtFs + UnFs;
-    correctUsBoundaryConditions();
-
-    // Update fixedGradient boundary condition on the free-surface
-    vectorField nGradU =
-        -nA*muFluidA().value()*fac::div(Us())().internalField();
-
-    nGradU += muFluidA().value()*
-        (UtFs - UtPA)*mesh().boundary()[patchID()].deltaCoeffs();
-
-    nGradU /= muFluidA().value() + VSMALL;
-
-    if
-    (
-        U_.boundaryField()[patchID()].type()
-     == "fixedGradient"
-    )
+    if (twoFluids_)
     {
-        fixedGradientFvPatchField<vector>& aU =
-            refCast<fixedGradientFvPatchField<vector> >
-            (
-                U_.boundaryField()[patchID()]
-            );
+        vectorField nA = mesh().boundary()[aPatchID()].nf();
+        vectorField nB = mesh().boundary()[bPatchID()].nf();
 
-        aU.gradient() == nGradU;
+        scalarField DnA = mesh().boundary()[aPatchID()].deltaCoeffs();
+        scalarField DnB = interpolatorBA().faceInterpolate
+        (
+            mesh().boundary()[bPatchID()].deltaCoeffs()
+        );
+
+        vectorField UtPA = U_.boundaryField()[aPatchID()].patchInternalField();
+        vectorField UtPB = interpolatorBA().faceInterpolate
+        (
+            U_.boundaryField()[bPatchID()].patchInternalField()
+        );
+
+        // Obtain the tangential component of velocity
+        UtPA -= nA*(nA & UtPA);
+        UtPB -= nA*(nA & UtPB);
+
+        // Tangential force
+        vectorField UtFs =
+              muFluidA().value()*DnA*UtPA
+            + muFluidB().value()*DnB*UtPB;
+
+        // Normal
+        vectorField UnFs =
+            nA*phi_.boundaryField()[aPatchID()]
+          / mesh().boundary()[aPatchID()].magSf();
+
+        Us().internalField() += UnFs - nA*(nA&Us().internalField());
+        correctUsBoundaryConditions();
+
+        // Add effects of surface-tension gradient
+        UtFs += surfaceTensionGrad()().internalField();
+
+        UtFs /= muFluidA().value()*DnA + muFluidB().value()*DnB + VSMALL;
+
+        // Update free-surface velocity
+        Us().internalField() = UtFs + UnFs;
+        correctUsBoundaryConditions();
+
+        // Interpolate to the second fluid as well
+        U_.boundaryField()[bPatchID()] ==
+            interpolatorAB().faceInterpolate(UtFs)
+          + nB*fvc::meshPhi(U_)().boundaryField()[bPatchID()]
+          / mesh().boundary()[bPatchID()].magSf();
+
+        // Update fixedGradient boundary condition on the free-surface
+        vectorField nGradU =
+          - nA*(muFluidA().value() - muFluidB().value())
+          * fac::div(Us())().internalField();
+
+        nGradU +=
+            muFluidA().value()*(UtFs - UtPA)
+          * mesh().boundary()[aPatchID()].deltaCoeffs();
+
+        nGradU /= muFluidA().value() + VSMALL;
+
+        if
+        (
+            U_.boundaryField()[aPatchID()].type()
+         == "fixedGradientCorrected"
+        )
+        {
+            fixedGradientCorrectedFvPatchField<vector>& aU =
+                refCast<fixedGradientCorrectedFvPatchField<vector> >
+                (
+                    U_.boundaryField()[aPatchID()]
+                );
+
+            aU.gradient() = nGradU;
+        }
+        else if
+        (
+            U_.boundaryField()[aPatchID()].type()
+         == "fixedGradient"
+        )
+        {
+            fixedGradientFvPatchField<vector>& aU =
+                refCast<fixedGradientFvPatchField<vector> >
+                (
+                    U_.boundaryField()[aPatchID()]
+                );
+
+            aU.gradient() == nGradU;
+        }
+        else
+        {
+            FatalErrorIn("fluidInterface::updateVelocity()")
+                << "Boundary condition on " << U_.name()
+                << " is " << U_.boundaryField()[aPatchID()].type()
+                << ", instead of "
+                << fixedGradientFvPatchField<vector>::typeName
+                << " or "
+                << fixedGradientCorrectedFvPatchField<vector>::typeName
+                << abort(FatalError);
+        }
     }
     else
     {
-        FatalErrorIn("fluidInterface::updateVelocity()")
-            << "Boundary condition on " << U_.name()
-            << " is " << U_.boundaryField()[patchID()].type()
-            << ", instead of "
-            << fixedGradientFvPatchField<vector>::typeName
-            << abort(FatalError);
+        vectorField nA = areaMesh().faceAreaNormals().internalField();
+
+        scalarField DnA = mesh().boundary()[aPatchID()].deltaCoeffs();
+
+        vectorField UtPA = U_.boundaryField()[aPatchID()].patchInternalField();
+
+        // Obtain the tangential component of velocity
+        UtPA -= nA*(nA & UtPA);
+
+        // Tangential force
+        vectorField UtFs = muFluidA().value()*DnA*UtPA;
+
+        // Add effects of surface-tension gradient
+        UtFs += surfaceTensionGrad()().internalField();
+
+        // Normal
+        vectorField UnFs =
+            nA*phi_.boundaryField()[aPatchID()]
+          / mesh().boundary()[aPatchID()].magSf();
+
+        Us().internalField() += UnFs - nA*(nA&Us().internalField());
+        correctUsBoundaryConditions();
+
+        UtFs -= muFluidA().value()*
+            (fac::grad(Us())&areaMesh().faceAreaNormals())().internalField();
+
+        UtFs /= muFluidA().value()*DnA + VSMALL;
+
+        // Update free-surface velocity
+        Us().internalField() = UtFs + UnFs;
+        correctUsBoundaryConditions();
+
+        // Update fixedGradient boundary condition on the free-surface
+        vectorField nGradU =
+            -nA*muFluidA().value()*fac::div(Us())().internalField();
+
+        nGradU += muFluidA().value()*
+            (UtFs - UtPA)*mesh().boundary()[aPatchID()].deltaCoeffs();
+
+        nGradU /= muFluidA().value() + VSMALL;
+
+        if
+        (
+            U_.boundaryField()[aPatchID()].type()
+         == "fixedGradientCorrected"
+        )
+        {
+            fixedGradientCorrectedFvPatchField<vector>& aU =
+                refCast<fixedGradientCorrectedFvPatchField<vector> >
+                (
+                    U_.boundaryField()[aPatchID()]
+                );
+
+            aU.gradient() = nGradU;
+        }
+        else if
+        (
+            U_.boundaryField()[aPatchID()].type()
+         == "fixedGradient"
+        )
+        {
+            fixedGradientFvPatchField<vector>& aU =
+                refCast<fixedGradientFvPatchField<vector> >
+                (
+                    U_.boundaryField()[aPatchID()]
+                );
+
+            aU.gradient() == nGradU;
+        }
+        else
+        {
+            FatalErrorIn("fluidInterface::updateVelocity()")
+                << "Boundary condition on " << U_.name()
+                << " is " << U_.boundaryField()[aPatchID()].type()
+                << ", instead of "
+                << fixedGradientFvPatchField<vector>::typeName
+                << " or "
+                << fixedGradientCorrectedFvPatchField<vector>::typeName
+                << abort(FatalError);
+        }
     }
-    
 }
 
 tmp<areaVectorField> Foam::fluidInterface::surfaceTensionGrad()
