@@ -179,12 +179,6 @@ class fluidInterface
         
         //- Initialize control points 
         void initializeControlPointsPosition();
-
-        //- Return reference to interpolator (A to B)
-        const patchToPatchInterpolation& interpolatorAB();
-
-        //- Return reference to interpolator (B to A)
-        const patchToPatchInterpolation& interpolatorBA();
         
         //- Return reference to the control points
         vectorField& controlPoints();        
@@ -309,6 +303,12 @@ public:
         
         //- Return the surface tension field
         areaScalarField& surfaceTension();
+
+        //- Return reference to interpolator (A to B)
+        const patchToPatchInterpolation& interpolatorAB();
+
+        //- Return reference to interpolator (B to A)
+        const patchToPatchInterpolation& interpolatorBA();
 
         //- Return an indicator field for two fluids
         const volScalarField& fluidIndicator();

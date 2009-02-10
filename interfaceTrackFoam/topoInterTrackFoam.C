@@ -157,7 +157,11 @@ int main(int argc, char *argv[])
         mesh.setMotionBC(interface.aPatchID(), interface.displacement());
         if (interface.twoFluids())
         {
-            mesh.setMotionBC(interface.bPatchID(), interface.displacement());
+	    // Interpolate displacement to the shadow patch
+	    pointField dispB = 
+		interface.interpolatorAB().pointInterpolate(interface.displacement());
+
+            mesh.setMotionBC(interface.bPatchID(), dispB);
         }
         mesh.updateMotion();
 
