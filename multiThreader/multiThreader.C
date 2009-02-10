@@ -427,7 +427,7 @@ int Foam::multiThreader::getNumThreads()
 }
 
 //- Return true if the number of threads is more than one.
-bool Foam::multiThreader::multiThreaded()
+bool Foam::multiThreader::multiThreaded() const
 {
     return (numThreads_ > 1);
 }

@@ -295,6 +295,21 @@ class dynamicTopoFvMesh
         // Initialize mesh edges and related connectivity lists
         void initEdges();
 
+        // Initialize mutex lists
+        void initMutexLists();
+
+        // Unlock mutex lists with HashSets
+        void unlockMutexLists
+        (
+            labelHashSet& pLocks,
+            labelHashSet& eLocks,
+            labelHashSet& fLocks,
+            labelHashSet& cLocks
+        );
+
+        // Return a reference to the multiThreader
+        const multiThreader& threader() const;
+
         // Return length-scale at an edge-location in the mesh [3D]
         inline scalar meshEdgeLengthScale(const label eIndex);
 
@@ -601,7 +616,7 @@ class dynamicTopoFvMesh
         );
 
         // Try to acquire locks for given entities.
-        // Return true on success. HashSets contain locked entities.
+        // Returns zero on success. HashSets contain locked entities.
         bool tryLock
         (
             const label threadID,

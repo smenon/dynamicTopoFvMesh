@@ -444,6 +444,9 @@ inline typename HashList<T>::iterator HashList<T>::insert
     // Hash the index
     label loc = hash(index)%hash_table_size_;
 
+    // Lock the list
+    lock();
+
     // Lock the table at the index
     tableMutex_[loc].lock();
 
@@ -474,12 +477,13 @@ inline typename HashList<T>::iterator HashList<T>::insert
             thisPtr->previdx_ = newPtr;
 
             // Increment size and return pointer
-            lock();
             size_++;
-            unlock();
 
             // Unlock the table at the index
             tableMutex_[loc].unlock();
+
+            // Unlock the list
+            unlock();
 
             return iterator(newPtr);
         }
@@ -502,6 +506,9 @@ inline void HashList<T>::remove
 )
 {
     Item *thisPtr=getLinkItem(index);
+
+    // Lock the list
+    lock();
 
     // Update pointers and delete the item
     if (thisPtr->prev_)
@@ -558,9 +565,7 @@ inline void HashList<T>::remove
     else
     {
         // The first item is to be removed; update the first item
-        lock();
         startIdx_ = thisPtr->nextidx_;
-        unlock();
     }
 
     if (thisPtr->nextidx_)
@@ -578,16 +583,15 @@ inline void HashList<T>::remove
     else
     {
         // The last item is being removed; update the last item
-        lock();
         endIdx_ = thisPtr->previdx_;
-        unlock();
     }
 
     delete thisPtr;
 
     // Decrement size
-    lock();
     size_--;
+
+    // Unlock the list
     unlock();
 }
 
@@ -601,24 +605,25 @@ inline label HashList<T>::append
     // Index this item as an increment from the last index
     // This will allow random deletions from the list, while
     // keeping appends as valid
-    label index = 0;
 
-    if (endIdx_)
-    {
-        index = endIdx_->idx_ + 1;
-    }
+    // Lock the list
+    lock();
+
+    label index = 0;
 
     // Allocate and set the index
     Item *newPtr = new Item;
     newPtr->data_ = data;
-    newPtr->idx_ = index;
 
     // Update the last element index
     if (endIdx_)
     {
         // Lock end item
         endIdx_->lock();
-
+        
+        // Update item
+        index = endIdx_->idx_ + 1;
+        newPtr->idx_ = index;
         newPtr->previdx_ = endIdx_;
         endIdx_->nextidx_ = newPtr;
 
@@ -628,15 +633,12 @@ inline label HashList<T>::append
     else
     {
         // A null endIdx_ occurs only in null-constructed HashLists
-        lock();
+        newPtr->idx_ = index;
         startIdx_ = newPtr;
-        unlock();
     }
 
     // Update the last index item
-    lock();
     endIdx_ = newPtr;
-    unlock();
 
     // Hash the new index, and update the table
     label loc = hash(index)%hash_table_size_;
@@ -663,8 +665,84 @@ inline label HashList<T>::append
     tableMutex_[loc].unlock();
 
     // Increment the size and return the index
-    lock();
     size_++;
+
+    // Unlock the list
+    unlock();
+
+    return index;
+}
+
+//- Append a null element to the end of the list
+//- Valid only for template arguments that implement a null constructor.
+template<class T>
+inline label HashList<T>::append()
+{
+    // Index this item as an increment from the last index
+
+    // Lock the list
+    lock();
+
+    label index = 0;
+
+    // Allocate and set the index
+    Item *newPtr = new Item;
+
+    // Template data T is constructed as null.
+
+    // Update the last element index
+    if (endIdx_)
+    {
+        // Lock end item
+        endIdx_->lock();
+
+        // Update item
+        index = endIdx_->idx_ + 1;
+        newPtr->idx_ = index;
+        newPtr->previdx_ = endIdx_;
+        endIdx_->nextidx_ = newPtr;
+
+        // Unlock end item
+        endIdx_->unlock();
+    }
+    else
+    {
+        // A null endIdx_ occurs only in null-constructed HashLists
+        newPtr->idx_ = index;
+        startIdx_ = newPtr;
+    }
+
+    // Update the last index item
+    endIdx_ = newPtr;
+
+    // Hash the new index, and update the table
+    label loc = hash(index)%hash_table_size_;
+
+    // Lock table index
+    tableMutex_[loc].lock();
+
+    if (table_[loc])
+    {
+        // Lock previous item
+        table_[loc]->prev_->lock();
+
+        table_[loc]->prev_ = newPtr;
+        newPtr->next_ = table_[loc];
+
+        // Unlock previous item
+        table_[loc]->prev_->unlock();
+    }
+
+    // Start table with the new item
+    table_[loc] = newPtr;
+
+    // Unlock table index
+    tableMutex_[loc].unlock();
+
+    // Increment the size and return the index
+    size_++;
+
+    // Unlock the list
     unlock();
 
     return index;
@@ -772,6 +850,20 @@ template<class T>
 inline label HashList<T>::iterator::index()
 {
     return curItem->idx_;
+}
+
+//- Lock the iterator
+template<class T>
+inline void HashList<T>::iterator::lock()
+{
+    return curItem->lock();
+}
+
+//- Unlock the iterator
+template<class T>
+inline void HashList<T>::iterator::unlock()
+{
+    return curItem->unlock();
 }
 
 //- Renumber the index of an iterator to a new value

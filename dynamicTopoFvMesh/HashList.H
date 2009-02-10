@@ -178,6 +178,12 @@ public:
             //- Index access
             inline label index();
 
+            //- Lock the iterator
+            inline void lock();
+
+            //- Unlock the iterator
+            inline void unlock();
+
             // Member operators
 
             //- Assignment overload
@@ -218,6 +224,10 @@ public:
             //- Append an element to the end of the list
             //- Returns the index of the added element
             inline label append(const T&);
+
+            //- Append a null element to the end of the list
+            //- Returns the index of the added element
+            inline label append();
 
             //- Clear contents of the list
             void clear();

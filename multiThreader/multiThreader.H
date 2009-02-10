@@ -200,7 +200,7 @@ public:
         int getNumThreads();
 
         //- Return true if the number of threads is more than one.
-        bool multiThreaded();
+        bool multiThreaded() const;
         
         //- Return the maxQueueSize
         int getMaxQueueSize();

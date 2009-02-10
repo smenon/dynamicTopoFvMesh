@@ -32,6 +32,8 @@ Author
     Sandeep Menon
 \*----------------------------------------------------------------------------*/
 
+#include <HashTable.H>
+
 #include "HashList.H"
 #include "dynamicTopoFvMesh.H"
 #include "dynamicTopoFvMeshMapper.H"
@@ -388,36 +390,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     }
 
     // Initialize mutex lists for multi-threading, if necessary
-    if (threader_->multiThreaded())
-    {
-        pointMutex_.setSize
-        (
-            nPoints_,
-            -1,
-            meshPoints_.table_size()
-        );
-
-        edgeMutex_.setSize
-        (
-            nEdges_,
-            -1,
-            edges_.table_size()
-        );
-
-        faceMutex_.setSize
-        (
-            nFaces_,
-            -1,
-            faces_.table_size()
-        );
-
-        cellMutex_.setSize
-        (
-            nCells_,
-            -1,
-            cells_.table_size()
-        );
-    }
+    initMutexLists();
 }
 
 // Default topoMeshStruct constructor
@@ -991,6 +964,12 @@ label dynamicTopoFvMesh::insertFace
     owner_.append(newOwner);
     neighbour_.append(newNeighbour);
 
+    // Add a new unlocked face mutex
+    if (threader_->multiThreaded())
+    {
+        faceMutex_.append(-1);
+    }
+
 #   ifdef FULLDEBUG
     if (debug)
     {
@@ -1060,6 +1039,12 @@ void dynamicTopoFvMesh::removeFace
     faces_.remove(index);
     owner_.remove(index);
 
+    // Remove the face mutex
+    if (threader_->multiThreaded())
+    {
+        faceMutex_.remove(index);
+    }
+
     if (neighbour_[index] == -1)
     {
         // Modify patch information for this boundary face
@@ -1117,6 +1102,12 @@ label dynamicTopoFvMesh::insertEdge
 {
     label newEdgeIndex = edges_.append(newEdge);
     edgeFaces_.append(edgeFaces);
+
+    // Add a new unlocked edge mutex
+    if (threader_->multiThreaded())
+    {
+        edgeMutex_.append(-1);
+    }
 
     // Add to the stack as well
     edgeStack_.lock();
@@ -1203,6 +1194,12 @@ void dynamicTopoFvMesh::removeEdge
 
     edges_.remove(index);
     edgeFaces_.remove(index);
+
+    // Remove the edge mutex
+    if (threader_->multiThreaded())
+    {
+        edgeMutex_.remove(index);
+    }
 
     // Remove from the stack as well
     edgeStack_.lock();
@@ -2040,8 +2037,14 @@ void dynamicTopoFvMesh::removeEdgeFlips
     triangulations[1][t32] = -1;
     triangulations[2][t32] = -1;
 
+    // Lock the edge mutex
+    eMutex_.lock();
+
     // Finally remove the edge
     removeEdge(eIndex);
+
+    // Unlock the edge mutex
+    eMutex_.unlock();
 }
 
 // Extract triangulations from the programming table
@@ -2229,6 +2232,9 @@ void dynamicTopoFvMesh::swap23
     cellsForRemoval[0] = owner_[faceForRemoval];
     cellsForRemoval[1] = neighbour_[faceForRemoval];
 
+    // Lock the cell mutex
+    cMutex_.lock();
+
     // Add three new cells to the end of the cell list
     FixedList<label,3> newCellIndex(-1);
     newCellIndex[0] = cells_.append(cell(4));
@@ -2248,10 +2254,23 @@ void dynamicTopoFvMesh::swap23
            + lengthScale_[cellsForRemoval[1]]
         )/2.0;
 
-        lengthScale_.append(avgScale);
-        lengthScale_.append(avgScale);
-        lengthScale_.append(avgScale);
+        for (label i = 0; i < 3; i++)
+        {
+            lengthScale_.append(avgScale);
+        }
     }
+
+    // Add three unlocked cell mutexes
+    if (threader_->multiThreaded())
+    {
+        for (label i = 0; i < 3; i++)
+        {
+            cellMutex_.append(-1);
+        }
+    }
+
+    // Unlock the cell mutex
+    cMutex_.unlock();
 
     // Obtain point-ordering for the other vertices
     // otherVertices[0] is the point before isolatedVertex
@@ -3185,7 +3204,7 @@ void dynamicTopoFvMesh::swap32
 }
 
 // Try to acquire locks for given entities.
-// Return true on success.
+// Return zero on success.
 bool dynamicTopoFvMesh::tryLock
 (
     const label threadID,
@@ -3306,30 +3325,8 @@ bool dynamicTopoFvMesh::tryLock
     done:
         if (failed)
         {
-            // Undo all locks
-            labelList lockedCells = cLocks.toc();
-            forAll(lockedCells, cellI)
-            {
-                cellMutex_[cellI] = -1;
-            }
-
-            labelList lockedFaces = fLocks.toc();
-            forAll(lockedFaces, faceI)
-            {
-                faceMutex_[faceI] = -1;
-            }
-
-            labelList lockedEdges = eLocks.toc();
-            forAll(lockedEdges, edgeI)
-            {
-                edgeMutex_[edgeI] = -1;
-            }
-
-            labelList lockedPoints = pLocks.toc();
-            forAll(lockedPoints, pointI)
-            {
-                pointMutex_[pointI] = -1;
-            }
+            // Unlock all entities
+            unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
         }
 
     // Unlock the entity mutexes
@@ -3338,14 +3335,7 @@ bool dynamicTopoFvMesh::tryLock
     eMutex_.unlock();
     pMutex_.unlock();
 
-    if (failed)
-    {
-        return false;
-    }
-    else
-    {
-        return true;
-    }
+    return failed;
 }
 
 // Reorder points after a topology change
@@ -4958,6 +4948,92 @@ void dynamicTopoFvMesh::initEdges()
     }
 }
 
+// Initialize mutex lists
+void dynamicTopoFvMesh::initMutexLists()
+{
+    if (threader_->multiThreaded())
+    {
+        pointMutex_.clear();
+        pointMutex_.setSize
+        (
+            nPoints_,
+            -1,
+            meshPoints_.table_size()
+        );
+
+        edgeMutex_.clear();
+        edgeMutex_.setSize
+        (
+            nEdges_,
+            -1,
+            edges_.table_size()
+        );
+
+        faceMutex_.clear();
+        faceMutex_.setSize
+        (
+            nFaces_,
+            -1,
+            faces_.table_size()
+        );
+
+        cellMutex_.clear();
+        cellMutex_.setSize
+        (
+            nCells_,
+            -1,
+            cells_.table_size()
+        );
+    }
+}
+
+// Unlock mutex lists with HashSets
+void dynamicTopoFvMesh::unlockMutexLists
+(
+    labelHashSet& pLocks,
+    labelHashSet& eLocks,
+    labelHashSet& fLocks,
+    labelHashSet& cLocks
+)
+{
+    if (threader_->multiThreaded())
+    {
+        labelList lockedCells = cLocks.toc();
+        forAll(lockedCells, cellI)
+        {
+            cellMutex_[cellI] = -1;
+        }
+        cLocks.clear();
+
+        labelList lockedFaces = fLocks.toc();
+        forAll(lockedFaces, faceI)
+        {
+            faceMutex_[faceI] = -1;
+        }
+        fLocks.clear();
+
+        labelList lockedEdges = eLocks.toc();
+        forAll(lockedEdges, edgeI)
+        {
+            edgeMutex_[edgeI] = -1;
+        }
+        eLocks.clear();
+
+        labelList lockedPoints = pLocks.toc();
+        forAll(lockedPoints, pointI)
+        {
+            pointMutex_[pointI] = -1;
+        }
+        pLocks.clear();
+    }
+}
+
+// Return a reference to the multiThreader
+const multiThreader& dynamicTopoFvMesh::threader() const
+{
+    return threader_();
+}
+
 // Initialize the stack with a specified size 
 void dynamicTopoFvMesh::stack::initStack(const label size)
 {
@@ -5237,6 +5313,7 @@ void dynamicTopoFvMesh::swap3DEdges
     DynamicList<label> cellHull(mMax);
     DynamicList<label> faceHull(mMax);
     DynamicList<label> vertexHull(mMax);
+    labelHashSet pLocks, eLocks, fLocks, cLocks;
 
     // Dynamic programming variables
     scalarListList Q;
@@ -5284,6 +5361,31 @@ void dynamicTopoFvMesh::swap3DEdges
             minQuality
         );
 
+        // Lock entities attached to this edge.
+        if (mesh->threader().multiThreaded())
+        {
+            if
+            (
+                mesh->tryLock
+                (
+                    thread->threadID_,
+                    cellHull,
+                    pLocks,
+                    eLocks,
+                    fLocks,
+                    cLocks
+                )
+            )
+            {
+                // Put this edge back on the stack and continue
+                mesh->edgeStack().lock();
+                mesh->edgeStack().push(eIndex);
+                mesh->edgeStack().unlock();
+                cellHull.clear(); faceHull.clear(); vertexHull.clear();
+                continue;
+            }
+        }
+
         // Check if a table-resize is necessary
         if (vertexHull.size() > mMax)
         {
@@ -5330,12 +5432,31 @@ void dynamicTopoFvMesh::swap3DEdges
                 triangulations
             );
 
+            // Remove hull entities from the lock list.
+            if (mesh->threader().multiThreaded())
+            {
+                forAll(cellHull, cellI)
+                {
+                    cLocks.erase(cellHull[cellI]);
+                }
+
+                forAll(faceHull, faceI)
+                {
+                    fLocks.erase(faceHull[faceI]);
+                }
+
+                eLocks.erase(eIndex);
+            }
+
             // Set the flag
             mesh->topoChangeFlag() = true;
         }
 
         // Move on to the next edge.
         cellHull.clear(); faceHull.clear(); vertexHull.clear();
+
+        // Unlock all entities
+        mesh->unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
     }
 }
 
@@ -7357,14 +7478,14 @@ void dynamicTopoFvMesh::bisectEdge
         false
     );
 
-    // Lock hull-entities to prevent them from being modified.
+    // Lock hull-entities to prevent them from being modified by other threads.
     labelHashSet pLocks, eLocks, fLocks, cLocks;
     
     if (threader_->multiThreaded())
     {
         if 
         (
-            !tryLock
+            tryLock
             (
                 threadID,
                 cellHull,
@@ -7383,6 +7504,9 @@ void dynamicTopoFvMesh::bisectEdge
         }
     }
 
+    // Lock the point mutex
+    pMutex_.lock();
+
     // Add a new point to the end of the list
     label newPointIndex =
         meshPoints_.append
@@ -7397,7 +7521,19 @@ void dynamicTopoFvMesh::bisectEdge
     // Add an entry to pointEdges as well
     pointEdges_.append(labelList(0));
 
+    // Add an unlocked point mutex
+    if (threader_->multiThreaded())
+    {
+        pointMutex_.append(-1);
+    }
+
     nPoints_++;
+
+    // Unlock the point mutex
+    pMutex_.unlock();
+
+    // Lock the edge mutex
+    eMutex_.lock();
 
     // Add a new edge to the end of the list
     label newEdgeIndex =
@@ -7419,6 +7555,9 @@ void dynamicTopoFvMesh::bisectEdge
     // Obtain new references
     edge& newEdge = edges_[newEdgeIndex];
     labelList& newEdgeFaces = edgeFaces_[newEdgeIndex];
+
+    // Unlock the edge mutex
+    eMutex_.unlock();
 
     // Keep track of added entities
     labelList addedCellIndices(cellHull.size(),-1);
@@ -7452,10 +7591,19 @@ void dynamicTopoFvMesh::bisectEdge
         {
             cell& currCell = cells_[cellHull[indexI]];
 
+            // Lock the cell mutex
+            cMutex_.lock();
+
             // Create a new cell
             addedCellIndices[indexI] = cells_.append(cell(4));
             cell& newCell = cells_[addedCellIndices[indexI]];
             nCells_++;
+
+            // Add an unlocked cell mutex
+            if (threader_->multiThreaded())
+            {
+                cellMutex_.append(-1);
+            }
 
             // Generate mapping information for this new cell
             label parent;
@@ -7473,6 +7621,9 @@ void dynamicTopoFvMesh::bisectEdge
             // Insert the parent cell
             cellParents_.insert(addedCellIndices[indexI], parent);
 
+            // Unlock the cell mutex
+            cMutex_.unlock();
+
             // Find the cell's neighbours in the old mesh
             masterObjects.insert(parent);
             forAll(cc[parent], cellI)
@@ -7482,6 +7633,9 @@ void dynamicTopoFvMesh::bisectEdge
                     masterObjects.insert(cc[parent][cellI]);
                 }
             }
+
+            // Lock the cell mutex
+            cMutex_.lock();
 
             // Insert mapping info into the HashTable
             cellsFromCells_.insert
@@ -7497,10 +7651,16 @@ void dynamicTopoFvMesh::bisectEdge
             // Add a new element to the lengthScale field
             lengthScale_.append(lengthScale_[cellHull[indexI]]);
 
+            // Unlock the cell mutex
+            cMutex_.unlock();
+
             // Configure the interior face
             tmpTriFace[0] = vertexHull[nextI];
             tmpTriFace[1] = vertexHull[indexI];
             tmpTriFace[2] = newPointIndex;
+
+            // Lock the face mutex
+            fMutex_.lock();
 
             // Insert the face
             addedIntFaceIndices[indexI] =
@@ -7514,6 +7674,9 @@ void dynamicTopoFvMesh::bisectEdge
 
             // Add a faceEdges entry as well
             faceEdges_.append(tmpFaceEdges);
+
+            // Unlock the face mutex
+            fMutex_.unlock();
 
             // Add to the new cell
             newCell[0] = addedIntFaceIndices[indexI];
@@ -7602,6 +7765,9 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpTriFace[1] = newEdge[1];
                 tmpTriFace[2] = vertexHull[indexI];
 
+                // Lock the face mutex
+                fMutex_.lock();
+
                 // Insert the face
                 addedFaceIndices[indexI] =
                     insertFace
@@ -7617,6 +7783,9 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpEdgeFaces[1] = addedIntFaceIndices[indexI];
                 tmpEdgeFaces[2] = addedFaceIndices[indexI];
 
+                // Lock the edge mutex
+                eMutex_.lock();
+
                 // Add an edge
                 addedEdgeIndices[indexI] =
                     insertEdge
@@ -7625,6 +7794,9 @@ void dynamicTopoFvMesh::bisectEdge
                         edge(newPointIndex,vertexHull[indexI]),
                         tmpEdgeFaces
                     );
+
+                // Unlock the edge mutex
+                eMutex_.unlock();
 
                 // Add this edge to the interior-face faceEdges entry
                 faceEdges_[addedIntFaceIndices[indexI]][1] =
@@ -7671,6 +7843,9 @@ void dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
+                // Unlock the face mutex
+                fMutex_.unlock();
+
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[indexI] = addedFaceIndices[indexI];
 
@@ -7685,6 +7860,9 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpTriFace[0] = vertexHull[indexI];
                 tmpTriFace[1] = newEdge[1];
                 tmpTriFace[2] = newPointIndex;
+
+                // Lock the face mutex
+                fMutex_.lock();
 
                 // Insert the face
                 addedFaceIndices[indexI] =
@@ -7702,6 +7880,9 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpIntEdgeFaces[2] = addedFaceIndices[indexI];
                 tmpIntEdgeFaces[3] = addedIntFaceIndices[prevI];
 
+                // Lock the edge mutex
+                eMutex_.lock();
+
                 // Add an internal edge
                 addedEdgeIndices[indexI] =
                     insertEdge
@@ -7710,6 +7891,9 @@ void dynamicTopoFvMesh::bisectEdge
                         edge(newPointIndex,vertexHull[indexI]),
                         tmpIntEdgeFaces
                     );
+
+                // Unlock the edge mutex
+                eMutex_.unlock();
 
                 // Add this edge to the interior-face faceEdges entry..
                 faceEdges_[addedIntFaceIndices[indexI]][1] =
@@ -7760,6 +7944,9 @@ void dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
+                // Unlock the face mutex
+                fMutex_.unlock();
+
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[indexI] = addedFaceIndices[indexI];
 
@@ -7778,6 +7965,9 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpTriFace[1] = newEdge[1];
                 tmpTriFace[2] = vertexHull[0];
 
+                // Lock the face mutex
+                fMutex_.lock();
+
                 // Insert the face
                 addedFaceIndices[0] =
                     insertFace
@@ -7794,6 +7984,9 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpIntEdgeFaces[2] = addedFaceIndices[0];
                 tmpIntEdgeFaces[3] = addedIntFaceIndices[indexI];
 
+                // Lock the edge mutex
+                eMutex_.lock();
+
                 // Add an internal edge
                 addedEdgeIndices[0] =
                     insertEdge
@@ -7802,6 +7995,9 @@ void dynamicTopoFvMesh::bisectEdge
                         edge(newPointIndex,vertexHull[0]),
                         tmpIntEdgeFaces
                     );
+
+                // Unlock the edge mutex
+                eMutex_.unlock();
 
                 // Add this edge to the interior-face faceEdges entry..
                 faceEdges_[addedIntFaceIndices[0]][1] =
@@ -7852,6 +8048,9 @@ void dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
+                // Unlock the face mutex
+                fMutex_.unlock();
+
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[0] = addedFaceIndices[0];
 
@@ -7869,6 +8068,9 @@ void dynamicTopoFvMesh::bisectEdge
             tmpTriFace[1] = newEdge[1];
             tmpTriFace[2] = newPointIndex;
 
+            // Lock the face mutex
+            fMutex_.lock();
+
             // Insert the face
             addedFaceIndices[indexI] =
                 insertFace
@@ -7884,6 +8086,9 @@ void dynamicTopoFvMesh::bisectEdge
             tmpEdgeFaces[1] = addedIntFaceIndices[prevI];
             tmpEdgeFaces[2] = faceHull[indexI];
 
+            // Lock the edge mutex
+            eMutex_.lock();
+
             // Add an edge
             addedEdgeIndices[indexI] =
                 insertEdge
@@ -7892,6 +8097,9 @@ void dynamicTopoFvMesh::bisectEdge
                     edge(newPointIndex,vertexHull[indexI]),
                     tmpEdgeFaces
                 );
+
+            // Unlock the edge mutex
+            eMutex_.unlock();
 
             // Add a faceEdges entry to the previous interior face
             faceEdges_[addedIntFaceIndices[prevI]][2] =
@@ -7938,6 +8146,9 @@ void dynamicTopoFvMesh::bisectEdge
             // Add the faceEdges entry
             faceEdges_.append(tmpFaceEdges);
 
+            // Unlock the face mutex
+            fMutex_.unlock();
+
             // Add an entry to newEdgeFaces
             newEdgeFaces[indexI] = addedFaceIndices[indexI];
 
@@ -7945,6 +8156,9 @@ void dynamicTopoFvMesh::bisectEdge
             cells_[addedCellIndices[prevI]][3] = addedFaceIndices[indexI];
         }
     }
+
+    // Unlock all entities
+    unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
 
 #   ifdef FULLDEBUG
     if (debug)
@@ -8079,6 +8293,32 @@ bool dynamicTopoFvMesh::collapseEdge
         false
     );
 
+    // Lock hull-entities to prevent them from being modified by other threads.
+    labelHashSet pLocks, eLocks, fLocks, cLocks;
+
+    if (threader_->multiThreaded())
+    {
+        if
+        (
+            tryLock
+            (
+                threadID,
+                cellHull,
+                pLocks,
+                eLocks,
+                fLocks,
+                cLocks
+            )
+        )
+        {
+            // Put this edge back on the stack and bail out
+            edgeStack_.lock();
+            edgeStack_.push(eIndex);
+            edgeStack_.unlock();
+            return false;
+        }
+    }
+
     // Determine ring edges and the hull faces connected to them
     labelList edgeHull(vertexHull.size(), -1);
     labelListList hullEdgesAndFaces(4, labelList(faceHull.size(), -1));
@@ -8209,7 +8449,7 @@ bool dynamicTopoFvMesh::collapseEdge
 #   endif
 
     // Loop through edges and check for feasibility of collapse
-    labelHashSet cellsChecked(mMax);
+    labelHashSet cellsChecked;
 
     // Add all hull cells as 'checked'
     forAll(cellHull, cellI)
@@ -8256,6 +8496,9 @@ bool dynamicTopoFvMesh::collapseEdge
                         )
                     )
                     {
+                        // Unlock all entities
+                        unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
+
                         return false;
                     }
                 }
@@ -8276,6 +8519,9 @@ bool dynamicTopoFvMesh::collapseEdge
                         )
                     )
                     {
+                        // Unlock all entities
+                        unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
+                        
                         return false;
                     }
                 }
@@ -8472,6 +8718,11 @@ bool dynamicTopoFvMesh::collapseEdge
         }
     }
 
+    // Lock mutexes
+    eMutex_.lock();
+    fMutex_.lock();
+    cMutex_.lock();
+
     // Remove all hull entities
     forAll(faceHull, indexI)
     {
@@ -8485,9 +8736,21 @@ bool dynamicTopoFvMesh::collapseEdge
             removeFace(faceToRemove);
             faceEdges_.remove(faceToRemove);
 
+            // Remove from list of locked faces
+            if (fLocks.found(faceToRemove))
+            {
+                fLocks.erase(faceToRemove);
+            }
+
             // Remove the hull cell
             cells_.remove(cellToRemove);
             lengthScale_.remove(cellToRemove);
+
+            // Remove from list of locked cells
+            if (cLocks.found(cellToRemove))
+            {
+                cLocks.erase(cellToRemove);
+            }
 
             // Update the number of cells, and the reverse cell map
             nCells_--;
@@ -8507,10 +8770,27 @@ bool dynamicTopoFvMesh::collapseEdge
         // Remove the hull edge and associated edgeFaces
         removeEdge(edgeToRemove);
 
+        // Remove from list of locked edges
+        if (eLocks.found(edgeToRemove))
+        {
+            eLocks.erase(edgeToRemove);
+        }
+
         // Remove the hull face and associated faceEdges
         removeFace(faceHull[indexI]);
         faceEdges_.remove(faceHull[indexI]);
+
+        // Remove from list of locked faces
+        if (fLocks.found(faceHull[indexI]))
+        {
+            fLocks.erase(faceHull[indexI]);
+        }
     }
+
+    // Unlock mutexes
+    cMutex_.unlock();
+    fMutex_.unlock();
+    eMutex_.unlock();
 
     // Loop through pointEdges for the collapsePoint,
     // and replace all occurrences with replacePoint.
@@ -8588,6 +8868,9 @@ bool dynamicTopoFvMesh::collapseEdge
         }
     }
 
+    // Lock the point mutex
+    pMutex_.lock();
+
     // Move to the new point
     meshPoints_[replacePoint] = newPoint;
 
@@ -8595,8 +8878,17 @@ bool dynamicTopoFvMesh::collapseEdge
     meshPoints_.remove(collapsePoint);
     nPoints_--;
 
+    // Remove from list of locked points
+    if (pLocks.found(collapsePoint))
+    {
+        pLocks.erase(collapsePoint);
+    }
+
     // Null pointEdges so that removeEdge deletes it.
     pointEdges_[collapsePoint] = labelList(0);
+
+    // Unlock the point mutex
+    pMutex_.unlock();
 
     // Update the reverse point map
     if (collapsePoint < nOldPoints_)
@@ -8604,8 +8896,23 @@ bool dynamicTopoFvMesh::collapseEdge
         reversePointMap_[collapsePoint] = -1;
     }
 
+    // Lock the edge mutex
+    eMutex_.lock();
+
     // Remove the edge
     removeEdge(eIndex);
+    
+    // Remove from list of locked edges
+    if (eLocks.found(eIndex))
+    {
+        eLocks.erase(eIndex);
+    }
+
+    // Unlock the edge mutex
+    eMutex_.unlock();
+
+    // Unlock all entities
+    unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
 
     // Return a successful collapse
     return true;
@@ -9334,6 +9641,9 @@ bool dynamicTopoFvMesh::updateTopology()
         reverseEdgeMap_.setSize(nEdges_);
         reverseFaceMap_.setSize(nFaces_);
         reverseCellMap_.setSize(nCells_);
+
+        // Re-initialize mutex lists for multi-threading, if necessary
+        initMutexLists();
 
         // Basic checks for mesh-validity
         if (debug) checkMesh(true);
