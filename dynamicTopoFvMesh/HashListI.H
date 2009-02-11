@@ -648,14 +648,14 @@ inline label HashList<T>::append
 
     if (table_[loc])
     {
-        // Lock previous item
-        table_[loc]->prev_->lock();
+        // Lock item
+        table_[loc]->lock();
 
         table_[loc]->prev_ = newPtr;
         newPtr->next_ = table_[loc];
 
-        // Unlock previous item
-        table_[loc]->prev_->unlock();
+        // Unlock item
+        table_[loc]->unlock();
     }
 
     // Start table with the new item
@@ -723,14 +723,14 @@ inline label HashList<T>::append()
 
     if (table_[loc])
     {
-        // Lock previous item
-        table_[loc]->prev_->lock();
+        // Lock item
+        table_[loc]->lock();
 
         table_[loc]->prev_ = newPtr;
         newPtr->next_ = table_[loc];
 
-        // Unlock previous item
-        table_[loc]->prev_->unlock();
+        // Unlock item
+        table_[loc]->unlock();
     }
 
     // Start table with the new item

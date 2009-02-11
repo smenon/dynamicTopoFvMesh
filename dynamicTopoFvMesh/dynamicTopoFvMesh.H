@@ -36,6 +36,7 @@ SourceFiles
 #ifndef dynamicTopoFvMesh_H
 #define dynamicTopoFvMesh_H
 
+#include <sys/time.h>
 #include "HashList.H"
 #include "multiThreader.H"
 #include "fvMesh.H"
@@ -163,6 +164,32 @@ class dynamicTopoFvMesh
         //  for 3D mesh flipping
         label               maxTetsPerEdge_;
         Switch              allowTableResize_;
+
+        // Private timer sub-class
+        class timer
+        {
+            // Private data
+            
+            // Defined in time.h
+            struct timeval start_;
+            struct timeval end_;
+
+        public:
+
+            // Constructor
+            timer(){}
+
+            // Member functions
+
+                //- Start the timer
+                void start();
+
+                //- Stop the timer
+                void stop();
+
+                //- Report time between start/stop
+                scalar reportTime();
+        };
 
         // Private Stack sub-class
         class stack
@@ -353,6 +380,14 @@ class dynamicTopoFvMesh
         // Return the edge-stack
         inline stack& edgeStack();
 
+        // Attempt to lock the edge and its two points.
+        // Return zero on success.
+        inline bool lockEdge
+        (
+            const label eIndex,
+            const label threadID
+        );
+
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label& index) const;
 
@@ -517,13 +552,18 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to build a ring of vertices around the edge
-        inline void constructVertexRing
+        inline bool constructVertexRing
         (
             const label eIndex,
+            const label threadID,
             DynamicList<label>& hullCells,
             DynamicList<label>& hullFaces,
             DynamicList<label>& hullVertices,
             scalar& minQuality,
+            labelHashSet& pLocks,
+            labelHashSet& eLocks,
+            labelHashSet& fLocks,
+            labelHashSet& cLocks,
             bool requiresQuality
         );
 
@@ -613,18 +653,6 @@ class dynamicTopoFvMesh
             const DynamicList<label>& hullCells,
             const DynamicList<label>& hullFaces,
             const DynamicList<label>& hullVertices
-        );
-
-        // Try to acquire locks for given entities.
-        // Returns zero on success. HashSets contain locked entities.
-        bool tryLock
-        (
-            const label threadID,
-            const DynamicList<label>& cells,
-            labelHashSet& pLocks,
-            labelHashSet& eLocks,
-            labelHashSet& fLocks,
-            labelHashSet& cLocks
         );
 
         // Reorder points after a topology change
