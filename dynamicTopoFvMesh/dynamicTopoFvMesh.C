@@ -965,7 +965,7 @@ label dynamicTopoFvMesh::insertFace
     // Add a new unlocked face mutex
     if (threader_->multiThreaded())
     {
-        faceMutex_.append(-1);
+        faceMutex_.append();
     }
 
 #   ifdef FULLDEBUG
@@ -1040,6 +1040,8 @@ void dynamicTopoFvMesh::removeFace
     // Remove the face mutex
     if (threader_->multiThreaded())
     {
+        // Unlock it first
+        faceMutex_[index].unlock();
         faceMutex_.remove(index);
     }
 
@@ -1104,7 +1106,7 @@ label dynamicTopoFvMesh::insertEdge
     // Add a new unlocked edge mutex
     if (threader_->multiThreaded())
     {
-        edgeMutex_.append(-1);
+        edgeMutex_.append();
     }
 
     // Add to the stack as well
@@ -1196,6 +1198,8 @@ void dynamicTopoFvMesh::removeEdge
     // Remove the edge mutex
     if (threader_->multiThreaded())
     {
+        // Unlock it first
+        edgeMutex_[index].unlock();
         edgeMutex_.remove(index);
     }
 
@@ -1620,16 +1624,15 @@ inline bool dynamicTopoFvMesh::constructVertexRing
     // Try to lock the start-face
     if (threader_->multiThreaded())
     {
-        if (faceMutex_[startFaceIndex] == -1)
-        {
-            faceMutex_[startFaceIndex] = threadID;
-            fLocks.insert(startFaceIndex);
-        }
-        else
+        if (faceMutex_[startFaceIndex].tryLock())
         {
             // Failed to acquire this face.
             failed = true;
             goto done;
+        }
+        else
+        {
+            fLocks.insert(startFaceIndex);
         }
     }
 
@@ -1663,97 +1666,79 @@ inline bool dynamicTopoFvMesh::constructVertexRing
         if (threader_->multiThreaded())
         {
             // Try to acquire this cell
-            if (cellMutex_[cellIndex] == -1)
-            {
-                cellMutex_[cellIndex] = threadID;
-                cLocks.insert(cellIndex);
-
-                // Lock all faces of this cell
-                cell& cellToCheck = cells_[cellIndex];
-                forAll(cellToCheck, faceI)
-                {
-                    label fIndex = cellToCheck[faceI];
-                    if (faceMutex_[fIndex] == -1)
-                    {
-                        faceMutex_[fIndex] = threadID;
-                        if (!fLocks.found(fIndex))
-                        {
-                            fLocks.insert(fIndex);
-                        }
-
-                        // Lock all edges of this face
-                        labelList& fEdges = faceEdges_[fIndex];
-                        forAll (fEdges, edgeI)
-                        {
-                            label eIndex = fEdges[edgeI];
-                            if (edgeMutex_[eIndex] == -1)
-                            {
-                                edgeMutex_[eIndex] = threadID;
-                                if (!eLocks.found(eIndex))
-                                {
-                                    eLocks.insert(eIndex);
-                                }
-                            }
-                            else
-                            if (edgeMutex_[eIndex] == threadID)
-                            {
-                                // Locked this edge before. Move on.
-                                continue;
-                            }
-                            else
-                            {
-                                // Failed to acquire this edge.
-                                failed = true;
-                                goto done;
-                            }
-                        }
-
-                        // Lock all points of this face
-                        face& faceToCheck = faces_[fIndex];
-                        forAll (faceToCheck, pointI)
-                        {
-                            label pIndex = faceToCheck[pointI];
-                            if (pointMutex_[pIndex] == -1)
-                            {
-                                pointMutex_[pIndex] = threadID;
-                                if (!pLocks.found(pIndex))
-                                {
-                                    pLocks.insert(pIndex);
-                                }
-                            }
-                            else
-                            if (pointMutex_[pIndex] == threadID)
-                            {
-                                // Locked this point before. Move on.
-                                continue;
-                            }
-                            else
-                            {
-                                // Failed to acquire this point.
-                                failed = true;
-                                goto done;
-                            }
-                        }
-                    }
-                    else
-                    if (faceMutex_[fIndex] == threadID)
-                    {
-                        // Locked this face before. Move on.
-                        continue;
-                    }
-                    else
-                    {
-                        // Failed to acquire this face.
-                        failed = true;
-                        goto done;
-                    }
-                }
-            }
-            else
+            if (cellMutex_[cellIndex].tryLock())
             {
                 // Failed to acquire this cell.
                 failed = true;
                 break;
+            }
+            else
+            {
+                cLocks.insert(cellIndex);
+
+                // Try to acquire all faces of this cell
+                cell& cellToCheck = cells_[cellIndex];
+
+                forAll(cellToCheck, faceI)
+                {
+                    label fIndex = cellToCheck[faceI];
+
+                    if (!fLocks.found(fIndex))
+                    {
+                        if (faceMutex_[fIndex].tryLock())
+                        {
+                            // Failed to acquire this face.
+                            failed = true;
+                            goto done;
+                        }
+                        else
+                        {
+                            fLocks.insert(fIndex);
+
+                            // Try to acquire all edges of this face
+                            labelList& fEdges = faceEdges_[fIndex];
+                            forAll (fEdges, edgeI)
+                            {
+                                label eIndex = fEdges[edgeI];
+
+                                if (!eLocks.found(eIndex))
+                                {
+                                    if (edgeMutex_[eIndex].tryLock())
+                                    {
+                                        // Failed to acquire this edge.
+                                        failed = true;
+                                        goto done;
+                                    }
+                                    else
+                                    {
+                                        eLocks.insert(eIndex);
+                                    }
+                                }
+                            }
+
+                            // Try to acquire all points of this face
+                            face& faceToCheck = faces_[fIndex];
+                            forAll (faceToCheck, pointI)
+                            {
+                                label pIndex = faceToCheck[pointI];
+
+                                if (!pLocks.found(pIndex))
+                                {
+                                    if (pointMutex_[pIndex].tryLock())
+                                    {
+                                        // Failed to acquire this point
+                                        failed = true;
+                                        goto done;
+                                    }
+                                    else
+                                    {
+                                        pLocks.insert(pIndex);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -2410,7 +2395,7 @@ void dynamicTopoFvMesh::swap23
     {
         for (label i = 0; i < 3; i++)
         {
-            cellMutex_.append(-1);
+            cellMutex_.append();
         }
     }
 
@@ -2845,6 +2830,8 @@ void dynamicTopoFvMesh::swap23
         // Remove the cell mutex
         if (threader_->multiThreaded())
         {
+            // Unlock it first
+            cellMutex_[cIndex].unlock();
             cellMutex_.remove(cIndex);
         }
 
@@ -3008,7 +2995,7 @@ void dynamicTopoFvMesh::swap32
     {
         for (label i = 0; i < 2; i++)
         {
-            cellMutex_.append(-1);
+            cellMutex_.append();
         }
     }
 
@@ -3421,6 +3408,8 @@ void dynamicTopoFvMesh::swap32
         // Remove the cell mutex
         if (threader_->multiThreaded())
         {
+            // Unlock it first
+            cellMutex_[cIndex].unlock();
             cellMutex_.remove(cIndex);
         }
 
@@ -5100,36 +5089,16 @@ void dynamicTopoFvMesh::initMutexLists()
     if (threader_->multiThreaded())
     {
         pointMutex_.clear();
-        pointMutex_.setSize
-        (
-            nPoints_,
-            -1,
-            meshPoints_.table_size()
-        );
+        pointMutex_.setSize(nPoints_);
 
         edgeMutex_.clear();
-        edgeMutex_.setSize
-        (
-            nEdges_,
-            -1,
-            edges_.table_size()
-        );
+        edgeMutex_.setSize(nEdges_);
 
         faceMutex_.clear();
-        faceMutex_.setSize
-        (
-            nFaces_,
-            -1,
-            faces_.table_size()
-        );
+        faceMutex_.setSize(nFaces_);
 
         cellMutex_.clear();
-        cellMutex_.setSize
-        (
-            nCells_,
-            -1,
-            cells_.table_size()
-        );
+        cellMutex_.setSize(nCells_);
     }
 }
 
@@ -5147,28 +5116,28 @@ void dynamicTopoFvMesh::unlockMutexLists
         labelList lockedCells = cLocks.toc();
         forAll(lockedCells, cellI)
         {
-            cellMutex_[cellI] = -1;
+            cellMutex_[cellI].unlock();
         }
         cLocks.clear();
 
         labelList lockedFaces = fLocks.toc();
         forAll(lockedFaces, faceI)
         {
-            faceMutex_[faceI] = -1;
+            faceMutex_[faceI].unlock();
         }
         fLocks.clear();
 
         labelList lockedEdges = eLocks.toc();
         forAll(lockedEdges, edgeI)
         {
-            edgeMutex_[edgeI] = -1;
+            edgeMutex_[edgeI].unlock();
         }
         eLocks.clear();
 
         labelList lockedPoints = pLocks.toc();
         forAll(lockedPoints, pointI)
         {
-            pointMutex_[pointI] = -1;
+            pointMutex_[pointI].unlock();
         }
         pLocks.clear();
     }
@@ -5744,51 +5713,39 @@ inline bool dynamicTopoFvMesh::lockEdge
 {
     if (threader_->multiThreaded())
     {
-        if (edgeMutex_[eIndex] == -1)
+        if (edgeMutex_[eIndex].tryLock())
         {
-            // This edge is free. Lock it.
-            edgeMutex_[eIndex] = threadID;
-
+            // Can't lock this edge. Get out.
+            return true;
+        }
+        else
+        {
             edge& edgeToCheck = edges_[eIndex];
 
             // Check both points
 
-            if (pointMutex_[edgeToCheck[0]] == -1)
-            {
-                // This point is free. Lock it.
-                pointMutex_[edgeToCheck[0]] = threadID;
-            }
-            else
+            if (pointMutex_[edgeToCheck[0]].tryLock())
             {
                 // Can't lock this point. Get out.
-                edgeMutex_[eIndex] = -1;
+                edgeMutex_[eIndex].unlock();
                 return true;
             }
-
-            if (pointMutex_[edgeToCheck[1]] == -1)
-            {
-                // This point is free. Lock it.
-                pointMutex_[edgeToCheck[1]] = threadID;
-            }
-            else
+            
+            if (pointMutex_[edgeToCheck[1]].tryLock())
             {
                 // Can't lock this point. Get out.
-                edgeMutex_[eIndex] = -1;
-                pointMutex_[edgeToCheck[0]] = -1;
+                edgeMutex_[eIndex].unlock();
+                pointMutex_[edgeToCheck[0]].unlock();
                 return true;
             }
 
             // Return a successful lock.
             return false;
         }
-        else
-        {
-            // Can't lock this edge. Get out.
-            return true;
-        }
     }
     else
     {
+        // Successful lock for single-threaded
         return false;
     }
 }
@@ -7767,7 +7724,7 @@ void dynamicTopoFvMesh::bisectEdge
     // Add an unlocked point mutex
     if (threader_->multiThreaded())
     {
-        pointMutex_.append(-1);
+        pointMutex_.append();
     }
 
     nPoints_++;
@@ -7845,7 +7802,7 @@ void dynamicTopoFvMesh::bisectEdge
             // Add an unlocked cell mutex
             if (threader_->multiThreaded())
             {
-                cellMutex_.append(-1);
+                cellMutex_.append();
             }
 
             // Generate mapping information for this new cell
@@ -8990,6 +8947,8 @@ bool dynamicTopoFvMesh::collapseEdge
             // Remove the cell mutex
             if (threader_->multiThreaded())
             {
+                // Unlock it first
+                cellMutex_[cellToRemove].unlock();
                 cellMutex_.remove(cellToRemove);
             }
 
@@ -9128,6 +9087,8 @@ bool dynamicTopoFvMesh::collapseEdge
     // Remove the point mutex
     if (threader_->multiThreaded())
     {
+        // Unlock it first
+        pointMutex_[collapsePoint].unlock();
         pointMutex_.remove(collapsePoint);
     }
 
