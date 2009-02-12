@@ -595,6 +595,101 @@ inline void HashList<T>::remove
     unlock();
 }
 
+//- Deletion of an element, given an iterator
+template<class T>
+inline void HashList<T>::remove(iterator& iter)
+{
+    Item *thisPtr = iter.curItem;
+    label index = thisPtr->idx_;
+
+    // Lock the list
+    lock();
+
+    // Update pointers and delete the item
+    if (thisPtr->prev_)
+    {
+        // Lock items
+        thisPtr->lock();
+        thisPtr->prev_->lock();
+
+        thisPtr->prev_->next_ = thisPtr->next_;
+
+        // Unlock items
+        thisPtr->prev_->unlock();
+        thisPtr->unlock();
+    }
+    else
+    {
+        // The table entry points to this item
+        label loc = hash(index)%hash_table_size_;
+
+        // Lock table
+        tableMutex_[loc].lock();
+
+        table_[loc] = thisPtr->next_;
+
+        // Unlock table
+        tableMutex_[loc].unlock();
+    }
+
+    if (thisPtr->next_)
+    {
+        // Lock items
+        thisPtr->lock();
+        thisPtr->next_->lock();
+
+        thisPtr->next_->prev_ = thisPtr->prev_;
+
+        // Unlock items
+        thisPtr->next_->unlock();
+        thisPtr->unlock();
+    }
+
+    if (thisPtr->previdx_)
+    {
+        // Lock items
+        thisPtr->lock();
+        thisPtr->previdx_->lock();
+
+        thisPtr->previdx_->nextidx_ = thisPtr->nextidx_;
+
+        // Unlock items
+        thisPtr->previdx_->unlock();
+        thisPtr->unlock();
+    }
+    else
+    {
+        // The first item is to be removed; update the first item
+        startIdx_ = thisPtr->nextidx_;
+    }
+
+    if (thisPtr->nextidx_)
+    {
+        // Lock items
+        thisPtr->lock();
+        thisPtr->nextidx_->lock();
+
+        thisPtr->nextidx_->previdx_ = thisPtr->previdx_;
+
+        // Unlock items
+        thisPtr->nextidx_->unlock();
+        thisPtr->unlock();
+    }
+    else
+    {
+        // The last item is being removed; update the last item
+        endIdx_ = thisPtr->previdx_;
+    }
+
+    delete thisPtr;
+
+    // Decrement size
+    size_--;
+
+    // Unlock the list
+    unlock();
+}
+
 //- Append an element to the end of the list
 template<class T>
 inline label HashList<T>::append

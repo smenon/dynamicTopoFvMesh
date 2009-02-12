@@ -38,6 +38,7 @@ Author
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 bool Foam::multiThreader::debug = false;
+bool Foam::Mutex::debug = false;
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -65,12 +66,28 @@ Foam::multiThreader::multiThreader(int numThreads)
 
 Foam::Mutex::Mutex()
 {
-    if (pthread_mutex_init(&lock_, NULL))
+    // Set attributes based on debug flag
+    pthread_mutexattr_t attribute;
+    pthread_mutexattr_init(&attribute);
+
+    if (debug)
+    {
+        pthread_mutexattr_settype(&attribute, PTHREAD_MUTEX_ERRORCHECK);
+    }
+    else
+    {
+        pthread_mutexattr_settype(&attribute, PTHREAD_MUTEX_NORMAL);
+    }
+
+    if (pthread_mutex_init(&lock_, &attribute))
     {
         FatalErrorIn("multiThreader::Mutex::Mutex()")
             << "Unable to initialize mutex"
             << abort(FatalError);        
-    }    
+    }
+
+    // Destroy the attribute
+    pthread_mutexattr_destroy(&attribute);
 }
 
 Foam::Conditional::Conditional()
@@ -465,14 +482,30 @@ void Foam::Mutex::lock()
 
 bool Foam::Mutex::tryLock()
 {
-    if (pthread_mutex_trylock(&lock_))
+    label retVal;
+
+    if ((retVal = pthread_mutex_trylock(&lock_)) != 0)
     {
-        return false;
+#       ifdef FULLDEBUG
+        if (debug)
+        {
+            if (retVal == EINVAL)
+            {
+                FatalErrorIn("multiThreader::Mutex::trylock()")
+                    << "Mutex returned EINVAL."
+                    << abort(FatalError);
+            }
+            if (retVal == EFAULT)
+            {
+                FatalErrorIn("multiThreader::Mutex::trylock()")
+                    << "Mutex returned EFAULT."
+                    << abort(FatalError);
+            }
+        }
+#       endif
     }
-    else
-    {
-        return true;
-    }
+
+    return retVal;
 }
 
 void Foam::Mutex::unlock()
@@ -481,7 +514,7 @@ void Foam::Mutex::unlock()
     {
         FatalErrorIn("multiThreader::Mutex::unlock()")
             << "Unable to unlock the mutex."
-            << abort(FatalError);            
+            << abort(FatalError);
     }    
 }
 

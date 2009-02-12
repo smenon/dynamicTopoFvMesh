@@ -382,11 +382,11 @@ class dynamicTopoFvMesh
 
         // Attempt to lock the edge and its two points.
         // Return zero on success.
-        inline bool lockEdge
-        (
-            const label eIndex,
-            const label threadID
-        );
+        inline bool lockEdge(const label eIndex);
+
+        // Unlock the specified edge and its vertices.
+        // Note that eIndex must actually exist.
+        inline void unlockEdge(const label eIndex);
 
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label& index) const;
@@ -419,16 +419,14 @@ class dynamicTopoFvMesh
         // Method for the bisection of an edge in 3D
         void bisectEdge
         (
-            const label eIndex,
-            const label threadID
+            const label eIndex
         );
 
         // Method for the collapse of an edge in 3D
         // Returns a boolean value indicating whether the collapse was valid
         bool collapseEdge
         (
-            const label eIndex,
-            const label threadID
+            const label eIndex
         );
 
         // Utility to determine ring edges and the hull faces connected to them.
@@ -555,7 +553,6 @@ class dynamicTopoFvMesh
         inline bool constructVertexRing
         (
             const label eIndex,
-            const label threadID,
             DynamicList<label>& hullCells,
             DynamicList<label>& hullFaces,
             DynamicList<label>& hullVertices,

@@ -221,6 +221,9 @@ public:
             //- Deletion of an element at the given label
             inline void remove(const label);
 
+            //- Deletion of an element, given an iterator
+            inline void remove(iterator&);
+
             //- Append an element to the end of the list
             //- Returns the index of the added element
             inline label append(const T&);

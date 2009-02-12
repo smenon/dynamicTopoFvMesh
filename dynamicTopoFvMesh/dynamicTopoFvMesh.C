@@ -1538,7 +1538,6 @@ bool dynamicTopoFvMesh::constructPrismHull
 inline bool dynamicTopoFvMesh::constructVertexRing
 (
     const label eIndex,
-    const label threadID,
     DynamicList<label>& hullCells,
     DynamicList<label>& hullFaces,
     DynamicList<label>& hullVertices,
@@ -1559,7 +1558,8 @@ inline bool dynamicTopoFvMesh::constructVertexRing
     // Obtain a reference to this edge
     edge& edgeToCheck = edges_[eIndex];
 
-    // Lock this edge and its two points
+    // This edge and its two points were locked before.
+    // Add them to the list.
     if (threader_->multiThreaded())
     {
         if (!eLocks.found(eIndex))
@@ -1665,74 +1665,77 @@ inline bool dynamicTopoFvMesh::constructVertexRing
     {
         if (threader_->multiThreaded())
         {
-            // Try to acquire this cell
-            if (cellMutex_[cellIndex].tryLock())
+            if (!cLocks.found(cellIndex))
             {
-                // Failed to acquire this cell.
-                failed = true;
-                break;
-            }
-            else
-            {
-                cLocks.insert(cellIndex);
-
-                // Try to acquire all faces of this cell
-                cell& cellToCheck = cells_[cellIndex];
-
-                forAll(cellToCheck, faceI)
+                // Try to acquire this cell
+                if (cellMutex_[cellIndex].tryLock())
                 {
-                    label fIndex = cellToCheck[faceI];
+                    // Failed to acquire this cell.
+                    failed = true;
+                    goto done;
+                }
+                else
+                {
+                    cLocks.insert(cellIndex);
 
-                    if (!fLocks.found(fIndex))
+                    // Try to acquire all faces of this cell
+                    cell& cellToCheck = cells_[cellIndex];
+
+                    forAll(cellToCheck, faceI)
                     {
-                        if (faceMutex_[fIndex].tryLock())
-                        {
-                            // Failed to acquire this face.
-                            failed = true;
-                            goto done;
-                        }
-                        else
-                        {
-                            fLocks.insert(fIndex);
+                        label fIndex = cellToCheck[faceI];
 
-                            // Try to acquire all edges of this face
-                            labelList& fEdges = faceEdges_[fIndex];
-                            forAll (fEdges, edgeI)
+                        if (!fLocks.found(fIndex))
+                        {
+                            if (faceMutex_[fIndex].tryLock())
                             {
-                                label eIndex = fEdges[edgeI];
+                                // Failed to acquire this face.
+                                failed = true;
+                                goto done;
+                            }
+                            else
+                            {
+                                fLocks.insert(fIndex);
 
-                                if (!eLocks.found(eIndex))
+                                // Try to acquire all edges of this face
+                                labelList& fEdges = faceEdges_[fIndex];
+                                forAll (fEdges, edgeI)
                                 {
-                                    if (edgeMutex_[eIndex].tryLock())
+                                    label edgeIndex = fEdges[edgeI];
+
+                                    if (!eLocks.found(edgeIndex))
                                     {
-                                        // Failed to acquire this edge.
-                                        failed = true;
-                                        goto done;
-                                    }
-                                    else
-                                    {
-                                        eLocks.insert(eIndex);
+                                        if (edgeMutex_[edgeIndex].tryLock())
+                                        {
+                                            // Failed to acquire this edge.
+                                            failed = true;
+                                            goto done;
+                                        }
+                                        else
+                                        {
+                                            eLocks.insert(edgeIndex);
+                                        }
                                     }
                                 }
-                            }
 
-                            // Try to acquire all points of this face
-                            face& faceToCheck = faces_[fIndex];
-                            forAll (faceToCheck, pointI)
-                            {
-                                label pIndex = faceToCheck[pointI];
-
-                                if (!pLocks.found(pIndex))
+                                // Try to acquire all points of this face
+                                face& faceToCheck = faces_[fIndex];
+                                forAll (faceToCheck, pointI)
                                 {
-                                    if (pointMutex_[pIndex].tryLock())
+                                    label pIndex = faceToCheck[pointI];
+
+                                    if (!pLocks.found(pIndex))
                                     {
-                                        // Failed to acquire this point
-                                        failed = true;
-                                        goto done;
-                                    }
-                                    else
-                                    {
-                                        pLocks.insert(pIndex);
+                                        if (pointMutex_[pIndex].tryLock())
+                                        {
+                                            // Failed to acquire this point
+                                            failed = true;
+                                            goto done;
+                                        }
+                                        else
+                                        {
+                                            pLocks.insert(pIndex);
+                                        }
                                     }
                                 }
                             }
@@ -5116,28 +5119,28 @@ void dynamicTopoFvMesh::unlockMutexLists
         labelList lockedCells = cLocks.toc();
         forAll(lockedCells, cellI)
         {
-            cellMutex_[cellI].unlock();
+            cellMutex_[lockedCells[cellI]].unlock();
         }
         cLocks.clear();
 
         labelList lockedFaces = fLocks.toc();
         forAll(lockedFaces, faceI)
         {
-            faceMutex_[faceI].unlock();
+            faceMutex_[lockedFaces[faceI]].unlock();
         }
         fLocks.clear();
 
         labelList lockedEdges = eLocks.toc();
         forAll(lockedEdges, edgeI)
         {
-            edgeMutex_[edgeI].unlock();
+            edgeMutex_[lockedEdges[edgeI]].unlock();
         }
         eLocks.clear();
 
         labelList lockedPoints = pLocks.toc();
         forAll(lockedPoints, pointI)
         {
-            pointMutex_[pointI].unlock();
+            pointMutex_[lockedPoints[pointI]].unlock();
         }
         pLocks.clear();
     }
@@ -5462,6 +5465,7 @@ void dynamicTopoFvMesh::swap3DEdges
     label mMax = mesh->maxTetsPerEdge();
 
     // Hull variables
+    bool emptyStack = false;
     scalar minQuality;
     DynamicList<label> cellHull(mMax);
     DynamicList<label> faceHull(mMax);
@@ -5488,26 +5492,42 @@ void dynamicTopoFvMesh::swap3DEdges
         {
             eIndex = mesh->edgeStack().pop();
 
-            if (mesh->lockEdge(eIndex, thread->threadID_))
+            while (mesh->lockEdge(eIndex))
             {
-                mesh->edgeStack().push(eIndex);
-                mesh->edgeStack().unlock();
-                continue;
+                // Check again.
+                if (!mesh->edgeStack().empty())
+                {
+                    // Pop another edge
+                    eIndex = mesh->edgeStack().pop();
+
+                    // Push failed index back onto the stack
+                    mesh->edgeStack().push(eIndex);
+                }
+                else
+                {
+                    emptyStack = true;
+                    break;
+                }
             }
         }
         else
         {
-            // Unlock and quit
-            mesh->edgeStack().unlock();
-            break;
+            emptyStack = true;
         }
 
         // Unlock the stack
         mesh->edgeStack().unlock();
 
+        if (emptyStack)
+        {
+            return;
+        }
+
         // Check if this edge is on a bounding curve
         if (mesh->checkBoundingCurve(eIndex))
         {
+            // Unlock this edge and continue
+            mesh->unlockEdge(eIndex);
             continue;
         }
 
@@ -5517,7 +5537,6 @@ void dynamicTopoFvMesh::swap3DEdges
             mesh->constructVertexRing
             (
                 eIndex,
-                thread->threadID_,
                 cellHull,
                 faceHull,
                 vertexHull,
@@ -5554,6 +5573,7 @@ void dynamicTopoFvMesh::swap3DEdges
             else
             {
                 // Move on to the next edge
+                mesh->unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
                 cellHull.clear(); faceHull.clear(); vertexHull.clear();
                 continue;
             }
@@ -5627,7 +5647,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
     dynamicTopoFvMesh *mesh = thread->mesh_;
-    label ID = thread->threadID_;
+    bool emptyStack = false;
 
     while (true)
     {
@@ -5641,22 +5661,36 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         {
             eIndex = mesh->edgeStack().pop();
 
-            if (mesh->lockEdge(eIndex, thread->threadID_))
+            while (mesh->lockEdge(eIndex))
             {
-                mesh->edgeStack().push(eIndex);
-                mesh->edgeStack().unlock();
-                continue;
+                // Check again.
+                if (!mesh->edgeStack().empty())
+                {
+                    // Pop another edge
+                    eIndex = mesh->edgeStack().pop();
+
+                    // Push failed index back onto the stack
+                    mesh->edgeStack().push(eIndex);
+                }
+                else
+                {
+                    emptyStack = true;
+                    break;
+                }
             }
         }
         else
         {
-            // Unlock and quit
-            mesh->edgeStack().unlock();
-            break;
+            emptyStack = true;
         }
 
         // Unlock the stack
         mesh->edgeStack().unlock();
+
+        if (emptyStack)
+        {
+            break;
+        }
 
         // Measure the edge-length
         scalar length = mesh->edgeLength(eIndex);
@@ -5671,14 +5705,14 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
             mesh->topoChangeFlag() = true;
 
             // Bisect this edge
-            mesh->bisectEdge(eIndex, ID);
+            mesh->bisectEdge(eIndex);
         }
         else
         //== Edge Collapse ==//
         if(length < mesh->ratioMin()*scale)
         {
             // Collapse this edge
-            bool success = mesh->collapseEdge(eIndex, ID);
+            bool success = mesh->collapseEdge(eIndex);
 
             // The edge can safely be deleted, since the iterator points
             // to the next valid edge on the list.
@@ -5705,11 +5739,7 @@ inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack()
 
 // Attempt to lock the edge and its two points.
 // Return zero on success.
-inline bool dynamicTopoFvMesh::lockEdge
-(
-    const label eIndex,
-    const label threadID
-)
+inline bool dynamicTopoFvMesh::lockEdge(const label eIndex)
 {
     if (threader_->multiThreaded())
     {
@@ -5747,6 +5777,22 @@ inline bool dynamicTopoFvMesh::lockEdge
     {
         // Successful lock for single-threaded
         return false;
+    }
+}
+
+// Unlock the specified edge and its vertices.
+// Note that eIndex must actually exist.
+inline void dynamicTopoFvMesh::unlockEdge(const label eIndex)
+{
+    if (threader_->multiThreaded())
+    {
+        // Unlock the edge.
+        edgeMutex_[eIndex].unlock();
+
+        // Unlock the points of this edge
+        edge& edgeToCheck = edges_[eIndex];
+        pointMutex_[edgeToCheck[0]].unlock();
+        pointMutex_[edgeToCheck[1]].unlock();
     }
 }
 
@@ -7640,8 +7686,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
 // Method for the bisection of an edge in 3D
 void dynamicTopoFvMesh::bisectEdge
 (
-    const label eIndex,
-    const label threadID
+    const label eIndex
 )
 {
     // Edge bisection performs the following operations:
@@ -7684,7 +7729,6 @@ void dynamicTopoFvMesh::bisectEdge
         constructVertexRing
         (
             eIndex,
-            threadID,
             cellHull,
             faceHull,
             vertexHull,
@@ -8443,8 +8487,7 @@ void dynamicTopoFvMesh::bisectEdge
 // Returns a boolean value indicating whether the collapse was valid
 bool dynamicTopoFvMesh::collapseEdge
 (
-    const label eIndex,
-    const label threadID
+    const label eIndex
 )
 {
     // Edge collapse performs the following operations:
@@ -8491,7 +8534,6 @@ bool dynamicTopoFvMesh::collapseEdge
         constructVertexRing
         (
             eIndex,
-            threadID,
             cellHull,
             faceHull,
             vertexHull,

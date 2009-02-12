@@ -112,6 +112,9 @@ void rotatePoints
 
 int main(int argc, char *argv[])
 {
+    // Set mutex debug option before mesh is created.
+    Mutex::debug = true;
+
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"

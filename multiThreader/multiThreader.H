@@ -48,6 +48,7 @@ SourceFiles
 #include "error.H"
 
 #include <pthread.h>
+#include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
 extern "C" 
@@ -71,6 +72,10 @@ class Mutex
 
 public:
 
+    // Debug switch
+
+        static bool debug;
+
     // Constructor
     Mutex();
 
@@ -81,7 +86,7 @@ public:
     void lock();
 
     // Try to acquire the mutex.
-    // Returns true if successful
+    // Returns zero if successful
     bool tryLock();
 
     // Unlock the mutex
