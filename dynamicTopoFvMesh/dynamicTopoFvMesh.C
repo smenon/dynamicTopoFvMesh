@@ -223,7 +223,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     {
         structPtr_[i].mesh_ = this;
         structPtr_[i].nThreads_ = nThreads;
-        structPtr_[i].threadID_ = i;
         structPtr_[i].pthreadID_ = threader_->getID(i);
     }
 
@@ -407,7 +406,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct()
 {
     mesh_ = 0;
-    nThreads_ = threadID_ = pthreadID_ = -1;
+    nThreads_ = pthreadID_ = -1;
 }
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -1667,7 +1666,7 @@ inline bool dynamicTopoFvMesh::constructVertexRing
         }
         else
         {
-            pLocks.insert(startFaceIndex);
+            pLocks.insert(otherPoint);
         }
     }
 
@@ -4654,19 +4653,10 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     FixedList<edge,2>  commonEdges;
 
     // Pick items off the stack
-    while (true)
+    while (!mesh->faceStack(mesh->getThreadID(pthread_self())).empty())
     {
         // Retrieve the index for this face
-        label findex = -1;
-
-        if (!mesh->faceStack(thread->threadID_).empty())
-        {
-            findex = mesh->faceStack(thread->threadID_).pop();
-        }
-        else
-        {
-            break;
-        }
+        label findex = mesh->faceStack(mesh->getThreadID(pthread_self())).pop();
 
         // Get the two cells on either side...
         mesh->faceCells(findex, cellLabels);
@@ -5269,19 +5259,10 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     FixedList<label,2> cellLabels;
 
     // Pick items off the stack
-    while (true)
+    while (!mesh->faceStack(mesh->getThreadID(pthread_self())).empty())
     {
         // Retrieve the index for this face
-        label findex = -1;
-
-        if (!mesh->faceStack(thread->threadID_).empty())
-        {
-            findex = mesh->faceStack(thread->threadID_).pop();
-        }
-        else
-        {
-            break;
-        }
+        label findex = mesh->faceStack(mesh->getThreadID(pthread_self())).pop();
 
         // Select only quad-faces
         if (mesh->checkQuadFace(findex))
@@ -5381,10 +5362,10 @@ void dynamicTopoFvMesh::swap3DEdges
     mesh->initTables(mMax, Q, K, triangulations);
 
     // Pick edges off the stack
-    while (!mesh->edgeStack(thread->threadID_).empty())
+    while (!mesh->edgeStack(mesh->getThreadID(pthread_self())).empty())
     {
         // Retrieve an edge from the stack
-        label eIndex = mesh->edgeStack(thread->threadID_).pop();
+        label eIndex = mesh->edgeStack(mesh->getThreadID(pthread_self())).pop();
 
         // Check if this edge is on a bounding curve
         if (mesh->checkBoundingCurve(eIndex))
@@ -5411,10 +5392,10 @@ void dynamicTopoFvMesh::swap3DEdges
         )
         {
             // Pop another edge
-            eIndex = mesh->edgeStack(thread->threadID_).pop();
+            eIndex = mesh->edgeStack(mesh->getThreadID(pthread_self())).pop();
 
             // Put this edge back on the stack
-            mesh->edgeStack(thread->threadID_).push(eIndex);
+            mesh->edgeStack(mesh->getThreadID(pthread_self())).push(eIndex);
             
             // Clear lists
             cellHull.clear(); faceHull.clear(); vertexHull.clear();
@@ -5509,10 +5490,10 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
-    while (!mesh->edgeStack(thread->threadID_).empty())
+    while (!mesh->edgeStack(mesh->getThreadID(pthread_self())).empty())
     {
         // Retrieve an edge from the stack
-        label eIndex = mesh->edgeStack(thread->threadID_).pop();
+        label eIndex = mesh->edgeStack(mesh->getThreadID(pthread_self())).pop();
 
         // Measure the edge-length
         scalar length = mesh->edgeLength(eIndex);

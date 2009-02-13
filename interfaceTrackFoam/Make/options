@@ -14,7 +14,6 @@ EXE_INC = \
 
 EXE_LIBS = \
     -L$(FOAM_USER_LIBBIN) \
-    -lhoard \
     -ldynamicTopoFvMesh \
     -lfluidInterface \
     -lmultiThreader \
