@@ -197,8 +197,6 @@ class dynamicTopoFvMesh
             // Private data
             labelHashSet    stack_;
 
-            Mutex           stackMutex_;
-
         public:
 
             // Constructor
@@ -206,15 +204,11 @@ class dynamicTopoFvMesh
 
             // Member functions for access to the stack
 
-                //- Initialize the stack with a prescribed size
-                void initStack(const label size);
-
-                //- Initialize the stack with a list
-                template <class Type>
-                void initStack(HashList<Type>& list);
-
                 //- Push items on to the stack
                 inline void push(const label index);
+
+                //- Insert item onto stack
+                inline void insert(const label index);
 
                 //- Pop an item off the stack
                 inline label pop();
@@ -225,21 +219,18 @@ class dynamicTopoFvMesh
                 //- Return if a stack is empty or not
                 inline bool empty();
 
-                //- Mutex lock (for multiThreading)
-                inline void lock();
-
-                //- Mutex unlock (for multiThreading)
-                inline void unlock();
+                //- Return the size of the stack
+                inline label size();
 
                 //- Print out the stack
                 inline void print();
         };
 
-        // Stack of faces to be checked for topo-changes [2D]
-        stack faceStack_;
+        // Stack-list of faces to be checked for topo-changes [2D]
+        List<stack> faceStack_;
 
-        // Stack of edges to be checked for topo-changes [3D]
-        stack edgeStack_;
+        // Stack-list of edges to be checked for topo-changes [3D]
+        List<stack> edgeStack_;
 
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
@@ -374,11 +365,17 @@ class dynamicTopoFvMesh
         // 3D Edge-bisection/collapse engine
         static void edgeBisectCollapse3D(void *argument);
 
-        // Return the face-stack
-        inline stack& faceStack();
+        // Return the face-stack for a particular thread
+        inline stack& faceStack(const label threadID);
 
-        // Return the edge-stack
-        inline stack& edgeStack();
+        // Return the edge-stack for a particular thread
+        inline stack& edgeStack(const label threadID);
+
+        // Initialize edge-stacks
+        inline void initEdgeStacks();
+
+        // Initialize face-stacks
+        inline void initFaceStacks();
 
         // Attempt to lock the edge and its two points.
         // Return zero on success.
@@ -406,6 +403,7 @@ class dynamicTopoFvMesh
         // Method for the bisection of a quad-face in 2D
         void bisectQuadFace
         (
+            const label threadID,
             const label findex
         );
 
@@ -413,12 +411,14 @@ class dynamicTopoFvMesh
         // Returns a boolean value indicating whether the collapse was valid
         bool collapseQuadFace
         (
+            const label threadID,
             const label findex
         );
 
         // Method for the bisection of an edge in 3D
         void bisectEdge
         (
+            const label threadID,
             const label eIndex
         );
 
@@ -426,6 +426,7 @@ class dynamicTopoFvMesh
         // Returns a boolean value indicating whether the collapse was valid
         bool collapseEdge
         (
+            const label threadID,
             const label eIndex
         );
 
@@ -456,6 +457,7 @@ class dynamicTopoFvMesh
         // and remove it by a two-step bisection/collapse operation.
         bool remove2DSliver
         (
+            const label threadID,
             const label findex
         );
 
@@ -501,6 +503,7 @@ class dynamicTopoFvMesh
         // Insert the specified face to the mesh
         label insertFace
         (
+            const label threadID,
             const label patch,
             const face& newFace,
             const label newOwner,
@@ -509,18 +512,27 @@ class dynamicTopoFvMesh
         );
 
         // Remove the specified face from the mesh
-        void removeFace(const label index);
+        void removeFace
+        (
+            const label threadID,
+            const label index
+        );
 
         // Insert the specified edge to the mesh
         label insertEdge
         (
+            const label threadID,
             const label patch,
             const edge& newEdge,
             const labelList& edgeFaces
         );
 
         // Remove the specified edge from the mesh
-        void removeEdge(const label index);
+        void removeEdge
+        (
+            const label threadID,
+            const label index
+        );
 
         // Utility method to size-up the list to include an item
         inline void sizeUpList
@@ -590,6 +602,7 @@ class dynamicTopoFvMesh
         // Remove the edge according to the swap sequence
         void removeEdgeFlips
         (
+            const label threadID,
             const label m,
             const label eIndex,
             const labelListList& K,
@@ -630,6 +643,7 @@ class dynamicTopoFvMesh
         // Routine to perform 2-3 swaps
         void swap23
         (
+            const label threadID,
             const label isolatedVertex,
             const label edgeToCheckIndex,
             const edge& edgeToCheck,
@@ -643,6 +657,7 @@ class dynamicTopoFvMesh
         // Routine to perform 3-2 swaps
         void swap32
         (
+            const label threadID,
             const label edgeToCheckIndex,
             const edge& edgeToCheck,
             const label triangulationIndex,

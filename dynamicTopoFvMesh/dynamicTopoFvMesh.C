@@ -32,6 +32,8 @@ Author
     Sandeep Menon
 \*----------------------------------------------------------------------------*/
 
+#include <HashTable.H>
+
 #include "HashList.H"
 #include "dynamicTopoFvMesh.H"
 #include "dynamicTopoFvMeshMapper.H"
@@ -225,6 +227,17 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         structPtr_[i].nThreads_ = nThreads;
         structPtr_[i].threadID_ = i;
     }
+
+    // Size the stacks
+    if (twoDMesh_)
+    {
+        faceStack_.setSize(nThreads);
+    }
+    else
+    {
+        edgeStack_.setSize(nThreads);
+    }
+
 
     // Initialize patch-size information
     const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
@@ -947,6 +960,7 @@ inline void dynamicTopoFvMesh::replaceLabel
 // Utility method for face-insertion
 label dynamicTopoFvMesh::insertFace
 (
+    const label threadID,
     const label patch,
     const face& newFace,
     const label newOwner,
@@ -980,9 +994,7 @@ label dynamicTopoFvMesh::insertFace
     if (twoDMesh_)
     {
         // Push this onto the stack as well
-        faceStack_.lock();
-        faceStack_.push(newFaceIndex);
-        faceStack_.unlock();
+        faceStack_[threadID].push(newFaceIndex);
 
         if (edgeModification_)
         {
@@ -1022,6 +1034,7 @@ label dynamicTopoFvMesh::insertFace
 // Remove the specified face from the mesh
 void dynamicTopoFvMesh::removeFace
 (
+    const label threadID,
     const label index
 )
 {
@@ -1070,9 +1083,7 @@ void dynamicTopoFvMesh::removeFace
     if (twoDMesh_)
     {
         // Remove from the stack as well
-        faceStack_.lock();
-        faceStack_.remove(index);
-        faceStack_.unlock();
+        faceStack_[threadID].remove(index);
 
         if (edgeModification_)
         {
@@ -1095,6 +1106,7 @@ void dynamicTopoFvMesh::removeFace
 // Insert the specified edge to the mesh
 label dynamicTopoFvMesh::insertEdge
 (
+    const label threadID,
     const label patch,
     const edge& newEdge,
     const labelList& edgeFaces
@@ -1110,9 +1122,7 @@ label dynamicTopoFvMesh::insertEdge
     }
 
     // Add to the stack as well
-    edgeStack_.lock();
-    edgeStack_.push(newEdgeIndex);
-    edgeStack_.unlock();
+    edgeStack_[threadID].push(newEdgeIndex);
 
 #   ifdef FULLDEBUG
     if (debug)
@@ -1159,6 +1169,7 @@ label dynamicTopoFvMesh::insertEdge
 // Remove the specified edge from the mesh
 void dynamicTopoFvMesh::removeEdge
 (
+    const label threadID,
     const label index
 )
 {
@@ -1204,9 +1215,7 @@ void dynamicTopoFvMesh::removeEdge
     }
 
     // Remove from the stack as well
-    edgeStack_.lock();
-    edgeStack_.remove(index);
-    edgeStack_.unlock();
+    edgeStack_[threadID].remove(index);
 
     // Identify the patch for this edge
     label patch = whichEdgePatch(index);
@@ -2078,6 +2087,7 @@ inline label dynamicTopoFvMesh::fillTables
 // Remove the edge according to the swap sequence
 void dynamicTopoFvMesh::removeEdgeFlips
 (
+    const label threadID,
     const label m,
     const label eIndex,
     const labelListList& K,
@@ -2118,6 +2128,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
                     // Perform 2-3 swap
                     swap23
                     (
+                        threadID,
                         isolatedVertex,
                         eIndex,
                         edgeToCheck,
@@ -2156,6 +2167,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
     // Perform the final 3-2 swap
     swap32
     (
+        threadID,
         eIndex,
         edgeToCheck,
         t32,
@@ -2174,7 +2186,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
     eMutex_.lock();
 
     // Finally remove the edge
-    removeEdge(eIndex);
+    removeEdge(threadID, eIndex);
 
     // Unlock the edge mutex
     eMutex_.unlock();
@@ -2320,6 +2332,7 @@ bool dynamicTopoFvMesh::boundaryTriangulation
 // Routine to perform 2-3 swaps
 void dynamicTopoFvMesh::swap23
 (
+    const label threadID,
     const label isolatedVertex,
     const label edgeToCheckIndex,
     const edge& edgeToCheck,
@@ -2441,6 +2454,7 @@ void dynamicTopoFvMesh::swap23
 
     newFaceIndex[0] = insertFace
                       (
+                          threadID,
                           -1,
                           tmpTriFace,
                           newCellIndex[0],
@@ -2454,6 +2468,7 @@ void dynamicTopoFvMesh::swap23
 
     newFaceIndex[1] = insertFace
                       (
+                          threadID,
                           -1,
                           tmpTriFace,
                           newCellIndex[1],
@@ -2467,6 +2482,7 @@ void dynamicTopoFvMesh::swap23
 
     newFaceIndex[2] = insertFace
                       (
+                          threadID,
                           -1,
                           tmpTriFace,
                           newCellIndex[0],
@@ -2494,6 +2510,7 @@ void dynamicTopoFvMesh::swap23
     // Add a new internal edge to the mesh
     label newEdgeIndex = insertEdge
                          (
+                             threadID,
                              -1,
                              edge
                              (
@@ -2601,9 +2618,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[0][nE0++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[0], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[1])
@@ -2611,9 +2626,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[0][nE0++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[0], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[2])
@@ -2621,9 +2634,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[1][nE1++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[1], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[4])
@@ -2631,9 +2642,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[1][nE1++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[1], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -2675,9 +2684,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[2][nE2++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[2], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[5])
@@ -2685,9 +2692,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[2][nE2++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[2], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -2789,7 +2794,7 @@ void dynamicTopoFvMesh::swap23
     fMutex_.lock();
 
     // Remove the face
-    removeFace(faceForRemoval);
+    removeFace(threadID, faceForRemoval);
 
     // Update edgeFaces for edges of the removed face
     labelList& fEdges = faceEdges_[faceForRemoval];
@@ -2797,9 +2802,7 @@ void dynamicTopoFvMesh::swap23
     {
         sizeDownList(faceForRemoval, edgeFaces_[fEdges[edgeI]]);
 
-        edgeStack().lock();
-        edgeStack().push(fEdges[edgeI]);
-        edgeStack().unlock();
+        edgeStack(threadID).push(fEdges[edgeI]);
     }
 
     // Now remove the faceEdges entry
@@ -2890,6 +2893,7 @@ void dynamicTopoFvMesh::swap23
 // Routine to perform 3-2 or 2-2 swaps
 void dynamicTopoFvMesh::swap32
 (
+    const label threadID,
     const label edgeToCheckIndex,
     const edge& edgeToCheck,
     const label triangulationIndex,
@@ -3017,6 +3021,7 @@ void dynamicTopoFvMesh::swap32
 
     label newFaceIndex = insertFace
                          (
+                             threadID,
                              -1,
                              newTriFace,
                              newCellIndex[0],
@@ -3108,9 +3113,7 @@ void dynamicTopoFvMesh::swap32
                         bdyFaceEdges[0][nBE[0]++] = fEdges[edgeI];
                         bdyEdges0[nBE0++] = fEdges[edgeI];
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
                     }
 
                     if
@@ -3122,9 +3125,7 @@ void dynamicTopoFvMesh::swap32
                         bdyFaceEdges[1][nBE[1]++] = fEdges[edgeI];
                         bdyEdges1[nBE1++] = fEdges[edgeI];
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -3136,6 +3137,7 @@ void dynamicTopoFvMesh::swap32
         // Insert the two new faces
         newBdyFaceIndex[0] = insertFace
                              (
+                                 threadID,
                                  facePatch,
                                  newBdyTriFace[0],
                                  newCellIndex[1],
@@ -3144,6 +3146,7 @@ void dynamicTopoFvMesh::swap32
 
         newBdyFaceIndex[1] = insertFace
                              (
+                                 threadID,
                                  facePatch,
                                  newBdyTriFace[1],
                                  newCellIndex[0],
@@ -3164,7 +3167,7 @@ void dynamicTopoFvMesh::swap32
         eMutex_.lock();
 
         // Insert the edge
-        newEdgeIndex = insertEdge(edgePatch, newEdge, newBdyEdgeFaces);
+        newEdgeIndex = insertEdge(threadID, edgePatch, newEdge, newBdyEdgeFaces);
 
         // Unlock the edge mutex
         eMutex_.unlock();
@@ -3261,9 +3264,7 @@ void dynamicTopoFvMesh::swap32
                         newFaceEdges[nE++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex, edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack().lock();
-                        edgeStack().push(fEdges[edgeI]);
-                        edgeStack().unlock();
+                        edgeStack(threadID).push(fEdges[edgeI]);
 
                         break;
                     }
@@ -3358,7 +3359,7 @@ void dynamicTopoFvMesh::swap32
     // Remove the faces and update associated edges
     forAll(facesForRemoval, faceI)
     {
-        removeFace(facesForRemoval[faceI]);
+        removeFace(threadID, facesForRemoval[faceI]);
 
         // Update edgeFaces
         labelList& fEdges = faceEdges_[facesForRemoval[faceI]];
@@ -3370,9 +3371,7 @@ void dynamicTopoFvMesh::swap32
             {
                 sizeDownList(facesForRemoval[faceI],edgeFaces_[edgeIndex]);
 
-                edgeStack().lock();
-                edgeStack().push(edgeIndex);
-                edgeStack().unlock();
+                edgeStack(threadID).push(edgeIndex);
             }
         }
 
@@ -4717,25 +4716,17 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     // Pick items off the stack
     while (true)
     {
-        // Lock the stack
-        mesh->faceStack().lock();
-
         // Retrieve the index for this face
         label findex = -1;
 
-        if (!mesh->faceStack().empty())
+        if (!mesh->faceStack(thread->threadID_).empty())
         {
-            findex = mesh->faceStack().pop();
+            findex = mesh->faceStack(thread->threadID_).pop();
         }
         else
         {
-            // Unlock and quit
-            mesh->faceStack().unlock();
             break;
         }
-
-        // Unlock the stack
-        mesh->faceStack().unlock();
 
         // Get the two cells on either side...
         mesh->faceCells(findex, cellLabels);
@@ -5190,30 +5181,6 @@ scalar dynamicTopoFvMesh::timer::reportTime()
     return scalar(secs)+(usecs/1000000.0);
 }
 
-// Initialize the stack with a specified size
-void dynamicTopoFvMesh::stack::initStack(const label size)
-{
-    for (label i = 0; i < size; i++)
-    {
-        stack_.insert(i);
-    }
-}
-
-//- Initialize the stack with a list
-template<class Type>
-void dynamicTopoFvMesh::stack::initStack(HashList<Type>& list)
-{
-    for
-    (
-        typename HashList<Type>::iterator iter = list.begin();
-        iter != list.end();
-        iter++
-    )
-    {
-        stack_.insert(iter.index());
-    }
-}
-
 // Push items on to the stack
 inline void dynamicTopoFvMesh::stack::push(const label index)
 {
@@ -5221,6 +5188,12 @@ inline void dynamicTopoFvMesh::stack::push(const label index)
     {
         stack_.insert(index);
     }
+}
+
+//- Insert item onto stack (no checking)
+inline void dynamicTopoFvMesh::stack::insert(const label index)
+{
+    stack_.insert(index);
 }
 
 // Pop an item off the stack
@@ -5248,16 +5221,10 @@ inline bool dynamicTopoFvMesh::stack::empty()
     return (stack_.size() == 0);
 }
 
-//- Mutex lock (for multiThreading)
-inline void dynamicTopoFvMesh::stack::lock()
+//- Return the size of the stack
+inline label dynamicTopoFvMesh::stack::size()
 {
-    stackMutex_.lock();
-}
-
-//- Mutex unlock (for multiThreading)
-inline void dynamicTopoFvMesh::stack::unlock()
-{
-    stackMutex_.unlock();
+    return stack_.size();
 }
 
 //- Print out the stack
@@ -5364,25 +5331,17 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     // Pick items off the stack
     while (true)
     {
-        // Lock the stack
-        mesh->faceStack().lock();
-
         // Retrieve the index for this face
         label findex = -1;
 
-        if (!mesh->faceStack().empty())
+        if (!mesh->faceStack(thread->threadID_).empty())
         {
-            findex = mesh->faceStack().pop();
+            findex = mesh->faceStack(thread->threadID_).pop();
         }
         else
         {
-            // Unlock and quit
-            mesh->faceStack().unlock();
             break;
         }
-
-        // Unlock the stack
-        mesh->faceStack().unlock();
 
         // Select only quad-faces
         if (mesh->checkQuadFace(findex))
@@ -5406,7 +5365,11 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
                 // Check if this boundary face is adjacent to a sliver-cell,
                 // and remove it by a two-step bisection/collapse operation.
-                bool sliverRemoved = mesh->remove2DSliver(findex);
+                bool sliverRemoved = mesh->remove2DSliver
+                                     (
+                                         thread->threadID_,
+                                         findex
+                                     );
 
                 if (sliverRemoved)
                 {
@@ -5432,14 +5395,14 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
                 mesh->topoChangeFlag() = true;
 
                 // Bisect this face
-                mesh->bisectQuadFace(findex);
+                mesh->bisectQuadFace(thread->threadID_, findex);
             }
             else
             //== Edge Collapse ==//
             if(length < mesh->ratioMin()*scale)
             {
                 // Collapse this face
-                bool success = mesh->collapseQuadFace(findex);
+                bool success = mesh->collapseQuadFace(thread->threadID_, findex);
 
                 if (success)
                 {
@@ -5465,7 +5428,6 @@ void dynamicTopoFvMesh::swap3DEdges
     label mMax = mesh->maxTetsPerEdge();
 
     // Hull variables
-    bool emptyStack = false;
     scalar minQuality;
     DynamicList<label> cellHull(mMax);
     DynamicList<label> faceHull(mMax);
@@ -5482,43 +5444,23 @@ void dynamicTopoFvMesh::swap3DEdges
     // Pick edges off the stack
     while (true)
     {
-        // Lock the stack
-        mesh->edgeStack().lock();
-
         // Retrieve the edge from the stack
         label eIndex = -1;
 
-        if (!mesh->edgeStack().empty())
+        if (!mesh->edgeStack(thread->threadID_).empty())
         {
-            eIndex = mesh->edgeStack().pop();
+            eIndex = mesh->edgeStack(thread->threadID_).pop();
 
             while (mesh->lockEdge(eIndex))
             {
-                // Check again.
-                if (!mesh->edgeStack().empty())
-                {
-                    // Pop another edge
-                    eIndex = mesh->edgeStack().pop();
+                // Pop another edge
+                eIndex = mesh->edgeStack(thread->threadID_).pop();
 
-                    // Push failed index back onto the stack
-                    mesh->edgeStack().push(eIndex);
-                }
-                else
-                {
-                    emptyStack = true;
-                    break;
-                }
+                // Push failed index back onto the stack
+                mesh->edgeStack(thread->threadID_).push(eIndex);
             }
         }
         else
-        {
-            emptyStack = true;
-        }
-
-        // Unlock the stack
-        mesh->edgeStack().unlock();
-
-        if (emptyStack)
         {
             return;
         }
@@ -5550,9 +5492,7 @@ void dynamicTopoFvMesh::swap3DEdges
         )
         {
             // Put this edge back on the stack
-            mesh->edgeStack().lock();
-            mesh->edgeStack().push(eIndex);
-            mesh->edgeStack().unlock();
+            mesh->edgeStack(thread->threadID_).push(eIndex);
             
             // Move on to the next edge
             cellHull.clear(); faceHull.clear(); vertexHull.clear();
@@ -5597,6 +5537,7 @@ void dynamicTopoFvMesh::swap3DEdges
             // Remove this edge according to the swap sequence
             mesh->removeEdgeFlips
             (
+                thread->threadID_,
                 m,
                 eIndex,
                 K,
@@ -5647,49 +5588,28 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
     dynamicTopoFvMesh *mesh = thread->mesh_;
-    bool emptyStack = false;
 
     while (true)
     {
-        // Lock the stack
-        mesh->edgeStack().lock();
-
         // Retrieve the index for this edge
         label eIndex = -1;
 
-        if (!mesh->edgeStack().empty())
+        if (!mesh->edgeStack(thread->threadID_).empty())
         {
-            eIndex = mesh->edgeStack().pop();
+            eIndex = mesh->edgeStack(thread->threadID_).pop();
 
             while (mesh->lockEdge(eIndex))
             {
-                // Check again.
-                if (!mesh->edgeStack().empty())
-                {
-                    // Pop another edge
-                    eIndex = mesh->edgeStack().pop();
+                // Pop another edge
+                eIndex = mesh->edgeStack(thread->threadID_).pop();
 
-                    // Push failed index back onto the stack
-                    mesh->edgeStack().push(eIndex);
-                }
-                else
-                {
-                    emptyStack = true;
-                    break;
-                }
+                // Push failed index back onto the stack
+                mesh->edgeStack(thread->threadID_).push(eIndex);
             }
         }
         else
         {
-            emptyStack = true;
-        }
-
-        // Unlock the stack
-        mesh->edgeStack().unlock();
-
-        if (emptyStack)
-        {
-            break;
+            return;
         }
 
         // Measure the edge-length
@@ -5705,14 +5625,14 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
             mesh->topoChangeFlag() = true;
 
             // Bisect this edge
-            mesh->bisectEdge(eIndex);
+            mesh->bisectEdge(thread->threadID_, eIndex);
         }
         else
         //== Edge Collapse ==//
         if(length < mesh->ratioMin()*scale)
         {
             // Collapse this edge
-            bool success = mesh->collapseEdge(eIndex);
+            bool success = mesh->collapseEdge(thread->threadID_, eIndex);
 
             // The edge can safely be deleted, since the iterator points
             // to the next valid edge on the list.
@@ -5726,15 +5646,55 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 }
 
 // Return the face-stack
-inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::faceStack()
+inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::faceStack
+(
+    const label threadID
+)
 {
-    return faceStack_;
+    return faceStack_[threadID];
 }
 
-// Return the edge-stack
-inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack()
+// Return the edge-stack for a particular thread
+inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack
+(
+    const label threadID
+)
 {
-    return edgeStack_;
+    return edgeStack_[threadID];
+}
+
+// Initialize edge-stacks
+inline void dynamicTopoFvMesh::initEdgeStacks()
+{
+    label tID = 0;
+
+    for
+    (
+        HashList<edge>::iterator iter = edges_.begin();
+        iter != edges_.end();
+        iter++
+    )
+    {
+        edgeStack_[tID].insert(iter.index());
+        tID = edgeStack_.fcIndex(tID);
+    }
+}
+
+// Initialize face-stacks
+inline void dynamicTopoFvMesh::initFaceStacks()
+{
+    label tID = 0;
+
+    for
+    (
+        HashList<face>::iterator iter = faces_.begin();
+        iter != faces_.end();
+        iter++
+    )
+    {
+        edgeStack_[tID].insert(iter.index());
+        tID = edgeStack_.fcIndex(tID);
+    }
 }
 
 // Attempt to lock the edge and its two points.
@@ -6222,6 +6182,7 @@ void dynamicTopoFvMesh::swapQuadFace
 // Method for the bisection of a quad-face in 2D
 void dynamicTopoFvMesh::bisectQuadFace
 (
+    const label threadID,
     const label findex
 )
 {
@@ -6479,6 +6440,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     edgeToWatch[1] = newPtIndex0;
     newFaceIndex = insertFace
                    (
+                       threadID,
                        -1,
                        tmpQuadFace,
                        c0,
@@ -6498,6 +6460,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     edgeToWatch[0] = edgeToWatch[1] = 0;
     newFaceIndex = insertFace
                    (
+                       threadID,
                        whichPatch(c0BdyIndex[0]),
                        tmpTriFace,
                        newCellIndex0,
@@ -6513,6 +6476,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     edgeToWatch[0] = edgeToWatch[1] = 0;
     newFaceIndex = insertFace
                    (
+                       threadID,
                        whichPatch(c0BdyIndex[1]),
                        tmpTriFace,
                        c0,
@@ -6533,6 +6497,7 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[1] = nextToOtherPoint[1];
         newFaceIndex = insertFace
                        (
+                           threadID,
                            whichPatch(findex),
                            tmpQuadFace,
                            newCellIndex0,
@@ -6678,6 +6643,7 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[1] = nextToOtherPoint[1];
         newFaceIndex = insertFace
                        (
+                           threadID,
                            -1,
                            tmpQuadFace,
                            newCellIndex0,
@@ -6782,6 +6748,7 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[1] = otherPointIndex[3];
         newFaceIndex = insertFace
                        (
+                           threadID,
                            -1,
                            tmpQuadFace,
                            c1,
@@ -6798,6 +6765,7 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[0] = edgeToWatch[1] = 0;
         newFaceIndex = insertFace
                        (
+                           threadID,
                            patch_0,
                            tmpTriFace,
                            c1,
@@ -6813,6 +6781,7 @@ void dynamicTopoFvMesh::bisectQuadFace
         edgeToWatch[0] = edgeToWatch[1] = 0;
         newFaceIndex = insertFace
                        (
+                           threadID,
                            patch_1,
                            tmpTriFace,
                            newCellIndex1,
@@ -6862,6 +6831,7 @@ void dynamicTopoFvMesh::bisectQuadFace
 // Returns a boolean value indicating whether the collapse was valid
 bool dynamicTopoFvMesh::collapseQuadFace
 (
+    const label threadID,
     const label findex
 )
 {
@@ -7548,7 +7518,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
     // Remove orphaned faces
     if (owner_[faceToKeep[0]] == -1)
     {
-        removeFace(faceToKeep[0]);
+        removeFace(threadID, faceToKeep[0]);
     }
     else
     if
@@ -7561,6 +7531,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         // from the interior list and add as a boundary face to the end.
         label newFaceIndex0 = insertFace
                               (
+                                  threadID,
                                   whichPatch(faceToThrow[0]),
                                   faces_[faceToKeep[0]],
                                   owner_[faceToKeep[0]],
@@ -7577,7 +7548,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
 
         // Renumber the neighbour so that this face is removed correctly.
         neighbour_[faceToKeep[0]] = 0;
-        removeFace(faceToKeep[0]);
+        removeFace(threadID, faceToKeep[0]);
     }
 
     // Remove the unwanted faces in the cell(s) adjacent to this face,
@@ -7587,7 +7558,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
     {
         if (cell_0[faceI] != findex && cell_0[faceI] != faceToKeep[0])
         {
-           removeFace(cell_0[faceI]);
+           removeFace(threadID, cell_0[faceI]);
         }
     }
     cells_.remove(c0);
@@ -7615,7 +7586,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         // Remove orphaned faces
         if (owner_[faceToKeep[1]] == -1)
         {
-            removeFace(faceToKeep[1]);
+            removeFace(threadID, faceToKeep[1]);
         }
         else
         if
@@ -7628,6 +7599,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
             // from the interior list and add as a boundary face to the end.
             label newFaceIndex1 = insertFace
                                   (
+                                      threadID,
                                       whichPatch(faceToThrow[1]),
                                       faces_[faceToKeep[1]],
                                       owner_[faceToKeep[1]],
@@ -7644,7 +7616,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
 
             // Renumber the neighbour so that this face is removed correctly.
             neighbour_[faceToKeep[1]] = 0;
-            removeFace(faceToKeep[1]);
+            removeFace(threadID, faceToKeep[1]);
         }
 
         cell &cell_1 = cells_[c1];
@@ -7652,7 +7624,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
         {
             if (cell_1[faceI] != findex && cell_1[faceI] != faceToKeep[1])
             {
-               removeFace(cell_1[faceI]);
+               removeFace(threadID, cell_1[faceI]);
             }
         }
         cells_.remove(c1);
@@ -7677,7 +7649,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Finally remove the face
-    removeFace(findex);
+    removeFace(threadID, findex);
 
     // Return a successful collapse
     return true;
@@ -7686,6 +7658,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
 // Method for the bisection of an edge in 3D
 void dynamicTopoFvMesh::bisectEdge
 (
+    const label threadID,
     const label eIndex
 )
 {
@@ -7742,9 +7715,7 @@ void dynamicTopoFvMesh::bisectEdge
     )
     {
         // Put this edge back on the stack and bail out
-        edgeStack_.lock();
-        edgeStack_.push(eIndex);
-        edgeStack_.unlock();
+        edgeStack_[threadID].push(eIndex);
         return;
     }
 
@@ -7783,6 +7754,7 @@ void dynamicTopoFvMesh::bisectEdge
     label newEdgeIndex =
         insertEdge
         (
+            threadID,
             whichEdgePatch(eIndex),
             edge(newPointIndex,thisEdge[1]),
             labelList(faceHull.size(),-1)
@@ -7910,6 +7882,7 @@ void dynamicTopoFvMesh::bisectEdge
             addedIntFaceIndices[indexI] =
                 insertFace
                 (
+                    threadID,
                     -1,
                     tmpTriFace,
                     cellHull[indexI],
@@ -8016,6 +7989,7 @@ void dynamicTopoFvMesh::bisectEdge
                 addedFaceIndices[indexI] =
                     insertFace
                     (
+                        threadID,
                         whichPatch(faceHull[indexI]),
                         tmpTriFace,
                         addedCellIndices[indexI],
@@ -8034,6 +8008,7 @@ void dynamicTopoFvMesh::bisectEdge
                 addedEdgeIndices[indexI] =
                     insertEdge
                     (
+                        threadID,
                         whichPatch(faceHull[indexI]),
                         edge(newPointIndex,vertexHull[indexI]),
                         tmpEdgeFaces
@@ -8112,6 +8087,7 @@ void dynamicTopoFvMesh::bisectEdge
                 addedFaceIndices[indexI] =
                     insertFace
                     (
+                        threadID,
                         -1,
                         tmpTriFace,
                         addedCellIndices[prevI],
@@ -8131,6 +8107,7 @@ void dynamicTopoFvMesh::bisectEdge
                 addedEdgeIndices[indexI] =
                     insertEdge
                     (
+                        threadID,
                         -1,
                         edge(newPointIndex,vertexHull[indexI]),
                         tmpIntEdgeFaces
@@ -8216,6 +8193,7 @@ void dynamicTopoFvMesh::bisectEdge
                 addedFaceIndices[0] =
                     insertFace
                     (
+                        threadID,
                         -1,
                         tmpTriFace,
                         addedCellIndices[0],
@@ -8235,6 +8213,7 @@ void dynamicTopoFvMesh::bisectEdge
                 addedEdgeIndices[0] =
                     insertEdge
                     (
+                        threadID,
                         -1,
                         edge(newPointIndex,vertexHull[0]),
                         tmpIntEdgeFaces
@@ -8319,6 +8298,7 @@ void dynamicTopoFvMesh::bisectEdge
             addedFaceIndices[indexI] =
                 insertFace
                 (
+                    threadID,
                     whichPatch(faceHull[indexI]),
                     tmpTriFace,
                     addedCellIndices[prevI],
@@ -8337,6 +8317,7 @@ void dynamicTopoFvMesh::bisectEdge
             addedEdgeIndices[indexI] =
                 insertEdge
                 (
+                    threadID,
                     whichPatch(faceHull[indexI]),
                     edge(newPointIndex,vertexHull[indexI]),
                     tmpEdgeFaces
@@ -8487,6 +8468,7 @@ void dynamicTopoFvMesh::bisectEdge
 // Returns a boolean value indicating whether the collapse was valid
 bool dynamicTopoFvMesh::collapseEdge
 (
+    const label threadID,
     const label eIndex
 )
 {
@@ -8547,9 +8529,7 @@ bool dynamicTopoFvMesh::collapseEdge
     )
     {
         // Put this edge back on the stack and bail out
-        edgeStack_.lock();
-        edgeStack_.push(eIndex);
-        edgeStack_.unlock();
+        edgeStack_[threadID].push(eIndex);
         return false;
     }
 
@@ -8967,7 +8947,7 @@ bool dynamicTopoFvMesh::collapseEdge
         if (cellToRemove != -1)
         {
             // Remove faceToRemove and associated faceEdges
-            removeFace(faceToRemove);
+            removeFace(threadID, faceToRemove);
             faceEdges_.remove(faceToRemove);
 
             // Remove from list of locked faces
@@ -9010,7 +8990,7 @@ bool dynamicTopoFvMesh::collapseEdge
         }
 
         // Remove the hull edge and associated edgeFaces
-        removeEdge(edgeToRemove);
+        removeEdge(threadID, edgeToRemove);
 
         // Remove from list of locked edges
         if (eLocks.found(edgeToRemove))
@@ -9019,7 +8999,7 @@ bool dynamicTopoFvMesh::collapseEdge
         }
 
         // Remove the hull face and associated faceEdges
-        removeFace(faceHull[indexI]);
+        removeFace(threadID, faceHull[indexI]);
         faceEdges_.remove(faceHull[indexI]);
 
         // Remove from list of locked faces
@@ -9150,7 +9130,7 @@ bool dynamicTopoFvMesh::collapseEdge
     eMutex_.lock();
 
     // Remove the edge
-    removeEdge(eIndex);
+    removeEdge(threadID, eIndex);
 
     // Remove from list of locked edges
     if (eLocks.found(eIndex))
@@ -9394,6 +9374,7 @@ bool dynamicTopoFvMesh::checkCollapse
 // and remove it by a two-step bisection/collapse operation.
 bool dynamicTopoFvMesh::remove2DSliver
 (
+    const label threadID,
     const label findex
 )
 {
@@ -9428,10 +9409,10 @@ bool dynamicTopoFvMesh::remove2DSliver
     {
         // Step 1: Bisect the boundary quad face
         bisectInteriorFace_ = -1;
-        bisectQuadFace(findex);
+        bisectQuadFace(threadID, findex);
 
         // Step 2: Collapse the newly created internal quad face
-        bool success = collapseQuadFace(bisectInteriorFace_);
+        bool success = collapseQuadFace(threadID, bisectInteriorFace_);
 
         if (!success)
         {
@@ -9520,8 +9501,8 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 {
     if (edgeModification_)
     {
-        // Initialize the face stack
-        faceStack_.initStack(nFaces_);
+        // Initialize the face stacks
+        initFaceStacks();
 
         // Submit jobs to the work queue
         for (label i = 0; i < threader_().getNumThreads(); i++)
@@ -9539,8 +9520,8 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 
     if (debug) Info << nl << "2D Edge Bisection/Collapse complete." << endl;
 
-    // Re-initialize the face stack
-    faceStack_.initStack(faces_);
+    // Re-initialize the face stacks
+    initFaceStacks();
 
     // Submit jobs to the work queue
     for (label i = 0; i < threader_().getNumThreads(); i++)
@@ -9563,8 +9544,8 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 {
     if (edgeModification_)
     {
-        // Initialize the edge stack
-        edgeStack_.initStack(nEdges_);
+        // Initialize the edge stacks
+        initEdgeStacks();
 
         // Submit jobs to the work queue
         for (label i = 0; i < threader_().getNumThreads(); i++)
@@ -9582,8 +9563,8 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
     if (debug) Info << nl << "3D Edge Bisection/Collapse complete." << endl;
 
-    // Re-initialize the edge stack
-    edgeStack_.initStack(edges_);
+    // Re-initialize the edge stacks
+    initEdgeStacks();
 
     // Submit jobs to the work queue
     for (label i = 0; i < threader_().getNumThreads(); i++)
