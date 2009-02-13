@@ -443,6 +443,24 @@ int Foam::multiThreader::getNumThreads()
     return numThreads_;
 }
 
+//- Obtain the thread ID for a given index
+const pthread_t Foam::multiThreader::getID(int index)
+{
+    if (poolInfo_ && index > -1 && index < numThreads_)
+    {
+        return poolInfo_->threads[index];
+    }
+    else
+    {
+        FatalErrorIn("multiThreader::getID(int index)")
+            << "Invalid request for ID."
+            << abort(FatalError);
+    }
+
+    // This should never happen anyway.
+    return poolInfo_->threads[index];
+}
+
 //- Return true if the number of threads is more than one.
 bool Foam::multiThreader::multiThreaded() const
 {
