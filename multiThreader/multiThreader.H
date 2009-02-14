@@ -73,8 +73,7 @@ class Mutex
 public:
 
     // Debug switch
-
-        static bool debug;
+    static bool debug;
 
     // Constructor
     Mutex();
@@ -94,6 +93,44 @@ public:
 
     // Operator overload
     inline pthread_mutex_t* operator()()
+    {
+        return &lock_;
+    }
+};
+
+class rwMutex
+{
+    // Private data
+        pthread_rwlock_t lock_;
+
+public:
+
+    // Debug switch
+    static bool debug;
+
+    // Constructor
+    rwMutex();
+
+    // Destructor
+    ~rwMutex();
+
+    // Read lock the mutex
+    void readLock();
+
+    // Try to acquire a read lock the mutex
+    bool tryReadLock();
+
+    // Read lock the mutex
+    void writeLock();
+
+    // Try to acquire a read lock the mutex
+    bool tryWriteLock();
+
+    // Unlock the mutex
+    void unlock();
+
+    // Operator overload
+    inline pthread_rwlock_t* operator()()
     {
         return &lock_;
     }

@@ -90,6 +90,16 @@ Foam::Mutex::Mutex()
     pthread_mutexattr_destroy(&attribute);
 }
 
+Foam::rwMutex::rwMutex()
+{
+    if (pthread_rwlock_init(&lock_, NULL))
+    {
+        FatalErrorIn("multiThreader::rwMutex::rwMutex()")
+            << "Unable to initialize read-write mutex"
+            << abort(FatalError);
+    }
+}
+
 Foam::Conditional::Conditional()
 {
     if (pthread_cond_init(&condition_, NULL))
@@ -115,6 +125,16 @@ Foam::Mutex::~Mutex()
             << "Unable to destroy mutex"
             << abort(FatalError);        
     }    
+}
+
+Foam::rwMutex::~rwMutex()
+{
+    if (pthread_rwlock_destroy(&lock_))
+    {
+        FatalErrorIn("multiThreader::rwMutex::~rwMutex()")
+            << "Unable to destroy read-write mutex"
+            << abort(FatalError);
+    }
 }
 
 Foam::Conditional::~Conditional()
@@ -492,8 +512,8 @@ void Foam::Mutex::lock()
 {
     if (pthread_mutex_lock(&lock_))
     {
-        FatalErrorIn("multiThreader::destroyThreadPool()")
-            << "Unable to lock the work queue."
+        FatalErrorIn("multiThreader::lock()")
+            << "Unable to lock mutex."
             << abort(FatalError);
     }     
 }
@@ -534,6 +554,92 @@ void Foam::Mutex::unlock()
             << "Unable to unlock the mutex."
             << abort(FatalError);
     }    
+}
+
+void Foam::rwMutex::readLock()
+{
+    if (pthread_rwlock_rdlock(&lock_))
+    {
+        FatalErrorIn("multiThreader::readLock()")
+            << "Unable to read lock the mutex."
+            << abort(FatalError);
+    }
+}
+
+bool Foam::rwMutex::tryReadLock()
+{
+    label retVal;
+
+    if ((retVal = pthread_rwlock_tryrdlock(&lock_)) != 0)
+    {
+#       ifdef FULLDEBUG
+        if (debug)
+        {
+            if (retVal == EINVAL)
+            {
+                FatalErrorIn("multiThreader::Mutex::tryReadLock()")
+                    << "Mutex returned EINVAL."
+                    << abort(FatalError);
+            }
+            if (retVal == EFAULT)
+            {
+                FatalErrorIn("multiThreader::Mutex::tryReadLock()")
+                    << "Mutex returned EFAULT."
+                    << abort(FatalError);
+            }
+        }
+#       endif
+    }
+
+    return retVal;
+}
+
+void Foam::rwMutex::writeLock()
+{
+    if (pthread_rwlock_wrlock(&lock_))
+    {
+        FatalErrorIn("multiThreader::writeLock()")
+            << "Unable to write lock the mutex."
+            << abort(FatalError);
+    }
+}
+
+bool Foam::rwMutex::tryWriteLock()
+{
+    label retVal;
+
+    if ((retVal = pthread_rwlock_trywrlock(&lock_)) != 0)
+    {
+#       ifdef FULLDEBUG
+        if (debug)
+        {
+            if (retVal == EINVAL)
+            {
+                FatalErrorIn("multiThreader::Mutex::tryWriteLock()")
+                    << "Mutex returned EINVAL."
+                    << abort(FatalError);
+            }
+            if (retVal == EFAULT)
+            {
+                FatalErrorIn("multiThreader::Mutex::tryWriteLock()")
+                    << "Mutex returned EFAULT."
+                    << abort(FatalError);
+            }
+        }
+#       endif
+    }
+
+    return retVal;
+}
+
+void Foam::rwMutex::unlock()
+{
+    if (pthread_rwlock_unlock(&lock_))
+    {
+        FatalErrorIn("multiThreader::rwMutex::unlock()")
+            << "Unable to unlock the read-write mutex."
+            << abort(FatalError);
+    }
 }
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
