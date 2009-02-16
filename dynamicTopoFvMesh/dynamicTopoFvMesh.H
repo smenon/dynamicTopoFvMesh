@@ -169,6 +169,7 @@ class dynamicTopoFvMesh
         class timer
         {
             // Private data
+            scalar cumulativeTime_;
             
             // Defined in time.h
             struct timeval start_;
@@ -177,18 +178,24 @@ class dynamicTopoFvMesh
         public:
 
             // Constructor
-            timer(){}
+            timer():cumulativeTime_(0.0){}
 
             // Member functions
 
                 //- Start the timer
-                void start();
+                inline void start();
 
                 //- Stop the timer
-                void stop();
+                inline void stop();
+
+                //- Clear the cumulative time counter
+                void clear();
 
                 //- Report time between start/stop
                 scalar reportTime();
+
+                //- Report cumulative time
+                scalar reportCumulativeTime();
         };
 
         // Private Stack sub-class
@@ -196,6 +203,8 @@ class dynamicTopoFvMesh
         {
             // Private data
             labelHashSet    stack_;
+
+            Mutex           stackMutex_;
 
         public:
 
@@ -253,10 +262,14 @@ class dynamicTopoFvMesh
         } *structPtr_;
 
         //- Mutexes for all entities in the mesh
-        Mutex           pMutex_;
-        Mutex           eMutex_;
-        Mutex           fMutex_;
-        Mutex           cMutex_;
+        Mutex pMutex_;
+        Mutex eMutex_;
+        Mutex fMutex_;
+        Mutex cMutex_;
+
+        //- Contention mutex for threads that attempt
+        //  to modify hulls simultaneously.
+        Mutex contentionMutex_;
 
         //- Read-write mutex lists for all entities in the mesh
         HashList<rwMutex> pointMutex_;
@@ -563,6 +576,17 @@ class dynamicTopoFvMesh
             labelHashSet& fLocks,
             labelHashSet& cLocks,
             bool requiresQuality
+        );
+
+        // Utility to obtain write permissions for the cell hull.
+        // Returns zero on success
+        inline bool obtainWritePriority
+        (
+            const DynamicList<label>& hullCells,
+            labelHashSet& pLocks,
+            labelHashSet& eLocks,
+            labelHashSet& fLocks,
+            labelHashSet& cLocks
         );
 
         // Check whether the given edge is on a bounding curve

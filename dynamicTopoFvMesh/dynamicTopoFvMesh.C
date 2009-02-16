@@ -1079,7 +1079,10 @@ void dynamicTopoFvMesh::removeFace
     if (twoDMesh_)
     {
         // Remove from the stack as well
-        faceStack_[getThreadID(pthread_self())].remove(index);
+        forAll(faceStack_, stackI)
+        {
+            faceStack_[stackI].remove(index);
+        }
 
         if (edgeModification_)
         {
@@ -1209,7 +1212,10 @@ void dynamicTopoFvMesh::removeEdge
     }
 
     // Remove from the stack as well
-    edgeStack_[getThreadID(pthread_self())].remove(index);
+    forAll(edgeStack_, stackI)
+    {
+        edgeStack_[stackI].remove(index);
+    }
 
     // Identify the patch for this edge
     label patch = whichEdgePatch(index);
@@ -1657,17 +1663,6 @@ inline bool dynamicTopoFvMesh::constructVertexRing
         {
             fLocks.insert(startFaceIndex);
         }
-
-        if (pointMutex_[otherPoint].tryReadLock())
-        {
-            // Failed to acquire this point.
-            unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
-            return true;
-        }
-        else
-        {
-            pLocks.insert(otherPoint);
-        }
     }
 
     // Figure out the next cell to check
@@ -1824,6 +1819,21 @@ inline bool dynamicTopoFvMesh::constructVertexRing
                     // Update faceToExclude
                     faceToExclude = cellToCheck[faceI];
 
+                    // Try to lock the face
+                    if (threader_->multiThreaded())
+                    {
+                        if (faceMutex_[faceToExclude].tryReadLock())
+                        {
+                            // Failed to acquire this face.
+                            unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
+                            return true;
+                        }
+                        else
+                        {
+                            fLocks.insert(faceToExclude);
+                        }
+                    }
+
                     found = true; break;
                 }
             }
@@ -1901,6 +1911,196 @@ inline bool dynamicTopoFvMesh::constructVertexRing
     hullCells.shrink();
 
     // Return a successful lock
+    return false;
+}
+
+// Utility to obtain write permissions for the cell hull.
+// Returns zero on success
+inline bool dynamicTopoFvMesh::obtainWritePriority
+(
+    const DynamicList<label>& hullCells,
+    labelHashSet& pLocks,
+    labelHashSet& eLocks,
+    labelHashSet& fLocks,
+    labelHashSet& cLocks
+)
+{
+    bool haveContention = false;
+
+    forAll(hullCells, cellI)
+    {
+        label cIndex = hullCells[cellI];
+
+        if (cIndex != -1)
+        {
+            // Try to acquire this cell
+            if (cellMutex_[cIndex].tryWriteLock())
+            {
+                // Failed to obtain write permission.
+                // Check if contentionMutex is available.
+                if (!haveContention)
+                {
+                    if (contentionMutex_.tryLock())
+                    {
+                        // Another thread has contention. 
+                        unlockMutexLists
+                        (
+                            pLocks,
+                            eLocks,
+                            fLocks,
+                            cLocks
+                        );
+
+                        return true;
+                    }
+                    else
+                    {
+                        // We have contention.
+                        haveContention = true;
+                    }
+                }
+
+                // Contention is available. Wait and lock.
+                cellMutex_[cIndex].writeLock();
+            }
+
+            cLocks.insert(cIndex);
+
+            // Try to acquire all faces of this cell
+            cell& cellToCheck = cells_[cIndex];
+
+            forAll(cellToCheck, faceI)
+            {
+                label fIndex = cellToCheck[faceI];
+
+                if (!fLocks.found(fIndex))
+                {
+                    if (faceMutex_[fIndex].tryWriteLock())
+                    {
+                        // Failed to obtain write permission.
+                        // Check if contentionMutex is available.
+                        if (!haveContention)
+                        {
+                            if (contentionMutex_.tryLock())
+                            {
+                                // Another thread has contention.
+                                unlockMutexLists
+                                (
+                                    pLocks,
+                                    eLocks,
+                                    fLocks,
+                                    cLocks
+                                );
+
+                                return true;
+                            }
+                            else
+                            {
+                                // We have contention.
+                                haveContention = true;
+                            }
+                        }
+
+                        // Contention is available. Wait and lock.
+                        faceMutex_[fIndex].writeLock();
+                    }
+
+                    fLocks.insert(fIndex);
+
+                    // Try to acquire all edges of this face
+                    labelList& fEdges = faceEdges_[fIndex];
+                    forAll (fEdges, edgeI)
+                    {
+                        label eIndex = fEdges[edgeI];
+
+                        if (!eLocks.found(eIndex))
+                        {
+                            if (edgeMutex_[eIndex].tryWriteLock())
+                            {
+                                // Failed to obtain write permission.
+                                // Check if contentionMutex is available.
+                                if (!haveContention)
+                                {
+                                    if (contentionMutex_.tryLock())
+                                    {
+                                        // Another thread has contention.
+                                        unlockMutexLists
+                                        (
+                                            pLocks,
+                                            eLocks,
+                                            fLocks,
+                                            cLocks
+                                        );
+
+                                        return true;
+                                    }
+                                    else
+                                    {
+                                        // We have contention.
+                                        haveContention = true;
+                                    }
+                                }
+
+                                // Contention is available. Wait and lock.
+                                edgeMutex_[eIndex].writeLock();
+                            }
+
+                            eLocks.insert(eIndex);
+                        }
+                    }
+
+                    // Try to acquire all points of this face
+                    face& faceToCheck = faces_[fIndex];
+                    forAll (faceToCheck, pointI)
+                    {
+                        label pIndex = faceToCheck[pointI];
+
+                        if (!pLocks.found(pIndex))
+                        {
+                            if (pointMutex_[pIndex].tryWriteLock())
+                            {
+                                // Failed to obtain write permission.
+                                // Check if contentionMutex is available.
+                                if (!haveContention)
+                                {
+                                    if (contentionMutex_.tryLock())
+                                    {
+                                        // Another thread has contention.
+                                        unlockMutexLists
+                                        (
+                                            pLocks,
+                                            eLocks,
+                                            fLocks,
+                                            cLocks
+                                        );
+
+                                        return true;
+                                    }
+                                    else
+                                    {
+                                        // We have contention.
+                                        haveContention = true;
+                                    }
+                                }
+
+                                // Contention is available. Wait and lock.
+                                pointMutex_[pIndex].writeLock();
+                            }
+
+                            pLocks.insert(pIndex);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (haveContention)
+    {
+        contentionMutex_.unlock();
+    }
+
+    // Return successful lock
     return false;
 }
 
@@ -4497,9 +4697,11 @@ void dynamicTopoFvMesh::calculateLengthScale()
                     fixed = true; break;
                 }
             }
+
+            // Set boundary patch size if no fixed-length scale is specified.
             if
             (
-                (!fixed)
+                (toc.size() == 0)
                 && (bdyPatch.type() != "wedge")
                 && (bdyPatch.type() != "empty")
                 && (bdyPatch.type() != "symmetryPlane")
@@ -5074,15 +5276,23 @@ const multiThreader& dynamicTopoFvMesh::threader() const
 }
 
 //- Start the timer
-void dynamicTopoFvMesh::timer::start()
+inline void dynamicTopoFvMesh::timer::start()
 {
     ::gettimeofday(&start_, NULL);
 }
 
 //- Stop the timer
-void dynamicTopoFvMesh::timer::stop()
+inline void dynamicTopoFvMesh::timer::stop()
 {
     ::gettimeofday(&end_, NULL);
+
+    cumulativeTime_ += reportTime();
+}
+
+//- Clear the cumulative time counter
+void dynamicTopoFvMesh::timer::clear()
+{
+    cumulativeTime_ = 0.0;
 }
 
 //- Report time between start/stop
@@ -5111,13 +5321,23 @@ scalar dynamicTopoFvMesh::timer::reportTime()
     return scalar(secs)+(usecs/1000000.0);
 }
 
+//- Report cumulative time
+scalar dynamicTopoFvMesh::timer::reportCumulativeTime()
+{
+    return cumulativeTime_;
+}
+
 // Push items on to the stack
 inline void dynamicTopoFvMesh::stack::push(const label index)
 {
+    stackMutex_.lock();
+
     if (!stack_.found(index))
     {
         stack_.insert(index);
     }
+
+    stackMutex_.unlock();
 }
 
 //- Insert item onto stack (no checking)
@@ -5129,9 +5349,13 @@ inline void dynamicTopoFvMesh::stack::insert(const label index)
 // Pop an item off the stack
 inline label dynamicTopoFvMesh::stack::pop()
 {
+    stackMutex_.lock();
+
     const label index = stack_.begin().key();
 
     stack_.erase(index);
+
+    stackMutex_.unlock();
 
     return index;
 }
@@ -5139,10 +5363,14 @@ inline label dynamicTopoFvMesh::stack::pop()
 // Remove a specific item off the stack
 inline void dynamicTopoFvMesh::stack::remove(const label index)
 {
+    stackMutex_.lock();
+
     if (stack_.found(index))
     {
         stack_.erase(index);
     }
+
+    stackMutex_.unlock();
 }
 
 // Return if the stack is empty or not
@@ -5386,17 +5614,33 @@ void dynamicTopoFvMesh::swap3DEdges
                 pLocks,
                 eLocks,
                 fLocks,
-                cLocks,
-                false
+                cLocks
             )
         )
         {
-            // Pop another edge
-            eIndex = mesh->edgeStack(mesh->getThreadID(pthread_self())).pop();
+            if
+            (
+                !mesh->edgeStack
+                (
+                    mesh->getThreadID(pthread_self())
+                ).empty()
+            )
+            {
+                label oldIndex = eIndex;
 
-            // Put this edge back on the stack
-            mesh->edgeStack(mesh->getThreadID(pthread_self())).push(eIndex);
-            
+                // Pop another edge
+                eIndex = mesh->edgeStack
+                         (
+                             mesh->getThreadID(pthread_self())
+                         ).pop();
+
+                // Put the old edge back on the stack
+                mesh->edgeStack
+                (
+                    mesh->getThreadID(pthread_self())
+                ).push(oldIndex);
+            }
+
             // Clear lists
             cellHull.clear(); faceHull.clear(); vertexHull.clear();
         }
@@ -5436,6 +5680,36 @@ void dynamicTopoFvMesh::swap3DEdges
             }
 #           endif
 
+            // Try to acquire write priority for this hull
+            if (mesh->threader().multiThreaded())
+            {
+                // Unlock all entities (from read-lock)
+                mesh->unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
+
+                if
+                (
+                    mesh->obtainWritePriority
+                    (
+                        cellHull,
+                        pLocks,
+                        eLocks,
+                        fLocks,
+                        cLocks
+                    )
+                )
+                {
+                    // This thread failed in contention. Push the edge back.
+                    mesh->edgeStack
+                    (
+                        mesh->getThreadID(pthread_self())
+                    ).push(eIndex);
+
+                    cellHull.clear(); faceHull.clear(); vertexHull.clear();
+
+                    continue;
+                }
+            }
+
             // Remove this edge according to the swap sequence
             mesh->removeEdgeFlips
             (
@@ -5448,7 +5722,7 @@ void dynamicTopoFvMesh::swap3DEdges
                 triangulations
             );
 
-            // Remove hull entities from the lock list.
+            // Remove hull entities from the write-lock list.
             if (mesh->threader().multiThreaded())
             {
                 forAll(cellHull, cellI)
