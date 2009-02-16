@@ -39,6 +39,7 @@ Author
 
 bool Foam::multiThreader::debug = false;
 bool Foam::Mutex::debug = false;
+bool Foam::rwMutex::debug = false;
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -141,7 +142,7 @@ Foam::Conditional::~Conditional()
 {
     if (pthread_cond_destroy(&condition_))
     {
-        FatalErrorIn("multiThreader::Conditional::Conditional()")
+        FatalErrorIn("multiThreader::Conditional::~Conditional()")
             << "Unable to destroy condition"
             << abort(FatalError);        
     }     
@@ -190,7 +191,7 @@ void Foam::multiThreader::initializeThreadPool()
         
         if (status != 0)
         {
-            FatalErrorIn("multiThreader::initThreadPool()")
+            FatalErrorIn("multiThreader::initializeThreadPool()")
                 << "pthread_create could not initialize thread: "
                 << tIndex
                 << abort(FatalError);
@@ -429,7 +430,7 @@ void Foam::multiThreader::waitForCondition
 {
     if (pthread_cond_wait(condition(),mutex()))
     {
-        FatalErrorIn("multiThreader::waitForCondition(..)")
+        FatalErrorIn("multiThreader::waitForCondition()")
             << "Conditional wait failed."
             << abort(FatalError);            
     }    
@@ -512,7 +513,7 @@ void Foam::Mutex::lock()
 {
     if (pthread_mutex_lock(&lock_))
     {
-        FatalErrorIn("multiThreader::lock()")
+        FatalErrorIn("multiThreader::Mutex::lock()")
             << "Unable to lock mutex."
             << abort(FatalError);
     }     
@@ -560,7 +561,7 @@ void Foam::rwMutex::readLock()
 {
     if (pthread_rwlock_rdlock(&lock_))
     {
-        FatalErrorIn("multiThreader::readLock()")
+        FatalErrorIn("multiThreader::rwMutex::readLock()")
             << "Unable to read lock the mutex."
             << abort(FatalError);
     }
@@ -577,13 +578,13 @@ bool Foam::rwMutex::tryReadLock()
         {
             if (retVal == EINVAL)
             {
-                FatalErrorIn("multiThreader::Mutex::tryReadLock()")
+                FatalErrorIn("multiThreader::rwMutex::tryReadLock()")
                     << "Mutex returned EINVAL."
                     << abort(FatalError);
             }
             if (retVal == EFAULT)
             {
-                FatalErrorIn("multiThreader::Mutex::tryReadLock()")
+                FatalErrorIn("multiThreader::rwMutex::tryReadLock()")
                     << "Mutex returned EFAULT."
                     << abort(FatalError);
             }
@@ -598,7 +599,7 @@ void Foam::rwMutex::writeLock()
 {
     if (pthread_rwlock_wrlock(&lock_))
     {
-        FatalErrorIn("multiThreader::writeLock()")
+        FatalErrorIn("multiThreader::rwMutex::writeLock()")
             << "Unable to write lock the mutex."
             << abort(FatalError);
     }
@@ -615,13 +616,13 @@ bool Foam::rwMutex::tryWriteLock()
         {
             if (retVal == EINVAL)
             {
-                FatalErrorIn("multiThreader::Mutex::tryWriteLock()")
+                FatalErrorIn("multiThreader::rwMutex::tryWriteLock()")
                     << "Mutex returned EINVAL."
                     << abort(FatalError);
             }
             if (retVal == EFAULT)
             {
-                FatalErrorIn("multiThreader::Mutex::tryWriteLock()")
+                FatalErrorIn("multiThreader::rwMutex::tryWriteLock()")
                     << "Mutex returned EFAULT."
                     << abort(FatalError);
             }

@@ -1561,7 +1561,7 @@ inline bool dynamicTopoFvMesh::constructVertexRing
     // Try to lock this edge and its two points.
     if (threader_->multiThreaded())
     {
-        if (edgeMutex_[eIndex].tryLock())
+        if (edgeMutex_[eIndex].tryReadLock())
         {
             // Failed to acquire this edge.
             return true;
@@ -1573,7 +1573,7 @@ inline bool dynamicTopoFvMesh::constructVertexRing
             edge& lockEdge = edges_[eIndex];
 
             // Check first point
-            if (pointMutex_[lockEdge[0]].tryLock())
+            if (pointMutex_[lockEdge[0]].tryReadLock())
             {
                 // Can't lock this point. Get out.
                 unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
@@ -1585,7 +1585,7 @@ inline bool dynamicTopoFvMesh::constructVertexRing
             }
 
             // Check second point
-            if (pointMutex_[lockEdge[1]].tryLock())
+            if (pointMutex_[lockEdge[1]].tryReadLock())
             {
                 // Can't lock this point. Get out.
                 unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
@@ -1647,7 +1647,7 @@ inline bool dynamicTopoFvMesh::constructVertexRing
     // Try to lock the start-face and other-point
     if (threader_->multiThreaded())
     {
-        if (faceMutex_[startFaceIndex].tryLock())
+        if (faceMutex_[startFaceIndex].tryReadLock())
         {
             // Failed to acquire this face.
             unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
@@ -1658,9 +1658,9 @@ inline bool dynamicTopoFvMesh::constructVertexRing
             fLocks.insert(startFaceIndex);
         }
 
-        if (pointMutex_[otherPoint].tryLock())
+        if (pointMutex_[otherPoint].tryReadLock())
         {
-            // Failed to acquire this face.
+            // Failed to acquire this point.
             unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
             return true;
         }
@@ -1700,7 +1700,7 @@ inline bool dynamicTopoFvMesh::constructVertexRing
         if (threader_->multiThreaded())
         {
             // Try to acquire this cell
-            if (cellMutex_[cellIndex].tryLock())
+            if (cellMutex_[cellIndex].tryReadLock())
             {
                 // Failed to acquire this cell.
                 unlockMutexLists(pLocks, eLocks, fLocks, cLocks);

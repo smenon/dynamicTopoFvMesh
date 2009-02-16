@@ -7,6 +7,7 @@ wclean multiThreader
 wclean springMotionSolver
 wclean fluidInterface
 wclean dynamicTopoFvMesh
+wclean interfaceTrackFoam
 
 # Wipe out all lnInclude directories and re-link
 wcleanLnIncludeAll

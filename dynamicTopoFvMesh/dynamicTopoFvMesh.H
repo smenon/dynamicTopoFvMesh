@@ -258,11 +258,11 @@ class dynamicTopoFvMesh
         Mutex           fMutex_;
         Mutex           cMutex_;
 
-        //- Mutex lists for all entities in the mesh
-        HashList<Mutex> pointMutex_;
-        HashList<Mutex> edgeMutex_;
-        HashList<Mutex> faceMutex_;
-        HashList<Mutex> cellMutex_;
+        //- Read-write mutex lists for all entities in the mesh
+        HashList<rwMutex> pointMutex_;
+        HashList<rwMutex> edgeMutex_;
+        HashList<rwMutex> faceMutex_;
+        HashList<rwMutex> cellMutex_;
 
     // Private Member Functions
 
