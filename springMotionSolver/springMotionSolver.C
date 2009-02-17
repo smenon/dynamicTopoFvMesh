@@ -112,8 +112,45 @@ Foam::springMotionSolver::springMotionSolver
     {
         nSweeps_ = 1;
     }
-}
 
+    // Check if weighting factors have been specified
+    if (found("edgeSpringWeight"))
+    {
+        edgeSpringWeight_ = readScalar(lookup("edgeSpringWeight"));
+    }
+    else
+    {
+        edgeSpringWeight_ = 1.0;
+    }
+
+    if (found("volumeSpringWeight"))
+    {
+        volumeSpringWeight_ = readScalar(lookup("volumeSpringWeight"));
+    }
+    else
+    {
+        volumeSpringWeight_ = 1.0;
+    }
+
+    // Check if exponent factors have been specified
+    if (found("edgeSpringExponent"))
+    {
+        edgeSpringExponent_ = readScalar(lookup("edgeSpringExponent"));
+    }
+    else
+    {
+        edgeSpringExponent_ = 1.0;
+    }
+
+    if (found("volumeSpringExponent"))
+    {
+        volumeSpringExponent_ = readScalar(lookup("volumeSpringExponent"));
+    }
+    else
+    {
+        volumeSpringExponent_ = 1.0;
+    }
+}
 
 Foam::springMotionSolver::springMotionSolver
 (
@@ -134,7 +171,7 @@ Foam::springMotionSolver::springMotionSolver
             IOobject::NO_WRITE
         ),            
         mesh.points()
-    ), 
+    ),
     cmpt_(-1),
     pID_(-1),
     fixedY_(0.0)
@@ -183,8 +220,45 @@ Foam::springMotionSolver::springMotionSolver
     {
         nSweeps_ = 1;
     }
-}
 
+    // Check if weighting factors have been specified
+    if (found("edgeSpringWeight"))
+    {
+        edgeSpringWeight_ = readScalar(lookup("edgeSpringWeight"));
+    }
+    else
+    {
+        edgeSpringWeight_ = 1.0;
+    }
+
+    if (found("volumeSpringWeight"))
+    {
+        volumeSpringWeight_ = readScalar(lookup("volumeSpringWeight"));
+    }
+    else
+    {
+        volumeSpringWeight_ = 1.0;
+    }
+
+    // Check if exponent factors have been specified
+    if (found("edgeSpringExponent"))
+    {
+        edgeSpringExponent_ = readScalar(lookup("edgeSpringExponent"));
+    }
+    else
+    {
+        edgeSpringExponent_ = 1.0;
+    }
+
+    if (found("volumeSpringExponent"))
+    {
+        volumeSpringExponent_ = readScalar(lookup("volumeSpringExponent"));
+    }
+    else
+    {
+        volumeSpringExponent_ = 1.0;
+    }
+}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
@@ -678,10 +752,15 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
         forAll (edges, edgeI)
         {
             stiffness_[edgeI] =
-                mag
+                edgeSpringWeight_*
+                pow
                 (
-                    refPoints_[edges[edgeI][1]]
-                  - refPoints_[edges[edgeI][0]]
+                    mag
+                    (
+                        refPoints_[edges[edgeI][1]]
+                      - refPoints_[edges[edgeI][0]]
+                    ),
+                    edgeSpringExponent_
                 );
         }
 
@@ -708,8 +787,8 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
                 // Compute the position of the virtual point
                 xp = refPoints_[pointI] - p;
 
-                // Stiffness is the inverse magnitude
-                k[faceI] = mag(p);
+                // Stiffness is the magnitude
+                k[faceI] = volumeSpringWeight_*pow(mag(p),volumeSpringExponent_);
 
                 // Compute interpolation coefficients
                 v2 = xp - refPoints_[faceToCheck[2]];

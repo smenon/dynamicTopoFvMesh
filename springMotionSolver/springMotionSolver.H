@@ -76,6 +76,12 @@ protected:
     // Edge stiffness field
     scalarField stiffness_;
 
+    // User-input stiffness weighting/exponent factors
+    scalar edgeSpringWeight_;
+    scalar volumeSpringWeight_;
+    scalar edgeSpringExponent_;
+    scalar volumeSpringExponent_;
+
     // Point-to-opposing face connectivity
     List<faceList> pointFaces_;
 
