@@ -38,6 +38,7 @@ Author
 #include "wedgeFaPatch.H"
 #include "fixedGradientFvPatchFields.H"
 #include "fixedGradientCorrectedFvPatchFields.H"
+#include "fixedValueCorrectedFvPatchFields.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -1520,13 +1521,46 @@ void Foam::fluidInterface::updateVelocity()
         );
 
         vectorField UtPA = U_.boundaryField()[aPatchID()].patchInternalField();
+
+        if
+        (
+            U_.boundaryField()[aPatchID()].type()
+         == fixedGradientCorrectedFvPatchField<vector>::typeName
+        )
+        {
+            fixedGradientCorrectedFvPatchField<vector>& aU =
+                refCast<fixedGradientCorrectedFvPatchField<vector> >
+                (
+                    U_.boundaryField()[aPatchID()]
+                );
+
+            UtPA += aU.corrVecGrad();
+        }
+
+        // Obtain the tangential component of velocity
+        UtPA -= nA*(nA & UtPA);
+
         vectorField UtPB = interpolatorBA().faceInterpolate
         (
             U_.boundaryField()[bPatchID()].patchInternalField()
         );
 
+        if
+        (
+            U_.boundaryField()[bPatchID()].type()
+         == fixedValueCorrectedFvPatchField<vector>::typeName
+        )
+        {
+            fixedValueCorrectedFvPatchField<vector>& bU =
+                refCast<fixedValueCorrectedFvPatchField<vector> >
+                (
+                    U_.boundaryField()[bPatchID()]
+                );
+
+            UtPB += interpolatorBA().faceInterpolate(bU.corrVecGrad());
+        }
+
         // Obtain the tangential component of velocity
-        UtPA -= nA*(nA & UtPA);
         UtPB -= nA*(nA & UtPB);
 
         // Tangential force
@@ -1544,6 +1578,9 @@ void Foam::fluidInterface::updateVelocity()
 
         // Add effects of surface-tension gradient
         UtFs += surfaceTensionGrad()().internalField();
+
+        UtFs -= (muFluidA().value() - muFluidB().value())*
+            (fac::grad(Us())&areaMesh().faceAreaNormals())().internalField();
 
         UtFs /= muFluidA().value()*DnA + muFluidB().value()*DnB + VSMALL;
 
@@ -1580,7 +1617,7 @@ void Foam::fluidInterface::updateVelocity()
                     U_.boundaryField()[aPatchID()]
                 );
 
-            aU.gradient() = nGradU;
+            aU.gradient() == nGradU;
         }
         else if
         (
@@ -1663,7 +1700,7 @@ void Foam::fluidInterface::updateVelocity()
                     U_.boundaryField()[aPatchID()]
                 );
 
-            aU.gradient() = nGradU;
+            aU.gradient() == nGradU;
         }
         else if
         (
