@@ -2,7 +2,7 @@
     Info << "Create mesh for time = "
          << runTime.timeName() << nl << endl;
     
-    dynamicTopoFvMesh mesh
+    dynamicTopoFvMesh topoMesh
     (
         IOobject
         (

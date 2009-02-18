@@ -80,6 +80,7 @@ int main(int argc, char *argv[])
 
 #   include "setRootCase.H"
 #   include "createTime.H"
+#   include "createMesh.H"
 #   include "createDynamicMesh.H"
 #   include "initContinuityErrs.H"
 #   include "initTotalVolume.H"
@@ -154,16 +155,18 @@ int main(int argc, char *argv[])
 
         // Set boundary conditions for the motionSolver and solve for mesh-motion
         interface.restorePosition();
-        mesh.setMotionBC(interface.aPatchID(), interface.displacement());
+        topoMesh.setMotionBC(interface.aPatchID(), interface.displacement());
         if (interface.twoFluids())
         {
 	    // Interpolate displacement to the shadow patch
 	    pointField dispB = 
 		interface.interpolatorAB().pointInterpolate(interface.displacement());
 
-            mesh.setMotionBC(interface.bPatchID(), dispB);
+            topoMesh.setMotionBC(interface.bPatchID(), dispB);
         }
-        mesh.updateMotion();
+
+        // Update fvMesh with new points
+        mesh.movePoints(topoMesh.updateMotion());
 
 #       include "volContinuity.H"
 
@@ -258,15 +261,16 @@ int main(int argc, char *argv[])
         runTime.write();
 #       include "meshInfo.H"
 
-        bool meshChanged = mesh.updateTopology();
+        bool meshChanged = topoMesh.updateTopology();
 
         if (meshChanged)
         {
+            mesh.updateMesh(topoMesh.meshMap());
 #           include "checkTotalVolume.H"
             phi = linearInterpolate(U) & mesh.Sf();
 #           include "correctPhi.H"
 #           include "CourantNo.H"
-            interface.updateMesh(mesh.meshMap());
+            interface.updateMesh(topoMesh.meshMap());
         }
 
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"

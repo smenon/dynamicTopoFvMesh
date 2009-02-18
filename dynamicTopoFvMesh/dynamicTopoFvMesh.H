@@ -38,8 +38,10 @@ SourceFiles
 
 #include <sys/time.h>
 #include "HashList.H"
+#include "Switch.H"
+#include "IOdictionary.H"
 #include "multiThreader.H"
-#include "fvMesh.H"
+#include "polyMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -57,7 +59,7 @@ class motionSolver;
 
 class dynamicTopoFvMesh
 :
-    public fvMesh
+    public polyMesh
 {
     // Private data
 
@@ -765,14 +767,12 @@ public:
         // Return true if changes have occurred
         bool updateTopology();
 
+        // Move points with the given pointField
+        // Returns volumes swept by faces in motion.
+        tmp<scalarField> movePoints(const pointField& p);
+
         // Update the mesh for motion
-        void updateMotion();
-
-        //- Update mesh corresponding to the given map
-        virtual void updateMesh(const mapPolyMesh& mpm);
-
-        // Map all fields in time using the given map.
-        virtual void mapFields(const mapPolyMesh& mpm);
+        tmp<pointField> updateMotion();
 
         // Set mesh-motion displacement boundary conditions
         void setMotionBC
@@ -788,10 +788,10 @@ public:
         const vectorField& oldCellCentres() const;
 
         // Return mesh length-scale values
-        tmp<volScalarField> lengthScale();
+        tmp<scalarField> lengthScale();
 
         // Return mesh cell-quality values
-        tmp<volScalarField> meshQuality();
+        tmp<scalarField> meshQuality();
 };
 
 

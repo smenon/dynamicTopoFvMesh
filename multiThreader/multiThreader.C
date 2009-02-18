@@ -465,7 +465,7 @@ int Foam::multiThreader::getNumThreads()
 }
 
 //- Obtain the thread ID for a given index
-const pthread_t Foam::multiThreader::getID(int index)
+pthread_t Foam::multiThreader::getID(int index)
 {
     if (poolInfo_ && index > -1 && index < numThreads_)
     {

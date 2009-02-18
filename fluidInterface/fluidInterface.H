@@ -248,10 +248,10 @@ public:
         }
 
         // Return the interface patchID
-        const label aPatchID();
+        label aPatchID();
 
         // Return the shadow patchID
-        const label bPatchID();
+        label bPatchID();
 
         //- Viscosity of fluid A
         const dimensionedScalar& muFluidA() const

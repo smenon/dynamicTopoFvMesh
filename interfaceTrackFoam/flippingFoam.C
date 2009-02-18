@@ -59,9 +59,9 @@ void rotatePoints
     pointField meshPoints = mesh.points();
     
     // Find the patch
-    forAll (mesh.boundary(), patchI)
+    forAll (mesh.boundaryMesh(), patchI)
     {
-        if(mesh.boundary()[patchI].name() == patchName)
+        if(mesh.boundaryMesh()[patchI].name() == patchName)
         {
             patchID = patchI;
             break;
@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
                     (
                     "flippingFoamDict",
                     runTime.constant(),
-                    mesh,
+                    topoMesh,
                     IOobject::MUST_READ,
                     IOobject::NO_WRITE
                     )            
@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
     angle *= (3.14159/180.0);
     
     // Enable/disable debugging
-    mesh.debug = true;
+    topoMesh.debug = true;
 
     for (runTime++; !runTime.end(); runTime++)
     {    
@@ -155,22 +155,22 @@ int main(int argc, char *argv[])
         // Update boundary points and move them
         forAll(toc, wordI)
         {
-            rotatePoints(mesh, toc[wordI], angle, p1, p2, t);
+            rotatePoints(topoMesh, toc[wordI], angle, p1, p2, t);
         }
         
-        // Update mesh (Solve for motion and topology)        
-        mesh.updateMotion();        
-        mesh.updateTopology();
+        // Update mesh (Solve for motion and topology)
+        topoMesh.movePoints(topoMesh.updateMotion());
+        topoMesh.updateTopology();
         
         runTime.write();
 
         if (runTime.outputTime())
         {
             // Write out mesh quality
-            mesh.meshQuality()().write();
+            topoMesh.meshQuality();
 
             // Write out the mesh length scales
-            mesh.lengthScale()().write();
+            topoMesh.lengthScale();
         }
     }
 

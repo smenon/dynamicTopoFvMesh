@@ -181,13 +181,13 @@ faMesh& Foam::fluidInterface::areaMesh()
 }
 
 // Return the interface patchID
-const label Foam::fluidInterface::aPatchID()
+label Foam::fluidInterface::aPatchID()
 {
     return aPatchID_;
 }
 
 // Return the shadow patchID
-const label Foam::fluidInterface::bPatchID()
+label Foam::fluidInterface::bPatchID()
 {
     return bPatchID_;
 }

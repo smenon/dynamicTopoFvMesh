@@ -242,7 +242,7 @@ public:
         int getNumThreads();
 
         //- Obtain the thread ID for a given index
-        const pthread_t getID(int index);
+        pthread_t getID(int index);
 
         //- Return true if the number of threads is more than one.
         bool multiThreaded() const;

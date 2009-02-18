@@ -34,16 +34,12 @@ Author
 
 #include "HashList.H"
 #include "dynamicTopoFvMesh.H"
-#include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
 #include "tetDecompositionMotionSolver.H"
 #include "faceTetPolyPatch.H"
 #include "tetPolyPatchInterpolation.H"
 #include "motionSolver.H"
-#include "fvCFD.H"
 #include "mapPolyMesh.H"
-#include "MapFvFields.H"
-#include "MeshObject.H"
 
 #include <dlfcn.h>
 
@@ -59,7 +55,7 @@ defineTypeNameAndDebug(dynamicTopoFvMesh,0);
 // Construct from components
 dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 :
-    fvMesh(io),
+    polyMesh(io),
     numPatches_(polyMesh::boundaryMesh().size()),
     topoChangeFlag_(false),
     dict_
@@ -530,27 +526,14 @@ const vectorField& dynamicTopoFvMesh::oldCellCentres() const
 }
 
 // Return mesh length-scale values
-tmp<volScalarField> dynamicTopoFvMesh::lengthScale()
+tmp<scalarField> dynamicTopoFvMesh::lengthScale()
 {
-    tmp<volScalarField> tlengthScale
+    tmp<scalarField> tlengthScale
     (
-        new volScalarField
-        (
-            IOobject
-            (
-                "lengthScale",
-                time().timeName(),
-                *this,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
-            ),
-            *this,
-            dimensionedScalar("lScale", dimLength, 0),
-            "zeroGradient"
-        )
+        new scalarField(nCells(), 0.0)
     );
 
-    scalarField& internalField = tlengthScale().internalField();
+    scalarField& internalField = tlengthScale();
 
     // Obtain length-scale values from the mesh
     forAllIter(HashList<scalar>, lengthScale_, lIter)
@@ -563,30 +546,17 @@ tmp<volScalarField> dynamicTopoFvMesh::lengthScale()
 
 // Return mesh cell-quality values
 // Valid for 3D tetrahedral meshes only...
-tmp<volScalarField> dynamicTopoFvMesh::meshQuality()
+tmp<scalarField> dynamicTopoFvMesh::meshQuality()
 {
-    tmp<volScalarField> tQuality
+    tmp<scalarField> tQuality
     (
-        new volScalarField
-        (
-            IOobject
-            (
-                "cellQuality",
-                time().timeName(),
-                *this,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
-            ),
-            *this,
-            dimensionedScalar("Q", dimless, 0),
-            "zeroGradient"
-        )
+        new scalarField(nCells(), 0.0)
     );
 
     // Valid for 3D tetrahedral meshes only...
     if (!twoDMesh_)
     {
-        scalarField& iF = tQuality().internalField();
+        scalarField& iF = tQuality();
 
         // Compute statistics on the fly
         scalar maxQuality = -GREAT;
@@ -4669,12 +4639,12 @@ void dynamicTopoFvMesh::calculateLengthScale()
         wordList toc = fixedLengthScalePatches_.toc();
 
         // Loop through all boundaries and mark adjacent cells
-        const fvBoundaryMesh& bdy = boundary();
+        const polyBoundaryMesh& bdy = boundaryMesh();
         const labelList& own = allOwner();
         const pointField& pList = points();
         forAll(bdy,patchI)
         {
-            const polyPatch& bdyPatch = bdy[patchI].patch();
+            const polyPatch& bdyPatch = bdy[patchI];
             // Loop through all fixed length-scale patches first
             bool fixed = false;
             forAll(toc,wordI)
@@ -4829,7 +4799,7 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
     {
         word& patchName = toc[wordI];
 
-        if (boundary()[bFacePatch].name() == patchName)
+        if (boundaryMesh()[bFacePatch].name() == patchName)
         {
             return (fixedLengthScalePatches_[patchName][0].scalarToken());
         }
@@ -9525,65 +9495,31 @@ bool dynamicTopoFvMesh::remove2DSliver
     return false;
 }
 
-// Update mesh corresponding to the given map
-void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
-{
-    // Delete oldPoints in polyMesh
-    polyMesh::resetMotion();
-
-    // Update polyMesh.
-    polyMesh::updateMesh(mpm);
-
-    // Clear out surface-interpolation
-    surfaceInterpolation::movePoints();
-
-    // Clear-out fvMesh geometry and addressing
-    fvMesh::clearOut();
-
-    // Update topology for all registered classes
-    meshObjectBase::allUpdateTopology<fvMesh>(*this);
-
-    // Map all fields
-    mapFields(mpm);
-}
-
-// Map all fields in time using the given map
-void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
-{
-    if (debug)
-    {
-        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshmMap): "
-             << "Mapping fvFields."
-             << endl;
-    }
-
-    //- Field mapping class
-    dynamicTopoFvMeshMapper fieldMapper(*this,meshMap);
-
-    // Map all the volFields in the objectRegistry
-    MapGeometricFields<scalar, fvPatchField, dynamicTopoFvMeshMapper, volMesh>
-        (fieldMapper);
-    MapGeometricFields<vector, fvPatchField, dynamicTopoFvMeshMapper, volMesh>
-        (fieldMapper);
-
-    // Map all the surfaceFields in the objectRegistry
-    MapGeometricFields<scalar, fvsPatchField, dynamicTopoFvMeshMapper, surfaceMesh>
-        (fieldMapper);
-
-    // Old volumes are not mapped since interpolation is
-    // performed at the same time level.
-}
-
 // Update the mesh for motion
 // This routine assumes that all boundary motions have been defined
 // and incorporated into the mesh for the current time-step.
-void dynamicTopoFvMesh::updateMotion()
+tmp<pointField> dynamicTopoFvMesh::updateMotion()
 {
     if (solveForMotion_)
     {
         // Solve for motion
-        movePoints(motionPtr_->newPoints());
+        tmp<pointField> tnewPoints = motionPtr_->newPoints();
+
+        return tnewPoints;
     }
+
+    // No motion - return current point positions
+    return tmp<pointField>(points());
+}
+
+// Move points with the given pointField
+// Returns volumes swept by faces in motion.
+tmp<scalarField> dynamicTopoFvMesh::movePoints(const pointField& p)
+{
+    // Move the polyMesh and set the mesh motion fluxes to the swept-volumes
+    tmp<scalarField> tsweptVols = polyMesh::movePoints(p);
+
+    return tsweptVols;
 }
 
 // MultiThreaded topology modifier [2D]
@@ -9740,13 +9676,15 @@ bool dynamicTopoFvMesh::updateTopology()
     if (debug)
     {
         label band=0;
-        const labelList& oldOwner = owner();
-        const labelList& oldNeighbour = neighbour();
-        forAll(oldOwner, faceI)
+        const labelList& oldOwner = allOwner();
+        const labelList& oldNeighbour = allNeighbour();
+
+        for(label faceI = 0; faceI < nInternalFaces_; faceI++)
         {
             label diff = oldNeighbour[faceI] - oldOwner[faceI];
             if (diff > band) band = diff;
         }
+
         Info << "Mesh size: " << nCells()
             << "    Bandwidth before renumbering: " << band << endl;
     }
@@ -9928,9 +9866,6 @@ bool dynamicTopoFvMesh::updateTopology()
             )
         );
 
-        // Update the underlying mesh, and map all related fields
-        updateMesh(mapper_);
-
         // Discard old cell-centre information after mapping
         cellCentresPtr_.clear();
 
@@ -9941,7 +9876,7 @@ bool dynamicTopoFvMesh::updateTopology()
         if (debug)
         {
             label band=0;
-            forAll(owner, faceI)
+            for(label faceI = 0; faceI < nInternalFaces_; faceI++)
             {
                 label diff = neighbour[faceI] - owner[faceI];
                 if (diff > band) band = diff;

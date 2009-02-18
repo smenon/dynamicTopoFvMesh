@@ -24,7 +24,7 @@
         pNormals.write();
 
         // Write out the mesh length scales
-        mesh.lengthScale()().write();
+        topoMesh.lengthScale();
         
         // Write out the pressure gradient
         volVectorField gradP = fvc::grad(p);
