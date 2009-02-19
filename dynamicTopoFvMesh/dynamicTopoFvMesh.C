@@ -79,8 +79,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         dict_.subDict("dynamicTopoFvMesh").lookup("solveForMotion")
     ),
     mapper_(NULL),
-    meshPoints_(primitiveMesh::points()),
-    faces_(primitiveMesh::faces()),
+    meshPoints_(polyMesh::points()),
+    faces_(polyMesh::faces()),
     owner_(polyMesh::faceOwner()),
     neighbour_(polyMesh::faceNeighbour()),
     cells_(primitiveMesh::cells()),
@@ -4817,7 +4817,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     bool found, foundinner;
     label otherPointIndex = -1, nextPoint = -1;
-    FixedList<label,2> cellLabels;
+    FixedList<label,2> cellLabels(-1);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
     FixedList<label,4> commonFaceIndex;
@@ -5454,7 +5454,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
     // Cell labels for faces
-    FixedList<label,2> cellLabels;
+    FixedList<label,2> cellLabels(-1);
 
     // Pick items off the stack
     while (!mesh->faceStack(mesh->getThreadID(pthread_self())).empty())
