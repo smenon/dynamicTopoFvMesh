@@ -654,7 +654,7 @@ void Foam::springMotionSolver::computePointFaces()
 {
     // Obtain connectivity from mesh
     const labelListList& pointCells = mesh().pointCells();
-    const labelList& owner = mesh().allOwner();
+    const labelList& owner = mesh().faceOwner();
     const faceList& faces = mesh().faces();
     const cellList& cells = mesh().cells();
 

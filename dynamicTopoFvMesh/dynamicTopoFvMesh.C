@@ -81,8 +81,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     mapper_(NULL),
     meshPoints_(primitiveMesh::points()),
     faces_(primitiveMesh::faces()),
-    owner_(polyMesh::allOwner()),
-    neighbour_(polyMesh::allNeighbour()),
+    owner_(polyMesh::faceOwner()),
+    neighbour_(polyMesh::faceNeighbour()),
     cells_(primitiveMesh::cells()),
     IOedges_
     (
@@ -567,7 +567,7 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality()
         const faceList& meshFaces = faces();
         const cellList& meshCells = cells();
 
-        const labelList& owner = allOwner();
+        const labelList& owner = faceOwner();
 
         // Loop through all cells in the mesh and compute cell quality
         forAll(meshCells, cellI)
@@ -4640,7 +4640,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
         // Loop through all boundaries and mark adjacent cells
         const polyBoundaryMesh& bdy = boundaryMesh();
-        const labelList& own = allOwner();
+        const labelList& own = faceOwner();
         const pointField& pList = points();
         forAll(bdy,patchI)
         {
@@ -9676,8 +9676,8 @@ bool dynamicTopoFvMesh::updateTopology()
     if (debug)
     {
         label band=0;
-        const labelList& oldOwner = allOwner();
-        const labelList& oldNeighbour = allNeighbour();
+        const labelList& oldOwner = faceOwner();
+        const labelList& oldNeighbour = faceNeighbour();
 
         for(label faceI = 0; faceI < nInternalFaces_; faceI++)
         {
