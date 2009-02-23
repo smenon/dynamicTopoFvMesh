@@ -33,6 +33,7 @@ Author
 \*----------------------------------------------------------------------------*/
 
 #include "HashList.H"
+#include "clockTime.H"
 #include "dynamicTopoFvMesh.H"
 #include "multiThreader.H"
 #include "tetDecompositionMotionSolver.H"
@@ -5245,58 +5246,6 @@ const multiThreader& dynamicTopoFvMesh::threader() const
     return threader_();
 }
 
-//- Start the timer
-inline void dynamicTopoFvMesh::timer::start()
-{
-    ::gettimeofday(&start_, NULL);
-}
-
-//- Stop the timer
-inline void dynamicTopoFvMesh::timer::stop()
-{
-    ::gettimeofday(&end_, NULL);
-
-    cumulativeTime_ += reportTime();
-}
-
-//- Clear the cumulative time counter
-void dynamicTopoFvMesh::timer::clear()
-{
-    cumulativeTime_ = 0.0;
-}
-
-//- Report time between start/stop
-scalar dynamicTopoFvMesh::timer::reportTime()
-{
-    label secs, usecs;
-
-    if (start_.tv_sec == end_.tv_sec)
-    {
-        secs = 0;
-        usecs = end_.tv_usec - start_.tv_usec;
-    }
-    else
-    {
-        usecs = 1000000 - start_.tv_usec;
-        secs = end_.tv_sec - (start_.tv_sec + 1);
-        usecs += end_.tv_usec;
-
-        if (usecs >= 1000000)
-        {
-            usecs -= 1000000;
-            secs += 1;
-        }
-    }
-
-    return scalar(secs)+(usecs/1000000.0);
-}
-
-//- Report cumulative time
-scalar dynamicTopoFvMesh::timer::reportCumulativeTime()
-{
-    return cumulativeTime_;
-}
-
 // Push items on to the stack
 inline void dynamicTopoFvMesh::stack::push(const label index)
 {
@@ -9699,15 +9648,12 @@ bool dynamicTopoFvMesh::updateTopology()
     }
 
     // Track mesh topology modification time
-    timer topologyTimer;
-    timer reOrderingTimer;
+    clockTime topologyTimer;
 
     //== Connectivity changes ==//
 
     // Reset the flag
     topoChangeFlag_ = false;
-
-    topologyTimer.start();
 
     // Invoke the threaded topoModifier
     if ( twoDMesh_ )
@@ -9719,9 +9665,9 @@ bool dynamicTopoFvMesh::updateTopology()
         threadedTopoModifier3D();
     }
 
-    topologyTimer.stop();
+    Info << "Topo modifier time: " << topologyTimer.elapsedTime() << endl;
 
-    reOrderingTimer.start();
+    clockTime reOrderingTimer;
 
     // Apply all pending topology changes, if necessary
     if (topoChangeFlag_)
@@ -9919,10 +9865,7 @@ bool dynamicTopoFvMesh::updateTopology()
         if (debug) checkMesh(true);
     }
 
-    reOrderingTimer.stop();
-
-    Info << "Topo modifier time: " << topologyTimer.reportTime() << endl;
-    Info << "Reordering time: " << reOrderingTimer.reportTime() << endl;
+    Info << "Reordering time: " << reOrderingTimer.elapsedTime() << endl;
 
     return topoChangeFlag_;
 }

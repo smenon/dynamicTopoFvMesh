@@ -149,6 +149,7 @@ Foam::fluidInterface::~fluidInterface()
 
 void Foam::fluidInterface::clearOut()
 {
+    deleteDemandDrivenData(curvaturePtr_);
     deleteDemandDrivenData(fluidIndicatorPtr_);
     deleteDemandDrivenData(interpolatorABPtr_);
     deleteDemandDrivenData(interpolatorBAPtr_);
@@ -624,6 +625,28 @@ void Foam::fluidInterface::makeInterpolators()
 
     Info << "B-to-A interpolation error, face: " << maxDist
          << ", point: " << maxDistPt << endl;
+}
+
+void Foam::fluidInterface::makeCurvature()
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (curvaturePtr_)
+    {
+        FatalErrorIn("Foam::fluidInterface::makeCurvature()")
+            << "Curvature already calculated."
+            << abort(FatalError);
+    }
+
+    curvaturePtr_ =
+        new scalarField
+        (
+            mesh().boundaryMesh()[aPatchID()].size(),
+            0.0
+        );
+
+    //const labelListList& edgeFaces =
+    // mesh().boundaryMesh()[aPatchID()].edgeFaces();
 }
 
 void Foam::fluidInterface::makeControlPoints()
@@ -1161,6 +1184,16 @@ scalarField& Foam::fluidInterface::motionPointsMask()
     }
 
     return *motionPointsMaskPtr_;
+}
+
+scalarField& Foam::fluidInterface::faceCurvature()
+{
+    if (!curvaturePtr_)
+    {
+        makeCurvature();
+    }
+
+    return *curvaturePtr_;
 }
 
 areaScalarField& Foam::fluidInterface::surfaceTension()

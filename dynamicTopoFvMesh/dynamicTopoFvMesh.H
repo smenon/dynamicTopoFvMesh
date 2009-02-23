@@ -36,10 +36,8 @@ SourceFiles
 #ifndef dynamicTopoFvMesh_H
 #define dynamicTopoFvMesh_H
 
-#include <sys/time.h>
+#include "Time.H"
 #include "HashList.H"
-#include "Switch.H"
-#include "IOdictionary.H"
 #include "multiThreader.H"
 #include "polyMesh.H"
 
@@ -166,39 +164,6 @@ class dynamicTopoFvMesh
         //  for 3D mesh flipping
         label               maxTetsPerEdge_;
         Switch              allowTableResize_;
-
-        // Private timer sub-class
-        class timer
-        {
-            // Private data
-            scalar cumulativeTime_;
-            
-            // Defined in time.h
-            struct timeval start_;
-            struct timeval end_;
-
-        public:
-
-            // Constructor
-            timer():cumulativeTime_(0.0){}
-
-            // Member functions
-
-                //- Start the timer
-                inline void start();
-
-                //- Stop the timer
-                inline void stop();
-
-                //- Clear the cumulative time counter
-                void clear();
-
-                //- Report time between start/stop
-                scalar reportTime();
-
-                //- Report cumulative time
-                scalar reportCumulativeTime();
-        };
 
         // Private Stack sub-class
         class stack

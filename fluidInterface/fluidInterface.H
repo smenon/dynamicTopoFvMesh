@@ -114,6 +114,9 @@ class fluidInterface
         
         //- Surface tension
         dimensionedScalar surfaceTension_;
+
+        //- Surface curvature
+        mutable scalarField* curvaturePtr_;
         
         //- Interface displacement field
         mutable vectorField* displacementPtr_;
@@ -155,6 +158,7 @@ class fluidInterface
         
         // Make demand-driven data
 
+            void makeCurvature();
             void makeFluidIndicator();
             void makeInterpolators();
             void makeControlPoints();
@@ -176,6 +180,9 @@ class fluidInterface
 
         //- Compute and return the gradient of surface-tension
         tmp<areaVectorField> surfaceTensionGrad();
+
+        //- Compute face-curvature based on Blair & Anja's approach
+        scalarField& faceCurvature();
         
         //- Initialize control points 
         void initializeControlPointsPosition();
