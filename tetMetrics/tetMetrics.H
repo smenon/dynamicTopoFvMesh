@@ -68,6 +68,14 @@ extern "C" Foam::scalar meanRatio
     const Foam::point& p3
 );
 
+extern "C" Foam::scalar cubicMeanRatio
+(
+    const Foam::point& p0,
+    const Foam::point& p1,
+    const Foam::point& p2,
+    const Foam::point& p3
+);
+
 extern "C" Foam::scalar Frobenius
 (
     const Foam::point& p0,

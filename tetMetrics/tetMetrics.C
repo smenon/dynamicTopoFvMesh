@@ -159,6 +159,32 @@ Foam::scalar meanRatio
     return  Foam::sign(V)*(12.0*Foam::pow(3.0*V*V,0.333333)/Le);
 }
 
+// Cubic Mean Ratio Tetrahedral mesh metric
+// Liu,A. and Joe, B., “On the shape of tetrahedra from bisection”
+// Mathematics of Computation, Vol. 63, 1994, pp. 141–154.
+Foam::scalar cubicMeanRatio
+(
+    const Foam::point& p0,
+    const Foam::point& p1,
+    const Foam::point& p2,
+    const Foam::point& p3
+)
+{
+    // Obtain signed tet volume
+    Foam::scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
+
+    // Obtain the magSqr edge-lengths
+    Foam::scalar Le =   ((p1-p0) & (p1-p0))
+                      + ((p2-p0) & (p2-p0))
+                      + ((p3-p0) & (p3-p0))
+                      + ((p2-p1) & (p2-p1))
+                      + ((p3-p1) & (p3-p1))
+                      + ((p3-p2) & (p3-p2));
+
+    // Return signed quality
+    return  Foam::sign(V)*((15552.0*V*V)/(Le*Le*Le));
+}
+
 // Tetrahedral mesh-metric based on the Frobenius Condition Number
 // Patrick M. Knupp. Matrix Norms & the Condition Number: A General Framework
 // to Improve Mesh Quality via Node-Movement. Eighth International Meshing
