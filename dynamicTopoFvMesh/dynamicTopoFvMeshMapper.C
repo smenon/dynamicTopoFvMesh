@@ -47,7 +47,10 @@ void Foam::dynamicTopoFvMeshMapper::operator=(const dynamicTopoFvMeshMapper& rhs
     // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorIn("dynamicTopoFvMeshMapper::operator=(const dynamicTopoFvMeshMapper&)")
+        FatalErrorIn
+        (
+            "dynamicTopoFvMeshMapper::operator=(const dynamicTopoFvMeshMapper&)"
+        )
             << "Attempted assignment to self"
             << abort(FatalError);
     }

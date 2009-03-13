@@ -99,7 +99,7 @@ public:
 	:
 	    mesh_(mesh),                   
             faceMap_(mpm),
-            cellMap_(mesh, mpm),
+            cellMap_(mpm),
             surfaceMap_(dynamicCast<const fvMesh>(mesh), faceMap_),
             boundaryMap_(dynamicCast<const fvMesh>(mesh), faceMap_)            
 	{}
@@ -115,7 +115,13 @@ public:
 	{
 	    return mesh_;
 	}
-        
+
+        //- Return reference to objectRegistry storing fields.
+        const objectRegistry& db() const
+        {
+            return mesh_;
+        }
+
         //- Return volume mapper
         const FieldMapper& volMap() const
         {

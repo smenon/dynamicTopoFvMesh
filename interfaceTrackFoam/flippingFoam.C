@@ -124,11 +124,11 @@ int main(int argc, char *argv[])
                  (
                     IOobject
                     (
-                    "flippingFoamDict",
-                    runTime.constant(),
-                    topoMesh,
-                    IOobject::MUST_READ,
-                    IOobject::NO_WRITE
+                        "flippingFoamDict",
+                        runTime.constant(),
+                        mesh,
+                        IOobject::MUST_READ,
+                        IOobject::NO_WRITE
                     )            
                  );
 
@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
     angle *= (3.14159/180.0);
     
     // Enable/disable debugging
-    topoMesh.debug = true;
+    mesh.debug = true;
 
     for (runTime++; !runTime.end(); runTime++)
     {    
@@ -155,22 +155,52 @@ int main(int argc, char *argv[])
         // Update boundary points and move them
         forAll(toc, wordI)
         {
-            rotatePoints(topoMesh, toc[wordI], angle, p1, p2, t);
+            rotatePoints(mesh, toc[wordI], angle, p1, p2, t);
         }
         
         // Update mesh (Solve for motion and topology)
-        topoMesh.movePoints(topoMesh.updateMotion());
-        topoMesh.updateTopology();
+        mesh.updateMotion();
+        mesh.updateTopology();
         
         runTime.write();
 
         if (runTime.outputTime())
         {
             // Write out mesh quality
-            topoMesh.meshQuality();
+            volScalarField meshQuality
+            (
+                IOobject
+                (
+                    "meshQuality",
+                    runTime.timeName(),
+                    mesh,
+                    IOobject::NO_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                mesh,
+                dimensionedScalar("scalar", dimless, 0.0),
+                "zeroGradient"
+            );
+
+            meshQuality.internalField() = mesh.meshQuality();
 
             // Write out the mesh length scales
-            topoMesh.lengthScale();
+            volScalarField lengthScale
+            (
+                IOobject
+                (
+                    "lengthScale",
+                    runTime.timeName(),
+                    mesh,
+                    IOobject::NO_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                mesh,
+                dimensionedScalar("scalar", dimLength, 0.0),
+                "zeroGradient"
+            );
+
+            lengthScale.internalField() = mesh.lengthScale();
         }
     }
 

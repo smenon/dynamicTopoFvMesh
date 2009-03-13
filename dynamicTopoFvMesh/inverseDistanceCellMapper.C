@@ -104,19 +104,16 @@ void Foam::inverseDistanceCellMapper::calcAddressing() const
             
             forAll (mo, oldCellI)
             {
-                /*
-                Info << cellI << ": " << newCentres[cellI] 
-                     << ": " << mo[oldCellI]<< ": " 
-                     << oldCentres[mo[oldCellI]] << endl;
-                */
                 w[cellI][oldCellI] = 1.0/stabilise
                                      (
                                         magSqr
                                         (
                                             newCentres[cellI] 
                                           - oldCentres[mo[oldCellI]]
-                                        ), VSMALL
+                                        ),
+                                        VSMALL
                                      );
+
                 totalWeight += w[cellI][oldCellI];
             }
             
@@ -149,12 +146,11 @@ void Foam::inverseDistanceCellMapper::calcAddressing() const
 
 // Construct from components
 Foam::inverseDistanceCellMapper::inverseDistanceCellMapper
-(
-    const dynamicTopoFvMesh& mesh,         
+(         
     const mapPolyMesh& mpm
 )
 :
-    mesh_(mesh),
+    mesh_(refCast<const dynamicTopoFvMesh>(mpm.mesh())),
     mpm_(mpm),
     direct_(false),
     directAddrPtr_(NULL),
@@ -241,12 +237,15 @@ const Foam::scalarListList& Foam::inverseDistanceCellMapper::weights() const
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void Foam::inverseDistanceCellMapper::operator=(const inverseDistanceCellMapper& rhs)
+void Foam::inverseDistanceCellMapper::operator=
+(
+    const inverseDistanceCellMapper& rhs
+)
 {
     // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorIn("inverseDistanceCellMapper::operator=(const inverseDistanceCellMapper&)")
+        FatalErrorIn("inverseDistanceCellMapper::operator=")
             << "Attempted assignment to self"
             << abort(FatalError);
     }

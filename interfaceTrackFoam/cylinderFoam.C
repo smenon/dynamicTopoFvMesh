@@ -39,13 +39,7 @@ Description
 
 int main(int argc, char *argv[])
 {
-    // For debug purposes, assign <root> and <case>
-    argc = 3; 
-    argv[1] = new char[100];
-    argv[2] = new char[100];
-    strcpy(argv[1],"/home/smenon/OpenFOAM/smenon-1.4.1-dev/run");
-    strcpy(argv[2],"cylinder");     
-    
+
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"

@@ -26,7 +26,12 @@ Class
     dynamicTopoFvMesh
 
 Description
-    An implementation of dynamic changes to mesh-topology (w/ smoothing)
+    An implementation of dynamic changes to mesh-topology
+
+Author
+    Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
 
 SourceFiles
     dynamicTopoFvMesh.C
@@ -39,7 +44,7 @@ SourceFiles
 #include "Time.H"
 #include "HashList.H"
 #include "multiThreader.H"
-#include "polyMesh.H"
+#include "fvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -57,7 +62,7 @@ class motionSolver;
 
 class dynamicTopoFvMesh
 :
-    public polyMesh
+    public fvMesh
 {
     // Private data
 
@@ -146,8 +151,10 @@ class dynamicTopoFvMesh
         Map<label>      addedEdgePatches_;
         Map<label>      cellParents_;
 
-        // Cell-centre field
+        // Geometry-fields for mapping
+        autoPtr<vectorField> pointPositionsPtr_;
         autoPtr<vectorField> cellCentresPtr_;
+        autoPtr<vectorField> faceCentresPtr_;
 
         //- Edge length cut-off criteria
         //- ( for all faces in the mesh [2D] )
@@ -732,12 +739,14 @@ public:
         // Return true if changes have occurred
         bool updateTopology();
 
-        // Move points with the given pointField
-        // Returns volumes swept by faces in motion.
-        tmp<scalarField> movePoints(const pointField& p);
-
         // Update the mesh for motion
-        tmp<pointField> updateMotion();
+        void updateMotion();
+
+        //- Update mesh corresponding to the given map
+        virtual void updateMesh(const mapPolyMesh& mpm);
+
+        // Map all fields in time using the given map.
+        virtual void mapFields(const mapPolyMesh& mpm);
 
         // Set mesh-motion displacement boundary conditions
         void setMotionBC
@@ -751,6 +760,12 @@ public:
 
         // Return old cell-centre information (prior to a topology change)
         const vectorField& oldCellCentres() const;
+
+        // Return old face-centre information (prior to a topology change)
+        const vectorField& oldFaceCentres() const;
+
+        // Return old face-centre information (prior to a topology change)
+        const vectorField& oldPointPositions() const;
 
         // Return mesh length-scale values
         tmp<scalarField> lengthScale();

@@ -26,21 +26,30 @@ Class
     dynamicTopoFvMesh
 
 Description
-    An implementation of dynamic changes to mesh-topology (w/ smoothing)
+    An implementation of dynamic changes to mesh-topology
 
 Author
     Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
+
 \*----------------------------------------------------------------------------*/
 
 #include "HashList.H"
 #include "clockTime.H"
 #include "dynamicTopoFvMesh.H"
+#include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
 #include "tetDecompositionMotionSolver.H"
 #include "faceTetPolyPatch.H"
 #include "tetPolyPatchInterpolation.H"
 #include "motionSolver.H"
 #include "mapPolyMesh.H"
+
+#include "fvPatchFields.H"
+#include "fvsPatchFields.H"
+#include "MapFvFields.H"
+#include "MeshObject.H"
 
 #include <dlfcn.h>
 
@@ -56,7 +65,7 @@ defineTypeNameAndDebug(dynamicTopoFvMesh,0);
 // Construct from components
 dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 :
-    polyMesh(io),
+    fvMesh(io),
     numPatches_(polyMesh::boundaryMesh().size()),
     topoChangeFlag_(false),
     dict_
@@ -188,6 +197,16 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     maxTetsPerEdge_(-1),
     allowTableResize_(false)
 {
+    // For backward compatibility, check the size of owner/neighbour
+    if (owner_.size() != neighbour_.size())
+    {
+        // Append -1 for neighbours
+        for(label i = nInternalFaces_; i < nFaces_; i++)
+        {
+            neighbour_.append(-1);
+        }
+    }
+
     // Initialize the motion-solver, if it was requested
     if (solveForMotion_)
     {
@@ -9444,31 +9463,91 @@ bool dynamicTopoFvMesh::remove2DSliver
     return false;
 }
 
+// Update mesh corresponding to the given map
+void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
+{
+    // Delete oldPoints in polyMesh
+    polyMesh::resetMotion();
+
+    // Update polyMesh.
+    polyMesh::updateMesh(mpm);
+
+    // Clear out surface-interpolation
+    surfaceInterpolation::movePoints();
+
+    // Clear-out fvMesh geometry and addressing
+    fvMesh::clearOut();
+
+    // Update topology for all registered classes
+    meshObjectBase::allUpdateTopology<fvMesh>(*this);
+
+    // Map all fields
+    mapFields(mpm);
+}
+
+// Map all fields in time using the given map
+void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
+{
+    if (debug)
+    {
+        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap): "
+             << "Mapping fvFields."
+             << endl;
+    }
+
+    //- Field mapping class
+    dynamicTopoFvMeshMapper fieldMapper(*this,meshMap);
+
+    // Map all scalar volFields in the objectRegistry
+    MapGeometricFields
+    <
+        scalar,
+        fvPatchField,
+        dynamicTopoFvMeshMapper,
+        volMesh
+    >
+    (
+        fieldMapper
+    );
+
+    // Map all vector volFields in the objectRegistry
+    MapGeometricFields
+    <
+        vector,
+        fvPatchField,
+        dynamicTopoFvMeshMapper,
+        volMesh
+    >
+    (
+        fieldMapper
+    );
+
+    // Map all the surfaceFields in the objectRegistry
+    MapGeometricFields
+    <
+        scalar,
+        fvsPatchField,
+        dynamicTopoFvMeshMapper,
+        surfaceMesh
+    >
+    (
+        fieldMapper
+    );
+
+    // Old volumes are not mapped since interpolation is
+    // performed at the same time level.
+}
+
 // Update the mesh for motion
 // This routine assumes that all boundary motions have been defined
 // and incorporated into the mesh for the current time-step.
-tmp<pointField> dynamicTopoFvMesh::updateMotion()
+void dynamicTopoFvMesh::updateMotion()
 {
     if (solveForMotion_)
     {
         // Solve for motion
-        tmp<pointField> tnewPoints = motionPtr_->newPoints();
-
-        return tnewPoints;
+        movePoints(motionPtr_->newPoints());
     }
-
-    // No motion - return current point positions
-    return tmp<pointField>(points());
-}
-
-// Move points with the given pointField
-// Returns volumes swept by faces in motion.
-tmp<scalarField> dynamicTopoFvMesh::movePoints(const pointField& p)
-{
-    // Move the polyMesh and set the mesh motion fluxes to the swept-volumes
-    tmp<scalarField> tsweptVols = polyMesh::movePoints(p);
-
-    return tsweptVols;
 }
 
 // MultiThreaded topology modifier [2D]
@@ -9635,7 +9714,7 @@ bool dynamicTopoFvMesh::updateTopology()
         }
 
         Info << "Mesh size: " << nCells()
-            << "    Bandwidth before renumbering: " << band << endl;
+             << "    Bandwidth before renumbering: " << band << endl;
     }
 
     // Obtain the most recent point-positions
@@ -9712,10 +9791,20 @@ bool dynamicTopoFvMesh::updateTopology()
             oldMeshPointLabels[i] = boundaryMesh()[i].meshPoints();
         }
 
-        // Obtain cell-centre information as well
+        // Obtain geometry information for mapping as well
         cellCentresPtr_.set
         (
             new vectorField(polyMesh::cellCentres())
+        );
+
+        faceCentresPtr_.set
+        (
+            new vectorField(polyMesh::faceCentres())
+        );
+
+        pointPositionsPtr_.set
+        (
+            new vectorField(currentPoints)
         );
 
         // Reset the mesh
@@ -9808,27 +9897,39 @@ bool dynamicTopoFvMesh::updateTopology()
                 cellZoneMap,
                 preMotionPoints,
                 oldPatchStarts_,
-                oldPatchNMeshPoints_
+                oldPatchNMeshPoints_,
+                true
             )
         );
 
-        // Discard old cell-centre information after mapping
+        // Update the underlying mesh, and map all related fields
+        updateMesh(mapper_);
+
+        // Discard old information after mapping
+        pointPositionsPtr_.clear();
         cellCentresPtr_.clear();
+        faceCentresPtr_.clear();
 
         // Update the motion-solver, if necessary
-        if (motionPtr_.valid()) motionPtr_().updateMesh(mapper_);
+        if (motionPtr_.valid())
+        {
+            motionPtr_().updateMesh(mapper_);
+        }
 
         // Print out the mesh bandwidth
         if (debug)
         {
             label band=0;
+
             for(label faceI = 0; faceI < nInternalFaces_; faceI++)
             {
                 label diff = neighbour[faceI] - owner[faceI];
                 if (diff > band) band = diff;
             }
+
             Info << "Mesh size: " << nCells()
-                << "    Bandwidth after renumbering: " << band << endl;
+                 << "    Bandwidth after renumbering: " << band << endl;
+
             Info << "----------- " << endl;
             Info << "Patch Info: " << endl;
             Info << "----------- " << endl;
@@ -9862,7 +9963,10 @@ bool dynamicTopoFvMesh::updateTopology()
         initMutexLists();
 
         // Basic checks for mesh-validity
-        if (debug) checkMesh(true);
+        if (debug)
+        {
+            checkMesh(true);
+        }
     }
 
     Info << "Reordering time: " << reOrderingTimer.elapsedTime() << endl;

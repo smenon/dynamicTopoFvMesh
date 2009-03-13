@@ -102,7 +102,7 @@ public:
     // Constructors    
     
         //- Construct from mapPolyMesh
-        inverseDistanceCellMapper(const dynamicTopoFvMesh& mesh, const mapPolyMesh& mpm);
+        inverseDistanceCellMapper(const mapPolyMesh& mpm);
 
     // Destructor
 

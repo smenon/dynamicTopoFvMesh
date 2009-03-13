@@ -16,7 +16,7 @@
             ),
             pMesh,
             dimensionedVector("vector", dimless, vector::zero),
-            fixedValuePointPatchVectorField::typeName          
+            "zeroGradient"
         );
 
         pNormals.boundaryField()[interface.aPatchID()] == interface.areaMesh().pointAreaNormals();
@@ -24,7 +24,22 @@
         pNormals.write();
 
         // Write out the mesh length scales
-        topoMesh.lengthScale();
+        volScalarField lengthScale
+        (
+            IOobject
+            (
+                "lengthScale",
+                runTime.timeName(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::AUTO_WRITE
+            ),
+            mesh,
+            dimensionedScalar("scalar", dimLength, 0.0),
+            "zeroGradient"
+        );
+
+        lengthScale.internalField() = mesh.lengthScale();
         
         // Write out the pressure gradient
         volVectorField gradP = fvc::grad(p);
