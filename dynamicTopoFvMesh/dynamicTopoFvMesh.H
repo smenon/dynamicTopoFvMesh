@@ -44,6 +44,7 @@ SourceFiles
 #include "Time.H"
 #include "HashList.H"
 #include "multiThreader.H"
+#include "eMesh.H"
 #include "fvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -108,13 +109,8 @@ class dynamicTopoFvMesh
         HashList<labelList> edgeFaces_;
         HashList<labelList> faceEdges_;
 
-        //- Up-to-date edge connectivity information (with IO support)
-        IOList<edge>        IOedges_;
-        IOList<labelList>   IOpointEdges_;
-        IOList<labelList>   IOedgeFaces_;
-        IOList<labelList>   IOfaceEdges_;
-        IOList<label>       IOedgePatchStarts_;
-        IOList<label>       IOedgePatchSizes_;
+        // Edge-mesh to store up-to-date connectivity information
+        autoPtr<eMesh>  eMeshPtr_;
 
         //- Size information
         labelList       oldPatchSizes_, patchSizes_;
@@ -156,10 +152,8 @@ class dynamicTopoFvMesh
         autoPtr<vectorField> cellCentresPtr_;
         autoPtr<vectorField> faceCentresPtr_;
 
-        //- Edge length cut-off criteria
-        //- ( for all faces in the mesh [2D] )
+        //- Edge bisection/collapse criteria
         HashList<scalar>    lengthScale_;
-        HashList<edge>      edgeToWatch_;
         scalar              ratioMin_;
         scalar              ratioMax_;
         scalar              growthFactor_;
@@ -167,8 +161,8 @@ class dynamicTopoFvMesh
         scalar              sliverThreshold_;
         label               bisectInteriorFace_;
 
-        //- Maximum number of tets around an edge
-        //  for 3D mesh flipping
+        //- 3D Mesh Flipping data
+        HashList<labelList> edgePoints_;
         label               maxTetsPerEdge_;
         Switch              allowTableResize_;
 
@@ -259,15 +253,11 @@ class dynamicTopoFvMesh
         //- Disallow default bitwise assignment
         void operator=(const dynamicTopoFvMesh&);
 
-        // Find the circumcenter, given three points
-        inline vector circumCenter
+        // Perform a Delaunay test on an internal face
+        // Return 0 if the test succeeds, and non-zero otherwise
+        inline bool testDelaunay
         (
-            const point& a,
-            const point& b,
-            const point& c,
-            const label& one,
-            const label& two,
-            const label& three
+            const label faceIndex
         );
 
         // Typedef for tetrahedral metrics
@@ -296,9 +286,6 @@ class dynamicTopoFvMesh
             const point& c,
             const point& d
         );
-
-        // Initialize the length-scale field
-        void initLengthScale();
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();
@@ -379,10 +366,7 @@ class dynamicTopoFvMesh
         // Method for the swapping of a quad-face in 2D
         void swapQuadFace
         (
-            const label findex,
-            const FixedList<label,4>& commonFaceIndex,
-            const FixedList<face,4>&  commonFaces,
-            const FixedList<edge,2>&  commonEdges
+            const label findex
         );
 
         // Method for the bisection of a quad-face in 2D
@@ -486,8 +470,7 @@ class dynamicTopoFvMesh
             const label patch,
             const face& newFace,
             const label newOwner,
-            const label newNeighbour,
-            const edge& edgeToWatch
+            const label newNeighbour
         );
 
         // Remove the specified face from the mesh
@@ -552,6 +535,18 @@ class dynamicTopoFvMesh
             bool requiresQuality
         );
 
+        // Utility method to compute the minimum quality of a vertex hull
+        inline bool computeMinQuality
+        (
+            const label eIndex,
+            const labelList& hullVertices,
+            scalar& minQuality,
+            labelHashSet& pLocks,
+            labelHashSet& eLocks,
+            labelHashSet& fLocks,
+            labelHashSet& cLocks
+        );
+
         // Utility to obtain write permissions for the cell hull.
         // Returns zero on success
         inline bool obtainWritePriority
@@ -580,7 +575,7 @@ class dynamicTopoFvMesh
         inline label fillTables
         (
             const label eIndex,
-            const DynamicList<label>& hullVertices,
+            const labelList& hullVertices,
             const scalar minQuality,
             scalarListList& Q,
             labelListList& K
@@ -655,7 +650,7 @@ class dynamicTopoFvMesh
         void reOrderPoints(pointField& points);
 
         // Reorder edges after a topology change
-        void reOrderEdges();
+        void reOrderEdges(edgeList& edges, labelListList& edgeFaces);
 
         // Reorder faces in upper-triangular order after a topology change
         void reOrderFaces
@@ -674,12 +669,14 @@ class dynamicTopoFvMesh
         void reOrderMesh
         (
             pointField& points,
+            edgeList& edges,
             faceList& faces,
             labelList& owner,
-            labelList& neighbour
+            labelList& neighbour,
+            labelListList& edgeFaces
         );
 
-        // Copy edge-based connectivity from HashLists
+        // Copy edge-based connectivity to HashLists
         void setEdgeConnectivity();
 
         // Check the state of edge-based connectivity HashLists
@@ -694,12 +691,14 @@ class dynamicTopoFvMesh
         // Return the appropriate length-scale for boundary face
         scalar boundaryLengthScale(const label faceIndex);
 
+        // Given a boundary face, pick out a boundary edge that
+        // contains a triangular face. For 2D simplical meshes only.
+        label getTriBoundaryEdge(const label faceIndex);
+
         // Does the mesh perform edge-modification?
         bool edgeModification();
 
         // Private internal access to member data for static members
-        HashList<point>& meshPoints() { return meshPoints_; }
-        HashList<edge>& edgeToWatch() { return edgeToWatch_; }
         bool& topoChangeFlag() { return topoChangeFlag_; }
         scalar ratioMin() { return ratioMin_; }
         scalar ratioMax() { return ratioMax_; }
@@ -722,6 +721,9 @@ public:
         virtual ~dynamicTopoFvMesh();
 
     // Member Functions
+
+        // Return reference to the edge mesh
+        eMesh& EdgeMesh();
 
         // Return the number of edges in the mesh.
         // Override of primitiveMesh member function

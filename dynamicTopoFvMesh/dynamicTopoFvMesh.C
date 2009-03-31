@@ -94,78 +94,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     owner_(polyMesh::faceOwner()),
     neighbour_(polyMesh::faceNeighbour()),
     cells_(primitiveMesh::cells()),
-    IOedges_
-    (
-        IOobject
-        (
-            "edges",
-            time().findInstance(meshDir(), "faces"),
-            meshSubDir,
-            *this,
-            IOobject::READ_IF_PRESENT,
-            IOobject::NO_WRITE
-        )
-    ),
-    IOpointEdges_
-    (
-        IOobject
-        (
-            "pointEdges",
-            time().findInstance(meshDir(), "faces"),
-            meshSubDir,
-            *this,
-            IOobject::READ_IF_PRESENT,
-            IOobject::NO_WRITE
-        )
-    ),
-    IOedgeFaces_
-    (
-        IOobject
-        (
-            "edgeFaces",
-            time().findInstance(meshDir(), "faces"),
-            meshSubDir,
-            *this,
-            IOobject::READ_IF_PRESENT,
-            IOobject::NO_WRITE
-        )
-    ),
-    IOfaceEdges_
-    (
-        IOobject
-        (
-            "faceEdges",
-            time().findInstance(meshDir(), "faces"),
-            meshSubDir,
-            *this,
-            IOobject::READ_IF_PRESENT,
-            IOobject::NO_WRITE
-        )
-    ),
-    IOedgePatchStarts_
-    (
-        IOobject
-        (
-            "edgePatchStarts",
-            time().findInstance(meshDir(), "faces"),
-            meshSubDir,
-            *this,
-            IOobject::READ_IF_PRESENT,
-            IOobject::NO_WRITE
-        )
-    ),
-    IOedgePatchSizes_
-    (
-        IOobject
-        (
-            "edgePatchSizes",
-            time().findInstance(meshDir(), "faces"),
-            meshSubDir,
-            *this,
-            IOobject::READ_IF_PRESENT,
-            IOobject::NO_WRITE
-        )
-    ),
+    eMeshPtr_(NULL),
     oldPatchSizes_(numPatches_,0),
     patchSizes_(numPatches_,0),
     oldPatchStarts_(numPatches_,-1),
@@ -262,11 +191,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         oldPatchStarts_[i] = patchStarts_[i] = boundary[i].start();
         oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
     }
-
-    // Set sizes for the reverse maps
-    reversePointMap_.setSize(nPoints_);
-    reverseFaceMap_.setSize(nFaces_);
-    reverseCellMap_.setSize(nCells_);
 
     // For tetrahedral meshes...
     if (!twoDMesh_)
@@ -379,10 +303,16 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
                     dict_.subDict("dynamicTopoFvMesh").lookup("allowTableResize")
                 );
         }
-
-        // Initialize edge-related connectivity structures
-        initEdges();
     }
+
+    // Initialize edge-related connectivity structures
+    initEdges();
+
+    // Set sizes for the reverse maps
+    reversePointMap_.setSize(nPoints_);
+    reverseEdgeMap_.setSize(nEdges_);
+    reverseFaceMap_.setSize(nFaces_);
+    reverseCellMap_.setSize(nCells_);
 
     // Define edgeModification options
     if (edgeModification_)
@@ -411,7 +341,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
                 readScalar(edgeOptionDict.lookup("sliverThreshold"));
         }
 
-        initLengthScale();
+        // Initialize the lengthScale field
+        lengthScale_.setSize(nCells_, 0.0);
     }
 
     // Initialize mutex lists for multi-threading, if necessary
@@ -652,17 +583,65 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality()
     return tQuality;
 }
 
-// Find the circumcenter, given three points
-inline vector dynamicTopoFvMesh::circumCenter
+// Perform a Delaunay test on an internal face
+// Return 0 if the test succeeds, and non-zero otherwise
+inline bool dynamicTopoFvMesh::testDelaunay
 (
-    const point& a,
-    const point& b,
-    const point& c,
-    const label& one,
-    const label& two,
-    const label& three
+    const label faceIndex
 )
 {
+    label eIndex = -1, pIndex = -1;
+    FixedList<bool,2> foundTriFace(false);
+    FixedList<triFace,2> triFaces;
+    const labelList& fEdges = faceEdges_[faceIndex];
+
+    forAll(fEdges, edgeI)
+    {
+        // Break out if both triangular faces are found
+        if (foundTriFace[0] && foundTriFace[1])
+        {
+            break;
+        }
+
+        // Obtain edgeFaces for this edge
+        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+        forAll(eFaces, faceI)
+        {
+            face& thisFace = faces_[eFaces[faceI]];
+
+            if (thisFace.size() == 3)
+            {
+                if (foundTriFace[0])
+                {
+                    // Update the second face.
+                    triFaces[1][0] = thisFace[0];
+                    triFaces[1][1] = thisFace[1];
+                    triFaces[1][2] = thisFace[2];
+
+                    foundTriFace[1] = true;
+
+                    // Take this edge
+                    eIndex = fEdges[edgeI];
+                }
+                else
+                {
+                    // Update the first face.
+                    triFaces[0][0] = thisFace[0];
+                    triFaces[0][1] = thisFace[1];
+                    triFaces[0][2] = thisFace[2];
+
+                    foundTriFace[0] = true;
+                }
+            }
+        }
+    }
+
+    // Obtain point references for the first face
+    point& a = meshPoints_[triFaces[0][0]];
+    point& b = meshPoints_[triFaces[0][1]];
+    point& c = meshPoints_[triFaces[0][2]];
+
     scalar d1 =  (c - a)&(b - a);
     scalar d2 = -(c - b)&(b - a);
     scalar d3 =  (c - a)&(c - b);
@@ -678,16 +657,53 @@ inline vector dynamicTopoFvMesh::circumCenter
     {
         FatalErrorIn
         (
-            "dynamicTopoFvMesh::circumCenter(point& a, point& b, point& c) "
+            "dynamicTopoFvMesh::testDelaunay(const label faceIndex) "
         ) << nl << " Encountered a co-linear set of points: " << nl
-                << " Point a :: " << one << ": " << a << nl
-                << " Point b :: " << two << ": " << b << nl
-                << " Point c :: " << three << ": " << c << nl
+                << " Point a :: " << triFaces[0][0] << ": " << a << nl
+                << " Point b :: " << triFaces[0][1] << ": " << b << nl
+                << " Point c :: " << triFaces[0][2] << ": " << c << nl
                 << abort(FatalError);
     }
 #   endif
 
-    return ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
+    point cCenter = ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
+    scalar rSquared = (a - cCenter)&(a - cCenter);
+    
+    // Find the isolated point on the second face
+    edge& e = edges_[eIndex];
+    
+    // Check the first point
+    if ( triFaces[1][0] != e.start() && triFaces[1][0] != e.end() )
+    {
+        pIndex = triFaces[1][0];
+    }
+
+    // Check the second point
+    if ( triFaces[1][1] != e.start() && triFaces[1][1] != e.end() )
+    {
+        pIndex = triFaces[1][1];
+    }
+
+    // Check the third point
+    if ( triFaces[1][2] != e.start() && triFaces[1][2] != e.end() )
+    {
+        pIndex = triFaces[1][2];
+    }
+
+    // ...and determine whether it lies in this circle
+    point& otherPoint = meshPoints_[pIndex];
+
+    if
+    (
+        ((otherPoint - cCenter)&(otherPoint - cCenter)) < rSquared
+    )
+    {
+        // Failed the test.
+        return true;
+    }
+
+    // Succeeded the Delaunay test
+    return false;
 }
 
 // Find the area of a triangle face.
@@ -893,27 +909,38 @@ inline void dynamicTopoFvMesh::findIsolatedPoint
     label& nextPtIndex
 )
 {
-    bool found = false;
-    forAll(f, pointI)
+    // Check the first point
+    if ( f[0] != e.start() && f[0] != e.end() )
     {
-        if ( f[pointI] != e[0] && f[pointI] != e[1] )
-        {
-            ptIndex = f[pointI];
-            nextPtIndex = f[(pointI+1)%3];
-            found = true;
-            break;
-        }
+        ptIndex = f[0];
+        nextPtIndex = f[1];
+        return;
     }
-    if (!found)
+
+    // Check the second point
+    if ( f[1] != e.start() && f[1] != e.end() )
     {
-        FatalErrorIn
-        (
-            "label dynamicTopoFvMesh::findIsolatedPoint()"
-        )
-        << "Cannot find isolated point in face " << f << endl
-        << " Using edge: " << e
-        << abort(FatalError);
+        ptIndex = f[1];
+        nextPtIndex = f[2];
+        return;
     }
+
+    // Check the third point
+    if ( f[2] != e.start() && f[2] != e.end() )
+    {
+        ptIndex = f[2];
+        nextPtIndex = f[0];
+        return;
+    }
+
+    // This bit should never happen.
+    FatalErrorIn
+    (
+        "label dynamicTopoFvMesh::findIsolatedPoint()"
+    )
+    << "Cannot find isolated point in face " << f << endl
+    << " Using edge: " << e
+    << abort(FatalError);
 }
 
 // Utility method to replace a label in a given list
@@ -951,8 +978,7 @@ label dynamicTopoFvMesh::insertFace
     const label patch,
     const face& newFace,
     const label newOwner,
-    const label newNeighbour,
-    const edge& edgeToWatch = edge(0,0)
+    const label newNeighbour
 )
 {
     // Append the specified face to each face-related list.
@@ -982,11 +1008,6 @@ label dynamicTopoFvMesh::insertFace
     {
         // Push this onto the stack as well
         faceStack_[getThreadID(pthread_self())].push(newFaceIndex);
-
-        if (edgeModification_)
-        {
-            edgeToWatch_.append(edgeToWatch);
-        }
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -1072,11 +1093,6 @@ void dynamicTopoFvMesh::removeFace
         forAll(faceStack_, stackI)
         {
             faceStack_[stackI].remove(index);
-        }
-
-        if (edgeModification_)
-        {
-            edgeToWatch_.remove(index);
         }
     }
 
@@ -1904,6 +1920,101 @@ inline bool dynamicTopoFvMesh::constructVertexRing
     return false;
 }
 
+// Utility method to compute the minimum quality of a vertex hull
+inline bool dynamicTopoFvMesh::computeMinQuality
+(
+    const label eIndex,
+    const labelList& hullVertices,
+    scalar& minQuality,
+    labelHashSet& pLocks,
+    labelHashSet& eLocks,
+    labelHashSet& fLocks,
+    labelHashSet& cLocks
+)
+{
+    minQuality = GREAT;
+    scalar cQuality = 0.0;
+
+    // Try to lock this edge and its two points.
+    if (threader_->multiThreaded())
+    {
+        if (edgeMutex_[eIndex].tryReadLock())
+        {
+            // Failed to acquire this edge.
+            return true;
+        }
+        else
+        {
+            eLocks.insert(eIndex);
+
+            edge& lockEdge = edges_[eIndex];
+
+            // Check first point
+            if (pointMutex_[lockEdge[0]].tryReadLock())
+            {
+                // Can't lock this point. Get out.
+                unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
+                return true;
+            }
+            else
+            {
+                pLocks.insert(lockEdge[0]);
+            }
+
+            // Check second point
+            if (pointMutex_[lockEdge[1]].tryReadLock())
+            {
+                // Can't lock this point. Get out.
+                unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
+                return true;
+            }
+            else
+            {
+                pLocks.insert(lockEdge[1]);
+            }
+        }
+    }
+
+    // Obtain a reference to this edge and corresponding edgeFaces
+    edge& edgeToCheck = edges_[eIndex];
+
+    // Assume that hullVertices is ordered in a CCW manner around edge[0]
+    forAll(hullVertices, indexI)
+    {
+        if (threader_->multiThreaded())
+        {
+            if (pointMutex_[hullVertices[indexI]].tryReadLock())
+            {
+                // Failed to acquire this point.
+                unlockMutexLists(pLocks, eLocks, fLocks, cLocks);
+                return true;
+            }
+            else
+            {
+                pLocks.insert(hullVertices[indexI]);
+            }
+        }
+
+        // Compute quality as well
+        if (indexI != 0)
+        {
+            cQuality = (*tetMetric_)
+            (
+                meshPoints_[edgeToCheck[0]],
+                meshPoints_[hullVertices[indexI-1]],
+                meshPoints_[edgeToCheck[1]],
+                meshPoints_[hullVertices[indexI]]
+            );
+
+            // Check if the quality is worse
+            minQuality = cQuality < minQuality ? cQuality : minQuality;
+        }
+    }
+
+    // Return a successful lock
+    return false;
+}
+
 // Utility to obtain write permissions for the cell hull.
 // Returns zero on success
 inline bool dynamicTopoFvMesh::obtainWritePriority
@@ -2162,7 +2273,7 @@ inline void dynamicTopoFvMesh::initTables
 inline label dynamicTopoFvMesh::fillTables
 (
     const label eIndex,
-    const DynamicList<label>& hullVertices,
+    const labelList& hullVertices,
     const scalar minQuality,
     scalarListList& Q,
     labelListList& K
@@ -3623,12 +3734,6 @@ void dynamicTopoFvMesh::reOrderPoints
     addedPointRenumbering_.clear();
 
     HashList<point>::iterator ptIter = meshPoints_.begin();
-    HashList<labelList>::iterator peIter;
-
-    if (!twoDMesh_)
-    {
-        peIter = pointEdges_.begin();
-    }
 
     while(ptIter != meshPoints_.end())
     {
@@ -3640,12 +3745,6 @@ void dynamicTopoFvMesh::reOrderPoints
 
         // Renumber the point index
         meshPoints_.reNumber(pointRenum, ptIter);
-
-        if (!twoDMesh_)
-        {
-            pointEdges_.reNumber(pointRenum, peIter);
-            peIter++;
-        }
 
         // Added points are always numbered after nOldPoints_
         // (by virtue of the HashList append method)
@@ -3668,7 +3767,11 @@ void dynamicTopoFvMesh::reOrderPoints
 }
 
 // Reorder edges after a topology change
-void dynamicTopoFvMesh::reOrderEdges()
+void dynamicTopoFvMesh::reOrderEdges
+(
+    edgeList& edges,
+    labelListList& edgeFaces
+)
 {
     // *** Edge renumbering *** //
     // If edges were deleted during topology change, the numerical order ceases
@@ -3805,50 +3908,6 @@ void dynamicTopoFvMesh::reOrderEdges()
 
         edgeInOrder++;
     }
-
-    // Renumber faceEdges
-    forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
-    {
-        labelList& faceEdges = feIter();
-        forAll(faceEdges,edgeI)
-        {
-            if (faceEdges[edgeI] < nOldEdges_)
-            {
-                faceEdges[edgeI] = reverseEdgeMap_[faceEdges[edgeI]];
-            }
-            else
-            {
-                faceEdges[edgeI] = addedEdgeRenumbering_[faceEdges[edgeI]];
-            }
-        }
-    }
-
-    // Renumber pointEdges
-    forAllIter(HashList<labelList>::iterator, pointEdges_, peIter)
-    {
-        labelList& pointEdges = peIter();
-        forAll(pointEdges,edgeI)
-        {
-            if (pointEdges[edgeI] < nOldEdges_)
-            {
-                pointEdges[edgeI] = reverseEdgeMap_[pointEdges[edgeI]];
-            }
-            else
-            {
-                pointEdges[edgeI] = addedEdgeRenumbering_[pointEdges[edgeI]];
-            }
-        }
-    }
-
-#   ifdef FULLDEBUG
-    if (debug)
-    {
-        checkEdgeConnectivity();
-    }
-#   endif
-
-    // Set edge connectivity in IOLists
-    setEdgeConnectivity();
 }
 
 // Reorder faces in upper-triangular order after a topology change
@@ -3871,8 +3930,6 @@ void dynamicTopoFvMesh::reOrderFaces
     label faceInOrder = 0, allFaces = faces_.lastIndex() + 1;
     faceList oldFaces(allFaces);
     labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces,0);
-    edgeList oldEdgeToWatch(0);
-    labelListList oldFaceEdges(0);
 
     addedFaceRenumbering_.clear();
     Map<label> addedFaceReverseRenumbering;
@@ -3891,30 +3948,6 @@ void dynamicTopoFvMesh::reOrderFaces
     }
 
     faces_.clear(); owner_.clear(); neighbour_.clear();
-
-    if (edgeModification_ && twoDMesh_)
-    {
-        oldEdgeToWatch.setSize(allFaces);
-
-        forAllIter(HashList<edge>::iterator, edgeToWatch_, eIter)
-        {
-            oldEdgeToWatch[eIter.index()] = eIter();
-        }
-
-        edgeToWatch_.clear();
-    }
-
-    if (!twoDMesh_)
-    {
-        oldFaceEdges.setSize(allFaces);
-
-        forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
-        {
-            oldFaceEdges[feIter.index()] = feIter();
-        }
-
-        faceEdges_.clear();
-    }
 
     // Mark the internal faces with -2 so that they are inserted first
     forAllIter(HashList<cell>::iterator, cells_, cIter)
@@ -3986,30 +4019,6 @@ void dynamicTopoFvMesh::reOrderFaces
                     {
                         faceRenumber[pointI] =
                             addedPointRenumbering_[faceRenumber[pointI]];
-                    }
-                }
-
-                // Renumber the edges in edgeToWatch
-                if (edgeModification_ && twoDMesh_)
-                {
-                    edge& edgeRenumber = oldEdgeToWatch[curFaces[faceI]];
-
-                    if (edgeRenumber[0] < nOldPoints_)
-                    {
-                        edgeRenumber[0] = reversePointMap_[edgeRenumber[0]];
-                    }
-                    else
-                    {
-                        edgeRenumber[0] = addedPointRenumbering_[edgeRenumber[0]];
-                    }
-
-                    if (edgeRenumber[1] < nOldPoints_)
-                    {
-                        edgeRenumber[1] = reversePointMap_[edgeRenumber[1]];
-                    }
-                    else
-                    {
-                        edgeRenumber[1] = addedPointRenumbering_[edgeRenumber[1]];
                     }
                 }
 
@@ -4098,36 +4107,6 @@ void dynamicTopoFvMesh::reOrderFaces
                 owner_.append(cellI);
                 neighbour_.append(minNei);
 
-                if (edgeModification_ && twoDMesh_)
-                {
-                    edge& edgeRenumber = oldEdgeToWatch[curFaces[nextNei]];
-
-                    if (edgeRenumber[0] < nOldPoints_)
-                    {
-                        edgeRenumber[0] = reversePointMap_[edgeRenumber[0]];
-                    }
-                    else
-                    {
-                        edgeRenumber[0] = addedPointRenumbering_[edgeRenumber[0]];
-                    }
-
-                    if (edgeRenumber[1] < nOldPoints_)
-                    {
-                        edgeRenumber[1] = reversePointMap_[edgeRenumber[1]];
-                    }
-                    else
-                    {
-                        edgeRenumber[1] = addedPointRenumbering_[edgeRenumber[1]];
-                    }
-
-                    edgeToWatch_.append(edgeRenumber);
-                }
-
-                if (!twoDMesh_)
-                {
-                    faceEdges_.append(oldFaceEdges[curFaces[nextNei]]);
-                }
-
                 // Insert entities into mesh-reset lists
                 faces[faceInOrder] = faceRenumber;
                 owner[faceInOrder] = cellI;
@@ -4173,16 +4152,6 @@ void dynamicTopoFvMesh::reOrderFaces
         faces_.append(oldFaces[oldIndex]);
         owner_.append(ownerRenumber);
         neighbour_.append(-1);
-
-        if (edgeModification_ && twoDMesh_)
-        {
-            edgeToWatch_.append(oldEdgeToWatch[oldIndex]);
-        }
-
-        if (!twoDMesh_)
-        {
-            faceEdges_.append(oldFaceEdges[oldIndex]);
-        }
 
         // Insert entities into mesh-reset lists
         faces[faceInOrder] = oldFaces[oldIndex];
@@ -4387,9 +4356,11 @@ void dynamicTopoFvMesh::reOrderCells()
 void dynamicTopoFvMesh::reOrderMesh
 (
     pointField& points,
+    edgeList& edges,
     faceList& faces,
     labelList& owner,
-    labelList& neighbour
+    labelList& neighbour,
+    labelListList& edgeFaces
 )
 {
     if (debug)
@@ -4433,60 +4404,28 @@ void dynamicTopoFvMesh::reOrderMesh
     reOrderFaces(faces, owner, neighbour);
 
     // Reorder the edges
-    if (!twoDMesh_)
-    {
-        if (debug) Info << "ReOrdering edges..." << endl;
-        reOrderEdges();
-    }
+    if (debug) Info << "ReOrdering edges..." << endl;
+    reOrderEdges(edges, edgeFaces);
 }
 
-// Copy edge-based connectivity from HashLists
+// Copy edge-based connectivity to HashLists
 void dynamicTopoFvMesh::setEdgeConnectivity()
 {
-    IOedges_.setSize(nEdges_);
-    forAllIter(HashList<edge>::iterator, edges_, eIter)
+    // Clear out existing structures
+    pointEdges_.clear();
+    faceEdges_.clear();
+
+    const labelListList& pointEdges = eMeshPtr_->pointEdges();
+    forAll(pointEdges, pointI)
     {
-        IOedges_[eIter.index()] = eIter();
+        pointEdges_.append(pointEdges[pointI]);
     }
 
-    IOpointEdges_.setSize(nPoints_);
-    forAllIter(HashList<labelList>::iterator, pointEdges_, peIter)
+    const labelListList& faceEdges = eMeshPtr_->faceEdges();
+    forAll(faceEdges, faceI)
     {
-        IOpointEdges_[peIter.index()] = peIter();
+        faceEdges_.append(faceEdges[faceI]);
     }
-
-    IOedgeFaces_.setSize(nEdges_);
-    forAllIter(HashList<labelList>::iterator, edgeFaces_, efIter)
-    {
-        IOedgeFaces_[efIter.index()] = efIter();
-    }
-
-    IOfaceEdges_.setSize(nFaces_);
-    forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
-    {
-        IOfaceEdges_[feIter.index()] = feIter();
-    }
-
-    IOedgePatchSizes_ = edgePatchSizes_;
-    IOedgePatchStarts_ = edgePatchStarts_;
-
-    IOedges_.writeOpt() = IOobject::AUTO_WRITE;
-    IOedges_.instance() = time().timeName();
-
-    IOpointEdges_.writeOpt() = IOobject::AUTO_WRITE;
-    IOpointEdges_.instance() = time().timeName();
-
-    IOedgeFaces_.writeOpt() = IOobject::AUTO_WRITE;
-    IOedgeFaces_.instance() = time().timeName();
-
-    IOfaceEdges_.writeOpt() = IOobject::AUTO_WRITE;
-    IOfaceEdges_.instance() = time().timeName();
-
-    IOedgePatchSizes_.writeOpt() = IOobject::AUTO_WRITE;
-    IOedgePatchSizes_.instance() = time().timeName();
-
-    IOedgePatchStarts_.writeOpt() = IOobject::AUTO_WRITE;
-    IOedgePatchStarts_.instance() = time().timeName();
 }
 
 // Check the state of edge-based connectivity HashLists
@@ -4652,6 +4591,9 @@ void dynamicTopoFvMesh::calculateLengthScale()
         labelList cellLevels(nCells(),0);
         scalarField lengthScale(nCells(),0.0);
 
+        // HashSet to keep track of cells in each level
+        labelHashSet levelCells;
+
         // Obtain the cellCells addressing list
         const labelListList& cc = cellCells();
 
@@ -4662,28 +4604,38 @@ void dynamicTopoFvMesh::calculateLengthScale()
         const polyBoundaryMesh& bdy = boundaryMesh();
         const labelList& own = faceOwner();
         const pointField& pList = points();
+
         forAll(bdy,patchI)
         {
             const polyPatch& bdyPatch = bdy[patchI];
+
             // Loop through all fixed length-scale patches first
             bool fixed = false;
+
             forAll(toc,wordI)
             {
-                word& patchName = toc[wordI];
-                if (bdy[patchI].name() == patchName)
+                word& pName = toc[wordI];
+
+                if (bdy[patchI].name() == pName)
                 {
                     label pStart = bdyPatch.start();
+
                     forAll(bdyPatch,faceI)
                     {
                         label ownCell = own[pStart+faceI];
+
                         if (cellLevels[ownCell] == 0)
                         {
                             cellLevels[ownCell] = level;
                             lengthScale[ownCell] =
-                                fixedLengthScalePatches_[patchName][0].scalarToken();
+                                fixedLengthScalePatches_[pName][0].scalarToken();
+
+                            levelCells.insert(ownCell);
+
                             visitedCells++;
                         }
                     }
+
                     fixed = true; break;
                 }
             }
@@ -4698,6 +4650,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
             )
             {
                 label pStart = bdyPatch.start();
+
                 forAll(bdyPatch,faceI)
                 {
                     label ownCell = own[pStart+faceI];
@@ -4708,8 +4661,9 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
                         if (twoDMesh_)
                         {
-                            // Get length-scale from edgeToWatch
-                            edge& e = edgeToWatch_[pStart+faceI];
+                            label eIndex = getTriBoundaryEdge(pStart+faceI);
+                            edge& e = edges_[eIndex];
+
                             lengthScale[ownCell] = mag(pList[e[0]] - pList[e[1]]);
                         }
                         else
@@ -4717,13 +4671,17 @@ void dynamicTopoFvMesh::calculateLengthScale()
                             // Average edge-lengths for this face
                             scalar edgeLength = 0.0;
                             labelList& fEdges = faceEdges_[pStart+faceI];
+
                             forAll(fEdges, edgeI)
                             {
                                 edge& e = edges_[fEdges[edgeI]];
                                 edgeLength += mag(pList[e[0]] - pList[e[1]]);
                             }
+
                             lengthScale[ownCell] = (edgeLength/fEdges.size());
                         }
+
+                        levelCells.insert(ownCell);
 
                         visitedCells++;
                     }
@@ -4734,44 +4692,54 @@ void dynamicTopoFvMesh::calculateLengthScale()
         // Perform multiple sweeps through the mesh...
         while (visitedCells < nCells())
         {
+            // Loop through cells of the current level
+            labelList currentLevelCells = levelCells.toc();
+            levelCells.clear();
+
             // Loop through cells, and increment neighbour
             // cells of the current level
-            forAll(cellLevels,cellI)
+            forAll(currentLevelCells,cellI)
             {
-                if (cellLevels[cellI] == level)
+                // Obtain the cells neighbouring this one
+                const labelList& cList = cc[cellI];
+
+                forAll(cList, indexI)
                 {
-                    // Obtain the cells neighbouring this one
-                    const labelList& cList = cc[cellI];
-                    forAll(cList, indexI)
+                    label& ngbLevel = cellLevels[cList[indexI]];
+
+                    if (ngbLevel == 0)
                     {
-                        label& ngbLevel = cellLevels[cList[indexI]];
-                        if (ngbLevel == 0)
+                        ngbLevel = level+1;
+
+                        // Compute the mean of the existing
+                        // neighbour length-scales
+                        const labelList& ncList = cc[cList[indexI]];
+                        scalar sumLength = 0.0;
+                        label nTouchedNgb = 0;
+
+                        forAll(ncList, indexJ)
                         {
-                            ngbLevel = level+1;
+                            label sLevel = cellLevels[ncList[indexJ]];
 
-                            // Compute the mean of the existing
-                            // neighbour length-scales
-                            const labelList& ncList = cc[cList[indexI]];
-                            scalar sumLength = 0.0;
-                            label nTouchedNgb = 0;
-                            forAll(ncList, indexJ)
+                            if ((sLevel < ngbLevel) && (sLevel > 0))
                             {
-                                label sLevel = cellLevels[ncList[indexJ]];
-                                if ((sLevel < ngbLevel) && (sLevel > 0))
-                                {
-                                    sumLength += lengthScale[ncList[indexJ]];
-                                    nTouchedNgb++;
-                                }
+                                sumLength += lengthScale[ncList[indexJ]];
+                                nTouchedNgb++;
                             }
-                            sumLength /= nTouchedNgb;
-
-                            // Scale the length and assign to this cell
-                            scalar sLength = sumLength*growthFactor_;
-                            sLength = (sLength < maxLengthScale_)
-                                    ? sLength : maxLengthScale_;
-                            lengthScale[cList[indexI]] = sLength;
-                            visitedCells++;
                         }
+
+                        sumLength /= nTouchedNgb;
+
+                        // Scale the length and assign to this cell
+                        scalar sLength = sumLength*growthFactor_;
+                        sLength = (sLength < maxLengthScale_)
+                                ? sLength : maxLengthScale_;
+
+                        lengthScale[cList[indexI]] = sLength;
+
+                        levelCells.insert(cList[indexI]);
+
+                        visitedCells++;
                     }
                 }
             }
@@ -4828,6 +4796,42 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
     return lengthScale_[owner_[faceIndex]];
 }
 
+// Given a boundary face, pick out a boundary edge that
+// contains a triangular face. For 2D simplical meshes only.
+label dynamicTopoFvMesh::getTriBoundaryEdge
+(
+    const label faceIndex
+)
+{
+    const labelList& fEdges = faceEdges_[faceIndex];
+
+    forAll(fEdges, edgeI)
+    {
+        // Obtain edgeFaces for this edge
+        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+        forAll(eFaces, faceI)
+        {
+            if (faces_[eFaces[faceI]].size() == 3)
+            {
+                // Found a triangular face. Return this edge.
+                return fEdges[edgeI];
+            }
+        }
+    }
+
+    // This bit should never happen.
+    FatalErrorIn
+    (
+        "label dynamicTopoFvMesh::getTriBoundaryEdge()"
+    )
+    << "Cannot find a triangular face bordering face: " << faceIndex << nl
+    << " :: " << faces_[faceIndex]
+    << abort(FatalError);
+
+    return -1;
+}
+
 // 2D Edge-swapping engine
 void dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
@@ -4835,14 +4839,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
-    bool found, foundinner;
-    label otherPointIndex = -1, nextPoint = -1;
     FixedList<label,2> cellLabels(-1);
-    FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
-    FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
-    FixedList<label,4> commonFaceIndex;
-    FixedList<face,4>  commonFaces;
-    FixedList<edge,2>  commonEdges;
 
     // Pick items off the stack
     while (!mesh->faceStack(mesh->getThreadID(pthread_self())).empty())
@@ -4852,210 +4849,17 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
         // Get the two cells on either side...
         mesh->faceCells(findex, cellLabels);
-        label c0 = cellLabels[0];
-        label c1 = cellLabels[1];
 
         // Consider only internal faces..
-        if (c1 == -1) continue;
-
-        // Find the interior/boundary faces.
-        mesh->findPrismFaces
-        (
-            findex,
-            c0,
-            c0BdyFace,
-            c0BdyIndex,
-            c0IntFace,
-            c0IntIndex
-        );
-
-        mesh->findPrismFaces
-        (
-            findex,
-            c1,
-            c1BdyFace,
-            c1BdyIndex,
-            c1IntFace,
-            c1IntIndex
-        );
-
-        // Find the common faces / edges on the boundary
-        // At the end of this loop, commonFaces [0] & [1] share commonEdge [0]
-        // and commonFaces [2] & [3] share commonEdge [1]
-        // Also, commonFaces[0] & [2] are connected to cell[0],
-        // and commonFaces[1] & [3] are connected to cell[1]
-        found = false; foundinner = false;
-        edgeList e1 = c0BdyFace[0].edges(), e2 = c1BdyFace[0].edges();
-        edgeList e3 = c0BdyFace[1].edges(), e4 = c1BdyFace[1].edges();
-        forAll(e1,edgeI)
+        if (cellLabels[1] == -1)
         {
-            forAll(e2,edgeJ)
-            {
-                if (e1[edgeI] == e2[edgeJ])
-                {
-                    // These two faces share an edge, store for posterity
-                    commonFaces[0] = c0BdyFace[0];
-                    commonFaces[1] = c1BdyFace[0];
-                    commonFaces[2] = c0BdyFace[1];
-                    commonFaces[3] = c1BdyFace[1];
-                    commonFaceIndex[0] = c0BdyIndex[0];
-                    commonFaceIndex[1] = c1BdyIndex[0];
-                    commonFaceIndex[2] = c0BdyIndex[1];
-                    commonFaceIndex[3] = c1BdyIndex[1];
-                    commonEdges[0] = e1[edgeI];
-                    forAll(e3,edgeK)
-                    {
-                        forAll(e4,edgeL)
-                        {
-                            if (e3[edgeK] == e4[edgeL])
-                            {
-                                commonEdges[1] = e3[edgeK];
-                                foundinner = true; break;
-                            }
-                        }
-                        if (foundinner) break;
-                    }
-                    found = true; break;
-                }
-            }
-            if (found) break;
-        }
-        if (!found)
-        {
-            // A match was obviously not found before,
-            // but we know the common faces now.
-            commonFaces[0] = c0BdyFace[0];
-            commonFaces[1] = c1BdyFace[1];
-            commonFaces[2] = c0BdyFace[1];
-            commonFaces[3] = c1BdyFace[0];
-            commonFaceIndex[0] = c0BdyIndex[0];
-            commonFaceIndex[1] = c1BdyIndex[1];
-            commonFaceIndex[2] = c0BdyIndex[1];
-            commonFaceIndex[3] = c1BdyIndex[0];
-            // Start a new search for common edges
-            forAll(e1,edgeI)
-            {
-                forAll(e4,edgeJ)
-                {
-                    if (e1[edgeI] == e4[edgeJ])
-                    {
-                        commonEdges[0] = e1[edgeI];
-                        forAll(e2,edgeK)
-                        {
-                            forAll(e3,edgeL)
-                            {
-                                if (e2[edgeK] == e3[edgeL])
-                                {
-                                    commonEdges[1] = e2[edgeK];
-                                    foundinner = true; break;
-                                }
-                            }
-                            if (foundinner) break;
-                        }
-                        found = true; break;
-                    }
-                }
-                if (found) break;
-            }
+            continue;
         }
 
-        // Construct a circle passing through the three
-        // points of the first face, define its radius
-        label zeroIndex  = commonFaces[0][0];
-        label oneIndex   = commonFaces[0][1];
-        label twoIndex   = commonFaces[0][2];
-        point& pointZero = mesh->meshPoints()[zeroIndex];
-        point& pointOne  = mesh->meshPoints()[oneIndex];
-        point& pointTwo  = mesh->meshPoints()[twoIndex];
-
-        // Determine the circumcenter
-        point center = mesh->circumCenter
-                       (
-                           pointZero,
-                           pointOne,
-                           pointTwo,
-                           zeroIndex,
-                           oneIndex,
-                           twoIndex
-                       );
-
-        scalar radius = (pointZero - center)&(pointZero - center);
-
-        // Find the isolated point on the other face, and the point next to it
-        mesh->findIsolatedPoint
-        (
-            commonFaces[1],
-            commonEdges[0],
-            otherPointIndex,
-            nextPoint
-        );
-
-        // ...and determine whether it lies in this circle
-        point otherPoint = mesh->meshPoints()[otherPointIndex];
-
-        if
-        (
-            ((otherPoint - center)&(otherPoint - center)) < radius
-        )
+        // Perform a Delaunay test and check if a flip is necesary
+        if (mesh->testDelaunay(findex))
         {
-            mesh->swapQuadFace
-            (
-                findex,
-                commonFaceIndex,
-                commonFaces,
-                commonEdges
-            );
-        }
-    }
-}
-
-// Initialize the length-scale field
-void dynamicTopoFvMesh::initLengthScale()
-{
-    lengthScale_.setSize(nCells_, 0.0);
-
-    if (twoDMesh_)
-    {
-        // Allocate fields
-        edgeToWatch_.setSize(nFaces_,edge(0,0));
-
-        // Loop through all quad-faces and build initial edge-lengths
-        bool found;
-        for(label findex=0; findex<nFaces_; findex++)
-        {
-            face& fi = faces_[findex];
-            if (fi.size() == 4)
-            {
-                label c0 = owner_[findex];
-                cell& cell_0 = cells_[c0];
-                edgeList efi = fi.edges();
-
-                // Look for a triangular face on the boundary
-                found=false;
-                forAll(cell_0, i)
-                {
-                    label faceIndex = cell_0[i];
-                    face& fj=faces_[faceIndex];
-                    if (neighbour_[faceIndex] == -1 && fj.size() == 3)
-                    {
-                        // Match an edge, and compute its length
-                        edgeList efj = fj.edges();
-                        forAll(efi, indexI)
-                        {
-                            forAll(efj, indexJ)
-                            {
-                                if (efi[indexI] == efj[indexJ])
-                                {
-                                    edgeToWatch_[findex] = efi[indexI];
-                                    found=true; break;
-                                }
-                            }
-                            if (found) break;
-                        }
-                        break;
-                    }
-                }
-            }
+            mesh->swapQuadFace(findex);
         }
     }
 }
@@ -5063,139 +4867,38 @@ void dynamicTopoFvMesh::initLengthScale()
 // Initialize edge related connectivity lists
 void dynamicTopoFvMesh::initEdges()
 {
-    if (IOedges_.headerOk())
+    // Initialize eMesh, and copy to HashLists
+    eMeshPtr_.set(new eMesh(*this));
+
+    // Obtain information
+    nEdges_ = eMeshPtr_->nEdges();
+    nInternalEdges_ = eMeshPtr_->nInternalEdges();
+    edgePatchSizes_ = eMeshPtr_->boundary().patchSizes();
+    edgePatchStarts_ = eMeshPtr_->boundary().patchStarts();
+
+    // Set HashLists with edge connectivity information
+    const edgeList& edges = eMeshPtr_->edges();
+    forAll(edges, edgeI)
     {
-        // Connectivity is already read in from disk, so copy to HashLists.
-        forAll(IOedges_, edgeI)
-        {
-            edges_.append(IOedges_[edgeI]);
-        }
-
-        forAll(IOpointEdges_, pointI)
-        {
-            pointEdges_.append(IOpointEdges_[pointI]);
-        }
-
-        forAll(IOedgeFaces_, edgeI)
-        {
-            edgeFaces_.append(IOedgeFaces_[edgeI]);
-        }
-
-        forAll(IOfaceEdges_, faceI)
-        {
-            faceEdges_.append(IOfaceEdges_[faceI]);
-        }
-
-        edgePatchSizes_ = IOedgePatchSizes_;
-        edgePatchStarts_ = IOedgePatchStarts_;
-
-        // Obtain nEdges_ and nInternalEdges_ from patches and set sizes
-        label lastPatch = numPatches_-1;
-        nEdges_ = edgePatchStarts_[lastPatch] + edgePatchSizes_[lastPatch];
-        nInternalEdges_ = edgePatchStarts_[0];
-        reverseEdgeMap_.setSize(nEdges_);
-
-        // Check to see that everything is okay
-#       ifdef FULLDEBUG
-        checkEdgeConnectivity();
-#       endif
+        edges_.append(edges[edgeI]);
     }
-    else
+
+    const labelListList& pointEdges = eMeshPtr_->pointEdges();
+    forAll(pointEdges, pointI)
     {
-        // Set sizes first.
-        nEdges_ = primitiveMesh::nEdges();
-        reverseEdgeMap_.setSize(nEdges_);
+        pointEdges_.append(pointEdges[pointI]);
+    }
 
-        // Obtain connectivity from primitive mesh
-        const edgeList& edges = primitiveMesh::edges();
-        const labelListList& pEdges = primitiveMesh::pointEdges();
-        const labelListList& fEdges = primitiveMesh::faceEdges();
-        const labelListList& eFaces = primitiveMesh::edgeFaces();
+    const labelListList& edgeFaces = eMeshPtr_->edgeFaces();
+    forAll(edgeFaces, edgeI)
+    {
+        edgeFaces_.append(edgeFaces[edgeI]);
+    }
 
-        // Allocate lists for re-ordering
-        labelList edgePatch(nEdges_, -1);
-
-        // Edge-patches are the same as faces
-        for(label i = nInternalFaces_; i < nFaces_; i++)
-        {
-            const labelList& fEdge = fEdges[i];
-            forAll(fEdge, edgeI)
-            {
-                edgePatch[fEdge[edgeI]] = whichPatch(i);
-            }
-        }
-
-        // Loop through edgePatch and renumber internal edges
-        forAll(edgePatch, edgeI)
-        {
-            if (edgePatch[edgeI] == -1)
-            {
-                reverseEdgeMap_[edgeI] = nInternalEdges_++;
-            }
-            else
-            {
-                edgePatchSizes_[edgePatch[edgeI]]++;
-            }
-        }
-
-        // Calculate patch-starts
-        label startCount = nInternalEdges_;
-        forAll(edgePatchStarts_, patchI)
-        {
-            edgePatchStarts_[patchI] = startCount;
-            startCount += edgePatchSizes_[patchI];
-        }
-
-        // Now renumber boundary edges
-        labelList patchCount(edgePatchStarts_);
-        forAll(edgePatch, edgeI)
-        {
-            if (edgePatch[edgeI] >= 0)
-            {
-                reverseEdgeMap_[edgeI] = patchCount[edgePatch[edgeI]]++;
-            }
-        }
-
-        // Renumber and fill in faceEdges
-        forAll(fEdges, faceI)
-        {
-            const labelList& fEdge = fEdges[faceI];
-            labelList renumberFaceEdge(fEdge.size(),-1);
-
-            forAll(fEdge, edgeI)
-            {
-                renumberFaceEdge[edgeI] = reverseEdgeMap_[fEdge[edgeI]];
-            }
-
-            faceEdges_.append(renumberFaceEdge);
-        }
-
-        // Renumber and fill in pointEdges
-        forAll(pEdges, pointI)
-        {
-            const labelList& pEdge = pEdges[pointI];
-            labelList renumberPointEdges(pEdge.size(), -1);
-
-            forAll(pEdge, edgeI)
-            {
-                renumberPointEdges[edgeI] = reverseEdgeMap_[pEdge[edgeI]];
-            }
-
-            pointEdges_.append(renumberPointEdges);
-        }
-
-        // Renumber and fill in edges and edgeFaces
-        edges_.setSize(nEdges_, edge(-1,-1));
-        edgeFaces_.setSize(nEdges_, labelList(0));
-
-        forAll(edges, edgeI)
-        {
-            edges_[reverseEdgeMap_[edgeI]] = edges[edgeI];
-            edgeFaces_[reverseEdgeMap_[edgeI]] = eFaces[edgeI];
-        }
-
-        // Now that connectivity is constructed, copy and set the output-option
-        setEdgeConnectivity();
+    const labelListList& faceEdges = eMeshPtr_->faceEdges();
+    forAll(faceEdges, faceI)
+    {
+        faceEdges_.append(faceEdges[faceI]);
     }
 }
 
@@ -5414,8 +5117,8 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 {
     // Loop through all quad-faces and bisect/collapse
     // edges (quad-faces) by the criterion:
-    // Bisect when boundary edge-length > ratioMax_*originalLength
-    // Collapse when boundary edge-length < ratioMin_*originalLength
+    // Bisect when boundary edge-length > ratioMax_*lengthScale
+    // Collapse when boundary edge-length < ratioMin_*lengthScale
 
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
@@ -5434,10 +5137,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
         if (mesh->checkQuadFace(findex))
         {
             // Measure the boundary edge-length of the face in question
-            edge& checkEdge = mesh->edgeToWatch()[findex];
-            point& a = mesh->meshPoints()[checkEdge[0]];
-            point& b = mesh->meshPoints()[checkEdge[1]];
-            scalar length = mag(b-a);
+            scalar length = mesh->edgeLength(mesh->getTriBoundaryEdge(findex));
 
             // Get the two cells on either side...
             mesh->faceCells(findex, cellLabels);
@@ -5695,8 +5395,8 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 )
 {
     // Loop through all edges and bisect/collapse by the criterion:
-    // Bisect when edge-length > ratioMax_*originalLength
-    // Collapse when edge-length < ratioMin_*originalLength
+    // Bisect when edge-length > ratioMax_*lengthScale
+    // Collapse when edge-length < ratioMin_*lengthScale
 
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
@@ -5729,8 +5429,6 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
             // Collapse this edge
             bool success = mesh->collapseEdge(eIndex);
 
-            // The edge can safely be deleted, since the iterator points
-            // to the next valid edge on the list.
             if (success)
             {
                 // Set the flag
@@ -5812,23 +5510,23 @@ inline void dynamicTopoFvMesh::initFaceStacks()
 // Method for the swapping of a quad-face in 2D
 void dynamicTopoFvMesh::swapQuadFace
 (
-    const label findex,
-    const FixedList<label,4>& commonFaceIndex,
-    const FixedList<face,4>&  commonFaces,
-    const FixedList<edge,2>&  commonEdges
+    const label findex
 )
 {
     face f;
-    edge firstEdge(0,0);
     bool found = false;
+    label commonIndex = -1;
     FixedList<label,4> otherPointIndex(-1), nextToOtherPoint(-1);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
-    FixedList<label,4> commonIntFaceIndex;
+    FixedList<label,2> commonEdgeIndex(-1);
+    FixedList<edge,2>  commonEdges;
+    FixedList<label,4> commonFaceIndex(-1);
+    FixedList<face,4>  commonFaces;
+    FixedList<label,4> commonIntFaceIndex(-1);
     FixedList<face,4>  commonIntFaces;
-
-    // Obtain a reference for this face...
-    face& thisFace = faces_[findex];
+    FixedList<bool,2> foundTriFace0(false), foundTriFace1(false);
+    FixedList<face,2> triFaces0(face(3)), triFaces1(face(3));
 
     // Get the two cells on either side...
     label c0 = owner_[findex];
@@ -5837,6 +5535,100 @@ void dynamicTopoFvMesh::swapQuadFace
     // Get cell references
     cell &cell_0 = cells_[c0];
     cell &cell_1 = cells_[c1];
+
+    // Need to find common faces and edges...
+    // At the end of this loop, commonFaces [0] & [1] share commonEdge[0]
+    // and commonFaces [2] & [3] share commonEdge[1]
+    // Also, commonFaces[0] & [2] are connected to cell[0],
+    // and commonFaces[1] & [3] are connected to cell[1]
+    labelList& fEdges = faceEdges_[findex];
+
+    forAll(fEdges, edgeI)
+    {
+        // Break out if all triangular faces are found
+        if
+        (
+            foundTriFace0[0] && foundTriFace0[1]
+         && foundTriFace1[0] && foundTriFace1[1]
+        )
+        {
+            break;
+        }
+
+        // Obtain edgeFaces for this edge
+        labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+        forAll(eFaces, faceI)
+        {
+            face& eFace = faces_[eFaces[faceI]];
+
+            if (eFace.size() == 3)
+            {
+                // Found a triangular face. Determine which cell it belongs to.
+                if (owner_[eFaces[faceI]] == c0)
+                {
+                    if (foundTriFace0[0])
+                    {
+                        // Update the second face on cell[0].
+                        commonIndex = 2;
+                        foundTriFace0[1] = true;
+
+                        if (foundTriFace1[1])
+                        {
+                            commonEdgeIndex[1] = fEdges[edgeI];
+                            commonEdges[1] = edges_[fEdges[edgeI]];
+                        }
+                    }
+                    else
+                    {
+                        // Update the first face on cell[0].
+                        commonIndex = 0;
+                        foundTriFace0[0] = true;
+
+                        if (foundTriFace1[0])
+                        {
+                            commonEdgeIndex[0] = fEdges[edgeI];
+                            commonEdges[0] = edges_[fEdges[edgeI]];
+                        }
+                    }
+                }
+                else
+                {
+                    if (foundTriFace1[0])
+                    {
+                        // Update the second face on cell[1].
+                        commonIndex = 3;
+                        foundTriFace1[1] = true;
+
+                        if (foundTriFace0[1])
+                        {
+                            commonEdgeIndex[1] = fEdges[edgeI];
+                            commonEdges[1] = edges_[fEdges[edgeI]];
+                        }
+                    }
+                    else
+                    {
+                        // Update the first face on cell[1].
+                        commonIndex = 1;
+                        foundTriFace1[0] = true;
+
+                        if (foundTriFace0[0])
+                        {
+                            commonEdgeIndex[0] = fEdges[edgeI];
+                            commonEdges[0] = edges_[fEdges[edgeI]];
+                        }
+                    }
+                }
+
+                // Store the face and index
+                commonFaces[commonIndex][0] = eFace[0];
+                commonFaces[commonIndex][1] = eFace[1];
+                commonFaces[commonIndex][2] = eFace[2];
+
+                commonFaceIndex[commonIndex] = eFaces[faceI];
+            }
+        }
+    }
 
     // This face needs to be flipped...
     if (debug)
@@ -5914,22 +5706,28 @@ void dynamicTopoFvMesh::swapQuadFace
 
     // Find the other two edges on the face being flipped
     // First edge detected belongs to cell[0] by default
-    edgeList eThis = thisFace.edges();
-    forAll(eThis,edgeI)
+    label firstEdgeIndex = -1;
+    edge firstEdge(-1, -1);
+
+    forAll(fEdges, edgeI)
     {
         if
         (
-            eThis[edgeI] != commonEdges[0]
-         && eThis[edgeI] != commonEdges[1]
+            fEdges[edgeI] != commonEdgeIndex[0]
+         && fEdges[edgeI] != commonEdgeIndex[1]
         )
         {
+            // Obtain a reference to this edge
+            edge& eThis = edges_[fEdges[edgeI]];
+
             if
             (
-                eThis[edgeI][0] == nextToOtherPoint[0]
-             || eThis[edgeI][1] == nextToOtherPoint[0]
+                eThis[0] == nextToOtherPoint[0]
+             || eThis[1] == nextToOtherPoint[0]
             )
             {
-                firstEdge = eThis[edgeI];
+                firstEdge = eThis;
+                firstEdgeIndex = fEdges[edgeI];
             }
         }
     }
@@ -5939,10 +5737,10 @@ void dynamicTopoFvMesh::swapQuadFace
     // and commonIntFaces [2] & [3] share the secondEdge,
     // where [0],[2] lie on cell[0] and [1],[3] lie on cell[1]
     found = false;
-    edgeList e1 = c0IntFace[0].edges();
+    labelList e1 = faceEdges_[c0IntIndex[0]];
     forAll(e1,edgeI)
     {
-        if ( e1[edgeI] == firstEdge )
+        if ( e1[edgeI] == firstEdgeIndex )
         {
             commonIntFaces[0] = c0IntFace[0];
             commonIntFaces[2] = c0IntFace[1];
@@ -5951,6 +5749,7 @@ void dynamicTopoFvMesh::swapQuadFace
             found = true; break;
         }
     }
+
     if (!found)
     {
         // The edge was obviously not found before
@@ -5961,10 +5760,10 @@ void dynamicTopoFvMesh::swapQuadFace
     }
 
     found = false;
-    edgeList e3 = c1IntFace[0].edges();
+    labelList e3 = faceEdges_[c1IntIndex[0]];
     forAll(e3,edgeI)
     {
-        if ( e3[edgeI] == firstEdge )
+        if ( e3[edgeI] == firstEdgeIndex )
         {
             commonIntFaces[1] = c1IntFace[0];
             commonIntFaces[3] = c1IntFace[1];
@@ -5973,6 +5772,7 @@ void dynamicTopoFvMesh::swapQuadFace
             found = true; break;
         }
     }
+
     if (!found)
     {
         // The edge was obviously not found before
@@ -5999,14 +5799,6 @@ void dynamicTopoFvMesh::swapQuadFace
     cell_1[c1count++] = findex;
     owner_[findex] = c0;
     neighbour_[findex] = c1;
-
-    // Modify the edge-to-watch
-    if (edgeModification_)
-    {
-        edge& edgeToModify = edgeToWatch_[findex];
-        edgeToModify[0] = otherPointIndex[0];
-        edgeToModify[1] = otherPointIndex[1];
-    }
 
     // Four modified boundary faces need to be constructed,
     // but right-handedness is also important.
@@ -6421,11 +6213,6 @@ void dynamicTopoFvMesh::bisectQuadFace
         thisFace
     );
 
-    // Change the edge-length criteria for this face
-    tmpEdge[0] = nextToOtherPoint[0];
-    tmpEdge[1] = newPtIndex0;
-    edgeToWatch_[findex] = tmpEdge;
-
     if (debug)
     {
         Info << "Modified thisFace: " << findex << ": " << thisFace << endl;
@@ -6481,22 +6268,18 @@ void dynamicTopoFvMesh::bisectQuadFace
     // Temporary data
     label newFaceIndex;
     face tmpQuadFace(4), tmpTriFace(3);
-    edge edgeToWatch;
 
     // New interior face; Owner = cell[0] & Neighbour = newCell[0]
     tmpQuadFace[0] = otherPointIndex[0];
     tmpQuadFace[1] = newPtIndex0;
     tmpQuadFace[2] = newPtIndex1;
     tmpQuadFace[3] = otherPointIndex[1];
-    edgeToWatch[0] = otherPointIndex[0];
-    edgeToWatch[1] = newPtIndex0;
     newFaceIndex = insertFace
                    (
                        -1,
                        tmpQuadFace,
                        c0,
-                       newCellIndex0,
-                       edgeToWatch
+                       newCellIndex0
                    );
     replaceLabel(-1, newFaceIndex, newCell0);
     replaceLabel(-1, newFaceIndex, cell_0);
@@ -6508,14 +6291,12 @@ void dynamicTopoFvMesh::bisectQuadFace
     tmpTriFace[0] = otherPointIndex[0];
     tmpTriFace[1] = newPtIndex0;
     tmpTriFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
-    edgeToWatch[0] = edgeToWatch[1] = 0;
     newFaceIndex = insertFace
                    (
                        whichPatch(c0BdyIndex[0]),
                        tmpTriFace,
                        newCellIndex0,
-                       -1,
-                       edgeToWatch
+                       -1
                    );
     replaceLabel(-1, newFaceIndex, newCell0);
 
@@ -6523,14 +6304,12 @@ void dynamicTopoFvMesh::bisectQuadFace
     tmpTriFace[0] = otherPointIndex[1];
     tmpTriFace[1] = newPtIndex1;
     tmpTriFace[2] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
-    edgeToWatch[0] = edgeToWatch[1] = 0;
     newFaceIndex = insertFace
                    (
                        whichPatch(c0BdyIndex[1]),
                        tmpTriFace,
                        c0,
-                       -1,
-                       edgeToWatch
+                       -1
                    );
     replaceLabel(-1, newFaceIndex, cell_0);
 
@@ -6542,15 +6321,12 @@ void dynamicTopoFvMesh::bisectQuadFace
         tmpQuadFace[1] = nextToOtherPoint[1];
         tmpQuadFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
         tmpQuadFace[3] = newPtIndex0;
-        edgeToWatch[0] = newPtIndex1;
-        edgeToWatch[1] = nextToOtherPoint[1];
         newFaceIndex = insertFace
                        (
                            whichPatch(findex),
                            tmpQuadFace,
                            newCellIndex0,
-                           -1,
-                           edgeToWatch
+                           -1
                        );
         replaceLabel(-1, newFaceIndex, newCell0);
 
@@ -6687,15 +6463,12 @@ void dynamicTopoFvMesh::bisectQuadFace
         tmpQuadFace[1] = nextToOtherPoint[1];
         tmpQuadFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
         tmpQuadFace[3] = newPtIndex0;
-        edgeToWatch[0] = newPtIndex1;
-        edgeToWatch[1] = nextToOtherPoint[1];
         newFaceIndex = insertFace
                        (
                            -1,
                            tmpQuadFace,
                            newCellIndex0,
-                           newCellIndex1,
-                           edgeToWatch
+                           newCellIndex1
                        );
         replaceLabel(-1, newFaceIndex, newCell0);
         replaceLabel(-1, newFaceIndex, newCell1);
@@ -6791,15 +6564,12 @@ void dynamicTopoFvMesh::bisectQuadFace
         tmpQuadFace[1] = otherPointIndex[2];
         tmpQuadFace[2] = otherPointIndex[3];
         tmpQuadFace[3] = newPtIndex1;
-        edgeToWatch[0] = newPtIndex1;
-        edgeToWatch[1] = otherPointIndex[3];
         newFaceIndex = insertFace
                        (
                            -1,
                            tmpQuadFace,
                            c1,
-                           newCellIndex1,
-                           edgeToWatch
+                           newCellIndex1
                        );
         replaceLabel(-1, newFaceIndex, newCell1);
         replaceLabel(-1, newFaceIndex, cell_1);
@@ -6808,14 +6578,12 @@ void dynamicTopoFvMesh::bisectQuadFace
         tmpTriFace[0] = otherPointIndex[2];
         tmpTriFace[1] = newPtIndex0;
         tmpTriFace[2] = commonEdges[0].otherVertex(nextToOtherPoint[2]);
-        edgeToWatch[0] = edgeToWatch[1] = 0;
         newFaceIndex = insertFace
                        (
                            patch_0,
                            tmpTriFace,
                            c1,
-                           -1,
-                           edgeToWatch
+                           -1
                        );
         replaceLabel(-1, newFaceIndex, cell_1);
 
@@ -6823,14 +6591,12 @@ void dynamicTopoFvMesh::bisectQuadFace
         tmpTriFace[0] = otherPointIndex[3];
         tmpTriFace[1] = newPtIndex1;
         tmpTriFace[2] = commonEdges[1].otherVertex(nextToOtherPoint[3]);
-        edgeToWatch[0] = edgeToWatch[1] = 0;
         newFaceIndex = insertFace
                        (
                            patch_1,
                            tmpTriFace,
                            newCellIndex1,
-                           -1,
-                           edgeToWatch
+                           -1
                        );
         replaceLabel(-1, newFaceIndex, newCell1);
 
@@ -6896,7 +6662,8 @@ bool dynamicTopoFvMesh::collapseQuadFace
     face tmpTriFace(3);
 
     // Find the two edges from checkEdge
-    edge& checkEdge = edgeToWatch_[findex];
+    // Need to determine checkEdge from edgeFaces ---TODO---
+    edge checkEdge = edge(-1, -1);
     edgeList thisEdges = thisFace.edges();
     forAll(thisEdges,edgeI)
     {
@@ -7147,13 +6914,6 @@ bool dynamicTopoFvMesh::collapseQuadFace
             replaceLabel(cv0,cv2,replacementFace);
             replaceLabel(cv1,cv3,replacementFace);
 
-            // Modify edgeToWatch as well
-            edge& replacementCheckEdge = edgeToWatch_[firstEdgeHull[faceI]];
-            if (replacementCheckEdge[0] == cv0) replacementCheckEdge[0] = cv2;
-            if (replacementCheckEdge[1] == cv0) replacementCheckEdge[1] = cv2;
-            if (replacementCheckEdge[0] == cv1) replacementCheckEdge[0] = cv3;
-            if (replacementCheckEdge[1] == cv1) replacementCheckEdge[1] = cv3;
-
             // Determine the quad-face in cell[0] & cell[1]
             // that belongs to firstEdgeHull
             if (firstEdgeHull[faceI] == c0IntIndex[0])
@@ -7275,13 +7035,6 @@ bool dynamicTopoFvMesh::collapseQuadFace
             face& replacementFace = faces_[secondEdgeHull[faceI]];
             replaceLabel(cv2, cv0, replacementFace);
             replaceLabel(cv3, cv1, replacementFace);
-
-            // Modify edgeToWatch as well
-            edge& replacementCheckEdge = edgeToWatch_[secondEdgeHull[faceI]];
-            if (replacementCheckEdge[0] == cv2) replacementCheckEdge[0] = cv0;
-            if (replacementCheckEdge[1] == cv2) replacementCheckEdge[1] = cv0;
-            if (replacementCheckEdge[0] == cv3) replacementCheckEdge[0] = cv1;
-            if (replacementCheckEdge[1] == cv3) replacementCheckEdge[1] = cv1;
 
             // Determine the quad-face(s) in cell[0] & cell[1]
             // that belongs to secondEdgeHull
@@ -7577,8 +7330,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
                                   whichPatch(faceToThrow[0]),
                                   faces_[faceToKeep[0]],
                                   owner_[faceToKeep[0]],
-                                  -1,
-                                  edgeToWatch_[faceToKeep[0]]
+                                  -1
                               );
 
         replaceLabel
@@ -7644,8 +7396,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
                                       whichPatch(faceToThrow[1]),
                                       faces_[faceToKeep[1]],
                                       owner_[faceToKeep[1]],
-                                      -1,
-                                      edgeToWatch_[faceToKeep[1]]
+                                      -1
                                   );
 
             replaceLabel
@@ -9410,7 +9161,8 @@ bool dynamicTopoFvMesh::remove2DSliver
     FixedList<face,2>  c0BdyFace,  c0IntFace;
 
     // Measure the boundary edge-length of the face in question
-    edge& checkEdge = edgeToWatch_[findex];
+    // Need to obtain checkEdge from edgeFaces ---TODO---
+    edge checkEdge = edge(-1, -1);
     point& a = meshPoints_[checkEdge[0]];
     point& b = meshPoints_[checkEdge[1]];
     scalar length = mag(b-a);
@@ -9636,45 +9388,71 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     if (debug) Info << nl << "3D Edge Swapping complete." << endl;
 }
 
+// Return reference to the edge mesh
+eMesh& dynamicTopoFvMesh::EdgeMesh()
+{
+    if (!eMeshPtr_.valid())
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::edges()"
+        )
+        << "eMesh has not been allocated."
+        << abort(FatalError);
+    }
+
+    return eMeshPtr_();
+}
+
 // Return the number of edges in the mesh.
 // Override of primitiveMesh member function
 label dynamicTopoFvMesh::nEdges() const
 {
-    if (!nEdges_)
+    if (!eMeshPtr_.valid())
     {
-        return primitiveMesh::nEdges();
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::edges()"
+        )
+        << "eMesh has not been allocated."
+        << abort(FatalError);
     }
 
-    return nEdges_;
+    return eMeshPtr_->nEdges();
 }
 
 // Return the number of internal edges in the mesh.
 // Override of primitiveMesh member function
 label dynamicTopoFvMesh::nInternalEdges() const
 {
-    if (!nInternalEdges_)
+    if (!eMeshPtr_.valid())
     {
         FatalErrorIn
         (
-            "dynamicTopoFvMesh::nInternalEdges()"
+            "dynamicTopoFvMesh::edges()"
         )
-        << "Internal edges has not been allocated."
+        << "eMesh has not been allocated."
         << abort(FatalError);
     }
 
-    return nInternalEdges_;
+    return eMeshPtr_->nInternalEdges();
 }
 
-// Return the list of edges in the mesh.
+// Return the ordered list of edges in the mesh.
 // Override of primitiveMesh member function.
 const edgeList& dynamicTopoFvMesh::edges() const
 {
-    if (!nEdges_)
+    if (!eMeshPtr_.valid())
     {
-        return primitiveMesh::edges();
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::edges()"
+        )
+        << "eMesh has not been allocated."
+        << abort(FatalError);
     }
 
-    return IOedges_;
+    return eMeshPtr_->edges();
 }
 
 // Update the mesh for topology changes
@@ -9754,9 +9532,11 @@ bool dynamicTopoFvMesh::updateTopology()
 
         // Allocate temporary lists for mesh-reset
         pointField points(nPoints_);
+        edgeList edges(nEdges_);
         faceList faces(nFaces_);
         labelList owner(nFaces_);
         labelList neighbour(nFaces_);
+        labelListList edgeFaces(nEdges_);
 
         // Null temporaries
         List<objectMap> pointsFromPoints(0);
@@ -9775,7 +9555,15 @@ bool dynamicTopoFvMesh::updateTopology()
         pointField preMotionPoints(0);
 
         // Reorder the mesh and obtain current topological information
-        reOrderMesh(points, faces, owner, neighbour);
+        reOrderMesh
+        (
+            points,
+            edges,
+            faces,
+            owner,
+            neighbour,
+            edgeFaces
+        );
 
         // Copy cell-mapping information
         label indexI=0;
@@ -9818,6 +9606,17 @@ bool dynamicTopoFvMesh::updateTopology()
             patchSizes_,
             patchStarts_
         );
+
+        // Reset the edge mesh and set pointEdges/faceEdges
+        eMeshPtr_->resetPrimitives
+        (
+            edges,
+            edgeFaces,
+            edgePatchSizes_,
+            edgePatchStarts_
+        );
+
+        setEdgeConnectivity();
 
         // Generate mapping for points on boundary patches
         labelListList patchPointMap(numPatches_);

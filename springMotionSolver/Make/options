@@ -1,5 +1,6 @@
 EXE_INC = \
     -I../multiThreader/lnInclude \
+    -I../edgeDiscretization/lnInclude \
     -I../dynamicTopoFvMesh/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/meshTools/lnInclude \

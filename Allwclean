@@ -6,6 +6,7 @@ wclean tetMetrics
 wclean multiThreader
 wclean springMotionSolver
 wclean fluidInterface
+wclean edgeDiscretization
 wclean dynamicTopoFvMesh
 wclean interfaceTrackFoam
 
