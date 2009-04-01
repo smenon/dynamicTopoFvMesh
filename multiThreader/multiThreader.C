@@ -557,77 +557,83 @@ void Foam::Mutex::unlock()
     }    
 }
 
-void Foam::rwMutex::readLock()
+void Foam::rwMutex::lock(const lockType lType)
 {
-    if (pthread_rwlock_rdlock(&lock_))
+    if (lType == READ_LOCK)
     {
-        FatalErrorIn("multiThreader::rwMutex::readLock()")
-            << "Unable to read lock the mutex."
+        if (pthread_rwlock_rdlock(&lock_))
+        {
+            FatalErrorIn("multiThreader::rwMutex::lock()")
+                << "Unable to read lock the mutex."
+                << abort(FatalError);
+        }
+    }
+    else
+    if (lType == WRITE_LOCK)
+    {
+        if (pthread_rwlock_wrlock(&lock_))
+        {
+            FatalErrorIn("multiThreader::rwMutex::lock()")
+                << "Unable to write lock the mutex."
+                << abort(FatalError);
+        }
+    }
+    else
+    {
+        FatalErrorIn("multiThreader::rwMutex::lock()")
+            << "Undefined mutex type."
             << abort(FatalError);
     }
 }
 
-bool Foam::rwMutex::tryReadLock()
+bool Foam::rwMutex::tryLock(const lockType lType)
 {
-    label retVal;
+    label retVal = -1;
 
-    if ((retVal = pthread_rwlock_tryrdlock(&lock_)) != 0)
+    if (lType == READ_LOCK)
     {
-#       ifdef FULLDEBUG
-        if (debug)
+        if ((retVal = pthread_rwlock_tryrdlock(&lock_)) != 0)
         {
             if (retVal == EINVAL)
             {
-                FatalErrorIn("multiThreader::rwMutex::tryReadLock()")
-                    << "Mutex returned EINVAL."
+                FatalErrorIn("multiThreader::rwMutex::tryLock()")
+                    << "Read mutex returned EINVAL."
                     << abort(FatalError);
             }
+
             if (retVal == EFAULT)
             {
-                FatalErrorIn("multiThreader::rwMutex::tryReadLock()")
-                    << "Mutex returned EFAULT."
+                FatalErrorIn("multiThreader::rwMutex::tryLock()")
+                    << "Read mutex returned EFAULT."
                     << abort(FatalError);
             }
         }
-#       endif
     }
-
-    return retVal;
-}
-
-void Foam::rwMutex::writeLock()
-{
-    if (pthread_rwlock_wrlock(&lock_))
+    else
+    if (lType == WRITE_LOCK)
     {
-        FatalErrorIn("multiThreader::rwMutex::writeLock()")
-            << "Unable to write lock the mutex."
+        if ((retVal = pthread_rwlock_trywrlock(&lock_)) != 0)
+        {
+            if (retVal == EINVAL)
+            {
+                FatalErrorIn("multiThreader::rwMutex::tryLock()")
+                    << "Write mutex returned EINVAL."
+                    << abort(FatalError);
+            }
+
+            if (retVal == EFAULT)
+            {
+                FatalErrorIn("multiThreader::rwMutex::tryLock()")
+                    << "Write mutex returned EFAULT."
+                    << abort(FatalError);
+            }
+        }
+    }
+    else
+    {
+        FatalErrorIn("multiThreader::rwMutex::tryLock()")
+            << "Undefined mutex type."
             << abort(FatalError);
-    }
-}
-
-bool Foam::rwMutex::tryWriteLock()
-{
-    label retVal;
-
-    if ((retVal = pthread_rwlock_trywrlock(&lock_)) != 0)
-    {
-#       ifdef FULLDEBUG
-        if (debug)
-        {
-            if (retVal == EINVAL)
-            {
-                FatalErrorIn("multiThreader::rwMutex::tryWriteLock()")
-                    << "Mutex returned EINVAL."
-                    << abort(FatalError);
-            }
-            if (retVal == EFAULT)
-            {
-                FatalErrorIn("multiThreader::rwMutex::tryWriteLock()")
-                    << "Mutex returned EFAULT."
-                    << abort(FatalError);
-            }
-        }
-#       endif
     }
 
     return retVal;

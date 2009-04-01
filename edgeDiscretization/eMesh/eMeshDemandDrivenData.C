@@ -201,7 +201,7 @@ void eMesh::calcEdgePoints() const
             {
                 if
                 (
-                    (neighbour[eFace[faceI]] == -1)
+                    (!mesh_.isInternalFace(eFace[faceI]))
                  && (edgeDirection(faces[eFace[faceI]], e) == 1)
                 )
                 {
@@ -226,9 +226,15 @@ void eMesh::calcEdgePoints() const
                 cellIndex = owner[faceIndex];
             }
             else
+            if (mesh_.isInternalFace(faceIndex))
             {
                 // Clockwise. Pick the neighbour.
                 cellIndex = neighbour[faceIndex];
+            }
+            else
+            {
+                // Looks like we've hit a boundary face. Break out.
+                break;
             }
 
             const cell& cellToCheck = cells[cellIndex];

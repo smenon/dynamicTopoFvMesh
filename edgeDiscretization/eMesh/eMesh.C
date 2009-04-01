@@ -348,6 +348,17 @@ const labelListList& eMesh::pointEdges() const
 }
 
 
+const labelListList& eMesh::edgePoints() const
+{
+    if (!epPtr_)
+    {
+        calcEdgePoints();
+    }
+
+    return *epPtr_;
+}
+
+
 const labelListList& eMesh::faceEdges() const
 {
     if (!fePtr_)

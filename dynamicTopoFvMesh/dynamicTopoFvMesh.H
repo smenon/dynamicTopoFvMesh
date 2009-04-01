@@ -349,7 +349,7 @@ class dynamicTopoFvMesh
         inline stack& edgeStack(const label threadID);
 
         // Return the integer threadID for a given pthreadID
-        inline label getThreadID(const pthread_t& pthreadID);
+        inline label getID(const pthread_t& pthreadID);
 
         // Initialize edge-stacks
         inline void initEdgeStacks();
@@ -520,26 +520,23 @@ class dynamicTopoFvMesh
             bool requiresTriFaces
         );
 
-        // Utility method to build a ring of vertices around the edge
-        inline bool constructVertexRing
+        // Utility method to build a hull of cells (and faces) around an edge
+        inline bool constructHull
         (
             const label eIndex,
-            DynamicList<label>& hullCells,
             DynamicList<label>& hullFaces,
-            DynamicList<label>& hullVertices,
-            scalar& minQuality,
+            DynamicList<label>& hullCells,
             labelHashSet& pLocks,
             labelHashSet& eLocks,
             labelHashSet& fLocks,
             labelHashSet& cLocks,
-            bool requiresQuality
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
         );
 
         // Utility method to compute the minimum quality of a vertex hull
         inline bool computeMinQuality
         (
             const label eIndex,
-            const labelList& hullVertices,
             scalar& minQuality,
             labelHashSet& pLocks,
             labelHashSet& eLocks,
@@ -547,15 +544,13 @@ class dynamicTopoFvMesh
             labelHashSet& cLocks
         );
 
-        // Utility to obtain write permissions for the cell hull.
-        // Returns zero on success
-        inline bool obtainWritePriority
+        // Utility to obtain a read/write lock for an entity.
+        // Returns true on success, and unlocks everything otherwise.
+        inline bool obtainLock
         (
-            const DynamicList<label>& hullCells,
-            labelHashSet& pLocks,
-            labelHashSet& eLocks,
-            labelHashSet& fLocks,
-            labelHashSet& cLocks
+            const rwMutex::lockType lType,
+            bool& haveContention,
+            rwMutex& entityMutex
         );
 
         // Check whether the given edge is on a bounding curve
@@ -575,21 +570,19 @@ class dynamicTopoFvMesh
         inline label fillTables
         (
             const label eIndex,
-            const labelList& hullVertices,
             const scalar minQuality,
             scalarListList& Q,
-            labelListList& K
+            labelListList& K,
+            labelListList& triangulations
         );
 
         // Remove the edge according to the swap sequence
         void removeEdgeFlips
         (
-            const label m,
             const label eIndex,
             const labelListList& K,
-            const DynamicList<label>& hullCells,
             const DynamicList<label>& hullFaces,
-            const DynamicList<label>& hullVertices,
+            const DynamicList<label>& hullCells,
             labelListList& triangulations
         );
 
@@ -606,9 +599,8 @@ class dynamicTopoFvMesh
         // Identify the 3-2 swap from the triangulation sequence
         label identify32Swap
         (
-            const label m,
             const edge& edgeToCheck,
-            const DynamicList<label>& hullVertices,
+            const labelList& hullVertices,
             const labelListList& triangulations
         );
 
@@ -629,21 +621,21 @@ class dynamicTopoFvMesh
             const edge& edgeToCheck,
             const label triangulationIndex,
             const labelListList& triangulations,
-            const DynamicList<label>& hullCells,
+            const labelList& hullVertices,
             const DynamicList<label>& hullFaces,
-            const DynamicList<label>& hullVertices
+            const DynamicList<label>& hullCells
         );
 
-        // Routine to perform 3-2 swaps
+        // Routine to perform 3-2 or 2-2 swaps
         void swap32
         (
             const label edgeToCheckIndex,
             const edge& edgeToCheck,
             const label triangulationIndex,
             const labelListList& triangulations,
-            const DynamicList<label>& hullCells,
+            const labelList& hullVertices,
             const DynamicList<label>& hullFaces,
-            const DynamicList<label>& hullVertices
+            const DynamicList<label>& hullCells
         );
 
         // Reorder points after a topology change
@@ -704,7 +696,6 @@ class dynamicTopoFvMesh
         scalar ratioMax() { return ratioMax_; }
         scalar growthFactor() { return growthFactor_; }
         label maxTetsPerEdge() { return maxTetsPerEdge_; }
-        bool allowTableResize() { return allowTableResize_; }
 
 public:
 

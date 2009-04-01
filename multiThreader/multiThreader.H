@@ -105,6 +105,13 @@ class rwMutex
 
 public:
 
+    // Enumerants for lock-types
+    enum lockType
+    {
+        READ_LOCK,
+        WRITE_LOCK
+    };
+
     // Debug switch
     static bool debug;
 
@@ -114,17 +121,11 @@ public:
     // Destructor
     ~rwMutex();
 
-    // Read lock the mutex
-    void readLock();
+    // Lock the mutex
+    void lock(const lockType lType);
 
-    // Try to acquire a read lock the mutex
-    bool tryReadLock();
-
-    // Read lock the mutex
-    void writeLock();
-
-    // Try to acquire a read lock the mutex
-    bool tryWriteLock();
+    // Try to acquire a lock
+    bool tryLock(const lockType lType);
 
     // Unlock the mutex
     void unlock();

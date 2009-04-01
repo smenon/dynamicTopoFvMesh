@@ -203,6 +203,10 @@ public:
             //- Return constant reference to the pointEdges list
             const labelListList& pointEdges() const;
 
+            //- Return constant reference to the edgePoints list
+            //- Valid for 3D tetrahedral meshes only.
+            const labelListList& edgePoints() const;
+
             //- Return constant reference to the faceEdges list
             const labelListList& faceEdges() const;
 
