@@ -106,6 +106,7 @@ class dynamicTopoFvMesh
         HashList<cell>  cells_;
         HashList<edge>  edges_;
         HashList<labelList> pointEdges_;
+        HashList<labelList> edgePoints_;
         HashList<labelList> edgeFaces_;
         HashList<labelList> faceEdges_;
 
@@ -162,7 +163,6 @@ class dynamicTopoFvMesh
         label               bisectInteriorFace_;
 
         //- 3D Mesh Flipping data
-        HashList<labelList> edgePoints_;
         label               maxTetsPerEdge_;
         Switch              allowTableResize_;
 
@@ -226,7 +226,7 @@ class dynamicTopoFvMesh
 
             // Default constructor
             topoMeshStruct();
-            
+
         } *structPtr_;
 
         //- Mutexes for all entities in the mesh
@@ -305,6 +305,19 @@ class dynamicTopoFvMesh
         // Return a reference to the multiThreader
         const multiThreader& threader() const;
 
+        // Given a boundary quad face, return a boundary triangular face.
+        label getTriBoundaryFace(const label faceIndex);
+
+        // Given a boundary face, pick out a boundary edge that
+        // contains a triangular face.
+        label getTriBoundaryEdge(const label faceIndex);
+
+        // Return the appropriate length-scale for boundary face
+        scalar boundaryLengthScale(const label faceIndex);
+
+        // Return length-scale at an face-location in the mesh [2D]
+        inline scalar meshFaceLengthScale(const label fIndex);
+
         // Return length-scale at an edge-location in the mesh [3D]
         inline scalar meshEdgeLengthScale(const label eIndex);
 
@@ -313,16 +326,6 @@ class dynamicTopoFvMesh
 
         // Return the length of an edge
         inline scalar edgeLength(const label eIndex);
-
-        // Return cell-labels on either side of the face
-        inline void faceCells
-        (
-            const label fIndex,
-            FixedList<label,2> cellLabels
-        );
-
-        // Return length-scale at an cell-location in the mesh
-        inline scalar meshCellLengthScale(const label cIndex);
 
         // MultiThreaded topology modifier [2D]
         void threadedTopoModifier2D();
@@ -351,11 +354,11 @@ class dynamicTopoFvMesh
         // Return the integer threadID for a given pthreadID
         inline label getID(const pthread_t& pthreadID);
 
-        // Initialize edge-stacks
-        inline void initEdgeStacks();
-
         // Initialize face-stacks
         inline void initFaceStacks();
+
+        // Initialize edge-stacks
+        inline void initEdgeStacks();
 
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label& index) const;
@@ -438,12 +441,11 @@ class dynamicTopoFvMesh
         );
 
         // Method to find the common-edge between two faces.
-        // If found, returns the common edge on the first face in the argument
         bool findCommonEdge
         (
-            const face& first,
-            const face& second,
-            edge& common
+            const label first,
+            const label second,
+            label& common
         );
 
         // Method to find the isolated point on a triangular face
@@ -507,17 +509,12 @@ class dynamicTopoFvMesh
             labelList& list
         );
 
-        // Utility method to build a hull of faces connected to the edge
-        // This will also determine whether the edge lies on a boundary
-        bool constructPrismHull
+        // Utility method to build a hull of cells connected to the edge [2D]
+        void constructPrismHull
         (
-            const edge& edgeToCheck,
-            const label startFaceIndex,
-            DynamicList<label>& hullFaces,
-            DynamicList<label>& hullCells,
-            DynamicList<label>& hullTriFaces,
-            DynamicList<label>& edgePatches,
-            bool requiresTriFaces
+            const label eIndex,
+            labelHashSet& hullTriFaces,
+            labelHashSet& hullCells
         );
 
         // Utility method to build a hull of cells (and faces) around an edge
@@ -545,7 +542,7 @@ class dynamicTopoFvMesh
         );
 
         // Utility to obtain a read/write lock for an entity.
-        // Returns true on success, and unlocks everything otherwise.
+        // Returns true on success.
         inline bool obtainLock
         (
             const rwMutex::lockType lType,
@@ -679,13 +676,6 @@ class dynamicTopoFvMesh
 
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
-
-        // Return the appropriate length-scale for boundary face
-        scalar boundaryLengthScale(const label faceIndex);
-
-        // Given a boundary face, pick out a boundary edge that
-        // contains a triangular face. For 2D simplical meshes only.
-        label getTriBoundaryEdge(const label faceIndex);
 
         // Does the mesh perform edge-modification?
         bool edgeModification();
