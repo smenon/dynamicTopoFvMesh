@@ -31,7 +31,7 @@ Description
 
     Thread-pooling is implemented as described in:
    "Using POSIX Threads: Programming with Pthreads"
-    by Brad nichols, Dick Buttlar, Jackie Farrell
+    by Brad Nichols, Dick Buttlar, Jackie Farrell
       O'Reilly & Associates, Inc.
  
 Author

@@ -203,10 +203,12 @@ class dynamicTopoFvMesh
                 inline void print();
         };
 
-        // Stack-list of faces to be checked for topo-changes [2D]
+        // Stack-list of faces to be checked for topo-changes [2D].
+        // One for each thread.
         List<stack> faceStack_;
 
         // Stack-list of edges to be checked for topo-changes [3D]
+        // One for each thread.
         List<stack> edgeStack_;
 
         //- Support for multithreading
@@ -229,11 +231,17 @@ class dynamicTopoFvMesh
 
         } *structPtr_;
 
-        //- Mutexes for all entities in the mesh
-        Mutex pMutex_;
-        Mutex eMutex_;
-        Mutex fMutex_;
-        Mutex cMutex_;
+        //- List of locks for each entity (and each thread)
+        List<labelHashSet> pLocks_;
+        List<labelHashSet> eLocks_;
+        List<labelHashSet> fLocks_;
+        List<labelHashSet> cLocks_;
+
+        //- Read-write mutexes for all entities in the mesh
+        rwMutex pMutex_;
+        rwMutex eMutex_;
+        rwMutex fMutex_;
+        rwMutex cMutex_;
 
         //- Contention mutex for threads that attempt
         //  to modify hulls simultaneously.
@@ -254,10 +262,10 @@ class dynamicTopoFvMesh
         void operator=(const dynamicTopoFvMesh&);
 
         // Perform a Delaunay test on an internal face
-        // Return 0 if the test succeeds, and non-zero otherwise
         inline bool testDelaunay
         (
-            const label faceIndex
+            const label faceIndex,
+            bool& failed
         );
 
         // Typedef for tetrahedral metrics
@@ -294,13 +302,7 @@ class dynamicTopoFvMesh
         void initMutexLists();
 
         // Unlock mutex lists with HashSets
-        inline void unlockMutexLists
-        (
-            labelHashSet& pLocks,
-            labelHashSet& eLocks,
-            labelHashSet& fLocks,
-            labelHashSet& cLocks
-        );
+        inline void unlockMutexLists();
 
         // Return a reference to the multiThreader
         const multiThreader& threader() const;
@@ -351,8 +353,20 @@ class dynamicTopoFvMesh
         // Return the edge-stack for a particular thread
         inline stack& edgeStack(const label threadID);
 
-        // Return the integer threadID for a given pthreadID
-        inline label getID(const pthread_t& pthreadID);
+        // Return the point lock list for a particular thread
+        inline labelHashSet& pLocks(const label threadID);
+
+        // Return the edge lock list for a particular thread
+        inline labelHashSet& eLocks(const label threadID);
+
+        // Return the face lock list for a particular thread
+        inline labelHashSet& fLocks(const label threadID);
+
+        // Return the cell lock list for a particular thread
+        inline labelHashSet& cLocks(const label threadID);
+
+        // Return the integer threadID for a given pthread
+        inline label self();
 
         // Initialize face-stacks
         inline void initFaceStacks();
@@ -361,28 +375,28 @@ class dynamicTopoFvMesh
         inline void initEdgeStacks();
 
         // Method to determine the boundary patch index for a given face
-        inline label whichPatch(const label& index) const;
+        inline label whichPatch(const label& index);
 
         // Method to determine the boundary patch index for a given edge
-        inline label whichEdgePatch(const label& index) const;
+        inline label whichEdgePatch(const label& index);
 
         // Method for the swapping of a quad-face in 2D
         void swapQuadFace
         (
-            const label findex
+            const label fIndex
         );
 
         // Method for the bisection of a quad-face in 2D
         void bisectQuadFace
         (
-            const label findex
+            const label fIndex
         );
 
         // Method for the collapse of a quad-face in 2D
         // Returns a boolean value indicating whether the collapse was valid
         bool collapseQuadFace
         (
-            const label findex
+            const label fIndex
         );
 
         // Method for the bisection of an edge in 3D
@@ -425,15 +439,15 @@ class dynamicTopoFvMesh
         // and remove it by a two-step bisection/collapse operation.
         bool remove2DSliver
         (
-            const label findex
+            const label fIndex
         );
 
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
-        inline void findPrismFaces
+        void findPrismFaces
         (
-            const label findex,
-            const label cindex,
+            const label fIndex,
+            const label cIndex,
             FixedList<face,2>& bdyf,
             FixedList<label,2>& bidx,
             FixedList<face,2>& intf,
@@ -518,15 +532,11 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to build a hull of cells (and faces) around an edge
-        inline bool constructHull
+        bool constructHull
         (
             const label eIndex,
             DynamicList<label>& hullFaces,
             DynamicList<label>& hullCells,
-            labelHashSet& pLocks,
-            labelHashSet& eLocks,
-            labelHashSet& fLocks,
-            labelHashSet& cLocks,
             const rwMutex::lockType lType = rwMutex::READ_LOCK
         );
 
@@ -534,11 +544,7 @@ class dynamicTopoFvMesh
         inline bool computeMinQuality
         (
             const label eIndex,
-            scalar& minQuality,
-            labelHashSet& pLocks,
-            labelHashSet& eLocks,
-            labelHashSet& fLocks,
-            labelHashSet& cLocks
+            scalar& minQuality
         );
 
         // Utility to obtain a read/write lock for an entity.

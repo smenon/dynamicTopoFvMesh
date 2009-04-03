@@ -93,12 +93,24 @@ Foam::Mutex::Mutex()
 
 Foam::rwMutex::rwMutex()
 {
-    if (pthread_rwlock_init(&lock_, NULL))
+    // Set attributes for the mutex
+    pthread_rwlockattr_t attribute;
+    pthread_rwlockattr_init(&attribute);
+
+    // Set the attribute type
+    // Writer-preferred appears to be the default,
+    // but set it explicitly anyway.
+    pthread_rwlockattr_setkind_np(&attribute, PTHREAD_RWLOCK_PREFER_WRITER_NP);
+
+    if (pthread_rwlock_init(&lock_, &attribute))
     {
         FatalErrorIn("multiThreader::rwMutex::rwMutex()")
             << "Unable to initialize read-write mutex"
             << abort(FatalError);
     }
+
+    // Destroy the attribute
+    pthread_rwlockattr_destroy(&attribute);
 }
 
 Foam::Conditional::Conditional()
