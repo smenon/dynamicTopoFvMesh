@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
     angle *= (3.14159/180.0);
     
     // Enable/disable debugging
-    mesh.debug = true;
+    // mesh.debug = true;
 
     for (runTime++; !runTime.end(); runTime++)
     {    

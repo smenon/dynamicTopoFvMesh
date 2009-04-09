@@ -232,20 +232,16 @@ class dynamicTopoFvMesh
         } *structPtr_;
 
         //- List of locks for each entity (and each thread)
-        List<labelHashSet> pLocks_;
-        List<labelHashSet> eLocks_;
-        List<labelHashSet> fLocks_;
-        List<labelHashSet> cLocks_;
+        List<DynamicList<label> > pLocks_;
+        List<DynamicList<label> > eLocks_;
+        List<DynamicList<label> > fLocks_;
+        List<DynamicList<label> > cLocks_;
 
         //- Read-write mutexes for all entities in the mesh
         rwMutex pMutex_;
         rwMutex eMutex_;
         rwMutex fMutex_;
         rwMutex cMutex_;
-
-        //- Contention mutex for threads that attempt
-        //  to modify hulls simultaneously.
-        Mutex contentionMutex_;
 
         //- Read-write mutex lists for all entities in the mesh
         HashList<rwMutex> pointMutex_;
@@ -301,8 +297,8 @@ class dynamicTopoFvMesh
         // Initialize mutex lists
         void initMutexLists();
 
-        // Unlock mutex lists with HashSets
-        inline void unlockMutexLists();
+        // Unlock mutex lists
+        inline void unlockMutexLists(const label tIndex);
 
         // Return a reference to the multiThreader
         const multiThreader& threader() const;
@@ -353,17 +349,61 @@ class dynamicTopoFvMesh
         // Return the edge-stack for a particular thread
         inline stack& edgeStack(const label threadID);
 
-        // Return the point lock list for a particular thread
-        inline labelHashSet& pLocks(const label threadID);
+        // Try to lock a point.
+        bool tryPointLock
+        (
+            const label pIndex,
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
 
-        // Return the edge lock list for a particular thread
-        inline labelHashSet& eLocks(const label threadID);
+        // Try to lock a face.
+        bool tryFaceLock
+        (
+            const label fIndex,
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
 
-        // Return the face lock list for a particular thread
-        inline labelHashSet& fLocks(const label threadID);
+        // Try to lock all points of a face.
+        bool tryFacePointLock
+        (
+            const label fIndex,
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
 
-        // Return the cell lock list for a particular thread
-        inline labelHashSet& cLocks(const label threadID);
+        // Try to lock all edges of a face.
+        bool tryFaceEdgeLock
+        (
+            const label fIndex,
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
+
+        // Try to lock an edge.
+        bool tryEdgeLock
+        (
+            const label eIndex,
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
+
+        // Try to lock the two points of an edge.
+        bool tryEdgePointLock
+        (
+            const label eIndex,
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
+
+        // Try to lock hull-points around an edge
+        bool tryEdgeHullLock
+        (
+            const label eIndex,
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
+
+        // Try to lock the faces around an edge.
+        bool tryEdgeFaceLock
+        (
+            const label eIndex,
+            const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
 
         // Return the integer threadID for a given pthread
         inline label self();
@@ -548,11 +588,10 @@ class dynamicTopoFvMesh
         );
 
         // Utility to obtain a read/write lock for an entity.
-        // Returns true on success.
         inline bool obtainLock
         (
+            const label tIndex,
             const rwMutex::lockType lType,
-            bool& haveContention,
             rwMutex& entityMutex
         );
 
@@ -562,30 +601,27 @@ class dynamicTopoFvMesh
         // Allocate dynamic programming tables
         inline void initTables
         (
-            const label mMax,
             scalarListList& Q,
             labelListList& K,
             labelListList& triangulations
         );
 
         // Utility method to fill the dynamic programming tables
-        // Returns the number of triangulations
-        inline label fillTables
+        inline bool fillTables
         (
             const label eIndex,
             const scalar minQuality,
+            label& m,
             scalarListList& Q,
             labelListList& K,
             labelListList& triangulations
         );
 
         // Remove the edge according to the swap sequence
-        void removeEdgeFlips
+        bool removeEdgeFlips
         (
             const label eIndex,
             const labelListList& K,
-            const DynamicList<label>& hullFaces,
-            const DynamicList<label>& hullCells,
             labelListList& triangulations
         );
 
@@ -691,7 +727,6 @@ class dynamicTopoFvMesh
         scalar ratioMin() { return ratioMin_; }
         scalar ratioMax() { return ratioMax_; }
         scalar growthFactor() { return growthFactor_; }
-        label maxTetsPerEdge() { return maxTetsPerEdge_; }
 
 public:
 
