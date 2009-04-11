@@ -282,6 +282,9 @@ class dynamicTopoFvMesh
         // Find the normal of a triangle face.
         inline vector triFaceNormal(const face& triFace);
 
+        // Compare two triangular faces
+        inline label compare(const face& a, const face& b);
+
         // Find the volume of a tetrahedron.
         inline scalar tetVolume
         (
@@ -374,7 +377,8 @@ class dynamicTopoFvMesh
         bool tryFaceEdgeLock
         (
             const label fIndex,
-            const rwMutex::lockType lType = rwMutex::READ_LOCK
+            const rwMutex::lockType lType = rwMutex::READ_LOCK,
+            const label edgeToAvoid = -1
         );
 
         // Try to lock an edge.
@@ -440,29 +444,15 @@ class dynamicTopoFvMesh
         );
 
         // Method for the bisection of an edge in 3D
-        void bisectEdge
+        bool bisectEdge
         (
             const label eIndex
         );
 
         // Method for the collapse of an edge in 3D
-        // Returns a boolean value indicating whether the collapse was valid
         bool collapseEdge
         (
             const label eIndex
-        );
-
-        // Utility to determine ring edges and the hull faces connected to them.
-        void constructEdgeRing
-        (
-            const label eIndex,
-            const edge& edgeToCheck,
-            const labelList& hullVertices,
-            const labelList& hullFaces,
-            const labelList& hullCells,
-            labelList& ringEdges,
-            labelListList& hullEdgesAndFaces,
-            FixedList<bool,2>& edgeBoundary
         );
 
         // Utility method to check for invalid edge-collapse.
@@ -571,12 +561,14 @@ class dynamicTopoFvMesh
             labelHashSet& hullCells
         );
 
-        // Utility method to build a hull of cells (and faces) around an edge
+        // Utility method to build a hull of cells around an edge [3D]
         bool constructHull
         (
             const label eIndex,
-            DynamicList<label>& hullFaces,
-            DynamicList<label>& hullCells,
+            labelList& hullEdges,
+            labelList& hullFaces,
+            labelList& hullCells,
+            labelListList& ringEntities,
             const rwMutex::lockType lType = rwMutex::READ_LOCK
         );
 
@@ -661,8 +653,8 @@ class dynamicTopoFvMesh
             const label triangulationIndex,
             const labelListList& triangulations,
             const labelList& hullVertices,
-            const DynamicList<label>& hullFaces,
-            const DynamicList<label>& hullCells
+            const labelList& hullFaces,
+            const labelList& hullCells
         );
 
         // Routine to perform 3-2 or 2-2 swaps
@@ -673,8 +665,8 @@ class dynamicTopoFvMesh
             const label triangulationIndex,
             const labelListList& triangulations,
             const labelList& hullVertices,
-            const DynamicList<label>& hullFaces,
-            const DynamicList<label>& hullCells
+            const labelList& hullFaces,
+            const labelList& hullCells
         );
 
         // Reorder points after a topology change

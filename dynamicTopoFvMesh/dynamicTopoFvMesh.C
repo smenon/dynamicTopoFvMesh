@@ -756,6 +756,41 @@ inline vector dynamicTopoFvMesh::triFaceNormal
     return 0.5 * (v ^ w);
 }
 
+// Compare two triangular faces.
+// Identical to triFace definition.
+inline label dynamicTopoFvMesh::compare
+(
+    const face& a,
+    const face& b
+)
+{
+    if
+    (
+        (a[0] == b[0] && a[1] == b[1] && a[2] == b[2])
+     || (a[0] == b[1] && a[1] == b[2] && a[2] == b[0])
+     || (a[0] == b[2] && a[1] == b[0] && a[2] == b[1])
+    )
+    {
+        // Identical
+        return 1;
+    }
+    else if
+    (
+        (a[0] == b[2] && a[1] == b[1] && a[2] == b[0])
+     || (a[0] == b[1] && a[1] == b[0] && a[2] == b[2])
+     || (a[0] == b[0] && a[1] == b[2] && a[2] == b[1])
+    )
+    {
+        // Same face, but reversed orientation
+        return -1;
+    }
+    else
+    {
+        // Faces don't match.
+        return 0;
+    }
+}
+
 // Find the volume of a tetrahedron. This function assumes proper orientation
 // of the vertices, and will give negative values otherwise.
 inline scalar dynamicTopoFvMesh::tetVolume
@@ -1193,7 +1228,7 @@ label dynamicTopoFvMesh::insertEdge
     }
 
     // Add to the stack as well
-    edgeStack_[self()].push(newEdgeIndex);
+    edgeStack(self()).push(newEdgeIndex);
 
 #   ifdef FULLDEBUG
     if (debug)
@@ -1287,7 +1322,7 @@ void dynamicTopoFvMesh::removeEdge
     // Remove from the stack as well
     forAll(edgeStack_, stackI)
     {
-        edgeStack_[stackI].remove(index);
+        edgeStack(stackI).remove(index);
     }
 
     // Identify the patch for this edge
@@ -1442,11 +1477,14 @@ void dynamicTopoFvMesh::constructPrismHull
 }
 
 // Utility method to build a hull of cells (and faces) around an edge.
+// Assumes that eIndex is already locked.
 bool dynamicTopoFvMesh::constructHull
 (
     const label eIndex,
-    DynamicList<label>& hullFaces,
-    DynamicList<label>& hullCells,
+    labelList& hullEdges,
+    labelList& hullFaces,
+    labelList& hullCells,
+    labelListList& ringEntities,
     const rwMutex::lockType lType
 )
 {
@@ -1456,24 +1494,27 @@ bool dynamicTopoFvMesh::constructHull
     // Figure out which thread this is...
     label tIndex = self();
 
-    // Try to lock this edge.
-    if (tryEdgeLock(eIndex, lType))
-    {
-        // Failed to lock this edge.
-        return true;
-    }
-
     // Obtain a reference to this edge, and its edgeFaces
     edge& edgeToCheck = edges_[eIndex];
     labelList& eFaces = edgeFaces_[eIndex];
     labelList& hullVertices = edgePoints_[eIndex];
 
-    // Try to lock all faces around this edge
-    if (tryEdgeFaceLock(eIndex, lType))
+    // Try to lock the two points of this edge
+    if (tryEdgePointLock(eIndex, lType))
     {
-        // Failed to lock all faces.
+        edgeStack(tIndex).push(eIndex);
         return true;
     }
+
+    // Try to lock hull-points around this edge
+    if (tryEdgeHullLock(eIndex, lType))
+    {
+        edgeStack(tIndex).push(eIndex);
+        return true;
+    }
+
+    // Temporary tri-face for comparison
+    face oFace(3);
 
     // Loop through all faces of this edge and add them to hullFaces
     forAll(eFaces, faceI)
@@ -1490,13 +1531,6 @@ bool dynamicTopoFvMesh::constructHull
             nextPoint
         );
 
-        // Try to lock the isolated point
-        if (tryPointLock(otherPoint, lType))
-        {
-            // Failed to lock this point
-            return true;
-        }
-
         found = false;
 
         forAll(hullVertices, indexI)
@@ -1505,6 +1539,39 @@ bool dynamicTopoFvMesh::constructHull
             {
                 // Fill in the position of this face on the hull
                 hullFaces[indexI] = eFaces[faceI];
+
+                // Try to lock edges of this face.
+                // Avoid locking eIndex.
+                if (tryFaceEdgeLock(hullFaces[indexI], lType, eIndex))
+                {
+                    edgeStack(tIndex).push(eIndex);
+                    return true;
+                }
+
+                // Obtain edges connected to top and bottom
+                // vertices of edgeToCheck
+                labelList& fEdges = faceEdges_[hullFaces[indexI]];
+
+                forAll(fEdges, edgeI)
+                {
+                    if
+                    (
+                        edges_[fEdges[edgeI]]
+                     == edge(edgeToCheck[0], otherPoint)
+                    )
+                    {
+                        ringEntities[0][indexI] = fEdges[edgeI];
+                    }
+
+                    if
+                    (
+                        edges_[fEdges[edgeI]]
+                     == edge(edgeToCheck[1], otherPoint)
+                    )
+                    {
+                        ringEntities[2][indexI] = fEdges[edgeI];
+                    }
+                }
 
                 // Depending on the orientation of this face,
                 // fill in hull cell indices as well
@@ -1529,6 +1596,65 @@ bool dynamicTopoFvMesh::constructHull
                         << abort(FatalError);
                 }
 
+                if (hullCells[indexI] != -1)
+                {
+                    label nextI = hullVertices.fcIndex(indexI);
+                    label nextHullPoint = hullVertices[nextI];
+                    cell& currCell = cells_[hullCells[indexI]];
+
+                    // Look for the ring-faces
+                    forAll(currCell, faceI)
+                    {
+                        face& cFace = faces_[currCell[faceI]];
+
+                        // Build a comparison face
+                        oFace[0] = edgeToCheck[0];
+                        oFace[1] = otherPoint;
+                        oFace[2] = nextHullPoint;
+
+                        // Check if this face contains edgeToCheck[0]
+                        if (compare(cFace, oFace))
+                        {
+                            ringEntities[1][indexI] = currCell[faceI];
+                        }
+
+                        // Build a comparison face
+                        oFace[0] = edgeToCheck[1];
+                        oFace[1] = nextHullPoint;
+                        oFace[2] = otherPoint;
+
+                        // Check if this face contains edgeToCheck[1]
+                        if (compare(cFace, oFace))
+                        {
+                            ringEntities[3][indexI] = currCell[faceI];
+                        }
+                    }
+
+                    // Scan one the faces for the ring-edge
+                    labelList& rFaceEdges = faceEdges_[ringEntities[1][indexI]];
+
+                    forAll(rFaceEdges, edgeI)
+                    {
+                        if
+                        (
+                            edges_[rFaceEdges[edgeI]]
+                         == edge(otherPoint,nextHullPoint)
+                        )
+                        {
+                            hullEdges[indexI] = rFaceEdges[edgeI];
+                            break;
+                        }
+                    }
+
+                    // Try to lock the ring-edge.
+                    if (tryEdgeLock(hullEdges[indexI],lType))
+                    {
+                        edgeStack(tIndex).push(eIndex);
+                        return true;
+                    }
+                }
+
+                // Done with this index. Break out.
                 found = true; break;
             }
         }
@@ -1547,27 +1673,6 @@ bool dynamicTopoFvMesh::constructHull
                 << " edgeFaces: " << eFaces << nl
                 << " edgePoints: " << hullVertices
                 << abort(FatalError);
-        }
-    }
-
-    // Shrink dynamic lists
-    hullFaces.shrink();
-    hullCells.shrink();
-
-    // Now lock all hull cells
-    if (threader_->multiThreaded())
-    {
-        forAll(hullCells, cellI)
-        {
-            if (obtainLock(tIndex, lType, cellMutex_[hullCells[cellI]]))
-            {
-                cLocks_[tIndex].append(hullCells[cellI]);
-            }
-            else
-            {
-                unlockMutexLists(tIndex);
-                return true;
-            }
         }
     }
 
@@ -1595,6 +1700,10 @@ inline bool dynamicTopoFvMesh::computeMinQuality
         return true;
     }
 
+    // Obtain a reference to this edge and corresponding edgePoints
+    edge& edgeToCheck = edges_[eIndex];
+    labelList& hullVertices = edgePoints_[eIndex];
+
     // Try to read-lock the two points of this edge.
     if (tryEdgePointLock(eIndex))
     {
@@ -1608,10 +1717,6 @@ inline bool dynamicTopoFvMesh::computeMinQuality
         edgeStack(tIndex).push(eIndex);
         return true;
     }
-
-    // Obtain a reference to this edge and corresponding edgePoints
-    edge& edgeToCheck = edges_[eIndex];
-    labelList& hullVertices = edgePoints_[eIndex];
 
     // Assume that hullVertices is ordered 
     // in a CCW order around edgeToCheck[0]
@@ -1889,8 +1994,24 @@ bool dynamicTopoFvMesh::removeEdgeFlips
     labelListList& triangulations
 )
 {
-    DynamicList<label> hullFaces(maxTetsPerEdge_);
-    DynamicList<label> hullCells(maxTetsPerEdge_);
+    // Figure out which thread this is...
+    label tIndex = self();
+
+    // Try to write-lock this edge.
+    if (tryEdgeLock(eIndex, rwMutex::WRITE_LOCK))
+    {
+        edgeStack(tIndex).push(eIndex);
+        return true;
+    }
+
+    edge& edgeToCheck = edges_[eIndex];
+    labelList& hullVertices = edgePoints_[eIndex];
+
+    label m = hullVertices.size();
+    labelList hullFaces(m, -1);
+    labelList hullCells(m, -1);
+    labelList hullEdges(m, -1);
+    labelListList ringEntities(4, labelList(m, -1));
 
     // Construct the hull, and try to write-lock entities.
     if
@@ -1898,20 +2019,20 @@ bool dynamicTopoFvMesh::removeEdgeFlips
         constructHull
         (
             eIndex,
+            hullEdges,
             hullFaces,
             hullCells,
+            ringEntities,
             rwMutex::WRITE_LOCK
         )
     )
     {
         // Unable to write-lock.
+        edgeStack(tIndex).push(eIndex);
         return true;
     }
 
     label numTriangulations = 0, isolatedVertex = -1;
-    edge& edgeToCheck = edges_[eIndex];
-    labelList& hullVertices = edgePoints_[eIndex];
-    label m = hullVertices.size();
 
     // Extract the appropriate triangulations
     extractTriangulation(0, (m-1), K, numTriangulations, triangulations);
@@ -2153,8 +2274,8 @@ void dynamicTopoFvMesh::swap23
     const label triangulationIndex,
     const labelListList& triangulations,
     const labelList& hullVertices,
-    const DynamicList<label>& hullCells,
-    const DynamicList<label>& hullFaces
+    const labelList& hullCells,
+    const labelList& hullFaces
 )
 {
     // A 2-3 swap performs the following operations:
@@ -2708,8 +2829,8 @@ void dynamicTopoFvMesh::swap32
     const label triangulationIndex,
     const labelListList& triangulations,
     const labelList& hullVertices,
-    const DynamicList<label>& hullFaces,
-    const DynamicList<label>& hullCells
+    const labelList& hullFaces,
+    const labelList& hullCells
 )
 {
     // A 2-2 / 3-2 swap performs the following operations:
@@ -4921,9 +5042,6 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         //== Edge Bisection ==//
         if (length > mesh->ratioMax()*scale)
         {
-            // Set the flag
-            mesh->topoChangeFlag() = true;
-
             // Bisect this edge
             mesh->bisectEdge(eIndex);
         }
@@ -4932,13 +5050,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         if (length < mesh->ratioMin()*scale)
         {
             // Collapse this edge
-            bool success = mesh->collapseEdge(eIndex);
-
-            if (success)
-            {
-                // Set the flag
-                mesh->topoChangeFlag() = true;
-            }
+            mesh->collapseEdge(eIndex);
         }
     }
 }
@@ -5057,7 +5169,8 @@ bool dynamicTopoFvMesh::tryFacePointLock
 bool dynamicTopoFvMesh::tryFaceEdgeLock
 (
     const label fIndex,
-    const rwMutex::lockType lType
+    const rwMutex::lockType lType,
+    const label edgeToAvoid
 )
 {
     if (threader_->multiThreaded())
@@ -5070,14 +5183,17 @@ bool dynamicTopoFvMesh::tryFaceEdgeLock
 
         forAll(fEdges, edgeI)
         {
-            if (obtainLock(tIndex, lType, edgeMutex_[fEdges[edgeI]]))
+            if (edgeToAvoid != -1)
             {
-                eLocks_[tIndex].append(fEdges[edgeI]);
-            }
-            else
-            {
-                unlockMutexLists(tIndex);
-                return true;
+                if (obtainLock(tIndex, lType, edgeMutex_[fEdges[edgeI]]))
+                {
+                    eLocks_[tIndex].append(fEdges[edgeI]);
+                }
+                else
+                {
+                    unlockMutexLists(tIndex);
+                    return true;
+                }
             }
         }
     }
@@ -7342,7 +7458,7 @@ bool dynamicTopoFvMesh::collapseQuadFace
 }
 
 // Method for the bisection of an edge in 3D
-void dynamicTopoFvMesh::bisectEdge
+bool dynamicTopoFvMesh::bisectEdge
 (
     const label eIndex
 )
@@ -7355,11 +7471,24 @@ void dynamicTopoFvMesh::bisectEdge
     //      [5] Create internal faces for each bisected cell
     //      Update faceEdges and edgeFaces information
 
+    // Figure out which thread this is...
+    label tIndex = self();
+
+    // Try to write-lock this edge.
+    if (tryEdgeLock(eIndex, rwMutex::WRITE_LOCK))
+    {
+        edgeStack(tIndex).push(eIndex);
+        return true;
+    }
+
+    // Hull variables
     face tmpTriFace(3);
     labelList tmpEdgeFaces(3,-1);
     labelList tmpIntEdgeFaces(4,-1);
     labelList tmpFaceEdges(3,-1);
     edge& thisEdge = edges_[eIndex];
+    labelList& vertexHull = edgePoints_[eIndex];
+    label m = vertexHull.size();
 
 #   ifdef FULLDEBUG
     if (debug)
@@ -7369,32 +7498,29 @@ void dynamicTopoFvMesh::bisectEdge
     }
 #   endif
 
-    // Obtain maxTetsPerEdge
-    label mMax = maxTetsPerEdge_;
+    // Size up the hull lists
+    labelList cellHull(m, -1);
+    labelList faceHull(m, -1);
+    labelList edgeHull(m, -1);
+    labelListList ringEntities(4, labelList(m, -1));
 
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Hull variables
-    DynamicList<label> cellHull(mMax);
-    DynamicList<label> faceHull(mMax);
-    labelList& vertexHull = edgePoints_[eIndex];
-
-    // Construct a hull around this edge
+    // Construct a hull around this edge, and write-lock entities
     if
     (
         constructHull
         (
             eIndex,
+            edgeHull,
             faceHull,
             cellHull,
+            ringEntities,
             rwMutex::WRITE_LOCK
         )
     )
     {
         // Put this edge back on the stack and bail out
-        edgeStack_[tIndex].push(eIndex);
-        return;
+        edgeStack(tIndex).push(eIndex);
+        return true;
     }
 
     // Write lock the point mutex
@@ -8130,6 +8256,9 @@ void dynamicTopoFvMesh::bisectEdge
         Info << "pointEdges:: " << pointEdges_[newPointIndex] << endl;
     }
 #   endif
+
+    // Return a successful lock
+    return false;
 }
 
 // Method for the collapse of an edge in 3D
@@ -8152,9 +8281,21 @@ bool dynamicTopoFvMesh::collapseEdge
     //      [7] Remove one of the vertices of the edge
     //      Update faceEdges and edgeFaces information
 
+    // Figure out which thread this is...
+    label tIndex = self();
+
+    // Try to write-lock this edge.
+    if (tryEdgeLock(eIndex, rwMutex::WRITE_LOCK))
+    {
+        edgeStack(tIndex).push(eIndex);
+        return true;
+    }
+
+    // Hull variables
     bool found = false;
-    label replaceIndex = -1;
     edge& thisEdge = edges_[eIndex];
+    labelList& vertexHull = edgePoints_[eIndex];
+    label replaceIndex = -1, m = vertexHull.size();
     FixedList<bool,2> edgeBoundary(false);
 
 #   ifdef FULLDEBUG
@@ -8165,49 +8306,30 @@ bool dynamicTopoFvMesh::collapseEdge
     }
 #   endif
 
-    // Obtain maxTetsPerEdge
-    label mMax = maxTetsPerEdge_;
+    // Size up the hull lists
+    labelList cellHull(m, -1);
+    labelList faceHull(m, -1);
+    labelList edgeHull(m, -1);
+    labelListList ringEntities(4, labelList(m, -1));
 
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Hull variables
-    DynamicList<label> cellHull(mMax);
-    DynamicList<label> faceHull(mMax);
-    labelList& vertexHull = edgePoints_[eIndex];
-
-    // Construct a hull around this edge
+    // Construct a hull around this edge, and write-lock entities
     if
     (
         constructHull
         (
             eIndex,
+            edgeHull,
             faceHull,
             cellHull,
+            ringEntities,
             rwMutex::WRITE_LOCK
         )
     )
     {
         // Put this edge back on the stack and bail out
-        edgeStack_[tIndex].push(eIndex);
-        return false;
+        edgeStack(tIndex).push(eIndex);
+        return true;
     }
-
-    // Determine ring edges and the hull faces connected to them
-    labelList edgeHull(vertexHull.size(), -1);
-    labelListList hullEdgesAndFaces(4, labelList(faceHull.size(), -1));
-
-    constructEdgeRing
-    (
-        eIndex,
-        thisEdge,
-        vertexHull,
-        faceHull,
-        cellHull,
-        edgeHull,
-        hullEdgesAndFaces,
-        edgeBoundary
-    );
 
     // Configure the new point-position
     point newPoint = vector::zero;
@@ -8267,11 +8389,11 @@ bool dynamicTopoFvMesh::collapseEdge
         Info << "Cells: " << cellHull << endl;
         Info << "replacePoint: " << replacePoint << endl;
         Info << "collapsePoint: " << collapsePoint << endl;
-        Info << "hullEdgesAndFaces (removed faces): " << endl;
+        Info << "ringEntities (removed faces): " << endl;
 
-        forAll(hullEdgesAndFaces[removeFaceIndex], faceI)
+        forAll(ringEntities[removeFaceIndex], faceI)
         {
-            label fIndex = hullEdgesAndFaces[removeFaceIndex][faceI];
+            label fIndex = ringEntities[removeFaceIndex][faceI];
 
             if (fIndex != -1)
             {
@@ -8279,10 +8401,10 @@ bool dynamicTopoFvMesh::collapseEdge
             }
         }
 
-        Info << "hullEdgesAndFaces (removed edges): " << endl;
-        forAll(hullEdgesAndFaces[removeEdgeIndex], edgeI)
+        Info << "ringEntities (removed edges): " << endl;
+        forAll(ringEntities[removeEdgeIndex], edgeI)
         {
-            label ieIndex = hullEdgesAndFaces[removeEdgeIndex][edgeI];
+            label ieIndex = ringEntities[removeEdgeIndex][edgeI];
 
             if (ieIndex != -1)
             {
@@ -8290,10 +8412,10 @@ bool dynamicTopoFvMesh::collapseEdge
             }
         }
 
-        Info << "hullEdgesAndFaces (replaced faces): " << endl;
-        forAll(hullEdgesAndFaces[replaceFaceIndex], faceI)
+        Info << "ringEntities (replaced faces): " << endl;
+        forAll(ringEntities[replaceFaceIndex], faceI)
         {
-            label fIndex = hullEdgesAndFaces[replaceFaceIndex][faceI];
+            label fIndex = ringEntities[replaceFaceIndex][faceI];
 
             if (fIndex != -1)
             {
@@ -8301,10 +8423,10 @@ bool dynamicTopoFvMesh::collapseEdge
             }
         }
 
-        Info << "hullEdgesAndFaces (replaced edges): " << endl;
-        forAll(hullEdgesAndFaces[replaceEdgeIndex], edgeI)
+        Info << "ringEntities (replaced edges): " << endl;
+        forAll(ringEntities[replaceEdgeIndex], edgeI)
         {
-            label ieIndex = hullEdgesAndFaces[replaceEdgeIndex][edgeI];
+            label ieIndex = ringEntities[replaceEdgeIndex][edgeI];
 
             if (ieIndex != -1)
             {
@@ -8373,7 +8495,7 @@ bool dynamicTopoFvMesh::collapseEdge
                         // Unlock all entities
                         unlockMutexLists(tIndex);
 
-                        return false;
+                        return true;
                     }
                 }
 
@@ -8396,7 +8518,7 @@ bool dynamicTopoFvMesh::collapseEdge
                         // Unlock all entities
                         unlockMutexLists(tIndex);
 
-                        return false;
+                        return true;
                     }
                 }
             }
@@ -8408,11 +8530,11 @@ bool dynamicTopoFvMesh::collapseEdge
     {
         // Loop through all faces of the edge to be removed
         // and reassign them to the replacement edge
-        label edgeToRemove = hullEdgesAndFaces[removeEdgeIndex][indexI];
-        label faceToRemove = hullEdgesAndFaces[removeFaceIndex][indexI];
+        label edgeToRemove = ringEntities[removeEdgeIndex][indexI];
+        label faceToRemove = ringEntities[removeFaceIndex][indexI];
         label cellToRemove = cellHull[indexI];
-        label replaceEdge = hullEdgesAndFaces[replaceEdgeIndex][indexI];
-        label replaceFace = hullEdgesAndFaces[replaceFaceIndex][indexI];
+        label replaceEdge = ringEntities[replaceEdgeIndex][indexI];
+        label replaceFace = ringEntities[replaceFaceIndex][indexI];
 
         labelList& rmvEdgeFaces = edgeFaces_[edgeToRemove];
         labelList& rplEdgeFaces = edgeFaces_[replaceEdge];
@@ -8462,12 +8584,12 @@ bool dynamicTopoFvMesh::collapseEdge
 
             found = false;
 
-            forAll(hullEdgesAndFaces[removeFaceIndex], faceII)
+            forAll(ringEntities[removeFaceIndex], faceII)
             {
                 if
                 (
                     rmvEdgeFaces[faceI]
-                 == hullEdgesAndFaces[removeFaceIndex][faceII]
+                 == ringEntities[removeFaceIndex][faceII]
                 )
                 {
                     found = true;
@@ -8600,8 +8722,8 @@ bool dynamicTopoFvMesh::collapseEdge
     // Remove all hull entities
     forAll(faceHull, indexI)
     {
-        label edgeToRemove = hullEdgesAndFaces[removeEdgeIndex][indexI];
-        label faceToRemove = hullEdgesAndFaces[removeFaceIndex][indexI];
+        label edgeToRemove = ringEntities[removeEdgeIndex][indexI];
+        label faceToRemove = ringEntities[removeFaceIndex][indexI];
         label cellToRemove = cellHull[indexI];
 
         if (cellToRemove != -1)
@@ -8786,152 +8908,8 @@ bool dynamicTopoFvMesh::collapseEdge
     // Unlock all entities (from write lock)
     unlockMutexLists(tIndex);
 
-    // Return a successful collapse
-    return true;
-}
-
-// Utility to determine ring edges and the hull edges/faces connected to them.
-void dynamicTopoFvMesh::constructEdgeRing
-(
-    const label eIndex,
-    const edge& edgeToCheck,
-    const labelList& hullVertices,
-    const labelList& hullFaces,
-    const labelList& hullCells,
-    labelList& ringEdges,
-    labelListList& hullEdgesAndFaces,
-    FixedList<bool,2>& edgeBoundary
-)
-{
-    forAll(hullVertices, indexI)
-    {
-        // Obtain circular indices
-        label nextI = hullVertices.fcIndex(indexI);
-
-        // Obtain edges connected to top and bottom
-        // vertices of edgeToCheck
-        labelList& fEdges = faceEdges_[hullFaces[indexI]];
-        forAll(fEdges, edgeI)
-        {
-            if
-            (
-                edges_[fEdges[edgeI]]
-             == edge(edgeToCheck[0],hullVertices[indexI])
-            )
-            {
-                hullEdgesAndFaces[0][indexI] = fEdges[edgeI];
-            }
-
-            if
-            (
-                edges_[fEdges[edgeI]]
-             == edge(edgeToCheck[1],hullVertices[indexI])
-            )
-            {
-                hullEdgesAndFaces[2][indexI] = fEdges[edgeI];
-            }
-        }
-
-        if (hullCells[indexI] != -1)
-        {
-            cell& currCell = cells_[hullCells[indexI]];
-
-            // Look for the ring-edge
-            forAll(currCell, faceI)
-            {
-                // Check if this face contains edgeToCheck[0]
-                if
-                (
-                    (currCell[faceI] != hullFaces[indexI])
-                 && (currCell[faceI] != hullFaces[nextI])
-                 && (faces_[currCell[faceI]].which(edgeToCheck[0]) > -1)
-                )
-                {
-                    hullEdgesAndFaces[1][indexI] = currCell[faceI];
-
-                    // Look for the edge on the ring
-                    labelList& rFaceEdges = faceEdges_[currCell[faceI]];
-
-                    bool found = false;
-
-                    forAll(rFaceEdges, edgeI)
-                    {
-                        if
-                        (
-                            edges_[rFaceEdges[edgeI]]
-                         == edge(hullVertices[indexI],hullVertices[nextI])
-                        )
-                        {
-                            ringEdges[indexI] = rFaceEdges[edgeI];
-
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if (!found)
-                    {
-                        // Looks like faceEdges is inconsistent
-                        FatalErrorIn("dynamicTopoFvMesh::constructEdgeRing()")
-                            << nl << "Unable to find ring edge: " << nl
-                            << edge(hullVertices[indexI],hullVertices[nextI])
-                            << " in face: " << currCell[faceI]
-                            << ": " << faces_[currCell[faceI]] << nl
-                            << " faceEdges: " << rFaceEdges << nl
-                            << abort(FatalError);
-                    }
-                }
-
-                // Check if this face contains edgeToCheck[1]
-                if
-                (
-                    (currCell[faceI] != hullFaces[indexI])
-                 && (currCell[faceI] != hullFaces[nextI])
-                 && (faces_[currCell[faceI]].which(edgeToCheck[1]) > -1)
-                )
-                {
-                    hullEdgesAndFaces[3][indexI] = currCell[faceI];
-                }
-            }
-        }
-    }
-
-    // Loop through edges connected to both points and check if any of them
-    // lie on boundaries
-    forAll(edgeToCheck, pointI)
-    {
-        labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
-
-        forAll(pEdges, edgeI)
-        {
-            // Determine the patch this edge belongs to
-            if (whichEdgePatch(pEdges[edgeI]) > -1)
-            {
-                edgeBoundary[pointI] = true;
-                break;
-            }
-        }
-    }
-
-    // Check if either point lies on a bounding curve
-    if (edgeBoundary[0] && edgeBoundary[1])
-    {
-        edgeBoundary = false;
-
-        forAll(edgeToCheck, pointI)
-        {
-            labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
-
-            forAll(pEdges, edgeI)
-            {
-                if (checkBoundingCurve(pEdges[edgeI]))
-                {
-                    edgeBoundary[pointI] = true;
-                    break;
-                }
-            }
-        }
-    }
+    // Return a successful lock
+    return false;
 }
 
 // Utility method to check whether the cell given by 'cellIndex' will yield
