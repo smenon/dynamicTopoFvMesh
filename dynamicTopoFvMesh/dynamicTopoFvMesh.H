@@ -505,8 +505,17 @@ class dynamicTopoFvMesh
         // Method to replace a label in a given list
         inline void replaceLabel
         (
-            const label& original,
-            const label& replacement,
+            const label original,
+            const label replacement,
+            labelList& list
+        );
+
+        // Method to insert a label between two labels in a list
+        inline void insertLabel
+        (
+            const label newLabel,
+            const label labelA,
+            const label labelB,
             labelList& list
         );
 
@@ -649,11 +658,9 @@ class dynamicTopoFvMesh
         void swap23
         (
             const label isolatedVertex,
-            const label edgeToCheckIndex,
-            const edge& edgeToCheck,
+            const label eIndex,
             const label triangulationIndex,
             const labelListList& triangulations,
-            const labelList& hullVertices,
             const labelList& hullFaces,
             const labelList& hullCells
         );
@@ -661,11 +668,9 @@ class dynamicTopoFvMesh
         // Routine to perform 3-2 or 2-2 swaps
         void swap32
         (
-            const label edgeToCheckIndex,
-            const edge& edgeToCheck,
+            const label eIndex,
             const label triangulationIndex,
             const labelListList& triangulations,
-            const labelList& hullVertices,
             const labelList& hullFaces,
             const labelList& hullCells
         );
