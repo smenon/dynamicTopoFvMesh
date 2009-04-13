@@ -1215,11 +1215,17 @@ label dynamicTopoFvMesh::insertEdge
 (
     const label patch,
     const edge& newEdge,
-    const labelList& edgeFaces
+    const labelList& edgeFaces,
+    const labelList& edgePoints
 )
 {
     label newEdgeIndex = edges_.append(newEdge);
     edgeFaces_.append(edgeFaces);
+    
+    if (!twoDMesh_)
+    {
+        edgePoints_.append(edgePoints);
+    }
 
     // Add a new unlocked edge mutex
     if (threader_->multiThreaded())
@@ -1310,6 +1316,11 @@ void dynamicTopoFvMesh::removeEdge
 
     edges_.remove(index);
     edgeFaces_.remove(index);
+
+    if (!twoDMesh_)
+    {
+        edgePoints_.remove(index);
+    }
 
     // Remove the edge mutex
     if (threader_->multiThreaded())
@@ -2286,6 +2297,9 @@ void dynamicTopoFvMesh::swap23
     //      [5] Add three new cells
     //      Update faceEdges and edgeFaces information
 
+    // Figure out which edge this is...
+    label tIndex = self();
+
 #   ifdef FULLDEBUG
     if (debug)
     {
@@ -2436,6 +2450,12 @@ void dynamicTopoFvMesh::swap23
     newEdgeFaces[1] = newFaceIndex[1];
     newEdgeFaces[2] = newFaceIndex[2];
 
+    // Add an entry for edgePoints as well
+    labelList newEdgePoints(3);
+    newEdgePoints[0] = vertexForRemoval;
+    newEdgePoints[1] = edgeToCheck[0];
+    newEdgePoints[2] = edgeToCheck[1];
+
     // Write lock the edge mutex
     eMutex_.lock(rwMutex::WRITE_LOCK);
 
@@ -2448,7 +2468,8 @@ void dynamicTopoFvMesh::swap23
                                  otherVertices[0],
                                  otherVertices[1]
                              ),
-                             newEdgeFaces
+                             newEdgeFaces,
+                             newEdgePoints
                          );
 
     // Unlock the edge mutex from write lock
@@ -2549,7 +2570,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[0][nE0++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[0], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[1])
@@ -2557,7 +2578,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[0][nE0++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[0], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[2])
@@ -2565,7 +2586,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[1][nE1++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[1], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[4])
@@ -2573,7 +2594,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[1][nE1++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[1], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -2615,7 +2636,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[2][nE2++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[2], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[5])
@@ -2623,7 +2644,7 @@ void dynamicTopoFvMesh::swap23
                         newFaceEdges[2][nE2++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex[2], edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -2733,7 +2754,7 @@ void dynamicTopoFvMesh::swap23
     {
         sizeDownList(faceForRemoval, edgeFaces_[fEdges[edgeI]]);
 
-        edgeStack(self()).push(fEdges[edgeI]);
+        edgeStack(tIndex).push(fEdges[edgeI]);
     }
 
     // Now remove the faceEdges entry
@@ -2843,6 +2864,9 @@ void dynamicTopoFvMesh::swap32
     //          add two boundary faces and a boundary edge (2-2 swap)
     //      edgeToCheck is removed later by swap3DEdges
     //      Update faceEdges and edgeFaces information
+
+    // Figure out which edge this is...
+    label tIndex = self();
 
     // Determine the patch this edge belongs to
     label edgePatch = whichEdgePatch(edgeToCheckIndex);
@@ -3042,7 +3066,7 @@ void dynamicTopoFvMesh::swap32
                         bdyFaceEdges[0][nBE[0]++] = fEdges[edgeI];
                         bdyEdges0[nBE0++] = fEdges[edgeI];
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if
@@ -3054,7 +3078,7 @@ void dynamicTopoFvMesh::swap32
                         bdyFaceEdges[1][nBE[1]++] = fEdges[edgeI];
                         bdyEdges1[nBE1++] = fEdges[edgeI];
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -3084,17 +3108,39 @@ void dynamicTopoFvMesh::swap32
         newTetCell0[nF0++] = newBdyFaceIndex[1];
         newTetCell1[nF1++] = newBdyFaceIndex[0];
 
-        // Insert the new edge
+        // Add an edgeFaces entry
         labelList newBdyEdgeFaces(3, -1);
         newBdyEdgeFaces[0] = newBdyFaceIndex[0];
         newBdyEdgeFaces[1] = newFaceIndex;
         newBdyEdgeFaces[2] = newBdyFaceIndex[1];
 
+        // Find the point other than the new edge
+        // on the new triangular face
+        findIsolatedPoint
+        (
+            newTriFace,
+            newEdge,
+            otherPoint,
+            nextPoint
+        );
+
+        // Add an edgePoints entry
+        labelList newBdyEdgePoints(3, -1);
+        newBdyEdgePoints[0] = edgeToCheck[0];
+        newBdyEdgePoints[1] = otherPoint;
+        newBdyEdgePoints[2] = edgeToCheck[1];
+
         // Write lock the edge mutex
         eMutex_.lock(rwMutex::WRITE_LOCK);
 
         // Insert the edge
-        newEdgeIndex = insertEdge(edgePatch, newEdge, newBdyEdgeFaces);
+        newEdgeIndex = insertEdge
+                       (
+                           edgePatch,
+                           newEdge,
+                           newBdyEdgeFaces,
+                           newBdyEdgePoints
+                       );
 
         // Unlock the edge mutex from write lock
         eMutex_.unlock();
@@ -3191,7 +3237,7 @@ void dynamicTopoFvMesh::swap32
                         newFaceEdges[nE++] = fEdges[edgeI];
                         sizeUpList(newFaceIndex, edgeFaces_[fEdges[edgeI]]);
 
-                        edgeStack(self()).push(fEdges[edgeI]);
+                        edgeStack(tIndex).push(fEdges[edgeI]);
 
                         break;
                     }
@@ -3298,7 +3344,7 @@ void dynamicTopoFvMesh::swap32
             {
                 sizeDownList(facesForRemoval[faceI],edgeFaces_[edgeIndex]);
 
-                edgeStack(self()).push(edgeIndex);
+                edgeStack(tIndex).push(edgeIndex);
             }
         }
 
@@ -7485,6 +7531,8 @@ bool dynamicTopoFvMesh::bisectEdge
     face tmpTriFace(3);
     labelList tmpEdgeFaces(3,-1);
     labelList tmpIntEdgeFaces(4,-1);
+    labelList tmpEdgePoints(3,-1);
+    labelList tmpIntEdgePoints(4,-1);
     labelList tmpFaceEdges(3,-1);
     edge& thisEdge = edges_[eIndex];
     labelList& vertexHull = edgePoints_[eIndex];
@@ -7560,7 +7608,8 @@ bool dynamicTopoFvMesh::bisectEdge
         (
             whichEdgePatch(eIndex),
             edge(newPointIndex,thisEdge[1]),
-            labelList(faceHull.size(),-1)
+            labelList(faceHull.size(),-1),
+            vertexHull
         );
 
     // Remove the existing edge from the pointEdges list
@@ -7802,6 +7851,11 @@ bool dynamicTopoFvMesh::bisectEdge
                 tmpEdgeFaces[1] = addedIntFaceIndices[indexI];
                 tmpEdgeFaces[2] = addedFaceIndices[indexI];
 
+                // Configure edgePoints
+                tmpEdgePoints[0] = thisEdge[0];
+                tmpEdgePoints[1] = vertexHull[nextI];
+                tmpEdgePoints[2] = newEdge[1];
+
                 // Write lock the edge mutex
                 eMutex_.lock(rwMutex::WRITE_LOCK);
 
@@ -7811,7 +7865,8 @@ bool dynamicTopoFvMesh::bisectEdge
                     (
                         whichPatch(faceHull[indexI]),
                         edge(newPointIndex,vertexHull[indexI]),
-                        tmpEdgeFaces
+                        tmpEdgeFaces,
+                        tmpEdgePoints
                     );
 
                 // Unlock the edge mutex from write lock
@@ -7899,6 +7954,12 @@ bool dynamicTopoFvMesh::bisectEdge
                 tmpIntEdgeFaces[2] = addedFaceIndices[indexI];
                 tmpIntEdgeFaces[3] = addedIntFaceIndices[prevI];
 
+                // Configure edgePoints
+                tmpIntEdgePoints[0] = thisEdge[0];
+                tmpIntEdgePoints[1] = vertexHull[nextI];
+                tmpIntEdgePoints[2] = newEdge[1];
+                tmpIntEdgePoints[4] = vertexHull[prevI];
+
                 // Write lock the edge mutex
                 eMutex_.lock(rwMutex::WRITE_LOCK);
 
@@ -7908,7 +7969,8 @@ bool dynamicTopoFvMesh::bisectEdge
                     (
                         -1,
                         edge(newPointIndex,vertexHull[indexI]),
-                        tmpIntEdgeFaces
+                        tmpIntEdgeFaces,
+                        tmpIntEdgePoints
                     );
 
                 // Unlock the edge mutex from write lock
@@ -8003,6 +8065,12 @@ bool dynamicTopoFvMesh::bisectEdge
                 tmpIntEdgeFaces[2] = addedFaceIndices[0];
                 tmpIntEdgeFaces[3] = addedIntFaceIndices[indexI];
 
+                // Configure edgePoints
+                tmpIntEdgePoints[0] = thisEdge[0];
+                tmpIntEdgePoints[1] = vertexHull[1];
+                tmpIntEdgePoints[2] = newEdge[1];
+                tmpIntEdgePoints[4] = vertexHull[indexI];
+
                 // Write lock the edge mutex
                 eMutex_.lock(rwMutex::WRITE_LOCK);
 
@@ -8012,7 +8080,8 @@ bool dynamicTopoFvMesh::bisectEdge
                     (
                         -1,
                         edge(newPointIndex,vertexHull[0]),
-                        tmpIntEdgeFaces
+                        tmpIntEdgeFaces,
+                        tmpIntEdgePoints
                     );
 
                 // Unlock the edge mutex from write lock
@@ -8105,6 +8174,11 @@ bool dynamicTopoFvMesh::bisectEdge
             tmpEdgeFaces[1] = addedIntFaceIndices[prevI];
             tmpEdgeFaces[2] = faceHull[indexI];
 
+            // Configure edgePoints
+            tmpEdgePoints[0] = newEdge[1];
+            tmpEdgePoints[1] = vertexHull[prevI];
+            tmpEdgePoints[2] = thisEdge[0];
+
             // Write lock the edge mutex
             eMutex_.lock(rwMutex::WRITE_LOCK);
 
@@ -8114,7 +8188,8 @@ bool dynamicTopoFvMesh::bisectEdge
                 (
                     whichPatch(faceHull[indexI]),
                     edge(newPointIndex,vertexHull[indexI]),
-                    tmpEdgeFaces
+                    tmpEdgeFaces,
+                    tmpEdgePoints
                 );
 
             // Unlock the edge mutex from write lock

@@ -530,7 +530,8 @@ class dynamicTopoFvMesh
         (
             const label patch,
             const edge& newEdge,
-            const labelList& edgeFaces
+            const labelList& edgeFaces,
+            const labelList& edgePoints
         );
 
         // Remove the specified edge from the mesh
