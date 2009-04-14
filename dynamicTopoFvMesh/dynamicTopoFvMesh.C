@@ -52,6 +52,7 @@ Author
 #include "MeshObject.H"
 
 #include <dlfcn.h>
+#include <DynamicList.H>
 
 namespace Foam
 {
@@ -1420,6 +1421,24 @@ void dynamicTopoFvMesh::removeEdge
     nEdges_--;
 }
 
+// Check for the occurrence of a label in the list
+inline bool dynamicTopoFvMesh::foundInList
+(
+    const label item,
+    const labelList& list
+)
+{
+    forAll(list, itemI)
+    {
+        if (list[itemI] == item)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Utility method to size-up the list to include an item
 inline void dynamicTopoFvMesh::sizeUpList
 (
@@ -1752,6 +1771,57 @@ bool dynamicTopoFvMesh::constructHull
 
     // Return a successful lock
     return false;
+}
+
+// Utility to check whether points of an edge lie on a boundary.
+// Assumes that eIndex is already locked.
+void dynamicTopoFvMesh::checkEdgeBoundary
+(
+    const label eIndex,
+    FixedList<bool,2>& edgeBoundary
+)
+{
+    edge& edgeToCheck = edges_[eIndex];
+
+    // Loop through edges connected to both points,
+    // and check if any of them lie on boundaries.
+    // Used to ensure that collapses happen towards boundaries.
+    forAll(edgeToCheck, pointI)
+    {
+        labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
+
+        forAll(pEdges, edgeI)
+        {
+            // Determine the patch this edge belongs to
+            if (whichEdgePatch(pEdges[edgeI]) > -1)
+            {
+                edgeBoundary[pointI] = true;
+                break;
+            }
+        }
+    }
+
+    // Check if either point lies on a bounding curve
+    // Used to ensure that collapses happen towards bounding curves.
+    // Note that if the edge itself is on a bounding curve, collapse is valid.
+    if (edgeBoundary[0] && edgeBoundary[1])
+    {
+        edgeBoundary = false;
+
+        forAll(edgeToCheck, pointI)
+        {
+            labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
+
+            forAll(pEdges, edgeI)
+            {
+                if (checkBoundingCurve(pEdges[edgeI]))
+                {
+                    edgeBoundary[pointI] = true;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 // Utility method to compute the minimum quality of a vertex hull
@@ -5656,6 +5726,78 @@ bool dynamicTopoFvMesh::tryEdgeFaceLock
     return false;
 }
 
+// Remove an index from the point lock list
+void dynamicTopoFvMesh::removePointLock
+(
+    const label pIndex
+)
+{
+    if (threader_->multiThreaded())
+    {
+        // Figure out which thread this is...
+        label tIndex = self();
+
+        if (foundInList(pIndex, pLocks_[tIndex]))
+        {
+            sizeDownList(pIndex, pLocks_[tIndex]);
+        }
+    }
+}
+
+// Remove an index from the edge lock list
+void dynamicTopoFvMesh::removeEdgeLock
+(
+    const label eIndex
+)
+{
+    if (threader_->multiThreaded())
+    {
+        // Figure out which thread this is...
+        label tIndex = self();
+
+        if (foundInList(eIndex, eLocks_[tIndex]))
+        {
+            sizeDownList(eIndex, eLocks_[tIndex]);
+        }
+    }
+}
+
+// Remove an index from the face lock list
+void dynamicTopoFvMesh::removeFaceLock
+(
+    const label fIndex
+)
+{
+    if (threader_->multiThreaded())
+    {
+        // Figure out which thread this is...
+        label tIndex = self();
+
+        if (foundInList(fIndex, fLocks_[tIndex]))
+        {
+            sizeDownList(fIndex, fLocks_[tIndex]);
+        }
+    }
+}
+
+// Remove an index from the cell lock list
+void dynamicTopoFvMesh::removeCellLock
+(
+    const label cIndex
+)
+{
+    if (threader_->multiThreaded())
+    {
+        // Figure out which thread this is...
+        label tIndex = self();
+
+        if (foundInList(cIndex, cLocks_[tIndex]))
+        {
+            sizeDownList(cIndex, cLocks_[tIndex]);
+        }
+    }
+}
+
 // Return the integer threadID for a given pthread
 inline label dynamicTopoFvMesh::self()
 {
@@ -7783,7 +7925,7 @@ bool dynamicTopoFvMesh::bisectEdge
     //      [3] Bisect all cells surrounding this edge
     //      [4] Create internal/external edges for each bisected face
     //      [5] Create internal faces for each bisected cell
-    //      Update faceEdges and edgeFaces information
+    //      Update faceEdges, edgeFaces and edgePoints information
 
     // Figure out which thread this is...
     label tIndex = self();
@@ -7918,6 +8060,14 @@ bool dynamicTopoFvMesh::bisectEdge
             currFace
         );
 
+        // Modify edgePoints for the edge connected to thisEdge[0]
+        replaceLabel
+        (
+            newEdge[1],
+            newPointIndex,
+            edgePoints_[ringEntities[0][indexI]]
+        );
+
         // Obtain circular indices
         label nextI = vertexHull.fcIndex(indexI);
         label prevI = vertexHull.rcIndex(indexI);
@@ -8017,81 +8167,61 @@ bool dynamicTopoFvMesh::bisectEdge
             // Add to the new cell
             newCell[0] = addedIntFaceIndices[indexI];
 
-            // Modify the existing face
-            forAll(currCell, faceI)
+            // Modify the existing ring face connected to newEdge[1]
+            label replaceFace = ringEntities[3][indexI];
+
+            // Check if face reversal is necessary
+            if (owner_[replaceFace] == cellHull[indexI])
             {
-                // Check if this face contains newEdge[1]
-                if
-                (
-                    (currCell[faceI] != faceHull[indexI])
-                 && (currCell[faceI] != faceHull[nextI])
-                 && (faces_[currCell[faceI]].which(newEdge[1]) > -1)
-                )
+                if (neighbour_[replaceFace] == -1)
                 {
-                    label replaceFace = currCell[faceI];
-
-                    // Check if face reversal is necessary
-                    if (owner_[replaceFace] == cellHull[indexI])
-                    {
-                        if (neighbour_[replaceFace] == -1)
-                        {
-                            // Change the owner
-                            owner_[replaceFace] = addedCellIndices[indexI];
-                        }
-                        else
-                        {
-                            // This face has to be reversed
-                            faces_[replaceFace] = faces_[replaceFace].reverseFace();
-                            owner_[replaceFace] = neighbour_[replaceFace];
-                            neighbour_[replaceFace] = addedCellIndices[indexI];
-                        }
-                    }
-                    else
-                    {
-                        // Keep owner, but change neighbour
-                        neighbour_[replaceFace] = addedCellIndices[indexI];
-                    }
-
-                    // Look for the edge on the ring
-                    labelList& rFaceEdges = faceEdges_[replaceFace];
-
-                    forAll(rFaceEdges, edgeI)
-                    {
-                        if
-                        (
-                            edges_[rFaceEdges[edgeI]]
-                         == edge(vertexHull[indexI],vertexHull[nextI])
-                        )
-                        {
-                            // Modify edgeFaces to add the
-                            // new interior face
-                            sizeUpList
-                            (
-                                addedIntFaceIndices[indexI],
-                                edgeFaces_[rFaceEdges[edgeI]]
-                            );
-
-                            // Add this edge to faceEdges
-                            // for the new interior face
-                            faceEdges_[addedIntFaceIndices[indexI]][0] =
-                                rFaceEdges[edgeI];
-                        }
-                    }
-
-                    // Replace face labels
-                    replaceLabel
-                    (
-                        replaceFace,
-                        addedIntFaceIndices[indexI],
-                        currCell
-                    );
-
-                    // Add to the new cell
-                    newCell[1] = replaceFace;
-
-                    break;
+                    // Change the owner
+                    owner_[replaceFace] = addedCellIndices[indexI];
+                }
+                else
+                {
+                    // This face has to be reversed
+                    faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                    owner_[replaceFace] = neighbour_[replaceFace];
+                    neighbour_[replaceFace] = addedCellIndices[indexI];
                 }
             }
+            else
+            {
+                // Keep owner, but change neighbour
+                neighbour_[replaceFace] = addedCellIndices[indexI];
+            }
+
+            // Modify the edge on the ring.
+            // Add the new interior face to edgeFaces.
+            sizeUpList
+            (
+                addedIntFaceIndices[indexI],
+                edgeFaces_[edgeHull[indexI]]
+            );
+
+            // Insert the new point to edgePoints for the ring edge
+            insertLabel
+            (
+                newPointIndex,
+                thisEdge[0],
+                newEdge[1],
+                edgePoints_[edgeHull[indexI]]
+            );
+
+            // Add this edge to faceEdges for the new interior face
+            faceEdges_[addedIntFaceIndices[indexI]][0] = edgeHull[indexI];
+
+            // Replace face labels
+            replaceLabel
+            (
+                replaceFace,
+                addedIntFaceIndices[indexI],
+                currCell
+            );
+
+            // Add to the new cell
+            newCell[1] = replaceFace;
 
             // Check if this is a boundary face
             if (cellHull[prevI] == -1)
@@ -8147,40 +8277,31 @@ bool dynamicTopoFvMesh::bisectEdge
                 // Configure faceEdges for this boundary face
                 tmpFaceEdges[0] = addedEdgeIndices[indexI];
                 tmpFaceEdges[1] = newEdgeIndex;
+                tmpFaceEdges[2] = ringEntities[2][indexI];
 
-                // Find the third edge
-                labelList& rFaceEdges = faceEdges_[faceHull[indexI]];
+                // Modify faceEdges for the hull face
+                replaceLabel
+                (
+                    ringEntities[2][indexI],
+                    addedEdgeIndices[indexI],
+                    faceEdges_[faceHull[indexI]]
+                );
 
-                forAll(rFaceEdges, edgeI)
-                {
-                    if
-                    (
-                        edges_[rFaceEdges[edgeI]]
-                     == edge(newEdge[1],vertexHull[indexI])
-                    )
-                    {
-                        // Add this edge to faceEdges for this face
-                        tmpFaceEdges[2] = rFaceEdges[edgeI];
+                // Modify edgeFaces for the edge connected to newEdge[1]
+                replaceLabel
+                (
+                    faceHull[indexI],
+                    addedFaceIndices[indexI],
+                    edgeFaces_[ringEntities[2][indexI]]
+                );
 
-                        // Modify faceEdges
-                        replaceLabel
-                        (
-                            rFaceEdges[edgeI],
-                            addedEdgeIndices[indexI],
-                            rFaceEdges
-                        );
-
-                        // Modify edgeFaces
-                        replaceLabel
-                        (
-                            faceHull[indexI],
-                            addedFaceIndices[indexI],
-                            edgeFaces_[tmpFaceEdges[2]]
-                        );
-
-                        break;
-                    }
-                }
+                // Modify edgePoints for the edge connected to newEdge[1]
+                replaceLabel
+                (
+                    thisEdge[0],
+                    newPointIndex,
+                    edgePoints_[ringEntities[2][indexI]]
+                );
 
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
@@ -8255,40 +8376,31 @@ bool dynamicTopoFvMesh::bisectEdge
                 // Configure faceEdges for this split interior face
                 tmpFaceEdges[0] = addedEdgeIndices[indexI];
                 tmpFaceEdges[1] = newEdgeIndex;
+                tmpFaceEdges[2] = ringEntities[2][indexI];
 
-                // Find the third edge
-                labelList& rFaceEdges = faceEdges_[faceHull[indexI]];
+                // Modify faceEdges for the hull face
+                replaceLabel
+                (
+                    ringEntities[2][indexI],
+                    addedEdgeIndices[indexI],
+                    faceEdges_[faceHull[indexI]]
+                );
 
-                forAll(rFaceEdges, edgeI)
-                {
-                    if
-                    (
-                        edges_[rFaceEdges[edgeI]]
-                     == edge(newEdge[1],vertexHull[indexI])
-                    )
-                    {
-                        // Add this edge to faceEdges for this face
-                        tmpFaceEdges[2] = rFaceEdges[edgeI];
+                // Modify edgeFaces for the edge connected to newEdge[1]
+                replaceLabel
+                (
+                    faceHull[indexI],
+                    addedFaceIndices[indexI],
+                    edgeFaces_[ringEntities[2][indexI]]
+                );
 
-                        // Modify faceEdges
-                        replaceLabel
-                        (
-                            rFaceEdges[edgeI],
-                            addedEdgeIndices[indexI],
-                            rFaceEdges
-                        );
-
-                        // Modify edgeFaces
-                        replaceLabel
-                        (
-                            faceHull[indexI],
-                            addedFaceIndices[indexI],
-                            edgeFaces_[tmpFaceEdges[2]]
-                        );
-
-                        break;
-                    }
-                }
+                // Modify edgePoints for the edge connected to newEdge[1]
+                replaceLabel
+                (
+                    thisEdge[0],
+                    newPointIndex,
+                    edgePoints_[ringEntities[2][indexI]]
+                );
 
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
@@ -8366,40 +8478,31 @@ bool dynamicTopoFvMesh::bisectEdge
                 // Configure faceEdges for the first split face
                 tmpFaceEdges[0] = addedEdgeIndices[0];
                 tmpFaceEdges[1] = newEdgeIndex;
+                tmpFaceEdges[2] = ringEntities[2][0];
 
-                // Find the third edge
-                labelList& rFaceEdges = faceEdges_[faceHull[0]];
+                // Modify faceEdges for the hull face
+                replaceLabel
+                (
+                    ringEntities[2][0],
+                    addedEdgeIndices[0],
+                    faceEdges_[faceHull[0]]
+                );
 
-                forAll(rFaceEdges, edgeI)
-                {
-                    if
-                    (
-                        edges_[rFaceEdges[edgeI]]
-                     == edge(newEdge[1],vertexHull[0])
-                    )
-                    {
-                        // Add this edge to faceEdges for this face
-                        tmpFaceEdges[2] = rFaceEdges[edgeI];
+                // Modify edgeFaces for the edge connected to newEdge[1]
+                replaceLabel
+                (
+                    faceHull[0],
+                    addedFaceIndices[0],
+                    edgeFaces_[ringEntities[2][0]]
+                );
 
-                        // Modify faceEdges
-                        replaceLabel
-                        (
-                            rFaceEdges[edgeI],
-                            addedEdgeIndices[0],
-                            rFaceEdges
-                        );
-
-                        // Modify edgeFaces
-                        replaceLabel
-                        (
-                            faceHull[0],
-                            addedFaceIndices[0],
-                            edgeFaces_[tmpFaceEdges[2]]
-                        );
-
-                        break;
-                    }
-                }
+                // Modify edgePoints for the edge connected to newEdge[1]
+                replaceLabel
+                (
+                    thisEdge[0],
+                    newPointIndex,
+                    edgePoints_[ringEntities[2][0]]
+                );
 
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
@@ -8470,40 +8573,31 @@ bool dynamicTopoFvMesh::bisectEdge
             // Configure faceEdges for the final boundary face
             tmpFaceEdges[0] = addedEdgeIndices[indexI];
             tmpFaceEdges[1] = newEdgeIndex;
+            tmpFaceEdges[2] = ringEntities[2][indexI];
 
-            // Find the third edge
-            labelList& rFaceEdges = faceEdges_[faceHull[indexI]];
+            // Modify faceEdges for the hull face
+            replaceLabel
+            (
+                ringEntities[2][indexI],
+                addedEdgeIndices[indexI],
+                faceEdges_[faceHull[indexI]]
+            );
 
-            forAll(rFaceEdges, edgeI)
-            {
-                if
-                (
-                    edges_[rFaceEdges[edgeI]]
-                 == edge(newEdge[1],vertexHull[indexI])
-                )
-                {
-                    // Add this edge to faceEdges for this face
-                    tmpFaceEdges[2] = rFaceEdges[edgeI];
+            // Modify edgeFaces for the edge connected to newEdge[1]
+            replaceLabel
+            (
+                faceHull[indexI],
+                addedFaceIndices[indexI],
+                edgeFaces_[ringEntities[2][indexI]]
+            );
 
-                    // Modify faceEdges
-                    replaceLabel
-                    (
-                        rFaceEdges[edgeI],
-                        addedEdgeIndices[indexI],
-                        rFaceEdges
-                    );
-
-                    // Modify edgeFaces
-                    replaceLabel
-                    (
-                        faceHull[indexI],
-                        addedFaceIndices[indexI],
-                        edgeFaces_[tmpFaceEdges[2]]
-                    );
-
-                    break;
-                }
-            }
+            // Modify edgePoints for the edge connected to newEdge[1]
+            replaceLabel
+            (
+                thisEdge[0],
+                newPointIndex,
+                edgePoints_[ringEntities[2][indexI]]
+            );
 
             // Add the faceEdges entry
             faceEdges_.append(tmpFaceEdges);
@@ -8625,7 +8719,7 @@ bool dynamicTopoFvMesh::collapseEdge
     //      [6] Checks the orientation of faces connected to the retained
     //          vertices
     //      [7] Remove one of the vertices of the edge
-    //      Update faceEdges and edgeFaces information
+    //      Update faceEdges, edgeFaces and edgePoints information
 
     // Figure out which thread this is...
     label tIndex = self();
@@ -8676,6 +8770,9 @@ bool dynamicTopoFvMesh::collapseEdge
         edgeStack(tIndex).push(eIndex);
         return true;
     }
+
+    // Check whether points of the edge lies on a boundary
+    checkEdgeBoundary(eIndex, edgeBoundary);
 
     // Configure the new point-position
     point newPoint = vector::zero;
@@ -8963,6 +9060,13 @@ bool dynamicTopoFvMesh::collapseEdge
                 edgeFaces_[edgeHull[indexI]]
             );
 
+            // Size down edgePoints for the ring edges
+            sizeDownList
+            (
+                collapsePoint,
+                edgePoints_[edgeHull[indexI]]
+            );
+
             // Ensure proper orientation of retained faces
             if (owner_[faceToRemove] == cellToRemove)
             {
@@ -9079,14 +9183,14 @@ bool dynamicTopoFvMesh::collapseEdge
             faceEdges_.remove(faceToRemove);
 
             // Remove from list of locked faces
-
+            removeFaceLock(faceToRemove);
 
             // Remove the hull cell
             cells_.remove(cellToRemove);
             lengthScale_.remove(cellToRemove);
 
             // Remove from list of locked cells
-
+            removeCellLock(cellToRemove);
 
             // Remove the cell mutex
             if (threader_->multiThreaded())
@@ -9115,14 +9219,14 @@ bool dynamicTopoFvMesh::collapseEdge
         removeEdge(edgeToRemove);
 
         // Remove from list of locked edges
-
+        removeEdgeLock(edgeToRemove);
 
         // Remove the hull face and associated faceEdges
         removeFace(faceHull[indexI]);
         faceEdges_.remove(faceHull[indexI]);
 
         // Remove from list of locked faces
-
+        removeFaceLock(faceHull[indexI]);
     }
 
     // Unlock mutexes from write lock
@@ -9201,6 +9305,36 @@ bool dynamicTopoFvMesh::collapseEdge
 #                   endif
 
                     faceToCheck[replaceIndex] = replacePoint;
+
+                    // Look for an edge on this face that doesn't
+                    // contain collapsePoint or replacePoint.
+                    label rplIndex = -1;
+                    labelList& fEdges = faceEdges_[eFaces[faceI]];
+
+                    forAll(fEdges, edgeI)
+                    {
+                        edge& eCheck = edges_[fEdges[edgeI]];
+
+                        if
+                        (
+                            eCheck[0] != collapsePoint
+                         && eCheck[1] != collapsePoint
+                         && eCheck[0] != replacePoint
+                         && eCheck[1] != replacePoint
+                        )
+                        {
+                            rplIndex = fEdges[edgeI];
+                            break;
+                        }
+                    }
+
+                    // Modify edgePoints for this edge
+                    replaceLabel
+                    (
+                        collapsePoint,
+                        replacePoint,
+                        edgePoints_[rplIndex]
+                    );
                 }
             }
         }
@@ -9217,7 +9351,7 @@ bool dynamicTopoFvMesh::collapseEdge
     nPoints_--;
 
     // Remove from list of locked points
-
+    removePointLock(collapsePoint);
 
     // Remove the point mutex
     if (threader_->multiThreaded())
@@ -9246,7 +9380,7 @@ bool dynamicTopoFvMesh::collapseEdge
     removeEdge(eIndex);
 
     // Remove from list of locked edges
-
+    removeEdgeLock(eIndex);
 
     // Unlock the edge mutex from write lock
     eMutex_.unlock();

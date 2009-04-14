@@ -409,6 +409,18 @@ class dynamicTopoFvMesh
             const rwMutex::lockType lType = rwMutex::READ_LOCK
         );
 
+        // Remove an index from the point lock list
+        void removePointLock(const label pIndex);
+
+        // Remove an index from the edge lock list
+        void removeEdgeLock(const label eIndex);
+
+        // Remove an index from the face lock list
+        void removeFaceLock(const label fIndex);
+
+        // Remove an index from the cell lock list
+        void removeCellLock(const label cIndex);
+
         // Return the integer threadID for a given pthread
         inline label self();
 
@@ -549,6 +561,13 @@ class dynamicTopoFvMesh
             const label index
         );
 
+        // Check for the occurrence of a label in the list
+        inline bool foundInList
+        (
+            const label item,
+            const labelList& list
+        );
+
         // Utility method to size-up the list to include an item
         inline void sizeUpList
         (
@@ -580,6 +599,13 @@ class dynamicTopoFvMesh
             labelList& hullCells,
             labelListList& ringEntities,
             const rwMutex::lockType lType = rwMutex::READ_LOCK
+        );
+
+        // Utility to check whether points of an edge lie on a boundary
+        void checkEdgeBoundary
+        (
+            const label eIndex,
+            FixedList<bool,2>& edgeBoundary
         );
 
         // Utility method to compute the minimum quality of a vertex hull
