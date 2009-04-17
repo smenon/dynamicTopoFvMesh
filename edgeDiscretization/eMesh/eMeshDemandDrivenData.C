@@ -136,6 +136,9 @@ void eMesh::calcOrderedEdgeList()
             )
         );
     }
+
+    // Force-write all data
+    write();
 }
 
 void eMesh::calcEdgePoints() const

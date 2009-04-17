@@ -207,7 +207,7 @@ class dynamicTopoFvMesh
         // One for each thread.
         List<stack> faceStack_;
 
-        // Stack-list of edges to be checked for topo-changes [3D]
+        // Stack-list of edges to be checked for topo-changes [3D].
         // One for each thread.
         List<stack> edgeStack_;
 
@@ -449,20 +449,19 @@ class dynamicTopoFvMesh
         );
 
         // Method for the collapse of a quad-face in 2D
-        // Returns a boolean value indicating whether the collapse was valid
-        bool collapseQuadFace
+        void collapseQuadFace
         (
             const label fIndex
         );
 
         // Method for the bisection of an edge in 3D
-        bool bisectEdge
+        void bisectEdge
         (
             const label eIndex
         );
 
         // Method for the collapse of an edge in 3D
-        bool collapseEdge
+        void collapseEdge
         (
             const label eIndex
         );
@@ -479,7 +478,7 @@ class dynamicTopoFvMesh
 
         // Check if the boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.
-        bool remove2DSliver
+        void remove2DSliver
         (
             const label fIndex
         );
@@ -600,6 +599,12 @@ class dynamicTopoFvMesh
             labelListList& ringEntities,
             const rwMutex::lockType lType = rwMutex::READ_LOCK
         );
+        
+        // Utility method to build edgePoints for an edge [3D]
+        void buildEdgePoints
+        (
+            const label eIndex
+        );
 
         // Utility to check whether points of an edge lie on a boundary
         void checkEdgeBoundary
@@ -627,7 +632,7 @@ class dynamicTopoFvMesh
         inline bool checkBoundingCurve(label eIndex);
 
         // Allocate dynamic programming tables
-        inline void initTables
+        void initTables
         (
             scalarListList& Q,
             labelListList& K,
@@ -635,7 +640,7 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to fill the dynamic programming tables
-        inline bool fillTables
+        bool fillTables
         (
             const label eIndex,
             const scalar minQuality,
@@ -646,7 +651,7 @@ class dynamicTopoFvMesh
         );
 
         // Remove the edge according to the swap sequence
-        bool removeEdgeFlips
+        void removeEdgeFlips
         (
             const label eIndex,
             const labelListList& K,
@@ -747,7 +752,6 @@ class dynamicTopoFvMesh
         bool edgeModification();
 
         // Private internal access to member data for static members
-        bool& topoChangeFlag() { return topoChangeFlag_; }
         scalar ratioMin() { return ratioMin_; }
         scalar ratioMax() { return ratioMax_; }
         scalar growthFactor() { return growthFactor_; }

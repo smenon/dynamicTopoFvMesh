@@ -77,8 +77,8 @@ ePatch::ePatch
 :
     patchIdentifier(name, dict, index),
     boundaryMesh_(bm),
-    start_(readLabel(dict.lookup("startEdge"))),
-    size_(readLabel(dict.lookup("nEdges")))
+    start_(readLabel(dict.lookup("start"))),
+    size_(readLabel(dict.lookup("size")))
 {}
 
 ePatch::ePatch(const ePatch& p, const eBoundaryMesh& bm)

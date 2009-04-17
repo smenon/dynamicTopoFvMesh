@@ -226,6 +226,9 @@ public:
             const bool reUse = true
         );
 
+        //- Set the instance for mesh files
+        void setInstance(const fileName& inst);
+
         //- Write mesh
         virtual bool write() const;
 

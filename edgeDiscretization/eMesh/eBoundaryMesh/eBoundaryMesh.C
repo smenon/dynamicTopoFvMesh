@@ -56,7 +56,11 @@ eBoundaryMesh::eBoundaryMesh
     regIOobject(io),
     mesh_(mesh)
 {
-    if (readOpt() == IOobject::MUST_READ)
+    if 
+    (
+        readOpt() == IOobject::MUST_READ
+     || (readOpt() == IOobject::READ_IF_PRESENT && headerOk())
+    )
     {
         ePatchList& patches = *this;
 

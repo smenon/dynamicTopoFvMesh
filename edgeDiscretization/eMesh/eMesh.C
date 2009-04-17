@@ -87,16 +87,11 @@ eMesh::eMesh(const polyMesh& pMesh)
         IOobject
         (
             "edges",
-            time().findInstance
-            (
-                meshSubDirectory(),
-                "edges",
-                IOobject::READ_IF_PRESENT
-            ),
+            mesh_.facesInstance(),
             meshSubDir,
             mesh_,
             IOobject::READ_IF_PRESENT,
-            IOobject::AUTO_WRITE
+            IOobject::NO_WRITE
         )
     ),
     edgeFaces_
@@ -104,33 +99,23 @@ eMesh::eMesh(const polyMesh& pMesh)
         IOobject
         (
             "edgeFaces",
-            time().findInstance
-            (
-                meshSubDirectory(),
-                "edgeFaces",
-                IOobject::READ_IF_PRESENT
-            ),
+            mesh_.facesInstance(),
             meshSubDir,
             mesh_,
             IOobject::READ_IF_PRESENT,
-            IOobject::AUTO_WRITE
+            IOobject::NO_WRITE
         )
     ),
     boundary_
     (
         IOobject
         (
-            "boundary",
-            time().findInstance
-            (
-                meshSubDirectory(),
-                "boundary",
-                IOobject::READ_IF_PRESENT
-            ),
+            "edgeBoundary",
+            mesh_.facesInstance(),
             meshSubDir,
             mesh_,
             IOobject::READ_IF_PRESENT,
-            IOobject::AUTO_WRITE
+            IOobject::NO_WRITE
         ),
         *this
     ),
@@ -289,7 +274,30 @@ void eMesh::resetPrimitives
             boundary_
         );
     }
+
+    // Set mesh files as changed
+    setInstance(time().timeName());
 }
+
+
+void eMesh::setInstance(const fileName& inst)
+{
+    if (debug)
+    {
+        Info<< "void eMesh::setInstance(const fileName& inst) : "
+            << "Resetting file instance to " << inst << endl;
+    }
+
+    edges_.writeOpt() = IOobject::AUTO_WRITE;
+    edges_.instance() = inst;
+
+    edgeFaces_.writeOpt() = IOobject::AUTO_WRITE;
+    edgeFaces_.instance() = inst;
+
+    boundary_.writeOpt() = IOobject::AUTO_WRITE;
+    boundary_.instance() = inst;
+}
+
 
 // Helper function to isolate points on triangular faces
 label eMesh::findIsolatedPoint(const face& f, const edge& e) const

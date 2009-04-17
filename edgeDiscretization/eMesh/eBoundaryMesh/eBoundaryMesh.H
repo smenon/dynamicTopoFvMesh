@@ -117,8 +117,6 @@ public:
             //- Find patch index given a name
             label findPatchID(const word& patchName) const;
 
-        // Edit
-
             //- writeData member function required by regIOobject
             bool writeData(Ostream&) const;
 
