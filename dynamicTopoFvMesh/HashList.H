@@ -138,6 +138,12 @@ class HashList
         //- Return an item of the HashList
         inline Item* getLinkItem(const label);
 
+        //- Initialize the table
+        inline void initTable(const label);
+
+        //- Clean out the hash-table
+        inline void cleanTable();
+
 public:
 
     // Static data members
@@ -289,6 +295,8 @@ public:
     // Member Operators
 
         HashList<T>& operator=(const HashList&);
+
+        void operator=(const List<T>&);
 
         //- Return subscript-checked iterator of HashList.
         inline iterator operator()(const label);

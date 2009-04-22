@@ -229,7 +229,9 @@ class dynamicTopoFvMesh
             // Default constructor
             topoMeshStruct();
 
-        } *structPtr_;
+        };
+
+        PtrList<topoMeshStruct> structPtr_;
 
         //- List of locks for each entity (and each thread)
         List<DynamicList<label> > pLocks_;
@@ -671,7 +673,7 @@ class dynamicTopoFvMesh
         // Identify the 3-2 swap from the triangulation sequence
         label identify32Swap
         (
-            const edge& edgeToCheck,
+            const label eIndex,
             const labelList& hullVertices,
             const labelListList& triangulations
         );
@@ -692,6 +694,7 @@ class dynamicTopoFvMesh
             const label eIndex,
             const label triangulationIndex,
             const labelListList& triangulations,
+            const labelList& hullVertices,
             const labelList& hullFaces,
             const labelList& hullCells
         );
@@ -702,6 +705,7 @@ class dynamicTopoFvMesh
             const label eIndex,
             const label triangulationIndex,
             const labelListList& triangulations,
+            const labelList& hullVertices,
             const labelList& hullFaces,
             const labelList& hullCells
         );

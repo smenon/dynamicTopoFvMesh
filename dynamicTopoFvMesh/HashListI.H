@@ -66,21 +66,13 @@ HashList<T>::HashList(const label tableSize)
     size_(0),
     startIdx_(0),
     endIdx_(0),
-    table_(0),
-    hash_table_size_(tableSize)
+    table_(0)
 {
-    // Allocate the hash-table and initialize
-    table_ = new Item*[hash_table_size_];
-    for(label i=0; i<hash_table_size_; i++)
-    {
-        table_[i] = 0;
-    }
-
-    // Allocate the mutex-list as well
-    tableMutex_ = new Mutex[hash_table_size_];
+    initTable(tableSize);
 }
 
 //- Allocation for a null-constructed object, given size
+//  Assumes that a null constructor exists for T
 template<class T>
 void HashList<T>::setSize
 (
@@ -90,14 +82,22 @@ void HashList<T>::setSize
 {
     if (size < 0)
     {
-        FatalErrorIn("HashList<T>::allocate(const size, const T&)") << nl
+        FatalErrorIn("HashList<T>::setSize(size, tableSize)") << nl
             << " Cannot allocate to size " << size
             << abort(FatalError);
     }
 
     if (size == 0)
     {
+        clear();
         return;
+    }
+
+    if (tableSize <= 0)
+    {
+        FatalErrorIn("HashList<T>::HashList(size, tableSize)") << nl
+            << " Cannot allocate table to " << tableSize
+            << abort(FatalError);
     }
 
     // Allocate the hash-table and initialize
@@ -109,16 +109,18 @@ void HashList<T>::setSize
         // Allocate the mutex-list as well
         delete [] tableMutex_;
         tableMutex_ = new Mutex[tableSize];
+
+        hash_table_size_ = tableSize;
+    }
+
+    // Clear out existing contents
+    if (size_)
+    {
+        clear();
     }
 
     // Initialize member data
-    size_   = size;
-    hash_table_size_ = tableSize;
-
-    for(label i=0; i<hash_table_size_; i++)
-    {
-        table_[i] = 0;
-    }
+    size_ = size;
 
     // Allocate
     Item *thisPtr=0, *prevPtr=0;
@@ -164,14 +166,22 @@ void HashList<T>::setSize
 {
     if (size < 0)
     {
-        FatalErrorIn("HashList<T>::allocate(const size, const T&)") << nl
+        FatalErrorIn("HashList<T>::setSize(size, data, tableSize)") << nl
             << " Cannot allocate to size " << size
             << abort(FatalError);
     }
 
     if (size == 0)
     {
+        clear();
         return;
+    }
+
+    if (tableSize <= 0)
+    {
+        FatalErrorIn("HashList<T>::HashList(size, data, tableSize)") << nl
+            << " Cannot allocate table to " << tableSize
+            << abort(FatalError);
     }
 
     // Allocate the hash-table and initialize
@@ -183,17 +193,18 @@ void HashList<T>::setSize
         // Allocate the mutex-list as well
         delete [] tableMutex_;
         tableMutex_ = new Mutex[tableSize];
+
+        hash_table_size_ = tableSize;
+    }
+
+    // Clear out existing contents
+    if (size_)
+    {
+        clear();
     }
 
     // Initialize member data
-    size_   = size;
-    hash_table_size_ = tableSize;
-
-    // Allocate the hash-table and initialize
-    for(label i=0; i<hash_table_size_; i++)
-    {
-        table_[i] = 0;
-    }
+    size_ = size;
 
     // Allocate
     Item *thisPtr=0, *prevPtr=0;
@@ -237,65 +248,17 @@ HashList<T>::HashList
     const T& data,
     const label tableSize
 )
+:
+    size_(0),
+    startIdx_(0),
+    endIdx_(0),
+    table_(0)
 {
-    if (size < 0)
-    {
-        FatalErrorIn("HashList<T>::HashList(const size, const T&)") << nl
-            << " Cannot allocate to size " << size
-            << abort(FatalError);
-    }
-
-    // Initialize member data
-    size_   = size;
-    hash_table_size_ = tableSize;
-
-    if (size == 0)
-    {
-        return;
-    }
-
-    // Allocate the hash-table and initialize
-    table_ = new Item*[hash_table_size_];
-    for(label i=0; i<hash_table_size_; i++)
-    {
-        table_[i] = 0;
-    }
-
-    // Allocate the mutex-list as well
-    tableMutex_ = new Mutex[hash_table_size_];
+    // Initialize
+    initTable(tableSize);
 
     // Allocate
-    Item *thisPtr=0, *prevPtr=0;
-    for (label i=0; i<size_; i++)
-    {
-        thisPtr = new Item;
-        thisPtr->data_ = data;
-        thisPtr->idx_  = i;
-
-        // Update the hash-table
-        label loc = hash(i)%hash_table_size_;
-        if (table_[loc])
-        {
-            table_[loc]->prev_ = thisPtr;
-            thisPtr->next_ = table_[loc];
-        }
-        table_[loc] = thisPtr;
-
-        // Update the numerical indexing
-        if (i==0)
-        {
-            startIdx_ = thisPtr;
-        }
-        else
-        {
-            prevPtr->nextidx_ = thisPtr;
-            thisPtr->previdx_ = prevPtr;
-        }
-        prevPtr = thisPtr;
-    }
-
-    // Update the last element
-    endIdx_=prevPtr;
+    setSize(size, data, tableSize);
 }
 
 //- Construct from an existing List<T> structure
@@ -305,65 +268,28 @@ HashList<T>::HashList
     const List<T>& data,
     const label tableSize
 )
+:
+    size_(0),
+    startIdx_(0),
+    endIdx_(0),
+    table_(0)
 {
+    initTable(tableSize);
+
     if (data.size() < 0)
     {
-        FatalErrorIn("HashList<T>::HashList(const List<T>& data)") << nl
+        FatalErrorIn("HashList<T>::HashList(const List<T>&)") << nl
             << " Cannot allocate to size " << data.size()
             << abort(FatalError);
     }
 
-    // Initialize member data
-    size_   = data.size();
-    hash_table_size_ = tableSize;
-
-    if (size_ == 0)
+    if (data.size() == 0)
     {
         return;
     }
 
-    // Allocate the hash-table and initialize
-    table_ = new Item*[hash_table_size_];
-    for(label i=0; i<hash_table_size_; i++)
-    {
-        table_[i] = 0;
-    }
-
-    // Allocate the mutex-list as well
-    tableMutex_ = new Mutex[hash_table_size_];
-
-    // Allocate
-    Item *thisPtr=0, *prevPtr=0;
-    for (label i=0; i<size_; i++)
-    {
-        thisPtr = new Item;
-        thisPtr->data_ = data[i];
-        thisPtr->idx_  = i;
-
-        // Update the hash-table
-        label loc = hash(i)%hash_table_size_;
-        if (table_[loc])
-        {
-            table_[loc]->prev_ = thisPtr;
-            thisPtr->next_ = table_[loc];
-        }
-        table_[loc] = thisPtr;
-
-        // Update the numerical indexing
-        if (i==0)
-        {
-            startIdx_ = thisPtr;
-        }
-        else
-        {
-            prevPtr->nextidx_ = thisPtr;
-            thisPtr->previdx_ = prevPtr;
-        }
-        prevPtr = thisPtr;
-    }
-
-    // Update the last element
-    endIdx_=prevPtr;
+    // Assign
+    this->operator=(data);
 }
 
 //- Construct as copy
@@ -372,65 +298,28 @@ HashList<T>::HashList
 (
     const HashList<T>& data
 )
+:
+    size_(0),
+    startIdx_(0),
+    endIdx_(0),
+    table_(0)
 {
+    initTable(data.table_size());
+
     if (data.size() < 0)
     {
-        FatalErrorIn("HashList<T>::HashList(const HashList<T>& data)") << nl
+        FatalErrorIn("HashList<T>::HashList(const HashList<T>&)") << nl
             << " Cannot allocate to size " << data.size()
             << abort(FatalError);
     }
 
-    // Initialize member data
-    size_   = data.size();
-    hash_table_size_ = data.table_size();
-
-    if (size == 0)
+    if (data.size() == 0)
     {
         return;
     }
 
-    // Allocate the hash-table and initialize
-    table_ = new Item*[hash_table_size_];
-    for(label i=0; i<hash_table_size_; i++)
-    {
-        table_[i] = 0;
-    }
-
-    // Allocate the mutex-list as well
-    tableMutex_ = new Mutex[hash_table_size_];
-
-    // Allocate
-    Item *thisPtr=0, *prevPtr=0;
-    for (label i=0; i<size_; i++)
-    {
-        thisPtr = new Item;
-        thisPtr->data_ = data[i];
-        thisPtr->idx_  = i;
-
-        // Update the hash-table
-        label loc = hash(i)%hash_table_size_;
-        if (table_[loc])
-        {
-            table_[loc]->prev_ = thisPtr;
-            thisPtr->next_ = table_[loc];
-        }
-        table_[loc] = thisPtr;
-
-        // Update the numerical indexing
-        if (i==0)
-        {
-            startIdx_ = thisPtr;
-        }
-        else
-        {
-            prevPtr->nextidx_ = thisPtr;
-            thisPtr->previdx_ = prevPtr;
-        }
-        prevPtr = thisPtr;
-    }
-
-    // Update the last element
-    endIdx_=prevPtr;
+    // Assign
+    this->operator=(data);
 }
 
 //- Insertion of a new element at the given label
@@ -858,11 +747,9 @@ void HashList<T>::clear()
         current = node;
     }
 
-    // Clean out the hash table
-    for(label i=0; i<hash_table_size_; i++)
-    {
-        table_[i] = 0;
-    }
+    // Clean the hash table
+    cleanTable();
+
     size_ = 0; startIdx_ = 0; endIdx_ = 0;
 }
 
@@ -938,6 +825,44 @@ inline typename HashList<T>::Item* HashList<T>::getLinkItem
             << abort(FatalError);
 
     return item;
+}
+
+//- Initialize the hash-table
+template<class T>
+inline void HashList<T>::initTable
+(
+    const label tableSize
+)
+{
+    if (tableSize <= 0)
+    {
+        FatalErrorIn("HashList<T>::HashList(tableSize)") << nl
+            << " Cannot allocate table to " << tableSize
+            << abort(FatalError);
+    }
+    else
+    {
+        hash_table_size_ = tableSize;
+    }
+
+    // Allocate the hash-table
+    table_ = new Item*[hash_table_size_];
+
+    // Clean the hash table
+    cleanTable();
+
+    // Allocate the mutex-list as well
+    tableMutex_ = new Mutex[hash_table_size_];
+}
+
+//- Clean out the hash-table
+template<class T>
+inline void HashList<T>::cleanTable()
+{
+    for(label i=0; i<hash_table_size_; i++)
+    {
+        table_[i] = 0;
+    }
 }
 
 //- Member function for the iterator
@@ -1234,22 +1159,134 @@ void HashList<T>::toc(const label loc) const
 template<class T>
 HashList<T>& HashList<T>::operator=
 (
-    const HashList& HLrhs
+    const HashList& data
 )
 {
-    Item *lhs, *rhs;
-
-    for
-    (
-        lhs=startIdx_, rhs=HLrhs.startIdx_;
-        lhs;
-        lhs=lhs->nextidx_, rhs=rhs->nextidx_
-    )
+    // Allocate the hash-table and initialize
+    if (table_ && (hash_table_size_ != data.table_size()))
     {
-        lhs->data_ = rhs->data_;
+        delete [] table_;
+        table_ = new Item*[data.table_size()];
+
+        // Allocate the mutex-list as well
+        delete [] tableMutex_;
+        tableMutex_ = new Mutex[data.table_size()];
+
+        hash_table_size_ = data.table_size();
     }
 
+    // Clear existing contents
+    if (size_)
+    {
+        clear();
+    }
+    else
+    {
+        // Clean the hash table
+        cleanTable();
+    }
+
+    // Initialize member data
+    size_ = data.size();
+
+    Item *thisPtr=0, *prevPtr=0;
+    for (label i=0; i<size_; i++)
+    {
+        thisPtr = new Item;
+        thisPtr->data_ = data[i];
+        thisPtr->idx_  = i;
+
+        // Update the hash-table
+        label loc = hash(i)%hash_table_size_;
+        if (table_[loc])
+        {
+            table_[loc]->prev_ = thisPtr;
+            thisPtr->next_ = table_[loc];
+        }
+        table_[loc] = thisPtr;
+
+        // Update the numerical indexing
+        if (i==0)
+        {
+            startIdx_ = thisPtr;
+        }
+        else
+        {
+            prevPtr->nextidx_ = thisPtr;
+            thisPtr->previdx_ = prevPtr;
+        }
+        prevPtr = thisPtr;
+    }
+
+    // Update the last element
+    endIdx_=prevPtr;
+
     return (*this);
+}
+
+// Assigment operator to List<T>
+template<class T>
+void HashList<T>::operator=
+(
+    const List<T>& data
+)
+{
+    // Hash table should be allocated at this point
+    // Throw an error if otherwise
+    if (hash_table_size_)
+    {
+        // Clear existing contents
+        if (size_)
+        {
+            clear();
+        }
+        else
+        {
+            // Clean the hash table
+            cleanTable();
+        }
+
+        // Reinitialize the size
+        size_ = data.size();
+    }
+    else
+    {
+        FatalErrorIn("HashList<T>::operator=(const List<T>&)") << nl
+            << " Hash table has not been allocated. "
+            << abort(FatalError);
+    }
+
+    Item *thisPtr=0, *prevPtr=0;
+    for (label i=0; i<size_; i++)
+    {
+        thisPtr = new Item;
+        thisPtr->data_ = data[i];
+        thisPtr->idx_  = i;
+
+        // Update the hash-table
+        label loc = hash(i)%hash_table_size_;
+        if (table_[loc])
+        {
+            table_[loc]->prev_ = thisPtr;
+            thisPtr->next_ = table_[loc];
+        }
+        table_[loc] = thisPtr;
+
+        // Update the numerical indexing
+        if (i==0)
+        {
+            startIdx_ = thisPtr;
+        }
+        else
+        {
+            prevPtr->nextidx_ = thisPtr;
+            thisPtr->previdx_ = prevPtr;
+        }
+        prevPtr = thisPtr;
+    }
+
+    // Update the last element
+    endIdx_=prevPtr;
 }
 
 //- Return subscript-checked iterator of HashList.
