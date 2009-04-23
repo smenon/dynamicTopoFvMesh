@@ -183,6 +183,7 @@ int main(int argc, char *argv[])
             );
 
             meshQuality.internalField() = mesh.meshQuality();
+            meshQuality.write();
 
             // Write out the mesh length scales
             volScalarField lengthScale
@@ -201,6 +202,7 @@ int main(int argc, char *argv[])
             );
 
             lengthScale.internalField() = mesh.lengthScale();
+            lengthScale.write();
         }
     }
 

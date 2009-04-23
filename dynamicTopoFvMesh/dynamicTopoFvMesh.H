@@ -2,7 +2,7 @@
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
    \\    /   O peration     |
-    \\  /    A nd           | Copyright (C) 1991-2007 OpenCFD Ltd.
+    \\  /    A nd           | Copyright held by original author
      \\/     M anipulation  |
 -------------------------------------------------------------------------------
 License
@@ -260,9 +260,9 @@ class dynamicTopoFvMesh
         void operator=(const dynamicTopoFvMesh&);
 
         // Perform a Delaunay test on an internal face
-        inline bool testDelaunay
+        inline void testDelaunay
         (
-            const label faceIndex,
+            const label fIndex,
             bool& failed
         );
 
@@ -322,13 +322,13 @@ class dynamicTopoFvMesh
         inline scalar meshFaceLengthScale(const label fIndex);
 
         // Return length-scale at an edge-location in the mesh [3D]
-        inline scalar meshEdgeLengthScale(const label eIndex);
+        inline bool meshEdgeLengthScale(const label eIndex, scalar& scale);
 
         // Check if a given face is a quad
         inline bool checkQuadFace(const label fIndex);
 
         // Return the length of an edge
-        inline scalar edgeLength(const label eIndex);
+        inline bool edgeLength(const label eIndex, scalar& length);
 
         // MultiThreaded topology modifier [2D]
         void threadedTopoModifier2D();
@@ -743,11 +743,8 @@ class dynamicTopoFvMesh
         // Copy edge-based connectivity to HashLists
         void setEdgeConnectivity();
 
-        // Check the state of edge-based connectivity HashLists
-        void checkEdgeConnectivity();
-
-        // Check tet-specific connectivity structures
-        void checkTetConnectivity();
+        // Check the state of connectivity HashLists
+        void checkConnectivity();
 
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();

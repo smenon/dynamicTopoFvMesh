@@ -275,6 +275,10 @@ void eMesh::resetPrimitives
         );
     }
 
+    // Reset size information
+    nEdges_ = edges_.size();
+    nInternalEdges_ = boundary_[0].start();
+
     // Set mesh files as changed
     setInstance(time().timeName());
 }
