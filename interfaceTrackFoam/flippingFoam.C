@@ -26,8 +26,8 @@ Application
     flippingFoam
 
 Description
-    Driver routine to test mesh-motion and topology changes. 
- 
+    Driver routine to test mesh-motion and topology changes.
+
 Author
     Sandeep Menon
 
@@ -36,50 +36,82 @@ Author
 #include "fvCFD.H"
 #include "dynamicTopoFvMesh.H"
 
-// Rotate all points belonging to the patch-name 'patchName' by 'theta' 
-// about an axis p1-p2, translate by a distance defined by 't', and update the mesh
+// Mesh motion solvers
+#include "motionSolver.H"
+#include "tetDecompositionMotionSolver.H"
+#include "faceTetPolyPatch.H"
+#include "tetPolyPatchInterpolation.H"
+#include "setMotionBC.H"
+
+// Rotate all points belonging to the 'patchNames' by 'theta'
+// about an axis p1-p2, translate by a distance defined by 't'
 void rotatePoints
 (
-    dynamicTopoFvMesh& mesh, 
-    word patchName, 
-    doubleScalar theta, 
-    vector p1, 
-    vector p2, 
+    dynamicTopoFvMesh& mesh,
+    wordList& patchNames,
+    doubleScalar theta,
+    vector p1,
+    vector p2,
     vector t
 )
 {
-    label patchID = -1;
-    vector p_orig, p, q;
-    doubleScalar costheta = Foam::cos(theta), sintheta = Foam::sin(theta);
-    
+    label nP = 0;
+    vector p, q;
+    doubleScalar costheta = Foam::cos(theta);
+    doubleScalar sintheta = Foam::sin(theta);
+
+    labelList patchID(patchNames.size(), -1);
+    labelHashSet pointSet;
+
     // Define the rotation axis and normalize it
     vector r = (p2-p1)/mag(p2-p1);
-        
+
     // Fetch the mesh-points
-    pointField meshPoints = mesh.points();
-    
-    // Find the patch
-    forAll (mesh.boundaryMesh(), patchI)
+    const polyBoundaryMesh& bMesh = mesh.boundaryMesh();
+    const pointField& oldMeshPoints(mesh.points());
+
+    // Copy existing point locations
+    pointField meshPoints(oldMeshPoints);
+
+    // Match patch names and add to a HashSet to avoid moving
+    // patch points twice
+    forAll(patchNames, wordI)
     {
-        if(mesh.boundaryMesh()[patchI].name() == patchName)
+        forAll(mesh.boundaryMesh(), patchI)
         {
-            patchID = patchI;
-            break;
+            if (bMesh[patchI].name() == patchNames[wordI])
+            {
+                patchID[nP++] = patchI;
+
+                // Add all points of this patch
+                const labelList& patchPoints = bMesh[patchI].meshPoints();
+
+                forAll(patchPoints, index)
+                {
+                    if (!pointSet.found(patchPoints[index]))
+                    {
+                        pointSet.insert(patchPoints[index]);
+                    }
+                }
+
+                break;
+            }
         }
-    }   
-    
-    // Move points that lie on the patch
-    const labelList& patchPoints = mesh.boundaryMesh()[patchID].meshPoints();
-    vectorField Displacement(patchPoints.size(),vector::zero);
-    
-    forAll (patchPoints, index)
+    }
+
+    // Move all patch points cumulatively
+    labelList allPatchPoints = pointSet.toc();
+
+    forAll(allPatchPoints, index)
     {
         q = vector::zero;
-        // Fetch the point
-        p_orig = meshPoints[patchPoints[index]];
-        p = p_orig + t;
+
+        // Fetch the old point and translate it
+        p = oldMeshPoints[allPatchPoints[index]] + t;
+
         // Translate to the origin
         p -= p1;
+
         // Apply the rotation matrix
         q.x() += (costheta + (1 - costheta) * r.x() * r.x()) * p.x();
         q.x() += ((1 - costheta) * r.x() * r.y() - r.z() * sintheta) * p.y();
@@ -92,19 +124,16 @@ void rotatePoints
         q.z() += ((1 - costheta) * r.x() * r.z() - r.y() * sintheta) * p.x();
         q.z() += ((1 - costheta) * r.y() * r.z() + r.x() * sintheta) * p.y();
         q.z() += (costheta + (1 - costheta) * r.z() * r.z()) * p.z();
+
         // Translate back to original location
         q += p1;
-        // Assign to the mesh
-        meshPoints[patchPoints[index]] = q;
-        // Change displacement conditions as well
-        Displacement[index] = q-p_orig;
-    }   
 
-    // Update the displacement
-    mesh.setMotionBC(patchID, Displacement);
-    
-    // Move the boundary points
-    mesh.movePoints(meshPoints);      
+        // Assign to the mesh
+        meshPoints[allPatchPoints[index]] = q;
+    }
+
+    // Update the displacement BCs for mesh motion
+    setMotionBC(mesh, meshPoints);
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -119,6 +148,9 @@ int main(int argc, char *argv[])
 #   include "createTime.H"
 #   include "createDynamicMesh.H"
 
+    // Initialize the motion solver
+    autoPtr<motionSolver> mPtr = motionSolver::New(mesh);
+
     // Define the rotation axis and angle from the dictionary
     IOdictionary rotationParams
                  (
@@ -129,39 +161,44 @@ int main(int argc, char *argv[])
                         mesh,
                         IOobject::MUST_READ,
                         IOobject::NO_WRITE
-                    )            
+                    )
                  );
 
     dictionary patchNames(rotationParams.subDict("patchNames"));
-    wordList toc = patchNames.toc();
+    wordList patches = patchNames.toc();
 
     vector p1(rotationParams.lookup("axisPointStart"));
     vector p2(rotationParams.lookup("axisPointEnd"));
     vector t(rotationParams.lookup("translation"));
     doubleScalar angle = readScalar(rotationParams.lookup("angle"));
-    
+
     // Convert angle to radians
     angle *= (3.14159/180.0);
-    
+
     // Enable/disable debugging
-    // mesh.debug = true;
+    mesh.debug = true;
 
     for (runTime++; !runTime.end(); runTime++)
-    {    
+    {
         Info << "Time = " << runTime.value() << endl << endl;
 
         p1 += t; p2 += t;
-        
-        // Update boundary points and move them
-        forAll(toc, wordI)
+
+        // Update boundary points and solve for mesh-motion
+        rotatePoints(mesh, patches, angle, p1, p2, t);
+
+        // Update mesh motion
+        mesh.movePoints(mPtr->newPoints());
+
+        // Update mesh for topology changes
+        bool meshChanged = mesh.updateTopology();
+
+        if (meshChanged)
         {
-            rotatePoints(mesh, toc[wordI], angle, p1, p2, t);
+            // Update the motion solver
+            mPtr->updateMesh(mesh.meshMap());
         }
-        
-        // Update mesh (Solve for motion and topology)
-        mesh.updateMotion();
-        mesh.updateTopology();
-        
+
         runTime.write();
 
         if (runTime.outputTime())

@@ -33,7 +33,7 @@ Description
    "Using POSIX Threads: Programming with Pthreads"
     by Brad Nichols, Dick Buttlar, Jackie Farrell
       O'Reilly & Associates, Inc.
- 
+
 Author
     Sandeep Menon
 
@@ -51,9 +51,9 @@ SourceFiles
 #include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
-extern "C" 
-{ 
-    typedef void *(*externThreadFunctionType)(void *); 
+extern "C"
+{
+    typedef void *(*externThreadFunctionType)(void *);
 }
 typedef void *(*threadFunctionType)(void *);
 
@@ -154,7 +154,7 @@ public:
     inline pthread_cond_t* operator()()
     {
         return &condition_;
-    }        
+    }
 };
 
 /*---------------------------------------------------------------------------*\
@@ -162,11 +162,11 @@ public:
 \*---------------------------------------------------------------------------*/
 
 class multiThreader
-{            
+{
     // Private data
-    
+
         int numThreads_;
-        
+
         int maxQueueSize_;
 
         // Work-queue item: Holds a pointer to the method and its argument
@@ -175,8 +175,8 @@ class multiThreader
             void (*function)(void*);
             void *arg;
             workQueueItem *next;
-        };            
-        
+        };
+
         // Common structure for all threads in the pool.
         struct threadPool
         {
@@ -187,45 +187,45 @@ class multiThreader
             pthread_t       *threads;
             pthread_attr_t  attr;
             workQueueItem   *head, *tail;
-            
+
             // Flags
             bool queueClosed;
             bool shutDown;
-            
+
             // Synchronization
             Mutex       queueLock;
             Conditional queueNotEmpty;
             Conditional queueNotFull;
             Conditional queueEmpty;
             Conditional noBusyThreads;
-        } *poolInfo_;           
+        } *poolInfo_;
 
     // Private Member Functions
-        
+
         void initializeThreadPool();
-        
+
         static threadReturnType poolThread(void *arg);
-        
+
         void destroyThreadPool();
-        
+
         void waitForCondition(Conditional&, Mutex&);
-        
+
         void broadCast(Conditional&);
-        
+
         void signal(Conditional&);
 
         //- Disallow default bitwise copy construct
         multiThreader(const multiThreader&);
 
         //- Disallow default bitwise assignment
-        void operator=(const multiThreader&);            
-    
-public:      
-    
+        void operator=(const multiThreader&);
+
+public:
+
     // Debug switch
-    
+
         static bool debug;
-    
+
     // Constructor
 
         //- Construct with specified number of threads
@@ -235,28 +235,31 @@ public:
     // Destructor
 
         ~multiThreader();
-        
+
 
     // Member Functions
-        
+
         //- Return the number of threads
         int getNumThreads();
 
         //- Obtain the thread ID for a given index
         pthread_t getID(int index);
 
+        //- Return true if the number of threads is equal to one.
+        bool singleThreaded() const;
+
         //- Return true if the number of threads is more than one.
         bool multiThreaded() const;
-        
+
         //- Return the maxQueueSize
         int getMaxQueueSize();
-        
+
         //- Set the maxQueueSize
         void setMaxQueueSize(int size);
-        
+
         //- Add a function to the work queue
         void addToWorkQueue(void (*tFunction)(void*), void *arg);
-        
+
         //- Wait for all worker threads to complete
         void waitForCompletion();
 };

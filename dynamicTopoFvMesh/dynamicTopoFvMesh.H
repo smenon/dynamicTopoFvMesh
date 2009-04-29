@@ -55,7 +55,6 @@ namespace Foam
 // Class forward declarations
 class mapPolyMesh;
 class objectMap;
-class motionSolver;
 
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration
@@ -88,12 +87,6 @@ class dynamicTopoFvMesh
         //- List of noSwap patch IDs (which specifies patches on
         //  which 2-2 swaps are to be avoided)
         labelHashSet noSwapPatchIDs_;
-
-        //- Should the mesh solve for motion on update?
-        Switch solveForMotion_;
-
-        //- The motion solver pointer
-        autoPtr<motionSolver> motionPtr_;
 
         //- PolyMesh mapping structure
         autoPtr<mapPolyMesh> mapper_;
@@ -601,7 +594,7 @@ class dynamicTopoFvMesh
             labelListList& ringEntities,
             const rwMutex::lockType lType = rwMutex::READ_LOCK
         );
-        
+
         // Utility method to build edgePoints for an edge [3D]
         void buildEdgePoints
         (
@@ -773,6 +766,9 @@ public:
 
     // Member Functions
 
+        // Return reference to the dictionary
+        const dictionary& dynamicMeshDict() const;
+
         // Return reference to the edge mesh
         eMesh& EdgeMesh();
 
@@ -792,21 +788,11 @@ public:
         // Return true if changes have occurred
         bool updateTopology();
 
-        // Update the mesh for motion
-        void updateMotion();
-
         //- Update mesh corresponding to the given map
         virtual void updateMesh(const mapPolyMesh& mpm);
 
         // Map all fields in time using the given map.
         virtual void mapFields(const mapPolyMesh& mpm);
-
-        // Set mesh-motion displacement boundary conditions
-        void setMotionBC
-        (
-            const label& index,
-            const vectorField& dispField
-        );
 
         // Return the mesh-mapper
         const mapPolyMesh& meshMap();

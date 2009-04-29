@@ -47,20 +47,20 @@ Foam::multiThreader::multiThreader(int numThreads)
 :
     maxQueueSize_(10),
     poolInfo_(NULL)
-{       
+{
     if (numThreads > 0)
     {
         numThreads_ = numThreads;
-        Info << "Initializing threading environment with " 
-             << numThreads_ << " threads." << endl;        
+        Info << "Initializing threading environment with "
+             << numThreads_ << " threads." << endl;
     }
     else
     {
         // Default number of threads at one (single-threaded)
         numThreads_ = 1;
-        Info << "Defaulting threading environment to one thread." << endl;         
+        Info << "Defaulting threading environment to one thread." << endl;
     }
-    
+
     // Initialize the thread pool
     initializeThreadPool();
 }
@@ -84,7 +84,7 @@ Foam::Mutex::Mutex()
     {
         FatalErrorIn("multiThreader::Mutex::Mutex()")
             << "Unable to initialize mutex"
-            << abort(FatalError);        
+            << abort(FatalError);
     }
 
     // Destroy the attribute
@@ -119,8 +119,8 @@ Foam::Conditional::Conditional()
     {
         FatalErrorIn("multiThreader::Conditional::Conditional()")
             << "Unable to initialize condition"
-            << abort(FatalError);        
-    }    
+            << abort(FatalError);
+    }
 }
 
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
@@ -136,8 +136,8 @@ Foam::Mutex::~Mutex()
     {
         FatalErrorIn("multiThreader::Mutex::~Mutex()")
             << "Unable to destroy mutex"
-            << abort(FatalError);        
-    }    
+            << abort(FatalError);
+    }
 }
 
 Foam::rwMutex::~rwMutex()
@@ -156,95 +156,103 @@ Foam::Conditional::~Conditional()
     {
         FatalErrorIn("multiThreader::Conditional::~Conditional()")
             << "Unable to destroy condition"
-            << abort(FatalError);        
-    }     
+            << abort(FatalError);
+    }
 }
 
 // * * * * * * * * * * * * * * * Private Functions * * * * * * * * * * * * * //
 
 void Foam::multiThreader::initializeThreadPool()
 {
-    // Allocate the threadPool structure
-    poolInfo_ = new threadPool;
-    
-    // Initialize fields
-    poolInfo_->threader = this;
-    poolInfo_->numThreads = numThreads_;
-    poolInfo_->queueSize = 0;
-    poolInfo_->busyThreads = 0;
-    poolInfo_->threads = new pthread_t[numThreads_];
-    poolInfo_->head = NULL;
-    poolInfo_->tail = NULL;
-    
-    // Initialize flags
-    poolInfo_->queueClosed = false;
-    poolInfo_->shutDown = false;
-    
-    // Initialize thread attributes
-    pthread_attr_init(&(poolInfo_->attr));
-    pthread_attr_setdetachstate(&(poolInfo_->attr), PTHREAD_CREATE_JOINABLE);
-    
-    // Create worker threads and have them wait for jobs
-    for (int tIndex = 0; tIndex < numThreads_; tIndex++)
-    {        
-        int status = pthread_create
-                     ( 
-                         &(poolInfo_->threads[tIndex]), 
-                         &(poolInfo_->attr),
-                         reinterpret_cast<externThreadFunctionType>
-                         (
-                             poolThread
-                         ),
-                         reinterpret_cast<void *>
-                         (
-                             poolInfo_
-                         ) 
-                     );
-        
-        if (status != 0)
+    // Initialize threads only if multi-threaded
+    if (multiThreaded())
+    {
+        // Allocate the threadPool structure
+        poolInfo_ = new threadPool;
+
+        // Initialize fields
+        poolInfo_->threader = this;
+        poolInfo_->numThreads = numThreads_;
+        poolInfo_->queueSize = 0;
+        poolInfo_->busyThreads = 0;
+        poolInfo_->threads = new pthread_t[numThreads_];
+        poolInfo_->head = NULL;
+        poolInfo_->tail = NULL;
+
+        // Initialize flags
+        poolInfo_->queueClosed = false;
+        poolInfo_->shutDown = false;
+
+        // Initialize thread attributes
+        pthread_attr_init(&(poolInfo_->attr));
+        pthread_attr_setdetachstate
+        (
+            &(poolInfo_->attr),
+            PTHREAD_CREATE_JOINABLE
+        );
+
+        // Create worker threads and have them wait for jobs
+        for (int tIndex = 0; tIndex < numThreads_; tIndex++)
         {
-            FatalErrorIn("multiThreader::initializeThreadPool()")
-                << "pthread_create could not initialize thread: "
-                << tIndex
-                << abort(FatalError);
-        }        
-    }   
+            int status = pthread_create
+                         (
+                             &(poolInfo_->threads[tIndex]),
+                             &(poolInfo_->attr),
+                             reinterpret_cast<externThreadFunctionType>
+                             (
+                                 poolThread
+                             ),
+                             reinterpret_cast<void *>
+                             (
+                                 poolInfo_
+                             )
+                         );
+
+            if (status != 0)
+            {
+                FatalErrorIn("multiThreader::initializeThreadPool()")
+                    << "pthread_create could not initialize thread: "
+                    << tIndex
+                    << abort(FatalError);
+            }
+        }
+    }
 }
 
 threadReturnType Foam::multiThreader::poolThread(void *arg)
 {
     // Typecast the argument into the required structure
     threadPool *poolInfo = reinterpret_cast<threadPool *>(arg);
-    
+
     // Work queue loop
     while (true)
     {
         // Lock the work queue
         poolInfo->queueLock.lock();
-        
+
         // Wait for work to arrive in the queue
-        while ((poolInfo->queueSize == 0) && (!poolInfo->shutDown)) 
+        while ((poolInfo->queueSize == 0) && (!poolInfo->shutDown))
         {
-#           ifdef FULLDEBUG            
+#           ifdef FULLDEBUG
             if (debug)
             {
                 Info << "poolThread::Wait on queueNotEmpty." << endl;
             }
-#           endif             
+#           endif
             poolInfo->threader->waitForCondition
                                 (
                                     poolInfo->queueNotEmpty,
                                     poolInfo->queueLock
                                 );
-        }  
-        
+        }
+
         // Check for shutdown
-        if (poolInfo->shutDown) 
+        if (poolInfo->shutDown)
         {
             poolInfo->queueLock.unlock();
             pthread_exit(NULL);
-        }  
-        
+        }
+
         // Pick an item off the queue, and get to work
         workQueueItem *myWorkItem = poolInfo->head;
         poolInfo->queueSize--;
@@ -256,187 +264,203 @@ threadReturnType Foam::multiThreader::poolThread(void *arg)
         {
             poolInfo->head = myWorkItem->next;
         }
-        
+
         // Handle a waiting destructor
         if (poolInfo->queueSize == 0)
         {
-#           ifdef FULLDEBUG            
+#           ifdef FULLDEBUG
             if (debug)
             {
                 Info << "poolThread::Signaling: Empty queue." << endl;
             }
-#           endif             
+#           endif
             poolInfo->threader->signal(poolInfo->queueEmpty);
         }
-        
+
         // Increment the busy queue
         poolInfo->busyThreads++;
-        
+
         // Unlock the work queue
         poolInfo->queueLock.unlock();
-        
+
         // Perform the work
         myWorkItem->function(myWorkItem->arg);
-        
+
         // Free up the work item
         delete myWorkItem;
-        
+
         // Lock the work queue
         poolInfo->queueLock.lock();
-        
+
         // Finished the allotted work, decrement the busy queue
         poolInfo->busyThreads--;
-        
+
         // Signal any conditions waiting on the busy queue
         if ((poolInfo->busyThreads == 0) && (poolInfo->queueSize == 0))
         {
-#           ifdef FULLDEBUG            
+#           ifdef FULLDEBUG
             if (debug)
             {
                 Info << "Signaling: No busy threads." << endl;
             }
-#           endif            
+#           endif
             poolInfo->threader->signal(poolInfo->noBusyThreads);
-        }     
-        
+        }
+
         // Unlock the work queue
         poolInfo->queueLock.unlock();
     }
-    
+
     return threadReturnValue;
 }
 
 void Foam::multiThreader::addToWorkQueue
 (
-    void (*tFunction)(void*), 
+    void (*tFunction)(void*),
     void *arg
 )
 {
+    if (singleThreaded())
+    {
+#       ifdef FULLDEBUG
+        if (debug)
+        {
+            Info << "addToWorkQueue:: Not in multiThreaded mode." << endl;
+        }
+#       endif
+
+        return;
+    }
+
     // Lock the work queue
     poolInfo_->queueLock.lock();
-    
+
     // If occupied, wait for the queue to free-up
     while
     (
-         (poolInfo_->queueSize == maxQueueSize_) 
-      && (!(poolInfo_->shutDown || poolInfo_->queueClosed))  
-    ) 
+         (poolInfo_->queueSize == maxQueueSize_)
+      && (!(poolInfo_->shutDown || poolInfo_->queueClosed))
+    )
     {
-#       ifdef FULLDEBUG            
+#       ifdef FULLDEBUG
         if (debug)
         {
             Info << "addToWorkQueue:: Wait on queueNotFull." << endl;
         }
-#       endif          
+#       endif
         waitForCondition(poolInfo_->queueNotFull, poolInfo_->queueLock);
-    } 
-    
+    }
+
     // Is the pool in the process of being destroyed?
     // Unlock the mutex and return to caller.
-    if (poolInfo_->shutDown || poolInfo_->queueClosed) 
+    if (poolInfo_->shutDown || poolInfo_->queueClosed)
     {
         poolInfo_->queueLock.unlock();
         return;
-    }  
-    
+    }
+
     // Allocate a new work structure
     workQueueItem *newWorkItem = new workQueueItem;
     newWorkItem->function = tFunction;
     newWorkItem->arg = arg;
-    newWorkItem->next = NULL;    
-    
+    newWorkItem->next = NULL;
+
     // Add new work structure to the queue
-    if (poolInfo_->queueSize == 0) 
+    if (poolInfo_->queueSize == 0)
     {
         poolInfo_->tail = poolInfo_->head = newWorkItem;
         broadCast(poolInfo_->queueNotEmpty);
-    } 
-    else 
+    }
+    else
     {
         poolInfo_->tail->next = newWorkItem;
         poolInfo_->tail = newWorkItem;
     }
 
-    poolInfo_->queueSize++;    
-    
+    poolInfo_->queueSize++;
+
     // Unlock the work queue
-    poolInfo_->queueLock.unlock();    
+    poolInfo_->queueLock.unlock();
 }
 
 //- Wait for all worker threads to complete
 void Foam::multiThreader::waitForCompletion()
 {
     // Lock the work queue
-    poolInfo_->queueLock.lock();    
-    
+    poolInfo_->queueLock.lock();
+
     // Wait for all threads to finish work
     waitForCondition(poolInfo_->noBusyThreads, poolInfo_->queueLock);
-    
+
     // Unlock the work queue
-    poolInfo_->queueLock.unlock();    
+    poolInfo_->queueLock.unlock();
 }
 
 void Foam::multiThreader::destroyThreadPool()
 {
-    // Lock the work queue
-    poolInfo_->queueLock.lock();
-    
-    // Is a shutdown already in progress?
-    if (poolInfo_->queueClosed || poolInfo_->shutDown) 
+    // Destroy threads only if multi-threaded
+    if (multiThreaded())
     {
-        // Unlock the mutex and return
-        poolInfo_->queueLock.unlock();
-        return;
-    }    
-    
-    poolInfo_->queueClosed = true;
+        // Lock the work queue
+        poolInfo_->queueLock.lock();
 
-    // Wait for workers to drain the queue
-    while (poolInfo_->queueSize != 0) 
-    {
-        waitForCondition(poolInfo_->queueEmpty, poolInfo_->queueLock);
-    }
-
-    poolInfo_->shutDown = true;        
-    
-    // Unlock the work queue
-    poolInfo_->queueLock.unlock();
-    
-    // Wake up workers so that they check the shutdown flag
-    broadCast(poolInfo_->queueNotEmpty);
-    broadCast(poolInfo_->queueNotFull);
-
-    // Wait for all workers to exit
-    for(int i=0; i < numThreads_; i++) 
-    {
-        if (pthread_join(poolInfo_->threads[i],NULL))
+        // Is a shutdown already in progress?
+        if (poolInfo_->queueClosed || poolInfo_->shutDown)
         {
-            FatalErrorIn("multiThreader::destroyThreadPool()")
-                << "pthread_join failed."
-                << abort(FatalError);            
+            // Unlock the mutex and return
+            poolInfo_->queueLock.unlock();
+            return;
         }
-    }    
-    
-    // Destroy the attribute
-    pthread_attr_destroy(&(poolInfo_->attr));
-    
-    // Deallocate the work-queue and pool structure
-    delete [] poolInfo_->threads;
-    
-    workQueueItem *currentNode;
-    while(poolInfo_->head != NULL) 
-    {
-        currentNode = poolInfo_->head->next; 
-        poolInfo_->head = poolInfo_->head->next;
-        delete currentNode;
+
+        poolInfo_->queueClosed = true;
+
+        // Wait for workers to drain the queue
+        while (poolInfo_->queueSize != 0)
+        {
+            waitForCondition(poolInfo_->queueEmpty, poolInfo_->queueLock);
+        }
+
+        poolInfo_->shutDown = true;
+
+        // Unlock the work queue
+        poolInfo_->queueLock.unlock();
+
+        // Wake up workers so that they check the shutdown flag
+        broadCast(poolInfo_->queueNotEmpty);
+        broadCast(poolInfo_->queueNotFull);
+
+        // Wait for all workers to exit
+        for(int i=0; i < numThreads_; i++)
+        {
+            if (pthread_join(poolInfo_->threads[i],NULL))
+            {
+                FatalErrorIn("multiThreader::destroyThreadPool()")
+                    << "pthread_join failed."
+                    << abort(FatalError);
+            }
+        }
+
+        // Destroy the attribute
+        pthread_attr_destroy(&(poolInfo_->attr));
+
+        // Deallocate the work-queue and pool structure
+        delete [] poolInfo_->threads;
+
+        workQueueItem *currentNode;
+        while(poolInfo_->head != NULL)
+        {
+            currentNode = poolInfo_->head->next;
+            poolInfo_->head = poolInfo_->head->next;
+            delete currentNode;
+        }
+
+        delete poolInfo_;
     }
-    
-    delete poolInfo_;     
 }
 
 void Foam::multiThreader::waitForCondition
 (
-    Conditional& condition, 
+    Conditional& condition,
     Mutex& mutex
 )
 {
@@ -444,8 +468,8 @@ void Foam::multiThreader::waitForCondition
     {
         FatalErrorIn("multiThreader::waitForCondition()")
             << "Conditional wait failed."
-            << abort(FatalError);            
-    }    
+            << abort(FatalError);
+    }
 }
 
 void Foam::multiThreader::broadCast(Conditional& condition)
@@ -454,8 +478,8 @@ void Foam::multiThreader::broadCast(Conditional& condition)
     {
         FatalErrorIn("multiThreader::broadCast()")
             << "Unable to broadcast."
-            << abort(FatalError);                
-    }    
+            << abort(FatalError);
+    }
 }
 
 void Foam::multiThreader::signal(Conditional& condition)
@@ -464,8 +488,8 @@ void Foam::multiThreader::signal(Conditional& condition)
     {
         FatalErrorIn("multiThreader::signal()")
             << "Unable to signal."
-            << abort(FatalError);                
-    }    
+            << abort(FatalError);
+    }
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -479,19 +503,27 @@ int Foam::multiThreader::getNumThreads()
 //- Obtain the thread ID for a given index
 pthread_t Foam::multiThreader::getID(int index)
 {
-    if (poolInfo_ && index > -1 && index < numThreads_)
+    if (multiThreaded())
     {
-        return poolInfo_->threads[index];
-    }
-    else
-    {
-        FatalErrorIn("multiThreader::getID(int index)")
-            << "Invalid request for ID."
-            << abort(FatalError);
+        if (poolInfo_ && index > -1 && index < numThreads_)
+        {
+            return poolInfo_->threads[index];
+        }
+        else
+        {
+            FatalErrorIn("multiThreader::getID(int index)")
+                << "Invalid request for ID."
+                << abort(FatalError);
+        }
     }
 
-    // This should never happen anyway.
-    return poolInfo_->threads[index];
+    return -1;
+}
+
+//- Return true if the number of threads is equal to one.
+bool Foam::multiThreader::singleThreaded() const
+{
+    return (numThreads_ == 1);
 }
 
 //- Return true if the number of threads is more than one.
@@ -517,7 +549,7 @@ void Foam::multiThreader::setMaxQueueSize(int size)
     {
         FatalErrorIn("multiThreader::setMaxQueueSize(int size)")
             << "Improper value for MaxQueueSize."
-            << abort(FatalError);        
+            << abort(FatalError);
     }
 }
 
@@ -528,7 +560,7 @@ void Foam::Mutex::lock()
         FatalErrorIn("multiThreader::Mutex::lock()")
             << "Unable to lock mutex."
             << abort(FatalError);
-    }     
+    }
 }
 
 bool Foam::Mutex::tryLock()
@@ -566,7 +598,7 @@ void Foam::Mutex::unlock()
         FatalErrorIn("multiThreader::Mutex::unlock()")
             << "Unable to unlock the mutex."
             << abort(FatalError);
-    }    
+    }
 }
 
 void Foam::rwMutex::lock(const lockType lType)

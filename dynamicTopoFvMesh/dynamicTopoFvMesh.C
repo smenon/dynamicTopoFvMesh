@@ -37,13 +37,11 @@ Author
 
 #include "HashList.H"
 #include "clockTime.H"
+#include "GeometricFields.H"
 #include "dynamicTopoFvMesh.H"
 #include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
-#include "tetDecompositionMotionSolver.H"
-#include "faceTetPolyPatch.H"
-#include "tetPolyPatchInterpolation.H"
-#include "motionSolver.H"
+#include "triPointRef.H"
 #include "mapPolyMesh.H"
 
 #include "fvPatchFields.H"
@@ -52,7 +50,6 @@ Author
 #include "MeshObject.H"
 
 #include <dlfcn.h>
-#include <DynamicList.H>
 
 namespace Foam
 {
@@ -84,10 +81,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     edgeModification_
     (
         dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")
-    ),
-    solveForMotion_
-    (
-        dict_.subDict("dynamicTopoFvMesh").lookup("solveForMotion")
     ),
     mapper_(NULL),
     meshPoints_(polyMesh::points()),
@@ -135,12 +128,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         {
             neighbour_.append(-1);
         }
-    }
-
-    // Initialize the motion-solver, if it was requested
-    if (solveForMotion_)
-    {
-        motionPtr_.set(motionSolver::New(*this).ptr());
     }
 
     // Initialize the multiThreading environment
@@ -378,83 +365,6 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-// Access a particular boundary displacement patch
-void dynamicTopoFvMesh::setMotionBC
-(
-    const label& index,
-    const vectorField& dispField
-)
-{
-    if (solveForMotion_)
-    {
-        // Determine the kind of motion solver in use
-        word solverType(dict_.lookup("solver"));
-
-        //- Cell decomposition FEM motion solver
-        if
-        (
-            (solverType == "laplaceCellDecomposition")
-         || (solverType == "pseudoSolidCellDecomposition")
-        )
-        {
-            // Boundary motion specified for the tetDecompositionMotionSolver
-            tetPointVectorField& motionU = const_cast<tetPointVectorField&>
-                (objectRegistry::lookupObject<tetPointVectorField>("motionU"));
-
-            // Assign boundary conditions to the motion solver
-            motionU.boundaryField()[index] == dispField/time().deltaT().value();
-        }
-
-        //- Face decomposition FEM motion solver
-        if
-        (
-            (solverType == "laplaceFaceDecomposition")
-         || (solverType == "pseudoSolidFaceDecomposition")
-        )
-        {
-            // Boundary motion specified for the tetDecompositionMotionSolver
-            tetPointVectorField& motionU = const_cast<tetPointVectorField&>
-                (objectRegistry::lookupObject<tetPointVectorField>("motionU"));
-
-            // Assign boundary conditions to the motion solver
-
-            // The face-decomposition solver includes points at face-centres,
-            // thus point motion has to be interpolated to these points
-            tetPolyPatchInterpolation interpolator
-            (
-                refCast<const faceTetPolyPatch>
-                (
-                    motionU.boundaryField()[index].patch()
-                )
-            );
-
-            motionU.boundaryField()[index] ==
-                interpolator.pointToPointInterpolate
-                (
-                    dispField/time().deltaT().value()
-                );
-        }
-
-        //- Spring-based Laplacian motion solver
-        if
-        (
-            (solverType == "springMotionSolver")
-        )
-        {
-            // Boundary motion specified for the springMotionSolver
-            pointField& refPoints = const_cast<pointField&>
-                (objectRegistry::lookupObject<pointField>("refPoints"));
-
-            // Assign boundary conditions to the motion solver
-            const labelList& meshPts = boundaryMesh()[index].meshPoints();
-            forAll(meshPts,pointI)
-            {
-                refPoints[meshPts[pointI]] += dispField[pointI];
-            }
-        }
-    }
-}
-
 // Return the mesh-mapper
 const mapPolyMesh& dynamicTopoFvMesh::meshMap()
 {
@@ -617,7 +527,7 @@ inline void dynamicTopoFvMesh::testDelaunay
     failed = false;
     label eIndex = -1, pIndex = -1;
     FixedList<bool,2> foundTriFace(false);
-    FixedList<triFace,2> triFaces;
+    FixedList<FixedList<label,3>,2> triFaces;
 
     // Figure out which thread this is...
     label tIndex = self();
@@ -3907,7 +3817,6 @@ void dynamicTopoFvMesh::reOrderPoints
     // *** Point renumbering *** //
     // If points were deleted during topology change, the numerical order ceases
     // to be continuous. Loop through all points and renumber sequentially.
-    // Possible scope for bandwidth-reduction on the motion-solver.
 
     // Allocate for the mapping information
     pointMap_.setSize(nPoints_, -1);
@@ -4835,7 +4744,7 @@ void dynamicTopoFvMesh::checkConnectivity()
         }
 
         Info << "Done." << endl;
-        
+
         Info << "Checking cell-point connectivity...";
 
         // Loop through all cells and construct cell-to-node
@@ -4872,6 +4781,10 @@ void dynamicTopoFvMesh::checkConnectivity()
 
             cIndex++;
         }
+
+        // Resize the lists
+        cellIndex.setSize(cIndex);
+        cellToNode.setSize(cIndex);
 
         // Preliminary check for size
         label nFailedChecks = 0;
@@ -10088,18 +10001,6 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
     // performed at the same time level.
 }
 
-// Update the mesh for motion
-// This routine assumes that all boundary motions have been defined
-// and incorporated into the mesh for the current time-step.
-void dynamicTopoFvMesh::updateMotion()
-{
-    if (solveForMotion_)
-    {
-        // Solve for motion
-        movePoints(motionPtr_->newPoints());
-    }
-}
-
 // MultiThreaded topology modifier [2D]
 void dynamicTopoFvMesh::threadedTopoModifier2D()
 {
@@ -10226,6 +10127,12 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     }
 }
 
+// Return reference to the dictionary
+const dictionary& dynamicTopoFvMesh::dynamicMeshDict() const
+{
+    return dict_;
+}
+
 // Return reference to the edge mesh
 eMesh& dynamicTopoFvMesh::EdgeMesh()
 {
@@ -10347,11 +10254,17 @@ bool dynamicTopoFvMesh::updateTopology()
 
     //== Connectivity changes ==//
 
+    if (debug)
+    {
+        // Check connectivity structures for consistency
+        checkConnectivity();
+    }
+
     // Reset the flag
     topoChangeFlag_ = false;
 
     // Invoke the threaded topoModifier
-    if ( twoDMesh_ )
+    if (twoDMesh_)
     {
         threadedTopoModifier2D();
     }
@@ -10561,12 +10474,6 @@ bool dynamicTopoFvMesh::updateTopology()
         pointPositionsPtr_.clear();
         cellCentresPtr_.clear();
         faceCentresPtr_.clear();
-
-        // Update the motion-solver, if necessary
-        if (motionPtr_.valid())
-        {
-            motionPtr_().updateMesh(mapper_);
-        }
 
         // Print out the mesh bandwidth
         if (debug)

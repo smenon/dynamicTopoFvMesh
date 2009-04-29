@@ -61,7 +61,7 @@ Foam::springMotionSolver::springMotionSolver
             mesh,
             IOobject::NO_READ,
             IOobject::NO_WRITE
-        ),            
+        ),
         mesh.points()
     ),
     cmpt_(-1),
@@ -169,7 +169,7 @@ Foam::springMotionSolver::springMotionSolver
             mesh,
             IOobject::NO_READ,
             IOobject::NO_WRITE
-        ),            
+        ),
         mesh.points()
     ),
     cmpt_(-1),
@@ -177,7 +177,7 @@ Foam::springMotionSolver::springMotionSolver
     fixedY_(0.0)
 {
     // Check if points on certain axes need to be maintained
-    if (found("fixedY")) 
+    if (found("fixedY"))
     {
         fixedY_ = readScalar(lookup("fixedY"));
     }
@@ -372,7 +372,7 @@ Foam::label Foam::springMotionSolver::CG
 
     // Set Dirichlet conditions on the solution field (if any)
     setDirichlet(x);
-    
+
     A(x,w);
 
     // Compute the normFactor, using 'r' as scratch-space
@@ -444,7 +444,7 @@ Foam::label Foam::springMotionSolver::CG
     }
 
     Info << " Final residual: " << residual;
-    
+
     return iter;
 }
 
@@ -486,7 +486,7 @@ void Foam::springMotionSolver::A(const vectorField& p, vectorField& w)
     // Gradient (n2e) * stiffness
     forAll(edges, edgeI)
     {
-        gradEdgeV_[edgeI] = 
+        gradEdgeV_[edgeI] =
             stiffness_[edgeI]*(p[edges[edgeI][1]] - p[edges[edgeI][0]]);
     }
 
@@ -714,7 +714,7 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
         }
 
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-        
+
         if (gradEdge_.size() != boundary[pID_].edges().size())
         {
             gradEdge_.setSize(boundary[pID_].edges().size(), 0.0);
@@ -806,16 +806,16 @@ void Foam::springMotionSolver::initCG(label nUnknowns)
 Foam::tmp<Foam::pointField> Foam::springMotionSolver::newPoints()
 {
     solve();
-    
+
     return curPoints();
 }
 
 //- Return point location obtained from the current motion field
-Foam::tmp<Foam::pointField> 
+Foam::tmp<Foam::pointField>
 Foam::springMotionSolver::curPoints() const
-{      
-    tmp<pointField> tcurPoints(refPoints_);    
-    
+{
+    tmp<pointField> tcurPoints(refPoints_);
+
     return tcurPoints;
 }
 
@@ -825,51 +825,51 @@ void Foam::springMotionSolver::solve()
     {
         // Loop through patches, check for empty/wedge, and smooth them
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-        for(label i=0; i<boundary.size(); i++) 
+        for(label i=0; i<boundary.size(); i++)
         {
             if (boundary[i].type() == "wedge" || boundary[i].type() == "empty")
-            { 
+            {
                 pID_ = i;
-                
+
                 // Initialize the solver variables
                 const labelList& meshPts = boundary[pID_].meshPoints();
-                
+
                 initCG(meshPts.size());
-                
-                for(cmpt_=0; cmpt_<2; cmpt_++) 
+
+                for(cmpt_=0; cmpt_<2; cmpt_++)
                 {
-                    forAll(meshPts,pointI) 
+                    forAll(meshPts,pointI)
                     {
                         x_[pointI] = refPoints_[meshPts[pointI]][cmpt_];
                     }
-                    
+
                     Info << "Solving for component: " << cmpt_;
 
                     label iters = CG(b_, p_, r_, w_, x_);
 
                     Info << " No Iterations: " << iters << endl;
 
-                    forAll(meshPts,pointI) 
+                    forAll(meshPts,pointI)
                     {
                         refPoints_[meshPts[pointI]][cmpt_] = x_[pointI];
                     }
                 }
-                
+
                 // Correct z-direction for wedge-patches
                 if (boundary[i].type() == "wedge")
                 {
-                    const wedgePolyPatch& wedgePatch = 
-                        refCast<const wedgePolyPatch>(boundary[i]);                                                
-                    
+                    const wedgePolyPatch& wedgePatch =
+                        refCast<const wedgePolyPatch>(boundary[i]);
+
                     vector centrePoint = vector::zero;
-                    forAll(meshPts,pointI) 
+                    forAll(meshPts,pointI)
                     {
                         centrePoint.x() = refPoints_[meshPts[pointI]][0];
                         centrePoint.y() = refPoints_[meshPts[pointI]][1];
                         // Transform using the wedge transform tensor
-                        refPoints_[meshPts[pointI]][2] 
+                        refPoints_[meshPts[pointI]][2]
                             = (wedgePatch.faceT()&centrePoint)[2];
-                    }                    
+                    }
                 }
             }
         }
@@ -897,7 +897,7 @@ void Foam::springMotionSolver::solve()
 }
 
 void Foam::springMotionSolver::updateMesh(const mapPolyMesh& mpm)
-{    
+{
     motionSolver::updateMesh(mpm);
 
     if (twoDMotion())
@@ -908,7 +908,7 @@ void Foam::springMotionSolver::updateMesh(const mapPolyMesh& mpm)
         p_.clear();
         r_.clear();
         w_.clear();
-        
+
         gradEdge_.clear();
     }
     else
@@ -927,7 +927,7 @@ void Foam::springMotionSolver::updateMesh(const mapPolyMesh& mpm)
         stiffness_.clear();
         pointFaces_.clear();
     }
-    
+
     // Reset refPoints
     refPoints_.clear();
     refPoints_ = Mesh_.points();

@@ -36,6 +36,13 @@ Description
 #include "dynamicTopoFvMesh.H"
 #include "fluidInterface.H"
 
+// Mesh motion solvers
+#include "motionSolver.H"
+#include "tetDecompositionMotionSolver.H"
+#include "faceTetPolyPatch.H"
+#include "tetPolyPatchInterpolation.H"
+#include "setMotionBC.H"
+
 // Included for point-normals post-processing
 #include "pointMesh.H"
 #include "pointFields.H"
@@ -88,6 +95,9 @@ int main(int argc, char *argv[])
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
     Info<< "\nStarting time loop\n" << endl;
+
+    // Initialize the motion solver
+    autoPtr<motionSolver> mPtr = motionSolver::New(mesh);
 
     bool nonNewtonian = false;
     if (interface.found("nonNewtonian"))
@@ -154,18 +164,21 @@ int main(int argc, char *argv[])
 
         // Set boundary conditions for the motionSolver and solve for mesh-motion
         interface.restorePosition();
-        mesh.setMotionBC(interface.aPatchID(), interface.displacement());
+        setMotionBC(mesh, interface.aPatchID(), interface.displacement());
+
         if (interface.twoFluids())
         {
 	    // Interpolate displacement to the shadow patch
-	    pointField dispB = 
-		interface.interpolatorAB().pointInterpolate(interface.displacement());
+	    pointField dispB = interface.interpolatorAB().pointInterpolate
+                               (
+                                   interface.displacement()
+                               );
 
-            mesh.setMotionBC(interface.bPatchID(), dispB);
+            setMotionBC(mesh, interface.bPatchID(), dispB);
         }
 
-        // Update fvMesh with new points
-        mesh.updateMotion();
+        // Solve for motion
+        mesh.movePoints(mPtr->newPoints());
 
 #       include "volContinuity.H"
 
@@ -268,7 +281,12 @@ int main(int argc, char *argv[])
             phi = linearInterpolate(U) & mesh.Sf();
 #           include "correctPhi.H"
 #           include "CourantNo.H"
+
+            // Update the interface
             interface.updateMesh(mesh.meshMap());
+
+            // Update the motion solver
+            mPtr->updateMesh(mesh.meshMap());
         }
 
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
