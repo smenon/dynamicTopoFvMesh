@@ -221,7 +221,6 @@ class dynamicTopoFvMesh
 
             // Default constructor
             topoMeshStruct();
-
         };
 
         PtrList<topoMeshStruct> structPtr_;
@@ -810,7 +809,7 @@ public:
         tmp<scalarField> lengthScale();
 
         // Return mesh cell-quality values
-        tmp<scalarField> meshQuality();
+        tmp<scalarField> meshQuality(bool outputOption);
 };
 
 

@@ -176,7 +176,7 @@ int main(int argc, char *argv[])
     angle *= (3.14159/180.0);
 
     // Enable/disable debugging
-    mesh.debug = true;
+    // mesh.debug = true;
 
     for (runTime++; !runTime.end(); runTime++)
     {
@@ -189,6 +189,9 @@ int main(int argc, char *argv[])
 
         // Update mesh motion
         mesh.movePoints(mPtr->newPoints());
+
+        // Obtain mesh stats before topo-changes
+        mesh.meshQuality(true);
 
         // Update mesh for topology changes
         bool meshChanged = mesh.updateTopology();
@@ -219,7 +222,7 @@ int main(int argc, char *argv[])
                 "zeroGradient"
             );
 
-            meshQuality.internalField() = mesh.meshQuality();
+            meshQuality.internalField() = mesh.meshQuality(true);
             meshQuality.write();
 
             // Write out the mesh length scales

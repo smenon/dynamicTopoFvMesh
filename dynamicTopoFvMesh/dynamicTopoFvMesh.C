@@ -429,7 +429,10 @@ tmp<scalarField> dynamicTopoFvMesh::lengthScale()
 
 // Return mesh cell-quality values
 // Valid for 3D tetrahedral meshes only...
-tmp<scalarField> dynamicTopoFvMesh::meshQuality()
+tmp<scalarField> dynamicTopoFvMesh::meshQuality
+(
+    bool outputOption
+)
 {
     tmp<scalarField> tQuality
     (
@@ -504,13 +507,21 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality()
         }
 
         // Output statistics:
-        if (debug)
+        if (outputOption)
         {
             Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
             Info << " Min: " << minQuality << endl;
             Info << " Max: " << maxQuality << endl;
             Info << " Mean: " << meanQuality/iF.size() << endl;
             Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
+
+            if (minQuality < 0.0)
+            {
+                WarningIn
+                (
+                    "dynamicTopoFvMesh::meshQuality()"
+                )   << nl << "Minimum cell quality is: " << minQuality << endl;
+            }
         }
     }
 
@@ -1861,7 +1872,7 @@ void dynamicTopoFvMesh::checkEdgeBoundary
     // Note that if the edge itself is on a bounding curve, collapse is valid.
     if (edgeBoundary[0] && edgeBoundary[1])
     {
-        edgeBoundary = false;
+        FixedList<label, 2> nBoundCurves(0);
 
         forAll(edgeToCheck, pointI)
         {
@@ -1871,10 +1882,27 @@ void dynamicTopoFvMesh::checkEdgeBoundary
             {
                 if (checkBoundingCurve(pEdges[edgeI]))
                 {
-                    edgeBoundary[pointI] = true;
-                    break;
+                    nBoundCurves[pointI]++;
                 }
             }
+        }
+
+        // Pick the point which is connected to more bounding curves
+        if (nBoundCurves[0] > nBoundCurves[1])
+        {
+            edgeBoundary[0] = true;
+            edgeBoundary[1] = false;
+        }
+        else
+        if (nBoundCurves[1] > nBoundCurves[0])
+        {
+            edgeBoundary[1] = true;
+            edgeBoundary[0] = false;
+        }
+        else
+        {
+            // Bounding edge: collapseEdge can collapse this to the mid-point
+            edgeBoundary = true;
         }
     }
 }
@@ -1937,7 +1965,6 @@ inline bool dynamicTopoFvMesh::computeMinQuality
         }
     }
 
-#   ifdef FULLDEBUG
     // Ensure that the mesh is valid
     if (minQuality < 0.0)
     {
@@ -1947,7 +1974,6 @@ inline bool dynamicTopoFvMesh::computeMinQuality
             << "EdgePoints: " << hullVertices
             << abort(FatalError);
     }
-#   endif
 
     // Undo all read-locks
     unlockMutexLists(tIndex);
@@ -3328,11 +3354,11 @@ void dynamicTopoFvMesh::swap32
     if (edgePatch > -1)
     {
         // Temporary local variables
-        label nBE0 = 0, nBE1 = 0;
         label facePatch = -1;
-        FixedList<label,2> bdyEdges0(-1), bdyEdges1(-1);
-        FixedList<face,2> newBdyTriFace(face(3));
         edge newEdge(-1, -1);
+        FixedList<label,2> nBEdge(0);
+        FixedList<FixedList<label,2>,2> bdyEdges;
+        FixedList<face,2> newBdyTriFace(face(3));
 
         // Get a cue for face orientation from existing faces
         forAll(facesForRemoval, faceI)
@@ -3377,7 +3403,7 @@ void dynamicTopoFvMesh::swap32
                     )
                     {
                         bdyFaceEdges[0][nBE[0]++] = fEdges[edgeI];
-                        bdyEdges0[nBE0++] = fEdges[edgeI];
+                        bdyEdges[0][nBEdge[0]++] = fEdges[edgeI];
 
                         edgeStack(tIndex).push(fEdges[edgeI]);
                     }
@@ -3389,7 +3415,7 @@ void dynamicTopoFvMesh::swap32
                     )
                     {
                         bdyFaceEdges[1][nBE[1]++] = fEdges[edgeI];
-                        bdyEdges1[nBE1++] = fEdges[edgeI];
+                        bdyEdges[1][nBEdge[1]++] = fEdges[edgeI];
 
                         edgeStack(tIndex).push(fEdges[edgeI]);
                     }
@@ -3463,11 +3489,49 @@ void dynamicTopoFvMesh::swap32
         bdyFaceEdges[0][nBE[0]++] = newEdgeIndex;
         bdyFaceEdges[1][nBE[1]++] = newEdgeIndex;
 
-        // Update edgeFaces with the two new faces
-        forAll(bdyEdges0, edgeI)
+        // Update edgeFaces and edgePoints with the two new faces
+        forAll(bdyEdges[0], edgeI)
         {
-            sizeUpList(newBdyFaceIndex[0], edgeFaces_[bdyEdges0[edgeI]]);
-            sizeUpList(newBdyFaceIndex[1], edgeFaces_[bdyEdges1[edgeI]]);
+            sizeUpList(newBdyFaceIndex[0], edgeFaces_[bdyEdges[0][edgeI]]);
+            sizeUpList(newBdyFaceIndex[1], edgeFaces_[bdyEdges[1][edgeI]]);
+
+            // Replace the edgePoints label, and preserve position on the list
+            findIsolatedPoint
+            (
+                newBdyTriFace[0],
+                edges_[bdyEdges[0][edgeI]],
+                otherPoint,
+                nextPoint
+            );
+
+            replaceLabel
+            (
+                edgeToCheck[1],
+                otherPoint,
+                edgePoints_[bdyEdges[0][edgeI]]
+            );
+
+            // Size up edgePoints again, so that it is sized down later
+            sizeUpList(edgeToCheck[1], edgePoints_[bdyEdges[0][edgeI]]);
+
+            // Replace the edgePoints label, and preserve position on the list
+            findIsolatedPoint
+            (
+                newBdyTriFace[1],
+                edges_[bdyEdges[1][edgeI]],
+                otherPoint,
+                nextPoint
+            );
+
+            replaceLabel
+            (
+                edgeToCheck[0],
+                otherPoint,
+                edgePoints_[bdyEdges[1][edgeI]]
+            );
+
+            // Size up edgePoints again, so that it is sized down later
+            sizeUpList(edgeToCheck[0], edgePoints_[bdyEdges[1][edgeI]]);
         }
 
         // Add faceEdges for the two new boundary faces
@@ -4571,6 +4635,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 {
     Info << "Checking edge-face connectivity...";
 
+    label nFailedChecks = 0;
     label allEdges = edges_.lastIndex() + 1;
     labelList nEdgeFaces(allEdges, 0);
 
@@ -4602,15 +4667,19 @@ void dynamicTopoFvMesh::checkConnectivity()
             {
                 Info << nl << nl << "Edge: " << faceEdges[edgeI]
                      << ": " << edgeToCheck << nl
-                     << " Was not found in face: " << feIter.index()
-                     << ": " << faces_[feIter.index()] << endl;
+                     << "was not found in face: " << feIter.index()
+                     << ": " << faces_[feIter.index()] << nl
+                     << "faceEdges: " << faceEdges
+                     << endl;
 
-                FatalErrorIn
+                nFailedChecks++;
+
+                WarningIn
                 (
                     "dynamicTopoFvMesh::checkConnectivity()"
                 )
                      << nl << "Edge-Face connectivity is inconsistent."
-                     << abort(FatalError);
+                     << endl;
             }
         }
     }
@@ -4624,12 +4693,43 @@ void dynamicTopoFvMesh::checkConnectivity()
             Info << nl << nl << "Edge: " << efIter.index()
                  << "edgeFaces: " << edgeFaces << endl;
 
-            FatalErrorIn
+            nFailedChecks++;
+
+            WarningIn
             (
                 "dynamicTopoFvMesh::checkConnectivity()"
             )
                 << nl << "Edge-Face connectivity is inconsistent."
-                << abort(FatalError);
+                << endl;
+        }
+
+        // Check if this edge belongs to faceEdges for each face
+        forAll(edgeFaces, faceI)
+        {
+            if
+            (
+                !foundInList
+                (
+                    efIter.index(), faceEdges_[edgeFaces[faceI]]
+                )
+            )
+            {
+                Info << nl << nl << "Edge: " << efIter.index()
+                     << ", edgeFaces: " << edgeFaces << nl
+                     << "was not found in faceEdges of face: "
+                     << edgeFaces[faceI] << nl
+                     << "faceEdges: " << faceEdges_[edgeFaces[faceI]]
+                     << endl;
+
+                nFailedChecks++;
+
+                WarningIn
+                (
+                    "dynamicTopoFvMesh::checkConnectivity()"
+                )
+                    << nl << "Edge-Face connectivity is inconsistent."
+                    << endl;
+            }
         }
     }
 
@@ -4640,29 +4740,55 @@ void dynamicTopoFvMesh::checkConnectivity()
         Info << "Checking point-edge connectivity...";
 
         label allPoints = meshPoints_.lastIndex() + 1;
-        labelList nPointEdges(allPoints, 0);
+        List<labelHashSet> hlPointEdges(allPoints);
 
         forAllIter(HashList<edge>::iterator, edges_, eIter)
         {
-            nPointEdges[eIter()[0]]++;
-            nPointEdges[eIter()[1]]++;
+            hlPointEdges[eIter()[0]].insert(eIter.index());
+            hlPointEdges[eIter()[1]].insert(eIter.index());
         }
 
         forAllIter(HashList<labelList>::iterator, pointEdges_, peIter)
         {
             labelList& pointEdges = peIter();
 
-            if (pointEdges.size() != nPointEdges[peIter.index()])
+            forAll(pointEdges, edgeI)
+            {
+                if (!hlPointEdges[peIter.index()].found(pointEdges[edgeI]))
+                {
+                    Info << nl << nl << "Point: " << peIter.index()
+                         << "pointEdges: " << pointEdges << nl
+                         << "hlPointEdges: " << hlPointEdges[peIter.index()]
+                         << endl;
+
+                    nFailedChecks++;
+
+                    WarningIn
+                    (
+                        "dynamicTopoFvMesh::checkConnectivity()"
+                    )
+                        << nl << "Point-Edge connectivity is inconsistent."
+                        << endl;
+                }
+            }
+
+            // Do a size check as well
+            if (hlPointEdges[peIter.index()].size() != pointEdges.size())
             {
                 Info << nl << nl << "Point: " << peIter.index()
-                     << "pointEdges: " << pointEdges << endl;
+                     << "pointEdges: " << pointEdges << nl
+                     << "hlPointEdges: " << hlPointEdges[peIter.index()]
+                     << endl;
 
-                FatalErrorIn
+                nFailedChecks++;
+
+                WarningIn
                 (
                     "dynamicTopoFvMesh::checkConnectivity()"
                 )
+                    << "Size inconsistency."
                     << nl << "Point-Edge connectivity is inconsistent."
-                    << abort(FatalError);
+                    << endl;
             }
         }
 
@@ -4694,12 +4820,14 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                 Info << "edgePoints: " << edgePoints << endl;
 
-                FatalErrorIn
+                nFailedChecks++;
+
+                WarningIn
                 (
                     "dynamicTopoFvMesh::checkConnectivity()"
                 )
                     << nl << "Edge-Points connectivity is inconsistent."
-                    << abort(FatalError);
+                    << endl;
             }
 
             // Now check to see that both lists are consistent.
@@ -4733,12 +4861,14 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                     Info << "edgePoints: " << edgePoints << endl;
 
-                    FatalErrorIn
+                    nFailedChecks++;
+
+                    WarningIn
                     (
                         "dynamicTopoFvMesh::checkConnectivity()"
                     )
                         << nl << "Edge-Points connectivity is inconsistent."
-                        << abort(FatalError);
+                        << endl;
                 }
             }
         }
@@ -4787,8 +4917,6 @@ void dynamicTopoFvMesh::checkConnectivity()
         cellToNode.setSize(cIndex);
 
         // Preliminary check for size
-        label nFailedChecks = 0;
-
         forAll(cellToNode, cellI)
         {
             if (cellToNode[cellI].size() != 4)
@@ -4821,17 +4949,17 @@ void dynamicTopoFvMesh::checkConnectivity()
             }
         }
 
-        if (nFailedChecks)
-        {
-            FatalErrorIn
-            (
-                "dynamicTopoFvMesh::checkConnectivity()"
-            )
-                << nFailedChecks << " cells failed connectivity checks."
-                << abort(FatalError);
-        }
-
         Info << "Done." << endl;
+    }
+
+    if (nFailedChecks)
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::checkConnectivity()"
+        )
+            << nFailedChecks << " failures were found in connectivity."
+            << abort(FatalError);
     }
 }
 
@@ -8223,18 +8351,18 @@ void dynamicTopoFvMesh::collapseQuadFace
     {
         // This face is being converted from interior to boundary. Remove
         // from the interior list and add as a boundary face to the end.
-        label newFaceIndex0 = insertFace
-                              (
-                                  whichPatch(faceToThrow[0]),
-                                  faces_[faceToKeep[0]],
-                                  owner_[faceToKeep[0]],
-                                  -1
-                              );
+        label newFaceIndex = insertFace
+                             (
+                                 whichPatch(faceToThrow[0]),
+                                 faces_[faceToKeep[0]],
+                                 owner_[faceToKeep[0]],
+                                 -1
+                             );
 
         replaceLabel
         (
             faceToKeep[0],
-            newFaceIndex0,
+            newFaceIndex,
             cells_[owner_[faceToKeep[0]]]
         );
 
@@ -8292,18 +8420,18 @@ void dynamicTopoFvMesh::collapseQuadFace
         {
             // This face is being converted from interior to boundary. Remove
             // from the interior list and add as a boundary face to the end.
-            label newFaceIndex1 = insertFace
-                                  (
-                                      whichPatch(faceToThrow[1]),
-                                      faces_[faceToKeep[1]],
-                                      owner_[faceToKeep[1]],
-                                      -1
-                                  );
+            label newFaceIndex = insertFace
+                                 (
+                                     whichPatch(faceToThrow[1]),
+                                     faces_[faceToKeep[1]],
+                                     owner_[faceToKeep[1]],
+                                     -1
+                                 );
 
             replaceLabel
             (
                 faceToKeep[1],
-                newFaceIndex1,
+                newFaceIndex,
                 cells_[owner_[faceToKeep[1]]]
             );
 
@@ -9057,6 +9185,11 @@ void dynamicTopoFvMesh::bisectEdge
 #   ifdef FULLDEBUG
     if (debug)
     {
+        Info << "Vertices: " << vertexHull << endl;
+        Info << "Edges: " << edgeHull << endl;
+        Info << "Faces: " << faceHull << endl;
+        Info << "Cells: " << cellHull << endl;
+
         Info << "Modified cells: " << endl;
         forAll(cellHull, cellI)
         {
@@ -9292,7 +9425,7 @@ void dynamicTopoFvMesh::collapseEdge
             }
         }
 
-        Info << "ringEntities (replaced faces): " << endl;
+        Info << "ringEntities (replacement faces): " << endl;
         forAll(ringEntities[replaceFaceIndex], faceI)
         {
             label fIndex = ringEntities[replaceFaceIndex][faceI];
@@ -9303,7 +9436,7 @@ void dynamicTopoFvMesh::collapseEdge
             }
         }
 
-        Info << "ringEntities (replaced edges): " << endl;
+        Info << "ringEntities (replacement edges): " << endl;
         forAll(ringEntities[replaceEdgeIndex], edgeI)
         {
             label ieIndex = ringEntities[replaceEdgeIndex][edgeI];
@@ -9419,6 +9552,29 @@ void dynamicTopoFvMesh::collapseEdge
         labelList& rmvEdgeFaces = edgeFaces_[edgeToRemove];
         labelList& rplEdgeFaces = edgeFaces_[replaceEdge];
 
+        // Replace edgePoints for all edges emanating from hullVertices
+        // except ring-edges; those are sized-down later
+        labelList& hullPointEdges = pointEdges_[vertexHull[indexI]];
+
+        forAll(hullPointEdges, edgeI)
+        {
+            labelList& hullEdgePoints = edgePoints_[hullPointEdges[edgeI]];
+
+            if
+            (
+                 foundInList(collapsePoint, hullEdgePoints)
+             && !foundInList(replacePoint, hullEdgePoints)
+            )
+            {
+                replaceLabel
+                (
+                    collapsePoint,
+                    replacePoint,
+                    hullEdgePoints
+                );
+            }
+        }
+
         forAll(rmvEdgeFaces, faceI)
         {
             // Replace edge labels for faces
@@ -9428,6 +9584,23 @@ void dynamicTopoFvMesh::collapseEdge
                 replaceEdge,
                 faceEdges_[rmvEdgeFaces[faceI]]
             );
+
+            // Loop through faces associated with this edge,
+            // and renumber them as well.
+            face& faceToCheck = faces_[rmvEdgeFaces[faceI]];
+            if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
+            {
+#               ifdef FULLDEBUG
+                if (debug)
+                {
+                    Info << "Renumbering face: "
+                         << rmvEdgeFaces[faceI] << ": "
+                         << faceToCheck << endl;
+                }
+#               endif
+
+                faceToCheck[replaceIndex] = replacePoint;
+            }
 
             // Hull faces should be removed for the replacement edge
             if (rmvEdgeFaces[faceI] == faceHull[indexI])
@@ -9762,6 +9935,16 @@ void dynamicTopoFvMesh::collapseEdge
     // edgePoints for all replacement edges.
     forAll(ringEntities[replaceEdgeIndex], edgeI)
     {
+#       ifdef FULLDEBUG
+        if (debug)
+        {
+            Info << "Building edgePoints for edge: "
+                 << ringEntities[replaceEdgeIndex][edgeI] << ": "
+                 << edges_[ringEntities[replaceEdgeIndex][edgeI]]
+                 << endl;
+        }
+#       endif
+
         buildEdgePoints(ringEntities[replaceEdgeIndex][edgeI]);
     }
 
@@ -10253,12 +10436,6 @@ bool dynamicTopoFvMesh::updateTopology()
     clockTime topologyTimer;
 
     //== Connectivity changes ==//
-
-    if (debug)
-    {
-        // Check connectivity structures for consistency
-        checkConnectivity();
-    }
 
     // Reset the flag
     topoChangeFlag_ = false;
