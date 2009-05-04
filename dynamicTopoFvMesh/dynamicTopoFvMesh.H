@@ -153,6 +153,8 @@ class dynamicTopoFvMesh
         scalar              growthFactor_;
         scalar              maxLengthScale_;
         scalar              sliverThreshold_;
+        label               nModifications_;
+        label               maxModifications_;
         label               bisectInteriorFace_;
 
         //- 3D Mesh Flipping data
@@ -191,6 +193,9 @@ class dynamicTopoFvMesh
 
                 //- Return the size of the stack
                 inline label size();
+
+                //- Clear out the stack
+                inline void clear();
 
                 //- Print out the stack
                 inline void print();

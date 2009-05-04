@@ -107,7 +107,7 @@ void rotatePoints
         q = vector::zero;
 
         // Fetch the old point and translate it
-        p = oldMeshPoints[allPatchPoints[index]] + t;
+        p = oldMeshPoints[allPatchPoints[index]];
 
         // Translate to the origin
         p -= p1;
@@ -129,7 +129,7 @@ void rotatePoints
         q += p1;
 
         // Assign to the mesh
-        meshPoints[allPatchPoints[index]] = q;
+        meshPoints[allPatchPoints[index]] = q + t;
     }
 
     // Update the displacement BCs for mesh motion
@@ -157,10 +157,14 @@ int main(int argc, char *argv[])
                     IOobject
                     (
                         "flippingFoamDict",
-                        runTime.constant(),
+                        runTime.findInstance
+                        (
+                            "",
+                            "flippingFoamDict"
+                        ),
                         mesh,
                         IOobject::MUST_READ,
-                        IOobject::NO_WRITE
+                        IOobject::AUTO_WRITE
                     )
                  );
 
@@ -182,6 +186,7 @@ int main(int argc, char *argv[])
     {
         Info << "Time = " << runTime.value() << endl << endl;
 
+        // Translate the axis
         p1 += t; p2 += t;
 
         // Update boundary points and solve for mesh-motion
@@ -201,6 +206,14 @@ int main(int argc, char *argv[])
             // Update the motion solver
             mPtr->updateMesh(mesh.meshMap());
         }
+
+        // Write out current parameters
+        rotationParams.instance() = runTime.timeName();
+        rotationParams.add("patchNames", patchNames, true);
+        rotationParams.add("axisPointStart", p1, true);
+        rotationParams.add("axisPointEnd", p2, true);
+        rotationParams.add("translation", t, true);
+        rotationParams.add("angle", angle*(180/3.14159), true);
 
         runTime.write();
 

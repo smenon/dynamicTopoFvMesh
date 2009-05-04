@@ -116,6 +116,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     growthFactor_(1.0),
     maxLengthScale_(GREAT),
     sliverThreshold_(0.05),
+    nModifications_(0),
+    maxModifications_(-1),
     bisectInteriorFace_(-1),
     maxTetsPerEdge_(-1),
     allowTableResize_(false)
@@ -341,6 +343,12 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         {
             sliverThreshold_ =
                 readScalar(edgeOptionDict.lookup("sliverThreshold"));
+        }
+
+        if (edgeOptionDict.found("maxModifications"))
+        {
+            maxModifications_ =
+                readLabel(edgeOptionDict.lookup("maxModifications"));
         }
 
         // Initialize the lengthScale field
@@ -1971,7 +1979,8 @@ inline bool dynamicTopoFvMesh::computeMinQuality
         FatalErrorIn("dynamicTopoFvMesh::computeMinQuality()")
             << "Encountered negative cell-quality!" << nl
             << "Edge: " << eIndex << ": " << edgeToCheck << nl
-            << "EdgePoints: " << hullVertices
+            << "EdgePoints: " << hullVertices << nl
+            << "Minimum Quality: " << minQuality
             << abort(FatalError);
     }
 
@@ -5411,6 +5420,16 @@ inline label dynamicTopoFvMesh::stack::size()
     return stack_.size();
 }
 
+//- Clear out the stack
+inline void dynamicTopoFvMesh::stack::clear()
+{
+    stackMutex_.lock();
+
+    stack_.clear();
+
+    stackMutex_.unlock();
+}
+
 //- Print out the stack
 inline void dynamicTopoFvMesh::stack::print()
 {
@@ -8503,6 +8522,17 @@ void dynamicTopoFvMesh::bisectEdge
         return;
     }
 
+    if
+    (
+        (nModifications_ > maxModifications_)
+     && (maxModifications_ > -1)
+    )
+    {
+        // Reached the max allowable topo-changes.
+        edgeStack(tIndex).clear();
+        return;
+    }
+
     // Hull variables
     face tmpTriFace(3);
     labelList tmpEdgeFaces(3,-1);
@@ -9270,6 +9300,9 @@ void dynamicTopoFvMesh::bisectEdge
 
     // Set the flag
     topoChangeFlag_ = true;
+
+    // Increment the number of modifications
+    nModifications_++;
 }
 
 // Method for the collapse of an edge in 3D
@@ -9298,6 +9331,17 @@ void dynamicTopoFvMesh::collapseEdge
     if (tryEdgeLock(eIndex, rwMutex::WRITE_LOCK))
     {
         edgeStack(tIndex).push(eIndex);
+        return;
+    }
+
+    if
+    (
+        (nModifications_ > maxModifications_)
+     && (maxModifications_ > -1)
+    )
+    {
+        // Reached the max allowable topo-changes.
+        edgeStack(tIndex).clear();
         return;
     }
 
@@ -9998,6 +10042,9 @@ void dynamicTopoFvMesh::collapseEdge
 
     // Set the flag
     topoChangeFlag_ = true;
+
+    // Increment the number of modifications
+    nModifications_++;
 }
 
 // Utility method to check whether the cell given by 'cellIndex' will yield
@@ -10439,6 +10486,7 @@ bool dynamicTopoFvMesh::updateTopology()
 
     // Reset the flag
     topoChangeFlag_ = false;
+    nModifications_ = 0;
 
     // Invoke the threaded topoModifier
     if (twoDMesh_)
