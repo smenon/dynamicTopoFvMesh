@@ -59,6 +59,7 @@ void setMotionBC
     if
     (
         (solverType == "springMotionSolver")
+     || (solverType == "mesquiteSmoother")
     )
     {
         // Boundary motion specified for the springMotionSolver
@@ -88,6 +89,7 @@ void setMotionBC
     if
     (
         (solverType == "springMotionSolver")
+     || (solverType == "mesquiteSmoother")
     )
     {
         // Boundary motion specified for the springMotionSolver

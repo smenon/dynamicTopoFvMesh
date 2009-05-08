@@ -6,6 +6,7 @@ set -x
 wmake libso tetMetrics
 wmake libso multiThreader
 wmake libso fluidInterface
+wmake libso mesquiteSmoother
 wmake libso springMotionSolver
 wmake libso edgeDiscretization
 wmake libso dynamicTopoFvMesh

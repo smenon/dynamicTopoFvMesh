@@ -5,6 +5,7 @@ set -x
 wclean tetMetrics
 wclean multiThreader
 wclean springMotionSolver
+wclean mesquiteSmoother
 wclean fluidInterface
 wclean edgeDiscretization
 wclean dynamicTopoFvMesh

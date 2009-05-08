@@ -5,6 +5,7 @@ wmakeLnInclude tetMetrics
 wmakeLnInclude multiThreader
 wmakeLnInclude fluidInterface
 wmakeLnInclude springMotionSolver
+wmakeLnInclude mesquiteSmoother
 wmakeLnInclude edgeDiscretization
 wmakeLnInclude dynamicTopoFvMesh
 wmakeLnInclude interfaceTrackFoam
