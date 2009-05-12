@@ -37,6 +37,7 @@ SourceFiles
 #define mesquiteSmoother_H
 
 #include "motionSolver.H"
+#include "Switch.H"
 #include "pointIOField.H"
 #include "labelHashSet.H"
 #include "Mesquite_all_headers.hpp"
@@ -71,6 +72,15 @@ protected:
     //- Number of elements
     unsigned long nCells_;
 
+    //- Switch to toggle surface smoothing
+    Switch surfaceSmoothing_;
+
+    // Specify tolerance for the CG solver
+    scalar tolerance_;
+
+    //- Specify multiple mesh-motion sweeps
+    label nSweeps_;
+
     //- Vertex coordinate array passed into Mesquite
     mutable double* vtxCoords_;
 
@@ -102,11 +112,61 @@ protected:
     // Specify patches on which slip BCs are applied
     labelHashSet slipPatchIDs_;
 
+    //- Data specific to Laplacian surface smoothing
+    labelList pIDs_;
+    labelList offsets_;
+    List<vectorField> pNormals_;
+    List<vectorField> gradEdgeV_;
+    List<vectorField> localPts_;
+
+    vectorField bV_;
+    vectorField xV_;
+    vectorField pV_;
+    vectorField rV_;
+    vectorField wV_;
+
+    // Sparse Matrix multiply
+    void A(const vectorField& p, vectorField& w);
+
+    // Dot-product
+    scalar dot(const vectorField& f1, const vectorField& f2);
+
+    // CG solver
+    label CG
+    (
+        const vectorField& b,
+        vectorField& p,
+        vectorField& r,
+        vectorField& w,
+        vectorField& x
+    );
+
+    // Compute the normalization factor for the matrix
+    scalar normFactor
+    (
+        const vectorField& x,
+        const vectorField& b,
+        const vectorField& w,
+        vectorField& tmpField
+    );
+
+    // Component-wise sumMag
+    scalar cmptSumMag(const vectorField& field);
+
+    // Apply boundary conditions
+    void applyBCs(vectorField &field);
+
     // Private member function to compute connectivity data
     void initArrays();
 
     // Private member functions to read dictionary options
     void readOptions();
+
+    // Private member function to perform Laplacian surface smoothing
+    void smoothSurfaces();
+
+    // Prepare point-normals with updated point positions
+    void preparePointNormals();
     
 public:
 

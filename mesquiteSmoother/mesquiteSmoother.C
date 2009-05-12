@@ -53,6 +53,9 @@ Foam::mesquiteSmoother::mesquiteSmoother
     Mesh_(mesh),
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
+    surfaceSmoothing_(false),
+    tolerance_(1e-4),
+    nSweeps_(1),
     vtxCoords_(NULL),
     cellToNode_(NULL),
     fixFlags_(NULL),
@@ -86,6 +89,9 @@ Foam::mesquiteSmoother::mesquiteSmoother
     Mesh_(mesh),
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
+    surfaceSmoothing_(false),
+    tolerance_(1e-4),
+    nSweeps_(1),
     vtxCoords_(NULL),
     cellToNode_(NULL),
     fixFlags_(NULL),
@@ -140,6 +146,24 @@ void Foam::mesquiteSmoother::readOptions()
                     slipPatchIDs_.insert(patchI);
                 }
             }
+        }
+
+        // Toggle surface smoothing if slip patches are present
+        if (!slipPatches.empty())
+        {
+            surfaceSmoothing_ = true;
+        }
+
+        // Check if a tolerance has been specified
+        if (found("tolerance"))
+        {
+            tolerance_ = readScalar(lookup("tolerance"));
+        }
+
+        // Check if multiple sweeps have been requested
+        if (found("nSweeps"))
+        {
+            nSweeps_ = readLabel(lookup("nSweeps"));
         }
     }
 
@@ -904,6 +928,311 @@ void Foam::mesquiteSmoother::initArrays()
             fixFlags_[meshPointLabels[pointI]] = 1;
         }
     }
+
+    if (surfaceSmoothing_)
+    {
+        // Need to prepare pNormals for boundaries
+        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+        // Extract the patch list
+        pIDs_ = slipPatchIDs_.toc();
+
+        offsets_.setSize(pIDs_.size() + 1, 0);
+        pNormals_.setSize(pIDs_.size());
+        gradEdgeV_.setSize(pIDs_.size());
+        localPts_.setSize(pIDs_.size());
+
+        label totalSize = 0;
+
+        forAll(pIDs_, patchI)
+        {
+            label nPts = boundary[pIDs_[patchI]].nPoints();
+            label nEdg = boundary[pIDs_[patchI]].nEdges();
+
+            pNormals_[patchI].setSize(nPts, vector::zero);
+            gradEdgeV_[patchI].setSize(nEdg, vector::zero);
+            localPts_[patchI].setSize(nEdg, vector::zero);
+
+            // Accumulate the total size
+            totalSize += nPts;
+
+            // Set offsets
+            offsets_[patchI + 1] = totalSize;
+        }
+
+        // Initialize CG variables
+        bV_.setSize(totalSize, vector::zero);
+        xV_.setSize(totalSize, vector::zero);
+        pV_.setSize(totalSize, vector::zero);
+        rV_.setSize(totalSize, vector::zero);
+        wV_.setSize(totalSize, vector::zero);
+    }
+}
+
+// Sparse matrix-vector multiply [3D]
+void Foam::mesquiteSmoother::A
+(
+    const vectorField& p,
+    vectorField& w
+)
+{
+    w = vector::zero;
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    // Gradient (n2e)
+    forAll(pIDs_, patchI)
+    {
+        const edgeList& edges = boundary[pIDs_[patchI]].edges();
+
+        forAll(edges, edgeI)
+        {
+            gradEdgeV_[patchI][edgeI] =
+                (
+                    p[edges[edgeI][1] + offsets_[patchI]]
+                  - p[edges[edgeI][0] + offsets_[patchI]]
+                );
+        }
+    }
+
+    // Divergence (e2n)
+    forAll(pIDs_, patchI)
+    {
+        const edgeList& edges = boundary[pIDs_[patchI]].edges();
+
+        forAll(edges, edgeI)
+        {
+            w[edges[edgeI][0] + offsets_[patchI]] += gradEdgeV_[patchI][edgeI];
+            w[edges[edgeI][1] + offsets_[patchI]] -= gradEdgeV_[patchI][edgeI];
+        }
+    }
+
+    // Apply boundary conditions
+    applyBCs(w);
+}
+
+// Apply boundary conditions
+void Foam::mesquiteSmoother::applyBCs
+(
+    vectorField& field
+)
+{
+    // Blank out residuals at boundary nodes
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    forAll(pIDs_, patchI)
+    {
+        const edgeList& edges = boundary[pIDs_[patchI]].edges();
+
+        // Apply slip conditions for internal nodes
+        forAll(pNormals_[patchI], pointI)
+        {
+            const vector& n = pNormals_[patchI][pointI];
+            field[pointI + offsets_[patchI]] -=
+                ((field[pointI + offsets_[patchI]] & n)*n);
+        }
+        
+        // Blank out residuals for bounding curves
+        for
+        (
+            label i = boundary[pIDs_[patchI]].nInternalEdges();
+            i < edges.size();
+            i++
+        )
+        {
+            field[edges[i][0] + offsets_[patchI]] = vector::zero;
+            field[edges[i][1] + offsets_[patchI]] = vector::zero;
+        }
+    }
+}
+
+// Vector dot-product
+Foam::scalar Foam::mesquiteSmoother::dot
+(
+    const vectorField& f1,
+    const vectorField& f2
+)
+{
+    scalar s = 0.0;
+
+    forAll(f1, indexI)
+    {
+        s += (f1[indexI] & f2[indexI]);
+    }
+
+    return s;
+}
+
+Foam::scalar Foam::mesquiteSmoother::normFactor
+(
+    const vectorField& x,
+    const vectorField& b,
+    const vectorField& w,
+    vectorField& tmpField
+)
+{
+    vector xRef = average(x);
+
+    A(vectorField(x.size(), xRef),tmpField);
+
+    vectorField nFw = (w - tmpField);
+    vectorField nFb = (b - tmpField);
+
+    return cmptSumMag(nFw) + cmptSumMag(nFb) + 1.0e-20;
+}
+
+// Component-wise sumMag
+Foam::scalar Foam::mesquiteSmoother::cmptSumMag
+(
+    const vectorField& field
+)
+{
+    scalar cSum = 0.0;
+
+    forAll(field,i)
+    {
+        cSum += mag(field[i].x()) + mag(field[i].y()) + mag(field[i].z());
+    }
+
+    return cSum;
+}
+
+// CG solver
+Foam::label Foam::mesquiteSmoother::CG
+(
+    const vectorField& b,
+    vectorField& p,
+    vectorField& r,
+    vectorField& w,
+    vectorField& x
+)
+{
+    // Local variables
+    scalar alpha, beta, rho, rhoOld, residual;
+    label maxIter = x.size(), iter = 0;
+
+    // Compute initial residual
+    A(x,w);
+
+    // Compute the normFactor, using 'r' as scratch-space
+    scalar norm = normFactor(x,b,w,r);
+
+    r = b - w;
+    p = r;
+    rho = dot(r,p);
+
+    // Obtain the normalized residual
+    residual = cmptSumMag(r)/norm;
+
+    Info << " Initial residual: " << residual;
+
+    while ( (iter < maxIter) && (residual > tolerance_) )
+    {
+        A(p,w);
+
+        alpha = rho / dot(p,w);
+
+        forAll (x, i)
+        {
+            x[i] += (alpha*p[i]);
+            r[i] -= (alpha*w[i]);
+        }
+
+        rhoOld = rho;
+
+        rho = dot(r,r);
+
+        beta = rho / rhoOld;
+
+        forAll (p, i)
+        {
+            p[i] = r[i] + (beta*p[i]);
+        }
+
+        // Update the normalized residual
+        residual = cmptSumMag(r)/norm;
+        iter++;
+    }
+
+    Info << " Final residual: " << residual;
+
+    return iter;
+}
+
+// Private member function to perform Laplacian surface smoothing
+void Foam::mesquiteSmoother::smoothSurfaces()
+{
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    for (label i = 0; i < nSweeps_; i++)
+    {
+        // Prepare point-normals with updated point positions
+        preparePointNormals();
+
+        // Copy existing point-positions
+        forAll(pIDs_, patchI)
+        {
+            const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+            
+            forAll(meshPts,pointI)
+            {
+                xV_[pointI + offsets_[patchI]] = refPoints_[meshPts[pointI]];
+            }
+        }
+
+        Info << "Solving for point motion: ";
+
+        label iters = CG(bV_, pV_, rV_, wV_, xV_);
+
+        Info << " No Iterations: " << iters << endl;
+
+        // Update refPoints
+        forAll(pIDs_, patchI)
+        {
+            const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+            forAll(meshPts,pointI)
+            {
+                refPoints_[meshPts[pointI]] = xV_[pointI + offsets_[patchI]];
+            }
+        }
+    }
+}
+
+// Prepare point-normals with updated point positions
+void Foam::mesquiteSmoother::preparePointNormals()
+{
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    forAll(pIDs_, patchI)
+    {
+        // First update localPoints with latest point positions
+        const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+        forAll(meshPts,pointI)
+        {
+            localPts_[patchI][pointI] = refPoints_[meshPts[pointI]];
+        }
+
+        // Now compute point normals from updated local points
+        const labelListList& pFaces = boundary[pIDs_[patchI]].pointFaces();
+        const faceList& faces = boundary[pIDs_[patchI]].localFaces();
+
+        pNormals_[patchI] = vector::zero;
+
+        forAll(pNormals_[patchI], pointI)
+        {
+            vector& n = pNormals_[patchI][pointI];
+
+            forAll(pFaces[pointI], faceI)
+            {
+                n += faces[pFaces[pointI][faceI]].normal(localPts_[patchI]);
+            }
+
+            // Normalize the vector
+            n /= mag(n) + VSMALL;
+        }
+    }
 }
 
 Foam::tmp<Foam::pointField> Foam::mesquiteSmoother::newPoints()
@@ -924,6 +1253,12 @@ Foam::mesquiteSmoother::curPoints() const
 
 void Foam::mesquiteSmoother::solve()
 {
+    // Perform surface smoothing first
+    if (surfaceSmoothing_)
+    {
+        smoothSurfaces();
+    }
+
     // Copy most recent point positions
     forAll(refPoints_, pointI)
     {
@@ -1003,6 +1338,21 @@ void Foam::mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
     // Reset refPoints
     refPoints_.clear();
     refPoints_ = Mesh_.points();
+
+    if (surfaceSmoothing_)
+    {
+        // Clear out CG variables
+        bV_.clear();
+        xV_.clear();
+        pV_.clear();
+        rV_.clear();
+        wV_.clear();
+
+        localPts_.clear();
+        gradEdgeV_.clear();
+        pNormals_.clear();
+        offsets_.clear();
+    }
 
     // Initialize data structures
     initArrays();
