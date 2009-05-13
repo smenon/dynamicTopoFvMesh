@@ -126,9 +126,6 @@ int main(int argc, char *argv[])
         nuModel = viscosityModel::New("nu",interface,U,phi);
     }
 
-    //polyMesh::debug = true;
-    //mesh.debug = true;
-
     while (runTime.run())
     {
 #       include "readPISOControls.H"

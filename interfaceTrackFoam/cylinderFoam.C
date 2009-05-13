@@ -2,7 +2,7 @@
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
    \\    /   O peration     |
-    \\  /    A nd           | Copyright (C) 2006-2007 Zeljko Tukovic
+    \\  /    A nd           | Copyright held by original author
      \\/     M anipulation  |
 -------------------------------------------------------------------------------
 License
@@ -23,17 +23,28 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Application
-    icoDyMFoam
+    cylinderFoam
 
 Description
     Transient solver for incompressible, laminar flow of Newtonian fluids
     with dynamic mesh.
+
+Author
+    Sandeep Menon
 
 \*---------------------------------------------------------------------------*/
 
 #include "fvCFD.H"
 #include "fluidInterface.H"
 #include "dynamicTopoFvMesh.H"
+
+// Mesh motion solvers
+#include "motionSolver.H"
+#include "tetDecompositionMotionSolver.H"
+#include "faceTetPolyPatch.H"
+#include "tetPolyPatchInterpolation.H"
+#include "setMotionBC.H"
+#include "rotatePoints.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -47,14 +58,38 @@ int main(int argc, char *argv[])
 #   include "initTotalVolume.H"
 #   include "createFields.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+    // Initialize the motion solver
+    autoPtr<motionSolver> mPtr = motionSolver::New(mesh);
+
+    // Define the rotation axis and angle from the dictionary
+    IOdictionary rotationParams
+                 (
+                    IOobject
+                    (
+                        "flippingFoamDict",
+                        runTime.findInstance
+                        (
+                            "",
+                            "flippingFoamDict"
+                        ),
+                        mesh,
+                        IOobject::MUST_READ,
+                        IOobject::AUTO_WRITE
+                    )
+                 );
+
+    dictionary patchNames(rotationParams.subDict("patchNames"));
+    wordList patches = patchNames.toc();
+
+    vector p1(rotationParams.lookup("axisPointStart"));
+    vector p2(rotationParams.lookup("axisPointEnd"));
+    vector t(rotationParams.lookup("translation"));
+    doubleScalar angle = readScalar(rotationParams.lookup("angle"));
+
+    // Convert angle to radians
+    angle *= (3.14159/180.0);
 
     Info<< "\nStarting time loop\n" << endl;
-
-    mesh.debug = true;
-    primitiveMesh::debug = true;
-    polyMesh::debug = true;
-    fvMesh::debug = true;
     
     while (runTime.run())
     {
@@ -70,27 +105,10 @@ int main(int argc, char *argv[])
         Info<< "Time = " << runTime.timeName() << nl << endl;        
         
         // Assign boundary conditions to the motion solver
-        label patchID = -1;
-        forAll (mesh.boundary(), patchI)
-        {
-            if(mesh.boundary()[patchI].name() == "topWall") 
-            {
-                patchID = patchI;
-                break;
-            }
-        }         
-        mesh.setMotionBC
-        (
-            patchID, 
-            vectorField
-            (
-                mesh.boundaryMesh()[patchID].nPoints(),
-                vector(0,-0.3,0)*mesh.time().deltaT().value()
-            )
-        );
+        rotatePoints(mesh, patches, angle, p1, p2, t);
         
         // Solve for mesh-motion
-        mesh.updateMotion();         
+        mesh.movePoints(mPtr->newPoints());
         
 #       include "volContinuity.H"        
 
@@ -109,7 +127,7 @@ int main(int argc, char *argv[])
             phi = (fvc::interpolate(U) & mesh.Sf());
             //     + fvc::ddtPhiCorr(rUA, U, phi);
 
-            //adjustPhi(phi, U, p);
+            // adjustPhi(phi, U, p);
 
             for (int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
             {
@@ -144,23 +162,76 @@ int main(int argc, char *argv[])
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
             << nl << endl;           
-        
+
         bool meshChanged = mesh.updateTopology(); 
   
         if (meshChanged)
         {
-#           include "checkTotalVolume.H"            
+#           include "checkTotalVolume.H"
+
+            // Update the motion solver
+            mPtr->updateMesh(mesh.meshMap());
+
             // Obtain flux from mapped velocity        
             phi = (fvc::interpolate(U) & mesh.Sf());              
 #           include "correctPhi.H"           
 #           include "CourantNo.H"
         }
-            
-        volScalarField divPhi = fvc::div(phi);          
-        divPhi.write();
+
+        // Write out current parameters
+        rotationParams.instance() = runTime.timeName();
+        rotationParams.add("patchNames", patchNames, true);
+        rotationParams.add("axisPointStart", p1, true);
+        rotationParams.add("axisPointEnd", p2, true);
+        rotationParams.add("translation", t, true);
+        rotationParams.add("angle", angle*(180/3.14159), true);
         
         runTime.write();
-#       include "meshInfo.H"         
+
+        if (runTime.outputTime())
+        {
+            // Write out mesh quality
+            volScalarField meshQuality
+            (
+                IOobject
+                (
+                    "meshQuality",
+                    runTime.timeName(),
+                    mesh,
+                    IOobject::NO_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                mesh,
+                dimensionedScalar("scalar", dimless, 0.0),
+                "zeroGradient"
+            );
+
+            meshQuality.internalField() = mesh.meshQuality(true);
+            meshQuality.write();
+
+            // Write out the mesh length scales
+            volScalarField lengthScale
+            (
+                IOobject
+                (
+                    "lengthScale",
+                    runTime.timeName(),
+                    mesh,
+                    IOobject::NO_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                mesh,
+                dimensionedScalar("scalar", dimLength, 0.0),
+                "zeroGradient"
+            );
+
+            lengthScale.internalField() = mesh.lengthScale();
+            lengthScale.write();
+
+            // Write out divergence-free fluxes
+            volScalarField divPhi = fvc::div(phi);
+            divPhi.write();
+        }
     }
 
     Info<< "End\n" << endl;
