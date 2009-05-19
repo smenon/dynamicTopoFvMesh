@@ -299,7 +299,8 @@ class dynamicTopoFvMesh
             const point& a,
             const point& b,
             const point& c,
-            const point& d
+            const point& d,
+            const scalar tolerance
         );
 
         // Initialize mesh edges and related connectivity lists

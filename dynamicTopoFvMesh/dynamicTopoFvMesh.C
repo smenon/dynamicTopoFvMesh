@@ -758,12 +758,13 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     const point& a,
     const point& b,
     const point& c,
-    const point& d
+    const point& d,
+    const scalar tolerance
 )
 {
     scalar det = ((b - a) ^ (c - a)) & (d - a);
 
-    if (mag(det) < VSMALL)
+    if (mag(det) < tolerance)
     {
         return 0;
     }
@@ -2299,6 +2300,17 @@ void dynamicTopoFvMesh::removeEdgeFlips
     // Determine the 3-2 swap triangulation
     label t32 = identify32Swap(eIndex, hullVertices, triangulations);
 
+    // Check that the triangulation is valid
+    if (t32 == -1)
+    {
+        // Reset all triangulations and bail out
+        triangulations[0] = -1;
+        triangulations[1] = -1;
+        triangulations[2] = -1;
+
+        return;
+    }
+
     // Perform a series of 2-3 swaps
     label numSwaps = 0;
     while (numSwaps < (m-3))
@@ -2427,8 +2439,15 @@ label dynamicTopoFvMesh::identify32Swap
 )
 {
     label m = hullVertices.size();
+    scalar tolerance = VSMALL;
     edge& edgeToCheck = edges_[eIndex];
     FixedList<label, 3> sign(-2);
+
+    // Relax the tolerance for boundary edges
+    if (whichEdgePatch(eIndex) > -1)
+    {
+        tolerance = SMALL;
+    }
 
     for (label i = 0; i < (m-2); i++)
     {
@@ -2438,7 +2457,8 @@ label dynamicTopoFvMesh::identify32Swap
                 meshPoints_[hullVertices[triangulations[0][i]]],
                 meshPoints_[hullVertices[triangulations[1][i]]],
                 meshPoints_[edgeToCheck[1]],
-                meshPoints_[edgeToCheck[0]]
+                meshPoints_[edgeToCheck[0]],
+                tolerance
             );
 
         sign[1] =
@@ -2447,7 +2467,8 @@ label dynamicTopoFvMesh::identify32Swap
                 meshPoints_[hullVertices[triangulations[1][i]]],
                 meshPoints_[hullVertices[triangulations[2][i]]],
                 meshPoints_[edgeToCheck[1]],
-                meshPoints_[edgeToCheck[0]]
+                meshPoints_[edgeToCheck[0]],
+                tolerance
             );
 
         sign[2] =
@@ -2456,7 +2477,8 @@ label dynamicTopoFvMesh::identify32Swap
                 meshPoints_[hullVertices[triangulations[2][i]]],
                 meshPoints_[hullVertices[triangulations[0][i]]],
                 meshPoints_[edgeToCheck[1]],
-                meshPoints_[edgeToCheck[0]]
+                meshPoints_[edgeToCheck[0]],
+                tolerance
             );
 
         // Intersects at edge AC
@@ -2484,23 +2506,26 @@ label dynamicTopoFvMesh::identify32Swap
         }
     }
 
-    // This bit should never occur.
-    Info << "Hull Vertices: " << endl;
-
-    forAll(hullVertices, vertexI)
+    // Could not find an intersecting triangulation
+    if (debug > 1)
     {
-        Info << hullVertices[vertexI] << ": "
-             << meshPoints_[hullVertices[vertexI]]
-             << endl;
-    }
+        Info << "Hull Vertices: " << endl;
 
-    FatalErrorIn("dynamicTopoFvMesh::identify32Swap()") << nl
-        << "Could not determine 3-2 swap triangulation." << nl
-        << "Edge: " << edgeToCheck << nl
-        << "Edge Points: "
-        << meshPoints_[edgeToCheck[0]] << ","
-        << meshPoints_[edgeToCheck[1]] << nl
-        << abort(FatalError);
+        forAll(hullVertices, vertexI)
+        {
+            Info << hullVertices[vertexI] << ": "
+                 << meshPoints_[hullVertices[vertexI]]
+                 << endl;
+        }
+
+        InfoIn("dynamicTopoFvMesh::identify32Swap()") << nl
+            << "Could not determine 3-2 swap triangulation." << nl
+            << "Edge: " << edgeToCheck << nl
+            << "Edge Points: "
+            << meshPoints_[edgeToCheck[0]] << ","
+            << meshPoints_[edgeToCheck[1]] << nl
+            << abort(FatalError);
+    }
 
     return -1;
 }
@@ -5717,6 +5742,9 @@ inline bool dynamicTopoFvMesh::meshEdgeLengthScale
     scalar& scale
 )
 {
+    // Reset the scale first
+    scale = 0.0;
+
     // Figure out which thread this is...
     label tIndex = self();
 
