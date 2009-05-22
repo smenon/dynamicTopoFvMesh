@@ -114,6 +114,9 @@ public:
             //- Return a list of patch starts
             labelList patchStarts() const;
 
+            //- Return patch index for a given edge label
+            label whichPatch(const label edgeIndex) const;
+
             //- Find patch index given a name
             label findPatchID(const word& patchName) const;
 

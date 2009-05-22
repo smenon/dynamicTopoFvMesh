@@ -185,6 +185,56 @@ labelList eBoundaryMesh::patchStarts() const
 }
 
 
+//- Return patch index for a given edge label
+label eBoundaryMesh::whichPatch(const label edgeIndex) const
+{
+    // Find out which patch the current edge belongs to by comparing label
+    // with patch start labels.
+    // If the face is internal, return -1;
+    // if it is off the end of the list, abort
+    if (edgeIndex >= mesh().nEdges())
+    {
+        FatalErrorIn
+        (
+            "eBoundaryMesh::whichPatch(const label edgeIndex) const"
+        )   << "given label greater than the number of geometric edges"
+            << abort(FatalError);
+    }
+
+    if (edgeIndex < mesh().nInternalEdges())
+    {
+        return -1;
+    }
+
+    forAll (*this, patchI)
+    {
+        const ePatch& bp = operator[](patchI);
+
+        if
+        (
+            edgeIndex >= bp.start()
+         && edgeIndex < bp.start() + bp.size()
+        )
+        {
+            return patchI;
+        }
+    }
+
+    // If not in any of above, it is trouble!
+    FatalErrorIn
+    (
+        "label eBoundaryMesh::whichPatch(const label edgeIndex) const"
+    )   << "Cannot find edge " << edgeIndex << " in any of the patches "
+        << names() << nl
+        << "It seems your patches are not consistent with the mesh :"
+        << " internalEdges:" << mesh().nInternalEdges()
+        << "  total number of edges:" << mesh().nEdges()
+        << abort(FatalError);
+
+    return -1;
+}
+
+
 label eBoundaryMesh::findPatchID(const word& patchName) const
 {
     const ePatchList& patches = *this;

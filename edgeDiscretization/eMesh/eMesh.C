@@ -81,6 +81,7 @@ void eMesh::clearOut() const
 
 eMesh::eMesh(const polyMesh& pMesh)
 :
+    objectRegistry(pMesh.time()),
     GeoMesh<polyMesh>(pMesh),
     edges_
     (
@@ -121,7 +122,8 @@ eMesh::eMesh(const polyMesh& pMesh)
     ),
     pePtr_(NULL),
     epPtr_(NULL),
-    fePtr_(NULL)
+    fePtr_(NULL),
+    edgeCentresPtr_(NULL)
 {
     if (debug)
     {

@@ -56,6 +56,7 @@ namespace Foam
 
 class eMesh      
 :
+    public objectRegistry,
     public GeoMesh<polyMesh>
 {
     // Private data

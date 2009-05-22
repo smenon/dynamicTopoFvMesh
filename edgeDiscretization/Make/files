@@ -9,6 +9,9 @@ $(ePatches)/ePatch/newEPatch.C
 ePatchFields = fields/ePatchFields
 $(ePatchFields)/ePatchField/ePatchFields.C
 
+basicEPatchFields = $(ePatchFields)/basic
+$(basicEPatchFields)/zeroGradient/zeroGradientEPatchFields.C
+
 fields/EdgeFields/EdgeFields.C
 
 LIB = $(FOAM_USER_LIBBIN)/libedgeDiscretization
