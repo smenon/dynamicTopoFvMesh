@@ -337,7 +337,7 @@ inline typename HashList<T>::iterator HashList<T>::insert
     lock();
 
     // Lock the table at the index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     // Loop through chained linked-list
     Item *thisPtr=0, *newPtr=0;
@@ -369,7 +369,7 @@ inline typename HashList<T>::iterator HashList<T>::insert
             size_++;
 
             // Unlock the table at the index
-            tableMutex_[loc].unlock();
+            // tableMutex_[loc].unlock();
 
             // Unlock the list
             unlock();
@@ -418,12 +418,12 @@ inline void HashList<T>::remove
         label loc = hash(index)%hash_table_size_;
 
         // Lock table
-        tableMutex_[loc].lock();
+        // tableMutex_[loc].lock();
 
         table_[loc] = thisPtr->next_;
 
         // Unlock table
-        tableMutex_[loc].unlock();
+        // tableMutex_[loc].unlock();
     }
 
     if (thisPtr->next_)
@@ -513,12 +513,12 @@ inline void HashList<T>::remove(iterator& iter)
         label loc = hash(index)%hash_table_size_;
 
         // Lock table
-        tableMutex_[loc].lock();
+        // tableMutex_[loc].lock();
 
         table_[loc] = thisPtr->next_;
 
         // Unlock table
-        tableMutex_[loc].unlock();
+        // tableMutex_[loc].unlock();
     }
 
     if (thisPtr->next_)
@@ -628,7 +628,7 @@ inline label HashList<T>::append
     label loc = hash(index)%hash_table_size_;
 
     // Lock table index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     if (table_[loc])
     {
@@ -646,7 +646,7 @@ inline label HashList<T>::append
     table_[loc] = newPtr;
 
     // Unlock table index
-    tableMutex_[loc].unlock();
+    // tableMutex_[loc].unlock();
 
     // Increment the size and return the index
     size_++;
@@ -703,7 +703,7 @@ inline label HashList<T>::append()
     label loc = hash(index)%hash_table_size_;
 
     // Lock table index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     if (table_[loc])
     {
@@ -721,7 +721,7 @@ inline label HashList<T>::append()
     table_[loc] = newPtr;
 
     // Unlock table index
-    tableMutex_[loc].unlock();
+    // tableMutex_[loc].unlock();
 
     // Increment the size and return the index
     size_++;
@@ -803,7 +803,7 @@ inline typename HashList<T>::Item* HashList<T>::getLinkItem
     label loc = hash(index)%hash_table_size_;
 
     // Lock the table index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     // Loop through chained linked-list
     Item *item=0;
@@ -812,7 +812,7 @@ inline typename HashList<T>::Item* HashList<T>::getLinkItem
         if (index == item->idx_)
         {
             // Unlock the table index
-            tableMutex_[loc].unlock();
+            // tableMutex_[loc].unlock();
 
             return item;
         }
@@ -1097,7 +1097,7 @@ inline bool HashList<T>::found
     label loc = hash(index)%hash_table_size_;
 
     // Lock the table index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     // Loop through chained linked-list
     for (Item *item=table_[loc]; item; item=item->next_)
@@ -1105,14 +1105,14 @@ inline bool HashList<T>::found
         if (index == item->idx_)
         {
             // Unlock the table index
-            tableMutex_[loc].unlock();
+            // tableMutex_[loc].unlock();
 
             return true;
         }
     }
 
     // Unlock the table index
-    tableMutex_[loc].unlock();
+    // tableMutex_[loc].unlock();
 
     return false;
 }
@@ -1300,7 +1300,7 @@ inline typename HashList<T>::iterator HashList<T>::operator()
     label loc = hash(index)%hash_table_size_;
 
     // Lock the table index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     // Loop through chained linked-list
     Item *item=0;
@@ -1309,7 +1309,7 @@ inline typename HashList<T>::iterator HashList<T>::operator()
         if (index == item->idx_)
         {
             // Unlock the table index
-            tableMutex_[loc].unlock();
+            // tableMutex_[loc].unlock();
 
             return iterator(item);
         }
@@ -1337,7 +1337,7 @@ HashList<T>::operator()
     label loc = hash(index)%hash_table_size_;
 
     // Lock the table index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     // Loop through chained linked-list
     Item *item=0;
@@ -1346,7 +1346,7 @@ HashList<T>::operator()
         if (index == item->idx_)
         {
             // Unlock the table index
-            tableMutex_[loc].unlock();
+            // tableMutex_[loc].unlock();
 
             return iterator(item);
         }
@@ -1372,7 +1372,7 @@ inline T& HashList<T>::operator[]
     label loc = hash(index)%hash_table_size_;
 
     // Lock the table index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     // Loop through chained linked-list
     Item *item=0;
@@ -1381,7 +1381,7 @@ inline T& HashList<T>::operator[]
         if (index == item->idx_)
         {
             // Unlock the table index
-            tableMutex_[loc].unlock();
+            // tableMutex_[loc].unlock();
 
             return item->data_;
         }
@@ -1407,7 +1407,7 @@ inline const T& HashList<T>::operator[]
     label loc = hash(index)%hash_table_size_;
 
     // Lock the table index
-    tableMutex_[loc].lock();
+    // tableMutex_[loc].lock();
 
     // Loop through chained linked-list
     Item *item=0;
@@ -1416,7 +1416,7 @@ inline const T& HashList<T>::operator[]
         if (index == item->idx_)
         {
             // Unlock the table index
-            tableMutex_[loc].unlock();
+            // tableMutex_[loc].unlock();
 
             return item->data_;
         }

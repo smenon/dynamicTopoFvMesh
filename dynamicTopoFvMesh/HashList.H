@@ -151,13 +151,13 @@ public:
     // Constructors
 
         //- Construct null
-        HashList(const label tableSize = 257);
+        HashList(const label tableSize = 2087);
 
         //- Construct given a size and value for all elements
-        HashList(const label, const T&, const label tableSize = 257);
+        HashList(const label, const T&, const label tableSize = 2087);
 
         //- Construct from an existing List<T> structure
-        HashList(const List<T>&, const label tableSize = 257);
+        HashList(const List<T>&, const label tableSize = 2087);
 
         //- Construct as copy
         HashList(const HashList<T>&);
@@ -216,10 +216,10 @@ public:
         // Memory allocation
 
             //- Allocation for a null-constructed object, given size
-            void setSize(const label, const label tableSize = 257);
+            void setSize(const label, const label tableSize = 2087);
 
             //- Allocation for a null-constructed object, given size/value
-            void setSize(const label, const T&, const label tableSize = 257);
+            void setSize(const label, const T&, const label tableSize = 2087);
 
             //- Insertion of a new element at the given label
             inline iterator insert(const label, const T&);

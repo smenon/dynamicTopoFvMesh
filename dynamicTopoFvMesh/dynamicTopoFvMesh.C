@@ -551,7 +551,7 @@ inline void dynamicTopoFvMesh::testDelaunay
     failed = false;
     label eIndex = -1, pIndex = -1;
     FixedList<bool,2> foundTriFace(false);
-    FixedList<FixedList<label,3>,2> triFaces;
+    FixedList<FixedList<label,3>,2> triFaces(FixedList<label,3>(-1));
 
     // Figure out which thread this is...
     label tIndex = self();
@@ -5710,12 +5710,24 @@ inline void dynamicTopoFvMesh::stack::print()
 }
 
 // Return length-scale at an face-location in the mesh [2D]
-inline scalar dynamicTopoFvMesh::meshFaceLengthScale
+inline bool dynamicTopoFvMesh::meshFaceLengthScale
 (
-    const label fIndex
+    const label fIndex,
+    scalar& scale
 )
 {
-    scalar scale = 0.0;
+    // Reset the scale first
+    scale = 0.0;
+
+    // Figure out which thread this is...
+    label tIndex = self();
+
+    // Try to read-lock this face.
+    if (tryFaceLock(fIndex))
+    {
+        faceStack(tIndex).push(fIndex);
+        return true;
+    }
 
     // Determine whether the face is internal
     if (whichPatch(fIndex) < 0)
@@ -5732,7 +5744,8 @@ inline scalar dynamicTopoFvMesh::meshFaceLengthScale
         scale = boundaryLengthScale(fIndex);
     }
 
-    return scale;
+    // Return a successful lock
+    return false;
 }
 
 // Compute length-scale at an edge-location in the mesh [3D]
@@ -5762,6 +5775,18 @@ inline bool dynamicTopoFvMesh::meshEdgeLengthScale
     {
         forAll(eFaces, faceI)
         {
+#           ifdef FULLDEBUG
+            // Check whether neighbour is valid
+            if (neighbour_[eFaces[faceI]] == -1)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::meshEdgeLengthScale()")
+                    << "Face: " << eFaces[faceI]
+                    << ": " << faces_[eFaces[faceI]]
+                    << " is not internal, while edge: "
+                    << eIndex << ": " << edges_[eIndex] << " is."
+                    << abort(FatalError);
+            }
+#           endif
             scale += lengthScale_[owner_[eFaces[faceI]]];
             scale += lengthScale_[neighbour_[eFaces[faceI]]];
         }
@@ -5877,7 +5902,10 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
             }
 
             // Determine the length-scale at this face
-            mesh->meshFaceLengthScale(fIndex);
+            if (mesh->meshFaceLengthScale(fIndex, scale))
+            {
+                continue;
+            }
 
             // Check if this boundary face is adjacent to a sliver-cell,
             // and remove it by a two-step bisection/collapse operation.
@@ -9749,8 +9777,7 @@ void dynamicTopoFvMesh::collapseEdge
         replaceFaceIndex = 3;
         checkPoints[0] = collapsePoint;
         checkPoints[1] = replacePoint;
-        // Position collapse to the mid-point
-        newPoint = 0.5*(meshPoints_[thisEdge[0]] + meshPoints_[thisEdge[1]]);
+        newPoint = meshPoints_[thisEdge[1]];
     }
 
     if (debug > 2)

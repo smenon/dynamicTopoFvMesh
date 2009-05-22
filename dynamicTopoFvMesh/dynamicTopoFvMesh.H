@@ -326,7 +326,7 @@ class dynamicTopoFvMesh
         scalar boundaryLengthScale(const label faceIndex);
 
         // Return length-scale at an face-location in the mesh [2D]
-        inline scalar meshFaceLengthScale(const label fIndex);
+        inline bool meshFaceLengthScale(const label fIndex, scalar& scale);
 
         // Return length-scale at an edge-location in the mesh [3D]
         inline bool meshEdgeLengthScale(const label eIndex, scalar& scale);
