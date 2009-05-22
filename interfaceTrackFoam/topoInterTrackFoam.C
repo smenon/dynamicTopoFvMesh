@@ -92,6 +92,44 @@ int main(int argc, char *argv[])
 #   include "initTotalVolume.H"
 #   include "createFields.H"
 
+    fluidInterface interface(mesh, U, p, phi);
+
+    // Obtain fluid indicator from the interface
+    volScalarField* fluidIndicatorPtr = NULL;
+
+    fluidIndicatorPtr = new volScalarField
+    (
+        IOobject
+        (
+            "fluidIndicator",
+            runTime.timeName(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        interface.fluidIndicator()
+    );
+
+    volScalarField& fluidIndicator = *fluidIndicatorPtr;
+
+    volScalarField nu
+    (
+        IOobject
+        (
+            "nu",
+            runTime.timeName(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        fluidIndicator*
+        (
+            (interface.muFluidA()/interface.rhoFluidA())
+          - (interface.muFluidB()/interface.rhoFluidB())
+        )
+      + (interface.muFluidB()/interface.rhoFluidB())
+    );
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
     Info<< "\nStarting time loop\n" << endl;
@@ -100,23 +138,55 @@ int main(int argc, char *argv[])
     autoPtr<motionSolver> mPtr = motionSolver::New(mesh);
 
     bool nonNewtonian = false;
+    bool solveForTemperature = false;
+    bool adjustNuForTemperature = false;
+    bool adjustSigmaForTemperature = false;
+
+    // Read in flags from the dictionary
     if (interface.found("nonNewtonian"))
     {
         nonNewtonian = Switch(interface.lookup("nonNewtonian"));
     }
 
-    bool adjustNuForTemperature = false;
-    if (interface.found("adjustNuForTemperature"))
+    if (interface.found("solveForTemperature"))
     {
-        adjustNuForTemperature =
-            Switch(interface.lookup("adjustNuForTemperature"));
+        solveForTemperature =
+            Switch(interface.lookup("solveForTemperature"));
     }
 
-    bool adjustSigmaForTemperature = false;
-    if (interface.found("adjustSigmaForTemperature"))
+    // Maintain the temperature field as a pointer
+    autoPtr<volScalarField> TPtr(NULL);
+    if (solveForTemperature)
     {
-        adjustSigmaForTemperature =
-            Switch(interface.lookup("adjustSigmaForTemperature"));
+        Info<< "Reading field T\n" << endl << flush;
+
+        TPtr.set
+        (
+            new volScalarField
+            (
+                IOobject
+                (
+                    "T",
+                    runTime.timeName(),
+                    mesh,
+                    IOobject::MUST_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                mesh
+            )
+        );
+
+        if (interface.found("adjustNuForTemperature"))
+        {
+            adjustNuForTemperature =
+                Switch(interface.lookup("adjustNuForTemperature"));
+        }
+
+        if (interface.found("adjustSigmaForTemperature"))
+        {
+            adjustSigmaForTemperature =
+                Switch(interface.lookup("adjustSigmaForTemperature"));
+        }
     }
 
     // Introduce the non-Newtonian transport model
@@ -141,22 +211,25 @@ int main(int argc, char *argv[])
         // Update free-surface displacement directions
         interface.updateDisplacementDirections();
 
-        if (adjustSigmaForTemperature)
+        if (solveForTemperature)
         {
-            Info << "Adjusting surface tension for temperature." << endl;
-            interface.adjustSurfaceTension(T);
-        }
+            if (adjustSigmaForTemperature)
+            {
+                Info << "Adjusting surface tension for temperature." << endl;
+                interface.adjustSurfaceTension(TPtr());
+            }
 
-        if (adjustNuForTemperature)
-        {
-            Info << "Adjusting viscosity for temperature." << endl;
-            adjustViscosity
-            (
-                interface,
-                T,
-                (interface.muFluidA()/interface.rhoFluidA()).value(),
-                nu
-            );
+            if (adjustNuForTemperature)
+            {
+                Info << "Adjusting viscosity for temperature." << endl;
+                adjustViscosity
+                (
+                    interface,
+                    TPtr(),
+                    (interface.muFluidA()/interface.rhoFluidA()).value(),
+                    nu
+                );
+            }
         }
 
         // Set boundary conditions for the motionSolver and solve for mesh-motion
@@ -228,6 +301,9 @@ int main(int argc, char *argv[])
 
 #               include "continuityErrs.H"
 
+                // Make the fluxes relative
+                fvc::makeRelative(phi, U);
+
                 U -= rUA*fvc::grad(p);
                 U.correctBoundaryConditions();
             }
@@ -246,23 +322,23 @@ int main(int argc, char *argv[])
             nu = nuModel->nu();
         }
 
-        // Make the fluxes relative
-        fvc::makeRelative(phi, U);
+        if (solveForTemperature)
+        {
+            dimensionedScalar DT
+            (
+                "DT",
+                interface.condFluidA()/
+                (interface.CpFluidA()*interface.rhoFluidA())
+            );
 
-        dimensionedScalar DT
-        (
-            "DT",
-            interface.condFluidA()/
-            (interface.CpFluidA()*interface.rhoFluidA())
-        );
-
-        // Passive heat-transfer
-        solve
-        (
-            fvm::ddt(T)
-          + fvm::div(phi, T)
-          - fvm::laplacian(DT, T)
-        );
+            // Passive heat-transfer
+            solve
+            (
+                fvm::ddt(TPtr())
+              + fvm::div(phi, TPtr())
+              - fvm::laplacian(DT, TPtr())
+            );
+        }
 
         // Make the fluxes absolute
         fvc::makeAbsolute(phi, U);
@@ -275,7 +351,7 @@ int main(int argc, char *argv[])
         if (meshChanged)
         {
 #           include "checkTotalVolume.H"
-            phi = linearInterpolate(U) & mesh.Sf();
+            phi = (fvc::interpolate(U) & mesh.Sf());
 #           include "correctPhi.H"
 #           include "CourantNo.H"
 

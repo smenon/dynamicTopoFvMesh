@@ -35,7 +35,6 @@ Author
 \*---------------------------------------------------------------------------*/
 
 #include "fvCFD.H"
-#include "fluidInterface.H"
 #include "dynamicTopoFvMesh.H"
 
 // Mesh motion solvers
@@ -57,6 +56,25 @@ int main(int argc, char *argv[])
 #   include "initContinuityErrs.H"
 #   include "initTotalVolume.H"
 #   include "createFields.H"
+
+    Info<< "Reading transportProperties\n" << endl;
+
+    IOdictionary transportProperties
+    (
+        IOobject
+        (
+            "transportProperties",
+            runTime.constant(),
+            mesh,
+            IOobject::MUST_READ,
+            IOobject::NO_WRITE
+        )
+    );
+
+    dimensionedScalar nu
+    (
+        transportProperties.lookup("nu")
+    );
 
     // Initialize the motion solver
     autoPtr<motionSolver> mPtr = motionSolver::New(mesh);
@@ -90,27 +108,27 @@ int main(int argc, char *argv[])
     angle *= (3.14159/180.0);
 
     Info<< "\nStarting time loop\n" << endl;
-    
+
     while (runTime.run())
     {
 #       include "readPISOControls.H"
 #       include "readTimeControls.H"
 #       include "checkTotalVolume.H"
-#       include "CourantNo.H"       
+#       include "CourantNo.H"
 
-#       include "setDeltaT.H"       
-        
+#       include "setDeltaT.H"
+
         runTime++;
 
-        Info<< "Time = " << runTime.timeName() << nl << endl;        
-        
+        Info<< "Time = " << runTime.timeName() << nl << endl;
+
         // Assign boundary conditions to the motion solver
         rotatePoints(mesh, patches, angle, p1, p2, t);
-        
+
         // Solve for mesh-motion
         mesh.movePoints(mPtr->newPoints());
-        
-#       include "volContinuity.H"        
+
+#       include "volContinuity.H"
 
         // Make the fluxes relative to the mesh motion
         fvc::makeRelative(phi, U);
@@ -146,25 +164,31 @@ int main(int argc, char *argv[])
                 {
                     pEqn.solve(mesh.solver(p.name()));
                 }
-                                
+
                 if (nonOrth == nNonOrthCorr)
                 {
                     phi -= pEqn.flux();
                 }
             }
-            
-#           include "continuityErrs.H"            
+
+#           include "continuityErrs.H"
+
+            // Some boundary conditions require fluxes to be relative
+            fvc::makeRelative(phi, U);
 
             U -= rUA*fvc::grad(p);
             U.correctBoundaryConditions();
-        }  
-        
+        }
+
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
-            << nl << endl;           
+            << nl << endl;
 
-        bool meshChanged = mesh.updateTopology(); 
-  
+        // Make the fluxes absolute before manipulating the mesh.
+        fvc::makeAbsolute(phi, U);
+
+        bool meshChanged = mesh.updateTopology();
+
         if (meshChanged)
         {
 #           include "checkTotalVolume.H"
@@ -172,9 +196,9 @@ int main(int argc, char *argv[])
             // Update the motion solver
             mPtr->updateMesh(mesh.meshMap());
 
-            // Obtain flux from mapped velocity        
-            phi = (fvc::interpolate(U) & mesh.Sf());              
-#           include "correctPhi.H"           
+            // Obtain flux from mapped velocity
+            phi = (fvc::interpolate(U) & mesh.Sf());
+#           include "correctPhi.H"
 #           include "CourantNo.H"
         }
 
@@ -185,7 +209,7 @@ int main(int argc, char *argv[])
         rotationParams.add("axisPointEnd", p2, true);
         rotationParams.add("translation", t, true);
         rotationParams.add("angle", angle*(180/3.14159), true);
-        
+
         runTime.write();
 
         if (runTime.outputTime())
