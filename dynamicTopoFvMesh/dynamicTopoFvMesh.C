@@ -5640,9 +5640,9 @@ inline void dynamicTopoFvMesh::stack::push(const label index)
 {
     stackMutex_.lock();
 
-    if (!stack_.found(index))
+    if (findIndex(stack_,index) == -1)
     {
-        stack_.insert(index);
+        stack_.append(index);
     }
 
     stackMutex_.unlock();
@@ -5651,7 +5651,7 @@ inline void dynamicTopoFvMesh::stack::push(const label index)
 //- Insert item onto stack (no checking)
 inline void dynamicTopoFvMesh::stack::insert(const label index)
 {
-    stack_.insert(index);
+    stack_.append(index);
 }
 
 // Pop an item off the stack
@@ -5659,9 +5659,7 @@ inline label dynamicTopoFvMesh::stack::pop()
 {
     stackMutex_.lock();
 
-    const label index = stack_.begin().key();
-
-    stack_.erase(index);
+    const label index = stack_.remove();
 
     stackMutex_.unlock();
 
@@ -5673,9 +5671,29 @@ inline void dynamicTopoFvMesh::stack::remove(const label index)
 {
     stackMutex_.lock();
 
-    if (stack_.found(index))
+    label loc = findIndex(stack_,index);
+
+    if (loc != -1)
     {
-        stack_.erase(index);
+        // Create a new list
+        labelList newList(stack_.size() - 1);
+
+        label n = 0;
+
+        // Copy items upto location
+        for(label i = 0; i < loc; i++)
+        {
+            newList[n++] = stack_[i];
+        }
+
+        // Copy items from location
+        for(label i = (loc + 1); i < stack_.size(); i++)
+        {
+            newList[n++] = stack_[i];
+        }
+
+        // Overwrite
+        stack_ = newList;
     }
 
     stackMutex_.unlock();
@@ -6431,6 +6449,11 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
 {
     label tID = 0;
 
+    forAll(edgeStack_, stackI)
+    {
+        edgeStack_[stackI].clear();
+    }
+
     for
     (
         HashList<edge>::iterator iter = edges_.begin();
@@ -6447,6 +6470,11 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
 inline void dynamicTopoFvMesh::initFaceStacks()
 {
     label tID = 0;
+
+    forAll(faceStack_, stackI)
+    {
+        faceStack_[stackI].clear();
+    }
 
     for
     (

@@ -165,7 +165,7 @@ class dynamicTopoFvMesh
         class stack
         {
             // Private data
-            labelHashSet    stack_;
+            DynamicList<label> stack_;
 
             Mutex           stackMutex_;
 
