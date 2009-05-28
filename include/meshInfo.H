@@ -16,10 +16,11 @@
             ),
             pMesh,
             dimensionedVector("vector", dimless, vector::zero),
-            "zeroGradient"
+            "fixedValue"
         );
 
-        pNormals.boundaryField()[interface.aPatchID()] == interface.areaMesh().pointAreaNormals();
+        pNormals.boundaryField()[interface.aPatchID()] ==
+            interface.areaMesh().pointAreaNormals();
     
         pNormals.write();
 

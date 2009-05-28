@@ -257,7 +257,7 @@ class dynamicTopoFvMesh
         void operator=(const dynamicTopoFvMesh&);
 
         // Perform a Delaunay test on an internal face
-        inline void testDelaunay
+        void testDelaunay
         (
             const label fIndex,
             bool& failed
@@ -638,7 +638,7 @@ class dynamicTopoFvMesh
         );
 
         // Check whether the given edge is on a bounding curve
-        inline bool checkBoundingCurve(label eIndex);
+        bool checkBoundingCurve(label eIndex);
 
         // Allocate dynamic programming tables
         void initTables
@@ -836,6 +836,10 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "dynamicTopoFvMeshI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

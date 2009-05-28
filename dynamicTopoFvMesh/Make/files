@@ -1,3 +1,7 @@
 dynamicTopoFvMesh.C
+dynamicTopoFvMeshReOrder.C
+edgeSwap.C
+edgeCollapse.C
+edgeBisect.C
 
 LIB = $(FOAM_USER_LIBBIN)/libdynamicTopoFvMesh
