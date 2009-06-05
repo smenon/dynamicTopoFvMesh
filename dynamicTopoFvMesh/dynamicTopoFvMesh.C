@@ -115,9 +115,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     growthFactor_(1.0),
     maxLengthScale_(GREAT),
     sliverThreshold_(0.05),
+    curvatureRatio_(0.05),
     nModifications_(0),
     maxModifications_(-1),
-    bisectInteriorFace_(-1),
+    bisectInterior_(-1),
     maxTetsPerEdge_(-1),
     allowTableResize_(false)
 {
@@ -344,6 +345,15 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
                 edgeOptionDict.subDict("fixedLengthScalePatches");
         }
 
+        if (edgeOptionDict.found("curvaturePatches"))
+        {
+        	curvaturePatches_ =
+        		edgeOptionDict.subDict("curvaturePatches");
+
+        	curvatureRatio_ =
+        	    readScalar(edgeOptionDict.lookup("curvatureRatio"));
+        }
+
         if (edgeOptionDict.found("sliverThreshold"))
         {
             sliverThreshold_ =
@@ -514,13 +524,23 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
                                ? iF[cellI] : minQuality;
                     meanQuality += iF[cellI];
 
+                    // Add to the list of slivers
+                    if
+                    (
+                        (iF[cellI] < sliverThreshold_)
+                     && (iF[cellI] > 0.0)
+                    )
+                    {
+                        thresholdSlivers_.insert(cellI);
+                    }
+
                     break;
                 }
             }
         }
 
         // Output statistics:
-        if (outputOption)
+        if (outputOption || (debug > 0))
         {
             Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
             Info << " Min: " << minQuality << endl;
@@ -534,6 +554,16 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
                 (
                     "dynamicTopoFvMesh::meshQuality()"
                 )   << nl << "Minimum cell quality is: " << minQuality << endl;
+            }
+
+            if (thresholdSlivers_.size())
+            {
+                WarningIn
+                (
+                    "dynamicTopoFvMesh::meshQuality()"
+                )   << nl << thresholdSlivers_.size()
+                    << " cells are below the specified quality threshold of: "
+                    << sliverThreshold_ << endl;
             }
         }
     }
@@ -549,7 +579,7 @@ void dynamicTopoFvMesh::testDelaunay
 )
 {
     failed = false;
-    label eIndex = -1, pIndex = -1;
+    label eIndex = -1, pIndex = -1, fLabel = -1;
     FixedList<bool,2> foundTriFace(false);
     FixedList<FixedList<label,3>,2> triFaces(FixedList<label,3>(-1));
 
@@ -608,6 +638,8 @@ void dynamicTopoFvMesh::testDelaunay
                     triFaces[0][2] = thisFace[2];
 
                     foundTriFace[0] = true;
+
+                    fLabel = eFaces[faceI];
                 }
             }
         }
@@ -615,32 +647,8 @@ void dynamicTopoFvMesh::testDelaunay
 
     // Obtain point references for the first face
     point& a = meshPoints_[triFaces[0][0]];
-    point& b = meshPoints_[triFaces[0][1]];
-    point& c = meshPoints_[triFaces[0][2]];
 
-    scalar d1 =  (c - a)&(b - a);
-    scalar d2 = -(c - b)&(b - a);
-    scalar d3 =  (c - a)&(c - b);
-
-    scalar c1 = d2*d3;
-    scalar c2 = d3*d1;
-    scalar c3 = d1*d2;
-
-    scalar cd = c1 + c2 + c3;
-
-    if (cd < VSMALL)
-    {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::testDelaunay(const label fIndex) "
-        ) << nl << " Encountered a co-linear set of points: " << nl
-                << " Point a :: " << triFaces[0][0] << ": " << a << nl
-                << " Point b :: " << triFaces[0][1] << ": " << b << nl
-                << " Point c :: " << triFaces[0][2] << ": " << c << nl
-                << abort(FatalError);
-    }
-
-    point cCenter = ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
+    point cCenter = circumCenter(fLabel);
     scalar rSquared = (a - cCenter)&(a - cCenter);
 
     // Find the isolated point on the second face
@@ -2806,6 +2814,81 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
     return lengthScale_[owner_[faceIndex]];
 }
 
+// Compute the face-curvature for a given boundary face
+// For 3D simplical meshes only
+scalar dynamicTopoFvMesh::faceCurvature
+(
+    const label fIndex
+)
+{
+    label nf = 0;
+    scalar curvature = 0.0, kAvg = 0.0;
+    vector te = vector::zero, m = vector::zero;
+    FixedList<scalar, 2> k(0.0);
+    FixedList<label, 2> ebFaces(-1);
+    FixedList<point, 2> r, rcg, e;
+    labelList& fEdges = faceEdges_[fIndex];
+
+    // Loop through edges of this face and compute
+    forAll(fEdges, edgeI)
+    {
+        label eIndex = fEdges[edgeI];
+        labelList& eFaces = edgeFaces_[eIndex];
+
+        nf = 0; ebFaces = -1;
+
+        // Find the two boundary faces for this edge
+        forAll(eFaces, faceI)
+        {
+            if (neighbour_[eFaces[faceI]] == -1)
+            {
+                ebFaces[nf++] = eFaces[faceI];
+            }
+        }
+
+        // Compute the circumcenters
+        r[0] = circumCenter(ebFaces[0]);
+        r[1] = circumCenter(ebFaces[1]);
+
+        // Compute face centers
+        rcg[0] = triFaceCenter(ebFaces[0]);
+        rcg[1] = triFaceCenter(ebFaces[1]);
+
+        // Obtain tangent-to-edge
+        te = tangentToEdge(eIndex);
+
+        // Compute face tangential vectors
+        e[0] = (rcg[0] - ((te&rcg[0])*te))/(te&te);
+        e[1] = (rcg[1] - ((te&rcg[1])*te))/(te&te);
+
+        // Normalize them...
+        e[0] /= mag(e[0]);
+        e[1] /= mag(e[1]);
+
+        // Now compute the binormal vector
+        m = ((r[1]&e[1])*e[0]) + ((r[0]&e[0])*e[1]);
+
+        // Compute the correction factors for this edge
+        k[0] =
+            Foam::sqrt
+            (
+                1 + (1 - ((m&e[0])/(m&m)))
+             * ((te&te)/(4*(r[0]&r[0])))
+            );
+
+        k[1] =
+            Foam::sqrt
+            (
+                1 + (1 - ((m&e[1])/(m&m)))
+             * ((te&te)/(4*(r[1]&r[1])))
+            );
+
+        kAvg = 0.5*(k[0] + k[1]);
+    }
+
+    return curvature;
+}
+
 // Given a boundary quad face, return a boundary triangular face.
 // For 2D simplical meshes only.
 label dynamicTopoFvMesh::getTriBoundaryFace
@@ -3583,11 +3666,75 @@ void dynamicTopoFvMesh::remove2DSliver
     if (mag(area) < (sliverThreshold_*length*length))
     {
         // Step 1: Bisect the boundary quad face
-        bisectInteriorFace_ = -1;
+        bisectInterior_ = -1;
         bisectQuadFace(fIndex);
 
         // Step 2: Collapse the newly created internal quad face
-        collapseQuadFace(bisectInteriorFace_);
+        collapseQuadFace(bisectInterior_);
+    }
+}
+
+// Remove sliver cells in 3D
+void dynamicTopoFvMesh::removeSlivers()
+{
+    forAllIter(labelHashSet, thresholdSlivers_, iter)
+    {
+        label nIntFaces = 0, nBdyFaces = 0;
+        label commonIntEdge = -1, commonBdyEdge = -1;
+        FixedList<label, 4> intFaces(-1);
+        FixedList<label, 4> bdyFaces(-1);
+
+        cell& cellToCheck = cells_[iter.key()];
+
+        // Determine the number of interior/boundary faces
+        forAll(cellToCheck, faceI)
+        {
+            if (neighbour_[cellToCheck[faceI]] == -1)
+            {
+                bdyFaces[nBdyFaces++] = cellToCheck[faceI];
+            }
+            else
+            {
+                intFaces[nIntFaces++] = cellToCheck[faceI];
+            }
+        }
+
+        // Check if this is a surface sliver
+        if (nIntFaces == 2 && nBdyFaces == 2)
+        {
+            findCommonEdge
+            (
+                bdyFaces[0],
+                bdyFaces[1],
+                commonBdyEdge
+            );
+
+            findCommonEdge
+            (
+                intFaces[0],
+                intFaces[1],
+                commonIntEdge
+            );
+
+            WarningIn
+            (
+                "dynamicTopoFvMesh::removeSlivers()"
+            )   << nl << "Removing Cell: " << iter.key()
+                << nl << "Boundary Edge: " << commonBdyEdge
+                << ": " << edges_[commonBdyEdge] << endl;
+
+            // Step 1: Bisect the interior edge
+            bisectEdge(commonIntEdge);
+
+            // Reset the interior edge index
+            bisectInterior_ = -1;
+
+            // Step 2: Bisect the boundary edge
+            bisectEdge(commonBdyEdge);
+
+            // Step 3: Collapse the temporary interior edge
+            collapseEdge(bisectInterior_);
+        }
     }
 }
 
@@ -3816,6 +3963,12 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 // MultiThreaded topology modifier [3D]
 void dynamicTopoFvMesh::threadedTopoModifier3D()
 {
+    // Deal with sliver cells first...
+    if (thresholdSlivers_.size())
+    {
+        removeSlivers();
+    }
+
     if (edgeModification_)
     {
         // Initialize the edge stacks
@@ -4004,8 +4157,12 @@ bool dynamicTopoFvMesh::updateTopology()
     //== Connectivity changes ==//
 
     // Reset the flag
+    thresholdSlivers_.clear();
     topoChangeFlag_ = false;
     nModifications_ = 0;
+
+    // Obtain mesh stats before topo-changes
+    meshQuality(true);
 
     // Invoke the threaded topoModifier
     if (twoDMesh_)

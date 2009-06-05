@@ -123,6 +123,70 @@ inline void dynamicTopoFvMesh::stack::print()
     Info << stack_ << endl;
 }
 
+// Obtain the tangent-to-edge vector
+inline vector dynamicTopoFvMesh::tangentToEdge
+(
+    const label eIndex
+)
+{
+    edge& thisEdge = edges_[eIndex];
+
+    return (meshPoints_[thisEdge[1]] - meshPoints_[thisEdge[0]]);
+}
+
+// Find the circumcenter of a face
+inline point dynamicTopoFvMesh::circumCenter
+(
+    const label fIndex
+)
+{
+    // Obtain references
+    face& thisFace = faces_[fIndex];
+    const point& a = meshPoints_[thisFace[0]];
+    const point& b = meshPoints_[thisFace[1]];
+    const point& c = meshPoints_[thisFace[2]];
+
+    scalar d1 =  (c - a)&(b - a);
+    scalar d2 = -(c - b)&(b - a);
+    scalar d3 =  (c - a)&(c - b);
+
+    scalar c1 = d2*d3;
+    scalar c2 = d3*d1;
+    scalar c3 = d1*d2;
+
+    scalar cd = c1 + c2 + c3;
+
+    if (cd < VSMALL)
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::testDelaunay(const label fIndex) "
+        ) << nl << " Encountered a co-linear set of points: " << nl
+                << " Point a :: " << thisFace[0] << ": " << a << nl
+                << " Point b :: " << thisFace[1] << ": " << b << nl
+                << " Point c :: " << thisFace[2] << ": " << c << nl
+                << abort(FatalError);
+    }
+
+    return ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
+}
+
+// Find the center of a triangle face
+inline point dynamicTopoFvMesh::triFaceCenter
+(
+    const label fIndex
+)
+{
+    face& thisFace = faces_[fIndex];
+
+    return
+    (
+        meshPoints_[thisFace[0]]
+      + meshPoints_[thisFace[1]]
+      + meshPoints_[thisFace[2]]
+    )/3.0;
+}
+
 // Find the area of a triangle face.
 // This function also assumes face right-handedness
 inline scalar dynamicTopoFvMesh::triFaceArea

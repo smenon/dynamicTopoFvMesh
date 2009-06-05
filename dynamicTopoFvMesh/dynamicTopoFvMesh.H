@@ -81,8 +81,13 @@ class dynamicTopoFvMesh
         //- Edge bisection/collapse option
         Switch edgeModification_;
 
-        //- Sub-dictionary which specifies fixed length-scales for patches
+        //- Sub-dictionary which specifies
+        //  fixed length-scales for patches
         dictionary fixedLengthScalePatches_;
+
+        //- Sub-dictionary which specifies
+        //  patches with curvature-based length-scale
+        dictionary curvaturePatches_;
 
         //- List of noSwap patch IDs (which specifies patches on
         //  which 2-2 swaps are to be avoided)
@@ -153,9 +158,11 @@ class dynamicTopoFvMesh
         scalar              growthFactor_;
         scalar              maxLengthScale_;
         scalar              sliverThreshold_;
+        scalar              curvatureRatio_;
         label               nModifications_;
         label               maxModifications_;
-        label               bisectInteriorFace_;
+        label               bisectInterior_;
+        labelHashSet        thresholdSlivers_;
 
         //- 3D Mesh Flipping data
         label               maxTetsPerEdge_;
@@ -275,6 +282,15 @@ class dynamicTopoFvMesh
         //- Quality metric for tetrahedra in 3D
         tetMetricReturnType tetMetric_;
 
+        // Obtain the tangent-to-edge vector
+        inline vector tangentToEdge(const label eIndex);
+
+        // Find the circumcenter of three points
+        inline point circumCenter(const label fIndex);
+
+        // Find the center of a triangle face
+        inline point triFaceCenter(const label fIndex);
+
         // Find the area of a triangle face.
         inline scalar triFaceArea(const face& triFace);
 
@@ -324,6 +340,9 @@ class dynamicTopoFvMesh
 
         // Return the appropriate length-scale for boundary face
         scalar boundaryLengthScale(const label faceIndex);
+
+        // Compute the face-curvature for a given boundary face
+        scalar faceCurvature(const label fIndex);
 
         // Return length-scale at an face-location in the mesh [2D]
         inline bool meshFaceLengthScale(const label fIndex, scalar& scale);
@@ -491,6 +510,9 @@ class dynamicTopoFvMesh
         (
             const label fIndex
         );
+
+        // Remove sliver cells in 3D
+        void removeSlivers();
 
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
