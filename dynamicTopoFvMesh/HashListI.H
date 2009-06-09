@@ -64,6 +64,7 @@ template<class T>
 HashList<T>::HashList(const label tableSize)
 :
     size_(0),
+    lastIndex_(-1),
     startIdx_(0),
     endIdx_(0),
     table_(0)
@@ -152,7 +153,8 @@ void HashList<T>::setSize
     }
 
     // Update the last element
-    endIdx_=prevPtr;
+    endIdx_ = prevPtr;
+    lastIndex_ = endIdx_->idx_;
 }
 
 //- Allocation for a null-constructed object, given size/value
@@ -237,7 +239,8 @@ void HashList<T>::setSize
     }
 
     // Update the last element
-    endIdx_=prevPtr;
+    endIdx_ = prevPtr;
+    lastIndex_ = endIdx_->idx_;
 }
 
 //- Construct given a size and value for all elements
@@ -250,6 +253,7 @@ HashList<T>::HashList
 )
 :
     size_(0),
+    lastIndex_(-1),
     startIdx_(0),
     endIdx_(0),
     table_(0)
@@ -270,6 +274,7 @@ HashList<T>::HashList
 )
 :
     size_(0),
+    lastIndex_(-1),
     startIdx_(0),
     endIdx_(0),
     table_(0)
@@ -300,6 +305,7 @@ HashList<T>::HashList
 )
 :
     size_(0),
+    lastIndex_(-1),
     startIdx_(0),
     endIdx_(0),
     table_(0)
@@ -320,71 +326,6 @@ HashList<T>::HashList
 
     // Assign
     this->operator=(data);
-}
-
-//- Insertion of a new element at the given label
-template<class T>
-inline typename HashList<T>::iterator HashList<T>::insert
-(
-    const label index,
-    const T& data
-)
-{
-    // Hash the index
-    label loc = hash(index)%hash_table_size_;
-
-    // Lock the list
-    lock();
-
-    // Lock the table at the index
-    // tableMutex_[loc].lock();
-
-    // Loop through chained linked-list
-    Item *thisPtr=0, *newPtr=0;
-    for (thisPtr=table_[loc]; thisPtr; thisPtr=thisPtr->next_)
-    {
-        if (index == thisPtr->idx_)
-        {
-            // Allocate
-            newPtr = new Item;
-            newPtr->data_ = data;
-
-            // Update index pointers
-            if (thisPtr->previdx_)
-            {
-                // Lock item
-                thisPtr->previdx_->lock();
-
-                thisPtr->previdx_->nextidx_ = newPtr;
-
-                // Unlock item
-                thisPtr->previdx_->unlock();
-            }
-
-            newPtr->previdx_ = thisPtr->previdx_;
-            newPtr->nextidx_ = thisPtr;
-            thisPtr->previdx_ = newPtr;
-
-            // Increment size and return pointer
-            size_++;
-
-            // Unlock the table at the index
-            // tableMutex_[loc].unlock();
-
-            // Unlock the list
-            unlock();
-
-            return iterator(newPtr);
-        }
-    }
-
-    // The following line should never happen, just keeps gcc happy
-    FatalErrorIn("HashList<T>::insert(const label, const T&) ") << nl
-            << " Index: " << index
-            << " Attempt to access an element that doesn't exist. "
-            << abort(FatalError);
-
-    return iterator(newPtr);
 }
 
 //- Deletion of an element at the given label
@@ -472,101 +413,8 @@ inline void HashList<T>::remove
     else
     {
         // The last item is being removed; update the last item
-        endIdx_ = thisPtr->previdx_;
-    }
-
-    delete thisPtr;
-
-    // Decrement size
-    size_--;
-
-    // Unlock the list
-    unlock();
-}
-
-//- Deletion of an element, given an iterator
-template<class T>
-inline void HashList<T>::remove(iterator& iter)
-{
-    Item *thisPtr = iter.curItem;
-    label index = thisPtr->idx_;
-
-    // Lock the list
-    lock();
-
-    // Update pointers and delete the item
-    if (thisPtr->prev_)
-    {
-        // Lock items
-        thisPtr->lock();
-        thisPtr->prev_->lock();
-
-        thisPtr->prev_->next_ = thisPtr->next_;
-
-        // Unlock items
-        thisPtr->prev_->unlock();
-        thisPtr->unlock();
-    }
-    else
-    {
-        // The table entry points to this item
-        label loc = hash(index)%hash_table_size_;
-
-        // Lock table
-        // tableMutex_[loc].lock();
-
-        table_[loc] = thisPtr->next_;
-
-        // Unlock table
-        // tableMutex_[loc].unlock();
-    }
-
-    if (thisPtr->next_)
-    {
-        // Lock items
-        thisPtr->lock();
-        thisPtr->next_->lock();
-
-        thisPtr->next_->prev_ = thisPtr->prev_;
-
-        // Unlock items
-        thisPtr->next_->unlock();
-        thisPtr->unlock();
-    }
-
-    if (thisPtr->previdx_)
-    {
-        // Lock items
-        thisPtr->lock();
-        thisPtr->previdx_->lock();
-
-        thisPtr->previdx_->nextidx_ = thisPtr->nextidx_;
-
-        // Unlock items
-        thisPtr->previdx_->unlock();
-        thisPtr->unlock();
-    }
-    else
-    {
-        // The first item is to be removed; update the first item
-        startIdx_ = thisPtr->nextidx_;
-    }
-
-    if (thisPtr->nextidx_)
-    {
-        // Lock items
-        thisPtr->lock();
-        thisPtr->nextidx_->lock();
-
-        thisPtr->nextidx_->previdx_ = thisPtr->previdx_;
-
-        // Unlock items
-        thisPtr->nextidx_->unlock();
-        thisPtr->unlock();
-    }
-    else
-    {
-        // The last item is being removed; update the last item
+        // Note that lastIndex_ is not updated,
+        // thereby allowing additions from that index.
         endIdx_ = thisPtr->previdx_;
     }
 
@@ -593,7 +441,7 @@ inline label HashList<T>::append
     // Lock the list
     lock();
 
-    label index = 0;
+    label index = ++lastIndex_;
 
     // Allocate and set the index
     Item *newPtr = new Item;
@@ -606,7 +454,6 @@ inline label HashList<T>::append
         endIdx_->lock();
         
         // Update item
-        index = endIdx_->idx_ + 1;
         newPtr->idx_ = index;
         newPtr->previdx_ = endIdx_;
         endIdx_->nextidx_ = newPtr;
@@ -667,7 +514,7 @@ inline label HashList<T>::append()
     // Lock the list
     lock();
 
-    label index = 0;
+    label index = ++lastIndex_;
 
     // Allocate and set the index
     Item *newPtr = new Item;
@@ -681,7 +528,6 @@ inline label HashList<T>::append()
         endIdx_->lock();
 
         // Update item
-        index = endIdx_->idx_ + 1;
         newPtr->idx_ = index;
         newPtr->previdx_ = endIdx_;
         endIdx_->nextidx_ = newPtr;
@@ -750,30 +596,7 @@ void HashList<T>::clear()
     // Clean the hash table
     cleanTable();
 
-    size_ = 0; startIdx_ = 0; endIdx_ = 0;
-}
-
-//- Sort the list in ascending order of indices
-template<class T>
-void HashList<T>::sort()
-{
-    // Set the starting index
-    Item *tmpItem = getLinkItem(0);
-    tmpItem->previdx_ = 0;
-    startIdx_ = tmpItem;
-
-    // Loop through the rest of the elements and set accordingly
-    for(label i=1; i<size_; i++)
-    {
-        Item *item = getLinkItem(i);
-        tmpItem->nextidx_ = item;
-        item->previdx_    = tmpItem;
-        tmpItem = item;
-    }
-
-    // Set the ending index
-    tmpItem->nextidx_ = 0;
-    endIdx_ = tmpItem;
+    size_ = 0; lastIndex_ = -1; startIdx_ = 0; endIdx_ = 0;
 }
 
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
@@ -886,48 +709,6 @@ inline void HashList<T>::iterator::unlock()
     return curItem->unlock();
 }
 
-//- Renumber the index of an iterator to a new value
-template<class T>
-inline void HashList<T>::reNumber
-(
-    const label newIndex, iterator& iter
-)
-{
-    // Hash the old index
-    label oldloc = hash(iter.index())%hash_table_size_;
-
-    // Reset the index for the item
-    iter.curItem->idx_ = newIndex;
-    label newloc = hash(newIndex)%hash_table_size_;
-
-    // Change the hash-table pointers
-    // Remove the old links
-    if (iter.curItem->prev_)
-    {
-        iter.curItem->prev_->next_ = iter.curItem->next_;
-    }
-
-    if (iter.curItem->next_)
-    {
-        iter.curItem->next_->prev_ = iter.curItem->prev_;
-    }
-
-    // Update the table
-    if (table_[oldloc] == iter.curItem)
-    {
-        table_[oldloc] = iter.curItem->next_;
-    }
-
-    if (table_[newloc])
-    {
-        table_[newloc]->prev_  = iter.curItem;
-        iter.curItem->next_ = table_[newloc];
-    }
-
-    iter.curItem->prev_ = 0;
-    table_[newloc] = iter.curItem;
-}
-
 //- Function overload - Return reference to data
 template<class T>
 inline T& HashList<T>::iterator::operator()()
@@ -1003,27 +784,11 @@ inline typename HashList<T>::iterator HashList<T>::end()
     return iterator(0);
 }
 
-//- Return nearest iterator to the specified index
-template<class T>
-inline typename HashList<T>::iterator HashList<T>::getIterator
-(
-    const label index
-)
-{
-    label nearestIndex = index;
-    while (!checkIndex(nearestIndex))
-    {
-        nearestIndex += 1;
-    }
-
-    return iterator(getLinkItem(nearestIndex));
-}
-
 //- Return the index of the last element
 template<class T>
 inline label HashList<T>::lastIndex() const
 {
-    return endIdx_->idx_;
+    return lastIndex_;
 }
 
 //- Return the table-size of the HashList.
@@ -1219,7 +984,8 @@ HashList<T>& HashList<T>::operator=
     }
 
     // Update the last element
-    endIdx_=prevPtr;
+    endIdx_ = prevPtr;
+    lastIndex_ = endIdx_->idx_;
 
     return (*this);
 }
@@ -1286,7 +1052,8 @@ void HashList<T>::operator=
     }
 
     // Update the last element
-    endIdx_=prevPtr;
+    endIdx_ = prevPtr;
+    lastIndex_ = endIdx_->idx_;
 }
 
 //- Return subscript-checked iterator of HashList.

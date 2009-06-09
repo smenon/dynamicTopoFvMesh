@@ -117,6 +117,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     sliverThreshold_(0.05),
     curvatureRatio_(0.05),
     nModifications_(0),
+    nBisections_(-1),
+    nCollapses_(-1),
+    nSwaps_(-1),
     maxModifications_(-1),
     bisectInterior_(-1),
     maxTetsPerEdge_(-1),
@@ -900,6 +903,12 @@ void dynamicTopoFvMesh::removeFace
         reverseFaceMap_[index] = -1;
     }
 
+    // Check and remove from the list of added face patches
+    if (addedFacePatches_.found(index))
+    {
+        addedFacePatches_.erase(index);
+    }
+
     // Decrement the total face-count
     nFaces_--;
 }
@@ -1057,6 +1066,12 @@ void dynamicTopoFvMesh::removeEdge
     if (index < nOldEdges_)
     {
         reverseEdgeMap_[index] = -1;
+    }
+
+    // Check and remove from the list of added edge patches
+    if (addedEdgePatches_.found(index))
+    {
+        addedEdgePatches_.erase(index);
     }
 
     // Decrement the total edge-count
@@ -1921,6 +1936,9 @@ void dynamicTopoFvMesh::removeEdgeFlips
 
     // Set the flag
     topoChangeFlag_ = true;
+
+    // Increment the counter
+    nSwaps_++;
 }
 
 // Extract triangulations from the programming table
@@ -1971,7 +1989,7 @@ label dynamicTopoFvMesh::identify32Swap
     // Relax the tolerance for boundary edges
     if (whichEdgePatch(eIndex) > -1)
     {
-        tolerance = SMALL;
+        tolerance = 0.1*mag(tangentToEdge(eIndex));
     }
 
     for (label i = 0; i < (m-2); i++)
@@ -2229,6 +2247,11 @@ void dynamicTopoFvMesh::writeVTK
 
     forAll(cpList, i)
     {
+        if (cList[i] == -1)
+        {
+            continue;
+        }
+
         file << cpList[i].size() << ' ';
 
         forAll(cpList[i], j)
@@ -2323,6 +2346,9 @@ void dynamicTopoFvMesh::checkConnectivity()
         }
     }
 
+    label nInternalEdges = 0;
+    labelList patchInfo(numPatches_, 0);
+
     forAllIter(HashList<labelList>::iterator, edgeFaces_, efIter)
     {
         labelList& edgeFaces = efIter();
@@ -2341,6 +2367,8 @@ void dynamicTopoFvMesh::checkConnectivity()
                 << nl << "Edge-Face connectivity is inconsistent."
                 << endl;
         }
+
+        label nBF = 0;
 
         // Check if this edge belongs to faceEdges for each face
         forAll(edgeFaces, faceI)
@@ -2369,6 +2397,109 @@ void dynamicTopoFvMesh::checkConnectivity()
                     << nl << "Edge-Face connectivity is inconsistent."
                     << endl;
             }
+
+            if (neighbour_[edgeFaces[faceI]] == -1)
+            {
+                nBF++;
+            }
+        }
+
+        if (nBF == 0)
+        {
+            nInternalEdges++;
+
+            // Check if this edge is actually internal.
+            if (whichEdgePatch(efIter.index()) >= 0)
+            {
+                Info << "Edge: " << efIter.index()
+                     << ": " << edges_[efIter.index()] << " is internal, "
+                     << " but patch is specified as: "
+                     << whichEdgePatch(efIter.index())
+                     << endl;
+
+                nFailedChecks++;
+            }
+        }
+        else
+        {
+            label patchID = whichEdgePatch(efIter.index());
+
+            // Check if this edge is actually on a boundary.
+            if (patchID < 0)
+            {
+                Info << "Edge: " << efIter.index() 
+                     << ": " << edges_[efIter.index()]
+                     << " is on a boundary, but patch is specified as: "
+                     << patchID << endl;
+
+                nFailedChecks++;
+            }
+            else
+            {
+                patchInfo[patchID]++;
+            }
+        }
+    }
+
+    if (nInternalEdges != nInternalEdges_)
+    {
+        Info << nl << "Internal edge-count is inconsistent." << nl
+             << " Counted internal edges: " << nInternalEdges
+             << " Actual count: " << nInternalEdges_ << endl;
+
+        nFailedChecks++;
+    }
+
+    forAll(patchInfo, patchI)
+    {
+        if (patchInfo[patchI] != edgePatchSizes_[patchI])
+        {
+            Info << "Patch-count is inconsistent." << nl
+                 << " Patch: " << patchI
+                 << " Counted edges: " << patchInfo[patchI]
+                 << " Actual count: " << edgePatchSizes_[patchI] << endl;
+
+            nFailedChecks++;
+        }
+    }
+
+    // Check added edge patches to ensure that it is consistent
+    forAllIter(Map<label>, addedEdgePatches_, aepIter)
+    {
+        label key = aepIter.key();
+        label patch = aepIter();
+
+        label nBF = 0;
+        labelList& edgeFaces = edgeFaces_[key];
+
+        // Check if any faces on boundaries
+        forAll(edgeFaces, faceI)
+        {
+            if (neighbour_[edgeFaces[faceI]] == -1)
+            {
+                nBF++;
+            }
+        }
+
+        if ((patch < 0) && (nBF > 0))
+        {
+            Info << nl << nl << "Edge: " << key
+                 << ", edgeFaces: " << edgeFaces
+                 << " is internal, but contains boundary faces."
+                 << endl;
+
+            nFailedChecks++;
+        }
+
+        if ((patch >= 0) && (nBF != 2))
+        {
+            Info << nl << nl << "Edge: " << key
+                 << ", edgeFaces: " << edgeFaces
+                 << " is on a boundary patch, but doesn't contain"
+                 << " two boundary faces."
+                 << endl;
+
+            nFailedChecks++;
         }
     }
 
@@ -2682,7 +2813,8 @@ void dynamicTopoFvMesh::calculateLengthScale()
                             label eIndex = getTriBoundaryEdge(pStart+faceI);
                             edge& e = edges_[eIndex];
 
-                            lengthScale[ownCell] = mag(pList[e[0]] - pList[e[1]]);
+                            lengthScale[ownCell] =
+                                mag(pList[e[0]] - pList[e[1]])*growthFactor_;
                         }
                         else
                         {
@@ -2696,7 +2828,8 @@ void dynamicTopoFvMesh::calculateLengthScale()
                                 edgeLength += mag(pList[e[0]] - pList[e[1]]);
                             }
 
-                            lengthScale[ownCell] = (edgeLength/fEdges.size());
+                            lengthScale[ownCell] =
+                                (edgeLength/fEdges.size())*growthFactor_;
                         }
 
                         levelCells.insert(ownCell);
@@ -4160,6 +4293,9 @@ bool dynamicTopoFvMesh::updateTopology()
     thresholdSlivers_.clear();
     topoChangeFlag_ = false;
     nModifications_ = 0;
+    nBisections_ = 0;
+    nCollapses_ = 0;
+    nSwaps_ = 0;
 
     // Obtain mesh stats before topo-changes
     meshQuality(true);
@@ -4419,6 +4555,11 @@ bool dynamicTopoFvMesh::updateTopology()
         if (debug)
         {
             checkMesh(true);
+
+            // Print out topo-stats
+            Info << "nBisections: " << nBisections_ << endl;
+            Info << "nCollapses: " << nCollapses_ << endl;
+            Info << "nSwaps: " << nSwaps_ << endl;
         }
     }
 

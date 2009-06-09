@@ -160,6 +160,9 @@ class dynamicTopoFvMesh
         scalar              sliverThreshold_;
         scalar              curvatureRatio_;
         label               nModifications_;
+        label               nBisections_;
+        label               nCollapses_;
+        label               nSwaps_;
         label               maxModifications_;
         label               bisectInterior_;
         labelHashSet        thresholdSlivers_;

@@ -694,6 +694,9 @@ void dynamicTopoFvMesh::swapQuadFace
 
     // Set the flag
     topoChangeFlag_ = true;
+
+    // Increment the counter
+    nSwaps_++;
 }
 
 // Routine to perform 2-3 swaps

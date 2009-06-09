@@ -839,6 +839,12 @@ void dynamicTopoFvMesh::bisectQuadFace
     // Set the flag
     topoChangeFlag_ = true;
 
+    // Increment the counter
+    nBisections_++;
+
+    // Increment the number of modifications
+    nModifications_++;
+
     // Update the number of cells
     nCells_++;
 
@@ -1692,6 +1698,9 @@ void dynamicTopoFvMesh::bisectEdge
 
     // Set the flag
     topoChangeFlag_ = true;
+
+    // Increment the counter
+    nBisections_++;
 
     // Increment the number of modifications
     nModifications_++;

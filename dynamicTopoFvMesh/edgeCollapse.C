@@ -894,6 +894,12 @@ void dynamicTopoFvMesh::collapseQuadFace
 
     // Set the flag
     topoChangeFlag_ = true;
+
+    // Increment the counter
+    nCollapses_++;
+
+    // Increment the number of modifications
+    nModifications_++;
 }
 
 // Method for the collapse of an edge in 3D
@@ -1007,6 +1013,7 @@ void dynamicTopoFvMesh::collapseEdge
         collapseCase = 2;
     }
     else
+    if (edgeBoundary[0] && edgeBoundary[1])
     {
         // Looks like both points are on the boundary.
         // Check if either point touches a boundary face, and retain that.
@@ -1034,11 +1041,21 @@ void dynamicTopoFvMesh::collapseEdge
         {
             collapseCase = 1;
         }
-
+        else
         if (!faceCheck[0] && faceCheck[1])
         {
             collapseCase = 2;
         }
+        else
+        {
+            collapseCase = 2;
+        }
+    }
+    else
+    {
+        // Looks like this is an interior edge.
+        // Collapse case [2] by default
+        collapseCase = 2;
     }
 
     switch (collapseCase)
@@ -1073,7 +1090,12 @@ void dynamicTopoFvMesh::collapseEdge
 
         default:
 
-            return;
+            // Don't think this will ever happen.
+            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                << "Edge: " << eIndex << ": " << thisEdge
+                << ". Couldn't decide on collapseCase."
+                << abort(FatalError);
+
             break;
     }
 
@@ -1687,6 +1709,9 @@ void dynamicTopoFvMesh::collapseEdge
 
     // Set the flag
     topoChangeFlag_ = true;
+
+    // Increment the counter
+    nCollapses_++;
 
     // Increment the number of modifications
     nModifications_++;

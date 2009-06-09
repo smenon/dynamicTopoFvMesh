@@ -51,18 +51,13 @@ void dynamicTopoFvMesh::reOrderPoints
 
     addedPointRenumbering_.clear();
 
-    HashList<point>::iterator ptIter = meshPoints_.begin();
-
-    while (ptIter != meshPoints_.end())
+    forAllIter(HashList<point>::iterator, meshPoints_, ptIter)
     {
         // Obtain the index for this point
         label pIndex = ptIter.index();
 
         // Update the point info
         points[pointRenum] = ptIter();
-
-        // Renumber the point index
-        meshPoints_.reNumber(pointRenum, ptIter);
 
         // Added points are always numbered after nOldPoints_
         // (by virtue of the HashList append method)
@@ -78,9 +73,13 @@ void dynamicTopoFvMesh::reOrderPoints
 
         // Update the counter
         pointRenum++;
+    }
 
-        // Update the iterators
-        ptIter++;
+    // Clear the HashList and reset.
+    meshPoints_.clear();
+    forAll(points, pointI)
+    {
+        meshPoints_.append(points[pointI]);
     }
 }
 
@@ -139,117 +138,119 @@ void dynamicTopoFvMesh::reOrderEdges
     forAll(oldEdges, edgeI)
     {
         // Ensure that we're adding valid edges
-        if (oldEdgeFaces[edgeI].size() > 0)
+        if (oldEdgeFaces[edgeI].size() == 0)
         {
-            // Determine which patch this edge belongs to
-            label patch = whichEdgePatch(edgeI);
+            continue;
+        }
 
-            // Obtain references
-            edge& thisEdge = oldEdges[edgeI];
-            labelList& thisEF = oldEdgeFaces[edgeI];
+        // Determine which patch this edge belongs to
+        label patch = whichEdgePatch(edgeI);
 
-            // Renumber edges
-            if (thisEdge[0] < nOldPoints_)
+        // Obtain references
+        edge& thisEdge = oldEdges[edgeI];
+        labelList& thisEF = oldEdgeFaces[edgeI];
+
+        // Renumber edges
+        if (thisEdge[0] < nOldPoints_)
+        {
+            thisEdge[0] = reversePointMap_[thisEdge[0]];
+        }
+        else
+        {
+            thisEdge[0] = addedPointRenumbering_[thisEdge[0]];
+        }
+
+        if (thisEdge[1] < nOldPoints_)
+        {
+            thisEdge[1] = reversePointMap_[thisEdge[1]];
+        }
+        else
+        {
+            thisEdge[1] = addedPointRenumbering_[thisEdge[1]];
+        }
+
+        // Renumber edgeFaces
+        forAll(thisEF,faceI)
+        {
+            if (thisEF[faceI] < nOldFaces_)
             {
-                thisEdge[0] = reversePointMap_[thisEdge[0]];
+                thisEF[faceI] = reverseFaceMap_[thisEF[faceI]];
             }
             else
             {
-                thisEdge[0] = addedPointRenumbering_[thisEdge[0]];
+                thisEF[faceI] = addedFaceRenumbering_[thisEF[faceI]];
             }
+        }
 
-            if (thisEdge[1] < nOldPoints_)
-            {
-                thisEdge[1] = reversePointMap_[thisEdge[1]];
-            }
-            else
-            {
-                thisEdge[1] = addedPointRenumbering_[thisEdge[1]];
-            }
+        // Renumber edgePoints
+        if (!twoDMesh_)
+        {
+            labelList& thisEP = oldEdgePoints[edgeI];
 
-            // Renumber edgeFaces
-            forAll(thisEF,faceI)
+            forAll(thisEP,pointI)
             {
-                if (thisEF[faceI] < nOldFaces_)
+                if (thisEP[pointI] < nOldPoints_)
                 {
-                    thisEF[faceI] = reverseFaceMap_[thisEF[faceI]];
+                    thisEP[pointI] = reversePointMap_[thisEP[pointI]];
                 }
                 else
                 {
-                    thisEF[faceI] = addedFaceRenumbering_[thisEF[faceI]];
+                    thisEP[pointI] = addedPointRenumbering_[thisEP[pointI]];
                 }
             }
+        }
 
-            // Renumber edgePoints
+        // Update maps for boundary edges. Edge insertion for
+        // boundaries will be done after internal edges.
+        if (patch >= 0)
+        {
+            label bEdgeIndex = boundaryPatchIndices[patch]++;
+
+            // Update the maps
+            if (edgeI < nOldEdges_)
+            {
+                edgeMap_[bEdgeIndex] = edgeI;
+                reverseEdgeMap_[edgeI] = bEdgeIndex;
+            }
+            else
+            {
+                addedEdgeRenumbering_.insert(edgeI,bEdgeIndex);
+                addedEdgeReverseRenumbering.insert(bEdgeIndex,edgeI);
+            }
+        }
+        else
+        {
+            // Renumber internal edges and add normally.
+            if (edgeI < nOldEdges_)
+            {
+                edgeMap_[edgeInOrder] = edgeI;
+                reverseEdgeMap_[edgeI] = edgeInOrder;
+            }
+            else
+            {
+                addedEdgeRenumbering_.insert(edgeI,edgeInOrder);
+            }
+
+            // Insert entities into HashLists...
+            edges_.append(thisEdge);
+            edgeFaces_.append(thisEF);
+
+            // Insert entities into mesh-reset lists
+            edges[edgeInOrder] = thisEdge;
+            edgeFaces[edgeInOrder].transfer(thisEF);
+
             if (!twoDMesh_)
             {
-                labelList& thisEP = oldEdgePoints[edgeI];
-
-                forAll(thisEP,pointI)
-                {
-                    if (thisEP[pointI] < nOldPoints_)
-                    {
-                        thisEP[pointI] = reversePointMap_[thisEP[pointI]];
-                    }
-                    else
-                    {
-                        thisEP[pointI] = addedPointRenumbering_[thisEP[pointI]];
-                    }
-                }
+                edgePoints_.append(oldEdgePoints[edgeI]);
             }
 
-            // Update maps for boundary edges. Edge insertion for
-            // boundaries will be done after internal edges.
-            if (patch >= 0)
-            {
-                label bEdgeIndex = boundaryPatchIndices[patch]++;
-
-                // Update the maps
-                if (edgeI < nOldEdges_)
-                {
-                    edgeMap_[bEdgeIndex] = edgeI;
-                    reverseEdgeMap_[edgeI] = bEdgeIndex;
-                }
-                else
-                {
-                    addedEdgeRenumbering_.insert(edgeI,bEdgeIndex);
-                    addedEdgeReverseRenumbering.insert(bEdgeIndex,edgeI);
-                }
-            }
-            else
-            {
-                // Renumber internal edges and add normally.
-                if (edgeI < nOldEdges_)
-                {
-                    edgeMap_[edgeInOrder] = edgeI;
-                    reverseEdgeMap_[edgeI] = edgeInOrder;
-                }
-                else
-                {
-                    addedEdgeRenumbering_.insert(edgeI,edgeInOrder);
-                }
-
-                // Insert entities into HashLists...
-                edges_.append(thisEdge);
-                edgeFaces_.append(thisEF);
-
-                // Insert entities into mesh-reset lists
-                edges[edgeInOrder] = thisEdge;
-                edgeFaces[edgeInOrder].transfer(thisEF);
-
-                if (!twoDMesh_)
-                {
-                    edgePoints_.append(oldEdgePoints[edgeI]);
-                }
-
-                edgeInOrder++;
-            }
+            edgeInOrder++;
         }
     }
 
     // All internal edges have been inserted. Now insert boundary edges.
     label oldIndex;
-    for(label i=nInternalEdges_; i<nEdges_; i++)
+    for(label i = nInternalEdges_; i < nEdges_; i++)
     {
         if (edgeMap_[i] == -1)
         {

@@ -113,6 +113,9 @@ class HashList
         // Size of the list
         label size_;
 
+        // Keeps track of the last index
+        label lastIndex_;
+
         // Pointer to element[0] and element[N] of the list
         Item *startIdx_, *endIdx_;
 
@@ -221,14 +224,8 @@ public:
             //- Allocation for a null-constructed object, given size/value
             void setSize(const label, const T&, const label tableSize = 2087);
 
-            //- Insertion of a new element at the given label
-            inline iterator insert(const label, const T&);
-
             //- Deletion of an element at the given label
             inline void remove(const label);
-
-            //- Deletion of an element, given an iterator
-            inline void remove(iterator&);
 
             //- Append an element to the end of the list
             //- Returns the index of the added element
@@ -241,9 +238,6 @@ public:
             //- Clear contents of the list
             void clear();
 
-            //- Sort the list in ascending order of indices
-            void sort();
-
         // Access
 
             //- Return iterator to element[0]
@@ -251,12 +245,6 @@ public:
 
             //- Return iterator to element[N]
             inline iterator end();
-
-            //- Return nearest iterator to the specified index
-            inline iterator getIterator(const label);
-
-            //- Renumber the index of an iterator to a new value
-            inline void reNumber(const label, iterator&);
 
             //- Return the index of the last element
             inline label lastIndex() const;
