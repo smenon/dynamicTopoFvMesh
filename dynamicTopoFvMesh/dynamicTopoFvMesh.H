@@ -81,6 +81,9 @@ class dynamicTopoFvMesh
         //- Edge bisection/collapse option
         Switch edgeModification_;
 
+        //- Specify the re-meshing interval
+        label interval_;
+
         //- Sub-dictionary which specifies
         //  fixed length-scales for patches
         dictionary fixedLengthScalePatches_;
@@ -564,6 +567,14 @@ class dynamicTopoFvMesh
             labelList& list
         );
 
+        // Remove the specified cell from the mesh,
+        // and add internal faces to the specified patch
+        void removeCell
+        (
+            const label index,
+            const label patch
+        );
+
         // Insert the specified face to the mesh
         label insertFace
         (
@@ -785,6 +796,9 @@ class dynamicTopoFvMesh
 
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
+
+        // Read edge-modification options from the dictionary
+        void readEdgeOptions();
 
         // Does the mesh perform edge-modification?
         bool edgeModification();

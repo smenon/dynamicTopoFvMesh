@@ -81,6 +81,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     (
         dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")
     ),
+    interval_(1),
     mapper_(NULL),
     meshPoints_(polyMesh::points()),
     faces_(polyMesh::faces()),
@@ -139,6 +140,15 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     if (dict_.found("debug"))
     {
         debug = readLabel(dict_.lookup("debug"));
+    }
+
+    if (dict_.subDict("dynamicTopoFvMesh").found("interval"))
+    {
+        interval_ = readLabel
+                    (
+                        dict_.subDict
+                        ("dynamicTopoFvMesh").lookup("interval")
+                    );
     }
 
     // Initialize the multiThreading environment
@@ -330,44 +340,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Define edgeModification options
     if (edgeModification_)
     {
-        const dictionary& edgeOptionDict =
-            dict_.subDict("dynamicTopoFvMesh").subDict("edgeOptions");
-        ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
-        ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
-        growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
-
-        if (edgeOptionDict.found("maxLengthScale"))
-        {
-            maxLengthScale_ =
-                readScalar(edgeOptionDict.lookup("maxLengthScale"));
-        }
-
-        if (edgeOptionDict.found("fixedLengthScalePatches"))
-        {
-            fixedLengthScalePatches_ =
-                edgeOptionDict.subDict("fixedLengthScalePatches");
-        }
-
-        if (edgeOptionDict.found("curvaturePatches"))
-        {
-        	curvaturePatches_ =
-        		edgeOptionDict.subDict("curvaturePatches");
-
-        	curvatureRatio_ =
-        	    readScalar(edgeOptionDict.lookup("curvatureRatio"));
-        }
-
-        if (edgeOptionDict.found("sliverThreshold"))
-        {
-            sliverThreshold_ =
-                readScalar(edgeOptionDict.lookup("sliverThreshold"));
-        }
-
-        if (edgeOptionDict.found("maxModifications"))
-        {
-            maxModifications_ =
-                readLabel(edgeOptionDict.lookup("maxModifications"));
-        }
+        readEdgeOptions();
 
         // Initialize the lengthScale field
         lengthScale_.setSize(nCells_, 0.0);
@@ -833,6 +806,177 @@ label dynamicTopoFvMesh::insertFace
     nFaces_++;
 
     return newFaceIndex;
+}
+
+// Remove the specified cell from the mesh,
+// and add internal faces to the specified patch
+void dynamicTopoFvMesh::removeCell
+(
+    const label index,
+    const label patch
+)
+{
+    if (debug > 2)
+    {
+        Info << "Removed cell: "
+             << index << ": "
+             << cells_[index] << endl;
+    }
+
+    label ptIndex = -1, nextPoint = -1;
+    cell& cellToCheck = cells_[index];
+
+    forAll(cellToCheck, faceI)
+    {
+        labelList& faceEdges = faceEdges_[cellToCheck[faceI]];
+
+        // Delete this face if it's on a boundary
+        if (neighbour_[cellToCheck[faceI]] == -1)
+        {
+            forAll(faceEdges, edgeI)
+            {
+                // Size down edgeFaces...
+                sizeDownList
+                (
+                    cellToCheck[faceI],
+                    edgeFaces_[faceEdges[edgeI]]
+                );
+
+                edge& edgeToCheck = edges_[faceEdges[edgeI]];
+
+                // Size-down edgePoints as well
+                if (!twoDMesh_)
+                {
+                    findIsolatedPoint
+                    (
+                        faces_[cellToCheck[faceI]],
+                        edgeToCheck,
+                        ptIndex,
+                        nextPoint
+                    );
+
+                    sizeDownList
+                    (
+                        ptIndex,
+                        edgePoints_[faceEdges[edgeI]]
+                    );
+                }
+
+                if (edgeFaces_[faceEdges[edgeI]].size() == 0)
+                {
+                    // Hanging edge. Check its points and remove
+                    // them if necessary.
+                    forAll(edgeToCheck, pointI)
+                    {
+                        // Check for hanging nodes...
+                        if (pointEdges_[edgeToCheck[pointI]].size() == 1)
+                        {
+                            // Null pointEdges so that removeEdge deletes it.
+                            pointEdges_[edgeToCheck[pointI]] = labelList(0);
+
+                            // Remove the point
+                            meshPoints_.remove(edgeToCheck[pointI]);
+
+                            nPoints_--;
+
+                            // Update the reverse point map
+                            if (edgeToCheck[pointI] < nOldPoints_)
+                            {
+                                reversePointMap_[edgeToCheck[pointI]] = -1;
+                            }
+                        }
+                    }
+
+                    removeEdge(faceEdges[edgeI]);
+                }
+            }
+
+            removeFace(cellToCheck[faceI]);
+        }
+        else
+        if (patch != -1)
+        {
+            // Check if this internal face is oriented properly.
+            face newFace;
+            label newOwner = -1;
+            
+            if (neighbour_[cellToCheck[faceI]] == index)
+            {
+                // Orientation is correct
+                newFace = faces_[cellToCheck[faceI]];
+                newOwner = owner_[cellToCheck[faceI]];
+            }
+            else
+            if (owner_[cellToCheck[faceI]] == index)
+            {
+                newFace = faces_[cellToCheck[faceI]].reverseFace();
+                newOwner = neighbour_[cellToCheck[faceI]];
+            }
+            else
+            {
+                // Something's terribly wrong
+                FatalErrorIn
+                (
+                    "dynamicTopoFvMesh::removeCell()"
+                )
+                    << nl << " Invalid mesh. "
+                    << abort(FatalError);
+            }
+
+            // Insert a new boundary face
+            label newFaceIndex = 
+                insertFace
+                (
+                    patch,
+                    newFace,
+                    newOwner,
+                    -1
+                );
+            
+            // Add the faceEdges entry
+            faceEdges_.append(faceEdges);
+            
+            // Replace edgeFaces with the new face label
+            forAll(faceEdges, edgeI)
+            {
+                replaceLabel
+                (
+                    cellToCheck[faceI],
+                    newFaceIndex,
+                    edgeFaces_[faceEdges[edgeI]]
+                );
+            }
+            
+            // Replace cell with the new face label
+            replaceLabel
+            (
+                cellToCheck[faceI],
+                newFaceIndex,
+                cells_[newOwner]
+            );
+
+            // Remove the internal face.
+            removeFace(cellToCheck[faceI]);
+        }
+    }
+
+    // Update cell info
+    cells_.remove(index);
+    nCells_--;
+
+    if (index < nOldCells_)
+    {
+        reverseCellMap_[index] = -1;
+    }
+
+    // Check if the cell was added in the current morph, and delete
+    if (cellsFromCells_.found(index))
+    {
+        cellsFromCells_.erase(index);
+    }
+
+    // Set the flag
+    topoChangeFlag_ = true;
 }
 
 // Remove the specified face from the mesh
@@ -2427,7 +2571,7 @@ void dynamicTopoFvMesh::checkConnectivity()
             // Check if this edge is actually on a boundary.
             if (patchID < 0)
             {
-                Info << "Edge: " << efIter.index() 
+                Info << "Edge: " << efIter.index()
                      << ": " << edges_[efIter.index()]
                      << " is on a boundary, but patch is specified as: "
                      << patchID << endl;
@@ -2777,7 +2921,10 @@ void dynamicTopoFvMesh::calculateLengthScale()
                         {
                             cellLevels[ownCell] = level;
                             lengthScale[ownCell] =
-                                fixedLengthScalePatches_[pName][0].scalarToken();
+                            (
+                                fixedLengthScalePatches_[pName][0].scalarToken()
+                               *growthFactor_
+                            );
 
                             levelCells.insert(ownCell);
 
@@ -2921,6 +3068,49 @@ void dynamicTopoFvMesh::calculateLengthScale()
         {
             lIter() = lengthScale[lIter.index()];
         }
+    }
+}
+
+// Read edge-modification options from the dictionary
+void dynamicTopoFvMesh::readEdgeOptions()
+{
+    const dictionary& edgeOptionDict =
+        dict_.subDict("dynamicTopoFvMesh").subDict("edgeOptions");
+    ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
+    ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
+    growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
+
+    if (edgeOptionDict.found("maxLengthScale"))
+    {
+        maxLengthScale_ =
+            readScalar(edgeOptionDict.lookup("maxLengthScale"));
+    }
+
+    if (edgeOptionDict.found("fixedLengthScalePatches"))
+    {
+        fixedLengthScalePatches_ =
+            edgeOptionDict.subDict("fixedLengthScalePatches");
+    }
+
+    if (edgeOptionDict.found("curvaturePatches"))
+    {
+        curvaturePatches_ =
+            edgeOptionDict.subDict("curvaturePatches");
+
+        curvatureRatio_ =
+            readScalar(edgeOptionDict.lookup("curvatureRatio"));
+    }
+
+    if (edgeOptionDict.found("sliverThreshold"))
+    {
+        sliverThreshold_ =
+            readScalar(edgeOptionDict.lookup("sliverThreshold"));
+    }
+
+    if (edgeOptionDict.found("maxModifications"))
+    {
+        maxModifications_ =
+            readLabel(edgeOptionDict.lookup("maxModifications"));
     }
 }
 
@@ -4239,6 +4429,25 @@ const edgeList& dynamicTopoFvMesh::edges() const
 // Return true if changes have occurred
 bool dynamicTopoFvMesh::updateTopology()
 {
+    // Re-read options if they have been modified at run-time
+    if (dict_.readIfModified())
+    {
+        // Enable/disable run-time debug level
+        if (dict_.found("debug"))
+        {
+            debug = readLabel(dict_.lookup("debug"));
+        }
+
+        // Read edge options
+        readEdgeOptions();
+    }
+
+    // Return if re-meshing is not at interval
+    if (time().timeIndex() % interval_ != 0)
+    {
+        return false;
+    }
+
     // Calculate the edge length-scale for the mesh
     calculateLengthScale();
 
