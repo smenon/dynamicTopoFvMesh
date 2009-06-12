@@ -25,6 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "mesquiteSmoother.H"
+#include "Random.H"
 #include "addToRunTimeSelectionTable.H"
 #include "polyMesh.H"
 
@@ -56,6 +57,7 @@ Foam::mesquiteSmoother::mesquiteSmoother
     surfaceSmoothing_(false),
     tolerance_(1e-4),
     nSweeps_(1),
+    surfInterval_(1),
     vtxCoords_(NULL),
     cellToNode_(NULL),
     fixFlags_(NULL),
@@ -92,6 +94,7 @@ Foam::mesquiteSmoother::mesquiteSmoother
     surfaceSmoothing_(false),
     tolerance_(1e-4),
     nSweeps_(1),
+    surfInterval_(1),
     vtxCoords_(NULL),
     cellToNode_(NULL),
     fixFlags_(NULL),
@@ -164,6 +167,12 @@ void Foam::mesquiteSmoother::readOptions()
         if (found("nSweeps"))
         {
             nSweeps_ = readLabel(lookup("nSweeps"));
+        }
+
+        // Check if a surface smoothing interval has been specified
+        if (found("surfInterval"))
+        {
+            surfInterval_ = readLabel(lookup("surfInterval"));
         }
     }
 
@@ -858,6 +867,16 @@ void Foam::mesquiteSmoother::readOptions()
 
         tcOuter_.add_iteration_limit(1);
     }
+
+    // Set termination criteria for untangling
+    //untInner_.add_absolute_quality_improvement(0.0);
+    //untInner_.add_absolute_successive_improvement(1e-4);
+    //untOuter_.add_iteration_limit(1);
+
+    //untangleMetric_.set(new Mesquite::UntangleBetaQualityMetric(1e-8));
+    //untangleFunc_.set(new Mesquite::LPtoPTemplate(&untangleMetric_(), 2, err));
+    //untangleGlobal_.set(new Mesquite::ConjugateGradient(&untangleFunc_(),err));
+    //untangleGlobal_->use_global_patch();
 }
 
 // Initialize connectivity arrays for Mesquite
@@ -1018,6 +1037,7 @@ void Foam::mesquiteSmoother::applyBCs
 )
 {
     // Blank out residuals at boundary nodes
+    label nFixedBC = 0;
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
     forAll(pIDs_, patchI)
@@ -1042,6 +1062,20 @@ void Foam::mesquiteSmoother::applyBCs
         {
             field[edges[i][0] + offsets_[patchI]] = vector::zero;
             field[edges[i][1] + offsets_[patchI]] = vector::zero;
+
+            nFixedBC++;
+        }
+    }
+
+    // If no boundaries were fixed, fix a few points at random
+    if (nFixedBC == 0)
+    {
+        Random randomizer(1);
+        label nFix = (field.size()*5)/100;
+
+        for(label i = 0; i < nFix; i++)
+        {
+            field[randomizer.integer(0, field.size()-1)] = vector::zero;
         }
     }
 }
@@ -1254,7 +1288,12 @@ Foam::mesquiteSmoother::curPoints() const
 void Foam::mesquiteSmoother::solve()
 {
     // Perform surface smoothing first
-    if (surfaceSmoothing_)
+    if
+    (
+        surfaceSmoothing_
+     && (Mesh_.time().timeIndex() % surfInterval_ == 0)
+     && (Mesh_.time().timeIndex() != 0)
+    )
     {
         smoothSurfaces();
     }
@@ -1286,6 +1325,12 @@ void Foam::mesquiteSmoother::solve()
 
     // Create an instruction queue
     Mesquite::InstructionQueue queue;
+
+    // Apply termination criteria for untangling
+    //untangleGlobal_->set_inner_termination_criterion(&untInner_);
+    //untangleGlobal_->set_outer_termination_criterion(&untOuter_);
+
+    //untangleGlobal_->loop_over_mesh(&msqMesh, 0, 0, err);
 
     // Apply termination criteria to the optimization algorithm
     optAlgorithm_->set_outer_termination_criterion(&tcOuter_);

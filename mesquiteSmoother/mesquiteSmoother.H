@@ -37,6 +37,7 @@ SourceFiles
 #define mesquiteSmoother_H
 
 #include "motionSolver.H"
+#include "Time.H"
 #include "Switch.H"
 #include "pointIOField.H"
 #include "labelHashSet.H"
@@ -81,6 +82,9 @@ protected:
     //- Specify multiple mesh-motion sweeps
     label nSweeps_;
 
+    //- Specify the surface-smoothing interval
+    label surfInterval_;
+
     //- Vertex coordinate array passed into Mesquite
     mutable double* vtxCoords_;
 
@@ -108,6 +112,13 @@ protected:
     //- Termination criteria
     Mesquite::TerminationCriterion tcInner_;
     Mesquite::TerminationCriterion tcOuter_;
+    //Mesquite::TerminationCriterion untInner_;
+    //Mesquite::TerminationCriterion untOuter_;
+
+    //- Specific to mesh untangling
+    //autoPtr<Mesquite::UntangleBetaQualityMetric> untangleMetric_;
+    //autoPtr<Mesquite::LPtoPTemplate> untangleFunc_;
+    //autoPtr<Mesquite::ConjugateGradient> untangleGlobal_;
 
     // Specify patches on which slip BCs are applied
     labelHashSet slipPatchIDs_;
