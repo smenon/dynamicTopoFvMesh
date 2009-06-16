@@ -148,6 +148,7 @@ class dynamicTopoFvMesh
         Map<label>      addedFacePatches_;
         Map<label>      addedEdgePatches_;
         Map<label>      cellParents_;
+        Map<label>      faceParents_;
 
         // Geometry-fields for mapping
         autoPtr<vectorField> pointPositionsPtr_;
@@ -169,6 +170,7 @@ class dynamicTopoFvMesh
         label               maxModifications_;
         label               bisectInterior_;
         labelHashSet        thresholdSlivers_;
+        scalarListList      curvatureFields_;
 
         //- 3D Mesh Flipping data
         label               maxTetsPerEdge_;
@@ -863,6 +865,13 @@ public:
 
         // Return old face-centre information (prior to a topology change)
         const vectorField& oldPointPositions() const;
+
+        // Set curvature information for a particular patch
+        void setCurvatureField
+        (
+            const label pID,
+            const scalarField& field
+        );
 
         // Return mesh length-scale values
         tmp<scalarField> lengthScale();

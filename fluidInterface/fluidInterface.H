@@ -57,7 +57,7 @@ class fluidInterface
     public IOdictionary
 {
     // Private data
-        
+
         //- Reference to the underlying mesh
         fvMesh& mesh_;
 
@@ -68,8 +68,8 @@ class fluidInterface
         volScalarField& p_;
 
         //- Reference to the flux field
-        surfaceScalarField& phi_;    
-        
+        surfaceScalarField& phi_;
+
         //- Name of the interface patch
         word interfacePatch_;
 
@@ -78,22 +78,22 @@ class fluidInterface
 
         //- Switch for one/two fluids
         Switch twoFluids_;
-        
+
         //- Patch ID of the interface (side A)
         label aPatchID_;
 
         //- Patch ID of the interface (side B)
         label bPatchID_;
-        
+
         //- Time index for the interface
         label curTimeIndex_;
-        
+
         //- Viscosity of fluid A
         dimensionedScalar muFluidA_;
-        
+
         //- Density of fluid A
         dimensionedScalar rhoFluidA_;
-        
+
         //- Conductivity of fluid A
         dimensionedScalar condFluidA_;
 
@@ -111,37 +111,34 @@ class fluidInterface
 
         //- Specific Heat of fluid B
         dimensionedScalar CpFluidB_;
-        
+
         //- Surface tension
         dimensionedScalar surfaceTension_;
 
-        //- Surface curvature
-        mutable scalarField* curvaturePtr_;
-        
         //- Interface displacement field
         mutable vectorField* displacementPtr_;
-        
+
         //- Field which determines the motion of interface points
-        mutable scalarField* motionPointsMaskPtr_;        
-        
+        mutable scalarField* motionPointsMaskPtr_;
+
         //- Points which are attached to the interface, defining its shape
-        mutable vectorIOField* controlPointsPtr_;        
-        
+        mutable vectorIOField* controlPointsPtr_;
+
         //- Displacement direction of interface points
         mutable vectorField* pointsDisplacementDirPtr_;
 
         //- Displacement direction of interface control points
-        mutable vectorField* facesDisplacementDirPtr_; 
-        
+        mutable vectorField* facesDisplacementDirPtr_;
+
         //- Surface tension field
         mutable areaScalarField* surfaceTensionPtr_;
-        
+
         //- Finite area mesh
         mutable faMesh* aMeshPtr_;
 
         //- Free-surface velocity field
         mutable areaVectorField* UsPtr_;
-        
+
         //- Free surface patches which do not move
         wordList fixedFreeSurfacePatches_;
 
@@ -153,49 +150,45 @@ class fluidInterface
 
         //- Fluid indicator
         mutable volScalarField* fluidIndicatorPtr_;
-        
+
     // Private Member Functions
-        
+
         // Make demand-driven data
 
-            void makeCurvature();
             void makeFluidIndicator();
             void makeInterpolators();
             void makeControlPoints();
             void makeMotionPointsMask();
             void makeDisplacement();
-            void makeDirections();            
+            void makeDirections();
             void makeFaMesh();
             void makeSurfaceTension();
             void makeUs();
-            
+
         //- Clear all demand-driven data
-        void clearOut();   
-        
+        void clearOut();
+
         //- Update pressure boundary conditions
         void updatePressure();
-        
+
         //- Update velocity boundary conditions
         void updateVelocity();
 
         //- Compute and return the gradient of surface-tension
         tmp<areaVectorField> surfaceTensionGrad();
 
-        //- Compute face-curvature based on Blair & Anja's approach
-        scalarField& faceCurvature();
-        
-        //- Initialize control points 
+        //- Initialize control points
         void initializeControlPointsPosition();
-        
+
         //- Return reference to the control points
-        vectorField& controlPoints();        
-        
+        vectorField& controlPoints();
+
         //- Return reference to point displacement direction field
         vectorField& pointsDisplacementDir();
 
         //- Return reference to control points displacement direction field
-        vectorField& facesDisplacementDir();   
-        
+        vectorField& facesDisplacementDir();
+
         //- Return reference to the point-mask
         scalarField& motionPointsMask();
 
@@ -207,10 +200,10 @@ class fluidInterface
 
         //- Move correctedFvPatchField fvSubMeshes
         void moveFvSubMeshes();
-        
-        //- Move control points by deltaH and calculate interface 
+
+        //- Move control points by deltaH and calculate interface
         //  points displacement for the new control points position
-        tmp<vectorField> pointDisplacement(const scalarField& deltaH);        
+        tmp<vectorField> pointDisplacement(const scalarField& deltaH);
 
         //- Disallow default bitwise copy construct
         fluidInterface(const fluidInterface&);
@@ -244,7 +237,7 @@ public:
 
         // Return constant reference to the mesh
         fvMesh& mesh();
-        
+
         // Return constant reference to the area mesh
         faMesh& areaMesh();
 
@@ -307,9 +300,12 @@ public:
         {
             return CpFluidB_;
         }
-        
+
         //- Return the surface tension field
         areaScalarField& surfaceTension();
+
+        //- Return the face curvature field
+        const scalarField& faceCurvatures();
 
         //- Return reference to interpolator (A to B)
         const patchToPatchInterpolation& interpolatorAB();
@@ -319,28 +315,31 @@ public:
 
         //- Return an indicator field for two fluids
         const volScalarField& fluidIndicator();
-        
+
         //- Adjust the surface-tension for temperature
         void adjustSurfaceTension(const volScalarField& T);
 
         // Return reference to the displacement field
         vectorField& displacement();
 
+        // Update the interface with fluid velocity
+        void updateInterface();
+
         // Update the interface with the fluid velocity
         void movePoints();
-        
+
         // Update control points end displacement directions
-        void updateDisplacementDirections();        
-        
+        void updateDisplacementDirections();
+
         // Restore interface position
         void restorePosition();
-        
+
         // Update boundary conditions on velocity and pressure
         void updateBoundaryConditions();
 
         // Update on topology change
         void updateMesh(const mapPolyMesh& mpm);
-        
+
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

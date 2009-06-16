@@ -130,8 +130,6 @@ int main(int argc, char *argv[])
       + (interface.muFluidB()/interface.rhoFluidB())
     );
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
     Info<< "\nStarting time loop\n" << endl;
 
     // Initialize the motion solver
@@ -208,9 +206,6 @@ int main(int argc, char *argv[])
 
         Info<< "Time = " << runTime.timeName() << nl << endl;
 
-        // Update free-surface displacement directions
-        interface.updateDisplacementDirections();
-
         if (solveForTemperature)
         {
             if (adjustSigmaForTemperature)
@@ -232,14 +227,14 @@ int main(int argc, char *argv[])
             }
         }
 
-        // Set boundary conditions for the motionSolver and solve for mesh-motion
-        interface.restorePosition();
+        // Update the interface
+        interface.updateInterface();
         setMotionBC(mesh, interface.aPatchID(), interface.displacement());
 
         if (interface.twoFluids())
         {
-	    // Interpolate displacement to the shadow patch
-	    pointField dispB = interface.interpolatorAB().pointInterpolate
+            // Interpolate displacement to the shadow patch
+            pointField dispB = interface.interpolatorAB().pointInterpolate
                                (
                                    interface.displacement()
                                );
@@ -308,9 +303,6 @@ int main(int argc, char *argv[])
                 U.correctBoundaryConditions();
             }
 
-            // Update the interface with the fluid velocity
-            interface.movePoints();
-
 #           include "freeSurfaceContinuityErrs.H"
 
             Info << endl;
@@ -343,9 +335,6 @@ int main(int argc, char *argv[])
         // Make the fluxes absolute
         fvc::makeAbsolute(phi, U);
 
-        // Obtain mesh stats before topo-changes
-        mesh.meshQuality(true);
-
         bool meshChanged = mesh.updateTopology();
 
         if (meshChanged)
@@ -367,48 +356,8 @@ int main(int argc, char *argv[])
             << nl << endl;
 
         runTime.write();
+
 #       include "meshInfo.H"
-
-        if (runTime.outputTime())
-        {
-            // Write out mesh quality
-            volScalarField meshQuality
-            (
-                IOobject
-                (
-                    "meshQuality",
-                    runTime.timeName(),
-                    mesh,
-                    IOobject::NO_READ,
-                    IOobject::AUTO_WRITE
-                ),
-                mesh,
-                dimensionedScalar("scalar", dimless, 0.0),
-                "zeroGradient"
-            );
-
-            meshQuality.internalField() = mesh.meshQuality(true);
-            meshQuality.write();
-
-            // Write out the mesh length scales
-            volScalarField lengthScale
-            (
-                IOobject
-                (
-                    "lengthScale",
-                    runTime.timeName(),
-                    mesh,
-                    IOobject::NO_READ,
-                    IOobject::AUTO_WRITE
-                ),
-                mesh,
-                dimensionedScalar("scalar", dimLength, 0.0),
-                "zeroGradient"
-            );
-
-            lengthScale.internalField() = mesh.lengthScale();
-            lengthScale.write();
-        }
     }
 
     Info<< "End\n" << endl;

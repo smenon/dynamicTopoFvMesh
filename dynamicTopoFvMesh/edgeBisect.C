@@ -1205,6 +1205,19 @@ void dynamicTopoFvMesh::bisectEdge
                         -1
                     );
 
+                // Generate mapping information for this new face
+                if (faceHull[indexI] < nOldFaces_)
+                {
+                    parent = faceHull[indexI];
+                }
+                else
+                {
+                    parent = faceParents_[faceHull[indexI]];
+                }
+
+                // Insert the parent face
+                faceParents_.insert(addedFaceIndices[indexI], parent);
+
                 // Configure edgeFaces
                 tmpEdgeFaces[0] = faceHull[indexI];
                 tmpEdgeFaces[1] = addedIntFaceIndices[indexI];
@@ -1503,6 +1516,21 @@ void dynamicTopoFvMesh::bisectEdge
                     addedCellIndices[prevI],
                     -1
                 );
+
+            // Generate mapping information for this new face
+            label parent;
+
+            if (faceHull[indexI] < nOldFaces_)
+            {
+                parent = faceHull[indexI];
+            }
+            else
+            {
+                parent = faceParents_[faceHull[indexI]];
+            }
+
+            // Insert the parent face
+            faceParents_.insert(addedFaceIndices[indexI], parent);
 
             // Configure edgeFaces
             tmpEdgeFaces[0] = addedFaceIndices[indexI];

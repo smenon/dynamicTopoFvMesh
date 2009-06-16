@@ -87,7 +87,7 @@ Foam::fluidInterface::fluidInterface
     surfaceTension_(lookup("surfaceTension")),
     displacementPtr_(NULL),
     motionPointsMaskPtr_(NULL),
-    controlPointsPtr_(NULL),            
+    controlPointsPtr_(NULL),
     pointsDisplacementDirPtr_(NULL),
     facesDisplacementDirPtr_(NULL),
     surfaceTensionPtr_(NULL),
@@ -98,7 +98,8 @@ Foam::fluidInterface::fluidInterface
         lookup("fixedFreeSurfacePatches")
     ),
     interpolatorABPtr_(NULL),
-    interpolatorBAPtr_(NULL)
+    interpolatorBAPtr_(NULL),
+    fluidIndicatorPtr_(NULL)
 {
     if (twoFluids_)
     {
@@ -149,7 +150,6 @@ Foam::fluidInterface::~fluidInterface()
 
 void Foam::fluidInterface::clearOut()
 {
-    deleteDemandDrivenData(curvaturePtr_);
     deleteDemandDrivenData(fluidIndicatorPtr_);
     deleteDemandDrivenData(interpolatorABPtr_);
     deleteDemandDrivenData(interpolatorBAPtr_);
@@ -179,7 +179,7 @@ faMesh& Foam::fluidInterface::areaMesh()
         makeFaMesh();
     }
 
-    return *aMeshPtr_;     
+    return *aMeshPtr_;
 }
 
 // Return the interface patchID
@@ -204,8 +204,8 @@ void Foam::fluidInterface::makeDisplacement()
         FatalErrorIn("fluidInterface::makeDisplacement()")
             << "Displacement field already exists."
             << abort(FatalError);
-    }    
-    
+    }
+
     displacementPtr_ =
         new vectorField
         (
@@ -224,7 +224,7 @@ void Foam::fluidInterface::makeFaMesh()
         FatalErrorIn("fluidInterface::makeFaMesh()")
             << "Area mesh already exists."
             << abort(FatalError);
-    }   
+    }
 
     // Creating faMesh
     aMeshPtr_ = new faMesh
@@ -232,13 +232,13 @@ void Foam::fluidInterface::makeFaMesh()
         mesh(),
         "faMeshDefinition"
     );
-    
+
     // Lookup for point-normals correction
     wordList pointNormalsCorrectionPatches
     (
         lookup("pointNormalsCorrectionPatches")
     );
-    
+
     // Set point normal correction patches
     boolList& correction = aMeshPtr_->correctPatchPointNormals();
 
@@ -258,7 +258,7 @@ void Foam::fluidInterface::makeFaMesh()
         }
 
         correction[patchID] = true;
-    }    
+    }
 }
 
 void Foam::fluidInterface::makeSurfaceTension()
@@ -270,7 +270,7 @@ void Foam::fluidInterface::makeSurfaceTension()
         FatalErrorIn("fluidInterface::makeSurfaceTension()")
             << "Surface tension field already exists."
             << abort(FatalError);
-    }   
+    }
 
     surfaceTensionPtr_ = new areaScalarField
     (
@@ -355,7 +355,7 @@ void Foam::fluidInterface::makeMotionPointsMask()
         mesh().boundaryMesh()[aPatchID()].nPoints(),
         1.0
     );
-    
+
     // Mark free surface boundary points
     // which do not belong to empty and wedge patches
     forAll(areaMesh().boundary(), patchI)
@@ -380,8 +380,8 @@ void Foam::fluidInterface::makeMotionPointsMask()
                 motionPointsMask()[patchPoints[pointI]] = 0.0;
             }
         }
-    }  
-    
+    }
+
     // Mark free-surface boundary point
     // at the axis of 2-D axisymmetic cases
     forAll(areaMesh().boundary(), patchI)
@@ -400,7 +400,7 @@ void Foam::fluidInterface::makeMotionPointsMask()
                 motionPointsMask()[wedgePatch.axisPoint()] = 0;
             }
         }
-    }    
+    }
 }
 
 void Foam::fluidInterface::makeFluidIndicator()
@@ -627,28 +627,6 @@ void Foam::fluidInterface::makeInterpolators()
          << ", point: " << maxDistPt << endl;
 }
 
-void Foam::fluidInterface::makeCurvature()
-{
-    // It is an error to attempt to recalculate
-    // if the pointer is already set
-    if (curvaturePtr_)
-    {
-        FatalErrorIn("Foam::fluidInterface::makeCurvature()")
-            << "Curvature already calculated."
-            << abort(FatalError);
-    }
-
-    curvaturePtr_ =
-        new scalarField
-        (
-            mesh().boundaryMesh()[aPatchID()].size(),
-            0.0
-        );
-
-    //const labelListList& edgeFaces =
-    // mesh().boundaryMesh()[aPatchID()].edgeFaces();
-}
-
 void Foam::fluidInterface::makeControlPoints()
 {
     // It is an error to attempt to recalculate
@@ -660,19 +638,45 @@ void Foam::fluidInterface::makeControlPoints()
             << abort(FatalError);
     }
 
-    controlPointsPtr_ =
-        new vectorIOField
-        (
-            IOobject
+    IOobject controlPointsHeader
+    (
+        "controlPoints",
+        mesh().time().timeName(),
+        mesh(),
+        IOobject::MUST_READ
+    );
+
+    if (controlPointsHeader.headerOk())
+    {
+        controlPointsPtr_ =
+            new vectorIOField
             (
-                "controlPoints",
-                mesh().time().timeName(),
-                mesh(),
-                IOobject::NO_READ,
-                IOobject::AUTO_WRITE
-            ),
-            areaMesh().centres().internalField()
-        );
+                IOobject
+                (
+                    "controlPoints",
+                    mesh().time().timeName(),
+                    mesh(),
+                    IOobject::MUST_READ,
+                    IOobject::AUTO_WRITE
+                )
+            );
+    }
+    else
+    {
+        controlPointsPtr_ =
+            new vectorIOField
+            (
+                IOobject
+                (
+                    "controlPoints",
+                    mesh().time().timeName(),
+                    mesh(),
+                    IOobject::NO_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                areaMesh().centres().internalField()
+            );
+    }
 
     initializeControlPointsPosition();
 }
@@ -727,7 +731,7 @@ void Foam::fluidInterface::makeDirections()
             << "already exists"
             << abort(FatalError);
     }
-    
+
     if(aPatchID() == -1)
     {
         FatalErrorIn("freeSurface::makeDirections()")
@@ -748,38 +752,38 @@ void Foam::fluidInterface::makeDirections()
             mesh().boundaryMesh()[aPatchID()].size(),
             vector::zero
         );
-    
-    updateDisplacementDirections();    
+
+    updateDisplacementDirections();
 }
 
 //- Update control points end displacement directions
 void Foam::fluidInterface::updateDisplacementDirections()
 {
     // Update point displacement correction
-    pointsDisplacementDir() = 
-        areaMesh().pointAreaNormals();    
-    
-    // Update face displacement direction
-    facesDisplacementDir() =
-        areaMesh().faceAreaNormals().internalField();
+    pointsDisplacementDir() = areaMesh().pointAreaNormals();
 
-    // Correction of control points postion
-    const vectorField& Cf = 
-        areaMesh().centres().internalField();
-    
+    // Update face displacement direction
+    facesDisplacementDir() = areaMesh().faceAreaNormals().internalField();
+
+    // Correction of control points position
+    const vectorField& Cf = areaMesh().centres().internalField();
+
     controlPoints() =
-        facesDisplacementDir()
-       *(facesDisplacementDir()&(controlPoints() - Cf))
-      + Cf;
+        Cf
+      + facesDisplacementDir()
+      * (facesDisplacementDir()&(controlPoints() - Cf));
 }
 
-//- Move control points by deltaH and calculate interface 
+//- Move control points by deltaH and calculate interface
 //  points displacement for the new control points position
-tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& deltaH)
+tmp<vectorField> Foam::fluidInterface::pointDisplacement
+(
+    const scalarField& deltaH
+)
 {
     const pointField& points = areaMesh().patch().localPoints();
     const labelListList& pointFaces = areaMesh().patch().pointFaces();
-    
+
     // Update control points
     controlPoints() += facesDisplacementDir()*deltaH;
 
@@ -793,7 +797,7 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
     );
 
     vectorField& displacement = tdisplacement();
-    
+
     // Calculate displacement of internal points
 
     const edgeList& edges = areaMesh().patch().edges();
@@ -809,7 +813,6 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
         symmTensor M = symmTensor::zero;
 
         vector S = vector::zero;
-
 
         scalarField w(curPointFaces.size(), 0.0);
 
@@ -841,15 +844,13 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
 
         scalar p = (S&N)/sum(sqr(w));
 
-        displacement[curPoint] = 
+        displacement[curPoint] =
             pointsDisplacementDir()[curPoint]*
             (p - (points[curPoint]&N))/
             (pointsDisplacementDir()[curPoint]&N);
     }
 
-
-
-    // Calculate displacement of points 
+    // Calculate displacement of points
     // which belonge to empty and wedge patches
 
     labelList boundaryPoints = areaMesh().boundaryPoints();
@@ -858,11 +859,11 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
     const labelListList& pointEdges = areaMesh().patch().pointEdges();
 
     vectorField pointNormals = areaMesh().pointAreaNormals();
-            
+
     forAll (boundaryPoints, pointI)
     {
         label curPoint = boundaryPoints[pointI];
-        
+
         if (motionPointsMask()[curPoint])
         {
             // Calculating mirror points
@@ -871,7 +872,7 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
             vectorField mirrorPoints(2, vector::zero);
 
             label counter = -1;
-        
+
             forAll (curPointEdges, edgeI)
             {
                 label curEdge = curPointEdges[edgeI];
@@ -893,7 +894,7 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
                     }
 
                     if
-                    ( 
+                    (
                         patchID > -1
                      && (
                             areaMesh().boundary()[patchID].type()
@@ -907,16 +908,16 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
                                 areaMesh().boundary()[patchID]
                             );
 
-                        mirrorPoints[++counter] = 
+                        mirrorPoints[++counter] =
                             transform
                             (
-                                wedgePatch.faceT(), 
+                                wedgePatch.faceT(),
                                 controlPoints()[edgeFaces[curEdge][0]]
                             );
                     }
-                    else                  
+                    else
                     {
-                        vector nE = 
+                        vector nE =
                             pointNormals[edges[curEdge].start()]
                           + pointNormals[edges[curEdge].end()];
 
@@ -936,17 +937,17 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
 
             // Calculating LS plane interpolation
             const labelList& curPointFaces = pointFaces[curPoint];
-        
+
             symmTensor M = symmTensor::zero;
-                
+
             vector S = vector::zero;
-                
+
             scalarField w(curPointFaces.size() + 2, 0.0);
-                
+
             forAll (curPointFaces, faceI)
             {
                 label curFace = curPointFaces[faceI];
-                    
+
                 w[faceI] = 1.0/mag
                     (
                         controlPoints()[curFace]
@@ -978,7 +979,7 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
             forAll (mirrorPoints, pI)
             {
                 M = M + sqr(w[curPointFaces.size()+pI])*sqr(mirrorPoints[pI]);
-            
+
                 S += sqr(w[curPointFaces.size()+pI])*mirrorPoints[pI];
             }
 
@@ -989,7 +990,7 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
 
             scalar p = (S&N)/sum(sqr(w));
 
-            displacement[curPoint] = 
+            displacement[curPoint] =
                 pointsDisplacementDir()[curPoint]*
                 (p - (points[curPoint]&N))/
                 (pointsDisplacementDir()[curPoint]&N);
@@ -1008,12 +1009,15 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
                 fixedFreeSurfacePatches_[fpI]
             );
 
-            if(fixedPatchID == -1)
+            if (fixedPatchID == -1)
             {
-                FatalErrorIn("fluidInterface::pointDisplacement(...)")
+                FatalErrorIn
+                (
+                    "fluidInterface::pointDisplacement(...)"
+                )
                     << "Wrong faPatch name in the fixedFreeSurfacePatches list"
-                        << " defined in the freeSurfaceProperties dictionary"
-                        << abort(FatalError);
+                    << " defined in the freeSurfaceProperties dictionary"
+                    << abort(FatalError);
             }
 
             if (fixedPatchID == patchI)
@@ -1022,26 +1026,26 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
             }
         }
 
-        if 
+        if
         (
-            ( 
+            (
                 areaMesh().boundary()[patchI].type()
              != "empty"
             )
-         && ( 
+         && (
                 areaMesh().boundary()[patchI].type()
              != "wedge"
-            )            
+            )
          && !fixedPatch
         )
         {
             labelList patchPoints =
                 areaMesh().boundary()[patchI].pointLabels();
 
-            labelListList patchPointEdges = 
+            labelListList patchPointEdges =
                 areaMesh().boundary()[patchI].pointEdges();
 
-            unallocLabelList patchEdgeFaces = 
+            unallocLabelList patchEdgeFaces =
                 areaMesh().boundary()[patchI].edgeFaces();
 
             forAll(patchPoints, pointI)
@@ -1061,7 +1065,7 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
                         );
                 }
 
-                displacement[patchPoints[pointI]] /= 
+                displacement[patchPoints[pointI]] /=
                     patchPointEdges[pointI].size();
             }
         }
@@ -1073,17 +1077,17 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
     {
         if
         (
-            areaMesh().boundary()[patchI].type() 
+            areaMesh().boundary()[patchI].type()
          == "wedge"
         )
         {
             const wedgeFaPatch& wedgePatch =
                 refCast<const wedgeFaPatch>(areaMesh().boundary()[patchI]);
 
-            if(wedgePatch.axisPoint() > -1)
+            if (wedgePatch.axisPoint() > -1)
             {
                 label axisPoint = wedgePatch.axisPoint();
-                
+
                 displacement[axisPoint] =
                     pointsDisplacementDir()[axisPoint]
                    *(
@@ -1095,8 +1099,8 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement(const scalarField& delt
                     );
             }
         }
-    }    
-    
+    }
+
     return tdisplacement;
 }
 
@@ -1108,7 +1112,7 @@ vectorField& Foam::fluidInterface::displacement()
         makeDisplacement();
     }
 
-    return *displacementPtr_;    
+    return *displacementPtr_;
 }
 
 const volScalarField& Foam::fluidInterface::fluidIndicator()
@@ -1151,7 +1155,7 @@ vectorField& Foam::fluidInterface::controlPoints()
         makeControlPoints();
     }
 
-    return *controlPointsPtr_;    
+    return *controlPointsPtr_;
 }
 
 // Return reference to point displacement direction field
@@ -1162,7 +1166,7 @@ vectorField& Foam::fluidInterface::pointsDisplacementDir()
         makeDirections();
     }
 
-    return *pointsDisplacementDirPtr_;    
+    return *pointsDisplacementDirPtr_;
 }
 
 // Return reference to control points displacement direction field
@@ -1173,7 +1177,7 @@ vectorField& Foam::fluidInterface::facesDisplacementDir()
         makeDirections();
     }
 
-    return *facesDisplacementDirPtr_;    
+    return *facesDisplacementDirPtr_;
 }
 
 scalarField& Foam::fluidInterface::motionPointsMask()
@@ -1186,24 +1190,20 @@ scalarField& Foam::fluidInterface::motionPointsMask()
     return *motionPointsMaskPtr_;
 }
 
-scalarField& Foam::fluidInterface::faceCurvature()
-{
-    if (!curvaturePtr_)
-    {
-        makeCurvature();
-    }
-
-    return *curvaturePtr_;
-}
-
 areaScalarField& Foam::fluidInterface::surfaceTension()
 {
     if (!surfaceTensionPtr_)
     {
         makeSurfaceTension();
     }
-    
+
     return *surfaceTensionPtr_;
+}
+
+//- Return the face curvature field
+const scalarField& Foam::fluidInterface::faceCurvatures()
+{
+    return areaMesh().faceCurvatures().internalField();
 }
 
 areaVectorField& Foam::fluidInterface::Us()
@@ -1233,8 +1233,8 @@ void Foam::fluidInterface::adjustSurfaceTension(const volScalarField& T)
         surfaceTension().internalField()[faceI] =
             adjustedValue < 0 ? surfaceTension_.value() : adjustedValue;
     }
-    
-    Info << "Surface Tension: " 
+
+    Info << "Surface Tension: "
          << " Min: " << min(surfaceTension().internalField())
          << " Max: " << max(surfaceTension().internalField())
          << " Average: " << average(surfaceTension().internalField())
@@ -1248,27 +1248,84 @@ void Foam::fluidInterface::adjustSurfaceTension(const volScalarField& T)
     }
 }
 
-// Update the interface with the fluid velocity
-void Foam::fluidInterface::movePoints()
+// Update the interface with fluid velocity
+void Foam::fluidInterface::updateInterface()
 {
     // Obtain the current time-step
     scalar dt = mesh().time().deltaT().value();
-    
-    // Swept-volume correction for the explicit-Euler scheme
-    scalarField sweptVolCorr = 
-    (
-        phi_.boundaryField()[aPatchID()]
-      - fvc::meshPhi(U_)().boundaryField()[aPatchID()]
-    )*dt;
 
-    const scalarField& Sf = areaMesh().S();
-    const vectorField& Nf = areaMesh().faceAreaNormals().internalField();
+    Switch lagrangian(false);
 
-    scalarField deltaH = sweptVolCorr/(Sf*(Nf & facesDisplacementDir()));    
-    
-    // Obtain the interface displacement vectors
-    vectorField disp = pointDisplacement(deltaH);
-    
+    if (found("lagrangian"))
+    {
+        lagrangian = Switch(lookup("lagrangian"));
+    }
+
+    vectorField disp(areaMesh().patch().localPoints().size(), vector::zero);
+
+    if (lagrangian)
+    {
+        // Average cell velocities to nodes
+        const labelList& aPts = mesh().boundaryMesh()[aPatchID()].meshPoints();
+
+        const vectorField& pNormals = areaMesh().pointAreaNormals();
+        const labelListList& pointCells = mesh().pointCells();
+
+        forAll(aPts, pointI)
+        {
+            vector uNew = vector::zero;
+            vector uOld = vector::zero;
+
+            const labelList& pCells = pointCells[aPts[pointI]];
+
+            forAll(pCells, cellI)
+            {
+                uNew += U_.internalField()[pCells[cellI]];
+                uOld += U_.oldTime().internalField()[pCells[cellI]];
+            }
+
+            uNew /= pCells.size();
+            uOld /= pCells.size();
+
+            const vector& n = pNormals[pointI];
+
+            disp[pointI] = 0.5*dt*(((uNew&n)*n) + ((uOld&n)*n));
+        }
+
+        // Blank out point displacement at boundary edges
+        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+        for
+        (
+            label i = boundary[aPatchID()].nInternalEdges();
+            i < boundary[aPatchID()].edges().size();
+            i++
+        )
+        {
+            disp[boundary[aPatchID()].edges()[i][0]] = vector::zero;
+            disp[boundary[aPatchID()].edges()[i][1]] = vector::zero;
+        }
+    }
+    else
+    {
+        // Swept-volume correction for the explicit-Euler scheme
+        scalarField sweptVolCorr =
+        (
+            phi_.boundaryField()[aPatchID()]
+          //- fvc::meshPhi(U_)().boundaryField()[aPatchID()]
+        )*dt;
+
+        // Update displacement directions first
+        updateDisplacementDirections();
+
+        const scalarField& Sf = areaMesh().S();
+        const vectorField& Nf = areaMesh().faceAreaNormals().internalField();
+
+        scalarField deltaH = sweptVolCorr/(Sf*(Nf & facesDisplacementDir()));
+
+        // Obtain the interface displacement vectors
+        disp = pointDisplacement(deltaH);
+    }
+
     if (curTimeIndex_ < mesh().time().timeIndex())
     {
         displacement() = disp;
@@ -1278,35 +1335,14 @@ void Foam::fluidInterface::movePoints()
     else
     {
         displacement() += disp;
-    }    
-    
+    }
+}
+
+// Update the interface with the fluid velocity
+void Foam::fluidInterface::movePoints()
+{
     // Move the areaMesh to recalculate surface curvature
-    pointField newMeshPoints = mesh().points();
-    
-    const labelList& meshPtsA = mesh().boundaryMesh()[aPatchID()].meshPoints();
-    
-    forAll(meshPtsA,pointI)
-    {
-        newMeshPoints[meshPtsA[pointI]] += disp[pointI];
-    }
-
-    if (twoFluids_)
-    {
-        const labelList& meshPtsB = 
-            mesh().boundaryMesh()[bPatchID()].meshPoints();
-
-        // Interpolate displacement to the shadow patch
-        pointField dispB = interpolatorAB().pointInterpolate(disp);
-
-        forAll(meshPtsB,pointI)
-        {
-            newMeshPoints[meshPtsB[pointI]] += dispB[pointI];
-        }
-    }
-    
-    mesh().movePoints(newMeshPoints);
-    
-    areaMesh().movePoints(newMeshPoints);
+    areaMesh().movePoints(mesh().points());
 
     // Move fvSubMeshes for corrected patches
     moveFvSubMeshes();
@@ -1316,11 +1352,11 @@ void Foam::fluidInterface::movePoints()
 void Foam::fluidInterface::restorePosition()
 {
     vectorField& disp = displacement();
-    
+
     pointField newMeshPoints = mesh().points();
-    
+
     const labelList& meshPtsA = mesh().boundaryMesh()[aPatchID()].meshPoints();
-    
+
     forAll (meshPtsA, pointI)
     {
         newMeshPoints[meshPtsA[pointI]] -= disp[pointI];
@@ -1328,7 +1364,7 @@ void Foam::fluidInterface::restorePosition()
 
     if (twoFluids_)
     {
-        const labelList& meshPtsB = 
+        const labelList& meshPtsB =
             mesh().boundaryMesh()[bPatchID()].meshPoints();
 
         // Interpolate displacement to the shadow patch
@@ -1460,6 +1496,9 @@ void Foam::fluidInterface::moveFvSubMeshes()
 // Update boundary conditions on velocity and pressure
 void Foam::fluidInterface::updateBoundaryConditions()
 {
+    // Move interface mesh-points to recalculate curvature
+    movePoints();
+
     updateVelocity();
     updatePressure();
 }

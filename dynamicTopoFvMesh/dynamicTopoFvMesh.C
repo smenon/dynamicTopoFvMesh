@@ -116,7 +116,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     growthFactor_(1.0),
     maxLengthScale_(GREAT),
     sliverThreshold_(0.05),
-    curvatureRatio_(0.05),
+    curvatureRatio_(1.0),
     nModifications_(0),
     nBisections_(-1),
     nCollapses_(-1),
@@ -342,6 +342,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     {
         readEdgeOptions();
 
+        // Set curvature patches
+        curvatureFields_.setSize(numPatches_, scalarList(0));
+
         // Initialize the lengthScale field
         lengthScale_.setSize(nCells_, 0.0);
     }
@@ -402,6 +405,16 @@ const vectorField& dynamicTopoFvMesh::oldCellCentres() const
     }
 
     return vectorField::null();
+}
+
+// Set curvature information for a particular patch
+void dynamicTopoFvMesh::setCurvatureField
+(
+    const label pID,
+    const scalarField& field
+)
+{
+    curvatureFields_[pID] = 1.0/mag(field);
 }
 
 // Return mesh length-scale values
@@ -2133,7 +2146,7 @@ label dynamicTopoFvMesh::identify32Swap
     // Relax the tolerance for boundary edges
     if (whichEdgePatch(eIndex) > -1)
     {
-        tolerance = 0.1*mag(tangentToEdge(eIndex));
+        tolerance = 0.01*mag(tangentToEdge(eIndex));
     }
 
     for (label i = 0; i < (m-2); i++)
@@ -2895,6 +2908,29 @@ void dynamicTopoFvMesh::calculateLengthScale()
         // Obtain the list of patches for which the length-scale is fixed
         wordList toc = fixedLengthScalePatches_.toc();
 
+        // Obtain the list of patches for which
+        // curvature-based length-scale is specified
+        wordList cToc = curvaturePatches_.toc();
+
+        // Do a preliminary sanity check to avoid duplication
+        forAll(toc, wordI)
+        {
+            word& pName = cToc[wordI];
+
+            forAll(cToc, wordI)
+            {
+                if (pName == cToc[wordI])
+                {
+                    FatalErrorIn
+                    (
+                        "dynamicTopoFvMesh::calculateLengthScale()"
+                    )
+                        << " Conflicting fixed length-scale patch: "
+                        << pName << abort(FatalError);
+                }
+            }
+        }
+
         // Loop through all boundaries and mark adjacent cells
         const polyBoundaryMesh& bdy = boundaryMesh();
         const labelList& own = faceOwner();
@@ -2904,7 +2940,54 @@ void dynamicTopoFvMesh::calculateLengthScale()
         {
             const polyPatch& bdyPatch = bdy[patchI];
 
-            // Loop through all fixed length-scale patches first
+            // Loop through all fixed curvature patches
+            forAll(cToc, wordI)
+            {
+                word& pName = cToc[wordI];
+
+                if (bdy[patchI].name() == pName)
+                {
+                    label pStart = bdyPatch.start();
+
+                    if (curvatureFields_[patchI].empty())
+                    {
+                        FatalErrorIn
+                        (
+                            "dynamicTopoFvMesh::calculateLengthScale()"
+                        )
+                            << " Curvature field for patch: "
+                            << pName << " is empty."
+                            << abort(FatalError);
+                    }
+
+                    forAll(bdyPatch,faceI)
+                    {
+                        label ownCell = own[pStart+faceI];
+
+                        if (cellLevels[ownCell] != 0)
+                        {
+                            continue;
+                        }
+
+                        cellLevels[ownCell] = level;
+
+                        lengthScale[ownCell] =
+                        (
+                            curvatureRatio_
+                           *curvatureFields_[patchI][faceI]
+                           *growthFactor_
+                        );
+
+                        levelCells.insert(ownCell);
+
+                        visitedCells++;
+                    }
+
+                    break;
+                }
+            }
+
+            // Loop through all fixed length-scale patches
             forAll(toc,wordI)
             {
                 word& pName = toc[wordI];
@@ -2917,19 +3000,21 @@ void dynamicTopoFvMesh::calculateLengthScale()
                     {
                         label ownCell = own[pStart+faceI];
 
-                        if (cellLevels[ownCell] == 0)
+                        if (cellLevels[ownCell] != 0)
                         {
-                            cellLevels[ownCell] = level;
-                            lengthScale[ownCell] =
-                            (
-                                fixedLengthScalePatches_[pName][0].scalarToken()
-                               *growthFactor_
-                            );
-
-                            levelCells.insert(ownCell);
-
-                            visitedCells++;
+                            continue;
                         }
+
+                        cellLevels[ownCell] = level;
+                        lengthScale[ownCell] =
+                        (
+                            fixedLengthScalePatches_[pName][0].scalarToken()
+                           *growthFactor_
+                        );
+
+                        levelCells.insert(ownCell);
+
+                        visitedCells++;
                     }
 
                     break;
@@ -2939,10 +3024,10 @@ void dynamicTopoFvMesh::calculateLengthScale()
             // Set boundary patch size if no fixed-length scale is specified.
             if
             (
-                (toc.size() == 0)
-                && (bdyPatch.type() != "wedge")
-                && (bdyPatch.type() != "empty")
-                && (bdyPatch.type() != "symmetryPlane")
+                // (toc.size() == 0) &&
+                (bdyPatch.type() != "wedge") &&
+                (bdyPatch.type() != "empty") &&
+                (bdyPatch.type() != "symmetryPlane")
             )
             {
                 label pStart = bdyPatch.start();
@@ -3121,6 +3206,30 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
 )
 {
     label bFacePatch = whichPatch(faceIndex);
+
+    // Loop through all curvature patches
+    wordList cToc = curvaturePatches_.toc();
+    forAll(cToc,wordI)
+    {
+        word& patchName = cToc[wordI];
+
+        if (boundaryMesh()[bFacePatch].name() == patchName)
+        {
+            // Find the local index in the patch
+            label lIndex = -1;
+
+            if (faceIndex < nOldFaces_)
+            {
+                lIndex = faceIndex - boundaryMesh()[bFacePatch].start();
+            }
+            else
+            {
+                lIndex = faceParents_[faceIndex];
+            }
+
+            return (curvatureRatio_*curvatureFields_[bFacePatch][lIndex]);
+        }
+    }
 
     // Loop through all fixed length-scale patches, and return the fixed value
     wordList toc = fixedLengthScalePatches_.toc();
@@ -4438,6 +4547,15 @@ bool dynamicTopoFvMesh::updateTopology()
             debug = readLabel(dict_.lookup("debug"));
         }
 
+        if (dict_.subDict("dynamicTopoFvMesh").found("interval"))
+        {
+            interval_ = readLabel
+                        (
+                            dict_.subDict
+                            ("dynamicTopoFvMesh").lookup("interval")
+                        );
+        }
+
         // Read edge options
         readEdgeOptions();
     }
@@ -4750,6 +4868,7 @@ bool dynamicTopoFvMesh::updateTopology()
         addedEdgePatches_.clear();
         cellsFromCells_.clear();
         cellParents_.clear();
+        faceParents_.clear();
 
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_);
@@ -4764,15 +4883,14 @@ bool dynamicTopoFvMesh::updateTopology()
         if (debug)
         {
             checkMesh(true);
-
-            // Print out topo-stats
-            Info << "nBisections: " << nBisections_ << endl;
-            Info << "nCollapses: " << nCollapses_ << endl;
-            Info << "nSwaps: " << nSwaps_ << endl;
         }
     }
 
+    // Print out topo-stats
     Info << "Reordering time: " << reOrderingTimer.elapsedTime() << endl;
+    Info << "nBisections: " << nBisections_ << endl;
+    Info << "nCollapses: " << nCollapses_ << endl;
+    Info << "nSwaps: " << nSwaps_ << endl;
 
     return topoChangeFlag_;
 }
