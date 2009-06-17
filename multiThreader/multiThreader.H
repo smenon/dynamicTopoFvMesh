@@ -183,7 +183,6 @@ class multiThreader
             multiThreader   *threader;
             int             numThreads;
             int             queueSize;
-            int             busyThreads;
             pthread_t       *threads;
             pthread_attr_t  attr;
             workQueueItem   *head, *tail;
@@ -197,7 +196,6 @@ class multiThreader
             Conditional queueNotEmpty;
             Conditional queueNotFull;
             Conditional queueEmpty;
-            Conditional noBusyThreads;
         } *poolInfo_;
 
     // Private Member Functions
@@ -207,12 +205,6 @@ class multiThreader
         static threadReturnType poolThread(void *arg);
 
         void destroyThreadPool();
-
-        void waitForCondition(Conditional&, Mutex&);
-
-        void broadCast(Conditional&);
-
-        void signal(Conditional&);
 
         //- Disallow default bitwise copy construct
         multiThreader(const multiThreader&);
@@ -260,8 +252,10 @@ public:
         //- Add a function to the work queue
         void addToWorkQueue(void (*tFunction)(void*), void *arg);
 
-        //- Wait for all worker threads to complete
-        void waitForCompletion();
+        //- Conditional handling
+        void waitForCondition(Conditional&, Mutex&) const;
+        void broadCast(Conditional&) const;
+        void signal(Conditional&) const;
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -174,7 +174,6 @@ void Foam::multiThreader::initializeThreadPool()
         poolInfo_->threader = this;
         poolInfo_->numThreads = numThreads_;
         poolInfo_->queueSize = 0;
-        poolInfo_->busyThreads = 0;
         poolInfo_->threads = new pthread_t[numThreads_];
         poolInfo_->head = NULL;
         poolInfo_->tail = NULL;
@@ -277,9 +276,6 @@ threadReturnType Foam::multiThreader::poolThread(void *arg)
             poolInfo->threader->signal(poolInfo->queueEmpty);
         }
 
-        // Increment the busy queue
-        poolInfo->busyThreads++;
-
         // Unlock the work queue
         poolInfo->queueLock.unlock();
 
@@ -288,27 +284,6 @@ threadReturnType Foam::multiThreader::poolThread(void *arg)
 
         // Free up the work item
         delete myWorkItem;
-
-        // Lock the work queue
-        poolInfo->queueLock.lock();
-
-        // Finished the allotted work, decrement the busy queue
-        poolInfo->busyThreads--;
-
-        // Signal any conditions waiting on the busy queue
-        if ((poolInfo->busyThreads == 0) && (poolInfo->queueSize == 0))
-        {
-#           ifdef FULLDEBUG
-            if (debug)
-            {
-                Info << "Signaling: No busy threads." << endl;
-            }
-#           endif
-            poolInfo->threader->signal(poolInfo->noBusyThreads);
-        }
-
-        // Unlock the work queue
-        poolInfo->queueLock.unlock();
     }
 
     return threadReturnValue;
@@ -383,19 +358,6 @@ void Foam::multiThreader::addToWorkQueue
     poolInfo_->queueLock.unlock();
 }
 
-//- Wait for all worker threads to complete
-void Foam::multiThreader::waitForCompletion()
-{
-    // Lock the work queue
-    poolInfo_->queueLock.lock();
-
-    // Wait for all threads to finish work
-    waitForCondition(poolInfo_->noBusyThreads, poolInfo_->queueLock);
-
-    // Unlock the work queue
-    poolInfo_->queueLock.unlock();
-}
-
 void Foam::multiThreader::destroyThreadPool()
 {
     // Destroy threads only if multi-threaded
@@ -462,7 +424,7 @@ void Foam::multiThreader::waitForCondition
 (
     Conditional& condition,
     Mutex& mutex
-)
+) const
 {
     if (pthread_cond_wait(condition(),mutex()))
     {
@@ -472,7 +434,7 @@ void Foam::multiThreader::waitForCondition
     }
 }
 
-void Foam::multiThreader::broadCast(Conditional& condition)
+void Foam::multiThreader::broadCast(Conditional& condition) const
 {
     if (pthread_cond_broadcast(condition()))
     {
@@ -482,7 +444,7 @@ void Foam::multiThreader::broadCast(Conditional& condition)
     }
 }
 
-void Foam::multiThreader::signal(Conditional& condition)
+void Foam::multiThreader::signal(Conditional& condition) const
 {
     if (pthread_cond_signal(condition()))
     {

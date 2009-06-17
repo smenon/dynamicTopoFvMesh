@@ -287,39 +287,8 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     return 1;
 }
 
-// Unlock mutex lists
-inline void dynamicTopoFvMesh::unlockMutexLists(const label tIndex)
-{
-    if (threader_->multiThreaded())
-    {
-        forAll(cLocks_[tIndex], cellI)
-        {
-            cellMutex_[cLocks_[tIndex][cellI]].unlock();
-        }
-        cLocks_[tIndex].clear();
-
-        forAll(fLocks_[tIndex], faceI)
-        {
-            faceMutex_[fLocks_[tIndex][faceI]].unlock();
-        }
-        fLocks_[tIndex].clear();
-
-        forAll(eLocks_[tIndex], edgeI)
-        {
-            edgeMutex_[eLocks_[tIndex][edgeI]].unlock();
-        }
-        eLocks_[tIndex].clear();
-
-        forAll(pLocks_[tIndex], pointI)
-        {
-            pointMutex_[pLocks_[tIndex][pointI]].unlock();
-        }
-        pLocks_[tIndex].clear();
-    }
-}
-
 // Return length-scale at an face-location in the mesh [2D]
-inline bool dynamicTopoFvMesh::meshFaceLengthScale
+inline void dynamicTopoFvMesh::meshFaceLengthScale
 (
     const label fIndex,
     scalar& scale
@@ -328,37 +297,23 @@ inline bool dynamicTopoFvMesh::meshFaceLengthScale
     // Reset the scale first
     scale = 0.0;
 
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Try to read-lock this face.
-    if (tryFaceLock(fIndex))
-    {
-        faceStack(tIndex).push(fIndex);
-        return true;
-    }
-
     // Determine whether the face is internal
     if (whichPatch(fIndex) < 0)
     {
-        scale =
-            0.5*
-            (
-                lengthScale_[owner_[fIndex]]
-              + lengthScale_[neighbour_[fIndex]]
-            );
+        scale = 0.5*
+                (
+                    lengthScale_[owner_[fIndex]]
+                  + lengthScale_[neighbour_[fIndex]]
+                );
     }
     else
     {
         scale = boundaryLengthScale(fIndex);
     }
-
-    // Return a successful lock
-    return false;
 }
 
 // Compute length-scale at an edge-location in the mesh [3D]
-inline bool dynamicTopoFvMesh::meshEdgeLengthScale
+inline void dynamicTopoFvMesh::meshEdgeLengthScale
 (
     const label eIndex,
     scalar& scale
@@ -366,16 +321,6 @@ inline bool dynamicTopoFvMesh::meshEdgeLengthScale
 {
     // Reset the scale first
     scale = 0.0;
-
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Try to read-lock this edge.
-    if (tryEdgeLock(eIndex))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
 
     labelList& eFaces = edgeFaces_[eIndex];
 
@@ -415,12 +360,6 @@ inline bool dynamicTopoFvMesh::meshEdgeLengthScale
 
         scale /= 2.0;
     }
-
-    // Undo all read-locks
-    unlockMutexLists(tIndex);
-
-    // Return a successful lock
-    return false;
 }
 
 // Check if a given face is a quad
@@ -430,37 +369,15 @@ inline bool dynamicTopoFvMesh::checkQuadFace(const label fIndex)
 }
 
 // Compute the length of an edge
-inline bool dynamicTopoFvMesh::edgeLength
+inline void dynamicTopoFvMesh::edgeLength
 (
     const label eIndex,
     scalar& length
 )
 {
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Try to read-lock this edge.
-    // Calling function is expected to push it back on stack if it fails.
-    if (tryEdgeLock(eIndex))
-    {
-        return true;
-    }
-
-    // Try to read-lock the two points of this edge.
-    if (tryEdgePointLock(eIndex))
-    {
-        return true;
-    }
-
     edge& thisEdge = edges_[eIndex];
 
     length = mag(meshPoints_[thisEdge[1]] - meshPoints_[thisEdge[0]]);
-
-    // Undo all read-locks
-    unlockMutexLists(tIndex);
-
-    // Return a successful lock
-    return false;
 }
 
 // Return the face-stack
@@ -487,21 +404,13 @@ inline label dynamicTopoFvMesh::self()
 {
     if (threader_->multiThreaded())
     {
-        for (label i = 0; i < threader_->getNumThreads(); i++)
+        for (label i = 1; i <= threader_->getNumThreads(); i++)
         {
             if (pthread_equal(structPtr_[i].pthreadID_, pthread_self()))
             {
                 return i;
             }
         }
-
-        // This bit should never happen.
-        FatalErrorIn
-        (
-            "label dynamicTopoFvMesh::self()"
-        )
-            << "Cannot find a corresponding thread ID." << endl
-            << abort(FatalError);
     }
 
     return 0;
@@ -510,44 +419,76 @@ inline label dynamicTopoFvMesh::self()
 // Initialize edge-stacks
 inline void dynamicTopoFvMesh::initEdgeStacks()
 {
-    label tID = 0;
-
     forAll(edgeStack_, stackI)
     {
         edgeStack_[stackI].clear();
     }
 
-    for
-    (
-        HashList<edge>::iterator iter = edges_.begin();
-        iter != edges_.end();
-        iter++
-    )
+    if (threader_->multiThreaded())
     {
-        edgeStack_[tID].insert(iter.index());
-        tID = edgeStack_.fcIndex(tID);
+        label tID = 1;
+
+        for
+        (
+            HashList<edge>::iterator iter = edges_.begin();
+            iter != edges_.end();
+            iter++
+        )
+        {
+            edgeStack_[tID].insert(iter.index());
+
+            tID = (tID == edgeStack_.size()-1) ? 1 : tID + 1;
+        }
+    }
+    else
+    {
+        for
+        (
+            HashList<edge>::iterator iter = edges_.begin();
+            iter != edges_.end();
+            iter++
+        )
+        {
+            edgeStack_[0].insert(iter.index());
+        }
     }
 }
 
 // Initialize face-stacks
 inline void dynamicTopoFvMesh::initFaceStacks()
 {
-    label tID = 0;
-
     forAll(faceStack_, stackI)
     {
         faceStack_[stackI].clear();
     }
 
-    for
-    (
-        HashList<face>::iterator iter = faces_.begin();
-        iter != faces_.end();
-        iter++
-    )
+    if (threader_->multiThreaded())
     {
-        faceStack_[tID].insert(iter.index());
-        tID = faceStack_.fcIndex(tID);
+        label tID = 1;
+
+        for
+        (
+            HashList<face>::iterator iter = faces_.begin();
+            iter != faces_.end();
+            iter++
+        )
+        {
+            faceStack_[tID].insert(iter.index());
+
+            tID = (tID == faceStack_.size()-1) ? 1 : tID + 1;
+        }
+    }
+    else
+    {
+        for
+        (
+            HashList<face>::iterator iter = faces_.begin();
+            iter != faces_.end();
+            iter++
+        )
+        {
+            faceStack_[0].insert(iter.index());
+        }
     }
 }
 
@@ -830,7 +771,7 @@ inline void dynamicTopoFvMesh::sizeDownList
 }
 
 // Utility method to compute the minimum quality of a vertex hull
-inline bool dynamicTopoFvMesh::computeMinQuality
+inline void dynamicTopoFvMesh::computeMinQuality
 (
     const label eIndex,
     scalar& minQuality
@@ -839,33 +780,9 @@ inline bool dynamicTopoFvMesh::computeMinQuality
     minQuality = GREAT;
     scalar cQuality = 0.0;
 
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Try to read-lock this edge.
-    if (tryEdgeLock(eIndex))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
-
     // Obtain a reference to this edge and corresponding edgePoints
     edge& edgeToCheck = edges_[eIndex];
     labelList& hullVertices = edgePoints_[eIndex];
-
-    // Try to read-lock the two points of this edge.
-    if (tryEdgePointLock(eIndex))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
-
-    // Try to read-lock hull-points around this edge
-    if (tryEdgeHullLock(eIndex))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
 
     // Assume that hullVertices is ordered
     // in a CCW order around edgeToCheck[0]
@@ -897,41 +814,6 @@ inline bool dynamicTopoFvMesh::computeMinQuality
             << "Minimum Quality: " << minQuality
             << abort(FatalError);
     }
-
-    // Undo all read-locks
-    unlockMutexLists(tIndex);
-
-    // Return a successful lock
-    return false;
-}
-
-// Utility to obtain a read/write lock for an entity.
-// Returns true on success.
-inline bool dynamicTopoFvMesh::obtainLock
-(
-    const label tIndex,
-    const rwMutex::lockType lType,
-    rwMutex& entityMutex
-)
-{
-    label numRetries = 0;
-
-    while (entityMutex.tryLock(lType))
-    {
-        // Failed to acquire this mutex. Retry.
-        if (lType == rwMutex::WRITE_LOCK && numRetries > 10)
-        {
-            // Unsuccessful after several retries. Bail out.
-            return false;
-        }
-        else
-        {
-            numRetries++;
-        }
-    }
-
-    // Successful lock.
-    return true;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

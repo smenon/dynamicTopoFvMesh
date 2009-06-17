@@ -724,7 +724,6 @@ void dynamicTopoFvMesh::swap23
     label tIndex = self();
 
     // Obtain edge reference
-    // Assume that write-locks have been obtained
     edge& edgeToCheck = edges_[eIndex];
 
     label faceForRemoval = hullFaces[isolatedVertex];
@@ -764,9 +763,6 @@ void dynamicTopoFvMesh::swap23
         }
     }
 
-    // Write lock the cell mutex
-    cMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Add three new cells to the end of the cell list
     FixedList<label,3> newCellIndex(-1);
     newCellIndex[0] = cells_.append(cell(4));
@@ -792,18 +788,6 @@ void dynamicTopoFvMesh::swap23
         }
     }
 
-    // Add three unlocked cell mutexes
-    if (threader_->multiThreaded())
-    {
-        for (label i = 0; i < 3; i++)
-        {
-            cellMutex_.append();
-        }
-    }
-
-    // Unlock the cell mutex from write-lock
-    cMutex_.unlock();
-
     // Obtain point-ordering for the other vertices
     // otherVertices[0] is the point before isolatedVertex
     // otherVertices[1] is the point after isolatedVertex
@@ -825,9 +809,6 @@ void dynamicTopoFvMesh::swap23
         otherVertices[0] = hullVertices[triangulations[1][triangulationIndex]];
         otherVertices[1] = hullVertices[triangulations[0][triangulationIndex]];
     }
-
-    // Write lock the face mutex
-    fMutex_.lock(rwMutex::WRITE_LOCK);
 
     // Insert three new internal faces
     FixedList<label,3> newFaceIndex;
@@ -878,9 +859,6 @@ void dynamicTopoFvMesh::swap23
         faceEdges_.append();
     }
 
-    // Unlock the face mutex from write lock
-    fMutex_.unlock();
-
     // Add an entry to edgeFaces
     labelList newEdgeFaces(3);
     newEdgeFaces[0] = newFaceIndex[0];
@@ -892,9 +870,6 @@ void dynamicTopoFvMesh::swap23
     newEdgePoints[0] = vertexForRemoval;
     newEdgePoints[1] = edgeToCheck[0];
     newEdgePoints[2] = edgeToCheck[1];
-
-    // Write lock the edge mutex
-    eMutex_.lock(rwMutex::WRITE_LOCK);
 
     // Add a new internal edge to the mesh
     label newEdgeIndex = insertEdge
@@ -908,9 +883,6 @@ void dynamicTopoFvMesh::swap23
                              newEdgeFaces,
                              newEdgePoints
                          );
-
-    // Unlock the edge mutex from write lock
-    eMutex_.unlock();
 
     // Define the six edges to check while building faceEdges:
     FixedList<edge,6> check;
@@ -1245,9 +1217,6 @@ void dynamicTopoFvMesh::swap23
         }
     }
 
-    // Write lock the cell mutex
-    cMutex_.lock(rwMutex::WRITE_LOCK);
-
     forAll(newCellIndex, cellI)
     {
         // Insert the parent cell [from first by default]
@@ -1264,12 +1233,6 @@ void dynamicTopoFvMesh::swap23
             )
         );
     }
-
-    // Unlock the cell mutex from write lock
-    cMutex_.unlock();
-
-    // Write lock the face mutex
-    fMutex_.lock(rwMutex::WRITE_LOCK);
 
     // Update edgeFaces and edgePoints for edges of the removed face
     label otherPoint = -1, nextPoint = -1;
@@ -1305,12 +1268,6 @@ void dynamicTopoFvMesh::swap23
     // Remove the face
     removeFace(faceForRemoval);
 
-    // Unlock the face mutex from write lock
-    fMutex_.unlock();
-
-    // Write lock the cell mutex
-    cMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Update the number of cells, and the reverse cell map
     nCells_++;
 
@@ -1328,14 +1285,6 @@ void dynamicTopoFvMesh::swap23
 
         cells_.remove(cIndex);
 
-        // Remove the cell mutex
-        if (threader_->multiThreaded())
-        {
-            // Unlock it first
-            cellMutex_[cIndex].unlock();
-            cellMutex_.remove(cIndex);
-        }
-
         if (edgeModification_)
         {
             lengthScale_.remove(cIndex);
@@ -1352,9 +1301,6 @@ void dynamicTopoFvMesh::swap23
             cellsFromCells_.erase(cIndex);
         }
     }
-
-    // Unlock the cell mutex from write lock
-    cMutex_.unlock();
 
     if (debug > 2)
     {
@@ -1427,7 +1373,6 @@ void dynamicTopoFvMesh::swap32
     label tIndex = self();
 
     // Obtain edge reference
-    // Assume that write-locks have been obtained
     edge& edgeToCheck = edges_[eIndex];
 
     // Determine the patch this edge belongs to
@@ -1496,9 +1441,6 @@ void dynamicTopoFvMesh::swap32
         }
     }
 
-    // Write lock the cell mutex
-    cMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Add two new cells to the end of the cell list
     FixedList<label,2> newCellIndex(-1);
     newCellIndex[0] = cells_.append(cell(4));
@@ -1525,21 +1467,6 @@ void dynamicTopoFvMesh::swap32
         }
     }
 
-    // Add two unlocked cell mutexes
-    if (threader_->multiThreaded())
-    {
-        for (label i = 0; i < 2; i++)
-        {
-            cellMutex_.append();
-        }
-    }
-
-    // Unlock the cell mutex from write lock
-    cMutex_.unlock();
-
-    // Write lock the face mutex
-    fMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Insert a new internal face
     face newTriFace(3);
 
@@ -1557,9 +1484,6 @@ void dynamicTopoFvMesh::swap32
 
     // Add faceEdges for the new face as well.
     faceEdges_.append(labelList(3));
-
-    // Unlock the face mutex from write lock
-    fMutex_.unlock();
 
     // Define the three edges to check while building faceEdges:
     FixedList<edge,3> check;
@@ -1659,9 +1583,6 @@ void dynamicTopoFvMesh::swap32
             }
         }
 
-        // Write lock the face mutex
-        fMutex_.lock(rwMutex::WRITE_LOCK);
-
         // Insert the two new faces
         newBdyFaceIndex[0] = insertFace
                              (
@@ -1705,9 +1626,6 @@ void dynamicTopoFvMesh::swap32
         newBdyEdgePoints[1] = otherPoint;
         newBdyEdgePoints[2] = edgeToCheck[1];
 
-        // Write lock the edge mutex
-        eMutex_.lock(rwMutex::WRITE_LOCK);
-
         // Insert the edge
         newEdgeIndex = insertEdge
                        (
@@ -1716,9 +1634,6 @@ void dynamicTopoFvMesh::swap32
                            newBdyEdgeFaces,
                            newBdyEdgePoints
                        );
-
-        // Unlock the edge mutex from write lock
-        eMutex_.unlock();
 
         // Update faceEdges with the new edge
         newFaceEdges[nE++] = newEdgeIndex;
@@ -1773,9 +1688,6 @@ void dynamicTopoFvMesh::swap32
         // Add faceEdges for the two new boundary faces
         faceEdges_.append(bdyFaceEdges[0]);
         faceEdges_.append(bdyFaceEdges[1]);
-
-        // Unlock the face mutex from write lock
-        fMutex_.unlock();
     }
 
     newTetCell0[nF0++] = newFaceIndex;
@@ -1941,9 +1853,6 @@ void dynamicTopoFvMesh::swap32
         }
     }
 
-    // Write lock the cell mutex
-    cMutex_.lock(rwMutex::WRITE_LOCK);
-
     forAll(newCellIndex, cellI)
     {
         // Insert the parent cell [from first by default]
@@ -1960,12 +1869,6 @@ void dynamicTopoFvMesh::swap32
             )
         );
     }
-
-    // Unlock the cell mutex from write lock
-    cMutex_.unlock();
-
-    // Write lock the face mutex
-    fMutex_.lock(rwMutex::WRITE_LOCK);
 
     // Remove the faces and update associated edges
     forAll(facesForRemoval, faceI)
@@ -2009,12 +1912,6 @@ void dynamicTopoFvMesh::swap32
         removeFace(facesForRemoval[faceI]);
     }
 
-    // Unlock the face mutex from write lock
-    fMutex_.unlock();
-
-    // Write lock the cell mutex
-    cMutex_.lock(rwMutex::WRITE_LOCK);
-
     if (edgePatch < 0)
     {
         // Update the number of cells only for 3-2 swaps
@@ -2035,14 +1932,6 @@ void dynamicTopoFvMesh::swap32
 
         cells_.remove(cIndex);
 
-        // Remove the cell mutex
-        if (threader_->multiThreaded())
-        {
-            // Unlock it first
-            cellMutex_[cIndex].unlock();
-            cellMutex_.remove(cIndex);
-        }
-
         if (edgeModification_)
         {
             lengthScale_.remove(cIndex);
@@ -2059,9 +1948,6 @@ void dynamicTopoFvMesh::swap32
             cellsFromCells_.erase(cIndex);
         }
     }
-
-    // Unlock the cell mutex from write lock
-    cMutex_.unlock();
 
     if (debug > 2)
     {

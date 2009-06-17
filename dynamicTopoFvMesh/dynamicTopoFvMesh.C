@@ -172,31 +172,59 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 
     // Get the number of threads and allocate topoMeshStructures
     label nThreads = threader_->getNumThreads();
-    structPtr_.setSize(nThreads);
 
-    for (label i=0; i<nThreads; i++)
+    if (nThreads == 1)
     {
-        structPtr_.set(i, new topoMeshStruct);
-        structPtr_[i].mesh_ = this;
-        structPtr_[i].nThreads_ = nThreads;
-        structPtr_[i].pthreadID_ = threader_->getID(i);
-    }
+        structPtr_.setSize(1);
+        structPtr_.set(0, new topoMeshStruct);
+        structPtr_[0].mesh_ = this;
+        structPtr_[0].nThreads_ = nThreads;
+        structPtr_[0].pthreadID_ = -1;
+        structPtr_[0].master_ = true;
 
-    // Size the stacks
-    if (twoDMesh_)
-    {
-        faceStack_.setSize(nThreads);
+        // Size the stacks
+        if (twoDMesh_)
+        {
+            faceStack_.setSize(1);
+        }
+        else
+        {
+            edgeStack_.setSize(1);
+        }
     }
     else
     {
-        edgeStack_.setSize(nThreads);
-    }
+        // Index '0' is master, rest are slaves
+        structPtr_.setSize(nThreads + 1);
 
-    // Initialize lock-lists
-    pLocks_.setSize(nThreads);
-    eLocks_.setSize(nThreads);
-    fLocks_.setSize(nThreads);
-    cLocks_.setSize(nThreads);
+        // Size the stacks
+        if (twoDMesh_)
+        {
+            faceStack_.setSize(nThreads + 1);
+        }
+        else
+        {
+            edgeStack_.setSize(nThreads + 1);
+        }
+
+        for (label i = 0; i <= nThreads; i++)
+        {
+            structPtr_.set(i, new topoMeshStruct);
+            structPtr_[i].mesh_ = this;
+            structPtr_[i].nThreads_ = nThreads;
+
+            if (i == 0)
+            {
+                structPtr_[0].pthreadID_ = -1;
+                structPtr_[0].master_ = true;
+            }
+            else
+            {
+                structPtr_[i].pthreadID_ = threader_->getID(i-1);
+                structPtr_[i].master_ = false;
+            }
+        }
+    }
 
     // Initialize patch-size information
     const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
@@ -348,9 +376,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         // Initialize the lengthScale field
         lengthScale_.setSize(nCells_, 0.0);
     }
-
-    // Initialize mutex lists for multi-threading, if necessary
-    initMutexLists();
 }
 
 // Default topoMeshStruct constructor
@@ -358,6 +383,7 @@ dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct()
 {
     mesh_ = 0;
     nThreads_ = pthreadID_ = -1;
+    master_ = false;
 }
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -572,19 +598,9 @@ void dynamicTopoFvMesh::testDelaunay
     FixedList<bool,2> foundTriFace(false);
     FixedList<FixedList<label,3>,2> triFaces(FixedList<label,3>(-1));
 
-    // Figure out which thread this is...
-    label tIndex = self();
-
     // Boundary faces are discarded.
     if (whichPatch(fIndex) > -1)
     {
-        return;
-    }
-
-    // Attempt to read-lock this face
-    if (tryFaceLock(fIndex))
-    {
-        faceStack(tIndex).push(fIndex);
         return;
     }
 
@@ -772,12 +788,6 @@ label dynamicTopoFvMesh::insertFace
     label newFaceIndex = faces_.append(newFace);
     owner_.append(newOwner);
     neighbour_.append(newNeighbour);
-
-    // Add a new unlocked face mutex
-    if (threader_->multiThreaded())
-    {
-        faceMutex_.append();
-    }
 
     if (debug > 2)
     {
@@ -1009,14 +1019,6 @@ void dynamicTopoFvMesh::removeFace
     owner_.remove(index);
     faceEdges_.remove(index);
 
-    // Remove the face mutex
-    if (threader_->multiThreaded())
-    {
-        // Unlock it first
-        faceMutex_[index].unlock();
-        faceMutex_.remove(index);
-    }
-
     // Identify the patch for this face
     label patch = whichPatch(index);
 
@@ -1085,12 +1087,6 @@ label dynamicTopoFvMesh::insertEdge
     if (!twoDMesh_)
     {
         edgePoints_.append(edgePoints);
-    }
-
-    // Add a new unlocked edge mutex
-    if (threader_->multiThreaded())
-    {
-        edgeMutex_.append();
     }
 
     // Add to the stack as well
@@ -1178,14 +1174,6 @@ void dynamicTopoFvMesh::removeEdge
 
     edges_.remove(index);
     edgeFaces_.remove(index);
-
-    // Remove the edge mutex
-    if (threader_->multiThreaded())
-    {
-        // Unlock it first
-        edgeMutex_[index].unlock();
-        edgeMutex_.remove(index);
-    }
 
     // Remove from the stack as well
     forAll(edgeStack_, stackI)
@@ -1308,15 +1296,13 @@ void dynamicTopoFvMesh::constructPrismHull
 }
 
 // Utility method to build a hull of cells (and faces) around an edge.
-// Assumes that eIndex is already locked.
-bool dynamicTopoFvMesh::constructHull
+void dynamicTopoFvMesh::constructHull
 (
     const label eIndex,
     labelList& hullEdges,
     labelList& hullFaces,
     labelList& hullCells,
-    labelListList& ringEntities,
-    const rwMutex::lockType lType
+    labelListList& ringEntities
 )
 {
     // [1] hullEdges is an ordered list of edge-labels around eIndex,
@@ -1335,27 +1321,10 @@ bool dynamicTopoFvMesh::constructHull
     bool found;
     label otherPoint = -1, nextPoint = -1;
 
-    // Figure out which thread this is...
-    label tIndex = self();
-
     // Obtain a reference to this edge, and its edgeFaces
     edge& edgeToCheck = edges_[eIndex];
     labelList& eFaces = edgeFaces_[eIndex];
     labelList& hullVertices = edgePoints_[eIndex];
-
-    // Try to lock the two points of this edge
-    if (tryEdgePointLock(eIndex, lType))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
-
-    // Try to lock hull-points around this edge
-    if (tryEdgeHullLock(eIndex, lType))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
 
     // Temporary tri-face for comparison
     face oFace(3);
@@ -1383,14 +1352,6 @@ bool dynamicTopoFvMesh::constructHull
             {
                 // Fill in the position of this face on the hull
                 hullFaces[indexI] = eFaces[faceI];
-
-                // Try to lock edges of this face.
-                // Also, avoid locking eIndex multiple times.
-                if (tryFaceEdgeLock(hullFaces[indexI], lType, eIndex))
-                {
-                    edgeStack(tIndex).push(eIndex);
-                    return true;
-                }
 
                 // Obtain edges connected to top and bottom
                 // vertices of edgeToCheck
@@ -1489,13 +1450,6 @@ bool dynamicTopoFvMesh::constructHull
                             break;
                         }
                     }
-
-                    // Try to lock the ring-edge.
-                    if (tryEdgeLock(hullEdges[indexI],lType))
-                    {
-                        edgeStack(tIndex).push(eIndex);
-                        return true;
-                    }
                 }
 
                 // Done with this index. Break out.
@@ -1519,9 +1473,6 @@ bool dynamicTopoFvMesh::constructHull
                 << abort(FatalError);
         }
     }
-
-    // Return a successful lock
-    return false;
 }
 
 // Utility method to build edgePoints for an edge [3D].
@@ -1672,7 +1623,6 @@ void dynamicTopoFvMesh::buildEdgePoints
 }
 
 // Utility to check whether points of an edge lie on a boundary.
-// Assumes that eIndex is already locked.
 void dynamicTopoFvMesh::checkEdgeBoundary
 (
     const label eIndex,
@@ -1758,17 +1708,6 @@ bool dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
         }
     }
 
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Try to read-lock this edge.
-    if (tryEdgeLock(eIndex))
-    {
-        // Couldn't lock this edge. Put it back on the stack and bail out.
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
-
     // Check if two boundary faces lie on different face-patches
     label fPatch, firstPatch = -1, secondPatch = -1;
     labelList& edgeFaces = edgeFaces_[eIndex];
@@ -1793,13 +1732,8 @@ bool dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
 
     if (firstPatch != secondPatch)
     {
-        // Undo all read-locks and return
-        unlockMutexLists(tIndex);
         return true;
     }
-
-    // Undo all read-locks
-    unlockMutexLists(tIndex);
 
     // Not on a bounding curve
     return false;
@@ -1822,8 +1756,7 @@ void dynamicTopoFvMesh::initTables
 
 // Utility method to fill the dynamic programming tables
 //  - Returns true if the operation completed successfully.
-//  - Returns false if read-locks were not obtained, or
-//    tables could not be resized.
+//  - Returns false if tables could not be resized.
 bool dynamicTopoFvMesh::fillTables
 (
     const label eIndex,
@@ -1834,30 +1767,6 @@ bool dynamicTopoFvMesh::fillTables
     labelListList& triangulations
 )
 {
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Try to read-lock this edge.
-    if (tryEdgeLock(eIndex))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return false;
-    }
-
-    // Try to read-lock the two points of this edge.
-    if (tryEdgePointLock(eIndex))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
-
-    // Try to read-lock hull-points around this edge
-    if (tryEdgeHullLock(eIndex))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return true;
-    }
-
     edge& edgeToCheck = edges_[eIndex];
     labelList& hullVertices = edgePoints_[eIndex];
 
@@ -1877,9 +1786,6 @@ bool dynamicTopoFvMesh::fillTables
         }
         else
         {
-            // Undo all read-locks
-            unlockMutexLists(tIndex);
-
             // Can't resize. Bail out.
             return false;
         }
@@ -1936,9 +1842,6 @@ bool dynamicTopoFvMesh::fillTables
         }
     }
 
-    // Undo all read-locks
-    unlockMutexLists(tIndex);
-
     return true;
 }
 
@@ -1950,16 +1853,6 @@ void dynamicTopoFvMesh::removeEdgeFlips
     labelListList& triangulations
 )
 {
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Try to write-lock this edge.
-    if (tryEdgeLock(eIndex, rwMutex::WRITE_LOCK))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return;
-    }
-
     // Make a copy of edgePoints, since it will be
     // modified during swaps
     labelList hullVertices(edgePoints_[eIndex]);
@@ -1970,24 +1863,15 @@ void dynamicTopoFvMesh::removeEdgeFlips
     labelList hullEdges(m, -1);
     labelListList ringEntities(4, labelList(m, -1));
 
-    // Construct the hull, and try to write-lock entities.
-    if
+    // Construct the hull
+    constructHull
     (
-        constructHull
-        (
-            eIndex,
-            hullEdges,
-            hullFaces,
-            hullCells,
-            ringEntities,
-            rwMutex::WRITE_LOCK
-        )
-    )
-    {
-        // Unable to write-lock.
-        edgeStack(tIndex).push(eIndex);
-        return;
-    }
+        eIndex,
+        hullEdges,
+        hullFaces,
+        hullCells,
+        ringEntities
+    );
 
     label numTriangulations = 0, isolatedVertex = -1;
 
@@ -2082,14 +1966,8 @@ void dynamicTopoFvMesh::removeEdgeFlips
     triangulations[1][t32] = -1;
     triangulations[2][t32] = -1;
 
-    // Write lock the edge mutex
-    eMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Finally remove the edge
     removeEdge(eIndex);
-
-    // Unlock the edge mutex
-    eMutex_.unlock();
 
     // Set the flag
     topoChangeFlag_ = true;
@@ -2915,7 +2793,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
         // Do a preliminary sanity check to avoid duplication
         forAll(toc, wordI)
         {
-            word& pName = cToc[wordI];
+            word& pName = toc[wordI];
 
             forAll(cToc, wordI)
             {
@@ -3398,6 +3276,13 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+
+    // If this is a slave, acquire the lock for this structure
+    if (!thread->master_)
+    {
+        thread->syncMutex_.lock();
+    }
+
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
     // Figure out which thread this is...
@@ -3420,9 +3305,23 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
         if (failed)
         {
-            // Swap this face.
-            mesh->swapQuadFace(fIndex);
+            if (thread->master_)
+            {
+                // Swap this face.
+                mesh->swapQuadFace(fIndex);
+            }
+            else
+            {
+                // Push this on to the master stack
+                mesh->faceStack(0).push(fIndex);
+            }
         }
+    }
+
+    // If this is a slave, relinquish the lock for this structure
+    if (!thread->master_)
+    {
+        thread->syncMutex_.unlock();
     }
 }
 
@@ -3447,18 +3346,6 @@ void dynamicTopoFvMesh::initEdges()
     {
         pointEdges_ = eMeshPtr_->pointEdges();
         edgePoints_ = eMeshPtr_->edgePoints();
-    }
-}
-
-// Initialize mutex lists
-void dynamicTopoFvMesh::initMutexLists()
-{
-    if (threader_->multiThreaded())
-    {
-        pointMutex_.setSize(nPoints_);
-        edgeMutex_.setSize(nEdges_);
-        faceMutex_.setSize(nFaces_);
-        cellMutex_.setSize(nCells_);
     }
 }
 
@@ -3487,6 +3374,13 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+
+    // If this is a slave, acquire the lock for this structure
+    if (!thread->master_)
+    {
+        thread->syncMutex_.lock();
+    }
+
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
     // Figure out which thread this is...
@@ -3503,23 +3397,14 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
         if (mesh->checkQuadFace(fIndex))
         {
             // Measure the boundary edge-length of the face in question
-            if
+            mesh->edgeLength
             (
-                mesh->edgeLength
-                (
-                    mesh->getTriBoundaryEdge(fIndex),
-                    length
-                )
-            )
-            {
-                continue;
-            }
+                mesh->getTriBoundaryEdge(fIndex),
+                length
+            );
 
             // Determine the length-scale at this face
-            if (mesh->meshFaceLengthScale(fIndex, scale))
-            {
-                continue;
-            }
+            mesh->meshFaceLengthScale(fIndex, scale);
 
             // Check if this boundary face is adjacent to a sliver-cell,
             // and remove it by a two-step bisection/collapse operation.
@@ -3530,16 +3415,38 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
             if (length > mesh->ratioMax()*scale)
             {
-                // Bisect this face
-                mesh->bisectQuadFace(fIndex);
+                if (thread->master_)
+                {
+                    // Bisect this face
+                    mesh->bisectQuadFace(fIndex);
+                }
+                else
+                {
+                    // Push this on to the master stack
+                    mesh->faceStack(0).push(fIndex);
+                }
             }
             else
             if (length < mesh->ratioMin()*scale)
             {
-                // Collapse this face
-                mesh->collapseQuadFace(fIndex);
+                if (thread->master_)
+                {
+                    // Collapse this face
+                    mesh->collapseQuadFace(fIndex);
+                }
+                else
+                {
+                    // Push this on to the master stack
+                    mesh->faceStack(0).push(fIndex);
+                }
             }
         }
+    }
+
+    // If this is a slave, relinquish the lock for this structure
+    if (!thread->master_)
+    {
+        thread->syncMutex_.unlock();
     }
 }
 
@@ -3551,6 +3458,13 @@ void dynamicTopoFvMesh::swap3DEdges
 {
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+
+    // If this is a slave, acquire the lock for this structure
+    if (!thread->master_)
+    {
+        thread->syncMutex_.lock();
+    }
+
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
     // Figure out which thread this is...
@@ -3580,17 +3494,11 @@ void dynamicTopoFvMesh::swap3DEdges
         }
 
         // Compute the minimum quality of cells around this edge
-        if
+        mesh->computeMinQuality
         (
-            mesh->computeMinQuality
-            (
-                eIndex,
-                minQuality
-            )
-        )
-        {
-            continue;
-        }
+            eIndex,
+            minQuality
+        );
 
         // Fill the dynamic programming tables
         if (mesh->fillTables(eIndex, minQuality, m, Q, K, triangulations))
@@ -3598,10 +3506,24 @@ void dynamicTopoFvMesh::swap3DEdges
             // Check if edge-swapping is required.
             if (Q[0][m-1] > minQuality)
             {
-                // Remove this edge according to the swap sequence
-                mesh->removeEdgeFlips(eIndex, K, triangulations);
+                if (thread->master_)
+                {
+                    // Remove this edge according to the swap sequence
+                    mesh->removeEdgeFlips(eIndex, K, triangulations);
+                }
+                else
+                {
+                    // Push this on to the master stack
+                    mesh->edgeStack(0).push(eIndex);
+                }
             }
         }
+    }
+
+    // If this is a slave, relinquish the lock for this structure
+    if (!thread->master_)
+    {
+        thread->syncMutex_.unlock();
     }
 }
 
@@ -3617,6 +3539,13 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+
+    // If this is a slave, acquire the lock for this structure
+    if (!thread->master_)
+    {
+        thread->syncMutex_.lock();
+    }
+
     dynamicTopoFvMesh *mesh = thread->mesh_;
 
     // Figure out which thread this is...
@@ -3629,370 +3558,44 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         label eIndex = mesh->edgeStack(tIndex).pop();
 
         // Measure the edge-length
-        if (mesh->edgeLength(eIndex, length))
-        {
-            mesh->edgeStack(tIndex).push(eIndex);
-            continue;
-        }
+        mesh->edgeLength(eIndex, length);
 
         // Determine the length-scale at this point in the mesh
-        if (mesh->meshEdgeLengthScale(eIndex, scale))
-        {
-            continue;
-        }
+        mesh->meshEdgeLengthScale(eIndex, scale);
 
         if (length > mesh->ratioMax()*scale)
         {
-            // Bisect this edge
-            mesh->bisectEdge(eIndex);
+            if (thread->master_)
+            {
+                // Bisect this edge
+                mesh->bisectEdge(eIndex);
+            }
+            else
+            {
+                // Push this on to the master stack
+                mesh->edgeStack(0).push(eIndex);
+            }
         }
         else
         if (length < mesh->ratioMin()*scale)
         {
-            // Collapse this edge
-            mesh->collapseEdge(eIndex);
-        }
-    }
-}
-
-// Try to lock a point.
-bool dynamicTopoFvMesh::tryPointLock
-(
-    const label pIndex,
-    const rwMutex::lockType lType
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        if (obtainLock(tIndex, lType, pointMutex_[pIndex]))
-        {
-            pLocks_[tIndex].append(pIndex);
-        }
-        else
-        {
-            unlockMutexLists(tIndex);
-            return true;
-        }
-    }
-
-    // Return a successful lock
-    return false;
-}
-
-// Try to lock a face.
-// Returns false on success.
-bool dynamicTopoFvMesh::tryFaceLock
-(
-    const label fIndex,
-    const rwMutex::lockType lType
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        if (obtainLock(tIndex, lType, faceMutex_[fIndex]))
-        {
-            fLocks_[tIndex].append(fIndex);
-        }
-        else
-        {
-            unlockMutexLists(tIndex);
-            return true;
-        }
-    }
-
-    // Return a successful lock
-    return false;
-}
-
-// Try to lock all points of a face.
-// Assumes face is already locked.
-// Returns false on success.
-bool dynamicTopoFvMesh::tryFacePointLock
-(
-    const label fIndex,
-    const rwMutex::lockType lType
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        // Try to lock all points of this face
-        face& lockFace = faces_[fIndex];
-
-        forAll(lockFace, pointI)
-        {
-            if (obtainLock(tIndex, lType, pointMutex_[lockFace[pointI]]))
+            if (thread->master_)
             {
-                pLocks_[tIndex].append(lockFace[pointI]);
+                // Collapse this edge
+                mesh->collapseEdge(eIndex);
             }
             else
             {
-                unlockMutexLists(tIndex);
-                return true;
+                // Push this on to the master stack
+                mesh->edgeStack(0).push(eIndex);
             }
         }
     }
 
-    // Return a successful lock
-    return false;
-}
-
-// Try to lock all edges of a face.
-// Assumes face is already locked.
-// Returns false on success.
-bool dynamicTopoFvMesh::tryFaceEdgeLock
-(
-    const label fIndex,
-    const rwMutex::lockType lType,
-    const label edgeToAvoid
-)
-{
-    if (threader_->multiThreaded())
+    // If this is a slave, relinquish the lock for this structure
+    if (!thread->master_)
     {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        // Try to lock all edges of this face
-        labelList& fEdges = faceEdges_[fIndex];
-
-        forAll(fEdges, edgeI)
-        {
-            if (edgeToAvoid != fEdges[edgeI])
-            {
-                if (obtainLock(tIndex, lType, edgeMutex_[fEdges[edgeI]]))
-                {
-                    eLocks_[tIndex].append(fEdges[edgeI]);
-                }
-                else
-                {
-                    unlockMutexLists(tIndex);
-                    return true;
-                }
-            }
-        }
-    }
-
-    // Return a successful lock
-    return false;
-}
-
-// Try to lock an edge.
-// Returns false on success.
-bool dynamicTopoFvMesh::tryEdgeLock
-(
-    const label eIndex,
-    const rwMutex::lockType lType
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        if (obtainLock(tIndex, lType, edgeMutex_[eIndex]))
-        {
-            eLocks_[tIndex].append(eIndex);
-        }
-        else
-        {
-            unlockMutexLists(tIndex);
-            return true;
-        }
-    }
-
-    // Return a successful lock
-    return false;
-}
-
-// Try to lock the two points of an edge.
-// Assumes edge is already locked.
-// Returns false on success.
-bool dynamicTopoFvMesh::tryEdgePointLock
-(
-    const label eIndex,
-    const rwMutex::lockType lType
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        // Obtain a reference to this edge...
-        edge& lockEdge = edges_[eIndex];
-
-        if (obtainLock(tIndex, lType, pointMutex_[lockEdge[0]]))
-        {
-            pLocks_[tIndex].append(lockEdge[0]);
-        }
-        else
-        {
-            unlockMutexLists(tIndex);
-            return true;
-        }
-
-        if (obtainLock(tIndex, lType, pointMutex_[lockEdge[1]]))
-        {
-            pLocks_[tIndex].append(lockEdge[1]);
-        }
-        else
-        {
-            unlockMutexLists(tIndex);
-            return true;
-        }
-    }
-
-    // Return a successful lock
-    return false;
-}
-
-// Try to lock hull-points around an edge
-// Assumes edge is already locked.
-// Returns false on success.
-bool dynamicTopoFvMesh::tryEdgeHullLock
-(
-    const label eIndex,
-    const rwMutex::lockType lType
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        // Try to lock all hull points of this edge
-        labelList& ePoints = edgePoints_[eIndex];
-
-        forAll(ePoints, pointI)
-        {
-            if (obtainLock(tIndex, lType, pointMutex_[ePoints[pointI]]))
-            {
-                pLocks_[tIndex].append(ePoints[pointI]);
-            }
-            else
-            {
-                unlockMutexLists(tIndex);
-                return true;
-            }
-        }
-    }
-
-    // Return a successful lock
-    return false;
-}
-
-// Try to lock the faces around an edge.
-// Assumes edge is already locked.
-// Returns false on success.
-bool dynamicTopoFvMesh::tryEdgeFaceLock
-(
-    const label eIndex,
-    const rwMutex::lockType lType
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        // Try to lock all faces of this edge
-        labelList& eFaces = edgeFaces_[eIndex];
-
-        forAll(eFaces, faceI)
-        {
-            if (obtainLock(tIndex, lType, faceMutex_[eFaces[faceI]]))
-            {
-                fLocks_[tIndex].append(eFaces[faceI]);
-            }
-            else
-            {
-                unlockMutexLists(tIndex);
-                return true;
-            }
-        }
-    }
-
-    // Return a successful lock
-    return false;
-}
-
-// Remove an index from the point lock list
-void dynamicTopoFvMesh::removePointLock
-(
-    const label pIndex
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        if (foundInList(pIndex, pLocks_[tIndex]))
-        {
-            sizeDownList(pIndex, pLocks_[tIndex]);
-        }
-    }
-}
-
-// Remove an index from the edge lock list
-void dynamicTopoFvMesh::removeEdgeLock
-(
-    const label eIndex
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        if (foundInList(eIndex, eLocks_[tIndex]))
-        {
-            sizeDownList(eIndex, eLocks_[tIndex]);
-        }
-    }
-}
-
-// Remove an index from the face lock list
-void dynamicTopoFvMesh::removeFaceLock
-(
-    const label fIndex
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        if (foundInList(fIndex, fLocks_[tIndex]))
-        {
-            sizeDownList(fIndex, fLocks_[tIndex]);
-        }
-    }
-}
-
-// Remove an index from the cell lock list
-void dynamicTopoFvMesh::removeCellLock
-(
-    const label cIndex
-)
-{
-    if (threader_->multiThreaded())
-    {
-        // Figure out which thread this is...
-        label tIndex = self();
-
-        if (foundInList(cIndex, cLocks_[tIndex]))
-        {
-            sizeDownList(cIndex, cLocks_[tIndex]);
-        }
+        thread->syncMutex_.unlock();
     }
 }
 
@@ -4097,12 +3700,20 @@ void dynamicTopoFvMesh::remove2DSliver
     // This cell has to be removed...
     if (mag(area) < (sliverThreshold_*length*length))
     {
-        // Step 1: Bisect the boundary quad face
-        bisectInterior_ = -1;
-        bisectQuadFace(fIndex);
+        if (self() == 0)
+        {
+            // Step 1: Bisect the boundary quad face
+            bisectInterior_ = -1;
+            bisectQuadFace(fIndex);
 
-        // Step 2: Collapse the newly created internal quad face
-        collapseQuadFace(bisectInterior_);
+            // Step 2: Collapse the newly created internal quad face
+            collapseQuadFace(bisectInterior_);
+        }
+        else
+        {
+            // Push this on to the master stack
+            faceStack(0).push(fIndex);
+        }
     }
 }
 
@@ -4340,7 +3951,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
         if (threader_->multiThreaded())
         {
             // Submit jobs to the work queue
-            for (label i = 0; i < threader_->getNumThreads(); i++)
+            for (label i = 1; i <= threader_->getNumThreads(); i++)
             {
                 threader_->addToWorkQueue
                            (
@@ -4349,13 +3960,16 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
                            );
             }
 
-            // Wait for all work to complete
-            threader_->waitForCompletion();
+            // Allow slaves to acquire the mutex.
+            // Should be a better mechanism to do this.
+            sleep(1);
+
+            // Synchronize threads
+            synchronizeThreads();
         }
-        else
-        {
-            edgeBisectCollapse2D(&(structPtr_[0]));
-        }
+
+        // Set the master thread to implement modifications
+        edgeBisectCollapse2D(&(structPtr_[0]));
 
         if (debug)
         {
@@ -4369,7 +3983,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
     if (threader_->multiThreaded())
     {
         // Submit jobs to the work queue
-        for (label i = 0; i < threader_->getNumThreads(); i++)
+        for (label i = 1; i <= threader_->getNumThreads(); i++)
         {
             threader_->addToWorkQueue
                        (
@@ -4378,13 +3992,16 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
                        );
         }
 
-        // Wait for all work to complete
-        threader_->waitForCompletion();
+        // Allow slaves to acquire the mutex.
+        // Should be a better mechanism to do this.
+        sleep(1);
+
+        // Synchronize threads
+        synchronizeThreads();
     }
-    else
-    {
-        swap2DEdges(reinterpret_cast<void *>(&(structPtr_[0])));
-    }
+
+    // Set the master thread to implement modifications
+    swap2DEdges(reinterpret_cast<void *>(&(structPtr_[0])));
 
     if (debug)
     {
@@ -4408,8 +4025,14 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
         if (threader_->multiThreaded())
         {
+            // Lock slaves
+            for (label i = 1; i <= threader_->getNumThreads(); i++)
+            {
+                structPtr_[i].syncMutex_.lock();
+            }
+
             // Submit jobs to the work queue
-            for (label i = 0; i < threader_->getNumThreads(); i++)
+            for (label i = 1; i <= threader_->getNumThreads(); i++)
             {
                 threader_->addToWorkQueue
                            (
@@ -4418,13 +4041,22 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
                            );
             }
 
-            // Wait for all work to complete
-            threader_->waitForCompletion();
+            // Unlock slaves
+            for (label i = 1; i <= threader_->getNumThreads(); i++)
+            {
+                structPtr_[i].syncMutex_.unlock();
+            }
+
+            // Allow slaves to acquire the mutex.
+            // Should be a better mechanism to do this.
+            sleep(1);
+
+            // Synchronize threads
+            synchronizeThreads();
         }
-        else
-        {
-            edgeBisectCollapse3D(&(structPtr_[0]));
-        }
+
+        // Set the master thread to implement modifications
+        edgeBisectCollapse3D(&(structPtr_[0]));
 
         if (debug)
         {
@@ -4437,8 +4069,14 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
     if (threader_->multiThreaded())
     {
+        // Lock slaves
+        for (label i = 1; i <= threader_->getNumThreads(); i++)
+        {
+            structPtr_[i].syncMutex_.lock();
+        }
+
         // Submit jobs to the work queue
-        for (label i = 0; i < threader_->getNumThreads(); i++)
+        for (label i = 1; i <= threader_->getNumThreads(); i++)
         {
             threader_->addToWorkQueue
                        (
@@ -4447,17 +4085,38 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
                        );
         }
 
-        // Wait for all work to complete
-        threader_->waitForCompletion();
+        // Unlock slaves
+        for (label i = 1; i <= threader_->getNumThreads(); i++)
+        {
+            structPtr_[i].syncMutex_.unlock();
+        }
+
+        // Allow slaves to acquire the mutex.
+        // Should be a better mechanism to do this.
+        sleep(1);
+
+        // Synchronize threads
+        synchronizeThreads();
     }
-    else
-    {
-        swap3DEdges(reinterpret_cast<void *>(&(structPtr_[0])));
-    }
+
+    // Set the master thread to implement modifications
+    swap3DEdges(reinterpret_cast<void *>(&(structPtr_[0])));
 
     if (debug)
     {
         Info << nl << "3D Edge Swapping complete." << endl;
+    }
+}
+
+// Synchronize all slave threads
+void dynamicTopoFvMesh::synchronizeThreads()
+{
+    for (label i = 1; i <= threader_->getNumThreads(); i++)
+    {
+        structPtr_[i].syncMutex_.lock();
+
+        // Now that the lock is acquired, unlock it for later use
+        structPtr_[i].syncMutex_.unlock();
     }
 }
 
@@ -4875,9 +4534,6 @@ bool dynamicTopoFvMesh::updateTopology()
         reverseEdgeMap_.setSize(nEdges_);
         reverseFaceMap_.setSize(nFaces_);
         reverseCellMap_.setSize(nCells_);
-
-        // Re-initialize mutex lists for multi-threading, if necessary
-        initMutexLists();
 
         // Basic checks for mesh-validity
         if (debug)

@@ -29,7 +29,6 @@ Description
     General templated class for dynamically-resizing one-dimensional lists
     of type T. Indexing is provided using a hash-function to achieve O(1)
     access time. List traversal is also achieved in linear time.
-    The container is also thread-safe.
 
 Author
     Sandeep Menon
@@ -45,9 +44,6 @@ SourceFiles
 #include "label.H"
 #include "bool.H"
 #include "List.H"
-
-// Multi-threading support
-#include "multiThreader.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -92,9 +88,6 @@ class HashList
             // Next and previous item (by index)
             Item    *previdx_, *nextidx_;
 
-            // Mutex for multi-threading
-            Mutex   itemMutex_;
-
             // Default initialization
             Item()
             {
@@ -102,12 +95,6 @@ class HashList
                 prev_    = next_    = 0;
                 previdx_ = nextidx_ = 0;
             }
-
-            // Lock mutex
-            inline void lock() { itemMutex_.lock(); }
-
-            // Unlock mutex
-            inline void unlock() { itemMutex_.unlock(); }
         };
 
         // Size of the list
@@ -122,12 +109,6 @@ class HashList
         // Hash-table
         // Holds the pointer to the start of the linked-list
         Item **table_;
-
-        // Mutex list for the HashTable
-        Mutex *tableMutex_;
-
-        // Global mutex for the entire list
-        Mutex listMutex_;
 
         // Hash-table size. (Must be prime!)
         // Change if collision rates are unmanageable
@@ -186,12 +167,6 @@ public:
 
             //- Index access
             inline label index();
-
-            //- Lock the iterator
-            inline void lock();
-
-            //- Unlock the iterator
-            inline void unlock();
 
             // Member operators
 
@@ -254,12 +229,6 @@ public:
 
             //- Return the number of elements in the HashList.
             inline label size() const;
-
-            //- Lock the entire list [multi-threading]
-            inline void lock();
-
-            //- Unlock the entire list [multi-threading]
-            inline void unlock();
 
         // Check
 

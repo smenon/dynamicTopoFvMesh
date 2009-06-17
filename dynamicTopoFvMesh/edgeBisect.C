@@ -871,13 +871,6 @@ void dynamicTopoFvMesh::bisectEdge
     // Figure out which thread this is...
     label tIndex = self();
 
-    // Try to write-lock this edge.
-    if (tryEdgeLock(eIndex, rwMutex::WRITE_LOCK))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return;
-    }
-
     if
     (
         (nModifications_ > maxModifications_)
@@ -906,24 +899,15 @@ void dynamicTopoFvMesh::bisectEdge
     labelList edgeHull(m, -1);
     labelListList ringEntities(4, labelList(m, -1));
 
-    // Construct a hull around this edge, and write-lock entities
-    if
+    // Construct a hull around this edge
+    constructHull
     (
-        constructHull
-        (
-            eIndex,
-            edgeHull,
-            faceHull,
-            cellHull,
-            ringEntities,
-            rwMutex::WRITE_LOCK
-        )
-    )
-    {
-        // Put this edge back on the stack and bail out
-        edgeStack(tIndex).push(eIndex);
-        return;
-    }
+        eIndex,
+        edgeHull,
+        faceHull,
+        cellHull,
+        ringEntities
+    );
 
     if (debug > 1)
     {
@@ -942,9 +926,6 @@ void dynamicTopoFvMesh::bisectEdge
         }
     }
 
-    // Write lock the point mutex
-    pMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Add a new point to the end of the list
     label newPointIndex =
         meshPoints_.append
@@ -959,19 +940,7 @@ void dynamicTopoFvMesh::bisectEdge
     // Add an entry to pointEdges as well
     pointEdges_.append(labelList(0));
 
-    // Add an unlocked point mutex
-    if (threader_->multiThreaded())
-    {
-        pointMutex_.append();
-    }
-
     nPoints_++;
-
-    // Unlock the point mutex from write lock
-    pMutex_.unlock();
-
-    // Write lock the edge mutex
-    eMutex_.lock(rwMutex::WRITE_LOCK);
 
     // Add a new edge to the end of the list
     label newEdgeIndex =
@@ -994,9 +963,6 @@ void dynamicTopoFvMesh::bisectEdge
     // Obtain new references
     edge& newEdge = edges_[newEdgeIndex];
     labelList& newEdgeFaces = edgeFaces_[newEdgeIndex];
-
-    // Unlock the edge mutex from write lock
-    eMutex_.unlock();
 
     // Keep track of added entities
     labelList addedCellIndices(cellHull.size(),-1);
@@ -1038,19 +1004,10 @@ void dynamicTopoFvMesh::bisectEdge
         {
             cell& currCell = cells_[cellHull[indexI]];
 
-            // Write lock the cell mutex
-            cMutex_.lock(rwMutex::WRITE_LOCK);
-
             // Create a new cell
             addedCellIndices[indexI] = cells_.append(cell(4));
             cell& newCell = cells_[addedCellIndices[indexI]];
             nCells_++;
-
-            // Add an unlocked cell mutex
-            if (threader_->multiThreaded())
-            {
-                cellMutex_.append();
-            }
 
             // Generate mapping information for this new cell
             label parent;
@@ -1068,9 +1025,6 @@ void dynamicTopoFvMesh::bisectEdge
             // Insert the parent cell
             cellParents_.insert(addedCellIndices[indexI], parent);
 
-            // Unlock the cell mutex from write lock
-            cMutex_.unlock();
-
             // Find the cell's neighbours in the old mesh
             masterObjects.insert(parent);
             forAll(cc[parent], cellI)
@@ -1080,9 +1034,6 @@ void dynamicTopoFvMesh::bisectEdge
                     masterObjects.insert(cc[parent][cellI]);
                 }
             }
-
-            // Write lock the cell mutex
-            cMutex_.lock(rwMutex::WRITE_LOCK);
 
             // Insert mapping info into the HashTable
             cellsFromCells_.insert
@@ -1098,16 +1049,10 @@ void dynamicTopoFvMesh::bisectEdge
             // Add a new element to the lengthScale field
             lengthScale_.append(lengthScale_[cellHull[indexI]]);
 
-            // Unlock the cell mutex from write lock
-            cMutex_.unlock();
-
             // Configure the interior face
             tmpTriFace[0] = vertexHull[nextI];
             tmpTriFace[1] = vertexHull[indexI];
             tmpTriFace[2] = newPointIndex;
-
-            // Write lock the face mutex
-            fMutex_.lock(rwMutex::WRITE_LOCK);
 
             // Insert the face
             addedIntFaceIndices[indexI] =
@@ -1121,9 +1066,6 @@ void dynamicTopoFvMesh::bisectEdge
 
             // Add a faceEdges entry as well
             faceEdges_.append(tmpFaceEdges);
-
-            // Unlock the face mutex from write lock
-            fMutex_.unlock();
 
             // Add to the new cell
             newCell[0] = addedIntFaceIndices[indexI];
@@ -1192,9 +1134,6 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpTriFace[1] = newEdge[1];
                 tmpTriFace[2] = vertexHull[indexI];
 
-                // Write lock the face mutex
-                fMutex_.lock(rwMutex::WRITE_LOCK);
-
                 // Insert the face
                 addedFaceIndices[indexI] =
                     insertFace
@@ -1228,9 +1167,6 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpEdgePoints[1] = vertexHull[nextI];
                 tmpEdgePoints[2] = newEdge[1];
 
-                // Write lock the edge mutex
-                eMutex_.lock(rwMutex::WRITE_LOCK);
-
                 // Add an edge
                 addedEdgeIndices[indexI] =
                     insertEdge
@@ -1240,9 +1176,6 @@ void dynamicTopoFvMesh::bisectEdge
                         tmpEdgeFaces,
                         tmpEdgePoints
                     );
-
-                // Unlock the edge mutex from write lock
-                eMutex_.unlock();
 
                 // Add this edge to the interior-face faceEdges entry
                 faceEdges_[addedIntFaceIndices[indexI]][1] =
@@ -1280,9 +1213,6 @@ void dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
-                // Unlock the face mutex from write lock
-                fMutex_.unlock();
-
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[indexI] = addedFaceIndices[indexI];
 
@@ -1297,9 +1227,6 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpTriFace[0] = vertexHull[indexI];
                 tmpTriFace[1] = newEdge[1];
                 tmpTriFace[2] = newPointIndex;
-
-                // Write lock the face mutex
-                fMutex_.lock(rwMutex::WRITE_LOCK);
 
                 // Insert the face
                 addedFaceIndices[indexI] =
@@ -1323,9 +1250,6 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpIntEdgePoints[2] = newEdge[1];
                 tmpIntEdgePoints[3] = vertexHull[prevI];
 
-                // Write lock the edge mutex
-                eMutex_.lock(rwMutex::WRITE_LOCK);
-
                 // Add an internal edge
                 addedEdgeIndices[indexI] =
                     insertEdge
@@ -1338,9 +1262,6 @@ void dynamicTopoFvMesh::bisectEdge
 
                 // RemoveSlivers needs this edge-label for collapse
                 bisectInterior_ = addedEdgeIndices[indexI];
-
-                // Unlock the edge mutex from write lock
-                eMutex_.unlock();
 
                 // Add this edge to the interior-face faceEdges entry..
                 faceEdges_[addedIntFaceIndices[indexI]][1] =
@@ -1382,9 +1303,6 @@ void dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
-                // Unlock the face mutex from write lock
-                fMutex_.unlock();
-
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[indexI] = addedFaceIndices[indexI];
 
@@ -1402,9 +1320,6 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpTriFace[0] = newPointIndex;
                 tmpTriFace[1] = newEdge[1];
                 tmpTriFace[2] = vertexHull[0];
-
-                // Write lock the face mutex
-                fMutex_.lock(rwMutex::WRITE_LOCK);
 
                 // Insert the face
                 addedFaceIndices[0] =
@@ -1428,9 +1343,6 @@ void dynamicTopoFvMesh::bisectEdge
                 tmpIntEdgePoints[2] = newEdge[1];
                 tmpIntEdgePoints[3] = vertexHull[indexI];
 
-                // Write lock the edge mutex
-                eMutex_.lock(rwMutex::WRITE_LOCK);
-
                 // Add an internal edge
                 addedEdgeIndices[0] =
                     insertEdge
@@ -1440,9 +1352,6 @@ void dynamicTopoFvMesh::bisectEdge
                         tmpIntEdgeFaces,
                         tmpIntEdgePoints
                     );
-
-                // Unlock the edge mutex from write lock
-                eMutex_.unlock();
 
                 // Add this edge to the interior-face faceEdges entry..
                 faceEdges_[addedIntFaceIndices[0]][1] =
@@ -1484,9 +1393,6 @@ void dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
-                // Unlock the face mutex from write lock
-                fMutex_.unlock();
-
                 // Add an entry to newEdgeFaces
                 newEdgeFaces[0] = addedFaceIndices[0];
 
@@ -1503,9 +1409,6 @@ void dynamicTopoFvMesh::bisectEdge
             tmpTriFace[0] = vertexHull[indexI];
             tmpTriFace[1] = newEdge[1];
             tmpTriFace[2] = newPointIndex;
-
-            // Write lock the face mutex
-            fMutex_.lock(rwMutex::WRITE_LOCK);
 
             // Insert the face
             addedFaceIndices[indexI] =
@@ -1542,9 +1445,6 @@ void dynamicTopoFvMesh::bisectEdge
             tmpEdgePoints[1] = vertexHull[prevI];
             tmpEdgePoints[2] = thisEdge[0];
 
-            // Write lock the edge mutex
-            eMutex_.lock(rwMutex::WRITE_LOCK);
-
             // Add an edge
             addedEdgeIndices[indexI] =
                 insertEdge
@@ -1554,9 +1454,6 @@ void dynamicTopoFvMesh::bisectEdge
                     tmpEdgeFaces,
                     tmpEdgePoints
                 );
-
-            // Unlock the edge mutex from write lock
-            eMutex_.unlock();
 
             // Add a faceEdges entry to the previous interior face
             faceEdges_[addedIntFaceIndices[prevI]][2] =
@@ -1594,9 +1491,6 @@ void dynamicTopoFvMesh::bisectEdge
             // Add the faceEdges entry
             faceEdges_.append(tmpFaceEdges);
 
-            // Unlock the face mutex from write lock
-            fMutex_.unlock();
-
             // Add an entry to newEdgeFaces
             newEdgeFaces[indexI] = addedFaceIndices[indexI];
 
@@ -1604,9 +1498,6 @@ void dynamicTopoFvMesh::bisectEdge
             cells_[addedCellIndices[prevI]][3] = addedFaceIndices[indexI];
         }
     }
-
-    // Unlock all entities
-    unlockMutexLists(tIndex);
 
     if (debug > 2)
     {

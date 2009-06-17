@@ -924,13 +924,6 @@ void dynamicTopoFvMesh::collapseEdge
     // Figure out which thread this is...
     label tIndex = self();
 
-    // Try to write-lock this edge.
-    if (tryEdgeLock(eIndex, rwMutex::WRITE_LOCK))
-    {
-        edgeStack(tIndex).push(eIndex);
-        return;
-    }
-
     if
     (
         (nModifications_ > maxModifications_)
@@ -955,24 +948,15 @@ void dynamicTopoFvMesh::collapseEdge
     labelList edgeHull(m, -1);
     labelListList ringEntities(4, labelList(m, -1));
 
-    // Construct a hull around this edge, and write-lock entities
-    if
+    // Construct a hull around this edge
+    constructHull
     (
-        constructHull
-        (
-            eIndex,
-            edgeHull,
-            faceHull,
-            cellHull,
-            ringEntities,
-            rwMutex::WRITE_LOCK
-        )
-    )
-    {
-        // Put this edge back on the stack and bail out
-        edgeStack(tIndex).push(eIndex);
-        return;
-    }
+        eIndex,
+        edgeHull,
+        faceHull,
+        cellHull,
+        ringEntities
+    );
 
     if (debug > 1)
     {
@@ -1222,9 +1206,6 @@ void dynamicTopoFvMesh::collapseEdge
                         )
                     )
                     {
-                        // Unlock all entities
-                        unlockMutexLists(tIndex);
-
                         return;
                     }
                 }
@@ -1245,9 +1226,6 @@ void dynamicTopoFvMesh::collapseEdge
                         )
                     )
                     {
-                        // Unlock all entities
-                        unlockMutexLists(tIndex);
-
                         return;
                     }
                 }
@@ -1473,11 +1451,6 @@ void dynamicTopoFvMesh::collapseEdge
         }
     }
 
-    // Write lock mutexes
-    eMutex_.lock(rwMutex::WRITE_LOCK);
-    fMutex_.lock(rwMutex::WRITE_LOCK);
-    cMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Remove all hull entities
     forAll(faceHull, indexI)
     {
@@ -1490,23 +1463,9 @@ void dynamicTopoFvMesh::collapseEdge
             // Remove faceToRemove and associated faceEdges
             removeFace(faceToRemove);
 
-            // Remove from list of locked faces
-            removeFaceLock(faceToRemove);
-
             // Remove the hull cell
             cells_.remove(cellToRemove);
             lengthScale_.remove(cellToRemove);
-
-            // Remove from list of locked cells
-            removeCellLock(cellToRemove);
-
-            // Remove the cell mutex
-            if (threader_->multiThreaded())
-            {
-                // Unlock it first
-                cellMutex_[cellToRemove].unlock();
-                cellMutex_.remove(cellToRemove);
-            }
 
             // Update the number of cells, and the reverse cell map
             nCells_--;
@@ -1526,20 +1485,9 @@ void dynamicTopoFvMesh::collapseEdge
         // Remove the hull edge and associated edgeFaces
         removeEdge(edgeToRemove);
 
-        // Remove from list of locked edges
-        removeEdgeLock(edgeToRemove);
-
         // Remove the hull face
         removeFace(faceHull[indexI]);
-
-        // Remove from list of locked faces
-        removeFaceLock(faceHull[indexI]);
     }
-
-    // Unlock mutexes from write lock
-    cMutex_.unlock();
-    fMutex_.unlock();
-    eMutex_.unlock();
 
     // Loop through pointEdges for the collapsePoint,
     // and replace all occurrences with replacePoint.
@@ -1659,9 +1607,6 @@ void dynamicTopoFvMesh::collapseEdge
         buildEdgePoints(ringEntities[replaceEdgeIndex][edgeI]);
     }
 
-    // Write lock the point mutex
-    pMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Move to the new point
     meshPoints_[replacePoint] = newPoint;
 
@@ -1669,22 +1614,8 @@ void dynamicTopoFvMesh::collapseEdge
     meshPoints_.remove(collapsePoint);
     nPoints_--;
 
-    // Remove from list of locked points
-    removePointLock(collapsePoint);
-
-    // Remove the point mutex
-    if (threader_->multiThreaded())
-    {
-        // Unlock it first
-        pointMutex_[collapsePoint].unlock();
-        pointMutex_.remove(collapsePoint);
-    }
-
     // Null pointEdges so that removeEdge deletes it.
     pointEdges_[collapsePoint] = labelList(0);
-
-    // Unlock the point mutex from write lock
-    pMutex_.unlock();
 
     // Update the reverse point map
     if (collapsePoint < nOldPoints_)
@@ -1692,20 +1623,8 @@ void dynamicTopoFvMesh::collapseEdge
         reversePointMap_[collapsePoint] = -1;
     }
 
-    // Write lock the edge mutex
-    eMutex_.lock(rwMutex::WRITE_LOCK);
-
     // Remove the edge
     removeEdge(eIndex);
-
-    // Remove from list of locked edges
-    removeEdgeLock(eIndex);
-
-    // Unlock the edge mutex from write lock
-    eMutex_.unlock();
-
-    // Unlock all entities (from write lock)
-    unlockMutexLists(tIndex);
 
     // Set the flag
     topoChangeFlag_ = true;
