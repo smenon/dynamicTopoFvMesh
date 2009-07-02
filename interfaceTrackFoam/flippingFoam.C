@@ -49,9 +49,6 @@ Author
 
 int main(int argc, char *argv[])
 {
-    // Set mutex debug option before mesh is created.
-    // Mutex::debug = true;
-
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicMesh.H"
@@ -100,9 +97,6 @@ int main(int argc, char *argv[])
         // Update mesh motion
         mesh.movePoints(mPtr->newPoints());
 
-        // Obtain mesh stats before topo-changes
-        mesh.meshQuality(true);
-
         // Update mesh for topology changes
         bool meshChanged = mesh.updateTopology();
 
@@ -122,46 +116,7 @@ int main(int argc, char *argv[])
 
         runTime.write();
 
-        if (runTime.outputTime())
-        {
-            // Write out mesh quality
-            volScalarField meshQuality
-            (
-                IOobject
-                (
-                    "meshQuality",
-                    runTime.timeName(),
-                    mesh,
-                    IOobject::NO_READ,
-                    IOobject::AUTO_WRITE
-                ),
-                mesh,
-                dimensionedScalar("scalar", dimless, 0.0),
-                "zeroGradient"
-            );
-
-            meshQuality.internalField() = mesh.meshQuality(true);
-            meshQuality.write();
-
-            // Write out the mesh length scales
-            volScalarField lengthScale
-            (
-                IOobject
-                (
-                    "lengthScale",
-                    runTime.timeName(),
-                    mesh,
-                    IOobject::NO_READ,
-                    IOobject::AUTO_WRITE
-                ),
-                mesh,
-                dimensionedScalar("scalar", dimLength, 0.0),
-                "zeroGradient"
-            );
-
-            lengthScale.internalField() = mesh.lengthScale();
-            lengthScale.write();
-        }
+#       include "meshInfo.H"
     }
 
     Info << "End\n" << endl;

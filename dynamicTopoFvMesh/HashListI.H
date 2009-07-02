@@ -645,6 +645,29 @@ HashList<T>::iterator::operator++()
     return (*this);
 }
 
+// Iterator operator overload - Decrement to previous item in the list
+template<class T>
+inline typename
+HashList<T>::iterator&
+HashList<T>::iterator::operator--
+(
+    int
+)
+{
+    curItem = curItem->previdx_;
+    return (*this);
+}
+
+// Iterator operator overload - Decrement to previous item in the list
+template<class T>
+inline typename
+HashList<T>::iterator&
+HashList<T>::iterator::operator--()
+{
+    curItem = curItem->previdx_;
+    return (*this);
+}
+
 //- Return an iterator to the start of the list
 template<class T>
 inline typename HashList<T>::iterator HashList<T>::begin()

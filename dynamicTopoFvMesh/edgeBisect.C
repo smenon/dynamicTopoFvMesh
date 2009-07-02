@@ -128,21 +128,21 @@ void dynamicTopoFvMesh::bisectQuadFace
     otherEdgePoint[1] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
 
     // Add two new points to the end of the list
-    newPtIndex[0] = meshPoints_.append
+    newPtIndex[0] = points_.append
                     (
                         0.5*
                         (
-                            meshPoints_[commonEdges[0][0]]
-                          + meshPoints_[commonEdges[0][1]]
+                            points_[commonEdges[0][0]]
+                          + points_[commonEdges[0][1]]
                         )
                     );
 
-    newPtIndex[1] = meshPoints_.append
+    newPtIndex[1] = points_.append
                     (
                         0.5*
                         (
-                            meshPoints_[commonEdges[1][0]]
-                          + meshPoints_[commonEdges[1][1]]
+                            points_[commonEdges[1][0]]
+                          + points_[commonEdges[1][1]]
                         )
                     );
     nPoints_ += 2;
@@ -928,12 +928,12 @@ void dynamicTopoFvMesh::bisectEdge
 
     // Add a new point to the end of the list
     label newPointIndex =
-        meshPoints_.append
+        points_.append
         (
             0.5*
             (
-                meshPoints_[thisEdge[0]]
-              + meshPoints_[thisEdge[1]]
+                points_[thisEdge[0]]
+              + points_[thisEdge[1]]
             )
         );
 
@@ -1623,6 +1623,27 @@ void dynamicTopoFvMesh::bisectEdge
 
     // Increment the number of modifications
     nModifications_++;
+
+    // If this is an edge on a master coupled patch,
+    // bisect its slave as well...
+    /*
+    if (whichEdgePatch(eIndex) == masterPatch_)
+    {
+        slaveIndex_ = -1;
+
+        // Bisect the slave
+        bisectEdge(masterToSlave_[eIndex]);
+
+        // Update the maps
+        masterToSlave_.insert(newEdgeIndex, slaveIndex_);
+    }
+    else
+    if (whichEdgePatch(eIndex) == slavePatch_)
+    {
+        // Update the index
+        slaveIndex_ = newEdgeIndex;
+    }
+    */
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -131,7 +131,7 @@ inline vector dynamicTopoFvMesh::tangentToEdge
 {
     edge& thisEdge = edges_[eIndex];
 
-    return (meshPoints_[thisEdge[1]] - meshPoints_[thisEdge[0]]);
+    return (points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
 
 // Find the circumcenter of a face
@@ -142,9 +142,9 @@ inline point dynamicTopoFvMesh::circumCenter
 {
     // Obtain references
     face& thisFace = faces_[fIndex];
-    const point& a = meshPoints_[thisFace[0]];
-    const point& b = meshPoints_[thisFace[1]];
-    const point& c = meshPoints_[thisFace[2]];
+    const point& a = points_[thisFace[0]];
+    const point& b = points_[thisFace[1]];
+    const point& c = points_[thisFace[2]];
 
     scalar d1 =  (c - a)&(b - a);
     scalar d2 = -(c - b)&(b - a);
@@ -181,9 +181,9 @@ inline point dynamicTopoFvMesh::triFaceCenter
 
     return
     (
-        meshPoints_[thisFace[0]]
-      + meshPoints_[thisFace[1]]
-      + meshPoints_[thisFace[2]]
+        points_[thisFace[0]]
+      + points_[thisFace[1]]
+      + points_[thisFace[2]]
     )/3.0;
 }
 
@@ -204,8 +204,8 @@ inline vector dynamicTopoFvMesh::triFaceNormal
     const face& triFace
 )
 {
-    vector v = meshPoints_[triFace[1]] - meshPoints_[triFace[0]];
-    vector w = meshPoints_[triFace[2]] - meshPoints_[triFace[0]];
+    vector v = points_[triFace[1]] - points_[triFace[0]];
+    vector w = points_[triFace[2]] - points_[triFace[0]];
 
     return 0.5 * (v ^ w);
 }
@@ -377,7 +377,7 @@ inline void dynamicTopoFvMesh::edgeLength
 {
     edge& thisEdge = edges_[eIndex];
 
-    length = mag(meshPoints_[thisEdge[1]] - meshPoints_[thisEdge[0]]);
+    length = mag(points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
 
 // Return the face-stack
@@ -793,16 +793,29 @@ inline void dynamicTopoFvMesh::computeMinQuality
         {
             cQuality = (*tetMetric_)
             (
-                meshPoints_[edgeToCheck[0]],
-                meshPoints_[hullVertices[indexI-1]],
-                meshPoints_[edgeToCheck[1]],
-                meshPoints_[hullVertices[indexI]]
+                points_[edgeToCheck[0]],
+                points_[hullVertices[indexI-1]],
+                points_[edgeToCheck[1]],
+                points_[hullVertices[indexI]]
             );
 
             // Check if the quality is worse
             minQuality = cQuality < minQuality ? cQuality : minQuality;
         }
     }
+
+    // If this lies on a master coupled patch,
+    // include quality from the slave as well.
+    /*
+    if (whichEdgePatch(eIndex) == masterPatch_)
+    {
+        scalar slaveQuality = 0.0;
+
+        computeMinQuality(masterToSlave_[eIndex], slaveQuality);
+
+        minQuality = slaveQuality < minQuality ? slaveQuality : minQuality;
+    }
+    */
 
     // Ensure that the mesh is valid
     if (minQuality < 0.0)

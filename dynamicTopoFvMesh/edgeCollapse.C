@@ -383,8 +383,8 @@ void dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Delete the two points...
-        meshPoints_.remove(cv0);
-        meshPoints_.remove(cv1);
+        points_.remove(cv0);
+        points_.remove(cv1);
         nPoints_ -= 2;
 
         // Update the reverse point map
@@ -518,8 +518,8 @@ void dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Delete the two points...
-        meshPoints_.remove(cv2);
-        meshPoints_.remove(cv3);
+        points_.remove(cv2);
+        points_.remove(cv3);
         nPoints_ -= 2;
 
         // Update the reverse point map
@@ -903,9 +903,11 @@ void dynamicTopoFvMesh::collapseQuadFace
 }
 
 // Method for the collapse of an edge in 3D
-void dynamicTopoFvMesh::collapseEdge
+// Returns true if the collapse was performed.
+bool dynamicTopoFvMesh::collapseEdge
 (
-    const label eIndex
+    const label eIndex,
+    const label cCase
 )
 {
     // Edge collapse performs the following operations:
@@ -932,7 +934,7 @@ void dynamicTopoFvMesh::collapseEdge
     {
         // Reached the max allowable topo-changes.
         edgeStack(tIndex).clear();
-        return;
+        return false;
     }
 
     // Hull variables
@@ -1042,6 +1044,14 @@ void dynamicTopoFvMesh::collapseEdge
         collapseCase = 2;
     }
 
+    // Override collapseCase if cCase is non-negative.
+    // This is usually a forced case involving a slave edge
+    // on a coupled patch.
+    if (cCase != -1)
+    {
+        collapseCase = cCase;
+    }
+
     switch (collapseCase)
     {
         case 1:
@@ -1054,7 +1064,7 @@ void dynamicTopoFvMesh::collapseEdge
             removeEdgeIndex = 2;
             removeFaceIndex = 3;
             checkPoints[0] = collapsePoint;
-            newPoint = meshPoints_[thisEdge[0]];
+            newPoint = points_[thisEdge[0]];
 
             break;
 
@@ -1068,7 +1078,7 @@ void dynamicTopoFvMesh::collapseEdge
             replaceEdgeIndex = 2;
             replaceFaceIndex = 3;
             checkPoints[0] = collapsePoint;
-            newPoint = meshPoints_[thisEdge[1]];
+            newPoint = points_[thisEdge[1]];
 
             break;
 
@@ -1206,7 +1216,7 @@ void dynamicTopoFvMesh::collapseEdge
                         )
                     )
                     {
-                        return;
+                        return false;
                     }
                 }
 
@@ -1226,12 +1236,56 @@ void dynamicTopoFvMesh::collapseEdge
                         )
                     )
                     {
-                        return;
+                        return false;
                     }
                 }
             }
         }
     }
+
+    // If this edge is on a master coupled patch, check if the slave
+    // can perform a collapse too.
+    /*
+    if (whichEdgePatch(eIndex) == masterPatch_)
+    {
+        // Figure out the collapseCase for the slave
+        label slaveCase = -1;
+        label slaveIndex = masterToSlave_[eIndex];
+        edge& slaveEdge = edges_[slaveIndex];
+
+        if (slaveEdge[0] == collapsePoint)
+        {
+            slaveCase = 2;
+        }
+        else
+        if (slaveEdge[1] == collapsePoint)
+        {
+            slaveCase = 1;
+        }
+        else
+        {
+            // Something is very wrong.
+            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                << "Master/slave edges don't match." << nl
+                << "Master: " << eIndex << ":" << edges_[eIndex] << nl
+                << "Slave: " << slaveIndex << ":" << slaveEdge
+                << abort(FatalError);
+        }
+
+        // Collapse the slave edge
+        bool slaveSuccess = collapseEdge(slaveIndex, slaveCase);
+
+        // If the slave failed, the master fails as well.
+        if (slaveSuccess)
+        {
+            masterToSlave_.erase(eIndex);
+        }
+        else
+        {
+            return false;
+        }
+    }
+    */
 
     // Renumber all hull faces and edges
     forAll(faceHull, indexI)
@@ -1608,10 +1662,10 @@ void dynamicTopoFvMesh::collapseEdge
     }
 
     // Move to the new point
-    meshPoints_[replacePoint] = newPoint;
+    points_[replacePoint] = newPoint;
 
     // Remove the collapse point
-    meshPoints_.remove(collapsePoint);
+    points_.remove(collapsePoint);
     nPoints_--;
 
     // Null pointEdges so that removeEdge deletes it.
@@ -1634,6 +1688,9 @@ void dynamicTopoFvMesh::collapseEdge
 
     // Increment the number of modifications
     nModifications_++;
+
+    // Return a succesful collapse
+    return true;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

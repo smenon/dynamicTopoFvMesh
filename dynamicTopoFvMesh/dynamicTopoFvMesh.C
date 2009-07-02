@@ -83,7 +83,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ),
     interval_(1),
     mapper_(NULL),
-    meshPoints_(polyMesh::points()),
+    points_(polyMesh::points()),
     faces_(polyMesh::faces()),
     owner_(polyMesh::faceOwner()),
     neighbour_(polyMesh::faceNeighbour()),
@@ -123,6 +123,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nSwaps_(-1),
     maxModifications_(-1),
     bisectInterior_(-1),
+    slaveIndex_(-1),
     maxTetsPerEdge_(-1),
     allowTableResize_(false)
 {
@@ -651,7 +652,7 @@ void dynamicTopoFvMesh::testDelaunay
     }
 
     // Obtain point references for the first face
-    point& a = meshPoints_[triFaces[0][0]];
+    point& a = points_[triFaces[0][0]];
 
     point cCenter = circumCenter(fLabel);
     scalar rSquared = (a - cCenter)&(a - cCenter);
@@ -678,7 +679,7 @@ void dynamicTopoFvMesh::testDelaunay
     }
 
     // ...and determine whether it lies in this circle
-    point& otherPoint = meshPoints_[pIndex];
+    point& otherPoint = points_[pIndex];
 
     if
     (
@@ -898,7 +899,7 @@ void dynamicTopoFvMesh::removeCell
                             pointEdges_[edgeToCheck[pointI]] = labelList(0);
 
                             // Remove the point
-                            meshPoints_.remove(edgeToCheck[pointI]);
+                            points_.remove(edgeToCheck[pointI]);
 
                             nPoints_--;
 
@@ -922,7 +923,7 @@ void dynamicTopoFvMesh::removeCell
             // Check if this internal face is oriented properly.
             face newFace;
             label newOwner = -1;
-            
+
             if (neighbour_[cellToCheck[faceI]] == index)
             {
                 // Orientation is correct
@@ -947,7 +948,7 @@ void dynamicTopoFvMesh::removeCell
             }
 
             // Insert a new boundary face
-            label newFaceIndex = 
+            label newFaceIndex =
                 insertFace
                 (
                     patch,
@@ -955,10 +956,10 @@ void dynamicTopoFvMesh::removeCell
                     newOwner,
                     -1
                 );
-            
+
             // Add the faceEdges entry
             faceEdges_.append(faceEdges);
-            
+
             // Replace edgeFaces with the new face label
             forAll(faceEdges, edgeI)
             {
@@ -969,7 +970,7 @@ void dynamicTopoFvMesh::removeCell
                     edgeFaces_[faceEdges[edgeI]]
                 );
             }
-            
+
             // Replace cell with the new face label
             replaceLabel
             (
@@ -1070,6 +1071,127 @@ void dynamicTopoFvMesh::removeFace
 
     // Decrement the total face-count
     nFaces_--;
+}
+
+// Split an internal face into two boundary faces
+void dynamicTopoFvMesh::splitInternalFace
+(
+    const label internalFace
+)
+{
+
+}
+
+// Merge two boundary faces into one internal face
+label dynamicTopoFvMesh::mergeBoundaryFaces
+(
+    const label firstFace,
+    const label secondFace
+)
+{
+    if (debug > 2)
+    {
+        Info << "Merging faces: "
+             << firstFace << " and "
+             << secondFace << endl;
+    }
+
+    // Sanity check: Are these actually boundary faces?
+    if (neighbour_[firstFace] != -1 || neighbour_[secondFace] != -1)
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::mergeBoundaryFaces()"
+        )
+            << nl << " Faces: "
+            << firstFace << " and " << secondFace
+            << " are not on boundaries. "
+            << abort(FatalError);
+    }
+
+    // Perform distance-based checks to determine corresponding points
+    Map<label> mapPoints;
+    face& firstPolyFace = faces_[firstFace];
+    face& secondPolyFace = faces_[secondFace];
+
+    forAll(firstPolyFace, pointI)
+    {
+        forAll(secondPolyFace, pointJ)
+        {
+            if
+            (
+                magSqr
+                (
+                    points_[firstPolyFace[pointI]]
+                  - points_[secondPolyFace[pointJ]]
+                )
+                < VSMALL
+            )
+            {
+                // Found the point. Add it.
+                mapPoints.insert(pointI, pointJ);
+                break;
+            }
+        }
+    }
+
+    // Sanity check: Were all points matched up?
+    if
+    (
+        (twoDMesh_ && mapPoints.size() != 4) ||
+        (!twoDMesh_ && mapPoints.size() != 3)
+    )
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::mergeBoundaryFaces()"
+        )
+            << nl << " Faces: "
+            << firstFace << " and " << secondFace
+            << " do not match up. "
+            << abort(FatalError);
+    }
+
+    // Obtain owners for both faces, and compare their labels
+    face newFace;
+    label removedFace = -1, retainedFace = -1;
+    label newOwner = -1, newNeighbour = -1;
+
+    if (owner_[firstFace] < owner_[secondFace])
+    {
+        // Retain the first face
+        newFace = firstPolyFace;
+        newOwner = owner_[firstFace];
+        newNeighbour = owner_[secondFace];
+    }
+    else
+    {
+        // Retain the second face
+        newFace = secondPolyFace;
+        newOwner = owner_[secondFace];
+        newNeighbour = owner_[firstFace];
+    }
+
+    labelList& faceEdges = faceEdges_[retainedFace];
+
+    // Replace cell with the new face label
+    replaceLabel
+    (
+        removedFace,
+        retainedFace,
+        cells_[newNeighbour]
+    );
+
+    // Remove the boundary face
+    removeFace(removedFace);
+
+    // Insert a new interior face
+    label newFaceIndex = insertFace(-1, newFace, newOwner, newNeighbour);
+
+    // Add the faceEdges entry
+    faceEdges_.append(faceEdges);
+
+    return newFaceIndex;
 }
 
 // Insert the specified edge to the mesh
@@ -1622,6 +1744,193 @@ void dynamicTopoFvMesh::buildEdgePoints
     }
 }
 
+// Utility method to build mapping between coupled patches
+void dynamicTopoFvMesh::buildCoupledMaps()
+{
+    if (!patchCoupling_.size())
+    {
+        return;
+    }
+
+    // Clear existing maps
+    masterToSlave_.clear();
+    mList_.clear();
+    sList_.clear();
+
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    // Build an edge-list for the master side.
+    label nProcPatches = 0;
+    List<labelHashSet> mEdgeLabels(bdy.size()), sEdgeLabels(bdy.size());
+    List<pointField> mCentres(bdy.size()), sCentres(bdy.size());
+
+    // Loop though boundary faces and check whether
+    // they belong to master coupled patches.
+    for
+    (
+        HashList<face>::iterator faceI = faces_(faces_.lastIndex());
+        faceI.index() >= nOldInternalFaces_;
+        faceI--
+    )
+    {
+        label pIndex = whichPatch(faceI.index());
+
+        if (patchCoupling_.found(pIndex))
+        {
+            labelList& mFaceEdges = faceEdges_[faceI.index()];
+
+            forAll(mFaceEdges, edgeI)
+            {
+                if (!mEdgeLabels[pIndex].found(mFaceEdges[edgeI]))
+                {
+                    mEdgeLabels[pIndex].insert(mFaceEdges[edgeI]);
+                }
+            }
+        }
+    }
+
+    forAllIter(Map<label>, patchCoupling_, patchI)
+    {
+        label mPatch = patchI.key();
+        label sPatch = patchI();
+
+        // Geometric match:
+        // First build a list of edge-centres
+        mList_[mPatch] = mEdgeLabels[mPatch].toc();
+
+        mCentres[mPatch] = pointField(mList_[mPatch].size(), vector::zero);
+        sCentres[mPatch] = pointField(mList_[mPatch].size(), vector::zero);
+
+        forAll(mList_[mPatch], edgeI)
+        {
+            const edge& mE = edges_[mList_[mPatch][edgeI]];
+            mCentres[mPatch][edgeI] = 0.5*(points_[mE[0]] + points_[mE[1]]);
+        }
+
+        if (sPatch == -1)
+        {
+            // This is a processor patch.
+            // Find out which neighbour it talks to.
+            const processorPolyPatch& pp =
+                refCast<const processorPolyPatch>(bdy[mPatch]);
+
+            label neiProcNo = pp.neighbProcNo();
+
+            // Send information to neighbour
+            OPstream toNbr(Pstream::nonBlocking, neiProcNo);
+
+            toNbr << mCentres[mPatch];
+            toNbr << mList_[mPatch];
+
+            // Receive information from neighbour
+            IPstream fromNbr(Pstream::nonBlocking, neiProcNo);
+
+            fromNbr >> sCentres[mPatch];
+            fromNbr >> sList_[mPatch];
+
+            // Increment processor patch count for sync.
+            nProcPatches++;
+        }
+        else
+        {
+            // This is an explicitly coupled non-processor patch.
+
+            // Loop though boundary faces and check whether
+            // they belong to the slave coupled patch.
+            for
+            (
+                HashList<face>::iterator faceI = faces_(faces_.lastIndex());
+                faceI.index() >= nOldInternalFaces_;
+                faceI--
+            )
+            {
+                label pIndex = whichPatch(faceI.index());
+
+                if (pIndex == sPatch)
+                {
+                    labelList& sFaceEdges = faceEdges_[faceI.index()];
+
+                    forAll(sFaceEdges, edgeI)
+                    {
+                        if (!sEdgeLabels[pIndex].found(sFaceEdges[edgeI]))
+                        {
+                            sEdgeLabels[pIndex].insert(sFaceEdges[edgeI]);
+                        }
+                    }
+                }
+            }
+
+            // Sanity check: Do patches have equal number of edges?
+            if (mEdgeLabels[mPatch].size() != sEdgeLabels[sPatch].size())
+            {
+                FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
+                    << "Patch edge sizes are not consistent."
+                    << abort(FatalError);
+            }
+
+            // Geometric match:
+            // Build a list of edge-centres
+            sList_[mPatch] = sEdgeLabels[sPatch].toc();
+
+            forAll(sList_[mPatch], edgeI)
+            {
+                const edge& sE = edges_[sList_[mPatch][edgeI]];
+                sCentres[mPatch][edgeI] = 0.5*(points_[sE[0]] + points_[sE[1]]);
+            }
+        }
+    }
+
+    // If processor patches are present, wait for all transfers to complete.
+    if (nProcPatches)
+    {
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+    }
+
+    // Now match all edge-centres and build mapping info.
+    forAllIter(Map<label>, patchCoupling_, patchI)
+    {
+        label mPatch = patchI.key();
+
+        label nMatchedEdges = 0;
+
+        forAll(mCentres[mPatch], edgeI)
+        {
+            forAll(sCentres[mPatch], edgeJ)
+            {
+                if
+                (
+                    mag
+                    (
+                        mCentres[mPatch][edgeI]
+                      - sCentres[mPatch][edgeJ]
+                    ) < 1e-20
+                )
+                {
+                    // Add a map entry
+                    masterToSlave_[mPatch].insert
+                    (
+                        mList_[mPatch][edgeI],
+                        sList_[mPatch][edgeJ]
+                    );
+
+                    nMatchedEdges++;
+
+                    break;
+                }
+            }
+        }
+
+        // Make sure we were successful.
+        if (nMatchedEdges != mCentres[mPatch].size())
+        {
+            FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
+                << "Failed to match all patch edges."
+                << abort(FatalError);
+        }
+    }
+}
+
 // Utility to check whether points of an edge lie on a boundary.
 void dynamicTopoFvMesh::checkEdgeBoundary
 (
@@ -1754,6 +2063,123 @@ void dynamicTopoFvMesh::initTables
     triangulations.setSize(3,labelList((mMax-2),-1));
 }
 
+// Check triangulation quality for an edge index
+bool dynamicTopoFvMesh::checkQuality
+(
+    const label eIndex,
+    const FixedList<label,2>& m,
+    const List<scalarListList>& Q,
+    const scalar minQuality
+)
+{
+    /*
+    label patch = whichEdgePatch(eIndex);
+
+    if (patch == masterPatch_)
+    {
+        // Ensure that triangulation quality of both tables
+        // is better than minQuality
+        if
+        (
+            (Q[0][0][m[0]-1] > minQuality)
+         && (Q[1][0][m[1]-1] > minQuality)
+        )
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+    */
+
+    // Normal edge. Check the first table.
+    if (Q[0][0][m[0]-1] > minQuality)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+// Utility method to fill the dynamic programming tables
+// Checks for coupled edges
+bool dynamicTopoFvMesh::fillTables
+(
+    const label eIndex,
+    const scalar minQuality,
+    FixedList<label,2>& m,
+    List<scalarListList>& Q,
+    List<labelListList>& K,
+    List<labelListList>& triangulations
+)
+{
+    /*
+    label patch = whichEdgePatch(eIndex);
+
+    // Check if this is a coupled edge
+    if (patch == slavePatch_)
+    {
+        return false;
+    }
+
+    if (patch == masterPatch_)
+    {
+        // Check master and slave edge.
+        return
+        (
+            fillTables
+            (
+                eIndex,
+                minQuality,
+                m[0],
+                Q[0],
+                K[0],
+                triangulations[0]
+            )
+         &&
+            fillTables
+            (
+                masterToSlave_[eIndex],
+                minQuality,
+                m[1],
+                Q[1],
+                K[1],
+                triangulations[1]
+            )
+        );
+    }
+    */
+
+    // Normal edge
+    return fillTables(eIndex, minQuality, m[0], Q[0], K[0], triangulations[0]);
+}
+
+// Remove the edge according to the swap sequence
+// Checks for coupled edges
+void dynamicTopoFvMesh::removeEdgeFlips
+(
+    const label eIndex,
+    const List<labelListList>& K,
+    List<labelListList>& triangulations
+)
+{
+    /*
+    label patch = whichEdgePatch(eIndex);
+
+    if (patch == masterPatch_)
+    {
+        slaveIndex_ = -1;
+
+        // Swap on the slave patch
+        removeEdgeFlips(masterToSlave_[eIndex], K[1], triangulations[1]);
+    }
+    */
+
+    removeEdgeFlips(eIndex, K[0], triangulations[0]);
+}
+
 // Utility method to fill the dynamic programming tables
 //  - Returns true if the operation completed successfully.
 //  - Returns false if tables could not be resized.
@@ -1799,10 +2225,10 @@ bool dynamicTopoFvMesh::fillTables
             {
                 scalar qA = (*tetMetric_)
                 (
-                    meshPoints_[hullVertices[i]],
-                    meshPoints_[hullVertices[k]],
-                    meshPoints_[hullVertices[j]],
-                    meshPoints_[edgeToCheck[0]]
+                    points_[hullVertices[i]],
+                    points_[hullVertices[k]],
+                    points_[hullVertices[j]],
+                    points_[edgeToCheck[0]]
                 );
 
                 /*
@@ -1815,10 +2241,10 @@ bool dynamicTopoFvMesh::fillTables
 
                 scalar qB = (*tetMetric_)
                 (
-                    meshPoints_[hullVertices[j]],
-                    meshPoints_[hullVertices[k]],
-                    meshPoints_[hullVertices[i]],
-                    meshPoints_[edgeToCheck[1]]
+                    points_[hullVertices[j]],
+                    points_[hullVertices[k]],
+                    points_[hullVertices[i]],
+                    points_[edgeToCheck[1]]
                 );
 
                 scalar q = Foam::min(qA,qB);
@@ -2032,30 +2458,30 @@ label dynamicTopoFvMesh::identify32Swap
         sign[0] =
             tetVolumeSign
             (
-                meshPoints_[hullVertices[triangulations[0][i]]],
-                meshPoints_[hullVertices[triangulations[1][i]]],
-                meshPoints_[edgeToCheck[1]],
-                meshPoints_[edgeToCheck[0]],
+                points_[hullVertices[triangulations[0][i]]],
+                points_[hullVertices[triangulations[1][i]]],
+                points_[edgeToCheck[1]],
+                points_[edgeToCheck[0]],
                 tolerance
             );
 
         sign[1] =
             tetVolumeSign
             (
-                meshPoints_[hullVertices[triangulations[1][i]]],
-                meshPoints_[hullVertices[triangulations[2][i]]],
-                meshPoints_[edgeToCheck[1]],
-                meshPoints_[edgeToCheck[0]],
+                points_[hullVertices[triangulations[1][i]]],
+                points_[hullVertices[triangulations[2][i]]],
+                points_[edgeToCheck[1]],
+                points_[edgeToCheck[0]],
                 tolerance
             );
 
         sign[2] =
             tetVolumeSign
             (
-                meshPoints_[hullVertices[triangulations[2][i]]],
-                meshPoints_[hullVertices[triangulations[0][i]]],
-                meshPoints_[edgeToCheck[1]],
-                meshPoints_[edgeToCheck[0]],
+                points_[hullVertices[triangulations[2][i]]],
+                points_[hullVertices[triangulations[0][i]]],
+                points_[edgeToCheck[1]],
+                points_[edgeToCheck[0]],
                 tolerance
             );
 
@@ -2092,7 +2518,7 @@ label dynamicTopoFvMesh::identify32Swap
         forAll(hullVertices, vertexI)
         {
             Info << hullVertices[vertexI] << ": "
-                 << meshPoints_[hullVertices[vertexI]]
+                 << points_[hullVertices[vertexI]]
                  << endl;
         }
 
@@ -2100,8 +2526,8 @@ label dynamicTopoFvMesh::identify32Swap
             << "Could not determine 3-2 swap triangulation." << nl
             << "Edge: " << edgeToCheck << nl
             << "Edge Points: "
-            << meshPoints_[edgeToCheck[0]] << ","
-            << meshPoints_[edgeToCheck[1]] << nl
+            << points_[edgeToCheck[0]] << ","
+            << points_[edgeToCheck[1]] << nl
             << abort(FatalError);
     }
 
@@ -2237,7 +2663,7 @@ void dynamicTopoFvMesh::writeVTK
                 if (!pointMap.found(cpList[nCells][pointI]))
                 {
                     // Point was not found, so add it
-                    points[nPoints] = meshPoints_[cpList[nCells][pointI]];
+                    points[nPoints] = points_[cpList[nCells][pointI]];
 
                     // Update the map
                     pointMap.insert(cpList[nCells][pointI], nPoints);
@@ -2544,7 +2970,7 @@ void dynamicTopoFvMesh::checkConnectivity()
     {
         Info << "Checking point-edge connectivity...";
 
-        label allPoints = meshPoints_.lastIndex() + 1;
+        label allPoints = points_.lastIndex() + 1;
         List<labelHashSet> hlPointEdges(allPoints);
 
         forAllIter(HashList<edge>::iterator, edges_, eIter)
@@ -2902,7 +3328,6 @@ void dynamicTopoFvMesh::calculateLengthScale()
             // Set boundary patch size if no fixed-length scale is specified.
             if
             (
-                // (toc.size() == 0) &&
                 (bdyPatch.type() != "wedge") &&
                 (bdyPatch.type() != "empty") &&
                 (bdyPatch.type() != "symmetryPlane")
@@ -3347,6 +3772,78 @@ void dynamicTopoFvMesh::initEdges()
         pointEdges_ = eMeshPtr_->pointEdges();
         edgePoints_ = eMeshPtr_->edgePoints();
     }
+
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    // Check if patches are explicitly coupled
+    if (dict_.subDict("dynamicTopoFvMesh").found("coupledPatches"))
+    {
+        dictionary coupledPatches =
+            dict_.subDict("dynamicTopoFvMesh").subDict("coupledPatches");
+
+        // Determine master and slave patches
+        wordList masterPatches = coupledPatches.toc();
+
+        forAll(masterPatches, wordI)
+        {
+            // Lookup the slave patch
+            word masterPatch = masterPatches[wordI];
+            word slavePatch  = coupledPatches.lookup(masterPatch);
+
+            // Determine patch indices
+            label mPatch = -1, sPatch = -1;
+
+            forAll(bdy,patchI)
+            {
+                if (bdy[patchI].name() == masterPatch)
+                {
+                    mPatch = patchI;
+                }
+
+                if (bdy[patchI].name() == slavePatch)
+                {
+                    sPatch = patchI;
+                }
+            }
+
+            if (mPatch == -1 && sPatch == -1)
+            {
+                // This pair doesn't exist. This might be
+                // true for some sub-domains.
+                continue;
+            }
+
+            // Add to the list if entries are legitimate
+            if
+            (
+                mPatch != sPatch &&
+                bdy[mPatch].size() == bdy[sPatch].size()
+            )
+            {
+                patchCoupling_.insert(mPatch, sPatch);
+            }
+            else
+            {
+                FatalErrorIn("dynamicTopoFvMesh::initEdges()")
+                        << " Coupled patches are wrongly specified." << nl
+                        << " Master: " << mPatch << ":" << masterPatch << nl
+                        << " Slave: " << sPatch << ":" << slavePatch << nl
+                        << abort(FatalError);
+            }
+        }
+    }
+
+    // Add processor patches to the list
+    forAll(bdy, patchI)
+    {
+        if (bdy[patchI].type() == "processor")
+        {
+            patchCoupling_.insert(patchI, -1);
+        }
+    }
+
+    // Build maps between master and slave patches
+    buildCoupledMaps();
 }
 
 // Return a reference to the multiThreader
@@ -3471,15 +3968,18 @@ void dynamicTopoFvMesh::swap3DEdges
     label tIndex = mesh->self();
 
     // Hull variables
-    label m = -1;
+    FixedList<label,2> m(-1);
     scalar minQuality;
 
     // Dynamic programming variables
-    scalarListList Q;
-    labelListList K, triangulations;
+    List<scalarListList> Q(2);
+    List<labelListList> K(2), triangulations(2);
 
     // Allocate dynamic programming tables
-    mesh->initTables(Q, K, triangulations);
+    forAll(Q, indexI)
+    {
+        mesh->initTables(Q[indexI], K[indexI], triangulations[indexI]);
+    }
 
     // Pick edges off the stack
     while (!mesh->edgeStack(tIndex).empty())
@@ -3504,7 +4004,7 @@ void dynamicTopoFvMesh::swap3DEdges
         if (mesh->fillTables(eIndex, minQuality, m, Q, K, triangulations))
         {
             // Check if edge-swapping is required.
-            if (Q[0][m-1] > minQuality)
+            if (mesh->checkQuality(eIndex, m, Q, minQuality))
             {
                 if (thread->master_)
                 {
@@ -3635,9 +4135,9 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         cellVolume = tetVolume
         (
-            meshPoints_[faceToCheck[2]],
-            meshPoints_[faceToCheck[1]],
-            meshPoints_[faceToCheck[0]],
+            points_[faceToCheck[2]],
+            points_[faceToCheck[1]],
+            points_[faceToCheck[0]],
             newPoint
         );
     }
@@ -3645,9 +4145,9 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         cellVolume = tetVolume
         (
-            meshPoints_[faceToCheck[0]],
-            meshPoints_[faceToCheck[1]],
-            meshPoints_[faceToCheck[2]],
+            points_[faceToCheck[0]],
+            points_[faceToCheck[1]],
+            points_[faceToCheck[2]],
             newPoint
         );
     }
@@ -3779,6 +4279,9 @@ void dynamicTopoFvMesh::removeSlivers()
             collapseEdge(bisectInterior_);
         }
     }
+
+    // Clear out the list
+    thresholdSlivers_.clear();
 }
 
 // Update mesh corresponding to the given map
@@ -4265,7 +4768,7 @@ bool dynamicTopoFvMesh::updateTopology()
     // Obtain the most recent point-positions
     const pointField& currentPoints = points();
 
-    forAllIter(HashList<point>::iterator, meshPoints_, pIter)
+    forAllIter(HashList<point>::iterator, points_, pIter)
     {
         pIter() = currentPoints[pIter.index()];
     }

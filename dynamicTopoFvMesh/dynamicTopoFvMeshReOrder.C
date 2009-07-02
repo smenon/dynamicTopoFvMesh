@@ -51,7 +51,7 @@ void dynamicTopoFvMesh::reOrderPoints
 
     addedPointRenumbering_.clear();
 
-    forAllIter(HashList<point>::iterator, meshPoints_, ptIter)
+    forAllIter(HashList<point>::iterator, points_, ptIter)
     {
         // Obtain the index for this point
         label pIndex = ptIter.index();
@@ -76,10 +76,10 @@ void dynamicTopoFvMesh::reOrderPoints
     }
 
     // Clear the HashList and reset.
-    meshPoints_.clear();
+    points_.clear();
     forAll(points, pointI)
     {
-        meshPoints_.append(points[pointI]);
+        points_.append(points[pointI]);
     }
 }
 

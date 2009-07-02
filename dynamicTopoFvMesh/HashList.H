@@ -183,6 +183,8 @@ public:
             //- Postfix/prefix overload
             inline iterator& operator++(int);
             inline iterator& operator++();
+            inline iterator& operator--(int);
+            inline iterator& operator--();
         };
 
     // Destructor

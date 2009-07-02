@@ -43,11 +43,6 @@ Description
 #include "tetPolyPatchInterpolation.H"
 #include "setMotionBC.H"
 
-// Included for point-normals post-processing
-#include "pointMesh.H"
-#include "pointFields.H"
-#include "fixedValuePointPatchFields.H"
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 // Adjust fluid viscosity for temperature variations
@@ -94,24 +89,6 @@ int main(int argc, char *argv[])
 
     fluidInterface interface(mesh, U, p, phi);
 
-    // Obtain fluid indicator from the interface
-    volScalarField* fluidIndicatorPtr = NULL;
-
-    fluidIndicatorPtr = new volScalarField
-    (
-        IOobject
-        (
-            "fluidIndicator",
-            runTime.timeName(),
-            mesh,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
-        ),
-        interface.fluidIndicator()
-    );
-
-    volScalarField& fluidIndicator = *fluidIndicatorPtr;
-
     volScalarField nu
     (
         IOobject
@@ -122,13 +99,19 @@ int main(int argc, char *argv[])
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        fluidIndicator*
+        interface.fluidIndicator()*
         (
             (interface.muFluidA()/interface.rhoFluidA())
           - (interface.muFluidB()/interface.rhoFluidB())
         )
       + (interface.muFluidB()/interface.rhoFluidB())
     );
+
+    if (interface.twoFluids())
+    {
+        // Set initial velocity only for the liquid phase
+        U = interface.fluidIndicator()*U;
+    }
 
     Info<< "\nStarting time loop\n" << endl;
 
@@ -349,6 +332,14 @@ int main(int argc, char *argv[])
 
             // Update the motion solver
             mPtr->updateMesh(mesh.meshMap());
+
+            // Update viscosity with the new fluid indicator
+            nu = interface.fluidIndicator()*
+                 (
+                     (interface.muFluidA()/interface.rhoFluidA())
+                   - (interface.muFluidB()/interface.rhoFluidB())
+                 )
+               + (interface.muFluidB()/interface.rhoFluidB());
         }
 
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"

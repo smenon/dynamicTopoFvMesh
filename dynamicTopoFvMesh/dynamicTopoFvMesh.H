@@ -100,7 +100,7 @@ class dynamicTopoFvMesh
         autoPtr<mapPolyMesh> mapper_;
 
         //- Local copies of connectivity information
-        HashList<point> meshPoints_;
+        HashList<point> points_;
         HashList<face>  faces_;
         HashList<label> owner_;
         HashList<label> neighbour_;
@@ -171,6 +171,12 @@ class dynamicTopoFvMesh
         label               bisectInterior_;
         labelHashSet        thresholdSlivers_;
         scalarListList      curvatureFields_;
+
+        //- Coupled patch data
+        label               slaveIndex_;
+        Map<label>          patchCoupling_;
+        List<Map<label> >   masterToSlave_;
+        labelListList       mList_, sList_;
 
         //- 3D Mesh Flipping data
         label               maxTetsPerEdge_;
@@ -413,9 +419,10 @@ class dynamicTopoFvMesh
         );
 
         // Method for the collapse of an edge in 3D
-        void collapseEdge
+        bool collapseEdge
         (
-            const label eIndex
+            const label eIndex,
+            const label cCase = -1
         );
 
         // Utility method to check for invalid edge-collapse.
@@ -508,6 +515,19 @@ class dynamicTopoFvMesh
             const label index
         );
 
+        // Split an internal face into two boundary faces
+        void splitInternalFace
+        (
+            const label internalFace
+        );
+
+        // Merge two boundary faces into one internal face
+        label mergeBoundaryFaces
+        (
+            const label firstFace,
+            const label secondFace
+        );
+
         // Insert the specified edge to the mesh
         label insertEdge
         (
@@ -568,6 +588,9 @@ class dynamicTopoFvMesh
             const label eIndex
         );
 
+        // Utility method to build mapping between coupled patches
+        void buildCoupledMaps();
+
         // Utility to check whether points of an edge lie on a boundary
         void checkEdgeBoundary
         (
@@ -591,6 +614,36 @@ class dynamicTopoFvMesh
             scalarListList& Q,
             labelListList& K,
             labelListList& triangulations
+        );
+
+        // Check triangulation quality for an edge index
+        bool checkQuality
+        (
+            const label eIndex,
+            const FixedList<label,2>& m,
+            const List<scalarListList>& Q,
+            const scalar minQuality
+        );
+
+        // Utility method to fill the dynamic programming tables
+        // Checks for coupled edges
+        bool fillTables
+        (
+            const label eIndex,
+            const scalar minQuality,
+            FixedList<label,2>& m,
+            List<scalarListList>& Q,
+            List<labelListList>& K,
+            List<labelListList>& triangulations
+        );
+
+        // Remove the edge according to the swap sequence
+        // Checks for coupled edges
+        void removeEdgeFlips
+        (
+            const label eIndex,
+            const List<labelListList>& K,
+            List<labelListList>& triangulations
         );
 
         // Utility method to fill the dynamic programming tables
