@@ -49,6 +49,7 @@ Author
 #include "MeshObject.H"
 
 #include <dlfcn.h>
+#include <mpi.h>
 
 namespace Foam
 {
@@ -191,6 +192,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         else
         {
             edgeStack_.setSize(1);
+            priorityEdgeStack_.setSize(1);
         }
     }
     else
@@ -206,6 +208,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         else
         {
             edgeStack_.setSize(nThreads + 1);
+            priorityEdgeStack_.setSize(nThreads + 1);
         }
 
         for (label i = 0; i <= nThreads; i++)
@@ -1752,12 +1755,30 @@ void dynamicTopoFvMesh::buildCoupledMaps()
         return;
     }
 
-    // Clear existing maps
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    // Clear existing maps and resize
     masterToSlave_.clear();
+    slaveToMaster_.clear();
     mList_.clear();
     sList_.clear();
 
-    const polyBoundaryMesh& bdy = boundaryMesh();
+    masterToSlave_.setSize(bdy.size());
+    slaveToMaster_.setSize(bdy.size());
+
+    mList_.setSize(bdy.size(), labelList(0));
+    sList_.setSize(bdy.size(), labelList(0));
+
+    // Clear existing buffers and resize
+    sendMinQualityBuffer_.clear();
+    recvMinQualityBuffer_.clear();
+    sendImpQualityBuffer_.clear();
+    recvImpQualityBuffer_.clear();
+
+    sendMinQualityBuffer_.setSize(bdy.size(), scalarList(0));
+    recvMinQualityBuffer_.setSize(bdy.size(), scalarList(0));
+    sendImpQualityBuffer_.setSize(bdy.size(), scalarList(0));
+    recvImpQualityBuffer_.setSize(bdy.size(), scalarList(0));
 
     // Build an edge-list for the master side.
     label nProcPatches = 0;
@@ -1797,9 +1818,15 @@ void dynamicTopoFvMesh::buildCoupledMaps()
         // Geometric match:
         // First build a list of edge-centres
         mList_[mPatch] = mEdgeLabels[mPatch].toc();
+        sList_[mPatch].setSize(mList_[mPatch].size(), -1);
 
-        mCentres[mPatch] = pointField(mList_[mPatch].size(), vector::zero);
-        sCentres[mPatch] = pointField(mList_[mPatch].size(), vector::zero);
+        sendMinQualityBuffer_[mPatch].setSize(mList_[mPatch].size(), 0.0);
+        recvMinQualityBuffer_[mPatch].setSize(mList_[mPatch].size(), 0.0);
+        sendImpQualityBuffer_[mPatch].setSize(mList_[mPatch].size(), 0.0);
+        recvImpQualityBuffer_[mPatch].setSize(mList_[mPatch].size(), 0.0);
+
+        mCentres[mPatch].setSize(mList_[mPatch].size(), vector::zero);
+        sCentres[mPatch].setSize(mList_[mPatch].size(), vector::zero);
 
         forAll(mList_[mPatch], edgeI)
         {
@@ -1816,17 +1843,21 @@ void dynamicTopoFvMesh::buildCoupledMaps()
 
             label neiProcNo = pp.neighbProcNo();
 
-            // Send information to neighbour
-            OPstream toNbr(Pstream::nonBlocking, neiProcNo);
+            OPstream::write
+            (
+                Pstream::nonBlocking,
+                neiProcNo,
+                reinterpret_cast<const char*>(&mCentres[mPatch][0]),
+                mCentres[mPatch].size()*sizeof(vector)
+            );
 
-            toNbr << mCentres[mPatch];
-            toNbr << mList_[mPatch];
-
-            // Receive information from neighbour
-            IPstream fromNbr(Pstream::nonBlocking, neiProcNo);
-
-            fromNbr >> sCentres[mPatch];
-            fromNbr >> sList_[mPatch];
+            OPstream::write
+            (
+                Pstream::nonBlocking,
+                neiProcNo,
+                reinterpret_cast<const char*>(&mList_[mPatch][0]),
+                mList_[mPatch].size()*sizeof(label)
+            );
 
             // Increment processor patch count for sync.
             nProcPatches++;
@@ -1883,6 +1914,39 @@ void dynamicTopoFvMesh::buildCoupledMaps()
     // If processor patches are present, wait for all transfers to complete.
     if (nProcPatches)
     {
+        forAllIter(Map<label>, patchCoupling_, patchI)
+        {
+            label mPatch = patchI.key();
+            label sPatch = patchI();
+
+            if (sPatch == -1)
+            {
+                // This is a processor patch.
+                // Find out which neighbour it talks to.
+                const processorPolyPatch& pp =
+                    refCast<const processorPolyPatch>(bdy[mPatch]);
+
+                label neiProcNo = pp.neighbProcNo();
+
+                // Receive information from neighbour
+                IPstream::read
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<char*>(sCentres[mPatch].begin()),
+                    sCentres[mPatch].byteSize()
+                );
+
+                IPstream::read
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<char*>(sList_[mPatch].begin()),
+                    sList_[mPatch].byteSize()
+                );
+            }
+        }
+
         OPstream::waitRequests();
         IPstream::waitRequests();
     }
@@ -1912,6 +1976,12 @@ void dynamicTopoFvMesh::buildCoupledMaps()
                     (
                         mList_[mPatch][edgeI],
                         sList_[mPatch][edgeJ]
+                    );
+
+                    slaveToMaster_[mPatch].insert
+                    (
+                        sList_[mPatch][edgeJ],
+                        mList_[mPatch][edgeI]
                     );
 
                     nMatchedEdges++;
@@ -2067,35 +2137,19 @@ void dynamicTopoFvMesh::initTables
 bool dynamicTopoFvMesh::checkQuality
 (
     const label eIndex,
-    const FixedList<label,2>& m,
-    const List<scalarListList>& Q,
-    const scalar minQuality
+    const label m,
+    const scalarListList& Q,
+    const scalar minQuality,
+    bool coupledCheck
 )
 {
-    /*
-    label patch = whichEdgePatch(eIndex);
-
-    if (patch == masterPatch_)
+    if (coupledCheck)
     {
-        // Ensure that triangulation quality of both tables
-        // is better than minQuality
-        if
-        (
-            (Q[0][0][m[0]-1] > minQuality)
-         && (Q[1][0][m[1]-1] > minQuality)
-        )
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-    */
 
-    // Normal edge. Check the first table.
-    if (Q[0][0][m[0]-1] > minQuality)
+    }
+
+    // Non-coupled check
+    if (Q[0][m-1] > minQuality)
     {
         return true;
     }
@@ -2104,93 +2158,16 @@ bool dynamicTopoFvMesh::checkQuality
 }
 
 // Utility method to fill the dynamic programming tables
-// Checks for coupled edges
-bool dynamicTopoFvMesh::fillTables
-(
-    const label eIndex,
-    const scalar minQuality,
-    FixedList<label,2>& m,
-    List<scalarListList>& Q,
-    List<labelListList>& K,
-    List<labelListList>& triangulations
-)
-{
-    /*
-    label patch = whichEdgePatch(eIndex);
-
-    // Check if this is a coupled edge
-    if (patch == slavePatch_)
-    {
-        return false;
-    }
-
-    if (patch == masterPatch_)
-    {
-        // Check master and slave edge.
-        return
-        (
-            fillTables
-            (
-                eIndex,
-                minQuality,
-                m[0],
-                Q[0],
-                K[0],
-                triangulations[0]
-            )
-         &&
-            fillTables
-            (
-                masterToSlave_[eIndex],
-                minQuality,
-                m[1],
-                Q[1],
-                K[1],
-                triangulations[1]
-            )
-        );
-    }
-    */
-
-    // Normal edge
-    return fillTables(eIndex, minQuality, m[0], Q[0], K[0], triangulations[0]);
-}
-
-// Remove the edge according to the swap sequence
-// Checks for coupled edges
-void dynamicTopoFvMesh::removeEdgeFlips
-(
-    const label eIndex,
-    const List<labelListList>& K,
-    List<labelListList>& triangulations
-)
-{
-    /*
-    label patch = whichEdgePatch(eIndex);
-
-    if (patch == masterPatch_)
-    {
-        slaveIndex_ = -1;
-
-        // Swap on the slave patch
-        removeEdgeFlips(masterToSlave_[eIndex], K[1], triangulations[1]);
-    }
-    */
-
-    removeEdgeFlips(eIndex, K[0], triangulations[0]);
-}
-
-// Utility method to fill the dynamic programming tables
 //  - Returns true if the operation completed successfully.
 //  - Returns false if tables could not be resized.
 bool dynamicTopoFvMesh::fillTables
 (
     const label eIndex,
-    const scalar minQuality,
     label& m,
     scalarListList& Q,
     labelListList& K,
-    labelListList& triangulations
+    labelListList& triangulations,
+    bool priority
 )
 {
     edge& edgeToCheck = edges_[eIndex];
@@ -2231,14 +2208,6 @@ bool dynamicTopoFvMesh::fillTables
                     points_[edgeToCheck[0]]
                 );
 
-                /*
-                if (qA < minQuality)
-                {
-                    Q[i][j] = qA;
-                    break;
-                }
-                */
-
                 scalar qB = (*tetMetric_)
                 (
                     points_[hullVertices[j]],
@@ -2264,6 +2233,49 @@ bool dynamicTopoFvMesh::fillTables
                     Q[i][j] = q;
                     K[i][j] = k;
                 }
+            }
+        }
+    }
+
+    // If this is a priority edge, fill the buffer with
+    // the improved quality information
+    if
+    (
+        priority &&
+        patchCoupling_.size() &&
+        whichEdgePatch(eIndex) > -1
+    )
+    {
+        label i = -1;
+
+        const polyBoundaryMesh& bdy = boundaryMesh();
+
+        // Search for this edge on all coupled master patches
+        forAll(mList_, patchI)
+        {
+            if (masterToSlave_[patchI].found(eIndex))
+            {
+                // Find the position in the list
+                foundInList(eIndex, mList_[patchI], i);
+
+                sendImpQualityBuffer_[patchI][i] = Q[0][m-1];
+            }
+        }
+
+        // Search for this edge on non-processor coupled patches
+        forAll(sList_, patchI)
+        {
+            if (isA<processorPolyPatch>(bdy[patchI]))
+            {
+                continue;
+            }
+
+            if (slaveToMaster_[patchI].found(eIndex))
+            {
+                // Find the position in the list
+                foundInList(eIndex, sList_[patchI], i);
+
+                recvImpQualityBuffer_[patchI][i] = Q[0][m-1];
             }
         }
     }
@@ -2834,11 +2846,13 @@ void dynamicTopoFvMesh::checkConnectivity()
         // Check if this edge belongs to faceEdges for each face
         forAll(edgeFaces, faceI)
         {
+            label i = -1;
+
             if
             (
                 !foundInList
                 (
-                    efIter.index(), faceEdges_[edgeFaces[faceI]]
+                    efIter.index(), faceEdges_[edgeFaces[faceI]], i
                 )
             )
             {
@@ -3076,7 +3090,9 @@ void dynamicTopoFvMesh::checkConnectivity()
                     nextPoint
                 );
 
-                if (!foundInList(otherPoint, edgePoints))
+                label i = -1;
+
+                if (!foundInList(otherPoint, edgePoints, i))
                 {
                     Info << nl << nl
                          << "Edge: " << epIter.index()
@@ -3703,9 +3719,9 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
 
     // If this is a slave, acquire the lock for this structure
-    if (!thread->master_)
+    if (thread->slave())
     {
-        thread->syncMutex_.lock();
+        thread->lock();
     }
 
     dynamicTopoFvMesh *mesh = thread->mesh_;
@@ -3730,7 +3746,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
         if (failed)
         {
-            if (thread->master_)
+            if (thread->master())
             {
                 // Swap this face.
                 mesh->swapQuadFace(fIndex);
@@ -3744,9 +3760,9 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     }
 
     // If this is a slave, relinquish the lock for this structure
-    if (!thread->master_)
+    if (thread->slave())
     {
-        thread->syncMutex_.unlock();
+        thread->unlock();
     }
 }
 
@@ -3836,14 +3852,11 @@ void dynamicTopoFvMesh::initEdges()
     // Add processor patches to the list
     forAll(bdy, patchI)
     {
-        if (bdy[patchI].type() == "processor")
+        if (isA<processorPolyPatch>(bdy[patchI]))
         {
             patchCoupling_.insert(patchI, -1);
         }
     }
-
-    // Build maps between master and slave patches
-    buildCoupledMaps();
 }
 
 // Return a reference to the multiThreader
@@ -3856,6 +3869,145 @@ const multiThreader& dynamicTopoFvMesh::threader() const
 bool dynamicTopoFvMesh::edgeModification()
 {
     return edgeModification_;
+}
+
+// Send quality buffers for coupled patches.
+void dynamicTopoFvMesh::sendQualityBuffers()
+{
+    if (!patchCoupling_.size())
+    {
+        return;
+    }
+
+    // Slave threads cannot send/receive
+    if (threader().multiThreaded() && self() > 0)
+    {
+        return;
+    }
+
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    // Loop through coupled patches and send/receive parallel buffers
+    forAllIter(Map<label>, patchCoupling_, patchI)
+    {
+        label mPatch = patchI.key();
+        label sPatch = patchI();
+
+        if (sPatch == -1)
+        {
+            // This is a processor patch.
+            // Find out which neighbour it talks to.
+            const processorPolyPatch& pp =
+                refCast<const processorPolyPatch>(bdy[mPatch]);
+
+            label neiProcNo = pp.neighbProcNo();
+
+            // Send information to neighbour
+            OPstream::write
+            (
+                Pstream::nonBlocking,
+                neiProcNo,
+                reinterpret_cast<const char*>
+                (
+                    &sendMinQualityBuffer_[mPatch][0]
+                ),
+                sendMinQualityBuffer_[mPatch].size()*sizeof(scalar)
+            );
+
+            OPstream::write
+            (
+                Pstream::nonBlocking,
+                neiProcNo,
+                reinterpret_cast<const char*>
+                (
+                    &sendImpQualityBuffer_[mPatch][0]
+                ),
+                sendImpQualityBuffer_[mPatch].size()*sizeof(scalar)
+            );
+        }
+    }
+}
+
+// Receive quality buffers for coupled patches.
+void dynamicTopoFvMesh::receiveQualityBuffers()
+{
+    if (!patchCoupling_.size())
+    {
+        return;
+    }
+
+    // Slave threads cannot send/receive
+    if (threader().multiThreaded() && self() > 0)
+    {
+        return;
+    }
+
+    label nProcPatches = 0;
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    forAllIter(Map<label>, patchCoupling_, patchI)
+    {
+        label mPatch = patchI.key();
+        label sPatch = patchI();
+
+        if (sPatch == -1)
+        {
+            // This is a processor patch.
+            // Find out which neighbour it talks to.
+            const processorPolyPatch& pp =
+                refCast<const processorPolyPatch>(bdy[mPatch]);
+
+            label neiProcNo = pp.neighbProcNo();
+
+            // Receive information from neighbour
+            IPstream::read
+            (
+                Pstream::nonBlocking,
+                neiProcNo,
+                reinterpret_cast<char*>
+                (
+                    recvMinQualityBuffer_[mPatch].begin()
+                ),
+                recvMinQualityBuffer_[mPatch].byteSize()
+            );
+
+            IPstream::read
+            (
+                Pstream::nonBlocking,
+                neiProcNo,
+                reinterpret_cast<char*>
+                (
+                    recvImpQualityBuffer_[mPatch].begin()
+                ),
+                recvImpQualityBuffer_[mPatch].byteSize()
+            );
+
+            nProcPatches++;
+        }
+    }
+
+    if (nProcPatches)
+    {
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+    }
+}
+
+// Synchronize and exit for parallel runs.
+void dynamicTopoFvMesh::synchronizeAndExit()
+{
+    if (Pstream::parRun())
+    {
+        Info << "Synchronizing all processes...";
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Finalize();
+
+        Info << "Done." << endl;
+        Info << "Terminating normally." << endl;
+
+        ::exit(0);
+    }
 }
 
 // 2D Edge-bisection/collapse engine
@@ -3873,9 +4025,9 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
 
     // If this is a slave, acquire the lock for this structure
-    if (!thread->master_)
+    if (thread->slave())
     {
-        thread->syncMutex_.lock();
+        thread->lock();
     }
 
     dynamicTopoFvMesh *mesh = thread->mesh_;
@@ -3912,7 +4064,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
             if (length > mesh->ratioMax()*scale)
             {
-                if (thread->master_)
+                if (thread->master())
                 {
                     // Bisect this face
                     mesh->bisectQuadFace(fIndex);
@@ -3926,7 +4078,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
             else
             if (length < mesh->ratioMin()*scale)
             {
-                if (thread->master_)
+                if (thread->master())
                 {
                     // Collapse this face
                     mesh->collapseQuadFace(fIndex);
@@ -3941,9 +4093,9 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     }
 
     // If this is a slave, relinquish the lock for this structure
-    if (!thread->master_)
+    if (thread->slave())
     {
-        thread->syncMutex_.unlock();
+        thread->unlock();
     }
 }
 
@@ -3957,9 +4109,9 @@ void dynamicTopoFvMesh::swap3DEdges
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
 
     // If this is a slave, acquire the lock for this structure
-    if (!thread->master_)
+    if (thread->slave())
     {
-        thread->syncMutex_.lock();
+        thread->lock();
     }
 
     dynamicTopoFvMesh *mesh = thread->mesh_;
@@ -3968,17 +4120,106 @@ void dynamicTopoFvMesh::swap3DEdges
     label tIndex = mesh->self();
 
     // Hull variables
-    FixedList<label,2> m(-1);
+    label m = -1;
     scalar minQuality;
 
     // Dynamic programming variables
-    List<scalarListList> Q(2);
-    List<labelListList> K(2), triangulations(2);
+    scalarListList Q;
+    labelListList K, triangulations;
 
     // Allocate dynamic programming tables
-    forAll(Q, indexI)
+    mesh->initTables(Q, K, triangulations);
+
+    // Deal with prioritized edges first
+    if (!(mesh->threader().multiThreaded() && thread->master()))
     {
-        mesh->initTables(Q[indexI], K[indexI], triangulations[indexI]);
+        forAll(mesh->priorityEdgeStack(tIndex), edgeI)
+        {
+            // Retrieve an edge from the stack
+            label eIndex = mesh->priorityEdgeStack(tIndex)[edgeI];
+
+            // Compute the minimum quality of cells around this edge.
+            mesh->computeMinQuality
+            (
+                eIndex,
+                minQuality,
+                true,
+                false
+            );
+
+            // Fill the dynamic programming tables
+            // and compute improved quality for send buffers
+            mesh->fillTables(eIndex, m, Q, K, triangulations, true);
+
+            // Push this edge on to the master stack
+            mesh->priorityEdgeStack(0).push(eIndex);
+        }
+    }
+
+    // Send coupled processor patch information
+    mesh->sendQualityBuffers();
+
+    // Meanwhile, deal with locally coupled edges
+    if (thread->master())
+    {
+        forAll(mesh->priorityEdgeStack(tIndex), edgeI)
+        {
+            // Retrieve an edge from the stack
+            label eIndex = mesh->priorityEdgeStack(tIndex)[edgeI];
+
+            // Is this a locally coupled edge?
+            if (mesh->locallyCoupledEdge(eIndex))
+            {
+                // Check if this edge is on a bounding curve
+                if (mesh->checkBoundingCurve(eIndex))
+                {
+                    continue;
+                }
+
+                // Fill the dynamic programming tables
+                mesh->fillTables(eIndex, m, Q, K, triangulations);
+
+                // Check if edge-swapping is required.
+                if (mesh->checkQuality(eIndex, m, Q, minQuality, true))
+                {
+                    // Remove this edge according to the swap sequence
+                    mesh->removeEdgeFlips(eIndex, K, triangulations);
+                }
+            }
+        }
+    }
+
+    // Receive coupled processor patch information
+    mesh->receiveQualityBuffers();
+
+    // Now deal with updated processor edges
+    if (thread->master())
+    {
+        while (!mesh->priorityEdgeStack(tIndex).empty())
+        {
+            // Retrieve an edge from the stack
+            label eIndex = mesh->priorityEdgeStack(tIndex).pop();
+
+            // Is this a coupled processor edge?
+            if (mesh->coupledProcessorEdge(eIndex))
+            {
+                // Check if this edge is on a bounding curve
+                if (mesh->checkBoundingCurve(eIndex))
+                {
+                    continue;
+                }
+
+                // Fill the dynamic programming tables
+                mesh->fillTables(eIndex, m, Q, K, triangulations);
+
+                // Check if edge-swapping is required.
+                if (mesh->checkQuality(eIndex, m, Q, minQuality, true))
+                {
+                    // Remove this edge according to the swap sequence
+                    mesh->removeEdgeFlips(eIndex, K, triangulations);
+                }
+            }
+        }
     }
 
     // Pick edges off the stack
@@ -3987,12 +4228,6 @@ void dynamicTopoFvMesh::swap3DEdges
         // Retrieve an edge from the stack
         label eIndex = mesh->edgeStack(tIndex).pop();
 
-        // Check if this edge is on a bounding curve
-        if (mesh->checkBoundingCurve(eIndex))
-        {
-            continue;
-        }
-
         // Compute the minimum quality of cells around this edge
         mesh->computeMinQuality
         (
@@ -4000,13 +4235,19 @@ void dynamicTopoFvMesh::swap3DEdges
             minQuality
         );
 
+        // Check if this edge is on a bounding curve
+        if (mesh->checkBoundingCurve(eIndex))
+        {
+            continue;
+        }
+
         // Fill the dynamic programming tables
-        if (mesh->fillTables(eIndex, minQuality, m, Q, K, triangulations))
+        if (mesh->fillTables(eIndex, m, Q, K, triangulations))
         {
             // Check if edge-swapping is required.
             if (mesh->checkQuality(eIndex, m, Q, minQuality))
             {
-                if (thread->master_)
+                if (thread->master())
                 {
                     // Remove this edge according to the swap sequence
                     mesh->removeEdgeFlips(eIndex, K, triangulations);
@@ -4021,9 +4262,9 @@ void dynamicTopoFvMesh::swap3DEdges
     }
 
     // If this is a slave, relinquish the lock for this structure
-    if (!thread->master_)
+    if (thread->slave())
     {
-        thread->syncMutex_.unlock();
+        thread->unlock();
     }
 }
 
@@ -4041,9 +4282,9 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
 
     // If this is a slave, acquire the lock for this structure
-    if (!thread->master_)
+    if (thread->slave())
     {
-        thread->syncMutex_.lock();
+        thread->lock();
     }
 
     dynamicTopoFvMesh *mesh = thread->mesh_;
@@ -4065,7 +4306,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 
         if (length > mesh->ratioMax()*scale)
         {
-            if (thread->master_)
+            if (thread->master())
             {
                 // Bisect this edge
                 mesh->bisectEdge(eIndex);
@@ -4079,7 +4320,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         else
         if (length < mesh->ratioMin()*scale)
         {
-            if (thread->master_)
+            if (thread->master())
             {
                 // Collapse this edge
                 mesh->collapseEdge(eIndex);
@@ -4093,9 +4334,9 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     }
 
     // If this is a slave, relinquish the lock for this structure
-    if (!thread->master_)
+    if (thread->slave())
     {
-        thread->syncMutex_.unlock();
+        thread->unlock();
     }
 }
 
@@ -4812,7 +5053,6 @@ bool dynamicTopoFvMesh::updateTopology()
     // Apply all pending topology changes, if necessary
     if (topoChangeFlag_)
     {
-
         // Allocate temporary lists for mesh-reset
         pointField points(nPoints_);
         edgeList edges(nEdges_);

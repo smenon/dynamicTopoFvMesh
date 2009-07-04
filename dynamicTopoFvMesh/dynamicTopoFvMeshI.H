@@ -24,6 +24,8 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "processorPolyPatch.H"
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -121,6 +123,15 @@ inline void dynamicTopoFvMesh::stack::clear()
 inline void dynamicTopoFvMesh::stack::print()
 {
     Info << stack_ << endl;
+}
+
+//- Access the stack as a list
+inline label dynamicTopoFvMesh::stack::operator[]
+(
+    const label index
+)
+{
+    return stack_[index];
 }
 
 // Obtain the tangent-to-edge vector
@@ -398,6 +409,15 @@ inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack
     return edgeStack_[threadID];
 }
 
+// Return the priority edge-stack for a particular thread
+inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::priorityEdgeStack
+(
+    const label threadID
+)
+{
+    return priorityEdgeStack_[threadID];
+}
+
 // Return the integer threadID for a given pthread
 // Return zero for single-threaded operation
 inline label dynamicTopoFvMesh::self()
@@ -422,11 +442,69 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
     forAll(edgeStack_, stackI)
     {
         edgeStack_[stackI].clear();
+        priorityEdgeStack_[stackI].clear();
+    }
+
+    label tID = 1;
+    labelHashSet priorityEdges;
+
+    // Build a list of prioritized edges for coupled patches
+    if (patchCoupling_.size())
+    {
+        for
+        (
+            HashList<face>::iterator faceI = faces_(faces_.lastIndex());
+            faceI.index() >= nOldInternalFaces_;
+            faceI--
+        )
+        {
+            label pIndex = whichPatch(faceI.index());
+
+            forAllIter(Map<label>, patchCoupling_, patchI)
+            {
+                label mPatch = patchI.key();
+                label sPatch = patchI();
+
+                if
+                (
+                    (pIndex == mPatch) ||
+                    (pIndex == sPatch && sPatch != -1)
+                )
+                {
+                    labelList& faceEdges = faceEdges_[faceI.index()];
+
+                    forAll(faceEdges, edgeI)
+                    {
+                        if (!priorityEdges.found(faceEdges[edgeI]))
+                        {
+                            priorityEdges.insert(faceEdges[edgeI]);
+
+                            if (threader_->multiThreaded())
+                            {
+                                priorityEdgeStack_[tID].insert
+                                (
+                                    faceEdges[edgeI]
+                                );
+
+                                tID = (tID == edgeStack_.size()-1) ? 1:tID + 1;
+                            }
+                            else
+                            {
+                                priorityEdgeStack_[0].insert
+                                (
+                                    faceEdges[edgeI]
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (threader_->multiThreaded())
     {
-        label tID = 1;
+        tID = 1;
 
         for
         (
@@ -435,6 +513,12 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
             iter++
         )
         {
+            // Ensure that this edge doesn't exist in the priority stack.
+            if (priorityEdges.found(iter.index()))
+            {
+                continue;
+            }
+
             edgeStack_[tID].insert(iter.index());
 
             tID = (tID == edgeStack_.size()-1) ? 1 : tID + 1;
@@ -449,6 +533,11 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
             iter++
         )
         {
+            if (priorityEdges.found(iter.index()))
+            {
+                continue;
+            }
+
             edgeStack_[0].insert(iter.index());
         }
     }
@@ -496,7 +585,7 @@ inline void dynamicTopoFvMesh::initFaceStacks()
 // Similar to the polyBoundaryMesh routine, but works on local information
 inline label dynamicTopoFvMesh::whichPatch
 (
-    const label& index
+    const label index
 )
 {
     if (index < nOldInternalFaces_)
@@ -540,7 +629,7 @@ inline label dynamicTopoFvMesh::whichPatch
 // Method to determine the old boundary patch index for a given edge
 inline label dynamicTopoFvMesh::whichEdgePatch
 (
-    const label& index
+    const label index
 )
 {
     if (index < nOldInternalEdges_)
@@ -579,6 +668,64 @@ inline label dynamicTopoFvMesh::whichEdgePatch
     }
 
     return -2;
+}
+
+// Method to determine whether the edge is locally coupled
+inline bool dynamicTopoFvMesh::locallyCoupledEdge
+(
+    const label eIndex
+)
+{
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    forAll(bdy, patchI)
+    {
+        if (isA<processorPolyPatch>(bdy[patchI]))
+        {
+            continue;
+        }
+
+        if (slaveToMaster_[patchI].found(eIndex))
+        {
+            return true;
+        }
+
+        if (masterToSlave_[patchI].found(eIndex))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Method to determine whether the edge is on a processor patch
+inline bool dynamicTopoFvMesh::coupledProcessorEdge
+(
+    const label eIndex
+)
+{
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    forAll(bdy, patchI)
+    {
+        if (!isA<processorPolyPatch>(bdy[patchI]))
+        {
+            continue;
+        }
+
+        if (slaveToMaster_[patchI].found(eIndex))
+        {
+            return true;
+        }
+
+        if (masterToSlave_[patchI].found(eIndex))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // Utility method to find the isolated point on a triangular face
@@ -711,16 +858,21 @@ inline void dynamicTopoFvMesh::insertLabel
 inline bool dynamicTopoFvMesh::foundInList
 (
     const label item,
-    const labelList& list
+    const labelList& list,
+    label& index
 )
 {
     forAll(list, itemI)
     {
         if (list[itemI] == item)
         {
+            index = itemI;
+
             return true;
         }
     }
+
+    index = -1;
 
     return false;
 }
@@ -774,7 +926,9 @@ inline void dynamicTopoFvMesh::sizeDownList
 inline void dynamicTopoFvMesh::computeMinQuality
 (
     const label eIndex,
-    scalar& minQuality
+    scalar& minQuality,
+    bool priority,
+    bool compareCoupled
 )
 {
     minQuality = GREAT;
@@ -804,19 +958,6 @@ inline void dynamicTopoFvMesh::computeMinQuality
         }
     }
 
-    // If this lies on a master coupled patch,
-    // include quality from the slave as well.
-    /*
-    if (whichEdgePatch(eIndex) == masterPatch_)
-    {
-        scalar slaveQuality = 0.0;
-
-        computeMinQuality(masterToSlave_[eIndex], slaveQuality);
-
-        minQuality = slaveQuality < minQuality ? slaveQuality : minQuality;
-    }
-    */
-
     // Ensure that the mesh is valid
     if (minQuality < 0.0)
     {
@@ -826,6 +967,97 @@ inline void dynamicTopoFvMesh::computeMinQuality
             << "EdgePoints: " << hullVertices << nl
             << "Minimum Quality: " << minQuality
             << abort(FatalError);
+    }
+
+    // If this is a prioritized edge, fill the buffer with the quality value.
+    if
+    (
+        priority &&
+        patchCoupling_.size() &&
+        whichEdgePatch(eIndex) > -1
+    )
+    {
+        label i = -1;
+
+        const polyBoundaryMesh& bdy = boundaryMesh();
+
+        // Search for this edge on all coupled master patches
+        forAll(mList_, patchI)
+        {
+            if (masterToSlave_[patchI].found(eIndex))
+            {
+                // Find the position in the list
+                foundInList(eIndex, mList_[patchI], i);
+
+                sendMinQualityBuffer_[patchI][i] = minQuality;
+            }
+        }
+
+        // Search for this edge on non-processor coupled patches
+        forAll(sList_, patchI)
+        {
+            if (isA<processorPolyPatch>(bdy[patchI]))
+            {
+                continue;
+            }
+
+            if (slaveToMaster_[patchI].found(eIndex))
+            {
+                // Find the position in the list
+                foundInList(eIndex, sList_[patchI], i);
+
+                recvMinQualityBuffer_[patchI][i] = minQuality;
+            }
+        }
+    }
+
+    // Check if a coupled comparison is required.
+    if
+    (
+        compareCoupled &&
+        patchCoupling_.size() &&
+        whichEdgePatch(eIndex) > -1
+    )
+    {
+        // Check the received buffer for quality
+        scalar rQ = GREAT;
+
+        label i = -1;
+
+        const polyBoundaryMesh& bdy = boundaryMesh();
+
+        // Search for this edge on all coupled master patches
+        forAll(mList_, patchI)
+        {
+            if (masterToSlave_[patchI].found(eIndex))
+            {
+                // Find the position in the list
+                foundInList(eIndex, mList_[patchI], i);
+
+                rQ = recvMinQualityBuffer_[patchI][masterToSlave_[patchI][i]];
+
+                minQuality = rQ < minQuality ? rQ : minQuality;
+            }
+        }
+
+        // Search for this edge on non-processor coupled patches
+        forAll(sList_, patchI)
+        {
+            if (isA<processorPolyPatch>(bdy[patchI]))
+            {
+                continue;
+            }
+
+            if (slaveToMaster_[patchI].found(eIndex))
+            {
+                // Find the position in the list
+                foundInList(eIndex, sList_[patchI], i);
+
+                rQ = sendMinQualityBuffer_[patchI][slaveToMaster_[patchI][i]];
+
+                minQuality = rQ < minQuality ? rQ : minQuality;
+            }
+        }
     }
 }
 

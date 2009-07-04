@@ -1307,12 +1307,13 @@ bool dynamicTopoFvMesh::collapseEdge
 
         forAll(hullPointEdges, edgeI)
         {
+            label i = -1;
             labelList& hullEdgePoints = edgePoints_[hullPointEdges[edgeI]];
 
             if
             (
-                 foundInList(collapsePoint, hullEdgePoints)
-             && !foundInList(replacePoint, hullEdgePoints)
+                 foundInList(collapsePoint, hullEdgePoints, i)
+             && !foundInList(replacePoint, hullEdgePoints, i)
             )
             {
                 replaceLabel

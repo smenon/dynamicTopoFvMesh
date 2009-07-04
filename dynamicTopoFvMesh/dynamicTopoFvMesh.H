@@ -176,7 +176,15 @@ class dynamicTopoFvMesh
         label               slaveIndex_;
         Map<label>          patchCoupling_;
         List<Map<label> >   masterToSlave_;
-        labelListList       mList_, sList_;
+        List<Map<label> >   slaveToMaster_;
+        labelListList       mList_;
+        labelListList       sList_;
+
+        // Buffers for coupled patches
+        scalarListList      sendMinQualityBuffer_;
+        scalarListList      recvMinQualityBuffer_;
+        scalarListList      sendImpQualityBuffer_;
+        scalarListList      recvImpQualityBuffer_;
 
         //- 3D Mesh Flipping data
         label               maxTetsPerEdge_;
@@ -220,6 +228,9 @@ class dynamicTopoFvMesh
 
                 //- Print out the stack
                 inline void print();
+
+                //- Access the stack as a list
+                inline label operator[](const label index);
         };
 
         // Stack-list of faces to be checked for topo-changes [2D].
@@ -229,6 +240,10 @@ class dynamicTopoFvMesh
         // Stack-list of edges to be checked for topo-changes [3D].
         // One for each thread.
         List<stack> edgeStack_;
+
+        // Stack-list of prioritized edges to be checked for topo-changes [3D].
+        // One for each thread. Used for coupled edges.
+        List<stack> priorityEdgeStack_;
 
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
@@ -253,6 +268,18 @@ class dynamicTopoFvMesh
 
             // Default constructor
             topoMeshStruct();
+
+            // Is this a master thread?
+            bool master() { return (master_ == true); }
+
+            // Is this a slave thread?
+            bool slave() { return !master(); }
+
+            // Lock this thread
+            void lock() { syncMutex_.lock(); }
+
+            // Unlock this thread
+            void unlock() { syncMutex_.unlock(); }
         };
 
         PtrList<topoMeshStruct> structPtr_;
@@ -379,6 +406,9 @@ class dynamicTopoFvMesh
         // Return the edge-stack for a particular thread
         inline stack& edgeStack(const label threadID);
 
+        // Return the priority edge-stack for a particular thread
+        inline stack& priorityEdgeStack(const label threadID);
+
         // Return the integer threadID for a given pthread
         inline label self();
 
@@ -389,10 +419,16 @@ class dynamicTopoFvMesh
         inline void initEdgeStacks();
 
         // Method to determine the boundary patch index for a given face
-        inline label whichPatch(const label& index);
+        inline label whichPatch(const label index);
 
         // Method to determine the boundary patch index for a given edge
-        inline label whichEdgePatch(const label& index);
+        inline label whichEdgePatch(const label index);
+
+        // Method to determine whether the edge is locally coupled
+        inline bool locallyCoupledEdge(const label eIndex);
+
+        // Method to determine whether the edge is on a processor patch
+        inline bool coupledProcessorEdge(const label eIndex);
 
         // Method for the swapping of a quad-face in 2D
         void swapQuadFace
@@ -547,7 +583,8 @@ class dynamicTopoFvMesh
         inline bool foundInList
         (
             const label item,
-            const labelList& list
+            const labelList& list,
+            label& index
         );
 
         // Utility method to size-up the list to include an item
@@ -602,7 +639,9 @@ class dynamicTopoFvMesh
         inline void computeMinQuality
         (
             const label eIndex,
-            scalar& minQuality
+            scalar& minQuality,
+            bool priority = false,
+            bool compareCoupled = true
         );
 
         // Check whether the given edge is on a bounding curve
@@ -620,41 +659,21 @@ class dynamicTopoFvMesh
         bool checkQuality
         (
             const label eIndex,
-            const FixedList<label,2>& m,
-            const List<scalarListList>& Q,
-            const scalar minQuality
-        );
-
-        // Utility method to fill the dynamic programming tables
-        // Checks for coupled edges
-        bool fillTables
-        (
-            const label eIndex,
+            const label m,
+            const scalarListList& Q,
             const scalar minQuality,
-            FixedList<label,2>& m,
-            List<scalarListList>& Q,
-            List<labelListList>& K,
-            List<labelListList>& triangulations
-        );
-
-        // Remove the edge according to the swap sequence
-        // Checks for coupled edges
-        void removeEdgeFlips
-        (
-            const label eIndex,
-            const List<labelListList>& K,
-            List<labelListList>& triangulations
+            bool coupledCheck = false
         );
 
         // Utility method to fill the dynamic programming tables
         bool fillTables
         (
             const label eIndex,
-            const scalar minQuality,
             label& m,
             scalarListList& Q,
             labelListList& K,
-            labelListList& triangulations
+            labelListList& triangulations,
+            bool priority = false
         );
 
         // Remove the edge according to the swap sequence
@@ -764,6 +783,15 @@ class dynamicTopoFvMesh
 
         // Does the mesh perform edge-modification?
         bool edgeModification();
+
+        // Send quality buffers for coupled patches.
+        void sendQualityBuffers();
+
+        // Receive quality buffers for coupled patches.
+        void receiveQualityBuffers();
+
+        // Synchronize and exit for parallel runs.
+        void synchronizeAndExit();
 
         // Private internal access to member data for static members
         scalar ratioMin() { return ratioMin_; }

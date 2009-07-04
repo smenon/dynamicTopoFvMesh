@@ -1,4 +1,7 @@
+include $(RULES)/mplib$(WM_MPLIB)
+
 EXE_INC = \
+    $(PFLAGS) $(PINC) \
     -I../multiThreader/lnInclude \
     -I../edgeDiscretization/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
