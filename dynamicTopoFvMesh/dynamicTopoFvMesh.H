@@ -778,6 +778,23 @@ class dynamicTopoFvMesh
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
 
+        // Send length-scale info across processors
+        void writeLengthScaleInfo
+        (
+            const labelList& cellLevels,
+            const scalarList& lengthScale
+        );
+
+        // Receive length-scale info across processors
+        void readLengthScaleInfo
+        (
+            const label level,
+            label& visitedCells,
+            labelList& cellLevels,
+            scalarList& lengthScale,
+            labelHashSet& levelCells
+        );
+
         // Read edge-modification options from the dictionary
         void readEdgeOptions();
 

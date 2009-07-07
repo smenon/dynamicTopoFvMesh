@@ -62,11 +62,7 @@ int main(int argc, char *argv[])
                     IOobject
                     (
                         "flippingFoamDict",
-                        runTime.findInstance
-                        (
-                            "",
-                            "flippingFoamDict"
-                        ),
+                        mesh.time().constant(),
                         mesh,
                         IOobject::MUST_READ,
                         IOobject::AUTO_WRITE
@@ -80,6 +76,7 @@ int main(int argc, char *argv[])
     vector p2(rotationParams.lookup("axisPointEnd"));
     vector t(rotationParams.lookup("translation"));
     doubleScalar angle = readScalar(rotationParams.lookup("angle"));
+    bool solveForMotion = readBool(rotationParams.lookup("solveForMotion"));
 
     // Convert angle to radians
     angle *= (3.14159/180.0);
@@ -95,7 +92,10 @@ int main(int argc, char *argv[])
         rotatePoints(mesh, patches, angle, p1, p2, t);
 
         // Update mesh motion
-        mesh.movePoints(mPtr->newPoints());
+        if (solveForMotion)
+        {
+            mesh.movePoints(mPtr->newPoints());
+        }
 
         // Update mesh for topology changes
         bool meshChanged = mesh.updateTopology();
@@ -113,6 +113,7 @@ int main(int argc, char *argv[])
         rotationParams.add("axisPointEnd", p2, true);
         rotationParams.add("translation", t, true);
         rotationParams.add("angle", angle*(180/3.14159), true);
+        rotationParams.add("solveForMotion", solveForMotion, true);
 
         runTime.write();
 

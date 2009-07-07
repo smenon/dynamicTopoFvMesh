@@ -2145,7 +2145,84 @@ bool dynamicTopoFvMesh::checkQuality
 {
     if (coupledCheck)
     {
+        // Instead of checking against minQuality,
+        // check all coupled buffers. Implicitly assumes
+        // that all buffers are updated.
+        const polyBoundaryMesh& bdy = boundaryMesh();
 
+        label i;
+        scalar oldQuality = GREAT, newQuality = GREAT;
+
+        // Search for this edge on all coupled master patches
+        forAll(mList_, patchI)
+        {
+            if (masterToSlave_[patchI].found(eIndex))
+            {
+                // Find the position in the list
+                foundInList(eIndex, mList_[patchI], i);
+
+                // Find minimum old quality
+                scalar oQ = min
+                (
+                    sendMinQualityBuffer_[patchI][i],
+                    recvMinQualityBuffer_[patchI][i]
+                );
+
+                oldQuality = (oldQuality < oQ) ? oldQuality : oQ;
+
+                // Find minimum new quality
+                scalar nQ = min
+                (
+                    sendImpQualityBuffer_[patchI][i],
+                    recvImpQualityBuffer_[patchI][i]
+                );
+
+                newQuality = (newQuality < nQ) ? newQuality : nQ;
+            }
+        }
+
+        // Search for this edge on non-processor coupled patches
+        forAll(sList_, patchI)
+        {
+            if (isA<processorPolyPatch>(bdy[patchI]))
+            {
+                continue;
+            }
+
+            if (slaveToMaster_[patchI].found(eIndex))
+            {
+                // Find the position in the list
+                foundInList(eIndex, sList_[patchI], i);
+
+                // Find minimum old quality
+                scalar oQ = min
+                (
+                    sendMinQualityBuffer_[patchI][i],
+                    recvMinQualityBuffer_[patchI][i]
+                );
+
+                oldQuality = (oldQuality < oQ) ? oldQuality : oQ;
+
+                // Find minimum new quality
+                scalar nQ = min
+                (
+                    sendImpQualityBuffer_[patchI][i],
+                    recvImpQualityBuffer_[patchI][i]
+                );
+
+                newQuality = (newQuality < nQ) ? newQuality : nQ;
+            }
+        }
+
+        // Final coupled check
+        if (newQuality > oldQuality)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
 
     // Non-coupled check
@@ -3326,6 +3403,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
                         }
 
                         cellLevels[ownCell] = level;
+
                         lengthScale[ownCell] =
                         (
                             fixedLengthScalePatches_[pName][0].scalarToken()
@@ -3344,6 +3422,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
             // Set boundary patch size if no fixed-length scale is specified.
             if
             (
+                (bdyPatch.type() != "processor") &&
                 (bdyPatch.type() != "wedge") &&
                 (bdyPatch.type() != "empty") &&
                 (bdyPatch.type() != "symmetryPlane")
@@ -3355,55 +3434,68 @@ void dynamicTopoFvMesh::calculateLengthScale()
                 {
                     label ownCell = own[pStart+faceI];
 
-                    if (cellLevels[ownCell] == 0)
+                    if (cellLevels[ownCell] != 0)
                     {
-                        cellLevels[ownCell] = level;
-
-                        if (twoDMesh_)
-                        {
-                            label eIndex = getTriBoundaryEdge(pStart+faceI);
-                            edge& e = edges_[eIndex];
-
-                            lengthScale[ownCell] =
-                                mag(pList[e[0]] - pList[e[1]])*growthFactor_;
-                        }
-                        else
-                        {
-                            // Average edge-lengths for this face
-                            scalar edgeLength = 0.0;
-                            labelList& fEdges = faceEdges_[pStart+faceI];
-
-                            forAll(fEdges, edgeI)
-                            {
-                                edge& e = edges_[fEdges[edgeI]];
-                                edgeLength += mag(pList[e[0]] - pList[e[1]]);
-                            }
-
-                            lengthScale[ownCell] =
-                                (edgeLength/fEdges.size())*growthFactor_;
-                        }
-
-                        levelCells.insert(ownCell);
-
-                        visitedCells++;
+                        continue;
                     }
+
+                    cellLevels[ownCell] = level;
+
+                    if (twoDMesh_)
+                    {
+                        label eIndex = getTriBoundaryEdge(pStart+faceI);
+                        edge& e = edges_[eIndex];
+
+                        lengthScale[ownCell] =
+                            mag(pList[e[0]] - pList[e[1]])*growthFactor_;
+                    }
+                    else
+                    {
+                        // Average edge-lengths for this face
+                        scalar edgeLength = 0.0;
+                        labelList& fEdges = faceEdges_[pStart+faceI];
+
+                        forAll(fEdges, edgeI)
+                        {
+                            edge& e = edges_[fEdges[edgeI]];
+                            edgeLength += mag(pList[e[0]] - pList[e[1]]);
+                        }
+
+                        lengthScale[ownCell] =
+                            (edgeLength/fEdges.size())*growthFactor_;
+                    }
+
+                    levelCells.insert(ownCell);
+
+                    visitedCells++;
                 }
             }
         }
 
+        bool doneWithSweeps = false;
+
         // Perform multiple sweeps through the mesh...
-        while (visitedCells < nCells())
+        while (!doneWithSweeps)
         {
+            if (Pstream::parRun())
+            {
+                writeLengthScaleInfo
+                (
+                    cellLevels,
+                    lengthScale
+                );
+            }
+
             // Loop through cells of the current level
-            labelList currentLevelCells = levelCells.toc();
+            labelList currLvlCells = levelCells.toc();
             levelCells.clear();
 
             // Loop through cells, and increment neighbour
             // cells of the current level
-            forAll(currentLevelCells,cellI)
+            forAll(currLvlCells,cellI)
             {
                 // Obtain the cells neighbouring this one
-                const labelList& cList = cc[currentLevelCells[cellI]];
+                const labelList& cList = cc[currLvlCells[cellI]];
 
                 forAll(cList, indexI)
                 {
@@ -3411,7 +3503,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
                     if (ngbLevel == 0)
                     {
-                        ngbLevel = level+1;
+                        ngbLevel = level + 1;
 
                         // Compute the mean of the existing
                         // neighbour length-scales
@@ -3446,8 +3538,39 @@ void dynamicTopoFvMesh::calculateLengthScale()
                 }
             }
 
+            if (Pstream::parRun())
+            {
+                readLengthScaleInfo
+                (
+                    level,
+                    visitedCells,
+                    cellLevels,
+                    lengthScale,
+                    levelCells
+                );
+            }
+
+            if (debug > 2)
+            {
+                Pout << "Processed level: " << level << nl
+                     << " Visited: " << visitedCells
+                     << " out of " << nCells() << endl;
+            }
+
             // Move on to the next level
             level++;
+
+            if (visitedCells >= nCells())
+            {
+                doneWithSweeps = true;
+            }
+
+            // Have we completed visiting all cells?
+            // If yes, wait for everyone to complete.
+            if (Pstream::parRun())
+            {
+                reduce(doneWithSweeps, andOp<bool>());
+            }
         }
 
         if (debug)
@@ -3471,6 +3594,265 @@ void dynamicTopoFvMesh::calculateLengthScale()
         forAllIter(HashList<scalar>, lengthScale_, lIter)
         {
             lIter() = lengthScale[lIter.index()];
+        }
+
+        synchronizeAndExit();
+    }
+}
+
+// Send length-scale info across processors
+void dynamicTopoFvMesh::writeLengthScaleInfo
+(
+    const labelList& cellLevels,
+    const scalarList& lengthScale
+)
+{
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    // Number of sent faces across processors
+    labelList nSendFaces(bdy.size(), 0);
+
+    // Corresponding face labels
+    labelListList sendLblBuffer(bdy.size());
+
+    // Length-scales corresponding to face-labels
+    scalarListList sendSclBuffer(bdy.size());
+
+    // Fill send buffers with cell-level and length-scale info.
+    forAll(nSendFaces, pI)
+    {
+        if (isA<processorPolyPatch>(bdy[pI]))
+        {
+            const labelList& fCells = bdy[pI].faceCells();
+
+            // Set the initial buffer size
+            sendLblBuffer[pI].setSize(bdy[pI].size(), 0);
+            sendSclBuffer[pI].setSize(bdy[pI].size(), 0.0);
+
+            forAll(fCells, faceI)
+            {
+                label cI = fCells[faceI];
+
+                // Does the adjacent cell have a non-zero level?
+                if (cellLevels[cI] > 0)
+                {
+                    // Fill the send buffer.
+                    sendLblBuffer[pI][nSendFaces[pI]] = faceI;
+                    sendSclBuffer[pI][nSendFaces[pI]] = lengthScale[cI];
+
+                    nSendFaces[pI]++;
+                }
+            }
+
+            // Resize to actual value
+            sendLblBuffer[pI].setSize(nSendFaces[pI]);
+            sendSclBuffer[pI].setSize(nSendFaces[pI]);
+        }
+    }
+
+    // Send info to neighbouring processors.
+    forAll(nSendFaces, patchI)
+    {
+        if (isA<processorPolyPatch>(bdy[patchI]))
+        {
+            const processorPolyPatch& pp =
+                refCast<const processorPolyPatch>(bdy[patchI]);
+
+            label neiProcNo = pp.neighbProcNo();
+
+            // First perform a blocking send of the number of faces.
+            OPstream::write
+            (
+                Pstream::blocking,
+                neiProcNo,
+                reinterpret_cast<const char*>
+                (
+                    &nSendFaces[patchI]
+                ),
+                sizeof(label)
+            );
+
+            if (debug > 3)
+            {
+                Pout << " Processor patch " << patchI << ' ' << pp.name()
+                     << " communicating with " << neiProcNo
+                     << "  Sending: " << nSendFaces[patchI]
+                     << endl;
+            }
+
+            // Next, perform a non-blocking send of buffers.
+            // But only if the buffer size is non-zero.
+            if (nSendFaces[patchI] != 0)
+            {
+                OPstream::write
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<const char*>
+                    (
+                        &sendLblBuffer[patchI][0]
+                    ),
+                    sendLblBuffer[patchI].size()*sizeof(label)
+                );
+
+                OPstream::write
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<const char*>
+                    (
+                        &sendSclBuffer[patchI][0]
+                    ),
+                    sendSclBuffer[patchI].size()*sizeof(scalar)
+                );
+            }
+        }
+    }
+}
+
+// Receive length-scale info across processors
+void dynamicTopoFvMesh::readLengthScaleInfo
+(
+    const label level,
+    label& visitedCells,
+    labelList& cellLevels,
+    scalarList& lengthScale,
+    labelHashSet& levelCells
+)
+{
+    const polyBoundaryMesh& bdy = boundaryMesh();
+
+    // Number of received faces across processors
+    labelList nRecvFaces(bdy.size(), 0);
+
+    // Corresponding face labels
+    labelListList recvLblBuffer(bdy.size());
+
+    // Length-scales corresponding to face-labels
+    scalarListList recvSclBuffer(bdy.size());
+
+    // Reset the receive counter
+    nRecvFaces = 0;
+    label nProcPatches = 0;
+
+    forAll(nRecvFaces, patchI)
+    {
+        if (isA<processorPolyPatch>(bdy[patchI]))
+        {
+            const processorPolyPatch& pp =
+                refCast<const processorPolyPatch>(bdy[patchI]);
+
+            label neiProcNo = pp.neighbProcNo();
+
+            // How many faces should I be waiting for?
+            IPstream::read
+            (
+                Pstream::blocking,
+                neiProcNo,
+                reinterpret_cast<char*>
+                (
+                    &nRecvFaces[patchI]
+                ),
+                sizeof(label)
+            );
+
+            // Wait for all buffers from this neighbour
+            if (nRecvFaces[patchI] != 0)
+            {
+                // Size the buffers
+                recvLblBuffer[patchI].setSize(nRecvFaces[patchI], 0);
+                recvSclBuffer[patchI].setSize(nRecvFaces[patchI], 0.0);
+
+                IPstream::read
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<char*>
+                    (
+                        recvLblBuffer[patchI].begin()
+                    ),
+                    recvLblBuffer[patchI].byteSize()
+                );
+
+                IPstream::read
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<char*>
+                    (
+                        recvSclBuffer[patchI].begin()
+                    ),
+                    recvSclBuffer[patchI].byteSize()
+                );
+
+                nProcPatches++;
+            }
+
+            if (debug > 3)
+            {
+                Pout << " Processor patch " << patchI << ' ' << pp.name()
+                     << " communicating with " << neiProcNo
+                     << "  Receiving: " << nRecvFaces[patchI]
+                     << endl;
+            }
+        }
+    }
+
+    // Wait for all transfers to complete.
+    if (nProcPatches)
+    {
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+    }
+
+    // Now re-visit cells and update length-scales.
+    forAll(nRecvFaces, patchI)
+    {
+        if (nRecvFaces[patchI] != 0)
+        {
+            const labelList& fCells = bdy[patchI].faceCells();
+
+            for (label i = 0; i < nRecvFaces[patchI]; i++)
+            {
+                label nLabel = recvLblBuffer[patchI][i];
+
+                label cI = fCells[nLabel];
+
+                label& ngbLevel = cellLevels[cI];
+
+                if (ngbLevel == level + 1)
+                {
+                    const cell& c = cells()[cI];
+
+                    // Add processor contribution
+                    scalar sLength =
+                    (
+                        recvSclBuffer[patchI][i]/c.size()
+                    )*growthFactor_;
+
+                    lengthScale[cI] += sLength;
+
+                    lengthScale[cI] = (lengthScale[cI] < maxLengthScale_)
+                                     ? lengthScale[cI] : maxLengthScale_;
+                }
+
+                if (ngbLevel == 0)
+                {
+                    ngbLevel = level + 1;
+
+                    // Scale the length and assign to this cell
+                    scalar sLength = recvSclBuffer[patchI][i]*growthFactor_;
+
+                    sLength = (sLength < maxLengthScale_)
+                            ? sLength : maxLengthScale_;
+
+                    lengthScale[cI] = sLength;
+
+                    levelCells.insert(cI);
+
+                    visitedCells++;
+                }
+            }
         }
     }
 }
@@ -4005,9 +4387,9 @@ void dynamicTopoFvMesh::synchronizeAndExit()
 
         Info << "Done." << endl;
         Info << "Terminating normally." << endl;
-
-        ::exit(0);
     }
+
+    ::exit(0);
 }
 
 // 2D Edge-bisection/collapse engine
