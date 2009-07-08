@@ -124,7 +124,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nSwaps_(-1),
     maxModifications_(-1),
     bisectInterior_(-1),
-    slaveIndex_(-1),
     maxTetsPerEdge_(-1),
     allowTableResize_(false)
 {
@@ -192,7 +191,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         else
         {
             edgeStack_.setSize(1);
-            priorityEdgeStack_.setSize(1);
         }
     }
     else
@@ -208,7 +206,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         else
         {
             edgeStack_.setSize(nThreads + 1);
-            priorityEdgeStack_.setSize(nThreads + 1);
         }
 
         for (label i = 0; i <= nThreads; i++)
@@ -561,12 +558,6 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
         // Output statistics:
         if (outputOption || (debug > 0))
         {
-            Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
-            Info << " Min: " << minQuality << endl;
-            Info << " Max: " << maxQuality << endl;
-            Info << " Mean: " << meanQuality/iF.size() << endl;
-            Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
-
             if (minQuality < 0.0)
             {
                 WarningIn
@@ -584,6 +575,20 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
                     << " cells are below the specified quality threshold of: "
                     << sliverThreshold_ << endl;
             }
+
+            // Reduce stats across procs.
+            label nCells = iF.size();
+
+            reduce(minQuality, minOp<scalar>());
+            reduce(maxQuality, maxOp<scalar>());
+            reduce(meanQuality, sumOp<scalar>());
+            reduce(nCells, sumOp<label>());
+
+            Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
+            Info << " Min: " << minQuality << endl;
+            Info << " Max: " << maxQuality << endl;
+            Info << " Mean: " << meanQuality/nCells << endl;
+            Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
         }
     }
 
@@ -1747,260 +1752,6 @@ void dynamicTopoFvMesh::buildEdgePoints
     }
 }
 
-// Utility method to build mapping between coupled patches
-void dynamicTopoFvMesh::buildCoupledMaps()
-{
-    if (!patchCoupling_.size())
-    {
-        return;
-    }
-
-    const polyBoundaryMesh& bdy = boundaryMesh();
-
-    // Clear existing maps and resize
-    masterToSlave_.clear();
-    slaveToMaster_.clear();
-    mList_.clear();
-    sList_.clear();
-
-    masterToSlave_.setSize(bdy.size());
-    slaveToMaster_.setSize(bdy.size());
-
-    mList_.setSize(bdy.size(), labelList(0));
-    sList_.setSize(bdy.size(), labelList(0));
-
-    // Clear existing buffers and resize
-    sendMinQualityBuffer_.clear();
-    recvMinQualityBuffer_.clear();
-    sendImpQualityBuffer_.clear();
-    recvImpQualityBuffer_.clear();
-
-    sendMinQualityBuffer_.setSize(bdy.size(), scalarList(0));
-    recvMinQualityBuffer_.setSize(bdy.size(), scalarList(0));
-    sendImpQualityBuffer_.setSize(bdy.size(), scalarList(0));
-    recvImpQualityBuffer_.setSize(bdy.size(), scalarList(0));
-
-    // Build an edge-list for the master side.
-    label nProcPatches = 0;
-    List<labelHashSet> mEdgeLabels(bdy.size()), sEdgeLabels(bdy.size());
-    List<pointField> mCentres(bdy.size()), sCentres(bdy.size());
-
-    // Loop though boundary faces and check whether
-    // they belong to master coupled patches.
-    for
-    (
-        HashList<face>::iterator faceI = faces_(faces_.lastIndex());
-        faceI.index() >= nOldInternalFaces_;
-        faceI--
-    )
-    {
-        label pIndex = whichPatch(faceI.index());
-
-        if (patchCoupling_.found(pIndex))
-        {
-            labelList& mFaceEdges = faceEdges_[faceI.index()];
-
-            forAll(mFaceEdges, edgeI)
-            {
-                if (!mEdgeLabels[pIndex].found(mFaceEdges[edgeI]))
-                {
-                    mEdgeLabels[pIndex].insert(mFaceEdges[edgeI]);
-                }
-            }
-        }
-    }
-
-    forAllIter(Map<label>, patchCoupling_, patchI)
-    {
-        label mPatch = patchI.key();
-        label sPatch = patchI();
-
-        // Geometric match:
-        // First build a list of edge-centres
-        mList_[mPatch] = mEdgeLabels[mPatch].toc();
-        sList_[mPatch].setSize(mList_[mPatch].size(), -1);
-
-        sendMinQualityBuffer_[mPatch].setSize(mList_[mPatch].size(), 0.0);
-        recvMinQualityBuffer_[mPatch].setSize(mList_[mPatch].size(), 0.0);
-        sendImpQualityBuffer_[mPatch].setSize(mList_[mPatch].size(), 0.0);
-        recvImpQualityBuffer_[mPatch].setSize(mList_[mPatch].size(), 0.0);
-
-        mCentres[mPatch].setSize(mList_[mPatch].size(), vector::zero);
-        sCentres[mPatch].setSize(mList_[mPatch].size(), vector::zero);
-
-        forAll(mList_[mPatch], edgeI)
-        {
-            const edge& mE = edges_[mList_[mPatch][edgeI]];
-            mCentres[mPatch][edgeI] = 0.5*(points_[mE[0]] + points_[mE[1]]);
-        }
-
-        if (sPatch == -1)
-        {
-            // This is a processor patch.
-            // Find out which neighbour it talks to.
-            const processorPolyPatch& pp =
-                refCast<const processorPolyPatch>(bdy[mPatch]);
-
-            label neiProcNo = pp.neighbProcNo();
-
-            OPstream::write
-            (
-                Pstream::nonBlocking,
-                neiProcNo,
-                reinterpret_cast<const char*>(&mCentres[mPatch][0]),
-                mCentres[mPatch].size()*sizeof(vector)
-            );
-
-            OPstream::write
-            (
-                Pstream::nonBlocking,
-                neiProcNo,
-                reinterpret_cast<const char*>(&mList_[mPatch][0]),
-                mList_[mPatch].size()*sizeof(label)
-            );
-
-            // Increment processor patch count for sync.
-            nProcPatches++;
-        }
-        else
-        {
-            // This is an explicitly coupled non-processor patch.
-
-            // Loop though boundary faces and check whether
-            // they belong to the slave coupled patch.
-            for
-            (
-                HashList<face>::iterator faceI = faces_(faces_.lastIndex());
-                faceI.index() >= nOldInternalFaces_;
-                faceI--
-            )
-            {
-                label pIndex = whichPatch(faceI.index());
-
-                if (pIndex == sPatch)
-                {
-                    labelList& sFaceEdges = faceEdges_[faceI.index()];
-
-                    forAll(sFaceEdges, edgeI)
-                    {
-                        if (!sEdgeLabels[pIndex].found(sFaceEdges[edgeI]))
-                        {
-                            sEdgeLabels[pIndex].insert(sFaceEdges[edgeI]);
-                        }
-                    }
-                }
-            }
-
-            // Sanity check: Do patches have equal number of edges?
-            if (mEdgeLabels[mPatch].size() != sEdgeLabels[sPatch].size())
-            {
-                FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
-                    << "Patch edge sizes are not consistent."
-                    << abort(FatalError);
-            }
-
-            // Geometric match:
-            // Build a list of edge-centres
-            sList_[mPatch] = sEdgeLabels[sPatch].toc();
-
-            forAll(sList_[mPatch], edgeI)
-            {
-                const edge& sE = edges_[sList_[mPatch][edgeI]];
-                sCentres[mPatch][edgeI] = 0.5*(points_[sE[0]] + points_[sE[1]]);
-            }
-        }
-    }
-
-    // If processor patches are present, wait for all transfers to complete.
-    if (nProcPatches)
-    {
-        forAllIter(Map<label>, patchCoupling_, patchI)
-        {
-            label mPatch = patchI.key();
-            label sPatch = patchI();
-
-            if (sPatch == -1)
-            {
-                // This is a processor patch.
-                // Find out which neighbour it talks to.
-                const processorPolyPatch& pp =
-                    refCast<const processorPolyPatch>(bdy[mPatch]);
-
-                label neiProcNo = pp.neighbProcNo();
-
-                // Receive information from neighbour
-                IPstream::read
-                (
-                    Pstream::nonBlocking,
-                    neiProcNo,
-                    reinterpret_cast<char*>(sCentres[mPatch].begin()),
-                    sCentres[mPatch].byteSize()
-                );
-
-                IPstream::read
-                (
-                    Pstream::nonBlocking,
-                    neiProcNo,
-                    reinterpret_cast<char*>(sList_[mPatch].begin()),
-                    sList_[mPatch].byteSize()
-                );
-            }
-        }
-
-        OPstream::waitRequests();
-        IPstream::waitRequests();
-    }
-
-    // Now match all edge-centres and build mapping info.
-    forAllIter(Map<label>, patchCoupling_, patchI)
-    {
-        label mPatch = patchI.key();
-
-        label nMatchedEdges = 0;
-
-        forAll(mCentres[mPatch], edgeI)
-        {
-            forAll(sCentres[mPatch], edgeJ)
-            {
-                if
-                (
-                    mag
-                    (
-                        mCentres[mPatch][edgeI]
-                      - sCentres[mPatch][edgeJ]
-                    ) < 1e-20
-                )
-                {
-                    // Add a map entry
-                    masterToSlave_[mPatch].insert
-                    (
-                        mList_[mPatch][edgeI],
-                        sList_[mPatch][edgeJ]
-                    );
-
-                    slaveToMaster_[mPatch].insert
-                    (
-                        sList_[mPatch][edgeJ],
-                        mList_[mPatch][edgeI]
-                    );
-
-                    nMatchedEdges++;
-
-                    break;
-                }
-            }
-        }
-
-        // Make sure we were successful.
-        if (nMatchedEdges != mCentres[mPatch].size())
-        {
-            FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
-                << "Failed to match all patch edges."
-                << abort(FatalError);
-        }
-    }
-}
-
 // Utility to check whether points of an edge lie on a boundary.
 void dynamicTopoFvMesh::checkEdgeBoundary
 (
@@ -2139,93 +1890,9 @@ bool dynamicTopoFvMesh::checkQuality
     const label eIndex,
     const label m,
     const scalarListList& Q,
-    const scalar minQuality,
-    bool coupledCheck
+    const scalar minQuality
 )
 {
-    if (coupledCheck)
-    {
-        // Instead of checking against minQuality,
-        // check all coupled buffers. Implicitly assumes
-        // that all buffers are updated.
-        const polyBoundaryMesh& bdy = boundaryMesh();
-
-        label i;
-        scalar oldQuality = GREAT, newQuality = GREAT;
-
-        // Search for this edge on all coupled master patches
-        forAll(mList_, patchI)
-        {
-            if (masterToSlave_[patchI].found(eIndex))
-            {
-                // Find the position in the list
-                foundInList(eIndex, mList_[patchI], i);
-
-                // Find minimum old quality
-                scalar oQ = min
-                (
-                    sendMinQualityBuffer_[patchI][i],
-                    recvMinQualityBuffer_[patchI][i]
-                );
-
-                oldQuality = (oldQuality < oQ) ? oldQuality : oQ;
-
-                // Find minimum new quality
-                scalar nQ = min
-                (
-                    sendImpQualityBuffer_[patchI][i],
-                    recvImpQualityBuffer_[patchI][i]
-                );
-
-                newQuality = (newQuality < nQ) ? newQuality : nQ;
-            }
-        }
-
-        // Search for this edge on non-processor coupled patches
-        forAll(sList_, patchI)
-        {
-            if (isA<processorPolyPatch>(bdy[patchI]))
-            {
-                continue;
-            }
-
-            if (slaveToMaster_[patchI].found(eIndex))
-            {
-                // Find the position in the list
-                foundInList(eIndex, sList_[patchI], i);
-
-                // Find minimum old quality
-                scalar oQ = min
-                (
-                    sendMinQualityBuffer_[patchI][i],
-                    recvMinQualityBuffer_[patchI][i]
-                );
-
-                oldQuality = (oldQuality < oQ) ? oldQuality : oQ;
-
-                // Find minimum new quality
-                scalar nQ = min
-                (
-                    sendImpQualityBuffer_[patchI][i],
-                    recvImpQualityBuffer_[patchI][i]
-                );
-
-                newQuality = (newQuality < nQ) ? newQuality : nQ;
-            }
-        }
-
-        // Final coupled check
-        if (newQuality > oldQuality)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    // Non-coupled check
     if (Q[0][m-1] > minQuality)
     {
         return true;
@@ -2243,8 +1910,7 @@ bool dynamicTopoFvMesh::fillTables
     label& m,
     scalarListList& Q,
     labelListList& K,
-    labelListList& triangulations,
-    bool priority
+    labelListList& triangulations
 )
 {
     edge& edgeToCheck = edges_[eIndex];
@@ -2310,49 +1976,6 @@ bool dynamicTopoFvMesh::fillTables
                     Q[i][j] = q;
                     K[i][j] = k;
                 }
-            }
-        }
-    }
-
-    // If this is a priority edge, fill the buffer with
-    // the improved quality information
-    if
-    (
-        priority &&
-        patchCoupling_.size() &&
-        whichEdgePatch(eIndex) > -1
-    )
-    {
-        label i = -1;
-
-        const polyBoundaryMesh& bdy = boundaryMesh();
-
-        // Search for this edge on all coupled master patches
-        forAll(mList_, patchI)
-        {
-            if (masterToSlave_[patchI].found(eIndex))
-            {
-                // Find the position in the list
-                foundInList(eIndex, mList_[patchI], i);
-
-                sendImpQualityBuffer_[patchI][i] = Q[0][m-1];
-            }
-        }
-
-        // Search for this edge on non-processor coupled patches
-        forAll(sList_, patchI)
-        {
-            if (isA<processorPolyPatch>(bdy[patchI]))
-            {
-                continue;
-            }
-
-            if (slaveToMaster_[patchI].found(eIndex))
-            {
-                // Find the position in the list
-                foundInList(eIndex, sList_[patchI], i);
-
-                recvImpQualityBuffer_[patchI][i] = Q[0][m-1];
             }
         }
     }
@@ -2877,7 +2500,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
             if (!found)
             {
-                Info << nl << nl << "Edge: " << faceEdges[edgeI]
+                Pout << nl << nl << "Edge: " << faceEdges[edgeI]
                      << ": " << edgeToCheck << nl
                      << "was not found in face: " << feIter.index()
                      << ": " << faces_[feIter.index()] << nl
@@ -2905,7 +2528,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
         if (edgeFaces.size() != nEdgeFaces[efIter.index()])
         {
-            Info << nl << nl << "Edge: " << efIter.index()
+            Pout << nl << nl << "Edge: " << efIter.index()
                  << "edgeFaces: " << edgeFaces << endl;
 
             nFailedChecks++;
@@ -2933,7 +2556,7 @@ void dynamicTopoFvMesh::checkConnectivity()
                 )
             )
             {
-                Info << nl << nl << "Edge: " << efIter.index()
+                Pout << nl << nl << "Edge: " << efIter.index()
                      << ", edgeFaces: " << edgeFaces << nl
                      << "was not found in faceEdges of face: "
                      << edgeFaces[faceI] << nl
@@ -2963,7 +2586,7 @@ void dynamicTopoFvMesh::checkConnectivity()
             // Check if this edge is actually internal.
             if (whichEdgePatch(efIter.index()) >= 0)
             {
-                Info << "Edge: " << efIter.index()
+                Pout << "Edge: " << efIter.index()
                      << ": " << edges_[efIter.index()] << " is internal, "
                      << " but patch is specified as: "
                      << whichEdgePatch(efIter.index())
@@ -2979,7 +2602,7 @@ void dynamicTopoFvMesh::checkConnectivity()
             // Check if this edge is actually on a boundary.
             if (patchID < 0)
             {
-                Info << "Edge: " << efIter.index()
+                Pout << "Edge: " << efIter.index()
                      << ": " << edges_[efIter.index()]
                      << " is on a boundary, but patch is specified as: "
                      << patchID << endl;
@@ -2995,7 +2618,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
     if (nInternalEdges != nInternalEdges_)
     {
-        Info << nl << "Internal edge-count is inconsistent." << nl
+        Pout << nl << "Internal edge-count is inconsistent." << nl
              << " Counted internal edges: " << nInternalEdges
              << " Actual count: " << nInternalEdges_ << endl;
 
@@ -3006,7 +2629,7 @@ void dynamicTopoFvMesh::checkConnectivity()
     {
         if (patchInfo[patchI] != edgePatchSizes_[patchI])
         {
-            Info << "Patch-count is inconsistent." << nl
+            Pout << "Patch-count is inconsistent." << nl
                  << " Patch: " << patchI
                  << " Counted edges: " << patchInfo[patchI]
                  << " Actual count: " << edgePatchSizes_[patchI] << endl;
@@ -3035,7 +2658,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
         if ((patch < 0) && (nBF > 0))
         {
-            Info << nl << nl << "Edge: " << key
+            Pout << nl << nl << "Edge: " << key
                  << ", edgeFaces: " << edgeFaces
                  << " is internal, but contains boundary faces."
                  << endl;
@@ -3045,7 +2668,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
         if ((patch >= 0) && (nBF != 2))
         {
-            Info << nl << nl << "Edge: " << key
+            Pout << nl << nl << "Edge: " << key
                  << ", edgeFaces: " << edgeFaces
                  << " is on a boundary patch, but doesn't contain"
                  << " two boundary faces."
@@ -3078,7 +2701,7 @@ void dynamicTopoFvMesh::checkConnectivity()
             {
                 if (!hlPointEdges[peIter.index()].found(pointEdges[edgeI]))
                 {
-                    Info << nl << nl << "Point: " << peIter.index()
+                    Pout << nl << nl << "Point: " << peIter.index()
                          << "pointEdges: " << pointEdges << nl
                          << "hlPointEdges: " << hlPointEdges[peIter.index()]
                          << endl;
@@ -3097,7 +2720,7 @@ void dynamicTopoFvMesh::checkConnectivity()
             // Do a size check as well
             if (hlPointEdges[peIter.index()].size() != pointEdges.size())
             {
-                Info << nl << nl << "Point: " << peIter.index()
+                Pout << nl << nl << "Point: " << peIter.index()
                      << "pointEdges: " << pointEdges << nl
                      << "hlPointEdges: " << hlPointEdges[peIter.index()]
                      << endl;
@@ -3128,11 +2751,11 @@ void dynamicTopoFvMesh::checkConnectivity()
 
             if (edgePoints.size() != edgeFaces.size())
             {
-                Info << nl << nl
+                Pout << nl << nl
                      << "Edge: " << epIter.index()
                      << " " << edges_[epIter.index()] << endl;
 
-                Info << "edgeFaces: " << edgeFaces << endl;
+                Pout << "edgeFaces: " << edgeFaces << endl;
                 forAll(edgeFaces, faceI)
                 {
                     Info << edgeFaces[faceI] << ": "
@@ -3140,7 +2763,7 @@ void dynamicTopoFvMesh::checkConnectivity()
                          << endl;
                 }
 
-                Info << "edgePoints: " << edgePoints << endl;
+                Pout << "edgePoints: " << edgePoints << endl;
 
                 nFailedChecks++;
 
@@ -3171,11 +2794,11 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                 if (!foundInList(otherPoint, edgePoints, i))
                 {
-                    Info << nl << nl
+                    Pout << nl << nl
                          << "Edge: " << epIter.index()
                          << " " << edges_[epIter.index()] << endl;
 
-                    Info << "edgeFaces: " << edgeFaces << endl;
+                    Pout << "edgeFaces: " << edgeFaces << endl;
                     forAll(edgeFaces, faceI)
                     {
                         Info << edgeFaces[faceI] << ": "
@@ -3183,7 +2806,7 @@ void dynamicTopoFvMesh::checkConnectivity()
                              << endl;
                     }
 
-                    Info << "edgePoints: " << edgePoints << endl;
+                    Pout << "edgePoints: " << edgePoints << endl;
 
                     nFailedChecks++;
 
@@ -3245,7 +2868,7 @@ void dynamicTopoFvMesh::checkConnectivity()
         {
             if (cellToNode[cellI].size() != 4)
             {
-                Info << nl << "Warning: Cell: "
+                Pout << nl << "Warning: Cell: "
                      << cellIndex[cellI] << " is inconsistent. "
                      << endl;
 
@@ -3276,6 +2899,8 @@ void dynamicTopoFvMesh::checkConnectivity()
         Info << "Done." << endl;
     }
 
+    reduce(nFailedChecks, orOp<bool>());
+
     if (nFailedChecks)
     {
         FatalErrorIn
@@ -3303,7 +2928,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
         const labelListList& cc = cellCells();
 
         // Obtain the list of patches for which the length-scale is fixed
-        wordList toc = fixedLengthScalePatches_.toc();
+        wordList toc = fixedPatches_.toc();
 
         // Obtain the list of patches for which
         // curvature-based length-scale is specified
@@ -3406,7 +3031,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
                         lengthScale[ownCell] =
                         (
-                            fixedLengthScalePatches_[pName][0].scalarToken()
+                            fixedPatches_[pName][0].scalarToken()
                            *growthFactor_
                         );
 
@@ -3422,6 +3047,8 @@ void dynamicTopoFvMesh::calculateLengthScale()
             // Set boundary patch size if no fixed-length scale is specified.
             if
             (
+                (toc.size() == 0) &&
+                (cToc.size() == 0) &&
                 (bdyPatch.type() != "processor") &&
                 (bdyPatch.type() != "wedge") &&
                 (bdyPatch.type() != "empty") &&
@@ -3518,6 +3145,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
                             if ((sLevel < ngbLevel) && (sLevel > 0))
                             {
                                 sumLength += lengthScale[ncList[indexJ]];
+
                                 nTouchedNgb++;
                             }
                         }
@@ -3526,6 +3154,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
                         // Scale the length and assign to this cell
                         scalar sLength = sumLength*growthFactor_;
+
                         sLength = (sLength < maxLengthScale_)
                                 ? sLength : maxLengthScale_;
 
@@ -3565,12 +3194,8 @@ void dynamicTopoFvMesh::calculateLengthScale()
                 doneWithSweeps = true;
             }
 
-            // Have we completed visiting all cells?
-            // If yes, wait for everyone to complete.
-            if (Pstream::parRun())
-            {
-                reduce(doneWithSweeps, andOp<bool>());
-            }
+            // Wait for everyone to complete.
+            reduce(doneWithSweeps, andOp<bool>());
         }
 
         if (debug)
@@ -3595,8 +3220,6 @@ void dynamicTopoFvMesh::calculateLengthScale()
         {
             lIter() = lengthScale[lIter.index()];
         }
-
-        synchronizeAndExit();
     }
 }
 
@@ -3609,25 +3232,34 @@ void dynamicTopoFvMesh::writeLengthScaleInfo
 {
     const polyBoundaryMesh& bdy = boundaryMesh();
 
+    // Clear existing buffers
+    sendLblBuffer_.clear();
+    recvLblBuffer_.clear();
+    sendSclBuffer_.clear();
+    recvSclBuffer_.clear();
+
     // Number of sent faces across processors
     labelList nSendFaces(bdy.size(), 0);
+    labelList nRecvFaces(bdy.size(), 0);
 
     // Corresponding face labels
-    labelListList sendLblBuffer(bdy.size());
+    sendLblBuffer_.setSize(bdy.size());
+    recvLblBuffer_.setSize(bdy.size());
 
     // Length-scales corresponding to face-labels
-    scalarListList sendSclBuffer(bdy.size());
+    sendSclBuffer_.setSize(bdy.size());
+    recvSclBuffer_.setSize(bdy.size());
 
     // Fill send buffers with cell-level and length-scale info.
-    forAll(nSendFaces, pI)
+    forAll(bdy, pI)
     {
         if (isA<processorPolyPatch>(bdy[pI]))
         {
             const labelList& fCells = bdy[pI].faceCells();
 
             // Set the initial buffer size
-            sendLblBuffer[pI].setSize(bdy[pI].size(), 0);
-            sendSclBuffer[pI].setSize(bdy[pI].size(), 0.0);
+            sendLblBuffer_[pI].setSize(bdy[pI].size(), 0);
+            sendSclBuffer_[pI].setSize(bdy[pI].size(), 0.0);
 
             forAll(fCells, faceI)
             {
@@ -3637,26 +3269,19 @@ void dynamicTopoFvMesh::writeLengthScaleInfo
                 if (cellLevels[cI] > 0)
                 {
                     // Fill the send buffer.
-                    sendLblBuffer[pI][nSendFaces[pI]] = faceI;
-                    sendSclBuffer[pI][nSendFaces[pI]] = lengthScale[cI];
+                    sendLblBuffer_[pI][nSendFaces[pI]] = faceI;
+                    sendSclBuffer_[pI][nSendFaces[pI]] = lengthScale[cI];
 
                     nSendFaces[pI]++;
                 }
             }
 
             // Resize to actual value
-            sendLblBuffer[pI].setSize(nSendFaces[pI]);
-            sendSclBuffer[pI].setSize(nSendFaces[pI]);
-        }
-    }
+            sendLblBuffer_[pI].setSize(nSendFaces[pI]);
+            sendSclBuffer_[pI].setSize(nSendFaces[pI]);
 
-    // Send info to neighbouring processors.
-    forAll(nSendFaces, patchI)
-    {
-        if (isA<processorPolyPatch>(bdy[patchI]))
-        {
             const processorPolyPatch& pp =
-                refCast<const processorPolyPatch>(bdy[patchI]);
+                refCast<const processorPolyPatch>(bdy[pI]);
 
             label neiProcNo = pp.neighbProcNo();
 
@@ -3667,10 +3292,34 @@ void dynamicTopoFvMesh::writeLengthScaleInfo
                 neiProcNo,
                 reinterpret_cast<const char*>
                 (
-                    &nSendFaces[patchI]
+                    &nSendFaces[pI]
                 ),
                 sizeof(label)
             );
+
+            // How many faces should I be waiting for?
+            IPstream::read
+            (
+                Pstream::blocking,
+                neiProcNo,
+                reinterpret_cast<char*>
+                (
+                    &nRecvFaces[pI]
+                ),
+                sizeof(label)
+            );
+        }
+    }
+
+    // Send info to neighbouring processors.
+    forAll(bdy, patchI)
+    {
+        if (isA<processorPolyPatch>(bdy[patchI]))
+        {
+            const processorPolyPatch& pp =
+                refCast<const processorPolyPatch>(bdy[patchI]);
+
+            label neiProcNo = pp.neighbProcNo();
 
             if (debug > 3)
             {
@@ -3680,7 +3329,7 @@ void dynamicTopoFvMesh::writeLengthScaleInfo
                      << endl;
             }
 
-            // Next, perform a non-blocking send of buffers.
+            // Next, perform a non-blocking send/receive of buffers.
             // But only if the buffer size is non-zero.
             if (nSendFaces[patchI] != 0)
             {
@@ -3690,9 +3339,9 @@ void dynamicTopoFvMesh::writeLengthScaleInfo
                     neiProcNo,
                     reinterpret_cast<const char*>
                     (
-                        &sendLblBuffer[patchI][0]
+                        &sendLblBuffer_[patchI][0]
                     ),
-                    sendLblBuffer[patchI].size()*sizeof(label)
+                    sendLblBuffer_[patchI].size()*sizeof(label)
                 );
 
                 OPstream::write
@@ -3701,9 +3350,38 @@ void dynamicTopoFvMesh::writeLengthScaleInfo
                     neiProcNo,
                     reinterpret_cast<const char*>
                     (
-                        &sendSclBuffer[patchI][0]
+                        &sendSclBuffer_[patchI][0]
                     ),
-                    sendSclBuffer[patchI].size()*sizeof(scalar)
+                    sendSclBuffer_[patchI].size()*sizeof(scalar)
+                );
+            }
+
+            if (nRecvFaces[patchI] != 0)
+            {
+                // Size the receive buffers
+                recvLblBuffer_[patchI].setSize(nRecvFaces[patchI], 0);
+                recvSclBuffer_[patchI].setSize(nRecvFaces[patchI], 0.0);
+
+                IPstream::read
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<char*>
+                    (
+                        recvLblBuffer_[patchI].begin()
+                    ),
+                    recvLblBuffer_[patchI].byteSize()
+                );
+
+                IPstream::read
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<char*>
+                    (
+                        recvSclBuffer_[patchI].begin()
+                    ),
+                    recvSclBuffer_[patchI].byteSize()
                 );
             }
         }
@@ -3721,137 +3399,105 @@ void dynamicTopoFvMesh::readLengthScaleInfo
 )
 {
     const polyBoundaryMesh& bdy = boundaryMesh();
-
-    // Number of received faces across processors
-    labelList nRecvFaces(bdy.size(), 0);
-
-    // Corresponding face labels
-    labelListList recvLblBuffer(bdy.size());
-
-    // Length-scales corresponding to face-labels
-    scalarListList recvSclBuffer(bdy.size());
-
-    // Reset the receive counter
-    nRecvFaces = 0;
-    label nProcPatches = 0;
-
-    forAll(nRecvFaces, patchI)
-    {
-        if (isA<processorPolyPatch>(bdy[patchI]))
-        {
-            const processorPolyPatch& pp =
-                refCast<const processorPolyPatch>(bdy[patchI]);
-
-            label neiProcNo = pp.neighbProcNo();
-
-            // How many faces should I be waiting for?
-            IPstream::read
-            (
-                Pstream::blocking,
-                neiProcNo,
-                reinterpret_cast<char*>
-                (
-                    &nRecvFaces[patchI]
-                ),
-                sizeof(label)
-            );
-
-            // Wait for all buffers from this neighbour
-            if (nRecvFaces[patchI] != 0)
-            {
-                // Size the buffers
-                recvLblBuffer[patchI].setSize(nRecvFaces[patchI], 0);
-                recvSclBuffer[patchI].setSize(nRecvFaces[patchI], 0.0);
-
-                IPstream::read
-                (
-                    Pstream::nonBlocking,
-                    neiProcNo,
-                    reinterpret_cast<char*>
-                    (
-                        recvLblBuffer[patchI].begin()
-                    ),
-                    recvLblBuffer[patchI].byteSize()
-                );
-
-                IPstream::read
-                (
-                    Pstream::nonBlocking,
-                    neiProcNo,
-                    reinterpret_cast<char*>
-                    (
-                        recvSclBuffer[patchI].begin()
-                    ),
-                    recvSclBuffer[patchI].byteSize()
-                );
-
-                nProcPatches++;
-            }
-
-            if (debug > 3)
-            {
-                Pout << " Processor patch " << patchI << ' ' << pp.name()
-                     << " communicating with " << neiProcNo
-                     << "  Receiving: " << nRecvFaces[patchI]
-                     << endl;
-            }
-        }
-    }
+    const labelList& own = faceOwner();
+    const labelList& nei = faceNeighbour();
 
     // Wait for all transfers to complete.
-    if (nProcPatches)
-    {
-        OPstream::waitRequests();
-        IPstream::waitRequests();
-    }
+    OPstream::waitRequests();
+    IPstream::waitRequests();
 
     // Now re-visit cells and update length-scales.
-    forAll(nRecvFaces, patchI)
+    forAll(bdy, patchI)
     {
-        if (nRecvFaces[patchI] != 0)
+        if (recvLblBuffer_[patchI].size())
         {
             const labelList& fCells = bdy[patchI].faceCells();
 
-            for (label i = 0; i < nRecvFaces[patchI]; i++)
+            forAll(recvLblBuffer_[patchI], i)
             {
-                label nLabel = recvLblBuffer[patchI][i];
+                label nLabel = recvLblBuffer_[patchI][i];
 
                 label cI = fCells[nLabel];
 
                 label& ngbLevel = cellLevels[cI];
 
-                if (ngbLevel == level + 1)
-                {
-                    const cell& c = cells()[cI];
-
-                    // Add processor contribution
-                    scalar sLength =
-                    (
-                        recvSclBuffer[patchI][i]/c.size()
-                    )*growthFactor_;
-
-                    lengthScale[cI] += sLength;
-
-                    lengthScale[cI] = (lengthScale[cI] < maxLengthScale_)
-                                     ? lengthScale[cI] : maxLengthScale_;
-                }
-
+                // For an unvisited cell, update the level
                 if (ngbLevel == 0)
                 {
                     ngbLevel = level + 1;
-
-                    // Scale the length and assign to this cell
-                    scalar sLength = recvSclBuffer[patchI][i]*growthFactor_;
-
-                    sLength = (sLength < maxLengthScale_)
-                            ? sLength : maxLengthScale_;
-
-                    lengthScale[cI] = sLength;
-
                     levelCells.insert(cI);
-
                     visitedCells++;
                 }
+
+                // Visit all neighbours and re-calculate length-scale
+                const cell& cellCheck = cells()[cI];
+                scalar sumLength = 0.0;
+                label nTouchedNgb = 0;
+
+                forAll(cellCheck, faceI)
+                {
+                    label sLevel = -1, sLCell = -1;
+                    label pF = bdy.whichPatch(cellCheck[faceI]);
+
+                    if (pF == -1)
+                    {
+                        // Internal face. Determine neighbour.
+                        if (own[cellCheck[faceI]] == cI)
+                        {
+                            sLCell = nei[cellCheck[faceI]];
+                        }
+                        else
+                        {
+                            sLCell = own[cellCheck[faceI]];
+                        }
+
+                        sLevel = cellLevels[sLCell];
+
+                        if ((sLevel < ngbLevel) && (sLevel > 0))
+                        {
+                            sumLength += lengthScale[sLCell];
+
+                            nTouchedNgb++;
+                        }
+                    }
+                    else
+                    if (isA<processorPolyPatch>(bdy[pF]))
+                    {
+                        // Determine the local index.
+                        label local = bdy[pF].whichFace(cellCheck[faceI]);
+
+                        // Is this label present in the list?
+                        forAll(recvLblBuffer_[pF], j)
+                        {
+                            if (recvLblBuffer_[pF][j] == local)
+                            {
+                                sumLength += recvSclBuffer_[pF][j];
+
+                                nTouchedNgb++;
+
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    if (fixedPatches_.found(bdy[pF].name()))
+                    {
+                        sumLength +=
+                            fixedPatches_[bdy[pF].name()][0].scalarToken();
+
+                        nTouchedNgb++;
+                    }
+                }
+
+                sumLength /= nTouchedNgb;
+
+                // Scale the length and assign to this cell
+                scalar sLength = sumLength*growthFactor_;
+
+                sLength = (sLength < maxLengthScale_)
+                        ? sLength : maxLengthScale_;
+
+                lengthScale[cI] = sLength;
             }
         }
     }
@@ -3874,7 +3520,7 @@ void dynamicTopoFvMesh::readEdgeOptions()
 
     if (edgeOptionDict.found("fixedLengthScalePatches"))
     {
-        fixedLengthScalePatches_ =
+        fixedPatches_ =
             edgeOptionDict.subDict("fixedLengthScalePatches");
     }
 
@@ -3908,40 +3554,31 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
 {
     label bFacePatch = whichPatch(faceIndex);
 
-    // Loop through all curvature patches
-    wordList cToc = curvaturePatches_.toc();
-    forAll(cToc,wordI)
+    // Check curvature patches
+    if (curvaturePatches_.found(boundaryMesh()[bFacePatch].name()))
     {
-        word& patchName = cToc[wordI];
+        // Find the local index in the patch
+        label lIndex = -1;
 
-        if (boundaryMesh()[bFacePatch].name() == patchName)
+        if (faceIndex < nOldFaces_)
         {
-            // Find the local index in the patch
-            label lIndex = -1;
-
-            if (faceIndex < nOldFaces_)
-            {
-                lIndex = faceIndex - boundaryMesh()[bFacePatch].start();
-            }
-            else
-            {
-                lIndex = faceParents_[faceIndex];
-            }
-
-            return (curvatureRatio_*curvatureFields_[bFacePatch][lIndex]);
+            lIndex = faceIndex - boundaryMesh()[bFacePatch].start();
         }
+        else
+        {
+            lIndex = faceParents_[faceIndex];
+        }
+
+        return (curvatureRatio_*curvatureFields_[bFacePatch][lIndex]);
     }
 
-    // Loop through all fixed length-scale patches, and return the fixed value
-    wordList toc = fixedLengthScalePatches_.toc();
-    forAll(toc,wordI)
+    // Check fixed length-scale patches
+    if (fixedPatches_.found(boundaryMesh()[bFacePatch].name()))
     {
-        word& patchName = toc[wordI];
-
-        if (boundaryMesh()[bFacePatch].name() == patchName)
-        {
-            return (fixedLengthScalePatches_[patchName][0].scalarToken());
-        }
+        return
+        (
+            fixedPatches_[boundaryMesh()[bFacePatch].name()][0].scalarToken()
+        );
     }
 
     return lengthScale_[owner_[faceIndex]];
@@ -4253,8 +3890,8 @@ bool dynamicTopoFvMesh::edgeModification()
     return edgeModification_;
 }
 
-// Send quality buffers for coupled patches.
-void dynamicTopoFvMesh::sendQualityBuffers()
+// Wait for buffer transfer completion.
+void dynamicTopoFvMesh::waitForBuffers()
 {
     if (!patchCoupling_.size())
     {
@@ -4267,112 +3904,8 @@ void dynamicTopoFvMesh::sendQualityBuffers()
         return;
     }
 
-    const polyBoundaryMesh& bdy = boundaryMesh();
-
-    // Loop through coupled patches and send/receive parallel buffers
-    forAllIter(Map<label>, patchCoupling_, patchI)
-    {
-        label mPatch = patchI.key();
-        label sPatch = patchI();
-
-        if (sPatch == -1)
-        {
-            // This is a processor patch.
-            // Find out which neighbour it talks to.
-            const processorPolyPatch& pp =
-                refCast<const processorPolyPatch>(bdy[mPatch]);
-
-            label neiProcNo = pp.neighbProcNo();
-
-            // Send information to neighbour
-            OPstream::write
-            (
-                Pstream::nonBlocking,
-                neiProcNo,
-                reinterpret_cast<const char*>
-                (
-                    &sendMinQualityBuffer_[mPatch][0]
-                ),
-                sendMinQualityBuffer_[mPatch].size()*sizeof(scalar)
-            );
-
-            OPstream::write
-            (
-                Pstream::nonBlocking,
-                neiProcNo,
-                reinterpret_cast<const char*>
-                (
-                    &sendImpQualityBuffer_[mPatch][0]
-                ),
-                sendImpQualityBuffer_[mPatch].size()*sizeof(scalar)
-            );
-        }
-    }
-}
-
-// Receive quality buffers for coupled patches.
-void dynamicTopoFvMesh::receiveQualityBuffers()
-{
-    if (!patchCoupling_.size())
-    {
-        return;
-    }
-
-    // Slave threads cannot send/receive
-    if (threader().multiThreaded() && self() > 0)
-    {
-        return;
-    }
-
-    label nProcPatches = 0;
-    const polyBoundaryMesh& bdy = boundaryMesh();
-
-    forAllIter(Map<label>, patchCoupling_, patchI)
-    {
-        label mPatch = patchI.key();
-        label sPatch = patchI();
-
-        if (sPatch == -1)
-        {
-            // This is a processor patch.
-            // Find out which neighbour it talks to.
-            const processorPolyPatch& pp =
-                refCast<const processorPolyPatch>(bdy[mPatch]);
-
-            label neiProcNo = pp.neighbProcNo();
-
-            // Receive information from neighbour
-            IPstream::read
-            (
-                Pstream::nonBlocking,
-                neiProcNo,
-                reinterpret_cast<char*>
-                (
-                    recvMinQualityBuffer_[mPatch].begin()
-                ),
-                recvMinQualityBuffer_[mPatch].byteSize()
-            );
-
-            IPstream::read
-            (
-                Pstream::nonBlocking,
-                neiProcNo,
-                reinterpret_cast<char*>
-                (
-                    recvImpQualityBuffer_[mPatch].begin()
-                ),
-                recvImpQualityBuffer_[mPatch].byteSize()
-            );
-
-            nProcPatches++;
-        }
-    }
-
-    if (nProcPatches)
-    {
-        OPstream::waitRequests();
-        IPstream::waitRequests();
-    }
+    OPstream::waitRequests();
+    IPstream::waitRequests();
 }
 
 // Synchronize and exit for parallel runs.
@@ -4512,98 +4045,6 @@ void dynamicTopoFvMesh::swap3DEdges
     // Allocate dynamic programming tables
     mesh->initTables(Q, K, triangulations);
 
-    // Deal with prioritized edges first
-    if (!(mesh->threader().multiThreaded() && thread->master()))
-    {
-        forAll(mesh->priorityEdgeStack(tIndex), edgeI)
-        {
-            // Retrieve an edge from the stack
-            label eIndex = mesh->priorityEdgeStack(tIndex)[edgeI];
-
-            // Compute the minimum quality of cells around this edge.
-            mesh->computeMinQuality
-            (
-                eIndex,
-                minQuality,
-                true,
-                false
-            );
-
-            // Fill the dynamic programming tables
-            // and compute improved quality for send buffers
-            mesh->fillTables(eIndex, m, Q, K, triangulations, true);
-
-            // Push this edge on to the master stack
-            mesh->priorityEdgeStack(0).push(eIndex);
-        }
-    }
-
-    // Send coupled processor patch information
-    mesh->sendQualityBuffers();
-
-    // Meanwhile, deal with locally coupled edges
-    if (thread->master())
-    {
-        forAll(mesh->priorityEdgeStack(tIndex), edgeI)
-        {
-            // Retrieve an edge from the stack
-            label eIndex = mesh->priorityEdgeStack(tIndex)[edgeI];
-
-            // Is this a locally coupled edge?
-            if (mesh->locallyCoupledEdge(eIndex))
-            {
-                // Check if this edge is on a bounding curve
-                if (mesh->checkBoundingCurve(eIndex))
-                {
-                    continue;
-                }
-
-                // Fill the dynamic programming tables
-                mesh->fillTables(eIndex, m, Q, K, triangulations);
-
-                // Check if edge-swapping is required.
-                if (mesh->checkQuality(eIndex, m, Q, minQuality, true))
-                {
-                    // Remove this edge according to the swap sequence
-                    mesh->removeEdgeFlips(eIndex, K, triangulations);
-                }
-            }
-        }
-    }
-
-    // Receive coupled processor patch information
-    mesh->receiveQualityBuffers();
-
-    // Now deal with updated processor edges
-    if (thread->master())
-    {
-        while (!mesh->priorityEdgeStack(tIndex).empty())
-        {
-            // Retrieve an edge from the stack
-            label eIndex = mesh->priorityEdgeStack(tIndex).pop();
-
-            // Is this a coupled processor edge?
-            if (mesh->coupledProcessorEdge(eIndex))
-            {
-                // Check if this edge is on a bounding curve
-                if (mesh->checkBoundingCurve(eIndex))
-                {
-                    continue;
-                }
-
-                // Fill the dynamic programming tables
-                mesh->fillTables(eIndex, m, Q, K, triangulations);
-
-                // Check if edge-swapping is required.
-                if (mesh->checkQuality(eIndex, m, Q, minQuality, true))
-                {
-                    // Remove this edge according to the swap sequence
-                    mesh->removeEdgeFlips(eIndex, K, triangulations);
-                }
-            }
-        }
-    }
-
     // Pick edges off the stack
     while (!mesh->edgeStack(tIndex).empty())
     {
@@ -4731,7 +4172,6 @@ bool dynamicTopoFvMesh::checkCollapse
     const point& newPoint,
     const label pointIndex,
     const label cellIndex,
-    const FixedList<bool,2>& edgeBoundary,
     labelHashSet& cellsChecked
 )
 {
@@ -4798,6 +4238,7 @@ bool dynamicTopoFvMesh::checkCollapse
 
     // No problems, so a collapse is feasible
     cellsChecked.insert(cellIndex);
+
     return false;
 }
 
@@ -5138,12 +4579,6 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 // MultiThreaded topology modifier [3D]
 void dynamicTopoFvMesh::threadedTopoModifier3D()
 {
-    // Deal with sliver cells first...
-    if (thresholdSlivers_.size())
-    {
-        removeSlivers();
-    }
-
     if (edgeModification_)
     {
         // Initialize the edge stacks
@@ -5375,14 +4810,21 @@ bool dynamicTopoFvMesh::updateTopology()
     if (debug > 1)
     {
         label band=0;
+
         const labelList& oldOwner = faceOwner();
         const labelList& oldNeighbour = faceNeighbour();
 
         for(label faceI = 0; faceI < nInternalFaces_; faceI++)
         {
             label diff = oldNeighbour[faceI] - oldOwner[faceI];
-            if (diff > band) band = diff;
+
+            if (diff > band)
+            {
+                band = diff;
+            }
         }
+
+        reduce(band, maxOp<label>());
 
         Info << "Mesh size: " << nCells()
              << "    Bandwidth before renumbering: " << band << endl;

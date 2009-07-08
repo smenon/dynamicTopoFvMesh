@@ -56,7 +56,7 @@ void dynamicTopoFvMesh::collapseQuadFace
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2> c0BdyFace, c0IntFace, c1BdyFace, c1IntFace;
     FixedList<edge,4> checkEdge(edge(-1,-1));
-    FixedList<label,4> checkEdgeIndex;
+    FixedList<label,4> checkEdgeIndex(-1);
     face tmpTriFace(3);
 
     // Define checkEdges
@@ -903,11 +903,9 @@ void dynamicTopoFvMesh::collapseQuadFace
 }
 
 // Method for the collapse of an edge in 3D
-// Returns true if the collapse was performed.
-bool dynamicTopoFvMesh::collapseEdge
+void dynamicTopoFvMesh::collapseEdge
 (
-    const label eIndex,
-    const label cCase
+    const label eIndex
 )
 {
     // Edge collapse performs the following operations:
@@ -934,7 +932,7 @@ bool dynamicTopoFvMesh::collapseEdge
     {
         // Reached the max allowable topo-changes.
         edgeStack(tIndex).clear();
-        return false;
+        return;
     }
 
     // Hull variables
@@ -983,7 +981,6 @@ bool dynamicTopoFvMesh::collapseEdge
     point newPoint = vector::zero;
 
     // Decide which point to remove
-    FixedList<label,2> checkPoints(-1);
     label collapseCase = -1;
     label collapsePoint = -1, replacePoint = -1;
     label removeEdgeIndex = -1, removeFaceIndex = -1;
@@ -1002,7 +999,7 @@ bool dynamicTopoFvMesh::collapseEdge
     if (edgeBoundary[0] && edgeBoundary[1])
     {
         // Looks like both points are on the boundary.
-        // Check if either point touches a boundary face, and retain that.
+        // Check if either point touches a hull boundary face, and retain that.
         FixedList<bool,2> faceCheck(false);
 
         forAll(ringEntities[1], faceI)
@@ -1044,13 +1041,12 @@ bool dynamicTopoFvMesh::collapseEdge
         collapseCase = 2;
     }
 
-    // Override collapseCase if cCase is non-negative.
-    // This is usually a forced case involving a slave edge
-    // on a coupled patch.
-    if (cCase != -1)
-    {
-        collapseCase = cCase;
-    }
+    // Override collapseCase if necessary.
+    // This is usually a forced case involving a coupled patch.
+    // if (cCase != -1)
+    // {
+    //     collapseCase = cCase;
+    // }
 
     switch (collapseCase)
     {
@@ -1063,7 +1059,6 @@ bool dynamicTopoFvMesh::collapseEdge
             replaceFaceIndex = 1;
             removeEdgeIndex = 2;
             removeFaceIndex = 3;
-            checkPoints[0] = collapsePoint;
             newPoint = points_[thisEdge[0]];
 
             break;
@@ -1077,7 +1072,6 @@ bool dynamicTopoFvMesh::collapseEdge
             removeFaceIndex = 1;
             replaceEdgeIndex = 2;
             replaceFaceIndex = 3;
-            checkPoints[0] = collapsePoint;
             newPoint = points_[thisEdge[1]];
 
             break;
@@ -1181,111 +1175,57 @@ bool dynamicTopoFvMesh::collapseEdge
     }
 
     // Check collapsibility of cells around edges with the re-configured point
-    forAll(checkPoints, pointI)
+    labelList& checkPointEdges = pointEdges_[collapsePoint];
+
+    forAll(checkPointEdges, edgeI)
     {
-        if (checkPoints[pointI] == -1)
+        labelList& eFaces = edgeFaces_[checkPointEdges[edgeI]];
+
+        // Build a list of cells to check
+        forAll(eFaces, faceI)
         {
-            continue;
-        }
+            label own = owner_[eFaces[faceI]];
+            label nei = neighbour_[eFaces[faceI]];
 
-        labelList& checkPointEdges = pointEdges_[checkPoints[pointI]];
-
-        forAll(checkPointEdges, edgeI)
-        {
-            labelList& eFaces = edgeFaces_[checkPointEdges[edgeI]];
-
-            // Build a list of cells to check
-            forAll(eFaces, faceI)
+            // Check owner cell
+            if (!cellsChecked.found(own))
             {
-                label own = owner_[eFaces[faceI]];
-                label nei = neighbour_[eFaces[faceI]];
-
-                // Check owner cell
-                if (!cellsChecked.found(own))
-                {
-                    // Check if a collapse is feasible
-                    if
+                // Check if a collapse is feasible
+                if
+                (
+                    checkCollapse
                     (
-                        checkCollapse
-                        (
-                            newPoint,
-                            checkPoints[pointI],
-                            own,
-                            edgeBoundary,
-                            cellsChecked
-                        )
+                        newPoint,
+                        collapsePoint,
+                        own,
+                        cellsChecked
                     )
-                    {
-                        return false;
-                    }
+                )
+                {
+                    return;
                 }
+            }
 
-                // Check neighbour cell
-                if (!cellsChecked.found(nei) && nei != -1)
-                {
-                    // Check if a collapse is feasible
-                    if
+            // Check neighbour cell
+            if (!cellsChecked.found(nei) && nei != -1)
+            {
+                // Check if a collapse is feasible
+                if
+                (
+                    checkCollapse
                     (
-                        checkCollapse
-                        (
-                            newPoint,
-                            checkPoints[pointI],
-                            nei,
-                            edgeBoundary,
-                            cellsChecked
-                        )
+                        newPoint,
+                        collapsePoint,
+                        nei,
+                        cellsChecked
                     )
-                    {
-                        return false;
-                    }
+                )
+                {
+                    return;
                 }
             }
         }
     }
-
-    // If this edge is on a master coupled patch, check if the slave
-    // can perform a collapse too.
-    /*
-    if (whichEdgePatch(eIndex) == masterPatch_)
-    {
-        // Figure out the collapseCase for the slave
-        label slaveCase = -1;
-        label slaveIndex = masterToSlave_[eIndex];
-        edge& slaveEdge = edges_[slaveIndex];
-
-        if (slaveEdge[0] == collapsePoint)
-        {
-            slaveCase = 2;
-        }
-        else
-        if (slaveEdge[1] == collapsePoint)
-        {
-            slaveCase = 1;
-        }
-        else
-        {
-            // Something is very wrong.
-            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                << "Master/slave edges don't match." << nl
-                << "Master: " << eIndex << ":" << edges_[eIndex] << nl
-                << "Slave: " << slaveIndex << ":" << slaveEdge
-                << abort(FatalError);
-        }
-
-        // Collapse the slave edge
-        bool slaveSuccess = collapseEdge(slaveIndex, slaveCase);
-
-        // If the slave failed, the master fails as well.
-        if (slaveSuccess)
-        {
-            masterToSlave_.erase(eIndex);
-        }
-        else
-        {
-            return false;
-        }
-    }
-    */
 
     // Renumber all hull faces and edges
     forAll(faceHull, indexI)
@@ -1691,7 +1631,7 @@ bool dynamicTopoFvMesh::collapseEdge
     nModifications_++;
 
     // Return a succesful collapse
-    return true;
+    return;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

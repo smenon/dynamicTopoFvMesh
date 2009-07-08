@@ -579,7 +579,6 @@ void dynamicTopoFvMesh::reOrderCells()
     labelList visited(allCells, 0);
     labelListList cellCellAddr(allCells);
     cellList oldCells(allCells);
-    scalarField oldLengthScale(0);
 
     addedCellRenumbering_.clear();
 
@@ -592,12 +591,8 @@ void dynamicTopoFvMesh::reOrderCells()
 
     if (edgeModification_)
     {
-        oldLengthScale.setSize(allCells);
-        forAllIter(HashList<scalar>::iterator, lengthScale_, cIter)
-        {
-            oldLengthScale[cIter.index()] = cIter();
-        }
         lengthScale_.clear();
+        lengthScale_.setSize(nCells_, 0.0);
     }
 
     // Build a cell-cell addressing list
@@ -671,11 +666,6 @@ void dynamicTopoFvMesh::reOrderCells()
 
                     // Insert entities into HashLists...
                     cells_.append(oldCells[currentCell]);
-
-                    if (edgeModification_)
-                    {
-                        lengthScale_.append(oldLengthScale[currentCell]);
-                    }
 
                     cellInOrder++;
 

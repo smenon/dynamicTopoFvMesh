@@ -86,7 +86,7 @@ class dynamicTopoFvMesh
 
         //- Sub-dictionary which specifies
         //  fixed length-scales for patches
-        dictionary fixedLengthScalePatches_;
+        dictionary fixedPatches_;
 
         //- Sub-dictionary which specifies
         //  patches with curvature-based length-scale
@@ -172,19 +172,14 @@ class dynamicTopoFvMesh
         labelHashSet        thresholdSlivers_;
         scalarListList      curvatureFields_;
 
-        //- Coupled patch data
-        label               slaveIndex_;
+        // Coupled patch information
         Map<label>          patchCoupling_;
-        List<Map<label> >   masterToSlave_;
-        List<Map<label> >   slaveToMaster_;
-        labelListList       mList_;
-        labelListList       sList_;
 
-        // Buffers for coupled patches
-        scalarListList      sendMinQualityBuffer_;
-        scalarListList      recvMinQualityBuffer_;
-        scalarListList      sendImpQualityBuffer_;
-        scalarListList      recvImpQualityBuffer_;
+        // Buffers for length-scale calculations
+        labelListList       sendLblBuffer_;
+        labelListList       recvLblBuffer_;
+        scalarListList      sendSclBuffer_;
+        scalarListList      recvSclBuffer_;
 
         //- 3D Mesh Flipping data
         label               maxTetsPerEdge_;
@@ -240,10 +235,6 @@ class dynamicTopoFvMesh
         // Stack-list of edges to be checked for topo-changes [3D].
         // One for each thread.
         List<stack> edgeStack_;
-
-        // Stack-list of prioritized edges to be checked for topo-changes [3D].
-        // One for each thread. Used for coupled edges.
-        List<stack> priorityEdgeStack_;
 
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
@@ -368,10 +359,18 @@ class dynamicTopoFvMesh
         scalar faceCurvature(const label fIndex);
 
         // Return length-scale at an face-location in the mesh [2D]
-        inline void meshFaceLengthScale(const label fIndex, scalar& scale);
+        inline void meshFaceLengthScale
+        (
+            const label fIndex,
+            scalar& scale
+        );
 
         // Return length-scale at an edge-location in the mesh [3D]
-        inline void meshEdgeLengthScale(const label eIndex, scalar& scale);
+        inline void meshEdgeLengthScale
+        (
+            const label eIndex,
+            scalar& scale
+        );
 
         // Check if a given face is a quad
         inline bool checkQuadFace(const label fIndex);
@@ -406,9 +405,6 @@ class dynamicTopoFvMesh
         // Return the edge-stack for a particular thread
         inline stack& edgeStack(const label threadID);
 
-        // Return the priority edge-stack for a particular thread
-        inline stack& priorityEdgeStack(const label threadID);
-
         // Return the integer threadID for a given pthread
         inline label self();
 
@@ -423,12 +419,6 @@ class dynamicTopoFvMesh
 
         // Method to determine the boundary patch index for a given edge
         inline label whichEdgePatch(const label index);
-
-        // Method to determine whether the edge is locally coupled
-        inline bool locallyCoupledEdge(const label eIndex);
-
-        // Method to determine whether the edge is on a processor patch
-        inline bool coupledProcessorEdge(const label eIndex);
 
         // Method for the swapping of a quad-face in 2D
         void swapQuadFace
@@ -455,10 +445,9 @@ class dynamicTopoFvMesh
         );
 
         // Method for the collapse of an edge in 3D
-        bool collapseEdge
+        void collapseEdge
         (
-            const label eIndex,
-            const label cCase = -1
+            const label eIndex
         );
 
         // Utility method to check for invalid edge-collapse.
@@ -467,7 +456,6 @@ class dynamicTopoFvMesh
             const point& newPoint,
             const label pointIndex,
             const label cellIndex,
-            const FixedList<bool,2>& edgeBoundary,
             labelHashSet& cellsChecked
         );
 
@@ -625,9 +613,6 @@ class dynamicTopoFvMesh
             const label eIndex
         );
 
-        // Utility method to build mapping between coupled patches
-        void buildCoupledMaps();
-
         // Utility to check whether points of an edge lie on a boundary
         void checkEdgeBoundary
         (
@@ -639,9 +624,7 @@ class dynamicTopoFvMesh
         inline void computeMinQuality
         (
             const label eIndex,
-            scalar& minQuality,
-            bool priority = false,
-            bool compareCoupled = true
+            scalar& minQuality
         );
 
         // Check whether the given edge is on a bounding curve
@@ -661,8 +644,7 @@ class dynamicTopoFvMesh
             const label eIndex,
             const label m,
             const scalarListList& Q,
-            const scalar minQuality,
-            bool coupledCheck = false
+            const scalar minQuality
         );
 
         // Utility method to fill the dynamic programming tables
@@ -672,8 +654,7 @@ class dynamicTopoFvMesh
             label& m,
             scalarListList& Q,
             labelListList& K,
-            labelListList& triangulations,
-            bool priority = false
+            labelListList& triangulations
         );
 
         // Remove the edge according to the swap sequence
@@ -801,11 +782,8 @@ class dynamicTopoFvMesh
         // Does the mesh perform edge-modification?
         bool edgeModification();
 
-        // Send quality buffers for coupled patches.
-        void sendQualityBuffers();
-
-        // Receive quality buffers for coupled patches.
-        void receiveQualityBuffers();
+        // Wait for buffer transfer completion.
+        void waitForBuffers();
 
         // Synchronize and exit for parallel runs.
         void synchronizeAndExit();
