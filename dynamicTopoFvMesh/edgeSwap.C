@@ -1635,21 +1635,6 @@ void dynamicTopoFvMesh::swap32
                            newBdyEdgePoints
                        );
 
-        // Update coupled patches, if necessary
-        /*
-        if (edgePatch == masterPatch_)
-        {
-            // Update the map
-            masterToSlave_.insert(newEdgeIndex, slaveIndex_);
-        }
-        else
-        if (edgePatch == slavePatch_)
-        {
-            // Update the index
-            slaveIndex_ = newEdgeIndex;
-        }
-        */
-
         // Update faceEdges with the new edge
         newFaceEdges[nE++] = newEdgeIndex;
         bdyFaceEdges[0][nBE[0]++] = newEdgeIndex;

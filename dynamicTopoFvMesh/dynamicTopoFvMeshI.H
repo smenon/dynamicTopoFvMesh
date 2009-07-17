@@ -419,7 +419,7 @@ inline label dynamicTopoFvMesh::self()
     {
         for (label i = 1; i <= threader_->getNumThreads(); i++)
         {
-            if (pthread_equal(structPtr_[i].pthreadID_, pthread_self()))
+            if (pthread_equal(structPtr_[i].ID(), pthread_self()))
             {
                 return i;
             }

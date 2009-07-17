@@ -239,8 +239,8 @@ class dynamicTopoFvMesh
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
 
-        //- Structure used for multiThreading
-        struct topoMeshStruct
+        //- Private sub-class used for multiThreading
+        class topoMeshStruct
         {
             // Pointer to this class
             dynamicTopoFvMesh *mesh_;
@@ -254,26 +254,123 @@ class dynamicTopoFvMesh
             // Is this a master/slave thread
             bool master_;
 
+            // Is coupled modifications required?
+            bool isCoupled_;
+
             // Synchronization mutex
             Mutex syncMutex_;
 
-            // Default constructor
-            topoMeshStruct();
+        public:
+
+            // Constructor
+            topoMeshStruct
+            (
+                dynamicTopoFvMesh *mesh,
+                label nThreads
+            );
+
+            // Return a reference to the mesh
+            dynamicTopoFvMesh& mesh() { return *mesh_; }
+
+            // Return the number of threads
+            inline label nThreads() { return nThreads_; }
+
+            // Designate as master thread
+            inline void setMaster() { master_ = true; }
+
+            // Designate as slave thread
+            inline void setSlave() { master_ = false; }
 
             // Is this a master thread?
-            bool master() { return (master_ == true); }
+            inline bool master() { return (master_ == true); }
 
             // Is this a slave thread?
-            bool slave() { return !master(); }
+            inline bool slave() { return !master(); }
 
             // Lock this thread
-            void lock() { syncMutex_.lock(); }
+            inline void lock() { syncMutex_.lock(); }
 
             // Unlock this thread
-            void unlock() { syncMutex_.unlock(); }
+            inline void unlock() { syncMutex_.unlock(); }
+
+            // Return the ID
+            inline pthread_t& ID() { return pthreadID_; }
+
+            // Is coupled modifications required?
+            inline bool& isCoupled() { return isCoupled_; }
         };
 
         PtrList<topoMeshStruct> structPtr_;
+
+        // Private sub-class for coupled patches
+        class patchSubMesh
+        {
+            // Entity sizes
+            label    nPoints_;
+            label    nEdges_;
+            label    nFaces_;
+            label    nCells_;
+
+            // Maps for entities
+            // - For every local index,
+            //   provide global index
+            Map<label> pointMap_;
+            Map<label> edgeMap_;
+            Map<label> faceMap_;
+            Map<label> cellMap_;
+
+            // - For every global index,
+            //   provide local index
+            Map<label> reversePointMap_;
+            Map<label> reverseEdgeMap_;
+            Map<label> reverseFaceMap_;
+            Map<label> reverseCellMap_;
+
+            // Buffers
+            pointField  pointBuffer_;
+            labelList   edgeBuffer_;
+            labelList   faceBuffer_;
+            labelList   cellBuffer_;
+            scalarList  lengthBuffer_;
+
+        public:
+
+            // Constructor
+            patchSubMesh();
+
+            //- Access
+
+                // Access to entity sizes
+                label& nPoints() { return nPoints_; }
+                label& nEdges() { return nEdges_; }
+                label& nFaces() { return nFaces_; }
+                label& nCells() { return nCells_; }
+
+                // Access to maps
+                Map<label>& pointMap() { return pointMap_; }
+                Map<label>& edgeMap() { return edgeMap_; }
+                Map<label>& faceMap() { return faceMap_; }
+                Map<label>& cellMap() { return cellMap_; }
+
+                Map<label>& reversePointMap() { return reversePointMap_; }
+                Map<label>& reverseEdgeMap() { return reverseEdgeMap_; }
+                Map<label>& reverseFaceMap() { return reverseFaceMap_; }
+                Map<label>& reverseCellMap() { return reverseCellMap_; }
+
+                // Access to buffers
+                pointField& pointBuffer() { return pointBuffer_; }
+                labelList& edgeBuffer() { return edgeBuffer_; }
+                labelList& faceBuffer() { return faceBuffer_; }
+                labelList& cellBuffer() { return cellBuffer_; }
+                scalarList& lengthBuffer() { return lengthBuffer_; }
+        };
+
+        PtrList<patchSubMesh> sendPatchMeshes_;
+        PtrList<patchSubMesh> recvPatchMeshes_;
+
+        // Mapping for coupled patches
+        List<Map<label> > masterToSlave_;
+        List<Map<label> > slaveToMaster_;
 
     // Private Member Functions
 
@@ -383,6 +480,12 @@ class dynamicTopoFvMesh
 
         // MultiThreaded topology modifier [3D]
         void threadedTopoModifier3D();
+
+        // Lock all slave threads
+        void lockSlaveThreads();
+
+        // Unlock all slave threads
+        void unlockSlaveThreads();
 
         // Synchronize all slave threads
         void synchronizeThreads();
@@ -776,11 +879,42 @@ class dynamicTopoFvMesh
             labelHashSet& levelCells
         );
 
+        // Parallel send
+        void pWrite(const label toID, const label& data);
+
+        template <class Type>
+        void pWrite(const label toID, const List<Type>& data);
+
+        // Parallel receive
+        void pRead(const label fromID, label& data);
+
+        template <class Type>
+        void pRead(const label fromID, List<Type>& data);
+
         // Read edge-modification options from the dictionary
         void readEdgeOptions();
 
         // Does the mesh perform edge-modification?
         bool edgeModification();
+
+        // Send and receive patch sub-meshes for coupled patches
+        void sendAndRecvCoupledMeshes();
+
+        // Handle topology changes for coupled patches
+        void handleCoupledPatches();
+
+        // Build patch sub-meshes for coupled patches
+        void buildPatchSubMeshes();
+
+        // Build patch sub-mesh for a specified coupled patch
+        void buildPatchSubMesh
+        (
+            const label patchID,
+            patchSubMesh& subMesh
+        );
+
+        // Build coupled maps
+        void buildCoupledMaps(bool localOnly);
 
         // Wait for buffer transfer completion.
         void waitForBuffers();

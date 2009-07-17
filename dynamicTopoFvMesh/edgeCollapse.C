@@ -1041,13 +1041,6 @@ void dynamicTopoFvMesh::collapseEdge
         collapseCase = 2;
     }
 
-    // Override collapseCase if necessary.
-    // This is usually a forced case involving a coupled patch.
-    // if (cCase != -1)
-    // {
-    //     collapseCase = cCase;
-    // }
-
     switch (collapseCase)
     {
         case 1:

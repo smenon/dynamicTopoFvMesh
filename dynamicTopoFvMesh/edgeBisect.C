@@ -1623,27 +1623,6 @@ void dynamicTopoFvMesh::bisectEdge
 
     // Increment the number of modifications
     nModifications_++;
-
-    // If this is an edge on a master coupled patch,
-    // bisect its slave as well...
-    /*
-    if (whichEdgePatch(eIndex) == masterPatch_)
-    {
-        slaveIndex_ = -1;
-
-        // Bisect the slave
-        bisectEdge(masterToSlave_[eIndex]);
-
-        // Update the maps
-        masterToSlave_.insert(newEdgeIndex, slaveIndex_);
-    }
-    else
-    if (whichEdgePatch(eIndex) == slavePatch_)
-    {
-        // Update the index
-        slaveIndex_ = newEdgeIndex;
-    }
-    */
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
