@@ -81,6 +81,9 @@ class dynamicTopoFvMesh
         //- Edge bisection/collapse option
         Switch edgeModification_;
 
+        //- Coupled modification switch
+        Switch coupledModification_;
+
         //- Specify the re-meshing interval
         label interval_;
 
@@ -172,9 +175,6 @@ class dynamicTopoFvMesh
         labelHashSet        thresholdSlivers_;
         scalarListList      curvatureFields_;
 
-        // Coupled patch information
-        Map<label>          patchCoupling_;
-
         // Buffers for length-scale calculations
         labelListList       sendLblBuffer_;
         labelListList       recvLblBuffer_;
@@ -254,9 +254,6 @@ class dynamicTopoFvMesh
             // Is this a master/slave thread
             bool master_;
 
-            // Is coupled modifications required?
-            bool isCoupled_;
-
             // Synchronization mutex
             Mutex syncMutex_;
 
@@ -295,9 +292,6 @@ class dynamicTopoFvMesh
 
             // Return the ID
             inline pthread_t& ID() { return pthreadID_; }
-
-            // Is coupled modifications required?
-            inline bool& isCoupled() { return isCoupled_; }
         };
 
         PtrList<topoMeshStruct> structPtr_;
@@ -365,6 +359,10 @@ class dynamicTopoFvMesh
                 scalarList& lengthBuffer() { return lengthBuffer_; }
         };
 
+        // Coupled patch information
+        Map<label> patchCoupling_;
+
+        // Sub-Mesh pointers
         PtrList<patchSubMesh> sendPatchMeshes_;
         PtrList<patchSubMesh> recvPatchMeshes_;
 
@@ -548,9 +546,11 @@ class dynamicTopoFvMesh
         );
 
         // Method for the collapse of an edge in 3D
-        void collapseEdge
+        label collapseEdge
         (
-            const label eIndex
+            const label eIndex,
+            label overRideCase = -1,
+            bool checkOnly = false
         );
 
         // Utility method to check for invalid edge-collapse.
@@ -736,36 +736,41 @@ class dynamicTopoFvMesh
         // Allocate dynamic programming tables
         void initTables
         (
-            scalarListList& Q,
-            labelListList& K,
-            labelListList& triangulations
+            labelList& m,
+            PtrList<scalarListList>& Q,
+            PtrList<labelListList>& K,
+            PtrList<labelListList>& triangulations,
+            const label checkIndex = -1
         );
 
         // Check triangulation quality for an edge index
         bool checkQuality
         (
             const label eIndex,
-            const label m,
-            const scalarListList& Q,
-            const scalar minQuality
+            const labelList& m,
+            const PtrList<scalarListList>& Q,
+            const scalar minQuality,
+            const label checkIndex = 0
         );
 
         // Utility method to fill the dynamic programming tables
         bool fillTables
         (
             const label eIndex,
-            label& m,
-            scalarListList& Q,
-            labelListList& K,
-            labelListList& triangulations
+            labelList& m,
+            PtrList<scalarListList>& Q,
+            PtrList<labelListList>& K,
+            PtrList<labelListList>& triangulations,
+            const label checkIndex = 0
         );
 
         // Remove the edge according to the swap sequence
-        void removeEdgeFlips
+        bool removeEdgeFlips
         (
             const label eIndex,
-            const labelListList& K,
-            labelListList& triangulations
+            const PtrList<labelListList>& K,
+            PtrList<labelListList>& triangulations,
+            const label checkIndex = 0
         );
 
         // Extract triangulations from the programming table
@@ -882,14 +887,22 @@ class dynamicTopoFvMesh
         // Parallel send
         void pWrite(const label toID, const label& data);
 
+        // Parallel send (for lists)
         template <class Type>
         void pWrite(const label toID, const List<Type>& data);
 
         // Parallel receive
         void pRead(const label fromID, label& data);
 
+        // Parallel receive (for lists)
         template <class Type>
         void pRead(const label fromID, List<Type>& data);
+
+        // Method to determine whether the master edge is locally coupled
+        inline bool locallyCoupledEdge(const label eIndex);
+
+        // Obtain the maximum coupled patch index
+        inline label getMaxCouplingIndex();
 
         // Read edge-modification options from the dictionary
         void readEdgeOptions();
@@ -897,8 +910,8 @@ class dynamicTopoFvMesh
         // Does the mesh perform edge-modification?
         bool edgeModification();
 
-        // Send and receive patch sub-meshes for coupled patches
-        void sendAndRecvCoupledMeshes();
+        // Initialize coupled patches for topology modifications.
+        void initCoupledPatches();
 
         // Handle topology changes for coupled patches
         void handleCoupledPatches();
@@ -918,9 +931,6 @@ class dynamicTopoFvMesh
 
         // Wait for buffer transfer completion.
         void waitForBuffers();
-
-        // Synchronize and exit for parallel runs.
-        void synchronizeAndExit();
 
         // Private internal access to member data for static members
         scalar ratioMin() { return ratioMin_; }

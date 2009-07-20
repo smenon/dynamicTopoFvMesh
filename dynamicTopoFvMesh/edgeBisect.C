@@ -882,6 +882,40 @@ void dynamicTopoFvMesh::bisectEdge
         return;
     }
 
+    // If coupled modification is set, and this is a
+    // master edge, bisect its slaves first.
+    if (coupledModification_)
+    {
+        // Is this a locally coupled edge?
+        if (locallyCoupledEdge(eIndex))
+        {
+            label slaveIndex = -1;
+
+            // Loop through masterToSlave and determine the slave index.
+            forAll(masterToSlave_, indexI)
+            {
+                if (masterToSlave_[indexI].found(eIndex))
+                {
+                    slaveIndex = masterToSlave_[indexI][eIndex];
+                }
+            }
+
+            // Temporarily turn off coupledModification
+            coupledModification_ = false;
+
+            // Bisect the slave.
+            bisectEdge(slaveIndex);
+
+            // Turn it back on.
+            coupledModification_ = true;
+        }
+        else
+        {
+            // Bisect edge on the patchSubMesh.
+
+        }
+    }
+
     // Hull variables
     face tmpTriFace(3);
     labelList tmpEdgeFaces(3,-1);

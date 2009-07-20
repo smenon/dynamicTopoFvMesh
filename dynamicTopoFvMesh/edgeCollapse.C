@@ -903,9 +903,18 @@ void dynamicTopoFvMesh::collapseQuadFace
 }
 
 // Method for the collapse of an edge in 3D
-void dynamicTopoFvMesh::collapseEdge
+// - Returns an integer value specifying:
+//    -1: Collapse failed since max number of topo-changes was reached.
+//     0: Collapse could not be performed.
+//     1: Collapsed to first node.
+//     2: Collapsed to second node.
+// - overRideCase is used to force a certain collapse configuration.
+// - checkOnly performs a feasibility check and returns without modifications.
+label dynamicTopoFvMesh::collapseEdge
 (
-    const label eIndex
+    const label eIndex,
+    label overRideCase,
+    bool checkOnly
 )
 {
     // Edge collapse performs the following operations:
@@ -932,7 +941,116 @@ void dynamicTopoFvMesh::collapseEdge
     {
         // Reached the max allowable topo-changes.
         edgeStack(tIndex).clear();
-        return;
+        return -1;
+    }
+
+    // If coupled modification is set, and this is a
+    // master edge, collapse its slaves first.
+    if (coupledModification_)
+    {
+        // Is this a locally coupled edge?
+        if (locallyCoupledEdge(eIndex))
+        {
+            label slaveIndex = -1;
+
+            // Loop through masterToSlave and determine the slave index.
+            forAll(masterToSlave_, indexI)
+            {
+                if (masterToSlave_[indexI].found(eIndex))
+                {
+                    slaveIndex = masterToSlave_[indexI][eIndex];
+                }
+            }
+
+            // Temporarily turn off coupledModification
+            coupledModification_ = false;
+
+            // First check the slave for collapse feasibility.
+            label slaveCase = collapseEdge(slaveIndex, -1, true);
+
+            if (slaveCase > 0)
+            {
+                edge& masterEdge = edges_[eIndex];
+                edge& slaveEdge  = edges_[slaveIndex];
+
+                // Set the overRideCase for this edge
+                label masterCase = -1;
+
+                switch (slaveCase)
+                {
+                    case 1:
+
+                        if (masterEdge[0] == slaveEdge[0])
+                        {
+                            overRideCase = 1;
+                        }
+                        else
+                        if (masterEdge[1] == slaveEdge[0])
+                        {
+                            overRideCase = 2;
+                        }
+                        else
+                        {
+                            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                                << "Coupled collapse failed." << nl
+                                << "Master: " << masterEdge << nl
+                                << "Slave: " << slaveEdge << nl
+                                << abort(FatalError);
+                        }
+
+                        break;
+
+                    case 2:
+
+                        if (masterEdge[1] == slaveEdge[1])
+                        {
+                            overRideCase = 2;
+                        }
+                        else
+                        if (masterEdge[0] == slaveEdge[1])
+                        {
+                            overRideCase = 1;
+                        }
+                        else
+                        {
+                            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                                << "Coupled collapse failed." << nl
+                                << "Master: " << masterEdge << nl
+                                << "Slave: " << slaveEdge << nl
+                                << abort(FatalError);
+                        }
+
+                        break;
+                }
+
+                // Can the overRideCase be used for this edge?
+                masterCase = collapseEdge(eIndex, overRideCase, true);
+
+                // Master couldn't perform collapse.
+                if (masterCase <= 0)
+                {
+                    return masterCase;
+                }
+
+                // Collapse the slave edge.
+                collapseEdge(slaveIndex);
+            }
+            else
+            {
+                // Slave couldn't perform collapse.
+                coupledModification_ = true;
+
+                return 0;
+            }
+
+            // Turn coupledModification back on.
+            coupledModification_ = true;
+        }
+        else
+        {
+            // Collapse edge on the patchSubMesh.
+
+        }
     }
 
     // Hull variables
@@ -1039,6 +1157,12 @@ void dynamicTopoFvMesh::collapseEdge
         // Looks like this is an interior edge.
         // Collapse case [2] by default
         collapseCase = 2;
+    }
+
+    // Perform an override if requested.
+    if (overRideCase != -1)
+    {
+        collapseCase = overRideCase;
     }
 
     switch (collapseCase)
@@ -1195,7 +1319,7 @@ void dynamicTopoFvMesh::collapseEdge
                     )
                 )
                 {
-                    return;
+                    return 0;
                 }
             }
 
@@ -1214,10 +1338,16 @@ void dynamicTopoFvMesh::collapseEdge
                     )
                 )
                 {
-                    return;
+                    return 0;
                 }
             }
         }
+    }
+
+    // Are we only performing checks?
+    if (checkOnly)
+    {
+        return collapseCase;
     }
 
     // Renumber all hull faces and edges
@@ -1624,7 +1754,7 @@ void dynamicTopoFvMesh::collapseEdge
     nModifications_++;
 
     // Return a succesful collapse
-    return;
+    return collapseCase;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

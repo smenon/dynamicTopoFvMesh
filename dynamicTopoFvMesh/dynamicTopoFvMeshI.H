@@ -354,6 +354,7 @@ inline void dynamicTopoFvMesh::meshEdgeLengthScale
                     << abort(FatalError);
             }
 #           endif
+
             scale += lengthScale_[owner_[eFaces[faceI]]];
             scale += lengthScale_[neighbour_[eFaces[faceI]]];
         }
@@ -372,6 +373,18 @@ inline void dynamicTopoFvMesh::meshEdgeLengthScale
         }
 
         scale /= 2.0;
+    }
+
+    if (coupledModification_)
+    {
+        // Check if this is a coupled processor edge.
+        // - Locally coupled edges use length-scale information only
+        //   from the master patch.
+        if (!locallyCoupledEdge(eIndex))
+        {
+            // Check patchSubMeshes for length-scale info.
+
+        }
     }
 }
 
@@ -822,6 +835,41 @@ inline void dynamicTopoFvMesh::computeMinQuality
         }
     }
 
+    if (coupledModification_)
+    {
+        if (locallyCoupledEdge(eIndex))
+        {
+            // Compute the minimum quality of the slave edge as well.
+            label slaveIndex = -1;
+
+            // Loop through masterToSlave and determine the slave index.
+            forAll(masterToSlave_, indexI)
+            {
+                if (masterToSlave_[indexI].found(eIndex))
+                {
+                    slaveIndex = masterToSlave_[indexI][eIndex];
+                }
+            }
+
+            // Temporarily turn off coupledModification
+            coupledModification_ = false;
+
+            scalar slaveQuality = 0.0;
+
+            computeMinQuality(slaveIndex, slaveQuality);
+
+            minQuality = slaveQuality < minQuality ? slaveQuality : minQuality;
+
+            // Turn it back on.
+            coupledModification_ = true;
+        }
+        else
+        {
+            // Compute the minimum quality across patchSubMeshes.
+
+        }
+    }
+
     // Ensure that the mesh is valid
     if (minQuality < 0.0)
     {
@@ -832,6 +880,48 @@ inline void dynamicTopoFvMesh::computeMinQuality
             << "Minimum Quality: " << minQuality
             << abort(FatalError);
     }
+}
+
+// Method to determine whether the master edge is locally coupled.
+inline bool dynamicTopoFvMesh::locallyCoupledEdge
+(
+    const label eIndex
+)
+{
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    labelList& eFaces = edgeFaces_[eIndex];
+
+    // Search for boundary faces, and determine boundary type.
+    forAll(eFaces, faceI)
+    {
+        if (neighbour_[eFaces[faceI]] == -1)
+        {
+            label patch = whichPatch(eFaces[faceI]);
+
+            if (isA<processorPolyPatch>(boundary[patch]))
+            {
+                return false;
+            }
+        }
+    }
+
+    // Could not find any faces on processor patches.
+    return true;
+}
+
+// Obtain the maximum coupled patch index
+inline label dynamicTopoFvMesh::getMaxCouplingIndex()
+{
+    // Allocate a size for coupled patches
+    label index = -1;
+
+    forAllIter(Map<label>, patchCoupling_, patchI)
+    {
+        index = index > patchI.key() ? index : patchI.key();
+    }
+
+    return index;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

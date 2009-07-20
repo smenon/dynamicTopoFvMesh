@@ -49,7 +49,6 @@ Author
 #include "MeshObject.H"
 
 #include <dlfcn.h>
-#include <mpi.h>
 
 namespace Foam
 {
@@ -82,6 +81,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     (
         dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")
     ),
+    coupledModification_(false),
     interval_(1),
     mapper_(NULL),
     points_(polyMesh::points()),
@@ -394,8 +394,7 @@ dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct
     mesh_(mesh),
     nThreads_(nThreads),
     pthreadID_(-1),
-    master_(false),
-    isCoupled_(false)
+    master_(false)
 {}
 
 // Constructor for patchSubMesh
@@ -1858,6 +1857,11 @@ bool dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
         }
     }
 
+    if (coupledModification_)
+    {
+        return false;
+    }
+
     // Check if two boundary faces lie on different face-patches
     label fPatch, firstPatch = -1, secondPatch = -1;
     labelList& edgeFaces = edgeFaces_[eIndex];
@@ -1892,33 +1896,105 @@ bool dynamicTopoFvMesh::checkBoundingCurve(label eIndex)
 // Allocate dynamic programming tables
 void dynamicTopoFvMesh::initTables
 (
-    scalarListList& Q,
-    labelListList& K,
-    labelListList& triangulations
+    labelList& m,
+    PtrList<scalarListList>& Q,
+    PtrList<labelListList>& K,
+    PtrList<labelListList>& triangulations,
+    const label checkIndex
 )
 {
     label mMax = maxTetsPerEdge_;
 
-    Q.setSize((mMax-2),scalarList(mMax,-1.0));
-    K.setSize((mMax-2),labelList(mMax,-1));
-    triangulations.setSize(3,labelList((mMax-2),-1));
+    // Check if resizing is necessary only for a particular index.
+    if (checkIndex != -1)
+    {
+        m[checkIndex] = -1;
+        Q[checkIndex].setSize((mMax-2),scalarList(mMax,-1.0));
+        K[checkIndex].setSize((mMax-2),labelList(mMax,-1));
+        triangulations[checkIndex].setSize(3,labelList((mMax-2),-1));
+
+        return;
+    }
+
+    // Size all elements by default.
+    label numIndicies = -1;
+
+    if (coupledModification_)
+    {
+        numIndicies = getMaxCouplingIndex();
+    }
+    else
+    {
+        numIndicies = 1;
+    }
+
+    m.setSize(numIndicies, -1);
+    Q.setSize(numIndicies);
+    K.setSize(numIndicies);
+    triangulations.setSize(numIndicies);
+
+    forAll(Q, indexI)
+    {
+        Q[indexI].setSize((mMax-2),scalarList(mMax,-1.0));
+        K[indexI].setSize((mMax-2),labelList(mMax,-1));
+        triangulations[indexI].setSize(3,labelList((mMax-2),-1));
+    }
 }
 
 // Check triangulation quality for an edge index
 bool dynamicTopoFvMesh::checkQuality
 (
     const label eIndex,
-    const label m,
-    const scalarListList& Q,
-    const scalar minQuality
+    const labelList& m,
+    const PtrList<scalarListList>& Q,
+    const scalar minQuality,
+    const label checkIndex
 )
 {
-    if (Q[0][m-1] > minQuality)
+    bool myResult = false;
+
+    // Non-coupled check
+    if (Q[checkIndex][0][m[checkIndex]-1] > minQuality)
     {
-        return true;
+        myResult = true;
     }
 
-    return false;
+    if (coupledModification_)
+    {
+        if (locallyCoupledEdge(eIndex))
+        {
+            // Check the quality of the slave edge as well.
+            label slaveIndex = -1;
+
+            // Loop through masterToSlave and determine the slave index.
+            forAll(masterToSlave_, indexI)
+            {
+                if (masterToSlave_[indexI].found(eIndex))
+                {
+                    slaveIndex = masterToSlave_[indexI][eIndex];
+                }
+            }
+
+            // Turn off switch temporarily.
+            coupledModification_ = false;
+
+            // Recursively call for the slave edge.
+            myResult =
+            (
+                myResult && checkQuality(slaveIndex, m, Q, minQuality, 1)
+            );
+
+            // Turn it back on.
+            coupledModification_ = true;
+        }
+        else
+        {
+            // Check quality of patchSubMeshes.
+
+        }
+    }
+
+    return myResult;
 }
 
 // Utility method to fill the dynamic programming tables
@@ -1927,28 +2003,35 @@ bool dynamicTopoFvMesh::checkQuality
 bool dynamicTopoFvMesh::fillTables
 (
     const label eIndex,
-    label& m,
-    scalarListList& Q,
-    labelListList& K,
-    labelListList& triangulations
+    labelList& m,
+    PtrList<scalarListList>& Q,
+    PtrList<labelListList>& K,
+    PtrList<labelListList>& triangulations,
+    const label checkIndex
 )
 {
     edge& edgeToCheck = edges_[eIndex];
     labelList& hullVertices = edgePoints_[eIndex];
 
     // Fill in the size
-    m = hullVertices.size();
+    m[checkIndex] = hullVertices.size();
 
     // Check if a table-resize is necessary
-    if (m > maxTetsPerEdge_)
+    if (m[checkIndex] > maxTetsPerEdge_)
     {
         if (allowTableResize_)
         {
             // Resize the tables to account for
             // more tets per edge
-            maxTetsPerEdge_ = m;
-            Q.clear(); K.clear(); triangulations.clear();
-            initTables(Q, K, triangulations);
+            maxTetsPerEdge_ = m[checkIndex];
+
+            // Clear tables for this index.
+            Q[checkIndex].clear();
+            K[checkIndex].clear();
+            triangulations[checkIndex].clear();
+
+            // Resize for this index.
+            initTables(m, Q, K, triangulations, checkIndex);
         }
         else
         {
@@ -1957,9 +2040,9 @@ bool dynamicTopoFvMesh::fillTables
         }
     }
 
-    for (label i = m-3; i >= 0; i--)
+    for (label i = (m[checkIndex]-3); i >= 0; i--)
     {
-        for (label j = i+2; j < m; j++)
+        for (label j = i+2; j < m[checkIndex]; j++)
         {
             for (label k = i+1; k < j; k++)
             {
@@ -1983,32 +2066,69 @@ bool dynamicTopoFvMesh::fillTables
 
                 if (k < j-1)
                 {
-                    q = Foam::min(q,Q[k][j]);
+                    q = Foam::min(q,Q[checkIndex][k][j]);
                 }
 
                 if (k > i+1)
                 {
-                    q = Foam::min(q,Q[i][k]);
+                    q = Foam::min(q,Q[checkIndex][i][k]);
                 }
 
-                if ((k == i+1) || (q > Q[i][j]))
+                if ((k == i+1) || (q > Q[checkIndex][i][j]))
                 {
-                    Q[i][j] = q;
-                    K[i][j] = k;
+                    Q[checkIndex][i][j] = q;
+                    K[checkIndex][i][j] = k;
                 }
             }
+        }
+    }
+
+    if (coupledModification_)
+    {
+        if (locallyCoupledEdge(eIndex))
+        {
+            // Fill tables for the slave edge as well.
+            label slaveIndex = -1;
+
+            // Loop through masterToSlave and determine the slave index.
+            forAll(masterToSlave_, indexI)
+            {
+                if (masterToSlave_[indexI].found(eIndex))
+                {
+                    slaveIndex = masterToSlave_[indexI][eIndex];
+                }
+            }
+
+            // Turn off switch temporarily.
+            coupledModification_ = false;
+
+            // Recursively call for the slave edge.
+            if (fillTables(eIndex, m, Q, K, triangulations, 1))
+            {
+                return false;
+            }
+
+            // Turn it back on.
+            coupledModification_ = true;
+        }
+        else
+        {
+            // Fill in tables from patchSubMeshes.
+
         }
     }
 
     return true;
 }
 
-// Remove the edge according to the swap sequence
-void dynamicTopoFvMesh::removeEdgeFlips
+// Remove the edge according to the swap sequence.
+// Returns true if the swap-sequence was performed successfully.
+bool dynamicTopoFvMesh::removeEdgeFlips
 (
     const label eIndex,
-    const labelListList& K,
-    labelListList& triangulations
+    const PtrList<labelListList>& K,
+    PtrList<labelListList>& triangulations,
+    const label checkIndex
 )
 {
     // Make a copy of edgePoints, since it will be
@@ -2034,29 +2154,75 @@ void dynamicTopoFvMesh::removeEdgeFlips
     label numTriangulations = 0, isolatedVertex = -1;
 
     // Extract the appropriate triangulations
-    extractTriangulation(0, (m-1), K, numTriangulations, triangulations);
+    extractTriangulation
+    (
+        0,
+        m-1,
+        K[checkIndex],
+        numTriangulations,
+        triangulations[checkIndex]
+    );
 
     // Determine the 3-2 swap triangulation
-    label t32 = identify32Swap(eIndex, hullVertices, triangulations);
+    label t32 = identify32Swap
+                (
+                    eIndex,
+                    hullVertices,
+                    triangulations[checkIndex]
+                );
 
     // Check that the triangulation is valid
     if (t32 == -1)
     {
         // Reset all triangulations and bail out
-        triangulations[0] = -1;
-        triangulations[1] = -1;
-        triangulations[2] = -1;
+        triangulations[checkIndex][0] = -1;
+        triangulations[checkIndex][1] = -1;
+        triangulations[checkIndex][2] = -1;
 
-        return;
+        return false;
+    }
+
+    if (coupledModification_)
+    {
+        if (locallyCoupledEdge(eIndex))
+        {
+            // Flip the slave edge as well.
+            label slaveIndex = -1;
+
+            // Loop through masterToSlave and determine the slave index.
+            forAll(masterToSlave_, indexI)
+            {
+                if (masterToSlave_[indexI].found(eIndex))
+                {
+                    slaveIndex = masterToSlave_[indexI][eIndex];
+                }
+            }
+
+            // Turn off switch temporarily.
+            coupledModification_ = false;
+
+            // Recursively call for the slave edge.
+            bool success = removeEdgeFlips(slaveIndex, K, triangulations, 1);
+
+            // Turn it back on.
+            coupledModification_ = true;
+
+            // Bail out if the slave failed.
+            if (!success)
+            {
+                return false;
+            }
+        }
     }
 
     // Perform a series of 2-3 swaps
     label numSwaps = 0;
+
     while (numSwaps < (m-3))
     {
         for (label i = 0; i < (m-2); i++)
         {
-            if ( (i != t32) && (triangulations[0][i] != -1) )
+            if ( (i != t32) && (triangulations[checkIndex][0][i] != -1) )
             {
                 // Check if triangulation is on the boundary
                 if
@@ -2065,7 +2231,7 @@ void dynamicTopoFvMesh::removeEdgeFlips
                     (
                         i,
                         isolatedVertex,
-                        triangulations
+                        triangulations[checkIndex]
                     )
                 )
                 {
@@ -2076,16 +2242,16 @@ void dynamicTopoFvMesh::removeEdgeFlips
                         eIndex,
                         i,
                         numTriangulations,
-                        triangulations,
+                        triangulations[checkIndex],
                         hullVertices,
                         hullFaces,
                         hullCells
                     );
 
                     // Done with this face, so reset it
-                    triangulations[0][i] = -1;
-                    triangulations[1][i] = -1;
-                    triangulations[2][i] = -1;
+                    triangulations[checkIndex][0][i] = -1;
+                    triangulations[checkIndex][1][i] = -1;
+                    triangulations[checkIndex][2][i] = -1;
 
                     numSwaps++;
                 }
@@ -2095,9 +2261,9 @@ void dynamicTopoFvMesh::removeEdgeFlips
         if (numSwaps == 0)
         {
             Info << "Triangulations: " << endl;
-            forAll(triangulations, row)
+            forAll(triangulations[checkIndex], row)
             {
-                Info << triangulations[row] << endl;
+                Info << triangulations[checkIndex][row] << endl;
             }
 
             // Should have performed at least one swap
@@ -2113,16 +2279,16 @@ void dynamicTopoFvMesh::removeEdgeFlips
         eIndex,
         t32,
         numTriangulations,
-        triangulations,
+        triangulations[checkIndex],
         hullVertices,
         hullFaces,
         hullCells
     );
 
     // Done with this face, so reset it
-    triangulations[0][t32] = -1;
-    triangulations[1][t32] = -1;
-    triangulations[2][t32] = -1;
+    triangulations[checkIndex][0][t32] = -1;
+    triangulations[checkIndex][1][t32] = -1;
+    triangulations[checkIndex][2][t32] = -1;
 
     // Finally remove the edge
     removeEdge(eIndex);
@@ -2132,6 +2298,9 @@ void dynamicTopoFvMesh::removeEdgeFlips
 
     // Increment the counter
     nSwaps_++;
+
+    // Return a successful operation.
+    return true;
 }
 
 // Extract triangulations from the programming table
@@ -3879,7 +4048,9 @@ void dynamicTopoFvMesh::initEdges()
     if (dict_.subDict("dynamicTopoFvMesh").found("coupledPatches"))
     {
         dictionary coupledPatches =
-            dict_.subDict("dynamicTopoFvMesh").subDict("coupledPatches");
+        (
+            dict_.subDict("dynamicTopoFvMesh").subDict("coupledPatches")
+        );
 
         // Determine master and slave patches
         wordList masterPatches = coupledPatches.toc();
@@ -3933,12 +4104,26 @@ void dynamicTopoFvMesh::initEdges()
         }
     }
 
-    // Add processor patches to the list
+    // Add processor patches to the list.
+    // These are addressed in a slightly different manner, i.e.,
+    // they are numbered after polyMesh boundary patches
+    // (even though processorPolyPatches exist). This is done because
+    // this sub-domain may talk to processors that share only edges/points.
+    // Thus, keys for processor patches are: boundary.size() + neiProcID.
+    // If this coincides with a polyPatch, the corresponding
+    // entry is the boundary patch ID.
     forAll(boundary, patchI)
     {
         if (isA<processorPolyPatch>(boundary[patchI]))
         {
-            patchCoupling_.insert(patchI, -1);
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[patchI])
+            );
+
+            label neiProcID = pp.neighbProcNo();
+
+            patchCoupling_.insert(boundary.size()+neiProcID, patchI);
         }
     }
 }
@@ -3955,8 +4140,9 @@ bool dynamicTopoFvMesh::edgeModification()
     return edgeModification_;
 }
 
-// Send and receive patchSubMeshes for coupled patches
-void dynamicTopoFvMesh::sendAndRecvCoupledMeshes()
+// Initialize coupled patches for topology modifications.
+//  - Send and receive patchSubMeshes for processor patches
+void dynamicTopoFvMesh::initCoupledPatches()
 {
     if (!patchCoupling_.size())
     {
@@ -3997,7 +4183,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     }
 
     // Set coupled modifications.
-    structPtr_[0].isCoupled() = true;
+    coupledModification_ = true;
 
     // Loop through the coupled stack and perform changes.
     if (twoDMesh_)
@@ -4020,7 +4206,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     }
 
     // Reset coupled modifications.
-    structPtr_[0].isCoupled() = false;
+    coupledModification_ = false;
 }
 
 // Build patch sub-meshes for coupled patches
@@ -4041,49 +4227,46 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
     masterToSlave_.clear();
     slaveToMaster_.clear();
 
-    sendPatchMeshes_.setSize(boundary.size());
-    recvPatchMeshes_.setSize(boundary.size());
+    // Allocate a size for coupled patches
+    label numEntities = getMaxCouplingIndex();
 
-    masterToSlave_.setSize(boundary.size());
-    slaveToMaster_.setSize(boundary.size());
+    sendPatchMeshes_.setSize(numEntities);
+    recvPatchMeshes_.setSize(numEntities);
+
+    masterToSlave_.setSize(numEntities);
+    slaveToMaster_.setSize(numEntities);
 
     forAllIter(Map<label>, patchCoupling_, patchI)
     {
         label mPatch = patchI.key();
-        label sPatch = patchI();
 
-        if (sPatch == -1)
+        if (mPatch >= boundary.size())
         {
             // This is a processor patch.
 
             // Find out which neighbour it talks to.
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[mPatch])
-            );
+            label neiProcNo = mPatch - boundary.size();
 
-            label neiProc = pp.neighbProcNo();
-
-            if (neiProc < Pstream::myProcNo())
+            if (neiProcNo < Pstream::myProcNo())
             {
                 sendPatchMeshes_.set(mPatch, new patchSubMesh());
 
                 buildPatchSubMesh(mPatch, sendPatchMeshes_[mPatch]);
 
                 // Send my sub-mesh to the neighbour.
-                pWrite(neiProc, sendPatchMeshes_[mPatch].nPoints());
-                pWrite(neiProc, sendPatchMeshes_[mPatch].nEdges());
-                pWrite(neiProc, sendPatchMeshes_[mPatch].nFaces());
-                pWrite(neiProc, sendPatchMeshes_[mPatch].nCells());
+                pWrite(neiProcNo, sendPatchMeshes_[mPatch].nPoints());
+                pWrite(neiProcNo, sendPatchMeshes_[mPatch].nEdges());
+                pWrite(neiProcNo, sendPatchMeshes_[mPatch].nFaces());
+                pWrite(neiProcNo, sendPatchMeshes_[mPatch].nCells());
 
-                pWrite(neiProc, sendPatchMeshes_[mPatch].pointBuffer());
-                pWrite(neiProc, sendPatchMeshes_[mPatch].edgeBuffer());
-                pWrite(neiProc, sendPatchMeshes_[mPatch].faceBuffer());
-                pWrite(neiProc, sendPatchMeshes_[mPatch].cellBuffer());
+                pWrite(neiProcNo, sendPatchMeshes_[mPatch].pointBuffer());
+                pWrite(neiProcNo, sendPatchMeshes_[mPatch].edgeBuffer());
+                pWrite(neiProcNo, sendPatchMeshes_[mPatch].faceBuffer());
+                pWrite(neiProcNo, sendPatchMeshes_[mPatch].cellBuffer());
 
                 if (edgeModification_)
                 {
-                    pWrite(neiProc, sendPatchMeshes_[mPatch].lengthBuffer());
+                    pWrite(neiProcNo, sendPatchMeshes_[mPatch].lengthBuffer());
                 }
             }
             else
@@ -4091,10 +4274,10 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
                 recvPatchMeshes_.set(mPatch, new patchSubMesh());
 
                 // First read entity sizes.
-                pRead(neiProc, recvPatchMeshes_[mPatch].nPoints());
-                pRead(neiProc, recvPatchMeshes_[mPatch].nEdges());
-                pRead(neiProc, recvPatchMeshes_[mPatch].nFaces());
-                pRead(neiProc, recvPatchMeshes_[mPatch].nCells());
+                pRead(neiProcNo, recvPatchMeshes_[mPatch].nPoints());
+                pRead(neiProcNo, recvPatchMeshes_[mPatch].nEdges());
+                pRead(neiProcNo, recvPatchMeshes_[mPatch].nFaces());
+                pRead(neiProcNo, recvPatchMeshes_[mPatch].nCells());
 
                 // Obtain references.
                 pointField& pBuffer = recvPatchMeshes_[mPatch].pointBuffer();
@@ -4111,17 +4294,17 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
                     cBuffer.setSize(4*recvPatchMeshes_[mPatch].nCells());
 
                     // Receive buffers
-                    pRead(neiProc, pBuffer);
-                    pRead(neiProc, eBuffer);
-                    pRead(neiProc, fBuffer);
-                    pRead(neiProc, cBuffer);
+                    pRead(neiProcNo, pBuffer);
+                    pRead(neiProcNo, eBuffer);
+                    pRead(neiProcNo, fBuffer);
+                    pRead(neiProcNo, cBuffer);
                 }
 
                 if (edgeModification_)
                 {
                     scalarList& lB = recvPatchMeshes_[mPatch].lengthBuffer();
                     lB.setSize(recvPatchMeshes_[mPatch].nCells());
-                    pRead(neiProc, lB);
+                    pRead(neiProcNo, lB);
                 }
             }
         }
@@ -4328,7 +4511,7 @@ void dynamicTopoFvMesh::buildCoupledMaps
 
     forAllIter(Map<label>, patchCoupling_, patchI)
     {
-        if (patchI() == -1)
+        if (patchI.key() >= boundary.size())
         {
             // Are we doing only local coupled patches?
             if (localOnly)
@@ -4339,21 +4522,19 @@ void dynamicTopoFvMesh::buildCoupledMaps
             {
                 // Is this patch a processor slave?
                 // If it is, skip it.
-                const processorPolyPatch& pp =
-                (
-                    refCast<const processorPolyPatch>
-                    (
-                        boundary[patchI.key()]
-                    )
-                );
-
-                neiProc = pp.neighbProcNo();
+                neiProc = patchI.key() - boundary.size();
 
                 if (neiProc < Pstream::myProcNo())
                 {
                     continue;
                 }
             }
+        }
+        else
+        if (!localOnly)
+        {
+            // Are we doing only processor patches?
+            continue;
         }
 
         // Build a list of master edges
@@ -4387,7 +4568,7 @@ void dynamicTopoFvMesh::buildCoupledMaps
         pointField sCentres(0);
 
         // Build a list of slave edges
-        if (patchI() == -1)
+        if (patchI.key() >= boundary.size())
         {
             // Processor patch.
             // Build a list from the patchSubMesh.
@@ -4469,7 +4650,7 @@ void dynamicTopoFvMesh::buildCoupledMaps
                 << abort(FatalError);
         }
 
-        // Clear the HashSets
+        // Clear the labelHashSets
         mList.clear();
         sList.clear();
     }
@@ -4485,23 +4666,6 @@ void dynamicTopoFvMesh::waitForBuffers()
 
     OPstream::waitRequests();
     IPstream::waitRequests();
-}
-
-// Synchronize and exit for parallel runs.
-void dynamicTopoFvMesh::synchronizeAndExit()
-{
-    if (Pstream::parRun())
-    {
-        Info << "Synchronizing all processes...";
-
-        MPI_Barrier(MPI_COMM_WORLD);
-        MPI_Finalize();
-
-        Info << "Done." << endl;
-        Info << "Terminating normally." << endl;
-    }
-
-    ::exit(0);
 }
 
 // 2D Edge-bisection/collapse engine
@@ -4614,15 +4778,15 @@ void dynamicTopoFvMesh::swap3DEdges
     label tIndex = mesh.self();
 
     // Hull variables
-    label m = -1;
+    labelList m;
     scalar minQuality;
 
     // Dynamic programming variables
-    scalarListList Q;
-    labelListList K, triangulations;
+    PtrList<scalarListList> Q;
+    PtrList<labelListList> K, triangulations;
 
     // Allocate dynamic programming tables
-    mesh.initTables(Q, K, triangulations);
+    mesh.initTables(m, Q, K, triangulations);
 
     // Pick edges off the stack
     while (!mesh.edgeStack(tIndex).empty())
@@ -5162,8 +5326,8 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 // MultiThreaded topology modifier [3D]
 void dynamicTopoFvMesh::threadedTopoModifier3D()
 {
-    // Send and receive patch sub-meshes for coupled patches
-    sendAndRecvCoupledMeshes();
+    // Initialize coupled patches for topology modifications.
+    initCoupledPatches();
 
     // Handle coupled patches first
     handleCoupledPatches();
