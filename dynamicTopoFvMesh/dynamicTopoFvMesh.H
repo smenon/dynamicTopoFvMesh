@@ -362,6 +362,9 @@ class dynamicTopoFvMesh
         // Coupled patch information
         Map<label> patchCoupling_;
 
+        // Coupled entities to avoid during normal modification
+        labelHashSet entitiesToAvoid_;
+
         // Sub-Mesh pointers
         PtrList<patchSubMesh> sendPatchMeshes_;
         PtrList<patchSubMesh> recvPatchMeshes_;
@@ -514,6 +517,9 @@ class dynamicTopoFvMesh
 
         // Initialize edge-stacks
         inline void initEdgeStacks();
+
+        // Initialize the coupled edge-stack
+        inline void initCoupledEdgeStack();
 
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label index);

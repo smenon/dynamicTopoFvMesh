@@ -1688,6 +1688,67 @@ void dynamicTopoFvMesh::swap32
         // Add faceEdges for the two new boundary faces
         faceEdges_.append(bdyFaceEdges[0]);
         faceEdges_.append(bdyFaceEdges[1]);
+
+        if (coupledModification_)
+        {
+            // Add the new master edge to the coupled stack.
+            edgeStack(tIndex).push(newEdgeIndex);
+
+            // Create a masterToSlave entry for the new edge.
+            if (locallyCoupledEdge(eIndex))
+            {
+                // Since we don't know the corresponding edge
+                // on the slave patch, loop through recently
+                // added edges and perform a geometric match.
+                bool foundMatch = false;
+
+                edge& newEdge = edges_[newEdgeIndex];
+
+                point mCentre =
+                (
+                    0.5*(points_[newEdge[0]] + points_[newEdge[1]])
+                );
+
+                for
+                (
+                    HashList<edge>::iterator edgeI = edges_(edges_.lastIndex());
+                    edgeI.index() >= nOldInternalEdges_;
+                    edgeI--
+                )
+                {
+                    // Get the centre.
+                    vector centre =
+                    (
+                        0.5*(points_[edgeI()[0]] + points_[edgeI()[1]])
+                    );
+
+                    if (mag(mCentre - centre) < 1e-20)
+                    {
+                        masterToSlave_[edgePatch].insert
+                        (
+                            newEdgeIndex, edgeI.index()
+                        );
+
+                        foundMatch = true;
+
+                        break;
+                    }
+                }
+
+                if (!foundMatch)
+                {
+                    FatalErrorIn
+                    (
+                        "dynamicTopoFvMesh::swap32"
+                    ) << "Failed to build coupled maps." << abort(FatalError);
+                }
+            }
+            else
+            {
+                // Look for matching slave edges on the patchSubMesh.
+
+            }
+        }
     }
 
     newTetCell0[nF0++] = newFaceIndex;

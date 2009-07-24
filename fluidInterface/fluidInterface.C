@@ -674,7 +674,7 @@ void Foam::fluidInterface::makeControlPoints()
                     IOobject::NO_READ,
                     IOobject::AUTO_WRITE
                 ),
-                areaMesh().centres().internalField()
+                areaMesh().areaCentres().internalField()
             );
     }
 
@@ -766,7 +766,7 @@ void Foam::fluidInterface::updateDisplacementDirections()
     facesDisplacementDir() = areaMesh().faceAreaNormals().internalField();
 
     // Correction of control points position
-    const vectorField& Cf = areaMesh().centres().internalField();
+    const vectorField& Cf = areaMesh().areaCentres().internalField();
 
     controlPoints() =
         Cf
@@ -810,44 +810,46 @@ tmp<vectorField> Foam::fluidInterface::pointDisplacement
 
         const labelList& curPointFaces = pointFaces[curPoint];
 
-        symmTensor M = symmTensor::zero;
-
-        vector S = vector::zero;
-
         scalarField w(curPointFaces.size(), 0.0);
 
         forAll (curPointFaces, faceI)
         {
             label curFace = curPointFaces[faceI];
 
-            w[faceI] = 1.0/mag
+            scalar magDistance =
             (
-                controlPoints()[curFace]
-              - points[curPoint]
+                 stabilise
+                 (
+                     mag
+                     (
+                        controlPoints()[curFace]
+                      - points[curPoint]
+                     ), VSMALL
+                 )
             );
+
+            w[faceI] = 1.0/magDistance;
         }
 
         w /= sum(w);
+
+        vector Q = vector::zero;
 
         forAll (curPointFaces, faceI)
         {
             label curFace = curPointFaces[faceI];
 
-            M = M + sqr(w[faceI])*sqr(controlPoints()[curFace]);
-
-            S += sqr(w[faceI])*controlPoints()[curFace];
+            Q += w[faceI]*controlPoints()[curFace];
         }
 
-        vector N = inv(M)&S;
-
-        N /= mag(N);
-
-        scalar p = (S&N)/sum(sqr(w));
-
         displacement[curPoint] =
-            pointsDisplacementDir()[curPoint]*
-            (p - (points[curPoint]&N))/
-            (pointsDisplacementDir()[curPoint]&N);
+        (
+           -1.0*
+           (
+               pointsDisplacementDir()[curPoint] & (points[curPoint] - Q)
+              *pointsDisplacementDir()[curPoint]
+           )
+        );
     }
 
     // Calculate displacement of points
@@ -1254,77 +1256,25 @@ void Foam::fluidInterface::updateInterface()
     // Obtain the current time-step
     scalar dt = mesh().time().deltaT().value();
 
-    Switch lagrangian(false);
-
-    if (found("lagrangian"))
-    {
-        lagrangian = Switch(lookup("lagrangian"));
-    }
-
     vectorField disp(areaMesh().patch().localPoints().size(), vector::zero);
 
-    if (lagrangian)
-    {
-        // Average cell velocities to nodes
-        const labelList& aPts = mesh().boundaryMesh()[aPatchID()].meshPoints();
+    // Swept-volume correction for the explicit-Euler scheme
+    scalarField sweptVolCorr =
+    (
+        phi_.boundaryField()[aPatchID()]
+      //- fvc::meshPhi(U_)().boundaryField()[aPatchID()]
+    )*dt;
 
-        const vectorField& pNormals = areaMesh().pointAreaNormals();
-        const labelListList& pointCells = mesh().pointCells();
+    // Update displacement directions first
+    updateDisplacementDirections();
 
-        forAll(aPts, pointI)
-        {
-            vector uNew = vector::zero;
-            vector uOld = vector::zero;
+    const scalarField& Sf = areaMesh().S();
+    const vectorField& Nf = areaMesh().faceAreaNormals().internalField();
 
-            const labelList& pCells = pointCells[aPts[pointI]];
+    scalarField deltaH = sweptVolCorr/(Sf*(Nf & facesDisplacementDir()));
 
-            forAll(pCells, cellI)
-            {
-                uNew += U_.internalField()[pCells[cellI]];
-                uOld += U_.oldTime().internalField()[pCells[cellI]];
-            }
-
-            uNew /= pCells.size();
-            uOld /= pCells.size();
-
-            const vector& n = pNormals[pointI];
-
-            disp[pointI] = 0.5*dt*(((uNew&n)*n) + ((uOld&n)*n));
-        }
-
-        // Blank out point displacement at boundary edges
-        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-        for
-        (
-            label i = boundary[aPatchID()].nInternalEdges();
-            i < boundary[aPatchID()].edges().size();
-            i++
-        )
-        {
-            disp[boundary[aPatchID()].edges()[i][0]] = vector::zero;
-            disp[boundary[aPatchID()].edges()[i][1]] = vector::zero;
-        }
-    }
-    else
-    {
-        // Swept-volume correction for the explicit-Euler scheme
-        scalarField sweptVolCorr =
-        (
-            phi_.boundaryField()[aPatchID()]
-          //- fvc::meshPhi(U_)().boundaryField()[aPatchID()]
-        )*dt;
-
-        // Update displacement directions first
-        updateDisplacementDirections();
-
-        const scalarField& Sf = areaMesh().S();
-        const vectorField& Nf = areaMesh().faceAreaNormals().internalField();
-
-        scalarField deltaH = sweptVolCorr/(Sf*(Nf & facesDisplacementDir()));
-
-        // Obtain the interface displacement vectors
-        disp = pointDisplacement(deltaH);
-    }
+    // Obtain the interface displacement vectors
+    disp = pointDisplacement(deltaH);
 
     if (curTimeIndex_ < mesh().time().timeIndex())
     {

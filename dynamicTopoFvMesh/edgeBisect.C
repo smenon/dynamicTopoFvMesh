@@ -869,7 +869,7 @@ void dynamicTopoFvMesh::bisectEdge
     //      Update faceEdges, edgeFaces and edgePoints information
 
     // Figure out which thread this is...
-    label tIndex = self();
+    label tIndex = self(), pIndex = -1;
 
     if
     (
@@ -897,6 +897,7 @@ void dynamicTopoFvMesh::bisectEdge
                 if (masterToSlave_[indexI].found(eIndex))
                 {
                     slaveIndex = masterToSlave_[indexI][eIndex];
+                    pIndex = indexI;
                 }
             }
 
@@ -962,6 +963,7 @@ void dynamicTopoFvMesh::bisectEdge
 
     // Add a new point to the end of the list
     label newPointIndex =
+    (
         points_.append
         (
             0.5*
@@ -969,7 +971,8 @@ void dynamicTopoFvMesh::bisectEdge
                 points_[thisEdge[0]]
               + points_[thisEdge[1]]
             )
-        );
+        )
+    );
 
     // Add an entry to pointEdges as well
     pointEdges_.append(labelList(0));
@@ -978,13 +981,15 @@ void dynamicTopoFvMesh::bisectEdge
 
     // Add a new edge to the end of the list
     label newEdgeIndex =
+    (
         insertEdge
         (
             whichEdgePatch(eIndex),
             edge(newPointIndex,thisEdge[1]),
             labelList(faceHull.size(),-1),
             vertexHull
-        );
+        )
+    );
 
     // Remove the existing edge from the pointEdges list
     // of the modified point, and add it to the new point
@@ -1090,13 +1095,15 @@ void dynamicTopoFvMesh::bisectEdge
 
             // Insert the face
             addedIntFaceIndices[indexI] =
+            (
                 insertFace
                 (
                     -1,
                     tmpTriFace,
                     cellHull[indexI],
                     addedCellIndices[indexI]
-                );
+                )
+            );
 
             // Add a faceEdges entry as well
             faceEdges_.append(tmpFaceEdges);
@@ -1170,13 +1177,15 @@ void dynamicTopoFvMesh::bisectEdge
 
                 // Insert the face
                 addedFaceIndices[indexI] =
+                (
                     insertFace
                     (
                         whichPatch(faceHull[indexI]),
                         tmpTriFace,
                         addedCellIndices[indexI],
                         -1
-                    );
+                    )
+                );
 
                 // Generate mapping information for this new face
                 if (faceHull[indexI] < nOldFaces_)
@@ -1203,13 +1212,15 @@ void dynamicTopoFvMesh::bisectEdge
 
                 // Add an edge
                 addedEdgeIndices[indexI] =
+                (
                     insertEdge
                     (
                         whichPatch(faceHull[indexI]),
                         edge(newPointIndex,vertexHull[indexI]),
                         tmpEdgeFaces,
                         tmpEdgePoints
-                    );
+                    )
+                );
 
                 // Add this edge to the interior-face faceEdges entry
                 faceEdges_[addedIntFaceIndices[indexI]][1] =
@@ -1264,13 +1275,15 @@ void dynamicTopoFvMesh::bisectEdge
 
                 // Insert the face
                 addedFaceIndices[indexI] =
+                (
                     insertFace
                     (
                         -1,
                         tmpTriFace,
                         addedCellIndices[prevI],
                         addedCellIndices[indexI]
-                    );
+                    )
+                );
 
                 // Configure edgeFaces
                 tmpIntEdgeFaces[0] = faceHull[indexI];
@@ -1286,13 +1299,15 @@ void dynamicTopoFvMesh::bisectEdge
 
                 // Add an internal edge
                 addedEdgeIndices[indexI] =
+                (
                     insertEdge
                     (
                         -1,
                         edge(newPointIndex,vertexHull[indexI]),
                         tmpIntEdgeFaces,
                         tmpIntEdgePoints
-                    );
+                    )
+                );
 
                 // RemoveSlivers needs this edge-label for collapse
                 bisectInterior_ = addedEdgeIndices[indexI];
@@ -1357,13 +1372,15 @@ void dynamicTopoFvMesh::bisectEdge
 
                 // Insert the face
                 addedFaceIndices[0] =
+                (
                     insertFace
                     (
                         -1,
                         tmpTriFace,
                         addedCellIndices[0],
                         addedCellIndices[indexI]
-                    );
+                    )
+                );
 
                 // Configure edgeFaces
                 tmpIntEdgeFaces[0] = faceHull[0];
@@ -1379,13 +1396,15 @@ void dynamicTopoFvMesh::bisectEdge
 
                 // Add an internal edge
                 addedEdgeIndices[0] =
+                (
                     insertEdge
                     (
                         -1,
                         edge(newPointIndex,vertexHull[0]),
                         tmpIntEdgeFaces,
                         tmpIntEdgePoints
-                    );
+                    )
+                );
 
                 // Add this edge to the interior-face faceEdges entry..
                 faceEdges_[addedIntFaceIndices[0]][1] =
@@ -1446,13 +1465,15 @@ void dynamicTopoFvMesh::bisectEdge
 
             // Insert the face
             addedFaceIndices[indexI] =
+            (
                 insertFace
                 (
                     whichPatch(faceHull[indexI]),
                     tmpTriFace,
                     addedCellIndices[prevI],
                     -1
-                );
+                )
+            );
 
             // Generate mapping information for this new face
             label parent;
@@ -1481,17 +1502,21 @@ void dynamicTopoFvMesh::bisectEdge
 
             // Add an edge
             addedEdgeIndices[indexI] =
+            (
                 insertEdge
                 (
                     whichPatch(faceHull[indexI]),
                     edge(newPointIndex,vertexHull[indexI]),
                     tmpEdgeFaces,
                     tmpEdgePoints
-                );
+                )
+            );
 
             // Add a faceEdges entry to the previous interior face
             faceEdges_[addedIntFaceIndices[prevI]][2] =
-                addedEdgeIndices[indexI];
+            (
+                addedEdgeIndices[indexI]
+            );
 
             // Configure faceEdges for the final boundary face
             tmpFaceEdges[0] = addedEdgeIndices[indexI];
@@ -1530,6 +1555,95 @@ void dynamicTopoFvMesh::bisectEdge
 
             // Make the final entry for the previous cell
             cells_[addedCellIndices[prevI]][3] = addedFaceIndices[indexI];
+        }
+    }
+
+    if (coupledModification_)
+    {
+        // Add the new master edge to the coupled stack.
+        edgeStack(tIndex).push(newEdgeIndex);
+
+        // Create a masterToSlave entry for the new edges on the patch.
+        if (locallyCoupledEdge(eIndex))
+        {
+            // Since we don't know the corresponding edges on the slave patch,
+            // loop through recently added edges and perform a geometric match.
+            FixedList<bool, 3> foundMatch(false);
+            FixedList<label, 3> masterEdge(-1);
+            FixedList<point, 3> mCentres(vector::zero);
+
+            // Fill in the master edges
+            label eCounter = 0;
+
+            // The new edge...
+            edge& newEdge = edges_[newEdgeIndex];
+            masterEdge[eCounter] = newEdgeIndex;
+            mCentres[eCounter++] =
+            (
+                0.5*(points_[newEdge[0]] + points_[newEdge[1]])
+            );
+
+            // ... and two new boundary edges.
+            forAll(addedEdgeIndices, edgeI)
+            {
+                if (whichEdgePatch(addedEdgeIndices[edgeI]) != -1)
+                {
+                    edge& bEdge = edges_[addedEdgeIndices[edgeI]];
+
+                    masterEdge[eCounter++] = addedEdgeIndices[edgeI];
+
+                    mCentres[eCounter++] =
+                    (
+                        0.5*(points_[bEdge[0]] + points_[bEdge[1]])
+                    );
+                }
+            }
+
+            for
+            (
+                HashList<edge>::iterator edgeI = edges_(edges_.lastIndex());
+                edgeI.index() >= nOldInternalEdges_;
+                edgeI--
+            )
+            {
+                // Get the centre.
+                vector centre = 0.5*(points_[edgeI()[0]] + points_[edgeI()[1]]);
+
+                // Compare with all three entries.
+                forAll (masterEdge, indexI)
+                {
+                    if (mag(mCentres[indexI] - centre) < 1e-20)
+                    {
+                        masterToSlave_[pIndex].insert
+                        (
+                            masterEdge[indexI], edgeI.index()
+                        );
+
+                        foundMatch[indexI] = true;
+
+                        break;
+                    }
+                }
+
+                // Are we done checking?
+                if (foundMatch[0] && foundMatch[1] && foundMatch[2])
+                {
+                    break;
+                }
+            }
+
+            if (!(foundMatch[0] && foundMatch[1] && foundMatch[2]))
+            {
+                FatalErrorIn
+                (
+                    "dynamicTopoFvMesh::bisectEdge"
+                ) << "Failed to build coupled maps." << abort(FatalError);
+            }
+        }
+        else
+        {
+            // Look for matching slave edges on the patchSubMesh.
+
         }
     }
 

@@ -824,10 +824,10 @@ label dynamicTopoFvMesh::insertFace
              << newFace << endl;
     }
 
-    if (twoDMesh_)
+    if (twoDMesh_ && !coupledModification_)
     {
         // Push this onto the stack as well
-        faceStack_[self()].push(newFaceIndex);
+        faceStack(self()).push(newFaceIndex);
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -1238,8 +1238,11 @@ label dynamicTopoFvMesh::insertEdge
         edgePoints_.append(edgePoints);
     }
 
-    // Add to the stack as well
-    edgeStack(self()).push(newEdgeIndex);
+    if (!coupledModification_)
+    {
+        // Add to the stack as well
+        edgeStack(self()).push(newEdgeIndex);
+    }
 
     if (debug > 2)
     {
@@ -3121,6 +3124,33 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
         // Obtain the cellCells addressing list
         const labelListList& cc = cellCells();
+        const polyBoundaryMesh& boundary = boundaryMesh();
+        const labelList& own = faceOwner();
+        const pointField& pList = points();
+
+        // Check local coupled patches for fixed length-scales
+        if (patchCoupling_.size())
+        {
+            forAllIter(Map<label>, patchCoupling_, pIter)
+            {
+                if (pIter.key() < boundary.size())
+                {
+                    word pName = boundary[pIter.key()].name();
+
+                    if(fixedPatches_.found(pName))
+                    {
+                        // Add the slave patch to the list as well.
+                        // If it already exists, over-ride the value.
+                        fixedPatches_.add
+                        (
+                            boundary[pIter()].name(),
+                            fixedPatches_[pName][0].scalarToken(),
+                            true
+                        );
+                    }
+                }
+            }
+        }
 
         // Obtain the list of patches for which the length-scale is fixed
         wordList toc = fixedPatches_.toc();
@@ -3147,11 +3177,6 @@ void dynamicTopoFvMesh::calculateLengthScale()
                 }
             }
         }
-
-        // Loop through all boundaries and mark adjacent cells
-        const polyBoundaryMesh& boundary = boundaryMesh();
-        const labelList& own = faceOwner();
-        const pointField& pList = points();
 
         forAll(boundary,patchI)
         {
@@ -4160,18 +4185,6 @@ void dynamicTopoFvMesh::initCoupledPatches()
 
     // Build maps for coupled processor patches.
     buildCoupledMaps(false);
-
-    // Prepare the master stack
-    if (!twoDMesh_)
-    {
-        forAll(masterToSlave_, patchI)
-        {
-            forAllIter(Map<label>::iterator, masterToSlave_[patchI], indexI)
-            {
-                edgeStack(0).push(indexI.key());
-            }
-        }
-    }
 }
 
 // Handle topology changes for coupled patches
@@ -4190,8 +4203,14 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     {
         if (edgeModification_)
         {
+            // Initialize the face stack
+            // initCoupledFaceStack();
+
             edgeBisectCollapse2D(&(structPtr_[0]));
         }
+
+        // Re-Initialize the face stack
+        // initCoupledFaceStack();
 
         swap2DEdges(&(structPtr_[0]));
     }
@@ -4199,8 +4218,14 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     {
         if (edgeModification_)
         {
+            // Initialize the edge stack
+            initCoupledEdgeStack();
+
             edgeBisectCollapse3D(&(structPtr_[0]));
         }
+
+        // Re-Initialize the edge stack
+        initCoupledEdgeStack();
 
         swap3DEdges(&(structPtr_[0]));
     }
@@ -4230,11 +4255,11 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
     // Allocate a size for coupled patches
     label numEntities = getMaxCouplingIndex();
 
-    sendPatchMeshes_.setSize(numEntities);
-    recvPatchMeshes_.setSize(numEntities);
+    sendPatchMeshes_.setSize(numEntities + 1);
+    recvPatchMeshes_.setSize(numEntities + 1);
 
-    masterToSlave_.setSize(numEntities);
-    slaveToMaster_.setSize(numEntities);
+    masterToSlave_.setSize(numEntities + 1);
+    slaveToMaster_.setSize(numEntities + 1);
 
     forAllIter(Map<label>, patchCoupling_, patchI)
     {
@@ -5076,6 +5101,74 @@ void dynamicTopoFvMesh::removeSlivers()
             // Step 1: Bisect the interior edge
             bisectEdge(commonIntEdge);
 
+            // We have to be careful about coupled boundary edges.
+            // If this edge belongs to an explicitly coupled patch,
+            // make sure that the coupled edge is bisected as well.
+            if (patchCoupling_.size())
+            {
+                FixedList<label, 2> bdyPatch(-1);
+
+                bdyPatch[0] = whichPatch(bdyFaces[0]);
+                bdyPatch[1] = whichPatch(bdyFaces[1]);
+
+                if (bdyPatch[0] != bdyPatch[1])
+                {
+                    FatalErrorIn("dynamicTopoFvMesh::removeSlivers()")
+                        << "Detected a sliver cell on a bounding curve." << nl
+                        << abort(FatalError);
+                }
+
+                // Are either of the patches in the list?
+                forAllIter(Map<label>, patchCoupling_, patchI)
+                {
+                    if (bdyPatch[0] == patchI.key())
+                    {
+                        // Edge is on the master patch.
+                        label slaveIndex = -1;
+
+                        // Loop through masterToSlave
+                        forAll(masterToSlave_, indexI)
+                        {
+                            if (masterToSlave_[indexI].found(commonBdyEdge))
+                            {
+                                slaveIndex =
+                                (
+                                    masterToSlave_[indexI][commonBdyEdge]
+                                );
+                            }
+                        }
+
+                        // Now bisect the slave.
+                        bisectEdge(slaveIndex);
+
+                        break;
+                    }
+
+                    if (bdyPatch[0] == patchI())
+                    {
+                        // Edge is on the slave patch.
+                        label masterIndex = -1;
+
+                        // Loop through slaveToMaster
+                        forAll(slaveToMaster_, indexI)
+                        {
+                            if (slaveToMaster_[indexI].found(commonBdyEdge))
+                            {
+                                masterIndex =
+                                (
+                                    slaveToMaster_[indexI][commonBdyEdge]
+                                );
+                            }
+                        }
+
+                        // Now bisect the master.
+                        bisectEdge(masterIndex);
+
+                        break;
+                    }
+                }
+            }
+
             // Reset the interior edge index
             bisectInterior_ = -1;
 
@@ -5329,7 +5422,10 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     // Initialize coupled patches for topology modifications.
     initCoupledPatches();
 
-    // Handle coupled patches first
+    // Remove surface sliver cells first.
+    removeSlivers();
+
+    // Handle coupled patches.
     handleCoupledPatches();
 
     if (edgeModification_)
