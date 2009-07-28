@@ -373,6 +373,121 @@ class dynamicTopoFvMesh
         List<Map<label> > masterToSlave_;
         List<Map<label> > slaveToMaster_;
 
+        // Scalar tolerance for geometric matching
+        scalar gTol_;
+
+        // Private sub-class for topo-change statistics.
+        class changeMap
+        {
+            // Sliver type index.
+            //  Type 1: Sliver
+            //  Type 2: Cap
+            label type_;
+
+            // Data specific to sliver-type cells
+            label firstEdge_;
+            label secondEdge_;
+
+            // Data specific to cap-type cells
+            label apexPoint_;
+            label opposingFace_;
+
+            // For bisections.
+            label addedPoint_;
+
+            // Entities that were added during the operation.
+            labelHashSet addedEdges_;
+            labelHashSet addedFaces_;
+            labelHashSet addedCells_;
+
+        public:
+
+            // Constructor
+            changeMap()
+            :
+                type_(-1),
+                firstEdge_(-1),
+                secondEdge_(-1),
+                apexPoint_(-1),
+                opposingFace_(-1),
+                addedPoint_(-1)
+            {}
+
+            //- Access
+
+                // Type
+                label& type() { return type_; }
+
+                // For sliver-type cells, opposite edges
+                // are identified for removal.
+                label& firstEdge() { return firstEdge_; }
+                label& secondEdge() { return secondEdge_; }
+
+                // For cap-type cells, the face requiring splitting
+                // is identified for removal.
+                label& apexPoint() { return apexPoint_; }
+                label& opposingFace() { return opposingFace_; }
+
+                // Added entities
+                void addPoint(const label pIndex)
+                {
+                    addedPoint_ = pIndex;
+                }
+
+                void addEdge(const label eIndex)
+                {
+                    addedEdges_.insert(eIndex);
+                }
+
+                void addFace(const label fIndex)
+                {
+                    addedFaces_.insert(fIndex);
+                }
+
+                void addCell(const label cIndex)
+                {
+                    addedCells_.insert(cIndex);
+                }
+
+                // Return an added point
+                label addedPoint()
+                {
+                    return addedPoint_;
+                }
+
+                // Return the list of added entities
+                const labelList addedEdgeList()
+                {
+                    return addedEdges_.toc();
+                }
+
+                const labelList addedFaceList()
+                {
+                    return addedFaces_.toc();
+                }
+
+                const labelList addedCellList()
+                {
+                    return addedCells_.toc();
+                }
+
+            //- Operators
+
+                void operator=(const changeMap& rhs)
+                {
+                    type_ = rhs.type_;
+                    firstEdge_    = rhs.firstEdge_;
+                    secondEdge_   = rhs.secondEdge_;
+                    apexPoint_    = rhs.apexPoint_;
+                    opposingFace_ = rhs.opposingFace_;
+
+                    addedPoint_ = rhs.addedPoint_;
+                    addedEdges_ = rhs.addedEdges_;
+                    addedFaces_ = rhs.addedFaces_;
+                    addedCells_ = rhs.addedCells_;
+                }
+        };
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -546,13 +661,15 @@ class dynamicTopoFvMesh
         );
 
         // Method for the bisection of an edge in 3D
-        void bisectEdge
+        const changeMap
+        bisectEdge
         (
             const label eIndex
         );
 
         // Method for the collapse of an edge in 3D
-        label collapseEdge
+        const changeMap
+        collapseEdge
         (
             const label eIndex,
             label overRideCase = -1,
@@ -573,6 +690,13 @@ class dynamicTopoFvMesh
         void remove2DSliver
         (
             const label fIndex
+        );
+
+        // Indentify the sliver type in 3D
+        const changeMap
+        identifySliverType
+        (
+            const label cIndex
         );
 
         // Remove sliver cells in 3D
@@ -906,6 +1030,9 @@ class dynamicTopoFvMesh
 
         // Method to determine whether the master edge is locally coupled
         inline bool locallyCoupledEdge(const label eIndex);
+
+        // Method to determine whether the master edge is on a processor
+        inline bool processorCoupledEdge(const label eIndex);
 
         // Obtain the maximum coupled patch index
         inline label getMaxCouplingIndex();

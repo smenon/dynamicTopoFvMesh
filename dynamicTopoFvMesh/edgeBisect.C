@@ -855,7 +855,11 @@ void dynamicTopoFvMesh::bisectQuadFace
 }
 
 // Method for the bisection of an edge in 3D
-void dynamicTopoFvMesh::bisectEdge
+// - Returns a changeMap with a type specifying:
+//    -1: Bisection failed since max number of topo-changes was reached.
+// - AddedPoint is the index of the newly added point.
+const dynamicTopoFvMesh::changeMap
+dynamicTopoFvMesh::bisectEdge
 (
     const label eIndex
 )
@@ -871,6 +875,10 @@ void dynamicTopoFvMesh::bisectEdge
     // Figure out which thread this is...
     label tIndex = self(), pIndex = -1;
 
+    // Prepare the changeMaps
+    changeMap map, coupleMap;
+    bool bisectingSlave = false;
+
     if
     (
         (nModifications_ > maxModifications_)
@@ -879,33 +887,46 @@ void dynamicTopoFvMesh::bisectEdge
     {
         // Reached the max allowable topo-changes.
         edgeStack(tIndex).clear();
-        return;
+
+        return map;
     }
 
-    // If coupled modification is set, and this is a
-    // master edge, bisect its slaves first.
     if (coupledModification_)
     {
         // Is this a locally coupled edge?
         if (locallyCoupledEdge(eIndex))
         {
-            label slaveIndex = -1;
+            // Temporarily turn off coupledModification
+            coupledModification_ = false;
 
-            // Loop through masterToSlave and determine the slave index.
+            // Loop through master/slave maps
+            // and determine the coupled edge index.
             forAll(masterToSlave_, indexI)
             {
                 if (masterToSlave_[indexI].found(eIndex))
                 {
-                    slaveIndex = masterToSlave_[indexI][eIndex];
+                    // Bisect the slave.
+                    coupleMap = bisectEdge(masterToSlave_[indexI][eIndex]);
+
+                    // Keep this index for master/slave mapping.
                     pIndex = indexI;
                 }
+
+                // The following bit happens only during the sliver
+                // exudation process, since slave edges are
+                // usually not added to the coupled edge-stack.
+                if (slaveToMaster_[indexI].found(eIndex))
+                {
+                    // Bisect the master.
+                    coupleMap = bisectEdge(slaveToMaster_[indexI][eIndex]);
+
+                    // Keep this index for master/slave mapping.
+                    pIndex = indexI;
+
+                    // Notice that we are bisecting a slave edge.
+                    bisectingSlave = true;
+                }
             }
-
-            // Temporarily turn off coupledModification
-            coupledModification_ = false;
-
-            // Bisect the slave.
-            bisectEdge(slaveIndex);
 
             // Turn it back on.
             coupledModification_ = true;
@@ -979,6 +1000,9 @@ void dynamicTopoFvMesh::bisectEdge
 
     nPoints_++;
 
+    // Add this point to the map.
+    map.addPoint(newPointIndex);
+
     // Add a new edge to the end of the list
     label newEdgeIndex =
     (
@@ -990,6 +1014,9 @@ void dynamicTopoFvMesh::bisectEdge
             vertexHull
         )
     );
+
+    // Add this edge to the map.
+    map.addEdge(newEdgeIndex);
 
     // Remove the existing edge from the pointEdges list
     // of the modified point, and add it to the new point
@@ -1047,6 +1074,9 @@ void dynamicTopoFvMesh::bisectEdge
             addedCellIndices[indexI] = cells_.append(cell(4));
             cell& newCell = cells_[addedCellIndices[indexI]];
             nCells_++;
+
+            // Add this cell to the map.
+            map.addCell(addedCellIndices[indexI]);
 
             // Generate mapping information for this new cell
             label parent;
@@ -1107,6 +1137,9 @@ void dynamicTopoFvMesh::bisectEdge
 
             // Add a faceEdges entry as well
             faceEdges_.append(tmpFaceEdges);
+
+            // Add this face to the map.
+            map.addFace(addedIntFaceIndices[indexI]);
 
             // Add to the new cell
             newCell[0] = addedIntFaceIndices[indexI];
@@ -1187,6 +1220,9 @@ void dynamicTopoFvMesh::bisectEdge
                     )
                 );
 
+                // Add this face to the map.
+                map.addFace(addedFaceIndices[indexI]);
+
                 // Generate mapping information for this new face
                 if (faceHull[indexI] < nOldFaces_)
                 {
@@ -1222,9 +1258,14 @@ void dynamicTopoFvMesh::bisectEdge
                     )
                 );
 
+                // Add this edge to the map.
+                map.addEdge(addedEdgeIndices[indexI]);
+
                 // Add this edge to the interior-face faceEdges entry
                 faceEdges_[addedIntFaceIndices[indexI]][1] =
-                    addedEdgeIndices[indexI];
+                (
+                    addedEdgeIndices[indexI]
+                );
 
                 // Configure faceEdges for this boundary face
                 tmpFaceEdges[0] = addedEdgeIndices[indexI];
@@ -1285,6 +1326,9 @@ void dynamicTopoFvMesh::bisectEdge
                     )
                 );
 
+                // Add this face to the map.
+                map.addFace(addedFaceIndices[indexI]);
+
                 // Configure edgeFaces
                 tmpIntEdgeFaces[0] = faceHull[indexI];
                 tmpIntEdgeFaces[1] = addedIntFaceIndices[indexI];
@@ -1309,16 +1353,20 @@ void dynamicTopoFvMesh::bisectEdge
                     )
                 );
 
-                // RemoveSlivers needs this edge-label for collapse
-                bisectInterior_ = addedEdgeIndices[indexI];
+                // Add this edge to the map.
+                map.addEdge(addedEdgeIndices[indexI]);
 
                 // Add this edge to the interior-face faceEdges entry..
                 faceEdges_[addedIntFaceIndices[indexI]][1] =
-                    addedEdgeIndices[indexI];
+                (
+                    addedEdgeIndices[indexI]
+                );
 
                 // ... and to the previous interior face as well
                 faceEdges_[addedIntFaceIndices[prevI]][2] =
-                    addedEdgeIndices[indexI];
+                (
+                    addedEdgeIndices[indexI]
+                );
 
                 // Configure faceEdges for this split interior face
                 tmpFaceEdges[0] = addedEdgeIndices[indexI];
@@ -1382,6 +1430,9 @@ void dynamicTopoFvMesh::bisectEdge
                     )
                 );
 
+                // Add this face to the map.
+                map.addFace(addedFaceIndices[0]);
+
                 // Configure edgeFaces
                 tmpIntEdgeFaces[0] = faceHull[0];
                 tmpIntEdgeFaces[1] = addedIntFaceIndices[0];
@@ -1406,13 +1457,20 @@ void dynamicTopoFvMesh::bisectEdge
                     )
                 );
 
+                // Add this edge to the map.
+                map.addEdge(addedEdgeIndices[0]);
+
                 // Add this edge to the interior-face faceEdges entry..
                 faceEdges_[addedIntFaceIndices[0]][1] =
-                    addedEdgeIndices[0];
+                (
+                    addedEdgeIndices[0]
+                );
 
                 // ... and to the previous interior face as well
                 faceEdges_[addedIntFaceIndices[indexI]][2] =
-                    addedEdgeIndices[0];
+                (
+                    addedEdgeIndices[0]
+                );
 
                 // Configure faceEdges for the first split face
                 tmpFaceEdges[0] = addedEdgeIndices[0];
@@ -1475,6 +1533,9 @@ void dynamicTopoFvMesh::bisectEdge
                 )
             );
 
+            // Add this face to the map.
+            map.addFace(addedFaceIndices[indexI]);
+
             // Generate mapping information for this new face
             label parent;
 
@@ -1511,6 +1572,9 @@ void dynamicTopoFvMesh::bisectEdge
                     tmpEdgePoints
                 )
             );
+
+            // Add this edge to the map.
+            map.addEdge(addedEdgeIndices[indexI]);
 
             // Add a faceEdges entry to the previous interior face
             faceEdges_[addedIntFaceIndices[prevI]][2] =
@@ -1560,25 +1624,28 @@ void dynamicTopoFvMesh::bisectEdge
 
     if (coupledModification_)
     {
-        // Add the new master edge to the coupled stack.
-        edgeStack(tIndex).push(newEdgeIndex);
-
-        // Create a masterToSlave entry for the new edges on the patch.
+        // Create a master/slave entry for the new edges on the patch.
         if (locallyCoupledEdge(eIndex))
         {
-            // Since we don't know the corresponding edges on the slave patch,
+            // Add the new edge to the coupled stack.
+            // Although slave edges might be added here,
+            // they are removed during stack initialization anyway.
+            edgeStack(tIndex).push(newEdgeIndex);
+
+            // Since we don't know the corresponding edges on the couple patch,
             // loop through recently added edges and perform a geometric match.
             FixedList<bool, 3> foundMatch(false);
-            FixedList<label, 3> masterEdge(-1);
-            FixedList<point, 3> mCentres(vector::zero);
+            FixedList<label, 3> checkList(-1);
+            FixedList<point, 3> cCentres(vector::zero);
 
-            // Fill in the master edges
+            // Fill in the edges to be check for...
             label eCounter = 0;
 
             // The new edge...
             edge& newEdge = edges_[newEdgeIndex];
-            masterEdge[eCounter] = newEdgeIndex;
-            mCentres[eCounter++] =
+
+            checkList[eCounter] = newEdgeIndex;
+            cCentres[eCounter++] =
             (
                 0.5*(points_[newEdge[0]] + points_[newEdge[1]])
             );
@@ -1590,34 +1657,54 @@ void dynamicTopoFvMesh::bisectEdge
                 {
                     edge& bEdge = edges_[addedEdgeIndices[edgeI]];
 
-                    masterEdge[eCounter++] = addedEdgeIndices[edgeI];
+                    checkList[eCounter] = addedEdgeIndices[edgeI];
 
-                    mCentres[eCounter++] =
+                    cCentres[eCounter++] =
                     (
                         0.5*(points_[bEdge[0]] + points_[bEdge[1]])
                     );
                 }
             }
 
-            for
-            (
-                HashList<edge>::iterator edgeI = edges_(edges_.lastIndex());
-                edgeI.index() >= nOldInternalEdges_;
-                edgeI--
-            )
+            const labelList aeList = coupleMap.addedEdgeList();
+
+            forAll(aeList, edgeI)
             {
-                // Get the centre.
-                vector centre = 0.5*(points_[edgeI()[0]] + points_[edgeI()[1]]);
+                // Get an edge reference.
+                edge& check = edges_[aeList[edgeI]];
+
+                // Get the centre of the edge.
+                vector centre = 0.5*(points_[check[0]] + points_[check[1]]);
 
                 // Compare with all three entries.
-                forAll (masterEdge, indexI)
+                forAll (checkList, indexI)
                 {
-                    if (mag(mCentres[indexI] - centre) < 1e-20)
+                    if (mag(cCentres[indexI] - centre) < gTol_)
                     {
-                        masterToSlave_[pIndex].insert
-                        (
-                            masterEdge[indexI], edgeI.index()
-                        );
+                        if (bisectingSlave)
+                        {
+                            slaveToMaster_[pIndex].insert
+                            (
+                                checkList[indexI], aeList[edgeI]
+                            );
+
+                            masterToSlave_[pIndex].insert
+                            (
+                                aeList[edgeI], checkList[indexI]
+                            );
+                        }
+                        else
+                        {
+                            masterToSlave_[pIndex].insert
+                            (
+                                checkList[indexI], aeList[edgeI]
+                            );
+
+                            slaveToMaster_[pIndex].insert
+                            (
+                                aeList[edgeI], checkList[indexI]
+                            );
+                        }
 
                         foundMatch[indexI] = true;
 
@@ -1641,6 +1728,7 @@ void dynamicTopoFvMesh::bisectEdge
             }
         }
         else
+        if (processorCoupledEdge(eIndex))
         {
             // Look for matching slave edges on the patchSubMesh.
 
@@ -1771,6 +1859,9 @@ void dynamicTopoFvMesh::bisectEdge
 
     // Increment the number of modifications
     nModifications_++;
+
+    // Return the changeMap
+    return map;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

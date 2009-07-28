@@ -125,7 +125,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     maxModifications_(-1),
     bisectInterior_(-1),
     maxTetsPerEdge_(-1),
-    allowTableResize_(false)
+    allowTableResize_(false),
+    gTol_(1e-20)
 {
     // For backward compatibility, check the size of owner/neighbour
     if (owner_.size() != neighbour_.size())
@@ -1938,9 +1939,23 @@ void dynamicTopoFvMesh::initTables
 
     forAll(Q, indexI)
     {
-        Q[indexI].setSize((mMax-2),scalarList(mMax,-1.0));
-        K[indexI].setSize((mMax-2),labelList(mMax,-1));
-        triangulations[indexI].setSize(3,labelList((mMax-2),-1));
+        Q.set
+        (
+            indexI,
+            new scalarListList((mMax-2),scalarList(mMax,-1.0))
+        );
+
+        K.set
+        (
+            indexI,
+            new labelListList((mMax-2),labelList(mMax,-1))
+        );
+
+        triangulations.set
+        (
+            indexI,
+            new labelListList(3,labelList((mMax-2),-1))
+        );
     }
 }
 
@@ -1991,6 +2006,7 @@ bool dynamicTopoFvMesh::checkQuality
             coupledModification_ = true;
         }
         else
+        if (processorCoupledEdge(eIndex))
         {
             // Check quality of patchSubMeshes.
 
@@ -2106,15 +2122,15 @@ bool dynamicTopoFvMesh::fillTables
             coupledModification_ = false;
 
             // Recursively call for the slave edge.
-            if (fillTables(eIndex, m, Q, K, triangulations, 1))
-            {
-                return false;
-            }
+            bool success = fillTables(eIndex, m, Q, K, triangulations, 1);
 
             // Turn it back on.
             coupledModification_ = true;
+
+            return success;
         }
         else
+        if (processorCoupledEdge(eIndex))
         {
             // Fill in tables from patchSubMeshes.
 
@@ -2618,19 +2634,17 @@ void dynamicTopoFvMesh::writeVTK
 
     forAll(cpList, i)
     {
-        if (cList[i] == -1)
+        if (cpList[i].size())
         {
-            continue;
+            file << cpList[i].size() << ' ';
+
+            forAll(cpList[i], j)
+            {
+                file << cpList[i][j] << ' ';
+            }
+
+            file << nl;
         }
-
-        file << cpList[i].size() << ' ';
-
-        forAll(cpList[i], j)
-        {
-            file << cpList[i][j] << ' ';
-        }
-
-        file << nl;
     }
 
     file << "CELL_TYPES " << nCells << endl;
@@ -5049,139 +5063,310 @@ void dynamicTopoFvMesh::remove2DSliver
     }
 }
 
-// Remove sliver cells in 3D
-void dynamicTopoFvMesh::removeSlivers()
+// Indentify the sliver type in 3D
+const dynamicTopoFvMesh::changeMap
+dynamicTopoFvMesh::identifySliverType
+(
+    const label cIndex
+)
 {
-    forAllIter(labelHashSet, thresholdSlivers_, iter)
+    changeMap map;
+
+    face triFace(3), faceToCheck(3);
+    FixedList<edge, 2> edgeToCheck(edge(-1,-1));
+    label fourthPoint = -1, sliverType = -1;
+    cell& cellToCheck = cells_[cIndex];
+
+    // Pick two faces from this cell.
+    const face& currFace = faces_[cellToCheck[0]];
+    const face& nextFace = faces_[cellToCheck[1]];
+
+    // Get the fourth point
+    forAll(nextFace, pointI)
     {
-        label nIntFaces = 0, nBdyFaces = 0;
-        label commonIntEdge = -1, commonBdyEdge = -1;
-        FixedList<label, 4> intFaces(-1);
-        FixedList<label, 4> bdyFaces(-1);
-
-        cell& cellToCheck = cells_[iter.key()];
-
-        // Determine the number of interior/boundary faces
-        forAll(cellToCheck, faceI)
+        if
+        (
+            nextFace[pointI] != currFace[0]
+         && nextFace[pointI] != currFace[1]
+         && nextFace[pointI] != currFace[2]
+        )
         {
-            if (neighbour_[cellToCheck[faceI]] == -1)
+            fourthPoint = nextFace[pointI];
+
+            // Configure a triangular face with correct orientation.
+            if (owner_[cellToCheck[0]] == cIndex)
             {
-                bdyFaces[nBdyFaces++] = cellToCheck[faceI];
+                triFace[0] = currFace[2];
+                triFace[1] = currFace[1];
+                triFace[2] = currFace[0];
             }
             else
             {
-                intFaces[nIntFaces++] = cellToCheck[faceI];
+                triFace[0] = currFace[0];
+                triFace[1] = currFace[1];
+                triFace[2] = currFace[2];
+            }
+
+            break;
+        }
+    }
+
+    // Obtain the face-normal.
+    vector n = triFaceNormal(triFace);
+
+    // Normalize it.
+    n /= mag(n);
+
+    // Define edge-vectors.
+    vector r1 = points_[triFace[1]] - points_[triFace[0]];
+    vector r2 = points_[triFace[2]] - points_[triFace[1]];
+    vector r3 = points_[triFace[0]] - points_[triFace[2]];
+
+    // Project the fourth point onto the face.
+    vector r4 = points_[fourthPoint] - points_[triFace[0]];
+
+    r4 = r4 - ((r4 & n)*n);
+
+    // Define the two other vectors.
+    vector r5 = r4 - r1;
+    vector r6 = r5 - r2;
+
+    // Calculate three triangle areas, using triFace[0] as the origin.
+    scalar t1 = mag(r1 ^ r4);
+    scalar t2 = mag(r2 ^ r5);
+    scalar t3 = mag(r3 ^ r6);
+
+    // Determine sliver types based on are magnitudes.
+    if (t1 > 0 && t2 > 0 && t3 > 0)
+    {
+        // Region R0: Cap cell.
+        map.type() = 2;
+        map.apexPoint() = fourthPoint;
+
+        faceToCheck[0] = triFace[0];
+        faceToCheck[1] = triFace[1];
+        faceToCheck[2] = triFace[2];
+    }
+
+    if (t1 < 0 && t2 > 0 && t3 > 0)
+    {
+        // Region R1: Sliver cell.
+        map.type() = 1;
+
+        edgeToCheck[0][0] = triFace[2];
+        edgeToCheck[0][1] = fourthPoint;
+        edgeToCheck[1][0] = triFace[0];
+        edgeToCheck[1][1] = triFace[1];
+    }
+
+    if (t1 > 0 && t2 < 0 && t3 > 0)
+    {
+        // Region R2: Sliver cell.
+        map.type() = 1;
+
+        edgeToCheck[0][0] = triFace[0];
+        edgeToCheck[0][1] = fourthPoint;
+        edgeToCheck[1][0] = triFace[1];
+        edgeToCheck[1][1] = triFace[2];
+    }
+
+    if (t1 > 0 && t2 > 0 && t3 < 0)
+    {
+        // Region R3: Sliver cell.
+        map.type() = 1;
+
+        edgeToCheck[0][0] = triFace[1];
+        edgeToCheck[0][1] = fourthPoint;
+        edgeToCheck[1][0] = triFace[2];
+        edgeToCheck[1][1] = triFace[0];
+    }
+
+    if (t1 < 0 && t2 > 0 && t3 < 0)
+    {
+        // Region R4: Cap cell.
+        map.type() = 2;
+        map.apexPoint() = triFace[0];
+
+        faceToCheck[0] = triFace[1];
+        faceToCheck[1] = triFace[2];
+        faceToCheck[2] = fourthPoint;
+    }
+
+    if (t1 < 0 && t2 < 0 && t3 > 0)
+    {
+        // Region R5: Cap cell.
+        map.type() = 2;
+        map.apexPoint() = triFace[1];
+
+        faceToCheck[0] = triFace[2];
+        faceToCheck[1] = triFace[0];
+        faceToCheck[2] = fourthPoint;
+    }
+
+    if (t1 > 0 && t2 < 0 && t3 < 0)
+    {
+        // Region R6: Cap cell.
+        map.type() = 2;
+        map.apexPoint() = triFace[2];
+
+        faceToCheck[0] = triFace[0];
+        faceToCheck[1] = triFace[1];
+        faceToCheck[2] = fourthPoint;
+    }
+
+    // Determine appropriate information for sliver exudation.
+    if (map.type() == 1)
+    {
+        FixedList<bool, 2> foundEdge(false);
+
+        // Search the cell-faces for first and second edges.
+        forAll(cellToCheck, faceI)
+        {
+            labelList& fEdges = faceEdges_[cellToCheck[faceI]];
+
+            forAll(fEdges, edgeI)
+            {
+                edge& thisEdge = edges_[fEdges[edgeI]];
+
+                if (thisEdge == edgeToCheck[0])
+                {
+                    map.firstEdge() = fEdges[edgeI];
+
+                    foundEdge[0] = true;
+                }
+
+                if (thisEdge == edgeToCheck[1])
+                {
+                    map.secondEdge() = fEdges[edgeI];
+
+                    foundEdge[1] = true;
+                }
+            }
+
+            if (foundEdge[0] && foundEdge[1])
+            {
+                break;
             }
         }
-
-        // Check if this is a surface sliver
-        if (nIntFaces == 2 && nBdyFaces == 2)
+    }
+    else
+    if (map.type() == 2)
+    {
+        // Search the cell-faces for opposing faces.
+        forAll(cellToCheck, faceI)
         {
-            findCommonEdge
-            (
-                bdyFaces[0],
-                bdyFaces[1],
-                commonBdyEdge
-            );
+            face& thisFace = faces_[cellToCheck[faceI]];
 
-            findCommonEdge
-            (
-                intFaces[0],
-                intFaces[1],
-                commonIntEdge
-            );
+            if (compare(thisFace, faceToCheck) != 0)
+            {
+                map.opposingFace() = cellToCheck[faceI];
 
+                break;
+            }
+        }
+    }
+
+    if (debug > 2)
+    {
+        Pout << "Cell: " << cIndex
+             << " Identified sliver type as: "
+             << sliverType << endl;
+    }
+
+    // Return the result.
+    return map;
+}
+
+// Remove sliver cells in 3D
+void dynamicTopoFvMesh::removeSlivers()
+{
+    // If coupled patches exist, set the flag
+    if (patchCoupling_.size())
+    {
+        coupledModification_ = true;
+    }
+
+    forAllIter(labelHashSet, thresholdSlivers_, iter)
+    {
+        // Identify the sliver type.
+        changeMap map = identifySliverType(iter.key());
+
+        if (debug)
+        {
             WarningIn
             (
                 "dynamicTopoFvMesh::removeSlivers()"
             )   << nl << "Removing Cell: " << iter.key()
-                << nl << "Boundary Edge: " << commonBdyEdge
-                << ": " << edges_[commonBdyEdge] << endl;
+                << " of sliver type: " << map.type() << endl;
+        }
 
-            // Step 1: Bisect the interior edge
-            bisectEdge(commonIntEdge);
+        // Take action based on the type of sliver.
+        if (map.type() == 1)
+        {
+            // Sliver cell.
+            // Determine which edges need to be bisected.
+            label firstEdge = map.firstEdge();
+            label secondEdge = map.secondEdge();
 
-            // We have to be careful about coupled boundary edges.
-            // If this edge belongs to an explicitly coupled patch,
-            // make sure that the coupled edge is bisected as well.
-            if (patchCoupling_.size())
+            // Bisect both edges.
+            changeMap firstMap  = bisectEdge(firstEdge);
+            changeMap secondMap = bisectEdge(secondEdge);
+
+            // Collapse the intermediate edge.
+            // Since we don't know which edge it is, search
+            // through recently added edges and compare.
+            edge edgeToCheck(firstMap.addedPoint(), secondMap.addedPoint());
+
+            bool foundCollapseEdge = false;
+            const labelList firstMapEdges = firstMap.addedEdgeList();
+            const labelList secondMapEdges = secondMap.addedEdgeList();
+
+            // Loop through the first list.
+            forAll(firstMapEdges, edgeI)
             {
-                FixedList<label, 2> bdyPatch(-1);
+                edge& thisEdge = edges_[firstMapEdges[edgeI]];
 
-                bdyPatch[0] = whichPatch(bdyFaces[0]);
-                bdyPatch[1] = whichPatch(bdyFaces[1]);
-
-                if (bdyPatch[0] != bdyPatch[1])
+                if (thisEdge == edgeToCheck)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::removeSlivers()")
-                        << "Detected a sliver cell on a bounding curve." << nl
-                        << abort(FatalError);
-                }
+                    // Collapse this edge.
+                    collapseEdge(firstMapEdges[edgeI]);
 
-                // Are either of the patches in the list?
-                forAllIter(Map<label>, patchCoupling_, patchI)
-                {
-                    if (bdyPatch[0] == patchI.key())
-                    {
-                        // Edge is on the master patch.
-                        label slaveIndex = -1;
-
-                        // Loop through masterToSlave
-                        forAll(masterToSlave_, indexI)
-                        {
-                            if (masterToSlave_[indexI].found(commonBdyEdge))
-                            {
-                                slaveIndex =
-                                (
-                                    masterToSlave_[indexI][commonBdyEdge]
-                                );
-                            }
-                        }
-
-                        // Now bisect the slave.
-                        bisectEdge(slaveIndex);
-
-                        break;
-                    }
-
-                    if (bdyPatch[0] == patchI())
-                    {
-                        // Edge is on the slave patch.
-                        label masterIndex = -1;
-
-                        // Loop through slaveToMaster
-                        forAll(slaveToMaster_, indexI)
-                        {
-                            if (slaveToMaster_[indexI].found(commonBdyEdge))
-                            {
-                                masterIndex =
-                                (
-                                    slaveToMaster_[indexI][commonBdyEdge]
-                                );
-                            }
-                        }
-
-                        // Now bisect the master.
-                        bisectEdge(masterIndex);
-
-                        break;
-                    }
+                    foundCollapseEdge = true;
+                    break;
                 }
             }
 
-            // Reset the interior edge index
-            bisectInterior_ = -1;
+            // Loop through the second list.
+            if (!foundCollapseEdge)
+            {
+                forAll(secondMapEdges, edgeI)
+                {
+                    edge& thisEdge = edges_[secondMapEdges[edgeI]];
 
-            // Step 2: Bisect the boundary edge
-            bisectEdge(commonBdyEdge);
-
-            // Step 3: Collapse the temporary interior edge
-            collapseEdge(bisectInterior_);
+                    if (thisEdge == edgeToCheck)
+                    {
+                        // Collapse this edge.
+                        collapseEdge(secondMapEdges[edgeI]);
+                    }
+                }
+            }
+        }
+        else
+        if (map.type() == 2)
+        {
+            // Cap cell.
+            // label opposingFace = map.opposingFace();
         }
     }
 
     // Clear out the list
     thresholdSlivers_.clear();
+
+    // If coupled patches exist, reset the flag
+    if (patchCoupling_.size())
+    {
+        coupledModification_ = false;
+    }
 }
 
 // Update mesh corresponding to the given map
@@ -5631,15 +5816,6 @@ bool dynamicTopoFvMesh::updateTopology()
         readEdgeOptions();
     }
 
-    // Return if re-meshing is not at interval
-    if (time().timeIndex() % interval_ != 0)
-    {
-        return false;
-    }
-
-    // Calculate the edge length-scale for the mesh
-    calculateLengthScale();
-
     // Keep a copy of existing sizes
     nOldPoints_ = nPoints_;
     nOldEdges_  = nEdges_;
@@ -5689,9 +5865,6 @@ bool dynamicTopoFvMesh::updateTopology()
         pIter() = currentPoints[pIter.index()];
     }
 
-    // Track mesh topology modification time
-    clockTime topologyTimer;
-
     //== Connectivity changes ==//
 
     // Reset the flag
@@ -5704,6 +5877,23 @@ bool dynamicTopoFvMesh::updateTopology()
 
     // Obtain mesh stats before topo-changes
     meshQuality(true);
+
+    // Return if re-meshing is not at interval,
+    // or sliver cells are absent.
+    if
+    (
+        (time().timeIndex() % interval_ != 0) &&
+        !thresholdSlivers_.size()
+    )
+    {
+        return false;
+    }
+
+    // Calculate the edge length-scale for the mesh
+    calculateLengthScale();
+
+    // Track mesh topology modification time
+    clockTime topologyTimer;
 
     // Invoke the threaded topoModifier
     if (twoDMesh_)

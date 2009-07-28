@@ -1722,11 +1722,16 @@ void dynamicTopoFvMesh::swap32
                         0.5*(points_[edgeI()[0]] + points_[edgeI()[1]])
                     );
 
-                    if (mag(mCentre - centre) < 1e-20)
+                    if (mag(mCentre - centre) < gTol_)
                     {
                         masterToSlave_[edgePatch].insert
                         (
                             newEdgeIndex, edgeI.index()
+                        );
+
+                        masterToSlave_[edgePatch].insert
+                        (
+                            edgeI.index(), newEdgeIndex
                         );
 
                         foundMatch = true;
@@ -1744,6 +1749,7 @@ void dynamicTopoFvMesh::swap32
                 }
             }
             else
+            if (processorCoupledEdge(eIndex))
             {
                 // Look for matching slave edges on the patchSubMesh.
 

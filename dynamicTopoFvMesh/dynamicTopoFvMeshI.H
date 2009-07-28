@@ -380,7 +380,7 @@ inline void dynamicTopoFvMesh::meshEdgeLengthScale
         // Check if this is a coupled processor edge.
         // - Locally coupled edges use length-scale information only
         //   from the master patch.
-        if (!locallyCoupledEdge(eIndex))
+        if (processorCoupledEdge(eIndex))
         {
             // Check patchSubMeshes for length-scale info.
 
@@ -971,12 +971,29 @@ inline void dynamicTopoFvMesh::computeMinQuality
     edge& edgeToCheck = edges_[eIndex];
     labelList& hullVertices = edgePoints_[eIndex];
 
-    // Assume that hullVertices is ordered
-    // in a CCW order around edgeToCheck[0]
-    forAll(hullVertices, indexI)
+    if (whichEdgePatch(eIndex) < 0)
     {
-        // Compute quality as well
-        if (indexI != 0)
+        // Internal edge.
+        forAll(hullVertices, indexI)
+        {
+            label prevIndex = hullVertices.rcIndex(indexI);
+
+            cQuality = (*tetMetric_)
+            (
+                points_[edgeToCheck[0]],
+                points_[hullVertices[prevIndex]],
+                points_[edgeToCheck[1]],
+                points_[hullVertices[indexI]]
+            );
+
+            // Check if the quality is worse
+            minQuality = cQuality < minQuality ? cQuality : minQuality;
+        }
+    }
+    else
+    {
+        // Boundary edge.
+        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
         {
             cQuality = (*tetMetric_)
             (
@@ -1020,6 +1037,7 @@ inline void dynamicTopoFvMesh::computeMinQuality
             coupledModification_ = true;
         }
         else
+        if (processorCoupledEdge(eIndex))
         {
             // Compute the minimum quality across patchSubMeshes.
 
@@ -1048,6 +1066,43 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
 
     labelList& eFaces = edgeFaces_[eIndex];
 
+    bool foundPatch = false;
+
+    // Search for boundary faces, and determine boundary type.
+    forAll(eFaces, faceI)
+    {
+        if (neighbour_[eFaces[faceI]] == -1)
+        {
+            label patch = whichPatch(eFaces[faceI]);
+
+            // Processor checks receive priority.
+            if (isA<processorPolyPatch>(boundary[patch]))
+            {
+                return false;
+            }
+
+            // Check coupled master patches.
+            if (patchCoupling_.found(patch))
+            {
+                foundPatch = true;
+            }
+        }
+    }
+
+    // Could not find any faces on locally coupled patches.
+    return foundPatch;
+}
+
+// Method to determine whether the master edge is coupled at a processor.
+inline bool dynamicTopoFvMesh::processorCoupledEdge
+(
+    const label eIndex
+)
+{
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    labelList& eFaces = edgeFaces_[eIndex];
+
     // Search for boundary faces, and determine boundary type.
     forAll(eFaces, faceI)
     {
@@ -1057,13 +1112,13 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
 
             if (isA<processorPolyPatch>(boundary[patch]))
             {
-                return false;
+                return true;
             }
         }
     }
 
     // Could not find any faces on processor patches.
-    return true;
+    return false;
 }
 
 // Obtain the maximum coupled patch index

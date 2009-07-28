@@ -903,14 +903,15 @@ void dynamicTopoFvMesh::collapseQuadFace
 }
 
 // Method for the collapse of an edge in 3D
-// - Returns an integer value specifying:
+// - Returns a changeMap with a type specifying:
 //    -1: Collapse failed since max number of topo-changes was reached.
 //     0: Collapse could not be performed.
 //     1: Collapsed to first node.
 //     2: Collapsed to second node.
 // - overRideCase is used to force a certain collapse configuration.
 // - checkOnly performs a feasibility check and returns without modifications.
-label dynamicTopoFvMesh::collapseEdge
+const dynamicTopoFvMesh::changeMap
+dynamicTopoFvMesh::collapseEdge
 (
     const label eIndex,
     label overRideCase,
@@ -933,6 +934,9 @@ label dynamicTopoFvMesh::collapseEdge
     // Figure out which thread this is...
     label tIndex = self();
 
+    // Prepare the changeMap
+    changeMap map;
+
     if
     (
         (nModifications_ > maxModifications_)
@@ -941,7 +945,8 @@ label dynamicTopoFvMesh::collapseEdge
     {
         // Reached the max allowable topo-changes.
         edgeStack(tIndex).clear();
-        return -1;
+
+        return map;
     }
 
     // If coupled modification is set, and this is a
@@ -966,26 +971,27 @@ label dynamicTopoFvMesh::collapseEdge
             coupledModification_ = false;
 
             // First check the slave for collapse feasibility.
-            label slaveCase = collapseEdge(slaveIndex, -1, true);
+            changeMap slaveMap = collapseEdge(slaveIndex, -1, true);
 
-            if (slaveCase > 0)
+            if (slaveMap.type() > 0)
             {
-                edge& masterEdge = edges_[eIndex];
-                edge& slaveEdge  = edges_[slaveIndex];
+                edge& mEdge = edges_[eIndex];
+                edge& sEdge  = edges_[slaveIndex];
 
                 // Set the overRideCase for this edge
-                label masterCase = -1;
+                changeMap masterMap;
 
-                switch (slaveCase)
+                // Perform a geometric comparison.
+                switch (slaveMap.type())
                 {
                     case 1:
 
-                        if (masterEdge[0] == slaveEdge[0])
+                        if (mag(points_[mEdge[0]] - points_[sEdge[0]]) < gTol_)
                         {
                             overRideCase = 1;
                         }
                         else
-                        if (masterEdge[1] == slaveEdge[0])
+                        if (mag(points_[mEdge[1]] - points_[sEdge[0]]) < gTol_)
                         {
                             overRideCase = 2;
                         }
@@ -993,8 +999,8 @@ label dynamicTopoFvMesh::collapseEdge
                         {
                             FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
                                 << "Coupled collapse failed." << nl
-                                << "Master: " << masterEdge << nl
-                                << "Slave: " << slaveEdge << nl
+                                << "Master: " << mEdge << nl
+                                << "Slave: " << sEdge << nl
                                 << abort(FatalError);
                         }
 
@@ -1002,12 +1008,12 @@ label dynamicTopoFvMesh::collapseEdge
 
                     case 2:
 
-                        if (masterEdge[1] == slaveEdge[1])
+                        if (mag(points_[mEdge[1]] - points_[sEdge[1]]) < gTol_)
                         {
                             overRideCase = 2;
                         }
                         else
-                        if (masterEdge[0] == slaveEdge[1])
+                        if (mag(points_[mEdge[0]] - points_[sEdge[1]]) < gTol_)
                         {
                             overRideCase = 1;
                         }
@@ -1015,8 +1021,8 @@ label dynamicTopoFvMesh::collapseEdge
                         {
                             FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
                                 << "Coupled collapse failed." << nl
-                                << "Master: " << masterEdge << nl
-                                << "Slave: " << slaveEdge << nl
+                                << "Master: " << mEdge << nl
+                                << "Slave: " << sEdge << nl
                                 << abort(FatalError);
                         }
 
@@ -1024,12 +1030,12 @@ label dynamicTopoFvMesh::collapseEdge
                 }
 
                 // Can the overRideCase be used for this edge?
-                masterCase = collapseEdge(eIndex, overRideCase, true);
+                masterMap = collapseEdge(eIndex, overRideCase, true);
 
                 // Master couldn't perform collapse.
-                if (masterCase <= 0)
+                if (masterMap.type() <= 0)
                 {
-                    return masterCase;
+                    return masterMap;
                 }
 
                 // Collapse the slave edge.
@@ -1040,13 +1046,16 @@ label dynamicTopoFvMesh::collapseEdge
                 // Slave couldn't perform collapse.
                 coupledModification_ = true;
 
-                return 0;
+                map.type() = 0;
+
+                return map;
             }
 
             // Turn coupledModification back on.
             coupledModification_ = true;
         }
         else
+        if (processorCoupledEdge(eIndex))
         {
             // Collapse edge on the patchSubMesh.
 
@@ -1080,16 +1089,6 @@ label dynamicTopoFvMesh::collapseEdge
     {
         Info << nl << nl << "Edge: " << eIndex
              << ": " << thisEdge << " is to be collapsed. " << endl;
-
-        // Write out VTK files prior to change
-        if (debug > 3)
-        {
-            writeVTK
-            (
-                Foam::name(eIndex)+"Collapse_0",
-                cellHull
-            );
-        }
     }
 
     // Check whether points of the edge lies on a boundary
@@ -1319,7 +1318,8 @@ label dynamicTopoFvMesh::collapseEdge
                     )
                 )
                 {
-                    return 0;
+                    map.type() = 0;
+                    return map;
                 }
             }
 
@@ -1338,7 +1338,8 @@ label dynamicTopoFvMesh::collapseEdge
                     )
                 )
                 {
-                    return 0;
+                    map.type() = 0;
+                    return map;
                 }
             }
         }
@@ -1347,7 +1348,20 @@ label dynamicTopoFvMesh::collapseEdge
     // Are we only performing checks?
     if (checkOnly)
     {
-        return collapseCase;
+        map.type() = collapseCase;
+        return map;
+    }
+
+    // Write out VTK files prior to change
+    if (debug > 3)
+    {
+        labelList vtkCells = cellsChecked.toc();
+
+        writeVTK
+        (
+            Foam::name(eIndex)+"Collapse_0",
+            vtkCells
+        );
     }
 
     // Renumber all hull faces and edges
@@ -1741,6 +1755,28 @@ label dynamicTopoFvMesh::collapseEdge
         reversePointMap_[collapsePoint] = -1;
     }
 
+    // Write out VTK files after change
+    if (debug > 3)
+    {
+        // Since cellsChecked is no longer used,
+        // we'll use it for post-processing.
+        forAll(cellHull, indexI)
+        {
+            if (cellsChecked.found(cellHull[indexI]))
+            {
+                cellsChecked.erase(cellHull[indexI]);
+            }
+        }
+
+        labelList vtkCells = cellsChecked.toc();
+
+        writeVTK
+        (
+            Foam::name(eIndex)+"Collapse_1",
+            vtkCells
+        );
+    }
+
     // Remove the edge
     removeEdge(eIndex);
 
@@ -1754,7 +1790,9 @@ label dynamicTopoFvMesh::collapseEdge
     nModifications_++;
 
     // Return a succesful collapse
-    return collapseCase;
+    map.type() = collapseCase;
+
+    return map;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
