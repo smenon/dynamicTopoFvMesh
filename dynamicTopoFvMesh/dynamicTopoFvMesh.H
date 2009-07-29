@@ -667,6 +667,13 @@ class dynamicTopoFvMesh
             const label eIndex
         );
 
+        // Method for the trisection of a face in 3D
+        const changeMap
+        trisectFace
+        (
+            const label fIndex
+        );
+
         // Method for the collapse of an edge in 3D
         const changeMap
         collapseEdge

@@ -526,9 +526,9 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
             {
                 if
                 (
-                    nextFace[pointI] != currFace[0]
-                 && nextFace[pointI] != currFace[1]
-                 && nextFace[pointI] != currFace[2]
+                    nextFace[pointI] != currFace[0] &&
+                    nextFace[pointI] != currFace[1] &&
+                    nextFace[pointI] != currFace[2]
                 )
                 {
                     // Compute cell-quality and write-out
@@ -1421,8 +1421,8 @@ void dynamicTopoFvMesh::constructPrismHull
 
         if
         (
-            !hullCells.found(c1)
-         && (c1 != -1)
+            !hullCells.found(c1) &&
+            (c1 != -1)
         )
         {
             // Add this cell
@@ -1437,8 +1437,8 @@ void dynamicTopoFvMesh::constructPrismHull
 
                 if
                 (
-                    (faceToCheck.size() == 3)
-                 && !(hullTriFaces.found(cellToCheck[faceJ]))
+                    (faceToCheck.size() == 3) &&
+                   !(hullTriFaces.found(cellToCheck[faceJ]))
                 )
                 {
                     hullTriFaces.insert(cellToCheck[faceJ]);

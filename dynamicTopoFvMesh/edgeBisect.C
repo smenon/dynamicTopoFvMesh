@@ -221,8 +221,8 @@ void dynamicTopoFvMesh::bisectQuadFace
     {
         if
         (
-            fEdges[edgeI] != commonEdgeIndex[0]
-         && fEdges[edgeI] != commonEdgeIndex[1]
+            fEdges[edgeI] != commonEdgeIndex[0] &&
+            fEdges[edgeI] != commonEdgeIndex[1]
         )
         {
             edge& eThis = edges_[fEdges[edgeI]];
@@ -881,8 +881,8 @@ dynamicTopoFvMesh::bisectEdge
 
     if
     (
-        (nModifications_ > maxModifications_)
-     && (maxModifications_ > -1)
+        (nModifications_ > maxModifications_) &&
+        (maxModifications_ > -1)
     )
     {
         // Reached the max allowable topo-changes.
@@ -1847,6 +1847,1492 @@ dynamicTopoFvMesh::bisectEdge
                 Foam::name(eIndex)
               + "Bisect_1",
                 newHull
+            );
+        }
+    }
+
+    // Set the flag
+    topoChangeFlag_ = true;
+
+    // Increment the counter
+    nBisections_++;
+
+    // Increment the number of modifications
+    nModifications_++;
+
+    // Return the changeMap
+    return map;
+}
+
+// Method for the trisection of a face in 3D
+// - Returns a changeMap with a type specifying:
+//    -1: Bisection failed since max number of topo-changes was reached.
+// - AddedPoint is the index of the newly added point.
+const dynamicTopoFvMesh::changeMap
+dynamicTopoFvMesh::trisectFace
+(
+    const label fIndex
+)
+{
+    // Face trisection performs the following operations:
+    //      [1] Add a point at middle of the face
+    //      [2] Remove the face and add three new faces in place.
+    //      [3] Add three cells for each trisected cell (remove the originals).
+    //      [4] Create one internal edge for each trisected cell.
+    //      [5] Create three edges for the trisected face.
+    //      [6] Create three internal faces for each trisected cell.
+    //      Update faceEdges, edgeFaces and edgePoints information.
+
+    // Figure out which thread this is...
+    label tIndex = self(), pIndex = -1;
+
+    // Prepare the changeMaps
+    changeMap map, coupleMap;
+    bool bisectingSlave = false;
+
+    if
+    (
+        (nModifications_ > maxModifications_) &&
+        (maxModifications_ > -1)
+    )
+    {
+        // Reached the max allowable topo-changes.
+        edgeStack(tIndex).clear();
+
+        return map;
+    }
+
+    if (coupledModification_)
+    {
+        // Are all edges of this face locally coupled?
+        bool locallyCoupledFace = false;
+
+        labelList& fEdges = faceEdges_[fIndex];
+
+        if
+        (
+            locallyCoupledEdge(fEdges[0]) &&
+            locallyCoupledEdge(fEdges[1]) &&
+            locallyCoupledEdge(fEdges[2])
+        )
+        {
+            locallyCoupledFace = true;
+        }
+
+        if (locallyCoupledFace)
+        {
+            // Temporarily turn off coupledModification
+            coupledModification_ = false;
+
+            // Loop through master/slave maps
+            // and determine the coupled edge index.
+            forAll(masterToSlave_, indexI)
+            {
+                if
+                (
+                    masterToSlave_[indexI].found(fEdges[0]) &&
+                    masterToSlave_[indexI].found(fEdges[1]) &&
+                    masterToSlave_[indexI].found(fEdges[2])
+                )
+                {
+                    bool foundFace = false;
+                    label slaveFace = -1;
+
+                    // Search for a boundary face shared
+                    // by two of the edges.
+                    labelList& eFirstFaces = edgeFaces_[fEdges[0]];
+                    labelList& eSecondFaces = edgeFaces_[fEdges[1]];
+
+                    forAll(eFirstFaces, edgeI)
+                    {
+                        if (neighbour_[eFirstFaces[edgeI]] == -1)
+                        {
+                            forAll(eSecondFaces, edgeJ)
+                            {
+                                if
+                                (
+                                    eFirstFaces[edgeI]
+                                 == eSecondFaces[edgeJ]
+                                )
+                                {
+                                    slaveFace = eFirstFaces[edgeI];
+                                    foundFace = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (foundFace)
+                        {
+                            break;
+                        }
+                    }
+
+                    // Trisect the slave.
+                    coupleMap = trisectFace(slaveFace);
+
+                    // Keep this index for master/slave mapping.
+                    pIndex = indexI;
+                }
+
+                // The following bit happens only during the sliver
+                // exudation process.
+                if
+                (
+                    slaveToMaster_[indexI].found(fEdges[0]) &&
+                    slaveToMaster_[indexI].found(fEdges[1]) &&
+                    slaveToMaster_[indexI].found(fEdges[2])
+                )
+                {
+                    bool foundFace = false;
+                    label masterFace = -1;
+
+                    // Search for a boundary face shared
+                    // by two of the edges.
+                    labelList& eFirstFaces = edgeFaces_[fEdges[0]];
+                    labelList& eSecondFaces = edgeFaces_[fEdges[1]];
+
+                    forAll(eFirstFaces, edgeI)
+                    {
+                        if (neighbour_[eFirstFaces[edgeI]] == -1)
+                        {
+                            forAll(eSecondFaces, edgeJ)
+                            {
+                                if
+                                (
+                                    eFirstFaces[edgeI]
+                                 == eSecondFaces[edgeJ]
+                                )
+                                {
+                                    masterFace = eFirstFaces[edgeI];
+                                    foundFace = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (foundFace)
+                        {
+                            break;
+                        }
+                    }
+
+                    // Trisect the master.
+                    coupleMap = trisectFace(masterFace);
+
+                    // Keep this index for master/slave mapping.
+                    pIndex = indexI;
+
+                    // Notice that we are bisecting a slave edge.
+                    bisectingSlave = true;
+                }
+            }
+        }
+    }
+
+    // References
+    face& thisFace = faces_[fIndex];
+    cell& firstCell = cells_[owner_[fIndex]];
+
+    // Hull variables
+    bool foundApex;
+    face tmpTriFace(3);
+    labelList newTriEdgeFaces(3), newTriEdgePoints(3);
+    labelList newQuadEdgeFaces(4), newQuadEdgePoints(4);
+
+    FixedList<label,2> apexPoint(-1);
+    FixedList<face,3>  checkFace(face(3));
+    FixedList<label,5> newEdgeIndex(-1);
+    FixedList<label,9> newFaceIndex(-1);
+    FixedList<label,6> newCellIndex(-1);
+    FixedList<labelList, 9> newFaceEdges(labelList(3));
+
+    // Counters for entities
+    FixedList<label, 9> nE(0);
+    FixedList<label, 6> nF(0);
+
+    // Determine the two cells to be removed
+    FixedList<label,2> cellsForRemoval;
+    cellsForRemoval[0] = owner_[fIndex];
+    cellsForRemoval[1] = neighbour_[fIndex];
+
+    if (debug > 1)
+    {
+        Info << nl << nl << "Face: " << fIndex
+             << ": " << thisFace << " is to be trisected. " << endl;
+
+        // Write out VTK files prior to change
+        if (debug > 3)
+        {
+            labelList vtkCells;
+
+            if (neighbour_[fIndex] == -1)
+            {
+                vtkCells.setSize(1);
+                vtkCells[0] = owner_[fIndex];
+            }
+            else
+            {
+                vtkCells.setSize(2);
+                vtkCells[0] = owner_[fIndex];
+                vtkCells[1] = neighbour_[fIndex];
+            }
+
+            writeVTK
+            (
+                Foam::name(fIndex)
+              + "Trisect_0",
+                vtkCells
+            );
+        }
+    }
+
+    // Add a new point to the end of the list
+    label newPointIndex =
+    (
+        points_.append
+        (
+            (
+                points_[thisFace[0]]
+              + points_[thisFace[1]]
+              + points_[thisFace[2]]
+            )
+            /3.0
+        )
+    );
+
+    // Add an entry to pointEdges as well
+    pointEdges_.append(labelList(0));
+
+    nPoints_++;
+
+    // Add this point to the map.
+    map.addPoint(newPointIndex);
+
+    // Add three new cells to the end of the cell list
+    newCellIndex[0] = cells_.append(cell(4));
+    newCellIndex[1] = cells_.append(cell(4));
+    newCellIndex[2] = cells_.append(cell(4));
+
+    cell &newTetCell0 = cells_[newCellIndex[0]];
+    cell &newTetCell1 = cells_[newCellIndex[1]];
+    cell &newTetCell2 = cells_[newCellIndex[2]];
+
+    // Update length-scale info
+    if (edgeModification_)
+    {
+        scalar parentScale = lengthScale_[cellsForRemoval[0]];
+
+        for (label i = 0; i < 3; i++)
+        {
+            lengthScale_.append(parentScale);
+        }
+    }
+
+    // Find the apex point for this cell
+    foundApex = false;
+
+    forAll(firstCell, faceI)
+    {
+        face& faceToCheck = faces_[firstCell[faceI]];
+
+        forAll(faceToCheck, pointI)
+        {
+            if
+            (
+                faceToCheck[pointI] != thisFace[0] &&
+                faceToCheck[pointI] != thisFace[1] &&
+                faceToCheck[pointI] != thisFace[2]
+            )
+            {
+                apexPoint[0] = faceToCheck[pointI];
+
+                foundApex = true;
+                break;
+            }
+        }
+
+        if (foundApex)
+        {
+            break;
+        }
+    }
+
+    // Insert three new internal faces
+
+    // First face: Owner: newCellIndex[0], Neighbour: newCellIndex[1]
+    tmpTriFace[0] = newPointIndex;
+    tmpTriFace[1] = thisFace[0];
+    tmpTriFace[2] = apexPoint[0];
+
+    newFaceIndex[0] =
+    (
+        insertFace
+        (
+            -1,
+            tmpTriFace,
+            newCellIndex[0],
+            newCellIndex[1]
+        )
+    );
+
+    // Second face: Owner: newCellIndex[1], Neighbour: newCellIndex[2]
+    tmpTriFace[0] = newPointIndex;
+    tmpTriFace[1] = thisFace[1];
+    tmpTriFace[2] = apexPoint[0];
+
+    newFaceIndex[1] =
+    (
+        insertFace
+        (
+            -1,
+            tmpTriFace,
+            newCellIndex[1],
+            newCellIndex[2]
+        )
+    );
+
+    // Third face: Owner: newCellIndex[0], Neighbour: newCellIndex[2]
+    tmpTriFace[0] = newPointIndex;
+    tmpTriFace[1] = apexPoint[0];
+    tmpTriFace[2] = thisFace[2];
+
+    newFaceIndex[2] =
+    (
+        insertFace
+        (
+            -1,
+            tmpTriFace,
+            newCellIndex[0],
+            newCellIndex[2]
+        )
+    );
+
+    // Add an entry to edgeFaces
+    newTriEdgeFaces[0] = newFaceIndex[0];
+    newTriEdgeFaces[1] = newFaceIndex[1];
+    newTriEdgeFaces[2] = newFaceIndex[2];
+
+    // Add an entry for edgePoints as well
+    newTriEdgePoints[0] = thisFace[0];
+    newTriEdgePoints[1] = thisFace[1];
+    newTriEdgePoints[2] = thisFace[2];
+
+    // Add a new internal edge to the mesh
+    newEdgeIndex[0] =
+    (
+        insertEdge
+        (
+            -1,
+            edge
+            (
+               newPointIndex,
+               apexPoint[0]
+            ),
+            newTriEdgeFaces,
+            newTriEdgePoints
+        )
+    );
+
+    // Configure faceEdges with the new internal edge
+    newFaceEdges[0][nE[0]++] = newEdgeIndex[0];
+    newFaceEdges[1][nE[1]++] = newEdgeIndex[0];
+    newFaceEdges[2][nE[2]++] = newEdgeIndex[0];
+
+    // Add the newly created faces to cells
+    newTetCell0[nF[0]++] = newFaceIndex[0];
+    newTetCell0[nF[0]++] = newFaceIndex[2];
+    newTetCell1[nF[1]++] = newFaceIndex[0];
+    newTetCell1[nF[1]++] = newFaceIndex[1];
+    newTetCell2[nF[2]++] = newFaceIndex[1];
+    newTetCell2[nF[2]++] = newFaceIndex[2];
+
+    // Define the three faces to check for orientation:
+    checkFace[0][0] = thisFace[2];
+    checkFace[0][1] = apexPoint[0];
+    checkFace[0][2] = thisFace[0];
+
+    checkFace[1][0] = thisFace[0];
+    checkFace[1][1] = apexPoint[0];
+    checkFace[1][2] = thisFace[1];
+
+    checkFace[2][0] = thisFace[1];
+    checkFace[2][1] = apexPoint[0];
+    checkFace[2][2] = thisFace[2];
+
+    // Check the orientation of faces on the first cell.
+    forAll(firstCell, faceI)
+    {
+        label faceIndex = firstCell[faceI];
+
+        if (faceIndex == fIndex)
+        {
+            continue;
+        }
+
+        face& faceToCheck = faces_[faceIndex];
+        label cellIndex = cellsForRemoval[0];
+        label newIndex = -1;
+
+        // Check against faces.
+        if (compare(faceToCheck, checkFace[0]) != 0)
+        {
+            newIndex = newCellIndex[0];
+            newTetCell0[nF[0]++] = faceIndex;
+        }
+        else
+        if (compare(faceToCheck, checkFace[1]) != 0)
+        {
+            newIndex = newCellIndex[1];
+            newTetCell1[nF[1]++] = faceIndex;
+        }
+        else
+        if (compare(faceToCheck, checkFace[2]) != 0)
+        {
+            newIndex = newCellIndex[2];
+            newTetCell2[nF[2]++] = faceIndex;
+        }
+        else
+        {
+            // Something's terribly wrong.
+            FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
+                << "Failed to determine a face match."
+                << abort(FatalError);
+        }
+
+        // Check if a face-flip is necessary
+        if (owner_[faceIndex] == cellIndex)
+        {
+            if (neighbour_[faceIndex] == -1)
+            {
+                // Change the owner
+                owner_[faceIndex] = newIndex;
+            }
+            else
+            {
+                // Flip this face
+                faces_[faceIndex] = faceToCheck.reverseFace();
+                owner_[faceIndex] = neighbour_[faceIndex];
+                neighbour_[faceIndex] = newIndex;
+            }
+        }
+        else
+        {
+            // Flip is unnecessary. Just update neighbour
+            neighbour_[faceIndex] = newIndex;
+        }
+    }
+
+    if (cellsForRemoval[1] == -1)
+    {
+        // Boundary face. Determine its patch.
+        label facePatch = whichPatch(fIndex);
+
+        // Add three new boundary faces.
+
+        // Fourth face: Owner: newCellIndex[0], Neighbour: -1
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = thisFace[2];
+        tmpTriFace[2] = thisFace[0];
+
+        newFaceIndex[3] =
+        (
+            insertFace
+            (
+                facePatch,
+                tmpTriFace,
+                newCellIndex[0],
+                -1
+            )
+        );
+
+        // Fifth face: Owner: newCellIndex[1], Neighbour: -1
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = thisFace[0];
+        tmpTriFace[2] = thisFace[1];
+
+        newFaceIndex[4] =
+        (
+            insertFace
+            (
+                facePatch,
+                tmpTriFace,
+                newCellIndex[1],
+                -1
+            )
+        );
+
+        // Sixth face: Owner: newCellIndex[2], Neighbour: -1
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = thisFace[1];
+        tmpTriFace[2] = thisFace[2];
+
+        newFaceIndex[5] =
+        (
+            insertFace
+            (
+                facePatch,
+                tmpTriFace,
+                newCellIndex[2],
+                -1
+            )
+        );
+
+        // Add the newly created faces to cells
+        newTetCell0[nF[0]++] = newFaceIndex[3];
+        newTetCell1[nF[1]++] = newFaceIndex[4];
+        newTetCell2[nF[2]++] = newFaceIndex[5];
+
+        // Configure edgeFaces and edgePoints for three new boundary edges.
+        newTriEdgeFaces[0] = newFaceIndex[4];
+        newTriEdgeFaces[1] = newFaceIndex[0];
+        newTriEdgeFaces[2] = newFaceIndex[3];
+
+        newTriEdgePoints[0] = thisFace[1];
+        newTriEdgePoints[1] = apexPoint[0];
+        newTriEdgePoints[2] = thisFace[2];
+
+        newEdgeIndex[1] =
+        (
+            insertEdge
+            (
+                facePatch,
+                edge
+                (
+                   newPointIndex,
+                   thisFace[0]
+                ),
+                newTriEdgeFaces,
+                newTriEdgePoints
+            )
+        );
+
+        newTriEdgeFaces[0] = newFaceIndex[5];
+        newTriEdgeFaces[1] = newFaceIndex[1];
+        newTriEdgeFaces[2] = newFaceIndex[4];
+
+        newTriEdgePoints[0] = thisFace[2];
+        newTriEdgePoints[1] = apexPoint[0];
+        newTriEdgePoints[2] = thisFace[0];
+
+        newEdgeIndex[2] =
+        (
+            insertEdge
+            (
+                facePatch,
+                edge
+                (
+                   newPointIndex,
+                   thisFace[1]
+                ),
+                newTriEdgeFaces,
+                newTriEdgePoints
+            )
+        );
+
+        newTriEdgeFaces[0] = newFaceIndex[3];
+        newTriEdgeFaces[1] = newFaceIndex[2];
+        newTriEdgeFaces[2] = newFaceIndex[5];
+
+        newTriEdgePoints[0] = thisFace[0];
+        newTriEdgePoints[1] = apexPoint[0];
+        newTriEdgePoints[2] = thisFace[1];
+
+        newEdgeIndex[3] =
+        (
+            insertEdge
+            (
+                facePatch,
+                edge
+                (
+                   newPointIndex,
+                   thisFace[2]
+                ),
+                newTriEdgeFaces,
+                newTriEdgePoints
+            )
+        );
+
+        // Configure faceEdges with the three new edges.
+        newFaceEdges[0][nE[0]++] = newEdgeIndex[1];
+        newFaceEdges[1][nE[1]++] = newEdgeIndex[2];
+        newFaceEdges[2][nE[2]++] = newEdgeIndex[3];
+
+        newFaceEdges[3][nE[3]++] = newEdgeIndex[1];
+        newFaceEdges[3][nE[3]++] = newEdgeIndex[3];
+        newFaceEdges[4][nE[4]++] = newEdgeIndex[1];
+        newFaceEdges[4][nE[4]++] = newEdgeIndex[2];
+        newFaceEdges[5][nE[5]++] = newEdgeIndex[2];
+        newFaceEdges[5][nE[5]++] = newEdgeIndex[3];
+
+        // Define the six edges to check while building faceEdges:
+        FixedList<edge,6> check;
+
+        check[0][0] = apexPoint[0]; check[0][1] = thisFace[0];
+        check[1][0] = apexPoint[0]; check[1][1] = thisFace[1];
+        check[2][0] = apexPoint[0]; check[2][1] = thisFace[2];
+
+        check[3][0] = thisFace[2]; check[3][1] = thisFace[0];
+        check[4][0] = thisFace[0]; check[4][1] = thisFace[1];
+        check[5][0] = thisFace[1]; check[5][1] = thisFace[2];
+
+        // Build a list of cellEdges
+        labelHashSet cellEdges;
+
+        forAll(firstCell, faceI)
+        {
+            labelList fEdges = faceEdges_[firstCell[faceI]];
+
+            forAll(fEdges, edgeI)
+            {
+                if (!cellEdges.found(fEdges[edgeI]))
+                {
+                    cellEdges.insert(fEdges[edgeI]);
+                }
+            }
+        }
+
+        // Loop through cellEdges, and perform appropriate actions.
+        forAllIter(labelHashSet::iterator, cellEdges, eIter)
+        {
+            edge& edgeToCheck = edges_[eIter.key()];
+
+            // Check against the specified edges.
+            if (edgeToCheck == check[0])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[1],
+                    thisFace[2],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[0], edgeFaces_[eIter.key()]);
+                newFaceEdges[0][nE[0]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[1])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[0],
+                    thisFace[2],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[1], edgeFaces_[eIter.key()]);
+                newFaceEdges[1][nE[1]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[2])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[0],
+                    thisFace[1],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[2], edgeFaces_[eIter.key()]);
+                newFaceEdges[2][nE[2]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[3])
+            {
+                replaceLabel
+                (
+                    thisFace[1],
+                    newPointIndex,
+                    edgePoints_[eIter.key()]
+                );
+
+                replaceLabel
+                (
+                    fIndex,
+                    newFaceIndex[3],
+                    edgeFaces_[eIter.key()]
+                );
+
+                newFaceEdges[3][nE[3]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[4])
+            {
+                replaceLabel
+                (
+                    thisFace[2],
+                    newPointIndex,
+                    edgePoints_[eIter.key()]
+                );
+
+                replaceLabel
+                (
+                    fIndex,
+                    newFaceIndex[4],
+                    edgeFaces_[eIter.key()]
+                );
+
+                newFaceEdges[4][nE[4]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[5])
+            {
+                replaceLabel
+                (
+                    thisFace[0],
+                    newPointIndex,
+                    edgePoints_[eIter.key()]
+                );
+
+                replaceLabel
+                (
+                    fIndex,
+                    newFaceIndex[5],
+                    edgeFaces_[eIter.key()]
+                );
+
+                newFaceEdges[5][nE[5]++] = eIter.key();
+            }
+        }
+
+        // Now that faceEdges has been configured, append them to the list.
+        for (label i = 0; i < 6; i++)
+        {
+            faceEdges_.append(newFaceEdges[i]);
+        }
+    }
+    else
+    {
+        cell& secondCell = cells_[neighbour_[fIndex]];
+
+        // Add three new cells to the end of the cell list
+        newCellIndex[3] = cells_.append(cell(4));
+        newCellIndex[4] = cells_.append(cell(4));
+        newCellIndex[5] = cells_.append(cell(4));
+
+        cell &newTetCell3 = cells_[newCellIndex[3]];
+        cell &newTetCell4 = cells_[newCellIndex[4]];
+        cell &newTetCell5 = cells_[newCellIndex[5]];
+
+        // Update length-scale info
+        if (edgeModification_)
+        {
+            scalar parentScale = lengthScale_[cellsForRemoval[1]];
+
+            for (label i = 0; i < 3; i++)
+            {
+                lengthScale_.append(parentScale);
+            }
+        }
+
+        // Find the apex point for this cell
+        foundApex = false;
+
+        forAll(secondCell, faceI)
+        {
+            face& faceToCheck = faces_[secondCell[faceI]];
+
+            forAll(faceToCheck, pointI)
+            {
+                if
+                (
+                    faceToCheck[pointI] != thisFace[0] &&
+                    faceToCheck[pointI] != thisFace[1] &&
+                    faceToCheck[pointI] != thisFace[2]
+                )
+                {
+                    apexPoint[1] = faceToCheck[pointI];
+
+                    foundApex = true;
+                    break;
+                }
+            }
+
+            if (foundApex)
+            {
+                break;
+            }
+        }
+
+        // Add six new interior faces.
+
+        // Fourth face: Owner: newCellIndex[0], Neighbour: newCellIndex[3]
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = thisFace[2];
+        tmpTriFace[2] = thisFace[0];
+
+        newFaceIndex[3] =
+        (
+            insertFace
+            (
+                -1,
+                tmpTriFace,
+                newCellIndex[0],
+                newCellIndex[3]
+            )
+        );
+
+        // Fifth face: Owner: newCellIndex[1], Neighbour: newCellIndex[4]
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = thisFace[0];
+        tmpTriFace[2] = thisFace[1];
+
+        newFaceIndex[4] =
+        (
+            insertFace
+            (
+                -1,
+                tmpTriFace,
+                newCellIndex[1],
+                newCellIndex[4]
+            )
+        );
+
+        // Sixth face: Owner: newCellIndex[2], Neighbour: newCellIndex[5]
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = thisFace[1];
+        tmpTriFace[2] = thisFace[2];
+
+        newFaceIndex[5] =
+        (
+            insertFace
+            (
+                -1,
+                tmpTriFace,
+                newCellIndex[2],
+                newCellIndex[5]
+            )
+        );
+
+        // Seventh face: Owner: newCellIndex[3], Neighbour: newCellIndex[4]
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = apexPoint[1];
+        tmpTriFace[2] = thisFace[0];
+
+        newFaceIndex[6] =
+        (
+            insertFace
+            (
+                -1,
+                tmpTriFace,
+                newCellIndex[3],
+                newCellIndex[4]
+            )
+        );
+
+        // Eighth face: Owner: newCellIndex[4], Neighbour: newCellIndex[5]
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = apexPoint[1];
+        tmpTriFace[2] = thisFace[1];
+
+        newFaceIndex[7] =
+        (
+            insertFace
+            (
+                -1,
+                tmpTriFace,
+                newCellIndex[4],
+                newCellIndex[5]
+            )
+        );
+
+        // Ninth face: Owner: newCellIndex[3], Neighbour: newCellIndex[5]
+        tmpTriFace[0] = newPointIndex;
+        tmpTriFace[1] = thisFace[2];
+        tmpTriFace[2] = apexPoint[1];
+
+        newFaceIndex[8] =
+        (
+            insertFace
+            (
+                -1,
+                tmpTriFace,
+                newCellIndex[3],
+                newCellIndex[5]
+            )
+        );
+
+        // Add the newly created faces to cells
+        newTetCell3[nF[3]++] = newFaceIndex[6];
+        newTetCell3[nF[3]++] = newFaceIndex[8];
+        newTetCell4[nF[4]++] = newFaceIndex[6];
+        newTetCell4[nF[4]++] = newFaceIndex[7];
+        newTetCell5[nF[5]++] = newFaceIndex[7];
+        newTetCell5[nF[5]++] = newFaceIndex[8];
+
+        newTetCell0[nF[0]++] = newFaceIndex[3];
+        newTetCell1[nF[1]++] = newFaceIndex[4];
+        newTetCell2[nF[2]++] = newFaceIndex[5];
+
+        newTetCell3[nF[3]++] = newFaceIndex[3];
+        newTetCell4[nF[4]++] = newFaceIndex[4];
+        newTetCell5[nF[5]++] = newFaceIndex[5];
+
+        // Define the three faces to check for orientation:
+        checkFace[0][0] = thisFace[2];
+        checkFace[0][1] = apexPoint[1];
+        checkFace[0][2] = thisFace[0];
+
+        checkFace[1][0] = thisFace[0];
+        checkFace[1][1] = apexPoint[1];
+        checkFace[1][2] = thisFace[1];
+
+        checkFace[2][0] = thisFace[1];
+        checkFace[2][1] = apexPoint[1];
+        checkFace[2][2] = thisFace[2];
+
+        // Check the orientation of faces on the second cell.
+        forAll(secondCell, faceI)
+        {
+            label faceIndex = secondCell[faceI];
+
+            if (faceIndex == fIndex)
+            {
+                continue;
+            }
+
+            face& faceToCheck = faces_[faceIndex];
+            label cellIndex = cellsForRemoval[1];
+            label newIndex = -1;
+
+            // Check against faces.
+            if (compare(faceToCheck, checkFace[0]) != 0)
+            {
+                newIndex = newCellIndex[3];
+                newTetCell3[nF[3]++] = faceIndex;
+            }
+            else
+            if (compare(faceToCheck, checkFace[1]) != 0)
+            {
+                newIndex = newCellIndex[4];
+                newTetCell4[nF[4]++] = faceIndex;
+            }
+            else
+            if (compare(faceToCheck, checkFace[2]) != 0)
+            {
+                newIndex = newCellIndex[5];
+                newTetCell5[nF[5]++] = faceIndex;
+            }
+            else
+            {
+                // Something's terribly wrong.
+                FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
+                    << "Failed to determine a face match."
+                    << abort(FatalError);
+            }
+
+            // Check if a face-flip is necessary
+            if (owner_[faceIndex] == cellIndex)
+            {
+                if (neighbour_[faceIndex] == -1)
+                {
+                    // Change the owner
+                    owner_[faceIndex] = newIndex;
+                }
+                else
+                {
+                    // Flip this face
+                    faces_[faceIndex] = faceToCheck.reverseFace();
+                    owner_[faceIndex] = neighbour_[faceIndex];
+                    neighbour_[faceIndex] = newIndex;
+                }
+            }
+            else
+            {
+                // Flip is unnecessary. Just update neighbour
+                neighbour_[faceIndex] = newIndex;
+            }
+        }
+
+        // Configure edgeFaces and edgePoints for four new interior edges.
+        newQuadEdgeFaces[0] = newFaceIndex[4];
+        newQuadEdgeFaces[1] = newFaceIndex[0];
+        newQuadEdgeFaces[2] = newFaceIndex[3];
+        newQuadEdgeFaces[3] = newFaceIndex[6];
+
+        newQuadEdgePoints[0] = thisFace[1];
+        newQuadEdgePoints[1] = apexPoint[0];
+        newQuadEdgePoints[2] = thisFace[2];
+        newQuadEdgePoints[3] = apexPoint[1];
+
+        newEdgeIndex[1] =
+        (
+            insertEdge
+            (
+                -1,
+                edge
+                (
+                   newPointIndex,
+                   thisFace[0]
+                ),
+                newQuadEdgeFaces,
+                newQuadEdgePoints
+            )
+        );
+
+        newQuadEdgeFaces[0] = newFaceIndex[5];
+        newQuadEdgeFaces[1] = newFaceIndex[1];
+        newQuadEdgeFaces[2] = newFaceIndex[4];
+        newQuadEdgeFaces[3] = newFaceIndex[7];
+
+        newQuadEdgePoints[0] = thisFace[2];
+        newQuadEdgePoints[1] = apexPoint[0];
+        newQuadEdgePoints[2] = thisFace[0];
+        newQuadEdgePoints[3] = apexPoint[1];
+
+        newEdgeIndex[2] =
+        (
+            insertEdge
+            (
+                -1,
+                edge
+                (
+                   newPointIndex,
+                   thisFace[1]
+                ),
+                newQuadEdgeFaces,
+                newQuadEdgePoints
+            )
+        );
+
+        newQuadEdgeFaces[0] = newFaceIndex[3];
+        newQuadEdgeFaces[1] = newFaceIndex[2];
+        newQuadEdgeFaces[2] = newFaceIndex[5];
+        newQuadEdgeFaces[3] = newFaceIndex[8];
+
+        newQuadEdgePoints[0] = thisFace[0];
+        newQuadEdgePoints[1] = apexPoint[0];
+        newQuadEdgePoints[2] = thisFace[1];
+        newQuadEdgePoints[3] = apexPoint[1];
+
+        newEdgeIndex[3] =
+        (
+            insertEdge
+            (
+                -1,
+                edge
+                (
+                   newPointIndex,
+                   thisFace[2]
+                ),
+                newQuadEdgeFaces,
+                newQuadEdgePoints
+            )
+        );
+
+        newTriEdgeFaces[0] = newFaceIndex[6];
+        newTriEdgeFaces[1] = newFaceIndex[7];
+        newTriEdgeFaces[2] = newFaceIndex[8];
+
+        newTriEdgePoints[0] = thisFace[0];
+        newTriEdgePoints[1] = thisFace[1];
+        newTriEdgePoints[2] = thisFace[2];
+
+        newEdgeIndex[4] =
+        (
+            insertEdge
+            (
+                -1,
+                edge
+                (
+                   apexPoint[1],
+                   newPointIndex
+                ),
+                newTriEdgeFaces,
+                newTriEdgePoints
+            )
+        );
+
+        // Configure faceEdges with the new internal edges
+        newFaceEdges[0][nE[0]++] = newEdgeIndex[1];
+        newFaceEdges[1][nE[1]++] = newEdgeIndex[2];
+        newFaceEdges[2][nE[2]++] = newEdgeIndex[3];
+
+        newFaceEdges[3][nE[3]++] = newEdgeIndex[1];
+        newFaceEdges[3][nE[3]++] = newEdgeIndex[3];
+        newFaceEdges[4][nE[4]++] = newEdgeIndex[1];
+        newFaceEdges[4][nE[4]++] = newEdgeIndex[2];
+        newFaceEdges[5][nE[5]++] = newEdgeIndex[2];
+        newFaceEdges[5][nE[5]++] = newEdgeIndex[3];
+
+        newFaceEdges[6][nE[6]++] = newEdgeIndex[1];
+        newFaceEdges[7][nE[7]++] = newEdgeIndex[2];
+        newFaceEdges[8][nE[8]++] = newEdgeIndex[3];
+
+        newFaceEdges[6][nE[6]++] = newEdgeIndex[4];
+        newFaceEdges[7][nE[7]++] = newEdgeIndex[4];
+        newFaceEdges[8][nE[8]++] = newEdgeIndex[4];
+
+        // Define the nine edges to check while building faceEdges:
+        FixedList<edge,9> check;
+
+        check[0][0] = apexPoint[0]; check[0][1] = thisFace[0];
+        check[1][0] = apexPoint[0]; check[1][1] = thisFace[1];
+        check[2][0] = apexPoint[0]; check[2][1] = thisFace[2];
+
+        check[3][0] = thisFace[2]; check[3][1] = thisFace[0];
+        check[4][0] = thisFace[0]; check[4][1] = thisFace[1];
+        check[5][0] = thisFace[1]; check[5][1] = thisFace[2];
+
+        check[6][0] = apexPoint[1]; check[6][1] = thisFace[0];
+        check[7][0] = apexPoint[1]; check[7][1] = thisFace[1];
+        check[8][0] = apexPoint[1]; check[8][1] = thisFace[2];
+
+        // Build a list of cellEdges
+        labelHashSet cellEdges;
+
+        forAll(firstCell, faceI)
+        {
+            labelList fEdges = faceEdges_[firstCell[faceI]];
+
+            forAll(fEdges, edgeI)
+            {
+                if (!cellEdges.found(fEdges[edgeI]))
+                {
+                    cellEdges.insert(fEdges[edgeI]);
+                }
+            }
+        }
+
+        forAll(secondCell, faceI)
+        {
+            labelList fEdges = faceEdges_[secondCell[faceI]];
+
+            forAll(fEdges, edgeI)
+            {
+                if (!cellEdges.found(fEdges[edgeI]))
+                {
+                    cellEdges.insert(fEdges[edgeI]);
+                }
+            }
+        }
+
+        // Loop through cellEdges, and perform appropriate actions.
+        forAllIter(labelHashSet::iterator, cellEdges, eIter)
+        {
+            edge& edgeToCheck = edges_[eIter.key()];
+
+            // Check against the specified edges.
+            if (edgeToCheck == check[0])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[1],
+                    thisFace[2],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[0], edgeFaces_[eIter.key()]);
+                newFaceEdges[0][nE[0]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[1])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[0],
+                    thisFace[2],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[1], edgeFaces_[eIter.key()]);
+                newFaceEdges[1][nE[1]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[2])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[0],
+                    thisFace[1],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[2], edgeFaces_[eIter.key()]);
+                newFaceEdges[2][nE[2]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[3])
+            {
+                replaceLabel
+                (
+                    thisFace[1],
+                    newPointIndex,
+                    edgePoints_[eIter.key()]
+                );
+
+                replaceLabel
+                (
+                    fIndex,
+                    newFaceIndex[3],
+                    edgeFaces_[eIter.key()]
+                );
+
+                newFaceEdges[3][nE[3]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[4])
+            {
+                replaceLabel
+                (
+                    thisFace[2],
+                    newPointIndex,
+                    edgePoints_[eIter.key()]
+                );
+
+                replaceLabel
+                (
+                    fIndex,
+                    newFaceIndex[4],
+                    edgeFaces_[eIter.key()]
+                );
+
+                newFaceEdges[4][nE[4]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[5])
+            {
+                replaceLabel
+                (
+                    thisFace[0],
+                    newPointIndex,
+                    edgePoints_[eIter.key()]
+                );
+
+                replaceLabel
+                (
+                    fIndex,
+                    newFaceIndex[5],
+                    edgeFaces_[eIter.key()]
+                );
+
+                newFaceEdges[5][nE[5]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[6])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[1],
+                    thisFace[2],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[6], edgeFaces_[eIter.key()]);
+                newFaceEdges[6][nE[6]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[7])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[0],
+                    thisFace[2],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[7], edgeFaces_[eIter.key()]);
+                newFaceEdges[7][nE[7]++] = eIter.key();
+            }
+
+            if (edgeToCheck == check[8])
+            {
+                insertLabel
+                (
+                    newPointIndex,
+                    thisFace[0],
+                    thisFace[1],
+                    edgePoints_[eIter.key()]
+                );
+
+                sizeUpList(newFaceIndex[8], edgeFaces_[eIter.key()]);
+                newFaceEdges[8][nE[8]++] = eIter.key();
+            }
+        }
+
+        // Now that faceEdges has been configured, append them to the list.
+        for (label i = 0; i < 9; i++)
+        {
+            faceEdges_.append(newFaceEdges[i]);
+        }
+    }
+
+    // Now generate mapping info and remove entities.
+    forAll(cellsForRemoval, cellI)
+    {
+        label cIndex = cellsForRemoval[cellI];
+
+        if (cIndex == -1)
+        {
+            continue;
+        }
+
+        // Determine an appropriate parent cell
+        label parent = -1;
+
+        if (cIndex < nOldCells_)
+        {
+            parent = cIndex;
+        }
+        else
+        {
+            parent = cellParents_[cIndex];
+        }
+
+        if (cellI == 0)
+        {
+            for (label i = 0; i < 3; i++)
+            {
+                // Insert the parent cell [from first by default]
+                cellParents_.insert(newCellIndex[i], parent);
+
+                // Insert mapping info into the HashTable
+                cellsFromCells_.insert
+                (
+                    newCellIndex[i],
+                    objectMap
+                    (
+                        newCellIndex[i],
+                        labelList(1, parent)
+                    )
+                );
+            }
+        }
+        else
+        {
+            for (label i = 3; i < 6; i++)
+            {
+                // Insert the parent cell [from first by default]
+                cellParents_.insert(newCellIndex[i], parent);
+
+                // Insert mapping info into the HashTable
+                cellsFromCells_.insert
+                (
+                    newCellIndex[i],
+                    objectMap
+                    (
+                        newCellIndex[i],
+                        labelList(1, parent)
+                    )
+                );
+            }
+        }
+
+        if (debug > 2)
+        {
+            Info << "Removing cell: "
+                 << cIndex << ": "
+                 << cells_[cIndex]
+                 << endl;
+        }
+
+        cells_.remove(cIndex);
+
+        if (edgeModification_)
+        {
+            lengthScale_.remove(cIndex);
+        }
+
+        if (cIndex < nOldCells_)
+        {
+            reverseCellMap_[cIndex] = -1;
+        }
+
+        // Check if the cell was added in the current morph, and delete
+        if (cellsFromCells_.found(cIndex))
+        {
+            cellsFromCells_.erase(cIndex);
+        }
+
+        // Update the number of cells.
+        nCells_--;
+    }
+
+    // Now finally remove the face...
+    removeFace(fIndex);
+
+    if (debug > 2)
+    {
+        Info << "New Point:: " << newPointIndex << endl;
+
+        labelList& pEdges = pointEdges_[newPointIndex];
+
+        Info << "pointEdges:: " << pEdges << endl;
+
+        Info << "Added edges: " << endl;
+        forAll(pEdges, edgeI)
+        {
+            Info << pEdges[edgeI]
+                 << ":: " << edges_[pEdges[edgeI]] << nl
+                 << " edgeFaces:: " << edgeFaces_[pEdges[edgeI]] << nl
+                 << " edgePoints:: " << edgePoints_[pEdges[edgeI]]
+                 << endl;
+        }
+
+        Info << "Added faces: " << endl;
+        forAll(newFaceIndex, faceI)
+        {
+            if (newFaceIndex[faceI] == -1)
+            {
+                continue;
+            }
+
+            Info << newFaceIndex[faceI] << ":: "
+                 << cells_[newFaceIndex[faceI]]
+                 << endl;
+        }
+
+        Info << "Added cells: " << endl;
+        forAll(newCellIndex, cellI)
+        {
+            if (newCellIndex[cellI] == -1)
+            {
+                continue;
+            }
+
+            Info << newCellIndex[cellI] << ":: "
+                 << cells_[newCellIndex[cellI]]
+                 << endl;
+        }
+
+        // Write out VTK files after change
+        if (debug > 3)
+        {
+            labelList vtkCells;
+
+            if (cellsForRemoval[1] == -1)
+            {
+                vtkCells.setSize(3);
+
+                // Fill in cell indices
+                vtkCells[0] = newCellIndex[0];
+                vtkCells[1] = newCellIndex[1];
+                vtkCells[2] = newCellIndex[2];
+            }
+            else
+            {
+                vtkCells.setSize(6);
+
+                // Fill in cell indices
+                forAll(newCellIndex, indexI)
+                {
+                    vtkCells[indexI] = newCellIndex[indexI];
+                }
+            }
+
+            writeVTK
+            (
+                Foam::name(fIndex)
+              + "Trisect_1",
+                vtkCells
             );
         }
     }

@@ -76,8 +76,8 @@ void dynamicTopoFvMesh::swapQuadFace
         // Break out if all triangular faces are found
         if
         (
-            foundTriFace0[0] && foundTriFace0[1]
-         && foundTriFace1[0] && foundTriFace1[1]
+            foundTriFace0[0] && foundTriFace0[1] &&
+            foundTriFace1[0] && foundTriFace1[1]
         )
         {
             break;
@@ -240,8 +240,8 @@ void dynamicTopoFvMesh::swapQuadFace
     {
         if
         (
-            fEdges[edgeI] != commonEdgeIndex[0]
-         && fEdges[edgeI] != commonEdgeIndex[1]
+            fEdges[edgeI] != commonEdgeIndex[0] &&
+            fEdges[edgeI] != commonEdgeIndex[1]
         )
         {
             // Obtain a reference to this edge
@@ -819,39 +819,48 @@ void dynamicTopoFvMesh::swap23
     tmpTriFace[1] = vertexForRemoval;
     tmpTriFace[2] = otherVertices[1];
 
-    newFaceIndex[0] = insertFace
-                      (
-                          -1,
-                          tmpTriFace,
-                          newCellIndex[0],
-                          newCellIndex[1]
-                      );
+    newFaceIndex[0] =
+    (
+        insertFace
+        (
+            -1,
+            tmpTriFace,
+            newCellIndex[0],
+            newCellIndex[1]
+        )
+    );
 
     // Second face: Triangle involving edgeToCheck[0]
     tmpTriFace[0] = otherVertices[0];
     tmpTriFace[1] = edgeToCheck[0];
     tmpTriFace[2] = otherVertices[1];
 
-    newFaceIndex[1] = insertFace
-                      (
-                          -1,
-                          tmpTriFace,
-                          newCellIndex[1],
-                          newCellIndex[2]
-                      );
+    newFaceIndex[1] =
+    (
+        insertFace
+        (
+            -1,
+            tmpTriFace,
+            newCellIndex[1],
+            newCellIndex[2]
+        )
+    );
 
     // Third face: Triangle involving edgeToCheck[1]
     tmpTriFace[0] = otherVertices[1];
     tmpTriFace[1] = edgeToCheck[1];
     tmpTriFace[2] = otherVertices[0];
 
-    newFaceIndex[2] = insertFace
-                      (
-                          -1,
-                          tmpTriFace,
-                          newCellIndex[0],
-                          newCellIndex[2]
-                      );
+    newFaceIndex[2] =
+    (
+        insertFace
+        (
+            -1,
+            tmpTriFace,
+            newCellIndex[0],
+            newCellIndex[2]
+        )
+    );
 
     // Append three dummy faceEdges entries.
     for (label i = 0; i < 3; i++)
@@ -872,17 +881,20 @@ void dynamicTopoFvMesh::swap23
     newEdgePoints[2] = edgeToCheck[1];
 
     // Add a new internal edge to the mesh
-    label newEdgeIndex = insertEdge
-                         (
-                             -1,
-                             edge
-                             (
-                                 otherVertices[0],
-                                 otherVertices[1]
-                             ),
-                             newEdgeFaces,
-                             newEdgePoints
-                         );
+    label newEdgeIndex =
+    (
+        insertEdge
+        (
+            -1,
+            edge
+            (
+                otherVertices[0],
+                otherVertices[1]
+            ),
+            newEdgeFaces,
+            newEdgePoints
+        )
+    );
 
     // Define the six edges to check while building faceEdges:
     FixedList<edge,6> check;
@@ -1150,8 +1162,8 @@ void dynamicTopoFvMesh::swap23
             // Face is connected to both edgeToCheck [0] and [1]
             if
             (
-                (foundEdge[0] && foundEdge[1])
-             && (faceIndex != faceForRemoval)
+                (foundEdge[0] && foundEdge[1]) &&
+                (faceIndex != faceForRemoval)
             )
             {
                 // Check if a face-flip is necessary
@@ -1384,8 +1396,10 @@ void dynamicTopoFvMesh::swap32
 
     forAll(facesForRemoval, faceI)
     {
-        facesForRemoval[faceI]
-            = hullFaces[triangulations[faceI][triangulationIndex]];
+        facesForRemoval[faceI] =
+        (
+            hullFaces[triangulations[faceI][triangulationIndex]]
+        );
 
         label own = owner_[facesForRemoval[faceI]];
         label nei = neighbour_[facesForRemoval[faceI]];
@@ -1474,13 +1488,16 @@ void dynamicTopoFvMesh::swap32
     newTriFace[1] = hullVertices[triangulations[1][triangulationIndex]];
     newTriFace[2] = hullVertices[triangulations[2][triangulationIndex]];
 
-    label newFaceIndex = insertFace
-                         (
-                             -1,
-                             newTriFace,
-                             newCellIndex[0],
-                             newCellIndex[1]
-                         );
+    label newFaceIndex =
+    (
+        insertFace
+        (
+            -1,
+            newTriFace,
+            newCellIndex[0],
+            newCellIndex[1]
+        )
+    );
 
     // Add faceEdges for the new face as well.
     faceEdges_.append(labelList(3));
@@ -1584,21 +1601,27 @@ void dynamicTopoFvMesh::swap32
         }
 
         // Insert the two new faces
-        newBdyFaceIndex[0] = insertFace
-                             (
-                                 facePatch,
-                                 newBdyTriFace[0],
-                                 newCellIndex[1],
-                                 -1
-                             );
+        newBdyFaceIndex[0] =
+        (
+            insertFace
+            (
+                facePatch,
+                newBdyTriFace[0],
+                newCellIndex[1],
+                -1
+            )
+        );
 
-        newBdyFaceIndex[1] = insertFace
-                             (
-                                 facePatch,
-                                 newBdyTriFace[1],
-                                 newCellIndex[0],
-                                 -1
-                             );
+        newBdyFaceIndex[1] =
+        (
+            insertFace
+            (
+                facePatch,
+                newBdyTriFace[1],
+                newCellIndex[0],
+                -1
+            )
+        );
 
         // Update the new cells
         newTetCell0[nF0++] = newBdyFaceIndex[1];
@@ -1627,13 +1650,16 @@ void dynamicTopoFvMesh::swap32
         newBdyEdgePoints[2] = edgeToCheck[1];
 
         // Insert the edge
-        newEdgeIndex = insertEdge
-                       (
-                           edgePatch,
-                           newEdge,
-                           newBdyEdgeFaces,
-                           newBdyEdgePoints
-                       );
+        newEdgeIndex =
+        (
+            insertEdge
+            (
+                edgePatch,
+                newEdge,
+                newBdyEdgeFaces,
+                newBdyEdgePoints
+            )
+        );
 
         // Update faceEdges with the new edge
         newFaceEdges[nE++] = newEdgeIndex;
