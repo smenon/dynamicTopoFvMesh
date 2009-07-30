@@ -382,6 +382,8 @@ class dynamicTopoFvMesh
             // Sliver type index.
             //  Type 1: Sliver
             //  Type 2: Cap
+            //  Type 3: Spade
+            //  Type 4: Wedge
             label type_;
 
             // Data specific to sliver-type cells

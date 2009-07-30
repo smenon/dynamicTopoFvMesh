@@ -476,6 +476,9 @@ tmp<scalarField> dynamicTopoFvMesh::lengthScale()
     {
         scalarField& internalField = tlengthScale();
 
+        // Re-calculate lengthScale
+        calculateLengthScale();
+
         // Obtain length-scale values from the mesh
         forAllIter(HashList<scalar>, lengthScale_, lIter)
         {
@@ -608,6 +611,7 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
             Info << " Min: " << minQuality << endl;
             Info << " Max: " << maxQuality << endl;
             Info << " Mean: " << meanQuality/nCells << endl;
+            Info << " Cells: " << nCells << endl;
             Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
         }
     }
@@ -5072,50 +5076,79 @@ dynamicTopoFvMesh::identifySliverType
 {
     changeMap map;
 
-    face triFace(3), faceToCheck(3);
+    label fourthPoint = -1;
+    scalar minDistance = GREAT;
+    face triFace(3), testFace(3), faceToCheck(3);
     FixedList<edge, 2> edgeToCheck(edge(-1,-1));
-    label fourthPoint = -1, sliverType = -1;
     cell& cellToCheck = cells_[cIndex];
 
-    // Pick two faces from this cell.
-    const face& currFace = faces_[cellToCheck[0]];
-    const face& nextFace = faces_[cellToCheck[1]];
-
-    // Get the fourth point
-    forAll(nextFace, pointI)
+    // Find the point-face pair with minimum perpendicular distance
+    forAll(cellToCheck, faceI)
     {
-        if
-        (
-            nextFace[pointI] != currFace[0]
-         && nextFace[pointI] != currFace[1]
-         && nextFace[pointI] != currFace[2]
-        )
+        label isolatedPoint = -1;
+        label nextFaceI = cellToCheck.fcIndex(faceI);
+
+        // Pick two faces from this cell.
+        const face& currFace = faces_[cellToCheck[faceI]];
+        const face& nextFace = faces_[cellToCheck[nextFaceI]];
+
+        // Get the fourth point
+        forAll(nextFace, pointI)
         {
-            fourthPoint = nextFace[pointI];
-
-            // Configure a triangular face with correct orientation.
-            if (owner_[cellToCheck[0]] == cIndex)
+            if
+            (
+                nextFace[pointI] != currFace[0]
+             && nextFace[pointI] != currFace[1]
+             && nextFace[pointI] != currFace[2]
+            )
             {
-                triFace[0] = currFace[2];
-                triFace[1] = currFace[1];
-                triFace[2] = currFace[0];
-            }
-            else
-            {
-                triFace[0] = currFace[0];
-                triFace[1] = currFace[1];
-                triFace[2] = currFace[2];
-            }
+                isolatedPoint = nextFace[pointI];
 
-            break;
+                // Configure a triangular face with correct orientation.
+                if (owner_[cellToCheck[faceI]] == cIndex)
+                {
+                    testFace[0] = currFace[2];
+                    testFace[1] = currFace[1];
+                    testFace[2] = currFace[0];
+                }
+                else
+                {
+                    testFace[0] = currFace[0];
+                    testFace[1] = currFace[1];
+                    testFace[2] = currFace[2];
+                }
+
+                break;
+            }
+        }
+
+        // Obtain the unit normal.
+        vector testNormal = triFaceNormal(testFace);
+
+        testNormal /= mag(testNormal);
+
+        // Project the isolated point onto the face.
+        vector p = points_[isolatedPoint] - points_[testFace[0]];
+        vector q = p - ((p & testNormal)*testNormal);
+
+        // Compute the distance
+        scalar distance = mag(p - q);
+
+        // Is it the least so far?
+        if (distance < minDistance)
+        {
+            // Use this point-face pair.
+            fourthPoint = isolatedPoint;
+            triFace = testFace;
+            minDistance = distance;
         }
     }
 
     // Obtain the face-normal.
-    vector n = triFaceNormal(triFace);
+    vector refArea = triFaceNormal(triFace);
 
     // Normalize it.
-    n /= mag(n);
+    vector n = refArea/mag(refArea);
 
     // Define edge-vectors.
     vector r1 = points_[triFace[1]] - points_[triFace[0]];
@@ -5131,10 +5164,10 @@ dynamicTopoFvMesh::identifySliverType
     vector r5 = r4 - r1;
     vector r6 = r5 - r2;
 
-    // Calculate three triangle areas, using triFace[0] as the origin.
-    scalar t1 = mag(r1 ^ r4);
-    scalar t2 = mag(r2 ^ r5);
-    scalar t3 = mag(r3 ^ r6);
+    // Calculate three signed triangle areas, using triFace[0] as the origin.
+    scalar t1 = n & (0.5 * (r1 ^ r4));
+    scalar t2 = n & (0.5 * (r2 ^ r5));
+    scalar t3 = n & (0.5 * (r3 ^ r6));
 
     // Determine sliver types based on are magnitudes.
     if (t1 > 0 && t2 > 0 && t3 > 0)
@@ -5214,6 +5247,76 @@ dynamicTopoFvMesh::identifySliverType
         faceToCheck[2] = fourthPoint;
     }
 
+    // See if an over-ride to wedge/spade is necessary.
+    // Obtain a reference area magnitude.
+    scalar refMag = 0.1*(refArea & n);
+
+    if (mag(t1) < refMag)
+    {
+        if (mag(t3) < refMag)
+        {
+            // Wedge case: Too close to point [0]
+            map.type() = 4;
+
+            edgeToCheck[0][0] = triFace[0];
+            edgeToCheck[0][1] = fourthPoint;
+        }
+        else
+        if (mag(t2) < refMag)
+        {
+            // Wedge case: Too close to point [1]
+            map.type() = 4;
+
+            edgeToCheck[0][0] = triFace[1];
+            edgeToCheck[0][1] = fourthPoint;
+        }
+        else
+        if ((mag(t2) > refMag) && (mag(t3) > refMag))
+        {
+            // Spade case: Too close to edge vector r1
+            map.type() = 3;
+            map.apexPoint() = fourthPoint;
+
+            edgeToCheck[0][0] = triFace[0];
+            edgeToCheck[0][1] = triFace[1];
+        }
+    }
+
+    if (mag(t2) < refMag)
+    {
+        if (mag(t3) < refMag)
+        {
+            // Wedge case: Too close to point [2]
+            map.type() = 4;
+
+            edgeToCheck[0][0] = triFace[2];
+            edgeToCheck[0][1] = fourthPoint;
+        }
+        else
+        if ((mag(t1) > refMag) && (mag(t3) > refMag))
+        {
+            // Spade case: Too close to edge vector r2
+            map.type() = 3;
+            map.apexPoint() = fourthPoint;
+
+            edgeToCheck[0][0] = triFace[1];
+            edgeToCheck[0][1] = triFace[2];
+        }
+    }
+
+    if (mag(t3) < refMag)
+    {
+        if ((mag(t1) > refMag) && (mag(t2) > refMag))
+        {
+            // Spade case: Too close to edge vector r3
+            map.type() = 3;
+            map.apexPoint() = fourthPoint;
+
+            edgeToCheck[0][0] = triFace[2];
+            edgeToCheck[0][1] = triFace[0];
+        }
+    }
+
     // Determine appropriate information for sliver exudation.
     if (map.type() == 1)
     {
@@ -5265,12 +5368,40 @@ dynamicTopoFvMesh::identifySliverType
             }
         }
     }
+    else
+    if (map.type() == 3 || map.type() == 4)
+    {
+        bool foundEdge = false;
+
+        // Search the cell-faces for first edge.
+        forAll(cellToCheck, faceI)
+        {
+            labelList& fEdges = faceEdges_[cellToCheck[faceI]];
+
+            forAll(fEdges, edgeI)
+            {
+                edge& thisEdge = edges_[fEdges[edgeI]];
+
+                if (thisEdge == edgeToCheck[0])
+                {
+                    map.firstEdge() = fEdges[edgeI];
+
+                    foundEdge = true;
+                }
+            }
+
+            if (foundEdge)
+            {
+                break;
+            }
+        }
+    }
 
     if (debug > 2)
     {
         Pout << "Cell: " << cIndex
              << " Identified sliver type as: "
-             << sliverType << endl;
+             << map.type() << endl;
     }
 
     // Return the result.
@@ -5347,6 +5478,8 @@ void dynamicTopoFvMesh::removeSlivers()
                     {
                         // Collapse this edge.
                         collapseEdge(secondMapEdges[edgeI]);
+
+                        break;
                     }
                 }
             }
@@ -5355,7 +5488,67 @@ void dynamicTopoFvMesh::removeSlivers()
         if (map.type() == 2)
         {
             // Cap cell.
-            // label opposingFace = map.opposingFace();
+            label opposingFace = map.opposingFace();
+
+            // Trisect the opposing face.
+            changeMap faceMap = trisectFace(opposingFace);
+
+            // Collapse the intermediate edge.
+            // Since we don't know which edge it is, search
+            // through recently added edges and compare.
+            edge edgeToCheck(map.apexPoint(), faceMap.addedPoint());
+
+            const labelList faceMapEdges = faceMap.addedEdgeList();
+
+            forAll(faceMapEdges, edgeI)
+            {
+                edge& thisEdge = edges_[faceMapEdges[edgeI]];
+
+                if (thisEdge == edgeToCheck)
+                {
+                    // Collapse this edge.
+                    collapseEdge(faceMapEdges[edgeI]);
+
+                    break;
+                }
+            }
+        }
+        else
+        if (map.type() == 3)
+        {
+            // Spade cell.
+
+            // Bisect the first edge.
+            changeMap firstMap = bisectEdge(map.firstEdge());
+
+            // Collapse the intermediate edge.
+            // Since we don't know which edge it is, search
+            // through recently added edges and compare.
+            edge edgeToCheck(firstMap.addedPoint(), firstMap.apexPoint());
+
+            const labelList firstMapEdges = firstMap.addedEdgeList();
+
+            // Loop through the first list.
+            forAll(firstMapEdges, edgeI)
+            {
+                edge& thisEdge = edges_[firstMapEdges[edgeI]];
+
+                if (thisEdge == edgeToCheck)
+                {
+                    // Collapse this edge.
+                    collapseEdge(firstMapEdges[edgeI]);
+
+                    break;
+                }
+            }
+        }
+        else
+        if (map.type() == 4)
+        {
+            // Wedge cell.
+
+            // Collapse the first edge.
+            collapseEdge(map.firstEdge());
         }
     }
 

@@ -2110,9 +2110,13 @@ dynamicTopoFvMesh::trisectFace
     map.addPoint(newPointIndex);
 
     // Add three new cells to the end of the cell list
-    newCellIndex[0] = cells_.append(cell(4));
-    newCellIndex[1] = cells_.append(cell(4));
-    newCellIndex[2] = cells_.append(cell(4));
+    for (label i = 0; i < 3; i++)
+    {
+        newCellIndex[i] = cells_.append(cell(4));
+
+        // Add cells to the map
+        map.addCell(newCellIndex[i]);
+    }
 
     cell &newTetCell0 = cells_[newCellIndex[0]];
     cell &newTetCell1 = cells_[newCellIndex[1]];
@@ -2602,6 +2606,9 @@ dynamicTopoFvMesh::trisectFace
         for (label i = 0; i < 6; i++)
         {
             faceEdges_.append(newFaceEdges[i]);
+
+            // Add faces to the map.
+            map.addFace(newFaceIndex[i]);
         }
     }
     else
@@ -2609,9 +2616,13 @@ dynamicTopoFvMesh::trisectFace
         cell& secondCell = cells_[neighbour_[fIndex]];
 
         // Add three new cells to the end of the cell list
-        newCellIndex[3] = cells_.append(cell(4));
-        newCellIndex[4] = cells_.append(cell(4));
-        newCellIndex[5] = cells_.append(cell(4));
+        for (label i = 3; i < 6; i++)
+        {
+            newCellIndex[i] = cells_.append(cell(4));
+
+            // Add to the map.
+            map.addCell(newCellIndex[i]);
+        }
 
         cell &newTetCell3 = cells_[newCellIndex[3]];
         cell &newTetCell4 = cells_[newCellIndex[4]];
@@ -3162,7 +3173,18 @@ dynamicTopoFvMesh::trisectFace
         for (label i = 0; i < 9; i++)
         {
             faceEdges_.append(newFaceEdges[i]);
+
+            // Add faces to the map.
+            map.addFace(newFaceIndex[i]);
         }
+    }
+
+    // Added edges are those connected to the new point
+    labelList& pointEdges = pointEdges_[newPointIndex];
+
+    forAll(pointEdges, edgeI)
+    {
+        map.addEdge(pointEdges[edgeI]);
     }
 
     // Now generate mapping info and remove entities.
@@ -3286,7 +3308,7 @@ dynamicTopoFvMesh::trisectFace
             }
 
             Info << newFaceIndex[faceI] << ":: "
-                 << cells_[newFaceIndex[faceI]]
+                 << faces_[newFaceIndex[faceI]]
                  << endl;
         }
 
