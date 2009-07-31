@@ -592,9 +592,6 @@ class dynamicTopoFvMesh
         // Return the appropriate length-scale for boundary face
         scalar boundaryLengthScale(const label faceIndex);
 
-        // Compute the face-curvature for a given boundary face
-        scalar faceCurvature(const label fIndex);
-
         // Return length-scale at an face-location in the mesh [2D]
         inline void meshFaceLengthScale
         (
@@ -1073,6 +1070,9 @@ class dynamicTopoFvMesh
 
         // Does the mesh perform edge-modification?
         bool edgeModification();
+
+        // Identify coupled patches.
+        bool identifyCoupledPatches();
 
         // Initialize coupled patches for topology modifications.
         void initCoupledPatches();

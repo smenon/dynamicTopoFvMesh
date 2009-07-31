@@ -678,6 +678,14 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
         // Output statistics:
         if (outputOption || (debug > 0))
         {
+            // Reduce statistics across processors.
+            label nCells = iF.size();
+
+            reduce(minQuality, minOp<scalar>());
+            reduce(maxQuality, maxOp<scalar>());
+            reduce(meanQuality, sumOp<scalar>());
+            reduce(nCells, sumOp<label>());
+
             if (minQuality < 0.0)
             {
                 WarningIn
@@ -685,24 +693,6 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
                     "dynamicTopoFvMesh::meshQuality()"
                 )   << nl << "Minimum cell quality is: " << minQuality << endl;
             }
-
-            if (thresholdSlivers_.size())
-            {
-                WarningIn
-                (
-                    "dynamicTopoFvMesh::meshQuality()"
-                )   << nl << thresholdSlivers_.size()
-                    << " cells are below the specified quality threshold of: "
-                    << sliverThreshold_ << endl;
-            }
-
-            // Reduce stats across procs.
-            label nCells = iF.size();
-
-            reduce(minQuality, minOp<scalar>());
-            reduce(maxQuality, maxOp<scalar>());
-            reduce(meanQuality, sumOp<scalar>());
-            reduce(nCells, sumOp<label>());
 
             Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
             Info << " Min: " << minQuality << endl;
@@ -1254,7 +1244,7 @@ label dynamicTopoFvMesh::mergeBoundaryFaces
                     points_[firstPolyFace[pointI]]
                   - points_[secondPolyFace[pointJ]]
                 )
-                < VSMALL
+                < gTol_
             )
             {
                 // Found the point. Add it.
@@ -3958,81 +3948,6 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
     return lengthScale_[owner_[faceIndex]];
 }
 
-// Compute the face-curvature for a given boundary face
-// For 3D simplical meshes only
-scalar dynamicTopoFvMesh::faceCurvature
-(
-    const label fIndex
-)
-{
-    label nf = 0;
-    scalar curvature = 0.0, kAvg = 0.0;
-    vector te = vector::zero, m = vector::zero;
-    FixedList<scalar, 2> k(0.0);
-    FixedList<label, 2> ebFaces(-1);
-    FixedList<point, 2> r, rcg, e;
-    labelList& fEdges = faceEdges_[fIndex];
-
-    // Loop through edges of this face and compute
-    forAll(fEdges, edgeI)
-    {
-        label eIndex = fEdges[edgeI];
-        labelList& eFaces = edgeFaces_[eIndex];
-
-        nf = 0; ebFaces = -1;
-
-        // Find the two boundary faces for this edge
-        forAll(eFaces, faceI)
-        {
-            if (neighbour_[eFaces[faceI]] == -1)
-            {
-                ebFaces[nf++] = eFaces[faceI];
-            }
-        }
-
-        // Compute the circumcenters
-        r[0] = circumCenter(ebFaces[0]);
-        r[1] = circumCenter(ebFaces[1]);
-
-        // Compute face centers
-        rcg[0] = triFaceCenter(ebFaces[0]);
-        rcg[1] = triFaceCenter(ebFaces[1]);
-
-        // Obtain tangent-to-edge
-        te = tangentToEdge(eIndex);
-
-        // Compute face tangential vectors
-        e[0] = (rcg[0] - ((te&rcg[0])*te))/(te&te);
-        e[1] = (rcg[1] - ((te&rcg[1])*te))/(te&te);
-
-        // Normalize them...
-        e[0] /= mag(e[0]);
-        e[1] /= mag(e[1]);
-
-        // Now compute the binormal vector
-        m = ((r[1]&e[1])*e[0]) + ((r[0]&e[0])*e[1]);
-
-        // Compute the correction factors for this edge
-        k[0] =
-            Foam::sqrt
-            (
-                1 + (1 - ((m&e[0])/(m&m)))
-             * ((te&te)/(4*(r[0]&r[0])))
-            );
-
-        k[1] =
-            Foam::sqrt
-            (
-                1 + (1 - ((m&e[1])/(m&m)))
-             * ((te&te)/(4*(r[1]&r[1])))
-            );
-
-        kAvg = 0.5*(k[0] + k[1]);
-    }
-
-    return curvature;
-}
-
 // Given a boundary quad face, return a boundary triangular face.
 // For 2D simplical meshes only.
 label dynamicTopoFvMesh::getTriBoundaryFace
@@ -4181,6 +4096,28 @@ void dynamicTopoFvMesh::initEdges()
         pointEdges_ = eMeshPtr_->pointEdges();
         edgePoints_ = eMeshPtr_->edgePoints();
     }
+}
+
+// Return a reference to the multiThreader
+const multiThreader& dynamicTopoFvMesh::threader() const
+{
+    return threader_();
+}
+
+// Does the mesh perform edge-modification?
+bool dynamicTopoFvMesh::edgeModification()
+{
+    return edgeModification_;
+}
+
+// Identify coupled patches.
+//  - Also builds global shared edge information.
+//  - Returns true if no coupled patches were found.
+bool dynamicTopoFvMesh::identifyCoupledPatches()
+{
+    bool coupledPatchesAbsent = true;
+
+    patchCoupling_.clear();
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -4232,6 +4169,8 @@ void dynamicTopoFvMesh::initEdges()
             )
             {
                 patchCoupling_.insert(mPatch, sPatch);
+
+                coupledPatchesAbsent = false;
             }
             else
             {
@@ -4252,39 +4191,195 @@ void dynamicTopoFvMesh::initEdges()
     // Thus, keys for processor patches are: boundary.size() + neiProcID.
     // If this coincides with a polyPatch, the corresponding
     // entry is the boundary patch ID.
-    forAll(boundary, patchI)
+    if (Pstream::parRun())
     {
-        if (isA<processorPolyPatch>(boundary[patchI]))
+        label nProcPatches = 0;
+
+        forAll(boundary, patchI)
         {
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[patchI])
-            );
+            if (isA<processorPolyPatch>(boundary[patchI]))
+            {
+                const processorPolyPatch& pp =
+                (
+                    refCast<const processorPolyPatch>(boundary[patchI])
+                );
 
-            label neiProcID = pp.neighbProcNo();
+                label neiProcID = pp.neighbProcNo();
 
-            patchCoupling_.insert(boundary.size()+neiProcID, patchI);
+                patchCoupling_.insert(boundary.size()+neiProcID, patchI);
+
+                coupledPatchesAbsent = false;
+
+                nProcPatches++;
+            }
+        }
+
+        Map<label> pointMap;
+        label nSendPoints = 0, nSendEdges = 0, local = 0;
+        labelList sharedEdgesList(0), sharedPointsList(0);
+
+        if (nProcPatches >= 2)
+        {
+            // This subdomain has multiple processor patches.
+            // Build a list of edges shared by any two of these patches,
+            // and send them to the master processor.
+            labelHashSet sharedEdges, sharedPoints;
+            labelList edgePatchInfo(nEdges_, -1);
+
+            forAllIter(Map<label>::iterator, patchCoupling_, patchI)
+            {
+                if (patchI.key() >= boundary.size())
+                {
+                    label pID = patchI();
+                    label start = patchStarts_[pID];
+
+                    for (label i = 0; i < patchSizes_[pID]; i++)
+                    {
+                        labelList& fEdges = faceEdges_[i + start];
+
+                        forAll(fEdges, edgeI)
+                        {
+                            if (edgePatchInfo[fEdges[edgeI]] == -1)
+                            {
+                                // Edge hasn't been touched before.
+                                edgePatchInfo[fEdges[edgeI]] = pID;
+                            }
+                            else
+                            if (edgePatchInfo[fEdges[edgeI]] != pID)
+                            {
+                                // This has been touched by another patch.
+                                // Add this edge to the shared edge list.
+                                if (!sharedEdges.found(fEdges[edgeI]))
+                                {
+                                    sharedEdges.insert(fEdges[edgeI]);
+
+                                    // Add its points as well.
+                                    edge& edgeToCheck = edges_[fEdges[edgeI]];
+
+                                    if (!sharedPoints.found(edgeToCheck[0]))
+                                    {
+                                        sharedPoints.insert(edgeToCheck[0]);
+
+                                        pointMap.insert
+                                        (
+                                            edgeToCheck[0],
+                                            local++
+                                        );
+                                    }
+
+                                    if (!sharedPoints.found(edgeToCheck[1]))
+                                    {
+                                        sharedPoints.insert(edgeToCheck[1]);
+
+                                        pointMap.insert
+                                        (
+                                            edgeToCheck[1],
+                                            local++
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Prepare send sizes.
+            nSendPoints = sharedPoints.size();
+            nSendEdges  = sharedEdges.size();
+
+            // Extract lists from HashSets
+            sharedPointsList = sharedPoints.toc();
+            sharedEdgesList  = sharedEdges.toc();
+        }
+
+        if (Pstream::master())
+        {
+            // Entity sizes
+            labelList nRecvPoints(Pstream::nProcs(), 0);
+            labelList nRecvEdges(Pstream::nProcs(), 0);
+
+            // Buffers
+            List<pointField> pBuffer(Pstream::nProcs());
+            labelListList eBuffer(Pstream::nProcs());
+
+            // Loop through all slave processors and receive edge-info.
+            for (label proc = 1; proc < Pstream::nProcs(); proc++)
+            {
+                // How many entities am I going to be receiving?
+                pRead(proc, nRecvPoints[proc]);
+                pRead(proc, nRecvEdges[proc]);
+
+                if (nRecvPoints[proc])
+                {
+                    // Size the buffer
+                    pBuffer[proc].setSize(nRecvPoints[proc], vector::zero);
+                    eBuffer[proc].setSize(2*nRecvEdges[proc], -1);
+
+                    // Schedule for receipt.
+                    pRead(proc, pBuffer);
+                    pRead(proc, eBuffer);
+                }
+            }
+
+            // Wait for all transfers to complete.
+            waitForBuffers();
+
+            // Perform a geometric comparison of edge-positions.
+
+            // Send assembled processor sharing info back to slaves.
+
+        }
+        else
+        {
+            // Send number of entities first.
+            pWrite(Pstream::masterNo(), nSendPoints);
+            pWrite(Pstream::masterNo(), nSendEdges);
+
+            if (nSendPoints)
+            {
+                // Size the buffer and copy info into it.
+                pointField pBuffer(nSendPoints, vector::zero);
+                labelList eBuffer(2*nSendEdges, -1);
+
+                label index = 0;
+
+                forAll(sharedPointsList, pointI)
+                {
+                    pBuffer[index++] = points_[sharedPointsList[pointI]];
+                }
+
+                index = 0;
+
+                forAll(sharedEdgesList, edgeI)
+                {
+                    edge& edgeToCheck = edges_[sharedEdgesList[edgeI]];
+
+                    eBuffer[index++] = pointMap[edgeToCheck[0]];
+                    eBuffer[index++] = pointMap[edgeToCheck[1]];
+                }
+
+                // Send buffers to the master.
+                pWrite(Pstream::masterNo(), pBuffer);
+                pWrite(Pstream::masterNo(), eBuffer);
+
+                // Receive processor sharing info from the master.
+
+                // Wait for all transfers to complete.
+                waitForBuffers();
+            }
         }
     }
-}
 
-// Return a reference to the multiThreader
-const multiThreader& dynamicTopoFvMesh::threader() const
-{
-    return threader_();
-}
-
-// Does the mesh perform edge-modification?
-bool dynamicTopoFvMesh::edgeModification()
-{
-    return edgeModification_;
+    return coupledPatchesAbsent;
 }
 
 // Initialize coupled patches for topology modifications.
 //  - Send and receive patchSubMeshes for processor patches
 void dynamicTopoFvMesh::initCoupledPatches()
 {
-    if (!patchCoupling_.size())
+    // Identify coupled patches.
+    if (identifyCoupledPatches())
     {
         return;
     }
@@ -4805,7 +4900,7 @@ void dynamicTopoFvMesh::buildCoupledMaps
         {
             forAll(sCentres, edgeJ)
             {
-                if (mag(mCentres[edgeI] - sCentres[edgeJ]) < SMALL)
+                if (magSqr(mCentres[edgeI] - sCentres[edgeJ]) < gTol_)
                 {
                     // Add a map entry
                     masterToSlave_[patchI.key()].insert
@@ -4844,13 +4939,11 @@ void dynamicTopoFvMesh::buildCoupledMaps
 // Wait for buffer transfer completion.
 void dynamicTopoFvMesh::waitForBuffers()
 {
-    if (!patchCoupling_.size())
+    if (Pstream::parRun())
     {
-        return;
+        OPstream::waitRequests();
+        IPstream::waitRequests();
     }
-
-    OPstream::waitRequests();
-    IPstream::waitRequests();
 }
 
 // 2D Edge-bisection/collapse engine
@@ -6213,12 +6306,22 @@ bool dynamicTopoFvMesh::updateTopology()
     // Obtain mesh stats before topo-changes
     meshQuality(true);
 
+    bool sliversAbsent = true;
+
+    if (thresholdSlivers_.size())
+    {
+        sliversAbsent = false;
+    }
+
+    // Reduce across processors.
+    reduce(sliversAbsent, andOp<bool>());
+
     // Return if re-meshing is not at interval,
     // or sliver cells are absent.
     if
     (
         (time().timeIndex() % interval_ != 0) &&
-        !thresholdSlivers_.size()
+        sliversAbsent
     )
     {
         return false;
@@ -6249,6 +6352,9 @@ bool dynamicTopoFvMesh::updateTopology()
     }
 
     clockTime reOrderingTimer;
+
+    // Reduce across processors.
+    reduce(topoChangeFlag_, orOp<bool>());
 
     // Apply all pending topology changes, if necessary
     if (topoChangeFlag_)

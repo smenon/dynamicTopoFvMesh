@@ -21,7 +21,7 @@ void setMotionBC
             (mesh.lookupObject<tetPointVectorField>("motionU"));
 
         // Assign boundary conditions to the motion solver
-        motionU.boundaryField()[index] == 
+        motionU.boundaryField()[index] ==
             dispField/mesh.time().deltaT().value();
     }
 
@@ -55,11 +55,9 @@ void setMotionBC
             );
     }
 
-    //- Spring-based Laplacian motion solver
     if
     (
-        (solverType == "springMotionSolver")
-     || (solverType == "mesquiteSmoother")
+        (solverType == "mesquiteSmoother")
     )
     {
         // Boundary motion specified for the springMotionSolver
@@ -85,11 +83,9 @@ void setMotionBC
     // Determine the kind of motion solver in use
     word solverType(mesh.dynamicMeshDict().lookup("solver"));
 
-    //- Spring-based Laplacian motion solver
     if
     (
-        (solverType == "springMotionSolver")
-     || (solverType == "mesquiteSmoother")
+        (solverType == "mesquiteSmoother")
     )
     {
         // Boundary motion specified for the springMotionSolver
@@ -100,3 +96,4 @@ void setMotionBC
         refPoints = dispField;
     }
 }
+
