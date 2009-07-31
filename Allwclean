@@ -4,10 +4,8 @@ set -x
 # Clean out existing object files
 wclean tetMetrics
 wclean multiThreader
-wclean springMotionSolver
 wclean mesquiteSmoother
 wclean fluidInterface
-wclean edgeDiscretization
 wclean dynamicTopoFvMesh
 wclean interfaceTrackFoam
 

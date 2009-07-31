@@ -1,11 +1,9 @@
 EXE_INC = \
     -I../multiThreader/lnInclude \
-    -I../edgeDiscretization/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
 
 LIB_LIBS = \
     -lfiniteVolume \
     -L$(FOAM_USER_LIBBIN) \
     -lmultiThreader \
-    -ledgeDiscretization \
     -ltetMetrics

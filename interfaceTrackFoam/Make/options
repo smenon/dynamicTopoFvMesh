@@ -1,7 +1,6 @@
 EXE_INC = \
     -I../include \
     -I../multiThreader/lnInclude \
-    -I../edgeDiscretization/lnInclude \
     -I../dynamicTopoFvMesh/lnInclude \
     -I../fluidInterface/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
@@ -15,14 +14,12 @@ EXE_INC = \
 
 EXE_LIBS = \
     -L$(FOAM_USER_LIBBIN) \
-    -ledgeDiscretization \
     -ldynamicTopoFvMesh \
     -lfluidInterface \
     -lmultiThreader \
     -lfiniteVolume \
     -lfiniteArea \
-    -lspringMotionSolver \
     -lmesquiteSmoother \
     -ldynamicMesh \
     -lincompressibleTransportModels \
-    $(WM_DECOMP_LIBS) 
+    $(WM_DECOMP_LIBS)

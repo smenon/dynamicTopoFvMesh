@@ -24,13 +24,12 @@ License
 
 Description
 
-    Mesh needed to do edge-based discretisation.
+    Mesh needed to do edge-based addressing.
 
 \*---------------------------------------------------------------------------*/
 
 #include "eMesh.H"
 #include "demandDrivenData.H"
-#include "EdgeFields.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -52,8 +51,6 @@ void eMesh::clearGeom() const
         Info<< "void eMesh::clearGeom() const : "
             << "Clearing geometry" << endl;
     }
-
-    deleteDemandDrivenData(edgeCentresPtr_);
 }
 
 
@@ -122,13 +119,12 @@ eMesh::eMesh(const polyMesh& pMesh)
     ),
     pePtr_(NULL),
     epPtr_(NULL),
-    fePtr_(NULL),
-    edgeCentresPtr_(NULL)
+    fePtr_(NULL)
 {
     if (debug)
     {
         Info << "eMesh::eMesh(...) : "
-             << "Creating eMesh from IOobject" 
+             << "Creating eMesh from IOobject"
              << endl;
     }
 
@@ -226,17 +222,6 @@ const objectRegistry& eMesh::db() const
 const eBoundaryMesh& eMesh::boundary() const
 {
     return boundary_;
-}
-
-
-const EdgeVectorField& eMesh::Ce() const
-{
-    if (!edgeCentresPtr_)
-    {
-        calcEdgeCentres();
-    }
-
-    return *edgeCentresPtr_;
 }
 
 

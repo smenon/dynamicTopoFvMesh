@@ -309,26 +309,6 @@ void eMesh::calcEdgePoints() const
 }
 
 
-void eMesh::calcEdgeCentres() const
-{
-    if (debug)
-    {
-        Info<< "void eMesh::calcEdgeCentres() const : "
-            << "Calculating edge centres" << endl;
-    }
-
-    if (edgeCentresPtr_)
-    {
-        FatalErrorIn
-        (
-            "void eMesh::calcEdgeCentres() const"
-        )   << "edgeCentresPtr_ already allocated"
-            << abort(FatalError);
-    }
-
-}
-
-
 void eMesh::calcPointEdges() const
 {
     if (debug)

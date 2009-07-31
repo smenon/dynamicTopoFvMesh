@@ -36,11 +36,11 @@ SourceFiles
 #ifndef eMesh_H
 #define eMesh_H
 
+#include "Time.H"
 #include "GeoMesh.H"
 #include "polyMesh.H"
 #include "edgeIOList.H"
 #include "labelIOList.H"
-#include "EdgeFieldsFwd.H"
 #include "eBoundaryMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -54,7 +54,7 @@ namespace Foam
                            Class eMesh Declaration
 \*---------------------------------------------------------------------------*/
 
-class eMesh      
+class eMesh
 :
     public objectRegistry,
     public GeoMesh<polyMesh>
@@ -89,9 +89,6 @@ class eMesh
             //- Face-edges
             mutable labelListList* fePtr_;
 
-            //- Edge centres
-            mutable EdgeVectorField* edgeCentresPtr_;
-
 
     // Private Member Functions
 
@@ -120,9 +117,6 @@ class eMesh
 
             //- Calculate face-edges
             void calcFaceEdges() const;
-
-            //- Calculate edge-centres
-            void calcEdgeCentres() const;
 
             //- Clear geometry
             void clearGeom() const;
@@ -213,9 +207,6 @@ public:
 
             //- Return constant reference to the edgeFaces list
             const labelListList& edgeFaces() const;
-
-            //- Return edge centres as an EdgeVectorField
-            const EdgeVectorField& Ce() const;
 
         // Reset primitive data
         void resetPrimitives

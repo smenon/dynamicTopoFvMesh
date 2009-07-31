@@ -38,7 +38,6 @@ SourceFiles
 #include "labelList.H"
 #include "pointField.H"
 #include "typeInfo.H"
-#include "ePatchFieldsFwd.H"
 #include "autoPtr.H"
 #include "runTimeSelectionTables.H"
 
@@ -258,12 +257,6 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-//#ifdef NoRepository
-//#   include "ePatchTemplates.C"
-//#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

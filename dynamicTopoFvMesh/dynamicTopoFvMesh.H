@@ -299,6 +299,9 @@ class dynamicTopoFvMesh
         // Private sub-class for coupled patches
         class patchSubMesh
         {
+            // Auto pointer to a subMesh
+            autoPtr<dynamicTopoFvMesh> subMesh_;
+
             // Entity sizes
             label    nPoints_;
             label    nEdges_;
@@ -333,6 +336,12 @@ class dynamicTopoFvMesh
             patchSubMesh();
 
             //- Access
+
+                // Set a new subMesh
+                void setMesh(dynamicTopoFvMesh* mesh)
+                {
+                    subMesh_.set(mesh);
+                }
 
                 // Access to entity sizes
                 label& nPoints() { return nPoints_; }
@@ -494,6 +503,19 @@ class dynamicTopoFvMesh
 
         //- Disallow default bitwise copy construct
         dynamicTopoFvMesh(const dynamicTopoFvMesh&);
+
+        //- Construct from components
+        //- Used for subMeshes only.
+        dynamicTopoFvMesh
+        (
+            const dynamicTopoFvMesh& mesh,
+            const IOobject& io,
+            const pointField& points,
+            const edgeList& edges,
+            const faceList& faces,
+            const labelListList& faceEdges,
+            const cellList& cells
+        );
 
         //- Disallow default bitwise assignment
         void operator=(const dynamicTopoFvMesh&);
@@ -1087,7 +1109,7 @@ public:
     // Constructors
 
         //- Construct from existing IOobject
-        explicit dynamicTopoFvMesh(const IOobject&);
+        explicit dynamicTopoFvMesh(const IOobject& io);
 
     // Destructor
 
@@ -1096,7 +1118,7 @@ public:
     // Member Functions
 
         // Return reference to the dictionary
-        const dictionary& dynamicMeshDict() const;
+        const IOdictionary& dynamicMeshDict() const;
 
         // Return reference to the edge mesh
         eMesh& EdgeMesh();

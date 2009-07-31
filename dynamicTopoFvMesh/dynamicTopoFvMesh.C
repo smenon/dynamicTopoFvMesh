@@ -59,7 +59,7 @@ defineTypeNameAndDebug(dynamicTopoFvMesh,0);
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-// Construct from components
+// Construct from IOobject
 dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 :
     fvMesh(io),
@@ -119,9 +119,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     sliverThreshold_(0.05),
     curvatureRatio_(1.0),
     nModifications_(0),
-    nBisections_(-1),
-    nCollapses_(-1),
-    nSwaps_(-1),
+    nBisections_(0),
+    nCollapses_(0),
+    nSwaps_(0),
     maxModifications_(-1),
     bisectInterior_(-1),
     maxTetsPerEdge_(-1),
@@ -383,6 +383,103 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         // Initialize the lengthScale field
         lengthScale_.setSize(nCells_, 0.0);
     }
+}
+
+//- Construct from components. Used for subMeshes only.
+dynamicTopoFvMesh::dynamicTopoFvMesh
+(
+    const dynamicTopoFvMesh& mesh,
+    const IOobject& io,
+    const pointField& points,
+    const edgeList& edges,
+    const faceList& faces,
+    const labelListList& faceEdges,
+    const cellList& cells
+)
+:
+    fvMesh(io, points, faces, cells, false),
+    numPatches_(1),
+    topoChangeFlag_(false),
+    dict_(mesh.dynamicMeshDict()),
+    twoDMesh_(mesh.twoDMesh_),
+    edgeModification_(mesh.edgeModification_),
+    coupledModification_(false),
+    interval_(1),
+    mapper_(NULL),
+    points_(points),
+    faces_(faces),
+    cells_(cells),
+    edges_(edges),
+    faceEdges_(faceEdges),
+    eMeshPtr_(NULL),
+    oldPatchSizes_(numPatches_,0),
+    patchSizes_(numPatches_,0),
+    oldPatchStarts_(numPatches_,-1),
+    patchStarts_(numPatches_,-1),
+    oldEdgePatchSizes_(numPatches_,0),
+    edgePatchSizes_(numPatches_,0),
+    oldEdgePatchStarts_(numPatches_,-1),
+    edgePatchStarts_(numPatches_,-1),
+    oldPatchNMeshPoints_(numPatches_,-1),
+    patchNMeshPoints_(numPatches_,-1),
+    nOldPoints_(points.size()),
+    nPoints_(points.size()),
+    nOldEdges_(edges.size()),
+    nEdges_(edges.size()),
+    nOldFaces_(faces.size()),
+    nFaces_(faces.size()),
+    nOldCells_(cells.size()),
+    nCells_(cells.size()),
+    nOldInternalFaces_(0),
+    nInternalFaces_(0),
+    nOldInternalEdges_(0),
+    nInternalEdges_(0),
+    ratioMin_(mesh.ratioMin_),
+    ratioMax_(mesh.ratioMax_),
+    growthFactor_(mesh.growthFactor_),
+    maxLengthScale_(mesh.maxLengthScale_),
+    sliverThreshold_(mesh.sliverThreshold_),
+    curvatureRatio_(mesh.curvatureRatio_),
+    nModifications_(0),
+    nBisections_(0),
+    nCollapses_(0),
+    nSwaps_(0),
+    maxModifications_(mesh.maxModifications_),
+    bisectInterior_(-1),
+    maxTetsPerEdge_(mesh.maxTetsPerEdge_),
+    allowTableResize_(mesh.allowTableResize_),
+    gTol_(mesh.gTol_)
+{
+    // Initialize owner and neighbour
+    owner_.setSize(faces.size(), -1, faces.size());
+    neighbour_.setSize(faces.size(), -1, faces.size());
+
+    boolList markedFaces(nFaces_, false);
+
+    forAll(cells, cellI)
+    {
+        const labelList& thisCell = cells[cellI];
+
+        forAll(thisCell, faceI)
+        {
+            if (!markedFaces[thisCell[faceI]])
+            {
+                // First visit: Owner
+                owner_[thisCell[faceI]] = cellI;
+
+                markedFaces[thisCell[faceI]] = true;
+            }
+            else
+            {
+                // Second visit: Neighbour
+                neighbour_[thisCell[faceI]] = cellI;
+
+                nInternalFaces_++;
+            }
+        }
+    }
+
+    nOldInternalFaces_ = nInternalFaces_;
 }
 
 // Constructor for topoMeshStruct
@@ -4615,6 +4712,51 @@ void dynamicTopoFvMesh::buildCoupledMaps
         {
             // Processor patch.
             // Build a list from the patchSubMesh.
+            pointField smPoints
+            (
+                recvPatchMeshes_[patchI.key()].nPoints(),
+                vector::zero
+            );
+
+            edgeList smEdges
+            (
+                recvPatchMeshes_[patchI.key()].nEdges()
+            );
+
+            faceList smFaces
+            (
+                recvPatchMeshes_[patchI.key()].nFaces()
+            );
+
+            cellList smCells
+            (
+                recvPatchMeshes_[patchI.key()].nCells()
+            );
+
+            labelListList smFaceEdges
+            (
+                recvPatchMeshes_[patchI.key()].nFaces()
+            );
+
+            // Set the autoPtr.
+            recvPatchMeshes_[patchI.key()].setMesh
+            (
+                new dynamicTopoFvMesh
+                (
+                    (*this),
+                    IOobject
+                    (
+                        "subMesh",
+                        time().timeName(),
+                        time()
+                    ),
+                    smPoints,
+                    smEdges,
+                    smFaces,
+                    smFaceEdges,
+                    smCells
+                )
+            );
 
             // If any edges here coincide with locally coupled edges,
             // processor edges need to be given priority.
@@ -5911,7 +6053,7 @@ void dynamicTopoFvMesh::synchronizeThreads()
 }
 
 // Return reference to the dictionary
-const dictionary& dynamicTopoFvMesh::dynamicMeshDict() const
+const IOdictionary& dynamicTopoFvMesh::dynamicMeshDict() const
 {
     return dict_;
 }

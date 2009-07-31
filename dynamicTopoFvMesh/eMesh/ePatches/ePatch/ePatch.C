@@ -30,7 +30,6 @@ Description
 #include "addToRunTimeSelectionTable.H"
 #include "eBoundaryMesh.H"
 #include "eMesh.H"
-#include "EdgeFields.H"
 #include "polyMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
