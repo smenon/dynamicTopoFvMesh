@@ -82,6 +82,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")
     ),
     coupledModification_(false),
+    slaveModification_(false),
     interval_(1),
     mapper_(NULL),
     points_(polyMesh::points()),
@@ -404,6 +405,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     twoDMesh_(mesh.twoDMesh_),
     edgeModification_(mesh.edgeModification_),
     coupledModification_(false),
+    slaveModification_(false),
     interval_(1),
     mapper_(NULL),
     points_(points),
@@ -1330,10 +1332,17 @@ label dynamicTopoFvMesh::insertEdge
         edgePoints_.append(edgePoints);
     }
 
-    if (!coupledModification_)
+    // Add to the stack as well, but only if required.
+    // If a slave edge is being added, don't add any
+    // edges to the stack.
+    if (!slaveModification_)
     {
-        // Add to the stack as well
-        edgeStack(self()).push(newEdgeIndex);
+        // Is this an interior edge with coupledModification turned on?
+        // Don't add those either.
+        if (!(coupledModification_ && patch == -1))
+        {
+            edgeStack(self()).push(newEdgeIndex);
+        }
     }
 
     if (debug > 2)
@@ -2273,16 +2282,11 @@ bool dynamicTopoFvMesh::removeEdgeFlips
         triangulations[checkIndex]
     );
 
-    // Determine the 3-2 swap triangulation
-    label t32 = identify32Swap
-                (
-                    eIndex,
-                    hullVertices,
-                    triangulations[checkIndex]
-                );
+    // Determine the final swap triangulation
+    label tF = identify32Swap(eIndex, hullVertices, triangulations[checkIndex]);
 
     // Check that the triangulation is valid
-    if (t32 == -1)
+    if (tF == -1)
     {
         // Reset all triangulations and bail out
         triangulations[checkIndex][0] = -1;
@@ -2310,12 +2314,14 @@ bool dynamicTopoFvMesh::removeEdgeFlips
 
             // Turn off switch temporarily.
             coupledModification_ = false;
+            slaveModification_ = true;
 
             // Recursively call for the slave edge.
             bool success = removeEdgeFlips(slaveIndex, K, triangulations, 1);
 
             // Turn it back on.
             coupledModification_ = true;
+            slaveModification_ = false;
 
             // Bail out if the slave failed.
             if (!success)
@@ -2332,7 +2338,7 @@ bool dynamicTopoFvMesh::removeEdgeFlips
     {
         for (label i = 0; i < (m-2); i++)
         {
-            if ( (i != t32) && (triangulations[checkIndex][0][i] != -1) )
+            if ( (i != tF) && (triangulations[checkIndex][0][i] != -1) )
             {
                 // Check if triangulation is on the boundary
                 if
@@ -2387,7 +2393,7 @@ bool dynamicTopoFvMesh::removeEdgeFlips
     swap32
     (
         eIndex,
-        t32,
+        tF,
         numTriangulations,
         triangulations[checkIndex],
         hullVertices,
@@ -2396,9 +2402,9 @@ bool dynamicTopoFvMesh::removeEdgeFlips
     );
 
     // Done with this face, so reset it
-    triangulations[checkIndex][0][t32] = -1;
-    triangulations[checkIndex][1][t32] = -1;
-    triangulations[checkIndex][2][t32] = -1;
+    triangulations[checkIndex][0][tF] = -1;
+    triangulations[checkIndex][1][tF] = -1;
+    triangulations[checkIndex][2][tF] = -1;
 
     // Finally remove the edge
     removeEdge(eIndex);
@@ -2461,7 +2467,7 @@ label dynamicTopoFvMesh::identify32Swap
     // Relax the tolerance for boundary edges
     if (whichEdgePatch(eIndex) > -1)
     {
-        tolerance = 0.01*mag(tangentToEdge(eIndex));
+        tolerance = 0.1*mag(tangentToEdge(eIndex));
     }
 
     for (label i = 0; i < (m-2); i++)
@@ -3234,25 +3240,31 @@ void dynamicTopoFvMesh::calculateLengthScale()
         const pointField& pList = points();
 
         // Check local coupled patches for fixed length-scales
-        if (patchCoupling_.size())
+        if (dict_.subDict("dynamicTopoFvMesh").found("coupledPatches"))
         {
-            forAllIter(Map<label>, patchCoupling_, pIter)
-            {
-                if (pIter.key() < boundary.size())
-                {
-                    word pName = boundary[pIter.key()].name();
+            dictionary coupledPatches =
+            (
+                dict_.subDict("dynamicTopoFvMesh").subDict("coupledPatches")
+            );
 
-                    if(fixedPatches_.found(pName))
-                    {
-                        // Add the slave patch to the list as well.
-                        // If it already exists, over-ride the value.
-                        fixedPatches_.add
-                        (
-                            boundary[pIter()].name(),
-                            fixedPatches_[pName][0].scalarToken(),
-                            true
-                        );
-                    }
+            // Determine master and slave patches
+            wordList masterPatches = coupledPatches.toc();
+
+            // Check whether coupled patches are fixedPatches as well.
+            forAll(masterPatches, wordI)
+            {
+                word pName(masterPatches[wordI]);
+
+                if (fixedPatches_.found(masterPatches[wordI]))
+                {
+                    // Add the slave patch to the list as well.
+                    // If it already exists, over-ride the value.
+                    fixedPatches_.add
+                    (
+                        coupledPatches[pName],
+                        fixedPatches_[pName][0].scalarToken(),
+                        true
+                    );
                 }
             }
         }
@@ -4407,6 +4419,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
 
     // Set coupled modifications.
     coupledModification_ = true;
+    slaveModification_ = false;
 
     // Loop through the coupled stack and perform changes.
     if (twoDMesh_)
@@ -4440,8 +4453,13 @@ void dynamicTopoFvMesh::handleCoupledPatches()
         swap3DEdges(&(structPtr_[0]));
     }
 
-    // Reset coupled modifications.
+    // Build a list of entities that need to be avoided
+    // by regular topo-changes.
+    buildEntitiesToAvoid();
+
+    // Reset coupled modifications and stack addition behaviour.
     coupledModification_ = false;
+    slaveModification_ = false;
 }
 
 // Build patch sub-meshes for coupled patches
@@ -4898,9 +4916,17 @@ void dynamicTopoFvMesh::buildCoupledMaps
 
         forAll(mCentres, edgeI)
         {
+            // bool matched = false;
+            // scalar minDistance = GREAT;
+
             forAll(sCentres, edgeJ)
             {
-                if (magSqr(mCentres[edgeI] - sCentres[edgeJ]) < gTol_)
+                scalar distance = mag(mCentres[edgeI] - sCentres[edgeJ]);
+
+                // minDistance = minDistance < distance
+                //             ? minDistance : distance;
+
+                if (distance < gTol_)
                 {
                     // Add a map entry
                     masterToSlave_[patchI.key()].insert
@@ -4915,18 +4941,34 @@ void dynamicTopoFvMesh::buildCoupledMaps
                         mEdges[edgeI]
                     );
 
+                    // matched = true;
+
                     nMatchedEdges++;
 
                     break;
                 }
             }
+
+            /*
+            if (!matched)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
+                    << " Failed to match edge within a tolerance of: "
+                    << gTol_ << nl << " Missed by: " << minDistance
+                    << abort(FatalError);
+            }
+            */
         }
 
         // Make sure we were successful.
         if (nMatchedEdges != mCentres.size())
         {
             FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
-                << "Failed to match all patch edges."
+                << " Failed to match all patch edges within a tolerance of: "
+                << gTol_ << nl
+                << " Number of edges required for match: "
+                << mCentres.size() << nl
+                << " Number of matched edges: " << nMatchedEdges
                 << abort(FatalError);
         }
 
@@ -6316,12 +6358,18 @@ bool dynamicTopoFvMesh::updateTopology()
     // Reduce across processors.
     reduce(sliversAbsent, andOp<bool>());
 
+    // Return if the interval is invalid.
+    // Handy while using only mesh-motion.
+    if (interval_ < 0)
+    {
+        return false;
+    }
+
     // Return if re-meshing is not at interval,
     // or sliver cells are absent.
     if
     (
-        (time().timeIndex() % interval_ != 0) &&
-        sliversAbsent
+        (time().timeIndex() % interval_ != 0) && sliversAbsent
     )
     {
         return false;

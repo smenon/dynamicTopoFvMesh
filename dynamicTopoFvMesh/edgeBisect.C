@@ -896,8 +896,9 @@ dynamicTopoFvMesh::bisectEdge
         // Is this a locally coupled edge?
         if (locallyCoupledEdge(eIndex))
         {
-            // Temporarily turn off coupledModification
+            // Temporarily turn off coupledModification and stack behaviour.
             coupledModification_ = false;
+            slaveModification_ = true;
 
             // Loop through master/slave maps
             // and determine the coupled edge index.
@@ -930,6 +931,7 @@ dynamicTopoFvMesh::bisectEdge
 
             // Turn it back on.
             coupledModification_ = true;
+            slaveModification_ = false;
         }
         else
         {
@@ -1627,11 +1629,6 @@ dynamicTopoFvMesh::bisectEdge
         // Create a master/slave entry for the new edges on the patch.
         if (locallyCoupledEdge(eIndex))
         {
-            // Add the new edge to the coupled stack.
-            // Although slave edges might be added here,
-            // they are removed during stack initialization anyway.
-            edgeStack(tIndex).push(newEdgeIndex);
-
             // Since we don't know the corresponding edges on the couple patch,
             // loop through recently added edges and perform a geometric match.
             FixedList<bool, 3> foundMatch(false);
@@ -1921,8 +1918,9 @@ dynamicTopoFvMesh::trisectFace
 
         if (locallyCoupledFace)
         {
-            // Temporarily turn off coupledModification
+            // Temporarily turn off coupledModification and stack behaviour.
             coupledModification_ = false;
+            slaveModification_ = true;
 
             // Loop through master/slave maps
             // and determine the coupled edge index.
@@ -2027,6 +2025,10 @@ dynamicTopoFvMesh::trisectFace
                     bisectingSlave = true;
                 }
             }
+
+            // Turn it back on.
+            coupledModification_ = true;
+            slaveModification_ = false;
         }
     }
 
@@ -2609,6 +2611,103 @@ dynamicTopoFvMesh::trisectFace
 
             // Add faces to the map.
             map.addFace(newFaceIndex[i]);
+        }
+
+        // If modification is coupled, generate mapping info.
+        if (coupledModification_)
+        {
+            // Create a master/slave entry for the new edges on the patch.
+            if (locallyCoupledFace(fIndex))
+            {
+                // Since we don't know the corresponding edges
+                // on the couple patch, loop through recently
+                // added edges and perform a geometric match.
+                FixedList<bool, 3> foundMatch(false);
+                FixedList<label, 3> checkList(-1);
+                FixedList<point, 3> cCentres(vector::zero);
+
+                // Fill in the edges to be check for...
+                label eCounter = 0;
+
+                for (label i = 1; i <= 3; i++)
+                {
+                    edge& newEdge = edges_[newEdgeIndex[i]];
+
+                    checkList[eCounter] = newEdgeIndex[i];
+
+                    cCentres[eCounter++] =
+                    (
+                        0.5*(points_[newEdge[0]] + points_[newEdge[1]])
+                    );
+                }
+
+                const labelList aeList = coupleMap.addedEdgeList();
+
+                forAll(aeList, edgeI)
+                {
+                    // Get an edge reference.
+                    edge& check = edges_[aeList[edgeI]];
+
+                    // Get the centre of the edge.
+                    vector centre = 0.5*(points_[check[0]] + points_[check[1]]);
+
+                    // Compare with all three entries.
+                    forAll (checkList, indexI)
+                    {
+                        if (mag(cCentres[indexI] - centre) < gTol_)
+                        {
+                            if (bisectingSlave)
+                            {
+                                slaveToMaster_[pIndex].insert
+                                (
+                                    checkList[indexI], aeList[edgeI]
+                                );
+
+                                masterToSlave_[pIndex].insert
+                                (
+                                    aeList[edgeI], checkList[indexI]
+                                );
+                            }
+                            else
+                            {
+                                masterToSlave_[pIndex].insert
+                                (
+                                    checkList[indexI], aeList[edgeI]
+                                );
+
+                                slaveToMaster_[pIndex].insert
+                                (
+                                    aeList[edgeI], checkList[indexI]
+                                );
+                            }
+
+                            foundMatch[indexI] = true;
+
+                            break;
+                        }
+                    }
+
+                    // Are we done checking?
+                    if (foundMatch[0] && foundMatch[1] && foundMatch[2])
+                    {
+                        break;
+                    }
+                }
+
+                if (!(foundMatch[0] && foundMatch[1] && foundMatch[2]))
+                {
+                    FatalErrorIn
+                    (
+                        "dynamicTopoFvMesh::bisectTriFace"
+                    ) << "Failed to build coupled maps." << abort(FatalError);
+                }
+            }
+            else
+            if (processorCoupledFace(fIndex))
+            {
+                // Look for matching slave edges on the patchSubMesh.
+
+            }
         }
     }
     else

@@ -81,8 +81,9 @@ class dynamicTopoFvMesh
         //- Edge bisection/collapse option
         Switch edgeModification_;
 
-        //- Coupled modification switch
+        //- Coupled modification switches
         Switch coupledModification_;
+        Switch slaveModification_;
 
         //- Specify the re-meshing interval
         label interval_;
@@ -1056,8 +1057,14 @@ class dynamicTopoFvMesh
         template <class Type>
         void pRead(const label fromID, List<Type>& data);
 
+        // Method to determine whether the master face is locally coupled
+        inline bool locallyCoupledFace(const label fIndex);
+
         // Method to determine whether the master edge is locally coupled
         inline bool locallyCoupledEdge(const label eIndex);
+
+        // Method to determine whether the master face is on a processor
+        inline bool processorCoupledFace(const label fIndex);
 
         // Method to determine whether the master edge is on a processor
         inline bool processorCoupledEdge(const label eIndex);
@@ -1076,6 +1083,10 @@ class dynamicTopoFvMesh
 
         // Initialize coupled patches for topology modifications.
         void initCoupledPatches();
+
+        // Build a list of entities that need to be avoided
+        // by regular topo-changes.
+        inline void buildEntitiesToAvoid();
 
         // Handle topology changes for coupled patches
         void handleCoupledPatches();

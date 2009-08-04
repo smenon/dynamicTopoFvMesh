@@ -525,26 +525,8 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
 {
     // Clear existing lists/stacks.
     edgeStack(0).clear();
-    entitiesToAvoid_.clear();
 
-    // Build a set of entities to avoid during regular modifications,
-    // and build a master stack for coupled modifications.
     const polyBoundaryMesh& boundary = boundaryMesh();
-
-    // Determine locally coupled slave patches.
-    labelHashSet localSlavePatches;
-
-    forAllIter(Map<label>, patchCoupling_, patchI)
-    {
-        if
-        (
-            patchI.key() < boundary.size() &&
-            patchI() < boundary.size()
-        )
-        {
-            localSlavePatches.insert(patchI());
-        }
-    }
 
     // Loop though boundary faces and check whether
     // they belong to master/slave coupled patches.
@@ -557,6 +539,11 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
     {
         label pIndex = whichPatch(faceI.index());
 
+        if (pIndex == -1)
+        {
+            continue;
+        }
+
         // Check if this is a locally coupled master face.
         if (patchCoupling_.found(pIndex))
         {
@@ -564,31 +551,8 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
 
             forAll(mfEdges, edgeI)
             {
-                if (!entitiesToAvoid_.found(mfEdges[edgeI]))
-                {
-                    // Avoid this edge during regular modification.
-                    entitiesToAvoid_.insert(mfEdges[edgeI]);
-
-                    // Add this to the coupled modification stack.
-                    edgeStack(0).insert(mfEdges[edgeI]);
-                }
-            }
-        }
-
-        // Check if this is a locally coupled slave face.
-        // The edges on this face don't get added to the stack,
-        // but must be added to the list of entities to avoid.
-        if (localSlavePatches.found(pIndex))
-        {
-            labelList& mfEdges = faceEdges_[faceI.index()];
-
-            forAll(mfEdges, edgeI)
-            {
-                if (!entitiesToAvoid_.found(mfEdges[edgeI]))
-                {
-                    // Avoid this edge during regular modification.
-                    entitiesToAvoid_.insert(mfEdges[edgeI]);
-                }
+                // Add this to the coupled modification stack.
+                edgeStack(0).push(mfEdges[edgeI]);
             }
         }
 
@@ -597,7 +561,7 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
         {
             labelList& mfEdges = faceEdges_[faceI.index()];
 
-            // Check if this is a slave processor patch.
+            // Check if this is a master processor patch.
             const processorPolyPatch& pp =
             (
                 refCast<const processorPolyPatch>(boundary[pIndex])
@@ -605,24 +569,97 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
 
             label neiProcID = pp.neighbProcNo();
 
-            if (neiProcID < Pstream::myProcNo())
+            if (neiProcID > Pstream::myProcNo())
             {
-                // Add to the stack.
+                // Add this to the coupled modification stack.
+                forAll(mfEdges, edgeI)
+                {
+                    edgeStack(0).push(mfEdges[edgeI]);
+                }
+            }
+        }
+    }
+}
+
+// Build a list of entities that need to be avoided
+// by regular topo-changes.
+inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
+{
+    if (!twoDMesh_)
+    {
+        entitiesToAvoid_.clear();
+
+        // Build a set of entities to avoid during regular modifications,
+        // and build a master stack for coupled modifications.
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
+        // Determine locally coupled slave patches.
+        labelHashSet localSlavePatches;
+
+        forAllIter(Map<label>, patchCoupling_, patchI)
+        {
+            if
+            (
+                patchI.key() < boundary.size() &&
+                patchI() < boundary.size()
+            )
+            {
+                localSlavePatches.insert(patchI());
+            }
+        }
+
+        // Loop though boundary faces and check whether
+        // they belong to master/slave coupled patches.
+        for
+        (
+            HashList<face>::iterator faceI = faces_(faces_.lastIndex());
+            faceI.index() >= nOldInternalFaces_;
+            faceI--
+        )
+        {
+            label pIndex = whichPatch(faceI.index());
+
+            if (pIndex == -1)
+            {
+                continue;
+            }
+
+            // Check if this is a locally coupled master face.
+            if (patchCoupling_.found(pIndex))
+            {
+                labelList& mfEdges = faceEdges_[faceI.index()];
+
                 forAll(mfEdges, edgeI)
                 {
                     if (!entitiesToAvoid_.found(mfEdges[edgeI]))
                     {
                         // Avoid this edge during regular modification.
                         entitiesToAvoid_.insert(mfEdges[edgeI]);
-
-                        // Add this to the coupled modification stack.
-                        edgeStack(0).insert(mfEdges[edgeI]);
                     }
                 }
             }
-            else
+
+            // Check if this is a locally coupled slave face.
+            if (localSlavePatches.found(pIndex))
             {
-                // Just add to list of entities to avoid.
+                labelList& mfEdges = faceEdges_[faceI.index()];
+
+                forAll(mfEdges, edgeI)
+                {
+                    if (!entitiesToAvoid_.found(mfEdges[edgeI]))
+                    {
+                        // Avoid this edge during regular modification.
+                        entitiesToAvoid_.insert(mfEdges[edgeI]);
+                    }
+                }
+            }
+
+            // Check if this is a processor patch.
+            if (isA<processorPolyPatch>(boundary[pIndex]))
+            {
+                labelList& mfEdges = faceEdges_[faceI.index()];
+
+                // Add to the stack.
                 forAll(mfEdges, edgeI)
                 {
                     if (!entitiesToAvoid_.found(mfEdges[edgeI]))
@@ -1056,6 +1093,42 @@ inline void dynamicTopoFvMesh::computeMinQuality
     }
 }
 
+// Method to determine whether the master face is locally coupled
+inline bool dynamicTopoFvMesh::locallyCoupledFace
+(
+    const label fIndex
+)
+{
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    label patch = whichPatch(fIndex);
+
+    if (patch == -1)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::locallyCoupledFace()")
+            << "Face: " << fIndex
+            << " is not on a boundary and therefore, "
+            << " cannot possibly be coupled."
+            << abort(FatalError);
+    }
+
+    // Processor checks receive priority.
+    if (isA<processorPolyPatch>(boundary[patch]))
+    {
+        return false;
+    }
+
+    // Check coupled master patches.
+    if (patchCoupling_.found(patch))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
 // Method to determine whether the master edge is locally coupled.
 inline bool dynamicTopoFvMesh::locallyCoupledEdge
 (
@@ -1091,6 +1164,35 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
 
     // Could not find any faces on locally coupled patches.
     return foundPatch;
+}
+
+// Method to determine whether the master face is on a processor
+inline bool dynamicTopoFvMesh::processorCoupledFace
+(
+    const label fIndex
+)
+{
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    label patch = whichPatch(fIndex);
+
+    if (patch == -1)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::locallyCoupledFace()")
+            << "Face: " << fIndex
+            << " is not on a boundary and therefore, "
+            << " cannot possibly be coupled."
+            << abort(FatalError);
+    }
+
+    if (isA<processorPolyPatch>(boundary[patch]))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 // Method to determine whether the master edge is coupled at a processor.

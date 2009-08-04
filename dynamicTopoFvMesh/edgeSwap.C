@@ -1717,9 +1717,6 @@ void dynamicTopoFvMesh::swap32
 
         if (coupledModification_)
         {
-            // Add the new master edge to the coupled stack.
-            edgeStack(tIndex).push(newEdgeIndex);
-
             // Create a masterToSlave entry for the new edge.
             if (locallyCoupledEdge(eIndex))
             {
