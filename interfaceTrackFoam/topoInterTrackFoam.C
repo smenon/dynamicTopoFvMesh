@@ -27,12 +27,11 @@ Application
 
 Description
     Incompressible laminar CFD code for interface between fluid phases using
-    a dynamic mesh, including non-Newtonian effects.
+    a dynamic mesh.
 
 \*---------------------------------------------------------------------------*/
 
 #include "fvCFD.H"
-#include "viscosityModel.H"
 #include "dynamicTopoFvMesh.H"
 #include "fluidInterface.H"
 
@@ -45,38 +44,6 @@ Description
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-// Adjust fluid viscosity for temperature variations
-// according to the Vogel-Fulcher-Tammann (VFT) model
-void adjustViscosity
-(
-    const dictionary& coeffDict,
-    const volScalarField& T,
-    const scalar nuRef,
-    volScalarField& nu
-)
-{
-    // Read coeffiecients for the VFT model
-    dictionary vftCoeffs(coeffDict.subDict("vftCoeffs"));
-
-    scalar Tref = readScalar(vftCoeffs.lookup("Tref"));
-    scalar Tv   = readScalar(vftCoeffs.lookup("Tv"));
-    scalar Ta   = readScalar(vftCoeffs.lookup("Ta"));
-
-    // Compute constants for the model
-    scalar a = (Ta / Tref);
-    scalar b = Tv;
-    scalar c = (Tref / (Tref - Tv));
-
-    // Correct the internalField
-    forAll(nu.internalField(), cellI)
-    {
-        scalar Tcell = T.internalField()[cellI];
-
-        nu.internalField()[cellI] =
-            nuRef*::exp(a*((Tref / (Tcell - b)) - c));
-    }
-}
-
 int main(int argc, char *argv[])
 {
 
@@ -87,24 +54,68 @@ int main(int argc, char *argv[])
 #   include "initTotalVolume.H"
 #   include "createFields.H"
 
-    fluidInterface interface(mesh, U, p, phi);
-
-    volScalarField nu
+    volScalarField rho
     (
         IOobject
         (
-            "nu",
+            "rho",
+            runTime.timeName(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        mesh,
+        dimensionedScalar("0", dimMass/dimVolume, 0)
+    );
+
+    volScalarField mu
+    (
+        IOobject
+        (
+            "mu",
             runTime.timeName(),
             mesh,
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
+        mesh,
+        dimensionedScalar("0", dimPressure*dimTime, 0)
+    );
+
+    fluidInterface interface(mesh, rho, U, p, phi);
+
+    mu =
+    (
         interface.fluidIndicator()*
         (
-            (interface.muFluidA()/interface.rhoFluidA())
-          - (interface.muFluidB()/interface.rhoFluidB())
+            interface.muFluidA()
+          - interface.muFluidB()
         )
-      + (interface.muFluidB()/interface.rhoFluidB())
+      + interface.muFluidB()
+    );
+
+    rho =
+    (
+        interface.fluidIndicator()*
+        (
+              interface.rhoFluidA()
+            - interface.rhoFluidB()
+        )
+      + interface.rhoFluidB()
+    );
+
+    Info<< "Reading field rUA if present\n" << endl;
+    volScalarField rUA
+    (
+        IOobject
+        (
+            "rUA",
+            runTime.timeName(),
+            mesh,
+            IOobject::READ_IF_PRESENT,
+            IOobject::AUTO_WRITE
+        ),
+        runTime.deltaT()/rho
     );
 
     if (interface.twoFluids())
@@ -113,69 +124,10 @@ int main(int argc, char *argv[])
         U = interface.fluidIndicator()*U;
     }
 
-    Info<< "\nStarting time loop\n" << endl;
+    Info << "\nStarting time loop\n" << endl;
 
     // Initialize the motion solver
     autoPtr<motionSolver> mPtr = motionSolver::New(mesh);
-
-    bool nonNewtonian = false;
-    bool solveForTemperature = false;
-    bool adjustNuForTemperature = false;
-    bool adjustSigmaForTemperature = false;
-
-    // Read in flags from the dictionary
-    if (interface.found("nonNewtonian"))
-    {
-        nonNewtonian = Switch(interface.lookup("nonNewtonian"));
-    }
-
-    if (interface.found("solveForTemperature"))
-    {
-        solveForTemperature =
-            Switch(interface.lookup("solveForTemperature"));
-    }
-
-    // Maintain the temperature field as a pointer
-    autoPtr<volScalarField> TPtr(NULL);
-    if (solveForTemperature)
-    {
-        Info<< "Reading field T\n" << endl << flush;
-
-        TPtr.set
-        (
-            new volScalarField
-            (
-                IOobject
-                (
-                    "T",
-                    runTime.timeName(),
-                    mesh,
-                    IOobject::MUST_READ,
-                    IOobject::AUTO_WRITE
-                ),
-                mesh
-            )
-        );
-
-        if (interface.found("adjustNuForTemperature"))
-        {
-            adjustNuForTemperature =
-                Switch(interface.lookup("adjustNuForTemperature"));
-        }
-
-        if (interface.found("adjustSigmaForTemperature"))
-        {
-            adjustSigmaForTemperature =
-                Switch(interface.lookup("adjustSigmaForTemperature"));
-        }
-    }
-
-    // Introduce the non-Newtonian transport model
-    autoPtr<viscosityModel> nuModel(NULL);
-    if (nonNewtonian)
-    {
-        nuModel = viscosityModel::New("nu",interface,U,phi);
-    }
 
     while (runTime.run())
     {
@@ -189,29 +141,9 @@ int main(int argc, char *argv[])
 
         Info<< "Time = " << runTime.timeName() << nl << endl;
 
-        if (solveForTemperature)
-        {
-            if (adjustSigmaForTemperature)
-            {
-                Info << "Adjusting surface tension for temperature." << endl;
-                interface.adjustSurfaceTension(TPtr());
-            }
-
-            if (adjustNuForTemperature)
-            {
-                Info << "Adjusting viscosity for temperature." << endl;
-                adjustViscosity
-                (
-                    interface,
-                    TPtr(),
-                    (interface.muFluidA()/interface.rhoFluidA()).value(),
-                    nu
-                );
-            }
-        }
-
         // Update the interface
         interface.updateInterface();
+
         setMotionBC(mesh, interface.aPatchID(), interface.displacement());
 
         if (interface.twoFluids())
@@ -236,11 +168,18 @@ int main(int argc, char *argv[])
             interface.updateBoundaryConditions();
 
             // Make the fluxes relative to the mesh motion
-            fvc::makeRelative(phi, U);
+            fvc::makeRelative(phi, rho, U);
 
-#           include "UEqn.H"
+            fvVectorMatrix UEqn
+            (
+                fvm::ddt(rho, U)
+              + fvm::div(fvc::interpolate(rho)*phi, U)
+              - fvm::laplacian(mu, U)
+            );
 
-            volScalarField rUA = 1.0/UEqn.A();
+            solve(UEqn == -fvc::grad(p));
+
+            rUA = 1.0/UEqn.A();
 
             // --- PISO loop
 
@@ -249,9 +188,8 @@ int main(int argc, char *argv[])
                 U = rUA*UEqn.H();
 
                 phi = (fvc::interpolate(U) & mesh.Sf());
-                     //+ fvc::ddtPhiCorr(rUA, U, phi);
 
-                //adjustPhi(phi, U, p);
+                adjustPhi(phi, U, p);
 
                 for (int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
                 {
@@ -280,7 +218,7 @@ int main(int argc, char *argv[])
 #               include "continuityErrs.H"
 
                 // Make the fluxes relative
-                fvc::makeRelative(phi, U);
+                fvc::makeRelative(phi, rho, U);
 
                 U -= rUA*fvc::grad(p);
                 U.correctBoundaryConditions();
@@ -291,32 +229,8 @@ int main(int argc, char *argv[])
             Info << endl;
         }
 
-        if (nonNewtonian)
-        {
-            nuModel->correct();
-            nu = nuModel->nu();
-        }
-
-        if (solveForTemperature)
-        {
-            dimensionedScalar DT
-            (
-                "DT",
-                interface.condFluidA()/
-                (interface.CpFluidA()*interface.rhoFluidA())
-            );
-
-            // Passive heat-transfer
-            solve
-            (
-                fvm::ddt(TPtr())
-              + fvm::div(phi, TPtr())
-              - fvm::laplacian(DT, TPtr())
-            );
-        }
-
         // Make the fluxes absolute
-        fvc::makeAbsolute(phi, U);
+        fvc::makeAbsolute(phi, rho, U);
 
         bool meshChanged = mesh.updateTopology();
 
@@ -334,17 +248,31 @@ int main(int argc, char *argv[])
             mPtr->updateMesh(mesh.meshMap());
 
             // Update viscosity with the new fluid indicator
-            nu = interface.fluidIndicator()*
-                 (
-                     (interface.muFluidA()/interface.rhoFluidA())
-                   - (interface.muFluidB()/interface.rhoFluidB())
-                 )
-               + (interface.muFluidB()/interface.rhoFluidB());
+            mu =
+            (
+                interface.fluidIndicator()*
+                (
+                    interface.muFluidA()
+                  - interface.muFluidB()
+                )
+              + interface.muFluidB()
+            );
+
+            // Update density with the new fluid indicator
+            rho =
+            (
+                interface.fluidIndicator()*
+                (
+                      interface.rhoFluidA()
+                    - interface.rhoFluidB()
+                )
+              + interface.rhoFluidB()
+            );
         }
 
-        Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
-            << "  ClockTime = " << runTime.elapsedClockTime() << " s"
-            << nl << endl;
+        Info << "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
+             << "  ClockTime = " << runTime.elapsedClockTime() << " s"
+             << nl << endl;
 
         runTime.write();
 

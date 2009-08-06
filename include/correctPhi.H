@@ -23,12 +23,12 @@
         dimensionedScalar("pcorr", p.dimensions(), 0.0),
         pcorrTypes
     );
-    
+
     for(int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
     {
         fvScalarMatrix pcorrEqn
         (
-            fvm::laplacian(runTime.deltaT(), pcorr) == fvc::div(phi)
+            fvm::laplacian(rUA, pcorr) == fvc::div(phi)
         );
 
         pcorrEqn.setReference(pRefCell, pRefValue);
@@ -38,7 +38,7 @@
         {
             phi -= pcorrEqn.flux();
         }
-    }  
+    }
 }
 
 

@@ -61,6 +61,9 @@ class fluidInterface
         //- Reference to the underlying mesh
         fvMesh& mesh_;
 
+        //- Reference to density field
+        volScalarField& rho_;
+
         //- Reference to the velocity field
         volVectorField& U_;
 
@@ -222,6 +225,7 @@ public:
         fluidInterface
         (
             fvMesh& m,
+            volScalarField& rho,
             volVectorField& U,
             volScalarField& p,
             surfaceScalarField& phi

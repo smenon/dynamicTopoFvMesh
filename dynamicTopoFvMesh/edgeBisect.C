@@ -2116,6 +2116,9 @@ dynamicTopoFvMesh::trisectFace
     {
         newCellIndex[i] = cells_.append(cell(4));
 
+        // Increment the cell count
+        nCells_++;
+
         // Add cells to the map
         map.addCell(newCellIndex[i]);
     }
@@ -2718,6 +2721,9 @@ dynamicTopoFvMesh::trisectFace
         for (label i = 3; i < 6; i++)
         {
             newCellIndex[i] = cells_.append(cell(4));
+
+            // Increment the cell count
+            nCells_++;
 
             // Add to the map.
             map.addCell(newCellIndex[i]);

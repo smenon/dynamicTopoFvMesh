@@ -164,9 +164,9 @@ class dynamicTopoFvMesh
         scalar              ratioMin_;
         scalar              ratioMax_;
         scalar              growthFactor_;
+        scalar              curvatureDeviation_;
         scalar              maxLengthScale_;
         scalar              sliverThreshold_;
-        scalar              curvatureRatio_;
         label               nModifications_;
         label               nBisections_;
         label               nCollapses_;
@@ -174,7 +174,6 @@ class dynamicTopoFvMesh
         label               maxModifications_;
         label               bisectInterior_;
         labelHashSet        thresholdSlivers_;
-        scalarListList      curvatureFields_;
 
         // Buffers for length-scale calculations
         labelListList       sendLblBuffer_;
@@ -601,17 +600,13 @@ class dynamicTopoFvMesh
         );
 
         // Return length-scale at an edge-location in the mesh [3D]
-        inline void meshEdgeLengthScale
-        (
-            const label eIndex,
-            scalar& scale
-        );
+        inline scalar meshEdgeLengthScale(const label eIndex);
 
         // Check if a given face is a quad
         inline bool checkQuadFace(const label fIndex);
 
         // Return the length of an edge
-        inline void edgeLength(const label eIndex, scalar& length);
+        inline scalar edgeLength(const label eIndex);
 
         // MultiThreaded topology modifier [2D]
         void threadedTopoModifier2D();
@@ -1167,13 +1162,6 @@ public:
 
         // Return old face-centre information (prior to a topology change)
         const vectorField& oldPointPositions() const;
-
-        // Set curvature information for a particular patch
-        void setCurvatureField
-        (
-            const label pID,
-            const scalarField& field
-        );
 
         // Return mesh length-scale values
         tmp<scalarField> lengthScale();

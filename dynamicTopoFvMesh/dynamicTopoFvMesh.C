@@ -116,9 +116,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ratioMin_(0.0),
     ratioMax_(0.0),
     growthFactor_(1.0),
+    curvatureDeviation_(0.0),
     maxLengthScale_(GREAT),
     sliverThreshold_(0.05),
-    curvatureRatio_(1.0),
     nModifications_(0),
     nBisections_(0),
     nCollapses_(0),
@@ -378,9 +378,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     {
         readEdgeOptions();
 
-        // Set curvature patches
-        curvatureFields_.setSize(numPatches_, scalarList(0));
-
         // Initialize the lengthScale field
         lengthScale_.setSize(nCells_, 0.0);
     }
@@ -439,9 +436,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     ratioMin_(mesh.ratioMin_),
     ratioMax_(mesh.ratioMax_),
     growthFactor_(mesh.growthFactor_),
+    curvatureDeviation_(mesh.curvatureDeviation_),
     maxLengthScale_(mesh.maxLengthScale_),
     sliverThreshold_(mesh.sliverThreshold_),
-    curvatureRatio_(mesh.curvatureRatio_),
     nModifications_(0),
     nBisections_(0),
     nCollapses_(0),
@@ -551,16 +548,6 @@ const vectorField& dynamicTopoFvMesh::oldCellCentres() const
     }
 
     return vectorField::null();
-}
-
-// Set curvature information for a particular patch
-void dynamicTopoFvMesh::setCurvatureField
-(
-    const label pID,
-    const scalarField& field
-)
-{
-    curvatureFields_[pID] = 1.0/mag(field);
 }
 
 // Return mesh length-scale values
@@ -3272,79 +3259,9 @@ void dynamicTopoFvMesh::calculateLengthScale()
         // Obtain the list of patches for which the length-scale is fixed
         wordList toc = fixedPatches_.toc();
 
-        // Obtain the list of patches for which
-        // curvature-based length-scale is specified
-        wordList cToc = curvaturePatches_.toc();
-
-        // Do a preliminary sanity check to avoid duplication
-        forAll(toc, wordI)
-        {
-            word& pName = toc[wordI];
-
-            forAll(cToc, wordI)
-            {
-                if (pName == cToc[wordI])
-                {
-                    FatalErrorIn
-                    (
-                        "dynamicTopoFvMesh::calculateLengthScale()"
-                    )
-                        << " Conflicting fixed length-scale patch: "
-                        << pName << abort(FatalError);
-                }
-            }
-        }
-
         forAll(boundary,patchI)
         {
             const polyPatch& bdyPatch = boundary[patchI];
-
-            // Loop through all fixed curvature patches
-            forAll(cToc, wordI)
-            {
-                word& pName = cToc[wordI];
-
-                if (boundary[patchI].name() == pName)
-                {
-                    label pStart = bdyPatch.start();
-
-                    if (curvatureFields_[patchI].empty())
-                    {
-                        FatalErrorIn
-                        (
-                            "dynamicTopoFvMesh::calculateLengthScale()"
-                        )
-                            << " Curvature field for patch: "
-                            << pName << " is empty."
-                            << abort(FatalError);
-                    }
-
-                    forAll(bdyPatch,faceI)
-                    {
-                        label ownCell = own[pStart+faceI];
-
-                        if (cellLevels[ownCell] != 0)
-                        {
-                            continue;
-                        }
-
-                        cellLevels[ownCell] = level;
-
-                        lengthScale[ownCell] =
-                        (
-                            curvatureRatio_
-                           *curvatureFields_[patchI][faceI]
-                           *growthFactor_
-                        );
-
-                        levelCells.insert(ownCell);
-
-                        visitedCells++;
-                    }
-
-                    break;
-                }
-            }
 
             // Loop through all fixed length-scale patches
             forAll(toc,wordI)
@@ -3385,7 +3302,6 @@ void dynamicTopoFvMesh::calculateLengthScale()
             if
             (
                 (toc.size() == 0) &&
-                (cToc.size() == 0) &&
                 (bdyPatch.type() != "processor") &&
                 (bdyPatch.type() != "wedge") &&
                 (bdyPatch.type() != "empty") &&
@@ -3899,10 +3815,20 @@ void dynamicTopoFvMesh::readEdgeOptions()
             edgeOptionDict.subDict("curvaturePatches")
         );
 
-        curvatureRatio_ =
+        curvatureDeviation_ =
         (
-            readScalar(edgeOptionDict.lookup("curvatureRatio"))
+            readScalar(edgeOptionDict.lookup("curvatureDeviation"))
         );
+
+        if
+        (
+            (curvatureDeviation_ > 1.0 || curvatureDeviation_ < 0.0)
+        )
+        {
+            FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+                << " Curvature deviation out of range [0..1]"
+                << abort(FatalError);
+        }
     }
 
     if (edgeOptionDict.found("sliverThreshold"))
@@ -3929,24 +3855,6 @@ scalar dynamicTopoFvMesh::boundaryLengthScale
 )
 {
     label bFacePatch = whichPatch(faceIndex);
-
-    // Check curvature patches
-    if (curvaturePatches_.found(boundaryMesh()[bFacePatch].name()))
-    {
-        // Find the local index in the patch
-        label lIndex = -1;
-
-        if (faceIndex < nOldFaces_)
-        {
-            lIndex = faceIndex - boundaryMesh()[bFacePatch].start();
-        }
-        else
-        {
-            lIndex = faceParents_[faceIndex];
-        }
-
-        return (curvatureRatio_*curvatureFields_[bFacePatch][lIndex]);
-    }
 
     // Check fixed length-scale patches
     if (fixedPatches_.found(boundaryMesh()[bFacePatch].name()))
@@ -5024,11 +4932,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
         if (mesh.checkQuadFace(fIndex))
         {
             // Measure the boundary edge-length of the face in question
-            mesh.edgeLength
-            (
-                mesh.getTriBoundaryEdge(fIndex),
-                length
-            );
+            length = mesh.edgeLength(mesh.getTriBoundaryEdge(fIndex));
 
             // Determine the length-scale at this face
             mesh.meshFaceLengthScale(fIndex, scale);
@@ -5185,10 +5089,10 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         label eIndex = mesh.edgeStack(tIndex).pop();
 
         // Measure the edge-length
-        mesh.edgeLength(eIndex, length);
+        length = mesh.edgeLength(eIndex);
 
         // Determine the length-scale at this point in the mesh
-        mesh.meshEdgeLengthScale(eIndex, scale);
+        scale = mesh.meshEdgeLengthScale(eIndex);
 
         if (length > mesh.ratioMax()*scale)
         {
@@ -5313,13 +5217,7 @@ void dynamicTopoFvMesh::remove2DSliver
 )
 {
     // Measure the boundary edge-length of the face in question
-    scalar length = 0.0;
-
-    edgeLength
-    (
-        getTriBoundaryEdge(fIndex),
-        length
-    );
+    scalar length = edgeLength(getTriBoundaryEdge(fIndex));
 
     // Determine the boundary triangular face area
     scalar area = triFaceArea(faces_[getTriBoundaryFace(fIndex)]);

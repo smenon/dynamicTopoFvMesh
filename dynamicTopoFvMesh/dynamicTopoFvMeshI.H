@@ -324,14 +324,13 @@ inline void dynamicTopoFvMesh::meshFaceLengthScale
 }
 
 // Compute length-scale at an edge-location in the mesh [3D]
-inline void dynamicTopoFvMesh::meshEdgeLengthScale
+inline scalar dynamicTopoFvMesh::meshEdgeLengthScale
 (
-    const label eIndex,
-    scalar& scale
+    const label eIndex
 )
 {
     // Reset the scale first
-    scale = 0.0;
+    scalar scale = 0.0;
 
     labelList& eFaces = edgeFaces_[eIndex];
 
@@ -373,6 +372,60 @@ inline void dynamicTopoFvMesh::meshEdgeLengthScale
         }
 
         scale /= 2.0;
+
+        // If curvature-based refinement is requested,
+        // Test the variation in face-normal directions.
+        if (curvaturePatches_.found(boundaryMesh()[edgePatch].name()))
+        {
+            // Obtain face-normals for both faces.
+            label count = 0;
+            FixedList<vector, 2> fNorm;
+
+            forAll(eFaces, faceI)
+            {
+                if (neighbour_[eFaces[faceI]] == -1)
+                {
+                    // Obtain the normal.
+                    fNorm[count] = triFaceNormal(faces_[eFaces[faceI]]);
+
+                    // Normalize it.
+                    fNorm[count] /= mag(fNorm[count]);
+
+                    count++;
+                }
+            }
+
+            scalar deviation = (fNorm[0] & fNorm[1]);
+
+            if (mag(deviation) < curvatureDeviation_)
+            {
+                // Get the edge-length.
+                scalar length = edgeLength(eIndex);
+
+                if (debug > 2 && self() == 0)
+                {
+                    Info << "Deviation: " << deviation << nl
+                         << "curvatureDeviation: " << curvatureDeviation_
+                         << ", Edge: " << eIndex << ", Length: " << length
+                         << ", Scale: " << scale << nl
+                         << " Half-length: " << (0.5*length) << nl
+                         << " MinRatio: " << (ratioMin()*scale)
+                         << endl;
+                }
+
+                // Would dividing this edge make it too small?
+                if
+                (
+                    ((0.5*length) > (ratioMin()*scale))
+                )
+                {
+                    // Smoosh the return value for edgeBisectCollapse3D
+                    scalar newScale = (length - SMALL)/ratioMax();
+
+                    return newScale;
+                }
+            }
+        }
     }
 
     if (coupledModification_)
@@ -386,6 +439,8 @@ inline void dynamicTopoFvMesh::meshEdgeLengthScale
 
         }
     }
+
+    return scale;
 }
 
 // Check if a given face is a quad
@@ -395,15 +450,14 @@ inline bool dynamicTopoFvMesh::checkQuadFace(const label fIndex)
 }
 
 // Compute the length of an edge
-inline void dynamicTopoFvMesh::edgeLength
+inline scalar dynamicTopoFvMesh::edgeLength
 (
-    const label eIndex,
-    scalar& length
+    const label eIndex
 )
 {
     edge& thisEdge = edges_[eIndex];
 
-    length = mag(points_[thisEdge[1]] - points_[thisEdge[0]]);
+    return mag(points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
 
 // Return the face-stack
