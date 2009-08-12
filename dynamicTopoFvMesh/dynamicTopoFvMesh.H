@@ -161,6 +161,7 @@ class dynamicTopoFvMesh
 
         //- Edge bisection/collapse criteria
         HashList<scalar>    lengthScale_;
+        // HashList<vector>    indicator_;
         scalar              ratioMin_;
         scalar              ratioMax_;
         scalar              growthFactor_;

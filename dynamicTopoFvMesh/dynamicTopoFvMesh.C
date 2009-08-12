@@ -380,6 +380,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 
         // Initialize the lengthScale field
         lengthScale_.setSize(nCells_, 0.0);
+        // indicator_.setSize(nCells_, vector::zero);
     }
 }
 
@@ -3216,15 +3217,17 @@ void dynamicTopoFvMesh::calculateLengthScale()
         label level = 1, visitedCells = 0;
         labelList cellLevels(nCells(),0);
         scalarField lengthScale(nCells(),0.0);
+        // vectorField indicator(nCells(), vector::zero);
 
         // HashSet to keep track of cells in each level
         labelHashSet levelCells;
 
         // Obtain the cellCells addressing list
-        const labelListList& cc = cellCells();
-        const polyBoundaryMesh& boundary = boundaryMesh();
-        const labelList& own = faceOwner();
-        const pointField& pList = points();
+        const labelListList& cc = polyMesh::cellCells();
+        const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+        // const faceList& faces = polyMesh::faces();
+        const labelList& own = polyMesh::faceOwner();
+        const pointField& pList = polyMesh::points();
 
         // Check local coupled patches for fixed length-scales
         if (dict_.subDict("dynamicTopoFvMesh").found("coupledPatches"))
@@ -3288,6 +3291,13 @@ void dynamicTopoFvMesh::calculateLengthScale()
                             fixedPatches_[pName][0].scalarToken()
                            *growthFactor_
                         );
+
+                        // indicator[ownCell] =
+                        // (
+                        //     faces[pStart+faceI].normal(pList)
+                        // );
+
+                        // indicator[ownCell] /= mag(indicator[ownCell]);
 
                         levelCells.insert(ownCell);
 
@@ -3393,6 +3403,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
                         // neighbour length-scales
                         const labelList& ncList = cc[cList[indexI]];
                         scalar sumLength = 0.0;
+                        // vector sumIndicator = vector::zero;
                         label nTouchedNgb = 0;
 
                         forAll(ncList, indexJ)
@@ -3403,11 +3414,15 @@ void dynamicTopoFvMesh::calculateLengthScale()
                             {
                                 sumLength += lengthScale[ncList[indexJ]];
 
+                                // sumIndicator += indicator[ncList[indexJ]];
+
                                 nTouchedNgb++;
                             }
                         }
 
                         sumLength /= nTouchedNgb;
+
+                        // sumIndicator /= nTouchedNgb;
 
                         // Scale the length and assign to this cell
                         scalar sLength = sumLength*growthFactor_;
@@ -3416,6 +3431,8 @@ void dynamicTopoFvMesh::calculateLengthScale()
                                 ? sLength : maxLengthScale_;
 
                         lengthScale[cList[indexI]] = sLength;
+
+                        // indicator[cList[indexI]] = sumIndicator;
 
                         levelCells.insert(cList[indexI]);
 
@@ -4237,15 +4254,225 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                     eBuffer[proc].setSize(2*nRecvEdges[proc], -1);
 
                     // Schedule for receipt.
-                    pRead(proc, pBuffer);
-                    pRead(proc, eBuffer);
+                    pRead(proc, pBuffer[proc]);
+                    pRead(proc, eBuffer[proc]);
+                }
+            }
+
+            // As a master, copy my information to the receive buffer
+            // for spatial comparisons.
+            nRecvPoints[0] = nSendPoints;
+            nRecvEdges[0]  = nSendEdges;
+
+            if (nRecvPoints[0])
+            {
+                // Size the buffer
+                pBuffer[0].setSize(nRecvPoints[0], vector::zero);
+                eBuffer[0].setSize(2*nRecvEdges[0], -1);
+
+                label index = 0;
+
+                forAll(sharedPointsList, pointI)
+                {
+                    pBuffer[0][index++] = points_[sharedPointsList[pointI]];
+                }
+
+                index = 0;
+
+                forAll(sharedEdgesList, edgeI)
+                {
+                    edge& edgeToCheck = edges_[sharedEdgesList[edgeI]];
+
+                    eBuffer[0][index++] = pointMap[edgeToCheck[0]];
+                    eBuffer[0][index++] = pointMap[edgeToCheck[1]];
                 }
             }
 
             // Wait for all transfers to complete.
             waitForBuffers();
 
-            // Perform a geometric comparison of edge-positions.
+            // Global shared edge detection algorithm
+            //  - Performs a geometric comparison of edge-positions.
+            //  - Since this has the potential of being quite a large number,
+            //    perform spatial-binning to minimize the search.
+            //  - As a first-pass, build edge-positions from buffers,
+            //    and determine the bounding-box on-the-fly.
+            //  - Sub-divide the bounding box into regular intervals,
+            //    and bin edge-centres based on computed intervals.
+            //  - Now perform a linear search between points in each bin.
+
+            // Find a bound-box start point.
+            bool foundStart = false;
+            vector minLoc = vector::zero;
+            vector maxLoc = vector::zero;
+
+            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            {
+                if (nRecvPoints[proc])
+                {
+                    // Pick end-points of the first edge.
+                    label start = eBuffer[proc][0];
+                    label end   = eBuffer[proc][1];
+
+                    // Assign the centre.
+                    minLoc = 0.5*(pBuffer[proc][start] + pBuffer[proc][end]);
+                    maxLoc = 0.5*(pBuffer[proc][start] + pBuffer[proc][end]);
+
+                    foundStart = true;
+                    break;
+                }
+
+                if (foundStart)
+                {
+                    break;
+                }
+            }
+
+            label index = 0;
+            labelList edgeStarts(Pstream::nProcs(), 0);
+            Map<labelList> procMap(Pstream::nProcs());
+            pointField eCentre(sum(nRecvEdges));
+
+            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            {
+                if (nRecvPoints[proc])
+                {
+                    for(label edgeI = 0; edgeI < nRecvEdges[proc]; edgeI++)
+                    {
+                        point start = pBuffer[proc][eBuffer[proc][2*edgeI+0]];
+                        point end   = pBuffer[proc][eBuffer[proc][2*edgeI+1]];
+
+                        eCentre[index] = 0.5*(start + end);
+
+                        minLoc = ::Foam::min(minLoc, eCentre[index]);
+                        maxLoc = ::Foam::max(maxLoc, eCentre[index]);
+
+                        index++;
+                    }
+                }
+
+                // Set edge-starts to determine processor IDs
+                if (proc > 0)
+                {
+                    edgeStarts[proc] = edgeStarts[proc-1] + nRecvEdges[proc-1];
+                }
+            }
+
+            List<DynamicList<label> > pointBins(2087, DynamicList<label>(100));
+
+            scalar nD = 10.0;
+            label binSize = pointBins.size();
+
+            // Define a grid-cell size.
+            scalar xL = ::floor((maxLoc.x() - minLoc.x())/nD);
+            scalar yL = ::floor((maxLoc.y() - minLoc.y())/nD);
+            scalar zL = ::floor((maxLoc.z() - minLoc.z())/nD);
+
+            // Loop through all points and bin them.
+            // Hash function taken from:
+            //   Optimized Spatial Hashing for
+            //   Collision Detection of Deformable Objects.
+            //   M.Teschner, B.Heidelberger, M.Muller, D.Pomeranets, M.Gross,
+            //   Proc. Vision, Modeling, Visualization, Nov. 19-21, 2003
+            forAll(eCentre, edgeI)
+            {
+                point& p = eCentre[edgeI];
+
+                // Hash the edge-position.
+                label i = label(::floor(p.x()/xL));
+                label j = label(::floor(p.y()/yL));
+                label k = label(::floor(p.z()/zL));
+
+                label pos = (i*73856093^j*19349663^k*83492791) % binSize;
+
+                // Store the edge index.
+                pointBins[pos].append(edgeI);
+            }
+
+            // Now that points have been grouped together, perform comparisons
+            // between points in the same bin.
+            forAll(pointBins, binI)
+            {
+                DynamicList<label>& bin = pointBins[binI];
+
+                forAll(bin, edgeI)
+                {
+                    forAll(bin, edgeJ)
+                    {
+                        if
+                        (
+                            mag
+                            (
+                                eCentre[bin[edgeI]]
+                              - eCentre[bin[edgeJ]]
+                            ) < gTol_
+                         && (bin[edgeI] != bin[edgeJ])
+                        )
+                        {
+                            // Found a match. Which processor does each
+                            // edge belong to ?
+                            FixedList<label, 2> proc(-1), loc(-1);
+
+                            forAll(edgeStarts, i)
+                            {
+                                if
+                                (
+                                    bin[edgeI] >= edgeStarts[i]
+                                 && bin[edgeI] < edgeStarts[i] + nRecvEdges[i]
+                                )
+                                {
+                                    proc[0] = i;
+                                    loc[0] = bin[edgeI] - edgeStarts[i];
+                                }
+
+                                if
+                                (
+                                    bin[edgeJ] >= edgeStarts[i]
+                                 && bin[edgeJ] < edgeStarts[i] + nRecvEdges[i]
+                                )
+                                {
+                                    proc[1] = i;
+                                    loc[1] = bin[edgeJ] - edgeStarts[i];
+                                }
+
+                                if (proc[0] > 0 && proc[1] > 0)
+                                {
+                                    break;
+                                }
+                            }
+
+                            // Make an entry stating that the specified
+                            // edge talks to the corresponding processor.
+                            forAll(proc, i)
+                            {
+                                if (procMap.found(loc[i]))
+                                {
+                                    label l = -1;
+
+                                    if
+                                    (
+                                       !foundInList
+                                        (
+                                            proc[i],
+                                            procMap[loc[i]],
+                                            l
+                                        )
+                                    )
+                                    {
+                                        // Size up the list.
+                                        sizeUpList(proc[i], procMap[loc[i]]);
+                                    }
+                                }
+                                else
+                                {
+                                    // Copy proc contents.
+                                    procMap.insert(loc[i], proc);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // Send assembled processor sharing info back to slaves.
 
@@ -4287,6 +4514,9 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
                 // Wait for all transfers to complete.
                 waitForBuffers();
+
+                // Analyze edge-sharing info and update patchCoupling.
+
             }
         }
     }
@@ -5250,6 +5480,12 @@ dynamicTopoFvMesh::identifySliverType
 )
 {
     changeMap map;
+
+    // Ensure that this cell actually exists.
+    if (!cells_.found(cIndex))
+    {
+        return map;
+    }
 
     label fourthPoint = -1;
     scalar minDistance = GREAT;

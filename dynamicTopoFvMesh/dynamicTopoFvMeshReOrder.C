@@ -591,8 +591,9 @@ void dynamicTopoFvMesh::reOrderCells()
 
     if (edgeModification_)
     {
-        lengthScale_.clear();
+        lengthScale_.clear(); // indicator_.clear();
         lengthScale_.setSize(nCells_, 0.0);
+        // indicator_.setSize(nCells_, vector::zero);
     }
 
     // Build a cell-cell addressing list
