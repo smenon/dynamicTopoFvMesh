@@ -339,9 +339,12 @@ class dynamicTopoFvMesh
             //- Access
 
                 // Set a new subMesh
-                void setMesh(dynamicTopoFvMesh* mesh)
+                void setMesh(label index, dynamicTopoFvMesh* mesh)
                 {
                     subMesh_.set(mesh);
+
+                    // Modify the subMesh directory as well.
+                    subMesh_().meshSubDir = "proc_" + Foam::name(index);
                 }
 
                 // Access to entity sizes
@@ -374,6 +377,10 @@ class dynamicTopoFvMesh
 
         // Coupled entities to avoid during normal modification
         labelHashSet entitiesToAvoid_;
+
+        // List of points that are required during patchSubMesh creation
+        labelList auxPatches_;
+        labelListList subMeshPoints_;
 
         // Sub-Mesh pointers
         PtrList<patchSubMesh> sendPatchMeshes_;
@@ -1087,14 +1094,15 @@ class dynamicTopoFvMesh
         // Handle topology changes for coupled patches
         void handleCoupledPatches();
 
-        // Build patch sub-meshes for coupled patches
+        // Build patch sub-meshes for processor patches
         void buildPatchSubMeshes();
 
-        // Build patch sub-mesh for a specified coupled patch
+        // Build patch sub-mesh for a specified processor patch
         void buildPatchSubMesh
         (
             const label patchID,
-            patchSubMesh& subMesh
+            patchSubMesh& subMesh,
+            labelHashSet& cellsToAvoid
         );
 
         // Build coupled maps

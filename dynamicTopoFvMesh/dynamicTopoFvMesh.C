@@ -4131,6 +4131,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     if (Pstream::parRun())
     {
         label nProcPatches = 0;
+        labelHashSet neiProcs;
 
         forAll(boundary, patchI)
         {
@@ -4145,6 +4146,11 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
                 patchCoupling_.insert(boundary.size()+neiProcID, patchI);
 
+                if (!neiProcs.found(neiProcID))
+                {
+                    neiProcs.insert(neiProcID);
+                }
+
                 coupledPatchesAbsent = false;
 
                 nProcPatches++;
@@ -4152,16 +4158,16 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
         }
 
         Map<label> pointMap;
-        label nSendPoints = 0, nSendEdges = 0, local = 0;
-        labelList sharedEdgesList(0), sharedPointsList(0);
+        label nSendPoints = 0;
+        labelList sharedPointsList(0);
+        labelList startBuffer(0), procBuffer(0);
 
-        if (nProcPatches >= 2)
+        if (nProcPatches)
         {
-            // This subdomain has multiple processor patches.
-            // Build a list of edges shared by any two of these patches,
+            // This subdomain has processor patches.
+            // Build a list of points on these patches,
             // and send them to the master processor.
-            labelHashSet sharedEdges, sharedPoints;
-            labelList edgePatchInfo(nEdges_, -1);
+            labelHashSet sharedPoints;
 
             forAllIter(Map<label>::iterator, patchCoupling_, patchI)
             {
@@ -4172,49 +4178,13 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
                     for (label i = 0; i < patchSizes_[pID]; i++)
                     {
-                        labelList& fEdges = faceEdges_[i + start];
+                        face& faceToCheck = faces_[i + start];
 
-                        forAll(fEdges, edgeI)
+                        forAll(faceToCheck, pointI)
                         {
-                            if (edgePatchInfo[fEdges[edgeI]] == -1)
+                            if (!sharedPoints.found(faceToCheck[pointI]))
                             {
-                                // Edge hasn't been touched before.
-                                edgePatchInfo[fEdges[edgeI]] = pID;
-                            }
-                            else
-                            if (edgePatchInfo[fEdges[edgeI]] != pID)
-                            {
-                                // This has been touched by another patch.
-                                // Add this edge to the shared edge list.
-                                if (!sharedEdges.found(fEdges[edgeI]))
-                                {
-                                    sharedEdges.insert(fEdges[edgeI]);
-
-                                    // Add its points as well.
-                                    edge& edgeToCheck = edges_[fEdges[edgeI]];
-
-                                    if (!sharedPoints.found(edgeToCheck[0]))
-                                    {
-                                        sharedPoints.insert(edgeToCheck[0]);
-
-                                        pointMap.insert
-                                        (
-                                            edgeToCheck[0],
-                                            local++
-                                        );
-                                    }
-
-                                    if (!sharedPoints.found(edgeToCheck[1]))
-                                    {
-                                        sharedPoints.insert(edgeToCheck[1]);
-
-                                        pointMap.insert
-                                        (
-                                            edgeToCheck[1],
-                                            local++
-                                        );
-                                    }
-                                }
+                                sharedPoints.insert(faceToCheck[pointI]);
                             }
                         }
                     }
@@ -4223,52 +4193,46 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
             // Prepare send sizes.
             nSendPoints = sharedPoints.size();
-            nSendEdges  = sharedEdges.size();
 
             // Extract lists from HashSets
             sharedPointsList = sharedPoints.toc();
-            sharedEdgesList  = sharedEdges.toc();
+
+            // Build the pointMap for later use.
+            forAll(sharedPointsList, pointI)
+            {
+                pointMap.insert(pointI, sharedPointsList[pointI]);
+            }
         }
 
         if (Pstream::master())
         {
-            // Entity sizes
             labelList nRecvPoints(Pstream::nProcs(), 0);
-            labelList nRecvEdges(Pstream::nProcs(), 0);
-
-            // Buffers
             List<pointField> pBuffer(Pstream::nProcs());
-            labelListList eBuffer(Pstream::nProcs());
 
-            // Loop through all slave processors and receive edge-info.
+            // Loop through all slave processors and receive info.
             for (label proc = 1; proc < Pstream::nProcs(); proc++)
             {
                 // How many entities am I going to be receiving?
                 pRead(proc, nRecvPoints[proc]);
-                pRead(proc, nRecvEdges[proc]);
 
                 if (nRecvPoints[proc])
                 {
                     // Size the buffer
                     pBuffer[proc].setSize(nRecvPoints[proc], vector::zero);
-                    eBuffer[proc].setSize(2*nRecvEdges[proc], -1);
 
                     // Schedule for receipt.
                     pRead(proc, pBuffer[proc]);
-                    pRead(proc, eBuffer[proc]);
                 }
             }
 
             // As a master, copy my information to the receive buffer
             // for spatial comparisons.
             nRecvPoints[0] = nSendPoints;
-            nRecvEdges[0]  = nSendEdges;
 
             if (nRecvPoints[0])
             {
                 // Size the buffer
                 pBuffer[0].setSize(nRecvPoints[0], vector::zero);
-                eBuffer[0].setSize(2*nRecvEdges[0], -1);
 
                 label index = 0;
 
@@ -4276,29 +4240,18 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                 {
                     pBuffer[0][index++] = points_[sharedPointsList[pointI]];
                 }
-
-                index = 0;
-
-                forAll(sharedEdgesList, edgeI)
-                {
-                    edge& edgeToCheck = edges_[sharedEdgesList[edgeI]];
-
-                    eBuffer[0][index++] = pointMap[edgeToCheck[0]];
-                    eBuffer[0][index++] = pointMap[edgeToCheck[1]];
-                }
             }
 
             // Wait for all transfers to complete.
             waitForBuffers();
 
-            // Global shared edge detection algorithm
-            //  - Performs a geometric comparison of edge-positions.
+            // Global shared point detection algorithm
+            //  - Performs a geometric comparison of positions.
             //  - Since this has the potential of being quite a large number,
             //    perform spatial-binning to minimize the search.
-            //  - As a first-pass, build edge-positions from buffers,
-            //    and determine the bounding-box on-the-fly.
+            //  - As a first-pass, determine the bounding-box.
             //  - Sub-divide the bounding box into regular intervals,
-            //    and bin edge-centres based on computed intervals.
+            //    and bin positions based on computed intervals.
             //  - Now perform a linear search between points in each bin.
 
             // Find a bound-box start point.
@@ -4310,13 +4263,9 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             {
                 if (nRecvPoints[proc])
                 {
-                    // Pick end-points of the first edge.
-                    label start = eBuffer[proc][0];
-                    label end   = eBuffer[proc][1];
-
                     // Assign the centre.
-                    minLoc = 0.5*(pBuffer[proc][start] + pBuffer[proc][end]);
-                    maxLoc = 0.5*(pBuffer[proc][start] + pBuffer[proc][end]);
+                    minLoc = pBuffer[proc][0];
+                    maxLoc = pBuffer[proc][0];
 
                     foundStart = true;
                     break;
@@ -4329,110 +4278,116 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             }
 
             label index = 0;
-            labelList edgeStarts(Pstream::nProcs(), 0);
-            Map<labelList> procMap(Pstream::nProcs());
-            pointField eCentre(sum(nRecvEdges));
+            labelList pStarts(Pstream::nProcs(), 0);
+            pointField pLocations(sum(nRecvPoints), vector::zero);
 
             for (label proc = 0; proc < Pstream::nProcs(); proc++)
             {
                 if (nRecvPoints[proc])
                 {
-                    for(label edgeI = 0; edgeI < nRecvEdges[proc]; edgeI++)
+                    for(label pointI = 0; pointI < nRecvPoints[proc]; pointI++)
                     {
-                        point start = pBuffer[proc][eBuffer[proc][2*edgeI+0]];
-                        point end   = pBuffer[proc][eBuffer[proc][2*edgeI+1]];
+                        minLoc = ::Foam::min(minLoc, pBuffer[proc][pointI]);
+                        maxLoc = ::Foam::max(maxLoc, pBuffer[proc][pointI]);
 
-                        eCentre[index] = 0.5*(start + end);
-
-                        minLoc = ::Foam::min(minLoc, eCentre[index]);
-                        maxLoc = ::Foam::max(maxLoc, eCentre[index]);
-
-                        index++;
+                        pLocations[index++] = pBuffer[proc][pointI];
                     }
                 }
 
                 // Set edge-starts to determine processor IDs
                 if (proc > 0)
                 {
-                    edgeStarts[proc] = edgeStarts[proc-1] + nRecvEdges[proc-1];
+                    pStarts[proc] = pStarts[proc-1] + nRecvPoints[proc-1];
                 }
             }
 
-            List<DynamicList<label> > pointBins(2087, DynamicList<label>(100));
+            // Write out received buffers for debugging
+            if (debug > 2)
+            {
+                Info << "nRecvPoints: " << nRecvPoints << endl;
+                Info << "Bounding box max: " << maxLoc << endl;
+                Info << "Bounding box min: " << minLoc << endl;
+            }
 
-            scalar nD = 10.0;
-            label binSize = pointBins.size();
+            labelListList pointBins(997, labelList(0));
 
-            // Define a grid-cell size.
-            scalar xL = ::floor((maxLoc.x() - minLoc.x())/nD);
-            scalar yL = ::floor((maxLoc.y() - minLoc.y())/nD);
-            scalar zL = ::floor((maxLoc.z() - minLoc.z())/nD);
+            label binSize = pointBins.size(), nD = 10;
+
+            // Define an inverse grid-cell size.
+            scalar xL = nD/(maxLoc.x() - minLoc.x());
+            scalar yL = nD/(maxLoc.y() - minLoc.y());
+            scalar zL = nD/(maxLoc.z() - minLoc.z());
 
             // Loop through all points and bin them.
-            // Hash function taken from:
-            //   Optimized Spatial Hashing for
-            //   Collision Detection of Deformable Objects.
-            //   M.Teschner, B.Heidelberger, M.Muller, D.Pomeranets, M.Gross,
-            //   Proc. Vision, Modeling, Visualization, Nov. 19-21, 2003
-            forAll(eCentre, edgeI)
+            forAll(pLocations, pointI)
             {
-                point& p = eCentre[edgeI];
+                // Transform to bounding box minimum
+                point p = pLocations[pointI] - minLoc;
 
-                // Hash the edge-position.
-                label i = label(::floor(p.x()/xL));
-                label j = label(::floor(p.y()/yL));
-                label k = label(::floor(p.z()/zL));
+                // Hash the position.
+                label i = label(p.x()*xL);
+                label j = label(p.y()*yL);
+                label k = label(p.z()*zL);
 
-                label pos = (i*73856093^j*19349663^k*83492791) % binSize;
+                label pos = ((k*nD*nD)+(j*nD)+i) % binSize;
 
-                // Store the edge index.
-                pointBins[pos].append(edgeI);
+                // Store the index.
+                sizeUpList
+                (
+                    pointI,
+                    pointBins[pos]
+                );
             }
+
+            // Mapping between points and processors.
+            Map<labelList> procMap;
 
             // Now that points have been grouped together, perform comparisons
             // between points in the same bin.
             forAll(pointBins, binI)
             {
-                DynamicList<label>& bin = pointBins[binI];
+                labelList& bin = pointBins[binI];
 
-                forAll(bin, edgeI)
+                forAll(bin, pointI)
                 {
-                    forAll(bin, edgeJ)
+                    bool foundAMatch = false;
+
+                    forAll(bin, pointJ)
                     {
                         if
                         (
                             mag
                             (
-                                eCentre[bin[edgeI]]
-                              - eCentre[bin[edgeJ]]
+                                pLocations[bin[pointI]]
+                              - pLocations[bin[pointJ]]
                             ) < gTol_
-                         && (bin[edgeI] != bin[edgeJ])
+                         && (bin[pointI] != bin[pointJ])
                         )
                         {
                             // Found a match. Which processor does each
-                            // edge belong to ?
+                            // point belong to ?
                             FixedList<label, 2> proc(-1), loc(-1);
 
-                            forAll(edgeStarts, i)
+                            forAll(pStarts, i)
                             {
                                 if
                                 (
-                                    bin[edgeI] >= edgeStarts[i]
-                                 && bin[edgeI] < edgeStarts[i] + nRecvEdges[i]
+                                    bin[pointI] >= pStarts[i]
+                                 && bin[pointI] < pStarts[i] + nRecvPoints[i]
                                 )
                                 {
                                     proc[0] = i;
-                                    loc[0] = bin[edgeI] - edgeStarts[i];
+                                    loc[0] = bin[pointI];
                                 }
 
                                 if
                                 (
-                                    bin[edgeJ] >= edgeStarts[i]
-                                 && bin[edgeJ] < edgeStarts[i] + nRecvEdges[i]
+                                    bin[pointJ] >= pStarts[i]
+                                 && bin[pointJ] < pStarts[i] + nRecvPoints[i]
                                 )
                                 {
                                     proc[1] = i;
-                                    loc[1] = bin[edgeJ] - edgeStarts[i];
+                                    loc[1] = bin[pointJ];
                                 }
 
                                 if (proc[0] > 0 && proc[1] > 0)
@@ -4443,24 +4398,31 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
                             // Make an entry stating that the specified
                             // edge talks to the corresponding processor.
-                            forAll(proc, i)
+                            forAll(loc, i)
                             {
                                 if (procMap.found(loc[i]))
                                 {
                                     label l = -1;
 
-                                    if
-                                    (
-                                       !foundInList
-                                        (
-                                            proc[i],
-                                            procMap[loc[i]],
-                                            l
-                                        )
-                                    )
+                                    forAll(proc, j)
                                     {
-                                        // Size up the list.
-                                        sizeUpList(proc[i], procMap[loc[i]]);
+                                        if
+                                        (
+                                           !foundInList
+                                            (
+                                                proc[j],
+                                                procMap[loc[i]],
+                                                l
+                                            )
+                                        )
+                                        {
+                                            // Size up the list.
+                                            sizeUpList
+                                            (
+                                                proc[j],
+                                                procMap[loc[i]]
+                                            );
+                                        }
                                     }
                                 }
                                 else
@@ -4469,54 +4431,195 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                                     procMap.insert(loc[i], proc);
                                 }
                             }
+
+                            foundAMatch = true;
                         }
+                    }
+
+                    if (!foundAMatch)
+                    {
+                        // Should've found at least one match.
+                        FatalErrorIn
+                        (
+                            "dynamicTopoFvMesh::identifyCoupledPatches()"
+                        )
+                            << "Could not match point: "
+                            << pLocations[bin[pointI]]
+                            << abort(FatalError);
                     }
                 }
             }
 
             // Send assembled processor sharing info back to slaves.
 
+            // Size-up buffers first.
+            labelListList labelStarts(Pstream::nProcs());
+            labelListList procInfo(Pstream::nProcs());
+
+            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            {
+                if (nRecvPoints[proc])
+                {
+                    labelStarts[proc].setSize(nRecvPoints[proc], 0);
+
+                    // Count the number of entities that we will be sending.
+                    label j = 0, totalSize = 0, start = pStarts[proc];
+
+                    for (label i = 0; i < nRecvPoints[proc]; i++)
+                    {
+                        totalSize += procMap[i+start].size();
+                    }
+
+                    procInfo[proc].setSize(totalSize, 0);
+
+                    // Now fill the buffer.
+                    for (label i = 0; i < nRecvPoints[proc]; i++)
+                    {
+                        labelList& procList = procMap[i+start];
+
+                        labelStarts[proc][i] = j;
+
+                        forAll(procList, edgeI)
+                        {
+                            procInfo[proc][j++] = procList[edgeI];
+                        }
+                    }
+
+                    if (proc == 0)
+                    {
+                        // As a master, copy my own processor
+                        // sharing info for later analysis.
+                        startBuffer.setSize(nSendPoints, -1);
+                        procBuffer.setSize(totalSize, -1);
+
+                        startBuffer = labelStarts[0];
+                        procBuffer = procInfo[0];
+                    }
+                    else
+                    {
+                        // Send back to the slave.
+                        pWrite(proc, totalSize);
+                        pWrite(proc, labelStarts[proc]);
+                        pWrite(proc, procInfo[proc]);
+                    }
+                }
+            }
+
+            // Wait for all transfers to complete.
+            waitForBuffers();
         }
         else
         {
             // Send number of entities first.
             pWrite(Pstream::masterNo(), nSendPoints);
-            pWrite(Pstream::masterNo(), nSendEdges);
+
+            if (debug > 2)
+            {
+                Pout << "Sending " << nSendPoints << " points. " << endl;
+            }
 
             if (nSendPoints)
             {
                 // Size the buffer and copy info into it.
                 pointField pBuffer(nSendPoints, vector::zero);
-                labelList eBuffer(2*nSendEdges, -1);
 
-                label index = 0;
+                label index = -1, procInfoSize = -1;
+
+                index = 0;
 
                 forAll(sharedPointsList, pointI)
                 {
                     pBuffer[index++] = points_[sharedPointsList[pointI]];
                 }
 
-                index = 0;
-
-                forAll(sharedEdgesList, edgeI)
-                {
-                    edge& edgeToCheck = edges_[sharedEdgesList[edgeI]];
-
-                    eBuffer[index++] = pointMap[edgeToCheck[0]];
-                    eBuffer[index++] = pointMap[edgeToCheck[1]];
-                }
-
                 // Send buffers to the master.
                 pWrite(Pstream::masterNo(), pBuffer);
-                pWrite(Pstream::masterNo(), eBuffer);
 
                 // Receive processor sharing info from the master.
 
+                // How many entities am I going to be receiving?
+                pRead(Pstream::masterNo(), procInfoSize);
+
+                // Size the receive buffer.
+                startBuffer.setSize(nSendPoints, -1);
+                procBuffer.setSize(procInfoSize, -1);
+
+                // Schedule for receipt.
+                pRead(Pstream::masterNo(), startBuffer);
+                pRead(Pstream::masterNo(), procBuffer);
+
                 // Wait for all transfers to complete.
                 waitForBuffers();
+            }
+        }
 
-                // Analyze edge-sharing info and update patchCoupling.
+        auxPatches_.clear();
+        subMeshPoints_.clear();
 
+        Map<labelHashSet> auxPatchPoints;
+
+        forAll(startBuffer, pointI)
+        {
+            label start = startBuffer[pointI];
+
+            label end =
+            (
+                (pointI == (startBuffer.size()-1)) ?
+                procBuffer.size() : startBuffer[pointI+1]
+            );
+
+            for (label i = start; i < end; i++)
+            {
+                if
+                (
+                   !neiProcs.found(procBuffer[i]) &&
+                    procBuffer[i] != Pstream::myProcNo()
+                )
+                {
+                    // This seems to be a point that talks to
+                    // a processor which isn't connected directly
+                    // to this domain; i.e., connected only by points/edges.
+                    // Note the index for patchSubMesh creation.
+
+                    // Was this processor detected before?
+                    if (!auxPatchPoints.found(procBuffer[i]))
+                    {
+                        // Add a new entry.
+                        auxPatchPoints.insert(procBuffer[i], labelHashSet(10));
+                    }
+
+                    // Add this point.
+                    auxPatchPoints[procBuffer[i]].insert(pointMap[pointI]);
+                }
+            }
+        }
+
+        if (auxPatchPoints.size())
+        {
+            // Copy the auxiliary patches.
+            auxPatches_ = auxPatchPoints.toc();
+
+            subMeshPoints_.setSize(auxPatches_.size());
+
+            // Copy the list of points for each auxiliary patch.
+            forAll(auxPatches_, patchI)
+            {
+                subMeshPoints_[patchI].setSize
+                (
+                    auxPatchPoints[auxPatches_[patchI]].size(), -1
+                );
+
+                subMeshPoints_[patchI] =
+                (
+                    auxPatchPoints[auxPatches_[patchI]].toc()
+                );
+
+                // Update patchCoupling as well.
+                patchCoupling_.insert
+                (
+                    boundary.size() + auxPatches_[patchI],
+                    -1
+                );
             }
         }
     }
@@ -4600,12 +4703,12 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     slaveModification_ = false;
 }
 
-// Build patch sub-meshes for coupled patches
+// Build patch sub-meshes for processor patches
 void dynamicTopoFvMesh::buildPatchSubMeshes()
 {
     if (debug)
     {
-        Info << "Building patch sub-meshes for coupled patches...";
+        Info << "Building patch sub-meshes for processor patches...";
     }
 
     const polyBoundaryMesh& boundary = boundaryMesh();
@@ -4627,9 +4730,19 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
     masterToSlave_.setSize(numEntities + 1);
     slaveToMaster_.setSize(numEntities + 1);
 
-    forAllIter(Map<label>, patchCoupling_, patchI)
+    // PatchSubMeshes need to be prepared in ascending
+    // order of neighbouring processors.
+    labelList procOrder = patchCoupling_.toc();
+
+    // Sort the list
+    sort(procOrder);
+
+    // Lists of entities that need to be avoided while building patchSubMeshes.
+    labelHashSet cellsToAvoid;
+
+    forAll(procOrder, procI)
     {
-        label mPatch = patchI.key();
+        label mPatch = procOrder[procI];
 
         if (mPatch >= boundary.size())
         {
@@ -4642,7 +4755,13 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
             {
                 sendPatchMeshes_.set(mPatch, new patchSubMesh());
 
-                buildPatchSubMesh(mPatch, sendPatchMeshes_[mPatch]);
+                // Build the subMesh.
+                buildPatchSubMesh
+                (
+                    mPatch,
+                    sendPatchMeshes_[mPatch],
+                    cellsToAvoid
+                );
 
                 // Send my sub-mesh to the neighbour.
                 pWrite(neiProcNo, sendPatchMeshes_[mPatch].nPoints());
@@ -4707,19 +4826,25 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
     }
 }
 
-// Build patch sub-mesh for a specified coupled patch
+// Build patch sub-mesh for a specified processor patch
 void dynamicTopoFvMesh::buildPatchSubMesh
 (
     const label patchID,
-    patchSubMesh& subMesh
+    patchSubMesh& subMesh,
+    labelHashSet& cellsToAvoid
 )
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
-    // Obtain mesh information
+    // Sanity-check: Is this a legal patch?
+    if (patchID < boundary.size())
+    {
+        FatalErrorIn("dynamicTopoFvMesh::buildPatchSubMesh()")
+            << "Illegal request for buildPatchSubMesh."
+            << abort(FatalError);
+    }
+
     label nP = 0, nE = 0, nF = 0, nC = 0;
-    const labelListList& cCells = cellCells();
-    const labelList& fCells = boundary[patchID].faceCells();
 
     // Obtain references
     Map<label>& rPointMap = subMesh.reversePointMap();
@@ -4732,25 +4857,123 @@ void dynamicTopoFvMesh::buildPatchSubMesh
     Map<label>& faceMap = subMesh.faceMap();
     Map<label>& cellMap = subMesh.cellMap();
 
-    // Allocate the cellMap
-    forAll(fCells, faceI)
+    // Add all cells connected to points on this patch
+    if (patchCoupling_[patchID] == -1)
     {
-        cellMap.insert(nC, fCells[faceI]);
-        rCellMap.insert(fCells[faceI], nC);
-        nC++;
-    }
-
-    forAllIter(Map<label>::iterator, rCellMap, cIter)
-    {
-        const labelList& cList = cCells[cIter.key()];
-
-        forAll(cList, cellI)
+        // This is an auxiliary patch.
+        forAll(auxPatches_, patchI)
         {
-            if (!rCellMap.found(cList[cellI]))
+            if (patchID == auxPatches_[patchI])
             {
-                cellMap.insert(nC, cList[cellI]);
-                rCellMap.insert(cList[cellI], nC);
-                nC++;
+                // Loop through points detected by identifyCoupledPatches
+                forAll(subMeshPoints_[patchI], pointI)
+                {
+                    // Loop through pointEdges for this point.
+                    labelList& pEdges =
+                    (
+                        pointEdges_[subMeshPoints_[patchI][pointI]]
+                    );
+
+                    forAll(pEdges, edgeI)
+                    {
+                        labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+
+                        forAll(eFaces, faceI)
+                        {
+                            label own = owner_[eFaces[faceI]];
+                            label nei = neighbour_[eFaces[faceI]];
+
+                            // Check owner cell
+                            if
+                            (
+                               !rCellMap.found(own) &&
+                               !cellsToAvoid.found(own)
+                            )
+                            {
+                                cellMap.insert(nC, own);
+                                rCellMap.insert(own, nC);
+                                nC++;
+
+                                cellsToAvoid.insert(own);
+                            }
+
+                            // Check neighbour cell
+                            if
+                            (
+                               !rCellMap.found(nei) &&
+                               !cellsToAvoid.found(nei) &&
+                                nei != -1
+                            )
+                            {
+                                cellMap.insert(nC, nei);
+                                rCellMap.insert(nei, nC);
+                                nC++;
+
+                                cellsToAvoid.insert(nei);
+                            }
+                        }
+                    }
+                }
+
+                break;
+            }
+        }
+    }
+    else
+    {
+        // This is a normal processor patch.
+        // Loop through patch faces.
+        label start = patchStarts_[patchCoupling_[patchID]];
+        label size = patchSizes_[patchCoupling_[patchID]];
+
+        for (label i = 0; i < size; i++)
+        {
+            face& faceToCheck = faces_[i+start];
+
+            forAll(faceToCheck, pointI)
+            {
+                // Loop through pointEdges for this point.
+                labelList& pEdges = pointEdges_[faceToCheck[pointI]];
+
+                forAll(pEdges, edgeI)
+                {
+                    labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+
+                    forAll(eFaces, faceI)
+                    {
+                        label own = owner_[eFaces[faceI]];
+                        label nei = neighbour_[eFaces[faceI]];
+
+                        // Check owner cell
+                        if
+                        (
+                           !rCellMap.found(own) &&
+                           !cellsToAvoid.found(own)
+                        )
+                        {
+                            cellMap.insert(nC, own);
+                            rCellMap.insert(own, nC);
+                            nC++;
+
+                            cellsToAvoid.insert(own);
+                        }
+
+                        // Check neighbour cell
+                        if
+                        (
+                           !rCellMap.found(nei) &&
+                           !cellsToAvoid.found(nei) &&
+                            nei != -1
+                        )
+                        {
+                            cellMap.insert(nC, nei);
+                            rCellMap.insert(nei, nC);
+                            nC++;
+
+                            cellsToAvoid.insert(nei);
+                        }
+                    }
+                }
             }
         }
     }
@@ -4992,6 +5215,7 @@ void dynamicTopoFvMesh::buildCoupledMaps
             // Set the autoPtr.
             recvPatchMeshes_[patchI.key()].setMesh
             (
+                0,
                 new dynamicTopoFvMesh
                 (
                     (*this),
