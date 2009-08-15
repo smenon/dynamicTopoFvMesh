@@ -414,10 +414,7 @@ inline scalar dynamicTopoFvMesh::meshEdgeLengthScale
                 }
 
                 // Would dividing this edge make it too small?
-                if
-                (
-                    ((0.5*length) > (ratioMin()*scale))
-                )
+                if ((0.5*length) > (ratioMin()*scale))
                 {
                     // Smoosh the return value for edgeBisectCollapse3D
                     scalar newScale = (length - SMALL)/ratioMax();
@@ -652,14 +649,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
 
         forAllIter(Map<label>, patchCoupling_, patchI)
         {
-            if
-            (
-                patchI.key() < boundary.size() &&
-                patchI() < boundary.size()
-            )
-            {
-                localSlavePatches.insert(patchI());
-            }
+            localSlavePatches.insert(patchI());
         }
 
         // Loop though boundary faces and check whether
@@ -955,9 +945,11 @@ inline void dynamicTopoFvMesh::insertLabel
 
         if
         (
-           ((list[itemI] == labelA && list[nextI] == labelB)
-         || (list[itemI] == labelB && list[nextI] == labelA))
-         && !found
+            (
+                (list[itemI] == labelA && list[nextI] == labelB) ||
+                (list[itemI] == labelB && list[nextI] == labelA)
+            ) &&
+           !found
         )
         {
             found = true;

@@ -328,6 +328,7 @@ class dynamicTopoFvMesh
             pointField  pointBuffer_;
             labelList   edgeBuffer_;
             labelList   faceBuffer_;
+            labelList   faceEdgeBuffer_;
             labelList   cellBuffer_;
             scalarList  lengthBuffer_;
 
@@ -368,6 +369,7 @@ class dynamicTopoFvMesh
                 pointField& pointBuffer() { return pointBuffer_; }
                 labelList& edgeBuffer() { return edgeBuffer_; }
                 labelList& faceBuffer() { return faceBuffer_; }
+                labelList& faceEdgeBuffer() { return faceEdgeBuffer_; }
                 labelList& cellBuffer() { return cellBuffer_; }
                 scalarList& lengthBuffer() { return lengthBuffer_; }
         };
@@ -378,8 +380,10 @@ class dynamicTopoFvMesh
         // Coupled entities to avoid during normal modification
         labelHashSet entitiesToAvoid_;
 
+        // List of processors that this domain talks to
+        labelList procIndices_;
+
         // List of points that are required during patchSubMesh creation
-        labelList auxPatches_;
         labelListList subMeshPoints_;
 
         // Sub-Mesh pointers
@@ -1097,16 +1101,19 @@ class dynamicTopoFvMesh
         // Build patch sub-meshes for processor patches
         void buildPatchSubMeshes();
 
-        // Build patch sub-mesh for a specified processor patch
+        // Build patch sub-mesh for a specified processor
         void buildPatchSubMesh
         (
-            const label patchID,
+            const label proc,
             patchSubMesh& subMesh,
             labelHashSet& cellsToAvoid
         );
 
-        // Build coupled maps
-        void buildCoupledMaps(bool localOnly);
+        // Build coupled maps for locally coupled patches
+        void buildLocalCoupledMaps();
+
+        // Build coupled maps for coupled processor patches
+        void buildProcCoupledMaps();
 
         // Wait for buffer transfer completion.
         void waitForBuffers();
