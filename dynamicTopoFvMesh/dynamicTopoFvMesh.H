@@ -308,6 +308,7 @@ class dynamicTopoFvMesh
             label    nEdges_;
             label    nFaces_;
             label    nCells_;
+            label    nSharedPoints_;
 
             // Maps for entities
             // - For every local index,
@@ -324,13 +325,18 @@ class dynamicTopoFvMesh
             Map<label> reverseFaceMap_;
             Map<label> reverseCellMap_;
 
+            // Master-Slave mapping
+            Map<label> masterToSlave_;
+            Map<label> slaveToMaster_;
+
             // Buffers
             pointField  pointBuffer_;
+            scalarList  lengthBuffer_;
             labelList   edgeBuffer_;
             labelList   faceBuffer_;
             labelList   faceEdgeBuffer_;
             labelList   cellBuffer_;
-            scalarList  lengthBuffer_;
+            labelList   commonPointBuffer_;
 
         public:
 
@@ -353,6 +359,7 @@ class dynamicTopoFvMesh
                 label& nEdges() { return nEdges_; }
                 label& nFaces() { return nFaces_; }
                 label& nCells() { return nCells_; }
+                label& nSharedPoints() { return nSharedPoints_; }
 
                 // Access to maps
                 Map<label>& pointMap() { return pointMap_; }
@@ -367,11 +374,12 @@ class dynamicTopoFvMesh
 
                 // Access to buffers
                 pointField& pointBuffer() { return pointBuffer_; }
+                scalarList& lengthBuffer() { return lengthBuffer_; }
                 labelList& edgeBuffer() { return edgeBuffer_; }
                 labelList& faceBuffer() { return faceBuffer_; }
                 labelList& faceEdgeBuffer() { return faceEdgeBuffer_; }
                 labelList& cellBuffer() { return cellBuffer_; }
-                scalarList& lengthBuffer() { return lengthBuffer_; }
+                labelList& commonPointBuffer() { return commonPointBuffer_; }
         };
 
         // Coupled patch information
@@ -390,7 +398,7 @@ class dynamicTopoFvMesh
         PtrList<patchSubMesh> sendPatchMeshes_;
         PtrList<patchSubMesh> recvPatchMeshes_;
 
-        // Mapping for coupled patches
+        // Mapping for locally coupled patches
         List<Map<label> > masterToSlave_;
         List<Map<label> > slaveToMaster_;
 
@@ -590,6 +598,15 @@ class dynamicTopoFvMesh
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();
+
+        // Load the mesh-quality metric library
+        void loadMetricLibrary();
+
+        // Initialize the threading environment
+        void initializeThreadingEnvironment
+        (
+            const label specThreads = -1
+        );
 
         // Return a reference to the multiThreader
         const multiThreader& threader() const;
@@ -1078,6 +1095,9 @@ class dynamicTopoFvMesh
 
         // Obtain the maximum coupled patch index
         inline label getMaxCouplingIndex();
+
+        // Read optional dictionary parameters
+        void readOptionalParameters();
 
         // Read edge-modification options from the dictionary
         void readEdgeOptions();

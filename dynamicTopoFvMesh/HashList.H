@@ -131,17 +131,18 @@ class HashList
 public:
 
     // Static data members
+        static const label defaultSize = 2087;
 
     // Constructors
 
         //- Construct null
-        HashList(const label tableSize = 2087);
+        HashList(const label tableSize = defaultSize);
 
         //- Construct given a size and value for all elements
-        HashList(const label, const T&, const label tableSize = 2087);
+        HashList(const label, const T&, const label tableSize = defaultSize);
 
         //- Construct from an existing List<T> structure
-        HashList(const List<T>&, const label tableSize = 2087);
+        HashList(const List<T>&, const label tableSize = defaultSize);
 
         //- Construct as copy
         HashList(const HashList<T>&);
@@ -196,10 +197,15 @@ public:
         // Memory allocation
 
             //- Allocation for a null-constructed object, given size
-            void setSize(const label, const label tableSize = 2087);
+            void setSize(const label, const label tableSize = defaultSize);
 
             //- Allocation for a null-constructed object, given size/value
-            void setSize(const label, const T&, const label tableSize = 2087);
+            void setSize
+            (
+                const label,
+                const T&,
+                const label tableSize = defaultSize
+            );
 
             //- Deletion of an element at the given label
             inline void remove(const label);
