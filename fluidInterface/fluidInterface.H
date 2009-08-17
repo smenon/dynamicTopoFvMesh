@@ -61,9 +61,6 @@ class fluidInterface
         //- Reference to the underlying mesh
         fvMesh& mesh_;
 
-        //- Reference to density field
-        volScalarField& rho_;
-
         //- Reference to the velocity field
         volVectorField& U_;
 
@@ -154,11 +151,19 @@ class fluidInterface
         //- Fluid indicator
         mutable volScalarField* fluidIndicatorPtr_;
 
+        //- Density
+        mutable volScalarField* rhoPtr_;
+
+        //- Viscosity
+        mutable volScalarField* muPtr_;
+
     // Private Member Functions
 
         // Make demand-driven data
 
             void makeFluidIndicator();
+            void makeRho();
+            void makeMu();
             void makeInterpolators();
             void makeControlPoints();
             void makeMotionPointsMask();
@@ -225,7 +230,6 @@ public:
         fluidInterface
         (
             fvMesh& m,
-            volScalarField& rho,
             volVectorField& U,
             volScalarField& p,
             surfaceScalarField& phi
@@ -319,6 +323,12 @@ public:
 
         //- Return an indicator field for two fluids
         const volScalarField& fluidIndicator();
+
+        //- Return the combined density field for two fluids
+        volScalarField& rho();
+
+        //- Return the combined viscosity field for two fluids
+        volScalarField& mu();
 
         //- Adjust the surface-tension for temperature
         void adjustSurfaceTension(const volScalarField& T);

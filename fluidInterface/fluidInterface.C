@@ -48,7 +48,6 @@ Author
 Foam::fluidInterface::fluidInterface
 (
     fvMesh& m,
-    volScalarField& rho,
     volVectorField& U,
     volScalarField& p,
     surfaceScalarField& phi
@@ -66,7 +65,6 @@ Foam::fluidInterface::fluidInterface
         )
     ),
     mesh_(m),
-    rho_(rho),
     U_(U),
     p_(p),
     phi_(phi),
@@ -101,7 +99,9 @@ Foam::fluidInterface::fluidInterface
     ),
     interpolatorABPtr_(NULL),
     interpolatorBAPtr_(NULL),
-    fluidIndicatorPtr_(NULL)
+    fluidIndicatorPtr_(NULL),
+    rhoPtr_(NULL),
+    muPtr_(NULL)
 {
     if (twoFluids_)
     {
@@ -153,6 +153,8 @@ Foam::fluidInterface::~fluidInterface()
 void Foam::fluidInterface::clearOut()
 {
     deleteDemandDrivenData(fluidIndicatorPtr_);
+    deleteDemandDrivenData(rhoPtr_);
+    deleteDemandDrivenData(muPtr_);
     deleteDemandDrivenData(interpolatorABPtr_);
     deleteDemandDrivenData(interpolatorBAPtr_);
     deleteDemandDrivenData(displacementPtr_);
@@ -462,6 +464,70 @@ void Foam::fluidInterface::makeFluidIndicator()
     }
 
     fluidIndicator.correctBoundaryConditions();
+}
+
+void Foam::fluidInterface::makeRho()
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (rhoPtr_)
+    {
+        FatalErrorIn("fluidInterface::makeRho()")
+            << "rho already exists"
+            << abort(FatalError);
+    }
+
+    rhoPtr_ = new volScalarField
+    (
+        IOobject
+        (
+            "rho",
+            mesh().time().timeName(),
+            mesh(),
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        mesh(),
+        dimensionedScalar("0", dimMass/dimVolume, 0)
+    );
+
+    volScalarField& rho = *rhoPtr_;
+
+    rho = (fluidIndicator()*(rhoFluidA() - rhoFluidB()) + rhoFluidB());
+
+    rho.correctBoundaryConditions();
+}
+
+void Foam::fluidInterface::makeMu()
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (muPtr_)
+    {
+        FatalErrorIn("fluidInterface::makeMu()")
+            << "mu already exists"
+            << abort(FatalError);
+    }
+
+    muPtr_ = new volScalarField
+    (
+        IOobject
+        (
+            "mu",
+            mesh().time().timeName(),
+            mesh(),
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        mesh(),
+        dimensionedScalar("0", dimPressure*dimTime, 0)
+    );
+
+    volScalarField& mu = *muPtr_;
+
+    mu = (fluidIndicator()*(muFluidA() - muFluidB()) + muFluidB());
+
+    mu.correctBoundaryConditions();
 }
 
 void Foam::fluidInterface::makeInterpolators()
@@ -1129,6 +1195,26 @@ const volScalarField& Foam::fluidInterface::fluidIndicator()
     return *fluidIndicatorPtr_;
 }
 
+volScalarField& Foam::fluidInterface::rho()
+{
+    if (!rhoPtr_)
+    {
+        makeRho();
+    }
+
+    return *rhoPtr_;
+}
+
+volScalarField& Foam::fluidInterface::mu()
+{
+    if (!muPtr_)
+    {
+        makeMu();
+    }
+
+    return *muPtr_;
+}
+
 //- Return reference to interpolator (A to B)
 const patchToPatchInterpolation& Foam::fluidInterface::interpolatorAB()
 {
@@ -1536,6 +1622,7 @@ void Foam::fluidInterface::updatePressure()
     p_.boundaryField()[aPatchID()] == pA;
 }
 
+
 //- Update velocity boundary conditions
 void Foam::fluidInterface::updateVelocity()
 {
@@ -1620,7 +1707,7 @@ void Foam::fluidInterface::updateVelocity()
 
         U_.boundaryField()[bPatchID()] ==
             interpolatorAB().faceInterpolate(UtFs)
-          + nB*fvc::meshPhi(rho_,U_)().boundaryField()[bPatchID()]/
+          + nB*fvc::meshPhi(rho(),U_)().boundaryField()[bPatchID()]/
             mesh().boundary()[bPatchID()].magSf();
 
         // Update fixedGradient boundary condition on patch A

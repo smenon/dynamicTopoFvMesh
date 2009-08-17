@@ -54,55 +54,7 @@ int main(int argc, char *argv[])
 #   include "initTotalVolume.H"
 #   include "createFields.H"
 
-    volScalarField rho
-    (
-        IOobject
-        (
-            "rho",
-            runTime.timeName(),
-            mesh,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
-        ),
-        mesh,
-        dimensionedScalar("0", dimMass/dimVolume, 0)
-    );
-
-    volScalarField mu
-    (
-        IOobject
-        (
-            "mu",
-            runTime.timeName(),
-            mesh,
-            IOobject::NO_READ,
-            IOobject::AUTO_WRITE
-        ),
-        mesh,
-        dimensionedScalar("0", dimPressure*dimTime, 0)
-    );
-
-    fluidInterface interface(mesh, rho, U, p, phi);
-
-    mu =
-    (
-        interface.fluidIndicator()*
-        (
-            interface.muFluidA()
-          - interface.muFluidB()
-        )
-      + interface.muFluidB()
-    );
-
-    rho =
-    (
-        interface.fluidIndicator()*
-        (
-              interface.rhoFluidA()
-            - interface.rhoFluidB()
-        )
-      + interface.rhoFluidB()
-    );
+    fluidInterface interface(mesh, U, p, phi);
 
     Info<< "Reading field rUA if present\n" << endl;
     volScalarField rUA
@@ -115,7 +67,7 @@ int main(int argc, char *argv[])
             IOobject::READ_IF_PRESENT,
             IOobject::AUTO_WRITE
         ),
-        runTime.deltaT()/rho
+        runTime.deltaT()/interface.rho()
     );
 
     if (interface.twoFluids())
@@ -168,13 +120,13 @@ int main(int argc, char *argv[])
             interface.updateBoundaryConditions();
 
             // Make the fluxes relative to the mesh motion
-            fvc::makeRelative(phi, rho, U);
+            fvc::makeRelative(phi, interface.rho(), U);
 
             fvVectorMatrix UEqn
             (
-                fvm::ddt(rho, U)
-              + fvm::div(fvc::interpolate(rho)*phi, U)
-              - fvm::laplacian(mu, U)
+                fvm::ddt(interface.rho(), U)
+              + fvm::div(fvc::interpolate(interface.rho())*phi, U)
+              - fvm::laplacian(interface.mu(), U)
             );
 
             solve(UEqn == -fvc::grad(p));
@@ -218,7 +170,7 @@ int main(int argc, char *argv[])
 #               include "continuityErrs.H"
 
                 // Make the fluxes relative
-                fvc::makeRelative(phi, rho, U);
+                fvc::makeRelative(phi, interface.rho(), U);
 
                 U -= rUA*fvc::grad(p);
                 U.correctBoundaryConditions();
@@ -230,7 +182,7 @@ int main(int argc, char *argv[])
         }
 
         // Make the fluxes absolute
-        fvc::makeAbsolute(phi, rho, U);
+        fvc::makeAbsolute(phi, interface.rho(), U);
 
         bool meshChanged = mesh.updateTopology();
 
@@ -246,28 +198,6 @@ int main(int argc, char *argv[])
 
             // Update the motion solver
             mPtr->updateMesh(mesh.meshMap());
-
-            // Update viscosity with the new fluid indicator
-            mu =
-            (
-                interface.fluidIndicator()*
-                (
-                    interface.muFluidA()
-                  - interface.muFluidB()
-                )
-              + interface.muFluidB()
-            );
-
-            // Update density with the new fluid indicator
-            rho =
-            (
-                interface.fluidIndicator()*
-                (
-                      interface.rhoFluidA()
-                    - interface.rhoFluidB()
-                )
-              + interface.rhoFluidB()
-            );
         }
 
         Info << "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
