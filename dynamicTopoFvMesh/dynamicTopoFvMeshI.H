@@ -506,7 +506,7 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
         label tID = 1;
 
         // For coupled meshes, avoid certain edges.
-        if (patchCoupling_.size())
+        if (patchCoupling_.size() || procIndices_.size())
         {
             for
             (
@@ -541,7 +541,7 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
     else
     {
         // For coupled meshes, avoid certain edges.
-        if (patchCoupling_.size())
+        if (patchCoupling_.size() || procIndices_.size())
         {
             for
             (
@@ -583,9 +583,9 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
     // they belong to master/slave coupled patches.
     for
     (
-        HashList<face>::iterator faceI = faces_(faces_.lastIndex());
-        faceI.index() >= nOldInternalFaces_;
-        faceI--
+        HashList<face>::iterator faceI = faces_(nOldInternalFaces_);
+        faceI != faces_.end();
+        faceI++
     )
     {
         label pIndex = whichPatch(faceI.index());
@@ -656,9 +656,9 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
         // they belong to master/slave coupled patches.
         for
         (
-            HashList<face>::iterator faceI = faces_(faces_.lastIndex());
-            faceI.index() >= nOldInternalFaces_;
-            faceI--
+            HashList<face>::iterator faceI = faces_(nOldInternalFaces_);
+            faceI != faces_.end();
+            faceI++
         )
         {
             label pIndex = whichPatch(faceI.index());
@@ -715,6 +715,20 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
             }
         }
     }
+}
+
+// Check whether the specified edge is a coupled master edge.
+inline bool dynamicTopoFvMesh::isCoupledMaster
+(
+    const label eIndex
+)
+{
+    if (!coupledModification_)
+    {
+        return true;
+    }
+
+    return locallyCoupledEdge(eIndex);
 }
 
 // Initialize face-stacks
@@ -1130,6 +1144,29 @@ inline void dynamicTopoFvMesh::computeMinQuality
     // Ensure that the mesh is valid
     if (minQuality < 0.0)
     {
+        if (debug > 3)
+        {
+            // Write out cells for post processing.
+            labelHashSet iCells;
+
+            labelList& eFaces = edgeFaces_[eIndex];
+
+            forAll(eFaces, faceI)
+            {
+                if (!iCells.found(owner_[eFaces[faceI]]))
+                {
+                    iCells.insert(owner_[eFaces[faceI]]);
+                }
+
+                if (!iCells.found(neighbour_[eFaces[faceI]]))
+                {
+                    iCells.insert(neighbour_[eFaces[faceI]]);
+                }
+            }
+
+            writeVTK(Foam::name(eIndex) + "_inverted", iCells.toc());
+        }
+
         FatalErrorIn("dynamicTopoFvMesh::computeMinQuality()")
             << "Encountered negative cell-quality!" << nl
             << "Edge: " << eIndex << ": " << edgeToCheck << nl
@@ -1178,7 +1215,8 @@ inline bool dynamicTopoFvMesh::locallyCoupledFace
 // Method to determine whether the master edge is locally coupled.
 inline bool dynamicTopoFvMesh::locallyCoupledEdge
 (
-    const label eIndex
+    const label eIndex,
+    bool checkSlaves
 )
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
@@ -1204,6 +1242,18 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
             if (patchCoupling_.found(patch))
             {
                 foundPatch = true;
+            }
+
+            if (checkSlaves)
+            {
+                // Check on slave patches as well.
+                forAllIter(Map<label>::iterator, patchCoupling_, iterI)
+                {
+                    if (iterI() == patch)
+                    {
+                        foundPatch = true;
+                    }
+                }
             }
         }
     }

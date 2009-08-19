@@ -1085,7 +1085,11 @@ class dynamicTopoFvMesh
         inline bool locallyCoupledFace(const label fIndex);
 
         // Method to determine whether the master edge is locally coupled
-        inline bool locallyCoupledEdge(const label eIndex);
+        inline bool locallyCoupledEdge
+        (
+            const label eIndex,
+            bool checkSlaves = false
+        );
 
         // Method to determine whether the master face is on a processor
         inline bool processorCoupledFace(const label fIndex);
@@ -1114,6 +1118,9 @@ class dynamicTopoFvMesh
         // Build a list of entities that need to be avoided
         // by regular topo-changes.
         inline void buildEntitiesToAvoid();
+
+        // Check whether the specified edge is a coupled master edge.
+        inline bool isCoupledMaster(const label eIndex);
 
         // Handle topology changes for coupled patches
         void handleCoupledPatches();

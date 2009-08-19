@@ -1734,9 +1734,9 @@ void dynamicTopoFvMesh::swap32
 
                 for
                 (
-                    HashList<edge>::iterator edgeI = edges_(edges_.lastIndex());
-                    edgeI.index() >= nOldInternalEdges_;
-                    edgeI--
+                    HashList<edge>::iterator edgeI = edges_(nOldInternalEdges_);
+                    edgeI != edges_.end();
+                    edgeI++
                 )
                 {
                     // Get the centre.
@@ -1745,7 +1745,11 @@ void dynamicTopoFvMesh::swap32
                         0.5*(points_[edgeI()[0]] + points_[edgeI()[1]])
                     );
 
-                    if (mag(mCentre - centre) < gTol_)
+                    if
+                    (
+                        (mag(mCentre - centre) < gTol_) &&
+                        (edgeI.index() != newEdgeIndex)
+                    )
                     {
                         masterToSlave_[edgePatch].insert
                         (

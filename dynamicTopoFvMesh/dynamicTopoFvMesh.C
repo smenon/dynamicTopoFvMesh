@@ -1169,6 +1169,14 @@ label dynamicTopoFvMesh::insertEdge
         // Don't add those either.
         if (!(coupledModification_ && patch == -1))
         {
+            if (debug > 2)
+            {
+                Info << "Adding edge: "
+                     << newEdgeIndex
+                     << " to stack: "
+                     << self() << endl;
+            }
+
             edgeStack(self()).push(newEdgeIndex);
         }
     }
@@ -1849,21 +1857,21 @@ void dynamicTopoFvMesh::initTables
     }
 
     // Size all elements by default.
-    label numIndicies = -1;
+    label numIndices = -1;
 
     if (coupledModification_)
     {
-        numIndicies = getMaxCouplingIndex();
+        numIndices = getMaxCouplingIndex() + 1;
     }
     else
     {
-        numIndicies = 1;
+        numIndices = 1;
     }
 
-    m.setSize(numIndicies, -1);
-    Q.setSize(numIndicies);
-    K.setSize(numIndicies);
-    triangulations.setSize(numIndicies);
+    m.setSize(numIndices, -1);
+    Q.setSize(numIndices);
+    K.setSize(numIndices);
+    triangulations.setSize(numIndices);
 
     forAll(Q, indexI)
     {
@@ -2050,7 +2058,7 @@ bool dynamicTopoFvMesh::fillTables
             coupledModification_ = false;
 
             // Recursively call for the slave edge.
-            bool success = fillTables(eIndex, m, Q, K, triangulations, 1);
+            bool success = fillTables(slaveIndex, m, Q, K, triangulations, 1);
 
             // Turn it back on.
             coupledModification_ = true;
@@ -2140,6 +2148,12 @@ bool dynamicTopoFvMesh::removeEdgeFlips
                 }
             }
 
+            if (debug > 2)
+            {
+                Info << nl << "Removing slave edge: " << slaveIndex
+                     << " for master edge: " << eIndex << endl;
+            }
+
             // Turn off switch temporarily.
             coupledModification_ = false;
             slaveModification_ = true;
@@ -2154,6 +2168,11 @@ bool dynamicTopoFvMesh::removeEdgeFlips
             // Bail out if the slave failed.
             if (!success)
             {
+                // Reset all triangulations and bail out
+                triangulations[checkIndex][0] = -1;
+                triangulations[checkIndex][1] = -1;
+                triangulations[checkIndex][2] = -1;
+
                 return false;
             }
         }
@@ -2362,6 +2381,7 @@ label dynamicTopoFvMesh::identify32Swap
     }
 
     // Could not find an intersecting triangulation
+    /*
     if (debug > 1)
     {
         Info << "Hull Vertices: " << endl;
@@ -2381,6 +2401,7 @@ label dynamicTopoFvMesh::identify32Swap
             << points_[edgeToCheck[1]] << nl
             << abort(FatalError);
     }
+    */
 
     return -1;
 }
@@ -5223,15 +5244,19 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
         forAll(mCentres, edgeI)
         {
-            // bool matched = false;
-            // scalar minDistance = GREAT;
+#           ifdef FULLDEBUG
+            bool matched = false;
+            scalar minDistance = GREAT;
+#           endif
 
             forAll(sCentres, edgeJ)
             {
                 scalar distance = mag(mCentres[edgeI] - sCentres[edgeJ]);
 
-                // minDistance = minDistance < distance
-                //             ? minDistance : distance;
+#               ifdef FULLDEBUG
+                minDistance = minDistance < distance
+                            ? minDistance : distance;
+#               endif
 
                 if (distance < gTol_)
                 {
@@ -5248,7 +5273,9 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                         mEdges[edgeI]
                     );
 
-                    // matched = true;
+#                   ifdef FULLDEBUG
+                    matched = true;
+#                   endif
 
                     nMatchedEdges++;
 
@@ -5256,7 +5283,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 }
             }
 
-            /*
+#           ifdef FULLDEBUG
             if (!matched)
             {
                 FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
@@ -5264,7 +5291,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     << gTol_ << nl << " Missed by: " << minDistance
                     << abort(FatalError);
             }
-            */
+#           endif
         }
 
         // Make sure we were successful.
