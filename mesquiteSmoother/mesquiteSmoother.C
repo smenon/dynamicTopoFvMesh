@@ -174,6 +174,80 @@ void Foam::mesquiteSmoother::readOptions()
         {
             surfInterval_ = readLabel(lookup("surfInterval"));
         }
+
+        // Check if coupled patches exist.
+        if (found("coupledPatches"))
+        {
+            dictionary coupledPatches = subDict("coupledPatches");
+
+            const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+            // Determine master and slave patches
+            wordList masterPatches = coupledPatches.toc();
+
+            forAll(masterPatches, wordI)
+            {
+                // Lookup the slave patch
+                word masterPatch = masterPatches[wordI];
+                word slavePatch  = coupledPatches.lookup(masterPatch);
+
+                // Determine patch indices
+                label mPatch = -1, sPatch = -1;
+
+                forAll(boundary,patchI)
+                {
+                    if (boundary[patchI].name() == masterPatch)
+                    {
+                        mPatch = patchI;
+                    }
+
+                    if (boundary[patchI].name() == slavePatch)
+                    {
+                        sPatch = patchI;
+                    }
+                }
+
+                // It is considered an error to have slave-patches
+                // on the slip-patches list.
+                if (slipPatchIDs_.found(sPatch))
+                {
+                    FatalErrorIn
+                    (
+                        "mesquiteSmoother::readOptions()"
+                    )
+                        << " Slave Patch: " << slavePatch << nl
+                        << " is specified in the slip-patches list." << nl
+                        << " Please remove the entry."
+                        << abort(FatalError);
+                }
+
+                if (mPatch == -1 && sPatch == -1)
+                {
+                    continue;
+                }
+
+                // Add to the list if entries are legitimate
+                if
+                (
+                    mPatch != sPatch &&
+                    boundary[mPatch].size() == boundary[sPatch].size()
+                )
+                {
+                    patchCoupling_.insert(mPatch, sPatch);
+                }
+                else
+                {
+                    FatalErrorIn
+                    (
+                        "mesquiteSmoother::readOptions()"
+                    )
+                        << " Coupled patches are wrongly specified." << nl
+                        << " Master: " << mPatch << ":" << masterPatch << nl
+                        << " Slave: " << sPatch << ":" << slavePatch << nl
+                        << abort(FatalError);
+                }
+            }
+        }
     }
 
     Mesquite::MsqError err;
@@ -284,7 +358,7 @@ void Foam::mesquiteSmoother::readOptions()
     label numTries = 0;
     label ofSelection = ofTable[ofType];
     FixedList<label, 2> types(-1);
-    
+
     // Check if a composite function is requested
     if (ofSelection == 0 || ofSelection == 1)
     {
@@ -936,11 +1010,11 @@ void Foam::mesquiteSmoother::initArrays()
         fixFlags_[pointI] = 0;
     }
 
-    const polyBoundaryMesh& bdyMesh = mesh().boundaryMesh();
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
-    forAll(bdyMesh, patchI)
+    forAll(boundary, patchI)
     {
-        const labelList& meshPointLabels = bdyMesh[patchI].meshPoints();
+        const labelList& meshPointLabels = boundary[patchI].meshPoints();
 
         forAll(meshPointLabels, pointI)
         {
@@ -950,9 +1024,6 @@ void Foam::mesquiteSmoother::initArrays()
 
     if (surfaceSmoothing_)
     {
-        // Need to prepare pNormals for boundaries
-        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-
         // Extract the patch list
         pIDs_ = slipPatchIDs_.toc();
 
@@ -977,6 +1048,60 @@ void Foam::mesquiteSmoother::initArrays()
 
             // Set offsets
             offsets_[patchI + 1] = totalSize;
+        }
+
+        // Build coupling maps.
+        if (patchCoupling_.size())
+        {
+            masterToSlave_.setSize(boundary.size());
+
+            const pointField& points = mesh().points();
+
+            forAllIter(Map<label>, patchCoupling_, patchI)
+            {
+                const labelList& mLabels = boundary[patchI.key()].meshPoints();
+                const labelList& sLabels = boundary[patchI()].meshPoints();
+
+                label nMatchedPoints = 0;
+
+                forAll(mLabels, pointI)
+                {
+                    forAll(sLabels, pointJ)
+                    {
+                        if
+                        (
+                            mag
+                            (
+                                points[mLabels[pointI]]
+                              - points[sLabels[pointJ]]
+                            ) < 1e-20
+                        )
+                        {
+                            // Add a map entry
+                            masterToSlave_[patchI.key()].insert
+                            (
+                                mLabels[pointI],
+                                sLabels[pointJ]
+                            );
+
+                            nMatchedPoints++;
+
+                            break;
+                        }
+                    }
+                }
+
+                // Make sure we were successful.
+                if (nMatchedPoints != mLabels.size())
+                {
+                    FatalErrorIn("mesquiteSmoother::initArrays()")
+                        << " Failed to match all points." << nl
+                        << " Number of points required for match: "
+                        << mLabels.size() << nl
+                        << " Number of matched edges: " << nMatchedPoints
+                        << abort(FatalError);
+                }
+            }
         }
 
         // Initialize CG variables
@@ -1007,10 +1132,10 @@ void Foam::mesquiteSmoother::A
         forAll(edges, edgeI)
         {
             gradEdgeV_[patchI][edgeI] =
-                (
-                    p[edges[edgeI][1] + offsets_[patchI]]
-                  - p[edges[edgeI][0] + offsets_[patchI]]
-                );
+            (
+                p[edges[edgeI][1] + offsets_[patchI]]
+              - p[edges[edgeI][0] + offsets_[patchI]]
+            );
         }
     }
 
@@ -1048,10 +1173,13 @@ void Foam::mesquiteSmoother::applyBCs
         forAll(pNormals_[patchI], pointI)
         {
             const vector& n = pNormals_[patchI][pointI];
+
             field[pointI + offsets_[patchI]] -=
-                ((field[pointI + offsets_[patchI]] & n)*n);
+            (
+                (field[pointI + offsets_[patchI]] & n)*n
+            );
         }
-        
+
         // Blank out residuals for bounding curves
         for
         (
@@ -1207,7 +1335,7 @@ void Foam::mesquiteSmoother::smoothSurfaces()
         forAll(pIDs_, patchI)
         {
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
-            
+
             forAll(meshPts,pointI)
             {
                 xV_[pointI + offsets_[patchI]] = refPoints_[meshPts[pointI]];
@@ -1228,6 +1356,23 @@ void Foam::mesquiteSmoother::smoothSurfaces()
             forAll(meshPts,pointI)
             {
                 refPoints_[meshPts[pointI]] = xV_[pointI + offsets_[patchI]];
+            }
+        }
+
+        // Update coupled patches
+        if (patchCoupling_.size())
+        {
+            forAllIter(Map<label>, patchCoupling_, patchI)
+            {
+                const labelList& meshPts = boundary[patchI.key()].meshPoints();
+
+                forAll(meshPts,pointI)
+                {
+                    refPoints_[masterToSlave_[patchI.key()][meshPts[pointI]]] =
+                    (
+                        refPoints_[meshPts[pointI]]
+                    );
+                }
             }
         }
     }
@@ -1319,7 +1464,7 @@ void Foam::mesquiteSmoother::solve()
         nCells_,                   // Number of elements
         Mesquite::TETRAHEDRON,     // Element type
         cellToNode_,               // Connectivity
-        false,                     // C-style array indexing
+        false,                     // Fortran-style array indexing
         4                          // Number of nodes per element
     );
 
@@ -1392,6 +1537,8 @@ void Foam::mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
         pV_.clear();
         rV_.clear();
         wV_.clear();
+
+        masterToSlave_.clear();
 
         localPts_.clear();
         gradEdgeV_.clear();

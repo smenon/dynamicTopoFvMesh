@@ -38,9 +38,14 @@ SourceFiles
 
 #include "motionSolver.H"
 #include "Time.H"
+#include "Map.H"
 #include "Switch.H"
 #include "pointIOField.H"
 #include "labelHashSet.H"
+
+// Have gcc ignore certain warnings while including mesquite headers
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wempty-body"
 #include "Mesquite_all_headers.hpp"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -93,7 +98,7 @@ protected:
 
     //- Flag array for vertices (fixed/free)
     mutable int* fixFlags_;
-    
+
     //- Reference points
     mutable pointIOField refPoints_;
 
@@ -129,6 +134,12 @@ protected:
     List<vectorField> pNormals_;
     List<vectorField> gradEdgeV_;
     List<vectorField> localPts_;
+
+    //- Explicit patch coupling for surface smoothing
+    Map<label> patchCoupling_;
+
+    // Mapping for locally coupled patches
+    List<Map<label> > masterToSlave_;
 
     vectorField bV_;
     vectorField xV_;
@@ -178,7 +189,7 @@ protected:
 
     // Prepare point-normals with updated point positions
     void preparePointNormals();
-    
+
 public:
 
     //- Runtime type information
@@ -206,8 +217,8 @@ public:
         }
 
         //- Provide new points for motion.  Solves for motion
-        virtual tmp<pointField> newPoints();        
-        
+        virtual tmp<pointField> newPoints();
+
         //- Return point location obtained from the current motion field
         virtual tmp<pointField> curPoints() const;
 

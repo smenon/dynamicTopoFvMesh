@@ -3091,11 +3091,11 @@ void dynamicTopoFvMesh::calculateLengthScale()
         const pointField& pList = polyMesh::points();
 
         // Check local coupled patches for fixed length-scales
-        if (dict_.subDict("dynamicTopoFvMesh").found("coupledPatches"))
+        if (dict_.found("coupledPatches"))
         {
             dictionary coupledPatches =
             (
-                dict_.subDict("dynamicTopoFvMesh").subDict("coupledPatches")
+                dict_.subDict("coupledPatches")
             );
 
             // Determine master and slave patches
@@ -4172,11 +4172,11 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     const polyBoundaryMesh& boundary = boundaryMesh();
 
     // Check if patches are explicitly coupled
-    if (dict_.subDict("dynamicTopoFvMesh").found("coupledPatches"))
+    if (dict_.found("coupledPatches"))
     {
         dictionary coupledPatches =
         (
-            dict_.subDict("dynamicTopoFvMesh").subDict("coupledPatches")
+            dict_.subDict("coupledPatches")
         );
 
         // Determine master and slave patches
