@@ -720,9 +720,6 @@ void dynamicTopoFvMesh::swap23
     //      [5] Add three new cells
     //      Update faceEdges, edgeFaces and edgePoints information
 
-    // Figure out which edge this is...
-    label tIndex = self();
-
     // Obtain edge reference
     edge& edgeToCheck = edges_[eIndex];
 
@@ -740,6 +737,18 @@ void dynamicTopoFvMesh::swap23
         Info << endl;
         Info << "== Swapping 2-3 ==" << endl;
         Info << "Edge: " << eIndex << ": " << edgeToCheck << endl;
+
+        label bPatch = whichEdgePatch(eIndex);
+
+        if (bPatch == -1)
+        {
+            Info << "Patch: Internal" << endl;
+        }
+        else
+        {
+            Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
+        }
+
         Info << "Ring: " << hullVertices << endl;
         Info << "Faces: " << hullFaces << endl;
         Info << "Cells: " << hullCells << endl;
@@ -1012,8 +1021,6 @@ void dynamicTopoFvMesh::swap23
                             edgeToCheck[1],
                             edgePoints_[fEdges[edgeI]]
                         );
-
-                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[1])
@@ -1033,8 +1040,6 @@ void dynamicTopoFvMesh::swap23
                             edgeToCheck[1],
                             edgePoints_[fEdges[edgeI]]
                         );
-
-                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[2])
@@ -1054,8 +1059,6 @@ void dynamicTopoFvMesh::swap23
                             edgeToCheck[1],
                             edgePoints_[fEdges[edgeI]]
                         );
-
-                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[4])
@@ -1075,8 +1078,6 @@ void dynamicTopoFvMesh::swap23
                             edgeToCheck[1],
                             edgePoints_[fEdges[edgeI]]
                         );
-
-                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -1132,8 +1133,6 @@ void dynamicTopoFvMesh::swap23
                             edgeToCheck[0],
                             edgePoints_[fEdges[edgeI]]
                         );
-
-                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if (edges_[fEdges[edgeI]] == check[5])
@@ -1153,8 +1152,6 @@ void dynamicTopoFvMesh::swap23
                             edgeToCheck[0],
                             edgePoints_[fEdges[edgeI]]
                         );
-
-                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -1273,8 +1270,6 @@ void dynamicTopoFvMesh::swap23
             otherPoint,
             edgePoints_[fEdges[edgeI]]
         );
-
-        edgeStack(tIndex).push(fEdges[edgeI]);
     }
 
     // Remove the face
@@ -1381,9 +1376,6 @@ void dynamicTopoFvMesh::swap32
     //      edgeToCheck is removed later by swap3DEdges
     //      Update faceEdges, edgeFaces and edgePoints information
 
-    // Figure out which edge this is...
-    label tIndex = self();
-
     // Obtain edge reference
     edge& edgeToCheck = edges_[eIndex];
 
@@ -1433,6 +1425,18 @@ void dynamicTopoFvMesh::swap32
         }
 
         Info << "Edge: " << eIndex << ": " << edgeToCheck << endl;
+
+        label bPatch = whichEdgePatch(eIndex);
+
+        if (bPatch == -1)
+        {
+            Info << "Patch: Internal" << endl;
+        }
+        else
+        {
+            Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
+        }
+
         Info << "Ring: " << hullVertices << endl;
         Info << "Faces: " << hullFaces << endl;
         Info << "Cells: " << hullCells << endl;
@@ -1581,8 +1585,6 @@ void dynamicTopoFvMesh::swap32
                     {
                         bdyFaceEdges[0][nBE[0]++] = fEdges[edgeI];
                         bdyEdges[0][nBEdge[0]++] = fEdges[edgeI];
-
-                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
 
                     if
@@ -1593,8 +1595,6 @@ void dynamicTopoFvMesh::swap32
                     {
                         bdyFaceEdges[1][nBE[1]++] = fEdges[edgeI];
                         bdyEdges[1][nBEdge[1]++] = fEdges[edgeI];
-
-                        edgeStack(tIndex).push(fEdges[edgeI]);
                     }
                 }
             }
@@ -1881,8 +1881,6 @@ void dynamicTopoFvMesh::swap32
                             edgePoints_[fEdges[edgeI]]
                         );
 
-                        edgeStack(tIndex).push(fEdges[edgeI]);
-
                         break;
                     }
                 }
@@ -1997,8 +1995,6 @@ void dynamicTopoFvMesh::swap32
                     otherPoint,
                     edgePoints_[edgeIndex]
                 );
-
-                edgeStack(tIndex).push(edgeIndex);
             }
         }
 

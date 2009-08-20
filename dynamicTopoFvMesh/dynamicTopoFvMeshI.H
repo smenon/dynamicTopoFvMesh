@@ -652,7 +652,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
             localSlavePatches.insert(patchI());
         }
 
-        // Loop though boundary faces and check whether
+        // Loop through boundary faces and check whether
         // they belong to master/slave coupled patches.
         for
         (

@@ -1205,6 +1205,17 @@ dynamicTopoFvMesh::collapseEdge
 
     if (debug > 2)
     {
+        label bPatch = whichEdgePatch(eIndex);
+
+        if (bPatch == -1)
+        {
+            Info << "Patch: Internal" << endl;
+        }
+        else
+        {
+            Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
+        }
+
         Info << "Vertices: " << vertexHull << endl;
         Info << "Edges: " << edgeHull << endl;
         Info << "Faces: " << faceHull << endl;

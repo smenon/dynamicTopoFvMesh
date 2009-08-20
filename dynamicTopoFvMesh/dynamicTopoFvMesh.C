@@ -3314,7 +3314,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
                 );
             }
 
-            if (debug > 2)
+            if (debug > 4)
             {
                 Pout << "Processed level: " << level << nl
                      << " Visited: " << visitedCells
@@ -4722,6 +4722,11 @@ void dynamicTopoFvMesh::handleCoupledPatches()
         return;
     }
 
+    if (debug)
+    {
+        Info << "Handling coupled patches...";
+    }
+
     // Set coupled modifications.
     coupledModification_ = true;
     slaveModification_ = false;
@@ -4765,6 +4770,11 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     // Reset coupled modifications and stack addition behaviour.
     coupledModification_ = false;
     slaveModification_ = false;
+
+    if (debug)
+    {
+        Info << "Done." << endl;
+    }
 }
 
 // Build patch sub-meshes for processor patches
@@ -4904,7 +4914,7 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
 
     if (debug)
     {
-        Info << "Done.";
+        Info << "Done." << endl;
     }
 }
 
@@ -5167,6 +5177,11 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         return;
     }
 
+    if (debug)
+    {
+        Info << "Building local coupled maps...";
+    }
+
     // Clear existing maps.
     masterToSlave_.clear();
     slaveToMaster_.clear();
@@ -5309,6 +5324,11 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         // Clear the labelHashSets
         mList.clear();
         sList.clear();
+    }
+
+    if (debug)
+    {
+        Info << "Done." << endl;
     }
 }
 
