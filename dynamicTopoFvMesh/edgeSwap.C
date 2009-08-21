@@ -1748,7 +1748,8 @@ void dynamicTopoFvMesh::swap32
                     if
                     (
                         (mag(mCentre - centre) < gTol_) &&
-                        (edgeI.index() != newEdgeIndex)
+                        (edgeI.index() != newEdgeIndex) &&
+                        (edgeI.index() != eIndex)
                     )
                     {
                         masterToSlave_[edgePatch].insert

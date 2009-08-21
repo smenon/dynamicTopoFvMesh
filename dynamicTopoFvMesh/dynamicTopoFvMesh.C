@@ -3174,6 +3174,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
             (
                 (toc.size() == 0) &&
                 (bdyPatch.type() != "processor") &&
+                (bdyPatch.type() != "cyclic") &&
                 (bdyPatch.type() != "wedge") &&
                 (bdyPatch.type() != "empty") &&
                 (bdyPatch.type() != "symmetryPlane")
@@ -3746,7 +3747,10 @@ void dynamicTopoFvMesh::readOptionalParameters()
 }
 
 // Read edge-modification options from the dictionary
-void dynamicTopoFvMesh::readEdgeOptions()
+void dynamicTopoFvMesh::readEdgeOptions
+(
+    bool reRead
+)
 {
     if (!edgeModification_)
     {
@@ -3758,9 +3762,35 @@ void dynamicTopoFvMesh::readEdgeOptions()
         dict_.subDict("dynamicTopoFvMesh").subDict("edgeOptions")
     );
 
+    scalar oldRatioMax = ratioMax_;
+    scalar oldRatioMin = ratioMin_;
+    scalar oldGrowthFactor = growthFactor_;
+
     ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
     ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
     growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
+
+    if (reRead)
+    {
+        // Check if values have changed, and report it.
+        if (mag(oldRatioMax - ratioMax_) > SMALL)
+        {
+            Info << "\tOld ratioMax: " << oldRatioMax << nl
+                 << "\tNew ratioMax: " << ratioMax_ << endl;
+        }
+
+        if (mag(oldRatioMin - ratioMin_) > SMALL)
+        {
+            Info << "\tOld ratioMin: " << oldRatioMin << nl
+                 << "\tNew ratioMin: " << ratioMin_ << endl;
+        }
+
+        if (mag(oldGrowthFactor - growthFactor_) > SMALL)
+        {
+            Info << "\tOld growthFactor: " << oldGrowthFactor << nl
+                 << "\tNew growthFactor: " << growthFactor_ << endl;
+        }
+    }
 
     if (edgeOptionDict.found("maxLengthScale"))
     {
@@ -4225,9 +4255,12 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             else
             {
                 FatalErrorIn("dynamicTopoFvMesh::initEdges()")
-                        << " Coupled patches are wrongly specified." << nl
-                        << " Master: " << mPatch << ":" << masterPatch << nl
-                        << " Slave: " << sPatch << ":" << slavePatch << nl
+                        << " Coupled patches are either wrongly specified,"
+                        << " or the sizes don't match." << nl
+                        << " Master: " << mPatch << ":" << masterPatch
+                        << " Size: " << boundary[mPatch].size() << nl
+                        << " Slave: " << sPatch << ":" << slavePatch
+                        << " Size: " << boundary[sPatch].size() << nl
                         << abort(FatalError);
             }
         }
@@ -6742,11 +6775,11 @@ bool dynamicTopoFvMesh::updateTopology()
     // Re-read options if they have been modified at run-time
     if (dict_.readIfModified())
     {
-        // Read optional parameters
+        // Re-read optional parameters
         readOptionalParameters();
 
-        // Read edge options
-        readEdgeOptions();
+        // Re-read edge options
+        readEdgeOptions(true);
     }
 
     // Keep a copy of existing sizes
@@ -6830,10 +6863,7 @@ bool dynamicTopoFvMesh::updateTopology()
 
     // Return if re-meshing is not at interval,
     // or sliver cells are absent.
-    if
-    (
-        (time().timeIndex() % interval_ != 0) && sliversAbsent
-    )
+    if ((time().timeIndex() % interval_ != 0) && sliversAbsent)
     {
         return false;
     }

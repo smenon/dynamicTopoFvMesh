@@ -1104,7 +1104,7 @@ class dynamicTopoFvMesh
         void readOptionalParameters();
 
         // Read edge-modification options from the dictionary
-        void readEdgeOptions();
+        void readEdgeOptions(bool reRead = false);
 
         // Does the mesh perform edge-modification?
         bool edgeModification();
