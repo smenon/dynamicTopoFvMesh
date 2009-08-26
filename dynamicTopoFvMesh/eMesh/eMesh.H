@@ -26,7 +26,7 @@ Class
     eMesh
 
 Description
-    Mesh needed to do edge-based discretization.
+    Mesh class to store edge-based connectivity structures.
 
 SourceFiles
     eMesh.C
@@ -64,9 +64,6 @@ class eMesh
         //- Ordered edge-list
         edgeIOList edges_;
 
-        //- Edge-faces list
-        labelListIOList edgeFaces_;
-
         //- Boundary mesh
         eBoundaryMesh boundary_;
 
@@ -80,6 +77,9 @@ class eMesh
 
     // Demand-driven data
 
+            //- Mapping between ordered edge-data and regular edges.
+            labelList reverseEdgeMap_;
+
             //- Point-edges
             mutable labelListList* pePtr_;
 
@@ -87,8 +87,10 @@ class eMesh
             mutable labelListList* epPtr_;
 
             //- Face-edges
-            mutable labelListList* fePtr_;
+            mutable labelListIOList* fePtr_;
 
+            //- Edge-faces
+            mutable labelListIOList* efPtr_;
 
     // Private Member Functions
 
@@ -117,6 +119,9 @@ class eMesh
 
             //- Calculate face-edges
             void calcFaceEdges() const;
+
+            //- Calculate edge-faces
+            void calcEdgeFaces() const;
 
             //- Clear geometry
             void clearGeom() const;
@@ -212,6 +217,7 @@ public:
         void resetPrimitives
         (
             edgeList& edges,
+            labelListList& faceEdges,
             labelListList& edgeFaces,
             const labelList& patchSizes,
             const labelList& patchStarts,

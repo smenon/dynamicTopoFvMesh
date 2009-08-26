@@ -60,14 +60,14 @@ void eMesh::calcOrderedEdgeList()
 
     // Allocate lists for re-ordering
     labelList edgePatch(nEdges_, -1);
-    labelList reverseEdgeMap(nEdges_);
     labelList edgePatchStarts(mesh_.boundaryMesh().size(), -1);
     labelList edgePatchSizes(mesh_.boundaryMesh().size(), 0);
+
+    reverseEdgeMap_.setSize(nEdges_);
 
     // Obtain connectivity from primitive mesh
     const edgeList& edges = mesh_.edges();
     const labelListList& fEdges = mesh_.faceEdges();
-    const labelListList& eFaces = mesh_.edgeFaces();
 
     // Edge-patches are the same as faces
     for(label i = mesh_.nInternalFaces(); i < mesh_.nFaces(); i++)
@@ -84,7 +84,7 @@ void eMesh::calcOrderedEdgeList()
     {
         if (edgePatch[edgeI] == -1)
         {
-            reverseEdgeMap[edgeI] = nInternalEdges_++;
+            reverseEdgeMap_[edgeI] = nInternalEdges_++;
         }
         else
         {
@@ -106,17 +106,16 @@ void eMesh::calcOrderedEdgeList()
     {
         if (edgePatch[edgeI] > -1)
         {
-            reverseEdgeMap[edgeI] = patchCount[edgePatch[edgeI]]++;
+            reverseEdgeMap_[edgeI] = patchCount[edgePatch[edgeI]]++;
         }
     }
 
     // Renumber and fill in edges
     edges_.setSize(nEdges_, edge(-1,-1));
-    edgeFaces_.setSize(nEdges_);
+
     forAll(edges, edgeI)
     {
-        edges_[reverseEdgeMap[edgeI]] = edges[edgeI];
-        edgeFaces_[reverseEdgeMap[edgeI]] = eFaces[edgeI];
+        edges_[reverseEdgeMap_[edgeI]] = edges[edgeI];
     }
 
     // Now set the boundary, copy name. (type is default)
@@ -137,7 +136,10 @@ void eMesh::calcOrderedEdgeList()
         );
     }
 
-    // Force-write all data
+    // Force calculation of other data...
+    calcFaceEdges();
+
+    // ... and write out
     write();
 }
 
@@ -158,7 +160,7 @@ void eMesh::calcEdgePoints() const
             << abort(FatalError);
     }
 
-    if (edgeFaces_.size() == 0)
+    if (!efPtr_->size())
     {
         FatalErrorIn
         (
@@ -348,8 +350,78 @@ void eMesh::calcFaceEdges() const
             << abort(FatalError);
     }
 
-    fePtr_ = new labelListList(mesh_.nFaces());
+    fePtr_ =
+    (
+        new labelListIOList
+        (
+            IOobject
+            (
+                "faceEdges",
+                mesh_.facesInstance(),
+                meshSubDir,
+                mesh_,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            mesh_.nFaces()
+        )
+    );
+
     invertManyToMany(mesh_.nFaces(), edgeFaces(), *fePtr_);
+}
+
+void eMesh::calcEdgeFaces() const
+{
+    if (debug)
+    {
+        Info<< "void eMesh::calcEdgeFaces() const : "
+            << "Calculating EdgeFaces" << endl;
+    }
+
+    if (efPtr_)
+    {
+        FatalErrorIn
+        (
+            "void eMesh::calcEdgeFaces() const"
+        )   << "efPtr_ already allocated."
+            << abort(FatalError);
+    }
+
+    if (!reverseEdgeMap_.size())
+    {
+        FatalErrorIn
+        (
+            "void eMesh::calcEdgeFaces() const"
+        )   << "reverseEdgeMap has not been allocated."
+            << abort(FatalError);
+    }
+
+    efPtr_ =
+    (
+        new labelListIOList
+        (
+            IOobject
+            (
+                "edgeFaces",
+                mesh_.facesInstance(),
+                meshSubDir,
+                mesh_,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            nEdges_
+        )
+    );
+
+    labelListIOList& edgeFaces = *efPtr_;
+
+    // Obtain connectivity from primitive mesh.
+    const labelListList& eFaces = mesh_.edgeFaces();
+
+    forAll(eFaces, edgeI)
+    {
+        edgeFaces[reverseEdgeMap_[edgeI]] = eFaces[edgeI];
+    }
 }
 
 

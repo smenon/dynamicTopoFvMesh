@@ -902,27 +902,29 @@ dynamicTopoFvMesh::bisectEdge
 
             // Loop through master/slave maps
             // and determine the coupled edge index.
-            forAll(masterToSlave_, indexI)
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if (masterToSlave_[indexI].found(eIndex))
+                label index = -1;
+
+                if ((index = patchI().findSlaveIndex(eIndex)) > -1)
                 {
                     // Bisect the slave.
-                    coupleMap = bisectEdge(masterToSlave_[indexI][eIndex]);
+                    coupleMap = bisectEdge(index);
 
                     // Keep this index for master/slave mapping.
-                    pIndex = indexI;
+                    pIndex = patchI.key();
                 }
 
                 // The following bit happens only during the sliver
                 // exudation process, since slave edges are
                 // usually not added to the coupled edge-stack.
-                if (slaveToMaster_[indexI].found(eIndex))
+                if ((index = patchI().findMasterIndex(eIndex)) > -1)
                 {
                     // Bisect the master.
-                    coupleMap = bisectEdge(slaveToMaster_[indexI][eIndex]);
+                    coupleMap = bisectEdge(index);
 
                     // Keep this index for master/slave mapping.
-                    pIndex = indexI;
+                    pIndex = patchI.key();
 
                     // Notice that we are bisecting a slave edge.
                     bisectingSlave = true;
@@ -1680,24 +1682,24 @@ dynamicTopoFvMesh::bisectEdge
                     {
                         if (bisectingSlave)
                         {
-                            slaveToMaster_[pIndex].insert
+                            patchCoupling_[pIndex].mapMaster
                             (
                                 checkList[indexI], aeList[edgeI]
                             );
 
-                            masterToSlave_[pIndex].insert
+                            patchCoupling_[pIndex].mapSlave
                             (
                                 aeList[edgeI], checkList[indexI]
                             );
                         }
                         else
                         {
-                            masterToSlave_[pIndex].insert
+                            patchCoupling_[pIndex].mapSlave
                             (
                                 checkList[indexI], aeList[edgeI]
                             );
 
-                            slaveToMaster_[pIndex].insert
+                            patchCoupling_[pIndex].mapSlave
                             (
                                 aeList[edgeI], checkList[indexI]
                             );
@@ -1935,13 +1937,13 @@ dynamicTopoFvMesh::trisectFace
 
             // Loop through master/slave maps
             // and determine the coupled edge index.
-            forAll(masterToSlave_, indexI)
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
                 if
                 (
-                    masterToSlave_[indexI].found(fEdges[0]) &&
-                    masterToSlave_[indexI].found(fEdges[1]) &&
-                    masterToSlave_[indexI].found(fEdges[2])
+                    (patchI().findSlaveIndex(fEdges[0]) > -1) &&
+                    (patchI().findSlaveIndex(fEdges[1]) > -1) &&
+                    (patchI().findSlaveIndex(fEdges[2]) > -1)
                 )
                 {
                     bool foundFace = false;
@@ -1981,16 +1983,16 @@ dynamicTopoFvMesh::trisectFace
                     coupleMap = trisectFace(slaveFace);
 
                     // Keep this index for master/slave mapping.
-                    pIndex = indexI;
+                    pIndex = patchI.key();
                 }
 
                 // The following bit happens only during the sliver
                 // exudation process.
                 if
                 (
-                    slaveToMaster_[indexI].found(fEdges[0]) &&
-                    slaveToMaster_[indexI].found(fEdges[1]) &&
-                    slaveToMaster_[indexI].found(fEdges[2])
+                    (patchI().findMasterIndex(fEdges[0]) > -1) &&
+                    (patchI().findMasterIndex(fEdges[1]) > -1) &&
+                    (patchI().findMasterIndex(fEdges[2]) > -1)
                 )
                 {
                     bool foundFace = false;
@@ -2030,7 +2032,7 @@ dynamicTopoFvMesh::trisectFace
                     coupleMap = trisectFace(masterFace);
 
                     // Keep this index for master/slave mapping.
-                    pIndex = indexI;
+                    pIndex = patchI.key();
 
                     // Notice that we are bisecting a slave edge.
                     bisectingSlave = true;
@@ -2672,24 +2674,24 @@ dynamicTopoFvMesh::trisectFace
                         {
                             if (bisectingSlave)
                             {
-                                slaveToMaster_[pIndex].insert
+                                patchCoupling_[pIndex].mapMaster
                                 (
                                     checkList[indexI], aeList[edgeI]
                                 );
 
-                                masterToSlave_[pIndex].insert
+                                patchCoupling_[pIndex].mapSlave
                                 (
                                     aeList[edgeI], checkList[indexI]
                                 );
                             }
                             else
                             {
-                                masterToSlave_[pIndex].insert
+                                patchCoupling_[pIndex].mapSlave
                                 (
                                     checkList[indexI], aeList[edgeI]
                                 );
 
-                                slaveToMaster_[pIndex].insert
+                                patchCoupling_[pIndex].mapMaster
                                 (
                                     aeList[edgeI], checkList[indexI]
                                 );

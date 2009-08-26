@@ -297,7 +297,7 @@ class dynamicTopoFvMesh
 
         PtrList<topoMeshStruct> structPtr_;
 
-        // Private sub-class for coupled patches
+        // Private sub-class for processor patches
         class patchSubMesh
         {
             // Auto pointer to a subMesh
@@ -382,8 +382,81 @@ class dynamicTopoFvMesh
                 labelList& commonPointBuffer() { return commonPointBuffer_; }
         };
 
+        // Private sub-class for coupled patches.
+        class coupledPatchInfo
+        {
+            label slaveIndex_;
+
+            // Mapping for locally coupled patches
+            Map<label> masterToSlave_;
+            Map<label> slaveToMaster_;
+
+        public:
+
+            // Constructor
+            coupledPatchInfo
+            (
+                const label slaveIndex
+            )
+            :
+                slaveIndex_(slaveIndex)
+            {}
+
+            //- Access
+
+                label slaveIndex() { return slaveIndex_; }
+
+                label findSlaveIndex(const label Index)
+                {
+                    if (masterToSlave_.found(Index))
+                    {
+                        return masterToSlave_[Index];
+                    }
+                    else
+                    {
+                        return -1;
+                    }
+                }
+
+                label findMasterIndex(const label Index)
+                {
+                    if (slaveToMaster_.found(Index))
+                    {
+                        return slaveToMaster_[Index];
+                    }
+                    else
+                    {
+                        return -1;
+                    }
+                }
+
+                void mapSlave
+                (
+                    const label master,
+                    const label slave
+                )
+                {
+                    masterToSlave_.insert(master, slave);
+                }
+
+                void mapMaster
+                (
+                    const label slave,
+                    const label master
+                )
+                {
+                    slaveToMaster_.insert(slave, master);
+                }
+
+                void clearMaps()
+                {
+                    masterToSlave_.clear();
+                    slaveToMaster_.clear();
+                }
+        };
+
         // Coupled patch information
-        Map<label> patchCoupling_;
+        Map<coupledPatchInfo> patchCoupling_;
 
         // Coupled entities to avoid during normal modification
         labelHashSet entitiesToAvoid_;
@@ -397,10 +470,6 @@ class dynamicTopoFvMesh
         // Sub-Mesh pointers
         PtrList<patchSubMesh> sendPatchMeshes_;
         PtrList<patchSubMesh> recvPatchMeshes_;
-
-        // Mapping for locally coupled patches
-        List<Map<label> > masterToSlave_;
-        List<Map<label> > slaveToMaster_;
 
         // Scalar tolerance for geometric matching
         scalar gTol_;
@@ -1019,7 +1088,8 @@ class dynamicTopoFvMesh
         (
             faceList& faces,
             labelList& owner,
-            labelList& neighbour
+            labelList& neighbour,
+            labelListList& faceEdges
         );
 
         // Reorder & renumber cells with bandwidth
@@ -1035,6 +1105,7 @@ class dynamicTopoFvMesh
             faceList& faces,
             labelList& owner,
             labelList& neighbour,
+            labelListList& faceEdges,
             labelListList& edgeFaces
         );
 
@@ -1111,6 +1182,9 @@ class dynamicTopoFvMesh
 
         // Identify coupled patches.
         bool identifyCoupledPatches();
+
+        // Read coupled patch information from dictionary.
+        void readCoupledPatches();
 
         // Initialize coupled patches for topology modifications.
         void initCoupledPatches();

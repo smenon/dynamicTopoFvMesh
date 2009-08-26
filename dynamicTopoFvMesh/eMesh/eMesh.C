@@ -65,6 +65,7 @@ void eMesh::clearAddressing() const
     deleteDemandDrivenData(pePtr_);
     deleteDemandDrivenData(epPtr_);
     deleteDemandDrivenData(fePtr_);
+    deleteDemandDrivenData(efPtr_);
 }
 
 
@@ -92,18 +93,6 @@ eMesh::eMesh(const polyMesh& pMesh)
             IOobject::NO_WRITE
         )
     ),
-    edgeFaces_
-    (
-        IOobject
-        (
-            "edgeFaces",
-            mesh_.facesInstance(),
-            meshSubDir,
-            mesh_,
-            IOobject::READ_IF_PRESENT,
-            IOobject::NO_WRITE
-        )
-    ),
     boundary_
     (
         IOobject
@@ -119,7 +108,8 @@ eMesh::eMesh(const polyMesh& pMesh)
     ),
     pePtr_(NULL),
     epPtr_(NULL),
-    fePtr_(NULL)
+    fePtr_(NULL),
+    efPtr_(NULL)
 {
     if (debug)
     {
@@ -228,6 +218,7 @@ const eBoundaryMesh& eMesh::boundary() const
 void eMesh::resetPrimitives
 (
     edgeList& edges,
+    labelListList& faceEdges,
     labelListList& edgeFaces,
     const labelList& patchSizes,
     const labelList& patchStarts,
@@ -237,16 +228,51 @@ void eMesh::resetPrimitives
     // Clear out geometry and addressing
     clearOut();
 
+    // Initialize pointers
+    fePtr_ =
+    (
+        new labelListIOList
+        (
+            IOobject
+            (
+                "faceEdges",
+                mesh_.facesInstance(),
+                meshSubDir,
+                mesh_,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            )
+        )
+    );
+
+    efPtr_ =
+    (
+        new labelListIOList
+        (
+            IOobject
+            (
+                "edgeFaces",
+                mesh_.facesInstance(),
+                meshSubDir,
+                mesh_,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            )
+        )
+    );
+
     // Take over primitive data
     if (reUse)
     {
         edges_.transfer(edges);
-        edgeFaces_.transfer(edgeFaces);
+        fePtr_->transfer(faceEdges);
+        efPtr_->transfer(edgeFaces);
     }
     else
     {
         edges_ = edges;
-        edgeFaces_ = edgeFaces;
+        fePtr_->operator=(faceEdges);
+        efPtr_->operator=(edgeFaces);
     }
 
     // Reset patch sizes and starts
@@ -282,8 +308,17 @@ void eMesh::setInstance(const fileName& inst)
     edges_.writeOpt() = IOobject::AUTO_WRITE;
     edges_.instance() = inst;
 
-    edgeFaces_.writeOpt() = IOobject::AUTO_WRITE;
-    edgeFaces_.instance() = inst;
+    if (efPtr_)
+    {
+        efPtr_->writeOpt() = IOobject::AUTO_WRITE;
+        efPtr_->instance() = inst;
+    }
+
+    if (fePtr_)
+    {
+        fePtr_->writeOpt() = IOobject::AUTO_WRITE;
+        fePtr_->instance() = inst;
+    }
 
     boundary_.writeOpt() = IOobject::AUTO_WRITE;
     boundary_.instance() = inst;
@@ -371,14 +406,29 @@ const labelListList& eMesh::faceEdges() const
 
 const labelListList& eMesh::edgeFaces() const
 {
-    return edgeFaces_;
+    if (!efPtr_)
+    {
+        calcEdgeFaces();
+    }
+
+    return *efPtr_;
 }
 
 
 bool eMesh::write() const
 {
     edges_.write();
-    edgeFaces_.write();
+
+    if (efPtr_)
+    {
+        efPtr_->write();
+    }
+
+    if (fePtr_)
+    {
+        fePtr_->write();
+    }
+
     boundary_.write();
 
     return false;

@@ -277,6 +277,24 @@ void dynamicTopoFvMesh::reOrderEdges
 
         edgeInOrder++;
     }
+
+    // Renumber all faceEdges
+    forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
+    {
+        labelList& faceEdges = feIter();
+
+        forAll(faceEdges,edgeI)
+        {
+            if (faceEdges[edgeI] < nOldEdges_)
+            {
+                faceEdges[edgeI] = reverseEdgeMap_[faceEdges[edgeI]];
+            }
+            else
+            {
+                faceEdges[edgeI] = addedEdgeRenumbering_[faceEdges[edgeI]];
+            }
+        }
+    }
 }
 
 // Reorder faces in upper-triangular order after a topology change
@@ -284,7 +302,8 @@ void dynamicTopoFvMesh::reOrderFaces
 (
     faceList& faces,
     labelList& owner,
-    labelList& neighbour
+    labelList& neighbour,
+    labelListList& faceEdges
 )
 {
     // *** Face renumbering *** //
@@ -299,6 +318,7 @@ void dynamicTopoFvMesh::reOrderFaces
     label faceInOrder = 0, allFaces = faces_.lastIndex() + 1;
     faceList oldFaces(allFaces);
     labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces,0);
+    labelListList oldFaceEdges(allFaces);
 
     addedFaceRenumbering_.clear();
     Map<label> addedFaceReverseRenumbering;
@@ -307,16 +327,18 @@ void dynamicTopoFvMesh::reOrderFaces
     HashList<face>::iterator fIter = faces_.begin();
     HashList<label>::iterator oIter = owner_.begin();
     HashList<label>::iterator nIter = neighbour_.begin();
+    HashList<labelList>::iterator feIter = faceEdges_.begin();
 
     while(fIter != faces_.end())
     {
         oldFaces[fIter.index()].transfer(fIter());
         oldOwner[oIter.index()] = oIter();
         oldNeighbour[nIter.index()] = nIter();
-        fIter++; oIter++; nIter++;
+        oldFaceEdges[feIter.index()].transfer(feIter());
+        fIter++; oIter++; nIter++; feIter++;
     }
 
-    faces_.clear(); owner_.clear(); neighbour_.clear();
+    faces_.clear(); owner_.clear(); neighbour_.clear(); faceEdges_.clear();
 
     // Mark the internal faces with -2 so that they are inserted first
     forAllIter(HashList<cell>::iterator, cells_, cIter)
@@ -351,12 +373,19 @@ void dynamicTopoFvMesh::reOrderFaces
             if (visited[curFaces[faceI]] == -2)
             {
                 // Face is internal and gets reordered
-                label own =   oldOwner[curFaces[faceI]] < nOldCells_
-                            ? reverseCellMap_[oldOwner[curFaces[faceI]]]
-                            : addedCellRenumbering_[oldOwner[curFaces[faceI]]];
-                label nei =   oldNeighbour[curFaces[faceI]] < nOldCells_
-                            ? reverseCellMap_[oldNeighbour[curFaces[faceI]]]
-                            : addedCellRenumbering_[oldNeighbour[curFaces[faceI]]];
+                label own =
+                (
+                    oldOwner[curFaces[faceI]] < nOldCells_
+                  ? reverseCellMap_[oldOwner[curFaces[faceI]]]
+                  : addedCellRenumbering_[oldOwner[curFaces[faceI]]]
+                );
+
+                label nei =
+                (
+                    oldNeighbour[curFaces[faceI]] < nOldCells_
+                  ? reverseCellMap_[oldNeighbour[curFaces[faceI]]]
+                  : addedCellRenumbering_[oldNeighbour[curFaces[faceI]]]
+                );
 
                 label smallerIndex = own < nei ? own : nei;
                 label largerIndex  = own > nei ? own : nei;
@@ -382,12 +411,16 @@ void dynamicTopoFvMesh::reOrderFaces
                     if (faceRenumber[pointI] < nOldPoints_)
                     {
                         faceRenumber[pointI] =
-                            reversePointMap_[faceRenumber[pointI]];
+                        (
+                            reversePointMap_[faceRenumber[pointI]]
+                        );
                     }
                     else
                     {
                         faceRenumber[pointI] =
-                            addedPointRenumbering_[faceRenumber[pointI]];
+                        (
+                            addedPointRenumbering_[faceRenumber[pointI]]
+                        );
                     }
                 }
 
@@ -399,8 +432,17 @@ void dynamicTopoFvMesh::reOrderFaces
                 }
                 else
                 {
-                    addedFaceRenumbering_.insert(curFaces[faceI],bFaceIndex);
-                    addedFaceReverseRenumbering.insert(bFaceIndex,curFaces[faceI]);
+                    addedFaceRenumbering_.insert
+                    (
+                        curFaces[faceI],
+                        bFaceIndex
+                    );
+
+                    addedFaceReverseRenumbering.insert
+                    (
+                        bFaceIndex,
+                        curFaces[faceI]
+                    );
                 }
 
                 // Mark this face as visited
@@ -434,7 +476,11 @@ void dynamicTopoFvMesh::reOrderFaces
                 }
                 else
                 {
-                    addedFaceRenumbering_.insert(curFaces[nextNei],faceInOrder);
+                    addedFaceRenumbering_.insert
+                    (
+                        curFaces[nextNei],
+                        faceInOrder
+                    );
                 }
 
                 // Renumber the point labels in this face
@@ -444,12 +490,16 @@ void dynamicTopoFvMesh::reOrderFaces
                     if (faceRenumber[pointI] < nOldPoints_)
                     {
                         faceRenumber[pointI] =
-                            reversePointMap_[faceRenumber[pointI]];
+                        (
+                            reversePointMap_[faceRenumber[pointI]]
+                        );
                     }
                     else
                     {
                         faceRenumber[pointI] =
-                            addedPointRenumbering_[faceRenumber[pointI]];
+                        (
+                            addedPointRenumbering_[faceRenumber[pointI]]
+                        );
                     }
                 }
 
@@ -458,12 +508,16 @@ void dynamicTopoFvMesh::reOrderFaces
                 label oldNei = oldNeighbour[curFaces[nextNei]];
 
                 label ownerRenumber =
-                    oldOwner[curFaces[nextNei]] < nOldCells_
-                  ? reverseCellMap_[oldOwn] : addedCellRenumbering_[oldOwn];
+                (
+                    oldOwn < nOldCells_
+                  ? reverseCellMap_[oldOwn] : addedCellRenumbering_[oldOwn]
+                );
 
                 label neighbourRenumber =
-                    oldNeighbour[curFaces[nextNei]] < nOldCells_
-                  ? reverseCellMap_[oldNei] : addedCellRenumbering_[oldNei];
+                (
+                    oldNei < nOldCells_
+                  ? reverseCellMap_[oldNei] : addedCellRenumbering_[oldNei]
+                );
 
                 // Cell-reordering may cause flipped faces.. Correct them.
                 if (neighbourRenumber < ownerRenumber)
@@ -475,11 +529,16 @@ void dynamicTopoFvMesh::reOrderFaces
                 faces_.append(faceRenumber);
                 owner_.append(cellI);
                 neighbour_.append(minNei);
+                faceEdges_.append(oldFaceEdges[curFaces[nextNei]]);
 
                 // Insert entities into mesh-reset lists
                 faces[faceInOrder].transfer(faceRenumber);
                 owner[faceInOrder] = cellI;
                 neighbour[faceInOrder] = minNei;
+                faceEdges[faceInOrder].transfer
+                (
+                    oldFaceEdges[curFaces[nextNei]]
+                );
 
                 // Stop the neighbour from being used again
                 neiCells[nextNei] = -1;
@@ -521,12 +580,14 @@ void dynamicTopoFvMesh::reOrderFaces
         faces_.append(oldFaces[oldIndex]);
         owner_.append(ownerRenumber);
         neighbour_.append(-1);
+        faceEdges_.append(oldFaceEdges[oldIndex]);
 
         // Insert entities into mesh-reset lists
         // NOTE: From OF-1.5 onwards, neighbour array
         //       does not store -1 for boundary faces
         faces[faceInOrder].transfer(oldFaces[oldIndex]);
         owner[faceInOrder] = ownerRenumber;
+        faceEdges[faceInOrder].transfer(oldFaceEdges[oldIndex]);
 
         faceInOrder++;
     }
@@ -535,6 +596,7 @@ void dynamicTopoFvMesh::reOrderFaces
     forAllIter(HashList<cell>::iterator, cells_, cIter)
     {
         cell& cellFaces = cIter();
+
         forAll(cellFaces,faceI)
         {
             if (cellFaces[faceI] < nOldFaces_)
@@ -721,6 +783,7 @@ void dynamicTopoFvMesh::reOrderMesh
     faceList& faces,
     labelList& owner,
     labelList& neighbour,
+    labelListList& faceEdges,
     labelListList& edgeFaces
 )
 {
@@ -766,7 +829,7 @@ void dynamicTopoFvMesh::reOrderMesh
 
     // Reorder the faces
     if (debug) Info << "ReOrdering faces..." << endl;
-    reOrderFaces(faces, owner, neighbour);
+    reOrderFaces(faces, owner, neighbour, faceEdges);
 
     // Reorder the edges
     if (debug) Info << "ReOrdering edges..." << endl;

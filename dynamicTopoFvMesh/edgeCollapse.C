@@ -958,12 +958,12 @@ dynamicTopoFvMesh::collapseEdge
         {
             label slaveIndex = -1;
 
-            // Loop through masterToSlave and determine the slave index.
-            forAll(masterToSlave_, indexI)
+            // Determine the slave index.
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if (masterToSlave_[indexI].found(eIndex))
+                if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
-                    slaveIndex = masterToSlave_[indexI][eIndex];
+                    break;
                 }
             }
 

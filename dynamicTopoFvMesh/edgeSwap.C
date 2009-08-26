@@ -1752,12 +1752,12 @@ void dynamicTopoFvMesh::swap32
                         (edgeI.index() != eIndex)
                     )
                     {
-                        masterToSlave_[edgePatch].insert
+                        patchCoupling_[edgePatch].mapSlave
                         (
                             newEdgeIndex, edgeI.index()
                         );
 
-                        masterToSlave_[edgePatch].insert
+                        patchCoupling_[edgePatch].mapMaster
                         (
                             edgeI.index(), newEdgeIndex
                         );

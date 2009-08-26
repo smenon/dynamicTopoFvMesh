@@ -33,7 +33,6 @@ Description
 
 #include "fvCFD.H"
 #include "viscoelasticModel.H"
-#include "viscosityModel.H"
 #include "dynamicTopoFvMesh.H"
 #include "fluidInterface.H"
 

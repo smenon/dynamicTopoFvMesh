@@ -1921,11 +1921,11 @@ bool dynamicTopoFvMesh::checkQuality
             label slaveIndex = -1;
 
             // Loop through masterToSlave and determine the slave index.
-            forAll(masterToSlave_, indexI)
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if (masterToSlave_[indexI].found(eIndex))
+                if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
-                    slaveIndex = masterToSlave_[indexI][eIndex];
+                    break;
                 }
             }
 
@@ -2045,12 +2045,12 @@ bool dynamicTopoFvMesh::fillTables
             // Fill tables for the slave edge as well.
             label slaveIndex = -1;
 
-            // Loop through masterToSlave and determine the slave index.
-            forAll(masterToSlave_, indexI)
+            // Determine the slave index.
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if (masterToSlave_[indexI].found(eIndex))
+                if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
-                    slaveIndex = masterToSlave_[indexI][eIndex];
+                    break;
                 }
             }
 
@@ -2139,12 +2139,12 @@ bool dynamicTopoFvMesh::removeEdgeFlips
             // Flip the slave edge as well.
             label slaveIndex = -1;
 
-            // Loop through masterToSlave and determine the slave index.
-            forAll(masterToSlave_, indexI)
+            // Determine the slave index.
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if (masterToSlave_[indexI].found(eIndex))
+                if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
-                    slaveIndex = masterToSlave_[indexI][eIndex];
+                    break;
                 }
             }
 
@@ -2381,7 +2381,6 @@ label dynamicTopoFvMesh::identify32Swap
     }
 
     // Could not find an intersecting triangulation
-    /*
     if (debug > 1)
     {
         Info << "Hull Vertices: " << endl;
@@ -2401,7 +2400,6 @@ label dynamicTopoFvMesh::identify32Swap
             << points_[edgeToCheck[1]] << nl
             << abort(FatalError);
     }
-    */
 
     return -1;
 }
@@ -2619,8 +2617,6 @@ void dynamicTopoFvMesh::setEdgeConnectivity()
     {
         pointEdges_ = eMeshPtr_->pointEdges();
     }
-
-    faceEdges_ = eMeshPtr_->faceEdges();
 }
 
 // Check the state of connectivity HashLists
@@ -4016,6 +4012,9 @@ void dynamicTopoFvMesh::initEdges()
         pointEdges_ = eMeshPtr_->pointEdges();
         edgePoints_ = eMeshPtr_->edgePoints();
     }
+
+    // Read coupled patch information from dictionary.
+    readCoupledPatches();
 }
 
 // Load the mesh-quality metric library
@@ -4196,74 +4195,12 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 {
     bool coupledPatchesAbsent = true;
 
-    patchCoupling_.clear();
     procIndices_.clear();
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
     // Check if patches are explicitly coupled
-    if (dict_.found("coupledPatches"))
+    if (patchCoupling_.size())
     {
-        dictionary coupledPatches =
-        (
-            dict_.subDict("coupledPatches")
-        );
-
-        // Determine master and slave patches
-        wordList masterPatches = coupledPatches.toc();
-
-        forAll(masterPatches, wordI)
-        {
-            // Lookup the slave patch
-            word masterPatch = masterPatches[wordI];
-            word slavePatch  = coupledPatches.lookup(masterPatch);
-
-            // Determine patch indices
-            label mPatch = -1, sPatch = -1;
-
-            forAll(boundary,patchI)
-            {
-                if (boundary[patchI].name() == masterPatch)
-                {
-                    mPatch = patchI;
-                }
-
-                if (boundary[patchI].name() == slavePatch)
-                {
-                    sPatch = patchI;
-                }
-            }
-
-            if (mPatch == -1 && sPatch == -1)
-            {
-                // This pair doesn't exist. This might be
-                // true for some sub-domains.
-                continue;
-            }
-
-            // Add to the list if entries are legitimate
-            if
-            (
-                mPatch != sPatch &&
-                boundary[mPatch].size() == boundary[sPatch].size()
-            )
-            {
-                patchCoupling_.insert(mPatch, sPatch);
-
-                coupledPatchesAbsent = false;
-            }
-            else
-            {
-                FatalErrorIn("dynamicTopoFvMesh::initEdges()")
-                        << " Coupled patches are either wrongly specified,"
-                        << " or the sizes don't match." << nl
-                        << " Master: " << mPatch << ":" << masterPatch
-                        << " Size: " << boundary[mPatch].size() << nl
-                        << " Slave: " << sPatch << ":" << slavePatch
-                        << " Size: " << boundary[sPatch].size() << nl
-                        << abort(FatalError);
-            }
-        }
+        coupledPatchesAbsent = false;
     }
 
     // Maintain a separate list of processor IDs.
@@ -4271,6 +4208,8 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     // that share only edges/points.
     if (Pstream::parRun())
     {
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         Map<label> pointMap;
         label nSendPoints = 0;
         labelHashSet sharedPoints;
@@ -4727,6 +4666,80 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     return coupledPatchesAbsent;
 }
 
+// Read coupled patch information from dictionary.
+void dynamicTopoFvMesh::readCoupledPatches()
+{
+    patchCoupling_.clear();
+
+    if (dict_.found("coupledPatches"))
+    {
+        dictionary coupledPatches =
+        (
+            dict_.subDict("coupledPatches")
+        );
+
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
+        // Determine master and slave patches
+        wordList masterPatches = coupledPatches.toc();
+
+        forAll(masterPatches, wordI)
+        {
+            // Lookup the slave patch
+            word masterPatch = masterPatches[wordI];
+            word slavePatch  = coupledPatches.lookup(masterPatch);
+
+            // Determine patch indices
+            label mPatch = -1, sPatch = -1;
+
+            forAll(boundary,patchI)
+            {
+                if (boundary[patchI].name() == masterPatch)
+                {
+                    mPatch = patchI;
+                }
+
+                if (boundary[patchI].name() == slavePatch)
+                {
+                    sPatch = patchI;
+                }
+            }
+
+            if (mPatch == -1 && sPatch == -1)
+            {
+                // This pair doesn't exist. This might be
+                // true for some sub-domains.
+                continue;
+            }
+
+            // Add to the list if entries are legitimate
+            if
+            (
+                mPatch != sPatch &&
+                boundary[mPatch].size() == boundary[sPatch].size()
+            )
+            {
+                patchCoupling_.insert
+                (
+                    mPatch,
+                    coupledPatchInfo(sPatch)
+                );
+            }
+            else
+            {
+                FatalErrorIn("dynamicTopoFvMesh::initEdges()")
+                        << " Coupled patches are either wrongly specified,"
+                        << " or the sizes don't match." << nl
+                        << " Master: " << mPatch << ":" << masterPatch
+                        << " Size: " << boundary[mPatch].size() << nl
+                        << " Slave: " << sPatch << ":" << slavePatch
+                        << " Size: " << boundary[sPatch].size() << nl
+                        << abort(FatalError);
+            }
+        }
+    }
+}
+
 // Initialize coupled patches for topology modifications.
 //  - Send and receive patchSubMeshes for processor patches
 void dynamicTopoFvMesh::initCoupledPatches()
@@ -5144,9 +5157,20 @@ void dynamicTopoFvMesh::buildPatchSubMesh
 
         index = 0;
 
+        face thisFace(3);
+
         forAllIter(Map<label>::iterator, faceMap, fIter)
         {
-            face& thisFace = faces_[fIter()];
+            if (!rCellMap.found(owner_[fIter()]))
+            {
+                // This face is pointed the wrong way.
+                thisFace = faces_[fIter()].reverseFace();
+            }
+            else
+            {
+                thisFace = faces_[fIter()];
+            }
+
             labelList& fEdges = faceEdges_[fIter()];
 
             fBuffer[index] = rPointMap[thisFace[0]];
@@ -5215,19 +5239,15 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         Info << "Building local coupled maps...";
     }
 
-    // Clear existing maps.
-    masterToSlave_.clear();
-    slaveToMaster_.clear();
-
     const polyBoundaryMesh& boundary = boundaryMesh();
-
-    masterToSlave_.setSize(boundary.size());
-    slaveToMaster_.setSize(boundary.size());
 
     labelHashSet mList, sList;
 
-    forAllIter(Map<label>, patchCoupling_, patchI)
+    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
     {
+        // Clear existing maps.
+        patchI().clearMaps();
+
         // Build a list of master edges
         label start = boundary[patchI.key()].start();
 
@@ -5255,9 +5275,9 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         }
 
         // Build a list of slave edges
-        start = boundary[patchI()].start();
+        start = boundary[patchI().slaveIndex()].start();
 
-        for (label i = 0; i < boundary[patchI()].size(); i++)
+        for (label i = 0; i < boundary[patchI().slaveIndex()].size(); i++)
         {
             labelList& mfEdges = faceEdges_[start+i];
 
@@ -5309,13 +5329,13 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 if (distance < gTol_)
                 {
                     // Add a map entry
-                    masterToSlave_[patchI.key()].insert
+                    patchI().mapSlave
                     (
                         mEdges[edgeI],
                         sEdges[edgeJ]
                     );
 
-                    slaveToMaster_[patchI.key()].insert
+                    patchI().mapMaster
                     (
                         sEdges[edgeJ],
                         mEdges[edgeI]
@@ -6906,6 +6926,7 @@ bool dynamicTopoFvMesh::updateTopology()
         faceList faces(nFaces_);
         labelList owner(nFaces_);
         labelList neighbour(nInternalFaces_);
+        labelListList faceEdges(nFaces_);
         labelListList edgeFaces(nEdges_);
         labelList oldPatchStarts(oldPatchStarts_);
         labelList oldPatchNMeshPoints(oldPatchNMeshPoints_);
@@ -6934,6 +6955,7 @@ bool dynamicTopoFvMesh::updateTopology()
             faces,
             owner,
             neighbour,
+            faceEdges,
             edgeFaces
         );
 
@@ -6979,10 +7001,11 @@ bool dynamicTopoFvMesh::updateTopology()
             patchStarts_
         );
 
-        // Reset the edge mesh and set pointEdges/faceEdges
+        // Reset the edge mesh
         eMeshPtr_->resetPrimitives
         (
             edges,
+            faceEdges,
             edgeFaces,
             edgePatchSizes_,
             edgePatchStarts_

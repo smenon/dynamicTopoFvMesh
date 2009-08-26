@@ -647,9 +647,9 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
         // Determine locally coupled slave patches.
         labelHashSet localSlavePatches;
 
-        forAllIter(Map<label>, patchCoupling_, patchI)
+        forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
         {
-            localSlavePatches.insert(patchI());
+            localSlavePatches.insert(patchI().slaveIndex());
         }
 
         // Loop through boundary faces and check whether
@@ -1112,12 +1112,12 @@ inline void dynamicTopoFvMesh::computeMinQuality
             // Compute the minimum quality of the slave edge as well.
             label slaveIndex = -1;
 
-            // Loop through masterToSlave and determine the slave index.
-            forAll(masterToSlave_, indexI)
+            // Determine the slave index.
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if (masterToSlave_[indexI].found(eIndex))
+                if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
-                    slaveIndex = masterToSlave_[indexI][eIndex];
+                    break;
                 }
             }
 
@@ -1247,9 +1247,14 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
             if (checkSlaves)
             {
                 // Check on slave patches as well.
-                forAllIter(Map<label>::iterator, patchCoupling_, iterI)
+                forAllIter
+                (
+                    Map<coupledPatchInfo>::iterator,
+                    patchCoupling_,
+                    iterI
+                )
                 {
-                    if (iterI() == patch)
+                    if (iterI().slaveIndex() == patch)
                     {
                         foundPatch = true;
                     }
@@ -1325,7 +1330,7 @@ inline label dynamicTopoFvMesh::getMaxCouplingIndex()
     // Allocate a size for coupled patches
     label index = -1;
 
-    forAllIter(Map<label>, patchCoupling_, patchI)
+    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
     {
         index = index > patchI.key() ? index : patchI.key();
     }

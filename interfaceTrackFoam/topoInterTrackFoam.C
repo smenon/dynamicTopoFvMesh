@@ -70,12 +70,6 @@ int main(int argc, char *argv[])
         runTime.deltaT()/interface.rho()
     );
 
-    if (interface.twoFluids())
-    {
-        // Set initial velocity only for the liquid phase
-        U = interface.fluidIndicator()*U;
-    }
-
     Info << "\nStarting time loop\n" << endl;
 
     // Initialize the motion solver
