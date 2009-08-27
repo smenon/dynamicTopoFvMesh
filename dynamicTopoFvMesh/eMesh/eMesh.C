@@ -77,17 +77,17 @@ void eMesh::clearOut() const
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-eMesh::eMesh(const polyMesh& pMesh)
+eMesh::eMesh(const polyMesh& pMesh, const word& subDir)
 :
     objectRegistry(pMesh.time()),
-    GeoMesh<polyMesh>(pMesh),
+    mesh_(pMesh),
     edges_
     (
         IOobject
         (
             "edges",
             mesh_.facesInstance(),
-            meshSubDir,
+            subDir,
             mesh_,
             IOobject::READ_IF_PRESENT,
             IOobject::NO_WRITE
@@ -99,7 +99,7 @@ eMesh::eMesh(const polyMesh& pMesh)
         (
             "edgeBoundary",
             mesh_.facesInstance(),
-            meshSubDir,
+            subDir,
             mesh_,
             IOobject::READ_IF_PRESENT,
             IOobject::NO_WRITE
@@ -118,18 +118,23 @@ eMesh::eMesh(const polyMesh& pMesh)
              << endl;
     }
 
-    if (!edges_.headerOk())
-    {
-        // Could not read ordered edges, so calculate it instead.
-        calcOrderedEdgeList();
-    }
-    else
+    // Re-initialize / override meshSubDir
+    meshSubDir = subDir;
+
+    // Try to read from disk.
+    if (edges_.headerOk() && boundary_.headerOk())
     {
         // Set sizes
         nEdges_ = edges_.size();
         nInternalEdges_ = boundary_[0].start();
     }
+    else
+    {
+        // Could not read ordered edges, so calculate it instead.
+        calcOrderedEdgeList();
+    }
 }
+
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 

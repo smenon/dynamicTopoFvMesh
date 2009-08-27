@@ -56,43 +56,13 @@ eBoundaryMesh::eBoundaryMesh
     regIOobject(io),
     mesh_(mesh)
 {
-    if 
+    if
     (
-        readOpt() == IOobject::MUST_READ
-     || (readOpt() == IOobject::READ_IF_PRESENT && headerOk())
+        (readOpt() == IOobject::MUST_READ) ||
+        (readOpt() == IOobject::READ_IF_PRESENT && headerOk())
     )
     {
-        ePatchList& patches = *this;
-
-        // Read polyPatchList
-        Istream& is = readStream(typeName);
-
-        PtrList<entry> patchEntries(is);
-        patches.setSize(patchEntries.size());
-
-        forAll(patches, patchI)
-        {
-            patches.set
-            (
-                patchI,
-                ePatch::New
-                (
-                    patchEntries[patchI].keyword(),
-                    patchEntries[patchI].dict(),
-                    patchI,
-                    *this
-                )
-            );
-        }
-
-        // Check state of IOstream
-        is.check
-        (
-            "eBoundaryMesh::eBoundaryMesh"
-            "(const IOobject&, const faMesh&)"
-        );
-
-        close();
+        readFromInputStream();
     }
 }
 
@@ -113,6 +83,41 @@ eBoundaryMesh::eBoundaryMesh
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+//- Read from input stream
+void eBoundaryMesh::readFromInputStream()
+{
+    ePatchList& patches = *this;
+
+    // Read polyPatchList
+    Istream& is = readStream(typeName);
+
+    PtrList<entry> patchEntries(is);
+    patches.setSize(patchEntries.size());
+
+    forAll(patches, patchI)
+    {
+        patches.set
+        (
+            patchI,
+            ePatch::New
+            (
+                patchEntries[patchI].keyword(),
+                patchEntries[patchI].dict(),
+                patchI,
+                *this
+            )
+        );
+    }
+
+    // Check state of IOstream
+    is.check
+    (
+        "eBoundaryMesh::eBoundaryMesh"
+        "(const IOobject&, const faMesh&)"
+    );
+
+    close();
+}
 
 // Return the mesh reference
 const eMesh& eBoundaryMesh::mesh() const

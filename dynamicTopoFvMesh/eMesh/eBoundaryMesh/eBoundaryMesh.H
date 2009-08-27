@@ -67,7 +67,6 @@ class eBoundaryMesh
         //- Disallow assignment
         void operator=(const eBoundaryMesh&);
 
-
 public:
 
     //- Runtime type information
@@ -107,7 +106,7 @@ public:
 
             //- Return a list of patch names
             wordList names() const;
-            
+
             //- Return a list of patch sizes
             labelList patchSizes() const;
 
@@ -123,6 +122,10 @@ public:
             //- writeData member function required by regIOobject
             bool writeData(Ostream&) const;
 
+        // Input / Output
+
+            //- Read from input stream
+            void readFromInputStream();
 
     // Ostream operator
 

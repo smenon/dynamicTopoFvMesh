@@ -183,6 +183,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     const dynamicTopoFvMesh& mesh,
     const IOobject& io,
     const pointField& points,
+    const label nInternalEdges,
     const edgeList& edges,
     const faceList& faces,
     const labelListList& faceEdges,
@@ -225,8 +226,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nCells_(cells.size()),
     nOldInternalFaces_(0),
     nInternalFaces_(0),
-    nOldInternalEdges_(0),
-    nInternalEdges_(0),
+    nOldInternalEdges_(nInternalEdges),
+    nInternalEdges_(nInternalEdges),
     ratioMin_(mesh.ratioMin_),
     ratioMax_(mesh.ratioMax_),
     growthFactor_(mesh.growthFactor_),
@@ -299,15 +300,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     );
 
     // Initialize patch-size information
-    for(label i=0; i<numPatches_; i++)
-    {
-        oldPatchSizes_[i]  = patchSizes_[i]  = boundary[i].size();
-        oldPatchStarts_[i] = patchStarts_[i] = boundary[i].start();
-    }
-
-    // Initialize edge-related connectivity structures,
-    // but construct from components, instead of computing it.
-    // initEdges();
+    oldPatchSizes_[0] = patchSizes_[0] = (nFaces_ - nInternalFaces_);
+    oldPatchStarts_[0] = patchStarts_[0] = nInternalFaces_;
+    oldEdgePatchSizes_[0] = edgePatchSizes_[0] = (nEdges_ - nInternalEdges_);
+    oldEdgePatchStarts_[0] = edgePatchStarts_[0] = nInternalEdges_;
 
     // Set sizes for the reverse maps
     reversePointMap_.setSize(nPoints_);
@@ -339,6 +335,7 @@ dynamicTopoFvMesh::patchSubMesh::patchSubMesh()
 :
     nPoints_(-1),
     nEdges_(-1),
+    nInternalEdges_(-1),
     nFaces_(-1),
     nCells_(-1),
     nSharedPoints_(-1)
@@ -4972,7 +4969,7 @@ void dynamicTopoFvMesh::buildPatchSubMesh
     labelHashSet& cellsToAvoid
 )
 {
-    label nP = 0, nE = 0, nF = 0, nC = 0, sP = 0;
+    label nP = 0, nE = 0, nIE = 0, nF = 0, nC = 0, sP = 0;
 
     // Obtain references
     Map<label>& rPointMap = subMesh.reversePointMap();
@@ -5466,6 +5463,7 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
                         time()
                     ),
                     smPoints,
+                    recvMesh.nInternalEdges(),
                     smEdges,
                     smFaces,
                     smFaceEdges,

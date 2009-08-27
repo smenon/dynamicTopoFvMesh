@@ -904,6 +904,7 @@ void dynamicTopoFvMesh::collapseQuadFace
 
 // Method for the collapse of an edge in 3D
 // - Returns a changeMap with a type specifying:
+//    -2: Collapse failed because this is an interior edge with boundary points.
 //    -1: Collapse failed since max number of topo-changes was reached.
 //     0: Collapse could not be performed.
 //     1: Collapsed to first node.
@@ -1115,6 +1116,15 @@ dynamicTopoFvMesh::collapseEdge
     else
     if (edgeBoundary[0] && edgeBoundary[1])
     {
+        // If this is an interior edge with two boundary points,
+        // bail out for now.
+        if (whichEdgePatch(eIndex) == -1)
+        {
+            map.type() = -2;
+
+            return map;
+        }
+
         // Looks like both points are on the boundary.
         // Check if either point touches a hull boundary face, and retain that.
         FixedList<bool,2> faceCheck(false);

@@ -137,6 +137,7 @@ void eMesh::calcOrderedEdgeList()
     }
 
     // Force calculation of other data...
+    calcEdgeFaces();
     calcFaceEdges();
 
     // ... and write out
@@ -360,14 +361,34 @@ void eMesh::calcFaceEdges() const
                 mesh_.facesInstance(),
                 meshSubDir,
                 mesh_,
-                IOobject::NO_READ,
+                IOobject::READ_IF_PRESENT,
                 IOobject::NO_WRITE
             ),
             mesh_.nFaces()
         )
     );
 
-    invertManyToMany(mesh_.nFaces(), edgeFaces(), *fePtr_);
+    labelListIOList& faceEdges = *fePtr_;
+
+    // If the read was successful, return.
+    if (faceEdges.headerOk())
+    {
+        return;
+    }
+
+    // If edgeFaces exists, use that.
+    if (efPtr_)
+    {
+        invertManyToMany(mesh_.nFaces(), edgeFaces(), faceEdges);
+    }
+    else
+    {
+        FatalErrorIn
+        (
+            "void eMesh::calcFaceEdges() const"
+        )   << "Cannot calculate faceEdges."
+            << abort(FatalError);
+    }
 }
 
 void eMesh::calcEdgeFaces() const
@@ -387,15 +408,6 @@ void eMesh::calcEdgeFaces() const
             << abort(FatalError);
     }
 
-    if (!reverseEdgeMap_.size())
-    {
-        FatalErrorIn
-        (
-            "void eMesh::calcEdgeFaces() const"
-        )   << "reverseEdgeMap has not been allocated."
-            << abort(FatalError);
-    }
-
     efPtr_ =
     (
         new labelListIOList
@@ -406,7 +418,7 @@ void eMesh::calcEdgeFaces() const
                 mesh_.facesInstance(),
                 meshSubDir,
                 mesh_,
-                IOobject::NO_READ,
+                IOobject::READ_IF_PRESENT,
                 IOobject::NO_WRITE
             ),
             nEdges_
@@ -415,12 +427,35 @@ void eMesh::calcEdgeFaces() const
 
     labelListIOList& edgeFaces = *efPtr_;
 
-    // Obtain connectivity from primitive mesh.
-    const labelListList& eFaces = mesh_.edgeFaces();
-
-    forAll(eFaces, edgeI)
+    // If the read was successful, return.
+    if (edgeFaces.headerOk())
     {
-        edgeFaces[reverseEdgeMap_[edgeI]] = eFaces[edgeI];
+        return;
+    }
+
+    if (fePtr_)
+    {
+        // If faceEdges exists, use that.
+        invertManyToMany(nEdges_, faceEdges(), edgeFaces);
+    }
+    else
+    {
+        // Obtain connectivity from primitive mesh.
+        if (!reverseEdgeMap_.size())
+        {
+            FatalErrorIn
+            (
+                "void eMesh::calcEdgeFaces() const"
+            )   << "reverseEdgeMap has not been allocated."
+                << abort(FatalError);
+        }
+
+        const labelListList& eFaces = mesh_.edgeFaces();
+
+        forAll(eFaces, edgeI)
+        {
+            edgeFaces[reverseEdgeMap_[edgeI]] = eFaces[edgeI];
+        }
     }
 }
 

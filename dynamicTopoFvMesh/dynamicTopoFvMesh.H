@@ -306,6 +306,7 @@ class dynamicTopoFvMesh
             // Entity sizes
             label    nPoints_;
             label    nEdges_;
+            label    nInternalEdges_;
             label    nFaces_;
             label    nCells_;
             label    nSharedPoints_;
@@ -357,6 +358,7 @@ class dynamicTopoFvMesh
                 // Access to entity sizes
                 label& nPoints() { return nPoints_; }
                 label& nEdges() { return nEdges_; }
+                label& nInternalEdges() { return nInternalEdges_; }
                 label& nFaces() { return nFaces_; }
                 label& nCells() { return nCells_; }
                 label& nSharedPoints() { return nSharedPoints_; }
@@ -600,6 +602,7 @@ class dynamicTopoFvMesh
             const dynamicTopoFvMesh& mesh,
             const IOobject& io,
             const pointField& points,
+            const label nInternalEdges,
             const edgeList& edges,
             const faceList& faces,
             const labelListList& faceEdges,
@@ -1081,7 +1084,12 @@ class dynamicTopoFvMesh
         void reOrderPoints(pointField& points);
 
         // Reorder edges after a topology change
-        void reOrderEdges(edgeList& edges, labelListList& edgeFaces);
+        void reOrderEdges
+        (
+            edgeList& edges,
+            labelListList& edgeFaces,
+            labelListList& faceEdges
+        );
 
         // Reorder faces in upper-triangular order after a topology change
         void reOrderFaces

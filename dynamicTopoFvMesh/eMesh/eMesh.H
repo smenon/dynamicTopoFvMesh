@@ -37,7 +37,6 @@ SourceFiles
 #define eMesh_H
 
 #include "Time.H"
-#include "GeoMesh.H"
 #include "polyMesh.H"
 #include "edgeIOList.H"
 #include "labelIOList.H"
@@ -56,10 +55,11 @@ namespace Foam
 
 class eMesh
 :
-    public objectRegistry,
-    public GeoMesh<polyMesh>
+    public objectRegistry
 {
     // Private data
+
+        const polyMesh& mesh_;
 
         //- Ordered edge-list
         edgeIOList edges_;
@@ -150,7 +150,7 @@ public:
     // Constructors
 
         //- Construct from IOobject and polyMesh reference
-        eMesh(const polyMesh& m);
+        eMesh(const polyMesh& m, const word& subDir = eMesh::meshSubDir);
 
 
     // Destructor

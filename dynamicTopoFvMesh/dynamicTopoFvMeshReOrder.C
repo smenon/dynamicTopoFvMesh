@@ -87,7 +87,8 @@ void dynamicTopoFvMesh::reOrderPoints
 void dynamicTopoFvMesh::reOrderEdges
 (
     edgeList& edges,
-    labelListList& edgeFaces
+    labelListList& edgeFaces,
+    labelListList& faceEdges
 )
 {
     // *** Edge renumbering *** //
@@ -281,17 +282,21 @@ void dynamicTopoFvMesh::reOrderEdges
     // Renumber all faceEdges
     forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
     {
-        labelList& faceEdges = feIter();
+        // Obtain references
+        labelList& fEdges = feIter();
+        labelList& rfEdges = faceEdges[feIter.index()];
 
-        forAll(faceEdges,edgeI)
+        forAll(fEdges,edgeI)
         {
-            if (faceEdges[edgeI] < nOldEdges_)
+            if (fEdges[edgeI] < nOldEdges_)
             {
-                faceEdges[edgeI] = reverseEdgeMap_[faceEdges[edgeI]];
+                fEdges[edgeI] = reverseEdgeMap_[fEdges[edgeI]];
+                rfEdges[edgeI] = reverseEdgeMap_[rfEdges[edgeI]];
             }
             else
             {
-                faceEdges[edgeI] = addedEdgeRenumbering_[faceEdges[edgeI]];
+                fEdges[edgeI] = addedEdgeRenumbering_[fEdges[edgeI]];
+                rfEdges[edgeI] = addedEdgeRenumbering_[rfEdges[edgeI]];
             }
         }
     }
@@ -833,7 +838,7 @@ void dynamicTopoFvMesh::reOrderMesh
 
     // Reorder the edges
     if (debug) Info << "ReOrdering edges..." << endl;
-    reOrderEdges(edges, edgeFaces);
+    reOrderEdges(edges, edgeFaces, faceEdges);
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
