@@ -44,23 +44,11 @@ SourceFiles
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-extern "C" Foam::scalar Dihedral
-(
-    const Foam::point& p0, 
-    const Foam::point& p1, 
-    const Foam::point& p2,
-    const Foam::point& p3
-);
+namespace Foam
+{
 
-extern "C" Foam::scalar Knupp
-(
-    const Foam::point& p0, 
-    const Foam::point& p1, 
-    const Foam::point& p2,
-    const Foam::point& p3
-);
-
-extern "C" Foam::scalar meanRatio
+extern "C"
+scalar Dihedral
 (
     const Foam::point& p0,
     const Foam::point& p1,
@@ -68,7 +56,8 @@ extern "C" Foam::scalar meanRatio
     const Foam::point& p3
 );
 
-extern "C" Foam::scalar cubicMeanRatio
+extern "C"
+scalar Knupp
 (
     const Foam::point& p0,
     const Foam::point& p1,
@@ -76,7 +65,8 @@ extern "C" Foam::scalar cubicMeanRatio
     const Foam::point& p3
 );
 
-extern "C" Foam::scalar Frobenius
+extern "C"
+scalar meanRatio
 (
     const Foam::point& p0,
     const Foam::point& p1,
@@ -84,7 +74,8 @@ extern "C" Foam::scalar Frobenius
     const Foam::point& p3
 );
 
-extern "C" Foam::scalar PGH
+extern "C"
+scalar cubicMeanRatio
 (
     const Foam::point& p0,
     const Foam::point& p1,
@@ -92,13 +83,34 @@ extern "C" Foam::scalar PGH
     const Foam::point& p3
 );
 
-extern "C" Foam::scalar CSG
+extern "C"
+scalar Frobenius
 (
     const Foam::point& p0,
     const Foam::point& p1,
     const Foam::point& p2,
     const Foam::point& p3
 );
+
+extern "C"
+scalar PGH
+(
+    const Foam::point& p0,
+    const Foam::point& p1,
+    const Foam::point& p2,
+    const Foam::point& p3
+);
+
+extern "C"
+scalar CSG
+(
+    const Foam::point& p0,
+    const Foam::point& p1,
+    const Foam::point& p2,
+    const Foam::point& p3
+);
+
+} // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

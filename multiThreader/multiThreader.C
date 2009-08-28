@@ -51,14 +51,22 @@ Foam::multiThreader::multiThreader(int numThreads)
     if (numThreads > 0)
     {
         numThreads_ = numThreads;
-        Info << "Initializing threading environment with "
-             << numThreads_ << " threads." << endl;
+
+        if (debug)
+        {
+            Info << "Initializing threading environment with "
+                 << numThreads_ << " threads." << endl;
+        }
     }
     else
     {
         // Default number of threads at one (single-threaded)
         numThreads_ = 1;
-        Info << "Defaulting threading environment to one thread." << endl;
+
+        if (debug)
+        {
+            Info << "Defaulting threading environment to one thread." << endl;
+        }
     }
 
     // Initialize the thread pool

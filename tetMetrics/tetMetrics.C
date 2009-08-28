@@ -47,8 +47,11 @@ Author
 #include "point.H"
 #include "scalar.H"
 
+namespace Foam
+{
+
 // Enumeration for tets
-Foam::label tetEnum[6][4] =
+label tetEnum[6][4] =
 {
     {0,1,2,3},
     {0,2,3,1},
@@ -60,18 +63,18 @@ Foam::label tetEnum[6][4] =
 
 // Minimum dihedral angle among six edges of the tetrahedron. Normalized
 // by 70.529 degrees (equilateral tet) and signed by volume.
-Foam::scalar Dihedral
+scalar Dihedral
 (
-    const Foam::point& p0, 
-    const Foam::point& p1, 
-    const Foam::point& p2,
-    const Foam::point& p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
-    Foam::scalar minAngle = 0.0;
-    Foam::FixedList<Foam::scalar,6> cosAngles(1.0);
-    Foam::FixedList<Foam::vector,4> pts(Foam::vector::zero);
-    
+    scalar minAngle = 0.0;
+    FixedList<scalar,6> cosAngles(1.0);
+    FixedList<vector,4> pts(vector::zero);
+
     // Assign point-positions
     pts[0] = p0;
     pts[1] = p1;
@@ -79,21 +82,21 @@ Foam::scalar Dihedral
     pts[3] = p3;
 
     // Permute over all six edges
-    for (Foam::label i = 0; i < 6; i++)
+    for (label i = 0; i < 6; i++)
     {
         // Normalize the axis
-        Foam::vector v0 = (pts[tetEnum[i][1]] - pts[tetEnum[i][0]])
-                      /mag(pts[tetEnum[i][1]] - pts[tetEnum[i][0]]);
+        vector v0 = (pts[tetEnum[i][1]] - pts[tetEnum[i][0]])
+                    /mag(pts[tetEnum[i][1]] - pts[tetEnum[i][0]]);
 
         // Obtain plane-vectors
-        Foam::vector v1 = (pts[tetEnum[i][2]] - pts[tetEnum[i][0]]);
-        Foam::vector v2 = (pts[tetEnum[i][3]] - pts[tetEnum[i][0]]);
+        vector v1 = (pts[tetEnum[i][2]] - pts[tetEnum[i][0]]);
+        vector v2 = (pts[tetEnum[i][3]] - pts[tetEnum[i][0]]);
 
         v1 -= (v1 & v0)*v0;
         v2 -= (v2 & v0)*v0;
 
         cosAngles[i] = acos((v1/mag(v1)) & (v2/mag(v2)));
-        
+
         // Compute minimum angle on-the-fly
         if (i > 0)
         {
@@ -106,142 +109,142 @@ Foam::scalar Dihedral
     }
 
     // Compute signed volume and multiply by the normalized angle
-    return Foam::sign(((p1 - p0) ^ (p2 - p0)) & (p3 - p0))*(minAngle/1.2309632);
+    return sign(((p1 - p0) ^ (p2 - p0)) & (p3 - p0))*(minAngle/1.2309632);
 }
 
 // Tetrahedral mesh-quality metric suggested by Knupp [2003].
-Foam::scalar Knupp
+scalar Knupp
 (
-    const Foam::point& p0, 
-    const Foam::point& p1, 
-    const Foam::point& p2,
-    const Foam::point& p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
     // Obtain signed tet volume
-    Foam::scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
+    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
 
     // Obtain the magSqr edge-lengths
-    Foam::scalar Le =   ((p1-p0) & (p1-p0))
-                      + ((p2-p0) & (p2-p0))
-                      + ((p3-p0) & (p3-p0))
-                      + ((p2-p1) & (p2-p1))
-                      + ((p3-p1) & (p3-p1))
-                      + ((p3-p2) & (p3-p2));
+    scalar Le = ((p1-p0) & (p1-p0))
+              + ((p2-p0) & (p2-p0))
+              + ((p3-p0) & (p3-p0))
+              + ((p2-p1) & (p2-p1))
+              + ((p3-p1) & (p3-p1))
+              + ((p3-p2) & (p3-p2));
 
     // Return signed quality
-    return Foam::sign(V)*((24.96100588*Foam::pow(V*V,0.333333))/Le);
+    return sign(V)*((24.96100588*::cbrt(V*V))/Le);
 }
 
 // Mean Ratio Tetrahedral mesh metric
 // Liu,A. and Joe, B., “Relationship between tetrahedron shape measures,”
 // BIT Numerical Mathematics, Vol. 34, No. 2, 1994, pp. 268–287.
-Foam::scalar meanRatio
+scalar meanRatio
 (
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
     // Obtain signed tet volume
-    Foam::scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
+    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
 
     // Obtain the magSqr edge-lengths
-    Foam::scalar Le =   ((p1-p0) & (p1-p0))
-                      + ((p2-p0) & (p2-p0))
-                      + ((p3-p0) & (p3-p0))
-                      + ((p2-p1) & (p2-p1))
-                      + ((p3-p1) & (p3-p1))
-                      + ((p3-p2) & (p3-p2));
+    scalar Le = ((p1-p0) & (p1-p0))
+              + ((p2-p0) & (p2-p0))
+              + ((p3-p0) & (p3-p0))
+              + ((p2-p1) & (p2-p1))
+              + ((p3-p1) & (p3-p1))
+              + ((p3-p2) & (p3-p2));
 
     // Return signed quality
-    return  Foam::sign(V)*(12.0*Foam::pow(3.0*V*V,0.333333)/Le);
+    return  sign(V)*(12.0*::cbrt(3.0*V*V)/Le);
 }
 
 // Cubic Mean Ratio Tetrahedral mesh metric
 // Liu,A. and Joe, B., “On the shape of tetrahedra from bisection”
 // Mathematics of Computation, Vol. 63, 1994, pp. 141–154.
-Foam::scalar cubicMeanRatio
+scalar cubicMeanRatio
 (
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
     // Obtain signed tet volume
-    Foam::scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
+    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
 
     // Obtain the magSqr edge-lengths
-    Foam::scalar Le =   ((p1-p0) & (p1-p0))
-                      + ((p2-p0) & (p2-p0))
-                      + ((p3-p0) & (p3-p0))
-                      + ((p2-p1) & (p2-p1))
-                      + ((p3-p1) & (p3-p1))
-                      + ((p3-p2) & (p3-p2));
+    scalar Le = ((p1-p0) & (p1-p0))
+              + ((p2-p0) & (p2-p0))
+              + ((p3-p0) & (p3-p0))
+              + ((p2-p1) & (p2-p1))
+              + ((p3-p1) & (p3-p1))
+              + ((p3-p2) & (p3-p2));
 
     // Return signed quality
-    return  Foam::sign(V)*((15552.0*V*V)/(Le*Le*Le));
+    return  sign(V)*((15552.0*V*V)/(Le*Le*Le));
 }
 
 // Tetrahedral mesh-metric based on the Frobenius Condition Number
 // Patrick M. Knupp. Matrix Norms & the Condition Number: A General Framework
 // to Improve Mesh Quality via Node-Movement. Eighth International Meshing
 // Roundtable (Lake Tahoe, California), pages 13–22, October 1999.
-Foam::scalar Frobenius
+scalar Frobenius
 (
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
     // Obtain signed tet volume
-    Foam::scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
+    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
 
     // Obtain the magSqr edge-lengths
-    Foam::scalar Le =   ((p1-p0) & (p1-p0))
-                      + ((p2-p0) & (p2-p0))
-                      + ((p3-p0) & (p3-p0))
-                      + ((p2-p1) & (p2-p1))
-                      + ((p3-p1) & (p3-p1))
-                      + ((p3-p2) & (p3-p2));
+    scalar Le = ((p1-p0) & (p1-p0))
+              + ((p2-p0) & (p2-p0))
+              + ((p3-p0) & (p3-p0))
+              + ((p2-p1) & (p2-p1))
+              + ((p3-p1) & (p3-p1))
+              + ((p3-p2) & (p3-p2));
 
     // Compute magSqr of face-areas
-    Foam::scalar A =    Foam::magSqr(0.5*((p1-p0) ^ (p2-p0)))
-                      + Foam::magSqr(0.5*((p1-p0) ^ (p3-p0)))
-                      + Foam::magSqr(0.5*((p2-p0) ^ (p3-p0)))
-                      + Foam::magSqr(0.5*((p3-p1) ^ (p2-p1)));
+    scalar A = magSqr(0.5*((p1-p0) ^ (p2-p0)))
+             + magSqr(0.5*((p1-p0) ^ (p3-p0)))
+             + magSqr(0.5*((p2-p0) ^ (p3-p0)))
+             + magSqr(0.5*((p3-p1) ^ (p2-p1)));
 
     // Return signed quality
-    return 3.67423461*(V/Foam::sqrt((Le/6.0)*(A/4.0)));
+    return 3.67423461*(V/sqrt((Le/6.0)*(A/4.0)));
 }
 
 // Tetrahedral mesh-metric suggested by:
 // V. N. Parthasarathy, C. M. Graichen, and A. F. Hathaway.
 // Fast Evaluation & Improvement of Tetrahedral 3-D Grid Quality. [1991]
-Foam::scalar PGH
+scalar PGH
 (
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
     // Obtain signed tet volume
-    Foam::scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
+    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
 
     // Obtain the magSqr edge-lengths
-    Foam::scalar Le =   ((p1-p0) & (p1-p0))
-                      + ((p2-p0) & (p2-p0))
-                      + ((p3-p0) & (p3-p0))
-                      + ((p2-p1) & (p2-p1))
-                      + ((p3-p1) & (p3-p1))
-                      + ((p3-p2) & (p3-p2));
+    scalar Le = ((p1-p0) & (p1-p0))
+              + ((p2-p0) & (p2-p0))
+              + ((p3-p0) & (p3-p0))
+              + ((p2-p1) & (p2-p1))
+              + ((p3-p1) & (p3-p1))
+              + ((p3-p2) & (p3-p2));
 
     // Return signed quality
-    return 8.48528137*(V/Foam::pow(Le/4.0,1.5));
+    return 8.48528137*(V/pow(Le/4.0,1.5));
 }
 
 // Metric suggested by:
@@ -249,25 +252,27 @@ Foam::scalar PGH
 // Explicit Node Point Smoothing Within Octree. Technical Report 10-1990,
 // Scientiﬁc Computation Research Center, Rensselaer Polytechnic Institute,
 // Troy, New York. [1990]
-Foam::scalar CSG
+scalar CSG
 (
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
 )
 {
     // Obtain signed tet volume
-    Foam::scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
+    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
 
     // Compute magSqr of face-areas
-    Foam::scalar A =    Foam::magSqr(0.5*((p1-p0) ^ (p2-p0)))
-                      + Foam::magSqr(0.5*((p1-p0) ^ (p3-p0)))
-                      + Foam::magSqr(0.5*((p2-p0) ^ (p3-p0)))
-                      + Foam::magSqr(0.5*((p3-p1) ^ (p2-p1)));
+    scalar A = magSqr(0.5*((p1-p0) ^ (p2-p0)))
+             + magSqr(0.5*((p1-p0) ^ (p3-p0)))
+             + magSqr(0.5*((p2-p0) ^ (p3-p0)))
+             + magSqr(0.5*((p3-p1) ^ (p2-p1)));
 
     // Return signed quality
-    return 6.83852117*(V/Foam::pow(A,0.75));
+    return 6.83852117*(V/pow(A,0.75));
 }
+
+} // End namespace Foam
 
 // ************************************************************************* //
