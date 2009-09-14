@@ -3477,9 +3477,9 @@ scalar dynamicTopoFvMesh::computeGrowthFactor()
     	return -1.0;
     }
 
-    scalar growthFactor = 1.0;
+    scalar growthFactor = 0.0;
 
-	label level = 1;
+	label level = 1, visitedCells = 0;
 	labelList cellLevels(nCells(),0);
 
 	// Obtain the addressing lists
@@ -3521,6 +3521,8 @@ scalar dynamicTopoFvMesh::computeGrowthFactor()
 					cellLevels[ownCell] = level;
 
 					levelCells.insert(ownCell);
+
+					visitedCells++;
 				}
 
 				break;
@@ -3552,14 +3554,15 @@ scalar dynamicTopoFvMesh::computeGrowthFactor()
 				cellLevels[ownCell] = level;
 
 				levelCells.insert(ownCell);
+
+				visitedCells++;
 			}
 		}
 	}
 
-	label nLevels = 5;
 	scalar prevAvg = 0.0;
 
-	while (level <= nLevels)
+	while (visitedCells < nCells())
 	{
 		// Loop through cells of the current level
 		labelList currLvlCells = levelCells.toc();
@@ -3598,6 +3601,8 @@ scalar dynamicTopoFvMesh::computeGrowthFactor()
 					ngbLevel = level + 1;
 
 					levelCells.insert(cList[indexI]);
+
+					visitedCells++;
 				}
 			}
 		}
@@ -3610,7 +3615,7 @@ scalar dynamicTopoFvMesh::computeGrowthFactor()
 		}
 		else
 		{
-			growthFactor = avgEdgeLength/prevAvg;
+			growthFactor += (avgEdgeLength/prevAvg);
 
 			prevAvg = avgEdgeLength;
 		}
@@ -3618,6 +3623,9 @@ scalar dynamicTopoFvMesh::computeGrowthFactor()
 		// Move on to the next level
 		level++;
 	}
+
+	// Take the average growth factor
+	growthFactor /= (level - 2);
 
 	return growthFactor;
 }
@@ -4032,19 +4040,6 @@ void dynamicTopoFvMesh::readEdgeOptions
     ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
     ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
 
-    if (edgeOptionDict.found("computeGrowthFactor"))
-    {
-    	if (!reRead)
-    	{
-    		// Compute the growth factor from the mesh for the first time.
-    		growthFactor_ = computeGrowthFactor();
-    	}
-    }
-    else
-    {
-		growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
-    }
-
     if (reRead)
     {
         // Check if values have changed, and report it.
@@ -4081,6 +4076,19 @@ void dynamicTopoFvMesh::readEdgeOptions
         (
             edgeOptionDict.subDict("fixedLengthScalePatches")
         );
+    }
+
+    if (edgeOptionDict.found("computeGrowthFactor"))
+    {
+    	if (!reRead)
+    	{
+    		// Compute the growth factor from the mesh for the first time.
+    		growthFactor_ = computeGrowthFactor();
+    	}
+    }
+    else
+    {
+		growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
     }
 
     if (edgeOptionDict.found("curvaturePatches"))
