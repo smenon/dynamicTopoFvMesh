@@ -45,42 +45,65 @@ void dynamicTopoFvMesh::reOrderPoints
     // to be continuous. Loop through all points and renumber sequentially.
 
     // Allocate for the mapping information
-    pointMap_.setSize(nPoints_, -1);
+    pointMap_.setSize(this->nPoints_, -1);
 
-    label pointRenum = 0;
+    label pointInOrder = 0;
 
     addedPointRenumbering_.clear();
 
-    forAllIter(HashList<point>::iterator, points_, ptIter)
+    for (label pointI = 0; pointI < nOldPoints_; pointI++)
     {
-        // Obtain the index for this point
-        label pIndex = ptIter.index();
+        // Check if this is a deleted point
+        if (reversePointMap_[pointI] == -1)
+        {
+            continue;
+        }
 
         // Update the point info
-        points[pointRenum] = ptIter();
+        points[pointInOrder] = this->points_[pointI];
 
-        // Added points are always numbered after nOldPoints_
-        // (by virtue of the HashList append method)
-        if (pIndex < nOldPoints_)
-        {
-            pointMap_[pointRenum]    = pIndex;
-            reversePointMap_[pIndex] = pointRenum;
-        }
-        else
-        {
-            addedPointRenumbering_.insert(pIndex,pointRenum);
-        }
+        // Update maps
+        pointMap_[pointInOrder]  = pointI;
+        reversePointMap_[pointI] = pointInOrder;
 
         // Update the counter
-        pointRenum++;
+        pointInOrder++;
     }
 
-    // Clear the HashList and reset.
-    points_.clear();
-    forAll(points, pointI)
+    for (label pointI = nOldPoints_; pointI < points_.size(); pointI++)
     {
-        points_.append(points[pointI]);
+        // Was this point removed after addition?
+        if (deletedPoints_.found(pointI))
+        {
+            continue;
+        }
+
+        // Update the point info
+        points[pointInOrder] = points_[pointI];
+
+        // Put inserted points in a seperate hashSet
+        addedPointRenumbering_.insert(pointI, pointInOrder);
+
+        // Update the counter
+        pointInOrder++;
     }
+
+    // Final check to ensure everything went okay
+    if (pointInOrder != nPoints_)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::reOrderPoints()") << nl
+                << " Algorithm did not visit every point in the mesh."
+                << " Something's messed up." << nl
+                << abort(FatalError);
+    }
+
+    // Update the local copy
+    points_.setSize(nPoints_);
+
+    points_ = points;
+
+    // Clear the deleted entity map
+    deletedPoints_.clear();
 }
 
 // Reorder edges after a topology change
@@ -98,7 +121,7 @@ void dynamicTopoFvMesh::reOrderEdges
     // Allocate for mapping information
     edgeMap_.setSize(nEdges_, -1);
 
-    label edgeInOrder = 0, allEdges = edges_.lastIndex() + 1;
+    label edgeInOrder = 0, allEdges = edges_.size();
     edgeList oldEdges(allEdges);
     labelListList oldEdgeFaces(allEdges);
     labelListList oldEdgePoints(allEdges);
@@ -106,30 +129,23 @@ void dynamicTopoFvMesh::reOrderEdges
     addedEdgeRenumbering_.clear();
     Map<label> addedEdgeReverseRenumbering;
 
-    // Transfer old edge-based HashLists, and clear them
-    HashList<edge>::iterator eIter = edges_.begin();
-    HashList<labelList>::iterator efIter = edgeFaces_.begin();
-
-    while (eIter != edges_.end())
+    // Transfer old edge-based lists, and clear them
+    forAll(edges_, edgeI)
     {
-        oldEdges[eIter.index()] = eIter();
-        oldEdgeFaces[efIter.index()].transfer(efIter());
-        eIter++; efIter++;
+        oldEdges[edgeI] = edges_[edgeI];
+        oldEdgeFaces[edgeI].transfer(edgeFaces_[edgeI]);
     }
 
-    edges_.clear(); edgeFaces_.clear();
+    edges_.setSize(nEdges_); edgeFaces_.setSize(nEdges_);
 
     if (!twoDMesh_)
     {
-        HashList<labelList>::iterator epIter = edgePoints_.begin();
-
-        while (epIter != edgePoints_.end())
+        forAll(edgePoints_, edgeI)
         {
-            oldEdgePoints[epIter.index()].transfer(epIter());
-            epIter++;
+            oldEdgePoints[edgeI].transfer(edgePoints_[edgeI]);
         }
 
-        edgePoints_.clear();
+        edgePoints_.setSize(nEdges_);
     }
 
     // Keep track of inserted boundary edge indices
@@ -139,7 +155,7 @@ void dynamicTopoFvMesh::reOrderEdges
     forAll(oldEdges, edgeI)
     {
         // Ensure that we're adding valid edges
-        if (oldEdgeFaces[edgeI].size() == 0)
+        if (oldEdgeFaces[edgeI].empty())
         {
             continue;
         }
@@ -215,8 +231,10 @@ void dynamicTopoFvMesh::reOrderEdges
             }
             else
             {
-                addedEdgeRenumbering_.insert(edgeI,bEdgeIndex);
-                addedEdgeReverseRenumbering.insert(bEdgeIndex,edgeI);
+                addedEdgeRenumbering_.insert(edgeI, bEdgeIndex);
+                addedEdgeReverseRenumbering.insert(bEdgeIndex, edgeI);
+
+                edgeMap_[bEdgeIndex] = -1;
             }
         }
         else
@@ -229,12 +247,12 @@ void dynamicTopoFvMesh::reOrderEdges
             }
             else
             {
-                addedEdgeRenumbering_.insert(edgeI,edgeInOrder);
+                addedEdgeRenumbering_.insert(edgeI, edgeInOrder);
             }
 
-            // Insert entities into HashLists...
-            edges_.append(thisEdge);
-            edgeFaces_.append(thisEF);
+            // Insert entities into local lists...
+            edges_[edgeInOrder] = thisEdge;
+            edgeFaces_[edgeInOrder] = thisEF;
 
             // Insert entities into mesh-reset lists
             edges[edgeInOrder] = thisEdge;
@@ -242,7 +260,7 @@ void dynamicTopoFvMesh::reOrderEdges
 
             if (!twoDMesh_)
             {
-                edgePoints_.append(oldEdgePoints[edgeI]);
+                edgePoints_[edgeInOrder] = oldEdgePoints[edgeI];
             }
 
             edgeInOrder++;
@@ -263,9 +281,9 @@ void dynamicTopoFvMesh::reOrderEdges
             oldIndex = edgeMap_[i];
         }
 
-        // Insert entities into HashLists...
-        edges_.append(oldEdges[oldIndex]);
-        edgeFaces_.append(oldEdgeFaces[oldIndex]);
+        // Insert entities into local Lists...
+        edges_[edgeInOrder] = oldEdges[oldIndex];
+        edgeFaces_[edgeInOrder] = oldEdgeFaces[oldIndex];
 
         // Insert entities into mesh-reset lists
         edges[edgeInOrder] = oldEdges[oldIndex];
@@ -273,20 +291,29 @@ void dynamicTopoFvMesh::reOrderEdges
 
         if (!twoDMesh_)
         {
-            edgePoints_.append(oldEdgePoints[oldIndex]);
+            edgePoints_[edgeInOrder] = oldEdgePoints[oldIndex];
         }
 
         edgeInOrder++;
     }
 
+    // Final check to ensure everything went okay
+    if (edgeInOrder != nEdges_)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::reOrderEdges()") << nl
+                << " Algorithm did not visit every edge in the mesh."
+                << " Something's messed up." << nl
+                << abort(FatalError);
+    }
+
     // Renumber all faceEdges
-    forAllIter(HashList<labelList>::iterator, faceEdges_, feIter)
+    forAll(faceEdges_, faceI)
     {
         // Obtain references
-        labelList& fEdges = feIter();
-        labelList& rfEdges = faceEdges[feIter.index()];
+        labelList& fEdges = faceEdges_[faceI];
+        labelList& rfEdges = faceEdges[faceI];
 
-        forAll(fEdges,edgeI)
+        forAll(fEdges, edgeI)
         {
             if (fEdges[edgeI] < nOldEdges_)
             {
@@ -300,6 +327,41 @@ void dynamicTopoFvMesh::reOrderEdges
             }
         }
     }
+
+    // Invert edges to obtain pointEdges
+    if (!twoDMesh_)
+    {
+        // Number of edges per point
+        labelList nEdgesPerPoint(nPoints_, 0);
+
+        forAll(edges_, edgeI)
+        {
+            nEdgesPerPoint[edges_[edgeI][0]]++;
+            nEdgesPerPoint[edges_[edgeI][1]]++;
+        }
+
+        // Size pointEdges
+        pointEdges_.setSize(nPoints_);
+
+        forAll(nEdgesPerPoint, pointI)
+        {
+            pointEdges_[pointI].setSize(nEdgesPerPoint[pointI]);
+        }
+
+        nEdgesPerPoint = 0;
+
+        // Fill pointEdges
+        forAll(edges_, edgeI)
+        {
+            const edge& thisEdge = edges_[edgeI];
+
+            pointEdges_[thisEdge[0]][nEdgesPerPoint[thisEdge[0]]++] = edgeI;
+            pointEdges_[thisEdge[1]][nEdgesPerPoint[thisEdge[1]]++] = edgeI;
+        }
+    }
+
+    // Clear the deleted entity map
+    this->deletedEdges_.clear();
 }
 
 // Reorder faces in upper-triangular order after a topology change
@@ -320,7 +382,7 @@ void dynamicTopoFvMesh::reOrderFaces
     // Allocate for mapping information
     faceMap_.setSize(nFaces_, -1);
 
-    label faceInOrder = 0, allFaces = faces_.lastIndex() + 1;
+    label faceInOrder = 0, allFaces = faces_.size();
     faceList oldFaces(allFaces);
     labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces,0);
     labelListList oldFaceEdges(allFaces);
@@ -328,27 +390,25 @@ void dynamicTopoFvMesh::reOrderFaces
     addedFaceRenumbering_.clear();
     Map<label> addedFaceReverseRenumbering;
 
-    // Make a copy of the old face-based HashLists, and clear them
-    HashList<face>::iterator fIter = faces_.begin();
-    HashList<label>::iterator oIter = owner_.begin();
-    HashList<label>::iterator nIter = neighbour_.begin();
-    HashList<labelList>::iterator feIter = faceEdges_.begin();
-
-    while(fIter != faces_.end())
+    // Make a copy of the old face-based lists, and clear them
+    forAll(faces_, faceI)
     {
-        oldFaces[fIter.index()].transfer(fIter());
-        oldOwner[oIter.index()] = oIter();
-        oldNeighbour[nIter.index()] = nIter();
-        oldFaceEdges[feIter.index()].transfer(feIter());
-        fIter++; oIter++; nIter++; feIter++;
+        oldFaces[faceI].transfer(faces_[faceI]);
+        oldOwner[faceI] = owner_[faceI];
+        oldNeighbour[faceI] = neighbour_[faceI];
+        oldFaceEdges[faceI].transfer(faceEdges_[faceI]);
     }
 
-    faces_.clear(); owner_.clear(); neighbour_.clear(); faceEdges_.clear();
+    faces_.setSize(nFaces_);
+    owner_.setSize(nFaces_);
+    neighbour_.setSize(nFaces_);
+    faceEdges_.setSize(nFaces_);
 
     // Mark the internal faces with -2 so that they are inserted first
-    forAllIter(HashList<cell>::iterator, cells_, cIter)
+    forAll(cells_, cellI)
     {
-        const cell& curFaces = cIter();
+        const cell& curFaces = cells_[cellI];
+
         forAll(curFaces, faceI)
         {
             visited[curFaces[faceI]]--;
@@ -364,11 +424,11 @@ void dynamicTopoFvMesh::reOrderFaces
     // added into the list in the increasing order of neighbour
     // cells.  Therefore, all neighbours will be detected first
     // and then added in the correct order.
-    forAllIter(HashList<cell>::iterator, cells_, cIter)
+    forAll(cells_, cellI)
     {
         // Record the neighbour cell
-        label cellI = cIter.index();
-        const cell& curFaces = cIter();
+        const cell& curFaces = cells_[cellI];
+
         labelList neiCells(curFaces.size(), -1);
 
         label nNeighbours = 0;
@@ -411,6 +471,7 @@ void dynamicTopoFvMesh::reOrderFaces
 
                 // Renumber the point-labels for this boundary-face
                 face& faceRenumber = oldFaces[curFaces[faceI]];
+
                 forAll(faceRenumber,pointI)
                 {
                     if (faceRenumber[pointI] < nOldPoints_)
@@ -448,6 +509,8 @@ void dynamicTopoFvMesh::reOrderFaces
                         bFaceIndex,
                         curFaces[faceI]
                     );
+
+                    faceMap_[bFaceIndex] = -1;
                 }
 
                 // Mark this face as visited
@@ -490,6 +553,7 @@ void dynamicTopoFvMesh::reOrderFaces
 
                 // Renumber the point labels in this face
                 face& faceRenumber = oldFaces[curFaces[nextNei]];
+
                 forAll(faceRenumber, pointI)
                 {
                     if (faceRenumber[pointI] < nOldPoints_)
@@ -530,11 +594,14 @@ void dynamicTopoFvMesh::reOrderFaces
                     faceRenumber = faceRenumber.reverseFace();
                 }
 
-                // Insert entities into HashLists...
-                faces_.append(faceRenumber);
-                owner_.append(cellI);
-                neighbour_.append(minNei);
-                faceEdges_.append(oldFaceEdges[curFaces[nextNei]]);
+                // Insert entities into local lists...
+                faces_[faceInOrder] = faceRenumber;
+                owner_[faceInOrder] = cellI;
+                neighbour_[faceInOrder] = minNei;
+                faceEdges_[faceInOrder] =
+                (
+                    oldFaceEdges[curFaces[nextNei]]
+                );
 
                 // Insert entities into mesh-reset lists
                 faces[faceInOrder].transfer(faceRenumber);
@@ -564,6 +631,7 @@ void dynamicTopoFvMesh::reOrderFaces
 
     // All internal faces have been inserted. Now insert boundary faces.
     label oldIndex;
+
     for(label i=nInternalFaces_; i<nFaces_; i++)
     {
         if (faceMap_[i] == -1)
@@ -581,11 +649,11 @@ void dynamicTopoFvMesh::reOrderFaces
                               ? reverseCellMap_[oldOwner[oldIndex]]
                               : addedCellRenumbering_[oldOwner[oldIndex]];
 
-        // Insert entities into HashLists...
-        faces_.append(oldFaces[oldIndex]);
-        owner_.append(ownerRenumber);
-        neighbour_.append(-1);
-        faceEdges_.append(oldFaceEdges[oldIndex]);
+        // Insert entities into local listsLists...
+        faces_[faceInOrder] = oldFaces[oldIndex];
+        owner_[faceInOrder] = ownerRenumber;
+        neighbour_[faceInOrder] = -1;
+        faceEdges_[faceInOrder] = oldFaceEdges[oldIndex];
 
         // Insert entities into mesh-reset lists
         // NOTE: From OF-1.5 onwards, neighbour array
@@ -598,11 +666,11 @@ void dynamicTopoFvMesh::reOrderFaces
     }
 
     // Renumber all cells
-    forAllIter(HashList<cell>::iterator, cells_, cIter)
+    forAll(cells_, cellI)
     {
-        cell& cellFaces = cIter();
+        cell& cellFaces = cells_[cellI];
 
-        forAll(cellFaces,faceI)
+        forAll(cellFaces, faceI)
         {
             if (cellFaces[faceI] < nOldFaces_)
             {
@@ -626,6 +694,9 @@ void dynamicTopoFvMesh::reOrderFaces
                     << abort(FatalError);
         }
     }
+
+    // Clear the deleted entity map
+    deletedFaces_.clear();
 }
 
 // Reorder & renumber cells with bandwidth reduction after a topology change
@@ -634,13 +705,13 @@ void dynamicTopoFvMesh::reOrderCells()
     // *** Cell renumbering *** //
     // If cells were deleted during topology change, the numerical order ceases
     // to be continuous. Also, cells are always added at the end of the list by
-    // virtue of the HashList append method. Thus, cells would now have to be
+    // virtue of the append method. Thus, cells would now have to be
     // reordered so that bandwidth is reduced and renumbered to be sequential.
 
     // Allocate for mapping information
     cellMap_.setSize(nCells_, -1);
 
-    label currentCell, cellInOrder = 0, allCells = cells_.lastIndex() + 1;
+    label currentCell, cellInOrder = 0, allCells = cells_.size();
     SLList<label> nextCell;
     labelList ncc(allCells, 0);
     labelList visited(allCells, 0);
@@ -649,32 +720,22 @@ void dynamicTopoFvMesh::reOrderCells()
 
     addedCellRenumbering_.clear();
 
-    // Make a copy of the old cell-based HashLists, and clear them
-    forAllIter(HashList<cell>::iterator, cells_, cIter)
+    // Make a copy of the old cell-based lists, and clear them
+    forAll(cells_, cellI)
     {
-        oldCells[cIter.index()].transfer(cIter());
+        oldCells[cellI].transfer(cells_[cellI]);
     }
-    cells_.clear();
 
-    if (edgeModification_)
-    {
-        lengthScale_.clear(); // indicator_.clear();
-        lengthScale_.setSize(nCells_, 0.0);
-        // indicator_.setSize(nCells_, vector::zero);
-    }
+    cells_.setSize(nCells_);
 
     // Build a cell-cell addressing list
-    HashList<label>::iterator ownIter = owner_.begin();
-    HashList<label>::iterator neiIter = neighbour_.begin();
-
-    while(ownIter != owner_.end())
+    forAll(owner_, faceI)
     {
-        if (neiIter() != -1)
+        if ((neighbour_[faceI] > -1) && (owner_[faceI] > -1))
         {
-            ncc[ownIter()]++;
-            ncc[neiIter()]++;
+            ncc[owner_[faceI]]++;
+            ncc[neighbour_[faceI]]++;
         }
-        ownIter++; neiIter++;
     }
 
     forAll(cellCellAddr, cellI)
@@ -689,15 +750,20 @@ void dynamicTopoFvMesh::reOrderCells()
     }
 
     ncc = 0;
-    ownIter = owner_.begin(); neiIter = neighbour_.begin();
-    while(ownIter != owner_.end())
+    forAll(owner_, faceI)
     {
-        if (neiIter() != -1)
+        if ((owner_[faceI] > -1) && (neighbour_[faceI] > -1))
         {
-            cellCellAddr[ownIter()][ncc[ownIter()]++] = neiIter();
-            cellCellAddr[neiIter()][ncc[neiIter()]++] = ownIter();
+            cellCellAddr[owner_[faceI]][ncc[owner_[faceI]]++] =
+            (
+                neighbour_[faceI]
+            );
+
+            cellCellAddr[neighbour_[faceI]][ncc[neighbour_[faceI]]++] =
+            (
+                owner_[faceI]
+            );
         }
-        ownIter++; neiIter++;
     }
 
     // Let's get to the "business bit" of the band-compression
@@ -708,6 +774,7 @@ void dynamicTopoFvMesh::reOrderCells()
         {
             // Use this cell as a start
             currentCell = cellI;
+
             nextCell.append(currentCell);
 
             // Loop through the nextCell list. Add the first cell into the
@@ -722,6 +789,7 @@ void dynamicTopoFvMesh::reOrderCells()
                 {
                     // Mark as visited and update cell mapping info
                     visited[currentCell] = 1;
+
                     if (currentCell < nOldCells_)
                     {
                         cellMap_[cellInOrder] = currentCell;
@@ -732,8 +800,8 @@ void dynamicTopoFvMesh::reOrderCells()
                         addedCellRenumbering_.insert(currentCell,cellInOrder);
                     }
 
-                    // Insert entities into HashLists...
-                    cells_.append(oldCells[currentCell]);
+                    // Insert entities into local lists...
+                    cells_[cellInOrder].transfer(oldCells[currentCell]);
 
                     cellInOrder++;
 
@@ -758,6 +826,7 @@ void dynamicTopoFvMesh::reOrderCells()
     forAllIter(Map<objectMap>, cellsFromCells_, cellI)
     {
         objectMap& thisMap = cellI();
+
         if (thisMap.index() < nOldCells_)
         {
             thisMap.index() = reverseCellMap_[thisMap.index()];
@@ -778,6 +847,9 @@ void dynamicTopoFvMesh::reOrderCells()
                     << abort(FatalError);
         }
     }
+
+    // Clear the deleted entity map
+    deletedCells_.clear();
 }
 
 // Reorder the faces in upper-triangular order, and generate mapping information
@@ -822,6 +894,10 @@ void dynamicTopoFvMesh::reOrderMesh
         Info << "Patch Starts [Edge]: " << edgePatchStarts_ << endl;
         Info << "Patch Sizes: [Edge]: " << edgePatchSizes_ << endl;
         Info << "=================" << endl;
+
+        // Check connectivity structures for consistency
+        // before entering the reOrdering phase.
+        checkConnectivity();
     }
 
     // Reorder the points

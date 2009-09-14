@@ -720,8 +720,8 @@ void dynamicTopoFvMesh::swap23
     //      [5] Add three new cells
     //      Update faceEdges, edgeFaces and edgePoints information
 
-    // Obtain edge reference
-    edge& edgeToCheck = edges_[eIndex];
+    // Obtain a copy of the edge
+    edge edgeToCheck = edges_[eIndex];
 
     label faceForRemoval = hullFaces[isolatedVertex];
     label vertexForRemoval = hullVertices[isolatedVertex];
@@ -731,33 +731,36 @@ void dynamicTopoFvMesh::swap23
     cellsForRemoval[0] = owner_[faceForRemoval];
     cellsForRemoval[1] = neighbour_[faceForRemoval];
 
-    if (debug > 2)
+    if (debug > 1)
     {
         // Print out arguments
         Info << endl;
         Info << "== Swapping 2-3 ==" << endl;
         Info << "Edge: " << eIndex << ": " << edgeToCheck << endl;
 
-        label bPatch = whichEdgePatch(eIndex);
-
-        if (bPatch == -1)
+        if (debug > 2)
         {
-            Info << "Patch: Internal" << endl;
-        }
-        else
-        {
-            Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
-        }
+            label bPatch = whichEdgePatch(eIndex);
 
-        Info << "Ring: " << hullVertices << endl;
-        Info << "Faces: " << hullFaces << endl;
-        Info << "Cells: " << hullCells << endl;
-        Info << "Triangulation: "
-             << triangulations[0][triangulationIndex] << " "
-             << triangulations[1][triangulationIndex] << " "
-             << triangulations[2][triangulationIndex] << " "
-             << endl;
-        Info << "Isolated vertex: " << isolatedVertex << endl;
+            if (bPatch == -1)
+            {
+                Info << "Patch: Internal" << endl;
+            }
+            else
+            {
+                Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
+            }
+
+            Info << "Ring: " << hullVertices << endl;
+            Info << "Faces: " << hullFaces << endl;
+            Info << "Cells: " << hullCells << endl;
+            Info << "Triangulation: "
+                 << triangulations[0][triangulationIndex] << " "
+                 << triangulations[1][triangulationIndex] << " "
+                 << triangulations[2][triangulationIndex] << " "
+                 << endl;
+            Info << "Isolated vertex: " << isolatedVertex << endl;
+        }
 
         if (debug > 3)
         {
@@ -774,13 +777,13 @@ void dynamicTopoFvMesh::swap23
 
     // Add three new cells to the end of the cell list
     FixedList<label,3> newCellIndex(-1);
-    newCellIndex[0] = cells_.append(cell(4));
-    newCellIndex[1] = cells_.append(cell(4));
-    newCellIndex[2] = cells_.append(cell(4));
+    FixedList<cell, 3> newTetCell(cell(4));
 
-    cell &newTetCell0 = cells_[newCellIndex[0]];
-    cell &newTetCell1 = cells_[newCellIndex[1]];
-    cell &newTetCell2 = cells_[newCellIndex[2]];
+    forAll(newCellIndex, cellI)
+    {
+        newCellIndex[cellI] = cells_.size();
+        cells_.append(newTetCell[cellI]);
+    }
 
     // Update length-scale info
     if (edgeModification_)
@@ -874,7 +877,7 @@ void dynamicTopoFvMesh::swap23
     // Append three dummy faceEdges entries.
     for (label i = 0; i < 3; i++)
     {
-        faceEdges_.append();
+        faceEdges_.append(labelList(0));
     }
 
     // Add an entry to edgeFaces
@@ -917,7 +920,7 @@ void dynamicTopoFvMesh::swap23
 
     // Add three new entries to faceEdges
     label nE0 = 0, nE1 = 0, nE2 = 0;
-    labelListList newFaceEdges(3,labelList(3));
+    FixedList<labelList,3> newFaceEdges(labelList(3));
 
     newFaceEdges[0][nE0++] = newEdgeIndex;
     newFaceEdges[1][nE1++] = newEdgeIndex;
@@ -929,31 +932,29 @@ void dynamicTopoFvMesh::swap23
     FixedList<bool,2> foundEdge;
 
     // Add the newly created faces to cells
-    newTetCell0[nF0++] = newFaceIndex[0];
-    newTetCell0[nF0++] = newFaceIndex[2];
-    newTetCell1[nF1++] = newFaceIndex[0];
-    newTetCell1[nF1++] = newFaceIndex[1];
-    newTetCell2[nF2++] = newFaceIndex[1];
-    newTetCell2[nF2++] = newFaceIndex[2];
+    newTetCell[0][nF0++] = newFaceIndex[0];
+    newTetCell[0][nF0++] = newFaceIndex[2];
+    newTetCell[1][nF1++] = newFaceIndex[0];
+    newTetCell[1][nF1++] = newFaceIndex[1];
+    newTetCell[2][nF2++] = newFaceIndex[1];
+    newTetCell[2][nF2++] = newFaceIndex[2];
 
     forAll(cellsForRemoval, cellI)
     {
         label cellIndex = cellsForRemoval[cellI];
-        cell& cellToCheck = cells_[cellIndex];
 
-        forAll(cellToCheck, faceI)
+        forAll(cells_[cellIndex], faceI)
         {
-            label faceIndex = cellToCheck[faceI];
-            face& faceToCheck = faces_[faceIndex];
+            label faceIndex = cells_[cellIndex][faceI];
 
             foundEdge[0] = false; foundEdge[1] = false;
 
             // Check if face contains edgeToCheck[0]
             if
             (
-                (faceToCheck[0] == edgeToCheck[0])
-             || (faceToCheck[1] == edgeToCheck[0])
-             || (faceToCheck[2] == edgeToCheck[0])
+                (faces_[faceIndex][0] == edgeToCheck[0])
+             || (faces_[faceIndex][1] == edgeToCheck[0])
+             || (faces_[faceIndex][2] == edgeToCheck[0])
             )
             {
                 foundEdge[0] = true;
@@ -962,9 +963,9 @@ void dynamicTopoFvMesh::swap23
             // Check if face contains edgeToCheck[1]
             if
             (
-                (faceToCheck[0] == edgeToCheck[1])
-             || (faceToCheck[1] == edgeToCheck[1])
-             || (faceToCheck[2] == edgeToCheck[1])
+                (faces_[faceIndex][0] == edgeToCheck[1])
+             || (faces_[faceIndex][1] == edgeToCheck[1])
+             || (faces_[faceIndex][2] == edgeToCheck[1])
             )
             {
                 foundEdge[1] = true;
@@ -984,7 +985,7 @@ void dynamicTopoFvMesh::swap23
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
                     }
@@ -996,22 +997,19 @@ void dynamicTopoFvMesh::swap23
                 }
 
                 // Add this face to the cell
-                newTetCell1[nF1++] = faceIndex;
+                newTetCell[1][nF1++] = faceIndex;
 
                 // Update faceEdges, edgeFaces, and edgePoints.
-                // Add them to the stack as well.
-                const labelList& fEdges = faceEdges_[faceIndex];
-
-                forAll(fEdges, edgeI)
+                forAll(faceEdges_[faceIndex], edgeI)
                 {
-                    if (edges_[fEdges[edgeI]] == check[0])
+                    if (edges_[faceEdges_[faceIndex][edgeI]] == check[0])
                     {
-                        newFaceEdges[0][nE0++] = fEdges[edgeI];
+                        newFaceEdges[0][nE0++] = faceEdges_[faceIndex][edgeI];
 
                         sizeUpList
                         (
                             newFaceIndex[0],
-                            edgeFaces_[fEdges[edgeI]]
+                            edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
                         insertLabel
@@ -1019,18 +1017,18 @@ void dynamicTopoFvMesh::swap23
                             otherVertices[1],
                             edgeToCheck[0],
                             edgeToCheck[1],
-                            edgePoints_[fEdges[edgeI]]
+                            edgePoints_[faceEdges_[faceIndex][edgeI]]
                         );
                     }
 
-                    if (edges_[fEdges[edgeI]] == check[1])
+                    if (edges_[faceEdges_[faceIndex][edgeI]] == check[1])
                     {
-                        newFaceEdges[0][nE0++] = fEdges[edgeI];
+                        newFaceEdges[0][nE0++] = faceEdges_[faceIndex][edgeI];
 
                         sizeUpList
                         (
                             newFaceIndex[0],
-                            edgeFaces_[fEdges[edgeI]]
+                            edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
                         insertLabel
@@ -1038,18 +1036,18 @@ void dynamicTopoFvMesh::swap23
                             otherVertices[0],
                             edgeToCheck[0],
                             edgeToCheck[1],
-                            edgePoints_[fEdges[edgeI]]
+                            edgePoints_[faceEdges_[faceIndex][edgeI]]
                         );
                     }
 
-                    if (edges_[fEdges[edgeI]] == check[2])
+                    if (edges_[faceEdges_[faceIndex][edgeI]] == check[2])
                     {
-                        newFaceEdges[1][nE1++] = fEdges[edgeI];
+                        newFaceEdges[1][nE1++] = faceEdges_[faceIndex][edgeI];
 
                         sizeUpList
                         (
                             newFaceIndex[1],
-                            edgeFaces_[fEdges[edgeI]]
+                            edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
                         insertLabel
@@ -1057,18 +1055,18 @@ void dynamicTopoFvMesh::swap23
                             otherVertices[1],
                             vertexForRemoval,
                             edgeToCheck[1],
-                            edgePoints_[fEdges[edgeI]]
+                            edgePoints_[faceEdges_[faceIndex][edgeI]]
                         );
                     }
 
-                    if (edges_[fEdges[edgeI]] == check[4])
+                    if (edges_[faceEdges_[faceIndex][edgeI]] == check[4])
                     {
-                        newFaceEdges[1][nE1++] = fEdges[edgeI];
+                        newFaceEdges[1][nE1++] = faceEdges_[faceIndex][edgeI];
 
                         sizeUpList
                         (
                             newFaceIndex[1],
-                            edgeFaces_[fEdges[edgeI]]
+                            edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
                         insertLabel
@@ -1076,7 +1074,7 @@ void dynamicTopoFvMesh::swap23
                             otherVertices[0],
                             vertexForRemoval,
                             edgeToCheck[1],
-                            edgePoints_[fEdges[edgeI]]
+                            edgePoints_[faceEdges_[faceIndex][edgeI]]
                         );
                     }
                 }
@@ -1096,7 +1094,7 @@ void dynamicTopoFvMesh::swap23
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
                     }
@@ -1108,10 +1106,9 @@ void dynamicTopoFvMesh::swap23
                 }
 
                 // Add this face to the cell
-                newTetCell0[nF0++] = faceIndex;
+                newTetCell[0][nF0++] = faceIndex;
 
                 // Update faceEdges, edgeFaces, and edgePoints.
-                // Add them to the stack as well.
                 const labelList& fEdges = faceEdges_[faceIndex];
 
                 forAll(fEdges, edgeI)
@@ -1174,7 +1171,7 @@ void dynamicTopoFvMesh::swap23
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[2];
                     }
@@ -1186,7 +1183,7 @@ void dynamicTopoFvMesh::swap23
                 }
 
                 // Add this face to the cell
-                newTetCell2[nF2++] = faceIndex;
+                newTetCell[2][nF2++] = faceIndex;
             }
         }
     }
@@ -1245,22 +1242,22 @@ void dynamicTopoFvMesh::swap23
 
     // Update edgeFaces and edgePoints for edges of the removed face
     label otherPoint = -1, nextPoint = -1;
-    face& checkFace = faces_[faceForRemoval];
-    labelList& fEdges = faceEdges_[faceForRemoval];
 
-    forAll(fEdges, edgeI)
+    forAll(faceEdges_[faceForRemoval], edgeI)
     {
+        label edgeIndex = faceEdges_[faceForRemoval][edgeI];
+
         sizeDownList
         (
             faceForRemoval,
-            edgeFaces_[fEdges[edgeI]]
+            edgeFaces_[edgeIndex]
         );
 
         // Find the isolated point and remove it
         findIsolatedPoint
         (
-            checkFace,
-            edges_[fEdges[edgeI]],
+            faces_[faceForRemoval],
+            edges_[edgeIndex],
             otherPoint,
             nextPoint
         );
@@ -1268,7 +1265,7 @@ void dynamicTopoFvMesh::swap23
         sizeDownList
         (
             otherPoint,
-            edgePoints_[fEdges[edgeI]]
+            edgePoints_[edgeIndex]
         );
     }
 
@@ -1290,16 +1287,21 @@ void dynamicTopoFvMesh::swap23
                  << endl;
         }
 
-        cells_.remove(cIndex);
+        cells_[cIndex].clear();
 
         if (edgeModification_)
         {
-            lengthScale_.remove(cIndex);
+            lengthScale_[cIndex] = -1.0;
         }
 
         if (cIndex < nOldCells_)
         {
             reverseCellMap_[cIndex] = -1;
+        }
+        else
+        {
+            // Store this information for the reOrdering stage
+            deletedCells_.insert(cIndex);
         }
 
         // Check if the cell was added in the current morph, and delete
@@ -1307,6 +1309,12 @@ void dynamicTopoFvMesh::swap23
         {
             cellsFromCells_.erase(cIndex);
         }
+    }
+
+    // Update the cell list with newly configured cells.
+    forAll(newCellIndex, cellI)
+    {
+        cells_[newCellIndex[cellI]] = newTetCell[cellI];
     }
 
     if (debug > 2)
@@ -1376,8 +1384,8 @@ void dynamicTopoFvMesh::swap32
     //      edgeToCheck is removed later by swap3DEdges
     //      Update faceEdges, edgeFaces and edgePoints information
 
-    // Obtain edge reference
-    edge& edgeToCheck = edges_[eIndex];
+    // Obtain a copy of the edge
+    edge edgeToCheck = edges_[eIndex];
 
     // Determine the patch this edge belongs to
     label edgePatch = whichEdgePatch(eIndex);
@@ -1410,7 +1418,7 @@ void dynamicTopoFvMesh::swap32
 
     labelList cellRemovalList = cellsForRemoval.toc();
 
-    if (debug > 2)
+    if (debug > 1)
     {
         // Print out arguments
         Info << endl;
@@ -1426,25 +1434,28 @@ void dynamicTopoFvMesh::swap32
 
         Info << "Edge: " << eIndex << ": " << edgeToCheck << endl;
 
-        label bPatch = whichEdgePatch(eIndex);
-
-        if (bPatch == -1)
+        if (debug > 2)
         {
-            Info << "Patch: Internal" << endl;
-        }
-        else
-        {
-            Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
-        }
+            label bPatch = whichEdgePatch(eIndex);
 
-        Info << "Ring: " << hullVertices << endl;
-        Info << "Faces: " << hullFaces << endl;
-        Info << "Cells: " << hullCells << endl;
-        Info << "Triangulation: "
-             << triangulations[0][triangulationIndex] << " "
-             << triangulations[1][triangulationIndex] << " "
-             << triangulations[2][triangulationIndex] << " "
-             << endl;
+            if (bPatch == -1)
+            {
+                Info << "Patch: Internal" << endl;
+            }
+            else
+            {
+                Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
+            }
+
+            Info << "Ring: " << hullVertices << endl;
+            Info << "Faces: " << hullFaces << endl;
+            Info << "Cells: " << hullCells << endl;
+            Info << "Triangulation: "
+                 << triangulations[0][triangulationIndex] << " "
+                 << triangulations[1][triangulationIndex] << " "
+                 << triangulations[2][triangulationIndex] << " "
+                 << endl;
+        }
 
         if (debug > 3)
         {
@@ -1461,11 +1472,13 @@ void dynamicTopoFvMesh::swap32
 
     // Add two new cells to the end of the cell list
     FixedList<label,2> newCellIndex(-1);
-    newCellIndex[0] = cells_.append(cell(4));
-    newCellIndex[1] = cells_.append(cell(4));
+    FixedList<cell, 2> newTetCell(cell(4));
 
-    cell &newTetCell0 = cells_[newCellIndex[0]];
-    cell &newTetCell1 = cells_[newCellIndex[1]];
+    forAll(newCellIndex, cellI)
+    {
+        newCellIndex[cellI] = cells_.size();
+        cells_.append(newTetCell[cellI]);
+    }
 
     // Update length-scale info
     if (edgeModification_)
@@ -1513,13 +1526,10 @@ void dynamicTopoFvMesh::swap32
     check[1][0] = newTriFace[1]; check[1][1] = newTriFace[2];
     check[2][0] = newTriFace[2]; check[2][1] = newTriFace[0];
 
-    // New faceEdge entry for the interior face
-    label nE = 0;
-    labelList& newFaceEdges = faceEdges_[newFaceIndex];
-
     // For 2-2 swaps, two faces are introduced
+    label nE = 0;
     FixedList<label,2> nBE(0);
-    labelListList bdyFaceEdges(2, labelList(3, -1));
+    FixedList<labelList,2> bdyFaceEdges(labelList(3, -1));
 
     // Fill-in information for the two new cells,
     // and correct info on existing neighbouring cells
@@ -1547,11 +1557,10 @@ void dynamicTopoFvMesh::swap32
             if (neighbour_[facesForRemoval[faceI]] == -1)
             {
                 facePatch = whichPatch(facesForRemoval[faceI]);
-                face& faceToCheck = faces_[facesForRemoval[faceI]];
 
                 findIsolatedPoint
                 (
-                    faceToCheck,
+                    faces_[facesForRemoval[faceI]],
                     edgeToCheck,
                     otherPoint,
                     nextPoint
@@ -1573,28 +1582,40 @@ void dynamicTopoFvMesh::swap32
                 }
 
                 // Also update faceEdges for the new boundary faces
-                labelList& fEdges = faceEdges_[facesForRemoval[faceI]];
-
-                forAll(fEdges, edgeI)
+                forAll(faceEdges_[facesForRemoval[faceI]], edgeI)
                 {
                     if
                     (
-                        edges_[fEdges[edgeI]]
+                        edges_[faceEdges_[facesForRemoval[faceI]][edgeI]]
                      == edge(edgeToCheck[0], otherPoint)
                     )
                     {
-                        bdyFaceEdges[0][nBE[0]++] = fEdges[edgeI];
-                        bdyEdges[0][nBEdge[0]++] = fEdges[edgeI];
+                        bdyFaceEdges[0][nBE[0]++] =
+                        (
+                            faceEdges_[facesForRemoval[faceI]][edgeI]
+                        );
+
+                        bdyEdges[0][nBEdge[0]++] =
+                        (
+                            faceEdges_[facesForRemoval[faceI]][edgeI]
+                        );
                     }
 
                     if
                     (
-                        edges_[fEdges[edgeI]]
+                        edges_[faceEdges_[facesForRemoval[faceI]][edgeI]]
                      == edge(edgeToCheck[1], otherPoint)
                     )
                     {
-                        bdyFaceEdges[1][nBE[1]++] = fEdges[edgeI];
-                        bdyEdges[1][nBEdge[1]++] = fEdges[edgeI];
+                        bdyFaceEdges[1][nBE[1]++] =
+                        (
+                            faceEdges_[facesForRemoval[faceI]][edgeI]
+                        );
+
+                        bdyEdges[1][nBEdge[1]++] =
+                        (
+                            faceEdges_[facesForRemoval[faceI]][edgeI]
+                        );
                     }
                 }
             }
@@ -1624,8 +1645,8 @@ void dynamicTopoFvMesh::swap32
         );
 
         // Update the new cells
-        newTetCell0[nF0++] = newBdyFaceIndex[1];
-        newTetCell1[nF1++] = newBdyFaceIndex[0];
+        newTetCell[0][nF0++] = newBdyFaceIndex[1];
+        newTetCell[1][nF1++] = newBdyFaceIndex[0];
 
         // Add an edgeFaces entry
         labelList newBdyEdgeFaces(3, -1);
@@ -1662,7 +1683,7 @@ void dynamicTopoFvMesh::swap32
         );
 
         // Update faceEdges with the new edge
-        newFaceEdges[nE++] = newEdgeIndex;
+        faceEdges_[newFaceIndex][nE++] = newEdgeIndex;
         bdyFaceEdges[0][nBE[0]++] = newEdgeIndex;
         bdyFaceEdges[1][nBE[1]++] = newEdgeIndex;
 
@@ -1725,41 +1746,52 @@ void dynamicTopoFvMesh::swap32
                 // added edges and perform a geometric match.
                 bool foundMatch = false;
 
-                edge& newEdge = edges_[newEdgeIndex];
-
                 point mCentre =
                 (
-                    0.5*(points_[newEdge[0]] + points_[newEdge[1]])
+                    0.5 *
+                    (
+                        points_[edges_[newEdgeIndex][0]]
+                      + points_[edges_[newEdgeIndex][1]]
+                    )
                 );
 
                 for
                 (
-                    HashList<edge>::iterator edgeI = edges_(nOldInternalEdges_);
-                    edgeI != edges_.end();
+                    label edgeI = nOldInternalEdges_;
+                    edgeI < edges_.size();
                     edgeI++
                 )
                 {
+                    if (!edgeFaces_[edgeI].size())
+                    {
+                        continue;
+                    }
+
                     // Get the centre.
                     vector centre =
                     (
-                        0.5*(points_[edgeI()[0]] + points_[edgeI()[1]])
+                        0.5 *
+                        (
+                            points_[edges_[edgeI][0]]
+                          + points_[edges_[edgeI][1]]
+                        )
                     );
 
                     if
                     (
                         (mag(mCentre - centre) < gTol_) &&
-                        (edgeI.index() != newEdgeIndex) &&
-                        (edgeI.index() != eIndex)
+                        (edgeI != newEdgeIndex) &&
+                        (edgeI != eIndex)
                     )
                     {
                         patchCoupling_[edgePatch].mapSlave
                         (
-                            newEdgeIndex, edgeI.index()
+                            newEdgeIndex, edgeI
                         );
 
                         patchCoupling_[edgePatch].mapMaster
                         (
-                            edgeI.index(), newEdgeIndex
+                            edgeI, newEdgeIndex
                         );
 
                         foundMatch = true;
@@ -1785,31 +1817,29 @@ void dynamicTopoFvMesh::swap32
         }
     }
 
-    newTetCell0[nF0++] = newFaceIndex;
-    newTetCell1[nF1++] = newFaceIndex;
+    newTetCell[0][nF0++] = newFaceIndex;
+    newTetCell[1][nF1++] = newFaceIndex;
 
     forAll(cellRemovalList, cellI)
     {
         label cellIndex = cellRemovalList[cellI];
-        cell& cellToCheck = cells_[cellIndex];
 
-        forAll(cellToCheck, faceI)
+        forAll(cells_[cellIndex], faceI)
         {
-            label faceIndex = cellToCheck[faceI];
-            face& faceToCheck = faces_[faceIndex];
+            label faceIndex = cells_[cellIndex][faceI];
 
             foundEdge[0] = false; foundEdge[1] = false;
 
             // Find the face that contains only
             // edgeToCheck[0] or edgeToCheck[1]
-            forAll(faceToCheck, pointI)
+            forAll(faces_[faceIndex], pointI)
             {
-                if (faceToCheck[pointI] == edgeToCheck[0])
+                if (faces_[faceIndex][pointI] == edgeToCheck[0])
                 {
                     foundEdge[0] = true;
                 }
 
-                if (faceToCheck[pointI] == edgeToCheck[1])
+                if (faces_[faceIndex][pointI] == edgeToCheck[1])
                 {
                     foundEdge[1] = true;
                 }
@@ -1829,7 +1859,7 @@ void dynamicTopoFvMesh::swap32
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
                     }
@@ -1841,35 +1871,34 @@ void dynamicTopoFvMesh::swap32
                 }
 
                 // Add this face to the cell
-                newTetCell1[nF1++] = faceIndex;
+                newTetCell[1][nF1++] = faceIndex;
 
                 // Update faceEdges, edgeFaces and edgePoints
-                labelList& fEdges = faceEdges_[faceIndex];
-
-                forAll(fEdges, edgeI)
+                forAll(faceEdges_[faceIndex], edgeI)
                 {
-                    edge& checkEdge = edges_[fEdges[edgeI]];
-
                     if
                     (
-                        (checkEdge == check[0])
-                     || (checkEdge == check[1])
-                     || (checkEdge == check[2])
+                        (edges_[faceEdges_[faceIndex][edgeI]] == check[0])
+                     || (edges_[faceEdges_[faceIndex][edgeI]] == check[1])
+                     || (edges_[faceEdges_[faceIndex][edgeI]] == check[2])
                     )
                     {
-                        newFaceEdges[nE++] = fEdges[edgeI];
+                        faceEdges_[newFaceIndex][nE++] =
+                        (
+                            faceEdges_[faceIndex][edgeI]
+                        );
 
                         sizeUpList
                         (
                             newFaceIndex,
-                            edgeFaces_[fEdges[edgeI]]
+                            edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
                         // Find the isolated point and insert it
                         findIsolatedPoint
                         (
                             newTriFace,
-                            checkEdge,
+                            edges_[faceEdges_[faceIndex][edgeI]],
                             otherPoint,
                             nextPoint
                         );
@@ -1879,7 +1908,7 @@ void dynamicTopoFvMesh::swap32
                             otherPoint,
                             edgeToCheck[0],
                             edgeToCheck[1],
-                            edgePoints_[fEdges[edgeI]]
+                            edgePoints_[faceEdges_[faceIndex][edgeI]]
                         );
 
                         break;
@@ -1901,7 +1930,7 @@ void dynamicTopoFvMesh::swap32
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faceToCheck.reverseFace();
+                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
                     }
@@ -1913,7 +1942,7 @@ void dynamicTopoFvMesh::swap32
                 }
 
                 // Add this face to the cell
-                newTetCell0[nF0++] = faceIndex;
+                newTetCell[0][nF0++] = faceIndex;
             }
         }
     }
@@ -1967,12 +1996,9 @@ void dynamicTopoFvMesh::swap32
     forAll(facesForRemoval, faceI)
     {
         // Update edgeFaces and edgePoints
-        face& checkFace = faces_[facesForRemoval[faceI]];
-        labelList& fEdges = faceEdges_[facesForRemoval[faceI]];
-
-        forAll(fEdges, edgeI)
+        forAll(faceEdges_[facesForRemoval[faceI]], edgeI)
         {
-            label edgeIndex = fEdges[edgeI];
+            label edgeIndex = faceEdges_[facesForRemoval[faceI]][edgeI];
 
             if (edgeIndex != eIndex)
             {
@@ -1985,7 +2011,7 @@ void dynamicTopoFvMesh::swap32
                 // Find the isolated point and remove it
                 findIsolatedPoint
                 (
-                    checkFace,
+                    faces_[facesForRemoval[faceI]],
                     edges_[edgeIndex],
                     otherPoint,
                     nextPoint
@@ -2021,16 +2047,21 @@ void dynamicTopoFvMesh::swap32
                  << endl;
         }
 
-        cells_.remove(cIndex);
+        cells_[cIndex].clear();
 
         if (edgeModification_)
         {
-            lengthScale_.remove(cIndex);
+            lengthScale_[cIndex] = -1.0;
         }
 
         if (cIndex < nOldCells_)
         {
             reverseCellMap_[cIndex] = -1;
+        }
+        else
+        {
+            // Store this information for the reOrdering stage
+            deletedCells_.insert(cIndex);
         }
 
         // Check if the cell was added in the current morph, and delete
@@ -2038,6 +2069,12 @@ void dynamicTopoFvMesh::swap32
         {
             cellsFromCells_.erase(cIndex);
         }
+    }
+
+    // Update the cell list with newly configured cells.
+    forAll(newCellIndex, cellI)
+    {
+        cells_[newCellIndex[cellI]] = newTetCell[cellI];
     }
 
     if (debug > 2)

@@ -153,9 +153,9 @@ inline point dynamicTopoFvMesh::circumCenter
 {
     // Obtain references
     face& thisFace = faces_[fIndex];
-    const point& a = points_[thisFace[0]];
-    const point& b = points_[thisFace[1]];
-    const point& c = points_[thisFace[2]];
+    const point a = points_[thisFace[0]];
+    const point b = points_[thisFace[1]];
+    const point c = points_[thisFace[2]];
 
     scalar d1 =  (c - a)&(b - a);
     scalar d2 = -(c - b)&(b - a);
@@ -508,33 +508,30 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
         // For coupled meshes, avoid certain edges.
         if (patchCoupling_.size() || procIndices_.size())
         {
-            for
-            (
-                HashList<edge>::iterator iter = edges_.begin();
-                iter != edges_.end();
-                iter++
-            )
+            forAll(edges_, edgeI)
             {
-                if (!entitiesToAvoid_.found(iter.index()))
+                if
+                (
+                   !entitiesToAvoid_.found(edgeI) &&
+                    edgeFaces_[edgeI].size()
+                )
                 {
-                    edgeStack_[tID].insert(iter.index());
+                    edgeStack_[tID].insert(edgeI);
 
-                    tID = (tID == edgeStack_.size()-1) ? 1 : tID + 1;
+                    tID = (tID == edgeStack_.size() - 1) ? 1 : tID + 1;
                 }
             }
         }
         else
         {
-            for
-            (
-                HashList<edge>::iterator iter = edges_.begin();
-                iter != edges_.end();
-                iter++
-            )
+            forAll(edges_, edgeI)
             {
-                edgeStack_[tID].insert(iter.index());
+                if (edgeFaces_[edgeI].size())
+                {
+                    edgeStack_[tID].insert(edgeI);
 
-                tID = (tID == edgeStack_.size()-1) ? 1 : tID + 1;
+                    tID = (tID == edgeStack_.size() - 1) ? 1 : tID + 1;
+                }
             }
         }
     }
@@ -543,29 +540,26 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
         // For coupled meshes, avoid certain edges.
         if (patchCoupling_.size() || procIndices_.size())
         {
-            for
-            (
-                HashList<edge>::iterator iter = edges_.begin();
-                iter != edges_.end();
-                iter++
-            )
+            forAll(edges_, edgeI)
             {
-                if (!entitiesToAvoid_.found(iter.index()))
+                if
+                (
+                   !entitiesToAvoid_.found(edgeI) &&
+                   edgeFaces_[edgeI].size()
+                )
                 {
-                    edgeStack_[0].insert(iter.index());
+                    edgeStack_[0].insert(edgeI);
                 }
             }
         }
         else
         {
-            for
-            (
-                HashList<edge>::iterator iter = edges_.begin();
-                iter != edges_.end();
-                iter++
-            )
+            forAll(edges_, edgeI)
             {
-                edgeStack_[0].insert(iter.index());
+                if (edgeFaces_[edgeI].size())
+                {
+                    edgeStack_[0].insert(edgeI);
+                }
             }
         }
     }
@@ -581,14 +575,9 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
 
     // Loop though boundary faces and check whether
     // they belong to master/slave coupled patches.
-    for
-    (
-        HashList<face>::iterator faceI = faces_(nOldInternalFaces_);
-        faceI != faces_.end();
-        faceI++
-    )
+    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
     {
-        label pIndex = whichPatch(faceI.index());
+        label pIndex = whichPatch(faceI);
 
         if (pIndex == -1)
         {
@@ -598,7 +587,7 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
         // Check if this is a locally coupled master face.
         if (patchCoupling_.found(pIndex))
         {
-            labelList& mfEdges = faceEdges_[faceI.index()];
+            labelList& mfEdges = faceEdges_[faceI];
 
             forAll(mfEdges, edgeI)
             {
@@ -610,7 +599,7 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
         // Check if this is a processor patch.
         if (isA<processorPolyPatch>(boundary[pIndex]))
         {
-            labelList& mfEdges = faceEdges_[faceI.index()];
+            labelList& mfEdges = faceEdges_[faceI];
 
             // Check if this is a master processor patch.
             const processorPolyPatch& pp =
@@ -654,14 +643,9 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
 
         // Loop through boundary faces and check whether
         // they belong to master/slave coupled patches.
-        for
-        (
-            HashList<face>::iterator faceI = faces_(nOldInternalFaces_);
-            faceI != faces_.end();
-            faceI++
-        )
+        for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
         {
-            label pIndex = whichPatch(faceI.index());
+            label pIndex = whichPatch(faceI);
 
             if (pIndex == -1)
             {
@@ -671,7 +655,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
             // Check if this is a locally coupled master face.
             if (patchCoupling_.found(pIndex))
             {
-                labelList& mfEdges = faceEdges_[faceI.index()];
+                labelList& mfEdges = faceEdges_[faceI];
 
                 forAll(mfEdges, edgeI)
                 {
@@ -686,7 +670,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
             // Check if this is a locally coupled slave face.
             if (localSlavePatches.found(pIndex))
             {
-                labelList& mfEdges = faceEdges_[faceI.index()];
+                labelList& mfEdges = faceEdges_[faceI];
 
                 forAll(mfEdges, edgeI)
                 {
@@ -701,7 +685,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
             // Check if this is a processor patch.
             if (isA<processorPolyPatch>(boundary[pIndex]))
             {
-                labelList& mfEdges = faceEdges_[faceI.index()];
+                labelList& mfEdges = faceEdges_[faceI];
 
                 // Add to the stack.
                 forAll(mfEdges, edgeI)
@@ -743,28 +727,24 @@ inline void dynamicTopoFvMesh::initFaceStacks()
     {
         label tID = 1;
 
-        for
-        (
-            HashList<face>::iterator iter = faces_.begin();
-            iter != faces_.end();
-            iter++
-        )
+        forAll(faces_, faceI)
         {
-            faceStack_[tID].insert(iter.index());
+            if (faces_[faceI].size())
+            {
+                faceStack_[tID].insert(faceI);
 
-            tID = (tID == faceStack_.size()-1) ? 1 : tID + 1;
+                tID = (tID == faceStack_.size() - 1) ? 1 : tID + 1;
+            }
         }
     }
     else
     {
-        for
-        (
-            HashList<face>::iterator iter = faces_.begin();
-            iter != faces_.end();
-            iter++
-        )
+        forAll(faces_, faceI)
         {
-            faceStack_[0].insert(iter.index());
+            if (faces_[faceI].size())
+            {
+                faceStack_[0].insert(faceI);
+            }
         }
     }
 }
@@ -1038,7 +1018,21 @@ inline void dynamicTopoFvMesh::sizeDownList
 )
 {
     // Create a new list
-    labelList newList(list.size()-1);
+    labelList newList(list.size() - 1);
+
+#   ifdef FULLDEBUG
+    // Check that the item actually exists.
+    label index = -1;
+
+    if (!foundInList(item, list, index))
+    {
+        FatalErrorIn
+        (
+            "label dynamicTopoFvMesh::sizeDownList()"
+        )   << "Cannot find " << item << " in list: " << list << nl
+            << abort(FatalError);
+    }
+#   endif
 
     // Copy individual items
     label n = 0;
@@ -1075,13 +1069,13 @@ inline void dynamicTopoFvMesh::computeMinQuality
         {
             label prevIndex = hullVertices.rcIndex(indexI);
 
-            cQuality = (*tetMetric_)
-            (
-                points_[edgeToCheck[0]],
-                points_[hullVertices[prevIndex]],
-                points_[edgeToCheck[1]],
-                points_[hullVertices[indexI]]
-            );
+            point& a = points_[edgeToCheck[0]];
+            point& b = points_[hullVertices[prevIndex]];
+            point& c = points_[edgeToCheck[1]];
+            point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = (*tetMetric_)(a, b, c, d);
 
             // Check if the quality is worse
             minQuality = cQuality < minQuality ? cQuality : minQuality;
@@ -1092,13 +1086,13 @@ inline void dynamicTopoFvMesh::computeMinQuality
         // Boundary edge.
         for(label indexI = 1; indexI < hullVertices.size(); indexI++)
         {
-            cQuality = (*tetMetric_)
-            (
-                points_[edgeToCheck[0]],
-                points_[hullVertices[indexI-1]],
-                points_[edgeToCheck[1]],
-                points_[hullVertices[indexI]]
-            );
+            point& a = points_[edgeToCheck[0]];
+            point& b = points_[hullVertices[indexI-1]];
+            point& c = points_[edgeToCheck[1]];
+            point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = (*tetMetric_)(a, b, c, d);
 
             // Check if the quality is worse
             minQuality = cQuality < minQuality ? cQuality : minQuality;

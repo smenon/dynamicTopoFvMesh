@@ -69,7 +69,7 @@ void dynamicTopoFvMesh::collapseQuadFace
     {
         if (checkEdgeIndex[0] != fEdges[edgeI])
         {
-            edge& thisEdge = edges_[fEdges[edgeI]];
+            edge thisEdge = edges_[fEdges[edgeI]];
 
             if
             (
@@ -383,8 +383,8 @@ void dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Delete the two points...
-        points_.remove(cv0);
-        points_.remove(cv1);
+        points_[cv0] = point();
+        points_[cv1] = point();
         nPoints_ -= 2;
 
         // Update the reverse point map
@@ -392,10 +392,20 @@ void dynamicTopoFvMesh::collapseQuadFace
         {
             reversePointMap_[cv0] = -1;
         }
+        else
+        {
+            // Store this information for the reOrdering stage
+            deletedPoints_.insert(cv0);
+        }
 
         if (cv1 < nOldPoints_)
         {
             reversePointMap_[cv1] = -1;
+        }
+        else
+        {
+            // Store this information for the reOrdering stage
+            deletedPoints_.insert(cv1);
         }
     }
     else
@@ -518,13 +528,30 @@ void dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Delete the two points...
-        points_.remove(cv2);
-        points_.remove(cv3);
+        points_[cv2] = point();
+        points_[cv3] = point();
         nPoints_ -= 2;
 
         // Update the reverse point map
-        if (cv2 < nOldPoints_) reversePointMap_[cv2] = -1;
-        if (cv3 < nOldPoints_) reversePointMap_[cv3] = -1;
+        if (cv2 < nOldPoints_)
+        {
+            reversePointMap_[cv2] = -1;
+        }
+        else
+        {
+            // Store this information for the reOrdering stage
+            deletedPoints_.insert(cv2);
+        }
+
+        if (cv3 < nOldPoints_)
+        {
+            reversePointMap_[cv3] = -1;
+        }
+        else
+        {
+            // Store this information for the reOrdering stage
+            deletedPoints_.insert(cv3);
+        }
     }
 
     if (debug > 2)
@@ -800,8 +827,8 @@ void dynamicTopoFvMesh::collapseQuadFace
         }
     }
 
-    cells_.remove(c0);
-    lengthScale_.remove(c0);
+    cells_[c0].clear();
+    lengthScale_[c0] = -1.0;
 
     if (cellCheck[0] != -1)
     {
@@ -810,9 +837,15 @@ void dynamicTopoFvMesh::collapseQuadFace
 
     // Update the number of cells, and the reverse map
     nCells_--;
+
     if (c0 < nOldCells_)
     {
         reverseCellMap_[c0] = -1;
+    }
+    else
+    {
+        // Store this information for the reOrdering stage
+        deletedCells_.insert(c0);
     }
 
     // Check if the cell was added in the current morph, and delete
@@ -867,8 +900,8 @@ void dynamicTopoFvMesh::collapseQuadFace
             }
         }
 
-        cells_.remove(c1);
-        lengthScale_.remove(c1);
+        cells_[c1].clear();
+        lengthScale_[c1] = -1.0;
 
         if (cellCheck[1] != -1)
         {
@@ -877,9 +910,15 @@ void dynamicTopoFvMesh::collapseQuadFace
 
         // Update the number of cells, and the reverse map
         nCells_--;
+
         if (c1 < nOldCells_)
         {
             reverseCellMap_[c1] = -1;
+        }
+        else
+        {
+            // Store this information for the reOrdering stage
+            deletedCells_.insert(c1);
         }
 
         // Check if the cell was added in the current morph, and delete
@@ -976,8 +1015,8 @@ dynamicTopoFvMesh::collapseEdge
 
             if (slaveMap.type() > 0)
             {
-                edge& mEdge = edges_[eIndex];
-                edge& sEdge  = edges_[slaveIndex];
+                edge mEdge = edges_[eIndex];
+                edge sEdge = edges_[slaveIndex];
 
                 // Set the overRideCase for this edge
                 changeMap masterMap;
@@ -1065,9 +1104,7 @@ dynamicTopoFvMesh::collapseEdge
 
     // Hull variables
     bool found = false;
-    edge& thisEdge = edges_[eIndex];
-    labelList& vertexHull = edgePoints_[eIndex];
-    label replaceIndex = -1, m = vertexHull.size();
+    label replaceIndex = -1, m = edgePoints_[eIndex].size();
     FixedList<bool,2> edgeBoundary(false);
 
     // Size up the hull lists
@@ -1088,8 +1125,10 @@ dynamicTopoFvMesh::collapseEdge
 
     if (debug > 1)
     {
-        Info << nl << nl << "Edge: " << eIndex
-             << ": " << thisEdge << " is to be collapsed. " << endl;
+        Info << nl << nl
+             << "Edge: " << eIndex
+             << ": " << edges_[eIndex]
+             << " is to be collapsed. " << endl;
     }
 
     // Check whether points of the edge lies on a boundary
@@ -1179,26 +1218,26 @@ dynamicTopoFvMesh::collapseEdge
         case 1:
 
             // Collapse to the first node
-            replacePoint = thisEdge[0];
-            collapsePoint = thisEdge[1];
+            replacePoint = edges_[eIndex][0];
+            collapsePoint = edges_[eIndex][1];
             replaceEdgeIndex = 0;
             replaceFaceIndex = 1;
             removeEdgeIndex = 2;
             removeFaceIndex = 3;
-            newPoint = points_[thisEdge[0]];
+            newPoint = points_[edges_[eIndex][0]];
 
             break;
 
         case 2:
 
             // Collapse to the second node
-            replacePoint = thisEdge[1];
-            collapsePoint = thisEdge[0];
+            replacePoint = edges_[eIndex][1];
+            collapsePoint = edges_[eIndex][0];
             removeEdgeIndex = 0;
             removeFaceIndex = 1;
             replaceEdgeIndex = 2;
             replaceFaceIndex = 3;
-            newPoint = points_[thisEdge[1]];
+            newPoint = points_[edges_[eIndex][1]];
 
             break;
 
@@ -1206,7 +1245,7 @@ dynamicTopoFvMesh::collapseEdge
 
             // Don't think this will ever happen.
             FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                << "Edge: " << eIndex << ": " << thisEdge
+                << "Edge: " << eIndex << ": " << edges_[eIndex]
                 << ". Couldn't decide on collapseCase."
                 << abort(FatalError);
 
@@ -1226,7 +1265,7 @@ dynamicTopoFvMesh::collapseEdge
             Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
         }
 
-        Info << "Vertices: " << vertexHull << endl;
+        Info << "Vertices: " << edgePoints_[eIndex] << endl;
         Info << "Edges: " << edgeHull << endl;
         Info << "Faces: " << faceHull << endl;
         Info << "Cells: " << cellHull << endl;
@@ -1312,11 +1351,11 @@ dynamicTopoFvMesh::collapseEdge
     }
 
     // Check collapsibility of cells around edges with the re-configured point
-    labelList& checkPointEdges = pointEdges_[collapsePoint];
+    const labelList& checkPointEdges = pointEdges_[collapsePoint];
 
     forAll(checkPointEdges, edgeI)
     {
-        labelList& eFaces = edgeFaces_[checkPointEdges[edgeI]];
+        const labelList& eFaces = edgeFaces_[checkPointEdges[edgeI]];
 
         // Build a list of cells to check
         forAll(eFaces, faceI)
@@ -1396,29 +1435,40 @@ dynamicTopoFvMesh::collapseEdge
         label replaceEdge = ringEntities[replaceEdgeIndex][indexI];
         label replaceFace = ringEntities[replaceFaceIndex][indexI];
 
-        labelList& rmvEdgeFaces = edgeFaces_[edgeToRemove];
-        labelList& rplEdgeFaces = edgeFaces_[replaceEdge];
+        const labelList& rmvEdgeFaces = edgeFaces_[edgeToRemove];
 
         // Replace edgePoints for all edges emanating from hullVertices
         // except ring-edges; those are sized-down later
-        labelList& hullPointEdges = pointEdges_[vertexHull[indexI]];
+        const labelList& hullPointEdges =
+        (
+            pointEdges_[edgePoints_[eIndex][indexI]]
+        );
 
         forAll(hullPointEdges, edgeI)
         {
             label i = -1;
-            labelList& hullEdgePoints = edgePoints_[hullPointEdges[edgeI]];
 
             if
             (
-                 foundInList(collapsePoint, hullEdgePoints, i)
-             && !foundInList(replacePoint, hullEdgePoints, i)
+                 foundInList
+                 (
+                     collapsePoint,
+                     edgePoints_[hullPointEdges[edgeI]],
+                     i
+                 )
+             && !foundInList
+                 (
+                     replacePoint,
+                     edgePoints_[hullPointEdges[edgeI]],
+                     i
+                 )
             )
             {
                 replaceLabel
                 (
                     collapsePoint,
                     replacePoint,
-                    hullEdgePoints
+                    edgePoints_[hullPointEdges[edgeI]]
                 );
             }
         }
@@ -1435,7 +1485,8 @@ dynamicTopoFvMesh::collapseEdge
 
             // Loop through faces associated with this edge,
             // and renumber them as well.
-            face& faceToCheck = faces_[rmvEdgeFaces[faceI]];
+            const face& faceToCheck = faces_[rmvEdgeFaces[faceI]];
+
             if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
             {
                 if (debug > 2)
@@ -1445,7 +1496,7 @@ dynamicTopoFvMesh::collapseEdge
                          << faceToCheck << endl;
                 }
 
-                faceToCheck[replaceIndex] = replacePoint;
+                faces_[rmvEdgeFaces[faceI]][replaceIndex] = replacePoint;
             }
 
             // Hull faces should be removed for the replacement edge
@@ -1454,7 +1505,7 @@ dynamicTopoFvMesh::collapseEdge
                 sizeDownList
                 (
                     faceHull[indexI],
-                    rplEdgeFaces
+                    edgeFaces_[replaceEdge]
                 );
 
                 continue;
@@ -1484,7 +1535,7 @@ dynamicTopoFvMesh::collapseEdge
                 sizeUpList
                 (
                     rmvEdgeFaces[faceI],
-                    rplEdgeFaces
+                    edgeFaces_[replaceEdge]
                 );
             }
         }
@@ -1617,8 +1668,8 @@ dynamicTopoFvMesh::collapseEdge
             removeFace(faceToRemove);
 
             // Remove the hull cell
-            cells_.remove(cellToRemove);
-            lengthScale_.remove(cellToRemove);
+            cells_[cellToRemove].clear();
+            lengthScale_[cellToRemove] = -1.0;
 
             // Update the number of cells, and the reverse cell map
             nCells_--;
@@ -1626,6 +1677,11 @@ dynamicTopoFvMesh::collapseEdge
             if (cellToRemove < nOldCells_)
             {
                 reverseCellMap_[cellToRemove] = -1;
+            }
+            else
+            {
+                // Store this information for the reOrdering stage
+                deletedCells_.insert(cellToRemove);
             }
 
             // Check if the cell was added in the current morph, and delete
@@ -1645,41 +1701,40 @@ dynamicTopoFvMesh::collapseEdge
     // Loop through pointEdges for the collapsePoint,
     // and replace all occurrences with replacePoint.
     // Size-up pointEdges for the replacePoint as well.
-    labelList& pEdges = pointEdges_[collapsePoint];
+    const labelList& pEdges = pointEdges_[collapsePoint];
 
     forAll(pEdges, edgeI)
     {
         // Renumber edges
-        edge& edgeToCheck = edges_[pEdges[edgeI]];
-        labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+        label edgeIndex = pEdges[edgeI];
 
-        if (pEdges[edgeI] != eIndex)
+        if (edgeIndex != eIndex)
         {
             if (debug > 2)
             {
                 Info << "Renumbering [edge]: "
-                     << pEdges[edgeI] << ": "
-                     << edgeToCheck << endl;
+                     << edgeIndex << ": "
+                     << edges_[edgeIndex] << endl;
             }
 
-            if (edgeToCheck[0] == collapsePoint)
+            if (edges_[edgeIndex][0] == collapsePoint)
             {
-                edgeToCheck[0] = replacePoint;
+                edges_[edgeIndex][0] = replacePoint;
 
                 sizeUpList
                 (
-                    pEdges[edgeI],
+                    edgeIndex,
                     pointEdges_[replacePoint]
                 );
             }
             else
-            if (edgeToCheck[1] == collapsePoint)
+            if (edges_[edgeIndex][1] == collapsePoint)
             {
-                edgeToCheck[1] = replacePoint;
+                edges_[edgeIndex][1] = replacePoint;
 
                 sizeUpList
                 (
-                    pEdges[edgeI],
+                    edgeIndex,
                     pointEdges_[replacePoint]
                 );
             }
@@ -1695,9 +1750,11 @@ dynamicTopoFvMesh::collapseEdge
 
             // Loop through faces associated with this edge,
             // and renumber them as well.
+            const labelList& eFaces = edgeFaces_[edgeIndex];
+
             forAll(eFaces, faceI)
             {
-                face& faceToCheck = faces_[eFaces[faceI]];
+                const face& faceToCheck = faces_[eFaces[faceI]];
 
                 if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
                 {
@@ -1708,16 +1765,16 @@ dynamicTopoFvMesh::collapseEdge
                              << faceToCheck << endl;
                     }
 
-                    faceToCheck[replaceIndex] = replacePoint;
+                    faces_[eFaces[faceI]][replaceIndex] = replacePoint;
 
                     // Look for an edge on this face that doesn't
                     // contain collapsePoint or replacePoint.
                     label rplIndex = -1;
-                    labelList& fEdges = faceEdges_[eFaces[faceI]];
+                    const labelList& fEdges = faceEdges_[eFaces[faceI]];
 
                     forAll(fEdges, edgeI)
                     {
-                        edge& eCheck = edges_[fEdges[edgeI]];
+                        const edge& eCheck = edges_[fEdges[edgeI]];
 
                         if
                         (
@@ -1764,16 +1821,20 @@ dynamicTopoFvMesh::collapseEdge
     points_[replacePoint] = newPoint;
 
     // Remove the collapse point
-    points_.remove(collapsePoint);
-    nPoints_--;
+    points_[collapsePoint] = point();
+    pointEdges_[collapsePoint].clear();
 
-    // Null pointEdges so that removeEdge deletes it.
-    pointEdges_[collapsePoint] = labelList(0);
+    nPoints_--;
 
     // Update the reverse point map
     if (collapsePoint < nOldPoints_)
     {
         reversePointMap_[collapsePoint] = -1;
+    }
+    else
+    {
+        // Store this information for the reOrdering stage
+        deletedPoints_.insert(collapsePoint);
     }
 
     // Write out VTK files after change

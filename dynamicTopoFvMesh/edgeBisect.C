@@ -25,6 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
+#include "resizableList.H"
 #include "multiThreader.H"
 #include "dynamicTopoFvMesh.H"
 
@@ -62,14 +63,14 @@ void dynamicTopoFvMesh::bisectQuadFace
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
 
-    // Obtain a reference for this face...
-    face& thisFace = faces_[fIndex];
+    // Obtain a copy of this face...
+    face thisFace = faces_[fIndex];
 
     // Get the two cells on either side...
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
 
     // Find the prism faces for cell[0].
-    cell &cell_0 = cells_[c0];
+    cell cell_0 = cells_[c0];
 
     findPrismFaces
     (
@@ -128,28 +129,34 @@ void dynamicTopoFvMesh::bisectQuadFace
     otherEdgePoint[1] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
 
     // Add two new points to the end of the list
-    newPtIndex[0] = points_.append
-                    (
-                        0.5*
-                        (
-                            points_[commonEdges[0][0]]
-                          + points_[commonEdges[0][1]]
-                        )
-                    );
+    newPtIndex[0] = points_.size();
 
-    newPtIndex[1] = points_.append
-                    (
-                        0.5*
-                        (
-                            points_[commonEdges[1][0]]
-                          + points_[commonEdges[1][1]]
-                        )
-                    );
+    points_.append
+    (
+        0.5*
+        (
+            points_[commonEdges[0][0]]
+          + points_[commonEdges[0][1]]
+        )
+    );
+
+    newPtIndex[1] = points_.size();
+
+    points_.append
+    (
+        0.5*
+        (
+            points_[commonEdges[1][0]]
+          + points_[commonEdges[1][1]]
+        )
+    );
     nPoints_ += 2;
 
     // Add a new prism cell to the end of the list
-    newCellIndex[0] = cells_.append(cell(5));
-    cell &newCell0 = cells_[newCellIndex[0]];
+    newCellIndex[0] = cells_.size();
+
+    cell newCell0(5);
+    cells_.append(newCell0);
 
     // Generate mapping information for this new cell
     label firstParent;
@@ -215,7 +222,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     replaceLabel(c0BdyIndex[1],-1,cell_0);
 
     // Detect edges other than commonEdges
-    labelList& fEdges = faceEdges_[fIndex];
+    labelList fEdges = faceEdges_[fIndex];
 
     forAll(fEdges, edgeI)
     {
@@ -486,7 +493,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     }
     else
     {
-        cell &cell_1 = cells_[c1];
+        cell cell_1 = cells_[c1];
 
         // Find the prism faces for cell[1].
         findPrismFaces
@@ -500,8 +507,10 @@ void dynamicTopoFvMesh::bisectQuadFace
         );
 
         // Add a new prism cell to the end of the list
-        newCellIndex[1] = cells_.append(cell(5));
-        cell &newCell1 = cells_[newCellIndex[1]];
+        newCellIndex[1] = cells_.size();
+
+        cell newCell1(5);
+        cells_.append(newCell1);
 
         // Generate mapping information for this new cell
         label secondParent;
@@ -834,7 +843,18 @@ void dynamicTopoFvMesh::bisectQuadFace
                      << faces_[newCell1[faceI]] << endl;
             }
         }
+
+        // Update the cell list.
+        cells_[c1] = cell_1;
+        cells_[newCellIndex[1]] = newCell1;
     }
+
+    // Update the cell list.
+    cells_[c0] = cell_0;
+    cells_[newCellIndex[0]] = newCell0;
+
+    // Update the face list
+    faces_[fIndex] = thisFace;
 
     // Set the flag
     topoChangeFlag_ = true;
@@ -949,8 +969,9 @@ dynamicTopoFvMesh::bisectEdge
     labelList tmpEdgePoints(3,-1);
     labelList tmpIntEdgePoints(4,-1);
     labelList tmpFaceEdges(3,-1);
-    edge& thisEdge = edges_[eIndex];
-    labelList& vertexHull = edgePoints_[eIndex];
+
+    // Make a copy of existing entities
+    const labelList vertexHull = edgePoints_[eIndex];
     label m = vertexHull.size();
 
     // Size up the hull lists
@@ -971,8 +992,10 @@ dynamicTopoFvMesh::bisectEdge
 
     if (debug > 1)
     {
-        Info << nl << nl << "Edge: " << eIndex
-             << ": " << thisEdge << " is to be bisected. " << endl;
+        Info << nl << nl
+             << "Edge: " << eIndex
+             << ": " << edges_[eIndex]
+             << " is to be bisected. " << endl;
 
         // Write out VTK files prior to change
         if (debug > 3)
@@ -987,22 +1010,21 @@ dynamicTopoFvMesh::bisectEdge
     }
 
     // Add a new point to the end of the list
-    label newPointIndex =
+    label newPointIndex = points_.size();
+
+    this->points_.append
     (
-        points_.append
+        0.5 *
         (
-            0.5*
-            (
-                points_[thisEdge[0]]
-              + points_[thisEdge[1]]
-            )
+            points_[edges_[eIndex][0]]
+          + points_[edges_[eIndex][1]]
         )
     );
 
     // Add an entry to pointEdges as well
-    pointEdges_.append(labelList(0));
+    this->pointEdges_.append(labelList(0));
 
-    nPoints_++;
+    this->nPoints_++;
 
     // Add this point to the map.
     map.addPoint(newPointIndex);
@@ -1013,7 +1035,7 @@ dynamicTopoFvMesh::bisectEdge
         insertEdge
         (
             whichEdgePatch(eIndex),
-            edge(newPointIndex,thisEdge[1]),
+            edge(newPointIndex,edges_[eIndex][1]),
             labelList(faceHull.size(),-1),
             vertexHull
         )
@@ -1024,15 +1046,11 @@ dynamicTopoFvMesh::bisectEdge
 
     // Remove the existing edge from the pointEdges list
     // of the modified point, and add it to the new point
-    sizeDownList(eIndex, pointEdges_[thisEdge[1]]);
+    sizeDownList(eIndex, pointEdges_[edges_[eIndex][1]]);
     sizeUpList(eIndex, pointEdges_[newPointIndex]);
 
     // Modify the existing edge
-    thisEdge[1] = newPointIndex;
-
-    // Obtain new references
-    edge& newEdge = edges_[newEdgeIndex];
-    labelList& newEdgeFaces = edgeFaces_[newEdgeIndex];
+    edges_[eIndex][1] = newPointIndex;
 
     // Keep track of added entities
     labelList addedCellIndices(cellHull.size(),-1);
@@ -1046,21 +1064,18 @@ dynamicTopoFvMesh::bisectEdge
     // Now loop through the hull and bisect individual entities
     forAll(vertexHull, indexI)
     {
-        // Fetch the existing face
-        face& currFace = faces_[faceHull[indexI]];
-
         // Modify the existing face
         replaceLabel
         (
-            newEdge[1],
+            edges_[newEdgeIndex][1],
             newPointIndex,
-            currFace
+            faces_[faceHull[indexI]]
         );
 
-        // Modify edgePoints for the edge connected to thisEdge[0]
+        // Modify edgePoints for the edge
         replaceLabel
         (
-            newEdge[1],
+            edges_[newEdgeIndex][1],
             newPointIndex,
             edgePoints_[ringEntities[0][indexI]]
         );
@@ -1072,11 +1087,11 @@ dynamicTopoFvMesh::bisectEdge
         // Check if this is an interior/boundary face
         if (cellHull[indexI] != -1)
         {
-            cell& currCell = cells_[cellHull[indexI]];
-
             // Create a new cell
-            addedCellIndices[indexI] = cells_.append(cell(4));
-            cell& newCell = cells_[addedCellIndices[indexI]];
+            addedCellIndices[indexI] = cells_.size();
+
+            cell newCell(4);
+            cells_.append(newCell);
             nCells_++;
 
             // Add this cell to the map.
@@ -1185,8 +1200,8 @@ dynamicTopoFvMesh::bisectEdge
             insertLabel
             (
                 newPointIndex,
-                thisEdge[0],
-                newEdge[1],
+                edges_[eIndex][0],
+                edges_[newEdgeIndex][1],
                 edgePoints_[edgeHull[indexI]]
             );
 
@@ -1198,7 +1213,7 @@ dynamicTopoFvMesh::bisectEdge
             (
                 replaceFace,
                 addedIntFaceIndices[indexI],
-                currCell
+                cells_[cellHull[indexI]]
             );
 
             // Add to the new cell
@@ -1209,7 +1224,7 @@ dynamicTopoFvMesh::bisectEdge
             {
                 // Configure the boundary face
                 tmpTriFace[0] = newPointIndex;
-                tmpTriFace[1] = newEdge[1];
+                tmpTriFace[1] = edges_[newEdgeIndex][1];
                 tmpTriFace[2] = vertexHull[indexI];
 
                 // Insert the face
@@ -1246,9 +1261,9 @@ dynamicTopoFvMesh::bisectEdge
                 tmpEdgeFaces[2] = addedFaceIndices[indexI];
 
                 // Configure edgePoints
-                tmpEdgePoints[0] = thisEdge[0];
+                tmpEdgePoints[0] = edges_[eIndex][0];
                 tmpEdgePoints[1] = vertexHull[nextI];
-                tmpEdgePoints[2] = newEdge[1];
+                tmpEdgePoints[2] = edges_[newEdgeIndex][1];
 
                 // Add an edge
                 addedEdgeIndices[indexI] =
@@ -1295,7 +1310,7 @@ dynamicTopoFvMesh::bisectEdge
                 // Modify edgePoints for the edge connected to newEdge[1]
                 replaceLabel
                 (
-                    thisEdge[0],
+                    edges_[eIndex][0],
                     newPointIndex,
                     edgePoints_[ringEntities[2][indexI]]
                 );
@@ -1303,8 +1318,8 @@ dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
-                // Add an entry to newEdgeFaces
-                newEdgeFaces[indexI] = addedFaceIndices[indexI];
+                // Add an entry to edgeFaces
+                edgeFaces_[newEdgeIndex][indexI] = addedFaceIndices[indexI];
 
                 // Add an entry for this cell
                 newCell[2] = addedFaceIndices[indexI];
@@ -1315,7 +1330,7 @@ dynamicTopoFvMesh::bisectEdge
             {
                 // Configure the interior face
                 tmpTriFace[0] = vertexHull[indexI];
-                tmpTriFace[1] = newEdge[1];
+                tmpTriFace[1] = edges_[newEdgeIndex][1];
                 tmpTriFace[2] = newPointIndex;
 
                 // Insert the face
@@ -1340,9 +1355,9 @@ dynamicTopoFvMesh::bisectEdge
                 tmpIntEdgeFaces[3] = addedIntFaceIndices[prevI];
 
                 // Configure edgePoints
-                tmpIntEdgePoints[0] = thisEdge[0];
+                tmpIntEdgePoints[0] = edges_[eIndex][0];
                 tmpIntEdgePoints[1] = vertexHull[nextI];
-                tmpIntEdgePoints[2] = newEdge[1];
+                tmpIntEdgePoints[2] = edges_[newEdgeIndex][1];
                 tmpIntEdgePoints[3] = vertexHull[prevI];
 
                 // Add an internal edge
@@ -1396,7 +1411,7 @@ dynamicTopoFvMesh::bisectEdge
                 // Modify edgePoints for the edge connected to newEdge[1]
                 replaceLabel
                 (
-                    thisEdge[0],
+                    edges_[eIndex][0],
                     newPointIndex,
                     edgePoints_[ringEntities[2][indexI]]
                 );
@@ -1404,8 +1419,8 @@ dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
-                // Add an entry to newEdgeFaces
-                newEdgeFaces[indexI] = addedFaceIndices[indexI];
+                // Add an entry to edgeFaces
+                edgeFaces_[newEdgeIndex][indexI] = addedFaceIndices[indexI];
 
                 // Add an entry for this cell
                 newCell[2] = addedFaceIndices[indexI];
@@ -1419,7 +1434,7 @@ dynamicTopoFvMesh::bisectEdge
             {
                 // Configure the interior face
                 tmpTriFace[0] = newPointIndex;
-                tmpTriFace[1] = newEdge[1];
+                tmpTriFace[1] = edges_[newEdgeIndex][1];
                 tmpTriFace[2] = vertexHull[0];
 
                 // Insert the face
@@ -1444,9 +1459,9 @@ dynamicTopoFvMesh::bisectEdge
                 tmpIntEdgeFaces[3] = addedIntFaceIndices[indexI];
 
                 // Configure edgePoints
-                tmpIntEdgePoints[0] = thisEdge[0];
+                tmpIntEdgePoints[0] = edges_[eIndex][0];
                 tmpIntEdgePoints[1] = vertexHull[1];
-                tmpIntEdgePoints[2] = newEdge[1];
+                tmpIntEdgePoints[2] = edges_[newEdgeIndex][1];
                 tmpIntEdgePoints[3] = vertexHull[indexI];
 
                 // Add an internal edge
@@ -1500,7 +1515,7 @@ dynamicTopoFvMesh::bisectEdge
                 // Modify edgePoints for the edge connected to newEdge[1]
                 replaceLabel
                 (
-                    thisEdge[0],
+                    edges_[eIndex][0],
                     newPointIndex,
                     edgePoints_[ringEntities[2][0]]
                 );
@@ -1508,8 +1523,8 @@ dynamicTopoFvMesh::bisectEdge
                 // Add the faceEdges entry
                 faceEdges_.append(tmpFaceEdges);
 
-                // Add an entry to newEdgeFaces
-                newEdgeFaces[0] = addedFaceIndices[0];
+                // Add an entry to edgeFaces
+                edgeFaces_[newEdgeIndex][0] = addedFaceIndices[0];
 
                 // Add an entry for this cell
                 newCell[3] = addedFaceIndices[0];
@@ -1517,12 +1532,15 @@ dynamicTopoFvMesh::bisectEdge
                 // Make the final entry for the first cell
                 cells_[addedCellIndices[0]][2] = addedFaceIndices[0];
             }
+
+            // Update the cell list with the new cell.
+            cells_[addedCellIndices[indexI]] = newCell;
         }
         else
         {
             // Configure the final boundary face
             tmpTriFace[0] = vertexHull[indexI];
-            tmpTriFace[1] = newEdge[1];
+            tmpTriFace[1] = edges_[newEdgeIndex][1];
             tmpTriFace[2] = newPointIndex;
 
             // Insert the face
@@ -1561,9 +1579,9 @@ dynamicTopoFvMesh::bisectEdge
             tmpEdgeFaces[2] = faceHull[indexI];
 
             // Configure edgePoints
-            tmpEdgePoints[0] = newEdge[1];
+            tmpEdgePoints[0] = edges_[newEdgeIndex][1];
             tmpEdgePoints[1] = vertexHull[prevI];
-            tmpEdgePoints[2] = thisEdge[0];
+            tmpEdgePoints[2] = edges_[eIndex][0];
 
             // Add an edge
             addedEdgeIndices[indexI] =
@@ -1610,7 +1628,7 @@ dynamicTopoFvMesh::bisectEdge
             // Modify edgePoints for the edge connected to newEdge[1]
             replaceLabel
             (
-                thisEdge[0],
+                edges_[eIndex][0],
                 newPointIndex,
                 edgePoints_[ringEntities[2][indexI]]
             );
@@ -1618,8 +1636,8 @@ dynamicTopoFvMesh::bisectEdge
             // Add the faceEdges entry
             faceEdges_.append(tmpFaceEdges);
 
-            // Add an entry to newEdgeFaces
-            newEdgeFaces[indexI] = addedFaceIndices[indexI];
+            // Add an entry to edgeFaces
+            edgeFaces_[newEdgeIndex][indexI] = addedFaceIndices[indexI];
 
             // Make the final entry for the previous cell
             cells_[addedCellIndices[prevI]][3] = addedFaceIndices[indexI];
@@ -1640,13 +1658,15 @@ dynamicTopoFvMesh::bisectEdge
             // Fill in the edges to be check for...
             label eCounter = 0;
 
-            // The new edge...
-            edge& newEdge = edges_[newEdgeIndex];
-
             checkList[eCounter] = newEdgeIndex;
+
             cCentres[eCounter++] =
             (
-                0.5*(points_[newEdge[0]] + points_[newEdge[1]])
+                0.5 *
+                (
+                    points_[edges_[newEdgeIndex][0]]
+                  + points_[edges_[newEdgeIndex][1]]
+                )
             );
 
             // ... and two new boundary edges.
@@ -1654,13 +1674,15 @@ dynamicTopoFvMesh::bisectEdge
             {
                 if (whichEdgePatch(addedEdgeIndices[edgeI]) != -1)
                 {
-                    edge& bEdge = edges_[addedEdgeIndices[edgeI]];
-
                     checkList[eCounter] = addedEdgeIndices[edgeI];
 
                     cCentres[eCounter++] =
                     (
-                        0.5*(points_[bEdge[0]] + points_[bEdge[1]])
+                        0.5 *
+                        (
+                            points_[edges_[addedEdgeIndices[edgeI]][0]]
+                          + points_[edges_[addedEdgeIndices[edgeI]][1]]
+                        )
                     );
                 }
             }
@@ -1669,11 +1691,15 @@ dynamicTopoFvMesh::bisectEdge
 
             forAll(aeList, edgeI)
             {
-                // Get an edge reference.
-                edge& check = edges_[aeList[edgeI]];
-
                 // Get the centre of the edge.
-                vector centre = 0.5*(points_[check[0]] + points_[check[1]]);
+                vector centre =
+                (
+                    0.5 *
+                    (
+                        points_[edges_[aeList[edgeI]][0]]
+                      + points_[edges_[aeList[edgeI]][1]]
+                    )
+                );
 
                 // Compare with all three entries.
                 forAll (checkList, indexI)
@@ -1774,7 +1800,8 @@ dynamicTopoFvMesh::bisectEdge
             }
 
             Info << addedCellIndices[cellI] << ":: "
-                 << cells_[addedCellIndices[cellI]]
+                 << cells_[addedCellIndices[cellI]] << nl
+                 << "lengthScale: " << lengthScale_[addedCellIndices[cellI]]
                  << endl;
         }
 
@@ -1917,7 +1944,7 @@ dynamicTopoFvMesh::trisectFace
         // Are all edges of this face locally coupled?
         bool locallyCoupledFace = false;
 
-        labelList& fEdges = faceEdges_[fIndex];
+        const labelList& fEdges = faceEdges_[fIndex];
 
         if
         (
@@ -1951,8 +1978,8 @@ dynamicTopoFvMesh::trisectFace
 
                     // Search for a boundary face shared
                     // by two of the edges.
-                    labelList& eFirstFaces = edgeFaces_[fEdges[0]];
-                    labelList& eSecondFaces = edgeFaces_[fEdges[1]];
+                    const labelList& eFirstFaces = edgeFaces_[fEdges[0]];
+                    const labelList& eSecondFaces = edgeFaces_[fEdges[1]];
 
                     forAll(eFirstFaces, edgeI)
                     {
@@ -2000,8 +2027,8 @@ dynamicTopoFvMesh::trisectFace
 
                     // Search for a boundary face shared
                     // by two of the edges.
-                    labelList& eFirstFaces = edgeFaces_[fEdges[0]];
-                    labelList& eSecondFaces = edgeFaces_[fEdges[1]];
+                    const labelList& eFirstFaces = edgeFaces_[fEdges[0]];
+                    const labelList& eSecondFaces = edgeFaces_[fEdges[1]];
 
                     forAll(eFirstFaces, edgeI)
                     {
@@ -2045,10 +2072,6 @@ dynamicTopoFvMesh::trisectFace
         }
     }
 
-    // References
-    face& thisFace = faces_[fIndex];
-    cell& firstCell = cells_[owner_[fIndex]];
-
     // Hull variables
     bool foundApex;
     face tmpTriFace(3);
@@ -2056,10 +2079,11 @@ dynamicTopoFvMesh::trisectFace
     labelList newQuadEdgeFaces(4), newQuadEdgePoints(4);
 
     FixedList<label,2> apexPoint(-1);
-    FixedList<face,3>  checkFace(face(3));
+    FixedList<face, 3> checkFace(face(3));
     FixedList<label,5> newEdgeIndex(-1);
     FixedList<label,9> newFaceIndex(-1);
     FixedList<label,6> newCellIndex(-1);
+    FixedList<cell, 6> newTetCell(cell(4));
     FixedList<labelList, 9> newFaceEdges(labelList(3));
 
     // Counters for entities
@@ -2073,8 +2097,10 @@ dynamicTopoFvMesh::trisectFace
 
     if (debug > 1)
     {
-        Info << nl << nl << "Face: " << fIndex
-             << ": " << thisFace << " is to be trisected. " << endl;
+        Info << nl << nl
+             << "Face: " << fIndex
+             << ": " << faces_[fIndex]
+             << " is to be trisected. " << endl;
 
         // Write out VTK files prior to change
         if (debug > 3)
@@ -2103,17 +2129,16 @@ dynamicTopoFvMesh::trisectFace
     }
 
     // Add a new point to the end of the list
-    label newPointIndex =
+    label newPointIndex = points_.size();
+
+    points_.append
     (
-        points_.append
         (
-            (
-                points_[thisFace[0]]
-              + points_[thisFace[1]]
-              + points_[thisFace[2]]
-            )
-            /3.0
+            points_[faces_[fIndex][0]]
+          + points_[faces_[fIndex][1]]
+          + points_[faces_[fIndex][2]]
         )
+        /3.0
     );
 
     // Add an entry to pointEdges as well
@@ -2127,7 +2152,8 @@ dynamicTopoFvMesh::trisectFace
     // Add three new cells to the end of the cell list
     for (label i = 0; i < 3; i++)
     {
-        newCellIndex[i] = cells_.append(cell(4));
+        newCellIndex[i] = cells_.size();
+        cells_.append(newTetCell[i]);
 
         // Increment the cell count
         nCells_++;
@@ -2135,10 +2161,6 @@ dynamicTopoFvMesh::trisectFace
         // Add cells to the map
         map.addCell(newCellIndex[i]);
     }
-
-    cell &newTetCell0 = cells_[newCellIndex[0]];
-    cell &newTetCell1 = cells_[newCellIndex[1]];
-    cell &newTetCell2 = cells_[newCellIndex[2]];
 
     // Update length-scale info
     if (edgeModification_)
@@ -2154,17 +2176,17 @@ dynamicTopoFvMesh::trisectFace
     // Find the apex point for this cell
     foundApex = false;
 
-    forAll(firstCell, faceI)
+    forAll(cells_[owner_[fIndex]], faceI)
     {
-        face& faceToCheck = faces_[firstCell[faceI]];
+        const face& faceToCheck = faces_[cells_[owner_[fIndex]][faceI]];
 
         forAll(faceToCheck, pointI)
         {
             if
             (
-                faceToCheck[pointI] != thisFace[0] &&
-                faceToCheck[pointI] != thisFace[1] &&
-                faceToCheck[pointI] != thisFace[2]
+                faceToCheck[pointI] != faces_[fIndex][0] &&
+                faceToCheck[pointI] != faces_[fIndex][1] &&
+                faceToCheck[pointI] != faces_[fIndex][2]
             )
             {
                 apexPoint[0] = faceToCheck[pointI];
@@ -2184,7 +2206,7 @@ dynamicTopoFvMesh::trisectFace
 
     // First face: Owner: newCellIndex[0], Neighbour: newCellIndex[1]
     tmpTriFace[0] = newPointIndex;
-    tmpTriFace[1] = thisFace[0];
+    tmpTriFace[1] = faces_[fIndex][0];
     tmpTriFace[2] = apexPoint[0];
 
     newFaceIndex[0] =
@@ -2200,7 +2222,7 @@ dynamicTopoFvMesh::trisectFace
 
     // Second face: Owner: newCellIndex[1], Neighbour: newCellIndex[2]
     tmpTriFace[0] = newPointIndex;
-    tmpTriFace[1] = thisFace[1];
+    tmpTriFace[1] = faces_[fIndex][1];
     tmpTriFace[2] = apexPoint[0];
 
     newFaceIndex[1] =
@@ -2217,7 +2239,7 @@ dynamicTopoFvMesh::trisectFace
     // Third face: Owner: newCellIndex[0], Neighbour: newCellIndex[2]
     tmpTriFace[0] = newPointIndex;
     tmpTriFace[1] = apexPoint[0];
-    tmpTriFace[2] = thisFace[2];
+    tmpTriFace[2] = faces_[fIndex][2];
 
     newFaceIndex[2] =
     (
@@ -2236,9 +2258,9 @@ dynamicTopoFvMesh::trisectFace
     newTriEdgeFaces[2] = newFaceIndex[2];
 
     // Add an entry for edgePoints as well
-    newTriEdgePoints[0] = thisFace[0];
-    newTriEdgePoints[1] = thisFace[1];
-    newTriEdgePoints[2] = thisFace[2];
+    newTriEdgePoints[0] = faces_[fIndex][0];
+    newTriEdgePoints[1] = faces_[fIndex][1];
+    newTriEdgePoints[2] = faces_[fIndex][2];
 
     // Add a new internal edge to the mesh
     newEdgeIndex[0] =
@@ -2262,37 +2284,37 @@ dynamicTopoFvMesh::trisectFace
     newFaceEdges[2][nE[2]++] = newEdgeIndex[0];
 
     // Add the newly created faces to cells
-    newTetCell0[nF[0]++] = newFaceIndex[0];
-    newTetCell0[nF[0]++] = newFaceIndex[2];
-    newTetCell1[nF[1]++] = newFaceIndex[0];
-    newTetCell1[nF[1]++] = newFaceIndex[1];
-    newTetCell2[nF[2]++] = newFaceIndex[1];
-    newTetCell2[nF[2]++] = newFaceIndex[2];
+    newTetCell[0][nF[0]++] = newFaceIndex[0];
+    newTetCell[0][nF[0]++] = newFaceIndex[2];
+    newTetCell[1][nF[1]++] = newFaceIndex[0];
+    newTetCell[1][nF[1]++] = newFaceIndex[1];
+    newTetCell[2][nF[2]++] = newFaceIndex[1];
+    newTetCell[2][nF[2]++] = newFaceIndex[2];
 
     // Define the three faces to check for orientation:
-    checkFace[0][0] = thisFace[2];
+    checkFace[0][0] = faces_[fIndex][2];
     checkFace[0][1] = apexPoint[0];
-    checkFace[0][2] = thisFace[0];
+    checkFace[0][2] = faces_[fIndex][0];
 
-    checkFace[1][0] = thisFace[0];
+    checkFace[1][0] = faces_[fIndex][0];
     checkFace[1][1] = apexPoint[0];
-    checkFace[1][2] = thisFace[1];
+    checkFace[1][2] = faces_[fIndex][1];
 
-    checkFace[2][0] = thisFace[1];
+    checkFace[2][0] = faces_[fIndex][1];
     checkFace[2][1] = apexPoint[0];
-    checkFace[2][2] = thisFace[2];
+    checkFace[2][2] = faces_[fIndex][2];
 
     // Check the orientation of faces on the first cell.
-    forAll(firstCell, faceI)
+    forAll(cells_[owner_[fIndex]], faceI)
     {
-        label faceIndex = firstCell[faceI];
+        label faceIndex = cells_[owner_[fIndex]][faceI];
 
         if (faceIndex == fIndex)
         {
             continue;
         }
 
-        face& faceToCheck = faces_[faceIndex];
+        const face& faceToCheck = faces_[faceIndex];
         label cellIndex = cellsForRemoval[0];
         label newIndex = -1;
 
@@ -2300,19 +2322,19 @@ dynamicTopoFvMesh::trisectFace
         if (compare(faceToCheck, checkFace[0]) != 0)
         {
             newIndex = newCellIndex[0];
-            newTetCell0[nF[0]++] = faceIndex;
+            newTetCell[0][nF[0]++] = faceIndex;
         }
         else
         if (compare(faceToCheck, checkFace[1]) != 0)
         {
             newIndex = newCellIndex[1];
-            newTetCell1[nF[1]++] = faceIndex;
+            newTetCell[1][nF[1]++] = faceIndex;
         }
         else
         if (compare(faceToCheck, checkFace[2]) != 0)
         {
             newIndex = newCellIndex[2];
-            newTetCell2[nF[2]++] = faceIndex;
+            newTetCell[2][nF[2]++] = faceIndex;
         }
         else
         {
@@ -2354,8 +2376,8 @@ dynamicTopoFvMesh::trisectFace
 
         // Fourth face: Owner: newCellIndex[0], Neighbour: -1
         tmpTriFace[0] = newPointIndex;
-        tmpTriFace[1] = thisFace[2];
-        tmpTriFace[2] = thisFace[0];
+        tmpTriFace[1] = faces_[fIndex][2];
+        tmpTriFace[2] = faces_[fIndex][0];
 
         newFaceIndex[3] =
         (
@@ -2370,8 +2392,8 @@ dynamicTopoFvMesh::trisectFace
 
         // Fifth face: Owner: newCellIndex[1], Neighbour: -1
         tmpTriFace[0] = newPointIndex;
-        tmpTriFace[1] = thisFace[0];
-        tmpTriFace[2] = thisFace[1];
+        tmpTriFace[1] = faces_[fIndex][0];
+        tmpTriFace[2] = faces_[fIndex][1];
 
         newFaceIndex[4] =
         (
@@ -2386,8 +2408,8 @@ dynamicTopoFvMesh::trisectFace
 
         // Sixth face: Owner: newCellIndex[2], Neighbour: -1
         tmpTriFace[0] = newPointIndex;
-        tmpTriFace[1] = thisFace[1];
-        tmpTriFace[2] = thisFace[2];
+        tmpTriFace[1] = faces_[fIndex][1];
+        tmpTriFace[2] = faces_[fIndex][2];
 
         newFaceIndex[5] =
         (
@@ -2401,18 +2423,18 @@ dynamicTopoFvMesh::trisectFace
         );
 
         // Add the newly created faces to cells
-        newTetCell0[nF[0]++] = newFaceIndex[3];
-        newTetCell1[nF[1]++] = newFaceIndex[4];
-        newTetCell2[nF[2]++] = newFaceIndex[5];
+        newTetCell[0][nF[0]++] = newFaceIndex[3];
+        newTetCell[1][nF[1]++] = newFaceIndex[4];
+        newTetCell[2][nF[2]++] = newFaceIndex[5];
 
         // Configure edgeFaces and edgePoints for three new boundary edges.
         newTriEdgeFaces[0] = newFaceIndex[4];
         newTriEdgeFaces[1] = newFaceIndex[0];
         newTriEdgeFaces[2] = newFaceIndex[3];
 
-        newTriEdgePoints[0] = thisFace[1];
+        newTriEdgePoints[0] = faces_[fIndex][1];
         newTriEdgePoints[1] = apexPoint[0];
-        newTriEdgePoints[2] = thisFace[2];
+        newTriEdgePoints[2] = faces_[fIndex][2];
 
         newEdgeIndex[1] =
         (
@@ -2422,7 +2444,7 @@ dynamicTopoFvMesh::trisectFace
                 edge
                 (
                    newPointIndex,
-                   thisFace[0]
+                   faces_[fIndex][0]
                 ),
                 newTriEdgeFaces,
                 newTriEdgePoints
@@ -2433,9 +2455,9 @@ dynamicTopoFvMesh::trisectFace
         newTriEdgeFaces[1] = newFaceIndex[1];
         newTriEdgeFaces[2] = newFaceIndex[4];
 
-        newTriEdgePoints[0] = thisFace[2];
+        newTriEdgePoints[0] = faces_[fIndex][2];
         newTriEdgePoints[1] = apexPoint[0];
-        newTriEdgePoints[2] = thisFace[0];
+        newTriEdgePoints[2] = faces_[fIndex][0];
 
         newEdgeIndex[2] =
         (
@@ -2445,7 +2467,7 @@ dynamicTopoFvMesh::trisectFace
                 edge
                 (
                    newPointIndex,
-                   thisFace[1]
+                   faces_[fIndex][1]
                 ),
                 newTriEdgeFaces,
                 newTriEdgePoints
@@ -2456,9 +2478,9 @@ dynamicTopoFvMesh::trisectFace
         newTriEdgeFaces[1] = newFaceIndex[2];
         newTriEdgeFaces[2] = newFaceIndex[5];
 
-        newTriEdgePoints[0] = thisFace[0];
+        newTriEdgePoints[0] = faces_[fIndex][0];
         newTriEdgePoints[1] = apexPoint[0];
-        newTriEdgePoints[2] = thisFace[1];
+        newTriEdgePoints[2] = faces_[fIndex][1];
 
         newEdgeIndex[3] =
         (
@@ -2468,7 +2490,7 @@ dynamicTopoFvMesh::trisectFace
                 edge
                 (
                    newPointIndex,
-                   thisFace[2]
+                   faces_[fIndex][2]
                 ),
                 newTriEdgeFaces,
                 newTriEdgePoints
@@ -2490,20 +2512,20 @@ dynamicTopoFvMesh::trisectFace
         // Define the six edges to check while building faceEdges:
         FixedList<edge,6> check;
 
-        check[0][0] = apexPoint[0]; check[0][1] = thisFace[0];
-        check[1][0] = apexPoint[0]; check[1][1] = thisFace[1];
-        check[2][0] = apexPoint[0]; check[2][1] = thisFace[2];
+        check[0][0] = apexPoint[0]; check[0][1] = faces_[fIndex][0];
+        check[1][0] = apexPoint[0]; check[1][1] = faces_[fIndex][1];
+        check[2][0] = apexPoint[0]; check[2][1] = faces_[fIndex][2];
 
-        check[3][0] = thisFace[2]; check[3][1] = thisFace[0];
-        check[4][0] = thisFace[0]; check[4][1] = thisFace[1];
-        check[5][0] = thisFace[1]; check[5][1] = thisFace[2];
+        check[3][0] = faces_[fIndex][2]; check[3][1] = faces_[fIndex][0];
+        check[4][0] = faces_[fIndex][0]; check[4][1] = faces_[fIndex][1];
+        check[5][0] = faces_[fIndex][1]; check[5][1] = faces_[fIndex][2];
 
         // Build a list of cellEdges
         labelHashSet cellEdges;
 
-        forAll(firstCell, faceI)
+        forAll(cells_[owner_[fIndex]], faceI)
         {
-            labelList fEdges = faceEdges_[firstCell[faceI]];
+            const labelList& fEdges = faceEdges_[cells_[owner_[fIndex]][faceI]];
 
             forAll(fEdges, edgeI)
             {
@@ -2517,7 +2539,7 @@ dynamicTopoFvMesh::trisectFace
         // Loop through cellEdges, and perform appropriate actions.
         forAllIter(labelHashSet::iterator, cellEdges, eIter)
         {
-            edge& edgeToCheck = edges_[eIter.key()];
+            const edge& edgeToCheck = edges_[eIter.key()];
 
             // Check against the specified edges.
             if (edgeToCheck == check[0])
@@ -2525,8 +2547,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[1],
-                    thisFace[2],
+                    faces_[fIndex][1],
+                    faces_[fIndex][2],
                     edgePoints_[eIter.key()]
                 );
 
@@ -2539,8 +2561,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[0],
-                    thisFace[2],
+                    faces_[fIndex][0],
+                    faces_[fIndex][2],
                     edgePoints_[eIter.key()]
                 );
 
@@ -2553,8 +2575,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[0],
-                    thisFace[1],
+                    faces_[fIndex][0],
+                    faces_[fIndex][1],
                     edgePoints_[eIter.key()]
                 );
 
@@ -2566,7 +2588,7 @@ dynamicTopoFvMesh::trisectFace
             {
                 replaceLabel
                 (
-                    thisFace[1],
+                    faces_[fIndex][1],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
@@ -2585,7 +2607,7 @@ dynamicTopoFvMesh::trisectFace
             {
                 replaceLabel
                 (
-                    thisFace[2],
+                    faces_[fIndex][2],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
@@ -2604,7 +2626,7 @@ dynamicTopoFvMesh::trisectFace
             {
                 replaceLabel
                 (
-                    thisFace[0],
+                    faces_[fIndex][0],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
@@ -2647,13 +2669,15 @@ dynamicTopoFvMesh::trisectFace
 
                 for (label i = 1; i <= 3; i++)
                 {
-                    edge& newEdge = edges_[newEdgeIndex[i]];
-
                     checkList[eCounter] = newEdgeIndex[i];
 
                     cCentres[eCounter++] =
                     (
-                        0.5*(points_[newEdge[0]] + points_[newEdge[1]])
+                        0.5 *
+                        (
+                            points_[edges_[newEdgeIndex[i]][0]]
+                          + points_[edges_[newEdgeIndex[i]][1]]
+                        )
                     );
                 }
 
@@ -2662,7 +2686,7 @@ dynamicTopoFvMesh::trisectFace
                 forAll(aeList, edgeI)
                 {
                     // Get an edge reference.
-                    edge& check = edges_[aeList[edgeI]];
+                    const edge& check = edges_[aeList[edgeI]];
 
                     // Get the centre of the edge.
                     vector centre = 0.5*(points_[check[0]] + points_[check[1]]);
@@ -2728,12 +2752,11 @@ dynamicTopoFvMesh::trisectFace
     }
     else
     {
-        cell& secondCell = cells_[neighbour_[fIndex]];
-
         // Add three new cells to the end of the cell list
         for (label i = 3; i < 6; i++)
         {
-            newCellIndex[i] = cells_.append(cell(4));
+            newCellIndex[i] = cells_.size();
+            cells_.append(newTetCell[i]);
 
             // Increment the cell count
             nCells_++;
@@ -2741,10 +2764,6 @@ dynamicTopoFvMesh::trisectFace
             // Add to the map.
             map.addCell(newCellIndex[i]);
         }
-
-        cell &newTetCell3 = cells_[newCellIndex[3]];
-        cell &newTetCell4 = cells_[newCellIndex[4]];
-        cell &newTetCell5 = cells_[newCellIndex[5]];
 
         // Update length-scale info
         if (edgeModification_)
@@ -2760,17 +2779,17 @@ dynamicTopoFvMesh::trisectFace
         // Find the apex point for this cell
         foundApex = false;
 
-        forAll(secondCell, faceI)
+        forAll(cells_[neighbour_[fIndex]], faceI)
         {
-            face& faceToCheck = faces_[secondCell[faceI]];
+            const face& faceToCheck = faces_[cells_[neighbour_[fIndex]][faceI]];
 
             forAll(faceToCheck, pointI)
             {
                 if
                 (
-                    faceToCheck[pointI] != thisFace[0] &&
-                    faceToCheck[pointI] != thisFace[1] &&
-                    faceToCheck[pointI] != thisFace[2]
+                    faceToCheck[pointI] != faces_[fIndex][0] &&
+                    faceToCheck[pointI] != faces_[fIndex][1] &&
+                    faceToCheck[pointI] != faces_[fIndex][2]
                 )
                 {
                     apexPoint[1] = faceToCheck[pointI];
@@ -2790,8 +2809,8 @@ dynamicTopoFvMesh::trisectFace
 
         // Fourth face: Owner: newCellIndex[0], Neighbour: newCellIndex[3]
         tmpTriFace[0] = newPointIndex;
-        tmpTriFace[1] = thisFace[2];
-        tmpTriFace[2] = thisFace[0];
+        tmpTriFace[1] = faces_[fIndex][2];
+        tmpTriFace[2] = faces_[fIndex][0];
 
         newFaceIndex[3] =
         (
@@ -2806,8 +2825,8 @@ dynamicTopoFvMesh::trisectFace
 
         // Fifth face: Owner: newCellIndex[1], Neighbour: newCellIndex[4]
         tmpTriFace[0] = newPointIndex;
-        tmpTriFace[1] = thisFace[0];
-        tmpTriFace[2] = thisFace[1];
+        tmpTriFace[1] = faces_[fIndex][0];
+        tmpTriFace[2] = faces_[fIndex][1];
 
         newFaceIndex[4] =
         (
@@ -2822,8 +2841,8 @@ dynamicTopoFvMesh::trisectFace
 
         // Sixth face: Owner: newCellIndex[2], Neighbour: newCellIndex[5]
         tmpTriFace[0] = newPointIndex;
-        tmpTriFace[1] = thisFace[1];
-        tmpTriFace[2] = thisFace[2];
+        tmpTriFace[1] = faces_[fIndex][1];
+        tmpTriFace[2] = faces_[fIndex][2];
 
         newFaceIndex[5] =
         (
@@ -2839,7 +2858,7 @@ dynamicTopoFvMesh::trisectFace
         // Seventh face: Owner: newCellIndex[3], Neighbour: newCellIndex[4]
         tmpTriFace[0] = newPointIndex;
         tmpTriFace[1] = apexPoint[1];
-        tmpTriFace[2] = thisFace[0];
+        tmpTriFace[2] = faces_[fIndex][0];
 
         newFaceIndex[6] =
         (
@@ -2855,7 +2874,7 @@ dynamicTopoFvMesh::trisectFace
         // Eighth face: Owner: newCellIndex[4], Neighbour: newCellIndex[5]
         tmpTriFace[0] = newPointIndex;
         tmpTriFace[1] = apexPoint[1];
-        tmpTriFace[2] = thisFace[1];
+        tmpTriFace[2] = faces_[fIndex][1];
 
         newFaceIndex[7] =
         (
@@ -2870,7 +2889,7 @@ dynamicTopoFvMesh::trisectFace
 
         // Ninth face: Owner: newCellIndex[3], Neighbour: newCellIndex[5]
         tmpTriFace[0] = newPointIndex;
-        tmpTriFace[1] = thisFace[2];
+        tmpTriFace[1] = faces_[fIndex][2];
         tmpTriFace[2] = apexPoint[1];
 
         newFaceIndex[8] =
@@ -2885,45 +2904,45 @@ dynamicTopoFvMesh::trisectFace
         );
 
         // Add the newly created faces to cells
-        newTetCell3[nF[3]++] = newFaceIndex[6];
-        newTetCell3[nF[3]++] = newFaceIndex[8];
-        newTetCell4[nF[4]++] = newFaceIndex[6];
-        newTetCell4[nF[4]++] = newFaceIndex[7];
-        newTetCell5[nF[5]++] = newFaceIndex[7];
-        newTetCell5[nF[5]++] = newFaceIndex[8];
+        newTetCell[3][nF[3]++] = newFaceIndex[6];
+        newTetCell[3][nF[3]++] = newFaceIndex[8];
+        newTetCell[4][nF[4]++] = newFaceIndex[6];
+        newTetCell[4][nF[4]++] = newFaceIndex[7];
+        newTetCell[5][nF[5]++] = newFaceIndex[7];
+        newTetCell[5][nF[5]++] = newFaceIndex[8];
 
-        newTetCell0[nF[0]++] = newFaceIndex[3];
-        newTetCell1[nF[1]++] = newFaceIndex[4];
-        newTetCell2[nF[2]++] = newFaceIndex[5];
+        newTetCell[0][nF[0]++] = newFaceIndex[3];
+        newTetCell[1][nF[1]++] = newFaceIndex[4];
+        newTetCell[2][nF[2]++] = newFaceIndex[5];
 
-        newTetCell3[nF[3]++] = newFaceIndex[3];
-        newTetCell4[nF[4]++] = newFaceIndex[4];
-        newTetCell5[nF[5]++] = newFaceIndex[5];
+        newTetCell[3][nF[3]++] = newFaceIndex[3];
+        newTetCell[4][nF[4]++] = newFaceIndex[4];
+        newTetCell[5][nF[5]++] = newFaceIndex[5];
 
         // Define the three faces to check for orientation:
-        checkFace[0][0] = thisFace[2];
+        checkFace[0][0] = faces_[fIndex][2];
         checkFace[0][1] = apexPoint[1];
-        checkFace[0][2] = thisFace[0];
+        checkFace[0][2] = faces_[fIndex][0];
 
-        checkFace[1][0] = thisFace[0];
+        checkFace[1][0] = faces_[fIndex][0];
         checkFace[1][1] = apexPoint[1];
-        checkFace[1][2] = thisFace[1];
+        checkFace[1][2] = faces_[fIndex][1];
 
-        checkFace[2][0] = thisFace[1];
+        checkFace[2][0] = faces_[fIndex][1];
         checkFace[2][1] = apexPoint[1];
-        checkFace[2][2] = thisFace[2];
+        checkFace[2][2] = faces_[fIndex][2];
 
         // Check the orientation of faces on the second cell.
-        forAll(secondCell, faceI)
+        forAll(cells_[neighbour_[fIndex]], faceI)
         {
-            label faceIndex = secondCell[faceI];
+            label faceIndex = cells_[neighbour_[fIndex]][faceI];
 
             if (faceIndex == fIndex)
             {
                 continue;
             }
 
-            face& faceToCheck = faces_[faceIndex];
+            const face& faceToCheck = faces_[faceIndex];
             label cellIndex = cellsForRemoval[1];
             label newIndex = -1;
 
@@ -2931,19 +2950,19 @@ dynamicTopoFvMesh::trisectFace
             if (compare(faceToCheck, checkFace[0]) != 0)
             {
                 newIndex = newCellIndex[3];
-                newTetCell3[nF[3]++] = faceIndex;
+                newTetCell[3][nF[3]++] = faceIndex;
             }
             else
             if (compare(faceToCheck, checkFace[1]) != 0)
             {
                 newIndex = newCellIndex[4];
-                newTetCell4[nF[4]++] = faceIndex;
+                newTetCell[4][nF[4]++] = faceIndex;
             }
             else
             if (compare(faceToCheck, checkFace[2]) != 0)
             {
                 newIndex = newCellIndex[5];
-                newTetCell5[nF[5]++] = faceIndex;
+                newTetCell[5][nF[5]++] = faceIndex;
             }
             else
             {
@@ -2982,9 +3001,9 @@ dynamicTopoFvMesh::trisectFace
         newQuadEdgeFaces[2] = newFaceIndex[3];
         newQuadEdgeFaces[3] = newFaceIndex[6];
 
-        newQuadEdgePoints[0] = thisFace[1];
+        newQuadEdgePoints[0] = faces_[fIndex][1];
         newQuadEdgePoints[1] = apexPoint[0];
-        newQuadEdgePoints[2] = thisFace[2];
+        newQuadEdgePoints[2] = faces_[fIndex][2];
         newQuadEdgePoints[3] = apexPoint[1];
 
         newEdgeIndex[1] =
@@ -2995,7 +3014,7 @@ dynamicTopoFvMesh::trisectFace
                 edge
                 (
                    newPointIndex,
-                   thisFace[0]
+                   faces_[fIndex][0]
                 ),
                 newQuadEdgeFaces,
                 newQuadEdgePoints
@@ -3007,9 +3026,9 @@ dynamicTopoFvMesh::trisectFace
         newQuadEdgeFaces[2] = newFaceIndex[4];
         newQuadEdgeFaces[3] = newFaceIndex[7];
 
-        newQuadEdgePoints[0] = thisFace[2];
+        newQuadEdgePoints[0] = faces_[fIndex][2];
         newQuadEdgePoints[1] = apexPoint[0];
-        newQuadEdgePoints[2] = thisFace[0];
+        newQuadEdgePoints[2] = faces_[fIndex][0];
         newQuadEdgePoints[3] = apexPoint[1];
 
         newEdgeIndex[2] =
@@ -3020,7 +3039,7 @@ dynamicTopoFvMesh::trisectFace
                 edge
                 (
                    newPointIndex,
-                   thisFace[1]
+                   faces_[fIndex][1]
                 ),
                 newQuadEdgeFaces,
                 newQuadEdgePoints
@@ -3032,9 +3051,9 @@ dynamicTopoFvMesh::trisectFace
         newQuadEdgeFaces[2] = newFaceIndex[5];
         newQuadEdgeFaces[3] = newFaceIndex[8];
 
-        newQuadEdgePoints[0] = thisFace[0];
+        newQuadEdgePoints[0] = faces_[fIndex][0];
         newQuadEdgePoints[1] = apexPoint[0];
-        newQuadEdgePoints[2] = thisFace[1];
+        newQuadEdgePoints[2] = faces_[fIndex][1];
         newQuadEdgePoints[3] = apexPoint[1];
 
         newEdgeIndex[3] =
@@ -3045,7 +3064,7 @@ dynamicTopoFvMesh::trisectFace
                 edge
                 (
                    newPointIndex,
-                   thisFace[2]
+                   faces_[fIndex][2]
                 ),
                 newQuadEdgeFaces,
                 newQuadEdgePoints
@@ -3056,9 +3075,9 @@ dynamicTopoFvMesh::trisectFace
         newTriEdgeFaces[1] = newFaceIndex[7];
         newTriEdgeFaces[2] = newFaceIndex[8];
 
-        newTriEdgePoints[0] = thisFace[0];
-        newTriEdgePoints[1] = thisFace[1];
-        newTriEdgePoints[2] = thisFace[2];
+        newTriEdgePoints[0] = faces_[fIndex][0];
+        newTriEdgePoints[1] = faces_[fIndex][1];
+        newTriEdgePoints[2] = faces_[fIndex][2];
 
         newEdgeIndex[4] =
         (
@@ -3098,24 +3117,27 @@ dynamicTopoFvMesh::trisectFace
         // Define the nine edges to check while building faceEdges:
         FixedList<edge,9> check;
 
-        check[0][0] = apexPoint[0]; check[0][1] = thisFace[0];
-        check[1][0] = apexPoint[0]; check[1][1] = thisFace[1];
-        check[2][0] = apexPoint[0]; check[2][1] = thisFace[2];
+        check[0][0] = apexPoint[0]; check[0][1] = faces_[fIndex][0];
+        check[1][0] = apexPoint[0]; check[1][1] = faces_[fIndex][1];
+        check[2][0] = apexPoint[0]; check[2][1] = faces_[fIndex][2];
 
-        check[3][0] = thisFace[2]; check[3][1] = thisFace[0];
-        check[4][0] = thisFace[0]; check[4][1] = thisFace[1];
-        check[5][0] = thisFace[1]; check[5][1] = thisFace[2];
+        check[3][0] = faces_[fIndex][2]; check[3][1] = faces_[fIndex][0];
+        check[4][0] = faces_[fIndex][0]; check[4][1] = faces_[fIndex][1];
+        check[5][0] = faces_[fIndex][1]; check[5][1] = faces_[fIndex][2];
 
-        check[6][0] = apexPoint[1]; check[6][1] = thisFace[0];
-        check[7][0] = apexPoint[1]; check[7][1] = thisFace[1];
-        check[8][0] = apexPoint[1]; check[8][1] = thisFace[2];
+        check[6][0] = apexPoint[1]; check[6][1] = faces_[fIndex][0];
+        check[7][0] = apexPoint[1]; check[7][1] = faces_[fIndex][1];
+        check[8][0] = apexPoint[1]; check[8][1] = faces_[fIndex][2];
 
         // Build a list of cellEdges
         labelHashSet cellEdges;
 
-        forAll(firstCell, faceI)
+        forAll(cells_[owner_[fIndex]], faceI)
         {
-            labelList fEdges = faceEdges_[firstCell[faceI]];
+            const labelList& fEdges =
+            (
+                faceEdges_[cells_[owner_[fIndex]][faceI]]
+            );
 
             forAll(fEdges, edgeI)
             {
@@ -3126,9 +3148,12 @@ dynamicTopoFvMesh::trisectFace
             }
         }
 
-        forAll(secondCell, faceI)
+        forAll(cells_[neighbour_[fIndex]], faceI)
         {
-            labelList fEdges = faceEdges_[secondCell[faceI]];
+            const labelList& fEdges =
+            (
+                faceEdges_[cells_[neighbour_[fIndex]][faceI]]
+            );
 
             forAll(fEdges, edgeI)
             {
@@ -3142,7 +3167,7 @@ dynamicTopoFvMesh::trisectFace
         // Loop through cellEdges, and perform appropriate actions.
         forAllIter(labelHashSet::iterator, cellEdges, eIter)
         {
-            edge& edgeToCheck = edges_[eIter.key()];
+            const edge& edgeToCheck = edges_[eIter.key()];
 
             // Check against the specified edges.
             if (edgeToCheck == check[0])
@@ -3150,8 +3175,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[1],
-                    thisFace[2],
+                    faces_[fIndex][1],
+                    faces_[fIndex][2],
                     edgePoints_[eIter.key()]
                 );
 
@@ -3164,8 +3189,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[0],
-                    thisFace[2],
+                    faces_[fIndex][0],
+                    faces_[fIndex][2],
                     edgePoints_[eIter.key()]
                 );
 
@@ -3178,8 +3203,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[0],
-                    thisFace[1],
+                    faces_[fIndex][0],
+                    faces_[fIndex][1],
                     edgePoints_[eIter.key()]
                 );
 
@@ -3191,7 +3216,7 @@ dynamicTopoFvMesh::trisectFace
             {
                 replaceLabel
                 (
-                    thisFace[1],
+                    faces_[fIndex][1],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
@@ -3210,7 +3235,7 @@ dynamicTopoFvMesh::trisectFace
             {
                 replaceLabel
                 (
-                    thisFace[2],
+                    faces_[fIndex][2],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
@@ -3229,7 +3254,7 @@ dynamicTopoFvMesh::trisectFace
             {
                 replaceLabel
                 (
-                    thisFace[0],
+                    faces_[fIndex][0],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
@@ -3249,8 +3274,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[1],
-                    thisFace[2],
+                    faces_[fIndex][1],
+                    faces_[fIndex][2],
                     edgePoints_[eIter.key()]
                 );
 
@@ -3263,8 +3288,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[0],
-                    thisFace[2],
+                    faces_[fIndex][0],
+                    faces_[fIndex][2],
                     edgePoints_[eIter.key()]
                 );
 
@@ -3277,8 +3302,8 @@ dynamicTopoFvMesh::trisectFace
                 insertLabel
                 (
                     newPointIndex,
-                    thisFace[0],
-                    thisFace[1],
+                    faces_[fIndex][0],
+                    faces_[fIndex][1],
                     edgePoints_[eIter.key()]
                 );
 
@@ -3298,7 +3323,7 @@ dynamicTopoFvMesh::trisectFace
     }
 
     // Added edges are those connected to the new point
-    labelList& pointEdges = pointEdges_[newPointIndex];
+    const labelList& pointEdges = pointEdges_[newPointIndex];
 
     forAll(pointEdges, edgeI)
     {
@@ -3344,6 +3369,9 @@ dynamicTopoFvMesh::trisectFace
                         labelList(1, parent)
                     )
                 );
+
+                // Update the cell list with newly configured cells.
+                cells_[newCellIndex[i]] = newTetCell[i];
             }
         }
         else
@@ -3363,6 +3391,9 @@ dynamicTopoFvMesh::trisectFace
                         labelList(1, parent)
                     )
                 );
+
+                // Update the cell list with newly configured cells.
+                cells_[newCellIndex[i]] = newTetCell[i];
             }
         }
 
@@ -3374,16 +3405,21 @@ dynamicTopoFvMesh::trisectFace
                  << endl;
         }
 
-        cells_.remove(cIndex);
+        cells_[cIndex].clear();
 
         if (edgeModification_)
         {
-            lengthScale_.remove(cIndex);
+            lengthScale_[cIndex] = -1.0;
         }
 
         if (cIndex < nOldCells_)
         {
             reverseCellMap_[cIndex] = -1;
+        }
+        else
+        {
+            // Store this information for the reOrdering stage
+            deletedCells_.insert(cIndex);
         }
 
         // Check if the cell was added in the current morph, and delete
@@ -3403,7 +3439,7 @@ dynamicTopoFvMesh::trisectFace
     {
         Info << "New Point:: " << newPointIndex << endl;
 
-        labelList& pEdges = pointEdges_[newPointIndex];
+        const labelList& pEdges = pointEdges_[newPointIndex];
 
         Info << "pointEdges:: " << pEdges << endl;
 

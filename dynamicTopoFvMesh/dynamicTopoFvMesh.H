@@ -42,7 +42,7 @@ SourceFiles
 #define dynamicTopoFvMesh_H
 
 #include "Time.H"
-#include "HashList.H"
+#include "resizableList.H"
 #include "multiThreader.H"
 #include "eMesh.H"
 #include "fvMesh.H"
@@ -104,16 +104,16 @@ class dynamicTopoFvMesh
         autoPtr<mapPolyMesh> mapper_;
 
         //- Local copies of connectivity information
-        HashList<point> points_;
-        HashList<face>  faces_;
-        HashList<label> owner_;
-        HashList<label> neighbour_;
-        HashList<cell>  cells_;
-        HashList<edge>  edges_;
-        HashList<labelList> pointEdges_;
-        HashList<labelList> edgePoints_;
-        HashList<labelList> edgeFaces_;
-        HashList<labelList> faceEdges_;
+        resizableList<point> points_;
+        resizableList<face>  faces_;
+        resizableList<label> owner_;
+        resizableList<label> neighbour_;
+        resizableList<cell>  cells_;
+        resizableList<edge>  edges_;
+        resizableList<labelList> pointEdges_;
+        resizableList<labelList> edgePoints_;
+        resizableList<labelList> edgeFaces_;
+        resizableList<labelList> faceEdges_;
 
         // Edge-mesh to store up-to-date connectivity information
         autoPtr<eMesh>  eMeshPtr_;
@@ -154,14 +154,19 @@ class dynamicTopoFvMesh
         Map<label>      cellParents_;
         Map<label>      faceParents_;
 
+        //- Maps to keep track of entities deleted after addition
+        labelHashSet    deletedPoints_;
+        labelHashSet    deletedEdges_;
+        labelHashSet    deletedFaces_;
+        labelHashSet    deletedCells_;
+
         // Geometry-fields for mapping
         autoPtr<vectorField> pointPositionsPtr_;
         autoPtr<vectorField> cellCentresPtr_;
         autoPtr<vectorField> faceCentresPtr_;
 
         //- Edge bisection/collapse criteria
-        HashList<scalar>    lengthScale_;
-        // HashList<vector>    indicator_;
+        resizableList<scalar> lengthScale_;
         scalar              ratioMin_;
         scalar              ratioMax_;
         scalar              growthFactor_;
@@ -1120,10 +1125,7 @@ class dynamicTopoFvMesh
         // Output a list of cells as a VTK file
         void writeVTK(const word& name, const labelList& cList);
 
-        // Copy edge-based connectivity to HashLists
-        void setEdgeConnectivity();
-
-        // Check the state of connectivity HashLists
+        // Check the state of connectivity local lists
         void checkConnectivity();
 
         // Calculate the edge length-scale for the mesh
@@ -1133,7 +1135,7 @@ class dynamicTopoFvMesh
         void writeLengthScaleInfo
         (
             const labelList& cellLevels,
-            const scalarList& lengthScale
+            const resizableList<scalar>& lengthScale
         );
 
         // Receive length-scale info across processors
@@ -1142,7 +1144,7 @@ class dynamicTopoFvMesh
             const label level,
             label& visitedCells,
             labelList& cellLevels,
-            scalarList& lengthScale,
+            resizableList<scalar>& lengthScale,
             labelHashSet& levelCells
         );
 
