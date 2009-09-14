@@ -1131,6 +1131,9 @@ class dynamicTopoFvMesh
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
 
+        // Compute the growth factor of an existing mesh
+        scalar computeGrowthFactor();
+
         // Send length-scale info across processors
         void writeLengthScaleInfo
         (

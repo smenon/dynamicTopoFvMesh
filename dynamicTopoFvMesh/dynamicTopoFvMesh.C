@@ -3201,270 +3201,425 @@ void dynamicTopoFvMesh::checkConnectivity()
 // Calculate the edge length-scale for the mesh
 void dynamicTopoFvMesh::calculateLengthScale()
 {
-    if (edgeModification_)
+    if (!edgeModification_)
     {
-        label level = 1, visitedCells = 0;
-        labelList cellLevels(nCells(),0);
-
-        // Size the local field
-        lengthScale_.setSize(nCells(), 0.0);
-
-        // HashSet to keep track of cells in each level
-        labelHashSet levelCells;
-
-        // Obtain the cellCells addressing list
-        const labelListList& cc = polyMesh::cellCells();
-        const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
-        const labelList& own = polyMesh::faceOwner();
-        const pointField& pList = polyMesh::points();
-
-        // Check local coupled patches for fixed length-scales
-        if (dict_.found("coupledPatches"))
-        {
-            dictionary coupledPatches =
-            (
-                dict_.subDict("coupledPatches")
-            );
-
-            // Determine master and slave patches
-            wordList masterPatches = coupledPatches.toc();
-
-            // Check whether coupled patches are fixedPatches as well.
-            forAll(masterPatches, wordI)
-            {
-                word pName(masterPatches[wordI]);
-
-                if (fixedPatches_.found(masterPatches[wordI]))
-                {
-                    // Add the slave patch to the list as well.
-                    // If it already exists, over-ride the value.
-                    fixedPatches_.add
-                    (
-                        coupledPatches[pName],
-                        fixedPatches_[pName][0].scalarToken(),
-                        true
-                    );
-                }
-            }
-        }
-
-        // Obtain the list of patches for which the length-scale is fixed
-        wordList toc = fixedPatches_.toc();
-
-        forAll(boundary,patchI)
-        {
-            const polyPatch& bdyPatch = boundary[patchI];
-
-            // Loop through all fixed length-scale patches
-            forAll(toc,wordI)
-            {
-                word& pName = toc[wordI];
-
-                if (boundary[patchI].name() == pName)
-                {
-                    label pStart = bdyPatch.start();
-
-                    forAll(bdyPatch,faceI)
-                    {
-                        label ownCell = own[pStart+faceI];
-
-                        if (cellLevels[ownCell] != 0)
-                        {
-                            continue;
-                        }
-
-                        cellLevels[ownCell] = level;
-
-                        lengthScale_[ownCell] =
-                        (
-                            fixedPatches_[pName][0].scalarToken()
-                           *growthFactor_
-                        );
-
-                        levelCells.insert(ownCell);
-
-                        visitedCells++;
-                    }
-
-                    break;
-                }
-            }
-
-            // Set boundary patch size if no fixed-length scale is specified.
-            if
-            (
-                (toc.size() == 0) &&
-                (bdyPatch.type() != "processor") &&
-                (bdyPatch.type() != "cyclic") &&
-                (bdyPatch.type() != "wedge") &&
-                (bdyPatch.type() != "empty") &&
-                (bdyPatch.type() != "symmetryPlane")
-            )
-            {
-                label pStart = bdyPatch.start();
-
-                forAll(bdyPatch,faceI)
-                {
-                    label ownCell = own[pStart+faceI];
-
-                    if (cellLevels[ownCell] != 0)
-                    {
-                        continue;
-                    }
-
-                    cellLevels[ownCell] = level;
-
-                    if (twoDMesh_)
-                    {
-                        label eIndex = getTriBoundaryEdge(pStart+faceI);
-                        edge& e = edges_[eIndex];
-
-                        lengthScale_[ownCell] =
-                        (
-                            mag(pList[e[0]] - pList[e[1]])*growthFactor_
-                        );
-                    }
-                    else
-                    {
-                        // Average edge-lengths for this face
-                        scalar edgeLength = 0.0;
-                        labelList& fEdges = faceEdges_[pStart+faceI];
-
-                        forAll(fEdges, edgeI)
-                        {
-                            edge& e = edges_[fEdges[edgeI]];
-                            edgeLength += mag(pList[e[0]] - pList[e[1]]);
-                        }
-
-                        lengthScale_[ownCell] =
-                        (
-                            (edgeLength/fEdges.size())*growthFactor_
-                        );
-                    }
-
-                    levelCells.insert(ownCell);
-
-                    visitedCells++;
-                }
-            }
-        }
-
-        bool doneWithSweeps = false;
-
-        // Perform multiple sweeps through the mesh...
-        while (!doneWithSweeps)
-        {
-            if (Pstream::parRun())
-            {
-                writeLengthScaleInfo
-                (
-                    cellLevels,
-                    lengthScale_
-                );
-            }
-
-            // Loop through cells of the current level
-            labelList currLvlCells = levelCells.toc();
-            levelCells.clear();
-
-            // Loop through cells, and increment neighbour
-            // cells of the current level
-            forAll(currLvlCells,cellI)
-            {
-                // Obtain the cells neighbouring this one
-                const labelList& cList = cc[currLvlCells[cellI]];
-
-                forAll(cList, indexI)
-                {
-                    label& ngbLevel = cellLevels[cList[indexI]];
-
-                    if (ngbLevel == 0)
-                    {
-                        ngbLevel = level + 1;
-
-                        // Compute the mean of the existing
-                        // neighbour length-scales
-                        const labelList& ncList = cc[cList[indexI]];
-                        scalar sumLength = 0.0;
-                        label nTouchedNgb = 0;
-
-                        forAll(ncList, indexJ)
-                        {
-                            label sLevel = cellLevels[ncList[indexJ]];
-
-                            if ((sLevel < ngbLevel) && (sLevel > 0))
-                            {
-                                sumLength += lengthScale_[ncList[indexJ]];
-
-                                nTouchedNgb++;
-                            }
-                        }
-
-                        sumLength /= nTouchedNgb;
-
-                        // Scale the length and assign to this cell
-                        scalar sLength = sumLength*growthFactor_;
-
-                        sLength = (sLength < maxLengthScale_)
-                                ? sLength : maxLengthScale_;
-
-                        lengthScale_[cList[indexI]] = sLength;
-
-                        levelCells.insert(cList[indexI]);
-
-                        visitedCells++;
-                    }
-                }
-            }
-
-            if (Pstream::parRun())
-            {
-                readLengthScaleInfo
-                (
-                    level,
-                    visitedCells,
-                    cellLevels,
-                    lengthScale_,
-                    levelCells
-                );
-            }
-
-            if (debug > 4)
-            {
-                Pout << "Processed level: " << level << nl
-                     << " Visited: " << visitedCells
-                     << " out of " << nCells() << endl;
-            }
-
-            // Move on to the next level
-            level++;
-
-            if (visitedCells >= nCells())
-            {
-                doneWithSweeps = true;
-            }
-
-            // Wait for everyone to complete.
-            reduce(doneWithSweeps, andOp<bool>());
-        }
-
-        if (debug)
-        {
-            Info << "Max Length Scale: " << maxLengthScale_ << endl;
-            Info << "Length Scale sweeps: " << level << endl;
-        }
-
-        // Check if everything went okay
-        if (visitedCells != nCells())
-        {
-            FatalErrorIn("dynamicTopoFvMesh::calculateLengthScale()")
-                    << " Algorithm did not visit every cell in the mesh."
-                    << " Something's messed up." << nl
-                    << " Visited cells: " << visitedCells
-                    << " nCells: " << nCells()
-                    << abort(FatalError);
-        }
+    	return;
     }
+
+	label level = 1, visitedCells = 0;
+	labelList cellLevels(nCells(),0);
+
+	// Size the local field
+	lengthScale_.setSize(nCells(), 0.0);
+
+	// HashSet to keep track of cells in each level
+	labelHashSet levelCells;
+
+	// Obtain the cellCells addressing list
+	const labelListList& cc = polyMesh::cellCells();
+	const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+	const labelList& own = polyMesh::faceOwner();
+	const pointField& pList = polyMesh::points();
+
+	// Check local coupled patches for fixed length-scales
+	if (dict_.found("coupledPatches"))
+	{
+		dictionary coupledPatches =
+		(
+			dict_.subDict("coupledPatches")
+		);
+
+		// Determine master and slave patches
+		wordList masterPatches = coupledPatches.toc();
+
+		// Check whether coupled patches are fixedPatches as well.
+		forAll(masterPatches, wordI)
+		{
+			word pName(masterPatches[wordI]);
+
+			if (fixedPatches_.found(masterPatches[wordI]))
+			{
+				// Add the slave patch to the list as well.
+				// If it already exists, over-ride the value.
+				fixedPatches_.add
+				(
+					coupledPatches[pName],
+					fixedPatches_[pName][0].scalarToken(),
+					true
+				);
+			}
+		}
+	}
+
+	// Obtain the list of patches for which the length-scale is fixed
+	wordList toc = fixedPatches_.toc();
+
+	forAll(boundary,patchI)
+	{
+		const polyPatch& bdyPatch = boundary[patchI];
+
+		// Loop through all fixed length-scale patches
+		forAll(toc,wordI)
+		{
+			const word& pName = toc[wordI];
+
+			if (boundary[patchI].name() == pName)
+			{
+				label pStart = bdyPatch.start();
+
+				forAll(bdyPatch,faceI)
+				{
+					label ownCell = own[pStart+faceI];
+
+					if (cellLevels[ownCell] != 0)
+					{
+						continue;
+					}
+
+					cellLevels[ownCell] = level;
+
+					lengthScale_[ownCell] =
+					(
+						fixedPatches_[pName][0].scalarToken()
+					   *growthFactor_
+					);
+
+					levelCells.insert(ownCell);
+
+					visitedCells++;
+				}
+
+				break;
+			}
+		}
+
+		// Set boundary patch size if no fixed-length scale is specified.
+		if
+		(
+			(toc.size() == 0) &&
+			(bdyPatch.type() != "processor") &&
+			(bdyPatch.type() != "cyclic") &&
+			(bdyPatch.type() != "wedge") &&
+			(bdyPatch.type() != "empty") &&
+			(bdyPatch.type() != "symmetryPlane")
+		)
+		{
+			label pStart = bdyPatch.start();
+
+			forAll(bdyPatch,faceI)
+			{
+				label ownCell = own[pStart+faceI];
+
+				if (cellLevels[ownCell] != 0)
+				{
+					continue;
+				}
+
+				cellLevels[ownCell] = level;
+
+				if (twoDMesh_)
+				{
+					label eIndex = getTriBoundaryEdge(pStart+faceI);
+					edge& e = edges_[eIndex];
+
+					lengthScale_[ownCell] =
+					(
+						mag(pList[e[0]] - pList[e[1]])*growthFactor_
+					);
+				}
+				else
+				{
+					// Average edge-lengths for this face
+					scalar edgeLength = 0.0;
+					labelList& fEdges = faceEdges_[pStart+faceI];
+
+					forAll(fEdges, edgeI)
+					{
+						edge& e = edges_[fEdges[edgeI]];
+						edgeLength += mag(pList[e[0]] - pList[e[1]]);
+					}
+
+					lengthScale_[ownCell] =
+					(
+						(edgeLength/fEdges.size())*growthFactor_
+					);
+				}
+
+				levelCells.insert(ownCell);
+
+				visitedCells++;
+			}
+		}
+	}
+
+	bool doneWithSweeps = false;
+
+	// Perform multiple sweeps through the mesh...
+	while (!doneWithSweeps)
+	{
+		if (Pstream::parRun())
+		{
+			writeLengthScaleInfo
+			(
+				cellLevels,
+				lengthScale_
+			);
+		}
+
+		// Loop through cells of the current level
+		labelList currLvlCells = levelCells.toc();
+		levelCells.clear();
+
+		// Loop through cells, and increment neighbour
+		// cells of the current level
+		forAll(currLvlCells,cellI)
+		{
+			// Obtain the cells neighbouring this one
+			const labelList& cList = cc[currLvlCells[cellI]];
+
+			forAll(cList, indexI)
+			{
+				label& ngbLevel = cellLevels[cList[indexI]];
+
+				if (ngbLevel == 0)
+				{
+					ngbLevel = level + 1;
+
+					// Compute the mean of the existing
+					// neighbour length-scales
+					const labelList& ncList = cc[cList[indexI]];
+					scalar sumLength = 0.0;
+					label nTouchedNgb = 0;
+
+					forAll(ncList, indexJ)
+					{
+						label sLevel = cellLevels[ncList[indexJ]];
+
+						if ((sLevel < ngbLevel) && (sLevel > 0))
+						{
+							sumLength += lengthScale_[ncList[indexJ]];
+
+							nTouchedNgb++;
+						}
+					}
+
+					sumLength /= nTouchedNgb;
+
+					// Scale the length and assign to this cell
+					scalar sLength = sumLength*growthFactor_;
+
+					sLength = (sLength < maxLengthScale_)
+							? sLength : maxLengthScale_;
+
+					lengthScale_[cList[indexI]] = sLength;
+
+					levelCells.insert(cList[indexI]);
+
+					visitedCells++;
+				}
+			}
+		}
+
+		if (Pstream::parRun())
+		{
+			readLengthScaleInfo
+			(
+				level,
+				visitedCells,
+				cellLevels,
+				lengthScale_,
+				levelCells
+			);
+		}
+
+		if (debug > 4)
+		{
+			Pout << "Processed level: " << level << nl
+				 << " Visited: " << visitedCells
+				 << " out of " << nCells() << endl;
+		}
+
+		// Move on to the next level
+		level++;
+
+		if (visitedCells >= nCells())
+		{
+			doneWithSweeps = true;
+		}
+
+		// Wait for everyone to complete.
+		reduce(doneWithSweeps, andOp<bool>());
+	}
+
+	if (debug)
+	{
+		Info << "Max Length Scale: " << maxLengthScale_ << endl;
+		Info << "Length Scale sweeps: " << level << endl;
+	}
+
+	// Check if everything went okay
+	if (visitedCells != nCells())
+	{
+		FatalErrorIn("dynamicTopoFvMesh::calculateLengthScale()")
+				<< " Algorithm did not visit every cell in the mesh."
+				<< " Something's messed up." << nl
+				<< " Visited cells: " << visitedCells
+				<< " nCells: " << nCells()
+				<< abort(FatalError);
+	}
+}
+
+// Compute the growth factor of an existing mesh
+scalar dynamicTopoFvMesh::computeGrowthFactor()
+{
+    if (!edgeModification_)
+    {
+    	return -1.0;
+    }
+
+    scalar growthFactor = 1.0;
+
+	label level = 1;
+	labelList cellLevels(nCells(),0);
+
+	// Obtain the addressing lists
+    const edgeList& edges = polyMesh::edges();
+    const pointField& points = polyMesh::points();
+    const labelList& owner = polyMesh::faceOwner();
+	const labelListList& cc = polyMesh::cellCells();
+	const labelListList& cEdges = polyMesh::cellEdges();
+	const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+
+	// HashSet to keep track of cells in each level
+	labelHashSet levelCells;
+
+	// Obtain the list of patches for which the length-scale is fixed
+	wordList toc = fixedPatches_.toc();
+
+	forAll(boundary,patchI)
+	{
+		const polyPatch& bdyPatch = boundary[patchI];
+
+		// Loop through all fixed length-scale patches
+		forAll(toc,wordI)
+		{
+			const word& pName = toc[wordI];
+
+			if (boundary[patchI].name() == pName)
+			{
+				label pStart = bdyPatch.start();
+
+				forAll(bdyPatch,faceI)
+				{
+					label ownCell = owner[pStart+faceI];
+
+					if (cellLevels[ownCell] != 0)
+					{
+						continue;
+					}
+
+					cellLevels[ownCell] = level;
+
+					levelCells.insert(ownCell);
+				}
+
+				break;
+			}
+		}
+
+		// Set boundary patch size if no fixed-length scale is specified.
+		if
+		(
+			(toc.size() == 0) &&
+			(bdyPatch.type() != "processor") &&
+			(bdyPatch.type() != "cyclic") &&
+			(bdyPatch.type() != "wedge") &&
+			(bdyPatch.type() != "empty") &&
+			(bdyPatch.type() != "symmetryPlane")
+		)
+		{
+			label pStart = bdyPatch.start();
+
+			forAll(bdyPatch,faceI)
+			{
+				label ownCell = owner[pStart+faceI];
+
+				if (cellLevels[ownCell] != 0)
+				{
+					continue;
+				}
+
+				cellLevels[ownCell] = level;
+
+				levelCells.insert(ownCell);
+			}
+		}
+	}
+
+	label nLevels = 5;
+	scalar prevAvg = 0.0;
+
+	while (level <= nLevels)
+	{
+		// Loop through cells of the current level
+		labelList currLvlCells = levelCells.toc();
+
+		levelCells.clear();
+
+		scalar avgEdgeLength = 0.0;
+
+		// Loop through cells, and increment neighbour
+		// cells of the current level
+		forAll(currLvlCells,cellI)
+		{
+			const labelList& eList = cEdges[currLvlCells[cellI]];
+
+			scalar avgCellLength = 0.0;
+
+			forAll(eList, edgeI)
+			{
+				avgCellLength += edges[eList[edgeI]].mag(points);
+			}
+
+			avgCellLength /= eList.size();
+
+			avgEdgeLength += avgCellLength;
+
+			// Obtain the cells neighbouring this one,
+			// and increment their level.
+			const labelList& cList = cc[currLvlCells[cellI]];
+
+			forAll(cList, indexI)
+			{
+				label& ngbLevel = cellLevels[cList[indexI]];
+
+				if (ngbLevel == 0)
+				{
+					ngbLevel = level + 1;
+
+					levelCells.insert(cList[indexI]);
+				}
+			}
+		}
+
+		avgEdgeLength /= currLvlCells.size();
+
+		if (level == 1)
+		{
+			prevAvg = avgEdgeLength;
+		}
+		else
+		{
+			growthFactor = avgEdgeLength/prevAvg;
+
+			prevAvg = avgEdgeLength;
+		}
+
+		// Move on to the next level
+		level++;
+	}
+
+	return growthFactor;
 }
 
 // Send length-scale info across processors
@@ -3876,7 +4031,19 @@ void dynamicTopoFvMesh::readEdgeOptions
 
     ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
     ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
-    growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
+
+    if (edgeOptionDict.found("computeGrowthFactor"))
+    {
+    	if (!reRead)
+    	{
+    		// Compute the growth factor from the mesh for the first time.
+    		growthFactor_ = computeGrowthFactor();
+    	}
+    }
+    else
+    {
+		growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
+    }
 
     if (reRead)
     {
