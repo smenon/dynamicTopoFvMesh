@@ -171,6 +171,7 @@ class dynamicTopoFvMesh
         scalar              ratioMax_;
         scalar              growthFactor_;
         scalar              curvatureDeviation_;
+        scalar              minLengthScale_;
         scalar              maxLengthScale_;
         scalar              sliverThreshold_;
         label               nModifications_;
@@ -763,14 +764,10 @@ class dynamicTopoFvMesh
         scalar boundaryLengthScale(const label faceIndex);
 
         // Return length-scale at an face-location in the mesh [2D]
-        inline void meshFaceLengthScale
-        (
-            const label fIndex,
-            scalar& scale
-        );
+        inline scalar faceLengthScale(const label fIndex);
 
         // Return length-scale at an edge-location in the mesh [3D]
-        inline scalar meshEdgeLengthScale(const label eIndex);
+        inline scalar edgeLengthScale(const label eIndex);
 
         // Check if a given face is a quad
         inline bool checkQuadFace(const label fIndex);
@@ -1045,14 +1042,10 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to compute the minimum quality of a vertex hull
-        inline void computeMinQuality
-        (
-            const label eIndex,
-            scalar& minQuality
-        );
+        inline scalar computeMinQuality(const label eIndex);
 
         // Check whether the given edge is on a bounding curve
-        bool checkBoundingCurve(label eIndex);
+        bool checkBoundingCurve(const label eIndex);
 
         // Allocate dynamic programming tables
         void initTables
@@ -1296,6 +1289,8 @@ class dynamicTopoFvMesh
         // Private internal access to member data for static members
         scalar ratioMin() { return ratioMin_; }
         scalar ratioMax() { return ratioMax_; }
+        scalar minLengthScale() { return minLengthScale_; }
+        scalar maxLengthScale() { return maxLengthScale_; }
         scalar growthFactor() { return growthFactor_; }
 
 public:

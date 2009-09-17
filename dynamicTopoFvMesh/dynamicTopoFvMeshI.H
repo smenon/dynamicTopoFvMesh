@@ -140,7 +140,7 @@ inline vector dynamicTopoFvMesh::tangentToEdge
     const label eIndex
 )
 {
-    edge& thisEdge = edges_[eIndex];
+    const edge& thisEdge = edges_[eIndex];
 
     return (points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
@@ -152,7 +152,7 @@ inline point dynamicTopoFvMesh::circumCenter
 )
 {
     // Obtain references
-    face& thisFace = faces_[fIndex];
+    const face& thisFace = faces_[fIndex];
     const point a = points_[thisFace[0]];
     const point b = points_[thisFace[1]];
     const point c = points_[thisFace[2]];
@@ -299,32 +299,36 @@ inline label dynamicTopoFvMesh::tetVolumeSign
 }
 
 // Return length-scale at an face-location in the mesh [2D]
-inline void dynamicTopoFvMesh::meshFaceLengthScale
+inline scalar dynamicTopoFvMesh::faceLengthScale
 (
-    const label fIndex,
-    scalar& scale
+	const label fIndex
 )
 {
     // Reset the scale first
-    scale = 0.0;
+    scalar scale = 0.0;
 
     // Determine whether the face is internal
     if (whichPatch(fIndex) < 0)
     {
-        scale = 0.5*
-                (
-                    lengthScale_[owner_[fIndex]]
-                  + lengthScale_[neighbour_[fIndex]]
-                );
+        scale =
+		(
+			0.5 *
+			(
+				lengthScale_[owner_[fIndex]]
+			  + lengthScale_[neighbour_[fIndex]]
+			)
+		);
     }
     else
     {
         scale = boundaryLengthScale(fIndex);
     }
+
+    return scale;
 }
 
 // Compute length-scale at an edge-location in the mesh [3D]
-inline scalar dynamicTopoFvMesh::meshEdgeLengthScale
+inline scalar dynamicTopoFvMesh::edgeLengthScale
 (
     const label eIndex
 )
@@ -332,7 +336,7 @@ inline scalar dynamicTopoFvMesh::meshEdgeLengthScale
     // Reset the scale first
     scalar scale = 0.0;
 
-    labelList& eFaces = edgeFaces_[eIndex];
+    const labelList& eFaces = edgeFaces_[eIndex];
 
     label edgePatch = whichEdgePatch(eIndex);
 
@@ -452,7 +456,7 @@ inline scalar dynamicTopoFvMesh::edgeLength
     const label eIndex
 )
 {
-    edge& thisEdge = edges_[eIndex];
+    const edge& thisEdge = edges_[eIndex];
 
     return mag(points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
@@ -587,7 +591,7 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
         // Check if this is a locally coupled master face.
         if (patchCoupling_.found(pIndex))
         {
-            labelList& mfEdges = faceEdges_[faceI];
+            const labelList& mfEdges = faceEdges_[faceI];
 
             forAll(mfEdges, edgeI)
             {
@@ -599,7 +603,7 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
         // Check if this is a processor patch.
         if (isA<processorPolyPatch>(boundary[pIndex]))
         {
-            labelList& mfEdges = faceEdges_[faceI];
+            const labelList& mfEdges = faceEdges_[faceI];
 
             // Check if this is a master processor patch.
             const processorPolyPatch& pp =
@@ -655,7 +659,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
             // Check if this is a locally coupled master face.
             if (patchCoupling_.found(pIndex))
             {
-                labelList& mfEdges = faceEdges_[faceI];
+                const labelList& mfEdges = faceEdges_[faceI];
 
                 forAll(mfEdges, edgeI)
                 {
@@ -670,7 +674,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
             // Check if this is a locally coupled slave face.
             if (localSlavePatches.found(pIndex))
             {
-                labelList& mfEdges = faceEdges_[faceI];
+                const labelList& mfEdges = faceEdges_[faceI];
 
                 forAll(mfEdges, edgeI)
                 {
@@ -685,7 +689,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
             // Check if this is a processor patch.
             if (isA<processorPolyPatch>(boundary[pIndex]))
             {
-                labelList& mfEdges = faceEdges_[faceI];
+                const labelList& mfEdges = faceEdges_[faceI];
 
                 // Add to the stack.
                 forAll(mfEdges, edgeI)
@@ -1049,18 +1053,17 @@ inline void dynamicTopoFvMesh::sizeDownList
 }
 
 // Utility method to compute the minimum quality of a vertex hull
-inline void dynamicTopoFvMesh::computeMinQuality
+inline scalar dynamicTopoFvMesh::computeMinQuality
 (
-    const label eIndex,
-    scalar& minQuality
+    const label eIndex
 )
 {
-    minQuality = GREAT;
+    scalar minQuality = GREAT;
     scalar cQuality = 0.0;
 
     // Obtain a reference to this edge and corresponding edgePoints
-    edge& edgeToCheck = edges_[eIndex];
-    labelList& hullVertices = edgePoints_[eIndex];
+    const edge& edgeToCheck = edges_[eIndex];
+    const labelList& hullVertices = edgePoints_[eIndex];
 
     if (whichEdgePatch(eIndex) < 0)
     {
@@ -1118,9 +1121,7 @@ inline void dynamicTopoFvMesh::computeMinQuality
             // Temporarily turn off coupledModification
             coupledModification_ = false;
 
-            scalar slaveQuality = 0.0;
-
-            computeMinQuality(slaveIndex, slaveQuality);
+            scalar slaveQuality = computeMinQuality(slaveIndex);
 
             minQuality = slaveQuality < minQuality ? slaveQuality : minQuality;
 
@@ -1168,6 +1169,8 @@ inline void dynamicTopoFvMesh::computeMinQuality
             << "Minimum Quality: " << minQuality
             << abort(FatalError);
     }
+
+    return minQuality;
 }
 
 // Method to determine whether the master face is locally coupled
