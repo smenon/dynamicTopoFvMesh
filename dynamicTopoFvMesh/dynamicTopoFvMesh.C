@@ -318,7 +318,8 @@ dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct
     mesh_(mesh),
     nThreads_(nThreads),
     pthreadID_(-1),
-    master_(false)
+    master_(false),
+    predicate_(false)
 {}
 
 // Constructor for patchSubMesh
@@ -338,6 +339,94 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 {}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+// Send signal to a waiting conditional
+inline void dynamicTopoFvMesh::topoMeshStruct::sendSignal
+(
+	const signalType sType
+)
+{
+	lock(sType);
+
+	if (predicate(sType))
+	{
+		InfoIn("topoMeshStruct::sendSignal()")
+			<< "Predicate is already set."
+			<< endl;
+	}
+	else
+	{
+		// Set predicate before signalling
+		setPredicate(sType);
+	}
+
+	if (sType == START)
+	{
+		mesh_->threader().signal
+		(
+			startConditional_
+		);
+	}
+	else
+	if (sType == STOP)
+	{
+		mesh_->threader().signal
+		(
+			stopConditional_
+		);
+	}
+	else
+	{
+        FatalErrorIn("topoMeshStruct::sendSignal()")
+            << "Undefined enumerant."
+            << abort(FatalError);
+	}
+
+	unlock(sType);
+}
+
+// Wait for signal
+inline void dynamicTopoFvMesh::topoMeshStruct::waitForSignal
+(
+	const signalType sType
+)
+{
+	if (sType == START)
+	{
+		mesh_->threader().waitForCondition
+		(
+			startConditional_,
+			startMutex_
+		);
+	}
+	else
+	if (sType == STOP)
+	{
+		mesh_->threader().waitForCondition
+		(
+			stopConditional_,
+			stopMutex_
+		);
+	}
+	else
+	{
+        FatalErrorIn("topoMeshStruct::waitForSignal()")
+            << "Undefined enumerant."
+            << abort(FatalError);
+	}
+
+	if (!predicate(sType))
+	{
+        FatalErrorIn("topoMeshStruct::waitForSignal()")
+            << "Spurious wake-up."
+            << abort(FatalError);
+	}
+
+	unsetPredicate(sType);
+
+	// Unlock the acquired mutex
+	unlock(sType);
+}
 
 // Return the mesh-mapper
 const mapPolyMesh& dynamicTopoFvMesh::meshMap()
@@ -4229,10 +4318,9 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
 
-    // If this is a slave, acquire the lock for this structure
     if (thread->slave())
     {
-        thread->lock();
+    	thread->sendSignal(topoMeshStruct::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -4270,10 +4358,9 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
         }
     }
 
-    // If this is a slave, relinquish the lock for this structure
     if (thread->slave())
     {
-        thread->unlock();
+    	thread->sendSignal(topoMeshStruct::STOP);
     }
 }
 
@@ -5791,10 +5878,9 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
 
-    // If this is a slave, acquire the lock for this structure
     if (thread->slave())
     {
-        thread->lock();
+    	thread->sendSignal(topoMeshStruct::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -5855,10 +5941,9 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
         }
     }
 
-    // If this is a slave, relinquish the lock for this structure
     if (thread->slave())
     {
-        thread->unlock();
+    	thread->sendSignal(topoMeshStruct::STOP);
     }
 }
 
@@ -5871,10 +5956,9 @@ void dynamicTopoFvMesh::swap3DEdges
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
 
-    // If this is a slave, acquire the lock for this structure
     if (thread->slave())
     {
-        thread->lock();
+        thread->sendSignal(topoMeshStruct::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -5932,10 +6016,9 @@ void dynamicTopoFvMesh::swap3DEdges
         }
     }
 
-    // If this is a slave, relinquish the lock for this structure
     if (thread->slave())
     {
-        thread->unlock();
+        thread->sendSignal(topoMeshStruct::STOP);
     }
 }
 
@@ -5952,10 +6035,9 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     // Recast the argument
     topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
 
-    // If this is a slave, acquire the lock for this structure
     if (thread->slave())
     {
-        thread->lock();
+        thread->sendSignal(topoMeshStruct::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -6004,10 +6086,9 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         }
     }
 
-    // If this is a slave, relinquish the lock for this structure
     if (thread->slave())
     {
-        thread->unlock();
+        thread->sendSignal(topoMeshStruct::STOP);
     }
 }
 
@@ -6835,10 +6916,11 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
                                &edgeBisectCollapse2D,
                                reinterpret_cast<void *>(&(structPtr_[i]))
                            );
-            }
 
-            // Unlock slaves
-            unlockSlaveThreads();
+                // Wait for a signal from this thread
+                // before moving on.
+				structPtr_[i].waitForSignal(topoMeshStruct::START);
+            }
 
             // Synchronize threads
             synchronizeThreads();
@@ -6869,10 +6951,11 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
                            &swap2DEdges,
                            reinterpret_cast<void *>(&(structPtr_[i]))
                        );
-        }
 
-        // Unlock slaves
-        unlockSlaveThreads();
+            // Wait for a signal from this thread
+            // before moving on.
+			structPtr_[i].waitForSignal(topoMeshStruct::START);
+        }
 
         // Synchronize threads
         synchronizeThreads();
@@ -6906,8 +6989,8 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
         if (threader_->multiThreaded())
         {
-            // Lock slaves
-            lockSlaveThreads();
+        	// Lock slave threads
+        	lockSlaveThreads();
 
             // Submit jobs to the work queue
             for (label i = 1; i <= threader_->getNumThreads(); i++)
@@ -6917,10 +7000,11 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
                                &edgeBisectCollapse3D,
                                reinterpret_cast<void *>(&(structPtr_[i]))
                            );
-            }
 
-            // Unlock slaves
-            unlockSlaveThreads();
+                // Wait for a signal from this thread
+                // before moving on.
+				structPtr_[i].waitForSignal(topoMeshStruct::START);
+            }
 
             // Synchronize threads
             synchronizeThreads();
@@ -6940,8 +7024,8 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
     if (threader_->multiThreaded())
     {
-        // Lock slaves
-        lockSlaveThreads();
+    	// Lock slave threads
+    	lockSlaveThreads();
 
         // Submit jobs to the work queue
         for (label i = 1; i <= threader_->getNumThreads(); i++)
@@ -6951,10 +7035,11 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
                            &swap3DEdges,
                            reinterpret_cast<void *>(&(structPtr_[i]))
                        );
-        }
 
-        // Unlock slaves
-        unlockSlaveThreads();
+            // Wait for a signal from this thread
+            // before moving on.
+            structPtr_[i].waitForSignal(topoMeshStruct::START);
+        }
 
         // Synchronize threads
         synchronizeThreads();
@@ -6974,21 +7059,12 @@ void dynamicTopoFvMesh::lockSlaveThreads()
 {
     for (label i = 1; i <= threader_->getNumThreads(); i++)
     {
-        structPtr_[i].lock();
-    }
-}
+        structPtr_[i].lock(topoMeshStruct::START);
+        structPtr_[i].lock(topoMeshStruct::STOP);
 
-// Unlock all slave threads
-void dynamicTopoFvMesh::unlockSlaveThreads()
-{
-    for (label i = 1; i <= threader_->getNumThreads(); i++)
-    {
-        structPtr_[i].unlock();
+        structPtr_[i].unsetPredicate(topoMeshStruct::START);
+        structPtr_[i].unsetPredicate(topoMeshStruct::STOP);
     }
-
-    // Allow slaves to acquire the mutex.
-    // Should be a better mechanism to do this.
-    sleep(1);
 }
 
 // Synchronize all slave threads
@@ -6996,10 +7072,9 @@ void dynamicTopoFvMesh::synchronizeThreads()
 {
     for (label i = 1; i <= threader_->getNumThreads(); i++)
     {
-        structPtr_[i].lock();
-
-        // Now that the lock is acquired, unlock it for later use
-        structPtr_[i].unlock();
+        // Wait for a signal from this thread
+        // before moving on.
+        structPtr_[i].waitForSignal(topoMeshStruct::STOP);
     }
 }
 

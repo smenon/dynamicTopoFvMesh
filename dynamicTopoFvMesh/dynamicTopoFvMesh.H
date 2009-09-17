@@ -260,10 +260,28 @@ class dynamicTopoFvMesh
             // Is this a master/slave thread
             bool master_;
 
-            // Synchronization mutex
-            Mutex syncMutex_;
+            // Synchronization mutexes
+            Mutex startMutex_;
+            Mutex stopMutex_;
+
+            // Conditionals for synchronization
+            Conditional startConditional_;
+            Conditional stopConditional_;
+
+            // On some implementations, a conditional wait
+            // might return prematurely due to a spurious
+            // wake-up signal. Use a predicate to avoid this
+            // behaviour.
+            FixedList<bool, 2> predicate_;
 
         public:
+
+            // Enumerants for signalling
+            enum signalType
+            {
+                START,
+                STOP
+            };
 
             // Constructor
             topoMeshStruct
@@ -291,10 +309,56 @@ class dynamicTopoFvMesh
             inline bool slave() { return !master(); }
 
             // Lock this thread
-            inline void lock() { syncMutex_.lock(); }
+            inline void lock(const signalType sType)
+            {
+            	if (sType == START)
+            	{
+					startMutex_.lock();
+            	}
+            	else
+				if (sType == STOP)
+				{
+					stopMutex_.lock();
+				}
+			}
 
             // Unlock this thread
-            inline void unlock() { syncMutex_.unlock(); }
+            inline void unlock(const signalType sType)
+            {
+            	if (sType == START)
+            	{
+					startMutex_.unlock();
+            	}
+            	else
+				if (sType == STOP)
+				{
+					stopMutex_.unlock();
+				}
+			}
+
+            // Send signal to a waiting conditional
+            inline void sendSignal(const signalType sType);
+
+            // Wait for signal
+            inline void waitForSignal(const signalType sType);
+
+            // Return state of the predicate variable
+            inline bool predicate(const signalType sType)
+            {
+            	return predicate_[sType];
+			}
+
+            // Set the predicate variable
+            inline void setPredicate(const signalType sType)
+            {
+            	predicate_[sType] = true;
+			}
+
+            // Unset the predicate variable
+            inline void unsetPredicate(const signalType sType)
+            {
+            	predicate_[sType] = false;
+			}
 
             // Return the ID
             inline pthread_t& ID() { return pthreadID_; }
@@ -722,9 +786,6 @@ class dynamicTopoFvMesh
 
         // Lock all slave threads
         void lockSlaveThreads();
-
-        // Unlock all slave threads
-        void unlockSlaveThreads();
 
         // Synchronize all slave threads
         void synchronizeThreads();
