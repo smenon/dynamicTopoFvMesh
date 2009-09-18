@@ -75,6 +75,10 @@ class dynamicTopoFvMesh
         //- Dynamic mesh dictionary
         IOdictionary dict_;
 
+    	//- Should all options be mandatorily specified?
+    	//  Useful for first-time use.
+    	Switch mandatory_;
+
         //- Mesh characteristics [2D/3D]
         Switch twoDMesh_;
 
@@ -93,8 +97,16 @@ class dynamicTopoFvMesh
         dictionary fixedPatches_;
 
         //- Sub-dictionary which specifies
+        //  floating length-scales for patches
+        dictionary freePatches_;
+
+        //- Sub-dictionary which specifies
         //  patches with curvature-based length-scale
         dictionary curvaturePatches_;
+
+        //- Sub-dictionary which specifies
+        //  patches with proximity-based length-scale
+        dictionary proximityPatches_;
 
         //- List of noSwap patch IDs (which specifies patches on
         //  which 2-2 swaps are to be avoided)
@@ -196,7 +208,7 @@ class dynamicTopoFvMesh
         class stack
         {
             // Private data
-            DynamicList<label> stack_;
+        	resizableList<label> stack_;
 
             Mutex              stackMutex_;
 
@@ -230,6 +242,9 @@ class dynamicTopoFvMesh
 
                 //- Print out the stack
                 inline void print();
+
+                //- Return if a certain index was found in the stack
+                inline label findIndex(const label index);
 
                 //- Access the stack as a list
                 inline label operator[](const label index);
@@ -754,20 +769,32 @@ class dynamicTopoFvMesh
         const multiThreader& threader() const;
 
         // Given a boundary quad face, return a boundary triangular face.
-        label getTriBoundaryFace(const label faceIndex);
+        label getTriBoundaryFace(const label fIndex);
 
         // Given a boundary face, pick out a boundary edge that
         // contains a triangular face.
-        label getTriBoundaryEdge(const label faceIndex);
+        label getTriBoundaryEdge(const label fIndex);
 
         // Return the appropriate length-scale for boundary face
-        scalar boundaryLengthScale(const label faceIndex);
+        inline scalar boundaryLengthScale(const label fIndex);
 
         // Return length-scale at an face-location in the mesh [2D]
         inline scalar faceLengthScale(const label fIndex);
 
         // Return length-scale at an edge-location in the mesh [3D]
         inline scalar edgeLengthScale(const label eIndex);
+
+        // Check for face bisection
+        inline bool checkFaceBisection(const label fIndex);
+
+        // Check for face collapse
+        inline bool checkFaceCollapse(const label fIndex);
+
+        // Check for edge bisection
+        inline bool checkEdgeBisection(const label eIndex);
+
+        // Check for edge collapse
+        inline bool checkEdgeCollapse(const label eIndex);
 
         // Check if a given face is a quad
         inline bool checkQuadFace(const label fIndex);
@@ -1285,13 +1312,6 @@ class dynamicTopoFvMesh
 
         // Wait for buffer transfer completion.
         void waitForBuffers();
-
-        // Private internal access to member data for static members
-        scalar ratioMin() { return ratioMin_; }
-        scalar ratioMax() { return ratioMax_; }
-        scalar minLengthScale() { return minLengthScale_; }
-        scalar maxLengthScale() { return maxLengthScale_; }
-        scalar growthFactor() { return growthFactor_; }
 
 public:
 

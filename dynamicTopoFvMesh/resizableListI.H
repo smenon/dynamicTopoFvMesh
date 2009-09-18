@@ -221,7 +221,7 @@ inline label resizableList<T>::append(const T& data)
             max
             (
                 index,
-                label(2*size_)
+                label(2*size_ + 1)
             )
         );
     }
@@ -233,6 +233,21 @@ inline label resizableList<T>::append(const T& data)
     this->operator[](lastIndex_) = data;
 
     return index;
+}
+
+//- Return the last element in the list
+template<class T>
+inline T resizableList<T>::remove()
+{
+	if (lastIndex_ == -1)
+	{
+        FatalErrorIn
+        (
+            "inline T resizableList<T>::remove() "
+        ) << "List is empty." << abort(FatalError);
+	}
+
+	return this->operator[](lastIndex_--);
 }
 
 //- Clear contents of the list (i.e., reset lastIndex)

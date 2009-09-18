@@ -48,6 +48,9 @@ namespace Foam
 {
 
 extern "C"
+void reportMetrics();
+
+extern "C"
 scalar Dihedral
 (
     const Foam::point& p0,

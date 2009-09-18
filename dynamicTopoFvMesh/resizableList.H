@@ -118,6 +118,9 @@ public:
             //- Returns the index of the added element
             inline label append(const T& data);
 
+            //- Return the last element in the list
+            inline T remove();
+
             //- Clear contents of the list
             void clear();
 

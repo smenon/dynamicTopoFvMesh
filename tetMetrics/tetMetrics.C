@@ -46,6 +46,7 @@ Author
 
 #include "point.H"
 #include "scalar.H"
+#include "HashSet.H"
 
 namespace Foam
 {
@@ -60,6 +61,21 @@ label tetEnum[6][4] =
     {1,3,0,2},
     {2,3,0,1}
 };
+
+void reportMetrics()
+{
+	wordHashSet availableMetrics_;
+
+	availableMetrics_.insert("Dihedral");
+	availableMetrics_.insert("Knupp");
+	availableMetrics_.insert("meanRatio");
+	availableMetrics_.insert("cubicMeanRatio");
+	availableMetrics_.insert("Frobenius");
+	availableMetrics_.insert("PGH");
+	availableMetrics_.insert("CSG");
+
+	Info << availableMetrics_ << endl;
+}
 
 // Minimum dihedral angle among six edges of the tetrahedron. Normalized
 // by 70.529 degrees (equilateral tet) and signed by volume.

@@ -38,7 +38,7 @@ inline void dynamicTopoFvMesh::stack::push(const label index)
 {
     stackMutex_.lock();
 
-    if (findIndex(stack_,index) == -1)
+    if (findIndex(index) == -1)
     {
         stack_.append(index);
     }
@@ -69,7 +69,7 @@ inline void dynamicTopoFvMesh::stack::remove(const label index)
 {
     stackMutex_.lock();
 
-    label loc = findIndex(stack_,index);
+    label loc = findIndex(index);
 
     if (loc != -1)
     {
@@ -123,6 +123,20 @@ inline void dynamicTopoFvMesh::stack::clear()
 inline void dynamicTopoFvMesh::stack::print()
 {
     Info << stack_ << endl;
+}
+
+//- Return if a certain index was found in the stack
+inline label dynamicTopoFvMesh::stack::findIndex(const label index)
+{
+    forAll(stack_, itemI)
+    {
+        if (stack_[itemI] == index)
+        {
+            return itemI;
+        }
+    }
+
+    return -1;
 }
 
 //- Access the stack as a list
@@ -298,6 +312,72 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     return 1;
 }
 
+// Return the appropriate length-scale for boundary face
+inline scalar dynamicTopoFvMesh::boundaryLengthScale
+(
+    const label fIndex
+)
+{
+    label bFacePatch = whichPatch(fIndex);
+
+    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+
+    // Check fixed length-scale patches
+    // If the value is negative, average face length-scales.
+    if (fixedPatches_.found(boundary[bFacePatch].name()))
+    {
+    	scalar dictValue =
+		(
+			fixedPatches_[boundary[bFacePatch].name()][0].scalarToken()
+		);
+
+        if (dictValue > 0.0)
+        {
+            return dictValue;
+        };
+    }
+
+    const polyPatch& bdyPatch = boundary[bFacePatch];
+
+	if
+	(
+		(freePatches_.found(bdyPatch.name())) ||
+		(bdyPatch.type() == "processor") ||
+		(bdyPatch.type() == "cyclic") ||
+		(bdyPatch.type() == "wedge") ||
+		(bdyPatch.type() == "empty") ||
+		(bdyPatch.type() == "symmetryPlane")
+	)
+	{
+		return lengthScale_[owner_[fIndex]];
+	}
+
+	if (twoDMesh_)
+	{
+		label eIndex = getTriBoundaryEdge(fIndex);
+
+		const edge& e = edges_[eIndex];
+
+		return mag(points_[e[0]] - points_[e[1]]);
+	}
+	else
+	{
+		// Average edge-lengths for this face
+		scalar edgeLength = 0.0;
+
+		const labelList& fEdges = faceEdges_[fIndex];
+
+		forAll(fEdges, edgeI)
+		{
+			const edge& e = edges_[fEdges[edgeI]];
+
+			edgeLength += mag(points_[e[0]] - points_[e[1]]);
+		}
+
+		return (edgeLength/fEdges.size());
+	}
+}
+
 // Return length-scale at an face-location in the mesh [2D]
 inline scalar dynamicTopoFvMesh::faceLengthScale
 (
@@ -349,7 +429,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
             // Check whether neighbour is valid
             if (neighbour_[eFaces[faceI]] == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::meshEdgeLengthScale()")
+                FatalErrorIn("dynamicTopoFvMesh::edgeLengthScale()")
                     << "Face: " << eFaces[faceI]
                     << ": " << faces_[eFaces[faceI]]
                     << " is not internal, while edge: "
@@ -377,8 +457,16 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
 
         scale /= 2.0;
 
+        // If proximity-based refinement is requested,
+        // test the proximity to the nearest non-neighbour.
+        if (proximityPatches_.found(boundaryMesh()[edgePatch].name()))
+        {
+        	// Obtain the edge location
+
+        }
+
         // If curvature-based refinement is requested,
-        // Test the variation in face-normal directions.
+        // test the variation in face-normal directions.
         if (curvaturePatches_.found(boundaryMesh()[edgePatch].name()))
         {
             // Obtain face-normals for both faces.
@@ -413,15 +501,19 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                          << ", Edge: " << eIndex << ", Length: " << length
                          << ", Scale: " << scale << nl
                          << " Half-length: " << (0.5*length) << nl
-                         << " MinRatio: " << (ratioMin()*scale)
+                         << " MinRatio: " << (ratioMin_*scale)
                          << endl;
                 }
 
                 // Would dividing this edge make it too small?
-                if ((0.5*length) > (ratioMin()*scale))
+                if
+                (
+					((0.5*length) > (ratioMin_*scale)) &&
+					((0.5*length) > minLengthScale_)
+				)
                 {
-                    // Smoosh the return value for edgeBisectCollapse3D
-                    scalar newScale = (length - SMALL)/ratioMax();
+                    // Smoosh the return value for bisection.
+                    scalar newScale = (length - SMALL)/ratioMax_;
 
                     return newScale;
                 }
@@ -442,6 +534,94 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
     }
 
     return scale;
+}
+
+// Check for face bisection
+inline bool dynamicTopoFvMesh::checkFaceBisection
+(
+	const label fIndex
+)
+{
+    // Measure the boundary edge-length of the face in question
+	scalar length = edgeLength(getTriBoundaryEdge(fIndex));
+
+    // Determine the length-scale at this face
+	scalar scale = faceLengthScale(fIndex);
+
+	if (length > ratioMax_*scale)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+// Check for face collapse
+inline bool dynamicTopoFvMesh::checkFaceCollapse
+(
+	const label fIndex
+)
+{
+    // Measure the boundary edge-length of the face in question
+	scalar length = edgeLength(getTriBoundaryEdge(fIndex));
+
+    // Determine the length-scale at this face
+	scalar scale = faceLengthScale(fIndex);
+
+	if (length < ratioMin_*scale)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+// Check for edge bisection
+inline bool dynamicTopoFvMesh::checkEdgeBisection
+(
+	const label eIndex
+)
+{
+    // Measure the edge-length
+    scalar length = edgeLength(eIndex);
+
+    // Determine the length-scale at this point in the mesh
+    scalar scale = edgeLengthScale(eIndex);
+
+	if (length > ratioMax_*scale)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+// Check for edge collapse
+inline bool dynamicTopoFvMesh::checkEdgeCollapse
+(
+	const label eIndex
+)
+{
+    // Measure the edge-length
+    scalar length = edgeLength(eIndex);
+
+    // Determine the length-scale at this point in the mesh
+    scalar scale = edgeLengthScale(eIndex);
+
+	if (length < ratioMin_*scale)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
 }
 
 // Check if a given face is a quad

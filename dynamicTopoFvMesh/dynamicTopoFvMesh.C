@@ -75,6 +75,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
             IOobject::NO_WRITE
         )
     ),
+    mandatory_
+    (
+		dict_.subDict("dynamicTopoFvMesh").lookup("allOptionsMandatory")
+    ),
     twoDMesh_(polyMesh::nGeometricD() == 2 ? true : false),
     edgeModification_
     (
@@ -191,6 +195,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     numPatches_(1),
     topoChangeFlag_(false),
     dict_(mesh.dynamicMeshDict()),
+    mandatory_(mesh.mandatory_),
     twoDMesh_(mesh.twoDMesh_),
     edgeModification_(mesh.edgeModification_),
     coupledModification_(false),
@@ -3301,7 +3306,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
     }
 
 	label level = 1, visitedCells = 0;
-	labelList cellLevels(nCells(),0);
+	labelList cellLevels(nCells(), 0);
 
 	// Size the local field
 	lengthScale_.setSize(nCells(), 0.0);
@@ -3313,84 +3318,14 @@ void dynamicTopoFvMesh::calculateLengthScale()
 	const labelListList& cc = polyMesh::cellCells();
 	const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
 	const labelList& own = polyMesh::faceOwner();
-	const pointField& pList = polyMesh::points();
-
-	// Check local coupled patches for fixed length-scales
-	if (dict_.found("coupledPatches"))
-	{
-		dictionary coupledPatches =
-		(
-			dict_.subDict("coupledPatches")
-		);
-
-		// Determine master and slave patches
-		wordList masterPatches = coupledPatches.toc();
-
-		// Check whether coupled patches are fixedPatches as well.
-		forAll(masterPatches, wordI)
-		{
-			word pName(masterPatches[wordI]);
-
-			if (fixedPatches_.found(masterPatches[wordI]))
-			{
-				// Add the slave patch to the list as well.
-				// If it already exists, over-ride the value.
-				fixedPatches_.add
-				(
-					coupledPatches[pName],
-					fixedPatches_[pName][0].scalarToken(),
-					true
-				);
-			}
-		}
-	}
-
-	// Obtain the list of patches for which the length-scale is fixed
-	wordList toc = fixedPatches_.toc();
 
 	forAll(boundary,patchI)
 	{
 		const polyPatch& bdyPatch = boundary[patchI];
 
-		// Loop through all fixed length-scale patches
-		forAll(toc,wordI)
-		{
-			const word& pName = toc[wordI];
-
-			if (boundary[patchI].name() == pName)
-			{
-				label pStart = bdyPatch.start();
-
-				forAll(bdyPatch,faceI)
-				{
-					label ownCell = own[pStart+faceI];
-
-					if (cellLevels[ownCell] != 0)
-					{
-						continue;
-					}
-
-					cellLevels[ownCell] = level;
-
-					lengthScale_[ownCell] =
-					(
-						fixedPatches_[pName][0].scalarToken()
-					   *growthFactor_
-					);
-
-					levelCells.insert(ownCell);
-
-					visitedCells++;
-				}
-
-				break;
-			}
-		}
-
-		// Set boundary patch size if no fixed-length scale is specified.
 		if
 		(
-			(toc.size() == 0) &&
+		    (!freePatches_.found(bdyPatch.name())) &&
 			(bdyPatch.type() != "processor") &&
 			(bdyPatch.type() != "cyclic") &&
 			(bdyPatch.type() != "wedge") &&
@@ -3411,33 +3346,10 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
 				cellLevels[ownCell] = level;
 
-				if (twoDMesh_)
-				{
-					label eIndex = getTriBoundaryEdge(pStart+faceI);
-					const edge& e = edges_[eIndex];
-
-					lengthScale_[ownCell] =
-					(
-						mag(pList[e[0]] - pList[e[1]])*growthFactor_
-					);
-				}
-				else
-				{
-					// Average edge-lengths for this face
-					scalar edgeLength = 0.0;
-					const labelList& fEdges = faceEdges_[pStart+faceI];
-
-					forAll(fEdges, edgeI)
-					{
-						const edge& e = edges_[fEdges[edgeI]];
-						edgeLength += mag(pList[e[0]] - pList[e[1]]);
-					}
-
-					lengthScale_[ownCell] =
-					(
-						(edgeLength/fEdges.size())*growthFactor_
-					);
-				}
+				lengthScale_[ownCell] =
+				(
+					boundaryLengthScale(pStart+faceI)*growthFactor_
+				);
 
 				levelCells.insert(ownCell);
 
@@ -3502,8 +3414,8 @@ void dynamicTopoFvMesh::calculateLengthScale()
 					// Scale the length and assign to this cell
 					scalar sLength = sumLength*growthFactor_;
 
-					sLength = (sLength < maxLengthScale_)
-							? sLength : maxLengthScale_;
+                    // sLength = (sLength < maxLengthScale_)
+                    //          ? sLength : maxLengthScale_;
 
 					lengthScale_[cList[indexI]] = sLength;
 
@@ -3943,8 +3855,8 @@ void dynamicTopoFvMesh::readLengthScaleInfo
                 // Scale the length and assign to this cell
                 scalar sLength = sumLength*growthFactor_;
 
-                sLength = (sLength < maxLengthScale_)
-                        ? sLength : maxLengthScale_;
+                // sLength = (sLength < maxLengthScale_)
+                //          ? sLength : maxLengthScale_;
 
                 lengthScale[cI] = sLength;
             }
@@ -4028,12 +3940,16 @@ void dynamicTopoFvMesh::pRead
 void dynamicTopoFvMesh::readOptionalParameters()
 {
     // Enable/disable run-time debug level
-    if (dict_.found("debug"))
+    if (dict_.found("debug") || mandatory_)
     {
         debug = readLabel(dict_.lookup("debug"));
     }
+    else
+    {
+    	debug = 0;
+    }
 
-    if (dict_.subDict("dynamicTopoFvMesh").found("interval"))
+    if (dict_.subDict("dynamicTopoFvMesh").found("interval") || mandatory_)
     {
         interval_ =
         (
@@ -4044,12 +3960,20 @@ void dynamicTopoFvMesh::readOptionalParameters()
             )
         );
     }
+    else
+    {
+    	interval_ = 1;
+    }
 
     // For tetrahedral meshes...
     if (!twoDMesh_)
     {
         // Check if swapping is to be avoided on any patches
-        if (dict_.subDict("dynamicTopoFvMesh").found("noSwapPatches"))
+        if
+        (
+			dict_.subDict("dynamicTopoFvMesh").found("noSwapPatches") ||
+			mandatory_
+		)
         {
             wordList noSwapPatches =
             (
@@ -4076,7 +4000,11 @@ void dynamicTopoFvMesh::readOptionalParameters()
         }
 
         // Check if a limit has been imposed on maxTetsPerEdge
-        if (dict_.subDict("dynamicTopoFvMesh").found("maxTetsPerEdge"))
+        if
+        (
+			dict_.subDict("dynamicTopoFvMesh").found("maxTetsPerEdge") ||
+			mandatory_
+		)
         {
             maxTetsPerEdge_ =
             (
@@ -4095,7 +4023,11 @@ void dynamicTopoFvMesh::readOptionalParameters()
         }
 
         // Check if programming tables can be resized at runtime
-        if (dict_.subDict("dynamicTopoFvMesh").found("allowTableResize"))
+        if
+        (
+			dict_.subDict("dynamicTopoFvMesh").found("allowTableResize") ||
+			mandatory_
+		)
         {
             allowTableResize_ =
             (
@@ -4107,6 +4039,10 @@ void dynamicTopoFvMesh::readOptionalParameters()
                     ).lookup("allowTableResize")
                 )
             );
+        }
+        else
+        {
+        	allowTableResize_ = false;
         }
     }
 }
@@ -4156,7 +4092,7 @@ void dynamicTopoFvMesh::readEdgeOptions
         }
     }
 
-    if (edgeOptionDict.found("maxLengthScale"))
+    if (edgeOptionDict.found("maxLengthScale") || mandatory_)
     {
         maxLengthScale_ =
         (
@@ -4164,7 +4100,7 @@ void dynamicTopoFvMesh::readEdgeOptions
         );
     }
 
-    if (edgeOptionDict.found("minLengthScale"))
+    if (edgeOptionDict.found("minLengthScale") || mandatory_)
     {
         minLengthScale_ =
         (
@@ -4172,7 +4108,7 @@ void dynamicTopoFvMesh::readEdgeOptions
         );
     }
 
-    if (edgeOptionDict.found("fixedLengthScalePatches"))
+    if (edgeOptionDict.found("fixedLengthScalePatches") || mandatory_)
     {
         fixedPatches_ =
         (
@@ -4180,7 +4116,67 @@ void dynamicTopoFvMesh::readEdgeOptions
         );
     }
 
-    if (edgeOptionDict.found("computeGrowthFactor"))
+	// Check local coupled patches for fixed length-scales
+	if (dict_.found("coupledPatches") || mandatory_)
+	{
+		dictionary coupledPatches =
+		(
+			dict_.subDict("coupledPatches")
+		);
+
+		// Determine master and slave patches
+		wordList masterPatches = coupledPatches.toc();
+
+		// Check whether coupled patches are fixedPatches as well.
+		forAll(masterPatches, wordI)
+		{
+			word pName(masterPatches[wordI]);
+
+			if (fixedPatches_.found(masterPatches[wordI]))
+			{
+				// Add the slave patch to the list as well.
+				// If it already exists, over-ride the value.
+				fixedPatches_.add
+				(
+					coupledPatches[pName],
+					fixedPatches_[pName][0].scalarToken(),
+					true
+				);
+			}
+		}
+	}
+
+    if (edgeOptionDict.found("freeLengthScalePatches") || mandatory_)
+    {
+        freePatches_ =
+        (
+            edgeOptionDict.subDict("freeLengthScalePatches")
+        );
+
+        // Check if fixed and free patches are conflicting
+        if (fixedPatches_.size() && freePatches_.size())
+        {
+        	wordList fixedPatchList = fixedPatches_.toc();
+        	wordList freePatchList = freePatches_.toc();
+
+        	forAll(fixedPatchList, wordI)
+        	{
+        		forAll(freePatchList, wordJ)
+        		{
+        			if (fixedPatchList[wordI] == freePatchList[wordJ])
+        			{
+        	            FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+        	                << " Conflicting fixed/free patches."
+        	                << " Fixed patch: " << fixedPatchList[wordI] << nl
+        	                << " Free patch: " << freePatchList[wordJ] << nl
+        	                << abort(FatalError);
+        			}
+        		}
+        	}
+        }
+    }
+
+    if (edgeOptionDict.found("computeGrowthFactor") || mandatory_)
     {
     	if (!reRead)
     	{
@@ -4193,7 +4189,7 @@ void dynamicTopoFvMesh::readEdgeOptions
 		growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
     }
 
-    if (edgeOptionDict.found("curvaturePatches"))
+    if (edgeOptionDict.found("curvaturePatches") || mandatory_)
     {
         curvaturePatches_ =
         (
@@ -4216,15 +4212,33 @@ void dynamicTopoFvMesh::readEdgeOptions
         }
     }
 
-    if (edgeOptionDict.found("sliverThreshold"))
+    if (edgeOptionDict.found("proximityPatches") || mandatory_)
+    {
+    	proximityPatches_ =
+        (
+            edgeOptionDict.subDict("proximityPatches")
+        );
+    }
+
+    if (edgeOptionDict.found("sliverThreshold") || mandatory_)
     {
         sliverThreshold_ =
         (
             readScalar(edgeOptionDict.lookup("sliverThreshold"))
         );
+
+        if
+        (
+            (sliverThreshold_ > 1.0 || sliverThreshold_ < 0.0)
+        )
+        {
+            FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+                << " Sliver threshold out of range [0..1]"
+                << abort(FatalError);
+        }
     }
 
-    if (edgeOptionDict.found("maxModifications"))
+    if (edgeOptionDict.found("maxModifications") || mandatory_)
     {
         maxModifications_ =
         (
@@ -4233,34 +4247,14 @@ void dynamicTopoFvMesh::readEdgeOptions
     }
 }
 
-// Return the appropriate length-scale for boundary face
-scalar dynamicTopoFvMesh::boundaryLengthScale
-(
-    const label faceIndex
-)
-{
-    label bFacePatch = whichPatch(faceIndex);
-
-    // Check fixed length-scale patches
-    if (fixedPatches_.found(boundaryMesh()[bFacePatch].name()))
-    {
-        return
-        (
-            fixedPatches_[boundaryMesh()[bFacePatch].name()][0].scalarToken()
-        );
-    }
-
-    return lengthScale_[owner_[faceIndex]];
-}
-
 // Given a boundary quad face, return a boundary triangular face.
 // For 2D simplical meshes only.
 label dynamicTopoFvMesh::getTriBoundaryFace
 (
-    const label faceIndex
+    const label fIndex
 )
 {
-    const labelList& fEdges = faceEdges_[faceIndex];
+    const labelList& fEdges = faceEdges_[fIndex];
 
     forAll(fEdges, edgeI)
     {
@@ -4283,7 +4277,7 @@ label dynamicTopoFvMesh::getTriBoundaryFace
         "label dynamicTopoFvMesh::getTriBoundaryFace()"
     )
         << "Cannot find a triangular face bordering face: "
-        << faceIndex << " :: " << faces_[faceIndex]
+        << fIndex << " :: " << faces_[fIndex]
         << abort(FatalError);
 
     return -1;
@@ -4293,10 +4287,10 @@ label dynamicTopoFvMesh::getTriBoundaryFace
 // contains a triangular face. For 2D simplical meshes only.
 label dynamicTopoFvMesh::getTriBoundaryEdge
 (
-    const label faceIndex
+    const label fIndex
 )
 {
-    const labelList& fEdges = faceEdges_[faceIndex];
+    const labelList& fEdges = faceEdges_[fIndex];
 
     forAll(fEdges, edgeI)
     {
@@ -4319,7 +4313,7 @@ label dynamicTopoFvMesh::getTriBoundaryEdge
         "label dynamicTopoFvMesh::getTriBoundaryEdge()"
     )
         << "Cannot find a triangular face bordering face: "
-        << faceIndex << " :: " << faces_[faceIndex]
+        << fIndex << " :: " << faces_[fIndex]
         << abort(FatalError);
 
     return -1;
@@ -4389,6 +4383,12 @@ void dynamicTopoFvMesh::initEdges()
     edgePatchSizes_ = eMeshPtr_->boundary().patchSizes();
     edgePatchStarts_ = eMeshPtr_->boundary().patchStarts();
 
+    // Set old edge information
+    nOldEdges_ = nEdges_;
+    nOldInternalEdges_ = nInternalEdges_;
+    oldEdgePatchSizes_ = edgePatchSizes_;
+    oldEdgePatchStarts_ = edgePatchStarts_;
+
     // Set local lists with edge connectivity information
     edges_ = eMeshPtr_->edges();
     edgeFaces_ = eMeshPtr_->edgeFaces();
@@ -4417,7 +4417,8 @@ void dynamicTopoFvMesh::loadMetricLibrary()
 
     if
     (
-        dict_.subDict("dynamicTopoFvMesh").found("tetMetricLib")
+        dict_.subDict("dynamicTopoFvMesh").found("tetMetricLib") ||
+        mandatory_
     )
     {
         metricLibPtr =
@@ -4444,7 +4445,7 @@ void dynamicTopoFvMesh::loadMetricLibrary()
     {
         FatalErrorIn
         (
-            "dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io) "
+            "dynamicTopoFvMesh::loadMetricLibrary() "
         ) << nl << " Could not open the tetMetric library. "
           << abort(FatalError);
     }
@@ -4470,11 +4471,26 @@ void dynamicTopoFvMesh::loadMetricLibrary()
 
     if ((error = dlerror()) != NULL)
     {
+        typedef void (*returnType) ();
+
+    	// Load the list of symbols
+        returnType availableMetrics =
+		(
+			reinterpret_cast<returnType>
+			(
+        		dlsym(metricLibPtr,"reportMetrics")
+			)
+		);
+
+        Info << " Available metrics: " << endl;
+
+        // Execute the reportMetrics function.
+        (*availableMetrics)();
+
         FatalErrorIn
         (
-            "dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io) "
+            "dynamicTopoFvMesh::loadMetricLibrary() "
         ) << nl << " Unrecognized tet-quality metric: " << tetMetric
-          << " Reported dlsym() error: " << error
           << abort(FatalError);
     }
 }
@@ -4492,7 +4508,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
     }
     else
     {
-        if (dict_.subDict("dynamicTopoFvMesh").found("threads"))
+        if (dict_.subDict("dynamicTopoFvMesh").found("threads") || mandatory_)
         {
             threader_.set
             (
@@ -5058,7 +5074,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
 {
     patchCoupling_.clear();
 
-    if (dict_.found("coupledPatches"))
+    if (dict_.found("coupledPatches") || mandatory_)
     {
         dictionary coupledPatches =
         (
@@ -5910,12 +5926,6 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
         // Select only quad-faces
         if (mesh.checkQuadFace(fIndex))
         {
-            // Measure the boundary edge-length of the face in question
-        	scalar length = mesh.edgeLength(mesh.getTriBoundaryEdge(fIndex));
-
-            // Determine the length-scale at this face
-        	scalar scale = mesh.faceLengthScale(fIndex);
-
             // Check if this boundary face is adjacent to a sliver-cell,
             // and remove it by a two-step bisection/collapse operation.
             if (mesh.whichPatch(fIndex) != -1)
@@ -5923,11 +5933,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
                 mesh.remove2DSliver(fIndex);
             }
 
-            if
-            (
-    			(length > mesh.ratioMax()*scale) ||
-    			(length > mesh.maxLengthScale())
-    		)
+            if (mesh.checkFaceBisection(fIndex))
             {
                 if (thread->master())
                 {
@@ -5941,11 +5947,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
                 }
             }
             else
-            if
-            (
-    			(length < mesh.ratioMin()*scale) ||
-    			(length < mesh.minLengthScale())
-    		)
+            if (mesh.checkFaceCollapse(fIndex))
             {
                 if (thread->master())
                 {
@@ -6063,17 +6065,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         // Retrieve an edge from the stack
         label eIndex = mesh.edgeStack(tIndex).pop();
 
-        // Measure the edge-length
-        scalar length = mesh.edgeLength(eIndex);
-
-        // Determine the length-scale at this point in the mesh
-        scalar scale = mesh.edgeLengthScale(eIndex);
-
-        if
-        (
-			(length > mesh.ratioMax()*scale) ||
-			(length > mesh.maxLengthScale())
-		)
+        if (mesh.checkEdgeBisection(eIndex))
         {
             if (thread->master())
             {
@@ -6087,11 +6079,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
             }
         }
         else
-        if
-        (
-			(length < mesh.ratioMin()*scale) ||
-			(length < mesh.minLengthScale())
-		)
+        if (mesh.checkEdgeCollapse(eIndex))
         {
             if (thread->master())
             {
@@ -7186,23 +7174,6 @@ bool dynamicTopoFvMesh::updateTopology()
         readEdgeOptions(true);
     }
 
-    // Keep a copy of existing sizes
-    nOldPoints_ = nPoints_;
-    nOldEdges_  = nEdges_;
-    nOldFaces_  = nFaces_;
-    nOldCells_  = nCells_;
-    nOldInternalFaces_ = nInternalFaces_;
-    nOldInternalEdges_ = nInternalEdges_;
-
-    for(label i=0; i<numPatches_; i++)
-    {
-        oldPatchSizes_[i] = patchSizes_[i];
-        oldPatchStarts_[i] = patchStarts_[i];
-        oldEdgePatchSizes_[i] = edgePatchSizes_[i];
-        oldEdgePatchStarts_[i] = edgePatchStarts_[i];
-        oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
-    }
-
     // Print out the mesh bandwidth
     if (debug > 1)
     {
@@ -7525,6 +7496,23 @@ bool dynamicTopoFvMesh::updateTopology()
         reverseEdgeMap_.setSize(nEdges_, -7);
         reverseFaceMap_.setSize(nFaces_, -7);
         reverseCellMap_.setSize(nCells_, -7);
+
+        // Update "old" information
+        nOldPoints_ = nPoints_;
+        nOldEdges_  = nEdges_;
+        nOldFaces_  = nFaces_;
+        nOldCells_  = nCells_;
+        nOldInternalFaces_ = nInternalFaces_;
+        nOldInternalEdges_ = nInternalEdges_;
+
+        for(label i=0; i<numPatches_; i++)
+        {
+            oldPatchSizes_[i] = patchSizes_[i];
+            oldPatchStarts_[i] = patchStarts_[i];
+            oldEdgePatchSizes_[i] = edgePatchSizes_[i];
+            oldEdgePatchStarts_[i] = edgePatchStarts_[i];
+            oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
+        }
 
         // Basic checks for mesh-validity
         if (debug)
