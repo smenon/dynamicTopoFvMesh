@@ -152,53 +152,19 @@ void dynamicTopoFvMesh::bisectQuadFace
     );
     nPoints_ += 2;
 
-    // Add a new prism cell to the end of the list
-    newCellIndex[0] = cells_.size();
-
     cell newCell0(5);
-    cells_.append(newCell0);
 
-    // Generate mapping information for this new cell
-    label firstParent;
-    const labelListList& cc = cellCells();
-    labelHashSet c0MasterObjects;
-
-    if (c0 < nOldCells_)
-    {
-        firstParent = c0;
-    }
-    else
-    {
-        firstParent = cellParents_[c0];
-    }
-
-    // Insert the parent cell
-    cellParents_.insert(newCellIndex[0],firstParent);
-
-    // Find the cell's neighbours in the old mesh
-    c0MasterObjects.insert(firstParent);
-    forAll(cc[firstParent],cellI)
-    {
-        if (!c0MasterObjects.found(cc[firstParent][cellI]))
-        {
-            c0MasterObjects.insert(cc[firstParent][cellI]);
-        }
-    }
-
-    // Insert mapping info into the HashTable
-    cellsFromCells_.insert
+    // Add a new prism cell to the end of the list.
+    // Currently invalid, but will be updated later.
+    newCellIndex[0] =
     (
-        newCellIndex[0],
-        objectMap
+        insertCell
         (
-            newCellIndex[0],
-            c0MasterObjects.toc()
+            newCell0,
+            lengthScale_[c0],
+            c0
         )
     );
-
-    // Add a new element to the lengthScale field
-    // (Currently the same as cell[0])
-    lengthScale_.append(lengthScale_[c0]);
 
     // Modify the two existing triangle boundary faces
 
@@ -506,52 +472,19 @@ void dynamicTopoFvMesh::bisectQuadFace
             c1IntIndex
         );
 
-        // Add a new prism cell to the end of the list
-        newCellIndex[1] = cells_.size();
-
+        // Add a new prism cell to the end of the list.
+        // Currently invalid, but will be updated later.
         cell newCell1(5);
-        cells_.append(newCell1);
 
-        // Generate mapping information for this new cell
-        label secondParent;
-        labelHashSet c1MasterObjects;
-
-        if (c1 < nOldCells_)
-        {
-            secondParent = c1;
-        }
-        else
-        {
-            secondParent = cellParents_[c1];
-        }
-
-        // Insert the parent cell
-        cellParents_.insert(newCellIndex[1],secondParent);
-
-        // Find the cell's neighbours in the old mesh
-        c1MasterObjects.insert(secondParent);
-        forAll(cc[secondParent],cellI)
-        {
-            if (!c1MasterObjects.found(cc[secondParent][cellI]))
-            {
-                c1MasterObjects.insert(cc[secondParent][cellI]);
-            }
-        }
-
-        // Insert mapping info into the HashTable
-        cellsFromCells_.insert
+        newCellIndex[1] =
         (
-            newCellIndex[1],
-            objectMap
+            insertCell
             (
-                newCellIndex[1],
-                c1MasterObjects.toc()
+                newCell1,
+                lengthScale_[c1],
+                c1
             )
         );
-
-        // Add a new element to the lengthScale field
-        // (Currently the same as cell[1])
-        lengthScale_.append(lengthScale_[c1]);
 
         if (debug > 2)
         {
@@ -864,19 +797,101 @@ void dynamicTopoFvMesh::bisectQuadFace
 
     // Increment the number of modifications
     nModifications_++;
+}
 
-    // Update the number of cells
-    nCells_++;
+// Method to recursively bisect or collapse cell edges in 3D
+// - Returns a changeMap with a type specifying:
+//    -1: Bisection failed since max number of topo-changes was reached.
+const dynamicTopoFvMesh::changeMap
+dynamicTopoFvMesh::recursiveCellRefinement
+(
+    const label cIndex
+)
+{
+    // Figure out which thread this is...
+    label tIndex = self();
 
-    if (c1 != -1)
+    // Prepare the changeMaps
+    changeMap map;
+
+    if
+    (
+        (nModifications_ > maxModifications_) &&
+        (maxModifications_ > -1)
+    )
     {
-        nCells_++;
+        // Reached the max allowable topo-changes.
+        cellStack(tIndex).clear();
+
+        return map;
     }
+
+    // Obtain a reference to this cell
+    const cell& cellToCheck = cells_[cIndex];
+
+    FixedList<scalar, 6> edgeLengths(0.0);
+    FixedList<label, 6> cellEdges(-1);
+
+    // Compile a list of cell edges
+    label nE = 0;
+
+    forAll(cellToCheck, faceI)
+    {
+        const labelList& faceToCheck = faceEdges_[cellToCheck[faceI]];
+
+        forAll(faceToCheck, edgeI)
+        {
+            if (findIndex(cellEdges,faceToCheck[edgeI]) == -1)
+            {
+                cellEdges[nE] = faceToCheck[edgeI];
+
+                edgeLengths[nE] = edgeLength(faceToCheck[edgeI]);
+
+                nE++;
+            }
+        }
+
+        if (nE == 6) break;
+    }
+
+    label minEdgeIndex = findMin(edgeLengths);
+
+    // Check for a collapse condition first
+    if (checkEdgeCollapse(cellEdges[minEdgeIndex]))
+    {
+        // Collapse this edge
+        return collapseEdge(cellEdges[minEdgeIndex]);
+    }
+
+    // Check for a bisection condition
+    label maxEdgeIndex = -1;
+
+    forAll(cellEdges, edgeI)
+    {
+        maxEdgeIndex = findMax(edgeLengths);
+
+        if (checkEdgeBisection(cellEdges[maxEdgeIndex]))
+        {
+            bisectEdge(cellEdges[maxEdgeIndex]);
+
+            edgeLengths[maxEdgeIndex] = 0.0;
+            maxEdgeIndex = findMax(edgeLengths);
+        }
+        else
+        {
+            // Reach the max number of levels. Break out.
+            break;
+        }
+    }
+
+    // Reached the max number of levels. Do nothing.
+    return map;
 }
 
 // Method for the bisection of an edge in 3D
 // - Returns a changeMap with a type specifying:
 //    -1: Bisection failed since max number of topo-changes was reached.
+//    -2: Bisection failed since resulting quality would be really bad.
 // - AddedPoint is the index of the newly added point.
 const dynamicTopoFvMesh::changeMap
 dynamicTopoFvMesh::bisectEdge
@@ -961,6 +976,14 @@ dynamicTopoFvMesh::bisectEdge
 
         }
     }
+
+    // Before we bisect this edge, check whether the operation will
+    // yield an acceptable cell-quality.
+    // if (computeBisectionQuality(eIndex) < 0.3)
+    // {
+    //     map.type() = -2;
+    //     return map;
+    // }
 
     // Hull variables
     face tmpTriFace(3);
@@ -1058,9 +1081,6 @@ dynamicTopoFvMesh::bisectEdge
     labelList addedEdgeIndices(faceHull.size(),-1);
     labelList addedIntFaceIndices(faceHull.size(),-1);
 
-    // Obtain cellCells for mapping information
-    const labelListList& cc = cellCells();
-
     // Now loop through the hull and bisect individual entities
     forAll(vertexHull, indexI)
     {
@@ -1087,55 +1107,21 @@ dynamicTopoFvMesh::bisectEdge
         // Check if this is an interior/boundary face
         if (cellHull[indexI] != -1)
         {
-            // Create a new cell
-            addedCellIndices[indexI] = cells_.size();
-
+            // Create a new cell. Add it for now, but update later.
             cell newCell(4);
-            cells_.append(newCell);
-            nCells_++;
 
-            // Add this cell to the map.
-            map.addCell(addedCellIndices[indexI]);
-
-            // Generate mapping information for this new cell
-            label parent;
-            labelHashSet masterObjects;
-
-            if (cellHull[indexI] < nOldCells_)
-            {
-                parent = cellHull[indexI];
-            }
-            else
-            {
-                parent = cellParents_[cellHull[indexI]];
-            }
-
-            // Insert the parent cell
-            cellParents_.insert(addedCellIndices[indexI], parent);
-
-            // Find the cell's neighbours in the old mesh
-            masterObjects.insert(parent);
-            forAll(cc[parent], cellI)
-            {
-                if (!masterObjects.found(cc[parent][cellI]))
-                {
-                    masterObjects.insert(cc[parent][cellI]);
-                }
-            }
-
-            // Insert mapping info into the HashTable
-            cellsFromCells_.insert
+            addedCellIndices[indexI] =
             (
-                addedCellIndices[indexI],
-                objectMap
+                insertCell
                 (
-                    addedCellIndices[indexI],
-                    masterObjects.toc()
+                    newCell,
+                    lengthScale_[cellHull[indexI]],
+                    cellHull[indexI]
                 )
             );
 
-            // Add a new element to the lengthScale field
-            lengthScale_.append(lengthScale_[cellHull[indexI]]);
+            // Add this cell to the map.
+            map.addCell(addedCellIndices[indexI]);
 
             // Configure the interior face
             tmpTriFace[0] = vertexHull[nextI];
@@ -1241,19 +1227,6 @@ dynamicTopoFvMesh::bisectEdge
 
                 // Add this face to the map.
                 map.addFace(addedFaceIndices[indexI]);
-
-                // Generate mapping information for this new face
-                if (faceHull[indexI] < nOldFaces_)
-                {
-                    parent = faceHull[indexI];
-                }
-                else
-                {
-                    parent = faceParents_[faceHull[indexI]];
-                }
-
-                // Insert the parent face
-                faceParents_.insert(addedFaceIndices[indexI], parent);
 
                 // Configure edgeFaces
                 tmpEdgeFaces[0] = faceHull[indexI];
@@ -1725,7 +1698,7 @@ dynamicTopoFvMesh::bisectEdge
                                 checkList[indexI], aeList[edgeI]
                             );
 
-                            patchCoupling_[pIndex].mapSlave
+                            patchCoupling_[pIndex].mapMaster
                             (
                                 aeList[edgeI], checkList[indexI]
                             );
@@ -2152,25 +2125,25 @@ dynamicTopoFvMesh::trisectFace
     // Add three new cells to the end of the cell list
     for (label i = 0; i < 3; i++)
     {
-        newCellIndex[i] = cells_.size();
-        cells_.append(newTetCell[i]);
+        scalar parentScale = -1.0;
 
-        // Increment the cell count
-        nCells_++;
+        if (edgeModification_)
+        {
+            parentScale = lengthScale_[cellsForRemoval[0]];
+        }
+
+        newCellIndex[i] =
+        (
+            insertCell
+            (
+                newTetCell[i],
+                parentScale,
+                cellsForRemoval[0]
+            )
+        );
 
         // Add cells to the map
         map.addCell(newCellIndex[i]);
-    }
-
-    // Update length-scale info
-    if (edgeModification_)
-    {
-        scalar parentScale = lengthScale_[cellsForRemoval[0]];
-
-        for (label i = 0; i < 3; i++)
-        {
-            lengthScale_.append(parentScale);
-        }
     }
 
     // Find the apex point for this cell
@@ -2755,25 +2728,25 @@ dynamicTopoFvMesh::trisectFace
         // Add three new cells to the end of the cell list
         for (label i = 3; i < 6; i++)
         {
-            newCellIndex[i] = cells_.size();
-            cells_.append(newTetCell[i]);
+            scalar parentScale = -1.0;
 
-            // Increment the cell count
-            nCells_++;
+            if (edgeModification_)
+            {
+                parentScale = lengthScale_[cellsForRemoval[1]];
+            }
+
+            newCellIndex[i] =
+            (
+                insertCell
+                (
+                    newTetCell[i],
+                    parentScale,
+                    cellsForRemoval[1]
+                )
+            );
 
             // Add to the map.
             map.addCell(newCellIndex[i]);
-        }
-
-        // Update length-scale info
-        if (edgeModification_)
-        {
-            scalar parentScale = lengthScale_[cellsForRemoval[1]];
-
-            for (label i = 0; i < 3; i++)
-            {
-                lengthScale_.append(parentScale);
-            }
         }
 
         // Find the apex point for this cell
@@ -3340,36 +3313,10 @@ dynamicTopoFvMesh::trisectFace
             continue;
         }
 
-        // Determine an appropriate parent cell
-        label parent = -1;
-
-        if (cIndex < nOldCells_)
-        {
-            parent = cIndex;
-        }
-        else
-        {
-            parent = cellParents_[cIndex];
-        }
-
         if (cellI == 0)
         {
             for (label i = 0; i < 3; i++)
             {
-                // Insert the parent cell [from first by default]
-                cellParents_.insert(newCellIndex[i], parent);
-
-                // Insert mapping info into the HashTable
-                cellsFromCells_.insert
-                (
-                    newCellIndex[i],
-                    objectMap
-                    (
-                        newCellIndex[i],
-                        labelList(1, parent)
-                    )
-                );
-
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
             }
@@ -3378,58 +3325,12 @@ dynamicTopoFvMesh::trisectFace
         {
             for (label i = 3; i < 6; i++)
             {
-                // Insert the parent cell [from first by default]
-                cellParents_.insert(newCellIndex[i], parent);
-
-                // Insert mapping info into the HashTable
-                cellsFromCells_.insert
-                (
-                    newCellIndex[i],
-                    objectMap
-                    (
-                        newCellIndex[i],
-                        labelList(1, parent)
-                    )
-                );
-
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
             }
         }
 
-        if (debug > 2)
-        {
-            Info << "Removing cell: "
-                 << cIndex << ": "
-                 << cells_[cIndex]
-                 << endl;
-        }
-
-        cells_[cIndex].clear();
-
-        if (edgeModification_)
-        {
-            lengthScale_[cIndex] = -1.0;
-        }
-
-        if (cIndex < nOldCells_)
-        {
-            reverseCellMap_[cIndex] = -1;
-        }
-        else
-        {
-            // Store this information for the reOrdering stage
-            deletedCells_.insert(cIndex);
-        }
-
-        // Check if the cell was added in the current morph, and delete
-        if (cellsFromCells_.found(cIndex))
-        {
-            cellsFromCells_.erase(cIndex);
-        }
-
-        // Update the number of cells.
-        nCells_--;
+        removeCell(cIndex);
     }
 
     // Now finally remove the face...

@@ -326,10 +326,10 @@ inline scalar dynamicTopoFvMesh::boundaryLengthScale
     // If the value is negative, average face length-scales.
     if (fixedPatches_.found(boundary[bFacePatch].name()))
     {
-    	scalar dictValue =
-		(
-			fixedPatches_[boundary[bFacePatch].name()][0].scalarToken()
-		);
+        scalar dictValue =
+        (
+            fixedPatches_[boundary[bFacePatch].name()][0].scalarToken()
+        );
 
         if (dictValue > 0.0)
         {
@@ -339,49 +339,49 @@ inline scalar dynamicTopoFvMesh::boundaryLengthScale
 
     const polyPatch& bdyPatch = boundary[bFacePatch];
 
-	if
-	(
-		(freePatches_.found(bdyPatch.name())) ||
-		(bdyPatch.type() == "processor") ||
-		(bdyPatch.type() == "cyclic") ||
-		(bdyPatch.type() == "wedge") ||
-		(bdyPatch.type() == "empty") ||
-		(bdyPatch.type() == "symmetryPlane")
-	)
-	{
-		return lengthScale_[owner_[fIndex]];
-	}
+    if
+    (
+        (freePatches_.found(bdyPatch.name())) ||
+        (bdyPatch.type() == "processor") ||
+        (bdyPatch.type() == "cyclic") ||
+        (bdyPatch.type() == "wedge") ||
+        (bdyPatch.type() == "empty") ||
+        (bdyPatch.type() == "symmetryPlane")
+    )
+    {
+        return lengthScale_[owner_[fIndex]];
+    }
 
-	if (twoDMesh_)
-	{
-		label eIndex = getTriBoundaryEdge(fIndex);
+    if (twoDMesh_)
+    {
+        label eIndex = getTriBoundaryEdge(fIndex);
 
-		const edge& e = edges_[eIndex];
+        const edge& e = edges_[eIndex];
 
-		return mag(points_[e[0]] - points_[e[1]]);
-	}
-	else
-	{
-		// Average edge-lengths for this face
-		scalar edgeLength = 0.0;
+        return mag(points_[e[0]] - points_[e[1]]);
+    }
+    else
+    {
+        // Average edge-lengths for this face
+        scalar edgeLength = 0.0;
 
-		const labelList& fEdges = faceEdges_[fIndex];
+        const labelList& fEdges = faceEdges_[fIndex];
 
-		forAll(fEdges, edgeI)
-		{
-			const edge& e = edges_[fEdges[edgeI]];
+        forAll(fEdges, edgeI)
+        {
+            const edge& e = edges_[fEdges[edgeI]];
 
-			edgeLength += mag(points_[e[0]] - points_[e[1]]);
-		}
+            edgeLength += mag(points_[e[0]] - points_[e[1]]);
+        }
 
-		return (edgeLength/fEdges.size());
-	}
+        return (edgeLength/fEdges.size());
+    }
 }
 
 // Return length-scale at an face-location in the mesh [2D]
 inline scalar dynamicTopoFvMesh::faceLengthScale
 (
-	const label fIndex
+  const label fIndex
 )
 {
     // Reset the scale first
@@ -391,13 +391,13 @@ inline scalar dynamicTopoFvMesh::faceLengthScale
     if (whichPatch(fIndex) < 0)
     {
         scale =
-		(
-			0.5 *
-			(
-				lengthScale_[owner_[fIndex]]
-			  + lengthScale_[neighbour_[fIndex]]
-			)
-		);
+        (
+            0.5 *
+            (
+                lengthScale_[owner_[fIndex]]
+                + lengthScale_[neighbour_[fIndex]]
+            )
+        );
     }
     else
     {
@@ -461,7 +461,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
         // test the proximity to the nearest non-neighbour.
         if (proximityPatches_.found(boundaryMesh()[edgePatch].name()))
         {
-        	// Obtain the edge location
+            // Obtain the edge location
 
         }
 
@@ -508,9 +508,9 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                 // Would dividing this edge make it too small?
                 if
                 (
-					((0.5*length) > (ratioMin_*scale)) &&
-					((0.5*length) > minLengthScale_)
-				)
+                    ((0.5*length) > (ratioMin_*scale)) &&
+                    ((0.5*length) > minLengthScale_)
+                )
                 {
                     // Smoosh the return value for bisection.
                     scalar newScale = (length - SMALL)/ratioMax_;
@@ -539,51 +539,51 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
 // Check for face bisection
 inline bool dynamicTopoFvMesh::checkFaceBisection
 (
-	const label fIndex
+    const label fIndex
 )
 {
     // Measure the boundary edge-length of the face in question
-	scalar length = edgeLength(getTriBoundaryEdge(fIndex));
+    scalar length = edgeLength(getTriBoundaryEdge(fIndex));
 
     // Determine the length-scale at this face
-	scalar scale = faceLengthScale(fIndex);
+    scalar scale = faceLengthScale(fIndex);
 
-	if (length > ratioMax_*scale)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
+    if (length > ratioMax_*scale)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 // Check for face collapse
 inline bool dynamicTopoFvMesh::checkFaceCollapse
 (
-	const label fIndex
+    const label fIndex
 )
 {
     // Measure the boundary edge-length of the face in question
-	scalar length = edgeLength(getTriBoundaryEdge(fIndex));
+    scalar length = edgeLength(getTriBoundaryEdge(fIndex));
 
     // Determine the length-scale at this face
-	scalar scale = faceLengthScale(fIndex);
+    scalar scale = faceLengthScale(fIndex);
 
-	if (length < ratioMin_*scale)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
+    if (length < ratioMin_*scale)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 // Check for edge bisection
 inline bool dynamicTopoFvMesh::checkEdgeBisection
 (
-	const label eIndex
+    const label eIndex
 )
 {
     // Measure the edge-length
@@ -592,20 +592,20 @@ inline bool dynamicTopoFvMesh::checkEdgeBisection
     // Determine the length-scale at this point in the mesh
     scalar scale = edgeLengthScale(eIndex);
 
-	if (length > ratioMax_*scale)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
+    if (length > ratioMax_*scale)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 // Check for edge collapse
 inline bool dynamicTopoFvMesh::checkEdgeCollapse
 (
-	const label eIndex
+    const label eIndex
 )
 {
     // Measure the edge-length
@@ -614,14 +614,14 @@ inline bool dynamicTopoFvMesh::checkEdgeCollapse
     // Determine the length-scale at this point in the mesh
     scalar scale = edgeLengthScale(eIndex);
 
-	if (length < ratioMin_*scale)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
+    if (length < ratioMin_*scale)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 // Check if a given face is a quad
@@ -659,6 +659,15 @@ inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack
     return edgeStack_[threadID];
 }
 
+// Return the cell-stack for a particular thread
+inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::cellStack
+(
+    const label threadID
+)
+{
+    return cellStack_[threadID];
+}
+
 // Return the integer threadID for a given pthread
 // Return zero for single-threaded operation
 inline label dynamicTopoFvMesh::self()
@@ -675,6 +684,40 @@ inline label dynamicTopoFvMesh::self()
     }
 
     return 0;
+}
+
+// Initialize cell-stacks
+inline void dynamicTopoFvMesh::initCellStacks()
+{
+    forAll(cellStack_, stackI)
+    {
+        cellStack_[stackI].clear();
+    }
+
+    if (threader_->multiThreaded())
+    {
+        label tID = 1;
+
+        forAll(cells_, cellI)
+        {
+            if (cells_[cellI].size())
+            {
+                cellStack_[tID].insert(cellI);
+
+                tID = (tID == cellStack_.size() - 1) ? 1 : tID + 1;
+            }
+        }
+    }
+    else
+    {
+        forAll(cells_, cellI)
+        {
+            if (cells_[cellI].size())
+            {
+                cellStack_[0].insert(cellI);
+            }
+        }
+    }
 }
 
 // Initialize edge-stacks
@@ -1150,29 +1193,6 @@ inline void dynamicTopoFvMesh::insertLabel
     list.transfer(newList);
 }
 
-// Check for the occurrence of a label in the list
-inline bool dynamicTopoFvMesh::foundInList
-(
-    const label item,
-    const labelList& list,
-    label& index
-)
-{
-    forAll(list, itemI)
-    {
-        if (list[itemI] == item)
-        {
-            index = itemI;
-
-            return true;
-        }
-    }
-
-    index = -1;
-
-    return false;
-}
-
 // Utility method to size-up the list to include an item
 inline void dynamicTopoFvMesh::sizeUpList
 (
@@ -1206,9 +1226,7 @@ inline void dynamicTopoFvMesh::sizeDownList
 
 #   ifdef FULLDEBUG
     // Check that the item actually exists.
-    label index = -1;
-
-    if (!foundInList(item, list, index))
+    if (findIndex(list, item) == -1)
     {
         FatalErrorIn
         (
@@ -1245,6 +1263,10 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
     const edge& edgeToCheck = edges_[eIndex];
     const labelList& hullVertices = edgePoints_[eIndex];
 
+    // Obtain point references
+    const point& a = points_[edgeToCheck[0]];
+    const point& c = points_[edgeToCheck[1]];
+
     if (whichEdgePatch(eIndex) < 0)
     {
         // Internal edge.
@@ -1252,10 +1274,9 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
         {
             label prevIndex = hullVertices.rcIndex(indexI);
 
-            point& a = points_[edgeToCheck[0]];
-            point& b = points_[hullVertices[prevIndex]];
-            point& c = points_[edgeToCheck[1]];
-            point& d = points_[hullVertices[indexI]];
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[prevIndex]];
+            const point& d = points_[hullVertices[indexI]];
 
             // Compute the quality
             cQuality = (*tetMetric_)(a, b, c, d);
@@ -1269,10 +1290,9 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
         // Boundary edge.
         for(label indexI = 1; indexI < hullVertices.size(); indexI++)
         {
-            point& a = points_[edgeToCheck[0]];
-            point& b = points_[hullVertices[indexI-1]];
-            point& c = points_[edgeToCheck[1]];
-            point& d = points_[hullVertices[indexI]];
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[indexI-1]];
+            const point& d = points_[hullVertices[indexI]];
 
             // Compute the quality
             cQuality = (*tetMetric_)(a, b, c, d);
@@ -1347,6 +1367,100 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             << "Edge: " << eIndex << ": " << edgeToCheck << nl
             << "EdgePoints: " << hullVertices << nl
             << "Minimum Quality: " << minQuality
+            << abort(FatalError);
+    }
+
+    return minQuality;
+}
+
+// Utility method to compute the quality of a vertex hull
+// around an edge after bisection.
+inline scalar dynamicTopoFvMesh::computeBisectionQuality
+(
+    const label eIndex
+)
+{
+    scalar minQuality = GREAT;
+    scalar cQuality = 0.0;
+
+    // Obtain a reference to this edge and corresponding edgePoints
+    const edge& edgeToCheck = edges_[eIndex];
+    const labelList& hullVertices = edgePoints_[eIndex];
+
+    // Obtain point references
+    const point& a = points_[edgeToCheck[0]];
+    const point& c = points_[edgeToCheck[1]];
+
+    // Compute the mid-point of the edge
+    point midPoint = 0.5*(a + c);
+
+    if (whichEdgePatch(eIndex) < 0)
+    {
+        // Internal edge.
+        forAll(hullVertices, indexI)
+        {
+            label prevIndex = hullVertices.rcIndex(indexI);
+
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[prevIndex]];
+            const point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = (*tetMetric_)(a, b, midPoint, d);
+
+            // Check if the quality is worse
+            minQuality = cQuality < minQuality ? cQuality : minQuality;
+        }
+    }
+    else
+    {
+        // Boundary edge.
+        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
+        {
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[indexI-1]];
+            const point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = (*tetMetric_)(a, b, midPoint, d);
+
+            // Check if the quality is worse
+            minQuality = cQuality < minQuality ? cQuality : minQuality;
+        }
+    }
+
+    // Ensure that the mesh is valid
+    if (minQuality < 0.0)
+    {
+        if (debug > 3)
+        {
+            // Write out cells for post processing.
+            labelHashSet iCells;
+
+            labelList& eFaces = edgeFaces_[eIndex];
+
+            forAll(eFaces, faceI)
+            {
+                if (!iCells.found(owner_[eFaces[faceI]]))
+                {
+                    iCells.insert(owner_[eFaces[faceI]]);
+                }
+
+                if (!iCells.found(neighbour_[eFaces[faceI]]))
+                {
+                    iCells.insert(neighbour_[eFaces[faceI]]);
+                }
+            }
+
+            writeVTK(Foam::name(eIndex) + "_inverted", iCells.toc());
+        }
+
+        FatalErrorIn("dynamicTopoFvMesh::computeBisectionQuality()")
+            << "Negative cell-quality after bisection!" << nl
+            << "Edge: " << eIndex << ": " << edgeToCheck << nl
+            << "EdgePoints: " << hullVertices << nl
+            << "Minimum Quality: " << minQuality << nl
+            << "Mid point: " << midPoint
             << abort(FatalError);
     }
 

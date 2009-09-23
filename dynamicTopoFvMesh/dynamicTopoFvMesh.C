@@ -77,7 +77,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ),
     mandatory_
     (
-		dict_.subDict("dynamicTopoFvMesh").lookup("allOptionsMandatory")
+        dict_.subDict("dynamicTopoFvMesh").lookup("allOptionsMandatory")
     ),
     twoDMesh_(polyMesh::nGeometricD() == 2 ? true : false),
     edgeModification_
@@ -350,89 +350,89 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 // Send signal to a waiting conditional
 inline void dynamicTopoFvMesh::topoMeshStruct::sendSignal
 (
-	const signalType sType
+    const signalType sType
 )
 {
-	lock(sType);
+    lock(sType);
 
-	if (predicate(sType))
-	{
-		InfoIn("topoMeshStruct::sendSignal()")
-			<< "Predicate is already set."
-			<< endl;
-	}
-	else
-	{
-		// Set predicate before signalling
-		setPredicate(sType);
-	}
+    if (predicate(sType))
+    {
+        InfoIn("topoMeshStruct::sendSignal()")
+            << "Predicate is already set."
+            << endl;
+    }
+    else
+    {
+        // Set predicate before signalling
+        setPredicate(sType);
+    }
 
-	if (sType == START)
-	{
-		mesh_->threader().signal
-		(
-			startConditional_
-		);
-	}
-	else
-	if (sType == STOP)
-	{
-		mesh_->threader().signal
-		(
-			stopConditional_
-		);
-	}
-	else
-	{
+    if (sType == START)
+    {
+        mesh_->threader().signal
+        (
+            startConditional_
+        );
+    }
+    else
+    if (sType == STOP)
+    {
+        mesh_->threader().signal
+        (
+            stopConditional_
+        );
+    }
+    else
+    {
         FatalErrorIn("topoMeshStruct::sendSignal()")
             << "Undefined enumerant."
             << abort(FatalError);
-	}
+    }
 
-	unlock(sType);
+    unlock(sType);
 }
 
 // Wait for signal
 inline void dynamicTopoFvMesh::topoMeshStruct::waitForSignal
 (
-	const signalType sType
+    const signalType sType
 )
 {
-	if (sType == START)
-	{
-		mesh_->threader().waitForCondition
-		(
-			startConditional_,
-			startMutex_
-		);
-	}
-	else
-	if (sType == STOP)
-	{
-		mesh_->threader().waitForCondition
-		(
-			stopConditional_,
-			stopMutex_
-		);
-	}
-	else
-	{
+    if (sType == START)
+    {
+        mesh_->threader().waitForCondition
+        (
+            startConditional_,
+            startMutex_
+        );
+    }
+    else
+    if (sType == STOP)
+    {
+        mesh_->threader().waitForCondition
+        (
+            stopConditional_,
+            stopMutex_
+        );
+    }
+    else
+    {
         FatalErrorIn("topoMeshStruct::waitForSignal()")
             << "Undefined enumerant."
             << abort(FatalError);
-	}
+    }
 
-	if (!predicate(sType))
-	{
+    if (!predicate(sType))
+    {
         FatalErrorIn("topoMeshStruct::waitForSignal()")
             << "Spurious wake-up."
             << abort(FatalError);
-	}
+    }
 
-	unsetPredicate(sType);
+    unsetPredicate(sType);
 
-	// Unlock the acquired mutex
-	unlock(sType);
+    // Unlock the acquired mutex
+    unlock(sType);
 }
 
 // Return the mesh-mapper
@@ -806,6 +806,120 @@ bool dynamicTopoFvMesh::findCommonEdge
     return found;
 }
 
+// Insert the specified cell to the mesh
+label dynamicTopoFvMesh::insertCell
+(
+    const cell& newCell,
+    const scalar lengthScale,
+    const label mappingCell
+)
+{
+    label newCellIndex = cells_.size();
+
+    if (debug > 2)
+    {
+        Info << "Inserting cell: "
+             << newCellIndex << ": "
+             << newCell << endl;
+    }
+
+    cells_.append(newCell);
+
+    if (edgeModification_)
+    {
+        lengthScale_.append(lengthScale);
+    }
+
+    // Generate mapping information for this new cell
+    const labelListList& cc = cellCells();
+
+    label parent;
+    labelHashSet masterObjects;
+
+    if (mappingCell < nOldCells_)
+    {
+        parent = mappingCell;
+    }
+    else
+    {
+        parent = cellParents_[mappingCell];
+    }
+
+    // Insert the parent cell
+    cellParents_.insert(newCellIndex, parent);
+
+    // Find the cell's neighbours in the old mesh
+    masterObjects.insert(parent);
+
+    forAll(cc[parent], cellI)
+    {
+        if (!masterObjects.found(cc[parent][cellI]))
+        {
+            masterObjects.insert(cc[parent][cellI]);
+        }
+    }
+
+    // Insert mapping info into the HashTable
+    cellsFromCells_.insert
+    (
+        newCellIndex,
+        objectMap
+        (
+            newCellIndex,
+            masterObjects.toc()
+        )
+    );
+
+    nCells_++;
+}
+
+// Remove the specified cell from the mesh
+void dynamicTopoFvMesh::removeCell
+(
+    const label cIndex
+)
+{
+    if (debug > 2)
+    {
+        Info << "Removing cell: "
+             << cIndex << ": "
+             << cells_[cIndex]
+             << endl;
+    }
+
+    cells_[cIndex].clear();
+
+    if (edgeModification_)
+    {
+        lengthScale_[cIndex] = -1.0;
+    }
+
+    // Update the number of cells, and the reverse cell map
+    nCells_--;
+
+    if (cIndex < nOldCells_)
+    {
+        reverseCellMap_[cIndex] = -1;
+    }
+    else
+    {
+        // Store this information for the reOrdering stage
+        deletedCells_.insert(cIndex);
+    }
+
+    // Check if the cell was added in the current morph, and delete
+    if (cellsFromCells_.found(cIndex))
+    {
+        cellsFromCells_.erase(cIndex);
+    }
+
+    // Remove from the cell stack as well
+    forAll(cellStack_, stackI)
+    {
+        cellStack(stackI).remove(cIndex);
+    }
+}
+
 // Utility method for face-insertion
 label dynamicTopoFvMesh::insertFace
 (
@@ -816,8 +930,7 @@ label dynamicTopoFvMesh::insertFace
 )
 {
     // Append the specified face to each face-related list.
-    // This will avoid rehashing of existing structures, but ordering is not
-    // maintained. Reordering is performed after all pending changes
+    // Reordering is performed after all pending changes
     // (flips, bisections, contractions, etc) have been made to the mesh
     label newFaceIndex = faces_.size();
 
@@ -988,7 +1101,7 @@ void dynamicTopoFvMesh::removeCell
 
             // Insert a new boundary face
             label newFaceIndex =
-			(
+            (
                 insertFace
                 (
                     patch,
@@ -996,7 +1109,7 @@ void dynamicTopoFvMesh::removeCell
                     newOwner,
                     -1
                 )
-			);
+            );
 
             // Add the faceEdges entry
             faceEdges_.append(faceEdges);
@@ -1026,25 +1139,7 @@ void dynamicTopoFvMesh::removeCell
     }
 
     // Update cell info
-    cells_[index].clear();
-    lengthScale_[index] = -1.0;
-    nCells_--;
-
-    if (index < nOldCells_)
-    {
-        reverseCellMap_[index] = -1;
-    }
-    else
-    {
-        // Store this information for the reOrdering stage
-        deletedCells_.insert(index);
-    }
-
-    // Check if the cell was added in the current morph, and delete
-    if (cellsFromCells_.found(index))
-    {
-        cellsFromCells_.erase(index);
-    }
+    removeCell(index);
 
     // Set the flag
     topoChangeFlag_ = true;
@@ -1626,9 +1721,9 @@ void dynamicTopoFvMesh::constructHull
 
                     // Scan one the faces for the ring-edge
                     const labelList& rFaceEdges =
-					(
-						faceEdges_[ringEntities[1][indexI]]
-				    );
+                    (
+                        faceEdges_[ringEntities[1][indexI]]
+                    );
 
                     forAll(rFaceEdges, edgeI)
                     {
@@ -2912,12 +3007,7 @@ void dynamicTopoFvMesh::checkConnectivity()
         // Check if this edge belongs to faceEdges for each face
         forAll(edgeFaces, faceI)
         {
-            label i = -1;
-
-            if
-            (
-                !foundInList(edgeI, faceEdges_[edgeFaces[faceI]], i)
-            )
+            if (findIndex(faceEdges_[edgeFaces[faceI]], edgeI) == -1)
             {
                 Pout << nl << nl << "Edge: " << edgeI
                      << ", edgeFaces: " << edgeFaces << nl
@@ -3170,9 +3260,7 @@ void dynamicTopoFvMesh::checkConnectivity()
                     nextPoint
                 );
 
-                label i = -1;
-
-                if (!foundInList(otherPoint, edgePoints, i))
+                if (findIndex(edgePoints, otherPoint) == -1)
                 {
                     Pout << nl << nl
                          << "Edge: " << edgeI
@@ -3302,177 +3390,177 @@ void dynamicTopoFvMesh::calculateLengthScale()
 {
     if (!edgeModification_)
     {
-    	return;
+        return;
     }
 
-	label level = 1, visitedCells = 0;
-	labelList cellLevels(nCells(), 0);
+    label level = 1, visitedCells = 0;
+    labelList cellLevels(nCells(), 0);
 
-	// Size the local field
-	lengthScale_.setSize(nCells(), 0.0);
+    // Size the local field
+    lengthScale_.setSize(nCells(), 0.0);
 
-	// HashSet to keep track of cells in each level
-	labelHashSet levelCells;
+    // HashSet to keep track of cells in each level
+    labelHashSet levelCells;
 
-	// Obtain the cellCells addressing list
-	const labelListList& cc = polyMesh::cellCells();
-	const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
-	const labelList& own = polyMesh::faceOwner();
+    // Obtain the cellCells addressing list
+    const labelListList& cc = polyMesh::cellCells();
+    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+    const labelList& own = polyMesh::faceOwner();
 
-	forAll(boundary,patchI)
-	{
-		const polyPatch& bdyPatch = boundary[patchI];
+    forAll(boundary,patchI)
+    {
+        const polyPatch& bdyPatch = boundary[patchI];
 
-		if
-		(
-		    (!freePatches_.found(bdyPatch.name())) &&
-			(bdyPatch.type() != "processor") &&
-			(bdyPatch.type() != "cyclic") &&
-			(bdyPatch.type() != "wedge") &&
-			(bdyPatch.type() != "empty") &&
-			(bdyPatch.type() != "symmetryPlane")
-		)
-		{
-			label pStart = bdyPatch.start();
+        if
+        (
+            (!freePatches_.found(bdyPatch.name())) &&
+            (bdyPatch.type() != "processor") &&
+            (bdyPatch.type() != "cyclic") &&
+            (bdyPatch.type() != "wedge") &&
+            (bdyPatch.type() != "empty") &&
+            (bdyPatch.type() != "symmetryPlane")
+        )
+        {
+            label pStart = bdyPatch.start();
 
-			forAll(bdyPatch,faceI)
-			{
-				label ownCell = own[pStart+faceI];
+            forAll(bdyPatch,faceI)
+            {
+                label ownCell = own[pStart+faceI];
 
-				if (cellLevels[ownCell] != 0)
-				{
-					continue;
-				}
+                if (cellLevels[ownCell] != 0)
+                {
+                    continue;
+                }
 
-				cellLevels[ownCell] = level;
+                cellLevels[ownCell] = level;
 
-				lengthScale_[ownCell] =
-				(
-					boundaryLengthScale(pStart+faceI)*growthFactor_
-				);
+                lengthScale_[ownCell] =
+                (
+                    boundaryLengthScale(pStart+faceI)*growthFactor_
+                );
 
-				levelCells.insert(ownCell);
+                levelCells.insert(ownCell);
 
-				visitedCells++;
-			}
-		}
-	}
+                visitedCells++;
+            }
+        }
+    }
 
-	bool doneWithSweeps = false;
+    bool doneWithSweeps = false;
 
-	// Perform multiple sweeps through the mesh...
-	while (!doneWithSweeps)
-	{
-		if (Pstream::parRun())
-		{
-			writeLengthScaleInfo
-			(
-				cellLevels,
-				lengthScale_
-			);
-		}
+    // Perform multiple sweeps through the mesh...
+    while (!doneWithSweeps)
+    {
+        if (Pstream::parRun())
+        {
+            writeLengthScaleInfo
+            (
+                cellLevels,
+                lengthScale_
+            );
+        }
 
-		// Loop through cells of the current level
-		labelList currLvlCells = levelCells.toc();
-		levelCells.clear();
+        // Loop through cells of the current level
+        labelList currLvlCells = levelCells.toc();
+        levelCells.clear();
 
-		// Loop through cells, and increment neighbour
-		// cells of the current level
-		forAll(currLvlCells,cellI)
-		{
-			// Obtain the cells neighbouring this one
-			const labelList& cList = cc[currLvlCells[cellI]];
+        // Loop through cells, and increment neighbour
+        // cells of the current level
+        forAll(currLvlCells,cellI)
+        {
+            // Obtain the cells neighbouring this one
+            const labelList& cList = cc[currLvlCells[cellI]];
 
-			forAll(cList, indexI)
-			{
-				label& ngbLevel = cellLevels[cList[indexI]];
+            forAll(cList, indexI)
+            {
+                label& ngbLevel = cellLevels[cList[indexI]];
 
-				if (ngbLevel == 0)
-				{
-					ngbLevel = level + 1;
+                if (ngbLevel == 0)
+                {
+                    ngbLevel = level + 1;
 
-					// Compute the mean of the existing
-					// neighbour length-scales
-					const labelList& ncList = cc[cList[indexI]];
-					scalar sumLength = 0.0;
-					label nTouchedNgb = 0;
+                    // Compute the mean of the existing
+                    // neighbour length-scales
+                    const labelList& ncList = cc[cList[indexI]];
+                    scalar sumLength = 0.0;
+                    label nTouchedNgb = 0;
 
-					forAll(ncList, indexJ)
-					{
-						label sLevel = cellLevels[ncList[indexJ]];
+                    forAll(ncList, indexJ)
+                    {
+                        label sLevel = cellLevels[ncList[indexJ]];
 
-						if ((sLevel < ngbLevel) && (sLevel > 0))
-						{
-							sumLength += lengthScale_[ncList[indexJ]];
+                        if ((sLevel < ngbLevel) && (sLevel > 0))
+                        {
+                            sumLength += lengthScale_[ncList[indexJ]];
 
-							nTouchedNgb++;
-						}
-					}
+                            nTouchedNgb++;
+                        }
+                    }
 
-					sumLength /= nTouchedNgb;
+                    sumLength /= nTouchedNgb;
 
-					// Scale the length and assign to this cell
-					scalar sLength = sumLength*growthFactor_;
+                    // Scale the length and assign to this cell
+                    scalar sLength = sumLength*growthFactor_;
 
                     // sLength = (sLength < maxLengthScale_)
                     //          ? sLength : maxLengthScale_;
 
-					lengthScale_[cList[indexI]] = sLength;
+                    lengthScale_[cList[indexI]] = sLength;
 
-					levelCells.insert(cList[indexI]);
+                    levelCells.insert(cList[indexI]);
 
-					visitedCells++;
-				}
-			}
-		}
+                    visitedCells++;
+                }
+            }
+        }
 
-		if (Pstream::parRun())
-		{
-			readLengthScaleInfo
-			(
-				level,
-				visitedCells,
-				cellLevels,
-				lengthScale_,
-				levelCells
-			);
-		}
+        if (Pstream::parRun())
+        {
+            readLengthScaleInfo
+            (
+                level,
+                visitedCells,
+                cellLevels,
+                lengthScale_,
+                levelCells
+            );
+        }
 
-		if (debug > 4)
-		{
-			Pout << "Processed level: " << level << nl
-				 << " Visited: " << visitedCells
-				 << " out of " << nCells() << endl;
-		}
+        if (debug > 4)
+        {
+            Pout << "Processed level: " << level << nl
+                << " Visited: " << visitedCells
+                << " out of " << nCells() << endl;
+        }
 
-		// Move on to the next level
-		level++;
+        // Move on to the next level
+        level++;
 
-		if (visitedCells >= nCells())
-		{
-			doneWithSweeps = true;
-		}
+        if (visitedCells >= nCells())
+        {
+            doneWithSweeps = true;
+        }
 
-		// Wait for everyone to complete.
-		reduce(doneWithSweeps, andOp<bool>());
-	}
+        // Wait for everyone to complete.
+        reduce(doneWithSweeps, andOp<bool>());
+    }
 
-	if (debug)
-	{
-		Info << "Max Length Scale: " << maxLengthScale_ << endl;
-		Info << "Length Scale sweeps: " << level << endl;
-	}
+    if (debug)
+    {
+        Info << "Max Length Scale: " << maxLengthScale_ << endl;
+        Info << "Length Scale sweeps: " << level << endl;
+    }
 
-	// Check if everything went okay
-	if (visitedCells != nCells())
-	{
-		FatalErrorIn("dynamicTopoFvMesh::calculateLengthScale()")
-				<< " Algorithm did not visit every cell in the mesh."
-				<< " Something's messed up." << nl
-				<< " Visited cells: " << visitedCells
-				<< " nCells: " << nCells()
-				<< abort(FatalError);
-	}
+    // Check if everything went okay
+    if (visitedCells != nCells())
+    {
+        FatalErrorIn("dynamicTopoFvMesh::calculateLengthScale()")
+                << " Algorithm did not visit every cell in the mesh."
+                << " Something's messed up." << nl
+                << " Visited cells: " << visitedCells
+                << " nCells: " << nCells()
+                << abort(FatalError);
+    }
 }
 
 // Compute the growth factor of an existing mesh
@@ -3480,160 +3568,160 @@ scalar dynamicTopoFvMesh::computeGrowthFactor()
 {
     if (!edgeModification_)
     {
-    	return -1.0;
+        return -1.0;
     }
 
     scalar growthFactor = 0.0;
 
-	label level = 1, visitedCells = 0;
-	labelList cellLevels(nCells(),0);
+    label level = 1, visitedCells = 0;
+    labelList cellLevels(nCells(),0);
 
-	// Obtain the addressing lists
+    // Obtain the addressing lists
     const edgeList& edges = polyMesh::edges();
     const pointField& points = polyMesh::points();
     const labelList& owner = polyMesh::faceOwner();
-	const labelListList& cc = polyMesh::cellCells();
-	const labelListList& cEdges = polyMesh::cellEdges();
-	const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+    const labelListList& cc = polyMesh::cellCells();
+    const labelListList& cEdges = polyMesh::cellEdges();
+    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
 
-	// HashSet to keep track of cells in each level
-	labelHashSet levelCells;
+    // HashSet to keep track of cells in each level
+    labelHashSet levelCells;
 
-	// Obtain the list of patches for which the length-scale is fixed
-	wordList toc = fixedPatches_.toc();
+    // Obtain the list of patches for which the length-scale is fixed
+    wordList toc = fixedPatches_.toc();
 
-	forAll(boundary,patchI)
-	{
-		const polyPatch& bdyPatch = boundary[patchI];
+    forAll(boundary,patchI)
+    {
+        const polyPatch& bdyPatch = boundary[patchI];
 
-		// Loop through all fixed length-scale patches
-		forAll(toc,wordI)
-		{
-			const word& pName = toc[wordI];
+        // Loop through all fixed length-scale patches
+        forAll(toc,wordI)
+        {
+            const word& pName = toc[wordI];
 
-			if (boundary[patchI].name() == pName)
-			{
-				label pStart = bdyPatch.start();
+            if (boundary[patchI].name() == pName)
+            {
+                label pStart = bdyPatch.start();
 
-				forAll(bdyPatch,faceI)
-				{
-					label ownCell = owner[pStart+faceI];
+                forAll(bdyPatch,faceI)
+                {
+                    label ownCell = owner[pStart+faceI];
 
-					if (cellLevels[ownCell] != 0)
-					{
-						continue;
-					}
+                    if (cellLevels[ownCell] != 0)
+                    {
+                        continue;
+                    }
 
-					cellLevels[ownCell] = level;
+                    cellLevels[ownCell] = level;
 
-					levelCells.insert(ownCell);
+                    levelCells.insert(ownCell);
 
-					visitedCells++;
-				}
+                    visitedCells++;
+                }
 
-				break;
-			}
-		}
+                break;
+            }
+        }
 
-		// Set boundary patch size if no fixed-length scale is specified.
-		if
-		(
-			(toc.size() == 0) &&
-			(bdyPatch.type() != "processor") &&
-			(bdyPatch.type() != "cyclic") &&
-			(bdyPatch.type() != "wedge") &&
-			(bdyPatch.type() != "empty") &&
-			(bdyPatch.type() != "symmetryPlane")
-		)
-		{
-			label pStart = bdyPatch.start();
+        // Set boundary patch size if no fixed-length scale is specified.
+        if
+        (
+            (toc.size() == 0) &&
+            (bdyPatch.type() != "processor") &&
+            (bdyPatch.type() != "cyclic") &&
+            (bdyPatch.type() != "wedge") &&
+            (bdyPatch.type() != "empty") &&
+            (bdyPatch.type() != "symmetryPlane")
+        )
+        {
+            label pStart = bdyPatch.start();
 
-			forAll(bdyPatch,faceI)
-			{
-				label ownCell = owner[pStart+faceI];
+            forAll(bdyPatch,faceI)
+            {
+                label ownCell = owner[pStart+faceI];
 
-				if (cellLevels[ownCell] != 0)
-				{
-					continue;
-				}
+                if (cellLevels[ownCell] != 0)
+                {
+                    continue;
+                }
 
-				cellLevels[ownCell] = level;
+                cellLevels[ownCell] = level;
 
-				levelCells.insert(ownCell);
+                levelCells.insert(ownCell);
 
-				visitedCells++;
-			}
-		}
-	}
+                visitedCells++;
+            }
+        }
+    }
 
-	scalar prevAvg = 0.0;
+    scalar prevAvg = 0.0;
 
-	while (visitedCells < nCells())
-	{
-		// Loop through cells of the current level
-		labelList currLvlCells = levelCells.toc();
+    while (visitedCells < nCells())
+    {
+        // Loop through cells of the current level
+        labelList currLvlCells = levelCells.toc();
 
-		levelCells.clear();
+        levelCells.clear();
 
-		scalar avgEdgeLength = 0.0;
+        scalar avgEdgeLength = 0.0;
 
-		// Loop through cells, and increment neighbour
-		// cells of the current level
-		forAll(currLvlCells,cellI)
-		{
-			const labelList& eList = cEdges[currLvlCells[cellI]];
+        // Loop through cells, and increment neighbour
+        // cells of the current level
+        forAll(currLvlCells,cellI)
+        {
+            const labelList& eList = cEdges[currLvlCells[cellI]];
 
-			scalar avgCellLength = 0.0;
+            scalar avgCellLength = 0.0;
 
-			forAll(eList, edgeI)
-			{
-				avgCellLength += edges[eList[edgeI]].mag(points);
-			}
+            forAll(eList, edgeI)
+            {
+                avgCellLength += edges[eList[edgeI]].mag(points);
+            }
 
-			avgCellLength /= eList.size();
+            avgCellLength /= eList.size();
 
-			avgEdgeLength += avgCellLength;
+            avgEdgeLength += avgCellLength;
 
-			// Obtain the cells neighbouring this one,
-			// and increment their level.
-			const labelList& cList = cc[currLvlCells[cellI]];
+            // Obtain the cells neighbouring this one,
+            // and increment their level.
+            const labelList& cList = cc[currLvlCells[cellI]];
 
-			forAll(cList, indexI)
-			{
-				label& ngbLevel = cellLevels[cList[indexI]];
+            forAll(cList, indexI)
+            {
+                label& ngbLevel = cellLevels[cList[indexI]];
 
-				if (ngbLevel == 0)
-				{
-					ngbLevel = level + 1;
+                if (ngbLevel == 0)
+                {
+                    ngbLevel = level + 1;
 
-					levelCells.insert(cList[indexI]);
+                    levelCells.insert(cList[indexI]);
 
-					visitedCells++;
-				}
-			}
-		}
+                    visitedCells++;
+                }
+            }
+        }
 
-		avgEdgeLength /= currLvlCells.size();
+        avgEdgeLength /= currLvlCells.size();
 
-		if (level == 1)
-		{
-			prevAvg = avgEdgeLength;
-		}
-		else
-		{
-			growthFactor += (avgEdgeLength/prevAvg);
+        if (level == 1)
+        {
+            prevAvg = avgEdgeLength;
+        }
+        else
+        {
+            growthFactor += (avgEdgeLength/prevAvg);
 
-			prevAvg = avgEdgeLength;
-		}
+            prevAvg = avgEdgeLength;
+        }
 
-		// Move on to the next level
-		level++;
-	}
+        // Move on to the next level
+        level++;
+    }
 
-	// Take the average growth factor
-	growthFactor /= (level - 2);
+    // Take the average growth factor
+    growthFactor /= (level - 2);
 
-	return growthFactor;
+    return growthFactor;
 }
 
 // Send length-scale info across processors
@@ -3946,7 +4034,7 @@ void dynamicTopoFvMesh::readOptionalParameters()
     }
     else
     {
-    	debug = 0;
+        debug = 0;
     }
 
     if (dict_.subDict("dynamicTopoFvMesh").found("interval") || mandatory_)
@@ -3962,7 +4050,7 @@ void dynamicTopoFvMesh::readOptionalParameters()
     }
     else
     {
-    	interval_ = 1;
+        interval_ = 1;
     }
 
     // For tetrahedral meshes...
@@ -3971,9 +4059,9 @@ void dynamicTopoFvMesh::readOptionalParameters()
         // Check if swapping is to be avoided on any patches
         if
         (
-			dict_.subDict("dynamicTopoFvMesh").found("noSwapPatches") ||
-			mandatory_
-		)
+            dict_.subDict("dynamicTopoFvMesh").found("noSwapPatches") ||
+            mandatory_
+        )
         {
             wordList noSwapPatches =
             (
@@ -4002,9 +4090,9 @@ void dynamicTopoFvMesh::readOptionalParameters()
         // Check if a limit has been imposed on maxTetsPerEdge
         if
         (
-			dict_.subDict("dynamicTopoFvMesh").found("maxTetsPerEdge") ||
-			mandatory_
-		)
+            dict_.subDict("dynamicTopoFvMesh").found("maxTetsPerEdge") ||
+            mandatory_
+        )
         {
             maxTetsPerEdge_ =
             (
@@ -4025,9 +4113,9 @@ void dynamicTopoFvMesh::readOptionalParameters()
         // Check if programming tables can be resized at runtime
         if
         (
-			dict_.subDict("dynamicTopoFvMesh").found("allowTableResize") ||
-			mandatory_
-		)
+            dict_.subDict("dynamicTopoFvMesh").found("allowTableResize") ||
+            mandatory_
+        )
         {
             allowTableResize_ =
             (
@@ -4042,7 +4130,7 @@ void dynamicTopoFvMesh::readOptionalParameters()
         }
         else
         {
-        	allowTableResize_ = false;
+            allowTableResize_ = false;
         }
     }
 }
@@ -4116,35 +4204,35 @@ void dynamicTopoFvMesh::readEdgeOptions
         );
     }
 
-	// Check local coupled patches for fixed length-scales
-	if (dict_.found("coupledPatches") || mandatory_)
-	{
-		dictionary coupledPatches =
-		(
-			dict_.subDict("coupledPatches")
-		);
+    // Check local coupled patches for fixed length-scales
+    if (dict_.found("coupledPatches") || mandatory_)
+    {
+        dictionary coupledPatches =
+        (
+            dict_.subDict("coupledPatches")
+        );
 
-		// Determine master and slave patches
-		wordList masterPatches = coupledPatches.toc();
+        // Determine master and slave patches
+        wordList masterPatches = coupledPatches.toc();
 
-		// Check whether coupled patches are fixedPatches as well.
-		forAll(masterPatches, wordI)
-		{
-			word pName(masterPatches[wordI]);
+        // Check whether coupled patches are fixedPatches as well.
+        forAll(masterPatches, wordI)
+        {
+            word pName(masterPatches[wordI]);
 
-			if (fixedPatches_.found(masterPatches[wordI]))
-			{
-				// Add the slave patch to the list as well.
-				// If it already exists, over-ride the value.
-				fixedPatches_.add
-				(
-					coupledPatches[pName],
-					fixedPatches_[pName][0].scalarToken(),
-					true
-				);
-			}
-		}
-	}
+            if (fixedPatches_.found(masterPatches[wordI]))
+            {
+                // Add the slave patch to the list as well.
+                // If it already exists, over-ride the value.
+                fixedPatches_.add
+                (
+                    coupledPatches[pName],
+                    fixedPatches_[pName][0].scalarToken(),
+                    true
+                );
+            }
+        }
+    }
 
     if (edgeOptionDict.found("freeLengthScalePatches") || mandatory_)
     {
@@ -4156,37 +4244,37 @@ void dynamicTopoFvMesh::readEdgeOptions
         // Check if fixed and free patches are conflicting
         if (fixedPatches_.size() && freePatches_.size())
         {
-        	wordList fixedPatchList = fixedPatches_.toc();
-        	wordList freePatchList = freePatches_.toc();
+            wordList fixedPatchList = fixedPatches_.toc();
+            wordList freePatchList = freePatches_.toc();
 
-        	forAll(fixedPatchList, wordI)
-        	{
-        		forAll(freePatchList, wordJ)
-        		{
-        			if (fixedPatchList[wordI] == freePatchList[wordJ])
-        			{
-        	            FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
-        	                << " Conflicting fixed/free patches."
-        	                << " Fixed patch: " << fixedPatchList[wordI] << nl
-        	                << " Free patch: " << freePatchList[wordJ] << nl
-        	                << abort(FatalError);
-        			}
-        		}
-        	}
+            forAll(fixedPatchList, wordI)
+            {
+                forAll(freePatchList, wordJ)
+                {
+                    if (fixedPatchList[wordI] == freePatchList[wordJ])
+                    {
+                        FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+                            << " Conflicting fixed/free patches."
+                            << " Fixed patch: " << fixedPatchList[wordI] << nl
+                            << " Free patch: " << freePatchList[wordJ] << nl
+                            << abort(FatalError);
+                    }
+                }
+            }
         }
     }
 
     if (edgeOptionDict.found("computeGrowthFactor") || mandatory_)
     {
-    	if (!reRead)
-    	{
-    		// Compute the growth factor from the mesh for the first time.
-    		growthFactor_ = computeGrowthFactor();
-    	}
+        if (!reRead)
+        {
+            // Compute the growth factor from the mesh for the first time.
+            growthFactor_ = computeGrowthFactor();
+        }
     }
     else
     {
-		growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
+        growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
     }
 
     if (edgeOptionDict.found("curvaturePatches") || mandatory_)
@@ -4214,7 +4302,7 @@ void dynamicTopoFvMesh::readEdgeOptions
 
     if (edgeOptionDict.found("proximityPatches") || mandatory_)
     {
-    	proximityPatches_ =
+        proximityPatches_ =
         (
             edgeOptionDict.subDict("proximityPatches")
         );
@@ -4327,7 +4415,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     if (thread->slave())
     {
-    	thread->sendSignal(topoMeshStruct::START);
+        thread->sendSignal(topoMeshStruct::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -4367,7 +4455,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     if (thread->slave())
     {
-    	thread->sendSignal(topoMeshStruct::STOP);
+        thread->sendSignal(topoMeshStruct::STOP);
     }
 }
 
@@ -4473,14 +4561,14 @@ void dynamicTopoFvMesh::loadMetricLibrary()
     {
         typedef void (*returnType) ();
 
-    	// Load the list of symbols
+        // Load the list of symbols
         returnType availableMetrics =
-		(
-			reinterpret_cast<returnType>
-			(
-        		dlsym(metricLibPtr,"reportMetrics")
-			)
-		);
+        (
+            reinterpret_cast<returnType>
+            (
+                dlsym(metricLibPtr,"reportMetrics")
+            )
+        );
 
         Info << " Available metrics: " << endl;
 
@@ -4544,6 +4632,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         else
         {
             edgeStack_.setSize(1);
+            cellStack_.setSize(1);
         }
     }
     else
@@ -4559,6 +4648,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         else
         {
             edgeStack_.setSize(nThreads + 1);
+            cellStack_.setSize(nThreads + 1);
         }
 
         for (label i = 0; i <= nThreads; i++)
@@ -4851,18 +4941,15 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                             {
                                 if (procMap.found(loc[i]))
                                 {
-                                    label l = -1;
-
                                     forAll(proc, j)
                                     {
                                         if
                                         (
-                                           !foundInList
+                                            findIndex
                                             (
-                                                proc[j],
                                                 procMap[loc[i]],
-                                                l
-                                            )
+                                                proc[j]
+                                            ) == -1
                                         )
                                         {
                                             // Size up the list.
@@ -5909,7 +5996,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
     if (thread->slave())
     {
-    	thread->sendSignal(topoMeshStruct::START);
+        thread->sendSignal(topoMeshStruct::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -5965,7 +6052,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
     if (thread->slave())
     {
-    	thread->sendSignal(topoMeshStruct::STOP);
+        thread->sendSignal(topoMeshStruct::STOP);
     }
 }
 
@@ -6029,6 +6116,39 @@ void dynamicTopoFvMesh::swap3DEdges
                 }
             }
         }
+    }
+
+    if (thread->slave())
+    {
+        thread->sendSignal(topoMeshStruct::STOP);
+    }
+}
+
+// 3D Cell-bisection/collapse engine
+void dynamicTopoFvMesh::cellBisectCollapse3D
+(
+    void *argument
+)
+{
+    // Recast the argument
+    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+
+    if (thread->slave())
+    {
+        thread->sendSignal(topoMeshStruct::START);
+    }
+
+    dynamicTopoFvMesh& mesh = thread->mesh();
+
+    // Figure out which thread this is...
+    label tIndex = mesh.self();
+
+    while (!mesh.cellStack(tIndex).empty())
+    {
+        // Retrieve a cell from the stack
+        label cIndex = mesh.cellStack(tIndex).pop();
+
+        mesh.recursiveCellRefinement(cIndex);
     }
 
     if (thread->slave())
@@ -6928,7 +7048,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 
                 // Wait for a signal from this thread
                 // before moving on.
-				structPtr_[i].waitForSignal(topoMeshStruct::START);
+                structPtr_[i].waitForSignal(topoMeshStruct::START);
             }
 
             // Synchronize threads
@@ -6963,7 +7083,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 
             // Wait for a signal from this thread
             // before moving on.
-			structPtr_[i].waitForSignal(topoMeshStruct::START);
+            structPtr_[i].waitForSignal(topoMeshStruct::START);
         }
 
         // Synchronize threads
@@ -6993,13 +7113,13 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
     if (edgeModification_)
     {
-        // Initialize the edge stacks
-        initEdgeStacks();
+        // Initialize the cell stacks
+        initCellStacks();
 
         if (threader_->multiThreaded())
         {
-        	// Lock slave threads
-        	lockSlaveThreads();
+            // Lock slave threads
+            lockSlaveThreads();
 
             // Submit jobs to the work queue
             for (label i = 1; i <= threader_->getNumThreads(); i++)
@@ -7012,7 +7132,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
                 // Wait for a signal from this thread
                 // before moving on.
-				structPtr_[i].waitForSignal(topoMeshStruct::START);
+                structPtr_[i].waitForSignal(topoMeshStruct::START);
             }
 
             // Synchronize threads
@@ -7028,13 +7148,13 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
         }
     }
 
-    // Re-initialize the edge stacks
+    // Initialize the edge stacks
     initEdgeStacks();
 
     if (threader_->multiThreaded())
     {
-    	// Lock slave threads
-    	lockSlaveThreads();
+        // Lock slave threads
+        lockSlaveThreads();
 
         // Submit jobs to the work queue
         for (label i = 1; i <= threader_->getNumThreads(); i++)

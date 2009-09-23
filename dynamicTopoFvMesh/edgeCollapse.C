@@ -817,7 +817,7 @@ void dynamicTopoFvMesh::collapseQuadFace
 
     // Remove the unwanted faces in the cell(s) adjacent to this face,
     // and correct the cells that contain discarded faces
-    cell &cell_0 = cells_[c0];
+    const cell &cell_0 = cells_[c0];
 
     forAll(cell_0,faceI)
     {
@@ -827,32 +827,13 @@ void dynamicTopoFvMesh::collapseQuadFace
         }
     }
 
-    cells_[c0].clear();
-    lengthScale_[c0] = -1.0;
-
     if (cellCheck[0] != -1)
     {
         replaceLabel(faceToThrow[0], faceToKeep[0], cells_[cellCheck[0]]);
     }
 
-    // Update the number of cells, and the reverse map
-    nCells_--;
-
-    if (c0 < nOldCells_)
-    {
-        reverseCellMap_[c0] = -1;
-    }
-    else
-    {
-        // Store this information for the reOrdering stage
-        deletedCells_.insert(c0);
-    }
-
-    // Check if the cell was added in the current morph, and delete
-    if (cellsFromCells_.found(c0))
-    {
-        cellsFromCells_.erase(c0);
-    }
+    // Remove the cell
+    removeCell(c0);
 
     if (c1 != -1)
     {
@@ -890,7 +871,7 @@ void dynamicTopoFvMesh::collapseQuadFace
             removeFace(faceToKeep[1]);
         }
 
-        cell &cell_1 = cells_[c1];
+        const cell &cell_1 = cells_[c1];
 
         forAll(cell_1, faceI)
         {
@@ -900,32 +881,13 @@ void dynamicTopoFvMesh::collapseQuadFace
             }
         }
 
-        cells_[c1].clear();
-        lengthScale_[c1] = -1.0;
-
         if (cellCheck[1] != -1)
         {
             replaceLabel(faceToThrow[1], faceToKeep[1], cells_[cellCheck[1]]);
         }
 
-        // Update the number of cells, and the reverse map
-        nCells_--;
-
-        if (c1 < nOldCells_)
-        {
-            reverseCellMap_[c1] = -1;
-        }
-        else
-        {
-            // Store this information for the reOrdering stage
-            deletedCells_.insert(c1);
-        }
-
-        // Check if the cell was added in the current morph, and delete
-        if (cellsFromCells_.found(c1))
-        {
-            cellsFromCells_.erase(c1);
-        }
+        // Remove the cell
+        removeCell(c1);
     }
 
     // Finally remove the face
@@ -1446,22 +1408,18 @@ dynamicTopoFvMesh::collapseEdge
 
         forAll(hullPointEdges, edgeI)
         {
-            label i = -1;
-
             if
             (
-                 foundInList
-                 (
-                     collapsePoint,
-                     edgePoints_[hullPointEdges[edgeI]],
-                     i
-                 )
-             && !foundInList
-                 (
-                     replacePoint,
-                     edgePoints_[hullPointEdges[edgeI]],
-                     i
-                 )
+                findIndex
+                (
+                    edgePoints_[hullPointEdges[edgeI]],
+                    collapsePoint
+                ) != -1
+             && findIndex
+                (
+                    edgePoints_[hullPointEdges[edgeI]],
+                    replacePoint
+                ) == -1
             )
             {
                 replaceLabel
@@ -1668,27 +1626,7 @@ dynamicTopoFvMesh::collapseEdge
             removeFace(faceToRemove);
 
             // Remove the hull cell
-            cells_[cellToRemove].clear();
-            lengthScale_[cellToRemove] = -1.0;
-
-            // Update the number of cells, and the reverse cell map
-            nCells_--;
-
-            if (cellToRemove < nOldCells_)
-            {
-                reverseCellMap_[cellToRemove] = -1;
-            }
-            else
-            {
-                // Store this information for the reOrdering stage
-                deletedCells_.insert(cellToRemove);
-            }
-
-            // Check if the cell was added in the current morph, and delete
-            if (cellsFromCells_.found(cellToRemove))
-            {
-                cellsFromCells_.erase(cellToRemove);
-            }
+            removeCell(cellToRemove);
         }
 
         // Remove the hull edge and associated edgeFaces

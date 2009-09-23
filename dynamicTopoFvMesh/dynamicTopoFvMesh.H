@@ -75,9 +75,9 @@ class dynamicTopoFvMesh
         //- Dynamic mesh dictionary
         IOdictionary dict_;
 
-    	//- Should all options be mandatorily specified?
-    	//  Useful for first-time use.
-    	Switch mandatory_;
+        //- Should all options be mandatorily specified?
+        //  Useful for first-time use.
+        Switch mandatory_;
 
         //- Mesh characteristics [2D/3D]
         Switch twoDMesh_;
@@ -208,7 +208,7 @@ class dynamicTopoFvMesh
         class stack
         {
             // Private data
-        	resizableList<label> stack_;
+            resizableList<label> stack_;
 
             Mutex              stackMutex_;
 
@@ -251,12 +251,13 @@ class dynamicTopoFvMesh
         };
 
         // Stack-list of faces to be checked for topo-changes [2D].
-        // One for each thread.
         List<stack> faceStack_;
 
         // Stack-list of edges to be checked for topo-changes [3D].
-        // One for each thread.
         List<stack> edgeStack_;
+
+        // Stack-list of cells to be checked for topo-changes [3D].
+        List<stack> cellStack_;
 
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
@@ -327,30 +328,30 @@ class dynamicTopoFvMesh
             // Lock this thread
             inline void lock(const signalType sType)
             {
-            	if (sType == START)
-            	{
-					startMutex_.lock();
-            	}
-            	else
-				if (sType == STOP)
-				{
-					stopMutex_.lock();
-				}
-			}
+                if (sType == START)
+                {
+                    startMutex_.lock();
+                }
+                else
+                if (sType == STOP)
+                {
+                    stopMutex_.lock();
+                }
+            }
 
             // Unlock this thread
             inline void unlock(const signalType sType)
             {
-            	if (sType == START)
-            	{
-					startMutex_.unlock();
-            	}
-            	else
-				if (sType == STOP)
-				{
-					stopMutex_.unlock();
-				}
-			}
+                if (sType == START)
+                {
+                    startMutex_.unlock();
+                }
+                else
+                if (sType == STOP)
+                {
+                    stopMutex_.unlock();
+                }
+            }
 
             // Send signal to a waiting conditional
             inline void sendSignal(const signalType sType);
@@ -361,20 +362,20 @@ class dynamicTopoFvMesh
             // Return state of the predicate variable
             inline bool predicate(const signalType sType)
             {
-            	return predicate_[sType];
-			}
+                return predicate_[sType];
+            }
 
             // Set the predicate variable
             inline void setPredicate(const signalType sType)
             {
-            	predicate_[sType] = true;
-			}
+                predicate_[sType] = true;
+            }
 
             // Unset the predicate variable
             inline void unsetPredicate(const signalType sType)
             {
-            	predicate_[sType] = false;
-			}
+                predicate_[sType] = false;
+            }
 
             // Return the ID
             inline pthread_t& ID() { return pthreadID_; }
@@ -823,6 +824,9 @@ class dynamicTopoFvMesh
         // 3D Edge-swapping engine
         static void swap3DEdges(void *argument);
 
+        // 3D Cell-bisection/collapse engine
+        static void cellBisectCollapse3D(void *argument);
+
         // 3D Edge-bisection/collapse engine
         static void edgeBisectCollapse3D(void *argument);
 
@@ -832,8 +836,14 @@ class dynamicTopoFvMesh
         // Return the edge-stack for a particular thread
         inline stack& edgeStack(const label threadID);
 
+        // Return the cell-stack for a particular thread
+        inline stack& cellStack(const label threadID);
+
         // Return the integer threadID for a given pthread
         inline label self();
+
+        // Initialize cell-stacks
+        inline void initCellStacks();
 
         // Initialize face-stacks
         inline void initFaceStacks();
@@ -889,6 +899,13 @@ class dynamicTopoFvMesh
             const label eIndex,
             label overRideCase = -1,
             bool checkOnly = false
+        );
+
+        // Method to recursively bisect or collapse cell edges in 3D
+        const changeMap
+        recursiveCellRefinement
+        (
+            const label cIndex
         );
 
         // Utility method to check for invalid edge-collapse.
@@ -964,12 +981,26 @@ class dynamicTopoFvMesh
             labelList& list
         );
 
+        // Insert the specified cell to the mesh
+        label insertCell
+        (
+            const cell& newCell,
+            const scalar lengthScale = -1.0,
+            const label mappingCell = -1
+        );
+
         // Remove the specified cell from the mesh,
         // and add internal faces to the specified patch
         void removeCell
         (
             const label index,
             const label patch
+        );
+
+        // Remove the specified cell from the mesh
+        void removeCell
+        (
+            const label index
         );
 
         // Insert the specified face to the mesh
@@ -1013,14 +1044,6 @@ class dynamicTopoFvMesh
         void removeEdge
         (
             const label index
-        );
-
-        // Check for the occurrence of a label in the list
-        inline bool foundInList
-        (
-            const label item,
-            const labelList& list,
-            label& index
         );
 
         // Utility method to size-up the list to include an item
@@ -1070,6 +1093,10 @@ class dynamicTopoFvMesh
 
         // Utility method to compute the minimum quality of a vertex hull
         inline scalar computeMinQuality(const label eIndex);
+
+        // Utility method to compute the quality of a vertex hull
+        // around an edge after bisection.
+        inline scalar computeBisectionQuality(const label eIndex);
 
         // Check whether the given edge is on a bounding curve
         bool checkBoundingCurve(const label eIndex);

@@ -781,23 +781,26 @@ void dynamicTopoFvMesh::swap23
 
     forAll(newCellIndex, cellI)
     {
-        newCellIndex[cellI] = cells_.size();
-        cells_.append(newTetCell[cellI]);
-    }
+        scalar avgScale = -1.0;
 
-    // Update length-scale info
-    if (edgeModification_)
-    {
-        scalar avgScale =
-        (
-             lengthScale_[cellsForRemoval[0]]
-           + lengthScale_[cellsForRemoval[1]]
-        )/2.0;
-
-        for (label i = 0; i < 3; i++)
+        if (edgeModification_)
         {
-            lengthScale_.append(avgScale);
+            avgScale =
+            (
+                 lengthScale_[cellsForRemoval[0]]
+               + lengthScale_[cellsForRemoval[1]]
+            )/2.0;
         }
+
+        newCellIndex[cellI] =
+        (
+            insertCell
+            (
+                newTetCell[cellI],
+                avgScale,
+                cellsForRemoval[0]
+            )
+        );
     }
 
     // Obtain point-ordering for the other vertices
@@ -1194,52 +1197,6 @@ void dynamicTopoFvMesh::swap23
         faceEdges_[newFaceIndex[faceI]] = newFaceEdges[faceI];
     }
 
-    // Generate mapping information for the three new cells
-    // Prepare a list of master-objects to map from
-    const labelListList& cc = cellCells();
-    labelHashSet masterObjects;
-    FixedList<label,2> parents(-1);
-
-    forAll(cellsForRemoval, indexI)
-    {
-        // Determine an appropriate parent cell
-        if (cellsForRemoval[indexI] < nOldCells_)
-        {
-            parents[indexI] = cellsForRemoval[indexI];
-        }
-        else
-        {
-            parents[indexI] = cellParents_[cellsForRemoval[indexI]];
-        }
-
-        // Find the cell's neighbours in the old mesh
-        masterObjects.insert(parents[indexI]);
-        forAll(cc[parents[indexI]],cellI)
-        {
-            if (!masterObjects.found(cc[parents[indexI]][cellI]))
-            {
-                masterObjects.insert(cc[parents[indexI]][cellI]);
-            }
-        }
-    }
-
-    forAll(newCellIndex, cellI)
-    {
-        // Insert the parent cell [from first by default]
-        cellParents_.insert(newCellIndex[cellI], parents[0]);
-
-        // Insert mapping info into the HashTable
-        cellsFromCells_.insert
-        (
-            newCellIndex[cellI],
-            objectMap
-            (
-                newCellIndex[cellI],
-                masterObjects.toc()
-            )
-        );
-    }
-
     // Update edgeFaces and edgePoints for edges of the removed face
     label otherPoint = -1, nextPoint = -1;
 
@@ -1272,43 +1229,9 @@ void dynamicTopoFvMesh::swap23
     // Remove the face
     removeFace(faceForRemoval);
 
-    // Update the number of cells, and the reverse cell map
-    nCells_++;
-
     forAll(cellsForRemoval, cellI)
     {
-        label cIndex = cellsForRemoval[cellI];
-
-        if (debug > 2)
-        {
-            Info << "Removing cell: "
-                 << cIndex << ": "
-                 << cells_[cIndex]
-                 << endl;
-        }
-
-        cells_[cIndex].clear();
-
-        if (edgeModification_)
-        {
-            lengthScale_[cIndex] = -1.0;
-        }
-
-        if (cIndex < nOldCells_)
-        {
-            reverseCellMap_[cIndex] = -1;
-        }
-        else
-        {
-            // Store this information for the reOrdering stage
-            deletedCells_.insert(cIndex);
-        }
-
-        // Check if the cell was added in the current morph, and delete
-        if (cellsFromCells_.found(cIndex))
-        {
-            cellsFromCells_.erase(cIndex);
-        }
+        removeCell(cellsForRemoval[cellI]);
     }
 
     // Update the cell list with newly configured cells.
@@ -1476,26 +1399,27 @@ void dynamicTopoFvMesh::swap32
 
     forAll(newCellIndex, cellI)
     {
-        newCellIndex[cellI] = cells_.size();
-        cells_.append(newTetCell[cellI]);
-    }
-
-    // Update length-scale info
-    if (edgeModification_)
-    {
         scalar avgScale = 0.0;
 
-        forAll(cellRemovalList, cellI)
+        if (edgeModification_)
         {
-            avgScale += lengthScale_[cellRemovalList[cellI]];
+            forAll(cellRemovalList, cellI)
+            {
+                avgScale += lengthScale_[cellRemovalList[cellI]];
+            }
+
+            avgScale /= cellRemovalList.size();
         }
 
-        avgScale /= cellRemovalList.size();
-
-        for (label i = 0; i < 2; i++)
-        {
-            lengthScale_.append(avgScale);
-        }
+        newCellIndex[cellI] =
+        (
+            insertCell
+            (
+                newTetCell[cellI],
+                avgScale,
+                cellRemovalList[0]
+            )
+        );
     }
 
     // Insert a new internal face
@@ -1947,51 +1871,6 @@ void dynamicTopoFvMesh::swap32
         }
     }
 
-    // Generate mapping information for the two new cells
-    const labelListList& cc = cellCells();
-    labelHashSet masterObjects;
-    FixedList<label,3> parents(-1);
-
-    forAll(cellRemovalList, indexI)
-    {
-        // Determine an appropriate parent cell
-        if (cellRemovalList[indexI] < nOldCells_)
-        {
-            parents[indexI] = cellRemovalList[indexI];
-        }
-        else
-        {
-            parents[indexI] = cellParents_[cellRemovalList[indexI]];
-        }
-
-        // Find the cell's neighbours in the old mesh
-        masterObjects.insert(parents[indexI]);
-        forAll(cc[parents[indexI]],cellI)
-        {
-            if (!masterObjects.found(cc[parents[indexI]][cellI]))
-            {
-                masterObjects.insert(cc[parents[indexI]][cellI]);
-            }
-        }
-    }
-
-    forAll(newCellIndex, cellI)
-    {
-        // Insert the parent cell [from first by default]
-        cellParents_.insert(newCellIndex[cellI], parents[0]);
-
-        // Insert mapping info into the HashTable
-        cellsFromCells_.insert
-        (
-            newCellIndex[cellI],
-            objectMap
-            (
-                newCellIndex[cellI],
-                masterObjects.toc()
-            )
-        );
-    }
-
     // Remove the faces and update associated edges
     forAll(facesForRemoval, faceI)
     {
@@ -2029,46 +1908,9 @@ void dynamicTopoFvMesh::swap32
         removeFace(facesForRemoval[faceI]);
     }
 
-    if (edgePatch < 0)
-    {
-        // Update the number of cells only for 3-2 swaps
-        nCells_--;
-    }
-
     forAll(cellRemovalList, cellI)
     {
-        label cIndex = cellRemovalList[cellI];
-
-        if (debug > 2)
-        {
-            Info << "Removing cell: "
-                 << cIndex << ": "
-                 << cells_[cIndex]
-                 << endl;
-        }
-
-        cells_[cIndex].clear();
-
-        if (edgeModification_)
-        {
-            lengthScale_[cIndex] = -1.0;
-        }
-
-        if (cIndex < nOldCells_)
-        {
-            reverseCellMap_[cIndex] = -1;
-        }
-        else
-        {
-            // Store this information for the reOrdering stage
-            deletedCells_.insert(cIndex);
-        }
-
-        // Check if the cell was added in the current morph, and delete
-        if (cellsFromCells_.found(cIndex))
-        {
-            cellsFromCells_.erase(cIndex);
-        }
+        removeCell(cellRemovalList[cellI]);
     }
 
     // Update the cell list with newly configured cells.
