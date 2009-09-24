@@ -129,28 +129,29 @@ void dynamicTopoFvMesh::bisectQuadFace
     otherEdgePoint[1] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
 
     // Add two new points to the end of the list
-    newPtIndex[0] = points_.size();
-
-    points_.append
+    newPtIndex[0] =
     (
-        0.5*
+        insertPoint
         (
-            points_[commonEdges[0][0]]
-          + points_[commonEdges[0][1]]
+            0.5 *
+            (
+                points_[commonEdges[0][0]]
+              + points_[commonEdges[0][1]]
+            )
         )
     );
 
-    newPtIndex[1] = points_.size();
-
-    points_.append
+    newPtIndex[1] =
     (
-        0.5*
+        insertPoint
         (
-            points_[commonEdges[1][0]]
-          + points_[commonEdges[1][1]]
+            0.5 *
+            (
+                points_[commonEdges[1][0]]
+              + points_[commonEdges[1][1]]
+            )
         )
     );
-    nPoints_ += 2;
 
     cell newCell0(5);
 
@@ -799,95 +800,6 @@ void dynamicTopoFvMesh::bisectQuadFace
     nModifications_++;
 }
 
-// Method to recursively bisect or collapse cell edges in 3D
-// - Returns a changeMap with a type specifying:
-//    -1: Bisection failed since max number of topo-changes was reached.
-const dynamicTopoFvMesh::changeMap
-dynamicTopoFvMesh::recursiveCellRefinement
-(
-    const label cIndex
-)
-{
-    // Figure out which thread this is...
-    label tIndex = self();
-
-    // Prepare the changeMaps
-    changeMap map;
-
-    if
-    (
-        (nModifications_ > maxModifications_) &&
-        (maxModifications_ > -1)
-    )
-    {
-        // Reached the max allowable topo-changes.
-        cellStack(tIndex).clear();
-
-        return map;
-    }
-
-    // Obtain a reference to this cell
-    const cell& cellToCheck = cells_[cIndex];
-
-    FixedList<scalar, 6> edgeLengths(0.0);
-    FixedList<label, 6> cellEdges(-1);
-
-    // Compile a list of cell edges
-    label nE = 0;
-
-    forAll(cellToCheck, faceI)
-    {
-        const labelList& faceToCheck = faceEdges_[cellToCheck[faceI]];
-
-        forAll(faceToCheck, edgeI)
-        {
-            if (findIndex(cellEdges,faceToCheck[edgeI]) == -1)
-            {
-                cellEdges[nE] = faceToCheck[edgeI];
-
-                edgeLengths[nE] = edgeLength(faceToCheck[edgeI]);
-
-                nE++;
-            }
-        }
-
-        if (nE == 6) break;
-    }
-
-    label minEdgeIndex = findMin(edgeLengths);
-
-    // Check for a collapse condition first
-    if (checkEdgeCollapse(cellEdges[minEdgeIndex]))
-    {
-        // Collapse this edge
-        return collapseEdge(cellEdges[minEdgeIndex]);
-    }
-
-    // Check for a bisection condition
-    label maxEdgeIndex = -1;
-
-    forAll(cellEdges, edgeI)
-    {
-        maxEdgeIndex = findMax(edgeLengths);
-
-        if (checkEdgeBisection(cellEdges[maxEdgeIndex]))
-        {
-            bisectEdge(cellEdges[maxEdgeIndex]);
-
-            edgeLengths[maxEdgeIndex] = 0.0;
-            maxEdgeIndex = findMax(edgeLengths);
-        }
-        else
-        {
-            // Reach the max number of levels. Break out.
-            break;
-        }
-    }
-
-    // Reached the max number of levels. Do nothing.
-    return map;
-}
-
 // Method for the bisection of an edge in 3D
 // - Returns a changeMap with a type specifying:
 //    -1: Bisection failed since max number of topo-changes was reached.
@@ -979,11 +891,11 @@ dynamicTopoFvMesh::bisectEdge
 
     // Before we bisect this edge, check whether the operation will
     // yield an acceptable cell-quality.
-    // if (computeBisectionQuality(eIndex) < 0.3)
-    // {
-    //     map.type() = -2;
-    //     return map;
-    // }
+    if (computeBisectionQuality(eIndex) < 0.05)
+    {
+        map.type() = -2;
+        return map;
+    }
 
     // Hull variables
     face tmpTriFace(3);
@@ -1033,21 +945,17 @@ dynamicTopoFvMesh::bisectEdge
     }
 
     // Add a new point to the end of the list
-    label newPointIndex = points_.size();
-
-    this->points_.append
+    label newPointIndex =
     (
-        0.5 *
+        insertPoint
         (
-            points_[edges_[eIndex][0]]
-          + points_[edges_[eIndex][1]]
+            0.5 *
+            (
+                points_[edges_[eIndex][0]]
+              + points_[edges_[eIndex][1]]
+            )
         )
     );
-
-    // Add an entry to pointEdges as well
-    this->pointEdges_.append(labelList(0));
-
-    this->nPoints_++;
 
     // Add this point to the map.
     map.addPoint(newPointIndex);
@@ -1530,21 +1438,6 @@ dynamicTopoFvMesh::bisectEdge
 
             // Add this face to the map.
             map.addFace(addedFaceIndices[indexI]);
-
-            // Generate mapping information for this new face
-            label parent;
-
-            if (faceHull[indexI] < nOldFaces_)
-            {
-                parent = faceHull[indexI];
-            }
-            else
-            {
-                parent = faceParents_[faceHull[indexI]];
-            }
-
-            // Insert the parent face
-            faceParents_.insert(addedFaceIndices[indexI], parent);
 
             // Configure edgeFaces
             tmpEdgeFaces[0] = addedFaceIndices[indexI];
@@ -2102,22 +1995,17 @@ dynamicTopoFvMesh::trisectFace
     }
 
     // Add a new point to the end of the list
-    label newPointIndex = points_.size();
-
-    points_.append
+    label newPointIndex =
     (
+        insertPoint
         (
-            points_[faces_[fIndex][0]]
-          + points_[faces_[fIndex][1]]
-          + points_[faces_[fIndex][2]]
+            (
+                points_[faces_[fIndex][0]]
+              + points_[faces_[fIndex][1]]
+              + points_[faces_[fIndex][2]]
+            ) / 3.0
         )
-        /3.0
     );
-
-    // Add an entry to pointEdges as well
-    pointEdges_.append(labelList(0));
-
-    nPoints_++;
 
     // Add this point to the map.
     map.addPoint(newPointIndex);

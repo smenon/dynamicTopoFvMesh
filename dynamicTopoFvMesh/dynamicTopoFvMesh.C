@@ -122,7 +122,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     curvatureDeviation_(0.0),
     minLengthScale_(VSMALL),
     maxLengthScale_(GREAT),
-    sliverThreshold_(0.05),
+    sliverThreshold_(0.1),
     nModifications_(0),
     nBisections_(0),
     nCollapses_(0),
@@ -315,8 +315,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     reverseCellMap_.setSize(nCells_, -7);
 }
 
-// Constructor for topoMeshStruct
-dynamicTopoFvMesh::topoMeshStruct::topoMeshStruct
+// Constructor for threadHandler
+dynamicTopoFvMesh::threadHandler::threadHandler
 (
     dynamicTopoFvMesh *mesh,
     label nThreads
@@ -348,7 +348,7 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Send signal to a waiting conditional
-inline void dynamicTopoFvMesh::topoMeshStruct::sendSignal
+inline void dynamicTopoFvMesh::threadHandler::sendSignal
 (
     const signalType sType
 )
@@ -357,7 +357,7 @@ inline void dynamicTopoFvMesh::topoMeshStruct::sendSignal
 
     if (predicate(sType))
     {
-        InfoIn("topoMeshStruct::sendSignal()")
+        InfoIn("threadHandler::sendSignal()")
             << "Predicate is already set."
             << endl;
     }
@@ -384,7 +384,7 @@ inline void dynamicTopoFvMesh::topoMeshStruct::sendSignal
     }
     else
     {
-        FatalErrorIn("topoMeshStruct::sendSignal()")
+        FatalErrorIn("threadHandler::sendSignal()")
             << "Undefined enumerant."
             << abort(FatalError);
     }
@@ -393,7 +393,7 @@ inline void dynamicTopoFvMesh::topoMeshStruct::sendSignal
 }
 
 // Wait for signal
-inline void dynamicTopoFvMesh::topoMeshStruct::waitForSignal
+inline void dynamicTopoFvMesh::threadHandler::waitForSignal
 (
     const signalType sType
 )
@@ -417,14 +417,14 @@ inline void dynamicTopoFvMesh::topoMeshStruct::waitForSignal
     }
     else
     {
-        FatalErrorIn("topoMeshStruct::waitForSignal()")
+        FatalErrorIn("threadHandler::waitForSignal()")
             << "Undefined enumerant."
             << abort(FatalError);
     }
 
     if (!predicate(sType))
     {
-        FatalErrorIn("topoMeshStruct::waitForSignal()")
+        FatalErrorIn("threadHandler::waitForSignal()")
             << "Spurious wake-up."
             << abort(FatalError);
     }
@@ -509,7 +509,7 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
 {
     tmp<scalarField> tQuality
     (
-        new scalarField(nCells(), 0.0)
+        new scalarField(cells_.size(), 0.0)
     );
 
     // Valid for 3D tetrahedral meshes only...
@@ -522,18 +522,18 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
         scalar minQuality =  GREAT;
         scalar meanQuality = 0.0;
 
-        const pointField& meshPoints = points();
-        const faceList& meshFaces = faces();
-        const cellList& meshCells = cells();
-
-        const labelList& owner = faceOwner();
-
         // Loop through all cells in the mesh and compute cell quality
-        forAll(meshCells, cellI)
+        forAll(cells_, cellI)
         {
-            const cell& curCell = meshCells[cellI];
-            const face& currFace = meshFaces[curCell[0]];
-            const face& nextFace = meshFaces[curCell[1]];
+            const cell& curCell = cells_[cellI];
+
+            if (curCell.empty())
+            {
+                continue;
+            }
+
+            const face& currFace = faces_[curCell[0]];
+            const face& nextFace = faces_[curCell[1]];
 
             // Get the fourth point
             forAll(nextFace, pointI)
@@ -546,24 +546,24 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
                 )
                 {
                     // Compute cell-quality and write-out
-                    if (owner[curCell[0]] == cellI)
+                    if (owner_[curCell[0]] == cellI)
                     {
                         iF[cellI] = (*tetMetric_)
                         (
-                            meshPoints[currFace[2]],
-                            meshPoints[currFace[1]],
-                            meshPoints[currFace[0]],
-                            meshPoints[nextFace[pointI]]
+                            points_[currFace[2]],
+                            points_[currFace[1]],
+                            points_[currFace[0]],
+                            points_[nextFace[pointI]]
                         );
                     }
                     else
                     {
                         iF[cellI] = (*tetMetric_)
                         (
-                            meshPoints[currFace[0]],
-                            meshPoints[currFace[1]],
-                            meshPoints[currFace[2]],
-                            meshPoints[nextFace[pointI]]
+                            points_[currFace[0]],
+                            points_[currFace[1]],
+                            points_[currFace[2]],
+                            points_[nextFace[pointI]]
                         );
                     }
 
@@ -871,6 +871,8 @@ label dynamicTopoFvMesh::insertCell
     );
 
     nCells_++;
+
+    return newCellIndex;
 }
 
 // Remove the specified cell from the mesh
@@ -911,12 +913,6 @@ void dynamicTopoFvMesh::removeCell
     if (cellsFromCells_.found(cIndex))
     {
         cellsFromCells_.erase(cIndex);
-    }
-
-    // Remove from the cell stack as well
-    forAll(cellStack_, stackI)
-    {
-        cellStack(stackI).remove(cIndex);
     }
 }
 
@@ -1034,7 +1030,7 @@ void dynamicTopoFvMesh::removeCell
                     );
                 }
 
-                if (edgeFaces_[faceEdges[edgeI]].size() == 0)
+                if (edgeFaces_[faceEdges[edgeI]].empty())
                 {
                     // Hanging edge. Check its points and remove
                     // them if necessary.
@@ -1043,23 +1039,7 @@ void dynamicTopoFvMesh::removeCell
                         // Check for hanging nodes...
                         if (pointEdges_[edgeToCheck[pointI]].size() == 1)
                         {
-                            // Null pointEdges so that removeEdge deletes it.
-                            pointEdges_[edgeToCheck[pointI]].clear();
-
-                            // Remove the point
-                            points_[edgeToCheck[pointI]] = point();
-
-                            nPoints_--;
-
-                            // Update the reverse point map
-                            if (edgeToCheck[pointI] < nOldPoints_)
-                            {
-                                reversePointMap_[edgeToCheck[pointI]] = -1;
-                            }
-                            else
-                            {
-                                deletedPoints_.insert(edgeToCheck[pointI]);
-                            }
+                            removePoint(edgeToCheck[pointI]);
                         }
                     }
 
@@ -1360,27 +1340,6 @@ label dynamicTopoFvMesh::insertEdge
         edgePoints_.append(edgePoints);
     }
 
-    // Add to the stack as well, but only if required.
-    // If a slave edge is being added, don't add any
-    // edges to the stack.
-    if (!slaveModification_)
-    {
-        // Is this an interior edge with coupledModification turned on?
-        // Don't add those either.
-        if (!(coupledModification_ && patch == -1))
-        {
-            if (debug > 2)
-            {
-                Info << "Adding edge: "
-                     << newEdgeIndex
-                     << " to stack: "
-                     << self() << endl;
-            }
-
-            edgeStack(self()).push(newEdgeIndex);
-        }
-    }
-
     if (debug > 2)
     {
         Info << "Inserting edge: "
@@ -1505,6 +1464,72 @@ void dynamicTopoFvMesh::removeEdge
 
     // Decrement the total edge-count
     nEdges_--;
+}
+
+// Insert the specified point to the mesh
+label dynamicTopoFvMesh::insertPoint
+(
+    const point& newPoint
+)
+{
+    // Add a new point to the end of the list
+    label newPointIndex = points_.size();
+
+    points_.append(newPoint);
+
+    if (debug > 2)
+    {
+        Info << "Inserting point: "
+             << newPointIndex << ": "
+             << newPoint << endl;
+    }
+
+    // Add an empty entry to pointEdges as well.
+    // This entry can be sized-up appropriately at a later stage.
+    if (!twoDMesh_)
+    {
+        pointEdges_.append(labelList(0));
+    }
+
+    nPoints_++;
+
+    return newPointIndex;
+}
+
+// Remove the specified point from the mesh
+void dynamicTopoFvMesh::removePoint
+(
+    const label index
+)
+{
+    if (debug > 2)
+    {
+        Info << "Removing point: "
+             << index << ": "
+             << points_[index] << endl;
+    }
+
+    // Remove the point
+    points_[index] = point();
+
+    // Remove pointEdges as well
+    if (!twoDMesh_)
+    {
+        pointEdges_[index].clear();
+    }
+
+    // Update the reverse point map
+    if (index < nOldPoints_)
+    {
+        reversePointMap_[index] = -1;
+    }
+    else
+    {
+        deletedPoints_.insert(index);
+    }
+
+    // Decrement the total point-count
+    nPoints_--;
 }
 
 // Utility method to build a hull of cells connected to the edge [2D]
@@ -1910,12 +1935,14 @@ void dynamicTopoFvMesh::buildEdgePoints
 }
 
 // Utility to check whether points of an edge lie on a boundary.
-void dynamicTopoFvMesh::checkEdgeBoundary
+const FixedList<bool,2>
+dynamicTopoFvMesh::checkEdgeBoundary
 (
-    const label eIndex,
-    FixedList<bool,2>& edgeBoundary
+    const label eIndex
 )
 {
+    FixedList<bool,2> edgeBoundary(false);
+
     const edge& edgeToCheck = edges_[eIndex];
 
     // Loop through edges connected to both points,
@@ -1974,6 +2001,8 @@ void dynamicTopoFvMesh::checkEdgeBoundary
             edgeBoundary = true;
         }
     }
+
+    return edgeBoundary;
 }
 
 // Check whether the given edge is on a bounding curve
@@ -4411,11 +4440,11 @@ label dynamicTopoFvMesh::getTriBoundaryEdge
 void dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
     // Recast the argument
-    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+    threadHandler *thread = reinterpret_cast<threadHandler*>(argument);
 
     if (thread->slave())
     {
-        thread->sendSignal(topoMeshStruct::START);
+        thread->sendSignal(threadHandler::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -4455,7 +4484,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     if (thread->slave())
     {
-        thread->sendSignal(topoMeshStruct::STOP);
+        thread->sendSignal(threadHandler::STOP);
     }
 }
 
@@ -4615,13 +4644,13 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         }
     }
 
-    // Get the number of threads and allocate topoMeshStructures
+    // Get the number of threads and allocate threadHandlers
     label nThreads = threader_->getNumThreads();
 
     if (nThreads == 1)
     {
         structPtr_.setSize(1);
-        structPtr_.set(0, new topoMeshStruct(this, nThreads));
+        structPtr_.set(0, new threadHandler(this, nThreads));
         structPtr_[0].setMaster();
 
         // Size the stacks
@@ -4632,7 +4661,6 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         else
         {
             edgeStack_.setSize(1);
-            cellStack_.setSize(1);
         }
     }
     else
@@ -4648,12 +4676,11 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         else
         {
             edgeStack_.setSize(nThreads + 1);
-            cellStack_.setSize(nThreads + 1);
         }
 
         for (label i = 0; i <= nThreads; i++)
         {
-            structPtr_.set(i, new topoMeshStruct(this, nThreads));
+            structPtr_.set(i, new threadHandler(this, nThreads));
 
             if (i == 0)
             {
@@ -5992,11 +6019,11 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     // Collapse when boundary edge-length < ratioMin_*lengthScale
 
     // Recast the argument
-    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+    threadHandler *thread = reinterpret_cast<threadHandler*>(argument);
 
     if (thread->slave())
     {
-        thread->sendSignal(topoMeshStruct::START);
+        thread->sendSignal(threadHandler::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -6052,7 +6079,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
     if (thread->slave())
     {
-        thread->sendSignal(topoMeshStruct::STOP);
+        thread->sendSignal(threadHandler::STOP);
     }
 }
 
@@ -6063,11 +6090,11 @@ void dynamicTopoFvMesh::swap3DEdges
 )
 {
     // Recast the argument
-    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+    threadHandler *thread = reinterpret_cast<threadHandler*>(argument);
 
     if (thread->slave())
     {
-        thread->sendSignal(topoMeshStruct::START);
+        thread->sendSignal(threadHandler::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -6120,40 +6147,7 @@ void dynamicTopoFvMesh::swap3DEdges
 
     if (thread->slave())
     {
-        thread->sendSignal(topoMeshStruct::STOP);
-    }
-}
-
-// 3D Cell-bisection/collapse engine
-void dynamicTopoFvMesh::cellBisectCollapse3D
-(
-    void *argument
-)
-{
-    // Recast the argument
-    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
-
-    if (thread->slave())
-    {
-        thread->sendSignal(topoMeshStruct::START);
-    }
-
-    dynamicTopoFvMesh& mesh = thread->mesh();
-
-    // Figure out which thread this is...
-    label tIndex = mesh.self();
-
-    while (!mesh.cellStack(tIndex).empty())
-    {
-        // Retrieve a cell from the stack
-        label cIndex = mesh.cellStack(tIndex).pop();
-
-        mesh.recursiveCellRefinement(cIndex);
-    }
-
-    if (thread->slave())
-    {
-        thread->sendSignal(topoMeshStruct::STOP);
+        thread->sendSignal(threadHandler::STOP);
     }
 }
 
@@ -6168,11 +6162,11 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     // Collapse when edge-length < ratioMin_*lengthScale
 
     // Recast the argument
-    topoMeshStruct *thread = reinterpret_cast<topoMeshStruct*>(argument);
+    threadHandler *thread = reinterpret_cast<threadHandler*>(argument);
 
     if (thread->slave())
     {
-        thread->sendSignal(topoMeshStruct::START);
+        thread->sendSignal(threadHandler::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->mesh();
@@ -6216,13 +6210,13 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 
     if (thread->slave())
     {
-        thread->sendSignal(topoMeshStruct::STOP);
+        thread->sendSignal(threadHandler::STOP);
     }
 }
 
 // Utility method to check whether the cell given by 'cellIndex' will yield
 // a valid cell when 'pointIndex' is moved to 'newPoint'. The routine performs
-// volume-based checks. Returns 'true' if the collapse in NOT feasible, and
+// metric-based checks. Returns 'true' if the collapse in NOT feasible, and
 // makes entries in cellsChecked to avoid repetitive checks.
 bool dynamicTopoFvMesh::checkCollapse
 (
@@ -6233,7 +6227,7 @@ bool dynamicTopoFvMesh::checkCollapse
 )
 {
     label faceIndex = -1;
-    scalar cellVolume = 0.0;
+    scalar cQuality = 0.0;
     const cell& cellToCheck = cells_[cellIndex];
 
     // Look for a face that doesn't contain 'pointIndex'
@@ -6253,38 +6247,42 @@ bool dynamicTopoFvMesh::checkCollapse
 
     if (owner_[faceIndex] == cellIndex)
     {
-        cellVolume = tetVolume
+        cQuality =
         (
-            points_[faceToCheck[2]],
-            points_[faceToCheck[1]],
-            points_[faceToCheck[0]],
-            newPoint
+            (*tetMetric_)
+            (
+                points_[faceToCheck[2]],
+                points_[faceToCheck[1]],
+                points_[faceToCheck[0]],
+                newPoint
+            )
         );
     }
     else
     {
-        cellVolume = tetVolume
+        cQuality =
         (
-            points_[faceToCheck[0]],
-            points_[faceToCheck[1]],
-            points_[faceToCheck[2]],
-            newPoint
+            (*tetMetric_)
+            (
+                points_[faceToCheck[0]],
+                points_[faceToCheck[1]],
+                points_[faceToCheck[2]],
+                newPoint
+            )
         );
     }
 
-    // Final cell-volume check
-    if (cellVolume < VSMALL)
+    // Final quality check
+    if (cQuality < sliverThreshold_)
     {
-        if (debug > 1)
+        if (debug > 2)
         {
-            InfoIn
-            (
-                "dynamicTopoFvMesh::checkCollapse"
-            )   << "\nCollapsing cell: " << cellIndex
+            InfoIn("dynamicTopoFvMesh::checkCollapse()")
+                << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
                 << faceToCheck[0] << "," << faceToCheck[1] << ","
                 << faceToCheck[2] << "," << pointIndex << nl
-                << "will yield a negative volume: " << cellVolume
+                << "will yield a quality of: " << cQuality
                 << ", when " << pointIndex
                 << " is moved to location: " << nl
                 << newPoint << endl;
@@ -6297,6 +6295,116 @@ bool dynamicTopoFvMesh::checkCollapse
     cellsChecked.insert(cellIndex);
 
     return false;
+}
+
+// Utility method to compute the quality of a vertex hull
+// around an edge after bisection.
+scalar dynamicTopoFvMesh::computeBisectionQuality
+(
+    const label eIndex
+)
+{
+    scalar minQuality = GREAT;
+    scalar cQuality = 0.0;
+
+    // Obtain a reference to this edge and corresponding edgePoints
+    const edge& edgeToCheck = edges_[eIndex];
+    const labelList& hullVertices = edgePoints_[eIndex];
+
+    // Obtain point references
+    const point& a = points_[edgeToCheck[0]];
+    const point& c = points_[edgeToCheck[1]];
+
+    // Compute the mid-point of the edge
+    point midPoint = 0.5*(a + c);
+
+    if (whichEdgePatch(eIndex) < 0)
+    {
+        // Internal edge.
+        forAll(hullVertices, indexI)
+        {
+            label prevIndex = hullVertices.rcIndex(indexI);
+
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[prevIndex]];
+            const point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality of the upper half.
+            cQuality = (*tetMetric_)(a, b, midPoint, d);
+
+            // Check if the quality is worse
+            minQuality = cQuality < minQuality ? cQuality : minQuality;
+
+            // Compute the quality of the lower half.
+            cQuality = (*tetMetric_)(midPoint, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = cQuality < minQuality ? cQuality : minQuality;
+        }
+    }
+    else
+    {
+        // Boundary edge.
+        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
+        {
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[indexI-1]];
+            const point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality of the upper half.
+            cQuality = (*tetMetric_)(a, b, midPoint, d);
+
+            // Check if the quality is worse
+            minQuality = cQuality < minQuality ? cQuality : minQuality;
+
+            // Compute the quality of the lower half.
+            cQuality = (*tetMetric_)(midPoint, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = cQuality < minQuality ? cQuality : minQuality;
+        }
+    }
+
+    // Ensure that the mesh is valid
+    if (minQuality < sliverThreshold_)
+    {
+        if (debug > 3)
+        {
+            // Write out cells for post processing.
+            labelHashSet iCells;
+
+            labelList& eFaces = edgeFaces_[eIndex];
+
+            forAll(eFaces, faceI)
+            {
+                if (!iCells.found(owner_[eFaces[faceI]]))
+                {
+                    iCells.insert(owner_[eFaces[faceI]]);
+                }
+
+                if (!iCells.found(neighbour_[eFaces[faceI]]))
+                {
+                    iCells.insert(neighbour_[eFaces[faceI]]);
+                }
+            }
+
+            writeVTK(Foam::name(eIndex) + "_inverted", iCells.toc());
+        }
+
+        if (debug > 2)
+        {
+            InfoIn("dynamicTopoFvMesh::computeBisectionQuality()")
+                << "Bisecting edge will fall below the "
+                << "sliver threshold of: " << sliverThreshold_ << nl
+                << "Edge: " << eIndex << ": " << edgeToCheck << nl
+                << "EdgePoints: " << hullVertices << nl
+                << "Minimum Quality: " << minQuality << nl
+                << "Mid point: " << midPoint
+                << abort(FatalError);
+        }
+    }
+
+    return minQuality;
 }
 
 // Check if the boundary face is adjacent to a sliver-cell,
@@ -7048,7 +7156,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 
                 // Wait for a signal from this thread
                 // before moving on.
-                structPtr_[i].waitForSignal(topoMeshStruct::START);
+                structPtr_[i].waitForSignal(threadHandler::START);
             }
 
             // Synchronize threads
@@ -7083,7 +7191,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 
             // Wait for a signal from this thread
             // before moving on.
-            structPtr_[i].waitForSignal(topoMeshStruct::START);
+            structPtr_[i].waitForSignal(threadHandler::START);
         }
 
         // Synchronize threads
@@ -7114,7 +7222,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     if (edgeModification_)
     {
         // Initialize the cell stacks
-        initCellStacks();
+        initEdgeStacks();
 
         if (threader_->multiThreaded())
         {
@@ -7132,7 +7240,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
                 // Wait for a signal from this thread
                 // before moving on.
-                structPtr_[i].waitForSignal(topoMeshStruct::START);
+                structPtr_[i].waitForSignal(threadHandler::START);
             }
 
             // Synchronize threads
@@ -7167,7 +7275,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
             // Wait for a signal from this thread
             // before moving on.
-            structPtr_[i].waitForSignal(topoMeshStruct::START);
+            structPtr_[i].waitForSignal(threadHandler::START);
         }
 
         // Synchronize threads
@@ -7188,11 +7296,11 @@ void dynamicTopoFvMesh::lockSlaveThreads()
 {
     for (label i = 1; i <= threader_->getNumThreads(); i++)
     {
-        structPtr_[i].lock(topoMeshStruct::START);
-        structPtr_[i].lock(topoMeshStruct::STOP);
+        structPtr_[i].lock(threadHandler::START);
+        structPtr_[i].lock(threadHandler::STOP);
 
-        structPtr_[i].unsetPredicate(topoMeshStruct::START);
-        structPtr_[i].unsetPredicate(topoMeshStruct::STOP);
+        structPtr_[i].unsetPredicate(threadHandler::START);
+        structPtr_[i].unsetPredicate(threadHandler::STOP);
     }
 }
 
@@ -7203,7 +7311,7 @@ void dynamicTopoFvMesh::synchronizeThreads()
     {
         // Wait for a signal from this thread
         // before moving on.
-        structPtr_[i].waitForSignal(topoMeshStruct::STOP);
+        structPtr_[i].waitForSignal(threadHandler::STOP);
     }
 }
 
@@ -7379,7 +7487,7 @@ bool dynamicTopoFvMesh::updateTopology()
         threadedTopoModifier3D();
     }
 
-    Info << "Topo modifier time: " << topologyTimer.elapsedTime() << endl;
+    Info << " Topo modifier time: " << topologyTimer.elapsedTime() << endl;
 
     clockTime reOrderingTimer;
 
@@ -7609,7 +7717,6 @@ bool dynamicTopoFvMesh::updateTopology()
         addedEdgePatches_.clear();
         cellsFromCells_.clear();
         cellParents_.clear();
-        faceParents_.clear();
 
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_, -7);

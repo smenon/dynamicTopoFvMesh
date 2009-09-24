@@ -334,7 +334,7 @@ inline scalar dynamicTopoFvMesh::boundaryLengthScale
         if (dictValue > 0.0)
         {
             return dictValue;
-        };
+        }
     }
 
     const polyPatch& bdyPatch = boundary[bFacePatch];
@@ -395,7 +395,7 @@ inline scalar dynamicTopoFvMesh::faceLengthScale
             0.5 *
             (
                 lengthScale_[owner_[fIndex]]
-                + lengthScale_[neighbour_[fIndex]]
+              + lengthScale_[neighbour_[fIndex]]
             )
         );
     }
@@ -519,6 +519,10 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                 }
             }
         }
+
+        // Check if we're limited by min/max lengthScales
+        scale = Foam::max(scale, minLengthScale_);
+        scale = Foam::min(scale, maxLengthScale_);
     }
 
     if (coupledModification_)
@@ -659,15 +663,6 @@ inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack
     return edgeStack_[threadID];
 }
 
-// Return the cell-stack for a particular thread
-inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::cellStack
-(
-    const label threadID
-)
-{
-    return cellStack_[threadID];
-}
-
 // Return the integer threadID for a given pthread
 // Return zero for single-threaded operation
 inline label dynamicTopoFvMesh::self()
@@ -684,40 +679,6 @@ inline label dynamicTopoFvMesh::self()
     }
 
     return 0;
-}
-
-// Initialize cell-stacks
-inline void dynamicTopoFvMesh::initCellStacks()
-{
-    forAll(cellStack_, stackI)
-    {
-        cellStack_[stackI].clear();
-    }
-
-    if (threader_->multiThreaded())
-    {
-        label tID = 1;
-
-        forAll(cells_, cellI)
-        {
-            if (cells_[cellI].size())
-            {
-                cellStack_[tID].insert(cellI);
-
-                tID = (tID == cellStack_.size() - 1) ? 1 : tID + 1;
-            }
-        }
-    }
-    else
-    {
-        forAll(cells_, cellI)
-        {
-            if (cells_[cellI].size())
-            {
-                cellStack_[0].insert(cellI);
-            }
-        }
-    }
 }
 
 // Initialize edge-stacks
@@ -1367,100 +1328,6 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             << "Edge: " << eIndex << ": " << edgeToCheck << nl
             << "EdgePoints: " << hullVertices << nl
             << "Minimum Quality: " << minQuality
-            << abort(FatalError);
-    }
-
-    return minQuality;
-}
-
-// Utility method to compute the quality of a vertex hull
-// around an edge after bisection.
-inline scalar dynamicTopoFvMesh::computeBisectionQuality
-(
-    const label eIndex
-)
-{
-    scalar minQuality = GREAT;
-    scalar cQuality = 0.0;
-
-    // Obtain a reference to this edge and corresponding edgePoints
-    const edge& edgeToCheck = edges_[eIndex];
-    const labelList& hullVertices = edgePoints_[eIndex];
-
-    // Obtain point references
-    const point& a = points_[edgeToCheck[0]];
-    const point& c = points_[edgeToCheck[1]];
-
-    // Compute the mid-point of the edge
-    point midPoint = 0.5*(a + c);
-
-    if (whichEdgePatch(eIndex) < 0)
-    {
-        // Internal edge.
-        forAll(hullVertices, indexI)
-        {
-            label prevIndex = hullVertices.rcIndex(indexI);
-
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[prevIndex]];
-            const point& d = points_[hullVertices[indexI]];
-
-            // Compute the quality
-            cQuality = (*tetMetric_)(a, b, midPoint, d);
-
-            // Check if the quality is worse
-            minQuality = cQuality < minQuality ? cQuality : minQuality;
-        }
-    }
-    else
-    {
-        // Boundary edge.
-        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
-        {
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[indexI-1]];
-            const point& d = points_[hullVertices[indexI]];
-
-            // Compute the quality
-            cQuality = (*tetMetric_)(a, b, midPoint, d);
-
-            // Check if the quality is worse
-            minQuality = cQuality < minQuality ? cQuality : minQuality;
-        }
-    }
-
-    // Ensure that the mesh is valid
-    if (minQuality < 0.0)
-    {
-        if (debug > 3)
-        {
-            // Write out cells for post processing.
-            labelHashSet iCells;
-
-            labelList& eFaces = edgeFaces_[eIndex];
-
-            forAll(eFaces, faceI)
-            {
-                if (!iCells.found(owner_[eFaces[faceI]]))
-                {
-                    iCells.insert(owner_[eFaces[faceI]]);
-                }
-
-                if (!iCells.found(neighbour_[eFaces[faceI]]))
-                {
-                    iCells.insert(neighbour_[eFaces[faceI]]);
-                }
-            }
-
-            writeVTK(Foam::name(eIndex) + "_inverted", iCells.toc());
-        }
-
-        FatalErrorIn("dynamicTopoFvMesh::computeBisectionQuality()")
-            << "Negative cell-quality after bisection!" << nl
-            << "Edge: " << eIndex << ": " << edgeToCheck << nl
-            << "EdgePoints: " << hullVertices << nl
-            << "Minimum Quality: " << minQuality << nl
-            << "Mid point: " << midPoint
             << abort(FatalError);
     }
 

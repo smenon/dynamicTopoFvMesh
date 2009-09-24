@@ -164,7 +164,6 @@ class dynamicTopoFvMesh
         Map<label>      addedFacePatches_;
         Map<label>      addedEdgePatches_;
         Map<label>      cellParents_;
-        Map<label>      faceParents_;
 
         //- Maps to keep track of entities deleted after addition
         labelHashSet    deletedPoints_;
@@ -256,14 +255,11 @@ class dynamicTopoFvMesh
         // Stack-list of edges to be checked for topo-changes [3D].
         List<stack> edgeStack_;
 
-        // Stack-list of cells to be checked for topo-changes [3D].
-        List<stack> cellStack_;
-
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
 
         //- Private sub-class used for multiThreading
-        class topoMeshStruct
+        class threadHandler
         {
             // Pointer to this class
             dynamicTopoFvMesh *mesh_;
@@ -301,7 +297,7 @@ class dynamicTopoFvMesh
             };
 
             // Constructor
-            topoMeshStruct
+            threadHandler
             (
                 dynamicTopoFvMesh *mesh,
                 label nThreads
@@ -381,7 +377,7 @@ class dynamicTopoFvMesh
             inline pthread_t& ID() { return pthreadID_; }
         };
 
-        PtrList<topoMeshStruct> structPtr_;
+        PtrList<threadHandler> structPtr_;
 
         // Private sub-class for processor patches
         class patchSubMesh
@@ -824,9 +820,6 @@ class dynamicTopoFvMesh
         // 3D Edge-swapping engine
         static void swap3DEdges(void *argument);
 
-        // 3D Cell-bisection/collapse engine
-        static void cellBisectCollapse3D(void *argument);
-
         // 3D Edge-bisection/collapse engine
         static void edgeBisectCollapse3D(void *argument);
 
@@ -836,14 +829,8 @@ class dynamicTopoFvMesh
         // Return the edge-stack for a particular thread
         inline stack& edgeStack(const label threadID);
 
-        // Return the cell-stack for a particular thread
-        inline stack& cellStack(const label threadID);
-
         // Return the integer threadID for a given pthread
         inline label self();
-
-        // Initialize cell-stacks
-        inline void initCellStacks();
 
         // Initialize face-stacks
         inline void initFaceStacks();
@@ -899,13 +886,6 @@ class dynamicTopoFvMesh
             const label eIndex,
             label overRideCase = -1,
             bool checkOnly = false
-        );
-
-        // Method to recursively bisect or collapse cell edges in 3D
-        const changeMap
-        recursiveCellRefinement
-        (
-            const label cIndex
         );
 
         // Utility method to check for invalid edge-collapse.
@@ -990,7 +970,8 @@ class dynamicTopoFvMesh
         );
 
         // Remove the specified cell from the mesh,
-        // and add internal faces to the specified patch
+        // (including lower entities like points, edges, faces, etc.)
+        // and add exposed internal faces to the specified patch
         void removeCell
         (
             const label index,
@@ -1046,6 +1027,18 @@ class dynamicTopoFvMesh
             const label index
         );
 
+        // Insert the specified point to the mesh
+        label insertPoint
+        (
+            const point& newPoint
+        );
+
+        // Remove the specified point from the mesh
+        void removePoint
+        (
+            const label index
+        );
+
         // Utility method to size-up the list to include an item
         inline void sizeUpList
         (
@@ -1085,10 +1078,10 @@ class dynamicTopoFvMesh
         );
 
         // Utility to check whether points of an edge lie on a boundary
-        void checkEdgeBoundary
+        const FixedList<bool,2>
+        checkEdgeBoundary
         (
-            const label eIndex,
-            FixedList<bool,2>& edgeBoundary
+            const label eIndex
         );
 
         // Utility method to compute the minimum quality of a vertex hull
@@ -1096,7 +1089,7 @@ class dynamicTopoFvMesh
 
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.
-        inline scalar computeBisectionQuality(const label eIndex);
+        scalar computeBisectionQuality(const label eIndex);
 
         // Check whether the given edge is on a bounding curve
         bool checkBoundingCurve(const label eIndex);

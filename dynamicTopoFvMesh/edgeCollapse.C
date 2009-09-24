@@ -383,30 +383,8 @@ void dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Delete the two points...
-        points_[cv0] = point();
-        points_[cv1] = point();
-        nPoints_ -= 2;
-
-        // Update the reverse point map
-        if (cv0 < nOldPoints_)
-        {
-            reversePointMap_[cv0] = -1;
-        }
-        else
-        {
-            // Store this information for the reOrdering stage
-            deletedPoints_.insert(cv0);
-        }
-
-        if (cv1 < nOldPoints_)
-        {
-            reversePointMap_[cv1] = -1;
-        }
-        else
-        {
-            // Store this information for the reOrdering stage
-            deletedPoints_.insert(cv1);
-        }
+        removePoint(cv0);
+        removePoint(cv1);
     }
     else
     {
@@ -528,30 +506,8 @@ void dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Delete the two points...
-        points_[cv2] = point();
-        points_[cv3] = point();
-        nPoints_ -= 2;
-
-        // Update the reverse point map
-        if (cv2 < nOldPoints_)
-        {
-            reversePointMap_[cv2] = -1;
-        }
-        else
-        {
-            // Store this information for the reOrdering stage
-            deletedPoints_.insert(cv2);
-        }
-
-        if (cv3 < nOldPoints_)
-        {
-            reversePointMap_[cv3] = -1;
-        }
-        else
-        {
-            // Store this information for the reOrdering stage
-            deletedPoints_.insert(cv3);
-        }
+        removePoint(cv2);
+        removePoint(cv3);
     }
 
     if (debug > 2)
@@ -1067,7 +1023,6 @@ dynamicTopoFvMesh::collapseEdge
     // Hull variables
     bool found = false;
     label replaceIndex = -1, m = edgePoints_[eIndex].size();
-    FixedList<bool,2> edgeBoundary(false);
 
     // Size up the hull lists
     labelList cellHull(m, -1);
@@ -1094,7 +1049,7 @@ dynamicTopoFvMesh::collapseEdge
     }
 
     // Check whether points of the edge lies on a boundary
-    checkEdgeBoundary(eIndex, edgeBoundary);
+    const FixedList<bool,2> edgeBoundary = checkEdgeBoundary(eIndex);
 
     // Configure the new point-position
     point newPoint = vector::zero;
@@ -1759,21 +1714,7 @@ dynamicTopoFvMesh::collapseEdge
     points_[replacePoint] = newPoint;
 
     // Remove the collapse point
-    points_[collapsePoint] = point();
-    pointEdges_[collapsePoint].clear();
-
-    nPoints_--;
-
-    // Update the reverse point map
-    if (collapsePoint < nOldPoints_)
-    {
-        reversePointMap_[collapsePoint] = -1;
-    }
-    else
-    {
-        // Store this information for the reOrdering stage
-        deletedPoints_.insert(collapsePoint);
-    }
+    removePoint(collapsePoint);
 
     // Write out VTK files after change
     if (debug > 3)
