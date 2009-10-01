@@ -202,7 +202,7 @@ inline point dynamicTopoFvMesh::triFaceCenter
     const label fIndex
 )
 {
-    face& thisFace = faces_[fIndex];
+    const face& thisFace = faces_[fIndex];
 
     return
     (
@@ -455,14 +455,36 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
             }
         }
 
-        scale /= 2.0;
+        scale *= 0.5;
 
         // If proximity-based refinement is requested,
         // test the proximity to the nearest non-neighbour.
         if (proximityPatches_.found(boundaryMesh()[edgePatch].name()))
         {
-            // Obtain the edge location
+            label proximityFace = -1;
 
+            // Perform a proximity-check.
+            scalar distance = testProximity(eIndex, proximityFace);
+
+            if (debug > 3 && self() == 0)
+            {
+                if
+                (
+                    (proximityFace > -1) &&
+                    ((distance / 5.0) < scale)
+                )
+                {
+                    Info << " Closest opposing face detected for edge: " << nl
+                         << '\t' << eIndex
+                         << " :: " << edges_[eIndex]
+                         << " was face:\n"
+                         << '\t' << proximityFace
+                         << " :: " << polyMesh::faces()[proximityFace]
+                         << endl;
+                }
+            }
+
+            scale = Foam::min(scale, ((distance / 5.0) - gTol_)/ratioMax_);
         }
 
         // If curvature-based refinement is requested,
@@ -494,7 +516,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                 // Get the edge-length.
                 scalar length = edgeLength(eIndex);
 
-                if (debug > 2 && self() == 0)
+                if (debug > 3 && self() == 0)
                 {
                     Info << "Deviation: " << deviation << nl
                          << "curvatureDeviation: " << curvatureDeviation_
@@ -505,18 +527,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                          << endl;
                 }
 
-                // Would dividing this edge make it too small?
-                if
-                (
-                    ((0.5*length) > (ratioMin_*scale)) &&
-                    ((0.5*length) > minLengthScale_)
-                )
-                {
-                    // Smoosh the return value for bisection.
-                    scalar newScale = (length - SMALL)/ratioMax_;
-
-                    return newScale;
-                }
+                scale = Foam::min(scale, ((length - gTol_)/ratioMax_));
             }
         }
 
@@ -1379,7 +1390,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
-    labelList& eFaces = edgeFaces_[eIndex];
+    const labelList& eFaces = edgeFaces_[eIndex];
 
     bool foundPatch = false;
 
@@ -1462,7 +1473,7 @@ inline bool dynamicTopoFvMesh::processorCoupledEdge
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
-    labelList& eFaces = edgeFaces_[eIndex];
+    const labelList& eFaces = edgeFaces_[eIndex];
 
     // Search for boundary faces, and determine boundary type.
     forAll(eFaces, faceI)

@@ -128,7 +128,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nCollapses_(0),
     nSwaps_(0),
     maxModifications_(-1),
-    bisectInterior_(-1),
+    proximityBins_(0),
     maxTetsPerEdge_(-1),
     allowTableResize_(false),
     gTol_(1e-20)
@@ -242,7 +242,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nCollapses_(0),
     nSwaps_(0),
     maxModifications_(mesh.maxModifications_),
-    bisectInterior_(-1),
+    proximityBins_(0),
     maxTetsPerEdge_(mesh.maxTetsPerEdge_),
     allowTableResize_(mesh.allowTableResize_),
     gTol_(mesh.gTol_),
@@ -955,6 +955,7 @@ label dynamicTopoFvMesh::insertFace
     {
         // Modify patch information for this boundary face
         patchSizes_[patch]++;
+
         for(label i=patch+1; i<numPatches_; i++)
         {
             patchStarts_[i]++;
@@ -964,6 +965,7 @@ label dynamicTopoFvMesh::insertFace
     {
         // Increment the number of internal faces, and subsequent patch-starts
         nInternalFaces_++;
+
         for(label i=0; i<numPatches_; i++)
         {
             patchStarts_[i]++;
@@ -1138,10 +1140,6 @@ void dynamicTopoFvMesh::removeFace
              << faces_[index] << endl;
     }
 
-    faces_[index].clear();
-    owner_[index] = -1;
-    faceEdges_[index].clear();
-
     // Identify the patch for this face
     label patch = whichPatch(index);
 
@@ -1166,7 +1164,11 @@ void dynamicTopoFvMesh::removeFace
         }
     }
 
+    // Clear entities.
+    faces_[index].clear();
+    owner_[index] = -1;
     neighbour_[index] = -1;
+    faceEdges_[index].clear();
 
     if (twoDMesh_)
     {
@@ -2703,12 +2705,18 @@ bool dynamicTopoFvMesh::boundaryTriangulation
     return false;
 }
 
-// Output a list of cells as a VTK file.
+// Output a list of primitives as a VTK file.
 // Uses the current state of connectivity.
+// primitiveType is:
+//   0: List of points
+//   1: List of edges
+//   2: List of faces
+//   3: List of cells
 void dynamicTopoFvMesh::writeVTK
 (
     const word& name,
-    const labelList& cList
+    const labelList& cList,
+    const label primitiveType
 )
 {
     label nCells = 0;
@@ -2729,70 +2737,119 @@ void dynamicTopoFvMesh::writeVTK
             continue;
         }
 
-        const cell& thisCell = cells_[cList[cellI]];
-
-        // Point-ordering for tetrahedra is different
-        if (thisCell.size() == 4)
+        // Are we looking at points?
+        if (primitiveType == 0)
         {
-            const face& currFace = faces_[thisCell[0]];
-            const face& nextFace = faces_[thisCell[1]];
-
             // Size the list
-            cpList[nCells].setSize(4);
+            cpList[nCells].setSize(1);
 
-            // Get the fourth point
-            forAll(nextFace, pointI)
-            {
-                if
-                (
-                    nextFace[pointI] != currFace[0]
-                 && nextFace[pointI] != currFace[1]
-                 && nextFace[pointI] != currFace[2]
-                )
-                {
-                    // Write-out in order
-                    if (owner_[thisCell[0]] == cList[cellI])
-                    {
-                        cpList[nCells][0] = currFace[2];
-                        cpList[nCells][1] = currFace[1];
-                        cpList[nCells][2] = currFace[0];
-                        cpList[nCells][3] = nextFace[pointI];
-                    }
-                    else
-                    {
-                        cpList[nCells][0] = currFace[0];
-                        cpList[nCells][1] = currFace[1];
-                        cpList[nCells][2] = currFace[2];
-                        cpList[nCells][3] = nextFace[pointI];
-                    }
+            cpList[nCells] = cList[cellI];
 
-                    break;
-                }
-            }
-
-            // Renumber to local ordering
-            forAll(cpList[nCells], pointI)
-            {
-                // Check if this point was added to the map
-                if (!pointMap.found(cpList[nCells][pointI]))
-                {
-                    // Point was not found, so add it
-                    points[nPoints] = points_[cpList[nCells][pointI]];
-
-                    // Update the map
-                    pointMap.insert(cpList[nCells][pointI], nPoints);
-
-                    // Increment the number of points
-                    nPoints++;
-                }
-
-                // Renumber it.
-                cpList[nCells][pointI] = pointMap[cpList[nCells][pointI]];
-            }
-
-            nTotalCells += 4;
-            nCells++;
+            nTotalCells++;
         }
+
+        // Are we looking at edges?
+        if (primitiveType == 1)
+        {
+            // Size the list
+            cpList[nCells].setSize(2);
+
+            const edge& thisEdge = edges_[cList[cellI]];
+
+            cpList[nCells][0] = thisEdge[0];
+            cpList[nCells][1] = thisEdge[1];
+
+            nTotalCells += 2;
+        }
+
+        // Are we looking at faces?
+        if (primitiveType == 2)
+        {
+            const face& thisFace = faces_[cList[cellI]];
+
+            if (thisFace.size() == 3)
+            {
+                // Size the list
+                cpList[nCells].setSize(3);
+
+                // Write out in order
+                cpList[nCells][0] = thisFace[0];
+                cpList[nCells][1] = thisFace[1];
+                cpList[nCells][2] = thisFace[2];
+
+                nTotalCells += 3;
+            }
+        }
+
+        // Are we looking at cells?
+        if (primitiveType == 3)
+        {
+            const cell& thisCell = cells_[cList[cellI]];
+
+            // Point-ordering for tetrahedra is different
+            if (thisCell.size() == 4)
+            {
+                const face& currFace = faces_[thisCell[0]];
+                const face& nextFace = faces_[thisCell[1]];
+
+                // Size the list
+                cpList[nCells].setSize(4);
+
+                // Get the fourth point
+                forAll(nextFace, pointI)
+                {
+                    if
+                    (
+                        nextFace[pointI] != currFace[0]
+                     && nextFace[pointI] != currFace[1]
+                     && nextFace[pointI] != currFace[2]
+                    )
+                    {
+                        // Write-out in order
+                        if (owner_[thisCell[0]] == cList[cellI])
+                        {
+                            cpList[nCells][0] = currFace[2];
+                            cpList[nCells][1] = currFace[1];
+                            cpList[nCells][2] = currFace[0];
+                            cpList[nCells][3] = nextFace[pointI];
+                        }
+                        else
+                        {
+                            cpList[nCells][0] = currFace[0];
+                            cpList[nCells][1] = currFace[1];
+                            cpList[nCells][2] = currFace[2];
+                            cpList[nCells][3] = nextFace[pointI];
+                        }
+
+                        break;
+                    }
+                }
+
+                nTotalCells += 4;
+            }
+        }
+
+        // Renumber to local ordering
+        forAll(cpList[nCells], pointI)
+        {
+            // Check if this point was added to the map
+            if (!pointMap.found(cpList[nCells][pointI]))
+            {
+                // Point was not found, so add it
+                points[nPoints] = points_[cpList[nCells][pointI]];
+
+                // Update the map
+                pointMap.insert(cpList[nCells][pointI], nPoints);
+
+                // Increment the number of points
+                nPoints++;
+            }
+
+            // Renumber it.
+            cpList[nCells][pointI] = pointMap[cpList[nCells][pointI]];
+        }
+
+        nCells++;
     }
 
     // Make the directory
@@ -2836,8 +2893,27 @@ void dynamicTopoFvMesh::writeVTK
     }
 
     file << "CELL_TYPES " << nCells << endl;
+
     forAll(cpList, i)
     {
+        if (cpList[i].size() == 1)
+        {
+            // Vertex
+            file << "1" << nl;
+        }
+
+        if (cpList[i].size() == 2)
+        {
+            // Edge
+            file << "3" << nl;
+        }
+
+        if (cpList[i].size() == 3)
+        {
+            // Triangle face
+            file << "5" << nl;
+        }
+
         if (cpList[i].size() == 4)
         {
             // Tetrahedron
@@ -3414,6 +3490,260 @@ void dynamicTopoFvMesh::checkConnectivity()
     }
 }
 
+// Perform spatial hashing on a set of points
+void dynamicTopoFvMesh::spatialHash
+(
+    const pointField& pointLocations,
+    const labelList& pointIndices,
+    const boundBox& box,
+    const label resolution,
+    labelListList& bins,
+    label removeIndex
+)
+{
+    label binSize = bins.size(), nD = resolution;
+
+    const point& bMin = box.min();
+    const point& bMax = box.max();
+
+    // Extend bounding-box dimensions a bit to avoid edge-effects.
+    scalar ext = 0.02*(mag(bMax - bMin));
+
+    // Define an inverse grid-cell size.
+    scalar xL = nD/(bMax.x() - bMin.x() + ext);
+    scalar yL = nD/(bMax.y() - bMin.y() + ext);
+    scalar zL = nD/(bMax.z() - bMin.z() + ext);
+
+    // Loop through all points and bin them.
+    forAll(pointLocations, pointI)
+    {
+        // Translate to boundBox minimum.
+        point p = pointLocations[pointI] - bMin;
+
+        // Hash the position.
+        label i = label(mag(::floor(p.x()*xL)));
+        label j = label(mag(::floor(p.y()*yL)));
+        label k = label(mag(::floor(p.z()*zL)));
+
+        label pos = ((k*nD*nD)+(j*nD)+i) % binSize;
+
+        if (removeIndex)
+        {
+            // Remove the index.
+            sizeDownList
+            (
+                pointIndices[pointI],
+                bins[pos]
+            );
+        }
+        else
+        {
+            // Store the index.
+            sizeUpList
+            (
+                pointIndices[pointI],
+                bins[pos]
+            );
+        }
+    }
+}
+
+// Prepare for proximity-based refinement, if necessary
+void dynamicTopoFvMesh::prepareProximityPatches()
+{
+    if (!proximityPatches_.size())
+    {
+        return;
+    }
+
+    if (debug)
+    {
+        Info << "Preparing patches for proximity-based refinement...";
+    }
+
+    // Check if proximity bins have been allocated already.
+    proximityBins_.clear();
+
+    proximityBins_.setSize(997, labelList(0));
+
+    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+
+    bool setSpatialRes = false;
+
+    // Loop through all proximity patches and spatially hash patch faces.
+    forAll(boundary, patchI)
+    {
+        if (proximityPatches_.found(boundary[patchI].name()))
+        {
+            const polyPatch& proxPatch = boundary[patchI];
+
+            // Construct a bounding-box of face centres.
+            // Do not synchronize in parallel, since the patch
+            // may not be present on all sub-domains.
+            boundBox box(proxPatch.faceCentres(), false);
+
+            const point& bMin = box.min();
+            const point& bMax = box.max();
+
+            // Further hashing requires this information.
+            proxBoundBox_.min() = bMin;
+            proxBoundBox_.max() = bMax;
+
+            // Build a list of face indices
+            labelList faceIndices
+            (
+                identity(proxPatch.size()) + proxPatch.start()
+            );
+
+            // For spatial resolution, pick an edge on this patch.
+            if (!setSpatialRes)
+            {
+                spatialRes_ =
+                (
+                    label
+                    (
+                        ::floor
+                        (
+                            mag(bMax - bMin)
+                          / (3.0*edgeLength(faceEdges_[proxPatch.start()][0]))
+                        )
+                    )
+                );
+
+                setSpatialRes = true;
+            }
+
+            spatialHash
+            (
+                proxPatch.faceCentres(),
+                faceIndices,
+                box,
+                spatialRes_,
+                proximityBins_
+            );
+        }
+    }
+
+    if (debug)
+    {
+        Info << "Done." << endl;
+    }
+}
+
+// Test an edge for proximity with other faces on proximity patches
+// and return the scalar distance to an oppositely-oriented face.
+scalar dynamicTopoFvMesh::testProximity
+(
+    const label eIndex,
+    label& proximityFace
+)
+{
+    const edge& thisEdge = edges_[eIndex];
+    const labelList& eFaces = edgeFaces_[eIndex];
+
+    // Obtain the edge centre.
+    point eCentre =
+    (
+        0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]])
+    );
+
+    // Obtain the normals of either boundary face
+    label count = 0;
+    FixedList<vector, 2> efNorm;
+
+    forAll(eFaces, faceI)
+    {
+        if (neighbour_[eFaces[faceI]] == -1)
+        {
+            // Obtain the normal.
+            efNorm[count] = triFaceNormal(faces_[eFaces[faceI]]);
+
+            // Normalize it.
+            efNorm[count] /= mag(efNorm[count]);
+
+            count++;
+        }
+    }
+
+    // Obtain the edge-normal
+    vector eNorm = (efNorm[0] + efNorm[1])/mag(efNorm[0] + efNorm[1]);
+
+    DynamicList<label> posIndices(20);
+    scalar testStep = edgeLength(eIndex);
+    scalar minDistance = GREAT, minDeviation = 0.0;
+    label nD = spatialRes_, binSize = proximityBins_.size();
+
+    const point& bMin = proxBoundBox_.min();
+    const point& bMax = proxBoundBox_.max();
+
+    // Extend bounding-box dimensions a bit to avoid edge-effects.
+    scalar ext = 0.02*(mag(bMax - bMin));
+
+    // Define an inverse grid-cell size.
+    scalar xL = nD/(bMax.x() - bMin.x() + ext);
+    scalar yL = nD/(bMax.y() - bMin.y() + ext);
+    scalar zL = nD/(bMax.z() - bMin.z() + ext);
+
+    // Now take multiple steps in both edge-normal directions,
+    // and add to the list of boxes to be checked.
+    for (scalar dir = -1.0; dir < 2.0; dir += 2.0)
+    {
+        for (scalar step = 0.0; step < 5.0*testStep; step += testStep)
+        {
+            // Hash the point-location
+            point p = (eCentre + (dir*step*eNorm)) - bMin;
+
+            label i = label(mag(::floor(p.x()*xL)));
+            label j = label(mag(::floor(p.y()*yL)));
+            label k = label(mag(::floor(p.z()*zL)));
+
+            label pos = ((k*nD*nD)+(j*nD)+i) % binSize;
+
+            if (findIndex(posIndices, pos) == -1)
+            {
+                posIndices.append(pos);
+            }
+        }
+    }
+
+    // Obtain old-mesh face geometry for reference.
+    const vectorField& faceAreas = primitiveMesh::faceAreas();
+    const vectorField& faceCentres = primitiveMesh::faceCentres();
+
+    forAll(posIndices, indexI)
+    {
+        const labelList& posBin = proximityBins_[posIndices[indexI]];
+
+        forAll(posBin, faceI)
+        {
+            // Step 1: Measure the distance to the face.
+            scalar distance =
+            (
+                mag(faceCentres[posBin[faceI]] - eCentre)
+            );
+
+            // Step 2: Check if this face is oriented away from edge.
+            const vector& fNorm = faceAreas[posBin[faceI]];
+
+            scalar deviation = (eNorm & (fNorm/mag(fNorm)));
+
+            if
+            (
+                (deviation < minDeviation) &&
+                (distance < minDistance)
+            )
+            {
+                // Update statistics
+                proximityFace = posBin[faceI];
+                minDeviation = deviation;
+                minDistance = distance;
+            }
+        }
+    }
+
+    return minDistance;
+}
+
 // Calculate the edge length-scale for the mesh
 void dynamicTopoFvMesh::calculateLengthScale()
 {
@@ -3430,6 +3760,9 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
     // HashSet to keep track of cells in each level
     labelHashSet levelCells;
+
+    // Prepare for proximity-based refinement, if necessary
+    prepareProximityPatches();
 
     // Obtain the cellCells addressing list
     const labelListList& cc = polyMesh::cellCells();
@@ -3530,9 +3863,6 @@ void dynamicTopoFvMesh::calculateLengthScale()
 
                     // Scale the length and assign to this cell
                     scalar sLength = sumLength*growthFactor_;
-
-                    // sLength = (sLength < maxLengthScale_)
-                    //          ? sLength : maxLengthScale_;
 
                     lengthScale_[cList[indexI]] = sLength;
 
@@ -3972,9 +4302,6 @@ void dynamicTopoFvMesh::readLengthScaleInfo
                 // Scale the length and assign to this cell
                 scalar sLength = sumLength*growthFactor_;
 
-                // sLength = (sLength < maxLengthScale_)
-                //          ? sLength : maxLengthScale_;
-
                 lengthScale[cI] = sLength;
             }
         }
@@ -4225,6 +4552,16 @@ void dynamicTopoFvMesh::readEdgeOptions
         );
     }
 
+    // Sanity check: Are length scales correctly specified?
+    if (minLengthScale_ > maxLengthScale_)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+            << " Length-scales are incorrectly specified." << nl
+            << " minLengthScale: " << minLengthScale_ << nl
+            << " maxLengthScale: " << maxLengthScale_ << nl
+            << abort(FatalError);
+    }
+
     if (edgeOptionDict.found("fixedLengthScalePatches") || mandatory_)
     {
         fixedPatches_ =
@@ -4283,7 +4620,7 @@ void dynamicTopoFvMesh::readEdgeOptions
                     if (fixedPatchList[wordI] == freePatchList[wordJ])
                     {
                         FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
-                            << " Conflicting fixed/free patches."
+                            << " Conflicting fixed/free patches." << nl
                             << " Fixed patch: " << fixedPatchList[wordI] << nl
                             << " Free patch: " << freePatchList[wordJ] << nl
                             << abort(FatalError);
@@ -4846,6 +5183,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             label index = 0;
             labelList pStarts(Pstream::nProcs(), 0);
             pointField pLocations(sum(nRecvPoints), vector::zero);
+            labelList pIndices(sum(nRecvPoints), 0);
 
             for (label proc = 0; proc < Pstream::nProcs(); proc++)
             {
@@ -4856,7 +5194,10 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                         minLoc = ::Foam::min(minLoc, pBuffer[proc][pointI]);
                         maxLoc = ::Foam::max(maxLoc, pBuffer[proc][pointI]);
 
-                        pLocations[index++] = pBuffer[proc][pointI];
+                        pLocations[index] = pBuffer[proc][pointI];
+                        pIndices[index] = index;
+
+                        index++;
                     }
                 }
 
@@ -4877,33 +5218,11 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
             labelListList pointBins(997, labelList(0));
 
-            label binSize = pointBins.size(), nD = 10;
+            // Prepare a boundBox for spatial hashing
+            boundBox box(minLoc, maxLoc);
 
-            // Define an inverse grid-cell size.
-            scalar xL = nD/(maxLoc.x() - minLoc.x());
-            scalar yL = nD/(maxLoc.y() - minLoc.y());
-            scalar zL = nD/(maxLoc.z() - minLoc.z());
-
-            // Loop through all points and bin them.
-            forAll(pLocations, pointI)
-            {
-                // Transform to bounding box minimum
-                point p = pLocations[pointI] - minLoc;
-
-                // Hash the position.
-                label i = label(p.x()*xL);
-                label j = label(p.y()*yL);
-                label k = label(p.z()*zL);
-
-                label pos = ((k*nD*nD)+(j*nD)+i) % binSize;
-
-                // Store the index.
-                sizeUpList
-                (
-                    pointI,
-                    pointBins[pos]
-                );
-            }
+            // Perform a spatial hash of all point locations
+            spatialHash(pLocations, pIndices, box, 10, pointBins);
 
             // Mapping between points and processors.
             Map<labelList> procMap;
@@ -6426,11 +6745,11 @@ void dynamicTopoFvMesh::remove2DSliver
         if (self() == 0)
         {
             // Step 1: Bisect the boundary quad face
-            bisectInterior_ = -1;
-            bisectQuadFace(fIndex);
+            // bisectInterior_ = -1;
+            // bisectQuadFace(fIndex);
 
             // Step 2: Collapse the newly created internal quad face
-            collapseQuadFace(bisectInterior_);
+            // collapseQuadFace(bisectInterior_);
         }
         else
         {

@@ -190,8 +190,12 @@ class dynamicTopoFvMesh
         label               nCollapses_;
         label               nSwaps_;
         label               maxModifications_;
-        label               bisectInterior_;
         labelHashSet        thresholdSlivers_;
+
+        // Specific to proximity-based refinement
+        label               spatialRes_;
+        boundBox            proxBoundBox_;
+        labelListList       proximityBins_;
 
         // Buffers for length-scale calculations
         labelListList       sendLblBuffer_;
@@ -1224,10 +1228,37 @@ class dynamicTopoFvMesh
         );
 
         // Output a list of cells as a VTK file
-        void writeVTK(const word& name, const labelList& cList);
+        void writeVTK
+        (
+            const word& name,
+            const labelList& cList,
+            const label primitiveType = 3
+        );
 
         // Check the state of connectivity local lists
         void checkConnectivity();
+
+        // Perform spatial hashing on a set of points
+        void spatialHash
+        (
+            const pointField& pointLocations,
+            const labelList& pointIndices,
+            const boundBox& box,
+            const label resolution,
+            labelListList& bins,
+            label removeIndex = false
+        );
+
+        // Prepare for proximity-based refinement, if necessary
+        void prepareProximityPatches();
+
+        // Test an edge for proximity with other non-neighbouring faces.
+        // Return the scalar distance to the nearest face.
+        scalar testProximity
+        (
+            const label eIndex,
+            label& proximityFace
+        );
 
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();

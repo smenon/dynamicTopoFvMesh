@@ -84,7 +84,7 @@ void rotatePoints
         q += p1;
 
         // Assign to the mesh
-        meshPoints[allPatchPoints[index]] = q + t;
+        meshPoints[allPatchPoints[index]] = q + t; //(t*Foam::sign(q.x()));
     }
 
     // Update the displacement BCs for mesh motion
