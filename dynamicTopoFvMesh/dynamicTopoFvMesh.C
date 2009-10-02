@@ -315,125 +315,12 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     reverseCellMap_.setSize(nCells_, -7);
 }
 
-// Constructor for threadHandler
-dynamicTopoFvMesh::threadHandler::threadHandler
-(
-    dynamicTopoFvMesh *mesh,
-    label nThreads
-)
-:
-    mesh_(mesh),
-    nThreads_(nThreads),
-    pthreadID_(-1),
-    master_(false),
-    predicate_(false)
-{}
-
-// Constructor for patchSubMesh
-dynamicTopoFvMesh::patchSubMesh::patchSubMesh()
-:
-    nPoints_(-1),
-    nEdges_(-1),
-    nInternalEdges_(-1),
-    nFaces_(-1),
-    nCells_(-1),
-    nSharedPoints_(-1)
-{}
-
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 dynamicTopoFvMesh::~dynamicTopoFvMesh()
 {}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-// Send signal to a waiting conditional
-inline void dynamicTopoFvMesh::threadHandler::sendSignal
-(
-    const signalType sType
-)
-{
-    lock(sType);
-
-    if (predicate(sType))
-    {
-        InfoIn("threadHandler::sendSignal()")
-            << "Predicate is already set."
-            << endl;
-    }
-    else
-    {
-        // Set predicate before signalling
-        setPredicate(sType);
-    }
-
-    if (sType == START)
-    {
-        mesh_->threader().signal
-        (
-            startConditional_
-        );
-    }
-    else
-    if (sType == STOP)
-    {
-        mesh_->threader().signal
-        (
-            stopConditional_
-        );
-    }
-    else
-    {
-        FatalErrorIn("threadHandler::sendSignal()")
-            << "Undefined enumerant."
-            << abort(FatalError);
-    }
-
-    unlock(sType);
-}
-
-// Wait for signal
-inline void dynamicTopoFvMesh::threadHandler::waitForSignal
-(
-    const signalType sType
-)
-{
-    if (sType == START)
-    {
-        mesh_->threader().waitForCondition
-        (
-            startConditional_,
-            startMutex_
-        );
-    }
-    else
-    if (sType == STOP)
-    {
-        mesh_->threader().waitForCondition
-        (
-            stopConditional_,
-            stopMutex_
-        );
-    }
-    else
-    {
-        FatalErrorIn("threadHandler::waitForSignal()")
-            << "Undefined enumerant."
-            << abort(FatalError);
-    }
-
-    if (!predicate(sType))
-    {
-        FatalErrorIn("threadHandler::waitForSignal()")
-            << "Spurious wake-up."
-            << abort(FatalError);
-    }
-
-    unsetPredicate(sType);
-
-    // Unlock the acquired mutex
-    unlock(sType);
-}
 
 // Return the mesh-mapper
 const mapPolyMesh& dynamicTopoFvMesh::meshMap()
@@ -2182,7 +2069,6 @@ bool dynamicTopoFvMesh::checkQuality
         else
         if (processorCoupledEdge(eIndex))
         {
-            // Check quality of patchSubMeshes.
 
         }
     }
@@ -2306,7 +2192,6 @@ bool dynamicTopoFvMesh::fillTables
         else
         if (processorCoupledEdge(eIndex))
         {
-            // Fill in tables from patchSubMeshes.
 
         }
     }
@@ -4346,6 +4231,40 @@ void dynamicTopoFvMesh::pRead
     );
 }
 
+// Parallel non-blocking send for fixed lists
+template <class Type, label Size>
+void dynamicTopoFvMesh::pWrite
+(
+    const label toID,
+    const FixedList<Type, Size>& data
+)
+{
+    OPstream::write
+    (
+        Pstream::blocking,
+        toID,
+        reinterpret_cast<const char*>(&data[0]),
+        Size*sizeof(Type)
+    );
+}
+
+// Parallel non-blocking receive for fixed lists
+template <class Type, label Size>
+void dynamicTopoFvMesh::pRead
+(
+    const label fromID,
+    FixedList<Type, Size>& data
+)
+{
+    IPstream::read
+    (
+        Pstream::blocking,
+        fromID,
+        reinterpret_cast<char*>(data.begin()),
+        Size*sizeof(Type)
+    );
+}
+
 // Parallel non-blocking send for lists
 template <class Type>
 void dynamicTopoFvMesh::pWrite
@@ -4777,14 +4696,17 @@ label dynamicTopoFvMesh::getTriBoundaryEdge
 void dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
     // Recast the argument
-    threadHandler *thread = reinterpret_cast<threadHandler*>(argument);
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler::START);
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
     }
 
-    dynamicTopoFvMesh& mesh = thread->mesh();
+    dynamicTopoFvMesh& mesh = thread->reference();
 
     // Figure out which thread this is...
     label tIndex = mesh.self();
@@ -4821,7 +4743,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler::STOP);
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
     }
 }
 
@@ -4986,9 +4908,20 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
 
     if (nThreads == 1)
     {
-        structPtr_.setSize(1);
-        structPtr_.set(0, new threadHandler(this, nThreads));
-        structPtr_[0].setMaster();
+        handlerPtr_.setSize(1);
+
+        handlerPtr_.set
+        (
+            0,
+            new threadHandler<dynamicTopoFvMesh>
+            (
+                (*this),
+                threader(),
+                nThreads
+            )
+        );
+
+        handlerPtr_[0].setMaster();
 
         // Size the stacks
         if (twoDMesh_)
@@ -5003,7 +4936,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
     else
     {
         // Index '0' is master, rest are slaves
-        structPtr_.setSize(nThreads + 1);
+        handlerPtr_.setSize(nThreads + 1);
 
         // Size the stacks
         if (twoDMesh_)
@@ -5017,17 +4950,26 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
 
         for (label i = 0; i <= nThreads; i++)
         {
-            structPtr_.set(i, new threadHandler(this, nThreads));
+            handlerPtr_.set
+            (
+                i,
+                new threadHandler<dynamicTopoFvMesh>
+                (
+                    (*this),
+                    threader(),
+                    nThreads
+                )
+            );
 
             if (i == 0)
             {
-                structPtr_[0].ID() = -1;
-                structPtr_[0].setMaster();
+                handlerPtr_[0].ID() = -1;
+                handlerPtr_[0].setMaster();
             }
             else
             {
-                structPtr_[i].ID() = threader_->getID(i-1);
-                structPtr_[i].setSlave();
+                handlerPtr_[i].ID() = threader_->getID(i-1);
+                handlerPtr_[i].setSlave();
             }
         }
     }
@@ -5577,7 +5519,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
 }
 
 // Initialize coupled patches for topology modifications.
-//  - Send and receive patchSubMeshes for processor patches
+//  - Send and receive sub meshes for processor patches
 void dynamicTopoFvMesh::initCoupledPatches()
 {
     // Identify coupled patches.
@@ -5587,7 +5529,7 @@ void dynamicTopoFvMesh::initCoupledPatches()
     }
 
     // Build and send patch sub-meshes (and clear existing ones).
-    buildPatchSubMeshes();
+    buildCoupledPatchMeshes();
 
     // Build maps for locally coupled patches.
     buildLocalCoupledMaps();
@@ -5621,13 +5563,13 @@ void dynamicTopoFvMesh::handleCoupledPatches()
             // Initialize the face stack
             // initCoupledFaceStack();
 
-            edgeBisectCollapse2D(&(structPtr_[0]));
+            edgeBisectCollapse2D(&(handlerPtr_[0]));
         }
 
         // Re-Initialize the face stack
         // initCoupledFaceStack();
 
-        swap2DEdges(&(structPtr_[0]));
+        swap2DEdges(&(handlerPtr_[0]));
     }
     else
     {
@@ -5636,13 +5578,13 @@ void dynamicTopoFvMesh::handleCoupledPatches()
             // Initialize the edge stack
             initCoupledEdgeStack();
 
-            edgeBisectCollapse3D(&(structPtr_[0]));
+            edgeBisectCollapse3D(&(handlerPtr_[0]));
         }
 
         // Re-Initialize the edge stack
         initCoupledEdgeStack();
 
-        swap3DEdges(&(structPtr_[0]));
+        swap3DEdges(&(handlerPtr_[0]));
     }
 
     // Build a list of entities that need to be avoided
@@ -5660,7 +5602,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
 }
 
 // Build patch sub-meshes for processor patches
-void dynamicTopoFvMesh::buildPatchSubMeshes()
+void dynamicTopoFvMesh::buildCoupledPatchMeshes()
 {
     if (!procIndices_.size())
     {
@@ -5672,7 +5614,7 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
         Info << "Building patch sub-meshes for processor patches...";
     }
 
-    // PatchSubMeshes need to be prepared in ascending
+    // Patch sub meshes need to be prepared in ascending
     // order of neighbouring processors.
     sort(procIndices_);
 
@@ -5683,7 +5625,7 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
     sendPatchMeshes_.setSize(Pstream::nProcs());
     recvPatchMeshes_.setSize(Pstream::nProcs());
 
-    // Lists of entities that need to be avoided while building patchSubMeshes.
+    // Lists of entities that need to be avoided while building sub meshes.
     labelHashSet cellsToAvoid;
 
     forAll(procIndices_, procI)
@@ -5692,12 +5634,12 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
 
         if (proc < Pstream::myProcNo())
         {
-            sendPatchMeshes_.set(proc, new patchSubMesh());
+            sendPatchMeshes_.set(proc, new coupledPatchInfo());
 
-            patchSubMesh& sendMesh = sendPatchMeshes_[proc];
+            coupledPatchInfo& sendMesh = sendPatchMeshes_[proc];
 
             // Build the subMesh.
-            buildPatchSubMesh
+            buildCoupledPatchMesh
             (
                 proc,
                 sendMesh,
@@ -5705,29 +5647,23 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
             );
 
             // Send my sub-mesh to the neighbour.
-            pWrite(proc, sendMesh.nPoints());
-            pWrite(proc, sendMesh.nEdges());
-            pWrite(proc, sendMesh.nFaces());
-            pWrite(proc, sendMesh.nCells());
-            pWrite(proc, sendMesh.nSharedPoints());
+            pWrite(proc, sendMesh.nEntities());
 
             if (debug > 3)
             {
                 Pout << "Sending:" << nl
-                     << "\t nP: " << sendMesh.nPoints() << nl
-                     << "\t nE: " << sendMesh.nEdges() << nl
-                     << "\t nF: " << sendMesh.nFaces() << nl
-                     << "\t nC: " << sendMesh.nCells() << nl
-                     << "\t sP: " << sendMesh.nSharedPoints()
+                     << "\t nEntities: " << sendMesh.nEntities()
                      << endl;
             }
 
+            // Send the pointBuffer
             pWrite(proc, sendMesh.pointBuffer());
-            pWrite(proc, sendMesh.edgeBuffer());
-            pWrite(proc, sendMesh.faceBuffer());
-            pWrite(proc, sendMesh.faceEdgeBuffer());
-            pWrite(proc, sendMesh.cellBuffer());
-            pWrite(proc, sendMesh.commonPointBuffer());
+
+            // Send connectivity (Common points, edges, faces, cells)
+            forAll(sendMesh.entityBuffer(), bufferI)
+            {
+                pWrite(proc, sendMesh.entityBuffer(bufferI));
+            }
 
             if (edgeModification_)
             {
@@ -5736,60 +5672,66 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
         }
         else
         {
-            recvPatchMeshes_.set(proc, new patchSubMesh());
+            recvPatchMeshes_.set(proc, new coupledPatchInfo());
 
-            patchSubMesh& recvMesh = recvPatchMeshes_[proc];
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[proc];
 
             // First read entity sizes.
-            pRead(proc, recvMesh.nPoints());
-            pRead(proc, recvMesh.nEdges());
-            pRead(proc, recvMesh.nFaces());
-            pRead(proc, recvMesh.nCells());
-            pRead(proc, recvMesh.nSharedPoints());
+            pRead(proc, recvMesh.nEntities());
 
             if (debug > 3)
             {
                 Pout << "Receiving:" << nl
-                     << "\t nP: " << recvMesh.nPoints() << nl
-                     << "\t nE: " << recvMesh.nEdges() << nl
-                     << "\t nF: " << recvMesh.nFaces() << nl
-                     << "\t nC: " << recvMesh.nCells() << nl
-                     << "\t sP: " << recvMesh.nSharedPoints()
-                     << endl;
+                        << "\t nEntities: " << recvMesh.nEntities()
+                        << endl;
             }
-
-            // Obtain references.
-            pointField& pBuffer = recvMesh.pointBuffer();
-            labelList& eBuffer  = recvMesh.edgeBuffer();
-            labelList& fBuffer  = recvMesh.faceBuffer();
-            labelList& feBuffer = recvMesh.faceEdgeBuffer();
-            labelList& cBuffer  = recvMesh.cellBuffer();
-            labelList& cpBuffer = recvMesh.commonPointBuffer();
 
             if (!twoDMesh_)
             {
                 // Size the buffers.
-                pBuffer.setSize(recvMesh.nPoints());
-                eBuffer.setSize(2*recvMesh.nEdges());
-                fBuffer.setSize(3*recvMesh.nFaces());
-                feBuffer.setSize(3*recvMesh.nFaces());
-                cBuffer.setSize(4*recvMesh.nCells());
-                cpBuffer.setSize(recvMesh.nSharedPoints());
+                recvMesh.entityBuffer(coupledPatchInfo::POINT).setSize
+                (
+                    recvMesh.nEntities(coupledPatchInfo::POINT)
+                );
 
-                // Receive buffers
-                pRead(proc, pBuffer);
-                pRead(proc, eBuffer);
-                pRead(proc, fBuffer);
-                pRead(proc, feBuffer);
-                pRead(proc, cBuffer);
-                pRead(proc, cpBuffer);
+                recvMesh.entityBuffer(coupledPatchInfo::EDGE).setSize
+                (
+                    2*recvMesh.nEntities(coupledPatchInfo::EDGE)
+                );
+
+                recvMesh.entityBuffer(coupledPatchInfo::FACE).setSize
+                (
+                    3*recvMesh.nEntities(coupledPatchInfo::FACE)
+                );
+
+                recvMesh.entityBuffer(coupledPatchInfo::CELL).setSize
+                (
+                    4*recvMesh.nEntities(coupledPatchInfo::CELL)
+                );
+
+                recvMesh.entityBuffer(coupledPatchInfo::FACE_EDGES).setSize
+                (
+                    3*recvMesh.nEntities(coupledPatchInfo::FACE)
+                );
+
+                // Receive the pointBuffer
+                pRead(proc, recvMesh.pointBuffer());
+
+                // Receive connectivity (Common points, edges, faces, cells)
+                forAll(recvMesh.entityBuffer(), bufferI)
+                {
+                    pRead(proc, recvMesh.entityBuffer(bufferI));
+                }
             }
 
             if (edgeModification_)
             {
-                scalarList& lB = recvMesh.lengthBuffer();
-                lB.setSize(recvMesh.nCells());
-                pRead(proc, lB);
+                recvMesh.lengthBuffer().setSize
+                (
+                    recvMesh.nEntities(coupledPatchInfo::CELL)
+                );
+
+                pRead(proc, recvMesh.lengthBuffer());
             }
         }
     }
@@ -5801,25 +5743,25 @@ void dynamicTopoFvMesh::buildPatchSubMeshes()
 }
 
 // Build patch sub-mesh for a specified processor
-void dynamicTopoFvMesh::buildPatchSubMesh
+void dynamicTopoFvMesh::buildCoupledPatchMesh
 (
     const label proc,
-    patchSubMesh& subMesh,
+    coupledPatchInfo& subMesh,
     labelHashSet& cellsToAvoid
 )
 {
-    label nP = 0, nE = 0, nF = 0, nC = 0, sP = 0;
+    label nP = 0, nE = 0, nF = 0, nC = 0, nIE = 0, sP = 0;
 
     // Obtain references
-    Map<label>& rPointMap = subMesh.reversePointMap();
-    Map<label>& rEdgeMap = subMesh.reverseEdgeMap();
-    Map<label>& rFaceMap = subMesh.reverseFaceMap();
-    Map<label>& rCellMap = subMesh.reverseCellMap();
+    Map<label>& rPointMap = subMesh.reverseEntityMap(0);
+    Map<label>& rEdgeMap  = subMesh.reverseEntityMap(1);
+    Map<label>& rFaceMap  = subMesh.reverseEntityMap(2);
+    Map<label>& rCellMap  = subMesh.reverseEntityMap(3);
 
-    Map<label>& pointMap = subMesh.pointMap();
-    Map<label>& edgeMap = subMesh.edgeMap();
-    Map<label>& faceMap = subMesh.faceMap();
-    Map<label>& cellMap = subMesh.cellMap();
+    Map<label>& pointMap = subMesh.entityMap(0);
+    Map<label>& edgeMap  = subMesh.entityMap(1);
+    Map<label>& faceMap  = subMesh.entityMap(2);
+    Map<label>& cellMap  = subMesh.entityMap(3);
 
     // Add all cells connected to points on the subMeshPoints list
     label procIndex = -1;
@@ -5937,7 +5879,8 @@ void dynamicTopoFvMesh::buildPatchSubMesh
     // Loop through subMeshPoints for the processor
     // and fill a mapped buffer for them as well.
     // This allows the neighbour to match-up edges easily.
-    labelList& cpBuffer = subMesh.commonPointBuffer();
+    labelList& cpBuffer = subMesh.entityBuffer(coupledPatchInfo::POINT);
+
     cpBuffer.setSize(subMeshPoints_[procIndex].size(), -1);
 
     forAll(subMeshPoints_[procIndex], pointI)
@@ -5952,15 +5895,17 @@ void dynamicTopoFvMesh::buildPatchSubMesh
     cpBuffer.setSize(sP);
 
     // Assign sizes to the mesh
-    subMesh.nPoints() = nP;
-    subMesh.nEdges() = nE;
-    subMesh.nFaces() = nF;
-    subMesh.nCells() = nC;
-    subMesh.nSharedPoints() = sP;
+    subMesh.nEntities(0) = nP;
+    subMesh.nEntities(1) = nE;
+    subMesh.nEntities(2) = nF;
+    subMesh.nEntities(3) = nC;
+    subMesh.nEntities(4) = nIE;
+    subMesh.nEntities(5) = sP;
 
     // Size up buffers and fill them
     pointField& pBuffer = subMesh.pointBuffer();
-    pBuffer.setSize(subMesh.nPoints(), vector::zero);
+
+    pBuffer.setSize(nP, vector::zero);
 
     forAllIter(Map<label>::iterator, pointMap, pIter)
     {
@@ -5968,8 +5913,9 @@ void dynamicTopoFvMesh::buildPatchSubMesh
     }
 
     // Edge buffer size: 2 points for every edge
-    labelList& eBuffer = subMesh.edgeBuffer();
-    eBuffer.setSize(2*subMesh.nEdges(), -1);
+    labelList& eBuffer = subMesh.entityBuffer(coupledPatchInfo::EDGE);
+
+    eBuffer.setSize(2 * nE, -1);
 
     label index = 0;
 
@@ -5981,15 +5927,15 @@ void dynamicTopoFvMesh::buildPatchSubMesh
         eBuffer[index++] = rPointMap[edgeToCheck[1]];
     }
 
-    labelList& fBuffer  = subMesh.faceBuffer();
-    labelList& feBuffer = subMesh.faceEdgeBuffer();
-    labelList& cBuffer  = subMesh.cellBuffer();
+    labelList& fBuffer  = subMesh.entityBuffer(coupledPatchInfo::FACE);
+    labelList& cBuffer  = subMesh.entityBuffer(coupledPatchInfo::CELL);
+    labelList& feBuffer = subMesh.entityBuffer(coupledPatchInfo::FACE_EDGES);
 
     if (!twoDMesh_)
     {
         // Face buffer size: 3 points/edges for every face in 3D
-        fBuffer.setSize(3*subMesh.nFaces(), -1);
-        feBuffer.setSize(3*subMesh.nFaces(), -1);
+        fBuffer.setSize(3 * nF, -1);
+        feBuffer.setSize(3 * nF, -1);
 
         index = 0;
 
@@ -6020,7 +5966,7 @@ void dynamicTopoFvMesh::buildPatchSubMesh
         }
 
         // Cell buffer size: 4 faces for every cell in 3D
-        cBuffer.setSize(4*subMesh.nCells(), -1);
+        cBuffer.setSize(4 * nC, -1);
 
         index = 0;
 
@@ -6039,7 +5985,7 @@ void dynamicTopoFvMesh::buildPatchSubMesh
     {
         scalarList& lBuffer = subMesh.lengthBuffer();
 
-        lBuffer.setSize(subMesh.nCells(), 0.0);
+        lBuffer.setSize(nC, 0.0);
 
         forAllIter(Map<label>::iterator, cellMap, cIter)
         {
@@ -6050,7 +5996,7 @@ void dynamicTopoFvMesh::buildPatchSubMesh
     // For debugging purposes...
     if (debug > 3)
     {
-        Pout << "Writing out patchSubMesh for processor: "
+        Pout << "Writing out coupledPatchInfo for processor: "
              << proc << endl;
 
         writeVTK
@@ -6238,16 +6184,16 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
 
         if (proc > Pstream::myProcNo())
         {
-            patchSubMesh& recvMesh = recvPatchMeshes_[proc];
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[proc];
 
             pointField smPoints(recvMesh.pointBuffer());
-            edgeList smEdges(recvMesh.nEdges());
+            edgeList smEdges(recvMesh.nEntities(coupledPatchInfo::EDGE));
             faceList smFaces;
             cellList smCells;
             labelListList smFaceEdges;
 
             // Set connectivity from buffers.
-            labelList& eBuffer = recvMesh.edgeBuffer();
+            labelList& eBuffer = recvMesh.entityBuffer(coupledPatchInfo::EDGE);
 
             forAll(smEdges, edgeI)
             {
@@ -6258,13 +6204,34 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
             if (!twoDMesh_)
             {
                 // Set sizes.
-                smFaces.setSize(recvMesh.nFaces(), face(3));
-                smCells.setSize(recvMesh.nCells(), cell(4));
-                smFaceEdges.setSize(recvMesh.nFaces(), labelList(3, -1));
+                smFaces.setSize
+                (
+                    recvMesh.nEntities(coupledPatchInfo::FACE),
+                    face(3)
+                );
+
+                smCells.setSize
+                (
+                    recvMesh.nEntities(coupledPatchInfo::CELL),
+                    cell(4)
+                );
+
+                smFaceEdges.setSize
+                (
+                    recvMesh.nEntities(coupledPatchInfo::FACE),
+                    labelList(3, -1)
+                );
 
                 // Copy connectivity from buffers.
-                labelList& fBuffer  = recvMesh.faceBuffer();
-                labelList& feBuffer = recvMesh.faceEdgeBuffer();
+                labelList& fBuffer =
+                (
+                    recvMesh.entityBuffer(coupledPatchInfo::FACE)
+                );
+
+                labelList& feBuffer =
+                (
+                    recvMesh.entityBuffer(coupledPatchInfo::FACE_EDGES)
+                );
 
                 forAll(smFaces, faceI)
                 {
@@ -6277,7 +6244,10 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
                     smFaceEdges[faceI][2] = feBuffer[(3*faceI) + 2];
                 }
 
-                labelList& cBuffer = recvMesh.cellBuffer();
+                labelList& cBuffer =
+                (
+                    recvMesh.entityBuffer(coupledPatchInfo::CELL)
+                );
 
                 forAll(smCells, cellI)
                 {
@@ -6302,7 +6272,7 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
                         time()
                     ),
                     smPoints,
-                    recvMesh.nInternalEdges(),
+                    recvMesh.nEntities(4),
                     smEdges,
                     smFaces,
                     smFaceEdges,
@@ -6338,14 +6308,17 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     // Collapse when boundary edge-length < ratioMin_*lengthScale
 
     // Recast the argument
-    threadHandler *thread = reinterpret_cast<threadHandler*>(argument);
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler::START);
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
     }
 
-    dynamicTopoFvMesh& mesh = thread->mesh();
+    dynamicTopoFvMesh& mesh = thread->reference();
 
     // Figure out which thread this is...
     label tIndex = mesh.self();
@@ -6398,7 +6371,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler::STOP);
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
     }
 }
 
@@ -6409,14 +6382,17 @@ void dynamicTopoFvMesh::swap3DEdges
 )
 {
     // Recast the argument
-    threadHandler *thread = reinterpret_cast<threadHandler*>(argument);
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler::START);
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
     }
 
-    dynamicTopoFvMesh& mesh = thread->mesh();
+    dynamicTopoFvMesh& mesh = thread->reference();
 
     // Figure out which thread this is...
     label tIndex = mesh.self();
@@ -6466,7 +6442,7 @@ void dynamicTopoFvMesh::swap3DEdges
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler::STOP);
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
     }
 }
 
@@ -6481,14 +6457,17 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     // Collapse when edge-length < ratioMin_*lengthScale
 
     // Recast the argument
-    threadHandler *thread = reinterpret_cast<threadHandler*>(argument);
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler::START);
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
     }
 
-    dynamicTopoFvMesh& mesh = thread->mesh();
+    dynamicTopoFvMesh& mesh = thread->reference();
 
     // Figure out which thread this is...
     label tIndex = mesh.self();
@@ -6529,7 +6508,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler::STOP);
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
     }
 }
 
@@ -6760,8 +6739,7 @@ void dynamicTopoFvMesh::remove2DSliver
 }
 
 // Indentify the sliver type in 3D
-const dynamicTopoFvMesh::changeMap
-dynamicTopoFvMesh::identifySliverType
+const changeMap dynamicTopoFvMesh::identifySliverType
 (
     const label cIndex
 )
@@ -7131,7 +7109,10 @@ void dynamicTopoFvMesh::removeSlivers()
                 {
                     Map<label>& rCellMap =
                     (
-                        sendPatchMeshes_[proc].reverseCellMap()
+                        sendPatchMeshes_[proc].reverseEntityMap
+                        (
+                            coupledPatchInfo::CELL
+                        )
                     );
 
                     if (rCellMap.found(iter.key()))
@@ -7470,12 +7451,15 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
                 threader_->addToWorkQueue
                            (
                                &edgeBisectCollapse2D,
-                               reinterpret_cast<void *>(&(structPtr_[i]))
+                               reinterpret_cast<void *>(&(handlerPtr_[i]))
                            );
 
                 // Wait for a signal from this thread
                 // before moving on.
-                structPtr_[i].waitForSignal(threadHandler::START);
+                handlerPtr_[i].waitForSignal
+                (
+                    threadHandler<dynamicTopoFvMesh>::START
+                );
             }
 
             // Synchronize threads
@@ -7483,7 +7467,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
         }
 
         // Set the master thread to implement modifications
-        edgeBisectCollapse2D(&(structPtr_[0]));
+        edgeBisectCollapse2D(&(handlerPtr_[0]));
 
         if (debug)
         {
@@ -7505,12 +7489,15 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
             threader_->addToWorkQueue
                        (
                            &swap2DEdges,
-                           reinterpret_cast<void *>(&(structPtr_[i]))
+                           reinterpret_cast<void *>(&(handlerPtr_[i]))
                        );
 
             // Wait for a signal from this thread
             // before moving on.
-            structPtr_[i].waitForSignal(threadHandler::START);
+            handlerPtr_[i].waitForSignal
+            (
+                threadHandler<dynamicTopoFvMesh>::START
+            );
         }
 
         // Synchronize threads
@@ -7518,7 +7505,7 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
     }
 
     // Set the master thread to implement modifications
-    swap2DEdges(reinterpret_cast<void *>(&(structPtr_[0])));
+    swap2DEdges(reinterpret_cast<void *>(&(handlerPtr_[0])));
 
     if (debug)
     {
@@ -7554,12 +7541,15 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
                 threader_->addToWorkQueue
                            (
                                &edgeBisectCollapse3D,
-                               reinterpret_cast<void *>(&(structPtr_[i]))
+                               reinterpret_cast<void *>(&(handlerPtr_[i]))
                            );
 
                 // Wait for a signal from this thread
                 // before moving on.
-                structPtr_[i].waitForSignal(threadHandler::START);
+                handlerPtr_[i].waitForSignal
+                (
+                    threadHandler<dynamicTopoFvMesh>::START
+                );
             }
 
             // Synchronize threads
@@ -7567,7 +7557,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
         }
 
         // Set the master thread to implement modifications
-        edgeBisectCollapse3D(&(structPtr_[0]));
+        edgeBisectCollapse3D(&(handlerPtr_[0]));
 
         if (debug)
         {
@@ -7589,12 +7579,15 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
             threader_->addToWorkQueue
                        (
                            &swap3DEdges,
-                           reinterpret_cast<void *>(&(structPtr_[i]))
+                           reinterpret_cast<void *>(&(handlerPtr_[i]))
                        );
 
             // Wait for a signal from this thread
             // before moving on.
-            structPtr_[i].waitForSignal(threadHandler::START);
+            handlerPtr_[i].waitForSignal
+            (
+                threadHandler<dynamicTopoFvMesh>::START
+            );
         }
 
         // Synchronize threads
@@ -7602,7 +7595,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     }
 
     // Set the master thread to implement modifications
-    swap3DEdges(reinterpret_cast<void *>(&(structPtr_[0])));
+    swap3DEdges(reinterpret_cast<void *>(&(handlerPtr_[0])));
 
     if (debug)
     {
@@ -7615,11 +7608,11 @@ void dynamicTopoFvMesh::lockSlaveThreads()
 {
     for (label i = 1; i <= threader_->getNumThreads(); i++)
     {
-        structPtr_[i].lock(threadHandler::START);
-        structPtr_[i].lock(threadHandler::STOP);
+        handlerPtr_[i].lock(threadHandler<dynamicTopoFvMesh>::START);
+        handlerPtr_[i].lock(threadHandler<dynamicTopoFvMesh>::STOP);
 
-        structPtr_[i].unsetPredicate(threadHandler::START);
-        structPtr_[i].unsetPredicate(threadHandler::STOP);
+        handlerPtr_[i].unsetPredicate(threadHandler<dynamicTopoFvMesh>::START);
+        handlerPtr_[i].unsetPredicate(threadHandler<dynamicTopoFvMesh>::STOP);
     }
 }
 
@@ -7630,7 +7623,7 @@ void dynamicTopoFvMesh::synchronizeThreads()
     {
         // Wait for a signal from this thread
         // before moving on.
-        structPtr_[i].waitForSignal(threadHandler::STOP);
+        handlerPtr_[i].waitForSignal(threadHandler<dynamicTopoFvMesh>::STOP);
     }
 }
 

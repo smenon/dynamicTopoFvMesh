@@ -868,8 +868,7 @@ void dynamicTopoFvMesh::collapseQuadFace
 //     2: Collapsed to second node.
 // - overRideCase is used to force a certain collapse configuration.
 // - checkOnly performs a feasibility check and returns without modifications.
-const dynamicTopoFvMesh::changeMap
-dynamicTopoFvMesh::collapseEdge
+const changeMap dynamicTopoFvMesh::collapseEdge
 (
     const label eIndex,
     label overRideCase,

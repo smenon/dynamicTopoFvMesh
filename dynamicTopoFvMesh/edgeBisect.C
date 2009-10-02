@@ -805,8 +805,7 @@ void dynamicTopoFvMesh::bisectQuadFace
 //    -1: Bisection failed since max number of topo-changes was reached.
 //    -2: Bisection failed since resulting quality would be really bad.
 // - AddedPoint is the index of the newly added point.
-const dynamicTopoFvMesh::changeMap
-dynamicTopoFvMesh::bisectEdge
+const changeMap dynamicTopoFvMesh::bisectEdge
 (
     const label eIndex
 )
@@ -1771,8 +1770,7 @@ dynamicTopoFvMesh::bisectEdge
 // - Returns a changeMap with a type specifying:
 //    -1: Bisection failed since max number of topo-changes was reached.
 // - AddedPoint is the index of the newly added point.
-const dynamicTopoFvMesh::changeMap
-dynamicTopoFvMesh::trisectFace
+const changeMap dynamicTopoFvMesh::trisectFace
 (
     const label fIndex
 )

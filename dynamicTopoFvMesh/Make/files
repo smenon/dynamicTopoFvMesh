@@ -6,7 +6,10 @@ ePatches = eMesh/ePatches
 $(ePatches)/ePatch/ePatch.C
 $(ePatches)/ePatch/newEPatch.C
 
+changeMap.C
+
 dynamicTopoFvMesh.C
+coupledPatchInfo.C
 dynamicTopoFvMeshReOrder.C
 edgeSwap.C
 edgeCollapse.C

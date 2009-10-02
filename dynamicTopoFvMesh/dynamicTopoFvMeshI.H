@@ -33,121 +33,6 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-// Push items on to the stack
-inline void dynamicTopoFvMesh::stack::push(const label index)
-{
-    stackMutex_.lock();
-
-    if (findIndex(index) == -1)
-    {
-        stack_.append(index);
-    }
-
-    stackMutex_.unlock();
-}
-
-//- Insert item onto stack (no checking)
-inline void dynamicTopoFvMesh::stack::insert(const label index)
-{
-    stack_.append(index);
-}
-
-// Pop an item off the stack
-inline label dynamicTopoFvMesh::stack::pop()
-{
-    stackMutex_.lock();
-
-    const label index = stack_.remove();
-
-    stackMutex_.unlock();
-
-    return index;
-}
-
-// Remove a specific item off the stack
-inline void dynamicTopoFvMesh::stack::remove(const label index)
-{
-    stackMutex_.lock();
-
-    label loc = findIndex(index);
-
-    if (loc != -1)
-    {
-        // Create a new list
-        labelList newList(stack_.size() - 1);
-
-        label n = 0;
-
-        // Copy items upto location
-        for(label i = 0; i < loc; i++)
-        {
-            newList[n++] = stack_[i];
-        }
-
-        // Copy items from location
-        for(label i = (loc + 1); i < stack_.size(); i++)
-        {
-            newList[n++] = stack_[i];
-        }
-
-        // Overwrite
-        stack_ = newList;
-    }
-
-    stackMutex_.unlock();
-}
-
-// Return if the stack is empty or not
-inline bool dynamicTopoFvMesh::stack::empty()
-{
-    return (stack_.size() == 0);
-}
-
-//- Return the size of the stack
-inline label dynamicTopoFvMesh::stack::size()
-{
-    return stack_.size();
-}
-
-//- Clear out the stack
-inline void dynamicTopoFvMesh::stack::clear()
-{
-    stackMutex_.lock();
-
-    stack_.clear();
-
-    stackMutex_.unlock();
-}
-
-//- Print out the stack
-inline void dynamicTopoFvMesh::stack::print()
-{
-    Info << stack_ << endl;
-}
-
-//- Return if a certain index was found in the stack
-inline label dynamicTopoFvMesh::stack::findIndex(const label index)
-{
-    forAll(stack_, itemI)
-    {
-        if (stack_[itemI] == index)
-        {
-            return itemI;
-        }
-    }
-
-    return -1;
-}
-
-//- Access the stack as a list
-inline label dynamicTopoFvMesh::stack::operator[]
-(
-    const label index
-)
-{
-    return stack_[index];
-}
-
 // Obtain the tangent-to-edge vector
 inline vector dynamicTopoFvMesh::tangentToEdge
 (
@@ -657,7 +542,7 @@ inline scalar dynamicTopoFvMesh::edgeLength
 }
 
 // Return the face-stack
-inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::faceStack
+inline stack& dynamicTopoFvMesh::faceStack
 (
     const label threadID
 )
@@ -666,7 +551,7 @@ inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::faceStack
 }
 
 // Return the edge-stack for a particular thread
-inline dynamicTopoFvMesh::stack& dynamicTopoFvMesh::edgeStack
+inline stack& dynamicTopoFvMesh::edgeStack
 (
     const label threadID
 )
@@ -682,7 +567,7 @@ inline label dynamicTopoFvMesh::self()
     {
         for (label i = 1; i <= threader_->getNumThreads(); i++)
         {
-            if (pthread_equal(structPtr_[i].ID(), pthread_self()))
+            if (pthread_equal(handlerPtr_[i].ID(), pthread_self()))
             {
                 return i;
             }
