@@ -187,6 +187,12 @@ protected:
     // Private member function to perform Laplacian surface smoothing
     void smoothSurfaces();
 
+    scalar tetVolume(const label cIndex);
+
+    // Private member function to check for invalid
+    // cells and correct if necessary.
+    void correctInvalidCells();
+
     // Prepare point-normals with updated point positions
     void preparePointNormals();
 

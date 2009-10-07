@@ -1199,7 +1199,7 @@ void Foam::mesquiteSmoother::applyBCs
     if (nFixedBC == 0)
     {
         Random randomizer(1);
-        label nFix = (field.size()*10)/100;
+        label nFix = (field.size()*5)/100;
 
         for(label i = 0; i < nFix; i++)
         {
@@ -1378,6 +1378,169 @@ void Foam::mesquiteSmoother::smoothSurfaces()
     }
 }
 
+// Find the volume of a tetrahedron.
+// The function assumes points (a-b-c)
+// are in counter-clockwise fashion when viewed from d.
+inline Foam::scalar Foam::mesquiteSmoother::tetVolume
+(
+    const label cIndex
+)
+{
+    const cell& cellToCheck = mesh().cells()[cIndex];
+
+    const face& currFace = mesh().faces()[cellToCheck[0]];
+    const face& nextFace = mesh().faces()[cellToCheck[1]];
+
+    // Get the fourth point and compute cell volume
+    forAll(nextFace, pointI)
+    {
+        if
+        (
+            nextFace[pointI] != currFace[0] &&
+            nextFace[pointI] != currFace[1] &&
+            nextFace[pointI] != currFace[2]
+        )
+        {
+            // Compute cell-volume
+            if (mesh().faceOwner()[cellToCheck[0]] == cIndex)
+            {
+                const point& a = refPoints_[currFace[2]];
+                const point& b = refPoints_[currFace[1]];
+                const point& c = refPoints_[currFace[0]];
+                const point& d = refPoints_[nextFace[pointI]];
+
+                return ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
+            }
+            else
+            {
+                const point& a = refPoints_[currFace[0]];
+                const point& b = refPoints_[currFace[1]];
+                const point& c = refPoints_[currFace[2]];
+                const point& d = refPoints_[nextFace[pointI]];
+
+                return ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
+            }
+        }
+    }
+
+    // Something's wrong with connectivity.
+    FatalErrorIn("mesquiteSmoother::tetVolume()")
+        << "Cell: " << cIndex
+        << " has inconsistent connectivity."
+        << abort(FatalError);
+
+    return 0.0;
+}
+
+// Private member function to check for invalid
+// cells and correct if necessary.
+void Foam::mesquiteSmoother::correctInvalidCells()
+{
+    // Loop through pointCells for all boundary points
+    // and compute cell volume.
+    const labelListList& pointCells = mesh().pointCells();
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    DynamicList<label> invCellPoints(50);
+
+    forAll(pIDs_, patchI)
+    {
+        const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+        forAll(meshPts, pointI)
+        {
+            const labelList& pCells = pointCells[meshPts[pointI]];
+
+            forAll(pCells, cellI)
+            {
+                if (tetVolume(pCells[cellI]) < 0.0)
+                {
+                    // Add this point to the list
+                    invCellPoints.append(meshPts[pointI]);
+
+                    break;
+                }
+            }
+        }
+    }
+
+    if (invCellPoints.size() == 0)
+    {
+        return;
+    }
+
+    InfoIn("mesquiteSmoother::correctInvalidCells()")
+        << "Found invalid cells connected to "
+        << invCellPoints.size() << " points. Attempting to correct...";
+
+    // Looks like some inverted cells are present.
+    // Perform a binary search for valid positions.
+
+    // Keep new points for reference.
+    pointField newPoints(invCellPoints.size(), vector::zero);
+
+    forAll(invCellPoints, pointI)
+    {
+        newPoints[pointI] = refPoints_[invCellPoints[pointI]];
+    }
+
+    bool valid = false;
+    scalar lambda = 1.0;
+    label nAttempts = 0;
+
+    while (!valid)
+    {
+        // Assume as valid to begin with.
+        valid = true;
+
+        // Bisect the relaxation factor.
+        lambda *= 0.5;
+
+        // Update refPoints for the test points
+        forAll(invCellPoints, pointI)
+        {
+            refPoints_[invCellPoints[pointI]] =
+            (
+                (lambda * newPoints[pointI])
+              + ((1.0 - lambda) * mesh().points()[invCellPoints[pointI]])
+            );
+        }
+
+        // Now re-test with updated point positions
+        forAll(invCellPoints, pointI)
+        {
+            const labelList& pCells = pointCells[invCellPoints[pointI]];
+
+            forAll(pCells, cellI)
+            {
+                if (tetVolume(pCells[cellI]) < 0.0)
+                {
+                    valid = false;
+
+                    break;
+                }
+            }
+
+            // Stop further testing if invalid.
+            if (!valid)
+            {
+                break;
+            }
+        }
+
+        nAttempts++;
+
+        if (nAttempts > 10)
+        {
+            FatalErrorIn("mesquiteSmoother::correctInvalidCells()")
+                    << " Failed to obtain an untangled mesh."
+                    << abort(FatalError);
+        }
+    }
+
+    Info << "Success." << endl;
+}
+
 // Prepare point-normals with updated point positions
 void Foam::mesquiteSmoother::preparePointNormals()
 {
@@ -1441,6 +1604,9 @@ void Foam::mesquiteSmoother::solve()
     )
     {
         smoothSurfaces();
+
+        // Check for invalid cells and correct if necessary.
+        correctInvalidCells();
     }
 
     // Copy most recent point positions

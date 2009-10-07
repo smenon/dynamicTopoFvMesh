@@ -2522,7 +2522,7 @@ label dynamicTopoFvMesh::identify32Swap
             << "Edge Points: "
             << points_[edgeToCheck[0]] << ","
             << points_[edgeToCheck[1]] << nl
-            << abort(FatalError);
+            << endl;
     }
 
     return -1;
@@ -6691,7 +6691,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
                 << "EdgePoints: " << hullVertices << nl
                 << "Minimum Quality: " << minQuality << nl
                 << "Mid point: " << midPoint
-                << abort(FatalError);
+                << endl;
         }
     }
 

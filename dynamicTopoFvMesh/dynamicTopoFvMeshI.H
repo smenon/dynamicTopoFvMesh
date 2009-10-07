@@ -1237,15 +1237,17 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
     // Ensure that the mesh is valid
     if (minQuality < 0.0)
     {
-        if (debug > 3)
+        // if (debug > 3)
         {
-            // Write out cells for post processing.
-            labelHashSet iCells;
+            // Write out faces and cells for post processing.
+            labelHashSet iFaces, iCells, bFaces;
 
             labelList& eFaces = edgeFaces_[eIndex];
 
             forAll(eFaces, faceI)
             {
+                iFaces.insert(eFaces[faceI]);
+
                 if (!iCells.found(owner_[eFaces[faceI]]))
                 {
                     iCells.insert(owner_[eFaces[faceI]]);
@@ -1257,7 +1259,31 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
                 }
             }
 
-            writeVTK(Foam::name(eIndex) + "_inverted", iCells.toc());
+            writeVTK(Foam::name(eIndex) + "_iCells", iCells.toc());
+            writeVTK(Foam::name(eIndex) + "_iFaces", iFaces.toc(), 2);
+
+            // Write out the boundary patches (for post-processing reference)
+            for
+            (
+                label faceI = nOldInternalFaces_;
+                faceI < faces_.size();
+                faceI++
+            )
+            {
+                if (faces_[faceI].empty())
+                {
+                    continue;
+                }
+
+                label pIndex = whichPatch(faceI);
+
+                if (pIndex != -1)
+                {
+                    bFaces.insert(faceI);
+                }
+            }
+
+            writeVTK(Foam::name(eIndex) + "_bFaces", bFaces.toc(), 2);
         }
 
         FatalErrorIn("dynamicTopoFvMesh::computeMinQuality()")
