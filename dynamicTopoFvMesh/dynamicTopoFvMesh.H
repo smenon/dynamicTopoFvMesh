@@ -81,6 +81,9 @@ class dynamicTopoFvMesh
         //- Topology change flag
         bool topoChangeFlag_;
 
+        //- Is this a subMesh?
+        bool isSubMesh_;
+
         //- Dynamic mesh dictionary
         IOdictionary dict_;
 
@@ -269,9 +272,9 @@ class dynamicTopoFvMesh
                 EDGE = 1,
                 FACE = 2,
                 CELL = 3,
-                INTERNAL_EDGES = 4,
-                SHARED_POINTS = 5,
-                FACE_EDGES = 4
+                INTERNAL_EDGE = 4,
+                FACE_EDGE = 4,
+                SHARED_POINT = 5
             };
 
             // Constructor
@@ -733,7 +736,17 @@ class dynamicTopoFvMesh
         // Utility method to build edgePoints for an edge [3D]
         void buildEdgePoints
         (
-            const label eIndex
+            const label eIndex,
+            const label checkIndex = 0
+        );
+
+        // Utility to invert a connectivity list (pointEdges from edges, etc)
+        template<class InList, class OutList>
+        void invertConnectivity
+        (
+            const label nEntities,
+            const resizableList<InList>& inEntities,
+            resizableList<OutList>& outEntities
         );
 
         // Utility to check whether points of an edge lie on a boundary
@@ -991,6 +1004,9 @@ class dynamicTopoFvMesh
 
         // Does the mesh perform edge-modification?
         bool edgeModification();
+
+        // Build the global shared-point list
+        void buildGlobalPoints();
 
         // Identify coupled patches.
         bool identifyCoupledPatches();

@@ -405,7 +405,8 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                          << " :: " << edges_[eIndex]
                          << " was face:\n"
                          << '\t' << proximityFace
-                         << " :: " << polyMesh::faces()[proximityFace]
+                         << " :: " << polyMesh::faces()[proximityFace] << nl
+                         << " with distance: " << distance
                          << endl;
                 }
             }
