@@ -36,17 +36,30 @@ template<class T>
 threadHandler<T>::threadHandler
 (
     T& tRef,
-    const multiThreader& threader,
-    const label nThreads
+    const multiThreader& threader
 )
 :
     tRef_(tRef),
     threader_(threader),
-    nThreads_(nThreads),
+    argList_(0),
+    nThreads_(threader.getNumThreads()),
     pthreadID_(-1),
     master_(false),
     predicate_(false)
 {}
+
+// * * * * * * * * * * * * * * * *  Destructors  * * * * * * * * * * * * * * //
+
+template<class T>
+threadHandler<T>::~threadHandler()
+{
+    // Null the argument list pointer copies
+    // to avoid multiple deallocations.
+    forAll(argList_, indexI)
+    {
+        argList_[indexI] = NULL;
+    }
+}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -55,6 +68,42 @@ template<class T>
 inline T& threadHandler<T>::reference()
 {
     return tRef_;
+}
+
+// Set a size for the argument list
+template<class T>
+inline void threadHandler<T>::setSize
+(
+    const label size
+)
+{
+    argList_.setSize(size, NULL);
+}
+
+// Set a argument pointer for a particular index
+template<class T>
+inline void threadHandler<T>::set
+(
+    const label index,
+    void* argPtr
+)
+{
+    if (!argList_.size())
+    {
+        FatalErrorIn("threadHandler<T>::set")
+            << "Attempt to access element from zero sized list"
+            << abort(FatalError);
+    }
+    else
+    if (index < 0 || index >= argList_.size())
+    {
+        FatalErrorIn("threadHandler<T>::set")
+            << "index " << index << " out of range 0 ... "
+            << argList_.size()-1
+            << abort(FatalError);
+    }
+
+    argList_[index] = argPtr;
 }
 
 // Return a reference to the multiThreader
@@ -260,6 +309,38 @@ template<class T>
 inline pthread_t& threadHandler<T>::ID()
 {
     return pthreadID_;
+}
+
+// Return an argument pointer at a particular index
+template<class T>
+inline void * threadHandler<T>::operator()
+(
+    const label index
+)
+{
+    if (!argList_.size())
+    {
+        FatalErrorIn("threadHandler<T>::operator()")
+            << "Attempt to access element from zero sized list"
+            << abort(FatalError);
+    }
+    else
+    if (index < 0 || index >= argList_.size())
+    {
+        FatalErrorIn("threadHandler<T>::operator()")
+            << "index " << index << " out of range 0 ... "
+            << argList_.size()-1
+            << abort(FatalError);
+    }
+    else
+    if (!argList_[index])
+    {
+        FatalErrorIn("threadHandler<T>::operator()")
+            << "Hanging pointer. This is not allowed."
+            << abort(FatalError);
+    }
+
+    return argList_[index];
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

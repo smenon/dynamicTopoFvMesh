@@ -465,7 +465,7 @@ void Foam::multiThreader::signal(Conditional& condition) const
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 //- Return the number of threads
-int Foam::multiThreader::getNumThreads()
+int Foam::multiThreader::getNumThreads() const
 {
     return numThreads_;
 }

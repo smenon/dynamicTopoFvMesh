@@ -7,7 +7,8 @@ void rotatePoints
     doubleScalar theta,
     vector p1,
     vector p2,
-    vector t
+    vector t,
+    bool solveForMotion
 )
 {
     label nP = 0;
@@ -87,6 +88,15 @@ void rotatePoints
         meshPoints[allPatchPoints[index]] = q + t; //(t*Foam::sign(q.x()));
     }
 
-    // Update the displacement BCs for mesh motion
-    setMotionBC(mesh, meshPoints);
+    if (solveForMotion)
+    {
+        // Update the displacement BCs for mesh motion
+        setMotionBC(mesh, meshPoints);
+    }
+    else
+    {
+        // Only move boundary points,
+        // but don't set boundary conditions
+        mesh.movePoints(meshPoints);
+    }
 }

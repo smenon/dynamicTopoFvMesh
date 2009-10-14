@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
         p1 += t; p2 += t;
 
         // Update boundary points and solve for mesh-motion
-        rotatePoints(mesh, patches, angle, p1, p2, t);
+        rotatePoints(mesh, patches, angle, p1, p2, t, solveForMotion);
 
         // Update mesh motion
         if (solveForMotion)

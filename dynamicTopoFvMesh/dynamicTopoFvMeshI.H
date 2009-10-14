@@ -238,6 +238,16 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     return 1;
 }
 
+// Return a reference to the entity mutexes.
+// The index 'entity' ranges from 0 to 3 for point/edge/face/cell.
+inline Mutex& dynamicTopoFvMesh::entityMutex
+(
+    const label entity
+)
+{
+    return entityMutex_[entity];
+}
+
 // Return the appropriate length-scale for boundary face
 inline scalar dynamicTopoFvMesh::boundaryLengthScale
 (

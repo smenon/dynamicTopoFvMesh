@@ -37,15 +37,21 @@ namespace Foam
 // Reorder points after a topology change
 void dynamicTopoFvMesh::reOrderPoints
 (
-    pointField& points
+    pointField& points,
+    bool threaded
 )
 {
     // *** Point renumbering *** //
     // If points were deleted during topology change, the numerical order ceases
     // to be continuous. Loop through all points and renumber sequentially.
 
+    if (debug)
+    {
+        Info << "ReOrdering points...";
+    }
+
     // Allocate for the mapping information
-    pointMap_.setSize(this->nPoints_, -1);
+    pointMap_.setSize(nPoints_, -1);
 
     label pointInOrder = 0;
 
@@ -60,7 +66,7 @@ void dynamicTopoFvMesh::reOrderPoints
         }
 
         // Update the point info
-        points[pointInOrder] = this->points_[pointI];
+        points[pointInOrder] = points_[pointI];
 
         // Update maps
         pointMap_[pointInOrder]  = pointI;
@@ -88,6 +94,12 @@ void dynamicTopoFvMesh::reOrderPoints
         pointInOrder++;
     }
 
+    // Now that we're done preparing the point maps, unlock the point mutex
+    if (threaded)
+    {
+        entityMutex_[0].unlock();
+    }
+
     // Final check to ensure everything went okay
     if (pointInOrder != nPoints_)
     {
@@ -104,6 +116,44 @@ void dynamicTopoFvMesh::reOrderPoints
 
     // Clear the deleted entity map
     deletedPoints_.clear();
+
+    if (debug)
+    {
+        Info << "Done." << endl;
+    }
+}
+
+// Static equivalent for multi-threading
+void dynamicTopoFvMesh::reOrderPointsThread
+(
+    void *argument
+)
+{
+    // Recast the argument
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
+
+    dynamicTopoFvMesh& mesh = thread->reference();
+
+    // Lock the point mutex first
+    mesh.entityMutex(0).lock();
+
+    // Signal the calling thread
+    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Recast the first pointer for the reOrderPoints argument
+    pointField& points =
+    (
+        *(reinterpret_cast<pointField*>(thread->operator()(0)))
+    );
+
+    // Reorder the points
+    mesh.reOrderPoints(points, true);
+
+    // Signal the calling thread
+    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // Reorder edges after a topology change
@@ -111,12 +161,18 @@ void dynamicTopoFvMesh::reOrderEdges
 (
     edgeList& edges,
     labelListList& edgeFaces,
-    labelListList& faceEdges
+    labelListList& faceEdges,
+    bool threaded
 )
 {
     // *** Edge renumbering *** //
     // If edges were deleted during topology change, the numerical order ceases
     // to be continuous. Edges are added to respective internal/boundary patches
+
+    if (debug)
+    {
+        Info << "ReOrdering edges...";
+    }
 
     // Allocate for mapping information
     edgeMap_.setSize(nEdges_, -1);
@@ -163,60 +219,6 @@ void dynamicTopoFvMesh::reOrderEdges
         // Determine which patch this edge belongs to
         label patch = whichEdgePatch(edgeI);
 
-        // Obtain references
-        edge& thisEdge = oldEdges[edgeI];
-        labelList& thisEF = oldEdgeFaces[edgeI];
-
-        // Renumber edges
-        if (thisEdge[0] < nOldPoints_)
-        {
-            thisEdge[0] = reversePointMap_[thisEdge[0]];
-        }
-        else
-        {
-            thisEdge[0] = addedPointRenumbering_[thisEdge[0]];
-        }
-
-        if (thisEdge[1] < nOldPoints_)
-        {
-            thisEdge[1] = reversePointMap_[thisEdge[1]];
-        }
-        else
-        {
-            thisEdge[1] = addedPointRenumbering_[thisEdge[1]];
-        }
-
-        // Renumber edgeFaces
-        forAll(thisEF,faceI)
-        {
-            if (thisEF[faceI] < nOldFaces_)
-            {
-                thisEF[faceI] = reverseFaceMap_[thisEF[faceI]];
-            }
-            else
-            {
-                thisEF[faceI] = addedFaceRenumbering_[thisEF[faceI]];
-            }
-        }
-
-        // Renumber edgePoints
-        if (!twoDMesh_)
-        {
-            labelList& thisEP = oldEdgePoints[edgeI];
-
-            forAll(thisEP,pointI)
-            {
-                if (thisEP[pointI] < nOldPoints_)
-                {
-                    thisEP[pointI] = reversePointMap_[thisEP[pointI]];
-                }
-                else
-                {
-                    thisEP[pointI] = addedPointRenumbering_[thisEP[pointI]];
-                }
-            }
-        }
-
         // Update maps for boundary edges. Edge insertion for
         // boundaries will be done after internal edges.
         if (patch >= 0)
@@ -239,6 +241,10 @@ void dynamicTopoFvMesh::reOrderEdges
         }
         else
         {
+            // Obtain references
+            edge& thisEdge = oldEdges[edgeI];
+            labelList& thisEF = oldEdgeFaces[edgeI];
+
             // Renumber internal edges and add normally.
             if (edgeI < nOldEdges_)
             {
@@ -260,7 +266,7 @@ void dynamicTopoFvMesh::reOrderEdges
 
             if (!twoDMesh_)
             {
-                edgePoints_[edgeInOrder] = oldEdgePoints[edgeI];
+                edgePoints_[edgeInOrder].transfer(oldEdgePoints[edgeI]);
             }
 
             edgeInOrder++;
@@ -269,6 +275,7 @@ void dynamicTopoFvMesh::reOrderEdges
 
     // All internal edges have been inserted. Now insert boundary edges.
     label oldIndex;
+
     for(label i = nInternalEdges_; i < nEdges_; i++)
     {
         if (edgeMap_[i] == -1)
@@ -291,10 +298,16 @@ void dynamicTopoFvMesh::reOrderEdges
 
         if (!twoDMesh_)
         {
-            edgePoints_[edgeInOrder] = oldEdgePoints[oldIndex];
+            edgePoints_[edgeInOrder].transfer(oldEdgePoints[oldIndex]);
         }
 
         edgeInOrder++;
+    }
+
+    // Now that we're done with edges, unlock it
+    if (threaded)
+    {
+        entityMutex_[1].unlock();
     }
 
     // Final check to ensure everything went okay
@@ -306,7 +319,77 @@ void dynamicTopoFvMesh::reOrderEdges
                 << abort(FatalError);
     }
 
+    // Renumber all edges / edgePoints with updated point information
+    label pIndex = -1;
+
+    if (threaded)
+    {
+        entityMutex_[0].lock();
+    }
+
+    forAll(edges_, edgeI)
+    {
+        // Obtain references
+        edge& thisEdge = edges_[edgeI];
+        edge& thisREdge = edges[edgeI];
+
+        // Renumber edges
+        if (thisEdge[0] < nOldPoints_)
+        {
+            pIndex = reversePointMap_[thisEdge[0]];
+        }
+        else
+        {
+            pIndex = addedPointRenumbering_[thisEdge[0]];
+        }
+
+        thisEdge[0] = pIndex;
+        thisREdge[0] = pIndex;
+
+        if (thisEdge[1] < nOldPoints_)
+        {
+            pIndex = reversePointMap_[thisEdge[1]];
+        }
+        else
+        {
+            pIndex = addedPointRenumbering_[thisEdge[1]];
+        }
+
+        thisEdge[1] = pIndex;
+        thisREdge[1] = pIndex;
+
+        // Renumber edgePoints
+        if (!twoDMesh_)
+        {
+            labelList& ePoints = edgePoints_[edgeI];
+
+            forAll(ePoints, pointI)
+            {
+                if (ePoints[pointI] < nOldPoints_)
+                {
+                    ePoints[pointI] = reversePointMap_[ePoints[pointI]];
+                }
+                else
+                {
+                    ePoints[pointI] = addedPointRenumbering_[ePoints[pointI]];
+                }
+            }
+        }
+    }
+
+    if (threaded)
+    {
+        entityMutex_[0].unlock();
+    }
+
     // Renumber all faceEdges
+    label eIndex = -1;
+
+    if (threaded)
+    {
+        entityMutex_[2].lock();
+    }
+
     forAll(faceEdges_, faceI)
     {
         // Obtain references
@@ -317,51 +400,105 @@ void dynamicTopoFvMesh::reOrderEdges
         {
             if (fEdges[edgeI] < nOldEdges_)
             {
-                fEdges[edgeI] = reverseEdgeMap_[fEdges[edgeI]];
-                rfEdges[edgeI] = reverseEdgeMap_[rfEdges[edgeI]];
+                eIndex = reverseEdgeMap_[fEdges[edgeI]];
             }
             else
             {
-                fEdges[edgeI] = addedEdgeRenumbering_[fEdges[edgeI]];
-                rfEdges[edgeI] = addedEdgeRenumbering_[rfEdges[edgeI]];
+                eIndex = addedEdgeRenumbering_[fEdges[edgeI]];
             }
+
+            fEdges[edgeI] = eIndex;
+            rfEdges[edgeI] = eIndex;
         }
+    }
+
+    // Renumber all edgeFaces
+    label fIndex = -1;
+
+    forAll(edgeFaces_, edgeI)
+    {
+        // Obtain references
+        labelList& eFaces = edgeFaces_[edgeI];
+        labelList& reFaces = edgeFaces[edgeI];
+
+        // Renumber edgeFaces
+        forAll(eFaces, faceI)
+        {
+            if (eFaces[faceI] < nOldFaces_)
+            {
+                fIndex = reverseFaceMap_[eFaces[faceI]];
+            }
+            else
+            {
+                fIndex = addedFaceRenumbering_[eFaces[faceI]];
+            }
+
+            eFaces[faceI] = fIndex;
+            reFaces[faceI] = fIndex;
+        }
+    }
+
+    if (threaded)
+    {
+        entityMutex_[2].unlock();
     }
 
     // Invert edges to obtain pointEdges
     if (!twoDMesh_)
     {
-        // Number of edges per point
-        labelList nEdgesPerPoint(nPoints_, 0);
-
-        forAll(edges_, edgeI)
-        {
-            nEdgesPerPoint[edges_[edgeI][0]]++;
-            nEdgesPerPoint[edges_[edgeI][1]]++;
-        }
-
-        // Size pointEdges
-        pointEdges_.setSize(nPoints_);
-
-        forAll(nEdgesPerPoint, pointI)
-        {
-            pointEdges_[pointI].setSize(nEdgesPerPoint[pointI]);
-        }
-
-        nEdgesPerPoint = 0;
-
-        // Fill pointEdges
-        forAll(edges_, edgeI)
-        {
-            const edge& thisEdge = edges_[edgeI];
-
-            pointEdges_[thisEdge[0]][nEdgesPerPoint[thisEdge[0]]++] = edgeI;
-            pointEdges_[thisEdge[1]][nEdgesPerPoint[thisEdge[1]]++] = edgeI;
-        }
+        invertConnectivity(nPoints_, edges_, pointEdges_);
     }
 
     // Clear the deleted entity map
-    this->deletedEdges_.clear();
+    deletedEdges_.clear();
+
+    if (debug)
+    {
+        Info << "Done." << endl;
+    }
+}
+
+// Static equivalent for multi-threading
+void dynamicTopoFvMesh::reOrderEdgesThread
+(
+    void *argument
+)
+{
+    // Recast the argument
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
+
+    dynamicTopoFvMesh& mesh = thread->reference();
+
+    // Lock the edge mutex first
+    mesh.entityMutex(1).lock();
+
+    // Signal the calling thread
+    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Recast the pointers for the argument
+    edgeList& edges =
+    (
+        *(reinterpret_cast<edgeList*>(thread->operator()(0)))
+    );
+
+    labelListList& edgeFaces =
+    (
+        *(reinterpret_cast<labelListList*>(thread->operator()(1)))
+    );
+
+    labelListList& faceEdges =
+    (
+        *(reinterpret_cast<labelListList*>(thread->operator()(2)))
+    );
+
+    // Reorder the edges
+    mesh.reOrderEdges(edges, edgeFaces, faceEdges, true);
+
+    // Signal the calling thread
+    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // Reorder faces in upper-triangular order after a topology change
@@ -370,7 +507,8 @@ void dynamicTopoFvMesh::reOrderFaces
     faceList& faces,
     labelList& owner,
     labelList& neighbour,
-    labelListList& faceEdges
+    labelListList& faceEdges,
+    bool threaded
 )
 {
     // *** Face renumbering *** //
@@ -378,6 +516,11 @@ void dynamicTopoFvMesh::reOrderFaces
     // Boundary faces are added to respective patches.
     // Internal faces, however, have to be added in upper-triangular ordering;
     // i.e., in the increasing order of neighbours
+
+    if (debug)
+    {
+        Info << "ReOrdering faces...";
+    }
 
     // Allocate for mapping information
     faceMap_.setSize(nFaces_, -1);
@@ -397,6 +540,44 @@ void dynamicTopoFvMesh::reOrderFaces
         oldOwner[faceI] = owner_[faceI];
         oldNeighbour[faceI] = neighbour_[faceI];
         oldFaceEdges[faceI].transfer(faceEdges_[faceI]);
+    }
+
+    // Renumber all faces with updated point information
+    label pIndex = -1;
+
+    if (threaded)
+    {
+        entityMutex_[0].lock();
+    }
+
+    forAll(oldFaces, faceI)
+    {
+        face& thisFace = oldFaces[faceI];
+
+        forAll(thisFace, pointI)
+        {
+            if (thisFace[pointI] < nOldPoints_)
+            {
+                pIndex = reversePointMap_[thisFace[pointI]];
+            }
+            else
+            {
+                pIndex = addedPointRenumbering_[thisFace[pointI]];
+            }
+
+            thisFace[pointI] = pIndex;
+        }
+    }
+
+    if (threaded)
+    {
+        entityMutex_[0].unlock();
+    }
+
+    // Wait for the cell mutex to become available
+    if (threaded)
+    {
+        entityMutex_[3].lock();
     }
 
     faces_.setSize(nFaces_);
@@ -469,27 +650,6 @@ void dynamicTopoFvMesh::reOrderFaces
                 label patchID = whichPatch(curFaces[faceI]);
                 label bFaceIndex = boundaryPatchIndices[patchID]++;
 
-                // Renumber the point-labels for this boundary-face
-                face& faceRenumber = oldFaces[curFaces[faceI]];
-
-                forAll(faceRenumber,pointI)
-                {
-                    if (faceRenumber[pointI] < nOldPoints_)
-                    {
-                        faceRenumber[pointI] =
-                        (
-                            reversePointMap_[faceRenumber[pointI]]
-                        );
-                    }
-                    else
-                    {
-                        faceRenumber[pointI] =
-                        (
-                            addedPointRenumbering_[faceRenumber[pointI]]
-                        );
-                    }
-                }
-
                 // Update the maps
                 if (curFaces[faceI] < nOldFaces_)
                 {
@@ -551,27 +711,6 @@ void dynamicTopoFvMesh::reOrderFaces
                     );
                 }
 
-                // Renumber the point labels in this face
-                face& faceRenumber = oldFaces[curFaces[nextNei]];
-
-                forAll(faceRenumber, pointI)
-                {
-                    if (faceRenumber[pointI] < nOldPoints_)
-                    {
-                        faceRenumber[pointI] =
-                        (
-                            reversePointMap_[faceRenumber[pointI]]
-                        );
-                    }
-                    else
-                    {
-                        faceRenumber[pointI] =
-                        (
-                            addedPointRenumbering_[faceRenumber[pointI]]
-                        );
-                    }
-                }
-
                 // Renumber owner/neighbour
                 label oldOwn = oldOwner[curFaces[nextNei]];
                 label oldNei = oldNeighbour[curFaces[nextNei]];
@@ -589,6 +728,8 @@ void dynamicTopoFvMesh::reOrderFaces
                 );
 
                 // Cell-reordering may cause flipped faces.. Correct them.
+                face& faceRenumber = oldFaces[curFaces[nextNei]];
+
                 if (neighbourRenumber < ownerRenumber)
                 {
                     faceRenumber = faceRenumber.reverseFace();
@@ -665,7 +806,13 @@ void dynamicTopoFvMesh::reOrderFaces
         faceInOrder++;
     }
 
-    // Renumber all cells
+    // Now that we're done with faces, unlock it
+    if (threaded)
+    {
+        entityMutex_[2].unlock();
+    }
+
+    // Renumber all cells with updated face information
     forAll(cells_, cellI)
     {
         cell& cellFaces = cells_[cellI];
@@ -683,6 +830,12 @@ void dynamicTopoFvMesh::reOrderFaces
         }
     }
 
+    // Now that we're done with cells, unlock it
+    if (threaded)
+    {
+        entityMutex_[3].unlock();
+    }
+
     // Final check to ensure everything went okay
     if (debug > 1)
     {
@@ -697,16 +850,74 @@ void dynamicTopoFvMesh::reOrderFaces
 
     // Clear the deleted entity map
     deletedFaces_.clear();
+
+    if (debug)
+    {
+        Info << "Done." << endl;
+    }
+}
+
+// Static equivalent for multi-threading
+void dynamicTopoFvMesh::reOrderFacesThread
+(
+    void *argument
+)
+{
+    // Recast the argument
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
+
+    dynamicTopoFvMesh& mesh = thread->reference();
+
+    // Lock the face mutex first
+    mesh.entityMutex(2).lock();
+
+    // Signal the calling thread
+    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Recast the pointers for the argument
+    faceList& faces =
+    (
+        *(reinterpret_cast<faceList*>(thread->operator()(0)))
+    );
+
+    labelList& owner =
+    (
+        *(reinterpret_cast<labelList*>(thread->operator()(1)))
+    );
+
+    labelList& neighbour =
+    (
+        *(reinterpret_cast<labelList*>(thread->operator()(2)))
+    );
+
+    labelListList& faceEdges =
+    (
+        *(reinterpret_cast<labelListList*>(thread->operator()(3)))
+    );
+
+    // Reorder the faces
+    mesh.reOrderFaces(faces, owner, neighbour, faceEdges, true);
+
+    // Signal the calling thread
+    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // Reorder & renumber cells with bandwidth reduction after a topology change
-void dynamicTopoFvMesh::reOrderCells()
+void dynamicTopoFvMesh::reOrderCells(bool threaded)
 {
     // *** Cell renumbering *** //
     // If cells were deleted during topology change, the numerical order ceases
     // to be continuous. Also, cells are always added at the end of the list by
     // virtue of the append method. Thus, cells would now have to be
     // reordered so that bandwidth is reduced and renumbered to be sequential.
+
+    if (debug)
+    {
+        Info << "ReOrdering cells...";
+    }
 
     // Allocate for mapping information
     cellMap_.setSize(nCells_, -1);
@@ -821,6 +1032,12 @@ void dynamicTopoFvMesh::reOrderCells()
         }
     }
 
+    // Now that we're done preparing the cell maps, unlock the cell mutex
+    if (threaded)
+    {
+        entityMutex_[3].unlock();
+    }
+
     // Loop through the cellsFromCells list, and renumber the map indices
     // HashTable keys, however, are not altered.
     forAllIter(Map<objectMap>, cellsFromCells_, cellI)
@@ -850,6 +1067,38 @@ void dynamicTopoFvMesh::reOrderCells()
 
     // Clear the deleted entity map
     deletedCells_.clear();
+
+    if (debug)
+    {
+        Info << "Done." << endl;
+    }
+}
+
+// Static equivalent for multi-threading
+void dynamicTopoFvMesh::reOrderCellsThread
+(
+    void *argument
+)
+{
+    // Recast the argument
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
+
+    dynamicTopoFvMesh& mesh = thread->reference();
+
+    // Lock the cell mutex first
+    mesh.entityMutex(3).lock();
+
+    // Signal the calling thread
+    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Reorder the cells
+    mesh.reOrderCells(true);
+
+    // Signal the calling thread
+    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // Reorder the faces in upper-triangular order, and generate mapping information
@@ -900,21 +1149,107 @@ void dynamicTopoFvMesh::reOrderMesh
         checkConnectivity();
     }
 
-    // Reorder the points
-    if (debug) Info << "ReOrdering points..." << endl;
-    reOrderPoints(points);
+    if (threader_->multiThreaded())
+    {
+        // Initialize multi-threaded reOrdering
+        threadedMeshReOrdering
+        (
+            points,
+            edges,
+            faces,
+            owner,
+            neighbour,
+            faceEdges,
+            edgeFaces
+        );
+    }
+    else
+    {
+        // Reorder the points
+        reOrderPoints(points);
 
-    // Reorder the cells
-    if (debug) Info << "ReOrdering cells..." << endl;
-    reOrderCells();
+        // Reorder the cells
+        reOrderCells();
 
-    // Reorder the faces
-    if (debug) Info << "ReOrdering faces..." << endl;
-    reOrderFaces(faces, owner, neighbour, faceEdges);
+        // Reorder the faces
+        reOrderFaces(faces, owner, neighbour, faceEdges);
 
-    // Reorder the edges
-    if (debug) Info << "ReOrdering edges..." << endl;
-    reOrderEdges(edges, edgeFaces, faceEdges);
+        // Reorder the edges
+        reOrderEdges(edges, edgeFaces, faceEdges);
+    }
+}
+
+// Invoke reOrdering with multiple threads
+void dynamicTopoFvMesh::threadedMeshReOrdering
+(
+    pointField& points,
+    edgeList& edges,
+    faceList& faces,
+    labelList& owner,
+    labelList& neighbour,
+    labelListList& faceEdges,
+    labelListList& edgeFaces
+)
+{
+    // Prepare pointers for point reOrdering
+    reOrderPtr_[0].set(0, reinterpret_cast<void *>(&points));
+
+    // Prepare pointers for edge reOrdering
+    reOrderPtr_[1].set(0, reinterpret_cast<void *>(&edges));
+    reOrderPtr_[1].set(1, reinterpret_cast<void *>(&edgeFaces));
+    reOrderPtr_[1].set(2, reinterpret_cast<void *>(&faceEdges));
+
+    // Prepare pointers for face reOrdering
+    reOrderPtr_[2].set(0, reinterpret_cast<void *>(&faces));
+    reOrderPtr_[2].set(1, reinterpret_cast<void *>(&owner));
+    reOrderPtr_[2].set(2, reinterpret_cast<void *>(&neighbour));
+    reOrderPtr_[2].set(3, reinterpret_cast<void *>(&faceEdges));
+
+    // Lock all slave threads first
+    lockSlaveThreads(reOrderSeq_, reOrderPtr_);
+
+    // Submit points to the work queue
+    threader_->addToWorkQueue
+    (
+        &reOrderPointsThread,
+        reinterpret_cast<void *>(&(reOrderPtr_[0]))
+    );
+
+    // Wait for a signal from this thread before moving on.
+    reOrderPtr_[0].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Submit cells to the work queue
+    threader_->addToWorkQueue
+    (
+        &reOrderCellsThread,
+        reinterpret_cast<void *>(&(reOrderPtr_[3]))
+    );
+
+    // Wait for a signal from this thread before moving on.
+    reOrderPtr_[3].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Submit faces to the work queue
+    threader_->addToWorkQueue
+    (
+        &reOrderFacesThread,
+        reinterpret_cast<void *>(&(reOrderPtr_[2]))
+    );
+
+    // Wait for a signal from this thread before moving on.
+    reOrderPtr_[2].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Submit edges to the work queue
+    threader_->addToWorkQueue
+    (
+        &reOrderEdgesThread,
+        reinterpret_cast<void *>(&(reOrderPtr_[1]))
+    );
+
+    // Wait for a signal from this thread before moving on.
+    reOrderPtr_[1].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Synchronize slave threads
+    synchronizeThreads(reOrderSeq_, reOrderPtr_);
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

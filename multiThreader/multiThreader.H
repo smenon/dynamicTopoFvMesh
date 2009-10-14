@@ -232,7 +232,7 @@ public:
     // Member Functions
 
         //- Return the number of threads
-        int getNumThreads();
+        int getNumThreads() const;
 
         //- Obtain the thread ID for a given index
         pthread_t getID(int index);

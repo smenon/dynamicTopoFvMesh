@@ -225,8 +225,17 @@ class dynamicTopoFvMesh
         //- Support for multithreading
         autoPtr<multiThreader> threader_;
 
-        // Pointer-list of thread-handlers (one for each thread)
+        // Pointer-list of thread-handlers
         PtrList<threadHandler<dynamicTopoFvMesh> > handlerPtr_;
+        PtrList<threadHandler<dynamicTopoFvMesh> > reOrderPtr_;
+
+        // Scheduling sequences for thread locking
+        labelList           topoSeq_;
+        labelList           reOrderSeq_;
+
+        // Entity mutexes used for synchronization
+        // in multi-threaded reOrdering
+        FixedList<Mutex, 4> entityMutex_;
 
         // Private sub-class for coupled patches (local and processor)
         class coupledPatchInfo
@@ -427,6 +436,9 @@ class dynamicTopoFvMesh
         // Return a reference to the multiThreader
         const multiThreader& threader() const;
 
+        // Return a reference to the entity mutexes
+        inline Mutex& entityMutex(const label entity);
+
         // Given a boundary quad face, return a boundary triangular face.
         label getTriBoundaryFace(const label fIndex);
 
@@ -468,10 +480,20 @@ class dynamicTopoFvMesh
         void threadedTopoModifier3D();
 
         // Lock all slave threads
-        void lockSlaveThreads();
+        template <class Type>
+        void lockSlaveThreads
+        (
+            const labelList& sequence,
+            PtrList<threadHandler<Type> >& handler
+        );
 
         // Synchronize all slave threads
-        void synchronizeThreads();
+        template <class Type>
+        void synchronizeThreads
+        (
+            const labelList& sequence,
+            PtrList<threadHandler<Type> >& handler
+        );
 
         // 2D Edge-swapping engine
         static void swap2DEdges(void *argument);
@@ -863,15 +885,26 @@ class dynamicTopoFvMesh
         );
 
         // Reorder points after a topology change
-        void reOrderPoints(pointField& points);
+        void reOrderPoints
+        (
+            pointField& points,
+            bool threaded = false
+        );
+
+        // Static equivalent for multi-threading
+        static void reOrderPointsThread(void *argument);
 
         // Reorder edges after a topology change
         void reOrderEdges
         (
             edgeList& edges,
             labelListList& edgeFaces,
-            labelListList& faceEdges
+            labelListList& faceEdges,
+            bool threaded = false
         );
+
+        // Static equivalent for multi-threading
+        static void reOrderEdgesThread(void *argument);
 
         // Reorder faces in upper-triangular order after a topology change
         void reOrderFaces
@@ -879,16 +912,35 @@ class dynamicTopoFvMesh
             faceList& faces,
             labelList& owner,
             labelList& neighbour,
-            labelListList& faceEdges
+            labelListList& faceEdges,
+            bool threaded = false
         );
+
+        // Static equivalent for multi-threading
+        static void reOrderFacesThread(void *argument);
 
         // Reorder & renumber cells with bandwidth
         // reduction after a topology change
-        void reOrderCells();
+        void reOrderCells(bool threaded = false);
+
+        // Static equivalent for multi-threading
+        static void reOrderCellsThread(void *argument);
 
         // Reorder the mesh in upper-triangular order,
         // and generate mapping information
         void reOrderMesh
+        (
+            pointField& points,
+            edgeList& edges,
+            faceList& faces,
+            labelList& owner,
+            labelList& neighbour,
+            labelListList& faceEdges,
+            labelListList& edgeFaces
+        );
+
+        // Invoke reOrdering with multiple threads
+        void threadedMeshReOrdering
         (
             pointField& points,
             edgeList& edges,
@@ -1001,6 +1053,9 @@ class dynamicTopoFvMesh
 
         // Read edge-modification options from the dictionary
         void readEdgeOptions(bool reRead = false);
+
+        // Check for legitimacy of patches
+        void checkPatches(const wordList& patchList);
 
         // Does the mesh perform edge-modification?
         bool edgeModification();
