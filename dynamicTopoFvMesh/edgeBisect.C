@@ -3259,6 +3259,251 @@ const changeMap dynamicTopoFvMesh::trisectFace
     return map;
 }
 
+// Slice the mesh at a particular edge in 3D
+void dynamicTopoFvMesh::sliceMesh
+(
+    const label eIndex
+)
+{
+    if (debug > 1)
+    {
+        Info << nl << nl
+             << "Edge: " << eIndex
+             << ": " << edges_[eIndex]
+             << " is to be used for mesh slicing. " << endl;
+    }
+
+    const edge& edgeToCheck = edges_[eIndex];
+
+    // Find the patch that the edge-vertex is connected to.
+    label patchIndex = -1;
+    const labelList& pEdges = pointEdges_[edgeToCheck[0]];
+
+    forAll(pEdges, edgeI)
+    {
+        if ((patchIndex = whichEdgePatch(pEdges[edgeI])) > -1)
+        {
+            break;
+        }
+    }
+
+    // Specify the edge centre.
+    point eCentre =
+    (
+        0.5 * (points_[edgeToCheck[0]] + points_[edgeToCheck[1]])
+    );
+
+    scalar dx = 10.0 * edgeLength(eIndex);
+
+    // Choose a box around the edge centre and scan all
+    // surface points/edges that fall into this region.
+    boundBox bBox
+    (
+        eCentre - vector(dx, dx, dx),
+        eCentre + vector(dx, dx, dx)
+    );
+
+    Map<scalar> checkPoints;
+    labelHashSet checkEdges;
+
+    for (label edgeI = nOldInternalEdges_; edgeI < nEdges_; edgeI++)
+    {
+        if (edgeFaces_[edgeI].empty())
+        {
+            continue;
+        }
+
+        if (whichEdgePatch(edgeI) == patchIndex)
+        {
+            const edge& surfaceEdge = edges_[edgeI];
+
+            if
+            (
+                (bBox.contains(points_[surfaceEdge[0]])) &&
+                (bBox.contains(points_[surfaceEdge[1]]))
+            )
+            {
+                checkEdges.insert(edgeI);
+
+                if (!checkPoints.found(surfaceEdge[0]))
+                {
+                    checkPoints.insert(surfaceEdge[0], GREAT);
+                }
+
+                if (!checkPoints.found(surfaceEdge[1]))
+                {
+                    checkPoints.insert(surfaceEdge[1], GREAT);
+                }
+            }
+        }
+    }
+
+    if (debug > 2)
+    {
+        Info << nl << nl
+             << " Edge point [0]: " << points_[edgeToCheck[0]] << nl
+             << " Edge point [1]: " << points_[edgeToCheck[1]] << endl;
+
+        writeVTK("slicePoints", checkPoints.toc(), 0);
+        writeVTK("sliceEdges", checkEdges.toc(), 1);
+    }
+
+
+}
+
+// Given a set of points and edges, find the shortest path
+// between the start and end point, using Dijkstra's algorithm.
+//  - Takes a list of points with distances from startPoint
+//    (initialized to large values) and edges that use these points.
+//  - Edge weights are currently edge-lengths, but can easily be adapted.
+//  - Returns true if the endPoint was found by the algorithm.
+//  - The Map 'pi' returns a preceding point for every point in 'points'.
+//
+//  Algorithm is inspired by:
+//    Renaud Waldura
+//    Dijkstra's Shortest Path Algorithm in Java
+//    http://renaud.waldura.com/
+bool dynamicTopoFvMesh::Dijkstra
+(
+    const Map<scalar>& points,
+    const labelHashSet& edges,
+    const label startPoint,
+    const label endPoint,
+    Map<label>& pi
+)
+{
+    bool foundEndPoint = false;
+
+    // Set of unvisited (Q) / visited (S) points and distances (d)
+    labelHashSet Q, S;
+    Map<scalar> d(points);
+
+    // Mark the startPoint as having the smallest distance
+    d[startPoint] = 0.0;
+
+    // Add the startPoint to the list of unvisited points
+    Q.insert(startPoint);
+
+    while (Q.size())
+    {
+        // Step 1: Find the node with the smallest distance from the start.
+        labelHashSet::iterator smallest = Q.begin();
+
+        for
+        (
+            labelHashSet::iterator iter = ++Q.begin();
+            iter != Q.end();
+            iter++
+        )
+        {
+            if (d[iter.key()] < d[smallest.key()])
+            {
+                smallest = iter;
+            }
+        }
+
+        label pointIndex = smallest.key();
+        scalar smallestDistance = d[pointIndex];
+
+        // Move to the visited points list
+        S.insert(pointIndex);
+        Q.erase(pointIndex);
+
+        // Step 2: Build a list of points adjacent to pointIndex
+        //         but not in the visited list
+        DynamicList<label> adjacentPoints(10);
+
+        const labelList& pEdges = pointEdges_[pointIndex];
+
+        forAll(pEdges, edgeI)
+        {
+            // Check if this exists in the list of input edges
+            if (!edges.found(pEdges[edgeI]))
+            {
+                continue;
+            }
+
+            const edge& edgeToCheck = edges_[pEdges[edgeI]];
+
+            label otherPoint = edgeToCheck.otherVertex(pointIndex);
+
+            if (!S.found(otherPoint))
+            {
+                adjacentPoints.append(otherPoint);
+            }
+        }
+
+        // Step 3: Perform distance-based checks for adjacent points
+        forAll(adjacentPoints, pointI)
+        {
+            label adjPoint = adjacentPoints[pointI];
+
+            scalar distance =
+            (
+                mag(points_[adjPoint] - points_[pointIndex])
+              + smallestDistance
+            );
+
+            // Check if the end-point has been touched.
+            if (adjPoint == endPoint)
+            {
+                foundEndPoint = true;
+            }
+
+            if (distance < d[adjPoint])
+            {
+                // Update to the shorter distance
+                d[adjPoint] = distance;
+
+                // Update the predecessor
+                if (pi.found(adjPoint))
+                {
+                    pi[adjPoint] = pointIndex;
+                }
+                else
+                {
+                    pi.insert(adjPoint, pointIndex);
+                }
+
+                // Add to the list of unvisited points
+                Q.insert(adjPoint);
+            }
+        }
+    }
+
+    // Write out the path
+    if (debug > 2)
+    {
+        if (foundEndPoint)
+        {
+            DynamicList<label> pathNodes(50);
+
+            label currentPoint = endPoint;
+
+            while (currentPoint != startPoint)
+            {
+                pathNodes.append(currentPoint);
+
+                currentPoint = pi[currentPoint];
+            }
+
+            pathNodes.shrink();
+
+            writeVTK
+            (
+                "DijkstraPath_"
+              + Foam::name(startPoint)
+              + '_'
+              + Foam::name(endPoint),
+                pathNodes,
+                0
+            );
+        }
+    }
+
+    return foundEndPoint;
+}
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam

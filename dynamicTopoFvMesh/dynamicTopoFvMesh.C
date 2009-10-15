@@ -3583,26 +3583,19 @@ scalar dynamicTopoFvMesh::testProximity
         0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]])
     );
 
-    // Obtain the normals of either boundary face
-    label count = 0;
-    FixedList<vector, 2> efNorm;
+    // Obtain the edge-normal
+    vector eNorm = vector::zero;
 
     forAll(eFaces, faceI)
     {
         if (neighbour_[eFaces[faceI]] == -1)
         {
             // Obtain the normal.
-            efNorm[count] = triFaceNormal(faces_[eFaces[faceI]]);
-
-            // Normalize it.
-            efNorm[count] /= mag(efNorm[count]);
-
-            count++;
+            eNorm += triFaceNormal(faces_[eFaces[faceI]]);
         }
     }
 
-    // Obtain the edge-normal
-    vector eNorm = (efNorm[0] + efNorm[1])/mag(efNorm[0] + efNorm[1]);
+    eNorm /= (mag(eNorm) + VSMALL);
 
     DynamicList<label> posIndices(20);
     scalar testStep = edgeLength(eIndex);
@@ -4418,20 +4411,10 @@ void dynamicTopoFvMesh::readOptionalParameters()
             {
                 const word& patchName = noSwapPatches[wordI];
 
-                forAll(boundaryMesh(), patchI)
-                {
-                    if (boundaryMesh()[patchI].name() == patchName)
-                    {
-                        noSwapPatchIDs_[indexI++] = patchI;
-                    }
-                }
-            }
-
-            if (indexI != noSwapPatchIDs_.size())
-            {
-                FatalErrorIn("dynamicTopoFvMesh::readOptionalParameters()")
-                    << "noSwapPatches is incorrectly specified."
-                    << abort(FatalError);
+                noSwapPatchIDs_[indexI++] =
+                (
+                    boundaryMesh().findPatchID(patchName)
+                );
             }
         }
 
@@ -5631,20 +5614,8 @@ void dynamicTopoFvMesh::readCoupledPatches()
             word slavePatch  = coupledPatches.lookup(masterPatch);
 
             // Determine patch indices
-            label mPatch = -1, sPatch = -1;
-
-            forAll(boundary,patchI)
-            {
-                if (boundary[patchI].name() == masterPatch)
-                {
-                    mPatch = patchI;
-                }
-
-                if (boundary[patchI].name() == slavePatch)
-                {
-                    sPatch = patchI;
-                }
-            }
+            label mPatch = boundary.findPatchID(masterPatch);
+            label sPatch = boundary.findPatchID(slavePatch);
 
             if (mPatch == -1 && sPatch == -1)
             {
@@ -7057,7 +7028,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         // Obtain the unit normal.
         vector testNormal = triFaceNormal(testFace);
 
-        testNormal /= mag(testNormal);
+        testNormal /= (mag(testNormal) + VSMALL);
 
         // Project the isolated point onto the face.
         vector p = points_[isolatedPoint] - points_[testFace[0]];

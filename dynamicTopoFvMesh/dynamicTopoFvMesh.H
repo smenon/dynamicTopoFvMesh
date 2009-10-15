@@ -572,6 +572,22 @@ class dynamicTopoFvMesh
             bool checkOnly = false
         );
 
+        // Slice the mesh at a particular edge in 3D
+        void sliceMesh
+        (
+            const label eIndex
+        );
+
+        // Dijkstra's algorithm for the least distance problem
+        bool Dijkstra
+        (
+            const Map<scalar>& points,
+            const labelHashSet& edges,
+            const label startPoint,
+            const label endPoint,
+            Map<label>& pi
+        );
+
         // Utility method to check for invalid edge-collapse.
         bool checkCollapse
         (

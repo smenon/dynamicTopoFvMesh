@@ -861,7 +861,6 @@ void dynamicTopoFvMesh::collapseQuadFace
 
 // Method for the collapse of an edge in 3D
 // - Returns a changeMap with a type specifying:
-//    -2: Collapse failed because this is an interior edge with boundary points.
 //    -1: Collapse failed since max number of topo-changes was reached.
 //     0: Collapse could not be performed.
 //     1: Collapsed to first node.
@@ -1071,11 +1070,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     else
     if (edgeBoundary[0] && edgeBoundary[1])
     {
-        // If this is an interior edge with two boundary points,
-        // bail out for now.
+        // If this is an interior edge with two boundary points.
         if (whichEdgePatch(eIndex) == -1)
         {
-            map.type() = -2;
+            // Check if the mesh needs to be sliced at this point,
+            // and do so if necessary.
+            sliceMesh(eIndex);
 
             return map;
         }
