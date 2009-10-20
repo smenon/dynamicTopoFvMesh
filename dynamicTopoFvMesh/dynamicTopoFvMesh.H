@@ -578,11 +578,11 @@ class dynamicTopoFvMesh
             const label eIndex
         );
 
-        // Dijkstra's algorithm for the least distance problem
+        // Dijkstra's algorithm for the shortest path problem
         bool Dijkstra
         (
-            const Map<scalar>& points,
-            const labelHashSet& edges,
+            const Map<point>& points,
+            const Map<edge>& edges,
             const label startPoint,
             const label endPoint,
             Map<label>& pi
@@ -699,14 +699,17 @@ class dynamicTopoFvMesh
             const label index
         );
 
-        // Split an internal face into two boundary faces
-        void splitInternalFace
+        // Split a set of internal faces into boundary faces,
+        // and add them to the specified patch.
+        void splitInternalFaces
         (
-            const label internalFace
+            const label patchIndex,
+            const labelList& internalFaces,
+            const Map<bool>& cellColors
         );
 
         // Merge two boundary faces into one internal face
-        label mergeBoundaryFaces
+        void mergeBoundaryFaces
         (
             const label firstFace,
             const label secondFace

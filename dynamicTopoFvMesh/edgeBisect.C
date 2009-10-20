@@ -3293,18 +3293,18 @@ void dynamicTopoFvMesh::sliceMesh
         0.5 * (points_[edgeToCheck[0]] + points_[edgeToCheck[1]])
     );
 
-    scalar dx = 10.0 * edgeLength(eIndex);
+    scalar dx = 5.0 * edgeLength(eIndex);
 
     // Choose a box around the edge centre and scan all
-    // surface points/edges that fall into this region.
+    // surface points/edges/faces/cells that fall into this region.
     boundBox bBox
     (
         eCentre - vector(dx, dx, dx),
         eCentre + vector(dx, dx, dx)
     );
 
-    Map<scalar> checkPoints;
-    labelHashSet checkEdges;
+    Map<point> checkPoints;
+    Map<edge> checkEdges;
 
     for (label edgeI = nOldInternalEdges_; edgeI < nEdges_; edgeI++)
     {
@@ -3323,16 +3323,24 @@ void dynamicTopoFvMesh::sliceMesh
                 (bBox.contains(points_[surfaceEdge[1]]))
             )
             {
-                checkEdges.insert(edgeI);
+                checkEdges.insert(edgeI, surfaceEdge);
 
                 if (!checkPoints.found(surfaceEdge[0]))
                 {
-                    checkPoints.insert(surfaceEdge[0], GREAT);
+                    checkPoints.insert
+                    (
+                        surfaceEdge[0],
+                        points_[surfaceEdge[0]]
+                    );
                 }
 
                 if (!checkPoints.found(surfaceEdge[1]))
                 {
-                    checkPoints.insert(surfaceEdge[1], GREAT);
+                    checkPoints.insert
+                    (
+                        surfaceEdge[1],
+                        points_[surfaceEdge[1]]
+                    );
                 }
             }
         }
@@ -3348,13 +3356,139 @@ void dynamicTopoFvMesh::sliceMesh
         writeVTK("sliceEdges", checkEdges.toc(), 1);
     }
 
+    // Find the shortest path using Dijkstra's algorithm.
+    Map<label> shortestPath;
 
+    bool foundPath =
+    (
+        Dijkstra
+        (
+            checkPoints,
+            checkEdges,
+            edgeToCheck[0],
+            edgeToCheck[1],
+            shortestPath
+        )
+    );
+
+    // Fit a plane through the shortest path points.
+    if (foundPath)
+    {
+        scalar nPathPoints = 1.0;
+        vector S = checkPoints[edgeToCheck[0]];
+        symmTensor M = sqr(checkPoints[edgeToCheck[0]]);
+
+        label currentPoint = edgeToCheck[1];
+
+        while (currentPoint != edgeToCheck[0])
+        {
+            S += checkPoints[currentPoint];
+            M += sqr(checkPoints[currentPoint]);
+
+            nPathPoints += 1.0;
+
+            currentPoint = shortestPath[currentPoint];
+        }
+
+        // Obtain the plane-normal
+        vector N = inv(M)&S;
+
+        N /= mag(N);
+
+        // Obtain centroid of the point cloud
+        vector p = S / nPathPoints;
+
+        if (debug > 2)
+        {
+            Info << nl << nl
+                << " Plane normal: " << N << nl
+                << " Plane point: " << p << endl;
+        }
+
+        // Mark cells and interior faces that fall
+        // within the bounding box.
+        labelHashSet checkFaces, splitFaces;
+        Map<point> checkCells;
+        Map<bool> cellColors;
+
+        forAll(faces_, faceI)
+        {
+            if (faces_[faceI].empty())
+            {
+                continue;
+            }
+
+            vector fCentre = triFaceCenter(faceI);
+
+            label own = owner_[faceI];
+            label nei = neighbour_[faceI];
+
+            if (bBox.contains(fCentre) && nei != -1)
+            {
+                // Add this face to the list.
+                checkFaces.insert(faceI);
+            }
+
+            if (!checkCells.found(own))
+            {
+                checkCells.insert(own, vector::zero);
+            }
+
+            if (!checkCells.found(nei) && nei != -1)
+            {
+                checkCells.insert(nei, vector::zero);
+            }
+        }
+
+        // Compute cell-centres for the selected cells
+        forAllIter(Map<point>, checkCells, cIter)
+        {
+            const cell& cellToCheck = cells_[cIter.key()];
+
+            forAll(cellToCheck, faceI)
+            {
+                cIter() += triFaceCenter(cellToCheck[faceI]);
+            }
+
+            cIter() /= cellToCheck.size();
+
+            // Figure out which side of the plane this cell lies on.
+            if (((cIter() - p) & N) > 0.0)
+            {
+                cellColors.insert(cIter.key(), true);
+            }
+            else
+            {
+                cellColors.insert(cIter.key(), false);
+            }
+        }
+
+        // Prepare a list of internal faces for mesh splitting.
+        forAllIter(labelHashSet, checkFaces, fIter)
+        {
+            if
+            (
+                cellColors[owner_[fIter.key()]]
+             != cellColors[neighbour_[fIter.key()]]
+            )
+            {
+                splitFaces.insert(fIter.key());
+            }
+        }
+
+        // Pass this info into the splitInternalFaces routine.
+        splitInternalFaces
+        (
+            patchIndex,
+            splitFaces.toc(),
+            cellColors
+        );
+    }
 }
 
 // Given a set of points and edges, find the shortest path
 // between the start and end point, using Dijkstra's algorithm.
-//  - Takes a list of points with distances from startPoint
-//    (initialized to large values) and edges that use these points.
+//  - Takes a Map of points and edges that use those points.
 //  - Edge weights are currently edge-lengths, but can easily be adapted.
 //  - Returns true if the endPoint was found by the algorithm.
 //  - The Map 'pi' returns a preceding point for every point in 'points'.
@@ -3365,8 +3499,8 @@ void dynamicTopoFvMesh::sliceMesh
 //    http://renaud.waldura.com/
 bool dynamicTopoFvMesh::Dijkstra
 (
-    const Map<scalar>& points,
-    const labelHashSet& edges,
+    const Map<point>& points,
+    const Map<edge>& edges,
     const label startPoint,
     const label endPoint,
     Map<label>& pi
@@ -3376,7 +3510,31 @@ bool dynamicTopoFvMesh::Dijkstra
 
     // Set of unvisited (Q) / visited (S) points and distances (d)
     labelHashSet Q, S;
-    Map<scalar> d(points);
+    Map<scalar> d;
+
+    // Initialize distances to large values
+    forAllConstIter(Map<point>, points, pIter)
+    {
+        d.insert(pIter.key(), GREAT);
+    }
+
+    // Invert edges to make a local pointEdges list
+    Map<labelList> localPointEdges;
+
+    forAllConstIter(Map<edge>, edges, eIter)
+    {
+        const edge& edgeToCheck = eIter();
+
+        forAll(edgeToCheck, pointI)
+        {
+            if (!localPointEdges.found(edgeToCheck[pointI]))
+            {
+                localPointEdges.insert(edgeToCheck[pointI], labelList(0));
+            }
+
+            sizeUpList(eIter.key(), localPointEdges[edgeToCheck[pointI]]);
+        }
+    }
 
     // Mark the startPoint as having the smallest distance
     d[startPoint] = 0.0;
@@ -3413,17 +3571,11 @@ bool dynamicTopoFvMesh::Dijkstra
         //         but not in the visited list
         DynamicList<label> adjacentPoints(10);
 
-        const labelList& pEdges = pointEdges_[pointIndex];
+        const labelList& pEdges = localPointEdges[pointIndex];
 
         forAll(pEdges, edgeI)
         {
-            // Check if this exists in the list of input edges
-            if (!edges.found(pEdges[edgeI]))
-            {
-                continue;
-            }
-
-            const edge& edgeToCheck = edges_[pEdges[edgeI]];
+            const edge& edgeToCheck = edges[pEdges[edgeI]];
 
             label otherPoint = edgeToCheck.otherVertex(pointIndex);
 
@@ -3440,7 +3592,7 @@ bool dynamicTopoFvMesh::Dijkstra
 
             scalar distance =
             (
-                mag(points_[adjPoint] - points_[pointIndex])
+                mag(points[adjPoint] - points[pointIndex])
               + smallestDistance
             );
 
@@ -3502,6 +3654,335 @@ bool dynamicTopoFvMesh::Dijkstra
     }
 
     return foundEndPoint;
+}
+
+// Split a set of internal faces into boundary faces
+//   - Add boundary faces and edges to the patch specified by 'patchIndex'
+//   - Cell color should specify a binary value dictating either side
+//     of the split face.
+void dynamicTopoFvMesh::splitInternalFaces
+(
+    const label patchIndex,
+    const labelList& internalFaces,
+    const Map<bool>& cellColors
+)
+{
+    Map<label> mirrorPoints;
+    FixedList<Map<label>, 2> mirrorEdges, mirrorFaces;
+
+    // First loop through the list and accumulate a list of
+    // points and edges that need to be duplicated.
+    forAll(internalFaces, faceI)
+    {
+        const face& faceToCheck = faces_[internalFaces[faceI]];
+
+        forAll(faceToCheck, pointI)
+        {
+            if (!mirrorPoints.found(faceToCheck[pointI]))
+            {
+                mirrorPoints.insert(faceToCheck[pointI], -1);
+            }
+        }
+
+        const labelList& fEdges = faceEdges_[internalFaces[faceI]];
+
+        forAll(fEdges, edgeI)
+        {
+            if (!mirrorEdges[0].found(fEdges[edgeI]))
+            {
+                mirrorEdges[0].insert(fEdges[edgeI], -1);
+            }
+        }
+    }
+
+    // Now for every point in the list, add a new one.
+    // Add a mapping entry as well.
+    forAllIter(Map<label>, mirrorPoints, pIter)
+    {
+        pIter() = insertPoint(points_[pIter.key()]);
+
+        // Correct pointEdges and associated edges for mirror points
+        const labelList& pEdges = pointEdges_[pIter.key()];
+
+        forAll(pEdges, edgeI)
+        {
+            const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+
+            bool allTrue = true;
+
+            forAll(eFaces, faceI)
+            {
+                label own = owner_[eFaces[faceI]];
+                label nei = neighbour_[eFaces[faceI]];
+
+                // Check if an owner/neighbour cell is false
+                if (!cellColors[own])
+                {
+                    allTrue = false;
+                    break;
+                }
+
+                if (nei != -1)
+                {
+                    if (!cellColors[nei])
+                    {
+                        allTrue = false;
+                        break;
+                    }
+                }
+            }
+
+            if (allTrue)
+            {
+                // Renumber this edge.
+                edge& edgeToCheck = edges_[pEdges[edgeI]];
+
+                forAll(edgeToCheck, pointI)
+                {
+                    if (edgeToCheck[pointI] == pIter.key())
+                    {
+                        edgeToCheck[pointI] = pIter();
+                    }
+                }
+            }
+        }
+    }
+
+    // For every internal face, add a new one.
+    //  - Stick to the rule:
+    //    [1] Every cell marked false keeps the existing entities.
+    //    [2] Every cell marked true gets new points/edges/faces.
+    //  - If faces are improperly oriented, reverse them.
+    forAll(internalFaces, faceI)
+    {
+        FixedList<face, 2> newFace(face(3));
+        FixedList<label, 2> newFaceIndex(-1);
+        FixedList<label, 2> newOwner(-1);
+
+        label oldOwn = owner_[internalFaces[faceI]];
+        label oldNei = neighbour_[internalFaces[faceI]];
+
+        if (cellColors[oldOwn] && !cellColors[oldNei])
+        {
+            // The owner gets a new boundary face.
+            // Note that orientation is already correct.
+            newFace[0] = faces_[internalFaces[faceI]];
+
+            // The neighbour needs to have its face reversed
+            // and moved to the boundary patch, thereby getting
+            // deleted in the process.
+            newFace[1] = newFace[0].reverseFace();
+
+            newOwner[0] = oldOwn;
+            newOwner[1] = oldNei;
+        }
+        else
+        if (!cellColors[oldOwn] && cellColors[oldNei])
+        {
+            // The neighbour gets a new boundary face.
+            // The face is oriented in the opposite sense, however.
+            newFace[0] = faces_[internalFaces[faceI]].reverseFace();
+
+            // The owner keeps the existing face and orientation.
+            // But it also needs to be moved to the boundary.
+            newFace[1] = faces_[internalFaces[faceI]];
+
+            newOwner[0] = oldNei;
+            newOwner[1] = oldOwn;
+        }
+        else
+        {
+            // Something's wrong here.
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::splitInternalFaces()"
+            )
+                << nl << " Face: "
+                << internalFaces[faceI]
+                << " has cells which are improperly marked: " << nl
+                << oldOwn << ":: " << cellColors[oldOwn] << nl
+                << oldNei << ":: " << cellColors[oldNei]
+                << abort(FatalError);
+        }
+
+        // Renumber point labels for the first new face.
+        forAll(newFace[0], pointI)
+        {
+            newFace[0][pointI] = mirrorPoints[newFace[0][pointI]];
+        }
+
+        // Insert the new boundary faces.
+        forAll(newFace, indexI)
+        {
+            newFaceIndex[indexI] =
+            (
+                insertFace
+                (
+                    patchIndex,
+                    newFace[indexI],
+                    newOwner[indexI],
+                    -1
+                )
+            );
+
+            // Make an identical faceEdges entry.
+            // This will be renumbered once new edges are added.
+            faceEdges_.append(faceEdges_[internalFaces[faceI]]);
+
+            // Replace face labels on cells
+            replaceLabel
+            (
+                internalFaces[faceI],
+                newFaceIndex[indexI],
+                cells_[newOwner[indexI]]
+            );
+        }
+
+        // Make face mapping entries for posterity.
+        mirrorFaces[0].insert(internalFaces[faceI], newFaceIndex[0]);
+        mirrorFaces[1].insert(internalFaces[faceI], newFaceIndex[1]);
+    }
+
+    // For every edge in the list, add a new one.
+    // We'll deal with correcting edgeFaces and edgePoints later.
+    forAllIter(Map<label>, mirrorEdges[0], eIter)
+    {
+        const edge& origEdge = edges_[eIter.key()];
+
+        eIter() =
+        (
+            insertEdge
+            (
+                patchIndex,
+                edge
+                (
+                    mirrorPoints[origEdge[0]],
+                    mirrorPoints[origEdge[1]]
+                ),
+                edgeFaces_[eIter.key()],
+                labelList(0)
+            )
+        );
+
+        // Is the original edge an internal one?
+        // If it is, we need to move it to the boundary.
+        if (whichEdgePatch(eIter.key()) == -1)
+        {
+            label rplEdgeIndex =
+            (
+                insertEdge
+                (
+                    patchIndex,
+                    origEdge,
+                    edgeFaces_[eIter.key()],
+                    labelList(0)
+                )
+            );
+
+            // Map the new entry.
+            mirrorEdges[1].insert(eIter.key(), rplEdgeIndex);
+        }
+        else
+        {
+            // This is already a boundary edge.
+            // Make an identical map.
+            mirrorEdges[1].insert(eIter.key(), eIter.key());
+        }
+    }
+
+    // Renumber faceEdges for the new faces.
+    forAll(mirrorFaces, indexI)
+    {
+        forAllIter(Map<label>, mirrorFaces[indexI], fIter)
+        {
+            labelList& fEdges = faceEdges_[fIter()];
+
+            forAll(fEdges, edgeI)
+            {
+                fEdges[edgeI] = mirrorEdges[indexI][fEdges[edgeI]];
+            }
+        }
+    }
+
+    // Correct edgeFaces for all new edges
+    forAll(mirrorEdges, indexI)
+    {
+        forAllIter(Map<label>, mirrorEdges[indexI], eIter)
+        {
+            labelList& eFaces = edgeFaces_[eIter()];
+
+            labelHashSet facesToRemove;
+
+            forAll(eFaces, faceI)
+            {
+                bool remove = false;
+
+                label own = owner_[eFaces[faceI]];
+                label nei = neighbour_[eFaces[faceI]];
+
+                if
+                (
+                    (!cellColors[own] && !indexI) ||
+                    ( cellColors[own] &&  indexI)
+                )
+                {
+                    remove = true;
+                }
+
+                if (nei != -1)
+                {
+                    if
+                    (
+                        (!cellColors[nei] && !indexI) ||
+                        ( cellColors[nei] &&  indexI)
+                    )
+                    {
+                        remove = true;
+                    }
+                }
+
+                if (mirrorFaces[indexI].found(eFaces[faceI]))
+                {
+                    // Perform a replacement instead of a removal.
+                    eFaces[faceI] = mirrorFaces[indexI][eFaces[faceI]];
+
+                    remove = false;
+                }
+
+                if (remove)
+                {
+                    facesToRemove.insert(eFaces[faceI]);
+                }
+            }
+
+            // Now successively size down edgeFaces
+            forAllIter(labelHashSet, facesToRemove, hsIter)
+            {
+                sizeDownList(hsIter.key(), eFaces);
+            }
+
+            // Since edgePoints for all new edges are broken, rebuild them.
+            buildEdgePoints(eIter());
+        }
+    }
+
+    // Now that we're done with the internal faces, remove them.
+    forAll(internalFaces, faceI)
+    {
+        removeFace(internalFaces[faceI]);
+    }
+
+    // Remove old internal edges as well.
+    forAllIter(Map<label>, mirrorEdges[1], eIter)
+    {
+        if (eIter.key() != eIter())
+        {
+            removeEdge(eIter.key());
+        }
+    }
+
+    // Set the flag
+    topoChangeFlag_ = true;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

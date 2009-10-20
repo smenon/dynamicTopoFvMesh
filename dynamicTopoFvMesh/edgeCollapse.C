@@ -1755,6 +1755,157 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     return map;
 }
 
+// Merge two triangular boundary faces
+//  - If a separation distance exists, attempt to fill the space
+//    with tetrahedra, but otherwise, perform an exact merge, removing one
+//    of the faces.
+void dynamicTopoFvMesh::mergeBoundaryFaces
+(
+    const label firstFace,
+    const label secondFace
+)
+{
+    if (debug > 2)
+    {
+        Info << "Merging faces: "
+             << firstFace << " and "
+             << secondFace << endl;
+    }
+
+    // Sanity check: Are these actually boundary faces?
+    if (neighbour_[firstFace] != -1 || neighbour_[secondFace] != -1)
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::mergeBoundaryFaces()"
+        )
+            << nl << " Faces: "
+            << firstFace << " and " << secondFace
+            << " are not on boundaries. "
+            << abort(FatalError);
+    }
+
+    // Perform distance-based checks to determine corresponding points
+    Map<label> mapPoints;
+    const face& firstPolyFace = faces_[firstFace];
+    const face& secondPolyFace = faces_[secondFace];
+
+    bool matchGeomTol = true;
+
+    forAll(firstPolyFace, pointI)
+    {
+        scalarList pointDistance(secondPolyFace.size(), 0.0);
+
+        forAll(secondPolyFace, pointJ)
+        {
+            pointDistance[pointJ] =
+            (
+                magSqr
+                (
+                    points_[firstPolyFace[pointI]]
+                  - points_[secondPolyFace[pointJ]]
+                )
+            );
+        }
+
+        bool matchedPoint = false;
+
+        while (!matchedPoint)
+        {
+            label minIndex = findMin(pointDistance);
+
+            // Check if this point was mapped for another point.
+            bool foundPoint = false;
+
+            forAllIter(Map<label>::iterator, mapPoints, pIter)
+            {
+                if (pIter() == minIndex)
+                {
+                    // Point was mapped before. Repeat search.
+                    pointDistance[minIndex] = GREAT;
+                    foundPoint = true;
+                    break;
+                }
+            }
+
+            if (!foundPoint)
+            {
+                // Good. Point wasn't matched before.
+                // Does it satisfy the geometric match tolerance?
+                if (pointDistance[minIndex] > gTol_)
+                {
+                    matchGeomTol = false;
+                }
+
+                mapPoints.insert(pointI, minIndex);
+
+                matchedPoint = true;
+                break;
+            }
+        }
+    }
+
+    // Sanity check: Were all points matched up?
+    if (mapPoints.size() != 3)
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::mergeBoundaryFaces()"
+        )
+            << nl << " Faces: "
+            << firstFace << " and " << secondFace
+            << " do not match up. "
+            << abort(FatalError);
+    }
+
+    if (matchGeomTol)
+    {
+        // Obtain owners for both faces, and compare their labels
+        face newFace;
+        label removedFace = -1, retainedFace = -1;
+        label newOwner = -1, newNeighbour = -1;
+
+        if (owner_[firstFace] < owner_[secondFace])
+        {
+            // Retain the first face
+            newFace = firstPolyFace;
+            newOwner = owner_[firstFace];
+            newNeighbour = owner_[secondFace];
+        }
+        else
+        {
+            // Retain the second face
+            newFace = secondPolyFace;
+            newOwner = owner_[secondFace];
+            newNeighbour = owner_[firstFace];
+        }
+
+        const labelList& faceEdges = faceEdges_[retainedFace];
+
+        // Replace cell with the new face label
+        replaceLabel
+        (
+            removedFace,
+            retainedFace,
+            cells_[newNeighbour]
+        );
+
+        // Remove the boundary face
+        removeFace(removedFace);
+
+        // Insert a new interior face
+        insertFace(-1, newFace, newOwner, newNeighbour);
+
+        // Add the faceEdges entry
+        faceEdges_.append(faceEdges);
+
+        // Done with work here. Bail out.
+        return;
+    }
+
+    // Looks like there's a separation distance.
+}
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
