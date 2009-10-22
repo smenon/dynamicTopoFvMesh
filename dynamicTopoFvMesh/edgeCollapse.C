@@ -1028,6 +1028,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     labelList edgeHull(m, -1);
     labelListList ringEntities(4, labelList(m, -1));
 
+    if (debug > 1)
+    {
+        Info << nl << nl
+             << "Edge: " << eIndex
+             << ": " << edges_[eIndex]
+             << " is to be collapsed. " << endl;
+    }
+
     // Construct a hull around this edge
     constructHull
     (
@@ -1037,14 +1045,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         cellHull,
         ringEntities
     );
-
-    if (debug > 1)
-    {
-        Info << nl << nl
-             << "Edge: " << eIndex
-             << ": " << edges_[eIndex]
-             << " is to be collapsed. " << endl;
-    }
 
     // Check whether points of the edge lies on a boundary
     const FixedList<bool,2> edgeBoundary = checkEdgeBoundary(eIndex);

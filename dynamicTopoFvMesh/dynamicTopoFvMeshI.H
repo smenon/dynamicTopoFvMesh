@@ -131,6 +131,7 @@ inline label dynamicTopoFvMesh::tetApexPoint
     bool foundApex = false;
 
     const cell& cellToCheck = cells_[cIndex];
+    const face& checkFace = faces_[fIndex];
 
     forAll(cellToCheck, faceI)
     {
@@ -140,9 +141,9 @@ inline label dynamicTopoFvMesh::tetApexPoint
         {
             if
             (
-                faceToCheck[pointI] != faceToCheck[0] &&
-                faceToCheck[pointI] != faceToCheck[1] &&
-                faceToCheck[pointI] != faceToCheck[2]
+                faceToCheck[pointI] != checkFace[0] &&
+                faceToCheck[pointI] != checkFace[1] &&
+                faceToCheck[pointI] != checkFace[2]
             )
             {
                 apexPoint = faceToCheck[pointI];
@@ -156,6 +157,23 @@ inline label dynamicTopoFvMesh::tetApexPoint
         {
             break;
         }
+    }
+
+    if (!foundApex)
+    {
+        Info << "fIndex: " << fIndex << ":: " << faces_[fIndex] << endl;
+        Info << "cIndex: " << cIndex << ":: " << cellToCheck << endl;
+
+        forAll(cellToCheck, faceI)
+        {
+            Info << '\t' << cellToCheck[faceI] << ":: "
+                 << faces_[cellToCheck[faceI]] << endl;
+        }
+
+        FatalErrorIn("dynamicTopoFvMesh::tetApexPoint()")
+            << "Could not find an apex point in cell: " << cIndex
+            << " given face: " << fIndex
+            << abort(FatalError);
     }
 
     return apexPoint;

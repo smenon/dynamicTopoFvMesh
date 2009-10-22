@@ -2746,9 +2746,19 @@ void dynamicTopoFvMesh::writeVTK
 }
 
 // Check the state of connectivity lists
-void dynamicTopoFvMesh::checkConnectivity()
+void dynamicTopoFvMesh::checkConnectivity
+(
+    label maxErrors
+)
 {
     label nFailedChecks = 0;
+
+    messageStream ConnectivityWarning
+    (
+        "dynamicTopoFvMesh Connectivity Warning",
+        messageStream::SERIOUS,
+        maxErrors
+    );
 
     // Check face-label ranges
     Info << "Checking index ranges...";
@@ -2775,10 +2785,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
             nFailedChecks++;
 
-            WarningIn
-            (
-                "dynamicTopoFvMesh::checkConnectivity()"
-            )
+            ConnectivityWarning()
                 << nl << "Edge-point connectivity is inconsistent."
                 << endl;
         }
@@ -2802,10 +2809,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
             nFailedChecks++;
 
-            WarningIn
-            (
-                "dynamicTopoFvMesh::checkConnectivity()"
-            )
+            ConnectivityWarning()
                 << nl << "Face-point connectivity is inconsistent."
                 << endl;
         }
@@ -2829,10 +2833,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
             nFailedChecks++;
 
-            WarningIn
-            (
-                "dynamicTopoFvMesh::checkConnectivity()"
-            )
+            ConnectivityWarning()
                 << nl << "Cell-Face connectivity is inconsistent."
                 << endl;
         }
@@ -2885,10 +2886,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                 nFailedChecks++;
 
-                WarningIn
-                (
-                    "dynamicTopoFvMesh::checkConnectivity()"
-                )
+                ConnectivityWarning()
                      << nl << "Edge-Face connectivity is inconsistent."
                      << endl;
             }
@@ -2914,10 +2912,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
             nFailedChecks++;
 
-            WarningIn
-            (
-                "dynamicTopoFvMesh::checkConnectivity()"
-            )
+            ConnectivityWarning()
                 << nl << "Edge-Face connectivity is inconsistent."
                 << endl;
         }
@@ -2938,10 +2933,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                 nFailedChecks++;
 
-                WarningIn
-                (
-                    "dynamicTopoFvMesh::checkConnectivity()"
-                )
+                ConnectivityWarning()
                     << nl << "Edge-Face connectivity is inconsistent."
                     << endl;
             }
@@ -3089,10 +3081,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                     nFailedChecks++;
 
-                    WarningIn
-                    (
-                        "dynamicTopoFvMesh::checkConnectivity()"
-                    )
+                    ConnectivityWarning()
                         << nl << "Point-Edge connectivity is inconsistent."
                         << endl;
                 }
@@ -3112,10 +3101,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                 nFailedChecks++;
 
-                WarningIn
-                (
-                    "dynamicTopoFvMesh::checkConnectivity()"
-                )
+                ConnectivityWarning()
                     << "Size inconsistency."
                     << nl << "Point-Edge connectivity is inconsistent."
                     << endl;
@@ -3157,10 +3143,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                 nFailedChecks++;
 
-                WarningIn
-                (
-                    "dynamicTopoFvMesh::checkConnectivity()"
-                )
+                ConnectivityWarning()
                     << nl << "Edge-Points connectivity is inconsistent."
                     << endl;
             }
@@ -3198,10 +3181,7 @@ void dynamicTopoFvMesh::checkConnectivity()
 
                     nFailedChecks++;
 
-                    WarningIn
-                    (
-                        "dynamicTopoFvMesh::checkConnectivity()"
-                    )
+                    ConnectivityWarning()
                         << nl << "Edge-Points connectivity is inconsistent."
                         << endl;
                 }
@@ -6621,7 +6601,7 @@ bool dynamicTopoFvMesh::checkCollapse
     }
 
     // Final quality check
-    if (cQuality < 0.5)
+    if (cQuality < sliverThreshold_)
     {
         if (debug > 2)
         {
@@ -7244,7 +7224,8 @@ void dynamicTopoFvMesh::removeSlivers()
             (
                 "dynamicTopoFvMesh::removeSlivers()"
             )   << nl << "Removing Cell: " << iter.key()
-                << " of sliver type: " << map.type() << endl;
+                << " of sliver type: " << map.type()
+                << " with quality: " << iter() << endl;
         }
 
         // Take action based on the type of sliver.
@@ -7255,9 +7236,9 @@ void dynamicTopoFvMesh::removeSlivers()
             label firstEdge = map.firstEdge();
             label secondEdge = map.secondEdge();
 
-            // Bisect both edges.
-            changeMap firstMap  = bisectEdge(firstEdge);
-            changeMap secondMap = bisectEdge(secondEdge);
+            // Force bisection on both edges.
+            changeMap firstMap  = bisectEdge(firstEdge, true);
+            changeMap secondMap = bisectEdge(secondEdge, true);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
@@ -7306,8 +7287,8 @@ void dynamicTopoFvMesh::removeSlivers()
             // Cap cell.
             label opposingFace = map.opposingFace();
 
-            // Trisect the opposing face.
-            changeMap faceMap = trisectFace(opposingFace);
+            // Force trisection of the opposing face.
+            changeMap faceMap = trisectFace(opposingFace, true);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
@@ -7334,8 +7315,8 @@ void dynamicTopoFvMesh::removeSlivers()
         {
             // Spade cell.
 
-            // Bisect the first edge.
-            changeMap firstMap = bisectEdge(map.firstEdge());
+            // Force bisection on the first edge.
+            changeMap firstMap = bisectEdge(map.firstEdge(), true);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search

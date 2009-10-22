@@ -553,14 +553,16 @@ class dynamicTopoFvMesh
         const changeMap
         bisectEdge
         (
-            const label eIndex
+            const label eIndex,
+            bool forceOp = false
         );
 
         // Method for the trisection of a face in 3D
         const changeMap
         trisectFace
         (
-            const label fIndex
+            const label fIndex,
+            bool forceOp = false
         );
 
         // Method for the collapse of an edge in 3D
@@ -979,7 +981,7 @@ class dynamicTopoFvMesh
         );
 
         // Check the state of connectivity local lists
-        void checkConnectivity();
+        void checkConnectivity(label maxErrors = 0);
 
         // Perform spatial hashing on a set of points
         void spatialHash
