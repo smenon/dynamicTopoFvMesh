@@ -48,6 +48,7 @@ Author
 #include "MeshObject.H"
 
 #include <iomanip>
+#include "IOmanip.H"
 #include <dlfcn.h>
 
 namespace Foam
@@ -424,6 +425,7 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
         scalarField& iF = tQuality();
 
         // Compute statistics on the fly
+        label nCells = 0;
         scalar maxQuality = -GREAT;
         scalar minQuality =  GREAT;
         scalar meanQuality = 0.0;
@@ -443,6 +445,7 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
             maxQuality = Foam::max(iF[cellI], maxQuality);
             minQuality = Foam::min(iF[cellI], minQuality);
             meanQuality += iF[cellI];
+            nCells++;
 
             // Add to the list of slivers
             if
@@ -459,8 +462,6 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
         if (outputOption || (debug > 0))
         {
             // Reduce statistics across processors.
-            label nCells = iF.size();
-
             reduce(minQuality, minOp<scalar>());
             reduce(maxQuality, maxOp<scalar>());
             reduce(meanQuality, sumOp<scalar>());
@@ -2807,7 +2808,6 @@ void dynamicTopoFvMesh::writeVTK
     }
 
     // Make the directory
-    // fileName dirName(time().path()/time().timeName()/"VTK");
     fileName dirName(time().path()/"VTK"/time().timeName());
 
     mkDir(dirName);
@@ -2820,13 +2820,14 @@ void dynamicTopoFvMesh::writeVTK
          << name << ".vtk" << nl
          << "ASCII" << nl
          << "DATASET UNSTRUCTURED_GRID" << nl
-         << "POINTS " << nPoints << " float" << nl;
+         << "POINTS " << nPoints << " double" << nl;
 
-    for(label i = 0; i < nPoints; i++)
+    for (label i = 0; i < nPoints; i++)
     {
-        file << float(points[i].x()) << ' '
-             << float(points[i].y()) << ' '
-             << float(points[i].z()) << ' '
+        file << setprecision(10)
+             << points[i].x() << ' '
+             << points[i].y() << ' '
+             << points[i].z() << ' '
              << nl;
     }
 
@@ -2880,6 +2881,11 @@ void dynamicTopoFvMesh::writeVTK
             // Wedge
             file << "13" << nl;
         }
+    }
+
+    if (primitiveType < 4)
+    {
+        return;
     }
 
     // Write out auxiliary connectivity fields, if necessary
