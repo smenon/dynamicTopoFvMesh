@@ -40,8 +40,11 @@ SourceFiles
 #include "Time.H"
 #include "Map.H"
 #include "Switch.H"
+#include "boolList.H"
 #include "pointIOField.H"
+#include "scalarMatrix.H"
 #include "labelHashSet.H"
+#include "tensor2D.H"
 
 // Have gcc ignore certain warnings while including mesquite headers
 #pragma GCC diagnostic ignored "-Wold-style-cast"
@@ -57,7 +60,7 @@ namespace Foam
 class polyMesh;
 
 /*---------------------------------------------------------------------------*\
-                           Class fvMotionSolver Declaration
+                       Class mesquiteSmoother Declaration
 \*---------------------------------------------------------------------------*/
 
 class mesquiteSmoother
@@ -81,7 +84,11 @@ protected:
     //- Switch to toggle surface smoothing
     Switch surfaceSmoothing_;
 
-    // Specify tolerance for the CG solver
+    //- Switch to prioritize surface smoothing
+    //  for certain vertices
+    Switch prioritizeVertices_;
+
+    // Specify tolerance for the solver
     scalar tolerance_;
 
     //- Specify multiple mesh-motion sweeps
@@ -102,9 +109,6 @@ protected:
     //- Reference points
     mutable pointIOField refPoints_;
 
-    //- Original points prior to surface-smoothing
-    mutable pointField origPoints_;
-
     //- The quality metric
     word qMetric_;
 
@@ -120,23 +124,22 @@ protected:
     //- Termination criteria
     Mesquite::TerminationCriterion tcInner_;
     Mesquite::TerminationCriterion tcOuter_;
-    //Mesquite::TerminationCriterion untInner_;
-    //Mesquite::TerminationCriterion untOuter_;
 
-    //- Specific to mesh untangling
-    //autoPtr<Mesquite::UntangleBetaQualityMetric> untangleMetric_;
-    //autoPtr<Mesquite::LPtoPTemplate> untangleFunc_;
-    //autoPtr<Mesquite::ConjugateGradient> untangleGlobal_;
-
-    // Specify patches on which slip BCs are applied
+    // Specify patches on which surface smoothing is applied
     labelHashSet slipPatchIDs_;
 
-    //- Data specific to Laplacian surface smoothing
+    //- Data specific to surface smoothing
+    label patchIndex_;
+    label pointIndex_;
     labelList pIDs_;
-    labelList offsets_;
     List<vectorField> pNormals_;
-    List<vectorField> gradEdgeV_;
     List<vectorField> localPts_;
+    List<labelListList> jPoints_;
+    List<tensorField> T_;
+    List<List<scalarField> > a_;
+    boolListList pFlags_;
+    List<scalar> meanFnValues_;
+    List<scalarField> pFnValues_;
 
     //- Explicit patch coupling for surface smoothing
     Map<label> patchCoupling_;
@@ -144,60 +147,91 @@ protected:
     // Mapping for locally coupled patches
     List<Map<label> > masterToSlave_;
 
-    vectorField bV_;
-    vectorField xV_;
-    vectorField pV_;
-    vectorField rV_;
-    vectorField wV_;
-
-    // Sparse Matrix multiply
-    void A(const vectorField& p, vectorField& w);
-
-    // Dot-product
-    scalar dot(const vectorField& f1, const vectorField& f2);
-
-    // CG solver
-    label CG
-    (
-        const vectorField& b,
-        vectorField& p,
-        vectorField& r,
-        vectorField& w,
-        vectorField& x
-    );
-
-    // Compute the normalization factor for the matrix
-    scalar normFactor
-    (
-        const vectorField& x,
-        const vectorField& b,
-        const vectorField& w,
-        vectorField& tmpField
-    );
-
-    // Component-wise sumMag
-    scalar cmptSumMag(const vectorField& field);
-
-    // Apply boundary conditions
-    void applyBCs(vectorField &field);
-
     // Private member function to compute connectivity data
     void initArrays();
 
     // Private member functions to read dictionary options
     void readOptions();
 
-    // Private member function to perform Laplacian surface smoothing
+    // Private member function to perform surface smoothing
     void smoothSurfaces();
 
-    scalar tetVolume(const label cIndex);
+    // Solve for surface point positions
+    void solveForSurfacePoints();
 
-    // Private member function to check for invalid
-    // cells and correct if necessary.
-    void correctInvalidCells();
+    // Optimize the point-position in local coordinates.
+    void optimizePoint();
+
+    // Evaluate the function at a point.
+    void evaluateFunction
+    (
+        const label type,
+        const vector& x,
+        scalar& fn,
+        vector& fnGrad
+    );
+
+    // Evaluate the constraint for a given point.
+    void evaluateConstraint
+    (
+        const label type,
+        const vector& x,
+        scalar& cstr,
+        vector& grad
+    );
+
+    // Solve the QP sub-problem.
+    void QPsolver
+    (
+        const tensor& H,
+        const vector& f,
+        const vector& Ac,
+        const scalar& bc,
+        vector& x,
+        scalar& lambda,
+        const bool normalize = true
+    );
+
+    // QR Decomposition using LAPACK (for vectors)
+    void qrDecompose
+    (
+        const vector& a,
+        tensor& Q,
+        vector& R,
+        tensor& Z
+    );
+
+    // Pseudo-inverse using LAPACK (for vectors)
+    vector pInv(const vector& a);
+
+    // Pseudo-inverse using LAPACK (for 2D tensors)
+    tensor2D pInv(const tensor2D& a);
+
+    // Compute a search direction vector
+    vector computeSearchDirection
+    (
+        const tensor& Z,
+        const tensor& H,
+        const vector& gf,
+        label& type
+    );
+
+    // Prepare a priority list of surface vertices for smoothing.
+    void preparePriorityList();
 
     // Prepare point-normals with updated point positions
     void preparePointNormals();
+
+    // Utility method to prepare the least-squares matrix
+    void prepareLeastSquaresMatrix
+    (
+        const label nPoints,
+        const scalarListList& lsqCoeffs,
+        const scalarField& lsqWeights,
+        const scalarField& lsqSource,
+        scalarMatrix& lsqMatrix,
+        scalarField& source
+    );
 
 public:
 
@@ -237,7 +271,6 @@ public:
         //- Update topology
         virtual void updateMesh(const mapPolyMesh&);
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
