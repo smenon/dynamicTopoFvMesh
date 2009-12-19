@@ -5269,9 +5269,20 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
     const label specThreads
 )
 {
+    // Initialize an IOobject for the IOmultiThreader object
+    IOobject io
+    (
+        "threader",
+        this->time().timeName(),
+        (*this),
+        IOobject::NO_READ,
+        IOobject::NO_WRITE,
+        true
+    );
+
     if (specThreads > 0)
     {
-        threader_.set(new multiThreader(specThreads));
+        threader_.set(new IOmultiThreader(io, specThreads));
     }
     else
     {
@@ -5279,8 +5290,9 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         {
             threader_.set
             (
-                new multiThreader
+                new IOmultiThreader
                 (
+                    io,
                     readLabel
                     (
                         dict_.subDict("dynamicTopoFvMesh").lookup("threads")
@@ -5290,7 +5302,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         }
         else
         {
-            threader_.set(new multiThreader(1));
+            threader_.set(new IOmultiThreader(io, 1));
         }
     }
 

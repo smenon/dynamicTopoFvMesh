@@ -228,7 +228,7 @@ class dynamicTopoFvMesh
         List<stack>         edgeStack_;
 
         //- Support for multithreading
-        autoPtr<multiThreader> threader_;
+        autoPtr<IOmultiThreader> threader_;
 
         // Pointer-list of thread-handlers
         PtrList<threadHandler<dynamicTopoFvMesh> > handlerPtr_;
