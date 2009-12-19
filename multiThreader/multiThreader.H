@@ -26,8 +26,12 @@ Class
     multiThreader
 
 Description
-    Class which provides support for generic multithreaded execution of class
+    Class which provides support for generic multi-threaded execution of class
     methods using POSIX threads.
+
+    The IOmultiThreader is an inherited class which allows integration with
+    the object registry, thereby allowing a single multi-threader object to
+    be accessed by multiple classes in a global sense.
 
     Thread-pooling is implemented as described in:
    "Using POSIX Threads: Programming with Pthreads"
@@ -46,6 +50,7 @@ SourceFiles
 #define multiThreader_H
 
 #include "error.H"
+#include "regIOobject.H"
 
 #include <pthread.h>
 #include <errno.h>
@@ -256,6 +261,51 @@ public:
         void waitForCondition(Conditional&, Mutex&) const;
         void broadCast(Conditional&) const;
         void signal(Conditional&) const;
+};
+
+/*---------------------------------------------------------------------------*\
+                         Class IOmultiThreader Declaration
+\*---------------------------------------------------------------------------*/
+
+class IOmultiThreader
+:
+    public regIOobject,
+    public multiThreader
+{
+
+    // Member functions
+
+        //- Disallow default bitwise copy construct
+        IOmultiThreader(const IOmultiThreader&);
+
+        //- Disallow default bitwise assignment
+        void operator=(const IOmultiThreader&);
+
+public:
+
+    //- Runtime type information
+    TypeName("multiThreader");
+
+
+    // Constructors
+
+        //- Construct from IOobject and specified number of threads
+        IOmultiThreader(const IOobject& io, int numThreads)
+        :
+            regIOobject(io),
+            multiThreader(numThreads)
+        {}
+
+    // Destructor
+
+        virtual ~IOmultiThreader() {}
+
+    // Member functions
+
+        bool writeData(Ostream&) const
+        {
+            return true;
+        }
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
