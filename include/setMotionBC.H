@@ -1,14 +1,12 @@
 // Access a particular boundary displacement patch
 void setMotionBC
 (
-    dynamicTopoFvMesh& mesh,
+    fvMesh& mesh,
+    const word& solverType,
     const label& index,
     const vectorField& dispField
 )
 {
-    // Determine the kind of motion solver in use
-    word solverType(mesh.dynamicMeshDict().lookup("solver"));
-
     //- Cell decomposition FEM motion solver
     if
     (
@@ -18,11 +16,15 @@ void setMotionBC
     {
         // Boundary motion specified for the tetDecompositionMotionSolver
         tetPointVectorField& motionU = const_cast<tetPointVectorField&>
-            (mesh.lookupObject<tetPointVectorField>("motionU"));
+        (
+            mesh.lookupObject<tetPointVectorField>("motionU")
+        );
 
         // Assign boundary conditions to the motion solver
         motionU.boundaryField()[index] ==
-            dispField/mesh.time().deltaT().value();
+        (
+            dispField/mesh.time().deltaT().value()
+        );
     }
 
     //- Face decomposition FEM motion solver
@@ -34,7 +36,9 @@ void setMotionBC
     {
         // Boundary motion specified for the tetDecompositionMotionSolver
         tetPointVectorField& motionU = const_cast<tetPointVectorField&>
-            (mesh.lookupObject<tetPointVectorField>("motionU"));
+        (
+            mesh.lookupObject<tetPointVectorField>("motionU")
+        );
 
         // Assign boundary conditions to the motion solver
 
@@ -49,23 +53,25 @@ void setMotionBC
         );
 
         motionU.boundaryField()[index] ==
+        (
             interpolator.pointToPointInterpolate
             (
                 dispField/mesh.time().deltaT().value()
-            );
+            )
+        );
     }
 
-    if
-    (
-        (solverType == "mesquiteSmoother")
-    )
+    if (solverType == "mesquiteSmoother")
     {
         // Boundary motion specified for the springMotionSolver
         pointField& refPoints = const_cast<pointField&>
-            (mesh.lookupObject<pointField>("refPoints"));
+        (
+            mesh.lookupObject<pointField>("refPoints")
+        );
 
         // Assign boundary conditions to the motion solver
         const labelList& meshPts = mesh.boundaryMesh()[index].meshPoints();
+
         forAll(meshPts,pointI)
         {
             refPoints[meshPts[pointI]] += dispField[pointI];
@@ -76,21 +82,18 @@ void setMotionBC
 // Access the entire reference field
 void setMotionBC
 (
-    dynamicTopoFvMesh& mesh,
+    fvMesh& mesh,
+    const word& solverType,
     const vectorField& dispField
 )
 {
-    // Determine the kind of motion solver in use
-    word solverType(mesh.dynamicMeshDict().lookup("solver"));
-
-    if
-    (
-        (solverType == "mesquiteSmoother")
-    )
+    if (solverType == "mesquiteSmoother")
     {
         // Boundary motion specified for the springMotionSolver
         pointField& refPoints = const_cast<pointField&>
-            (mesh.lookupObject<pointField>("refPoints"));
+        (
+            mesh.lookupObject<pointField>("refPoints")
+        );
 
         // Assign boundary conditions to the motion solver
         refPoints = dispField;

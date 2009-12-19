@@ -91,7 +91,12 @@ void rotatePoints
     if (solveForMotion)
     {
         // Update the displacement BCs for mesh motion
-        setMotionBC(mesh, meshPoints);
+        setMotionBC
+        (
+            mesh,
+            word(mesh.dynamicMeshDict().lookup("solver")),
+            meshPoints
+        );
     }
     else
     {
