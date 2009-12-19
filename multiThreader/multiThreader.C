@@ -35,15 +35,20 @@ Author
 
 #include "multiThreader.H"
 
+namespace Foam
+{
+
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-bool Foam::multiThreader::debug = false;
-bool Foam::Mutex::debug = false;
-bool Foam::rwMutex::debug = false;
+defineTypeNameAndDebug(IOmultiThreader, 0);
+
+bool multiThreader::debug = false;
+bool Mutex::debug = false;
+bool rwMutex::debug = false;
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::multiThreader::multiThreader(int numThreads)
+multiThreader::multiThreader(int numThreads)
 :
     maxQueueSize_(10),
     poolInfo_(NULL)
@@ -73,7 +78,7 @@ Foam::multiThreader::multiThreader(int numThreads)
     initializeThreadPool();
 }
 
-Foam::Mutex::Mutex()
+Mutex::Mutex()
 {
     // Set attributes based on debug flag
     pthread_mutexattr_t attribute;
@@ -99,7 +104,7 @@ Foam::Mutex::Mutex()
     pthread_mutexattr_destroy(&attribute);
 }
 
-Foam::rwMutex::rwMutex()
+rwMutex::rwMutex()
 {
     // Set attributes for the mutex
     pthread_rwlockattr_t attribute;
@@ -121,7 +126,7 @@ Foam::rwMutex::rwMutex()
     pthread_rwlockattr_destroy(&attribute);
 }
 
-Foam::Conditional::Conditional()
+Conditional::Conditional()
 {
     if (pthread_cond_init(&condition_, NULL))
     {
@@ -133,12 +138,12 @@ Foam::Conditional::Conditional()
 
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
 
-Foam::multiThreader::~multiThreader()
+multiThreader::~multiThreader()
 {
     destroyThreadPool();
 }
 
-Foam::Mutex::~Mutex()
+Mutex::~Mutex()
 {
     if (pthread_mutex_destroy(&lock_))
     {
@@ -148,7 +153,7 @@ Foam::Mutex::~Mutex()
     }
 }
 
-Foam::rwMutex::~rwMutex()
+rwMutex::~rwMutex()
 {
     if (pthread_rwlock_destroy(&lock_))
     {
@@ -158,7 +163,7 @@ Foam::rwMutex::~rwMutex()
     }
 }
 
-Foam::Conditional::~Conditional()
+Conditional::~Conditional()
 {
     if (pthread_cond_destroy(&condition_))
     {
@@ -170,7 +175,7 @@ Foam::Conditional::~Conditional()
 
 // * * * * * * * * * * * * * * * Private Functions * * * * * * * * * * * * * //
 
-void Foam::multiThreader::initializeThreadPool()
+void multiThreader::initializeThreadPool()
 {
     // Initialize threads only if multi-threaded
     if (multiThreaded())
@@ -226,7 +231,7 @@ void Foam::multiThreader::initializeThreadPool()
     }
 }
 
-threadReturnType Foam::multiThreader::poolThread(void *arg)
+threadReturnType multiThreader::poolThread(void *arg)
 {
     // Typecast the argument into the required structure
     threadPool *poolInfo = reinterpret_cast<threadPool *>(arg);
@@ -297,7 +302,7 @@ threadReturnType Foam::multiThreader::poolThread(void *arg)
     return threadReturnValue;
 }
 
-void Foam::multiThreader::addToWorkQueue
+void multiThreader::addToWorkQueue
 (
     void (*tFunction)(void*),
     void *arg
@@ -366,7 +371,7 @@ void Foam::multiThreader::addToWorkQueue
     poolInfo_->queueLock.unlock();
 }
 
-void Foam::multiThreader::destroyThreadPool()
+void multiThreader::destroyThreadPool()
 {
     // Destroy threads only if multi-threaded
     if (multiThreaded())
@@ -428,7 +433,7 @@ void Foam::multiThreader::destroyThreadPool()
     }
 }
 
-void Foam::multiThreader::waitForCondition
+void multiThreader::waitForCondition
 (
     Conditional& condition,
     Mutex& mutex
@@ -442,7 +447,7 @@ void Foam::multiThreader::waitForCondition
     }
 }
 
-void Foam::multiThreader::broadCast(Conditional& condition) const
+void multiThreader::broadCast(Conditional& condition) const
 {
     if (pthread_cond_broadcast(condition()))
     {
@@ -452,7 +457,7 @@ void Foam::multiThreader::broadCast(Conditional& condition) const
     }
 }
 
-void Foam::multiThreader::signal(Conditional& condition) const
+void multiThreader::signal(Conditional& condition) const
 {
     if (pthread_cond_signal(condition()))
     {
@@ -465,13 +470,13 @@ void Foam::multiThreader::signal(Conditional& condition) const
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 //- Return the number of threads
-int Foam::multiThreader::getNumThreads() const
+int multiThreader::getNumThreads() const
 {
     return numThreads_;
 }
 
 //- Obtain the thread ID for a given index
-pthread_t Foam::multiThreader::getID(int index)
+pthread_t multiThreader::getID(int index)
 {
     if (multiThreaded())
     {
@@ -491,25 +496,25 @@ pthread_t Foam::multiThreader::getID(int index)
 }
 
 //- Return true if the number of threads is equal to one.
-bool Foam::multiThreader::singleThreaded() const
+bool multiThreader::singleThreaded() const
 {
     return (numThreads_ == 1);
 }
 
 //- Return true if the number of threads is more than one.
-bool Foam::multiThreader::multiThreaded() const
+bool multiThreader::multiThreaded() const
 {
     return (numThreads_ > 1);
 }
 
 //- Return the maxQueueSize
-int Foam::multiThreader::getMaxQueueSize()
+int multiThreader::getMaxQueueSize()
 {
     return maxQueueSize_;
 }
 
 //- Set the maxQueueSize
-void Foam::multiThreader::setMaxQueueSize(int size)
+void multiThreader::setMaxQueueSize(int size)
 {
     if (size > 0)
     {
@@ -523,7 +528,7 @@ void Foam::multiThreader::setMaxQueueSize(int size)
     }
 }
 
-void Foam::Mutex::lock()
+void Mutex::lock()
 {
     if (pthread_mutex_lock(&lock_))
     {
@@ -533,7 +538,7 @@ void Foam::Mutex::lock()
     }
 }
 
-bool Foam::Mutex::tryLock()
+bool Mutex::tryLock()
 {
     label retVal;
 
@@ -561,7 +566,7 @@ bool Foam::Mutex::tryLock()
     return retVal;
 }
 
-void Foam::Mutex::unlock()
+void Mutex::unlock()
 {
     if (pthread_mutex_unlock(&lock_))
     {
@@ -571,7 +576,7 @@ void Foam::Mutex::unlock()
     }
 }
 
-void Foam::rwMutex::lock(const lockType lType)
+void rwMutex::lock(const lockType lType)
 {
     if (lType == READ_LOCK)
     {
@@ -600,7 +605,7 @@ void Foam::rwMutex::lock(const lockType lType)
     }
 }
 
-bool Foam::rwMutex::tryLock(const lockType lType)
+bool rwMutex::tryLock(const lockType lType)
 {
     label retVal = -1;
 
@@ -653,7 +658,7 @@ bool Foam::rwMutex::tryLock(const lockType lType)
     return retVal;
 }
 
-void Foam::rwMutex::unlock()
+void rwMutex::unlock()
 {
     if (pthread_rwlock_unlock(&lock_))
     {
@@ -665,7 +670,7 @@ void Foam::rwMutex::unlock()
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void Foam::multiThreader::operator=(const multiThreader& rhs)
+void multiThreader::operator=(const multiThreader& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)
@@ -675,5 +680,7 @@ void Foam::multiThreader::operator=(const multiThreader& rhs)
             << abort(FatalError);
     }
 }
+
+} // End namespace Foam
 
 // ************************************************************************* //
