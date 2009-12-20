@@ -787,7 +787,7 @@ const changeMap dynamicTopoFvMesh::swap23
     {
         scalar avgScale = -1.0;
 
-        if (edgeModification_)
+        if (edgeRefinement_)
         {
             avgScale =
             (
@@ -1415,7 +1415,7 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         scalar avgScale = 0.0;
 
-        if (edgeModification_)
+        if (edgeRefinement_)
         {
             forAll(cellRemovalList, cellI)
             {

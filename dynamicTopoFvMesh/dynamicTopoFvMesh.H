@@ -94,8 +94,8 @@ class dynamicTopoFvMesh
         //- Mesh characteristics [2D/3D]
         Switch twoDMesh_;
 
-        //- Edge bisection/collapse option
-        Switch edgeModification_;
+        //- Edge refinement switch
+        Switch edgeRefinement_;
 
         //- Coupled modification switches
         Switch coupledModification_;
@@ -1102,14 +1102,14 @@ class dynamicTopoFvMesh
         // Read optional dictionary parameters
         void readOptionalParameters();
 
-        // Read edge-modification options from the dictionary
-        void readEdgeOptions(bool reRead = false);
+        // Read edge refinement options from the dictionary
+        void readRefinementOptions(bool reRead = false);
 
         // Check for legitimacy of patches
         void checkPatches(const wordList& patchList);
 
-        // Does the mesh perform edge-modification?
-        bool edgeModification();
+        // Does the mesh perform edge refinement?
+        bool edgeRefinement();
 
         // Build the global shared-point list
         void buildGlobalPoints();

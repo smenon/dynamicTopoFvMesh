@@ -83,9 +83,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         dict_.subDict("dynamicTopoFvMesh").lookup("allOptionsMandatory")
     ),
     twoDMesh_(polyMesh::nGeometricD() == 2 ? true : false),
-    edgeModification_
+    edgeRefinement_
     (
-        dict_.subDict("dynamicTopoFvMesh").lookup("edgeModification")
+        dict_.subDict("dynamicTopoFvMesh").lookup("edgeRefinement")
     ),
     coupledModification_(false),
     slaveModification_(false),
@@ -181,8 +181,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     reverseFaceMap_.setSize(nFaces_, -7);
     reverseCellMap_.setSize(nCells_, -7);
 
-    // Define edgeModification options
-    readEdgeOptions();
+    // Define edgeRefinement options
+    readRefinementOptions();
 }
 
 //- Construct from components. Used for subMeshes only.
@@ -205,7 +205,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     dict_(mesh.dynamicMeshDict()),
     mandatory_(mesh.mandatory_),
     twoDMesh_(mesh.twoDMesh_),
-    edgeModification_(mesh.edgeModification_),
+    edgeRefinement_(mesh.edgeRefinement_),
     coupledModification_(false),
     slaveModification_(false),
     interval_(1),
@@ -390,7 +390,7 @@ tmp<scalarField> dynamicTopoFvMesh::lengthScale()
         new scalarField(nCells(), 0.0)
     );
 
-    if (edgeModification_)
+    if (edgeRefinement_)
     {
         scalarField& internalField = tlengthScale();
 
@@ -694,7 +694,7 @@ label dynamicTopoFvMesh::insertCell
 
     cells_.append(newCell);
 
-    if (edgeModification_)
+    if (edgeRefinement_)
     {
         lengthScale_.append(lengthScale);
     }
@@ -760,7 +760,7 @@ void dynamicTopoFvMesh::removeCell
 
     cells_[cIndex].clear();
 
-    if (edgeModification_)
+    if (edgeRefinement_)
     {
         lengthScale_[cIndex] = -1.0;
     }
@@ -3943,7 +3943,7 @@ scalar dynamicTopoFvMesh::testProximity
 // Calculate the edge length-scale for the mesh
 void dynamicTopoFvMesh::calculateLengthScale()
 {
-    if (!edgeModification_)
+    if (!edgeRefinement_)
     {
         return;
     }
@@ -4121,7 +4121,7 @@ void dynamicTopoFvMesh::calculateLengthScale()
 // Compute the growth factor of an existing mesh
 scalar dynamicTopoFvMesh::computeGrowthFactor()
 {
-    if (!edgeModification_)
+    if (!edgeRefinement_)
     {
         return -1.0;
     }
@@ -4723,20 +4723,20 @@ void dynamicTopoFvMesh::readOptionalParameters()
     }
 }
 
-// Read edge-modification options from the dictionary
-void dynamicTopoFvMesh::readEdgeOptions
+// Read edge refinement options from the dictionary
+void dynamicTopoFvMesh::readRefinementOptions
 (
     bool reRead
 )
 {
-    if (!edgeModification_)
+    if (!edgeRefinement_)
     {
         return;
     }
 
     const dictionary& edgeOptionDict =
     (
-        dict_.subDict("dynamicTopoFvMesh").subDict("edgeOptions")
+        dict_.subDict("dynamicTopoFvMesh").subDict("refinementOptions")
     );
 
     scalar oldRatioMax = ratioMax_;
@@ -4787,7 +4787,7 @@ void dynamicTopoFvMesh::readEdgeOptions
     // Sanity check: Are length scales correctly specified?
     if (minLengthScale_ > maxLengthScale_)
     {
-        FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+        FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions()")
             << " Length-scales are incorrectly specified." << nl
             << " minLengthScale: " << minLengthScale_ << nl
             << " maxLengthScale: " << maxLengthScale_ << nl
@@ -4886,7 +4886,7 @@ void dynamicTopoFvMesh::readEdgeOptions
                 {
                     if (fixedPatchList[wordI] == freePatchList[wordJ])
                     {
-                        FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+                        FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions()")
                             << " Conflicting fixed/free patches." << nl
                             << " Fixed patch: " << fixedPatchList[wordI] << nl
                             << " Free patch: " << freePatchList[wordJ] << nl
@@ -4930,7 +4930,7 @@ void dynamicTopoFvMesh::readEdgeOptions
             (curvatureDeviation_ > 1.0 || curvatureDeviation_ < 0.0)
         )
         {
-            FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+            FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions()")
                 << " Curvature deviation out of range [0..1]"
                 << abort(FatalError);
         }
@@ -4971,7 +4971,7 @@ void dynamicTopoFvMesh::readEdgeOptions
             (sliverThreshold_ > 1.0 || sliverThreshold_ < 0.0)
         )
         {
-            FatalErrorIn("dynamicTopoFvMesh::readEdgeOptions()")
+            FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions()")
                 << " Sliver threshold out of range [0..1]"
                 << abort(FatalError);
         }
@@ -5434,10 +5434,10 @@ const multiThreader& dynamicTopoFvMesh::threader() const
     return threader_();
 }
 
-// Does the mesh perform edge-modification?
-bool dynamicTopoFvMesh::edgeModification()
+// Does the mesh perform edge refinement?
+bool dynamicTopoFvMesh::edgeRefinement()
 {
-    return edgeModification_;
+    return edgeRefinement_;
 }
 
 // Build the global shared-points list
@@ -5999,7 +5999,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     // Loop through the coupled stack and perform changes.
     if (twoDMesh_)
     {
-        if (edgeModification_)
+        if (edgeRefinement_)
         {
             // Initialize the face stack
             // initCoupledFaceStack();
@@ -6014,7 +6014,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     }
     else
     {
-        if (edgeModification_)
+        if (edgeRefinement_)
         {
             // Initialize the edge stack
             initCoupledEdgeStack();
@@ -6102,7 +6102,7 @@ void dynamicTopoFvMesh::buildCoupledPatchMeshes()
                 pWrite(proc, sendMesh.entityBuffer(bufferI));
             }
 
-            if (edgeModification_)
+            if (edgeRefinement_)
             {
                 pWrite(proc, sendMesh.lengthBuffer());
             }
@@ -6163,7 +6163,7 @@ void dynamicTopoFvMesh::buildCoupledPatchMeshes()
                 pRead(proc, recvMesh.entityBuffer(bufferI));
             }
 
-            if (edgeModification_)
+            if (edgeRefinement_)
             {
                 recvMesh.lengthBuffer().setSize
                 (
@@ -6472,7 +6472,7 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
         }
     }
 
-    if (edgeModification_)
+    if (edgeRefinement_)
     {
         scalarList& lBuffer = subMesh.lengthBuffer();
 
@@ -6955,7 +6955,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
         // Retrieve an edge from the stack
         label eIndex = mesh.edgeStack(tIndex).pop();
 
-        // Check if edgeModifications are to be avoided.
+        // Check if edgeRefinements are to be avoided.
         if (mesh.checkEdgeModification(eIndex))
         {
             continue;
@@ -7975,7 +7975,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 // MultiThreaded topology modifier [2D]
 void dynamicTopoFvMesh::threadedTopoModifier2D()
 {
-    if (edgeModification_)
+    if (edgeRefinement_)
     {
         // Initialize the face stacks
         initFaceStacks();
@@ -8065,7 +8065,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     // Handle coupled patches.
     handleCoupledPatches();
 
-    if (edgeModification_)
+    if (edgeRefinement_)
     {
         // Initialize the cell stacks
         initEdgeStacks();
@@ -8197,7 +8197,7 @@ bool dynamicTopoFvMesh::updateTopology()
         readOptionalParameters();
 
         // Re-read edge options
-        readEdgeOptions(true);
+        readRefinementOptions(true);
     }
 
     // Print out the mesh bandwidth

@@ -2013,7 +2013,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     {
         scalar parentScale = -1.0;
 
-        if (edgeModification_)
+        if (edgeRefinement_)
         {
             parentScale = lengthScale_[cellsForRemoval[0]];
         }
@@ -2590,7 +2590,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         {
             scalar parentScale = -1.0;
 
-            if (edgeModification_)
+            if (edgeRefinement_)
             {
                 parentScale = lengthScale_[cellsForRemoval[1]];
             }
