@@ -128,6 +128,12 @@ void dynamicTopoFvMesh::bisectQuadFace
     otherEdgePoint[0] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
     otherEdgePoint[1] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
 
+    labelList mappingPoints(2, -1);
+
+    // Set mapping for this point
+    mappingPoints[0] = commonEdges[0][0];
+    mappingPoints[1] = commonEdges[0][1];
+
     // Add two new points to the end of the list
     newPtIndex[0] =
     (
@@ -135,11 +141,16 @@ void dynamicTopoFvMesh::bisectQuadFace
         (
             0.5 *
             (
-                points_[commonEdges[0][0]]
-              + points_[commonEdges[0][1]]
-            )
+                points_[mappingPoints[0]]
+              + points_[mappingPoints[1]]
+            ),
+            mappingPoints
         )
     );
+
+    // Set mapping for this point
+    mappingPoints[0] = commonEdges[1][0];
+    mappingPoints[1] = commonEdges[1][1];
 
     newPtIndex[1] =
     (
@@ -147,9 +158,10 @@ void dynamicTopoFvMesh::bisectQuadFace
         (
             0.5 *
             (
-                points_[commonEdges[1][0]]
-              + points_[commonEdges[1][1]]
-            )
+                points_[mappingPoints[0]]
+              + points_[mappingPoints[1]]
+            ),
+            mappingPoints
         )
     );
 
@@ -944,6 +956,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         }
     }
 
+    labelList mappingPoints(2, -1);
+
+    // Set mapping for this point
+    mappingPoints[0] = edges_[eIndex][0];
+    mappingPoints[1] = edges_[eIndex][1];
+
     // Add a new point to the end of the list
     label newPointIndex =
     (
@@ -951,9 +969,10 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         (
             0.5 *
             (
-                points_[edges_[eIndex][0]]
-              + points_[edges_[eIndex][1]]
-            )
+                points_[mappingPoints[0]]
+              + points_[mappingPoints[1]]
+            ),
+            mappingPoints
         )
     );
 
@@ -2002,8 +2021,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
         }
     }
 
+    labelList mappingPoints(3, -1);
+
+    // Fill in mapping information
+    mappingPoints[0] = faces_[fIndex][0];
+    mappingPoints[1] = faces_[fIndex][1];
+    mappingPoints[2] = faces_[fIndex][2];
+
     // Add a new point to the end of the list
-    label newPointIndex = insertPoint(triFaceCenter(fIndex));
+    label newPointIndex = insertPoint(triFaceCenter(fIndex), mappingPoints);
 
     // Add this point to the map.
     map.addPoint(newPointIndex);
@@ -3793,7 +3819,7 @@ void dynamicTopoFvMesh::splitInternalFaces
         // since the reference might become invalid during list resizing.
         point newPoint = points_[pIter.key()];
 
-        pIter() = insertPoint(newPoint);
+        pIter() = insertPoint(newPoint, labelList(1, pIter.key()));
 
         const labelList& pEdges = pointEdges_[pIter.key()];
 

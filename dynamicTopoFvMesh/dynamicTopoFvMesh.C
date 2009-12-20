@@ -1213,7 +1213,8 @@ void dynamicTopoFvMesh::removeEdge
 // Insert the specified point to the mesh
 label dynamicTopoFvMesh::insertPoint
 (
-    const point& newPoint
+    const point& newPoint,
+    const labelList& mappingPoints
 )
 {
     // Add a new point to the end of the list
@@ -1225,7 +1226,9 @@ label dynamicTopoFvMesh::insertPoint
     {
         Info << "Inserting point: "
              << newPointIndex << ": "
-             << newPoint << endl;
+             << newPoint
+             << "  Mapped from: "
+             << mappingPoints << endl;
     }
 
     // Add an empty entry to pointEdges as well.
@@ -1234,6 +1237,17 @@ label dynamicTopoFvMesh::insertPoint
     {
         pointEdges_.append(labelList(0));
     }
+
+    // Insert mapping info into the HashTable
+    pointsFromPoints_.insert
+    (
+        newPointIndex,
+        objectMap
+        (
+            newPointIndex,
+            mappingPoints
+        )
+    );
 
     nPoints_++;
 
@@ -1270,6 +1284,12 @@ void dynamicTopoFvMesh::removePoint
     else
     {
         deletedPoints_.insert(index);
+    }
+
+    // Check if the point was added in the current morph, and delete
+    if (pointsFromPoints_.found(index))
+    {
+        pointsFromPoints_.erase(index);
     }
 
     // Decrement the total point-count
@@ -8307,7 +8327,7 @@ bool dynamicTopoFvMesh::updateTopology()
         labelList oldPatchNMeshPoints(oldPatchNMeshPoints_);
 
         // Null temporaries
-        List<objectMap> pointsFromPoints(0);
+        List<objectMap> pointsFromPoints(pointsFromPoints_.size());
         List<objectMap> facesFromPoints(0);
         List<objectMap> facesFromEdges(0);
         List<objectMap> facesFromFaces(0);
@@ -8334,16 +8354,26 @@ bool dynamicTopoFvMesh::updateTopology()
             edgeFaces
         );
 
+        // Copy point-mapping information
+        label indexI = 0;
+
+        forAllIter(Map<objectMap>, pointsFromPoints_, pointI)
+        {
+            pointsFromPoints[indexI++] = pointI();
+        }
+
         // Copy cell-mapping information
-        label indexI=0;
+        label indexC = 0;
+
         forAllIter(Map<objectMap>, cellsFromCells_, cellI)
         {
-            cellsFromCells[indexI++] = cellI();
+            cellsFromCells[indexC++] = cellI();
         }
 
         // Obtain the patch-point labels for mapping before resetting the mesh
         labelListList oldMeshPointLabels(numPatches_);
-        for(label i=0; i<numPatches_; i++)
+
+        for(label i = 0; i < numPatches_; i++)
         {
             oldMeshPointLabels[i] = boundaryMesh()[i].meshPoints();
         }
@@ -8388,7 +8418,8 @@ bool dynamicTopoFvMesh::updateTopology()
 
         // Generate mapping for points on boundary patches
         labelListList patchPointMap(numPatches_);
-        for(label i=0; i<numPatches_; i++)
+
+        for(label i = 0; i < numPatches_; i++)
         {
             const labelList& meshPointLabels = boundaryMesh()[i].meshPoints();
             patchNMeshPoints_[i] = meshPointLabels.size();
@@ -8514,6 +8545,7 @@ bool dynamicTopoFvMesh::updateTopology()
         addedFacePatches_.clear();
         addedEdgePatches_.clear();
         cellsFromCells_.clear();
+        pointsFromPoints_.clear();
         cellParents_.clear();
 
         // Set new sizes for the reverse maps

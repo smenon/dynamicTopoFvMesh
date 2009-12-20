@@ -165,6 +165,7 @@ class dynamicTopoFvMesh
 
         //- Maps for the renumbering of added entities
         Map<objectMap>  cellsFromCells_;
+        Map<objectMap>  pointsFromPoints_;
         Map<label>      addedPointRenumbering_;
         Map<label>      addedEdgeRenumbering_;
         Map<label>      addedFaceRenumbering_;
@@ -743,7 +744,8 @@ class dynamicTopoFvMesh
         // Insert the specified point to the mesh
         label insertPoint
         (
-            const point& newPoint
+            const point& newPoint,
+            const labelList& mappingPoints
         );
 
         // Remove the specified point from the mesh
