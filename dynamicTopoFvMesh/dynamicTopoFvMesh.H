@@ -164,14 +164,15 @@ class dynamicTopoFvMesh
         labelList       cellMap_;
 
         //- Maps for the renumbering of added entities
-        Map<objectMap>  cellsFromCells_;
         Map<objectMap>  pointsFromPoints_;
+        Map<objectMap>  cellsFromCells_;
         Map<label>      addedPointRenumbering_;
         Map<label>      addedEdgeRenumbering_;
         Map<label>      addedFaceRenumbering_;
         Map<label>      addedCellRenumbering_;
         Map<label>      addedFacePatches_;
         Map<label>      addedEdgePatches_;
+        Map<label>      pointParents_;
         Map<label>      cellParents_;
 
         //- Maps to keep track of entities deleted after addition

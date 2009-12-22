@@ -109,6 +109,22 @@ void dynamicTopoFvMesh::reOrderPoints
                 << abort(FatalError);
     }
 
+    // Loop through the pointsFromPoints list, and renumber the map indices.
+    // HashTable keys, however, are not altered.
+    forAllIter(Map<objectMap>, pointsFromPoints_, pointI)
+    {
+        objectMap& thisMap = pointI();
+
+        if (thisMap.index() < nOldPoints_)
+        {
+            thisMap.index() = reversePointMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedPointRenumbering_[thisMap.index()];
+        }
+    }
+
     // Update the local copy
     points_.setSize(nPoints_);
 
@@ -1038,7 +1054,7 @@ void dynamicTopoFvMesh::reOrderCells(bool threaded)
         entityMutex_[3].unlock();
     }
 
-    // Loop through the cellsFromCells list, and renumber the map indices
+    // Loop through the cellsFromCells list, and renumber the map indices.
     // HashTable keys, however, are not altered.
     forAllIter(Map<objectMap>, cellsFromCells_, cellI)
     {

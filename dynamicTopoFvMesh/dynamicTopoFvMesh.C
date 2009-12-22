@@ -1238,6 +1238,30 @@ label dynamicTopoFvMesh::insertPoint
         pointEdges_.append(labelList(0));
     }
 
+    labelHashSet masterObjects;
+
+    forAll(mappingPoints, pointI)
+    {
+        label parent;
+
+        if (mappingPoints[pointI] < nOldPoints_)
+        {
+            parent = mappingPoints[pointI];
+        }
+        else
+        {
+            parent = pointParents_[mappingPoints[pointI]];
+        }
+
+        // Insert the parent point
+        pointParents_.insert(newPointIndex, parent);
+
+        if (!masterObjects.found(parent))
+        {
+            masterObjects.insert(parent);
+        }
+    }
+
     // Insert mapping info into the HashTable
     pointsFromPoints_.insert
     (
@@ -1245,7 +1269,7 @@ label dynamicTopoFvMesh::insertPoint
         objectMap
         (
             newPointIndex,
-            mappingPoints
+            masterObjects.toc()
         )
     );
 
@@ -8547,6 +8571,7 @@ bool dynamicTopoFvMesh::updateTopology()
         cellsFromCells_.clear();
         pointsFromPoints_.clear();
         cellParents_.clear();
+        pointParents_.clear();
 
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_, -7);
