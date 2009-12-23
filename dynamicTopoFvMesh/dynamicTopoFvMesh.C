@@ -1253,13 +1253,48 @@ label dynamicTopoFvMesh::insertPoint
             parent = pointParents_[mappingPoints[pointI]];
         }
 
-        // Insert the parent point
-        pointParents_.insert(newPointIndex, parent);
-
         if (!masterObjects.found(parent))
         {
             masterObjects.insert(parent);
         }
+    }
+
+    // Insert the parent point.
+    // This has to be done carefully: If a mapping point is on
+    // the surface, then the new point must also preferrentially
+    // map from the surface point.
+    label surfPointIndex = -1;
+
+    forAllIter(labelHashSet, masterObjects, oIter)
+    {
+        const labelList& pEdges = pointEdges_[oIter.key()];
+
+        bool foundBoundaryEdge = false;
+
+        forAll(pEdges, edgeI)
+        {
+            if (whichEdgePatch(pEdges[edgeI]) > -1)
+            {
+                surfPointIndex = edges_[pEdges[edgeI]].otherVertex(oIter.key());
+
+                foundBoundaryEdge = true;
+                break;
+            }
+        }
+
+        if (foundBoundaryEdge)
+        {
+            break;
+        }
+    }
+
+    if (surfPointIndex == -1)
+    {
+        pointParents_.insert(newPointIndex, masterObjects.begin().key());
+    }
+    else
+    {
+        pointParents_.insert(newPointIndex, surfPointIndex);
     }
 
     // Insert mapping info into the HashTable
@@ -8446,19 +8481,22 @@ bool dynamicTopoFvMesh::updateTopology()
         for(label i = 0; i < numPatches_; i++)
         {
             const labelList& meshPointLabels = boundaryMesh()[i].meshPoints();
+
             patchNMeshPoints_[i] = meshPointLabels.size();
+
             patchPointMap[i].setSize(meshPointLabels.size(), -1);
+
             forAll(meshPointLabels, pointI)
             {
-                // Check if the position has been maintained.
-                // Otherwise, perform a search for the old position in the patch
-                if (pointI < oldPatchNMeshPoints_[i])
+                label oldIndex = pointMap_[meshPointLabels[pointI]];
+
+                // Check if the point existed before...
+                if (oldIndex > -1)
                 {
-                    if
-                    (
-                        meshPointLabels[pointI]
-                     == oldMeshPointLabels[i][pointI]
-                    )
+                    // Check if the position has been maintained.
+                    // Otherwise, perform a search for the
+                    // old position in the patch
+                    if (oldMeshPointLabels[i][pointI] == oldIndex)
                     {
                         // Good. Position is maintained. Make an entry
                         patchPointMap[i][pointI] = pointI;
@@ -8466,25 +8504,27 @@ bool dynamicTopoFvMesh::updateTopology()
                     else
                     {
                         // Start a linear search for the old position
-                        bool foundOldPos=false;
+                        bool foundOldPos = false;
 
-                        forAll(oldMeshPointLabels[i],pointJ)
+                        forAll(oldMeshPointLabels[i], pointJ)
                         {
-                            if
-                            (
-                                oldMeshPointLabels[i][pointJ]
-                             == meshPointLabels[pointI]
-                            )
+                            if (oldMeshPointLabels[i][pointJ] == oldIndex)
                             {
                                 patchPointMap[i][pointI] = pointJ;
-                                foundOldPos=true; break;
+                                foundOldPos = true;
+                                break;
                             }
                         }
 
                         if (!foundOldPos)
                         {
-                            // Couldn't find a match. Must be a new label.
-                            patchPointMap[i][pointI] = -1;
+                            // Couldn't find a match. Something's wrong.
+                            FatalErrorIn
+                            (
+                                "dynamicTopoFvMesh::updateTopology()"
+                            )
+                                << "Error in patch point mapping"
+                                << abort(FatalError);
                         }
                     }
                 }
