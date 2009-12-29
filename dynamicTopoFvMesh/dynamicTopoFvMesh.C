@@ -7330,6 +7330,11 @@ void dynamicTopoFvMesh::remove2DSliver
     const label fIndex
 )
 {
+    if (!edgeRefinement_)
+    {
+        return;
+    }
+
     // Measure the boundary edge-length of the face in question
     scalar length = edgeLength(getTriBoundaryEdge(fIndex));
 
@@ -7706,6 +7711,11 @@ const changeMap dynamicTopoFvMesh::identifySliverType
 // Remove sliver cells in 3D
 void dynamicTopoFvMesh::removeSlivers()
 {
+    if (!edgeRefinement_)
+    {
+        return;
+    }
+
     // If coupled patches exist, set the flag
     if (patchCoupling_.size() || procIndices_.size())
     {

@@ -1112,40 +1112,43 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             collapseCase = 2;
         }
 
-        // Looks like both points are on the boundary.
+        // Override previous decision for rare cases.
         // Check if either point touches a hull boundary face, and retain that.
-        FixedList<bool,2> faceCheck(false);
-
-        forAll(ringEntities[1], faceI)
+        if (!nBoundCurves[0] && !nBoundCurves[1])
         {
-            if (whichPatch(ringEntities[1][faceI]) > -1)
+            FixedList<bool,2> faceCheck(false);
+
+            forAll(ringEntities[1], faceI)
             {
-                faceCheck[0] = true;
-                break;
+                if (whichPatch(ringEntities[1][faceI]) > -1)
+                {
+                    faceCheck[0] = true;
+                    break;
+                }
             }
-        }
 
-        forAll(ringEntities[3], faceI)
-        {
-            if (whichPatch(ringEntities[3][faceI]) > -1)
+            forAll(ringEntities[3], faceI)
             {
-                faceCheck[1] = true;
-                break;
+                if (whichPatch(ringEntities[3][faceI]) > -1)
+                {
+                    faceCheck[1] = true;
+                    break;
+                }
             }
-        }
 
-        if (faceCheck[0] && !faceCheck[1])
-        {
-            collapseCase = 1;
-        }
-        else
-        if (!faceCheck[0] && faceCheck[1])
-        {
-            collapseCase = 2;
-        }
-        else
-        {
-            collapseCase = 2;
+            if (faceCheck[0] && !faceCheck[1])
+            {
+                collapseCase = 1;
+            }
+            else
+            if (!faceCheck[0] && faceCheck[1])
+            {
+                collapseCase = 2;
+            }
+            else
+            {
+                collapseCase = 2;
+            }
         }
     }
     else
@@ -1367,7 +1370,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         writeVTK
         (
-            Foam::name(eIndex)+"Collapse_0",
+            Foam::name(eIndex)+"_Collapse_0",
             vtkCells
         );
     }
@@ -1603,6 +1606,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << eIndex << " :: " << edges_[eIndex]
                 << " Patch: " << whichEdgePatch(eIndex)
                 << " edgeBoundary: " << edgeBoundary
+                << " collapseCase: " << collapseCase
                 << abort(FatalError);
         }
     }
