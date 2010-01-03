@@ -159,6 +159,9 @@ protected:
     // Solve for surface point positions
     void solveForSurfacePoints();
 
+    // Copy from local to global points
+    void copyToGlobalPoints();
+
     // Optimize the point-position in local coordinates.
     void optimizePoint();
 
@@ -221,6 +224,18 @@ protected:
 
     // Prepare point-normals with updated point positions
     void preparePointNormals();
+
+    // Write a particular point out for post-processing
+    void writePoint(const label patchI, const label pointI);
+
+    // Output a list of points as a VTK file.
+    void writeVTK
+    (
+        const word& name,
+        const polyMesh& mesh,
+        const pointField& points,
+        const labelListList& cellPoints
+    );
 
     // Utility method to prepare the least-squares matrix
     void prepareLeastSquaresMatrix

@@ -25,6 +25,8 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "mesquiteSmoother.H"
+#include "word.H"
+#include "fileName.H"
 #include "IOmanip.H"
 #include "Random.H"
 #include "addToRunTimeSelectionTable.H"
@@ -1261,6 +1263,9 @@ void mesquiteSmoother::smoothSurfaces()
 
         // Solve for surface point positions
         solveForSurfacePoints();
+
+        // Copy from local to global points
+        copyToGlobalPoints();
     }
 
     Info << "Done.";
@@ -1306,14 +1311,40 @@ void mesquiteSmoother::solveForSurfacePoints()
     }
 }
 
+// Copy from local to global points
+void mesquiteSmoother::copyToGlobalPoints()
+{
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    forAll(pIDs_, patchI)
+    {
+        const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+        forAll(meshPts, pointI)
+        {
+            refPoints_[meshPts[pointI]] = localPts_[patchI][pointI];
+        }
+    }
+}
+
 // Optimize the point-position in local coordinates.
 // Solve using the Sequential Quadratic Programming (SQP) approach.
 void mesquiteSmoother::optimizePoint()
 {
+    // Check if we need to skip this point
+    if
+    (
+        pFlags_[patchIndex_][pointIndex_] ||
+        !a_[patchIndex_][pointIndex_].size()
+    )
+    {
+        return;
+    }
+
     vector x = vector::zero, xNew = vector::zero;
 
     // Evaluate the constraint on this point as well.
-    scalar ceq = 0.0, f = 0.0;
+    scalar ceq = 0.0, f = 0.0, fStart = 0.0;
     vector gnc = vector::zero, gf = vector::zero;
 
     // First evaluate the function and constraint
@@ -1321,15 +1352,24 @@ void mesquiteSmoother::optimizePoint()
     evaluateFunction(2, x, f, gf);
     evaluateConstraint(2, x, ceq, gnc);
 
+    // Store initial function value for posterity
+    fStart = f;
+
     // Start with the test point
     xNew = x;
 
     // Start with an identity matrix as the Hessian estimate.
     tensor H = I;
 
+    // Limit step-size for line-searches
+    // To do this, pick an edge, and use it for scale.
+    const polyPatch& pp = mesh().boundaryMesh()[pIDs_[patchIndex_]];
+    const edge& pEdge = pp.edges()[pp.pointEdges()[pointIndex_][0]];
+    scalar relSrchBnd = 0.5 * pEdge.mag(pp.localPoints());
+
     // Set a few default options
     scalar eps = 1e-16, tolX = 1e-6, tolFn = 1e-6, tolCon = 1e-6;
-    label iter = 0, nFnEvals = 1, nGradEvals = 1, verbosity = 1;
+    label iter = 0, nFnEvals = 1, nGradEvals = 1, verbosity = 0;
     label maxFnEvals = 300, maxIter = 400;
     vector searchDir = vector::zero, sDiff = vector::zero;
     scalar stepLength = 1.0;
@@ -1556,6 +1596,7 @@ void mesquiteSmoother::optimizePoint()
 
                     if ((yL & sDiff) < eps*sqrt(tr(H.T() & H)))
                     {
+                        /*
                         WarningIn
                         (
                             "mesquiteSmoother::optimizePoint()"
@@ -1563,6 +1604,14 @@ void mesquiteSmoother::optimizePoint()
                             << " Algorithm requires a second Hessian update,"
                             << " but this has not been implemented."
                             << endl;
+                        */
+
+                        // Info << "a: " << a_[patchIndex_][pointIndex_] << endl;
+                        // Info << "T: " << T_[patchIndex_][pointIndex_] << endl;
+
+                        // writePoint(patchIndex_, pointIndex_);
+
+                        return;
                     }
                 }
 
@@ -1635,6 +1684,10 @@ void mesquiteSmoother::optimizePoint()
 
             stepLength = 2.0;
 
+            // Set a limit on the line-search step size.
+            bool hasStepBound = true;
+            vector sBnd = relSrchBnd * max(cmptMag(matX), vector::one);
+
             while
             (
                 (merit2 > matL2) &&
@@ -1647,6 +1700,55 @@ void mesquiteSmoother::optimizePoint()
                 if (stepLength < 1e-4)
                 {
                     stepLength = -stepLength;
+                }
+
+                if (hasStepBound)
+                {
+                    vector sDir = cmptMag(stepLength*searchDir);
+
+                    // Check for an excessive step-size
+                    Vector<bool> xsStep
+                    (
+                        sDir.x() > sBnd.x(),
+                        sDir.y() > sBnd.y(),
+                        sDir.z() > sBnd.z()
+                    );
+
+                    vector magSl
+                    (
+                        mag(stepLength),
+                        mag(stepLength),
+                        mag(stepLength)
+                    );
+
+                    if (xsStep.x() || xsStep.y() || xsStep.z())
+                    {
+                        if (xsStep.x())
+                        {
+                            magSl.x() =
+                            (
+                                min(magSl.x(),sBnd.x()/mag(searchDir.x()))
+                            );
+                        }
+
+                        if (xsStep.y())
+                        {
+                            magSl.y() =
+                            (
+                                min(magSl.y(),sBnd.y()/mag(searchDir.y()))
+                            );
+                        }
+
+                        if (xsStep.z())
+                        {
+                            magSl.z() =
+                            (
+                                min(magSl.z(),sBnd.z()/mag(searchDir.z()))
+                            );
+                        }
+
+                        stepLength = sign(stepLength) * cmptMin(magSl);
+                    }
                 }
 
                 xNew = matX + (stepLength*searchDir);
@@ -1696,18 +1798,25 @@ void mesquiteSmoother::optimizePoint()
         }
     }
 
+    // Prevent excessive normal movement
+    if (mag(xNew.z()) > 0.05 * relSrchBnd)
+    {
+        return;
+    }
+
+    // Ensure that quality was improved.
+    if (f > fStart)
+    {
+        return;
+    }
+
     // Now update the point-position...
-    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-    const labelList& meshPts = boundary[pIDs_[patchIndex_]].meshPoints();
 
     // Obtain the transform tensor for this point.
     const tensor& T = T_[patchIndex_][pointIndex_].T();
 
     // Transform the point to global coordinates.
-    refPoints_[meshPts[pointIndex_]] =
-    (
-        (T & xNew) + localPts_[patchIndex_][pointIndex_]
-    );
+    localPts_[patchIndex_][pointIndex_] += (T & xNew);
 }
 
 //  QPsolver(H,f,A,b) solves the quadratic programming problem:
@@ -2025,7 +2134,7 @@ void mesquiteSmoother::evaluateFunction
         x.z(), x.z(), x.z()
     );
 
-    for(label i = 0; i < jList.size(); i += 3)
+    for (label i = 0; i < jList.size(); i += 3)
     {
         const point& xm0 = refPoints_[jList[i+0]];
         const point& xm1 = refPoints_[jList[i+1]];
@@ -2051,6 +2160,27 @@ void mesquiteSmoother::evaluateFunction
 
         // Obtain the denominator of the metric
         scalar den = cbrt(alpha * alpha);
+
+        if (mag(den) < VSMALL)
+        {
+            Info << endl;
+            Info << "patchIndex_: " << patchIndex_ << endl;
+            Info << "pointIndex_: " << pointIndex_ << endl;
+            Info << "mag(den): " << mag(den) << endl;
+            Info << "alpha: " << alpha << endl;
+            Info << "xT: " << xT << endl;
+            Info << "xi: " << xi << endl;
+            Info << "xm0: " << xm0 << endl;
+            Info << "xm1: " << xm1 << endl;
+            Info << "xm2: " << xm2 << endl;
+            Info << "jL: " << jL << endl;
+            Info << "J: " << J << endl;
+            Info << "T: " << T << endl;
+            Info << "a: " << a_[patchIndex_][pointIndex_] << endl;
+
+            // Write this point out for post-processing.
+            writePoint(patchIndex_, pointIndex_);
+        }
 
         // Compute the element metric and accumulate.
         f = f + (fro/den);
@@ -2175,12 +2305,14 @@ void mesquiteSmoother::preparePointNormals()
     // Allocate a coefficient matrix for inversion.
     scalarMatrix A(6);
 
+    label normViol = 0;
+
     forAll(pIDs_, patchI)
     {
         // First update localPoints with latest point positions
         const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
-        forAll(meshPts,pointI)
+        forAll(meshPts, pointI)
         {
             localPts_[patchI][pointI] = refPoints_[meshPts[pointI]];
         }
@@ -2264,7 +2396,7 @@ void mesquiteSmoother::preparePointNormals()
         }
         else
         {
-            label targetCount = 8;
+            label targetCount = 6;
 
             labelList coeffList(targetCount);
             pointField coeffPoints(targetCount, vector::zero);
@@ -2277,7 +2409,11 @@ void mesquiteSmoother::preparePointNormals()
             forAll(meshPts, pointI)
             {
                 // Avoid points on bounding curves for now.
-                if (pFlags_[patchI][pointI])
+                if
+                (
+                    pFlags_[patchI][pointI] ||
+                   !a_[patchI][pointI].size()
+                )
                 {
                     continue;
                 }
@@ -2318,7 +2454,7 @@ void mesquiteSmoother::preparePointNormals()
                 // The first point is always the origin.
                 label nPoints = 0;
 
-                lsqWeights[nPoints] = GREAT;
+                lsqWeights[nPoints] = 1.0; //GREAT;
                 coeffList[nPoints++] = pointI;
 
                 forAll(peList, edgeI)
@@ -2333,13 +2469,11 @@ void mesquiteSmoother::preparePointNormals()
                     coeffPoints[nPoints] = T & (oPoint - origin);
 
                     // Assign weights
-                    lsqWeights[nPoints] = GREAT;
-                    /*
+                    lsqWeights[nPoints] =
                     (
                         1.0
-                      / magSqr(oPoint - origin)
+                      // magSqr(oPoint - origin)
                     );
-                    */
 
                     nPoints++;
 
@@ -2382,13 +2516,11 @@ void mesquiteSmoother::preparePointNormals()
                                 coeffPoints[nPoints] = T & (oPoint - origin);
 
                                 // Assign weights
-                                lsqWeights[nPoints] = GREAT / 5.0;
-                                /*
+                                lsqWeights[nPoints] =
                                 (
                                     1.0
-                                  / magSqr(oPoint - origin)
+                                  // magSqr(oPoint - origin)
                                 );
-                                */
 
                                 nPoints++;
 
@@ -2424,7 +2556,7 @@ void mesquiteSmoother::preparePointNormals()
                     lsqCoeffs[i][3] = x * y;
                     lsqCoeffs[i][4] = x * x;
                     lsqCoeffs[i][5] = y * y;
-                    lsqSource[i] = z;
+                    lsqSource[i]    = z;
                 }
 
                 // Prepare the matrix
@@ -2438,9 +2570,9 @@ void mesquiteSmoother::preparePointNormals()
                     b
                 );
 
-                /*
                 // Prepare matrix coefficients and source.
                 //  - Direct solution using only 6 points.
+                /*
                 for (label i = 0; i < 6; i++)
                 {
                     scalar x = coeffPoints[i][0];
@@ -2453,13 +2585,252 @@ void mesquiteSmoother::preparePointNormals()
                     A[i][3] = x * y;
                     A[i][4] = x * x;
                     A[i][5] = y * y;
-                    b[i] = coeffPoints[i][2];
+                    b[i]    = z;
                 }
                 */
 
                 // Solve for coefficients. Solution is stored in 'b'.
                 scalarMatrix::solve(A,b);
+
+                // Check if the surface is legitimate.
+                /*
+                vector surfNorm(-b[1], -b[2], 1.0);
+                surfNorm = (T.T() & surfNorm);
+                surfNorm /= mag(surfNorm) + VSMALL;
+
+                if (mag(z2 & surfNorm) < 0.85)
+                {
+                    normViol++;
+
+                    b.clear();
+
+                    WarningIn
+                    (
+                        "mesquiteSmoother::preparePointNormals()"
+                    )
+                        << " Improper surface definition for point: "
+                        << meshPts[pointI]
+                        << endl;
+                }
+                */
             }
+        }
+    }
+
+    if (normViol)
+    {
+        Info << "pointNormal deficiencies: " << normViol << endl;
+    }
+}
+
+// Write a particular point out for post-processing
+void mesquiteSmoother::writePoint
+(
+    const label patchI,
+    const label pointI
+)
+{
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+    const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+    const labelList& pEdges =
+    (
+        boundary[pIDs_[patchI]].pointEdges()[pointI]
+    );
+
+    // Pick an edge, and use it for scale.
+    const edge& pEdge = boundary[pIDs_[patchI]].edges()[pEdges[0]];
+
+    scalar eMag = 2.0*pEdge.mag(boundary[pIDs_[patchI]].localPoints());
+
+    // Set a mesh-resolution for parabolic fitting surface
+    label xres = 15, yres = 15;
+    scalar xmin = -eMag, xmax = eMag;
+    scalar ymin = -eMag, ymax = eMag;
+    scalar dx = (xmax - xmin) / xres;
+    scalar dy = (ymax - ymin) / yres;
+
+    pointField surfPoints((xres+1)*(yres+1), vector::zero);
+
+    label index = 0;
+
+    // Fetch the data for this point
+    const tensor& T = T_[patchI][pointI];
+    const scalarField& a = a_[patchI][pointI];
+    const point& origin = localPts_[patchI][pointI];
+
+    for (scalar i = xmin; i <= xmax; i += dx)
+    {
+        for (scalar j = ymin; j <= ymax; j += dy)
+        {
+            scalar x = i, y = j;
+
+            point& pt = surfPoints[index];
+
+            pt.x() = x;
+            pt.y() = y;
+            pt.z() =
+            (
+                a[0]
+              + a[1]*x
+              + a[2]*y
+              + a[3]*x*y
+              + a[4]*x*x
+              + a[5]*y*y
+            );
+
+            // Rotate / translate to global position
+            pt = (T.T() & pt) + origin;
+
+            index++;
+        }
+    }
+
+    writeVTK
+    (
+        "surf_"
+      + Foam::name(mesh().time().timeIndex())
+      + Foam::name(meshPts[pointI]),
+        mesh(),
+        surfPoints,
+        labelListList(0)
+    );
+
+    // Locally order cell-points and write them out.
+    Map<label> pointMap;
+
+    const labelList& jList = jPoints_[patchI][pointI];
+
+    label nPoints = 0, nCells = 0;
+    labelListList cpList(jList.size() / 3, labelList(4, -1));
+    pointField points(jList.size(), vector::zero);
+
+    // Zeroth point is the point under consideration
+    points[nPoints++] = refPoints_[meshPts[pointI]];
+
+    for (label i = 0; i < jList.size(); i += 3)
+    {
+        label pointJ = 0;
+
+        if (!pointMap.found(jList[i+0]))
+        {
+            points[nPoints] = refPoints_[jList[i+0]];
+            pointMap.insert(jList[i+0], nPoints);
+            nPoints++;
+        }
+
+        cpList[nCells][pointJ++] = pointMap[jList[i+0]];
+
+        if (!pointMap.found(jList[i+1]))
+        {
+            points[nPoints] = refPoints_[jList[i+1]];
+            pointMap.insert(jList[i+1], nPoints);
+            nPoints++;
+        }
+
+        cpList[nCells][pointJ++] = pointMap[jList[i+1]];
+
+        if (!pointMap.found(jList[i+2]))
+        {
+            points[nPoints] = refPoints_[jList[i+2]];
+            pointMap.insert(jList[i+2], nPoints);
+            nPoints++;
+        }
+
+        cpList[nCells][pointJ++] = pointMap[jList[i+2]];
+
+        // The last point is the point under consideration
+        cpList[nCells][pointJ++] = 0;
+
+        nCells++;
+    }
+
+    // Correct the number of points
+    points.setSize(nPoints);
+
+    writeVTK
+    (
+        "surfCells_"
+      + Foam::name(mesh().time().timeIndex())
+      + Foam::name(meshPts[pointI]),
+        mesh(),
+        points,
+        cpList
+    );
+}
+
+// Output a list of points as a VTK file.
+void mesquiteSmoother::writeVTK
+(
+    const word& name,
+    const polyMesh& mesh,
+    const pointField& points,
+    const labelListList& cellPoints
+)
+{
+    // Make the directory
+    // fileName dirName(mesh.time().path()/"VTK"/mesh.time().timeName());
+    fileName dirName(mesh.time().path()/"VTK");
+
+    mkDir(dirName);
+
+    // Open stream for output
+    OFstream file(dirName/name+".vtk");
+
+    // Write out the header
+    file << "# vtk DataFile Version 2.0" << nl
+         << name << ".vtk" << nl
+         << "ASCII" << nl
+         << "DATASET UNSTRUCTURED_GRID" << nl
+         << "POINTS " << points.size() << " double" << nl;
+
+    forAll(points, i)
+    {
+        file << setprecision(10)
+             << points[i].x() << ' '
+             << points[i].y() << ' '
+             << points[i].z() << ' '
+             << nl;
+    }
+
+    if (cellPoints.size())
+    {
+        file << "CELLS " << cellPoints.size()
+             << " " << (4*cellPoints.size()) + cellPoints.size()
+             << endl;
+
+        forAll(cellPoints, cellI)
+        {
+            file << 4 << ' '
+                 << cellPoints[cellI][0] << ' '
+                 << cellPoints[cellI][1] << ' '
+                 << cellPoints[cellI][2] << ' '
+                 << cellPoints[cellI][3] << ' '
+                 << nl;
+        }
+
+        file << "CELL_TYPES " << cellPoints.size() << endl;
+
+        forAll(cellPoints, cellI)
+        {
+            // Tetrahedron
+            file << "10" << nl;
+        }
+    }
+    else
+    {
+        file << "CELLS " << points.size() << " " << 2*points.size() << endl;
+
+        forAll(points, i)
+        {
+            file << 1 << ' ' << i << ' ' << nl;
+        }
+
+        file << "CELL_TYPES " << points.size() << endl;
+
+        forAll(points, i)
+        {
+            // Vertex
+            file << "1" << nl;
         }
     }
 }
