@@ -7,6 +7,4 @@ LIB_LIBS = \
     -lmeshTools \
     -ldynamicMesh \
     -L$(WM_THIRD_PARTY_DIR)/mesquite-2.0.2/.libs \
-    -lmesquite \
-    -llapack \
-    -lblas
+    -lmesquite
