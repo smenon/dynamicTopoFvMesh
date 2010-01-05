@@ -43,6 +43,8 @@ SourceFiles
 #include "pointIOField.H"
 #include "labelHashSet.H"
 
+#include "lbfgs.h"
+
 // Have gcc ignore certain warnings while including mesquite headers
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #pragma GCC diagnostic ignored "-Wempty-body"
@@ -102,9 +104,6 @@ protected:
     //- Reference points
     mutable pointIOField refPoints_;
 
-    //- Original points prior to surface-smoothing
-    mutable pointField origPoints_;
-
     //- The quality metric
     word qMetric_;
 
@@ -120,16 +119,6 @@ protected:
     //- Termination criteria
     Mesquite::TerminationCriterion tcInner_;
     Mesquite::TerminationCriterion tcOuter_;
-    //Mesquite::TerminationCriterion untInner_;
-    //Mesquite::TerminationCriterion untOuter_;
-
-    //- Specific to mesh untangling
-    //autoPtr<Mesquite::UntangleBetaQualityMetric> untangleMetric_;
-    //autoPtr<Mesquite::LPtoPTemplate> untangleFunc_;
-    //autoPtr<Mesquite::ConjugateGradient> untangleGlobal_;
-
-    // Specify patches on which slip BCs are applied
-    labelHashSet slipPatchIDs_;
 
     //- Data specific to Laplacian surface smoothing
     labelList pIDs_;
@@ -196,8 +185,104 @@ protected:
     // cells and correct if necessary.
     void correctInvalidCells();
 
+    // Write a particular point out for post-processing
+    void writePoint
+    (
+        const label pointIndex,
+        const labelList& jList
+    );
+
+    // Output a list of points / cells as a VTK file.
+    void writeVTK
+    (
+        const word& name,
+        const polyMesh& mesh,
+        const pointField& points,
+        const labelListList& cellPoints
+    );
+
     // Prepare point-normals with updated point positions
     void preparePointNormals();
+
+    // Class used in callback
+    class optInfo
+    {
+        // Reference to the smoother
+        const mesquiteSmoother& msRef_;
+
+        // Beta value for optimization
+        scalar beta_;
+
+        // Jacobian connectivity list
+        const labelList& jList_;
+
+        // Points for reference
+        const pointField& refPts_;
+
+    public:
+
+        optInfo
+        (
+            const mesquiteSmoother& msRef,
+            const scalar& beta,
+            const labelList& jList,
+            const pointField& refPoints
+        )
+        :
+            msRef_(msRef),
+            beta_(beta),
+            jList_(jList),
+            refPts_(refPoints)
+        {}
+
+        const mesquiteSmoother& motionSolver()
+        {
+            return msRef_;
+        }
+
+        const labelList& orderedPoints()
+        {
+            return jList_;
+        }
+
+        const pointField& referencePoints()
+        {
+            return refPts_;
+        }
+
+        scalar beta()
+        {
+            return beta_;
+        }
+    };
+
+    // Static function for callback
+    static lbfgsfloatval_t _evaluate
+    (
+        void *instance,
+        const lbfgsfloatval_t *x,
+        lbfgsfloatval_t *g,
+        const int n,
+        const lbfgsfloatval_t step
+    );
+
+    // Actual function evaulation routine
+    lbfgsfloatval_t evaluate
+    (
+        const labelList& jList,
+        const pointField& refPoints,
+        const scalar beta,
+        const lbfgsfloatval_t *x,
+        lbfgsfloatval_t *g
+    ) const;
+
+    // Utility method to check validity of cells connected to a point.
+    bool checkValidity
+    (
+        const vector& x,
+        const labelList& jList,
+        scalar& beta
+    );
 
 public:
 

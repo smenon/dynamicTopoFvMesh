@@ -26,6 +26,7 @@ License
 
 #include "mesquiteSmoother.H"
 #include "Random.H"
+#include "IOmanip.H"
 #include "addToRunTimeSelectionTable.H"
 #include "polyMesh.H"
 
@@ -40,12 +41,10 @@ namespace Foam
         mesquiteSmoother,
         dictionary
     );
-}
-
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::mesquiteSmoother::mesquiteSmoother
+mesquiteSmoother::mesquiteSmoother
 (
     const polyMesh& mesh
 )
@@ -81,7 +80,7 @@ Foam::mesquiteSmoother::mesquiteSmoother
     initArrays();
 }
 
-Foam::mesquiteSmoother::mesquiteSmoother
+mesquiteSmoother::mesquiteSmoother
 (
     const polyMesh& mesh,
     Istream& msData
@@ -120,7 +119,7 @@ Foam::mesquiteSmoother::mesquiteSmoother
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-Foam::mesquiteSmoother::~mesquiteSmoother()
+mesquiteSmoother::~mesquiteSmoother()
 {
     delete [] vtxCoords_;
     delete [] cellToNode_;
@@ -131,25 +130,24 @@ Foam::mesquiteSmoother::~mesquiteSmoother()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Read options from the dictionary
-void Foam::mesquiteSmoother::readOptions()
+void mesquiteSmoother::readOptions()
 {
     // Check if any slip patches are specified
     if (found("slipPatches"))
     {
         wordList slipPatches = subDict("slipPatches").toc();
 
+        labelHashSet slipPatchIDs;
+
         forAll(slipPatches, wordI)
         {
             word& patchName = slipPatches[wordI];
 
-            forAll(mesh().boundaryMesh(), patchI)
-            {
-                if (mesh().boundaryMesh()[patchI].name() == patchName)
-                {
-                    slipPatchIDs_.insert(patchI);
-                }
-            }
+            slipPatchIDs.insert(mesh().boundaryMesh().findPatchID(patchName));
         }
+
+        // Extract the patch list
+        pIDs_ = slipPatchIDs.toc();
 
         // Toggle surface smoothing if slip patches are present
         if (!slipPatches.empty())
@@ -209,7 +207,7 @@ void Foam::mesquiteSmoother::readOptions()
 
                 // It is considered an error to have slave-patches
                 // on the slip-patches list.
-                if (slipPatchIDs_.found(sPatch))
+                if (findIndex(pIDs_, sPatch) > -1)
                 {
                     FatalErrorIn
                     (
@@ -941,20 +939,10 @@ void Foam::mesquiteSmoother::readOptions()
 
         tcOuter_.add_iteration_limit(1);
     }
-
-    // Set termination criteria for untangling
-    //untInner_.add_absolute_quality_improvement(0.0);
-    //untInner_.add_absolute_successive_improvement(1e-4);
-    //untOuter_.add_iteration_limit(1);
-
-    //untangleMetric_.set(new Mesquite::UntangleBetaQualityMetric(1e-8));
-    //untangleFunc_.set(new Mesquite::LPtoPTemplate(&untangleMetric_(), 2, err));
-    //untangleGlobal_.set(new Mesquite::ConjugateGradient(&untangleFunc_(),err));
-    //untangleGlobal_->use_global_patch();
 }
 
 // Initialize connectivity arrays for Mesquite
-void Foam::mesquiteSmoother::initArrays()
+void mesquiteSmoother::initArrays()
 {
     vtxCoords_ = new double[nPoints_*3];
     cellToNode_ = new unsigned long[nCells_*4];
@@ -1024,9 +1012,6 @@ void Foam::mesquiteSmoother::initArrays()
 
     if (surfaceSmoothing_)
     {
-        // Extract the patch list
-        pIDs_ = slipPatchIDs_.toc();
-
         offsets_.setSize(pIDs_.size() + 1, 0);
         pNormals_.setSize(pIDs_.size());
         gradEdgeV_.setSize(pIDs_.size());
@@ -1110,14 +1095,11 @@ void Foam::mesquiteSmoother::initArrays()
         pV_.setSize(totalSize, vector::zero);
         rV_.setSize(totalSize, vector::zero);
         wV_.setSize(totalSize, vector::zero);
-
-        // Initialize the original points list
-        origPoints_.setSize(refPoints_.size(), vector::zero);
     }
 }
 
 // Sparse matrix-vector multiply [3D]
-void Foam::mesquiteSmoother::A
+void mesquiteSmoother::A
 (
     const vectorField& p,
     vectorField& w
@@ -1159,7 +1141,7 @@ void Foam::mesquiteSmoother::A
 }
 
 // Apply boundary conditions
-void Foam::mesquiteSmoother::applyBCs
+void mesquiteSmoother::applyBCs
 (
     vectorField& field
 )
@@ -1212,7 +1194,7 @@ void Foam::mesquiteSmoother::applyBCs
 }
 
 // Vector dot-product
-Foam::scalar Foam::mesquiteSmoother::dot
+scalar mesquiteSmoother::dot
 (
     const vectorField& f1,
     const vectorField& f2
@@ -1228,7 +1210,7 @@ Foam::scalar Foam::mesquiteSmoother::dot
     return s;
 }
 
-Foam::scalar Foam::mesquiteSmoother::normFactor
+scalar mesquiteSmoother::normFactor
 (
     const vectorField& x,
     const vectorField& b,
@@ -1247,7 +1229,7 @@ Foam::scalar Foam::mesquiteSmoother::normFactor
 }
 
 // Component-wise sumMag
-Foam::scalar Foam::mesquiteSmoother::cmptSumMag
+scalar mesquiteSmoother::cmptSumMag
 (
     const vectorField& field
 )
@@ -1263,7 +1245,7 @@ Foam::scalar Foam::mesquiteSmoother::cmptSumMag
 }
 
 // CG solver
-Foam::label Foam::mesquiteSmoother::CG
+label mesquiteSmoother::CG
 (
     const vectorField& b,
     vectorField& p,
@@ -1325,12 +1307,9 @@ Foam::label Foam::mesquiteSmoother::CG
 }
 
 // Private member function to perform Laplacian surface smoothing
-void Foam::mesquiteSmoother::smoothSurfaces()
+void mesquiteSmoother::smoothSurfaces()
 {
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-
-    // Copy refPoints prior to all surface-smoothing sweeps.
-    origPoints_ = refPoints_;
 
     for (label i = 0; i < nSweeps_; i++)
     {
@@ -1387,7 +1366,7 @@ void Foam::mesquiteSmoother::smoothSurfaces()
 // Find the volume of a tetrahedron.
 // The function assumes points (a-b-c)
 // are in counter-clockwise fashion when viewed from d.
-inline Foam::scalar Foam::mesquiteSmoother::tetVolume
+inline scalar mesquiteSmoother::tetVolume
 (
     const label cIndex
 )
@@ -1440,14 +1419,14 @@ inline Foam::scalar Foam::mesquiteSmoother::tetVolume
 
 // Private member function to check for invalid
 // cells and correct if necessary.
-void Foam::mesquiteSmoother::correctInvalidCells()
+void mesquiteSmoother::correctInvalidCells()
 {
     // Loop through pointCells for all boundary points
     // and compute cell volume.
     const labelListList& pointCells = mesh().pointCells();
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
-    DynamicList<label> invCellPoints(50);
+    DynamicList<label> invCells(50);
 
     forAll(pIDs_, patchI)
     {
@@ -1461,102 +1440,484 @@ void Foam::mesquiteSmoother::correctInvalidCells()
             {
                 if (tetVolume(pCells[cellI]) < 0.0)
                 {
-                    // Add this point to the list
-                    invCellPoints.append(meshPts[pointI]);
-
-                    break;
+                    // Add this cell to the list
+                    if (findIndex(invCells, pCells[cellI]) == -1)
+                    {
+                        invCells.append(pCells[cellI]);
+                    }
                 }
             }
         }
     }
 
-    if (invCellPoints.size() == 0)
+    if (invCells.size() == 0)
     {
         return;
     }
 
     InfoIn("mesquiteSmoother::correctInvalidCells()")
-        << "Found invalid cells connected to "
-        << invCellPoints.size() << " points. Attempting to correct...";
+        << "Found " << invCells.size() << " invalid cells. "
+        << "Attempting to correct..." << flush;
 
     // Looks like some inverted cells are present.
-    // Perform a binary search for valid positions.
+    // Check for free-vertices connected to invalid cells.
+    const labelListList& cellPoints = mesh().cellPoints();
+    const labelListList& pointFaces = mesh().pointFaces();
 
-    // Keep new points for reference.
-    pointField newPoints(invCellPoints.size(), vector::zero);
+    labelHashSet freePoints;
 
-    forAll(invCellPoints, pointI)
+    forAll(invCells, cellI)
     {
-        newPoints[pointI] = refPoints_[invCellPoints[pointI]];
-    }
+        const labelList& cPoints = cellPoints[invCells[cellI]];
 
-    bool valid = false;
-    scalar lambda = 1.0;
-    label nAttempts = 0;
-
-    while (!valid)
-    {
-        // Assume as valid to begin with.
-        valid = true;
-
-        // Bisect the relaxation factor.
-        lambda *= 0.5;
-
-        // Update refPoints for the test points
-        forAll(invCellPoints, pointI)
+        forAll(cPoints, pointI)
         {
-            refPoints_[invCellPoints[pointI]] =
-            (
-                (lambda * newPoints[pointI])
-              + ((1.0 - lambda) * origPoints_[invCellPoints[pointI]])
-            );
-        }
+            const labelList& pFaces = pointFaces[cPoints[pointI]];
 
-        // Now re-test with updated point positions
-        forAll(invCellPoints, pointI)
-        {
-            const labelList& pCells = pointCells[invCellPoints[pointI]];
+            bool boundaryPoint = false;
 
-            forAll(pCells, cellI)
+            forAll(pFaces, faceI)
             {
-                if (tetVolume(pCells[cellI]) < 0.0)
+                if (!mesh().isInternalFace(pFaces[faceI]))
                 {
-                    valid = false;
-
+                    boundaryPoint = true;
                     break;
                 }
             }
 
-            // Stop further testing if invalid.
-            if (!valid)
+            if (!boundaryPoint && !freePoints.found(cPoints[pointI]))
             {
-                break;
+                freePoints.insert(cPoints[pointI]);
             }
         }
+    }
 
-        nAttempts++;
+    // Obtain mesh connectivity
+    const faceList& meshFaces = mesh().faces();
+    const cellList& meshCells = mesh().cells();
+    const labelList& owner = mesh().faceOwner();
 
-        if (nAttempts > 50)
+    // For each point, build a local hull for optimization
+    labelList freePointList = freePoints.toc();
+    labelListList jPoints(freePointList.size(), labelList(0));
+
+    forAll(freePointList, pointI)
+    {
+        const labelList& pCells = pointCells[freePointList[pointI]];
+
+        // First size the list. Assume tet-mesh.
+        jPoints[pointI].setSize(3*pCells.size());
+
+        label i = 0;
+
+        forAll(pCells, cellI)
         {
-            Info << endl;
+            const cell& curCell = meshCells[pCells[cellI]];
 
-            WarningIn("mesquiteSmoother::correctInvalidCells()")
-                    << " Failed to obtain an untangled mesh." << nl
-                    << " Reverting to original point positions."
-                    << endl;
+            // Find a face which doesn't contain pIndex.
+            forAll(curCell, faceI)
+            {
+                const face& thisFace = meshFaces[curCell[faceI]];
 
-            // Copy original points, and avoid surface-smoothing for now.
-            refPoints_ = origPoints_;
+                if (thisFace.which(freePointList[pointI]) == -1)
+                {
+                    if (owner[curCell[faceI]] == pCells[cellI])
+                    {
+                        jPoints[pointI][i++] = thisFace[0];
+                        jPoints[pointI][i++] = thisFace[1];
+                        jPoints[pointI][i++] = thisFace[2];
+                    }
+                    else
+                    {
+                        jPoints[pointI][i++] = thisFace[2];
+                        jPoints[pointI][i++] = thisFace[1];
+                        jPoints[pointI][i++] = thisFace[0];
+                    }
 
-            break;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (debug)
+    {
+        forAll(freePointList, pointI)
+        {
+            writePoint(freePointList[pointI], jPoints[pointI]);
+        }
+    }
+
+    // Loop through various points, and check for a negative
+    // Jacobian value. If an inverted cell exists, proceed
+    // with the LBFGS algorithm.
+    int N = 3;
+    scalar beta = 0.0;
+    lbfgsfloatval_t fx;
+    lbfgsfloatval_t *m_x = lbfgs_malloc(N);
+
+    forAll(freePointList, pointI)
+    {
+        const vector& x = refPoints_[freePointList[pointI]];
+
+        bool foundInvalid = checkValidity(x, jPoints[pointI], beta);
+
+        if (foundInvalid)
+        {
+            // Prepare the node-position
+            m_x[0] = x.x();
+            m_x[1] = x.y();
+            m_x[2] = x.z();
+
+            if (debug)
+            {
+                Info << "x0: "
+                     << m_x[0] << " "
+                     << m_x[1] << " "
+                     << m_x[2] << " "
+                     << endl;
+            }
+
+            // Prepare data
+            optInfo data
+            (
+                (*this),
+                beta,
+                jPoints[pointI],
+                refPoints_
+            );
+
+            // Call the lbfgs algorithm
+            lbfgs
+            (
+                N,
+                m_x,
+                &fx,
+                _evaluate,
+                NULL,
+                reinterpret_cast<void *>(&data),
+                NULL
+            );
+
+            if (debug)
+            {
+                Info << "xNew: "
+                     << m_x[0] << " "
+                     << m_x[1] << " "
+                     << m_x[2] << " "
+                     << endl;
+            }
+
+            foundInvalid = checkValidity
+            (
+                vector(m_x[0],m_x[1],m_x[2]),
+                jPoints[pointI],
+                beta
+            );
+
+            // Update position only if untangling was successful
+            if (!foundInvalid)
+            {
+                refPoints_[freePointList[pointI]] =
+                (
+                    vector(m_x[0],m_x[1],m_x[2])
+                );
+            }
+        }
+    }
+
+    // Free allocated memory
+    lbfgs_free(m_x);
+
+    // Perform a final check to ensure everything went okay.
+    forAll(freePointList, pointI)
+    {
+        const vector& x = refPoints_[freePointList[pointI]];
+
+        bool foundInvalid = checkValidity(x, jPoints[pointI], beta);
+
+        if (foundInvalid)
+        {
+            FatalErrorIn
+            (
+                "mesquiteSmoother::correctInvalidCells()"
+            )
+                << " Failed to untangle mesh."
+                << abort(FatalError);
         }
     }
 
     Info << "Success." << endl;
 }
 
+// Utility method to check validity of cells connected to a point.
+bool mesquiteSmoother::checkValidity
+(
+    const vector& x,
+    const labelList& jList,
+    scalar& beta
+)
+{
+    beta = 0.0;
+
+    bool foundInvalid = false;
+
+    for (label i = 0; i < jList.size(); i += 3)
+    {
+        const point& xm0 = refPoints_[jList[i+0]];
+        const point& xm1 = refPoints_[jList[i+1]];
+        const point& xm2 = refPoints_[jList[i+2]];
+
+        // Prepare the Jacobian.
+        tensor J
+        (
+            xm0.x() - x.x(), xm1.x() - x.x(), xm2.x() - x.x(),
+            xm0.y() - x.y(), xm1.y() - x.y(), xm2.y() - x.y(),
+            xm0.z() - x.z(), xm1.z() - x.z(), xm2.z() - x.z()
+        );
+
+        scalar alpha = det(J);
+
+        beta += alpha;
+
+        if (alpha < 0.0)
+        {
+            foundInvalid = true;
+        }
+    }
+
+    // Prepare beta.
+    beta = mag(beta) / (10.0 * jList.size());
+
+    return foundInvalid;
+}
+
+// Static function for callback
+lbfgsfloatval_t mesquiteSmoother::_evaluate
+(
+    void *instance,
+    const lbfgsfloatval_t *x,
+    lbfgsfloatval_t *g,
+    const int n,
+    const lbfgsfloatval_t step
+)
+{
+    // Recast the argument
+    optInfo *data =
+    (
+        reinterpret_cast<optInfo*>(instance)
+    );
+
+    // Evaluate the function first
+    lbfgsfloatval_t fnVal =
+    (
+        data->motionSolver().evaluate
+        (
+            data->orderedPoints(),
+            data->referencePoints(),
+            data->beta(),
+            x,
+            g
+        )
+    );
+
+    return fnVal;
+}
+
+// Actual function evaulation routine
+lbfgsfloatval_t mesquiteSmoother::evaluate
+(
+    const labelList& jList,
+    const pointField& refPoints,
+    const scalar beta,
+    const lbfgsfloatval_t *x,
+    lbfgsfloatval_t *g
+) const
+{
+    // Initialize the function and gradient
+    lbfgsfloatval_t fx = 0.0;
+    vector fxGrad = vector::zero;
+
+    for (label i = 0; i < jList.size(); i += 3)
+    {
+        const point& xm0 = refPoints_[jList[i+0]];
+        const point& xm1 = refPoints_[jList[i+1]];
+        const point& xm2 = refPoints_[jList[i+2]];
+
+        // Prepare the Jacobian.
+        tensor J
+        (
+            xm0.x() - x[0], xm1.x() - x[0], xm2.x() - x[0],
+            xm0.y() - x[1], xm1.y() - x[1], xm2.y() - x[1],
+            xm0.z() - x[2], xm1.z() - x[2], xm2.z() - x[2]
+        );
+
+        // Obtain the determinant...
+        scalar alpha = det(J);
+        scalar amb = (alpha - beta);
+        scalar u = (mag(amb) - amb);
+
+        // Compute the element metric and accumulate.
+        fx = fx + (u*u);
+
+        // Accumulate the gradient as well.
+        fxGrad += ((((-2*u*u*alpha) / mag(amb))*inv(J).T()) & vector::one);
+    }
+
+    // Negate the gradient
+    g[0] = -fxGrad.x(); g[1] = -fxGrad.y(); g[2] = -fxGrad.z();
+
+    return fx;
+}
+
+// Write a particular point out for post-processing
+void mesquiteSmoother::writePoint
+(
+    const label pointIndex,
+    const labelList& jList
+)
+{
+    // Locally order cell-points and write them out.
+    Map<label> pointMap;
+
+    label nPoints = 0, nCells = 0;
+    labelListList cpList(jList.size() / 3, labelList(4, -1));
+    pointField points(jList.size(), vector::zero);
+
+    // Zeroth point is the point under consideration
+    points[nPoints++] = refPoints_[pointIndex];
+
+    for (label i = 0; i < jList.size(); i += 3)
+    {
+        label pointJ = 0;
+
+        if (!pointMap.found(jList[i+0]))
+        {
+            points[nPoints] = refPoints_[jList[i+0]];
+            pointMap.insert(jList[i+0], nPoints);
+            nPoints++;
+        }
+
+        cpList[nCells][pointJ++] = pointMap[jList[i+0]];
+
+        if (!pointMap.found(jList[i+1]))
+        {
+            points[nPoints] = refPoints_[jList[i+1]];
+            pointMap.insert(jList[i+1], nPoints);
+            nPoints++;
+        }
+
+        cpList[nCells][pointJ++] = pointMap[jList[i+1]];
+
+        if (!pointMap.found(jList[i+2]))
+        {
+            points[nPoints] = refPoints_[jList[i+2]];
+            pointMap.insert(jList[i+2], nPoints);
+            nPoints++;
+        }
+
+        cpList[nCells][pointJ++] = pointMap[jList[i+2]];
+
+        // The last point is the point under consideration
+        cpList[nCells][pointJ++] = 0;
+
+        nCells++;
+    }
+
+    // Correct the number of points
+    points.setSize(nPoints);
+
+    writeVTK
+    (
+        "pointCells_"
+      + Foam::name(mesh().time().timeIndex()) + '_'
+      + Foam::name(pointIndex),
+        mesh(),
+        points,
+        cpList
+    );
+}
+
+// Output a list of points / cells as a VTK file.
+//  - CellPoints are required to be ordered.
+void mesquiteSmoother::writeVTK
+(
+    const word& name,
+    const polyMesh& mesh,
+    const pointField& points,
+    const labelListList& cellPoints
+)
+{
+    // Make the directory
+    // fileName dirName(mesh.time().path()/"VTK"/mesh.time().timeName());
+    fileName dirName(mesh.time().path()/"VTK");
+
+    mkDir(dirName);
+
+    // Open stream for output
+    OFstream file(dirName/name+".vtk");
+
+    // Write out the header
+    file << "# vtk DataFile Version 2.0" << nl
+         << name << ".vtk" << nl
+         << "ASCII" << nl
+         << "DATASET UNSTRUCTURED_GRID" << nl
+         << "POINTS " << points.size() << " double" << nl;
+
+    forAll(points, i)
+    {
+        file << setprecision(10)
+             << points[i].x() << ' '
+             << points[i].y() << ' '
+             << points[i].z() << ' '
+             << nl;
+    }
+
+    if (cellPoints.size())
+    {
+        file << "CELLS " << cellPoints.size()
+             << " " << (4*cellPoints.size()) + cellPoints.size()
+             << endl;
+
+        forAll(cellPoints, cellI)
+        {
+            file << 4 << ' '
+                 << cellPoints[cellI][0] << ' '
+                 << cellPoints[cellI][1] << ' '
+                 << cellPoints[cellI][2] << ' '
+                 << cellPoints[cellI][3] << ' '
+                 << nl;
+        }
+
+        file << "CELL_TYPES " << cellPoints.size() << endl;
+
+        forAll(cellPoints, cellI)
+        {
+            // Tetrahedron
+            file << "10" << nl;
+        }
+    }
+    else
+    {
+        file << "CELLS " << points.size() << " " << 2*points.size() << endl;
+
+        forAll(points, i)
+        {
+            file << 1 << ' ' << i << ' ' << nl;
+        }
+
+        file << "CELL_TYPES " << points.size() << endl;
+
+        forAll(points, i)
+        {
+            // Vertex
+            file << "1" << nl;
+        }
+    }
+}
+
 // Prepare point-normals with updated point positions
-void Foam::mesquiteSmoother::preparePointNormals()
+void mesquiteSmoother::preparePointNormals()
 {
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
@@ -1591,7 +1952,7 @@ void Foam::mesquiteSmoother::preparePointNormals()
     }
 }
 
-Foam::tmp<Foam::pointField> Foam::mesquiteSmoother::newPoints()
+tmp<pointField> mesquiteSmoother::newPoints()
 {
     solve();
 
@@ -1599,15 +1960,15 @@ Foam::tmp<Foam::pointField> Foam::mesquiteSmoother::newPoints()
 }
 
 //- Return point location obtained from the current motion field
-Foam::tmp<Foam::pointField>
-Foam::mesquiteSmoother::curPoints() const
+tmp<pointField>
+mesquiteSmoother::curPoints() const
 {
     tmp<pointField> tcurPoints(refPoints_);
 
     return tcurPoints;
 }
 
-void Foam::mesquiteSmoother::solve()
+void mesquiteSmoother::solve()
 {
     // Perform surface smoothing first
     if
@@ -1651,12 +2012,6 @@ void Foam::mesquiteSmoother::solve()
     // Create an instruction queue
     Mesquite::InstructionQueue queue;
 
-    // Apply termination criteria for untangling
-    //untangleGlobal_->set_inner_termination_criterion(&untInner_);
-    //untangleGlobal_->set_outer_termination_criterion(&untOuter_);
-
-    //untangleGlobal_->loop_over_mesh(&msqMesh, 0, 0, err);
-
     // Apply termination criteria to the optimization algorithm
     optAlgorithm_->set_outer_termination_criterion(&tcOuter_);
     optAlgorithm_->set_inner_termination_criterion(&tcInner_);
@@ -1693,7 +2048,7 @@ void Foam::mesquiteSmoother::solve()
     }
 }
 
-void Foam::mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
+void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
 {
     motionSolver::updateMesh(mpm);
 
@@ -1724,12 +2079,12 @@ void Foam::mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
         gradEdgeV_.clear();
         pNormals_.clear();
         offsets_.clear();
-
-        origPoints_.clear();
     }
 
     // Initialize data structures
     initArrays();
 }
+
+} // End namespace Foam
 
 // ************************************************************************* //
