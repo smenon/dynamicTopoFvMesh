@@ -185,6 +185,9 @@ protected:
     // cells and correct if necessary.
     void correctInvalidCells();
 
+    // Enforce cylindrical constraints for slip-patches
+    void enforceCylindricalConstraints();
+
     // Write a particular point out for post-processing
     void writePoint
     (

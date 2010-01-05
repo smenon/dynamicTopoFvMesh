@@ -1650,6 +1650,77 @@ void mesquiteSmoother::correctInvalidCells()
     Info << "Success." << endl;
 }
 
+// Enforce cylindrical constraints for slip-patches
+void mesquiteSmoother::enforceCylindricalConstraints()
+{
+    if (!surfaceSmoothing_)
+    {
+        return;
+    }
+
+    // Check for sub-dictionary entry
+    if (found("cylindricalConstraints"))
+    {
+        const dictionary& constraintDict = subDict("cylindricalConstraints");
+
+        // Read patch-information one-by one.
+        wordList cstrPatches = constraintDict.toc();
+
+        forAll(cstrPatches, wordI)
+        {
+            label pID = mesh().boundaryMesh().findPatchID(cstrPatches[wordI]);
+
+            if (pID == -1 || findIndex(pIDs_, pID) == -1)
+            {
+                FatalErrorIn
+                (
+                    "mesquiteSmoother::enforceCylindricalConstraints()"
+                )
+                    << " Cannot find patch: " << cstrPatches[wordI]
+                    << abort(FatalError);
+            }
+
+            const dictionary& pD = constraintDict.subDict(cstrPatches[wordI]);
+
+            // Read info.
+            vector axisPoint(pD.lookup("axisPoint"));
+            vector axisVector(pD.lookup("axisVector"));
+            scalar radius = readScalar(pD.lookup("radius"));
+
+            const labelList meshPts = mesh().boundaryMesh()[pID].meshPoints();
+
+            axisVector /= mag(axisVector) + VSMALL;
+
+            forAll(meshPts, pointI)
+            {
+                point& x = refPoints_[meshPts[pointI]];
+
+                vector rx = (x - axisPoint);
+                vector ra = (rx & axisVector)*axisVector;
+                vector r  = (rx - ra);
+                vector rn = r / mag(r);
+
+                // Correct point position
+                x -= (mag(r) - radius)*rn;
+
+                if (debug)
+                {
+                    scalar viol = mag(mag(r) - radius);
+
+                    if (viol > SMALL)
+                    {
+                        WarningIn
+                        (
+                            "mesquiteSmoother::enforceCylindricalConstraints()"
+                        )
+                            << " Constraint violation: " << viol << endl;
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Utility method to check validity of cells connected to a point.
 bool mesquiteSmoother::checkValidity
 (
@@ -1982,6 +2053,9 @@ void mesquiteSmoother::solve()
 
         // Check for invalid cells and correct if necessary.
         correctInvalidCells();
+
+        // Enforce constraints, if necessary
+        enforceCylindricalConstraints();
     }
 
     // Copy most recent point positions
