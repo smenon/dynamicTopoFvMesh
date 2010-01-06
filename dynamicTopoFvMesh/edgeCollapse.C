@@ -866,12 +866,17 @@ void dynamicTopoFvMesh::collapseQuadFace
 //     1: Collapsed to first node.
 //     2: Collapsed to second node.
 // - overRideCase is used to force a certain collapse configuration.
+//    -1: Use this value to let collapseEdge decide a case.
+//     1: Force collapse to first node.
+//     2: Force collapse to second node.
 // - checkOnly performs a feasibility check and returns without modifications.
+// - forceOp to force the collapse.
 const changeMap dynamicTopoFvMesh::collapseEdge
 (
     const label eIndex,
     label overRideCase,
-    bool checkOnly
+    bool checkOnly,
+    bool forceOp
 )
 {
     // Edge collapse performs the following operations:
@@ -1325,7 +1330,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         newPoint,
                         collapsePoint,
                         own,
-                        cellsChecked
+                        cellsChecked,
+                        forceOp
                     )
                 )
                 {
@@ -1345,7 +1351,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         newPoint,
                         collapsePoint,
                         nei,
-                        cellsChecked
+                        cellsChecked,
+                        forceOp
                     )
                 )
                 {

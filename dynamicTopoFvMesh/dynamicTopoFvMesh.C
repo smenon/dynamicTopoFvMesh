@@ -7084,7 +7084,8 @@ bool dynamicTopoFvMesh::checkCollapse
     const point& newPoint,
     const label pointIndex,
     const label cellIndex,
-    labelHashSet& cellsChecked
+    labelHashSet& cellsChecked,
+    bool forceOp
 )
 {
     label faceIndex = -1;
@@ -7134,7 +7135,7 @@ bool dynamicTopoFvMesh::checkCollapse
     }
 
     // Final quality check
-    if (cQuality < sliverThreshold_)
+    if (cQuality < sliverThreshold_ && !forceOp)
     {
         if (debug > 2)
         {
@@ -7149,6 +7150,12 @@ bool dynamicTopoFvMesh::checkCollapse
                 << newPoint << endl;
         }
 
+        return true;
+    }
+
+    // Quality below 0.0 is a no-no
+    if (cQuality < 0.0)
+    {
         return true;
     }
 
@@ -7780,8 +7787,8 @@ void dynamicTopoFvMesh::removeSlivers()
             label secondEdge = map.secondEdge();
 
             // Force bisection on both edges.
-            changeMap firstMap  = bisectEdge(firstEdge);
-            changeMap secondMap = bisectEdge(secondEdge);
+            changeMap firstMap  = bisectEdge(firstEdge, true);
+            changeMap secondMap = bisectEdge(secondEdge, true);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
@@ -7800,7 +7807,13 @@ void dynamicTopoFvMesh::removeSlivers()
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
-                    collapseEdge(firstMapEdges[edgeI]);
+                    collapseEdge
+                    (
+                        firstMapEdges[edgeI],
+                        -1,
+                        false,
+                        true
+                    );
 
                     foundCollapseEdge = true;
                     break;
@@ -7817,7 +7830,13 @@ void dynamicTopoFvMesh::removeSlivers()
                     if (thisEdge == edgeToCheck)
                     {
                         // Collapse this edge.
-                        collapseEdge(secondMapEdges[edgeI]);
+                        collapseEdge
+                        (
+                            secondMapEdges[edgeI],
+                            -1,
+                            false,
+                            true
+                        );
 
                         break;
                     }
@@ -7831,7 +7850,7 @@ void dynamicTopoFvMesh::removeSlivers()
             label opposingFace = map.opposingFace();
 
             // Force trisection of the opposing face.
-            changeMap faceMap = trisectFace(opposingFace);
+            changeMap faceMap = trisectFace(opposingFace, true);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
@@ -7847,7 +7866,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
-                    collapseEdge(faceMapEdges[edgeI]);
+                    collapseEdge(faceMapEdges[edgeI], -1, false, true);
 
                     break;
                 }
@@ -7876,7 +7895,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
-                    collapseEdge(firstMapEdges[edgeI]);
+                    collapseEdge(firstMapEdges[edgeI], -1, false, true);
 
                     break;
                 }
@@ -7888,7 +7907,7 @@ void dynamicTopoFvMesh::removeSlivers()
             // Wedge cell.
 
             // Collapse the first edge.
-            collapseEdge(map.firstEdge());
+            collapseEdge(map.firstEdge(), -1, false, true);
         }
     }
 

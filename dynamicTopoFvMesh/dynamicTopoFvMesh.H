@@ -581,7 +581,8 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             label overRideCase = -1,
-            bool checkOnly = false
+            bool checkOnly = false,
+            bool forceOp = false
         );
 
         // Slice the mesh at a particular edge in 3D
@@ -606,7 +607,8 @@ class dynamicTopoFvMesh
             const point& newPoint,
             const label pointIndex,
             const label cellIndex,
-            labelHashSet& cellsChecked
+            labelHashSet& cellsChecked,
+            bool forceOp = false
         );
 
         // Check if the boundary face is adjacent to a sliver-cell,
