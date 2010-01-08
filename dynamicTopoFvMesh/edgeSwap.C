@@ -771,12 +771,29 @@ const changeMap dynamicTopoFvMesh::swap23
             writeVTK
             (
                 Foam::name(eIndex)
+              + '(' + Foam::name(edgeToCheck[0])
+              + ',' + Foam::name(edgeToCheck[1]) + ')'
               + "_beforeSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
                 cellsForRemoval
             );
         }
+    }
+
+    // Check if this is an internal face
+    if (cellsForRemoval[1] == -1)
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::swap23()"
+        )
+          << "Expected an internal face, "
+          << "but found a boundary one instead. "
+          << "Looks like identify32Swap couldn't correctly identify "
+          << "the 2-2 swap triangulation. Change tolerance for "
+          << "tetVolumeSign to rectify this."
+          << abort(FatalError);
     }
 
     // Add three new cells to the end of the cell list
@@ -1282,6 +1299,8 @@ const changeMap dynamicTopoFvMesh::swap23
             writeVTK
             (
                 Foam::name(eIndex)
+              + '(' + Foam::name(edgeToCheck[0])
+              + ',' + Foam::name(edgeToCheck[1]) + ')'
               + "_afterSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
@@ -1399,6 +1418,8 @@ const changeMap dynamicTopoFvMesh::swap32
             writeVTK
             (
                 Foam::name(eIndex)
+              + '(' + Foam::name(edgeToCheck[0])
+              + ',' + Foam::name(edgeToCheck[1]) + ')'
               + "_beforeSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
@@ -1984,6 +2005,8 @@ const changeMap dynamicTopoFvMesh::swap32
             writeVTK
             (
                 Foam::name(eIndex)
+              + '(' + Foam::name(edgeToCheck[0])
+              + ',' + Foam::name(edgeToCheck[1]) + ')'
               + "_afterSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),

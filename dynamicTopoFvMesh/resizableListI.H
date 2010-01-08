@@ -221,7 +221,7 @@ inline label resizableList<T>::append(const T& data)
             max
             (
                 index,
-                label(2*size_ + 1)
+                label(1.1*size_ + 1)
             )
         );
     }
@@ -239,15 +239,15 @@ inline label resizableList<T>::append(const T& data)
 template<class T>
 inline T resizableList<T>::remove()
 {
-	if (lastIndex_ == -1)
-	{
+    if (lastIndex_ == -1)
+    {
         FatalErrorIn
         (
             "inline T resizableList<T>::remove() "
         ) << "List is empty." << abort(FatalError);
-	}
+    }
 
-	return this->operator[](lastIndex_--);
+    return this->operator[](lastIndex_--);
 }
 
 //- Clear contents of the list (i.e., reset lastIndex)
@@ -306,7 +306,8 @@ inline bool resizableList<T>::checkIndex(const label index) const
     if (index < 0 || index >= size_)
     {
         FatalErrorIn("resizableList<T>::checkIndex(const label)")
-            << "index " << index << " out of range 0 ... " << (size_-1)
+            << "index " << index << " out of range 0 ... " << (size_-1) << nl
+            << "lastIndex: " << lastIndex_
             << abort(FatalError);
     }
 

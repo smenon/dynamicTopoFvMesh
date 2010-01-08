@@ -898,7 +898,8 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             const labelList& hullVertices,
-            const labelListList& triangulations
+            const labelListList& triangulations,
+            const scalar tolFraction
         );
 
         // Routine to check whether the triangulation at the

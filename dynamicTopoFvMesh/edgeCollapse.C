@@ -1377,7 +1377,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         writeVTK
         (
-            Foam::name(eIndex)+"_Collapse_0",
+            Foam::name(eIndex)
+          + '(' + Foam::name(edges_[eIndex][0])
+          + ',' + Foam::name(edges_[eIndex][1]) + ')'
+          + "_Collapse_0",
             vtkCells
         );
     }
@@ -1783,7 +1786,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         writeVTK
         (
-            Foam::name(eIndex)+"Collapse_1",
+            Foam::name(eIndex)
+          + '(' + Foam::name(edges_[eIndex][0])
+          + ',' + Foam::name(edges_[eIndex][1]) + ')'
+          + "_Collapse_1",
             vtkCells
         );
     }

@@ -2175,7 +2175,7 @@ bool dynamicTopoFvMesh::fillTables
     }
 
     // Print out tables for debugging
-    if (debug > 2)
+    if (debug > 3)
     {
         printTables(m, Q, K, checkIndex);
     }
@@ -2192,6 +2192,8 @@ void dynamicTopoFvMesh::printTables
     const label checkIndex
 )
 {
+    Info << "m: " << m[checkIndex] << endl;
+
     // Print out Q
     Info << "===" << endl;
     Info << " Q " << endl;
@@ -2268,6 +2270,7 @@ bool dynamicTopoFvMesh::removeEdgeFlips
     if (debug > 2)
     {
         Info << " Removing edge : " << eIndex << " by flipping."
+             << " Edge: " << edges_[eIndex]
              << " minQuality: " << minQuality << endl;
     }
 
@@ -2304,8 +2307,19 @@ bool dynamicTopoFvMesh::removeEdgeFlips
         triangulations[checkIndex]
     );
 
+    scalar tolF = 0.1;
+
     // Determine the final swap triangulation
-    label tF = identify32Swap(eIndex, hullVertices, triangulations[checkIndex]);
+    label tF =
+    (
+        identify32Swap
+        (
+            eIndex,
+            hullVertices,
+            triangulations[checkIndex],
+            tolF
+        )
+    );
 
     // Check that the triangulation is valid
     if (tF == -1)
@@ -2316,6 +2330,79 @@ bool dynamicTopoFvMesh::removeEdgeFlips
         triangulations[checkIndex][2] = -1;
 
         return false;
+    }
+    else
+    if (whichEdgePatch(eIndex) > -1)
+    {
+        // Boundary edges may encounter precision issues
+        // when trying to identify a 2-2 swap. Ensure that the right
+        // decision was made.
+        labelListList& bT = triangulations[checkIndex];
+
+        // Check if at least two points of the triangulation
+        // are on the mesh boundary
+        label nAttempts = 0, nBdyPoints = 0;
+        bool foundPoints = false;
+
+        while (!foundPoints)
+        {
+            forAll(bT, indexI)
+            {
+                labelList& pEdges =
+                (
+                    pointEdges_[hullVertices[bT[indexI][tF]]]
+                );
+
+                forAll(pEdges, edgeI)
+                {
+                    if (whichEdgePatch(pEdges[edgeI]) > -1)
+                    {
+                        nBdyPoints++;
+                        break;
+                    }
+                }
+            }
+
+            if (nBdyPoints >= 2)
+            {
+                foundPoints = true;
+            }
+
+            if (!foundPoints)
+            {
+                // Try again with a reduced tolerance.
+                tolF *= 0.5;
+
+                tF = identify32Swap(eIndex, hullVertices, bT, tolF);
+
+                nAttempts++;
+            }
+
+            if (nAttempts > 5 || tF == -1)
+            {
+                // Reset all triangulations and bail out
+                triangulations[checkIndex][0] = -1;
+                triangulations[checkIndex][1] = -1;
+                triangulations[checkIndex][2] = -1;
+
+                return false;
+            }
+        }
+    }
+
+    if (debug > 2)
+    {
+        Info << " Identified tF as: " << tF << endl;
+        Info << " Triangulation: "
+             << triangulations[checkIndex][0][tF] << " "
+             << triangulations[checkIndex][1][tF] << " "
+             << triangulations[checkIndex][2][tF] << " "
+             << endl;
+        Info << " All triangulations: " << nl
+             << ' ' << triangulations[checkIndex][0] << nl
+             << ' ' << triangulations[checkIndex][1] << nl
+             << ' ' << triangulations[checkIndex][2] << nl
+             << endl;
     }
 
     if (coupledModification_)
@@ -2535,7 +2622,8 @@ label dynamicTopoFvMesh::identify32Swap
 (
     const label eIndex,
     const labelList& hullVertices,
-    const labelListList& triangulations
+    const labelListList& triangulations,
+    const scalar tolFraction
 )
 {
     label m = hullVertices.size();
@@ -2547,7 +2635,7 @@ label dynamicTopoFvMesh::identify32Swap
     // Relax the tolerance for boundary edges
     if (whichEdgePatch(eIndex) > -1)
     {
-        tolerance = 0.1*mag(tangentToEdge(eIndex));
+        tolerance = tolFraction*mag(tangentToEdge(eIndex));
     }
 
     for (label i = 0; i < (m-2); i++)
@@ -2587,6 +2675,11 @@ label dynamicTopoFvMesh::identify32Swap
                 tolerance
             )
         );
+
+        if (debug > 2)
+        {
+            Info << " tetVolumeSign: " << sign << endl;
+        }
 
         // Intersects at edge AC
         if ((sign[0]==0) && (sign[1]==sign[2]))
@@ -8666,7 +8759,7 @@ bool dynamicTopoFvMesh::updateTopology()
         }
 
         // Basic checks for mesh-validity
-        if (debug)
+        if (debug > 1)
         {
             checkMesh(true);
         }

@@ -261,7 +261,7 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     const scalar tolerance
 )
 {
-    scalar det = ((b - a) ^ (c - a)) & (d - a);
+    scalar det = (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
 
     if (mag(det) < tolerance)
     {

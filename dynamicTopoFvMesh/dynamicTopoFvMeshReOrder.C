@@ -1142,10 +1142,13 @@ void dynamicTopoFvMesh::reOrderMesh
         Info << "Cells: " << nOldCells_ << endl;
         Info << "Internal Edges: " << nOldInternalEdges_ << endl;
         Info << "Internal Faces: " << nOldInternalFaces_ << endl;
-        Info << "Patch Starts [Face]: " << oldPatchStarts_ << endl;
-        Info << "Patch Sizes  [Face]: " << oldPatchSizes_ << endl;
-        Info << "Patch Starts [Edge]: " << oldEdgePatchStarts_ << endl;
-        Info << "Patch Sizes  [Edge]: " << oldEdgePatchSizes_ << endl;
+        if (debug > 1)
+        {
+            Info << "Patch Starts [Face]: " << oldPatchStarts_ << endl;
+            Info << "Patch Sizes  [Face]: " << oldPatchSizes_ << endl;
+            Info << "Patch Starts [Edge]: " << oldEdgePatchStarts_ << endl;
+            Info << "Patch Sizes  [Edge]: " << oldEdgePatchSizes_ << endl;
+        }
         Info << "=================" << endl;
         Info << "Mesh Info [n+1]:" << endl;
         Info << "Points: " << nPoints_ << endl;
@@ -1154,10 +1157,13 @@ void dynamicTopoFvMesh::reOrderMesh
         Info << "Cells: " << nCells_ << endl;
         Info << "Internal Edges: " << nInternalEdges_ << endl;
         Info << "Internal Faces: " << nInternalFaces_ << endl;
-        Info << "Patch Starts [Face]: " << patchStarts_ << endl;
-        Info << "Patch Sizes: [Face]: " << patchSizes_ << endl;
-        Info << "Patch Starts [Edge]: " << edgePatchStarts_ << endl;
-        Info << "Patch Sizes: [Edge]: " << edgePatchSizes_ << endl;
+        if (debug > 1)
+        {
+            Info << "Patch Starts [Face]: " << patchStarts_ << endl;
+            Info << "Patch Sizes: [Face]: " << patchSizes_ << endl;
+            Info << "Patch Starts [Edge]: " << edgePatchStarts_ << endl;
+            Info << "Patch Sizes: [Edge]: " << edgePatchSizes_ << endl;
+        }
         Info << "=================" << endl;
 
         // Check connectivity structures for consistency
