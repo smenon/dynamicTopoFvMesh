@@ -638,7 +638,7 @@ class dynamicTopoFvMesh
             FixedList<label,2>& bidx,
             FixedList<face,2>& intf,
             FixedList<label,2>& iidx
-        );
+        ) const;
 
         // Method to find the common-edge between two faces.
         bool findCommonEdge
@@ -646,7 +646,7 @@ class dynamicTopoFvMesh
             const label first,
             const label second,
             label& common
-        );
+        ) const;
 
         // Method to find the isolated point on a triangular face
         // that doesn't lie on the specified edge
@@ -656,7 +656,7 @@ class dynamicTopoFvMesh
             const edge& e,
             label& ptIndex,
             label& nextPtIndex
-        );
+        ) const;
 
         // Method to replace a label in a given list
         inline void replaceLabel
@@ -664,7 +664,7 @@ class dynamicTopoFvMesh
             const label original,
             const label replacement,
             labelList& list
-        );
+        ) const;
 
         // Method to insert a label between two labels in a list
         inline void insertLabel
@@ -673,7 +673,7 @@ class dynamicTopoFvMesh
             const label labelA,
             const label labelB,
             labelList& list
-        );
+        ) const;
 
         // Insert the specified cell to the mesh
         label insertCell
@@ -762,14 +762,14 @@ class dynamicTopoFvMesh
         (
             const label item,
             labelList& list
-        );
+        ) const;
 
         // Utility method to size-down the list to remove an item
         inline void sizeDownList
         (
             const label item,
             labelList& list
-        );
+        ) const;
 
         // Utility method to build a hull of cells connected to the edge [2D]
         void constructPrismHull
@@ -777,7 +777,7 @@ class dynamicTopoFvMesh
             const label eIndex,
             labelHashSet& hullTriFaces,
             labelHashSet& hullCells
-        );
+        ) const;
 
         // Utility method to build a hull of cells around an edge [3D]
         void constructHull

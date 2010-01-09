@@ -50,7 +50,7 @@ void dynamicTopoFvMesh::swapQuadFace
     FixedList<label,2> commonEdgeIndex(-1);
     FixedList<edge,2>  commonEdges;
     FixedList<label,4> otherEdgeIndex(-1);
-    FixedList<label,4> commonFaceIndex(-1), modifiedEdgeIndex(-1);
+    FixedList<label,4> commonFaceIndex(-1), cornerEdgeIndex(-1);
     FixedList<face,4>  commonFaces(face(3)), commonIntFaces(face(4));
     FixedList<label,4> commonIntFaceIndex(-1);
     FixedList<bool,2> foundTriFace0(false), foundTriFace1(false);
@@ -60,16 +60,15 @@ void dynamicTopoFvMesh::swapQuadFace
     label c0 = owner_[fIndex];
     label c1 = neighbour_[fIndex];
 
-    // Get cell references
-    cell& cell_0 = cells_[c0];
-    cell& cell_1 = cells_[c1];
+    // Prepare two new cells
+    FixedList<cell, 2> newCell(cell(5));
 
     // Need to find common faces and edges...
     // At the end of this loop, commonFaces [0] & [1] share commonEdge[0]
     // and commonFaces [2] & [3] share commonEdge[1]
     // Also, commonFaces[0] & [2] are connected to cell[0],
     // and commonFaces[1] & [3] are connected to cell[1]
-    labelList& fEdges = faceEdges_[fIndex];
+    const labelList& fEdges = faceEdges_[fIndex];
 
     forAll(fEdges, edgeI)
     {
@@ -84,11 +83,11 @@ void dynamicTopoFvMesh::swapQuadFace
         }
 
         // Obtain edgeFaces for this edge
-        labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
 
         forAll(eFaces, faceI)
         {
-            face& eFace = faces_[eFaces[faceI]];
+            const face& eFace = faces_[eFaces[faceI]];
 
             if (eFace.size() == 3)
             {
@@ -163,8 +162,8 @@ void dynamicTopoFvMesh::swapQuadFace
         Info << nl << nl << "Face: " << fIndex
              << " needs to be flipped. " << endl;
 
-        Info << "Cell[0]: " << c0 << ": " << cell_0 << endl;
-        Info << "Cell[1]: " << c1 << ": " << cell_1 << endl;
+        Info << "Cell[0]: " << c0 << ": " << cells_[c0] << endl;
+        Info << "Cell[1]: " << c1 << ": " << cells_[c1] << endl;
 
         if (debug > 2)
         {
@@ -177,6 +176,7 @@ void dynamicTopoFvMesh::swapQuadFace
                  << commonFaceIndex[3] << ": " << commonFaces[3] << endl;
 
             Info << "Old face: " << faces_[fIndex] << endl;
+            Info << "Old faceEdges: " << faceEdges_[fIndex] << endl;
         }
     }
 
@@ -245,7 +245,7 @@ void dynamicTopoFvMesh::swapQuadFace
         )
         {
             // Obtain a reference to this edge
-            edge& eThis = edges_[fEdges[edgeI]];
+            const edge& eThis = edges_[fEdges[edgeI]];
 
             if
             (
@@ -267,7 +267,7 @@ void dynamicTopoFvMesh::swapQuadFace
     // where [0],[2] lie on cell[0] and [1],[3] lie on cell[1]
     found = false;
 
-    labelList& e1 = faceEdges_[c0IntIndex[0]];
+    const labelList& e1 = faceEdges_[c0IntIndex[0]];
 
     forAll(e1,edgeI)
     {
@@ -292,7 +292,7 @@ void dynamicTopoFvMesh::swapQuadFace
 
     found = false;
 
-    labelList& e3 = faceEdges_[c1IntIndex[0]];
+    const labelList& e3 = faceEdges_[c1IntIndex[0]];
 
     forAll(e3,edgeI)
     {
@@ -315,7 +315,7 @@ void dynamicTopoFvMesh::swapQuadFace
         commonIntFaceIndex[3] = c1IntIndex[0];
     }
 
-    // Find two common edges between interior/interior faces
+    // Find two common edges between quad/quad faces
     findCommonEdge
     (
         c0IntIndex[0],
@@ -330,42 +330,47 @@ void dynamicTopoFvMesh::swapQuadFace
         otherEdgeIndex[3]
     );
 
-    // Find four common edges between interior/boundary faces
+    // Find four common edges between quad/tri faces
     findCommonEdge
     (
         commonFaceIndex[1],
         commonIntFaceIndex[1],
-        modifiedEdgeIndex[0]
+        cornerEdgeIndex[0]
     );
 
     findCommonEdge
     (
         commonFaceIndex[3],
         commonIntFaceIndex[1],
-        modifiedEdgeIndex[1]
+        cornerEdgeIndex[1]
     );
 
     findCommonEdge
     (
         commonFaceIndex[0],
         commonIntFaceIndex[2],
-        modifiedEdgeIndex[2]
+        cornerEdgeIndex[2]
     );
 
     findCommonEdge
     (
         commonFaceIndex[2],
         commonIntFaceIndex[2],
-        modifiedEdgeIndex[3]
+        cornerEdgeIndex[3]
     );
 
     // Modify the five faces belonging to this hull
-    face& newFace = faces_[fIndex];
-    face& newBdyFace0 = faces_[commonFaceIndex[0]];
-    face& newBdyFace1 = faces_[commonFaceIndex[1]];
-    face& newBdyFace2 = faces_[commonFaceIndex[2]];
-    face& newBdyFace3 = faces_[commonFaceIndex[3]];
-    labelList& newFEdges = faceEdges_[fIndex];
+    face newFace = faces_[fIndex];
+    labelList newFEdges = faceEdges_[fIndex];
+    FixedList<face, 4> newBdyFace(face(3));
+    FixedList<edge, 2> newEdges;
+
+    // Assign current faces
+    forAll(newBdyFace, faceI)
+    {
+        newBdyFace[faceI] = faces_[commonFaceIndex[faceI]];
+    }
+
     label c0count=0, c1count=0;
 
     // Size down edgeFaces for the original face
@@ -394,11 +399,12 @@ void dynamicTopoFvMesh::swapQuadFace
         edgeFaces_[otherEdgeIndex[3]]
     );
 
-    // Replace edgeFaces and faceEdges
+    // Replace edgeFaces and faceEdges for the
+    // four (out of 8 total) corner edges of this hull.
     replaceLabel
     (
-        modifiedEdgeIndex[0],
-        modifiedEdgeIndex[1],
+        cornerEdgeIndex[0],
+        cornerEdgeIndex[2],
         faceEdges_[commonFaceIndex[1]]
     );
 
@@ -406,13 +412,13 @@ void dynamicTopoFvMesh::swapQuadFace
     (
         commonFaceIndex[1],
         commonFaceIndex[0],
-        edgeFaces_[modifiedEdgeIndex[0]]
+        edgeFaces_[cornerEdgeIndex[0]]
     );
 
     replaceLabel
     (
-        modifiedEdgeIndex[1],
-        modifiedEdgeIndex[0],
+        cornerEdgeIndex[1],
+        cornerEdgeIndex[3],
         faceEdges_[commonFaceIndex[3]]
     );
 
@@ -420,13 +426,13 @@ void dynamicTopoFvMesh::swapQuadFace
     (
         commonFaceIndex[3],
         commonFaceIndex[2],
-        edgeFaces_[modifiedEdgeIndex[1]]
+        edgeFaces_[cornerEdgeIndex[1]]
     );
 
     replaceLabel
     (
-        modifiedEdgeIndex[2],
-        modifiedEdgeIndex[3],
+        cornerEdgeIndex[2],
+        cornerEdgeIndex[0],
         faceEdges_[commonFaceIndex[0]]
     );
 
@@ -434,13 +440,13 @@ void dynamicTopoFvMesh::swapQuadFace
     (
         commonFaceIndex[0],
         commonFaceIndex[1],
-        edgeFaces_[modifiedEdgeIndex[2]]
+        edgeFaces_[cornerEdgeIndex[2]]
     );
 
     replaceLabel
     (
-        modifiedEdgeIndex[3],
-        modifiedEdgeIndex[2],
+        cornerEdgeIndex[3],
+        cornerEdgeIndex[1],
         faceEdges_[commonFaceIndex[2]]
     );
 
@@ -448,7 +454,7 @@ void dynamicTopoFvMesh::swapQuadFace
     (
         commonFaceIndex[2],
         commonFaceIndex[3],
-        edgeFaces_[modifiedEdgeIndex[3]]
+        edgeFaces_[cornerEdgeIndex[3]]
     );
 
     // Define parameters for the new flipped face
@@ -456,48 +462,58 @@ void dynamicTopoFvMesh::swapQuadFace
     newFace[1] = otherPointIndex[1];
     newFace[2] = otherPointIndex[3];
     newFace[3] = otherPointIndex[2];
+
     newFEdges[0] = otherEdgeIndex[2];
     newFEdges[1] = commonEdgeIndex[0];
     newFEdges[2] = otherEdgeIndex[3];
     newFEdges[3] = commonEdgeIndex[1];
-    cell_0[c0count++] = fIndex;
-    cell_1[c1count++] = fIndex;
+
+    newCell[0][c0count++] = fIndex;
+    newCell[1][c1count++] = fIndex;
+
     owner_[fIndex] = c0;
     neighbour_[fIndex] = c1;
+
+    // Both commonEdges need to be renumbered.
+    newEdges[0][0] = otherPointIndex[0];
+    newEdges[0][1] = otherPointIndex[1];
+
+    newEdges[1][0] = otherPointIndex[3];
+    newEdges[1][1] = otherPointIndex[2];
 
     // Four modified boundary faces need to be constructed,
     // but right-handedness is also important.
     // Take a cue from the existing boundary-face orientation
 
     // Zeroth boundary face - Owner c[0], Neighbour -1
-    newBdyFace0[0] = otherPointIndex[0];
-    newBdyFace0[1] = nextToOtherPoint[0];
-    newBdyFace0[2] = otherPointIndex[1];
-    cell_0[c0count++] = commonFaceIndex[0];
+    newBdyFace[0][0] = otherPointIndex[0];
+    newBdyFace[0][1] = nextToOtherPoint[0];
+    newBdyFace[0][2] = otherPointIndex[1];
+    newCell[0][c0count++] = commonFaceIndex[0];
     owner_[commonFaceIndex[0]] = c0;
     neighbour_[commonFaceIndex[0]] = -1;
 
     // First boundary face - Owner c[1], Neighbour -1
-    newBdyFace1[0] = otherPointIndex[1];
-    newBdyFace1[1] = nextToOtherPoint[1];
-    newBdyFace1[2] = otherPointIndex[0];
-    cell_1[c1count++] = commonFaceIndex[1];
+    newBdyFace[1][0] = otherPointIndex[1];
+    newBdyFace[1][1] = nextToOtherPoint[1];
+    newBdyFace[1][2] = otherPointIndex[0];
+    newCell[1][c1count++] = commonFaceIndex[1];
     owner_[commonFaceIndex[1]] = c1;
     neighbour_[commonFaceIndex[1]] = -1;
 
     // Second boundary face - Owner c[0], Neighbour -1
-    newBdyFace2[0] = otherPointIndex[3];
-    newBdyFace2[1] = nextToOtherPoint[3];
-    newBdyFace2[2] = otherPointIndex[2];
-    cell_0[c0count++] = commonFaceIndex[2];
+    newBdyFace[2][0] = otherPointIndex[3];
+    newBdyFace[2][1] = nextToOtherPoint[3];
+    newBdyFace[2][2] = otherPointIndex[2];
+    newCell[0][c0count++] = commonFaceIndex[2];
     owner_[commonFaceIndex[2]] = c0;
     neighbour_[commonFaceIndex[2]] = -1;
 
     // Third boundary face - Owner c[1], Neighbour -1
-    newBdyFace3[0] = otherPointIndex[2];
-    newBdyFace3[1] = nextToOtherPoint[2];
-    newBdyFace3[2] = otherPointIndex[3];
-    cell_1[c1count++] = commonFaceIndex[3];
+    newBdyFace[3][0] = otherPointIndex[2];
+    newBdyFace[3][1] = nextToOtherPoint[2];
+    newBdyFace[3][2] = otherPointIndex[3];
+    newCell[1][c1count++] = commonFaceIndex[3];
     owner_[commonFaceIndex[3]] = c1;
     neighbour_[commonFaceIndex[3]] = -1;
 
@@ -507,14 +523,12 @@ void dynamicTopoFvMesh::swapQuadFace
 
         if (debug > 2)
         {
-            Info << "New boundary face[0]" << commonFaceIndex[0]
-                 << ": " << newBdyFace0 << endl;
-            Info << "New boundary face[1]" << commonFaceIndex[1]
-                 << ": " << newBdyFace1 << endl;
-            Info << "New boundary face[2]" << commonFaceIndex[2]
-                 << ": " << newBdyFace2 << endl;
-            Info << "New boundary face[3]" << commonFaceIndex[3]
-                 << ": " << newBdyFace3 << endl;
+            forAll(newBdyFace, faceI)
+            {
+                Info << "New boundary face[" << faceI << "]: "
+                     << commonFaceIndex[faceI]
+                     << ": " << newBdyFace[faceI] << endl;
+            }
         }
     }
 
@@ -572,8 +586,8 @@ void dynamicTopoFvMesh::swapQuadFace
     }
 
     faces_[commonIntFaceIndex[1]] = f;
-    cell_0[c0count++] = commonIntFaceIndex[0];
-    cell_0[c0count++] = commonIntFaceIndex[1];
+    newCell[0][c0count++] = commonIntFaceIndex[0];
+    newCell[0][c0count++] = commonIntFaceIndex[1];
     owner_[commonIntFaceIndex[1]] = newOwn;
     neighbour_[commonIntFaceIndex[1]] = newNei;
 
@@ -628,10 +642,26 @@ void dynamicTopoFvMesh::swapQuadFace
     }
 
     faces_[commonIntFaceIndex[2]] = f;
-    cell_1[c1count++] = commonIntFaceIndex[2];
-    cell_1[c1count++] = commonIntFaceIndex[3];
+    newCell[1][c1count++] = commonIntFaceIndex[2];
+    newCell[1][c1count++] = commonIntFaceIndex[3];
     owner_[commonIntFaceIndex[2]] = newOwn;
     neighbour_[commonIntFaceIndex[2]] = newNei;
+
+    // Now that all entities are properly configured,
+    // overwrite the entries in connectivity lists.
+    cells_[c0] = newCell[0];
+    cells_[c1] = newCell[1];
+
+    faces_[fIndex] = newFace;
+    faceEdges_[fIndex] = newFEdges;
+
+    forAll(newBdyFace, faceI)
+    {
+        faces_[commonFaceIndex[faceI]] = newBdyFace[faceI];
+    }
+
+    edges_[commonEdgeIndex[0]] = newEdges[0];
+    edges_[commonEdgeIndex[1]] = newEdges[1];
 
     // Generate mapping information for both cells
     label firstParent, secondParent;

@@ -1020,7 +1020,7 @@ inline void dynamicTopoFvMesh::findIsolatedPoint
     const edge& e,
     label& ptIndex,
     label& nextPtIndex
-)
+) const
 {
     // Check the first point
     if ( f[0] != e.start() && f[0] != e.end() )
@@ -1062,7 +1062,7 @@ inline void dynamicTopoFvMesh::replaceLabel
      const label original,
      const label replacement,
      labelList& list
-)
+) const
 {
     bool found = false;
 
@@ -1095,7 +1095,7 @@ inline void dynamicTopoFvMesh::insertLabel
     const label labelA,
     const label labelB,
     labelList& list
-)
+) const
 {
     // Create a new list
     bool found = false;
@@ -1145,7 +1145,7 @@ inline void dynamicTopoFvMesh::sizeUpList
 (
     const label item,
     labelList& list
-)
+) const
 {
     // Create a new list
     labelList newList(list.size()+1);
@@ -1166,7 +1166,7 @@ inline void dynamicTopoFvMesh::sizeDownList
 (
     const label item,
     labelList& list
-)
+) const
 {
     // Create a new list
     labelList newList(list.size() - 1);

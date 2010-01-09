@@ -593,7 +593,7 @@ bool dynamicTopoFvMesh::testDelaunay
     return failed;
 }
 
-// Utility method to find the interior/boundary faces
+// Utility method to find the interior (quad) / boundary (tri) faces
 // for an input quad-face and adjacent triangle-prism cell.
 void dynamicTopoFvMesh::findPrismFaces
 (
@@ -603,7 +603,7 @@ void dynamicTopoFvMesh::findPrismFaces
     FixedList<label,2>& bidx,
     FixedList<face,2>& intf,
     FixedList<label,2>& iidx
-)
+) const
 {
     label indexO = 0, indexI = 0;
 
@@ -616,7 +616,7 @@ void dynamicTopoFvMesh::findPrismFaces
         // Don't count the face under consideration
         if (faceIndex != fIndex)
         {
-            face& fi = faces_[faceIndex];
+            const face& fi = faces_[faceIndex];
 
             if (neighbour_[faceIndex] == -1)
             {
@@ -650,7 +650,7 @@ bool dynamicTopoFvMesh::findCommonEdge
     const label first,
     const label second,
     label& common
-)
+) const
 {
     bool found = false;
 
@@ -665,11 +665,15 @@ bool dynamicTopoFvMesh::findCommonEdge
             {
                 common = fEi[edgeI];
 
-                found = true; break;
+                found = true;
+                break;
             }
         }
 
-        if (found) break;
+        if (found)
+        {
+            break;
+        }
     }
 
     return found;
@@ -1361,7 +1365,7 @@ void dynamicTopoFvMesh::constructPrismHull
     const label eIndex,
     labelHashSet& hullTriFaces,
     labelHashSet& hullCells
-)
+) const
 {
     // Obtain references
     const labelList& eFaces = edgeFaces_[eIndex];
@@ -3653,88 +3657,92 @@ void dynamicTopoFvMesh::checkConnectivity
         }
 
         Info << "Done." << endl;
+    }
 
-        Info << "Checking cell-point connectivity...";
+    Info << "Checking cell-point connectivity...";
 
-        // Loop through all cells and construct cell-to-node
-        label cIndex = 0;
-        label allCells = cells_.size();
-        labelList cellIndex(allCells);
-        List<labelHashSet> cellToNode(allCells);
+    // Loop through all cells and construct cell-to-node
+    label cIndex = 0;
+    label allCells = cells_.size();
+    labelList cellIndex(allCells);
+    List<labelHashSet> cellToNode(allCells);
 
-        forAll(cells_, cellI)
+    forAll(cells_, cellI)
+    {
+        const cell& thisCell = cells_[cellI];
+
+        if (thisCell.empty())
         {
-            const cell& thisCell = cells_[cellI];
+            continue;
+        }
 
-            if (thisCell.empty())
+        cellIndex[cIndex] = cellI;
+
+        forAll(thisCell, faceI)
+        {
+            const labelList& fEdges = faceEdges_[thisCell[faceI]];
+
+            forAll(fEdges, edgeI)
             {
-                continue;
+                const edge& thisEdge = edges_[fEdges[edgeI]];
+
+                if (!cellToNode[cIndex].found(thisEdge[0]))
+                {
+                    cellToNode[cIndex].insert(thisEdge[0]);
+                }
+
+                if (!cellToNode[cIndex].found(thisEdge[1]))
+                {
+                    cellToNode[cIndex].insert(thisEdge[1]);
+                }
             }
+        }
 
-            cellIndex[cIndex] = cellI;
+        cIndex++;
+    }
 
-            forAll(thisCell, faceI)
+    // Resize the lists
+    cellIndex.setSize(cIndex);
+    cellToNode.setSize(cIndex);
+
+    // Preliminary check for size
+    forAll(cellToNode, cellI)
+    {
+        if
+        (
+            (cellToNode[cellI].size() != 6 && twoDMesh_) ||
+            (cellToNode[cellI].size() != 4 && !twoDMesh_)
+        )
+        {
+            Pout << nl << "Warning: Cell: "
+                 << cellIndex[cellI] << " is inconsistent. "
+                 << endl;
+
+            const cell& failedCell = cells_[cellIndex[cellI]];
+
+            Info << "Cell faces: " << failedCell << endl;
+
+            forAll(failedCell, faceI)
             {
-                labelList& fEdges = faceEdges_[thisCell[faceI]];
+                Info << "\tFace: " << failedCell[faceI]
+                     << " :: " << faces_[failedCell[faceI]]
+                     << endl;
+
+                const labelList& fEdges = faceEdges_[failedCell[faceI]];
 
                 forAll(fEdges, edgeI)
                 {
-                    const edge& thisEdge = edges_[fEdges[edgeI]];
-
-                    if (!cellToNode[cIndex].found(thisEdge[0]))
-                    {
-                        cellToNode[cIndex].insert(thisEdge[0]);
-                    }
-
-                    if (!cellToNode[cIndex].found(thisEdge[1]))
-                    {
-                        cellToNode[cIndex].insert(thisEdge[1]);
-                    }
-                }
-            }
-
-            cIndex++;
-        }
-
-        // Resize the lists
-        cellIndex.setSize(cIndex);
-        cellToNode.setSize(cIndex);
-
-        // Preliminary check for size
-        forAll(cellToNode, cellI)
-        {
-            if (cellToNode[cellI].size() != 4)
-            {
-                Pout << nl << "Warning: Cell: "
-                     << cellIndex[cellI] << " is inconsistent. "
-                     << endl;
-
-                cell& failedCell = cells_[cellIndex[cellI]];
-
-                Info << "Cell faces: " << failedCell << endl;
-
-                forAll(failedCell, faceI)
-                {
-                    Info << "\tFace: " << failedCell[faceI]
-                         << " :: " << faces_[failedCell[faceI]]
+                    Info << "\t\tEdge: " << fEdges[edgeI]
+                         << " :: " << edges_[fEdges[edgeI]]
                          << endl;
-
-                    labelList& fEdges = faceEdges_[failedCell[faceI]];
-
-                    forAll(fEdges, edgeI)
-                    {
-                        Info << "\t\tEdge: " << fEdges[edgeI]
-                             << " :: " << edges_[fEdges[edgeI]]
-                             << endl;
-                    }
                 }
-
-                nFailedChecks++;
             }
-        }
 
-        Info << "Done." << endl;
+            nFailedChecks++;
+        }
     }
+
+    Info << "Done." << endl;
 
     reduce(nFailedChecks, orOp<bool>());
 
