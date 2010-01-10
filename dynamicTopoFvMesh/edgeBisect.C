@@ -51,26 +51,28 @@ void dynamicTopoFvMesh::bisectQuadFace
     //      Update faceEdges and edgeFaces information
 
     bool found;
-    label replaceFace = -1;
+    label replaceFace = -1, retainFace = -1;
     face tmpQuadFace(4), tmpTriFace(3);
+    labelList tmpQFEdges(4, -1), tmpTFEdges(3, -1);
     FixedList<label,7> newFaceIndex(-1), newEdgeIndex(-1);
-    FixedList<edge,2> commonEdges;
-    FixedList<label,4> modifiedEdgeIndex(-1);
-    FixedList<label,2> commonEdgeIndex(-1), commonFaceIndex(-1);
-    FixedList<label,2> newPtIndex(-1), newCellIndex(-1), otherEdgePoint(-1);
-    FixedList<label,4> otherEdgeIndex(-1);
+    FixedList<edge,4> commonEdges;
+    FixedList<label,4> cornerEdgeIndex(-1), commonEdgeIndex(-1);
+    FixedList<label,4> commonFaceIndex(-1);
+    FixedList<label,2> newPointIndex(-1), newCellIndex(-1);
+    FixedList<label,4> otherEdgeIndex(-1), otherEdgePoint(-1);
     FixedList<label,4> otherPointIndex(-1), nextToOtherPoint(-1);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
 
-    // Obtain a copy of this face...
-    face thisFace = faces_[fIndex];
-
     // Get the two cells on either side...
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
 
+    // Keep track of old / new cells
+    FixedList<cell, 2> oldCells(cell(5));
+    FixedList<cell, 2> newCells(cell(5));
+
     // Find the prism faces for cell[0].
-    cell cell_0 = cells_[c0];
+    oldCells[0] = cells_[c0];
 
     findPrismFaces
     (
@@ -85,16 +87,30 @@ void dynamicTopoFvMesh::bisectQuadFace
     if (debug > 1)
     {
         Info << nl << nl << "Face: " << fIndex
-             << ": " << thisFace << " is to be bisected. " << endl;
+             << ": " << faces_[fIndex] << " is to be bisected. " << endl;
 
         if (debug > 2)
         {
-            Info << "Cell[0]: " << c0 << ": " << cell_0 << endl;
+            Info << "Cell[0]: " << c0 << ": " << oldCells[0] << endl;
 
-            forAll(cell_0, faceI)
+            forAll(oldCells[0], faceI)
             {
-                Info << cell_0[faceI] << ": "
-                     << faces_[cell_0[faceI]] << endl;
+                const labelList& fE = faceEdges_[oldCells[0][faceI]];
+
+                Info << oldCells[0][faceI] << ": "
+                     << faces_[oldCells[0][faceI]]
+                     << " fE: " << fE
+                     << endl;
+
+                forAll(fE, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                    Info << '\t' << fE[edgeI]
+                         << ": " << edges_[fE[edgeI]]
+                         << " eF: " << eF
+                         << endl;
+                }
             }
         }
     }
@@ -135,7 +151,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     mappingPoints[1] = commonEdges[0][1];
 
     // Add two new points to the end of the list
-    newPtIndex[0] =
+    newPointIndex[0] =
     (
         insertPoint
         (
@@ -152,7 +168,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     mappingPoints[0] = commonEdges[1][0];
     mappingPoints[1] = commonEdges[1][1];
 
-    newPtIndex[1] =
+    newPointIndex[1] =
     (
         insertPoint
         (
@@ -165,15 +181,13 @@ void dynamicTopoFvMesh::bisectQuadFace
         )
     );
 
-    cell newCell0(5);
-
     // Add a new prism cell to the end of the list.
     // Currently invalid, but will be updated later.
     newCellIndex[0] =
     (
         insertCell
         (
-            newCell0,
+            newCells[0],
             lengthScale_[c0],
             c0
         )
@@ -185,7 +199,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     replaceLabel
     (
         otherEdgePoint[0],
-        newPtIndex[0],
+        newPointIndex[0],
         c0BdyFace[0]
     );
 
@@ -193,15 +207,19 @@ void dynamicTopoFvMesh::bisectQuadFace
     replaceLabel
     (
         otherEdgePoint[1],
-        newPtIndex[1],
+        newPointIndex[1],
         c0BdyFace[1]
     );
 
+    // Update faces.
+    faces_[c0BdyIndex[0]] = c0BdyFace[0];
+    faces_[c0BdyIndex[1]] = c0BdyFace[1];
+
     owner_[c0BdyIndex[1]] = newCellIndex[0];
-    replaceLabel(c0BdyIndex[1],-1,cell_0);
+    replaceLabel(c0BdyIndex[1], -1, oldCells[0]);
 
     // Detect edges other than commonEdges
-    labelList fEdges = faceEdges_[fIndex];
+    const labelList& fEdges = faceEdges_[fIndex];
 
     forAll(fEdges, edgeI)
     {
@@ -211,7 +229,8 @@ void dynamicTopoFvMesh::bisectQuadFace
             fEdges[edgeI] != commonEdgeIndex[1]
         )
         {
-            edge& eThis = edges_[fEdges[edgeI]];
+            // Obtain a reference to this edge
+            const edge& eThis = edges_[fEdges[edgeI]];
 
             if
             (
@@ -232,34 +251,43 @@ void dynamicTopoFvMesh::bisectQuadFace
     replaceLabel
     (
         otherEdgePoint[0],
-        newPtIndex[0],
-        thisFace
+        newPointIndex[0],
+        faces_[fIndex]
     );
 
     replaceLabel
     (
         nextToOtherPoint[1],
-        newPtIndex[1],
-        thisFace
+        newPointIndex[1],
+        faces_[fIndex]
     );
 
     if (debug > 1)
     {
-        Info << "Modified thisFace: " << fIndex
-             << ": " << thisFace << endl;
+        Info << "Modified face: " << fIndex
+             << ": " << faces_[fIndex] << endl;
+
+        if (debug > 2)
+        {
+            Info << "Common edges: " << nl
+                 << commonEdgeIndex[0] << ": " << commonEdges[0] << nl
+                 << commonEdgeIndex[1] << ": " << commonEdges[1]
+                 << endl;
+        }
     }
 
-    // Find the interior face that contains otherEdgeIndex[1]
+    // Find the quad face that contains otherEdgeIndex[1]
     found = false;
 
-    labelList& e1 = faceEdges_[c0IntIndex[0]];
+    const labelList& e1 = faceEdges_[c0IntIndex[0]];
 
     forAll(e1, edgeI)
     {
         if (e1[edgeI] == otherEdgeIndex[1])
         {
-            replaceLabel(c0IntIndex[0], -1, cell_0);
+            replaceLabel(c0IntIndex[0], -1, oldCells[0]);
             replaceFace = c0IntIndex[0];
+            retainFace = c0IntIndex[1];
             found = true; break;
         }
     }
@@ -267,8 +295,9 @@ void dynamicTopoFvMesh::bisectQuadFace
     if (!found)
     {
         // The edge was not found before
-        replaceLabel(c0IntIndex[1], -1, cell_0);
+        replaceLabel(c0IntIndex[1], -1, oldCells[0]);
         replaceFace = c0IntIndex[1];
+        retainFace = c0IntIndex[0];
     }
 
     // Check if face reversal is necessary for the replacement
@@ -294,15 +323,15 @@ void dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Define the faces for the new cell
-    newCell0[0] = c0BdyIndex[1];
-    newCell0[1] = replaceFace;
+    newCells[0][0] = c0BdyIndex[1];
+    newCells[0][1] = replaceFace;
 
     // Define the set of new faces and insert...
 
     // New interior face; Owner = cell[0] & Neighbour = newCell[0]
     tmpQuadFace[0] = otherPointIndex[0];
-    tmpQuadFace[1] = newPtIndex[0];
-    tmpQuadFace[2] = newPtIndex[1];
+    tmpQuadFace[1] = newPointIndex[0];
+    tmpQuadFace[2] = newPointIndex[1];
     tmpQuadFace[3] = otherPointIndex[1];
 
     newFaceIndex[0] = insertFace
@@ -313,15 +342,33 @@ void dynamicTopoFvMesh::bisectQuadFace
                           newCellIndex[0]
                       );
 
-    replaceLabel(-1, newFaceIndex[0], newCell0);
-    replaceLabel(-1, newFaceIndex[0], cell_0);
+    // Add a faceEdges entry as well
+    faceEdges_.append(tmpQFEdges);
+
+    // Find the common edge between quad/quad faces...
+    findCommonEdge
+    (
+        c0IntIndex[0],
+        c0IntIndex[1],
+        otherEdgeIndex[2]
+    );
+
+    // ... and size-up edgeFaces for the edge
+    sizeUpList
+    (
+        newFaceIndex[0],
+        edgeFaces_[otherEdgeIndex[2]]
+    );
+
+    replaceLabel(-1, newFaceIndex[0], newCells[0]);
+    replaceLabel(-1, newFaceIndex[0], oldCells[0]);
 
     // remove2DSliver requires this face index for removal
     // bisectInterior_ = newFaceIndex[0];
 
     // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
     tmpTriFace[0] = otherPointIndex[0];
-    tmpTriFace[1] = newPtIndex[0];
+    tmpTriFace[1] = newPointIndex[0];
     tmpTriFace[2] = otherEdgePoint[0];
 
     newFaceIndex[1] = insertFace
@@ -332,11 +379,14 @@ void dynamicTopoFvMesh::bisectQuadFace
                           -1
                       );
 
-    replaceLabel(-1, newFaceIndex[1], newCell0);
+    // Add a faceEdges entry as well
+    faceEdges_.append(tmpTFEdges);
+
+    replaceLabel(-1, newFaceIndex[1], newCells[0]);
 
     // Third boundary face; Owner = c[0] & Neighbour = [-1]
     tmpTriFace[0] = otherPointIndex[1];
-    tmpTriFace[1] = newPtIndex[1];
+    tmpTriFace[1] = newPointIndex[1];
     tmpTriFace[2] = otherEdgePoint[1];
 
     newFaceIndex[2] = insertFace
@@ -347,7 +397,10 @@ void dynamicTopoFvMesh::bisectQuadFace
                           -1
                       );
 
-    replaceLabel(-1, newFaceIndex[2], cell_0);
+    // Add a faceEdges entry as well
+    faceEdges_.append(tmpTFEdges);
+
+    replaceLabel(-1, newFaceIndex[2], oldCells[0]);
 
     // Create / modify edges...
     labelList tmpTriEdgeFaces(3, -1);
@@ -360,9 +413,32 @@ void dynamicTopoFvMesh::bisectQuadFace
     newEdgeIndex[1] = insertEdge
                       (
                           whichEdgePatch(commonEdgeIndex[0]),
-                          edge(newPtIndex[0], otherPointIndex[0]),
+                          edge(newPointIndex[0], otherPointIndex[0]),
                           tmpTriEdgeFaces
                       );
+
+    // Find the common edge between the quad/tri faces...
+    findCommonEdge
+    (
+        c0BdyIndex[0],
+        replaceFace,
+        cornerEdgeIndex[0]
+    );
+
+    // ...and correct faceEdges / edgeFaces
+    replaceLabel
+    (
+        cornerEdgeIndex[0],
+        newEdgeIndex[1],
+        faceEdges_[c0BdyIndex[0]]
+    );
+
+    replaceLabel
+    (
+        c0BdyIndex[0],
+        newFaceIndex[1],
+        edgeFaces_[cornerEdgeIndex[0]]
+    );
 
     // The edge bisecting the first boundary triangular face
     tmpTriEdgeFaces[0] = c0BdyIndex[1];
@@ -372,18 +448,41 @@ void dynamicTopoFvMesh::bisectQuadFace
     newEdgeIndex[2] = insertEdge
                       (
                           whichEdgePatch(commonEdgeIndex[1]),
-                          edge(newPtIndex[1], otherPointIndex[1]),
+                          edge(newPointIndex[1], otherPointIndex[1]),
                           tmpTriEdgeFaces
                       );
+
+    // Find the common edge between the quad/tri faces...
+    findCommonEdge
+    (
+        c0BdyIndex[1],
+        retainFace,
+        cornerEdgeIndex[1]
+    );
+
+    // ...and correct faceEdges / edgeFaces
+    replaceLabel
+    (
+        cornerEdgeIndex[1],
+        newEdgeIndex[2],
+        faceEdges_[c0BdyIndex[1]]
+    );
+
+    replaceLabel
+    (
+        c0BdyIndex[1],
+        newFaceIndex[2],
+        edgeFaces_[cornerEdgeIndex[1]]
+    );
 
     if (c1 == -1)
     {
         // The quad boundary face resulting from bisection;
         // Owner = newCell[0] & Neighbour = [-1]
-        tmpQuadFace[0] = newPtIndex[1];
+        tmpQuadFace[0] = newPointIndex[1];
         tmpQuadFace[1] = nextToOtherPoint[1];
         tmpQuadFace[2] = otherEdgePoint[0];
-        tmpQuadFace[3] = newPtIndex[0];
+        tmpQuadFace[3] = newPointIndex[0];
 
         newFaceIndex[3] = insertFace
                           (
@@ -394,43 +493,30 @@ void dynamicTopoFvMesh::bisectQuadFace
                           );
 
         // Add a faceEdges entry as well
-        faceEdges_.append(labelList(4, -1));
+        faceEdges_.append(tmpQFEdges);
 
-        replaceLabel(-1, newFaceIndex[3], newCell0);
+        // Correct edgeFaces for otherEdgeIndex[1]
+        replaceLabel
+        (
+            fIndex,
+            newFaceIndex[3],
+            edgeFaces_[otherEdgeIndex[1]]
+        );
+
+        replaceLabel(-1, newFaceIndex[3], newCells[0]);
 
         labelList tmpBiEdgeFaces(2, -1);
 
         // The edge bisecting the face
-        tmpTriEdgeFaces[0] = fIndex;
+        tmpTriEdgeFaces[0] = newFaceIndex[3];
         tmpTriEdgeFaces[1] = newFaceIndex[0];
-        tmpTriEdgeFaces[2] = newFaceIndex[3];
+        tmpTriEdgeFaces[2] = fIndex;
 
         newEdgeIndex[0] = insertEdge
                           (
                               whichEdgePatch(otherEdgeIndex[0]),
-                              edge(newPtIndex[0], newPtIndex[1]),
+                              edge(newPointIndex[0], newPointIndex[1]),
                               tmpTriEdgeFaces
-                          );
-
-        // Create / replace side edges created from face bisection
-        tmpBiEdgeFaces[0] = newFaceIndex[1];
-        tmpBiEdgeFaces[1] = newFaceIndex[3];
-
-        newEdgeIndex[3] = insertEdge
-                          (
-                              whichEdgePatch(commonEdgeIndex[0]),
-                              edge(newPtIndex[0], otherEdgePoint[0]),
-                              tmpBiEdgeFaces
-                          );
-
-        tmpBiEdgeFaces[0] = c0BdyIndex[1];
-        tmpBiEdgeFaces[1] = newFaceIndex[3];
-
-        newEdgeIndex[4] = insertEdge
-                          (
-                              whichEdgePatch(commonEdgeIndex[1]),
-                              edge(newPtIndex[1], nextToOtherPoint[1]),
-                              tmpBiEdgeFaces
                           );
 
         // Replace an edge on the bisected face
@@ -441,7 +527,56 @@ void dynamicTopoFvMesh::bisectQuadFace
             faceEdges_[fIndex]
         );
 
+        // Create / replace side edges created from face bisection
+        tmpBiEdgeFaces[0] = newFaceIndex[1];
+        tmpBiEdgeFaces[1] = newFaceIndex[3];
+
+        newEdgeIndex[3] = insertEdge
+                          (
+                              whichEdgePatch(commonEdgeIndex[0]),
+                              edge(newPointIndex[0], otherEdgePoint[0]),
+                              tmpBiEdgeFaces
+                          );
+
+        tmpBiEdgeFaces[0] = c0BdyIndex[1];
+        tmpBiEdgeFaces[1] = newFaceIndex[3];
+
+        newEdgeIndex[4] = insertEdge
+                          (
+                              whichEdgePatch(commonEdgeIndex[1]),
+                              edge(newPointIndex[1], nextToOtherPoint[1]),
+                              tmpBiEdgeFaces
+                          );
+
         // Now that edges are defined, configure faceEdges
+        // for all new faces
+
+        // The quad interior face; Owner = cell[0] & Neighbour = newCell[0]
+        tmpQFEdges[0] = newEdgeIndex[0];
+        tmpQFEdges[1] = newEdgeIndex[1];
+        tmpQFEdges[2] = otherEdgeIndex[2];
+        tmpQFEdges[3] = newEdgeIndex[2];
+        faceEdges_[newFaceIndex[0]] = tmpQFEdges;
+
+        // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
+        tmpTFEdges[0] = newEdgeIndex[3];
+        tmpTFEdges[1] = cornerEdgeIndex[0];
+        tmpTFEdges[2] = newEdgeIndex[1];
+        faceEdges_[newFaceIndex[1]] = tmpTFEdges;
+
+        // Third boundary face; Owner = c[0] & Neighbour = [-1]
+        tmpTFEdges[0] = newEdgeIndex[2];
+        tmpTFEdges[1] = cornerEdgeIndex[1];
+        tmpTFEdges[2] = commonEdgeIndex[1];
+        faceEdges_[newFaceIndex[2]] = tmpTFEdges;
+
+        // The quad face from bisection:
+        tmpQFEdges[0] = otherEdgeIndex[1];
+        tmpQFEdges[1] = newEdgeIndex[3];
+        tmpQFEdges[2] = newEdgeIndex[0];
+        tmpQFEdges[3] = newEdgeIndex[4];
+        faceEdges_[newFaceIndex[3]] = tmpQFEdges;
+
         replaceLabel
         (
             commonEdgeIndex[1],
@@ -449,30 +584,65 @@ void dynamicTopoFvMesh::bisectQuadFace
             faceEdges_[c0BdyIndex[1]]
         );
 
+        replaceLabel
+        (
+            c0BdyIndex[1],
+            newFaceIndex[2],
+            edgeFaces_[commonEdgeIndex[1]]
+        );
+
         if (debug > 2)
         {
             Info << "Modified Cell[0]: "
-                 << c0 << ": " << cell_0 << endl;
+                 << c0 << ": " << oldCells[0] << endl;
 
-            forAll(cell_0, faceI)
+            forAll(oldCells[0], faceI)
             {
-                Info << cell_0[faceI]
-                     << ": " << faces_[cell_0[faceI]] << endl;
+                const labelList& fE = faceEdges_[oldCells[0][faceI]];
+
+                Info << oldCells[0][faceI]
+                     << ": " << faces_[oldCells[0][faceI]]
+                     << " fE: " << fE
+                     << endl;
+
+                forAll(fE, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                    Info << '\t' << fE[edgeI]
+                         << ": " << edges_[fE[edgeI]]
+                         << " eF: " << eF
+                         << endl;
+                }
             }
 
             Info << "New Cell[0]: " << newCellIndex[0]
-                 << ": " << newCell0 << endl;
+                 << ": " << newCells[0] << endl;
 
-            forAll(newCell0, faceI)
+            forAll(newCells[0], faceI)
             {
-                Info << newCell0[faceI]
-                     << ": " << faces_[newCell0[faceI]] << endl;
+                const labelList& fE = faceEdges_[newCells[0][faceI]];
+
+                Info << newCells[0][faceI]
+                     << ": " << faces_[newCells[0][faceI]]
+                     << " fE: " << fE
+                     << endl;
+
+                forAll(fE, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                    Info << '\t' << fE[edgeI]
+                         << ": " << edges_[fE[edgeI]]
+                         << " eF: " << eF
+                         << endl;
+                }
             }
         }
     }
     else
     {
-        cell cell_1 = cells_[c1];
+        oldCells[1] = cells_[c1];
 
         // Find the prism faces for cell[1].
         findPrismFaces
@@ -485,15 +655,11 @@ void dynamicTopoFvMesh::bisectQuadFace
             c1IntIndex
         );
 
-        // Add a new prism cell to the end of the list.
-        // Currently invalid, but will be updated later.
-        cell newCell1(5);
-
         newCellIndex[1] =
         (
             insertCell
             (
-                newCell1,
+                newCells[1],
                 lengthScale_[c1],
                 c1
             )
@@ -501,26 +667,41 @@ void dynamicTopoFvMesh::bisectQuadFace
 
         if (debug > 2)
         {
-            Info << "Cell[1]: " << c1 << ": " << cell_1 << endl;
+            Info << "Cell[1]: " << c1 << ": " << oldCells[1] << endl;
 
-            forAll(cell_1, faceI)
+            forAll(oldCells[1], faceI)
             {
-                Info << cell_1[faceI] << ": "
-                     << faces_[cell_1[faceI]] << endl;
+                const labelList& fE = faceEdges_[oldCells[1][faceI]];
+
+                Info << oldCells[1][faceI] << ": "
+                     << faces_[oldCells[1][faceI]]
+                     << " fE: " << fE
+                     << endl;
+
+                forAll(fE, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                    Info << '\t' << fE[edgeI]
+                         << ": " << edges_[fE[edgeI]]
+                         << " eF: " << eF
+                         << endl;
+                }
             }
         }
 
         // Find the interior face that contains otherEdgeIndex[1]
         found = false;
 
-        labelList& e2 = faceEdges_[c1IntIndex[0]];
+        const labelList& e2 = faceEdges_[c1IntIndex[0]];
 
         forAll(e2, edgeI)
         {
             if (e2[edgeI] == otherEdgeIndex[1])
             {
-                replaceLabel(c1IntIndex[0], -1, cell_1);
+                replaceLabel(c1IntIndex[0], -1, oldCells[1]);
                 replaceFace = c1IntIndex[0];
+                retainFace = c1IntIndex[1];
                 found = true; break;
             }
         }
@@ -528,8 +709,9 @@ void dynamicTopoFvMesh::bisectQuadFace
         if (!found)
         {
             // The edge was not found before
-            replaceLabel(c1IntIndex[1], -1, cell_1);
+            replaceLabel(c1IntIndex[1], -1, oldCells[1]);
             replaceFace = c1IntIndex[1];
+            retainFace = c1IntIndex[0];
         }
 
         // Check if face reversal is necessary for the replacement
@@ -555,14 +737,14 @@ void dynamicTopoFvMesh::bisectQuadFace
         }
 
         // Define attributes for the new prism cell
-        newCell1[0] = replaceFace;
+        newCells[1][0] = replaceFace;
 
-        // The interior face resulting from bisection;
+        // The quad interior face resulting from bisection;
         // Owner = newCell[0] & Neighbour = newCell[1]
-        tmpQuadFace[0] = newPtIndex[1];
+        tmpQuadFace[0] = newPointIndex[1];
         tmpQuadFace[1] = nextToOtherPoint[1];
         tmpQuadFace[2] = otherEdgePoint[0];
-        tmpQuadFace[3] = newPtIndex[0];
+        tmpQuadFace[3] = newPointIndex[0];
 
         newFaceIndex[3] = insertFace
                           (
@@ -572,80 +754,100 @@ void dynamicTopoFvMesh::bisectQuadFace
                               newCellIndex[1]
                           );
 
-        replaceLabel(-1, newFaceIndex[3], newCell0);
-        replaceLabel(-1, newFaceIndex[3], newCell1);
-        newCell1[1] = newFaceIndex[3];
+        // Add a faceEdges entry as well
+        faceEdges_.append(tmpQFEdges);
+
+        // Correct edgeFaces for otherEdgeIndex[1]
+        replaceLabel
+        (
+            fIndex,
+            newFaceIndex[3],
+            edgeFaces_[otherEdgeIndex[1]]
+        );
+
+        replaceLabel(-1, newFaceIndex[3], newCells[0]);
+        replaceLabel(-1, newFaceIndex[3], newCells[1]);
+        newCells[1][1] = newFaceIndex[3];
 
         // Check for common edges among the two boundary faces
         // Find the isolated point on both boundary faces of cell[1]
         if
         (
-            findCommonEdge(c1BdyIndex[0], c0BdyIndex[0], commonEdgeIndex[0])
+            findCommonEdge(c1BdyIndex[0], c0BdyIndex[0], commonEdgeIndex[2])
         )
         {
-            findCommonEdge(c1BdyIndex[1], c0BdyIndex[1], commonEdgeIndex[1]);
+            findCommonEdge(c1BdyIndex[1], c0BdyIndex[1], commonEdgeIndex[3]);
 
-            commonFaceIndex[0] = c1BdyIndex[0];
-            commonFaceIndex[1] = c1BdyIndex[1];
+            commonFaceIndex[2] = c1BdyIndex[0];
+            commonFaceIndex[3] = c1BdyIndex[1];
         }
         else
         {
-            findCommonEdge(c1BdyIndex[0], c0BdyIndex[1], commonEdgeIndex[1]);
-            findCommonEdge(c1BdyIndex[1], c0BdyIndex[0], commonEdgeIndex[0]);
+            findCommonEdge(c1BdyIndex[0], c0BdyIndex[1], commonEdgeIndex[3]);
+            findCommonEdge(c1BdyIndex[1], c0BdyIndex[0], commonEdgeIndex[2]);
 
-            commonFaceIndex[0] = c1BdyIndex[1];
-            commonFaceIndex[1] = c1BdyIndex[0];
+            commonFaceIndex[2] = c1BdyIndex[1];
+            commonFaceIndex[3] = c1BdyIndex[0];
         }
 
-        commonEdges[0] = edges_[commonEdgeIndex[0]];
-        commonEdges[1] = edges_[commonEdgeIndex[1]];
+        commonEdges[2] = edges_[commonEdgeIndex[2]];
+        commonEdges[3] = edges_[commonEdgeIndex[3]];
+
+        if (debug > 2)
+        {
+            Info << "Common edges: " << nl
+                 << commonEdgeIndex[2] << ": " << commonEdges[2] << nl
+                 << commonEdgeIndex[3] << ": " << commonEdges[3]
+                 << endl;
+        }
 
         findIsolatedPoint
         (
-            faces_[commonFaceIndex[0]],
-            commonEdges[0],
+            faces_[commonFaceIndex[2]],
+            commonEdges[2],
             otherPointIndex[2],
             nextToOtherPoint[2]
         );
 
         findIsolatedPoint
         (
-            faces_[commonFaceIndex[1]],
-            commonEdges[1],
+            faces_[commonFaceIndex[3]],
+            commonEdges[3],
             otherPointIndex[3],
             nextToOtherPoint[3]
         );
 
         // For convenience...
-        otherEdgePoint[0] = commonEdges[0].otherVertex(nextToOtherPoint[2]);
-        otherEdgePoint[1] = commonEdges[1].otherVertex(nextToOtherPoint[3]);
+        otherEdgePoint[2] = commonEdges[2].otherVertex(nextToOtherPoint[2]);
+        otherEdgePoint[3] = commonEdges[3].otherVertex(nextToOtherPoint[3]);
 
         // Modify the two existing triangle boundary faces
+
         // Zeroth boundary face - Owner = newCell[1], Neighbour = -1
         replaceLabel
         (
-            otherEdgePoint[0],
-            newPtIndex[0],
-            faces_[commonFaceIndex[0]]
+            otherEdgePoint[2],
+            newPointIndex[0],
+            faces_[commonFaceIndex[2]]
         );
 
-        owner_[commonFaceIndex[0]] = newCellIndex[1];
-        replaceLabel(commonFaceIndex[0], -1, cell_1);
-        newCell1[2] = commonFaceIndex[0];
+        owner_[commonFaceIndex[2]] = newCellIndex[1];
+        replaceLabel(commonFaceIndex[2], -1, oldCells[1]);
+        newCells[1][2] = commonFaceIndex[2];
 
         // First boundary face - Owner = c[1] & Neighbour [-1] (unchanged)
         replaceLabel
         (
-            otherEdgePoint[1],
-            newPtIndex[1],
-            faces_[commonFaceIndex[1]]
+            otherEdgePoint[3],
+            newPointIndex[1],
+            faces_[commonFaceIndex[3]]
         );
 
         // New interior face; Owner = cell[1] & Neighbour = newCell[1]
-        tmpQuadFace[0] = newPtIndex[0];
+        tmpQuadFace[0] = newPointIndex[0];
         tmpQuadFace[1] = otherPointIndex[2];
         tmpQuadFace[2] = otherPointIndex[3];
-        tmpQuadFace[3] = newPtIndex[1];
+        tmpQuadFace[3] = newPointIndex[1];
 
         newFaceIndex[4] = insertFace
                           (
@@ -655,40 +857,64 @@ void dynamicTopoFvMesh::bisectQuadFace
                               newCellIndex[1]
                           );
 
-        replaceLabel(-1, newFaceIndex[4], newCell1);
-        replaceLabel(-1, newFaceIndex[4], cell_1);
+        // Add a faceEdges entry as well
+        faceEdges_.append(tmpQFEdges);
+
+        // Find the common edge between quad/quad faces...
+        findCommonEdge
+        (
+            c1IntIndex[0],
+            c1IntIndex[1],
+            otherEdgeIndex[3]
+        );
+
+        // ... and size-up edgeFaces for the edge
+        sizeUpList
+        (
+            newFaceIndex[4],
+            edgeFaces_[otherEdgeIndex[3]]
+        );
+
+        replaceLabel(-1, newFaceIndex[4], newCells[1]);
+        replaceLabel(-1, newFaceIndex[4], oldCells[1]);
 
         // Second boundary face; Owner = cell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[2];
-        tmpTriFace[1] = newPtIndex[0];
-        tmpTriFace[2] = otherEdgePoint[0];
+        tmpTriFace[1] = newPointIndex[0];
+        tmpTriFace[2] = otherEdgePoint[2];
 
         newFaceIndex[5] = insertFace
                           (
-                              whichPatch(commonFaceIndex[0]),
+                              whichPatch(commonFaceIndex[2]),
                               tmpTriFace,
                               c1,
                               -1
                           );
 
-        replaceLabel(-1, newFaceIndex[5], cell_1);
+        // Add a faceEdges entry as well
+        faceEdges_.append(tmpTFEdges);
+
+        replaceLabel(-1, newFaceIndex[5], oldCells[1]);
 
         // Third boundary face; Owner = newCell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[3];
-        tmpTriFace[1] = newPtIndex[1];
-        tmpTriFace[2] = otherEdgePoint[1];
+        tmpTriFace[1] = newPointIndex[1];
+        tmpTriFace[2] = otherEdgePoint[3];
 
         newFaceIndex[6] = insertFace
                           (
-                              whichPatch(commonFaceIndex[1]),
+                              whichPatch(commonFaceIndex[3]),
                               tmpTriFace,
                               newCellIndex[1],
                               -1
                           );
 
-        replaceLabel(-1, newFaceIndex[6], newCell1);
+        // Add a faceEdges entry as well
+        faceEdges_.append(tmpTFEdges);
 
-        // Create/modify edges...
+        replaceLabel(-1, newFaceIndex[6], newCells[1]);
+
+        // Create / modify edges...
         labelList tmpQuadEdgeFaces(4, -1);
 
         // The internal edge bisecting the face
@@ -700,19 +926,27 @@ void dynamicTopoFvMesh::bisectQuadFace
         newEdgeIndex[0] = insertEdge
                           (
                               -1,
-                              edge(newPtIndex[0], newPtIndex[1]),
+                              edge(newPointIndex[0], newPointIndex[1]),
                               tmpQuadEdgeFaces
                           );
 
+        // Replace an edge on the bisected face
+        replaceLabel
+        (
+            otherEdgeIndex[1],
+            newEdgeIndex[0],
+            faceEdges_[fIndex]
+        );
+
         // Create / replace side edges created from face bisection
-        tmpTriEdgeFaces[0] = commonFaceIndex[0];
+        tmpTriEdgeFaces[0] = commonFaceIndex[2];
         tmpTriEdgeFaces[1] = newFaceIndex[3];
         tmpTriEdgeFaces[2] = newFaceIndex[1];
 
         newEdgeIndex[3] = insertEdge
                           (
-                              whichEdgePatch(commonEdgeIndex[0]),
-                              edge(newPtIndex[0], nextToOtherPoint[0]),
+                              whichEdgePatch(commonEdgeIndex[2]),
+                              edge(newPointIndex[0], nextToOtherPoint[2]),
                               tmpTriEdgeFaces
                           );
 
@@ -722,85 +956,279 @@ void dynamicTopoFvMesh::bisectQuadFace
 
         newEdgeIndex[4] = insertEdge
                           (
-                              whichEdgePatch(commonEdgeIndex[1]),
-                              edge(newPtIndex[1], otherEdgePoint[1]),
+                              whichEdgePatch(commonEdgeIndex[3]),
+                              edge(newPointIndex[1], otherEdgePoint[3]),
                               tmpTriEdgeFaces
                           );
 
         // The edge bisecting the second boundary triangular face
-        tmpTriEdgeFaces[0] = commonFaceIndex[0];
+        tmpTriEdgeFaces[0] = commonFaceIndex[2];
         tmpTriEdgeFaces[1] = newFaceIndex[4];
         tmpTriEdgeFaces[2] = newFaceIndex[5];
 
         newEdgeIndex[5] = insertEdge
                           (
-                              whichEdgePatch(commonEdgeIndex[0]),
-                              edge(newPtIndex[0], otherPointIndex[2]),
+                              whichEdgePatch(commonEdgeIndex[2]),
+                              edge(newPointIndex[0], otherPointIndex[2]),
                               tmpTriEdgeFaces
                           );
 
+        // Find the common edge between the quad/tri faces...
+        findCommonEdge
+        (
+            commonFaceIndex[2],
+            retainFace,
+            cornerEdgeIndex[2]
+        );
+
+        // ...and correct faceEdges / edgeFaces
+        replaceLabel
+        (
+            cornerEdgeIndex[2],
+            newEdgeIndex[5],
+            faceEdges_[commonFaceIndex[2]]
+        );
+
+        replaceLabel
+        (
+            commonFaceIndex[2],
+            newFaceIndex[5],
+            edgeFaces_[cornerEdgeIndex[2]]
+        );
+
         // The edge bisecting the third boundary triangular face
-        tmpTriEdgeFaces[0] = commonFaceIndex[1];
+        tmpTriEdgeFaces[0] = commonFaceIndex[3];
         tmpTriEdgeFaces[1] = newFaceIndex[4];
         tmpTriEdgeFaces[2] = newFaceIndex[6];
 
         newEdgeIndex[6] = insertEdge
                           (
-                              whichEdgePatch(commonEdgeIndex[1]),
-                              edge(newPtIndex[1], otherPointIndex[3]),
+                              whichEdgePatch(commonEdgeIndex[3]),
+                              edge(newPointIndex[1], otherPointIndex[3]),
                               tmpTriEdgeFaces
                           );
+
+        // Find the common edge between the quad/tri faces...
+        findCommonEdge
+        (
+            commonFaceIndex[3],
+            replaceFace,
+            cornerEdgeIndex[3]
+        );
+
+        // ...and correct faceEdges / edgeFaces
+        replaceLabel
+        (
+            cornerEdgeIndex[3],
+            newEdgeIndex[6],
+            faceEdges_[commonFaceIndex[3]]
+        );
+
+        replaceLabel
+        (
+            commonFaceIndex[3],
+            newFaceIndex[6],
+            edgeFaces_[cornerEdgeIndex[3]]
+        );
+
+        // Now that edges are defined, configure faceEdges
+        // for all new faces
+
+        // The quad interior face; Owner = c[0] & Neighbour = newCell[0]
+        tmpQFEdges[0] = newEdgeIndex[0];
+        tmpQFEdges[1] = newEdgeIndex[1];
+        tmpQFEdges[2] = otherEdgeIndex[2];
+        tmpQFEdges[3] = newEdgeIndex[2];
+        faceEdges_[newFaceIndex[0]] = tmpQFEdges;
+
+        // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
+        tmpTFEdges[0] = newEdgeIndex[3];
+        tmpTFEdges[1] = cornerEdgeIndex[0];
+        tmpTFEdges[2] = newEdgeIndex[1];
+        faceEdges_[newFaceIndex[1]] = tmpTFEdges;
+
+        // Third boundary face; Owner = c[0] & Neighbour = [-1]
+        tmpTFEdges[0] = newEdgeIndex[2];
+        tmpTFEdges[1] = cornerEdgeIndex[1];
+        tmpTFEdges[2] = commonEdgeIndex[3];
+        faceEdges_[newFaceIndex[2]] = tmpTFEdges;
+
+        // The quad face from bisection:
+        tmpQFEdges[0] = otherEdgeIndex[1];
+        tmpQFEdges[1] = newEdgeIndex[3];
+        tmpQFEdges[2] = newEdgeIndex[0];
+        tmpQFEdges[3] = newEdgeIndex[4];
+        faceEdges_[newFaceIndex[3]] = tmpQFEdges;
+
+        // The quad interior face; Owner = c[1] & Neighbour = newCell[1]
+        tmpQFEdges[0] = newEdgeIndex[0];
+        tmpQFEdges[1] = newEdgeIndex[5];
+        tmpQFEdges[2] = otherEdgeIndex[3];
+        tmpQFEdges[3] = newEdgeIndex[6];
+        faceEdges_[newFaceIndex[4]] = tmpQFEdges;
+
+        // Second boundary face; Owner = c[1] & Neighbour = [-1]
+        tmpTFEdges[0] = commonEdgeIndex[2];
+        tmpTFEdges[1] = cornerEdgeIndex[2];
+        tmpTFEdges[2] = newEdgeIndex[5];
+        faceEdges_[newFaceIndex[5]] = tmpTFEdges;
+
+        // Third boundary face; Owner = newCell[1] & Neighbour = [-1]
+        tmpTFEdges[0] = newEdgeIndex[4];
+        tmpTFEdges[1] = cornerEdgeIndex[3];
+        tmpTFEdges[2] = newEdgeIndex[6];
+        faceEdges_[newFaceIndex[6]] = tmpTFEdges;
+
+        replaceLabel
+        (
+            commonEdgeIndex[1],
+            newEdgeIndex[4],
+            faceEdges_[c0BdyIndex[1]]
+        );
+
+        replaceLabel
+        (
+            c0BdyIndex[1],
+            newFaceIndex[2],
+            edgeFaces_[commonEdgeIndex[1]]
+        );
+
+        replaceLabel
+        (
+            commonEdgeIndex[2],
+            newEdgeIndex[3],
+            faceEdges_[commonFaceIndex[2]]
+        );
+
+        replaceLabel
+        (
+            commonFaceIndex[2],
+            newFaceIndex[5],
+            edgeFaces_[commonEdgeIndex[2]]
+        );
 
         if (debug > 2)
         {
             Info << nl << "Modified Cell[0]: "
-                 << c0 << ": " << cell_0 << endl;
+                 << c0 << ": " << oldCells[0] << endl;
 
-            forAll(cell_0, faceI)
+            forAll(oldCells[0], faceI)
             {
-                Info << cell_0[faceI]
-                     << ": " << faces_[cell_0[faceI]] << endl;
+                const labelList& fE = faceEdges_[oldCells[0][faceI]];
+
+                Info << oldCells[0][faceI]
+                     << ": " << faces_[oldCells[0][faceI]]
+                     << " fE: " << fE
+                     << endl;
+
+                forAll(fE, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                    Info << '\t' << fE[edgeI]
+                         << ": " << edges_[fE[edgeI]]
+                         << " eF: " << eF
+                         << endl;
+                }
             }
 
             Info << "New Cell[0]: "
-                 << newCellIndex[0] << ": " << newCell0 << endl;
+                 << newCellIndex[0] << ": " << newCells[0] << endl;
 
-            forAll(newCell0, faceI)
+            forAll(newCells[0], faceI)
             {
-                Info << newCell0[faceI] << ": "
-                     << faces_[newCell0[faceI]] << endl;
+                const labelList& fE = faceEdges_[newCells[0][faceI]];
+
+                Info << newCells[0][faceI] << ": "
+                     << faces_[newCells[0][faceI]]
+                     << " fE: " << fE
+                     << endl;
+
+                forAll(fE, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                    Info << '\t' << fE[edgeI]
+                         << ": " << edges_[fE[edgeI]]
+                         << " eF: " << eF
+                         << endl;
+                }
             }
 
             Info << nl << "Modified Cell[1]: "
-                 << c1 << ": " << cell_1 << endl;
+                 << c1 << ": " << oldCells[1] << endl;
 
-            forAll(cell_1, faceI)
+            forAll(oldCells[1], faceI)
             {
-                Info << cell_1[faceI] << ": "
-                     << faces_[cell_1[faceI]] << endl;
+                const labelList& fE = faceEdges_[oldCells[1][faceI]];
+
+                Info << oldCells[1][faceI] << ": "
+                     << faces_[oldCells[1][faceI]]
+                     << " fE: " << fE
+                     << endl;
+
+                forAll(fE, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                    Info << '\t' << fE[edgeI]
+                         << ": " << edges_[fE[edgeI]]
+                         << " eF: " << eF
+                         << endl;
+                }
             }
 
             Info << "New Cell[1]: "
-                 << newCellIndex[1] << ": " << newCell1 << endl;
+                 << newCellIndex[1] << ": " << newCells[1] << endl;
 
-            forAll(newCell1, faceI)
+            forAll(newCells[1], faceI)
             {
-                Info << newCell1[faceI] << ": "
-                     << faces_[newCell1[faceI]] << endl;
+                const labelList& fE = faceEdges_[newCells[1][faceI]];
+
+                Info << newCells[1][faceI] << ": "
+                     << faces_[newCells[1][faceI]]
+                     << " fE: " << fE
+                     << endl;
+
+                forAll(fE, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                    Info << '\t' << fE[edgeI]
+                         << ": " << edges_[fE[edgeI]]
+                         << " eF: " << eF
+                         << endl;
+                }
             }
         }
 
         // Update the cell list.
-        cells_[c1] = cell_1;
-        cells_[newCellIndex[1]] = newCell1;
+        cells_[c1] = oldCells[1];
+        cells_[newCellIndex[1]] = newCells[1];
     }
 
     // Update the cell list.
-    cells_[c0] = cell_0;
-    cells_[newCellIndex[0]] = newCell0;
+    cells_[c0] = oldCells[0];
+    cells_[newCellIndex[0]] = newCells[0];
 
-    // Update the face list
-    faces_[fIndex] = thisFace;
+    // Modify point labels for common edges
+    if (edges_[commonEdgeIndex[0]].start() == otherEdgePoint[0])
+    {
+        edges_[commonEdgeIndex[0]].start() = newPointIndex[0];
+    }
+    else
+    {
+        edges_[commonEdgeIndex[0]].end() = newPointIndex[0];
+    }
+
+    if (edges_[commonEdgeIndex[1]].start() == nextToOtherPoint[1])
+    {
+        edges_[commonEdgeIndex[1]].start() = newPointIndex[1];
+    }
+    else
+    {
+        edges_[commonEdgeIndex[1]].end() = newPointIndex[1];
+    }
 
     // Set the flag
     topoChangeFlag_ = true;

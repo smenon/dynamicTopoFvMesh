@@ -1119,8 +1119,11 @@ label dynamicTopoFvMesh::insertEdge
     }
 
     // Size-up the pointEdges list
-    sizeUpList(newEdgeIndex, pointEdges_[newEdge[0]]);
-    sizeUpList(newEdgeIndex, pointEdges_[newEdge[1]]);
+    if (!twoDMesh_)
+    {
+        sizeUpList(newEdgeIndex, pointEdges_[newEdge[0]]);
+        sizeUpList(newEdgeIndex, pointEdges_[newEdge[1]]);
+    }
 
     // Increment the total edge count
     nEdges_++;
@@ -1263,42 +1266,55 @@ label dynamicTopoFvMesh::insertPoint
         }
     }
 
-    // Insert the parent point.
-    // This has to be done carefully: If a mapping point is on
-    // the surface, then the new point must also preferrentially
-    // map from the surface point.
-    label surfPointIndex = -1;
-
-    forAllIter(labelHashSet, masterObjects, oIter)
-    {
-        const labelList& pEdges = pointEdges_[oIter.key()];
-
-        bool foundBoundaryEdge = false;
-
-        forAll(pEdges, edgeI)
-        {
-            if (whichEdgePatch(pEdges[edgeI]) > -1)
-            {
-                surfPointIndex = edges_[pEdges[edgeI]].otherVertex(oIter.key());
-
-                foundBoundaryEdge = true;
-                break;
-            }
-        }
-
-        if (foundBoundaryEdge)
-        {
-            break;
-        }
-    }
-
-    if (surfPointIndex == -1)
+    if (twoDMesh_)
     {
         pointParents_.insert(newPointIndex, masterObjects.begin().key());
     }
     else
     {
-        pointParents_.insert(newPointIndex, surfPointIndex);
+        // Insert the parent point.
+        // This has to be done carefully: If a mapping point is on
+        // the surface, then the new point must also preferentially
+        // map from the surface point.
+        label surfPointIndex = -1;
+
+        forAllIter(labelHashSet, masterObjects, oIter)
+        {
+            const labelList& pEdges = pointEdges_[oIter.key()];
+
+            bool foundBoundaryEdge = false;
+
+            forAll(pEdges, edgeI)
+            {
+                if (whichEdgePatch(pEdges[edgeI]) > -1)
+                {
+                    surfPointIndex =
+                    (
+                        edges_[pEdges[edgeI]].otherVertex(oIter.key())
+                    );
+
+                    foundBoundaryEdge = true;
+                    break;
+                }
+            }
+
+            if (foundBoundaryEdge)
+            {
+                break;
+            }
+        }
+
+        if (surfPointIndex == -1)
+        {
+            pointParents_.insert
+            (
+                newPointIndex, masterObjects.begin().key()
+            );
+        }
+        else
+        {
+            pointParents_.insert(newPointIndex, surfPointIndex);
+        }
     }
 
     // Insert mapping info into the HashTable
@@ -3376,7 +3392,7 @@ void dynamicTopoFvMesh::checkConnectivity
         if (edgeFaces.size() != nEdgeFaces[edgeI])
         {
             Pout << nl << nl << "Edge: " << edgeI
-                 << "edgeFaces: " << edgeFaces << endl;
+                 << ": edgeFaces: " << edgeFaces << endl;
 
             nFailedChecks++;
 
@@ -3392,11 +3408,11 @@ void dynamicTopoFvMesh::checkConnectivity
         {
             if (findIndex(faceEdges_[edgeFaces[faceI]], edgeI) == -1)
             {
-                Pout << nl << nl << "Edge: " << edgeI
+                Pout << nl << nl << "Edge: " << edgeI << ": " << edges_[edgeI]
                      << ", edgeFaces: " << edgeFaces << nl
                      << "was not found in faceEdges of face: "
-                     << edgeFaces[faceI] << nl
-                     << "faceEdges: " << faceEdges_[edgeFaces[faceI]]
+                     << edgeFaces[faceI] << ": " << faces_[edgeFaces[faceI]]
+                     << nl << "faceEdges: " << faceEdges_[edgeFaces[faceI]]
                      << endl;
 
                 nFailedChecks++;
