@@ -1,3 +1,7 @@
+#include "tetDecompositionMotionSolver.H"
+#include "faceTetPolyPatch.H"
+#include "tetPolyPatchInterpolation.H"
+
 // Access a particular boundary displacement patch
 void setMotionBC
 (
@@ -87,6 +91,100 @@ void setMotionBC
     const vectorField& dispField
 )
 {
+    //- Cell decomposition FEM motion solver
+    if
+    (
+        (solverType == "laplaceCellDecomposition")
+     || (solverType == "pseudoSolidCellDecomposition")
+    )
+    {
+        // Boundary motion specified for the tetDecompositionMotionSolver
+        tetPointVectorField& motionU = const_cast<tetPointVectorField&>
+        (
+            mesh.lookupObject<tetPointVectorField>("motionU")
+        );
+
+        const polyBoundaryMesh& boundary = mesh.boundaryMesh();
+
+        const pointField& oldPoints = mesh.points();
+
+        forAll(boundary, patchI)
+        {
+            // Assign boundary conditions to the motion solver
+            const labelList& meshPts = mesh.boundaryMesh()[patchI].meshPoints();
+
+            vectorField pField(meshPts.size(), vector::zero);
+
+            forAll(meshPts, pointI)
+            {
+                pField[pointI] =
+                (
+                    dispField[meshPts[pointI]] - oldPoints[meshPts[pointI]]
+                );
+            }
+
+            // Assign boundary conditions to the motion solver
+            motionU.boundaryField()[patchI] ==
+            (
+                pField/mesh.time().deltaT().value()
+            );
+        }
+    }
+
+    //- Face decomposition FEM motion solver
+    if
+    (
+        (solverType == "laplaceFaceDecomposition")
+     || (solverType == "pseudoSolidFaceDecomposition")
+    )
+    {
+        // Boundary motion specified for the tetDecompositionMotionSolver
+        tetPointVectorField& motionU = const_cast<tetPointVectorField&>
+        (
+            mesh.lookupObject<tetPointVectorField>("motionU")
+        );
+
+        // Assign boundary conditions to the motion solver
+        const polyBoundaryMesh& boundary = mesh.boundaryMesh();
+
+        const pointField& oldPoints = mesh.points();
+
+        forAll(boundary, patchI)
+        {
+            // Assign boundary conditions to the motion solver
+            const labelList& meshPts = mesh.boundaryMesh()[patchI].meshPoints();
+
+            vectorField pField(meshPts.size(), vector::zero);
+
+            forAll(meshPts, pointI)
+            {
+                pField[pointI] =
+                (
+                    dispField[meshPts[pointI]] - oldPoints[meshPts[pointI]]
+                );
+            }
+
+            // The face-decomposition solver includes points at face-centres,
+            // thus point motion has to be interpolated to these points
+            tetPolyPatchInterpolation interpolator
+            (
+                refCast<const faceTetPolyPatch>
+                (
+                    motionU.boundaryField()[patchI].patch()
+                )
+            );
+
+            // Assign boundary conditions to the motion solver
+            motionU.boundaryField()[patchI] ==
+            (
+                interpolator.pointToPointInterpolate
+                (
+                    pField/mesh.time().deltaT().value()
+                )
+            );
+        }
+    }
+
     if (solverType == "mesquiteSmoother")
     {
         // Boundary motion specified for the springMotionSolver
