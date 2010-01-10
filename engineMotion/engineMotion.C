@@ -84,15 +84,14 @@ int main(int argc, char *argv[])
     scalar oldStroke = pistonTable(runTime.value()), currentStroke = 0.0;
 
     // Obtain the number of valves in the system
-    label numValves = readLabel(engineDict.lookup("numValves"));
+    dictionary valves(engineDict.subDict("valves"));
+    wordList valveList = valves.toc();
+
+    label numValves = valveList.size();
 
     PtrList<interpolationTable<scalar> > valveLiftTables(numValves);
     List<scalar> oldLift(numValves, 0.0), currentLift(numValves, 0.0);
     List<vector> valveAxes(numValves, vector::zero);
-
-    // Obtain the valve patch names
-    dictionary valves(engineDict.subDict("valves"));
-    wordList valveList = valves.toc();
 
     // Read in all necessary information from the dictionary
     forAll(valveList, valveI)
@@ -144,6 +143,15 @@ int main(int argc, char *argv[])
         Info << "Piston " << pistonName[0]
              << ": Old Stroke value: " << oldStroke << endl;
 
+        // Check if a fixed-constant over-ride displacement
+        // has been specified.
+        if (pistonDict.found("displacement"))
+        {
+            scalar pDisp = readScalar(pistonDict.lookup("displacement"));
+
+            p = (pDisp*pistonAxis);
+        }
+
         forAll(pistonPoints, index)
         {
             meshPoints[pistonPoints[index]] += p;
@@ -172,6 +180,17 @@ int main(int argc, char *argv[])
                  << ": Current Lift value: " << currentLift[valveI] << endl;
             Info << "Valve " << valveList[valveI]
                  << ": Old Lift value: " << oldLift[valveI] << endl;
+
+            dictionary valveDict = engineDict.subDict(valveList[valveI]);
+
+            // Check if a fixed-constant over-ride displacement
+            // has been specified.
+            if (valveDict.found("displacement"))
+            {
+                scalar vDisp = readScalar(valveDict.lookup("displacement"));
+
+                v = (vDisp*valveAxes[valveI]);
+            }
 
             forAll(valvePoints, index)
             {
