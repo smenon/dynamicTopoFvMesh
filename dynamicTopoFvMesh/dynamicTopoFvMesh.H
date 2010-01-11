@@ -200,6 +200,7 @@ class dynamicTopoFvMesh
         label                 nCollapses_;
         label                 nSwaps_;
         label                 maxModifications_;
+        label                 bisectInterior_;
         Map<scalar>           thresholdSlivers_;
         labelList             noModPatchIDs_;
 
@@ -398,10 +399,10 @@ class dynamicTopoFvMesh
         inline point triFaceCenter(const label fIndex);
 
         // Find the area of a triangle face.
-        inline scalar triFaceArea(const face& triFace);
+        inline scalar triFaceArea(const face& triFace) const;
 
         // Find the normal of a triangle face.
-        inline vector triFaceNormal(const face& triFace);
+        inline vector triFaceNormal(const face& triFace) const;
 
         // Given a face and cell index, find the apex point for a tet cell.
         inline label tetApexPoint(const label cIndex, const label fIndex);
@@ -601,6 +602,17 @@ class dynamicTopoFvMesh
             Map<label>& pi
         );
 
+        // Utility method to check for invalid face-collapse.
+        bool checkCollapse
+        (
+            const labelList& triFaces,
+            const FixedList<label,2>& c0BdyIndex,
+            const FixedList<label,2>& c1BdyIndex,
+            const FixedList<label,2>& original,
+            const FixedList<label,2>& replacement,
+            const bool checkNeighbour
+        ) const;
+
         // Utility method to check for invalid edge-collapse.
         bool checkCollapse
         (
@@ -609,7 +621,7 @@ class dynamicTopoFvMesh
             const label cellIndex,
             labelHashSet& cellsChecked,
             bool forceOp = false
-        );
+        ) const;
 
         // Check if the boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.

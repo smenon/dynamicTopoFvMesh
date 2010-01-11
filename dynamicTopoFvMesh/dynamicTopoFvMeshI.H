@@ -102,7 +102,7 @@ inline point dynamicTopoFvMesh::triFaceCenter
 inline scalar dynamicTopoFvMesh::triFaceArea
 (
     const face& triFace
-)
+) const
 {
     return Foam::mag(triFaceNormal(triFace));
 }
@@ -112,7 +112,7 @@ inline scalar dynamicTopoFvMesh::triFaceArea
 inline vector dynamicTopoFvMesh::triFaceNormal
 (
     const face& triFace
-)
+) const
 {
     vector v = points_[triFace[1]] - points_[triFace[0]];
     vector w = points_[triFace[2]] - points_[triFace[0]];

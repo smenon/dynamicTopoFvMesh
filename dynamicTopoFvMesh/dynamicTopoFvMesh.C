@@ -131,6 +131,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nCollapses_(0),
     nSwaps_(0),
     maxModifications_(-1),
+    bisectInterior_(-1),
     proximityBins_(0),
     sliceThreshold_(VSMALL),
     sliceHoldOff_(0),
@@ -250,6 +251,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nCollapses_(0),
     nSwaps_(0),
     maxModifications_(mesh.maxModifications_),
+    bisectInterior_(-1),
     proximityBins_(0),
     sliceThreshold_(VSMALL),
     sliceHoldOff_(0),
@@ -1159,16 +1161,16 @@ void dynamicTopoFvMesh::removeEdge
         {
             sizeDownList(index, pointEdges_[edges_[index][1]]);
         }
+
+        // Remove from the stack as well
+        forAll(edgeStack_, stackI)
+        {
+            edgeStack(stackI).remove(index);
+        }
     }
 
     edges_[index] = edge(-1, -1);
     edgeFaces_[index].clear();
-
-    // Remove from the stack as well
-    forAll(edgeStack_, stackI)
-    {
-        edgeStack(stackI).remove(index);
-    }
 
     // Identify the patch for this edge
     label patch = whichEdgePatch(index);
@@ -7192,6 +7194,79 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     }
 }
 
+// Utility method to check for invalid face-collapse.
+// Returns 'true' if the collapse in NOT feasible.
+bool dynamicTopoFvMesh::checkCollapse
+(
+    const labelList& triFaces,
+    const FixedList<label,2>& c0BdyIndex,
+    const FixedList<label,2>& c1BdyIndex,
+    const FixedList<label,2>& original,
+    const FixedList<label,2>& replacement,
+    const bool checkNeighbour
+) const
+{
+    face tmpTriFace(3);
+
+    forAll(triFaces, indexI)
+    {
+        if
+        (
+            (triFaces[indexI] == c0BdyIndex[0])
+         || (triFaces[indexI] == c0BdyIndex[1])
+        )
+        {
+            continue;
+        }
+
+        if (checkNeighbour)
+        {
+            if
+            (
+                (triFaces[indexI] == c1BdyIndex[0])
+             || (triFaces[indexI] == c1BdyIndex[1])
+            )
+            {
+                continue;
+            }
+        }
+
+        const face &triFace = faces_[triFaces[indexI]];
+
+        forAll(triFace, pointI)
+        {
+            tmpTriFace[pointI] = triFace[pointI];
+
+            if (triFace[pointI] == original[0])
+            {
+                tmpTriFace[pointI] = replacement[0];
+            }
+
+            if (triFace[pointI] == original[1])
+            {
+                tmpTriFace[pointI] = replacement[1];
+            }
+        }
+
+        // Compute the area and check if it's zero/negative
+        scalar origArea = triFaceArea(triFace);
+        scalar newArea  = triFaceArea(tmpTriFace);
+
+        if
+        (
+            (Foam::sign(origArea) != Foam::sign(newArea))
+         || (mag(newArea) < VSMALL)
+        )
+        {
+            // Inverted and/or degenerate.
+            return true;
+        }
+    }
+
+    // No problems, so a collapse is feasible.
+    return false;
+}
+
 // Utility method to check whether the cell given by 'cellIndex' will yield
 // a valid cell when 'pointIndex' is moved to 'newPoint'. The routine performs
 // metric-based checks. Returns 'true' if the collapse in NOT feasible, and
@@ -7203,7 +7278,7 @@ bool dynamicTopoFvMesh::checkCollapse
     const label cellIndex,
     labelHashSet& cellsChecked,
     bool forceOp
-)
+) const
 {
     label faceIndex = -1;
     scalar cQuality = 0.0;
@@ -7471,11 +7546,11 @@ void dynamicTopoFvMesh::remove2DSliver
         if (self() == 0)
         {
             // Step 1: Bisect the boundary quad face
-            // bisectInterior_ = -1;
-            // bisectQuadFace(fIndex);
+            bisectInterior_ = -1;
+            bisectQuadFace(fIndex);
 
             // Step 2: Collapse the newly created internal quad face
-            // collapseQuadFace(bisectInterior_);
+            collapseQuadFace(bisectInterior_);
         }
         else
         {

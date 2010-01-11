@@ -364,7 +364,7 @@ void dynamicTopoFvMesh::bisectQuadFace
     replaceLabel(-1, newFaceIndex[0], oldCells[0]);
 
     // remove2DSliver requires this face index for removal
-    // bisectInterior_ = newFaceIndex[0];
+    bisectInterior_ = newFaceIndex[0];
 
     // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
     tmpTriFace[0] = otherPointIndex[0];

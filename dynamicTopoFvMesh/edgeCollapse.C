@@ -41,42 +41,29 @@ void dynamicTopoFvMesh::collapseQuadFace
     const label fIndex
 )
 {
-    // Obtain a reference for this face...
-    face& thisFace = faces_[fIndex];
-
-    // This face is to be collapsed...
-    if (debug > 1)
-    {
-        Info << nl << nl
-             << "Face: " << fIndex << ": " << thisFace
-             << " is to be collapsed. " << endl;
-    }
-
     // Local variables
+    FixedList<bool,2> edgeBoundary(false);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
-    FixedList<face,2> c0BdyFace, c0IntFace, c1BdyFace, c1IntFace;
+    FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
     FixedList<edge,4> checkEdge(edge(-1,-1));
     FixedList<label,4> checkEdgeIndex(-1);
-    face tmpTriFace(3);
 
     // Define checkEdges
     checkEdgeIndex[0] = getTriBoundaryEdge(fIndex);
     checkEdge[0] = edges_[checkEdgeIndex[0]];
 
-    labelList& fEdges = faceEdges_[fIndex];
+    const labelList& fEdges = faceEdges_[fIndex];
 
     forAll(fEdges, edgeI)
     {
         if (checkEdgeIndex[0] != fEdges[edgeI])
         {
-            edge thisEdge = edges_[fEdges[edgeI]];
+            const edge& thisEdge = edges_[fEdges[edgeI]];
 
             if
             (
-                (
-                    checkEdge[0].start() == thisEdge[0]
-                 || checkEdge[0].start() == thisEdge[1]
-                )
+                checkEdge[0].start() == thisEdge[0] ||
+                checkEdge[0].start() == thisEdge[1]
             )
             {
                 checkEdgeIndex[1] = fEdges[edgeI];
@@ -85,10 +72,8 @@ void dynamicTopoFvMesh::collapseQuadFace
             else
             if
             (
-                (
-                    checkEdge[0].end() == thisEdge[0]
-                 || checkEdge[0].end() == thisEdge[1]
-                )
+                checkEdge[0].end() == thisEdge[0] ||
+                checkEdge[0].end() == thisEdge[1]
             )
             {
                 checkEdgeIndex[2] = fEdges[edgeI];
@@ -103,8 +88,31 @@ void dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Determine if either edge belongs to a boundary
-    bool firstEdgeBoundary  = (whichEdgePatch(checkEdgeIndex[1]) > -1);
-    bool secondEdgeBoundary = (whichEdgePatch(checkEdgeIndex[2]) > -1);
+    edgeBoundary[0] = (whichEdgePatch(checkEdgeIndex[1]) > -1);
+    edgeBoundary[1] = (whichEdgePatch(checkEdgeIndex[2]) > -1);
+
+    if (debug > 1)
+    {
+        const labelList& fE = faceEdges_[fIndex];
+
+        Info << nl << nl
+             << "Face: " << fIndex << ": " << faces_[fIndex] << nl
+             << "faceEdges: " << fE
+             << " is to be collapsed. " << endl;
+
+        if (debug > 2)
+        {
+            forAll(fE, edgeI)
+            {
+                const labelList& eF = edgeFaces_[fE[edgeI]];
+
+                Info << '\t' << fE[edgeI]
+                     << ": " << edges_[fE[edgeI]]
+                     << " eF: " << eF
+                     << endl;
+            }
+        }
+    }
 
     // Build a hull of cells and tri-faces that are connected to each edge
     labelHashSet firstHullCells, secondHullCells;
@@ -130,10 +138,6 @@ void dynamicTopoFvMesh::collapseQuadFace
     labelList firstTriFaces = firstHullTriFaces.toc();
     labelList secondTriFaces = secondHullTriFaces.toc();
 
-    // Obtain references to edgeFaces
-    labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
-    labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
-
     if (debug > 2)
     {
         Info << endl;
@@ -146,7 +150,7 @@ void dynamicTopoFvMesh::collapseQuadFace
 
         forAll(firstCells,cellI)
         {
-            cell &firstCurCell = cells_[firstCells[cellI]];
+            const cell& firstCurCell = cells_[firstCells[cellI]];
 
             Info << "Cell: " << firstCells[cellI]
                  << ": " << firstCurCell << endl;
@@ -157,6 +161,8 @@ void dynamicTopoFvMesh::collapseQuadFace
                      << ": " << faces_[firstCurCell[faceI]] << endl;
             }
         }
+
+        const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
         Info << nl << "First Edge Face Hull: " << firstEdgeFaces << endl;
 
@@ -171,7 +177,7 @@ void dynamicTopoFvMesh::collapseQuadFace
 
         forAll(secondCells, cellI)
         {
-            cell &secondCurCell = cells_[secondCells[cellI]];
+            const cell& secondCurCell = cells_[secondCells[cellI]];
 
             Info << "Cell: " << secondCells[cellI]
                  << ": " << secondCurCell << endl;
@@ -182,6 +188,8 @@ void dynamicTopoFvMesh::collapseQuadFace
                      << ": " << faces_[secondCurCell[faceI]] << endl;
             }
         }
+
+        const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
         Info << nl << "Second Edge Face Hull: " << secondEdgeFaces << endl;
 
@@ -202,8 +210,6 @@ void dynamicTopoFvMesh::collapseQuadFace
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
 
     // Find the prism-faces
-    FixedList<label,2> faceToKeep(0), faceToThrow(0);
-
     findPrismFaces
     (
         fIndex,
@@ -228,16 +234,19 @@ void dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Collapse preferentially towards a symmetryPlane.
-    if (firstEdgeBoundary && secondEdgeBoundary)
+    if (edgeBoundary[0] && edgeBoundary[1])
     {
-        WarningIn
-        (
-            "dynamicTopoFvMesh::collapseQuadFace"
-            "(const label, face&)"
-        )   << "Collapsing a face that lies on two boundary patches. "
-            << "Algorithm will look for a symmetryPlane and collapse "
-            << "the face preferentially towards it.\n"
-            << "Face: " << fIndex << ": " << thisFace << endl;
+        if (debug > 2)
+        {
+            WarningIn
+            (
+                "dynamicTopoFvMesh::collapseQuadFace"
+                "(const label, face&)"
+            )   << "Collapsing a face that lies on two boundary patches. "
+                << "Algorithm will look for a symmetryPlane and collapse "
+                << "the face preferentially towards it.\n"
+                << "Face: " << fIndex << ": " << faces_[fIndex] << endl;
+        }
 
         if
         (
@@ -245,10 +254,10 @@ void dynamicTopoFvMesh::collapseQuadFace
             == "symmetryPlane"
         )
         {
-            secondEdgeBoundary = false;
+            edgeBoundary[1] = false;
         }
 
-        if (secondEdgeBoundary)
+        if (edgeBoundary[1])
         {
             if
             (
@@ -256,74 +265,46 @@ void dynamicTopoFvMesh::collapseQuadFace
                 == "symmetryPlane"
             )
             {
-                firstEdgeBoundary = false;
+                edgeBoundary[0] = false;
             }
         }
     }
 
-    if (!firstEdgeBoundary && secondEdgeBoundary)
+    // Lists for feasibility checks
+    FixedList<label,2> original(-1), replacement(-1), ends(-1);
+    FixedList<label,2> faceToKeep(-1), faceToThrow(-1);
+    FixedList<label,4> edgeToKeep(-1), edgeToThrow(-1);
+
+    if (!edgeBoundary[0] && edgeBoundary[1])
     {
+        original[0] = cv0; original[1] = cv1;
+        replacement[0] = cv2; replacement[1] = cv3;
+
         // Check whether the collapse is possible.
-        forAll(firstTriFaces, indexI)
+        if
+        (
+            checkCollapse
+            (
+                firstTriFaces,
+                c0BdyIndex,
+                c1BdyIndex,
+                original,
+                replacement,
+                (c1 != -1)
+            )
+        )
         {
-            if
-            (
-                (firstTriFaces[indexI] == c0BdyIndex[0])
-             || (firstTriFaces[indexI] == c0BdyIndex[1])
-            )
-            {
-                continue;
-            }
-
-            if (c1 != -1)
-            {
-                if
-                (
-                    (firstTriFaces[indexI] == c1BdyIndex[0])
-                 || (firstTriFaces[indexI] == c1BdyIndex[1])
-                )
-                {
-                    continue;
-                }
-            }
-
-            face &triFace = faces_[firstTriFaces[indexI]];
-
-            forAll(triFace, pointI)
-            {
-                tmpTriFace[pointI] = triFace[pointI];
-
-                if (triFace[pointI] == cv0)
-                {
-                    tmpTriFace[pointI] = cv2;
-                }
-
-                if (triFace[pointI] == cv1)
-                {
-                    tmpTriFace[pointI] = cv3;
-                }
-            }
-
-            // Compute the area and check if it's zero/negative
-            scalar origArea = triFaceArea(triFace);
-            scalar newArea  = triFaceArea(tmpTriFace);
-
-            if
-            (
-                (Foam::sign(origArea) != Foam::sign(newArea))
-             || (mag(newArea) < VSMALL)
-            )
-            {
-                return;
-            }
+            return;
         }
+
+        const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
         // Collapse to the second node...
         forAll(firstEdgeFaces,faceI)
         {
-            face& replacementFace = faces_[firstEdgeFaces[faceI]];
-            replaceLabel(cv0,cv2,replacementFace);
-            replaceLabel(cv1,cv3,replacementFace);
+            // Replace point indices on faces.
+            replaceLabel(cv0, cv2, faces_[firstEdgeFaces[faceI]]);
+            replaceLabel(cv1, cv3, faces_[firstEdgeFaces[faceI]]);
 
             // Determine the quad-face in cell[0] & cell[1]
             // that belongs to firstEdgeFaces
@@ -355,10 +336,158 @@ void dynamicTopoFvMesh::collapseQuadFace
             }
         }
 
-        // All triangular boundary faces also need to have point labels replaced
+        // Find common edges between quad / tri faces...
+        findCommonEdge(c0BdyIndex[0], faceToKeep[0], edgeToKeep[0]);
+        findCommonEdge(c0BdyIndex[1], faceToKeep[0], edgeToKeep[1]);
+        findCommonEdge(c0BdyIndex[0], faceToThrow[0], edgeToThrow[0]);
+        findCommonEdge(c0BdyIndex[1], faceToThrow[0], edgeToThrow[1]);
+
+        // Size down edgeFaces for the ends.
+        findCommonEdge(faceToThrow[0], faceToKeep[0], ends[0]);
+        sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
+
+        if (c1 != -1)
+        {
+            findCommonEdge(c1BdyIndex[0], faceToKeep[1], edgeToKeep[2]);
+            findCommonEdge(c1BdyIndex[1], faceToKeep[1], edgeToKeep[3]);
+            findCommonEdge(c1BdyIndex[0], faceToThrow[1], edgeToThrow[2]);
+            findCommonEdge(c1BdyIndex[1], faceToThrow[1], edgeToThrow[3]);
+
+            // Size down edgeFaces for the ends.
+            findCommonEdge(faceToThrow[1], faceToKeep[1], ends[1]);
+            sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
+        }
+
+        // Correct edgeFaces for triangular faces...
+        forAll(edgeToThrow, indexI)
+        {
+            if (edgeToThrow[indexI] == -1)
+            {
+                continue;
+            }
+
+            const labelList& eF = edgeFaces_[edgeToThrow[indexI]];
+
+            label origTriFace = -1, retTriFace = -1;
+
+            // Find the original triangular face index
+            forAll(eF, faceI)
+            {
+                if (eF[faceI] == c0BdyIndex[0])
+                {
+                    origTriFace = c0BdyIndex[0];
+                    break;
+                }
+
+                if (eF[faceI] == c0BdyIndex[1])
+                {
+                    origTriFace = c0BdyIndex[1];
+                    break;
+                }
+
+                if (eF[faceI] == c1BdyIndex[0])
+                {
+                    origTriFace = c1BdyIndex[0];
+                    break;
+                }
+
+                if (eF[faceI] == c1BdyIndex[1])
+                {
+                    origTriFace = c1BdyIndex[1];
+                    break;
+                }
+            }
+
+            // Find the retained triangular face index
+            forAll(eF, faceI)
+            {
+                if
+                (
+                    (eF[faceI] != origTriFace) &&
+                    (eF[faceI] != faceToThrow[0]) &&
+                    (eF[faceI] != faceToThrow[1])
+                )
+                {
+                    retTriFace = eF[faceI];
+                    break;
+                }
+            }
+
+            // Finally replace the face index
+            replaceLabel
+            (
+                origTriFace,
+                retTriFace,
+                edgeFaces_[edgeToKeep[indexI]]
+            );
+
+            replaceLabel
+            (
+                edgeToThrow[indexI],
+                edgeToKeep[indexI],
+                faceEdges_[retTriFace]
+            );
+        }
+
+        // Correct faceEdges / edgeFaces for quad-faces...
+        forAll(firstEdgeFaces,faceI)
+        {
+            replaceLabel
+            (
+                checkEdgeIndex[1],
+                checkEdgeIndex[2],
+                faceEdges_[firstEdgeFaces[faceI]]
+            );
+
+            // Renumber the edges on this face
+            const labelList& fE = faceEdges_[firstEdgeFaces[faceI]];
+
+            forAll(fE, edgeI)
+            {
+                if (edges_[fE[edgeI]].start() == cv0)
+                {
+                    edges_[fE[edgeI]].start() = cv2;
+                }
+
+                if (edges_[fE[edgeI]].end() == cv0)
+                {
+                    edges_[fE[edgeI]].end() = cv2;
+                }
+
+                if (edges_[fE[edgeI]].start() == cv1)
+                {
+                    edges_[fE[edgeI]].start() = cv3;
+                }
+
+                if (edges_[fE[edgeI]].end() == cv1)
+                {
+                    edges_[fE[edgeI]].end() = cv3;
+                }
+            }
+
+            // Size-up edgeFaces for the replacement
+            if
+            (
+                (firstEdgeFaces[faceI] != faceToThrow[0]) &&
+                (firstEdgeFaces[faceI] != faceToThrow[1]) &&
+                (firstEdgeFaces[faceI] != fIndex)
+            )
+            {
+                sizeUpList
+                (
+                    firstEdgeFaces[faceI],
+                    edgeFaces_[checkEdgeIndex[2]]
+                );
+            }
+        }
+
+        // Remove the current face from the replacement edge
+        sizeDownList(fIndex, edgeFaces_[checkEdgeIndex[2]]);
+
+        // Replace point labels on all triangular boundary faces.
         forAll(firstCells,cellI)
         {
-            cell& cellToCheck = cells_[firstCells[cellI]];
+            const cell& cellToCheck = cells_[firstCells[cellI]];
 
             forAll(cellToCheck,faceI)
             {
@@ -382,73 +511,55 @@ void dynamicTopoFvMesh::collapseQuadFace
             }
         }
 
+        // Now that we're done with all edges, remove them.
+        removeEdge(checkEdgeIndex[0]);
+        removeEdge(checkEdgeIndex[1]);
+        removeEdge(checkEdgeIndex[3]);
+
+        forAll(edgeToThrow, indexI)
+        {
+            if (edgeToThrow[indexI] == -1)
+            {
+                continue;
+            }
+
+            removeEdge(edgeToThrow[indexI]);
+        }
+
         // Delete the two points...
         removePoint(cv0);
         removePoint(cv1);
     }
     else
     {
+        original[0] = cv2; original[1] = cv3;
+        replacement[0] = cv0; replacement[1] = cv1;
+
         // Check whether the collapse is possible.
-        forAll(secondTriFaces, indexI)
+        if
+        (
+            checkCollapse
+            (
+                secondTriFaces,
+                c0BdyIndex,
+                c1BdyIndex,
+                original,
+                replacement,
+                (c1 != -1)
+            )
+        )
         {
-            if
-            (
-                (secondTriFaces[indexI] == c0BdyIndex[0])
-             || (secondTriFaces[indexI] == c0BdyIndex[1])
-            )
-            {
-                continue;
-            }
-
-            if (c1 != -1)
-            {
-                if
-                (
-                    (secondTriFaces[indexI] == c1BdyIndex[0])
-                 || (secondTriFaces[indexI] == c1BdyIndex[1])
-                )
-                {
-                    continue;
-                }
-            }
-
-            face &triFace = faces_[secondTriFaces[indexI]];
-
-            forAll(triFace, pointI)
-            {
-                tmpTriFace[pointI] = triFace[pointI];
-
-                if (triFace[pointI] == cv2)
-                {
-                    tmpTriFace[pointI] = cv0;
-                }
-
-                if (triFace[pointI] == cv3)
-                {
-                    tmpTriFace[pointI] = cv1;
-                }
-            }
-
-            // Compute the area and check if it's zero/negative
-            scalar origArea = triFaceArea(triFace);
-            scalar newArea  = triFaceArea(tmpTriFace);
-
-            if
-            (
-                (Foam::sign(origArea) != Foam::sign(newArea))
-             || (mag(newArea) < VSMALL)
-            )
-            {
-                return;
-            }
+            return;
         }
+
+        const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
         // Collapse to the first node by default...
         forAll(secondEdgeFaces,faceI)
         {
-            face& replacementFace = faces_[secondEdgeFaces[faceI]];
-            replaceLabel(cv2, cv0, replacementFace);
-            replaceLabel(cv3, cv1, replacementFace);
+            // Replace point indices on faces.
+            replaceLabel(cv2, cv0, faces_[secondEdgeFaces[faceI]]);
+            replaceLabel(cv3, cv1, faces_[secondEdgeFaces[faceI]]);
 
             // Determine the quad-face(s) in cell[0] & cell[1]
             // that belongs to secondEdgeFaces
@@ -480,13 +591,163 @@ void dynamicTopoFvMesh::collapseQuadFace
             }
         }
 
-        // All triangular boundary faces also need to have point labels replaced
+        // Find common edges between quad / tri faces...
+        findCommonEdge(c0BdyIndex[0], faceToKeep[0], edgeToKeep[0]);
+        findCommonEdge(c0BdyIndex[1], faceToKeep[0], edgeToKeep[1]);
+        findCommonEdge(c0BdyIndex[0], faceToThrow[0], edgeToThrow[0]);
+        findCommonEdge(c0BdyIndex[1], faceToThrow[0], edgeToThrow[1]);
+
+        // Size down edgeFaces for the ends.
+        findCommonEdge(faceToThrow[0], faceToKeep[0], ends[0]);
+        sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
+
+        if (c1 != -1)
+        {
+            findCommonEdge(c1BdyIndex[0], faceToKeep[1], edgeToKeep[2]);
+            findCommonEdge(c1BdyIndex[1], faceToKeep[1], edgeToKeep[3]);
+            findCommonEdge(c1BdyIndex[0], faceToThrow[1], edgeToThrow[2]);
+            findCommonEdge(c1BdyIndex[1], faceToThrow[1], edgeToThrow[3]);
+
+            // Size down edgeFaces for the ends.
+            findCommonEdge(faceToThrow[1], faceToKeep[1], ends[1]);
+            sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
+        }
+
+        // Correct edgeFaces for triangular faces...
+        forAll(edgeToThrow, indexI)
+        {
+            if (edgeToThrow[indexI] == -1)
+            {
+                continue;
+            }
+
+            const labelList& eF = edgeFaces_[edgeToThrow[indexI]];
+
+            label origTriFace = -1, retTriFace = -1;
+
+            // Find the original triangular face index
+            forAll(eF, faceI)
+            {
+                if (eF[faceI] == c0BdyIndex[0])
+                {
+                    origTriFace = c0BdyIndex[0];
+                    break;
+                }
+
+                if (eF[faceI] == c0BdyIndex[1])
+                {
+                    origTriFace = c0BdyIndex[1];
+                    break;
+                }
+
+                if (eF[faceI] == c1BdyIndex[0])
+                {
+                    origTriFace = c1BdyIndex[0];
+                    break;
+                }
+
+                if (eF[faceI] == c1BdyIndex[1])
+                {
+                    origTriFace = c1BdyIndex[1];
+                    break;
+                }
+            }
+
+            // Find the retained triangular face index
+            forAll(eF, faceI)
+            {
+                if
+                (
+                    (eF[faceI] != origTriFace) &&
+                    (eF[faceI] != faceToThrow[0]) &&
+                    (eF[faceI] != faceToThrow[1])
+                )
+                {
+                    retTriFace = eF[faceI];
+                    break;
+                }
+            }
+
+            // Finally replace the face/edge indices
+            replaceLabel
+            (
+                origTriFace,
+                retTriFace,
+                edgeFaces_[edgeToKeep[indexI]]
+            );
+
+            replaceLabel
+            (
+                edgeToThrow[indexI],
+                edgeToKeep[indexI],
+                faceEdges_[retTriFace]
+            );
+        }
+
+        // Correct faceEdges / edgeFaces for quad-faces...
+        forAll(secondEdgeFaces,faceI)
+        {
+            replaceLabel
+            (
+                checkEdgeIndex[2],
+                checkEdgeIndex[1],
+                faceEdges_[secondEdgeFaces[faceI]]
+            );
+
+            // Renumber the edges on this face
+            const labelList& fE = faceEdges_[secondEdgeFaces[faceI]];
+
+            forAll(fE, edgeI)
+            {
+                if (edges_[fE[edgeI]].start() == cv2)
+                {
+                    edges_[fE[edgeI]].start() = cv0;
+                }
+
+                if (edges_[fE[edgeI]].end() == cv2)
+                {
+                    edges_[fE[edgeI]].end() = cv0;
+                }
+
+                if (edges_[fE[edgeI]].start() == cv3)
+                {
+                    edges_[fE[edgeI]].start() = cv1;
+                }
+
+                if (edges_[fE[edgeI]].end() == cv3)
+                {
+                    edges_[fE[edgeI]].end() = cv1;
+                }
+            }
+
+            // Size-up edgeFaces for the replacement
+            if
+            (
+                (secondEdgeFaces[faceI] != faceToThrow[0]) &&
+                (secondEdgeFaces[faceI] != faceToThrow[1]) &&
+                (secondEdgeFaces[faceI] != fIndex)
+            )
+            {
+                sizeUpList
+                (
+                    secondEdgeFaces[faceI],
+                    edgeFaces_[checkEdgeIndex[1]]
+                );
+            }
+        }
+
+        // Remove the current face from the replacement edge
+        sizeDownList(fIndex, edgeFaces_[checkEdgeIndex[1]]);
+
+        // Replace point labels on all triangular boundary faces.
         forAll(secondCells, cellI)
         {
-            cell& cellToCheck = cells_[secondCells[cellI]];
+            const cell& cellToCheck = cells_[secondCells[cellI]];
+
             forAll(cellToCheck, faceI)
             {
                 face& faceToCheck = faces_[cellToCheck[faceI]];
+
                 if (faceToCheck.size() == 3)
                 {
                     forAll(faceToCheck, pointI)
@@ -503,6 +764,21 @@ void dynamicTopoFvMesh::collapseQuadFace
                     }
                 }
             }
+        }
+
+        // Now that we're done with all edges, remove them.
+        removeEdge(checkEdgeIndex[0]);
+        removeEdge(checkEdgeIndex[2]);
+        removeEdge(checkEdgeIndex[3]);
+
+        forAll(edgeToThrow, indexI)
+        {
+            if (edgeToThrow[indexI] == -1)
+            {
+                continue;
+            }
+
+            removeEdge(edgeToThrow[indexI]);
         }
 
         // Delete the two points...
@@ -522,7 +798,7 @@ void dynamicTopoFvMesh::collapseQuadFace
 
         forAll(firstCells, cellI)
         {
-            cell &firstCurCell = cells_[firstCells[cellI]];
+            const cell& firstCurCell = cells_[firstCells[cellI]];
 
             Info << "Cell: " << firstCells[cellI]
                  << ": " << firstCurCell << endl;
@@ -533,6 +809,8 @@ void dynamicTopoFvMesh::collapseQuadFace
                      << ": " << faces_[firstCurCell[faceI]] << endl;
             }
         }
+
+        const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
         Info << nl << "First Edge Face Hull: " << firstEdgeFaces << endl;
 
@@ -547,7 +825,7 @@ void dynamicTopoFvMesh::collapseQuadFace
 
         forAll(secondCells, cellI)
         {
-            cell &secondCurCell = cells_[secondCells[cellI]];
+            const cell& secondCurCell = cells_[secondCells[cellI]];
 
             Info << "Cell: " << secondCells[cellI]
                  << ": " << secondCurCell << endl;
@@ -558,6 +836,8 @@ void dynamicTopoFvMesh::collapseQuadFace
                      << ": " << faces_[secondCurCell[faceI]] << endl;
             }
         }
+
+        const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
         Info << nl << "Second Edge Face Hull: " << secondEdgeFaces << endl;
 
@@ -613,7 +893,11 @@ void dynamicTopoFvMesh::collapseQuadFace
             )
             {
                 // This face is to be flipped
-                faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
+                faces_[faceToKeep[0]] =
+                (
+                    faces_[faceToKeep[0]].reverseFace()
+                );
+
                 owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                 neighbour_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
             }
@@ -629,7 +913,11 @@ void dynamicTopoFvMesh::collapseQuadFace
                     // This face will need to be flipped and converted
                     // to a boundary face. Flip it now, so that conversion
                     // happens later.
-                    faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
+                    faces_[faceToKeep[0]] =
+                    (
+                        faces_[faceToKeep[0]].reverseFace()
+                    );
+
                     owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                     neighbour_[faceToKeep[0]] = -1;
                 }
@@ -650,7 +938,11 @@ void dynamicTopoFvMesh::collapseQuadFace
             if (owner_[faceToThrow[0]] < owner_[faceToKeep[0]])
             {
                 // This face is to be flipped
-                faces_[faceToKeep[0]] = faces_[faceToKeep[0]].reverseFace();
+                faces_[faceToKeep[0]] =
+                (
+                    faces_[faceToKeep[0]].reverseFace()
+                );
+
                 neighbour_[faceToKeep[0]] = owner_[faceToKeep[0]];
                 owner_[faceToKeep[0]] = owner_[faceToThrow[0]];
             }
@@ -682,7 +974,11 @@ void dynamicTopoFvMesh::collapseQuadFace
                 )
                 {
                     // This face is to be flipped
-                    faces_[faceToKeep[1]] = faces_[faceToKeep[1]].reverseFace();
+                    faces_[faceToKeep[1]] =
+                    (
+                        faces_[faceToKeep[1]].reverseFace()
+                    );
+
                     owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                     neighbour_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
                 }
@@ -699,7 +995,10 @@ void dynamicTopoFvMesh::collapseQuadFace
                         // to a boundary face. Flip it now, so that conversion
                         // happens later.
                         faces_[faceToKeep[1]] =
-                            faces_[faceToKeep[1]].reverseFace();
+                        (
+                            faces_[faceToKeep[1]].reverseFace()
+                        );
+
                         owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                         neighbour_[faceToKeep[1]] = -1;
                     }
@@ -714,12 +1013,17 @@ void dynamicTopoFvMesh::collapseQuadFace
         else
         {
             cellCheck[1] = owner_[faceToThrow[1]];
+
             if (neighbour_[faceToKeep[1]] == c1)
             {
                 if (owner_[faceToThrow[1]] < owner_[faceToKeep[1]])
                 {
                     // This face is to be flipped
-                    faces_[faceToKeep[1]] = faces_[faceToKeep[1]].reverseFace();
+                    faces_[faceToKeep[1]] =
+                    (
+                        faces_[faceToKeep[1]].reverseFace()
+                    );
+
                     neighbour_[faceToKeep[1]] = owner_[faceToKeep[1]];
                     owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
                 }
@@ -773,7 +1077,7 @@ void dynamicTopoFvMesh::collapseQuadFace
 
     // Remove the unwanted faces in the cell(s) adjacent to this face,
     // and correct the cells that contain discarded faces
-    const cell &cell_0 = cells_[c0];
+    const cell& cell_0 = cells_[c0];
 
     forAll(cell_0,faceI)
     {
@@ -827,7 +1131,7 @@ void dynamicTopoFvMesh::collapseQuadFace
             removeFace(faceToKeep[1]);
         }
 
-        const cell &cell_1 = cells_[c1];
+        const cell& cell_1 = cells_[c1];
 
         forAll(cell_1, faceI)
         {
