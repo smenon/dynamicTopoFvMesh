@@ -1816,7 +1816,7 @@ void Foam::fluidInterface::updateVelocity()
                     U_.boundaryField()[aPatchID()]
                 );
 
-            aU.gradient() == nGradU;
+            aU.gradient() = nGradU;
         }
         else if
         (
@@ -1830,7 +1830,7 @@ void Foam::fluidInterface::updateVelocity()
                     U_.boundaryField()[aPatchID()]
                 );
 
-            aU.gradient() == nGradU;
+            aU.gradient() = nGradU;
         }
         else
         {

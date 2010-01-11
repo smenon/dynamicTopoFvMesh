@@ -37,9 +37,6 @@ Description
 
 // Mesh motion solvers
 #include "motionSolver.H"
-#include "tetDecompositionMotionSolver.H"
-#include "faceTetPolyPatch.H"
-#include "tetPolyPatchInterpolation.H"
 #include "setMotionBC.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -90,7 +87,13 @@ int main(int argc, char *argv[])
         // Update the interface
         interface.updateInterface();
 
-        setMotionBC(mesh, interface.aPatchID(), interface.displacement());
+        setMotionBC
+        (
+            mesh,
+            word(mPtr->lookup("solver")),
+            interface.aPatchID(),
+            interface.displacement()
+        );
 
         if (interface.twoFluids())
         {
@@ -100,7 +103,13 @@ int main(int argc, char *argv[])
                                    interface.displacement()
                                );
 
-            setMotionBC(mesh, interface.bPatchID(), dispB);
+            setMotionBC
+            (
+                mesh,
+                word(mPtr->lookup("solver")),
+                interface.bPatchID(),
+                dispB
+            );
         }
 
         // Solve for motion

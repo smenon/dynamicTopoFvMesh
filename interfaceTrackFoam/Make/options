@@ -21,6 +21,7 @@ EXE_LIBS = \
     -lfiniteVolume \
     -lfiniteArea \
     -lmesquiteSmoother \
+    -lspringMotionSolver \
     -ldynamicMesh \
     -lviscoelasticTransportModels \
     $(WM_DECOMP_LIBS)

@@ -156,7 +156,7 @@ void correctedFvPatchField<Type>::autoMap
     Field<Type>::autoMap(m);
     corrVecGrad_.autoMap(m);
     correctionVectors_.setSize(m.size());
-    
+
     // Delete the fvMeshSubset and reconstruct
     deleteDemandDrivenData(patchSubMeshPtr_);
     makePatchSubMesh();
@@ -178,12 +178,12 @@ void correctedFvPatchField<Type>::updateCoeffs()
 
 
 template<class Type>
-const GeometricField<Type, fvPatchField, volMesh>& 
+const GeometricField<Type, fvPatchField, volMesh>&
 correctedFvPatchField<Type>::volField() const
 {
     return this->db().objectRegistry::lookupObject
         <
-            GeometricField<Type, fvPatchField, volMesh> 
+            GeometricField<Type, fvPatchField, volMesh>
         >
         (volFieldName_);
 }
@@ -258,7 +258,7 @@ void correctedFvPatchField<Type>::makePatchSubMesh() const
         cellSet.insert(faceCells[faceI]);
     }
 
-    const labelListList& cellCells = 
+    const labelListList& cellCells =
         this->patch().boundaryMesh().mesh().cellCells();
 
     for(label faceI=0; faceI<faceCells.size(); faceI++)
@@ -286,7 +286,7 @@ const fvMeshSubset& correctedFvPatchField<Type>::patchSubMesh() const
         (
             this->patch().name()
         );
-    
+
     if(foundPatchSubMesh)
     {
         return this->db().objectRegistry::lookupObject<fvMeshSubset>
@@ -345,7 +345,7 @@ void correctedFvPatchField<Type>::movePatchSubMesh()
         const fvMesh& mesh = this->patch().boundaryMesh().mesh();
 
         vectorField newPoints(mesh.points(), patchSubMeshPtr_->pointMap());
-        
+
         patchSubMeshPtr_->subMesh().movePoints(newPoints);
     }
 }
@@ -356,12 +356,25 @@ void correctedFvPatchField<Type>::updateCorrVecGrad()
 {
     GeometricField<Type, fvPatchField, volMesh> subVolField =
         patchSubMesh().interpolate(volField());
-    
+
+    // Deal with the uninitialized "oldInternalFaces" patch.
+    forAll(subVolField.boundaryField(), patchI)
+    {
+        if
+        (
+            subVolField.boundaryField()[patchI].type()
+        == "calculated"
+        )
+        {
+            subVolField.boundaryField()[patchI] == pTraits<Type>::zero;
+        }
+    }
+
     // Update the correction vectors
     updateCorrectionVectors();
 
-    typedef typename 
-        outerProduct<vector, typename pTraits<Type>::cmptType>::type 
+    typedef typename
+        outerProduct<vector, typename pTraits<Type>::cmptType>::type
         GradCmptType;
 
     for (direction cmpt = 0; cmpt < pTraits<Type>::nComponents; cmpt++)
@@ -372,12 +385,12 @@ void correctedFvPatchField<Type>::updateCorrVecGrad()
                 subVolField.component(cmpt),
                 "snGradCorr(" + volField().name() + ')'
             );
-        
+
         if(this->patch().size()>0)
         {
             corrVecGrad_.replace
             (
-                cmpt, 
+                cmpt,
                 correctionVectors_
                &gradCmpt.boundaryField()[subMeshPatchID()].patchInternalField()
             );
