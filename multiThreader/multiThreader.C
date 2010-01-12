@@ -508,7 +508,7 @@ bool multiThreader::multiThreaded() const
 }
 
 //- Return the maxQueueSize
-int multiThreader::getMaxQueueSize()
+int multiThreader::getMaxQueueSize() const
 {
     return maxQueueSize_;
 }
@@ -528,7 +528,7 @@ void multiThreader::setMaxQueueSize(int size)
     }
 }
 
-void Mutex::lock()
+void Mutex::lock() const
 {
     if (pthread_mutex_lock(&lock_))
     {
@@ -538,7 +538,7 @@ void Mutex::lock()
     }
 }
 
-bool Mutex::tryLock()
+bool Mutex::tryLock() const
 {
     label retVal;
 
@@ -566,7 +566,7 @@ bool Mutex::tryLock()
     return retVal;
 }
 
-void Mutex::unlock()
+void Mutex::unlock() const
 {
     if (pthread_mutex_unlock(&lock_))
     {
@@ -576,7 +576,7 @@ void Mutex::unlock()
     }
 }
 
-void rwMutex::lock(const lockType lType)
+void rwMutex::lock(const lockType lType) const
 {
     if (lType == READ_LOCK)
     {
@@ -605,7 +605,7 @@ void rwMutex::lock(const lockType lType)
     }
 }
 
-bool rwMutex::tryLock(const lockType lType)
+bool rwMutex::tryLock(const lockType lType) const
 {
     label retVal = -1;
 
@@ -658,7 +658,7 @@ bool rwMutex::tryLock(const lockType lType)
     return retVal;
 }
 
-void rwMutex::unlock()
+void rwMutex::unlock() const
 {
     if (pthread_rwlock_unlock(&lock_))
     {

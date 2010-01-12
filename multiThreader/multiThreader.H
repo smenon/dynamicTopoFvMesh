@@ -73,7 +73,7 @@ namespace Foam
 class Mutex
 {
     // Private data
-        pthread_mutex_t lock_;
+        mutable pthread_mutex_t lock_;
 
 public:
 
@@ -87,14 +87,14 @@ public:
     ~Mutex();
 
     // Lock the mutex
-    void lock();
+    void lock() const;
 
     // Try to acquire the mutex.
     // Returns zero if successful
-    bool tryLock();
+    bool tryLock() const;
 
     // Unlock the mutex
-    void unlock();
+    void unlock() const;
 
     // Operator overload
     inline pthread_mutex_t* operator()()
@@ -106,7 +106,7 @@ public:
 class rwMutex
 {
     // Private data
-        pthread_rwlock_t lock_;
+        mutable pthread_rwlock_t lock_;
 
 public:
 
@@ -127,13 +127,13 @@ public:
     ~rwMutex();
 
     // Lock the mutex
-    void lock(const lockType lType);
+    void lock(const lockType lType) const;
 
     // Try to acquire a lock
-    bool tryLock(const lockType lType);
+    bool tryLock(const lockType lType) const;
 
     // Unlock the mutex
-    void unlock();
+    void unlock() const;
 
     // Operator overload
     inline pthread_rwlock_t* operator()()
@@ -145,7 +145,7 @@ public:
 class Conditional
 {
     // Private data
-        pthread_cond_t condition_;
+        mutable pthread_cond_t condition_;
 
 public:
 
@@ -249,7 +249,7 @@ public:
         bool multiThreaded() const;
 
         //- Return the maxQueueSize
-        int getMaxQueueSize();
+        int getMaxQueueSize() const;
 
         //- Set the maxQueueSize
         void setMaxQueueSize(int size);

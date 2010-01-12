@@ -37,7 +37,9 @@ namespace Foam
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Method for the bisection of a quad-face in 2D
-void dynamicTopoFvMesh::bisectQuadFace
+// - Returns a changeMap with a type specifying:
+//    -1: Bisection failed since max number of topo-changes was reached.
+const changeMap dynamicTopoFvMesh::bisectQuadFace
 (
     const label fIndex
 )
@@ -49,6 +51,76 @@ void dynamicTopoFvMesh::bisectQuadFace
     //      [4] Modify triangular boundary faces, and create new ones as well
     //      [5] Create edges for new faces
     //      Update faceEdges and edgeFaces information
+
+    // Figure out which thread this is...
+    label tIndex = self(), pIndex = -1;
+
+    // Prepare the changeMaps
+    changeMap map, coupleMap;
+    bool bisectingSlave = false;
+
+    if
+    (
+        (nModifications_ > maxModifications_) &&
+        (maxModifications_ > -1)
+    )
+    {
+        // Reached the max allowable topo-changes.
+        faceStack(tIndex).clear();
+
+        return map;
+    }
+
+    if (coupledModification_)
+    {
+        // Is this a locally coupled face?
+        if (locallyCoupledFace(fIndex))
+        {
+            // Temporarily turn off coupledModification.
+            unsetCoupledModification();
+            setSlaveModification();
+
+            // Loop through master/slave maps
+            // and determine the coupled face index.
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            {
+                label index = -1;
+
+                if ((index = patchI().findSlaveIndex(fIndex)) > -1)
+                {
+                    // Bisect the slave.
+                    coupleMap = bisectQuadFace(index);
+
+                    // Keep this index for master/slave mapping.
+                    pIndex = patchI.key();
+                }
+
+                // The following bit happens only during the sliver
+                // exudation process, since slave faces are
+                // usually not added to the coupled face-stack.
+                if ((index = patchI().findMasterIndex(fIndex)) > -1)
+                {
+                    // Bisect the master.
+                    coupleMap = bisectQuadFace(index);
+
+                    // Keep this index for master/slave mapping.
+                    pIndex = patchI.key();
+
+                    // Notice that we are bisecting a slave face.
+                    bisectingSlave = true;
+                }
+            }
+
+            // Turn it back on.
+            setCoupledModification();
+            unsetSlaveModification();
+        }
+        else
+        {
+            // Bisect edge on the patchSubMesh.
+
+        }
+    }
 
     bool found;
     label replaceFace = -1, retainFace = -1;
@@ -491,6 +563,9 @@ void dynamicTopoFvMesh::bisectQuadFace
                               newCellIndex[0],
                               -1
                           );
+
+        // Add this face to the map.
+        map.addFace(newFaceIndex[3]);
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
@@ -1230,6 +1305,86 @@ void dynamicTopoFvMesh::bisectQuadFace
         edges_[commonEdgeIndex[1]].end() = newPointIndex[1];
     }
 
+    if (coupledModification_)
+    {
+        // Create a master/slave entry for the new face on the patch.
+        if (locallyCoupledFace(fIndex))
+        {
+            FixedList<bool, 2> foundMatch(false);
+            FixedList<label, 2> checkList(-1);
+            FixedList<point, 2> cCentres(vector::zero);
+
+            // Fill in the faces to be check for...
+            checkList[0] = fIndex;
+            checkList[1] = newFaceIndex[3];
+
+            cCentres[0] = quadFaceCenter(checkList[0]);
+            cCentres[1] = quadFaceCenter(checkList[1]);
+
+            const labelList afList = coupleMap.addedFaceList();
+
+            forAll(afList, faceI)
+            {
+                vector centre = quadFaceCenter(afList[faceI]);
+
+                forAll (checkList, indexI)
+                {
+                    if (mag(cCentres[indexI] - centre) < gTol_)
+                    {
+                        if (bisectingSlave)
+                        {
+                            patchCoupling_[pIndex].mapMaster
+                            (
+                                checkList[indexI], afList[faceI]
+                            );
+
+                            patchCoupling_[pIndex].mapSlave
+                            (
+                                afList[faceI], checkList[indexI]
+                            );
+                        }
+                        else
+                        {
+                            patchCoupling_[pIndex].mapSlave
+                            (
+                                checkList[indexI], afList[faceI]
+                            );
+
+                            patchCoupling_[pIndex].mapMaster
+                            (
+                                afList[faceI], checkList[indexI]
+                            );
+                        }
+
+                        foundMatch[indexI] = true;
+
+                        break;
+                    }
+                }
+
+                // Are we done checking?
+                if (foundMatch[0] && foundMatch[1])
+                {
+                    break;
+                }
+            }
+
+            if (!(foundMatch[0] && foundMatch[1]))
+            {
+                FatalErrorIn
+                (
+                    "dynamicTopoFvMesh::bisectQuadFace"
+                ) << "Failed to build coupled maps." << abort(FatalError);
+            }
+        }
+        else
+        if (processorCoupledFace(fIndex))
+        {
+            // Look for matching slave faces on the patchSubMesh.
+
+        }
+    }
+
     // Set the flag
     topoChangeFlag_ = true;
 
@@ -1238,6 +1393,9 @@ void dynamicTopoFvMesh::bisectQuadFace
 
     // Increment the number of modifications
     nModifications_++;
+
+    // Return the changeMap
+    return map;
 }
 
 // Method for the bisection of an edge in 3D
@@ -1283,9 +1441,9 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Is this a locally coupled edge?
         if (locallyCoupledEdge(eIndex))
         {
-            // Temporarily turn off coupledModification and stack behaviour.
-            coupledModification_ = false;
-            slaveModification_ = true;
+            // Temporarily turn off coupledModification.
+            unsetCoupledModification();
+            setSlaveModification();
 
             // Loop through master/slave maps
             // and determine the coupled edge index.
@@ -1319,8 +1477,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             }
 
             // Turn it back on.
-            coupledModification_ = true;
-            slaveModification_ = false;
+            setCoupledModification();
+            unsetSlaveModification();
         }
         else
         {

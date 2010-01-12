@@ -98,8 +98,8 @@ class dynamicTopoFvMesh
         Switch edgeRefinement_;
 
         //- Coupled modification switches
-        Switch coupledModification_;
-        Switch slaveModification_;
+        mutable Switch coupledModification_;
+        mutable Switch slaveModification_;
 
         //- Specify the re-meshing interval
         label interval_;
@@ -205,13 +205,13 @@ class dynamicTopoFvMesh
         labelList             noModPatchIDs_;
 
         // Specific to proximity-based refinement
-        label               spatialRes_;
-        boundBox            proxBoundBox_;
-        labelListList       proximityBins_;
-        scalar              sliceThreshold_;
-        label               sliceHoldOff_;
-        List<boundBox>      sliceBoxes_;
-        List<labelPair>     slicePairs_;
+        label                   spatialRes_;
+        boundBox                proxBoundBox_;
+        labelListList           proximityBins_;
+        scalar                  sliceThreshold_;
+        label                   sliceHoldOff_;
+        mutable List<boundBox>  sliceBoxes_;
+        mutable List<labelPair> slicePairs_;
 
         // Buffers for length-scale calculations
         labelListList       sendLblBuffer_;
@@ -220,7 +220,7 @@ class dynamicTopoFvMesh
         scalarListList      recvSclBuffer_;
 
         //- 3D Mesh Flipping data
-        label               maxTetsPerEdge_;
+        mutable label       maxTetsPerEdge_;
         Switch              allowTableResize_;
         labelList           noSwapPatchIDs_;
 
@@ -337,7 +337,7 @@ class dynamicTopoFvMesh
         Map<coupledPatchInfo> patchCoupling_;
 
         // Coupled entities to avoid during normal modification
-        labelHashSet entitiesToAvoid_;
+        DynamicList<label> entitiesToAvoid_;
 
         // List of processors that this domain talks to
         labelList procIndices_;
@@ -395,11 +395,20 @@ class dynamicTopoFvMesh
         // Find the circumcenter of three points
         inline point circumCenter(const label fIndex) const;
 
+        // Find the center of a quad face
+        inline point quadFaceCenter(const label fIndex) const;
+
         // Find the center of a triangle face
         inline point triFaceCenter(const label fIndex) const;
 
+        // Find the area of a quad face.
+        inline scalar quadFaceArea(const face& quadFace) const;
+
         // Find the area of a triangle face.
         inline scalar triFaceArea(const face& triFace) const;
+
+        // Find the normal of a quad face.
+        inline vector quadFaceNormal(const face& quadFace) const;
 
         // Find the normal of a triangle face.
         inline vector triFaceNormal(const face& triFace) const;
@@ -452,7 +461,7 @@ class dynamicTopoFvMesh
         const multiThreader& threader() const;
 
         // Return a reference to the entity mutexes
-        inline Mutex& entityMutex(const label entity);
+        inline const Mutex& entityMutex(const label entity) const;
 
         // Given a boundary quad face, return a boundary triangular face.
         label getTriBoundaryFace(const label fIndex) const;
@@ -468,7 +477,7 @@ class dynamicTopoFvMesh
         inline scalar faceLengthScale(const label fIndex) const;
 
         // Return length-scale at an edge-location in the mesh [3D]
-        inline scalar edgeLengthScale(const label eIndex);
+        inline scalar edgeLengthScale(const label eIndex) const;
 
         // Check for face bisection
         inline bool checkFaceBisection(const label fIndex) const;
@@ -477,10 +486,10 @@ class dynamicTopoFvMesh
         inline bool checkFaceCollapse(const label fIndex) const;
 
         // Check for edge bisection
-        inline bool checkEdgeBisection(const label eIndex);
+        inline bool checkEdgeBisection(const label eIndex) const;
 
         // Check for edge collapse
-        inline bool checkEdgeCollapse(const label eIndex);
+        inline bool checkEdgeCollapse(const label eIndex) const;
 
         // Check if a given face is a quad
         inline bool checkQuadFace(const label fIndex) const;
@@ -537,6 +546,9 @@ class dynamicTopoFvMesh
         // Initialize edge-stacks
         inline void initEdgeStacks();
 
+        // Initialize the coupled face-stack
+        inline void initCoupledFaceStack();
+
         // Initialize the coupled edge-stack
         inline void initCoupledEdgeStack();
 
@@ -553,7 +565,8 @@ class dynamicTopoFvMesh
         );
 
         // Method for the bisection of a quad-face in 2D
-        void bisectQuadFace
+        const changeMap
+        bisectQuadFace
         (
             const label fIndex
         );
@@ -829,10 +842,10 @@ class dynamicTopoFvMesh
         ) const;
 
         // Utility method to compute the minimum quality of a vertex hull
-        inline scalar computeMinQuality(const label eIndex);
+        inline scalar computeMinQuality(const label eIndex) const;
 
         // Utility method to compute the quality of a tetrahedral cell
-        inline scalar tetQuality(const label cIndex);
+        inline scalar tetQuality(const label cIndex) const;
 
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.
@@ -842,8 +855,11 @@ class dynamicTopoFvMesh
         // around a face after trisection.
         scalar computeTrisectionQuality(const label fIndex) const;
 
+        // Check whether the given face should not be bisected/collapsed
+        inline bool checkFaceModification(const label eIndex) const;
+
         // Check whether the given edge should not be bisected/collapsed
-        bool checkEdgeModification(const label eIndex) const;
+        inline bool checkEdgeModification(const label eIndex) const;
 
         // Check whether the given edge is on a bounding curve
         bool checkBoundingCurve(const label eIndex) const;
@@ -866,7 +882,7 @@ class dynamicTopoFvMesh
             const PtrList<scalarListList>& Q,
             const scalar minQuality,
             const label checkIndex = 0
-        );
+        ) const;
 
         // Utility method to fill the dynamic programming tables
         bool fillTables
@@ -878,7 +894,7 @@ class dynamicTopoFvMesh
             PtrList<labelListList>& K,
             PtrList<labelListList>& triangulations,
             const label checkIndex = 0
-        );
+        ) const;
 
         // Print out tables for debugging
         void printTables
@@ -1029,7 +1045,7 @@ class dynamicTopoFvMesh
             const label primitiveType = 3
         ) const;
 
-        // Check the state of connectivity local lists
+        // Check the state of local connectivity lists
         void checkConnectivity(label maxErrors = 0) const;
 
         // Perform spatial hashing on a set of points
@@ -1055,7 +1071,7 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             label& proximityFace
-        );
+        ) const;
 
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
@@ -1151,6 +1167,18 @@ class dynamicTopoFvMesh
 
         // Check whether the specified edge is a coupled master edge.
         inline bool isCoupledMaster(const label eIndex) const;
+
+        // Set coupled modification
+        inline void setCoupledModification() const;
+
+        // Unset coupled modification
+        inline void unsetCoupledModification() const;
+
+        // Set slave modification
+        inline void setSlaveModification() const;
+
+        // Unset slave modification
+        inline void unsetSlaveModification() const;
 
         // Handle topology changes for coupled patches
         void handleCoupledPatches();

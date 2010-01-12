@@ -1861,28 +1861,6 @@ dynamicTopoFvMesh::checkEdgeBoundary
     return edgeBoundary;
 }
 
-// Check whether the given edge should not be bisected/collapsed
-bool dynamicTopoFvMesh::checkEdgeModification(const label eIndex) const
-{
-    // Internal edges don't count
-    label edgePatch = -1;
-
-    if ((edgePatch = whichEdgePatch(eIndex)) < 0)
-    {
-        return false;
-    }
-    else
-    {
-        // Check whether this edge shouldn't be swapped
-        if (findIndex(noModPatchIDs_, edgePatch) > -1)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 // Check whether the given edge is on a bounding curve
 bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
 {
@@ -2009,7 +1987,7 @@ bool dynamicTopoFvMesh::checkQuality
     const PtrList<scalarListList>& Q,
     const scalar minQuality,
     const label checkIndex
-)
+) const
 {
     bool myResult = false;
 
@@ -2044,7 +2022,7 @@ bool dynamicTopoFvMesh::checkQuality
             }
 
             // Turn off switch temporarily.
-            coupledModification_ = false;
+            unsetCoupledModification();
 
             // Recursively call for the slave edge.
             myResult =
@@ -2053,7 +2031,7 @@ bool dynamicTopoFvMesh::checkQuality
             );
 
             // Turn it back on.
-            coupledModification_ = true;
+            setCoupledModification();
         }
         else
         if (processorCoupledEdge(eIndex))
@@ -2077,7 +2055,7 @@ bool dynamicTopoFvMesh::fillTables
     PtrList<labelListList>& K,
     PtrList<labelListList>& triangulations,
     const label checkIndex
-)
+) const
 {
     const edge& edgeToCheck = edges_[eIndex];
     const labelList& hullVertices = edgePoints_[eIndex];
@@ -2170,7 +2148,7 @@ bool dynamicTopoFvMesh::fillTables
             label slaveIndex = -1;
 
             // Determine the slave index.
-            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
                 if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
@@ -2179,7 +2157,7 @@ bool dynamicTopoFvMesh::fillTables
             }
 
             // Turn off switch temporarily.
-            coupledModification_ = false;
+            unsetCoupledModification();
 
             // Recursively call for the slave edge.
             bool success =
@@ -2188,7 +2166,7 @@ bool dynamicTopoFvMesh::fillTables
             );
 
             // Turn it back on.
-            coupledModification_ = true;
+            setCoupledModification();
 
             return success;
         }
@@ -3984,7 +3962,7 @@ scalar dynamicTopoFvMesh::testProximity
 (
     const label eIndex,
     label& proximityFace
-)
+) const
 {
     const edge& thisEdge = edges_[eIndex];
     const labelList& eFaces = edgeFaces_[eIndex];
@@ -6161,6 +6139,9 @@ void dynamicTopoFvMesh::readCoupledPatches()
             }
         }
     }
+
+    // Initialize entitiesToAvoid to some arbitrary size
+    entitiesToAvoid_.setSize(50, -1);
 }
 
 // Initialize coupled patches for topology modifications.
@@ -6206,13 +6187,13 @@ void dynamicTopoFvMesh::handleCoupledPatches()
         if (edgeRefinement_)
         {
             // Initialize the face stack
-            // initCoupledFaceStack();
+            initCoupledFaceStack();
 
             edgeBisectCollapse2D(&(handlerPtr_[0]));
         }
 
         // Re-Initialize the face stack
-        // initCoupledFaceStack();
+        initCoupledFaceStack();
 
         swap2DEdges(&(handlerPtr_[0]));
     }
@@ -6718,85 +6699,130 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
-    labelHashSet mList, sList;
+    DynamicList<label> mList(50), sList(50);
 
     forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
     {
         // Clear existing maps.
         patchI().clearMaps();
 
-        // Build a list of master edges
-        label start = boundary[patchI.key()].start();
+        // Build a list of master entities [faces in 2D / edges in 3D]
+        label start = -1;
 
-        for (label i = 0; i < boundary[patchI.key()].size(); i++)
+        if (twoDMesh_)
         {
-            const labelList& mfEdges = faceEdges_[start+i];
+            // Build a list of master entities
+            start = boundary[patchI.key()].start();
 
-            forAll(mfEdges, edgeI)
+            for (label i = 0; i < boundary[patchI.key()].size(); i++)
             {
-                if (!mList.found(mfEdges[edgeI]))
+                mList.append(start+i);
+            }
+
+            // Build a list of slave entities
+            start = boundary[patchI().slaveIndex()].start();
+
+            for (label i = 0; i < boundary[patchI().slaveIndex()].size(); i++)
+            {
+                sList.append(start+i);
+            }
+        }
+        else
+        {
+            // Build a list of master entities
+            start = boundary[patchI.key()].start();
+
+            for (label i = 0; i < boundary[patchI.key()].size(); i++)
+            {
+                const labelList& mfEdges = faceEdges_[start+i];
+
+                forAll(mfEdges, edgeI)
                 {
-                    mList.insert(mfEdges[edgeI]);
+                    if (findIndex(mList, mfEdges[edgeI]) == -1)
+                    {
+                        mList.append(mfEdges[edgeI]);
+                    }
+                }
+            }
+
+            // Build a list of slave entities
+            start = boundary[patchI().slaveIndex()].start();
+
+            for (label i = 0; i < boundary[patchI().slaveIndex()].size(); i++)
+            {
+                const labelList& sfEdges = faceEdges_[start+i];
+
+                forAll(sfEdges, edgeI)
+                {
+                    if (findIndex(sList, sfEdges[edgeI]) == -1)
+                    {
+                        sList.append(sfEdges[edgeI]);
+                    }
                 }
             }
         }
 
-        // Build a list of edge-centres for geometric matching.
-        labelList mEdges = mList.toc();
-        pointField mCentres(mEdges.size(), vector::zero);
-
-        forAll(mEdges, edgeI)
-        {
-            const edge& mE = edges_[mEdges[edgeI]];
-            mCentres[edgeI] = 0.5*(points_[mE[0]] + points_[mE[1]]);
-        }
-
-        // Build a list of slave edges
-        start = boundary[patchI().slaveIndex()].start();
-
-        for (label i = 0; i < boundary[patchI().slaveIndex()].size(); i++)
-        {
-            const labelList& mfEdges = faceEdges_[start+i];
-
-            forAll(mfEdges, edgeI)
-            {
-                if (!sList.found(mfEdges[edgeI]))
-                {
-                    sList.insert(mfEdges[edgeI]);
-                }
-            }
-        }
-
-        // Sanity check: Do patches have equal number of edges?
+        // Sanity check: Do patches have equal number of entities?
         if (mList.size() != sList.size())
         {
             FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
-                << "Patch edge sizes are not consistent."
+                << "Patch sizes are not consistent."
                 << abort(FatalError);
         }
 
-        // Build a list of edge-centres for geometric matching.
-        labelList sEdges = sList.toc();
-        pointField sCentres(sEdges.size(), vector::zero);
+        // Build a list of entity-centres for geometric matching.
+        pointField mCentres(mList.size(), vector::zero);
+        pointField sCentres(sList.size(), vector::zero);
 
-        forAll(mEdges, edgeI)
+        if (twoDMesh_)
         {
-            const edge& sE = edges_[sEdges[edgeI]];
-            sCentres[edgeI] = 0.5*(points_[sE[0]] + points_[sE[1]]);
+            forAll(mList, faceI)
+            {
+                const face& mfaceToCheck = faces_[mList[faceI]];
+                const face& sfaceToCheck = faces_[sList[faceI]];
+
+                // Assume quad-faces for 2D patches.
+                mCentres[faceI] = 0.25 *
+                (
+                    points_[mfaceToCheck[0]]
+                  + points_[mfaceToCheck[1]]
+                  + points_[mfaceToCheck[2]]
+                  + points_[mfaceToCheck[3]]
+                );
+
+                sCentres[faceI] = 0.25 *
+                (
+                    points_[sfaceToCheck[0]]
+                  + points_[sfaceToCheck[1]]
+                  + points_[sfaceToCheck[2]]
+                  + points_[sfaceToCheck[3]]
+                );
+            }
+        }
+        else
+        {
+            forAll(mList, edgeI)
+            {
+                const edge& mE = edges_[mList[edgeI]];
+                const edge& sE = edges_[sList[edgeI]];
+
+                mCentres[edgeI] = 0.5*(points_[mE[0]] + points_[mE[1]]);
+                sCentres[edgeI] = 0.5*(points_[sE[0]] + points_[sE[1]]);
+            }
         }
 
         label nMatchedEdges = 0;
 
-        forAll(mCentres, edgeI)
+        forAll(mCentres, indexI)
         {
 #           ifdef FULLDEBUG
             bool matched = false;
             scalar minDistance = GREAT;
 #           endif
 
-            forAll(sCentres, edgeJ)
+            forAll(sCentres, indexJ)
             {
-                scalar distance = mag(mCentres[edgeI] - sCentres[edgeJ]);
+                scalar distance = mag(mCentres[indexI] - sCentres[indexJ]);
 
 #               ifdef FULLDEBUG
                 minDistance = minDistance < distance
@@ -6808,14 +6834,14 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     // Add a map entry
                     patchI().mapSlave
                     (
-                        mEdges[edgeI],
-                        sEdges[edgeJ]
+                        mList[indexI],
+                        sList[indexJ]
                     );
 
                     patchI().mapMaster
                     (
-                        sEdges[edgeJ],
-                        mEdges[edgeI]
+                        sList[indexJ],
+                        mList[indexI]
                     );
 
 #                   ifdef FULLDEBUG
@@ -6851,7 +6877,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 << abort(FatalError);
         }
 
-        // Clear the labelHashSets
+        // Clear the lists
         mList.clear();
         sList.clear();
     }
@@ -7011,42 +7037,41 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
         // Retrieve the index for this face
         label fIndex = mesh.faceStack(tIndex).pop();
 
-        // Select only quad-faces
-        if (mesh.checkQuadFace(fIndex))
+        // Check if edgeRefinements are to be avoided.
+        if (mesh.checkFaceModification(fIndex))
         {
-            // Check if this boundary face is adjacent to a sliver-cell,
-            // and remove it by a two-step bisection/collapse operation.
-            if (mesh.whichPatch(fIndex) != -1)
-            {
-                mesh.remove2DSliver(fIndex);
-            }
+            continue;
+        }
 
-            if (mesh.checkFaceBisection(fIndex))
+        // Check if this boundary face is adjacent to a sliver-cell,
+        // and remove it by a two-step bisection/collapse operation.
+        mesh.remove2DSliver(fIndex);
+
+        if (mesh.checkFaceBisection(fIndex))
+        {
+            if (thread->master())
             {
-                if (thread->master())
-                {
-                    // Bisect this face
-                    mesh.bisectQuadFace(fIndex);
-                }
-                else
-                {
-                    // Push this on to the master stack
-                    mesh.faceStack(0).push(fIndex);
-                }
+                // Bisect this face
+                mesh.bisectQuadFace(fIndex);
             }
             else
-            if (mesh.checkFaceCollapse(fIndex))
             {
-                if (thread->master())
-                {
-                    // Collapse this face
-                    mesh.collapseQuadFace(fIndex);
-                }
-                else
-                {
-                    // Push this on to the master stack
-                    mesh.faceStack(0).push(fIndex);
-                }
+                // Push this on to the master stack
+                mesh.faceStack(0).push(fIndex);
+            }
+        }
+        else
+        if (mesh.checkFaceCollapse(fIndex))
+        {
+            if (thread->master())
+            {
+                // Collapse this face
+                mesh.collapseQuadFace(fIndex);
+            }
+            else
+            {
+                // Push this on to the master stack
+                mesh.faceStack(0).push(fIndex);
             }
         }
     }
@@ -7536,6 +7561,12 @@ void dynamicTopoFvMesh::remove2DSliver
 )
 {
     if (!edgeRefinement_)
+    {
+        return;
+    }
+
+    // Only boundary faces are considered.
+    if (whichPatch(fIndex) == -1)
     {
         return;
     }
@@ -8281,6 +8312,12 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 // MultiThreaded topology modifier [2D]
 void dynamicTopoFvMesh::threadedTopoModifier2D()
 {
+    // Initialize coupled patches for topology modifications.
+    initCoupledPatches();
+
+    // Handle coupled patches.
+    handleCoupledPatches();
+
     if (edgeRefinement_)
     {
         // Initialize the face stacks

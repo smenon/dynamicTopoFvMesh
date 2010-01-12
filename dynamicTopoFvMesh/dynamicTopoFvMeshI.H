@@ -82,6 +82,23 @@ inline point dynamicTopoFvMesh::circumCenter
 }
 
 // Find the center of a triangle face
+inline point dynamicTopoFvMesh::quadFaceCenter
+(
+    const label fIndex
+) const
+{
+    const face& thisFace = faces_[fIndex];
+
+    return 0.25 *
+    (
+        points_[thisFace[0]]
+      + points_[thisFace[1]]
+      + points_[thisFace[2]]
+      + points_[thisFace[3]]
+    );
+}
+
+// Find the center of a triangle face
 inline point dynamicTopoFvMesh::triFaceCenter
 (
     const label fIndex
@@ -97,6 +114,15 @@ inline point dynamicTopoFvMesh::triFaceCenter
     )/3.0;
 }
 
+// Find the area of a quad face.
+inline scalar dynamicTopoFvMesh::quadFaceArea
+(
+    const face& quadFace
+) const
+{
+    return Foam::mag(quadFaceNormal(quadFace));
+}
+
 // Find the area of a triangle face.
 // This function also assumes face right-handedness
 inline scalar dynamicTopoFvMesh::triFaceArea
@@ -105,6 +131,47 @@ inline scalar dynamicTopoFvMesh::triFaceArea
 ) const
 {
     return Foam::mag(triFaceNormal(triFace));
+}
+
+// Find the normal of a quad face.
+// This function also assumes face right-handedness
+inline vector dynamicTopoFvMesh::quadFaceNormal
+(
+    const face& quadFace
+) const
+{
+    vector n = vector::zero, v = vector::zero, w = vector::zero;
+
+    point centrePoint = 0.25 *
+    (
+        points_[quadFace[0]]
+      + points_[quadFace[1]]
+      + points_[quadFace[2]]
+      + points_[quadFace[3]]
+    );
+
+    // Add normals from four sub-triangles.
+    v = points_[quadFace[1]] - points_[quadFace[0]];
+    w = centrePoint - points_[quadFace[1]];
+
+    n += 0.5 * (v ^ w);
+
+    v = points_[quadFace[2]] - points_[quadFace[1]];
+    w = centrePoint - points_[quadFace[2]];
+
+    n += 0.5 * (v ^ w);
+
+    v = points_[quadFace[3]] - points_[quadFace[2]];
+    w = centrePoint - points_[quadFace[3]];
+
+    n += 0.5 * (v ^ w);
+
+    v = points_[quadFace[0]] - points_[quadFace[3]];
+    w = centrePoint - points_[quadFace[0]];
+
+    n += 0.5 * (v ^ w);
+
+    return n;
 }
 
 // Find the normal of a triangle face.
@@ -278,10 +345,10 @@ inline label dynamicTopoFvMesh::tetVolumeSign
 
 // Return a reference to the entity mutexes.
 // The index 'entity' ranges from 0 to 3 for point/edge/face/cell.
-inline Mutex& dynamicTopoFvMesh::entityMutex
+inline const Mutex& dynamicTopoFvMesh::entityMutex
 (
     const label entity
-)
+) const
 {
     return entityMutex_[entity];
 }
@@ -355,15 +422,29 @@ inline scalar dynamicTopoFvMesh::boundaryLengthScale
 // Return length-scale at an face-location in the mesh [2D]
 inline scalar dynamicTopoFvMesh::faceLengthScale
 (
-  const label fIndex
+    const label fIndex
 ) const
 {
     // Reset the scale first
     scalar scale = 0.0;
 
+    label facePatch = whichPatch(fIndex);
+
     // Determine whether the face is internal
-    if (whichPatch(fIndex) < 0)
+    if (facePatch < 0)
     {
+#       ifdef FULLDEBUG
+        // Check whether neighbour is valid
+        if (neighbour_[fIndex] == -1)
+        {
+            FatalErrorIn("dynamicTopoFvMesh::faceLengthScale()")
+                << "Face: " << fIndex
+                << ": " << faces_[fIndex]
+                << " is not internal."
+                << abort(FatalError);
+        }
+#       endif
+
         scale =
         (
             0.5 *
@@ -376,6 +457,60 @@ inline scalar dynamicTopoFvMesh::faceLengthScale
     else
     {
         scale = boundaryLengthScale(fIndex);
+
+        // If proximity-based refinement is requested,
+        // test the proximity to the nearest non-neighbour.
+        if (proximityPatches_.found(boundaryMesh()[facePatch].name()))
+        {
+            label proximityFace = -1;
+
+            // Perform a proximity-check.
+            scalar distance = testProximity(fIndex, proximityFace);
+
+            if (debug > 3 && self() == 0)
+            {
+                if
+                (
+                    (proximityFace > -1) &&
+                    ((distance / 5.0) < scale)
+                )
+                {
+                    Info << " Closest opposing face detected for face: " << nl
+                         << '\t' << fIndex
+                         << " :: " << faces_[fIndex]
+                         << " was face:\n"
+                         << '\t' << proximityFace
+                         << " :: " << polyMesh::faces()[proximityFace] << nl
+                         << " with distance: " << distance
+                         << endl;
+                }
+            }
+
+            scale = Foam::min(scale, ((distance / 5.0) - gTol_)/ratioMax_);
+        }
+
+        // If curvature-based refinement is requested,
+        // test the variation in face-normal directions.
+        if (curvaturePatches_.found(boundaryMesh()[facePatch].name()))
+        {
+            notImplemented("curvatureRefinement2D");
+        }
+
+        // Check if we're limited by min/max lengthScales
+        scale = Foam::max(scale, minLengthScale_);
+        scale = Foam::min(scale, maxLengthScale_);
+    }
+
+    if (coupledModification_)
+    {
+        // Check if this is a coupled processor face.
+        // - Locally coupled faces use length-scale information only
+        //   from the master patch.
+        if (processorCoupledEdge(fIndex))
+        {
+            // Check patchSubMeshes for length-scale info.
+
+        }
     }
 
     return scale;
@@ -385,7 +520,7 @@ inline scalar dynamicTopoFvMesh::faceLengthScale
 inline scalar dynamicTopoFvMesh::edgeLengthScale
 (
     const label eIndex
-)
+) const
 {
     // Reset the scale first
     scalar scale = 0.0;
@@ -574,7 +709,7 @@ inline bool dynamicTopoFvMesh::checkFaceCollapse
 inline bool dynamicTopoFvMesh::checkEdgeBisection
 (
     const label eIndex
-)
+) const
 {
     // Measure the edge-length
     scalar length = edgeLength(eIndex);
@@ -596,7 +731,7 @@ inline bool dynamicTopoFvMesh::checkEdgeBisection
 inline bool dynamicTopoFvMesh::checkEdgeCollapse
 (
     const label eIndex
-)
+) const
 {
     // Measure the edge-length
     scalar length = edgeLength(eIndex);
@@ -689,8 +824,8 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
             {
                 if
                 (
-                   !entitiesToAvoid_.found(edgeI) &&
-                    edgeFaces_[edgeI].size()
+                    (findIndex(entitiesToAvoid_, edgeI) == -1) &&
+                    (edgeFaces_[edgeI].size())
                 )
                 {
                     edgeStack_[tID].insert(edgeI);
@@ -721,8 +856,8 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
             {
                 if
                 (
-                   !entitiesToAvoid_.found(edgeI) &&
-                   edgeFaces_[edgeI].size()
+                    (findIndex(entitiesToAvoid_, edgeI) == -1) &&
+                    (edgeFaces_[edgeI].size())
                 )
                 {
                     edgeStack_[0].insert(edgeI);
@@ -737,6 +872,52 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
                 {
                     edgeStack_[0].insert(edgeI);
                 }
+            }
+        }
+    }
+}
+
+// Initialize the coupled face-stack
+inline void dynamicTopoFvMesh::initCoupledFaceStack()
+{
+    // Clear existing lists/stacks.
+    faceStack(0).clear();
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Loop though boundary faces and check whether
+    // they belong to master/slave coupled patches.
+    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+    {
+        label pIndex = whichPatch(faceI);
+
+        if (pIndex == -1)
+        {
+            continue;
+        }
+
+        // Check if this is a locally coupled master face.
+        if (patchCoupling_.found(pIndex))
+        {
+            // Add this to the coupled modification stack.
+            faceStack(0).push(faceI);
+        }
+
+        // Check if this is a processor patch.
+        if (isA<processorPolyPatch>(boundary[pIndex]))
+        {
+            // Check if this is a master processor patch.
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[pIndex])
+            );
+
+            label neiProcID = pp.neighbProcNo();
+
+            if (neiProcID > Pstream::myProcNo())
+            {
+                // Add this to the coupled modification stack.
+                faceStack(0).push(faceI);
             }
         }
     }
@@ -802,75 +983,57 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
 // by regular topo-changes.
 inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
 {
-    if (!twoDMesh_)
+    entitiesToAvoid_.clear();
+
+    // Build a set of entities to avoid during regular modifications,
+    // and build a master stack for coupled modifications.
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Determine locally coupled slave patches.
+    labelHashSet localSlavePatches;
+
+    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
     {
-        entitiesToAvoid_.clear();
+        localSlavePatches.insert(patchI().slaveIndex());
+    }
 
-        // Build a set of entities to avoid during regular modifications,
-        // and build a master stack for coupled modifications.
-        const polyBoundaryMesh& boundary = boundaryMesh();
+    // Loop through boundary faces and check whether
+    // they belong to master/slave coupled patches.
+    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+    {
+        label pIndex = whichPatch(faceI);
 
-        // Determine locally coupled slave patches.
-        labelHashSet localSlavePatches;
-
-        forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+        if (pIndex == -1)
         {
-            localSlavePatches.insert(patchI().slaveIndex());
+            continue;
         }
 
-        // Loop through boundary faces and check whether
-        // they belong to master/slave coupled patches.
-        for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+        // Check if this is a coupled face.
+        if
+        (
+            patchCoupling_.found(pIndex) ||
+            localSlavePatches.found(pIndex) ||
+            isA<processorPolyPatch>(boundary[pIndex])
+        )
         {
-            label pIndex = whichPatch(faceI);
-
-            if (pIndex == -1)
+            if (twoDMesh_)
             {
-                continue;
-            }
-
-            // Check if this is a locally coupled master face.
-            if (patchCoupling_.found(pIndex))
-            {
-                const labelList& mfEdges = faceEdges_[faceI];
-
-                forAll(mfEdges, edgeI)
+                if (findIndex(entitiesToAvoid_, faceI) == -1)
                 {
-                    if (!entitiesToAvoid_.found(mfEdges[edgeI]))
-                    {
-                        // Avoid this edge during regular modification.
-                        entitiesToAvoid_.insert(mfEdges[edgeI]);
-                    }
+                    // Avoid this face during regular modification.
+                    entitiesToAvoid_.append(faceI);
                 }
             }
-
-            // Check if this is a locally coupled slave face.
-            if (localSlavePatches.found(pIndex))
+            else
             {
-                const labelList& mfEdges = faceEdges_[faceI];
+                const labelList& fEdges = faceEdges_[faceI];
 
-                forAll(mfEdges, edgeI)
+                forAll(fEdges, edgeI)
                 {
-                    if (!entitiesToAvoid_.found(mfEdges[edgeI]))
+                    if (findIndex(entitiesToAvoid_, fEdges[edgeI]) == -1)
                     {
                         // Avoid this edge during regular modification.
-                        entitiesToAvoid_.insert(mfEdges[edgeI]);
-                    }
-                }
-            }
-
-            // Check if this is a processor patch.
-            if (isA<processorPolyPatch>(boundary[pIndex]))
-            {
-                const labelList& mfEdges = faceEdges_[faceI];
-
-                // Add to the stack.
-                forAll(mfEdges, edgeI)
-                {
-                    if (!entitiesToAvoid_.found(mfEdges[edgeI]))
-                    {
-                        // Avoid this edge during regular modification.
-                        entitiesToAvoid_.insert(mfEdges[edgeI]);
+                        entitiesToAvoid_.append(fEdges[edgeI]);
                     }
                 }
             }
@@ -892,6 +1055,30 @@ inline bool dynamicTopoFvMesh::isCoupledMaster
     return locallyCoupledEdge(eIndex);
 }
 
+// Set coupled modification
+inline void dynamicTopoFvMesh::setCoupledModification() const
+{
+    coupledModification_ = true;
+}
+
+// Unset coupled modification
+inline void dynamicTopoFvMesh::unsetCoupledModification() const
+{
+    coupledModification_ = false;
+}
+
+// Set slave modification
+inline void dynamicTopoFvMesh::setSlaveModification() const
+{
+    slaveModification_ = true;
+}
+
+// Unset slave modification
+inline void dynamicTopoFvMesh::unsetSlaveModification() const
+{
+    slaveModification_ = false;
+}
+
 // Initialize face-stacks
 inline void dynamicTopoFvMesh::initFaceStacks()
 {
@@ -904,23 +1091,61 @@ inline void dynamicTopoFvMesh::initFaceStacks()
     {
         label tID = 1;
 
-        forAll(faces_, faceI)
+        // For coupled meshes, avoid certain edges.
+        if (patchCoupling_.size() || procIndices_.size())
         {
-            if (faces_[faceI].size())
+            forAll(faces_, faceI)
             {
-                faceStack_[tID].insert(faceI);
+                if
+                (
+                    (findIndex(entitiesToAvoid_, faceI) == -1) &&
+                    (faces_[faceI].size() == 4)
+                )
+                {
+                    faceStack_[tID].insert(faceI);
 
-                tID = (tID == faceStack_.size() - 1) ? 1 : tID + 1;
+                    tID = (tID == faceStack_.size() - 1) ? 1 : tID + 1;
+                }
+            }
+        }
+        else
+        {
+            forAll(faces_, faceI)
+            {
+                if (faces_[faceI].size() == 4)
+                {
+                    faceStack_[tID].insert(faceI);
+
+                    tID = (tID == faceStack_.size() - 1) ? 1 : tID + 1;
+                }
             }
         }
     }
     else
     {
-        forAll(faces_, faceI)
+        // For coupled meshes, avoid certain edges.
+        if (patchCoupling_.size() || procIndices_.size())
         {
-            if (faces_[faceI].size())
+            forAll(faces_, faceI)
             {
-                faceStack_[0].insert(faceI);
+                if
+                (
+                    (findIndex(entitiesToAvoid_, faceI) == -1) &&
+                    (faces_[faceI].size() == 4)
+                )
+                {
+                    faceStack_[0].insert(faceI);
+                }
+            }
+        }
+        else
+        {
+            forAll(faces_, faceI)
+            {
+                if (faces_[faceI].size() == 4)
+                {
+                    faceStack_[0].insert(faceI);
+                }
             }
         }
     }
@@ -1204,7 +1429,7 @@ inline void dynamicTopoFvMesh::sizeDownList
 inline scalar dynamicTopoFvMesh::computeMinQuality
 (
     const label eIndex
-)
+) const
 {
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;
@@ -1260,7 +1485,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             label slaveIndex = -1;
 
             // Determine the slave index.
-            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
                 if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
@@ -1294,7 +1519,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             // Write out faces and cells for post processing.
             labelHashSet iFaces, iCells, bFaces;
 
-            labelList& eFaces = edgeFaces_[eIndex];
+            const labelList& eFaces = edgeFaces_[eIndex];
 
             forAll(eFaces, faceI)
             {
@@ -1353,7 +1578,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
 inline scalar dynamicTopoFvMesh::tetQuality
 (
     const label cIndex
-)
+) const
 {
     const cell& curCell = cells_[cIndex];
 
@@ -1409,6 +1634,56 @@ inline scalar dynamicTopoFvMesh::tetQuality
         << abort(FatalError);
 
     return 0.0;
+}
+
+// Check whether the given face should not be bisected/collapsed
+inline bool dynamicTopoFvMesh::checkFaceModification
+(
+    const label fIndex
+) const
+{
+    // Internal faces don't count
+    label facePatch = -1;
+
+    if ((facePatch = whichPatch(fIndex)) < 0)
+    {
+        return false;
+    }
+    else
+    {
+        // Check whether this face shouldn't be modified
+        if (findIndex(noModPatchIDs_, facePatch) > -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Check whether the given edge should not be bisected/collapsed
+inline bool dynamicTopoFvMesh::checkEdgeModification
+(
+    const label eIndex
+) const
+{
+    // Internal edges don't count
+    label edgePatch = -1;
+
+    if ((edgePatch = whichEdgePatch(eIndex)) < 0)
+    {
+        return false;
+    }
+    else
+    {
+        // Check whether this edge shouldn't be modified
+        if (findIndex(noModPatchIDs_, edgePatch) > -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // Method to determine whether the master face is locally coupled
