@@ -306,7 +306,14 @@ inline void threadHandler<T>::unsetPredicate
 
 // Return the ID
 template<class T>
-inline pthread_t& threadHandler<T>::ID()
+inline void threadHandler<T>::setID(const pthread_t& pt)
+{
+    pthreadID_ = pt;
+}
+
+// Return the ID
+template<class T>
+inline pthread_t threadHandler<T>::ID() const
 {
     return pthreadID_;
 }

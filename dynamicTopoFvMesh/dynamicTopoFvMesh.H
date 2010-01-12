@@ -303,7 +303,7 @@ class dynamicTopoFvMesh
                 void setMesh(label index, dynamicTopoFvMesh* mesh);
 
                 // Return the slave index
-                label slaveIndex();
+                label slaveIndex() const;
 
                 // Access to entity sizes
                 FixedList<label,6>& nEntities();
@@ -314,8 +314,8 @@ class dynamicTopoFvMesh
                 Map<label>& reverseEntityMap(const label eType);
 
                 // Master-slave mapping
-                label findSlaveIndex(const label Index);
-                label findMasterIndex(const label Index);
+                label findSlaveIndex(const label Index) const;
+                label findMasterIndex(const label Index) const;
 
                 // Master/slave entries
                 void mapSlave(const label master, const label slave);
@@ -375,7 +375,7 @@ class dynamicTopoFvMesh
         void operator=(const dynamicTopoFvMesh&);
 
         // Perform a Delaunay test on an internal face
-        bool testDelaunay(const label fIndex);
+        bool testDelaunay(const label fIndex) const;
 
         // Typedef for tetrahedral metrics
         typedef scalar (*tetMetricReturnType)
@@ -390,13 +390,13 @@ class dynamicTopoFvMesh
         tetMetricReturnType tetMetric_;
 
         // Obtain the tangent-to-edge vector
-        inline vector tangentToEdge(const label eIndex);
+        inline vector tangentToEdge(const label eIndex) const;
 
         // Find the circumcenter of three points
-        inline point circumCenter(const label fIndex);
+        inline point circumCenter(const label fIndex) const;
 
         // Find the center of a triangle face
-        inline point triFaceCenter(const label fIndex);
+        inline point triFaceCenter(const label fIndex) const;
 
         // Find the area of a triangle face.
         inline scalar triFaceArea(const face& triFace) const;
@@ -405,13 +405,17 @@ class dynamicTopoFvMesh
         inline vector triFaceNormal(const face& triFace) const;
 
         // Given a face and cell index, find the apex point for a tet cell.
-        inline label tetApexPoint(const label cIndex, const label fIndex);
+        inline label tetApexPoint
+        (
+            const label cIndex,
+            const label fIndex
+        ) const;
 
         // Given a cell index, find the centroid of a tet cell.
-        inline vector tetCellCenter(const label cIndex);
+        inline vector tetCellCenter(const label cIndex) const;
 
         // Compare two triangular faces
-        inline label compare(const face& a, const face& b);
+        inline label compare(const face& a, const face& b) const;
 
         // Find the volume of a tetrahedron.
         inline scalar tetVolume
@@ -420,7 +424,7 @@ class dynamicTopoFvMesh
             const point& b,
             const point& c,
             const point& d
-        );
+        ) const;
 
         // Find the volume sign of a tetrahedron
         inline label tetVolumeSign
@@ -430,7 +434,7 @@ class dynamicTopoFvMesh
             const point& c,
             const point& d,
             const scalar tolerance
-        );
+        ) const;
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();
@@ -451,26 +455,26 @@ class dynamicTopoFvMesh
         inline Mutex& entityMutex(const label entity);
 
         // Given a boundary quad face, return a boundary triangular face.
-        label getTriBoundaryFace(const label fIndex);
+        label getTriBoundaryFace(const label fIndex) const;
 
         // Given a boundary face, pick out a boundary edge that
         // contains a triangular face.
-        label getTriBoundaryEdge(const label fIndex);
+        label getTriBoundaryEdge(const label fIndex) const;
 
         // Return the appropriate length-scale for boundary face
-        inline scalar boundaryLengthScale(const label fIndex);
+        inline scalar boundaryLengthScale(const label fIndex) const;
 
         // Return length-scale at an face-location in the mesh [2D]
-        inline scalar faceLengthScale(const label fIndex);
+        inline scalar faceLengthScale(const label fIndex) const;
 
         // Return length-scale at an edge-location in the mesh [3D]
         inline scalar edgeLengthScale(const label eIndex);
 
         // Check for face bisection
-        inline bool checkFaceBisection(const label fIndex);
+        inline bool checkFaceBisection(const label fIndex) const;
 
         // Check for face collapse
-        inline bool checkFaceCollapse(const label fIndex);
+        inline bool checkFaceCollapse(const label fIndex) const;
 
         // Check for edge bisection
         inline bool checkEdgeBisection(const label eIndex);
@@ -479,10 +483,10 @@ class dynamicTopoFvMesh
         inline bool checkEdgeCollapse(const label eIndex);
 
         // Check if a given face is a quad
-        inline bool checkQuadFace(const label fIndex);
+        inline bool checkQuadFace(const label fIndex) const;
 
         // Return the length of an edge
-        inline scalar edgeLength(const label eIndex);
+        inline scalar edgeLength(const label eIndex) const;
 
         // MultiThreaded topology modifier [2D]
         void threadedTopoModifier2D();
@@ -525,7 +529,7 @@ class dynamicTopoFvMesh
         inline stack& edgeStack(const label threadID);
 
         // Return the integer threadID for a given pthread
-        inline label self();
+        inline label self() const;
 
         // Initialize face-stacks
         inline void initFaceStacks();
@@ -537,10 +541,10 @@ class dynamicTopoFvMesh
         inline void initCoupledEdgeStack();
 
         // Method to determine the boundary patch index for a given face
-        inline label whichPatch(const label index);
+        inline label whichPatch(const label index) const;
 
         // Method to determine the boundary patch index for a given edge
-        inline label whichEdgePatch(const label index);
+        inline label whichEdgePatch(const label index) const;
 
         // Method for the swapping of a quad-face in 2D
         void swapQuadFace
@@ -600,7 +604,7 @@ class dynamicTopoFvMesh
             const label startPoint,
             const label endPoint,
             Map<label>& pi
-        );
+        ) const;
 
         // Utility method to check for invalid face-collapse.
         bool checkCollapse
@@ -799,7 +803,7 @@ class dynamicTopoFvMesh
             labelList& hullFaces,
             labelList& hullCells,
             labelListList& ringEntities
-        );
+        ) const;
 
         // Utility method to build edgePoints for an edge [3D]
         void buildEdgePoints
@@ -815,14 +819,14 @@ class dynamicTopoFvMesh
             const label nEntities,
             const resizableList<InList>& inEntities,
             resizableList<OutList>& outEntities
-        );
+        ) const;
 
         // Utility to check whether points of an edge lie on a boundary
         const FixedList<bool,2>
         checkEdgeBoundary
         (
             const label eIndex
-        );
+        ) const;
 
         // Utility method to compute the minimum quality of a vertex hull
         inline scalar computeMinQuality(const label eIndex);
@@ -832,17 +836,17 @@ class dynamicTopoFvMesh
 
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.
-        scalar computeBisectionQuality(const label eIndex);
+        scalar computeBisectionQuality(const label eIndex) const;
 
         // Utility method to compute the quality of cells
         // around a face after trisection.
-        scalar computeTrisectionQuality(const label fIndex);
+        scalar computeTrisectionQuality(const label fIndex) const;
 
         // Check whether the given edge should not be bisected/collapsed
-        bool checkEdgeModification(const label eIndex);
+        bool checkEdgeModification(const label eIndex) const;
 
         // Check whether the given edge is on a bounding curve
-        bool checkBoundingCurve(const label eIndex);
+        bool checkBoundingCurve(const label eIndex) const;
 
         // Allocate dynamic programming tables
         void initTables
@@ -852,7 +856,7 @@ class dynamicTopoFvMesh
             PtrList<labelListList>& K,
             PtrList<labelListList>& triangulations,
             const label checkIndex = -1
-        );
+        ) const;
 
         // Check triangulation quality for an edge index
         bool checkQuality
@@ -883,7 +887,7 @@ class dynamicTopoFvMesh
             const PtrList<scalarListList>& Q,
             const PtrList<labelListList>& K,
             const label checkIndex = 0
-        );
+        ) const;
 
         // Remove the edge according to the swap sequence
         bool removeEdgeFlips
@@ -903,7 +907,7 @@ class dynamicTopoFvMesh
             const labelListList& K,
             label& numTriangulations,
             labelListList& triangulations
-        );
+        ) const;
 
         // Identify the 3-2 swap from the triangulation sequence
         label identify32Swap
@@ -912,7 +916,7 @@ class dynamicTopoFvMesh
             const labelList& hullVertices,
             const labelListList& triangulations,
             const scalar tolFraction
-        );
+        ) const;
 
         // Routine to check whether the triangulation at the
         // index lies on the boundary of the vertex ring.
@@ -921,7 +925,7 @@ class dynamicTopoFvMesh
             const label index,
             label& isolatedVertex,
             labelListList& triangulations
-        );
+        ) const;
 
         // Routine to perform 2-3 swaps
         const changeMap
@@ -1023,10 +1027,10 @@ class dynamicTopoFvMesh
             const word& name,
             const labelList& cList,
             const label primitiveType = 3
-        );
+        ) const;
 
         // Check the state of connectivity local lists
-        void checkConnectivity(label maxErrors = 0);
+        void checkConnectivity(label maxErrors = 0) const;
 
         // Perform spatial hashing on a set of points
         void spatialHash
@@ -1037,7 +1041,7 @@ class dynamicTopoFvMesh
             const label resolution,
             labelListList& bins,
             label removeIndex = false
-        );
+        ) const;
 
         // Prepare for proximity-based refinement, if necessary
         void prepareProximityPatches();
@@ -1077,45 +1081,45 @@ class dynamicTopoFvMesh
         );
 
         // Parallel send
-        void pWrite(const label toID, const label& data);
+        void pWrite(const label toID, const label& data) const;
 
         // Parallel send (for fixed lists)
         template <class Type, label Size>
-        void pWrite(const label toID, const FixedList<Type,Size>& data);
+        void pWrite(const label toID, const FixedList<Type,Size>& data) const;
 
         // Parallel send (for lists)
         template <class Type>
-        void pWrite(const label toID, const List<Type>& data);
+        void pWrite(const label toID, const List<Type>& data) const;
 
         // Parallel receive
-        void pRead(const label fromID, label& data);
+        void pRead(const label fromID, label& data) const;
 
         // Parallel receive (for fixed lists)
         template <class Type, label Size>
-        void pRead(const label fromID, FixedList<Type,Size>& data);
+        void pRead(const label fromID, FixedList<Type,Size>& data) const;
 
         // Parallel receive (for lists)
         template <class Type>
-        void pRead(const label fromID, List<Type>& data);
+        void pRead(const label fromID, List<Type>& data) const;
 
         // Method to determine whether the master face is locally coupled
-        inline bool locallyCoupledFace(const label fIndex);
+        inline bool locallyCoupledFace(const label fIndex) const;
 
         // Method to determine whether the master edge is locally coupled
         inline bool locallyCoupledEdge
         (
             const label eIndex,
             bool checkSlaves = false
-        );
+        ) const;
 
         // Method to determine whether the master face is on a processor
-        inline bool processorCoupledFace(const label fIndex);
+        inline bool processorCoupledFace(const label fIndex) const;
 
         // Method to determine whether the master edge is on a processor
-        inline bool processorCoupledEdge(const label eIndex);
+        inline bool processorCoupledEdge(const label eIndex) const;
 
         // Obtain the maximum coupled patch index
-        inline label getMaxCouplingIndex();
+        inline label getMaxCouplingIndex() const;
 
         // Read optional dictionary parameters
         void readOptionalParameters();
@@ -1124,10 +1128,10 @@ class dynamicTopoFvMesh
         void readRefinementOptions(bool reRead = false);
 
         // Check for legitimacy of patches
-        void checkPatches(const wordList& patchList);
+        void checkPatches(const wordList& patchList) const;
 
         // Does the mesh perform edge refinement?
-        bool edgeRefinement();
+        bool edgeRefinement() const;
 
         // Build the global shared-point list
         void buildGlobalPoints();
@@ -1146,7 +1150,7 @@ class dynamicTopoFvMesh
         inline void buildEntitiesToAvoid();
 
         // Check whether the specified edge is a coupled master edge.
-        inline bool isCoupledMaster(const label eIndex);
+        inline bool isCoupledMaster(const label eIndex) const;
 
         // Handle topology changes for coupled patches
         void handleCoupledPatches();
@@ -1169,7 +1173,7 @@ class dynamicTopoFvMesh
         void buildProcCoupledMaps();
 
         // Wait for buffer transfer completion.
-        void waitForBuffers();
+        void waitForBuffers() const;
 
 public:
 
@@ -1201,7 +1205,7 @@ public:
         virtual void mapFields(const mapPolyMesh& mpm);
 
         // Return the mesh-mapper
-        const mapPolyMesh& meshMap();
+        const mapPolyMesh& meshMap() const;
 
         // Return old cell-centre information (prior to a topology change)
         const vectorField& oldCellCentres() const;

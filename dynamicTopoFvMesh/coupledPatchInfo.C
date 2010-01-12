@@ -57,7 +57,7 @@ void dynamicTopoFvMesh::coupledPatchInfo::setMesh
     subMesh_().meshSubDir = "proc_" + Foam::name(index);
 }
 
-label dynamicTopoFvMesh::coupledPatchInfo::slaveIndex()
+label dynamicTopoFvMesh::coupledPatchInfo::slaveIndex() const
 {
     return slaveIndex_;
 }
@@ -97,7 +97,7 @@ Map<label>& dynamicTopoFvMesh::coupledPatchInfo::reverseEntityMap
 label dynamicTopoFvMesh::coupledPatchInfo::findSlaveIndex
 (
     const label Index
-)
+) const
 {
     if (masterToSlave_.found(Index))
     {
@@ -112,7 +112,7 @@ label dynamicTopoFvMesh::coupledPatchInfo::findSlaveIndex
 label dynamicTopoFvMesh::coupledPatchInfo::findMasterIndex
 (
     const label Index
-)
+) const
 {
     if (slaveToMaster_.found(Index))
     {

@@ -3876,6 +3876,11 @@ void dynamicTopoFvMesh::sliceMesh
         // Obtain centroid of the point cloud
         vector p = S / nPathPoints;
 
+        {
+            // Compute plane normal using cross-products.
+
+        }
+
         // if (debug > 1)
         {
             Info << nl << nl
@@ -4046,7 +4051,7 @@ bool dynamicTopoFvMesh::Dijkstra
     const label startPoint,
     const label endPoint,
     Map<label>& pi
-)
+) const
 {
     bool foundEndPoint = false;
 

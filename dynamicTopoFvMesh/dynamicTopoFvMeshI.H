@@ -37,7 +37,7 @@ namespace Foam
 inline vector dynamicTopoFvMesh::tangentToEdge
 (
     const label eIndex
-)
+) const
 {
     const edge& thisEdge = edges_[eIndex];
 
@@ -48,7 +48,7 @@ inline vector dynamicTopoFvMesh::tangentToEdge
 inline point dynamicTopoFvMesh::circumCenter
 (
     const label fIndex
-)
+) const
 {
     // Obtain references
     const face& thisFace = faces_[fIndex];
@@ -85,7 +85,7 @@ inline point dynamicTopoFvMesh::circumCenter
 inline point dynamicTopoFvMesh::triFaceCenter
 (
     const label fIndex
-)
+) const
 {
     const face& thisFace = faces_[fIndex];
 
@@ -125,7 +125,7 @@ inline label dynamicTopoFvMesh::tetApexPoint
 (
     const label cIndex,
     const label fIndex
-)
+) const
 {
     label apexPoint = -1;
     bool foundApex = false;
@@ -183,7 +183,7 @@ inline label dynamicTopoFvMesh::tetApexPoint
 inline vector dynamicTopoFvMesh::tetCellCenter
 (
     const label cIndex
-)
+) const
 {
     vector center = vector::zero;
 
@@ -205,7 +205,7 @@ inline label dynamicTopoFvMesh::compare
 (
     const face& a,
     const face& b
-)
+) const
 {
     if
     (
@@ -243,7 +243,7 @@ inline scalar dynamicTopoFvMesh::tetVolume
     const point& b,
     const point& c,
     const point& d
-)
+) const
 {
     return (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
 }
@@ -259,7 +259,7 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     const point& c,
     const point& d,
     const scalar tolerance
-)
+) const
 {
     scalar det = (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
 
@@ -290,7 +290,7 @@ inline Mutex& dynamicTopoFvMesh::entityMutex
 inline scalar dynamicTopoFvMesh::boundaryLengthScale
 (
     const label fIndex
-)
+) const
 {
     label bFacePatch = whichPatch(fIndex);
 
@@ -356,7 +356,7 @@ inline scalar dynamicTopoFvMesh::boundaryLengthScale
 inline scalar dynamicTopoFvMesh::faceLengthScale
 (
   const label fIndex
-)
+) const
 {
     // Reset the scale first
     scalar scale = 0.0;
@@ -530,7 +530,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
 inline bool dynamicTopoFvMesh::checkFaceBisection
 (
     const label fIndex
-)
+) const
 {
     // Measure the boundary edge-length of the face in question
     scalar length = edgeLength(getTriBoundaryEdge(fIndex));
@@ -552,7 +552,7 @@ inline bool dynamicTopoFvMesh::checkFaceBisection
 inline bool dynamicTopoFvMesh::checkFaceCollapse
 (
     const label fIndex
-)
+) const
 {
     // Measure the boundary edge-length of the face in question
     scalar length = edgeLength(getTriBoundaryEdge(fIndex));
@@ -615,7 +615,10 @@ inline bool dynamicTopoFvMesh::checkEdgeCollapse
 }
 
 // Check if a given face is a quad
-inline bool dynamicTopoFvMesh::checkQuadFace(const label fIndex)
+inline bool dynamicTopoFvMesh::checkQuadFace
+(
+    const label fIndex
+) const
 {
     return (faces_[fIndex].size() == 4);
 }
@@ -624,7 +627,7 @@ inline bool dynamicTopoFvMesh::checkQuadFace(const label fIndex)
 inline scalar dynamicTopoFvMesh::edgeLength
 (
     const label eIndex
-)
+) const
 {
     const edge& thisEdge = edges_[eIndex];
 
@@ -651,7 +654,7 @@ inline stack& dynamicTopoFvMesh::edgeStack
 
 // Return the integer threadID for a given pthread
 // Return zero for single-threaded operation
-inline label dynamicTopoFvMesh::self()
+inline label dynamicTopoFvMesh::self() const
 {
     if (threader_->multiThreaded())
     {
@@ -879,7 +882,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
 inline bool dynamicTopoFvMesh::isCoupledMaster
 (
     const label eIndex
-)
+) const
 {
     if (!coupledModification_)
     {
@@ -928,7 +931,7 @@ inline void dynamicTopoFvMesh::initFaceStacks()
 inline label dynamicTopoFvMesh::whichPatch
 (
     const label index
-)
+) const
 {
     if (index < nOldInternalFaces_)
     {
@@ -972,14 +975,14 @@ inline label dynamicTopoFvMesh::whichPatch
 inline label dynamicTopoFvMesh::whichEdgePatch
 (
     const label index
-)
+) const
 {
     if (index < nOldInternalEdges_)
     {
         return -1;
     }
 
-    for(label i=0; i<numPatches_; i++)
+    for(label i = 0; i<numPatches_; i++)
     {
         if
         (
@@ -1001,7 +1004,7 @@ inline label dynamicTopoFvMesh::whichEdgePatch
     {
         FatalErrorIn
         (
-            "label dynamicTopoFvMesh::whichEdgePatch(const label& index) const"
+            "label dynamicTopoFvMesh::whichEdgePatch(const label index) const"
         )
             << "Cannot find patch information for edge index: " << index << nl
             << " It appears that edge ordering is"
@@ -1412,7 +1415,7 @@ inline scalar dynamicTopoFvMesh::tetQuality
 inline bool dynamicTopoFvMesh::locallyCoupledFace
 (
     const label fIndex
-)
+) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -1449,7 +1452,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
 (
     const label eIndex,
     bool checkSlaves
-)
+) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -1479,9 +1482,9 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
             if (checkSlaves)
             {
                 // Check on slave patches as well.
-                forAllIter
+                forAllConstIter
                 (
-                    Map<coupledPatchInfo>::iterator,
+                    Map<coupledPatchInfo>,
                     patchCoupling_,
                     iterI
                 )
@@ -1503,7 +1506,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
 inline bool dynamicTopoFvMesh::processorCoupledFace
 (
     const label fIndex
-)
+) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -1532,7 +1535,7 @@ inline bool dynamicTopoFvMesh::processorCoupledFace
 inline bool dynamicTopoFvMesh::processorCoupledEdge
 (
     const label eIndex
-)
+) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -1557,12 +1560,12 @@ inline bool dynamicTopoFvMesh::processorCoupledEdge
 }
 
 // Obtain the maximum coupled patch index
-inline label dynamicTopoFvMesh::getMaxCouplingIndex()
+inline label dynamicTopoFvMesh::getMaxCouplingIndex() const
 {
     // Allocate a size for coupled patches
     label index = -1;
 
-    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+    forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
     {
         index = index > patchI.key() ? index : patchI.key();
     }

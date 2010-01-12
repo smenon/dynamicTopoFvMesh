@@ -334,7 +334,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
 
     // Size-up edgePoints for now, but explicitly construct
     // for each edge later, based on point coupling.
-    edgePoints_.setSize(nEdges_, labelList(0));
+    if (!twoDMesh_)
+    {
+        edgePoints_.setSize(nEdges_, labelList(0));
+    }
 }
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -345,7 +348,7 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Return the mesh-mapper
-const mapPolyMesh& dynamicTopoFvMesh::meshMap()
+const mapPolyMesh& dynamicTopoFvMesh::meshMap() const
 {
     if (mapper_.valid())
     {
@@ -494,7 +497,7 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
 bool dynamicTopoFvMesh::testDelaunay
 (
     const label fIndex
-)
+) const
 {
     bool failed = false;
     label eIndex = -1, pIndex = -1, fLabel = -1;
@@ -522,7 +525,7 @@ bool dynamicTopoFvMesh::testDelaunay
 
         forAll(eFaces, faceI)
         {
-            face& thisFace = faces_[eFaces[faceI]];
+            const face& thisFace = faces_[eFaces[faceI]];
 
             if (thisFace.size() == 3)
             {
@@ -1457,7 +1460,7 @@ void dynamicTopoFvMesh::constructHull
     labelList& hullFaces,
     labelList& hullCells,
     labelListList& ringEntities
-)
+) const
 {
     // [1] hullEdges is an ordered list of edge-labels around eIndex,
     //     but not connected to it.
@@ -1788,7 +1791,7 @@ void dynamicTopoFvMesh::invertConnectivity
     const label nEntities,
     const resizableList<InList>& inEntities,
     resizableList<OutList>& outEntities
-)
+) const
 {
     labelList nInPerOut(nEntities, 0);
 
@@ -1831,7 +1834,7 @@ const FixedList<bool,2>
 dynamicTopoFvMesh::checkEdgeBoundary
 (
     const label eIndex
-)
+) const
 {
     FixedList<bool,2> edgeBoundary(false);
 
@@ -1859,7 +1862,7 @@ dynamicTopoFvMesh::checkEdgeBoundary
 }
 
 // Check whether the given edge should not be bisected/collapsed
-bool dynamicTopoFvMesh::checkEdgeModification(const label eIndex)
+bool dynamicTopoFvMesh::checkEdgeModification(const label eIndex) const
 {
     // Internal edges don't count
     label edgePatch = -1;
@@ -1881,7 +1884,7 @@ bool dynamicTopoFvMesh::checkEdgeModification(const label eIndex)
 }
 
 // Check whether the given edge is on a bounding curve
-bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex)
+bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
 {
     // Internal edges don't count
     label edgePatch = -1;
@@ -1944,7 +1947,7 @@ void dynamicTopoFvMesh::initTables
     PtrList<labelListList>& K,
     PtrList<labelListList>& triangulations,
     const label checkIndex
-)
+) const
 {
     label mMax = maxTetsPerEdge_;
 
@@ -2032,7 +2035,7 @@ bool dynamicTopoFvMesh::checkQuality
             label slaveIndex = -1;
 
             // Loop through masterToSlave and determine the slave index.
-            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
                 if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
@@ -2212,7 +2215,7 @@ void dynamicTopoFvMesh::printTables
     const PtrList<scalarListList>& Q,
     const PtrList<labelListList>& K,
     const label checkIndex
-)
+) const
 {
     Info << "m: " << m[checkIndex] << endl;
 
@@ -2615,7 +2618,7 @@ void dynamicTopoFvMesh::extractTriangulation
     const labelListList& K,
     label& numTriangulations,
     labelListList& triangulations
-)
+) const
 {
     if ( j >= (i+2) )
     {
@@ -2646,7 +2649,7 @@ label dynamicTopoFvMesh::identify32Swap
     const labelList& hullVertices,
     const labelListList& triangulations,
     const scalar tolFraction
-)
+) const
 {
     label m = hullVertices.size();
     scalar tolerance = VSMALL;
@@ -2759,7 +2762,7 @@ bool dynamicTopoFvMesh::boundaryTriangulation
     const label index,
     label& isolatedVertex,
     labelListList& triangulations
-)
+) const
 {
     label first = 0, second = 0, third = 0;
 
@@ -2820,7 +2823,7 @@ void dynamicTopoFvMesh::writeVTK
     const word& name,
     const labelList& cList,
     const label primitiveType
-)
+) const
 {
     label nTotalCells = 0;
     label nPoints = 0, nEdges = 0, nFaces = 0, nCells = 0;
@@ -3235,7 +3238,7 @@ void dynamicTopoFvMesh::writeVTK
 void dynamicTopoFvMesh::checkConnectivity
 (
     label maxErrors
-)
+) const
 {
     label nFailedChecks = 0;
 
@@ -3490,7 +3493,7 @@ void dynamicTopoFvMesh::checkConnectivity
     }
 
     // Check added edge patches to ensure that it is consistent
-    forAllIter(Map<label>, addedEdgePatches_, aepIter)
+    forAllConstIter(Map<label>, addedEdgePatches_, aepIter)
     {
         label key = aepIter.key();
         label patch = aepIter();
@@ -3784,7 +3787,7 @@ void dynamicTopoFvMesh::spatialHash
     const label resolution,
     labelListList& bins,
     label removeIndex
-)
+) const
 {
     label binSize = bins.size(), nD = resolution;
 
@@ -4707,7 +4710,7 @@ void dynamicTopoFvMesh::pWrite
 (
     const label toID,
     const label& data
-)
+) const
 {
     OPstream::write
     (
@@ -4726,7 +4729,7 @@ void dynamicTopoFvMesh::pRead
 (
     const label fromID,
     label& data
-)
+) const
 {
     IPstream::read
     (
@@ -4746,7 +4749,7 @@ void dynamicTopoFvMesh::pWrite
 (
     const label toID,
     const FixedList<Type, Size>& data
-)
+) const
 {
     OPstream::write
     (
@@ -4763,7 +4766,7 @@ void dynamicTopoFvMesh::pRead
 (
     const label fromID,
     FixedList<Type, Size>& data
-)
+) const
 {
     IPstream::read
     (
@@ -4780,7 +4783,7 @@ void dynamicTopoFvMesh::pWrite
 (
     const label toID,
     const List<Type>& data
-)
+) const
 {
     OPstream::write
     (
@@ -4797,7 +4800,7 @@ void dynamicTopoFvMesh::pRead
 (
     const label fromID,
     List<Type>& data
-)
+) const
 {
     IPstream::read
     (
@@ -5084,7 +5087,10 @@ void dynamicTopoFvMesh::readRefinementOptions
                 {
                     if (fixedPatchList[wordI] == freePatchList[wordJ])
                     {
-                        FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions()")
+                        FatalErrorIn
+                        (
+                            "dynamicTopoFvMesh::readRefinementOptions()"
+                        )
                             << " Conflicting fixed/free patches." << nl
                             << " Fixed patch: " << fixedPatchList[wordI] << nl
                             << " Free patch: " << freePatchList[wordJ] << nl
@@ -5188,7 +5194,7 @@ void dynamicTopoFvMesh::readRefinementOptions
 void dynamicTopoFvMesh::checkPatches
 (
     const wordList& patchList
-)
+) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -5220,7 +5226,7 @@ void dynamicTopoFvMesh::checkPatches
 label dynamicTopoFvMesh::getTriBoundaryFace
 (
     const label fIndex
-)
+) const
 {
     const labelList& fEdges = faceEdges_[fIndex];
 
@@ -5256,7 +5262,7 @@ label dynamicTopoFvMesh::getTriBoundaryFace
 label dynamicTopoFvMesh::getTriBoundaryEdge
 (
     const label fIndex
-)
+) const
 {
     const labelList& fEdges = faceEdges_[fIndex];
 
@@ -5571,12 +5577,12 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
 
             if (threadI == 0)
             {
-                handlerPtr_[0].ID() = -1;
+                handlerPtr_[0].setID(-1);
                 handlerPtr_[0].setMaster();
             }
             else
             {
-                handlerPtr_[threadI].ID() = threader_->getID(threadI-1);
+                handlerPtr_[threadI].setID(threader_->getID(threadI-1));
                 handlerPtr_[threadI].setSlave();
             }
         }
@@ -5633,7 +5639,7 @@ const multiThreader& dynamicTopoFvMesh::threader() const
 }
 
 // Does the mesh perform edge refinement?
-bool dynamicTopoFvMesh::edgeRefinement()
+bool dynamicTopoFvMesh::edgeRefinement() const
 {
     return edgeRefinement_;
 }
@@ -6963,7 +6969,7 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
 }
 
 // Wait for buffer transfer completion.
-void dynamicTopoFvMesh::waitForBuffers()
+void dynamicTopoFvMesh::waitForBuffers() const
 {
     if (Pstream::parRun())
     {
@@ -7362,7 +7368,7 @@ bool dynamicTopoFvMesh::checkCollapse
 scalar dynamicTopoFvMesh::computeBisectionQuality
 (
     const label eIndex
-)
+) const
 {
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;
@@ -7433,7 +7439,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             // Write out cells for post processing.
             labelHashSet iCells;
 
-            labelList& eFaces = edgeFaces_[eIndex];
+            const labelList& eFaces = edgeFaces_[eIndex];
 
             forAll(eFaces, faceI)
             {
@@ -7472,7 +7478,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
 scalar dynamicTopoFvMesh::computeTrisectionQuality
 (
     const label fIndex
-)
+) const
 {
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;

@@ -159,8 +159,11 @@ public:
     // Unset the predicate variable
     inline void unsetPredicate(const signalType sType);
 
+    // Set the ID
+    inline void setID(const pthread_t& pt);
+
     // Return the ID
-    inline pthread_t& ID();
+    inline pthread_t ID() const;
 
     // Return an argument pointer at a particular index
     inline void * operator()(const label index);
