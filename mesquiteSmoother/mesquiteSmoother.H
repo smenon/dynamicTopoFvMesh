@@ -83,6 +83,15 @@ protected:
     //- Switch to toggle surface smoothing
     Switch surfaceSmoothing_;
 
+    //- Switch to toggle volume correction
+    Switch volumeCorrection_;
+
+    //- Specify tolerance for volume correction
+    scalar volCorrTolerance_;
+
+    //- Specify max volume correction iterations
+    label volCorrMaxIter_;
+
     // Specify tolerance for the CG solver
     scalar tolerance_;
 
@@ -103,6 +112,9 @@ protected:
 
     //- Reference points
     mutable pointIOField refPoints_;
+
+    //- Original points prior to surface-smoothing
+    mutable pointField origPoints_;
 
     //- The quality metric
     word qMetric_;
@@ -138,6 +150,8 @@ protected:
     vectorField pV_;
     vectorField rV_;
     vectorField wV_;
+
+    scalar oldVolume_;
 
     // Sparse Matrix multiply
     void A(const vectorField& p, vectorField& w);
@@ -184,6 +198,10 @@ protected:
     // Private member function to check for invalid
     // cells and correct if necessary.
     void correctInvalidCells();
+
+    // Private member function to correct for volume changes
+    // from surface smoothing.
+    void correctGlobalVolume();
 
     // Enforce cylindrical constraints for slip-patches
     void enforceCylindricalConstraints();

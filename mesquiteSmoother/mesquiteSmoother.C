@@ -54,6 +54,9 @@ mesquiteSmoother::mesquiteSmoother
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
     surfaceSmoothing_(false),
+    volumeCorrection_(false),
+    volCorrTolerance_(1e-20),
+    volCorrMaxIter_(100),
     tolerance_(1e-4),
     nSweeps_(1),
     surfInterval_(1),
@@ -71,7 +74,8 @@ mesquiteSmoother::mesquiteSmoother
             IOobject::NO_WRITE
         ),
         mesh.points()
-    )
+    ),
+    oldVolume_(0.0)
 {
     // Read options from the dictionary
     readOptions();
@@ -91,6 +95,9 @@ mesquiteSmoother::mesquiteSmoother
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
     surfaceSmoothing_(false),
+    volumeCorrection_(false),
+    volCorrTolerance_(1e-20),
+    volCorrMaxIter_(100),
     tolerance_(1e-4),
     nSweeps_(1),
     surfInterval_(1),
@@ -108,7 +115,8 @@ mesquiteSmoother::mesquiteSmoother
             IOobject::NO_WRITE
         ),
         mesh.points()
-    )
+    ),
+    oldVolume_(0.0)
 {
     // Read options from the dictionary
     readOptions();
@@ -159,6 +167,24 @@ void mesquiteSmoother::readOptions()
         if (found("tolerance"))
         {
             tolerance_ = readScalar(lookup("tolerance"));
+        }
+
+        // Check if volume correction is enabled
+        if (found("volumeCorrection"))
+        {
+            volumeCorrection_ = lookup("volumeCorrection");
+        }
+
+        // Check if volume correction tolerance is specified
+        if (found("volCorrTolerance"))
+        {
+            volCorrTolerance_ = readScalar(lookup("volCorrTolerance"));
+        }
+
+        // Check if volume correction maxIter is specified
+        if (found("volCorrMaxIter"))
+        {
+            volCorrMaxIter_ = readLabel(lookup("volCorrMaxIter"));
         }
 
         // Check if multiple sweeps have been requested
@@ -1095,6 +1121,8 @@ void mesquiteSmoother::initArrays()
         pV_.setSize(totalSize, vector::zero);
         rV_.setSize(totalSize, vector::zero);
         wV_.setSize(totalSize, vector::zero);
+
+        origPoints_.setSize(refPoints_.size(), vector::zero);
     }
 }
 
@@ -1311,6 +1339,15 @@ void mesquiteSmoother::smoothSurfaces()
 {
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
+    // Copy refPoints prior to all surface-smoothing sweeps.
+    origPoints_ = refPoints_;
+
+    // Value to be used later in volume error correction
+    if (volumeCorrection_)
+    {
+        oldVolume_ = gSum(mesh().cellVolumes());
+    }
+
     for (label i = 0; i < nSweeps_; i++)
     {
         // Prepare point-normals with updated point positions
@@ -1425,6 +1462,9 @@ void mesquiteSmoother::correctInvalidCells()
     // and compute cell volume.
     const labelListList& pointCells = mesh().pointCells();
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    // Obtain point-positions after smoothing
+    pointField oldField = refPoints_;
 
     DynamicList<label> invCells(50);
 
@@ -1630,25 +1670,253 @@ void mesquiteSmoother::correctInvalidCells()
     lbfgs_free(m_x);
 
     // Perform a final check to ensure everything went okay.
+    bool foundInvalid = false;
+
     forAll(freePointList, pointI)
     {
         const vector& x = refPoints_[freePointList[pointI]];
 
-        bool foundInvalid = checkValidity(x, jPoints[pointI], beta);
+        foundInvalid = checkValidity(x, jPoints[pointI], beta);
 
         if (foundInvalid)
         {
-            FatalErrorIn
-            (
-                "mesquiteSmoother::correctInvalidCells()"
-            )
-                << " Failed to untangle mesh."
-                << abort(FatalError);
+            break;
         }
     }
 
-    Info << "Success." << endl;
+    if (foundInvalid)
+    {
+        WarningIn
+        (
+            "mesquiteSmoother::correctInvalidCells()"
+        )
+            << " Failed to untangle mesh."
+            << endl;
+
+        Info << "Relaxing points to untangle mesh...";
+    }
+    else
+    {
+        Info << "Success." << endl;
+
+        return;
+    }
+
+    // Clear out the invalid cell list, and obtain a new list
+    invCells.clear();
+
+    forAll(pIDs_, patchI)
+    {
+        const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+        forAll(meshPts, pointI)
+        {
+            const labelList& pCells = pointCells[meshPts[pointI]];
+
+            forAll(pCells, cellI)
+            {
+                if (tetVolume(pCells[cellI]) < 0.0)
+                {
+                    // Add this cell to the list
+                    if (findIndex(invCells, pCells[cellI]) == -1)
+                    {
+                        invCells.append(pCells[cellI]);
+                    }
+                }
+            }
+        }
+    }
+
+    bool valid = false;
+    scalar lambda = 2.0;
+    label nAttempts = 0;
+
+    while (!valid)
+    {
+        // Assume as valid to begin with.
+        valid = true;
+
+        // Bisect the relaxation factor.
+        lambda *= 0.5;
+
+        // Update refPoints for the test points
+        refPoints_ =
+        (
+            (lambda * oldField)
+          + ((1.0 - lambda) * origPoints_)
+        );
+
+        forAll(invCells, cellI)
+        {
+            if (tetVolume(invCells[cellI]) < 0.0)
+            {
+                valid = false;
+
+                break;
+            }
+        }
+
+        // Stop further testing if invalid.
+        if (!valid)
+        {
+            break;
+        }
+
+        nAttempts++;
+
+        if (nAttempts > 50)
+        {
+            WarningIn("mesquiteSmoother::correctInvalidCells()")
+                    << " Failed to obtain an untangled mesh." << nl
+                    << " Reverting to original point positions."
+                    << endl;
+
+            refPoints_ = origPoints_;
+
+            break;
+        }
+    }
 }
+
+//  Member function to adjust domain volume back to pre-smoothing value
+//  +/- some tolerance. Uses the bisection method to identify an
+//  approriate magnitude to displace all surface nodes (along point normals)
+//  by some value to correct for volume loss/gain.
+void mesquiteSmoother::correctGlobalVolume()
+{
+    if (!volumeCorrection_)
+    {
+        return;
+    }
+
+    const cellList& allCells = mesh().cells();
+
+    // Obtain point-positions after smoothing
+    pointField oldField = refPoints_;
+
+    scalar lengthScale = mag(mesh().bounds().max());
+    label iterations = 0;
+    scalar magPlus, magMinus;
+
+    // One of the initial bracket guesses will always be zero
+    scalar magVal = 0;
+    scalar domainVolume = 0;
+
+    forAll(allCells, cellI)
+    {
+        domainVolume += tetVolume(cellI);
+    }
+
+    scalar error = (domainVolume - oldVolume_);
+
+    // Check which way the error is going and
+    // adjust left and right brackets accordingly
+    if (error > 0.0)
+    {
+        magMinus = -1.0*lengthScale;
+        magPlus = 0;
+    }
+    else
+    {
+        magPlus = lengthScale;
+        magMinus = 0;
+    }
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    while (iterations < volCorrMaxIter_)
+    {
+        // Reset previously calculated volume
+        domainVolume = 0;
+
+        forAll(allCells, cellI)
+        {
+            domainVolume += tetVolume(cellI);
+        }
+
+        error = (domainVolume - oldVolume_);
+
+        // Move one bracket side based on sign
+        // of error of last iteration
+        if (error > 0.0)
+        {
+            magPlus = magVal;
+        }
+        else
+        {
+            magMinus = magVal;
+        }
+
+        // Bring points back to old location just after smoothing
+        refPoints_ = oldField;
+
+        if (mag(error) < volCorrTolerance_)
+        {
+            // Final update of refPoints with optimal magnitude
+            forAll(pIDs_, patchI)
+            {
+                const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+                forAll(meshPts,pointI)
+                {
+                    refPoints_[meshPts[pointI]] +=
+                    (
+                        magVal*pNormals_[patchI][pointI]
+                    );
+                }
+            }
+
+            domainVolume = 0;
+
+            forAll(allCells,cellI)
+            {
+                domainVolume += tetVolume(cellI);
+            }
+
+            if (debug)
+            {
+                Info << nl
+                     << "    Volume Correction Iterations: "
+                     << iterations << endl;
+                Info << "    Final Volume Error: "
+                     << error << endl;
+                Info << "    Magnitude of correction vector: "
+                     << magVal << endl;
+            }
+
+            return;
+        }
+
+        // Bisection of updated guesses
+        magVal = 0.5*(magPlus + magMinus);
+
+        // Update refPoints
+        forAll(pIDs_, patchI)
+        {
+            const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+            forAll(meshPts,pointI)
+            {
+                // Move all surface points in the
+                // point normal direction by magVal
+                refPoints_[meshPts[pointI]] +=
+                (
+                    magVal*pNormals_[patchI][pointI]
+                );
+            }
+        }
+
+        iterations++;
+    }
+
+    // Output if loop doesn't exit by meeting error tolerance.
+    WarningIn
+    (
+        "mesquiteSmoother::correctGlobalVolume()"
+    )   << "Maximum volume correction iterations reached. "
+        << endl;
+}
+
 
 // Enforce cylindrical constraints for slip-patches
 void mesquiteSmoother::enforceCylindricalConstraints()
@@ -2053,6 +2321,9 @@ void mesquiteSmoother::solve()
 
         // Check for invalid cells and correct if necessary.
         correctInvalidCells();
+
+        // Correct for volume change due to smoothing
+        correctGlobalVolume();
 
         // Enforce constraints, if necessary
         enforceCylindricalConstraints();
