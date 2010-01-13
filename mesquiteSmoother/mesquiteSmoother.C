@@ -1405,7 +1405,8 @@ void mesquiteSmoother::smoothSurfaces()
 // are in counter-clockwise fashion when viewed from d.
 inline scalar mesquiteSmoother::tetVolume
 (
-    const label cIndex
+    const label cIndex,
+    const pointField& pField
 )
 {
     const cell& cellToCheck = mesh().cells()[cIndex];
@@ -1426,19 +1427,19 @@ inline scalar mesquiteSmoother::tetVolume
             // Compute cell-volume
             if (mesh().faceOwner()[cellToCheck[0]] == cIndex)
             {
-                const point& a = refPoints_[currFace[2]];
-                const point& b = refPoints_[currFace[1]];
-                const point& c = refPoints_[currFace[0]];
-                const point& d = refPoints_[nextFace[pointI]];
+                const point& a = pField[currFace[2]];
+                const point& b = pField[currFace[1]];
+                const point& c = pField[currFace[0]];
+                const point& d = pField[nextFace[pointI]];
 
                 return ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
             }
             else
             {
-                const point& a = refPoints_[currFace[0]];
-                const point& b = refPoints_[currFace[1]];
-                const point& c = refPoints_[currFace[2]];
-                const point& d = refPoints_[nextFace[pointI]];
+                const point& a = pField[currFace[0]];
+                const point& b = pField[currFace[1]];
+                const point& c = pField[currFace[2]];
+                const point& d = pField[nextFace[pointI]];
 
                 return ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
             }
@@ -1464,7 +1465,7 @@ void mesquiteSmoother::correctInvalidCells()
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
     // Obtain point-positions after smoothing
-    pointField oldField = refPoints_;
+    pointField newField = refPoints_;
 
     DynamicList<label> invCells(50);
 
@@ -1478,7 +1479,7 @@ void mesquiteSmoother::correctInvalidCells()
 
             forAll(pCells, cellI)
             {
-                if (tetVolume(pCells[cellI]) < 0.0)
+                if (tetVolume(pCells[cellI], refPoints_) < 0.0)
                 {
                     // Add this cell to the list
                     if (findIndex(invCells, pCells[cellI]) == -1)
@@ -1693,7 +1694,7 @@ void mesquiteSmoother::correctInvalidCells()
             << " Failed to untangle mesh."
             << endl;
 
-        Info << "Relaxing points to untangle mesh...";
+        Info << "Relaxing points to untangle mesh..." << flush;
     }
     else
     {
@@ -1715,7 +1716,7 @@ void mesquiteSmoother::correctInvalidCells()
 
             forAll(pCells, cellI)
             {
-                if (tetVolume(pCells[cellI]) < 0.0)
+                if (tetVolume(pCells[cellI], refPoints_) < 0.0)
                 {
                     // Add this cell to the list
                     if (findIndex(invCells, pCells[cellI]) == -1)
@@ -1728,7 +1729,7 @@ void mesquiteSmoother::correctInvalidCells()
     }
 
     bool valid = false;
-    scalar lambda = 2.0;
+    scalar lambda = 2.0, volFraction = 0.75;
     label nAttempts = 0;
 
     while (!valid)
@@ -1742,13 +1743,20 @@ void mesquiteSmoother::correctInvalidCells()
         // Update refPoints for the test points
         refPoints_ =
         (
-            (lambda * oldField)
+            (lambda * newField)
           + ((1.0 - lambda) * origPoints_)
         );
 
         forAll(invCells, cellI)
         {
-            if (tetVolume(invCells[cellI]) < 0.0)
+            // Compute original volume
+            scalar origVolume = tetVolume(invCells[cellI], origPoints_);
+
+            if
+            (
+                tetVolume(invCells[cellI], refPoints_)
+              < (volFraction*origVolume)
+            )
             {
                 valid = false;
 
@@ -1756,9 +1764,10 @@ void mesquiteSmoother::correctInvalidCells()
             }
         }
 
-        // Stop further testing if invalid.
-        if (!valid)
+        if (valid)
         {
+            Info << "Success." << endl;
+
             break;
         }
 
@@ -1766,6 +1775,8 @@ void mesquiteSmoother::correctInvalidCells()
 
         if (nAttempts > 50)
         {
+            Info << endl;
+
             WarningIn("mesquiteSmoother::correctInvalidCells()")
                     << " Failed to obtain an untangled mesh." << nl
                     << " Reverting to original point positions."
@@ -1804,7 +1815,7 @@ void mesquiteSmoother::correctGlobalVolume()
 
     forAll(allCells, cellI)
     {
-        domainVolume += tetVolume(cellI);
+        domainVolume += tetVolume(cellI, refPoints_);
     }
 
     scalar error = (domainVolume - oldVolume_);
@@ -1831,7 +1842,7 @@ void mesquiteSmoother::correctGlobalVolume()
 
         forAll(allCells, cellI)
         {
-            domainVolume += tetVolume(cellI);
+            domainVolume += tetVolume(cellI, refPoints_);
         }
 
         error = (domainVolume - oldVolume_);
@@ -1870,7 +1881,7 @@ void mesquiteSmoother::correctGlobalVolume()
 
             forAll(allCells,cellI)
             {
-                domainVolume += tetVolume(cellI);
+                domainVolume += tetVolume(cellI, refPoints_);
             }
 
             if (debug)
