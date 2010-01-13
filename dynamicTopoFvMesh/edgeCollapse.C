@@ -36,11 +36,41 @@ namespace Foam
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Method for the collapse of a quad-face in 2D
-void dynamicTopoFvMesh::collapseQuadFace
+// - Returns a changeMap with a type specifying:
+//    -1: Collapse failed since max number of topo-changes was reached.
+//     0: Collapse could not be performed.
+//     1: Collapsed to first node.
+//     2: Collapsed to second node.
+// - overRideCase is used to force a certain collapse configuration.
+//    -1: Use this value to let collapseQuadFace decide a case.
+//     1: Force collapse to first node.
+//     2: Force collapse to second node.
+// - checkOnly performs a feasibility check and returns without modifications.
+const changeMap dynamicTopoFvMesh::collapseQuadFace
 (
-    const label fIndex
+    const label fIndex,
+    label overRideCase,
+    bool checkOnly
 )
 {
+    // Figure out which thread this is...
+    label tIndex = self();
+
+    // Prepare the changeMap
+    changeMap map;
+
+    if
+    (
+        (nModifications_ > maxModifications_)
+     && (maxModifications_ > -1)
+    )
+    {
+        // Reached the max allowable topo-changes.
+        faceStack(tIndex).clear();
+
+        return map;
+    }
+
     // Local variables
     FixedList<bool,2> edgeBoundary(false);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
@@ -68,6 +98,9 @@ void dynamicTopoFvMesh::collapseQuadFace
             {
                 checkEdgeIndex[1] = fEdges[edgeI];
                 checkEdge[1] = thisEdge;
+
+                // Update the map
+                map.firstEdge() = checkEdgeIndex[1];
             }
             else
             if
@@ -78,12 +111,174 @@ void dynamicTopoFvMesh::collapseQuadFace
             {
                 checkEdgeIndex[2] = fEdges[edgeI];
                 checkEdge[2] = thisEdge;
+
+                // Update the map
+                map.secondEdge() = checkEdgeIndex[2];
             }
             else
             {
                 checkEdgeIndex[3] = fEdges[edgeI];
                 checkEdge[3] = thisEdge;
             }
+        }
+    }
+
+    // If coupled modification is set, and this is a
+    // master edge, collapse its slaves first.
+    if (coupledModification_)
+    {
+        // Is this a locally coupled edge?
+        if (locallyCoupledFace(fIndex))
+        {
+            label slaveIndex = -1;
+
+            // Determine the slave index.
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            {
+                if ((slaveIndex = patchI().findSlaveIndex(fIndex)) > -1)
+                {
+                    break;
+                }
+            }
+
+            // Temporarily turn off coupledModification.
+            unsetCoupledModification();
+
+            // First check the slave for collapse feasibility.
+            changeMap slaveMap = collapseQuadFace(slaveIndex, -1, true);
+
+            if (slaveMap.type() > 0)
+            {
+                // Compute edge-centres
+                FixedList<point, 2> mCentres(vector::zero);
+
+                mCentres[0] = 0.5 *
+                (
+                    points_[checkEdge[1].start()]
+                  + points_[checkEdge[1].end()]
+                );
+
+                mCentres[1] = 0.5 *
+                (
+                    points_[checkEdge[2].start()]
+                  + points_[checkEdge[2].end()]
+                );
+
+                FixedList<edge, 2> sEdge(edge(-1, -1));
+                FixedList<point, 2> sCentres(vector::zero);
+
+                sEdge[0] = edges_[slaveMap.firstEdge()];
+                sEdge[1] = edges_[slaveMap.secondEdge()];
+
+                sCentres[0] = 0.5 *
+                (
+                    points_[sEdge[0].start()]
+                  + points_[sEdge[0].end()]
+                );
+
+                sCentres[1] = 0.5 *
+                (
+                    points_[sEdge[1].start()]
+                  + points_[sEdge[1].end()]
+                );
+
+                // Set the overRideCase for this edge
+                changeMap masterMap;
+
+                // Perform a geometric comparison.
+                switch (slaveMap.type())
+                {
+                    case 1:
+
+                        if (mag(mCentres[0] - sCentres[0]) < gTol_)
+                        {
+                            overRideCase = 1;
+                        }
+                        else
+                        if (mag(mCentres[1] - sCentres[0]) < gTol_)
+                        {
+                            overRideCase = 2;
+                        }
+                        else
+                        {
+                            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                                << "Coupled collapse failed." << nl
+                                << "Masters: " << nl
+                                << checkEdgeIndex[1] << ": "
+                                << checkEdge[1] << nl
+                                << checkEdgeIndex[2] << ": "
+                                << checkEdge[2] << nl
+                                << "Slaves: " << nl
+                                << slaveMap.firstEdge() << ": "
+                                << sEdge[0] << nl
+                                << slaveMap.secondEdge() << ": "
+                                << sEdge[1] << nl
+                                << abort(FatalError);
+                        }
+
+                        break;
+
+                    case 2:
+
+                        if (mag(mCentres[1] - sCentres[1]) < gTol_)
+                        {
+                            overRideCase = 2;
+                        }
+                        else
+                        if (mag(mCentres[0] - sCentres[1]) < gTol_)
+                        {
+                            overRideCase = 1;
+                        }
+                        else
+                        {
+                            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                                << "Coupled collapse failed." << nl
+                                << "Masters: " << nl
+                                << checkEdgeIndex[1] << ": "
+                                << checkEdge[1] << nl
+                                << checkEdgeIndex[2] << ": "
+                                << checkEdge[2] << nl
+                                << "Slaves: " << nl
+                                << slaveMap.firstEdge() << ": "
+                                << sEdge[0] << nl
+                                << slaveMap.secondEdge() << ": "
+                                << sEdge[1] << nl
+                                << abort(FatalError);
+                        }
+
+                        break;
+                }
+
+                // Can the overRideCase be used for this edge?
+                masterMap = collapseQuadFace(fIndex, overRideCase, true);
+
+                // Master couldn't perform collapse.
+                if (masterMap.type() <= 0)
+                {
+                    return masterMap;
+                }
+
+                // Collapse the slave.
+                collapseQuadFace(slaveIndex);
+            }
+            else
+            {
+                // Slave couldn't perform collapse.
+                setCoupledModification();
+
+                map.type() = 0;
+
+                return map;
+            }
+
+            // Turn it back on.
+            setCoupledModification();
+        }
+        else
+        if (processorCoupledFace(fIndex))
+        {
+            // Collapse face on the patchSubMesh.
+
         }
     }
 
@@ -271,11 +466,28 @@ void dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Lists for feasibility checks
+    label collapseCase = -1;
     FixedList<label,2> original(-1), replacement(-1), ends(-1);
     FixedList<label,2> faceToKeep(-1), faceToThrow(-1);
     FixedList<label,4> edgeToKeep(-1), edgeToThrow(-1);
 
+    // Set the collapseCase
     if (!edgeBoundary[0] && edgeBoundary[1])
+    {
+        collapseCase = 2;
+    }
+    else
+    {
+        collapseCase = 1;
+    }
+
+    // Perform an override if requested.
+    if (overRideCase != -1)
+    {
+        collapseCase = overRideCase;
+    }
+
+    if (collapseCase == 2)
     {
         original[0] = cv0; original[1] = cv1;
         replacement[0] = cv2; replacement[1] = cv3;
@@ -294,7 +506,15 @@ void dynamicTopoFvMesh::collapseQuadFace
             )
         )
         {
-            return;
+            map.type() = 0;
+            return map;
+        }
+
+        // Are we only performing checks?
+        if (checkOnly)
+        {
+            map.type() = collapseCase;
+            return map;
         }
 
         const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
@@ -549,7 +769,15 @@ void dynamicTopoFvMesh::collapseQuadFace
             )
         )
         {
-            return;
+            map.type() = 0;
+            return map;
+        }
+
+        // Are we only performing checks?
+        if (checkOnly)
+        {
+            map.type() = collapseCase;
+            return map;
         }
 
         const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
@@ -1161,6 +1389,11 @@ void dynamicTopoFvMesh::collapseQuadFace
 
     // Increment the number of modifications
     nModifications_++;
+
+    // Return a succesful collapse
+    map.type() = collapseCase;
+
+    return map;
 }
 
 // Method for the collapse of an edge in 3D
@@ -1233,7 +1466,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
 
             // Temporarily turn off coupledModification
-            coupledModification_ = false;
+            unsetCoupledModification();
 
             // First check the slave for collapse feasibility.
             changeMap slaveMap = collapseEdge(slaveIndex, -1, true);
@@ -1309,7 +1542,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             else
             {
                 // Slave couldn't perform collapse.
-                coupledModification_ = true;
+                setCoupledModification();
 
                 map.type() = 0;
 
@@ -1317,7 +1550,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
 
             // Turn coupledModification back on.
-            coupledModification_ = true;
+            setCoupledModification();
         }
         else
         if (processorCoupledEdge(eIndex))

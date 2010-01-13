@@ -499,7 +499,7 @@ bool dynamicTopoFvMesh::testDelaunay
     const label fIndex
 ) const
 {
-    bool failed = false;
+    bool failed = false, procCouple = false;
     label eIndex = -1, pIndex = -1, fLabel = -1;
     FixedList<bool,2> foundTriFace(false);
     FixedList<FixedList<label,3>,2> triFaces(FixedList<label,3>(-1));
@@ -507,50 +507,63 @@ bool dynamicTopoFvMesh::testDelaunay
     // Boundary faces are discarded.
     if (whichPatch(fIndex) > -1)
     {
-        return failed;
+        procCouple = processorCoupledFace(fIndex);
+
+        if (!procCouple)
+        {
+            return failed;
+        }
     }
 
-    const labelList& fEdges = faceEdges_[fIndex];
-
-    forAll(fEdges, edgeI)
+    if (procCouple)
     {
-        // Break out if both triangular faces are found
-        if (foundTriFace[0] && foundTriFace[1])
+        // Detect faces across processor boundaries.
+
+    }
+    else
+    {
+        const labelList& fEdges = faceEdges_[fIndex];
+
+        forAll(fEdges, edgeI)
         {
-            break;
-        }
-
-        // Obtain edgeFaces for this edge
-        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
-
-        forAll(eFaces, faceI)
-        {
-            const face& thisFace = faces_[eFaces[faceI]];
-
-            if (thisFace.size() == 3)
+            // Break out if both triangular faces are found
+            if (foundTriFace[0] && foundTriFace[1])
             {
-                if (foundTriFace[0])
+                break;
+            }
+
+            // Obtain edgeFaces for this edge
+            const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+            forAll(eFaces, faceI)
+            {
+                const face& thisFace = faces_[eFaces[faceI]];
+
+                if (thisFace.size() == 3)
                 {
-                    // Update the second face.
-                    triFaces[1][0] = thisFace[0];
-                    triFaces[1][1] = thisFace[1];
-                    triFaces[1][2] = thisFace[2];
+                    if (foundTriFace[0])
+                    {
+                        // Update the second face.
+                        triFaces[1][0] = thisFace[0];
+                        triFaces[1][1] = thisFace[1];
+                        triFaces[1][2] = thisFace[2];
 
-                    foundTriFace[1] = true;
+                        foundTriFace[1] = true;
 
-                    // Take this edge
-                    eIndex = fEdges[edgeI];
-                }
-                else
-                {
-                    // Update the first face.
-                    triFaces[0][0] = thisFace[0];
-                    triFaces[0][1] = thisFace[1];
-                    triFaces[0][2] = thisFace[2];
+                        // Take this edge
+                        eIndex = fEdges[edgeI];
+                    }
+                    else
+                    {
+                        // Update the first face.
+                        triFaces[0][0] = thisFace[0];
+                        triFaces[0][1] = thisFace[1];
+                        triFaces[0][2] = thisFace[2];
 
-                    foundTriFace[0] = true;
+                        foundTriFace[0] = true;
 
-                    fLabel = eFaces[faceI];
+                        fLabel = eFaces[faceI];
+                    }
                 }
             }
         }
@@ -559,32 +572,40 @@ bool dynamicTopoFvMesh::testDelaunay
     // Obtain point references for the first face
     point a = points_[triFaces[0][0]];
 
-    point cCenter = circumCenter(fLabel);
+    point cCenter = circumCenter(fLabel), otherPoint = vector::zero;
     scalar rSquared = (a - cCenter)&(a - cCenter);
 
     // Find the isolated point on the second face
-    const edge& e = edges_[eIndex];
-
-    // Check the first point
-    if (triFaces[1][0] != e.start() && triFaces[1][0] != e.end())
+    if (procCouple)
     {
-        pIndex = triFaces[1][0];
-    }
+        // Find the other point across the processor boundary.
 
-    // Check the second point
-    if (triFaces[1][1] != e.start() && triFaces[1][1] != e.end())
+    }
+    else
     {
-        pIndex = triFaces[1][1];
-    }
+        const edge& e = edges_[eIndex];
 
-    // Check the third point
-    if (triFaces[1][2] != e.start() && triFaces[1][2] != e.end())
-    {
-        pIndex = triFaces[1][2];
-    }
+        // Check the first point
+        if (triFaces[1][0] != e.start() && triFaces[1][0] != e.end())
+        {
+            pIndex = triFaces[1][0];
+        }
 
-    // ...and determine whether it lies in this circle
-    point otherPoint = points_[pIndex];
+        // Check the second point
+        if (triFaces[1][1] != e.start() && triFaces[1][1] != e.end())
+        {
+            pIndex = triFaces[1][1];
+        }
+
+        // Check the third point
+        if (triFaces[1][2] != e.start() && triFaces[1][2] != e.end())
+        {
+            pIndex = triFaces[1][2];
+        }
+
+        // ...and determine whether it lies in this circle
+        otherPoint = points_[pIndex];
+    }
 
     if
     (
@@ -2431,8 +2452,8 @@ bool dynamicTopoFvMesh::removeEdgeFlips
             }
 
             // Turn off switch temporarily.
-            coupledModification_ = false;
-            slaveModification_ = true;
+            unsetCoupledModification();
+            setSlaveModification();
 
             // Recursively call for the slave edge.
             bool success =
@@ -2441,8 +2462,8 @@ bool dynamicTopoFvMesh::removeEdgeFlips
             );
 
             // Turn it back on.
-            coupledModification_ = true;
-            slaveModification_ = false;
+            setCoupledModification();
+            unsetSlaveModification();
 
             // Bail out if the slave failed.
             if (!success)
@@ -2868,6 +2889,20 @@ void dynamicTopoFvMesh::writeVTK
 
                 nTotalCells += 3;
             }
+            else
+            if (thisFace.size() == 4)
+            {
+                // Size the list
+                cpList[nCells].setSize(4);
+
+                // Write out in order
+                cpList[nCells][0] = thisFace[0];
+                cpList[nCells][1] = thisFace[1];
+                cpList[nCells][2] = thisFace[2];
+                cpList[nCells][3] = thisFace[3];
+
+                nTotalCells += 4;
+            }
         }
 
         // Are we looking at cells?
@@ -2875,9 +2910,9 @@ void dynamicTopoFvMesh::writeVTK
         {
             const cell& thisCell = cells_[cList[cellI]];
 
-            // Point-ordering for tetrahedra is different
             if (thisCell.size() == 4)
             {
+                // Point-ordering for tetrahedra
                 const face& currFace = faces_[thisCell[0]];
                 const face& nextFace = faces_[thisCell[1]];
 
@@ -2915,6 +2950,126 @@ void dynamicTopoFvMesh::writeVTK
                 }
 
                 nTotalCells += 4;
+            }
+            else
+            if (thisCell.size() == 5)
+            {
+                // Point-ordering for wedge cells
+                label firstTriFace = -1;
+
+                // Size the list
+                cpList[nCells].setSize(6);
+
+                // Figure out one triangle face
+                forAll(thisCell, faceI)
+                {
+                    const face& currFace = faces_[thisCell[faceI]];
+
+                    if (currFace.size() == 3)
+                    {
+                        if (firstTriFace == -1)
+                        {
+                            firstTriFace = thisCell[faceI];
+
+                            // Right-handedness is assumed here.
+                            // Tri-faces are always on the boundary.
+                            cpList[nCells][0] = currFace[0];
+                            cpList[nCells][1] = currFace[1];
+                            cpList[nCells][2] = currFace[2];
+                        }
+                        else
+                        {
+                            // Detect the three other points.
+                            forAll(thisCell, faceJ)
+                            {
+                                const face& nextFace = faces_[thisCell[faceJ]];
+
+                                if (nextFace.size() == 4)
+                                {
+                                    // Search for vertices on currFace
+                                    // in this face.
+                                    label i = -1, p = -1, n = -1;
+
+                                    if ((i=nextFace.which(currFace[0])) != -1)
+                                    {
+                                        p = nextFace.prevLabel(i);
+                                        n = nextFace.nextLabel(i);
+
+                                        if
+                                        (
+                                            p != currFace[1] &&
+                                            p != currFace[2]
+                                        )
+                                        {
+                                            cpList[nCells][3] = p;
+                                        }
+                                        else
+                                        if
+                                        (
+                                            n != currFace[1] &&
+                                            n != currFace[2]
+                                        )
+                                        {
+                                            cpList[nCells][3] = n;
+                                        }
+                                    }
+
+                                    if ((i=nextFace.which(currFace[1])) != -1)
+                                    {
+                                        p = nextFace.prevLabel(i);
+                                        n = nextFace.nextLabel(i);
+
+                                        if
+                                        (
+                                            p != currFace[0] &&
+                                            p != currFace[2]
+                                        )
+                                        {
+                                            cpList[nCells][4] = p;
+                                        }
+                                        else
+                                        if
+                                        (
+                                            n != currFace[0] &&
+                                            n != currFace[2]
+                                        )
+                                        {
+                                            cpList[nCells][4] = n;
+                                        }
+                                    }
+
+                                    if ((i=nextFace.which(currFace[2])) != -1)
+                                    {
+                                        p = nextFace.prevLabel(i);
+                                        n = nextFace.nextLabel(i);
+
+                                        if
+                                        (
+                                            p != currFace[0] &&
+                                            p != currFace[1]
+                                        )
+                                        {
+                                            cpList[nCells][5] = p;
+                                        }
+                                        else
+                                        if
+                                        (
+                                            n != currFace[0] &&
+                                            n != currFace[1]
+                                        )
+                                        {
+                                            cpList[nCells][5] = n;
+                                        }
+                                    }
+                                }
+                            }
+
+                            break;
+                        }
+                    }
+                }
+
+                nTotalCells += 6;
             }
 
             // Add to the list of surface points
@@ -3045,7 +3200,21 @@ void dynamicTopoFvMesh::writeVTK
             file << "5" << nl;
         }
 
-        if (cpList[i].size() == 4)
+        if
+        (
+            (cpList[i].size() == 4) &&
+            (primitiveType == 2)
+        )
+        {
+            // Quad face
+            file << "9" << nl;
+        }
+
+        if
+        (
+            (cpList[i].size() == 4) &&
+            (primitiveType == 3 || primitiveType == 4)
+        )
         {
             // Tetrahedron
             file << "10" << nl;

@@ -1494,14 +1494,14 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             }
 
             // Temporarily turn off coupledModification
-            coupledModification_ = false;
+            unsetCoupledModification();
 
             scalar slaveQuality = computeMinQuality(slaveIndex);
 
             minQuality = Foam::min(slaveQuality, minQuality);
 
             // Turn it back on.
-            coupledModification_ = true;
+            setCoupledModification();
         }
         else
         if (processorCoupledEdge(eIndex))
@@ -1789,7 +1789,7 @@ inline bool dynamicTopoFvMesh::processorCoupledFace
 
     if (patch == -1)
     {
-        FatalErrorIn("dynamicTopoFvMesh::locallyCoupledFace()")
+        FatalErrorIn("dynamicTopoFvMesh::processorCoupledFace()")
             << "Face: " << fIndex
             << " is not on a boundary and therefore, "
             << " cannot possibly be coupled."

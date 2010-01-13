@@ -334,6 +334,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         faces_[fIndex]
     );
 
+    // Add this face to the map.
+    // Although this face isn't technically 'added', it's
+    // required for coupled patch mapping.
+    map.addFace(fIndex);
+
     if (debug > 1)
     {
         Info << "Modified face: " << fIndex

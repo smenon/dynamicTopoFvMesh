@@ -572,9 +572,12 @@ class dynamicTopoFvMesh
         );
 
         // Method for the collapse of a quad-face in 2D
-        void collapseQuadFace
+        const changeMap
+        collapseQuadFace
         (
-            const label fIndex
+            const label fIndex,
+            label overRideCase = -1,
+            bool checkOnly = false
         );
 
         // Method for the bisection of an edge in 3D
