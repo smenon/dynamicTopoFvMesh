@@ -325,17 +325,18 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     const point& b,
     const point& c,
     const point& d,
-    const scalar tolerance
+    const scalar tolerance,
+    scalar& vol
 ) const
 {
-    scalar det = (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
+    vol = (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
 
-    if (mag(det) < tolerance)
+    if (mag(vol) < tolerance)
     {
         return 0;
     }
 
-    if (Foam::sign(det) < 0.0)
+    if (Foam::sign(vol) < 0.0)
     {
         return -1;
     }
@@ -1491,6 +1492,17 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
                 {
                     break;
                 }
+            }
+
+            if (slaveIndex == -1)
+            {
+                FatalErrorIn
+                (
+                    "dynamicTopoFvMesh::computeMinQuality"
+                ) << "Coupled maps were improperly specified." << nl
+                  << " Slave index not found for: " << nl
+                  << " Edge: " << eIndex << nl
+                  << abort(FatalError);
             }
 
             // Temporarily turn off coupledModification

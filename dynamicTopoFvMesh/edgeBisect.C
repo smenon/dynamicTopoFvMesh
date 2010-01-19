@@ -1535,6 +1535,19 @@ const changeMap dynamicTopoFvMesh::bisectEdge
              << ": " << edges_[eIndex]
              << " is to be bisected. " << endl;
 
+        label epIndex = whichEdgePatch(eIndex);
+
+        Info << "Patch: ";
+
+        if (epIndex == -1)
+        {
+            Info << "Internal" << endl;
+        }
+        else
+        {
+            Info << boundaryMesh()[epIndex].name() << endl;
+        }
+
         // Write out VTK files prior to change
         if (debug > 3)
         {
@@ -1592,6 +1605,11 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     // Modify the existing edge
     edges_[eIndex][1] = newPointIndex;
+
+    // Add this edge to the map.
+    // Although this edge isn't technically 'added', it's
+    // required for coupled patch mapping.
+    map.addEdge(eIndex);
 
     // Keep track of added entities
     labelList addedCellIndices(cellHull.size(),-1);
@@ -2127,7 +2145,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         {
             // Since we don't know the corresponding edges on the couple patch,
             // loop through recently added edges and perform a geometric match.
-            FixedList<bool, 3> foundMatch(false);
+            FixedList<bool, 3> foundMatch(false), reqCheck(false);
             FixedList<label, 3> checkList(-1);
             FixedList<point, 3> cCentres(vector::zero);
 
@@ -2135,6 +2153,11 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             label eCounter = 0;
 
             checkList[eCounter] = newEdgeIndex;
+
+            if (patchCoupling_.found(pIndex))
+            {
+                reqCheck[eCounter] = true;
+            }
 
             cCentres[eCounter++] =
             (
@@ -2148,9 +2171,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             // ... and two new boundary edges.
             forAll(addedEdgeIndices, edgeI)
             {
-                if (whichEdgePatch(addedEdgeIndices[edgeI]) != -1)
+                label chIndex = whichEdgePatch(addedEdgeIndices[edgeI]);
+
+                if ((chIndex != -1) && (patchCoupling_.found(chIndex)))
                 {
                     checkList[eCounter] = addedEdgeIndices[edgeI];
+
+                    reqCheck[eCounter] = true;
 
                     cCentres[eCounter++] =
                     (
@@ -2163,12 +2190,23 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 }
             }
 
+            // Mark off un-necessary searches
+            forAll(reqCheck, indexI)
+            {
+                if (!reqCheck[indexI])
+                {
+                    foundMatch[indexI] = true;
+                }
+            }
+
             const labelList aeList = coupleMap.addedEdgeList();
+
+            pointField aCentres(aeList.size(), vector::zero);
 
             forAll(aeList, edgeI)
             {
                 // Get the centre of the edge.
-                vector centre =
+                aCentres[edgeI] =
                 (
                     0.5 *
                     (
@@ -2177,10 +2215,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     )
                 );
 
-                // Compare with all three entries.
-                forAll (checkList, indexI)
+                // Compare with all check entries.
+                forAll(reqCheck, indexI)
                 {
-                    if (mag(cCentres[indexI] - centre) < gTol_)
+                    if (!reqCheck[indexI])
+                    {
+                        continue;
+                    }
+
+                    if (mag(cCentres[indexI] - aCentres[edgeI]) < gTol_)
                     {
                         if (bisectingSlave)
                         {
@@ -2193,6 +2236,14 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             (
                                 aeList[edgeI], checkList[indexI]
                             );
+
+                            if (debug > 2)
+                            {
+                                Info << "Mapping: " << endl;
+                                Info << " Slave: " << checkList[indexI]
+                                     << " Master: " << aeList[edgeI]
+                                     << endl;
+                            }
                         }
                         else
                         {
@@ -2205,6 +2256,14 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             (
                                 aeList[edgeI], checkList[indexI]
                             );
+
+                            if (debug > 2)
+                            {
+                                Info << "Mapping: " << endl;
+                                Info << " Master: " << checkList[indexI]
+                                     << " Slave: " << aeList[edgeI]
+                                     << endl;
+                            }
                         }
 
                         foundMatch[indexI] = true;
@@ -2222,10 +2281,23 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             if (!(foundMatch[0] && foundMatch[1] && foundMatch[2]))
             {
+                forAll(checkList, edgeI)
+                {
+                    Info << "checkList: " << endl;
+                    Info << checkList[edgeI] << ": "
+                         << edges_[checkList[edgeI]]
+                         << endl;
+                }
+
                 FatalErrorIn
                 (
                     "dynamicTopoFvMesh::bisectEdge"
-                ) << "Failed to build coupled maps." << abort(FatalError);
+                ) << "Failed to build coupled maps." << nl
+                  << " foundMatch: " << foundMatch << nl
+                  << " checkCentres: " << cCentres << nl
+                  << " addedEdgeCentres: " << aCentres << nl
+                  << " eCounter: " << eCounter << nl
+                  << abort(FatalError);
             }
         }
         else
@@ -2249,7 +2321,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
         }
 
-        Info << "Vertices: " << vertexHull << endl;
+        Info << "EdgePoints: " << vertexHull << endl;
         Info << "Edges: " << edgeHull << endl;
         Info << "Faces: " << faceHull << endl;
         Info << "Cells: " << cellHull << endl;

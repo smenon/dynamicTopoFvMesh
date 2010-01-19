@@ -1576,6 +1576,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
              << "Edge: " << eIndex
              << ": " << edges_[eIndex]
              << " is to be collapsed. " << endl;
+
+        label epIndex = whichEdgePatch(eIndex);
+
+        Info << "Patch: ";
+
+        if (epIndex == -1)
+        {
+            Info << "Internal" << endl;
+        }
+        else
+        {
+            Info << boundaryMesh()[epIndex].name() << endl;
+        }
     }
 
     // Construct a hull around this edge
@@ -1589,6 +1602,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     );
 
     // Check whether points of the edge lies on a boundary
+    FixedList<label, 2> nBoundCurves(0);
     const FixedList<bool,2> edgeBoundary = checkEdgeBoundary(eIndex);
 
     // Configure the new point-position
@@ -1623,8 +1637,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // Check if either point lies on a bounding curve
         // Used to ensure that collapses happen towards bounding curves.
         // If the edge itself is on a bounding curve, collapse is valid.
-        FixedList<label, 2> nBoundCurves(0);
-
         forAll(edges_[eIndex], pointI)
         {
             const labelList& pEdges = pointEdges_[edges_[eIndex][pointI]];
@@ -2137,6 +2149,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << eIndex << " :: " << edges_[eIndex]
                 << " Patch: " << whichEdgePatch(eIndex)
                 << " edgeBoundary: " << edgeBoundary
+                << " nBoundCurves: " << nBoundCurves
+                << " collapseCase: " << collapseCase
                 << abort(FatalError);
         }
         else
@@ -2153,6 +2167,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << eIndex << " :: " << edges_[eIndex]
                 << " Patch: " << whichEdgePatch(eIndex)
                 << " edgeBoundary: " << edgeBoundary
+                << " nBoundCurves: " << nBoundCurves
                 << " collapseCase: " << collapseCase
                 << abort(FatalError);
         }

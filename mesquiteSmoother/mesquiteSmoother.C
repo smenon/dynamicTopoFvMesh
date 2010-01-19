@@ -58,6 +58,7 @@ mesquiteSmoother::mesquiteSmoother
     volCorrTolerance_(1e-20),
     volCorrMaxIter_(100),
     tolerance_(1e-4),
+    gTol_(1e-10),
     nSweeps_(1),
     surfInterval_(1),
     vtxCoords_(NULL),
@@ -99,6 +100,7 @@ mesquiteSmoother::mesquiteSmoother
     volCorrTolerance_(1e-20),
     volCorrMaxIter_(100),
     tolerance_(1e-4),
+    gTol_(1e-10),
     nSweeps_(1),
     surfInterval_(1),
     vtxCoords_(NULL),
@@ -167,6 +169,12 @@ void mesquiteSmoother::readOptions()
         if (found("tolerance"))
         {
             tolerance_ = readScalar(lookup("tolerance"));
+        }
+
+        // Check if a geometric tolerance has been specified
+        if (found("gTol"))
+        {
+            gTol_ = readScalar(lookup("gTol"));
         }
 
         // Check if volume correction is enabled
@@ -1077,16 +1085,24 @@ void mesquiteSmoother::initArrays()
 
                 forAll(mLabels, pointI)
                 {
+                    bool matched = false;
+                    scalar minDistance = GREAT;
+
                     forAll(sLabels, pointJ)
                     {
-                        if
+                        scalar distance =
                         (
                             mag
                             (
                                 points[mLabels[pointI]]
                               - points[sLabels[pointJ]]
-                            ) < 1e-20
-                        )
+                            )
+                        );
+
+                        minDistance = minDistance < distance
+                                    ? minDistance : distance;
+
+                        if (distance < gTol_)
                         {
                             // Add a map entry
                             masterToSlave_[patchI.key()].insert
@@ -1095,10 +1111,20 @@ void mesquiteSmoother::initArrays()
                                 sLabels[pointJ]
                             );
 
+                            matched = true;
+
                             nMatchedPoints++;
 
                             break;
                         }
+                    }
+
+                    if (!matched)
+                    {
+                        FatalErrorIn("mesquiteSmoother::initArrays()")
+                            << " Failed to match point within a tolerance of: "
+                            << gTol_ << nl << " Missed by: " << minDistance
+                            << abort(FatalError);
                     }
                 }
 
@@ -1107,9 +1133,13 @@ void mesquiteSmoother::initArrays()
                 {
                     FatalErrorIn("mesquiteSmoother::initArrays()")
                         << " Failed to match all points." << nl
+                        << " Master: " << boundary[patchI.key()].name() << nl
+                        << " Slave: " << boundary[patchI()].name() << nl
                         << " Number of points required for match: "
                         << mLabels.size() << nl
-                        << " Number of matched edges: " << nMatchedPoints
+                        << " Number of points on slave patch: "
+                        << sLabels.size() << nl
+                        << " Number of matched points: " << nMatchedPoints
                         << abort(FatalError);
                 }
             }

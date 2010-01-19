@@ -95,6 +95,9 @@ protected:
     // Specify tolerance for the CG solver
     scalar tolerance_;
 
+    // Specify tolerance for geometric matching
+    scalar gTol_;
+
     //- Specify multiple mesh-motion sweeps
     label nSweeps_;
 

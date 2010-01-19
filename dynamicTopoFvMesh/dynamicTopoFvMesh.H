@@ -442,7 +442,8 @@ class dynamicTopoFvMesh
             const point& b,
             const point& c,
             const point& d,
-            const scalar tolerance
+            const scalar tolerance,
+            scalar& vol
         ) const;
 
         // Initialize mesh edges and related connectivity lists
@@ -659,6 +660,22 @@ class dynamicTopoFvMesh
 
         // Remove sliver cells in 3D
         void removeSlivers();
+
+        // Agglomerate tetrahedral cells around a certain cell index
+        void agglomerateTetCells
+        (
+            const label cIndex,
+            DynamicList<label>& aggCells,
+            DynamicList<label>& polyCell,
+            DynamicList<face>& polyCellFaces
+        ) const;
+
+        // Small polyhedron reconnection for sliver removal
+        bool smallPolyhedronReconnection
+        (
+            const scalar minQuality,
+            DynamicList<face>& polyCellFaces
+        );
 
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.

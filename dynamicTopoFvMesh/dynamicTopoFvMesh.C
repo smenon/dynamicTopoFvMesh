@@ -837,7 +837,18 @@ label dynamicTopoFvMesh::insertFace
     {
         Info << "Inserting face: "
              << newFaceIndex << ": "
-             << newFace << endl;
+             << newFace;
+
+        Info << " Patch: ";
+
+        if (patch == -1)
+        {
+            Info << "Internal" << endl;
+        }
+        else
+        {
+            Info << boundaryMesh()[patch].name() << endl;
+        }
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -1118,7 +1129,26 @@ label dynamicTopoFvMesh::insertEdge
     {
         Info << "Inserting edge: "
              << newEdgeIndex << ": "
-             << newEdge << endl;
+             << newEdge;
+
+        Info << " Patch: ";
+
+        if (patch == -1)
+        {
+            Info << "Internal" << endl;
+        }
+        else
+        {
+            Info << boundaryMesh()[patch].name() << endl;
+        }
+
+        if (findIndex(edgePoints, -1) != -1)
+        {
+            FatalErrorIn("dynamicTopoFvMesh::insertEdge()")
+                << " EdgePoints is incorrectly specified." << nl
+                << " edgePoints: " << edgePoints << nl
+                << abort(FatalError);
+        }
     }
 
     // Keep track of added edges in a separate hash-table
@@ -2346,6 +2376,8 @@ bool dynamicTopoFvMesh::removeEdgeFlips
     );
 
     // Check that the triangulation is valid
+    label pIndex = -1;
+
     if (tF == -1)
     {
         // Reset all triangulations and bail out
@@ -2356,12 +2388,12 @@ bool dynamicTopoFvMesh::removeEdgeFlips
         return false;
     }
     else
-    if (whichEdgePatch(eIndex) > -1)
+    if ((pIndex = whichEdgePatch(eIndex)) > -1)
     {
         // Boundary edges may encounter precision issues
         // when trying to identify a 2-2 swap. Ensure that the right
         // decision was made.
-        labelListList& bT = triangulations[checkIndex];
+        const labelListList& bT = triangulations[checkIndex];
 
         // Check if at least two points of the triangulation
         // are on the mesh boundary
@@ -2372,14 +2404,14 @@ bool dynamicTopoFvMesh::removeEdgeFlips
         {
             forAll(bT, indexI)
             {
-                labelList& pEdges =
+                const labelList& pEdges =
                 (
                     pointEdges_[hullVertices[bT[indexI][tF]]]
                 );
 
                 forAll(pEdges, edgeI)
                 {
-                    if (whichEdgePatch(pEdges[edgeI]) > -1)
+                    if (whichEdgePatch(pEdges[edgeI]) == pIndex)
                     {
                         nBdyPoints++;
                         break;
@@ -2402,7 +2434,7 @@ bool dynamicTopoFvMesh::removeEdgeFlips
                 nAttempts++;
             }
 
-            if (nAttempts > 5 || tF == -1)
+            if (nAttempts > 2 || tF == -1)
             {
                 // Reset all triangulations and bail out
                 triangulations[checkIndex][0] = -1;
@@ -2655,6 +2687,7 @@ label dynamicTopoFvMesh::identify32Swap
 
     const edge& edgeToCheck = edges_[eIndex];
     FixedList<label, 3> sign(-2);
+    FixedList<scalar, 3> vol(0.0);
 
     // Relax the tolerance for boundary edges
     if (whichEdgePatch(eIndex) > -1)
@@ -2672,7 +2705,8 @@ label dynamicTopoFvMesh::identify32Swap
                 points_[hullVertices[triangulations[1][i]]],
                 points_[edgeToCheck[1]],
                 points_[edgeToCheck[0]],
-                tolerance
+                tolerance,
+                vol[0]
             )
         );
 
@@ -2684,7 +2718,8 @@ label dynamicTopoFvMesh::identify32Swap
                 points_[hullVertices[triangulations[2][i]]],
                 points_[edgeToCheck[1]],
                 points_[edgeToCheck[0]],
-                tolerance
+                tolerance,
+                vol[1]
             )
         );
 
@@ -2696,13 +2731,15 @@ label dynamicTopoFvMesh::identify32Swap
                 points_[hullVertices[triangulations[0][i]]],
                 points_[edgeToCheck[1]],
                 points_[edgeToCheck[0]],
-                tolerance
+                tolerance,
+                vol[2]
             )
         );
 
         if (debug > 2)
         {
             Info << " tetVolumeSign: " << sign << endl;
+            Info << " tetVolume: " << vol << endl;
         }
 
         // Intersects at edge AC
@@ -5080,6 +5117,12 @@ void dynamicTopoFvMesh::readRefinementOptions
     if (!edgeRefinement_)
     {
         return;
+    }
+
+    // Check if a geometric tolerance has been specified
+    if (dict_.found("gTol") || mandatory_)
+    {
+        gTol_ = readScalar(dict_.lookup("gTol"));
     }
 
     const dictionary& edgeOptionDict =
@@ -8163,6 +8206,40 @@ void dynamicTopoFvMesh::removeSlivers()
             }
         }
 
+        // Small polyhedron reconnection for sliver removal
+        bool useSPR = false;
+
+        if (useSPR)
+        {
+            DynamicList<face> polyCellFaces(25);
+            DynamicList<label> agCells(25), polyCell(25);
+
+            // Agglomerate cells around the sliver for SPR
+            agglomerateTetCells
+            (
+                iter.key(),
+                agCells,
+                polyCell,
+                polyCellFaces
+            );
+
+            // Recursively call the SPR algorithm for the
+            // best possible tetrahedralization
+            bool success =
+            (
+                smallPolyhedronReconnection
+                (
+                    iter(),
+                    polyCellFaces
+                )
+            );
+
+            if (success)
+            {
+                continue;
+            }
+        }
+
         // Identify the sliver type.
         changeMap map = identifySliverType(iter.key());
 
@@ -8317,6 +8394,214 @@ void dynamicTopoFvMesh::removeSlivers()
     {
         coupledModification_ = false;
     }
+}
+
+// Agglomerate tetrahedral cells around a certain cell index
+void dynamicTopoFvMesh::agglomerateTetCells
+(
+    const label cIndex,
+    DynamicList<label>& aggCells,
+    DynamicList<label>& polyCell,
+    DynamicList<face>& polyCellFaces
+) const
+{
+    // First insert the cell itself
+    aggCells.append(cIndex);
+
+    label nAggCells = 1, maxCells = 15;
+
+    while (nAggCells < maxCells)
+    {
+        bool newCellsNotFound = true;
+
+        forAll(aggCells, cellI)
+        {
+            // First loop through all faces of this cell,
+            // and add neighbouring cells
+            const cell& thisCell = cells_[aggCells[cellI]];
+
+            forAll(thisCell, faceI)
+            {
+                label own = owner_[thisCell[faceI]];
+                label nei = neighbour_[thisCell[faceI]];
+
+                if (findIndex(aggCells, own) == -1)
+                {
+                    // Add this cell
+                    aggCells.append(own);
+
+                    newCellsNotFound = false;
+                    nAggCells++;
+                }
+
+                if ((findIndex(aggCells, nei) == -1) && (nei != -1))
+                {
+                    // Add this cell
+                    aggCells.append(nei);
+
+                    newCellsNotFound = false;
+                    nAggCells++;
+                }
+            }
+
+            // Have we achieved the target?
+            if (nAggCells >= maxCells)
+            {
+                break;
+            }
+
+            if (newCellsNotFound)
+            {
+                break;
+            }
+        }
+    }
+
+    // Shrink list to actual size
+    aggCells.shrink();
+
+    if (debug > 2)
+    {
+        writeVTK("aggCells_" + Foam::name(cIndex), aggCells);
+    }
+
+    // Construct a polyhedral cell with the agglomeration.
+    forAll(aggCells, cellI)
+    {
+        const cell& thisCell = cells_[aggCells[cellI]];
+
+        // Check if connected cells are not on the list.
+        // These must be the bounding faces of the polyCell.
+        forAll(thisCell, faceI)
+        {
+            label own = owner_[thisCell[faceI]];
+            label nei = neighbour_[thisCell[faceI]];
+
+            if (findIndex(aggCells, own) == -1)
+            {
+                if (findIndex(polyCell, thisCell[faceI]) == -1)
+                {
+                    polyCell.append(thisCell[faceI]);
+                    polyCellFaces.append(faces_[thisCell[faceI]]);
+                }
+            }
+
+            if (findIndex(aggCells, nei) == -1)
+            {
+                if (findIndex(polyCell, thisCell[faceI]) == -1)
+                {
+                    polyCell.append(thisCell[faceI]);
+                    polyCellFaces.append(faces_[thisCell[faceI]].reverseFace());
+                }
+            }
+        }
+    }
+
+    // Shrink lists to actual size
+    polyCell.shrink();
+    polyCellFaces.shrink();
+
+    if (debug > 2)
+    {
+        writeVTK("polyCell_" + Foam::name(cIndex), polyCell, 2);
+    }
+}
+
+bool dynamicTopoFvMesh::smallPolyhedronReconnection
+(
+    const scalar q0,
+    DynamicList<face>& polyCellFaces
+)
+{
+    scalar qc = q0;
+
+    DynamicList<label> polyPoints(3*polyCellFaces.size());
+
+    forAll(polyCellFaces, faceI)
+    {
+        const face& thisFace = polyCellFaces[faceI];
+
+        if (thisFace.size() == 0)
+        {
+            continue;
+        }
+
+        // Pick this face, and build a candidate
+        // list of points to loop through for
+        // this polyCell
+        polyPoints.clear();
+
+        forAll(polyCellFaces, faceJ)
+        {
+            const face& nextFace = polyCellFaces[faceJ];
+
+            forAll(nextFace, pointJ)
+            {
+                label pIndex = nextFace[pointJ];
+
+                if
+                (
+                    (thisFace.which(pIndex) == -1) &&
+                    (findIndex(polyPoints, pIndex) == -1)
+                )
+                {
+                    polyPoints.append(pIndex);
+                }
+            }
+        }
+
+        if (polyPoints.size() == 1)
+        {
+            // This is the final tet cell.
+            // Compute the quality and bail out.
+            scalar cQuality = (*tetMetric_)
+            (
+                points_[thisFace[0]],
+                points_[thisFace[1]],
+                points_[thisFace[2]],
+                points_[polyPoints[0]]
+            );
+
+            if (cQuality > qc)
+            {
+                qc = cQuality;
+            }
+
+            break;
+        }
+        else
+        {
+            // Loop through all points, and compute quality
+            forAll(polyPoints, pointI)
+            {
+                scalar cQuality = (*tetMetric_)
+                (
+                    points_[thisFace[0]],
+                    points_[thisFace[1]],
+                    points_[thisFace[2]],
+                    points_[polyPoints[pointI]]
+                );
+
+                if (cQuality < qc)
+                {
+                    continue;
+                }
+
+                // Looks like a better quality is available
+                // from this face. Check the sub-mesh as well.
+
+            }
+        }
+    }
+
+    // Look through all accumulated sub-quality values,
+    // and determine whether a better quality was available.
+    if (qc > q0)
+    {
+        return true;
+    }
+
+    return false;
 }
 
 // Update mesh corresponding to the given map
