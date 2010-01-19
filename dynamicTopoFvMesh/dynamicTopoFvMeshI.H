@@ -890,6 +890,12 @@ inline void dynamicTopoFvMesh::initCoupledFaceStack()
     // they belong to master/slave coupled patches.
     for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
     {
+        // Add only valid faces
+        if (!faces_[faceI].size())
+        {
+            continue;
+        }
+
         label pIndex = whichPatch(faceI);
 
         if (pIndex == -1)
@@ -936,6 +942,12 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
     // they belong to master/slave coupled patches.
     for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
     {
+        // Add only valid faces
+        if (!faces_[faceI].size())
+        {
+            continue;
+        }
+
         label pIndex = whichPatch(faceI);
 
         if (pIndex == -1)
@@ -1002,6 +1014,12 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
     // they belong to master/slave coupled patches.
     for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
     {
+        // Add only valid faces
+        if (!faces_[faceI].size())
+        {
+            continue;
+        }
+
         label pIndex = whichPatch(faceI);
 
         if (pIndex == -1)

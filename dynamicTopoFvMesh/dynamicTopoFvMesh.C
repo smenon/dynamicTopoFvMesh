@@ -1937,16 +1937,22 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
     }
 
     // Check if two boundary faces lie on different face-patches
-    label fPatch, firstPatch = -1, secondPatch = -1;
+    FixedList<vector, 2> fNorm;
+    label fPatch, firstPatch = -1, secondPatch = -1, count = 0;
     const labelList& edgeFaces = edgeFaces_[eIndex];
 
     forAll(edgeFaces, faceI)
     {
-        if
-        (
-            (fPatch = whichPatch(edgeFaces[faceI])) > -1
-        )
+        if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
         {
+            // Obtain the normal.
+            fNorm[count] = triFaceNormal(faces_[eFaces[faceI]]);
+
+            // Normalize it.
+            fNorm[count] /= mag(fNorm[count]);
+
+            count++;
+
             if (firstPatch == -1)
             {
                 firstPatch = fPatch;
@@ -1959,6 +1965,15 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
         }
     }
 
+    scalar deviation = (fNorm[0] & fNorm[1]);
+
+    // Check if the curvature is too high
+    if (mag(deviation) < 0.85)
+    {
+        return true;
+    }
+
+    // Check if the edge borders two different patches
     if (firstPatch != secondPatch)
     {
         return true;
@@ -6390,8 +6405,8 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     }
 
     // Set coupled modifications.
-    coupledModification_ = true;
-    slaveModification_ = false;
+    setCoupledModification();
+    unsetSlaveModification();
 
     // Loop through the coupled stack and perform changes.
     if (twoDMesh_)
@@ -6430,8 +6445,8 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     buildEntitiesToAvoid();
 
     // Reset coupled modifications.
-    coupledModification_ = false;
-    slaveModification_ = false;
+    unsetCoupledModification();
+    unsetSlaveModification();
 
     if (debug)
     {
