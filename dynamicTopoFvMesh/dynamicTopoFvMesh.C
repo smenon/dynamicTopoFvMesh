@@ -710,7 +710,8 @@ label dynamicTopoFvMesh::insertCell
 (
     const cell& newCell,
     const scalar lengthScale,
-    const label mappingCell
+    const label mappingCell,
+    const label zoneID
 )
 {
     label newCellIndex = cells_.size();
@@ -769,6 +770,12 @@ label dynamicTopoFvMesh::insertCell
         )
     );
 
+    // Add to the zone if necessary
+    if (zoneID >= 0)
+    {
+        addedCellZones_.insert(newCellIndex, zoneID);
+    }
+
     nCells_++;
 
     return newCellIndex;
@@ -813,6 +820,12 @@ void dynamicTopoFvMesh::removeCell
     {
         cellsFromCells_.erase(cIndex);
     }
+
+    // Check if this cell was added to a zone
+    if (addedCellZones_.found(cIndex))
+    {
+        addedCellZones_.erase(cIndex);
+    }
 }
 
 // Utility method for face-insertion
@@ -821,7 +834,8 @@ label dynamicTopoFvMesh::insertFace
     const label patch,
     const face& newFace,
     const label newOwner,
-    const label newNeighbour
+    const label newNeighbour,
+    const label zoneID
 )
 {
     // Append the specified face to each face-related list.
@@ -874,6 +888,12 @@ label dynamicTopoFvMesh::insertFace
         {
             patchStarts_[i]++;
         }
+    }
+
+    // Add to the zone if necessary
+    if (zoneID >= 0)
+    {
+        addedFaceZones_.insert(newFaceIndex, zoneID);
     }
 
     // Increment the total face count
@@ -1102,6 +1122,12 @@ void dynamicTopoFvMesh::removeFace
         addedFacePatches_.erase(index);
     }
 
+    // Check if this face was added to a zone
+    if (addedFaceZones_.found(index))
+    {
+        addedFaceZones_.erase(index);
+    }
+
     // Decrement the total face-count
     nFaces_--;
 }
@@ -1277,7 +1303,8 @@ void dynamicTopoFvMesh::removeEdge
 label dynamicTopoFvMesh::insertPoint
 (
     const point& newPoint,
-    const labelList& mappingPoints
+    const labelList& mappingPoints,
+    const label zoneID
 )
 {
     // Add a new point to the end of the list
@@ -1384,6 +1411,12 @@ label dynamicTopoFvMesh::insertPoint
         )
     );
 
+    // Add to the zone if necessary
+    if (zoneID >= 0)
+    {
+        addedPointZones_.insert(newPointIndex, zoneID);
+    }
+
     nPoints_++;
 
     return newPointIndex;
@@ -1425,6 +1458,12 @@ void dynamicTopoFvMesh::removePoint
     if (pointsFromPoints_.found(index))
     {
         pointsFromPoints_.erase(index);
+    }
+
+    // Check if this point was added to a zone
+    if (addedPointZones_.found(index))
+    {
+        addedPointZones_.erase(index);
     }
 
     // Decrement the total point-count
@@ -1946,7 +1985,7 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
         if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
         {
             // Obtain the normal.
-            fNorm[count] = triFaceNormal(faces_[eFaces[faceI]]);
+            fNorm[count] = triFaceNormal(faces_[edgeFaces[faceI]]);
 
             // Normalize it.
             fNorm[count] /= mag(fNorm[count]);
@@ -4518,6 +4557,12 @@ void dynamicTopoFvMesh::calculateLengthScale()
     }
 }
 
+// Calculate geometric tolerance for the mesh
+void dynamicTopoFvMesh::calculateGeometricTolerance()
+{
+
+}
+
 // Compute the growth factor of an existing mesh
 scalar dynamicTopoFvMesh::computeGrowthFactor()
 {
@@ -5132,12 +5177,6 @@ void dynamicTopoFvMesh::readRefinementOptions
     if (!edgeRefinement_)
     {
         return;
-    }
-
-    // Check if a geometric tolerance has been specified
-    if (dict_.found("gTol") || mandatory_)
-    {
-        gTol_ = readScalar(dict_.lookup("gTol"));
     }
 
     const dictionary& edgeOptionDict =
@@ -5820,20 +5859,21 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
 
         // Set argument sizes for individual members
 
-        // Points takes only one argument
-        // (One pointField)
-        reOrderPtr_[0].setSize(1);
+        // Points take two arguments
+        // (One pointField and one labelListList)
+        reOrderPtr_[0].setSize(2);
 
         // Edges take three arguments
         // (One edgeList and two labelListLists)
         reOrderPtr_[1].setSize(3);
 
-        // Faces take four arguments
-        // (One faceList, two labelLists, and one labelListList)
-        reOrderPtr_[2].setSize(4);
+        // Faces take five arguments
+        // (One faceList, two labelLists, and two labelListLists)
+        reOrderPtr_[2].setSize(5);
 
-        // Cells do not take any arguments
-        reOrderPtr_[3].setSize(0);
+        // Cells take one argument
+        // (One labelListList)
+        reOrderPtr_[3].setSize(1);
     }
 }
 
@@ -6365,6 +6405,17 @@ void dynamicTopoFvMesh::readCoupledPatches()
                         << abort(FatalError);
             }
         }
+    }
+
+    // Check if a geometric tolerance has been specified.
+    if (dict_.found("gTol") || mandatory_)
+    {
+        gTol_ = readScalar(dict_.lookup("gTol"));
+    }
+    else
+    {
+        // If not, attempt to calculate it from the mesh.
+        calculateGeometricTolerance();
     }
 
     // Initialize entitiesToAvoid to some arbitrary size
@@ -7042,19 +7093,15 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
         forAll(mCentres, indexI)
         {
-#           ifdef FULLDEBUG
             bool matched = false;
             scalar minDistance = GREAT;
-#           endif
 
             forAll(sCentres, indexJ)
             {
                 scalar distance = mag(mCentres[indexI] - sCentres[indexJ]);
 
-#               ifdef FULLDEBUG
                 minDistance = minDistance < distance
                             ? minDistance : distance;
-#               endif
 
                 if (distance < gTol_)
                 {
@@ -7071,9 +7118,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                         mList[indexI]
                     );
 
-#                   ifdef FULLDEBUG
                     matched = true;
-#                   endif
 
                     nMatchedEdges++;
 
@@ -7081,15 +7126,15 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 }
             }
 
-#           ifdef FULLDEBUG
             if (!matched)
             {
                 FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
-                    << " Failed to match edge within a tolerance of: "
+                    << " Failed to match edge: " << mList[indexI]
+                    << ": " << edges_[mList[indexI]]
+                    << " within a tolerance of: "
                     << gTol_ << nl << " Missed by: " << minDistance
                     << abort(FatalError);
             }
-#           endif
         }
 
         // Make sure we were successful.
@@ -8872,7 +8917,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     initCoupledPatches();
 
     // Remove sliver cells first.
-    removeSlivers();
+    // removeSlivers();
 
     // Handle coupled patches.
     handleCoupledPatches();
@@ -9107,6 +9152,11 @@ bool dynamicTopoFvMesh::updateTopology()
     // Apply all pending topology changes, if necessary
     if (topoChangeFlag_)
     {
+        // Obtain references to zones, if any
+        pointZoneMesh& pointZones = polyMesh::pointZones();
+        faceZoneMesh& faceZones = polyMesh::faceZones();
+        cellZoneMesh& cellZones = polyMesh::cellZones();
+
         // Allocate temporary lists for mesh-reset
         pointField points(nPoints_);
         edgeList edges(nEdges_);
@@ -9117,6 +9167,10 @@ bool dynamicTopoFvMesh::updateTopology()
         labelListList edgeFaces(nEdges_);
         labelList oldPatchStarts(oldPatchStarts_);
         labelList oldPatchNMeshPoints(oldPatchNMeshPoints_);
+        labelListList pointZoneMap(pointZones.size());
+        labelListList faceZonePointMap(faceZones.size());
+        labelListList faceZoneFaceMap(faceZones.size());
+        labelListList cellZoneMap(cellZones.size());
 
         // Null temporaries
         List<objectMap> pointsFromPoints(pointsFromPoints_.size());
@@ -9128,11 +9182,15 @@ bool dynamicTopoFvMesh::updateTopology()
         List<objectMap> cellsFromFaces(0);
         List<objectMap> cellsFromCells(cellsFromCells_.size());
         labelHashSet flipFaceFlux(0);
-        labelListList pointZoneMap(0);
-        labelListList faceZonePointMap(0);
-        labelListList faceZoneFaceMap(0);
-        labelListList cellZoneMap(0);
         pointField preMotionPoints(0);
+
+        // Obtain faceZone point maps before reordering
+        List<Map<label> > oldFaceZonePointMaps(faceZones.size());
+
+        forAll(faceZones, fzI)
+        {
+            oldFaceZonePointMaps[fzI] = faceZones[fzI]().meshPointMap();
+        }
 
         // Reorder the mesh and obtain current topological information
         reOrderMesh
@@ -9143,7 +9201,10 @@ bool dynamicTopoFvMesh::updateTopology()
             owner,
             neighbour,
             faceEdges,
-            edgeFaces
+            edgeFaces,
+            pointZoneMap,
+            faceZoneFaceMap,
+            cellZoneMap
         );
 
         // Copy point-mapping information
@@ -9162,12 +9223,12 @@ bool dynamicTopoFvMesh::updateTopology()
             cellsFromCells[indexC++] = cellI();
         }
 
-        // Obtain the patch-point labels for mapping before resetting the mesh
-        labelListList oldMeshPointLabels(numPatches_);
+        // Obtain the patch-point maps before resetting the mesh
+        List<Map<label> > oldPatchPointMaps(numPatches_);
 
-        for(label i = 0; i < numPatches_; i++)
+        forAll(oldPatchPointMaps, patchI)
         {
-            oldMeshPointLabels[i] = boundaryMesh()[i].meshPoints();
+            oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
         }
 
         // Obtain geometry information for mapping as well
@@ -9211,8 +9272,9 @@ bool dynamicTopoFvMesh::updateTopology()
         // Generate mapping for points on boundary patches
         labelListList patchPointMap(numPatches_);
 
-        for(label i = 0; i < numPatches_; i++)
+        for (label i = 0; i < numPatches_; i++)
         {
+            // Obtain new patch mesh points after reset.
             const labelList& meshPointLabels = boundaryMesh()[i].meshPoints();
 
             patchNMeshPoints_[i] = meshPointLabels.size();
@@ -9226,39 +9288,46 @@ bool dynamicTopoFvMesh::updateTopology()
                 // Check if the point existed before...
                 if (oldIndex > -1)
                 {
-                    // Check if the position has been maintained.
-                    // Otherwise, perform a search for the
-                    // old position in the patch
-                    if (oldMeshPointLabels[i][pointI] == oldIndex)
+                    // Look for the old position on this patch.
+                    Map<label>::const_iterator oIter =
+                    (
+                        oldPatchPointMaps[i].find(oldIndex)
+                    );
+
+                    // Add an entry if the point was found
+                    if (oIter != oldPatchPointMaps[i].end())
                     {
-                        // Good. Position is maintained. Make an entry
-                        patchPointMap[i][pointI] = pointI;
+                        patchPointMap[i][pointI] = oIter();
                     }
-                    else
+                }
+            }
+        }
+
+        // Generate mapping for faceZone points
+        forAll(faceZones, fzI)
+        {
+            // Obtain new face zone mesh points after reset.
+            const labelList& meshPointLabels = faceZones[fzI]().meshPoints();
+
+            faceZonePointMap[fzI].setSize(meshPointLabels.size(), -1);
+
+            forAll(meshPointLabels, pointI)
+            {
+                label oldIndex = pointMap_[meshPointLabels[pointI]];
+
+                // Check if the point existed before...
+                if (oldIndex > -1)
+                {
+                    // Look for the old position on this patch.
+                    Map<label>::const_iterator oIter =
+                    (
+                        oldFaceZonePointMaps[fzI].find(oldIndex)
+                    );
+
+                    // Add an entry if the point was found
+                    if (oIter != oldFaceZonePointMaps[fzI].end())
                     {
-                        // Start a linear search for the old position
-                        bool foundOldPos = false;
-
-                        forAll(oldMeshPointLabels[i], pointJ)
-                        {
-                            if (oldMeshPointLabels[i][pointJ] == oldIndex)
-                            {
-                                patchPointMap[i][pointI] = pointJ;
-                                foundOldPos = true;
-                                break;
-                            }
-                        }
-
-                        if (!foundOldPos)
-                        {
-                            // Couldn't find a match. Something's wrong.
-                            FatalErrorIn
-                            (
-                                "dynamicTopoFvMesh::updateTopology()"
-                            )
-                                << "Error in patch point mapping"
-                                << abort(FatalError);
-                        }
+                        faceZonePointMap[fzI][pointI] = oIter();
                     }
                 }
             }
@@ -9341,6 +9410,9 @@ bool dynamicTopoFvMesh::updateTopology()
         // Clear unwanted member data
         addedFacePatches_.clear();
         addedEdgePatches_.clear();
+        addedPointZones_.clear();
+        addedFaceZones_.clear();
+        addedCellZones_.clear();
         cellsFromCells_.clear();
         pointsFromPoints_.clear();
         cellParents_.clear();

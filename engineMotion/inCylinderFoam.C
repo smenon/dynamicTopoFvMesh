@@ -79,13 +79,16 @@ int main(int argc, char *argv[])
         fileName(pistonDict.lookup("profileFile"))
     );
 
+    // Set outOfBounds handling to clamp
+    pistonTable.outOfBounds(interpolationTable<scalar>::CLAMP);
+
     // Read in the piston axis
     vector pistonAxis = pistonDict.lookup("axis");
 
     pistonAxis /= mag(pistonAxis) + VSMALL;
 
     scalar oldStroke = pistonTable(runTime.value()), currentStroke = 0.0;
-    
+
     // Obtain the number of valves in the system
     dictionary valves(engineDict.subDict("valves"));
     wordList valveList = valves.toc();
@@ -109,6 +112,12 @@ int main(int argc, char *argv[])
             (
                 fileName(valveDict.lookup("profileFile"))
             )
+        );
+
+        // Set outOfBounds handling to clamp
+        valveLiftTables[valveI].outOfBounds
+        (
+            interpolationTable<scalar>::CLAMP
         );
 
         // Read in the valve axis
@@ -156,14 +165,14 @@ int main(int argc, char *argv[])
              << ": Current Stroke value: " << currentStroke << endl;
         Info << "Piston " << pistonName[0]
              << ": Old Stroke value: " << oldStroke << endl;
-             
+
         forAll(pistonPoints, index)
         {
             meshPoints[pistonPoints[index]] += pD;
         }
 
         oldStroke = currentStroke;
-        
+
         vector vD = vector::zero;
 
         // Update valves
@@ -195,7 +204,7 @@ int main(int argc, char *argv[])
 
             oldLift[valveI] = currentLift[valveI];
         }
-        
+
         // Obtain the field from the registry
         pointField& refPoints = const_cast<pointField&>
         (

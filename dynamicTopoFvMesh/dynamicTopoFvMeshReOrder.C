@@ -38,6 +38,7 @@ namespace Foam
 void dynamicTopoFvMesh::reOrderPoints
 (
     pointField& points,
+    labelListList& pointZoneMap,
     bool threaded
 )
 {
@@ -125,6 +126,73 @@ void dynamicTopoFvMesh::reOrderPoints
         }
     }
 
+    // Prepare the pointZoneMap
+    pointZoneMesh& pointZones = polyMesh::pointZones();
+
+    labelListList newPointZoneAddr(pointZones.size());
+    labelList nPointsInZone(pointZones.size(), 0);
+
+    // Prepare zone maps.
+    forAll(pointZones, pzI)
+    {
+        // Get the list of old points
+        const labelList& oldAddr = pointZones[pzI];
+
+        label& curNPoints = nPointsInZone[pzI];
+
+        // First count the actual number of points in each zone.
+        forAll(oldAddr, pointI)
+        {
+            // Was this zone point deleted? Don't count it.
+            if (reversePointMap_[oldAddr[pointI]] != -1)
+            {
+                curNPoints++;
+            }
+        }
+
+        // Check for added points as well
+        forAllIter(Map<label>, addedPointZones_, pIter)
+        {
+            if (pIter() == pzI)
+            {
+                curNPoints++;
+            }
+        }
+
+        label pIndex = 0;
+        labelList& newAddr = newPointZoneAddr[pzI];
+
+        // Set the sizes first
+        newAddr.setSize(curNPoints);
+        pointZoneMap[pzI].setSize(curNPoints, -1);
+
+        // Add existing zone points which have been renumbered.
+        forAll(oldAddr, pointI)
+        {
+            if (reversePointMap_[oldAddr[pointI]] != -1)
+            {
+                pointZoneMap[pIndex] = oldAddr[pointI];
+                newAddr[pIndex] = reversePointMap_[oldAddr[pointI]];
+                pIndex++;
+            }
+        }
+
+        // Next, add the newly added zone points.
+        forAllIter(Map<label>, addedPointZones_, pIter)
+        {
+            if (pIter() == pzI)
+            {
+                newAddr[pIndex++] = addedPointRenumbering_[pIter.key()];
+            }
+        }
+
+        // Finally, assign addressing to this zone.
+        pointZones[pzI] = newPointZoneAddr[pzI];
+    }
+
+    // Reset all zones
+    pointZones.updateMesh();
+
     // Update the local copy
     points_.setSize(nPoints_);
 
@@ -159,14 +227,19 @@ void dynamicTopoFvMesh::reOrderPointsThread
     // Signal the calling thread
     thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
 
-    // Recast the first pointer for the reOrderPoints argument
+    // Recast the pointers for the reOrderPoints argument
     pointField& points =
     (
         *(reinterpret_cast<pointField*>(thread->operator()(0)))
     );
 
+    labelListList& pointZoneMap =
+    (
+        *(reinterpret_cast<labelListList*>(thread->operator()(1)))
+    );
+
     // Reorder the points
-    mesh.reOrderPoints(points, true);
+    mesh.reOrderPoints(points, pointZoneMap, true);
 
     // Signal the calling thread
     thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
@@ -524,6 +597,7 @@ void dynamicTopoFvMesh::reOrderFaces
     labelList& owner,
     labelList& neighbour,
     labelListList& faceEdges,
+    labelListList& faceZoneFaceMap,
     bool threaded
 )
 {
@@ -864,6 +938,79 @@ void dynamicTopoFvMesh::reOrderFaces
         }
     }
 
+    // Prepare the faceZoneMap
+    faceZoneMesh& faceZones = polyMesh::faceZones();
+
+    labelListList newFaceZoneAddr(faceZones.size());
+    boolListList faceZoneFlipMap(faceZones.size());
+    labelList nFacesInZone(faceZones.size(), 0);
+
+    // Prepare zone maps.
+    forAll(faceZones, fzI)
+    {
+        // Get the list of old faces
+        const labelList& oldAddr = faceZones[fzI];
+
+        label& curNFaces = nFacesInZone[fzI];
+
+        // First count the actual number of faces in each zone.
+        forAll(oldAddr, faceI)
+        {
+            // Was this zone face deleted? Don't count it.
+            if (reverseFaceMap_[oldAddr[faceI]] != -1)
+            {
+                curNFaces++;
+            }
+        }
+
+        // Check for added faces as well
+        forAllIter(Map<label>, addedFaceZones_, fIter)
+        {
+            if (fIter() == fzI)
+            {
+                curNFaces++;
+            }
+        }
+
+        label fIndex = 0;
+        labelList& newAddr = newFaceZoneAddr[fzI];
+
+        // Set the sizes first
+        newAddr.setSize(curNFaces);
+        faceZoneFaceMap[fzI].setSize(curNFaces, -1);
+        faceZoneFlipMap[fzI].setSize(curNFaces, false);
+
+        // Add existing zone faces which have been renumbered.
+        forAll(oldAddr, faceI)
+        {
+            if (reverseFaceMap_[oldAddr[faceI]] != -1)
+            {
+                faceZoneFaceMap[fIndex] = oldAddr[faceI];
+                newAddr[fIndex] = reverseFaceMap_[oldAddr[faceI]];
+                fIndex++;
+            }
+        }
+
+        // Next, add the newly added zone faces.
+        forAllIter(Map<label>, addedFaceZones_, fIter)
+        {
+            if (fIter() == fzI)
+            {
+                newAddr[fIndex++] = addedFaceRenumbering_[fIter.key()];
+            }
+        }
+
+        // Finally, reset addressing for this zone.
+        faceZones[fzI].resetAddressing
+        (
+            newFaceZoneAddr[fzI],
+            faceZoneFlipMap[fzI]
+        );
+    }
+
+    // Reset all zones
+    faceZones.updateMesh();
+
     // Clear the deleted entity map
     deletedFaces_.clear();
 
@@ -914,15 +1061,32 @@ void dynamicTopoFvMesh::reOrderFacesThread
         *(reinterpret_cast<labelListList*>(thread->operator()(3)))
     );
 
+    labelListList& faceZoneFaceMap =
+    (
+        *(reinterpret_cast<labelListList*>(thread->operator()(4)))
+    );
+
     // Reorder the faces
-    mesh.reOrderFaces(faces, owner, neighbour, faceEdges, true);
+    mesh.reOrderFaces
+    (
+        faces,
+        owner,
+        neighbour,
+        faceEdges,
+        faceZoneFaceMap,
+        true
+    );
 
     // Signal the calling thread
     thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // Reorder & renumber cells with bandwidth reduction after a topology change
-void dynamicTopoFvMesh::reOrderCells(bool threaded)
+void dynamicTopoFvMesh::reOrderCells
+(
+    labelListList& cellZoneMap,
+    bool threaded
+)
 {
     // *** Cell renumbering *** //
     // If cells were deleted during topology change, the numerical order ceases
@@ -1054,6 +1218,17 @@ void dynamicTopoFvMesh::reOrderCells(bool threaded)
         entityMutex_[3].unlock();
     }
 
+    if (debug > 1)
+    {
+        if (sum(visited) != allCells)
+        {
+            FatalErrorIn("dynamicTopoFvMesh::reOrderCells()") << nl
+                    << " Algorithm did not visit every cell in the mesh."
+                    << " Something's messed up." << nl
+                    << abort(FatalError);
+        }
+    }
+
     // Loop through the cellsFromCells list, and renumber the map indices.
     // HashTable keys, however, are not altered.
     forAllIter(Map<objectMap>, cellsFromCells_, cellI)
@@ -1070,16 +1245,72 @@ void dynamicTopoFvMesh::reOrderCells(bool threaded)
         }
     }
 
-    if (debug > 1)
+    // Prepare the cellZoneMap
+    cellZoneMesh& cellZones = polyMesh::cellZones();
+
+    labelListList newCellZoneAddr(cellZones.size());
+    labelList nCellsInZone(cellZones.size(), 0);
+
+    // Prepare zone maps.
+    forAll(cellZones, czI)
     {
-        if (sum(visited) != allCells)
+        // Get the list of old cells
+        const labelList& oldAddr = cellZones[czI];
+
+        label& curNCells = nCellsInZone[czI];
+
+        // First count the actual number of cells in each zone.
+        forAll(oldAddr, cellI)
         {
-            FatalErrorIn("dynamicTopoFvMesh::reOrderCells()") << nl
-                    << " Algorithm did not visit every cell in the mesh."
-                    << " Something's messed up." << nl
-                    << abort(FatalError);
+            // Was this zone cell deleted? Don't count it.
+            if (reverseCellMap_[oldAddr[cellI]] != -1)
+            {
+                curNCells++;
+            }
         }
+
+        // Check for added cells as well
+        forAllIter(Map<label>, addedCellZones_, cIter)
+        {
+            if (cIter() == czI)
+            {
+                curNCells++;
+            }
+        }
+
+        label cIndex = 0;
+        labelList& newAddr = newCellZoneAddr[czI];
+
+        // Set the sizes first
+        newAddr.setSize(curNCells);
+        cellZoneMap[czI].setSize(curNCells, -1);
+
+        // Add existing zone cells which have been renumbered.
+        forAll(oldAddr, cellI)
+        {
+            if (reverseCellMap_[oldAddr[cellI]] != -1)
+            {
+                cellZoneMap[cIndex] = oldAddr[cellI];
+                newAddr[cIndex] = reverseCellMap_[oldAddr[cellI]];
+                cIndex++;
+            }
+        }
+
+        // Next, add the newly added zone cells.
+        forAllIter(Map<label>, addedCellZones_, cIter)
+        {
+            if (cIter() == czI)
+            {
+                newAddr[cIndex++] = addedCellRenumbering_[cIter.key()];
+            }
+        }
+
+        // Finally, assign addressing to this zone.
+        cellZones[czI] = newCellZoneAddr[czI];
     }
+
+    // Reset all zones
+    cellZones.updateMesh();
 
     // Clear the deleted entity map
     deletedCells_.clear();
@@ -1110,8 +1341,14 @@ void dynamicTopoFvMesh::reOrderCellsThread
     // Signal the calling thread
     thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
 
+    // Recast the pointers for the argument
+    labelListList& cellZoneMap =
+    (
+        *(reinterpret_cast<labelListList*>(thread->operator()(0)))
+    );
+
     // Reorder the cells
-    mesh.reOrderCells(true);
+    mesh.reOrderCells(cellZoneMap, true);
 
     // Signal the calling thread
     thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
@@ -1126,7 +1363,10 @@ void dynamicTopoFvMesh::reOrderMesh
     labelList& owner,
     labelList& neighbour,
     labelListList& faceEdges,
-    labelListList& edgeFaces
+    labelListList& edgeFaces,
+    labelListList& pointZoneMap,
+    labelListList& faceZoneFaceMap,
+    labelListList& cellZoneMap
 )
 {
     if (debug)
@@ -1182,19 +1422,22 @@ void dynamicTopoFvMesh::reOrderMesh
             owner,
             neighbour,
             faceEdges,
-            edgeFaces
+            edgeFaces,
+            pointZoneMap,
+            faceZoneFaceMap,
+            cellZoneMap
         );
     }
     else
     {
         // Reorder the points
-        reOrderPoints(points);
+        reOrderPoints(points, pointZoneMap);
 
         // Reorder the cells
-        reOrderCells();
+        reOrderCells(cellZoneMap);
 
         // Reorder the faces
-        reOrderFaces(faces, owner, neighbour, faceEdges);
+        reOrderFaces(faces, owner, neighbour, faceEdges, faceZoneFaceMap);
 
         // Reorder the edges
         reOrderEdges(edges, edgeFaces, faceEdges);
@@ -1210,11 +1453,15 @@ void dynamicTopoFvMesh::threadedMeshReOrdering
     labelList& owner,
     labelList& neighbour,
     labelListList& faceEdges,
-    labelListList& edgeFaces
+    labelListList& edgeFaces,
+    labelListList& pointZoneMap,
+    labelListList& faceZoneFaceMap,
+    labelListList& cellZoneMap
 )
 {
     // Prepare pointers for point reOrdering
     reOrderPtr_[0].set(0, reinterpret_cast<void *>(&points));
+    reOrderPtr_[0].set(1, reinterpret_cast<void *>(&pointZoneMap));
 
     // Prepare pointers for edge reOrdering
     reOrderPtr_[1].set(0, reinterpret_cast<void *>(&edges));
@@ -1226,6 +1473,10 @@ void dynamicTopoFvMesh::threadedMeshReOrdering
     reOrderPtr_[2].set(1, reinterpret_cast<void *>(&owner));
     reOrderPtr_[2].set(2, reinterpret_cast<void *>(&neighbour));
     reOrderPtr_[2].set(3, reinterpret_cast<void *>(&faceEdges));
+    reOrderPtr_[2].set(4, reinterpret_cast<void *>(&faceZoneFaceMap));
+
+    // Prepare pointers for cell reOrdering
+    reOrderPtr_[3].set(0, reinterpret_cast<void *>(&cellZoneMap));
 
     // Lock all slave threads first
     lockSlaveThreads(reOrderSeq_, reOrderPtr_);

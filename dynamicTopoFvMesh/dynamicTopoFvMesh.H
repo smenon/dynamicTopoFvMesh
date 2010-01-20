@@ -172,6 +172,9 @@ class dynamicTopoFvMesh
         Map<label>      addedCellRenumbering_;
         Map<label>      addedFacePatches_;
         Map<label>      addedEdgePatches_;
+        Map<label>      addedPointZones_;
+        Map<label>      addedFaceZones_;
+        Map<label>      addedCellZones_;
         Map<label>      pointParents_;
         Map<label>      cellParents_;
 
@@ -729,7 +732,8 @@ class dynamicTopoFvMesh
         (
             const cell& newCell,
             const scalar lengthScale = -1.0,
-            const label mappingCell = -1
+            const label mappingCell = -1,
+            const label zoneID = -1
         );
 
         // Remove the specified cell from the mesh,
@@ -753,7 +757,8 @@ class dynamicTopoFvMesh
             const label patch,
             const face& newFace,
             const label newOwner,
-            const label newNeighbour
+            const label newNeighbour,
+            const label zoneID = -1
         );
 
         // Remove the specified face from the mesh
@@ -797,7 +802,8 @@ class dynamicTopoFvMesh
         label insertPoint
         (
             const point& newPoint,
-            const labelList& mappingPoints
+            const labelList& mappingPoints,
+            const label zoneID = -1
         );
 
         // Remove the specified point from the mesh
@@ -994,6 +1000,7 @@ class dynamicTopoFvMesh
         void reOrderPoints
         (
             pointField& points,
+            labelListList& pointZoneMap,
             bool threaded = false
         );
 
@@ -1019,6 +1026,7 @@ class dynamicTopoFvMesh
             labelList& owner,
             labelList& neighbour,
             labelListList& faceEdges,
+            labelListList& faceZoneFaceMap,
             bool threaded = false
         );
 
@@ -1027,7 +1035,11 @@ class dynamicTopoFvMesh
 
         // Reorder & renumber cells with bandwidth
         // reduction after a topology change
-        void reOrderCells(bool threaded = false);
+        void reOrderCells
+        (
+            labelListList& cellZoneMap,
+            bool threaded = false
+        );
 
         // Static equivalent for multi-threading
         static void reOrderCellsThread(void *argument);
@@ -1042,7 +1054,10 @@ class dynamicTopoFvMesh
             labelList& owner,
             labelList& neighbour,
             labelListList& faceEdges,
-            labelListList& edgeFaces
+            labelListList& edgeFaces,
+            labelListList& pointZoneMap,
+            labelListList& faceZoneFaceMap,
+            labelListList& cellZoneMap
         );
 
         // Invoke reOrdering with multiple threads
@@ -1054,7 +1069,10 @@ class dynamicTopoFvMesh
             labelList& owner,
             labelList& neighbour,
             labelListList& faceEdges,
-            labelListList& edgeFaces
+            labelListList& edgeFaces,
+            labelListList& pointZoneMap,
+            labelListList& faceZoneFaceMap,
+            labelListList& cellZoneMap
         );
 
         // Output a list of cells as a VTK file
@@ -1095,6 +1113,9 @@ class dynamicTopoFvMesh
 
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
+
+        // Calculate geometric tolerance for the mesh
+        void calculateGeometricTolerance();
 
         // Compute the growth factor of an existing mesh
         scalar computeGrowthFactor();

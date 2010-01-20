@@ -1533,6 +1533,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 // Master couldn't perform collapse.
                 if (masterMap.type() <= 0)
                 {
+                    // Turn coupledModification back on before bailing out.
+                    setCoupledModification();
+
                     return masterMap;
                 }
 

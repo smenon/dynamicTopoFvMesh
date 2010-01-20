@@ -76,6 +76,9 @@ int main(int argc, char *argv[])
         fileName(pistonDict.lookup("profileFile"))
     );
 
+    // Set outOfBounds handling to clamp
+    pistonTable.outOfBounds(interpolationTable<scalar>::CLAMP);
+
     // Read in the piston axis
     vector pistonAxis = pistonDict.lookup("axis");
 
@@ -106,6 +109,12 @@ int main(int argc, char *argv[])
             (
                 fileName(valveDict.lookup("profileFile"))
             )
+        );
+
+        // Set outOfBounds handling to clamp
+        valveLiftTables[valveI].outOfBounds
+        (
+            interpolationTable<scalar>::CLAMP
         );
 
         // Read in the valve axis
