@@ -255,7 +255,11 @@ class dynamicTopoFvMesh
             autoPtr<dynamicTopoFvMesh> subMesh_;
 
             // For locally coupled patches, specify a slave index
-            label    slaveIndex_;
+            label slaveIndex_;
+
+            // Zone IDs for patches associated with faceZones
+            label masterFaceZone_;
+            label slaveFaceZone_;
 
             // Entity sizes (as specified by the entityType enumerant)
             FixedList<label,6> nEntities_;
@@ -298,7 +302,12 @@ class dynamicTopoFvMesh
             };
 
             // Constructor
-            coupledPatchInfo(const label slaveIndex = -1);
+            coupledPatchInfo
+            (
+                const label slaveIndex = -1,
+                const label mfzIndex = -1,
+                const label sfzIndex = -1
+            );
 
             //- Access
 
@@ -307,6 +316,10 @@ class dynamicTopoFvMesh
 
                 // Return the slave index
                 label slaveIndex() const;
+
+                // Return the master / slave face zone IDs
+                label masterFaceZone() const;
+                label slaveFaceZone() const;
 
                 // Access to entity sizes
                 FixedList<label,6>& nEntities();
@@ -589,6 +602,7 @@ class dynamicTopoFvMesh
         bisectEdge
         (
             const label eIndex,
+            bool checkOnly = false,
             bool forceOp = false
         );
 
@@ -597,6 +611,7 @@ class dynamicTopoFvMesh
         trisectFace
         (
             const label fIndex,
+            bool checkOnly = false,
             bool forceOp = false
         );
 

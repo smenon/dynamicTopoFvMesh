@@ -1405,12 +1405,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
 // Method for the bisection of an edge in 3D
 // - Returns a changeMap with a type specifying:
+//     1: Bisection was successful
 //    -1: Bisection failed since max number of topo-changes was reached.
 //    -2: Bisection failed since resulting quality would be really bad.
 // - AddedPoint is the index of the newly added point.
 const changeMap dynamicTopoFvMesh::bisectEdge
 (
     const label eIndex,
+    bool checkOnly,
     bool forceOp
 )
 {
@@ -1446,39 +1448,67 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Is this a locally coupled edge?
         if (locallyCoupledEdge(eIndex))
         {
-            // Temporarily turn off coupledModification.
-            unsetCoupledModification();
-            setSlaveModification();
+            label slaveIndex = -1;
 
-            // Loop through master/slave maps
-            // and determine the coupled edge index.
+            // Determine the slave index.
             forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                label index = -1;
-
-                if ((index = patchI().findSlaveIndex(eIndex)) > -1)
+                if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
-                    // Bisect the slave.
-                    coupleMap = bisectEdge(index);
-
                     // Keep this index for master/slave mapping.
                     pIndex = patchI.key();
+
+                    break;
                 }
 
                 // The following bit happens only during the sliver
                 // exudation process, since slave edges are
                 // usually not added to the coupled edge-stack.
-                if ((index = patchI().findMasterIndex(eIndex)) > -1)
+                if ((slaveIndex = patchI().findMasterIndex(eIndex)) > -1)
                 {
-                    // Bisect the master.
-                    coupleMap = bisectEdge(index);
-
                     // Keep this index for master/slave mapping.
                     pIndex = patchI.key();
 
                     // Notice that we are bisecting a slave edge.
                     bisectingSlave = true;
+
+                    break;
                 }
+            }
+
+            // Temporarily turn off coupledModification.
+            unsetCoupledModification();
+            setSlaveModification();
+
+            // First check the slave for bisection feasibility.
+            coupleMap = bisectEdge(slaveIndex, true);
+
+            if (coupleMap.type() == 1)
+            {
+                // Can the master be bisected as well?
+                changeMap masterMap = bisectEdge(eIndex, true);
+
+                // Master couldn't perform bisection
+                if (masterMap.type() != 1)
+                {
+                    setCoupledModification();
+                    unsetSlaveModification();
+
+                    return masterMap;
+                }
+
+                // Bisect the slave edge
+                coupleMap = bisectEdge(slaveIndex);
+            }
+            else
+            {
+                // Slave couldn't perform collapse.
+                setCoupledModification();
+                unsetSlaveModification();
+
+                map.type() = -2;
+
+                return map;
             }
 
             // Turn it back on.
@@ -1497,6 +1527,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     if (computeBisectionQuality(eIndex) < sliverThreshold_ && !forceOp)
     {
         map.type() = -2;
+        return map;
+    }
+
+    // Are we performing only checks?
+    if (checkOnly)
+    {
+        map.type() = 1;
         return map;
     }
 
@@ -2445,18 +2482,23 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Increment the number of modifications
     nModifications_++;
 
+    // Specify that the operation was successful
+    map.type() = 1;
+
     // Return the changeMap
     return map;
 }
 
 // Method for the trisection of a face in 3D
 // - Returns a changeMap with a type specifying:
-//    -1: Bisection failed since max number of topo-changes was reached.
-//    -2: Bisection failed since resulting quality would be really bad.
+//     1: Trisection was successful
+//    -1: Trisection failed since max number of topo-changes was reached.
+//    -2: Trisection failed since resulting quality would be really bad.
 // - AddedPoint is the index of the newly added point.
 const changeMap dynamicTopoFvMesh::trisectFace
 (
     const label fIndex,
+    bool checkOnly,
     bool forceOp
 )
 {
@@ -2507,9 +2549,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
         if (locallyCoupledFace)
         {
-            // Temporarily turn off coupledModification and stack behaviour.
-            coupledModification_ = false;
-            slaveModification_ = true;
+            label slaveIndex = -1;
 
             // Loop through master/slave maps
             // and determine the coupled edge index.
@@ -2523,7 +2563,6 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 )
                 {
                     bool foundFace = false;
-                    label slaveFace = -1;
 
                     // Search for a boundary face shared
                     // by two of the edges.
@@ -2542,7 +2581,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                                  == eSecondFaces[edgeJ]
                                 )
                                 {
-                                    slaveFace = eFirstFaces[edgeI];
+                                    slaveIndex = eFirstFaces[edgeI];
                                     foundFace = true;
                                     break;
                                 }
@@ -2554,9 +2593,6 @@ const changeMap dynamicTopoFvMesh::trisectFace
                             break;
                         }
                     }
-
-                    // Trisect the slave.
-                    coupleMap = trisectFace(slaveFace);
 
                     // Keep this index for master/slave mapping.
                     pIndex = patchI.key();
@@ -2572,7 +2608,6 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 )
                 {
                     bool foundFace = false;
-                    label masterFace = -1;
 
                     // Search for a boundary face shared
                     // by two of the edges.
@@ -2591,7 +2626,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                                  == eSecondFaces[edgeJ]
                                 )
                                 {
-                                    masterFace = eFirstFaces[edgeI];
+                                    slaveIndex = eFirstFaces[edgeI];
                                     foundFace = true;
                                     break;
                                 }
@@ -2604,20 +2639,52 @@ const changeMap dynamicTopoFvMesh::trisectFace
                         }
                     }
 
-                    // Trisect the master.
-                    coupleMap = trisectFace(masterFace);
-
                     // Keep this index for master/slave mapping.
                     pIndex = patchI.key();
 
-                    // Notice that we are bisecting a slave edge.
+                    // Notice that we are trisecting a slave edge.
                     bisectingSlave = true;
                 }
             }
 
+            // Temporarily turn off coupledModification.
+            unsetCoupledModification();
+            setSlaveModification();
+
+            // First check the slave for trisection feasibility.
+            coupleMap = trisectFace(slaveIndex, true);
+
+            if (coupleMap.type() == 1)
+            {
+                // Can the master be trisected as well?
+                changeMap masterMap = trisectFace(fIndex, true);
+
+                // Master couldn't perform bisection
+                if (masterMap.type() != 1)
+                {
+                    setCoupledModification();
+                    unsetSlaveModification();
+
+                    return masterMap;
+                }
+
+                // Trisect the slave face
+                coupleMap = trisectFace(slaveIndex);
+            }
+            else
+            {
+                // Slave couldn't perform collapse.
+                setCoupledModification();
+                unsetSlaveModification();
+
+                map.type() = -2;
+
+                return map;
+            }
+
             // Turn it back on.
-            coupledModification_ = true;
-            slaveModification_ = false;
+            setCoupledModification();
+            unsetSlaveModification();
         }
     }
 
@@ -2626,6 +2693,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
     if (computeTrisectionQuality(fIndex) < sliverThreshold_ && !forceOp)
     {
         map.type() = -2;
+        return map;
+    }
+
+    // Are we performing only checks?
+    if (checkOnly)
+    {
+        map.type() = 1;
         return map;
     }
 
@@ -3945,6 +4019,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
     // Increment the number of modifications
     nModifications_++;
+
+    // Specify that the operation was successful
+    map.type() = 1;
 
     // Return the changeMap
     return map;

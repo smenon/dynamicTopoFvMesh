@@ -210,34 +210,22 @@ void mesquiteSmoother::readOptions()
         // Check if coupled patches exist.
         if (found("coupledPatches"))
         {
-            dictionary coupledPatches = subDict("coupledPatches");
+            const dictionary& coupledPatches = subDict("coupledPatches");
 
             const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
             // Determine master and slave patches
-            wordList masterPatches = coupledPatches.toc();
-
-            forAll(masterPatches, wordI)
+            forAllConstIter(dictionary, coupledPatches, dIter)
             {
-                // Lookup the slave patch
-                word masterPatch = masterPatches[wordI];
-                word slavePatch  = coupledPatches.lookup(masterPatch);
+                const dictionary& dictI = dIter().dict();
+
+                // Lookup the master / slave patches
+                word masterPatch = dictI.lookup("master");
+                word slavePatch  = dictI.lookup("slave");
 
                 // Determine patch indices
-                label mPatch = -1, sPatch = -1;
-
-                forAll(boundary,patchI)
-                {
-                    if (boundary[patchI].name() == masterPatch)
-                    {
-                        mPatch = patchI;
-                    }
-
-                    if (boundary[patchI].name() == slavePatch)
-                    {
-                        sPatch = patchI;
-                    }
-                }
+                label mPatch = boundary.findPatchID(masterPatch);
+                label sPatch = boundary.findPatchID(slavePatch);
 
                 // It is considered an error to have slave-patches
                 // on the slip-patches list.

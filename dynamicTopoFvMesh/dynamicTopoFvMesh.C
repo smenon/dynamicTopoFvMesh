@@ -890,10 +890,46 @@ label dynamicTopoFvMesh::insertFace
         }
     }
 
-    // Add to the zone if necessary
+    // Add to the zone if explicitly specified
     if (zoneID >= 0)
     {
         addedFaceZones_.insert(newFaceIndex, zoneID);
+    }
+    else
+    {
+        // No zone was specified. Check if this
+        // face is added to a coupled patch associated
+        // with a faceZone.
+        forAllIter(Map<coupledPatchInfo>, patchCoupling_, pIter)
+        {
+            if (pIter.key() == patch)
+            {
+                if (pIter().masterFaceZone() > -1)
+                {
+                    addedFaceZones_.insert
+                    (
+                        newFaceIndex,
+                        pIter().masterFaceZone()
+                    );
+                }
+
+                break;
+            }
+
+            if (pIter().slaveIndex() == patch)
+            {
+                if (pIter().slaveFaceZone() > -1)
+                {
+                    addedFaceZones_.insert
+                    (
+                        newFaceIndex,
+                        pIter().slaveFaceZone()
+                    );
+                }
+
+                break;
+            }
+        }
     }
 
     // Increment the total face count
@@ -5279,13 +5315,22 @@ void dynamicTopoFvMesh::readRefinementOptions
     // Check local coupled patches for fixed length-scales
     if (dict_.found("coupledPatches") || mandatory_)
     {
-        dictionary coupledPatches =
-        (
-            dict_.subDict("coupledPatches")
-        );
+        const dictionary coupledPatches = dict_.subDict("coupledPatches");
 
         // Determine master and slave patches
-        wordList masterPatches = coupledPatches.toc();
+        label indexI = 0;
+        wordList masterPatches(coupledPatches.size());
+        wordList slavePatches(coupledPatches.size());
+
+        forAllConstIter(dictionary, coupledPatches, dIter)
+        {
+            const dictionary& dictI = dIter().dict();
+
+            masterPatches[indexI] = word(dictI.lookup("master"));
+            slavePatches[indexI] = word(dictI.lookup("slave"));
+
+            indexI++;
+        }
 
         // Ensure that patches are legitimate.
         checkPatches(masterPatches);
@@ -5295,13 +5340,13 @@ void dynamicTopoFvMesh::readRefinementOptions
         {
             word pName(masterPatches[wordI]);
 
-            if (fixedPatches_.found(masterPatches[wordI]))
+            if (fixedPatches_.found(pName))
             {
                 // Add the slave patch to the list as well.
                 // If it already exists, over-ride the value.
                 fixedPatches_.add
                 (
-                    coupledPatches[pName],
+                    slavePatches[wordI],
                     fixedPatches_[pName][0].scalarToken(),
                     true
                 );
@@ -6353,21 +6398,18 @@ void dynamicTopoFvMesh::readCoupledPatches()
 
     if (dict_.found("coupledPatches") || mandatory_)
     {
-        dictionary coupledPatches =
-        (
-            dict_.subDict("coupledPatches")
-        );
+        const dictionary& coupledPatches = dict_.subDict("coupledPatches");
 
         const polyBoundaryMesh& boundary = boundaryMesh();
 
         // Determine master and slave patches
-        wordList masterPatches = coupledPatches.toc();
-
-        forAll(masterPatches, wordI)
+        forAllConstIter(dictionary, coupledPatches, dIter)
         {
-            // Lookup the slave patch
-            word masterPatch = masterPatches[wordI];
-            word slavePatch  = coupledPatches.lookup(masterPatch);
+            const dictionary& dictI = dIter().dict();
+
+            // Lookup the master / slave patches
+            word masterPatch = dictI.lookup("master");
+            word slavePatch  = dictI.lookup("slave");
 
             // Determine patch indices
             label mPatch = boundary.findPatchID(masterPatch);
@@ -6387,15 +6429,38 @@ void dynamicTopoFvMesh::readCoupledPatches()
                 boundary[mPatch].size() == boundary[sPatch].size()
             )
             {
+                // Check whether patches are associated with zones.
+                Switch specifyZones
+                (
+                    dictI.lookup("specifyZones")
+                );
+
+                label mZone = -1, sZone = -1;
+
+                if (specifyZones)
+                {
+                    const faceZoneMesh& faceZones = polyMesh::faceZones();
+
+                    mZone = faceZones.findZoneID
+                    (
+                        dictI.lookup("masterZone")
+                    );
+
+                    sZone = faceZones.findZoneID
+                    (
+                        dictI.lookup("slaveZone")
+                    );
+                }
+
                 patchCoupling_.insert
                 (
                     mPatch,
-                    coupledPatchInfo(sPatch)
+                    coupledPatchInfo(sPatch, mZone, sZone)
                 );
             }
             else
             {
-                FatalErrorIn("dynamicTopoFvMesh::initEdges()")
+                FatalErrorIn("dynamicTopoFvMesh::readCoupledPatches()")
                         << " Coupled patches are either wrongly specified,"
                         << " or the sizes don't match." << nl
                         << " Master: " << mPatch << ":" << masterPatch
@@ -8322,8 +8387,8 @@ void dynamicTopoFvMesh::removeSlivers()
             label secondEdge = map.secondEdge();
 
             // Force bisection on both edges.
-            changeMap firstMap  = bisectEdge(firstEdge, true);
-            changeMap secondMap = bisectEdge(secondEdge, true);
+            changeMap firstMap  = bisectEdge(firstEdge, false, true);
+            changeMap secondMap = bisectEdge(secondEdge, false, true);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
@@ -8385,7 +8450,7 @@ void dynamicTopoFvMesh::removeSlivers()
             label opposingFace = map.opposingFace();
 
             // Force trisection of the opposing face.
-            changeMap faceMap = trisectFace(opposingFace, true);
+            changeMap faceMap = trisectFace(opposingFace, false, true);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
@@ -8413,7 +8478,7 @@ void dynamicTopoFvMesh::removeSlivers()
             // Spade cell.
 
             // Force bisection on the first edge.
-            changeMap firstMap = bisectEdge(map.firstEdge(), true);
+            changeMap firstMap = bisectEdge(map.firstEdge(), false, true);
 
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search

@@ -171,7 +171,7 @@ void dynamicTopoFvMesh::reOrderPoints
         {
             if (reversePointMap_[oldAddr[pointI]] != -1)
             {
-                pointZoneMap[pIndex] = oldAddr[pointI];
+                pointZoneMap[pzI][pIndex] = oldAddr[pointI];
                 newAddr[pIndex] = reversePointMap_[oldAddr[pointI]];
                 pIndex++;
             }
@@ -985,7 +985,7 @@ void dynamicTopoFvMesh::reOrderFaces
         {
             if (reverseFaceMap_[oldAddr[faceI]] != -1)
             {
-                faceZoneFaceMap[fIndex] = oldAddr[faceI];
+                faceZoneFaceMap[fzI][fIndex] = oldAddr[faceI];
                 newAddr[fIndex] = reverseFaceMap_[oldAddr[faceI]];
                 fIndex++;
             }
@@ -1290,7 +1290,7 @@ void dynamicTopoFvMesh::reOrderCells
         {
             if (reverseCellMap_[oldAddr[cellI]] != -1)
             {
-                cellZoneMap[cIndex] = oldAddr[cellI];
+                cellZoneMap[czI][cIndex] = oldAddr[cellI];
                 newAddr[cIndex] = reverseCellMap_[oldAddr[cellI]];
                 cIndex++;
             }

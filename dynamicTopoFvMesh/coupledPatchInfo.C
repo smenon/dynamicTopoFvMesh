@@ -34,10 +34,14 @@ namespace Foam
 // Constructor for coupledPatchInfo
 dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
 (
-    const label slaveIndex
+    const label slaveIndex,
+    const label mfzIndex,
+    const label sfzIndex
 )
 :
     slaveIndex_(slaveIndex),
+    masterFaceZone_(mfzIndex),
+    slaveFaceZone_(sfzIndex),
     nEntities_(-1)
 {}
 
@@ -60,6 +64,17 @@ void dynamicTopoFvMesh::coupledPatchInfo::setMesh
 label dynamicTopoFvMesh::coupledPatchInfo::slaveIndex() const
 {
     return slaveIndex_;
+}
+
+// Return the master / slave zone IDs
+label dynamicTopoFvMesh::coupledPatchInfo::masterFaceZone() const
+{
+    return masterFaceZone_;
+}
+
+label dynamicTopoFvMesh::coupledPatchInfo::slaveFaceZone() const
+{
+    return slaveFaceZone_;
 }
 
 FixedList<label,6>&
