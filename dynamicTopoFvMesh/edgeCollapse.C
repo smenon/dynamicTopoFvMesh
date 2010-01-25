@@ -429,40 +429,21 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Collapse preferentially towards a symmetryPlane.
-    if (edgeBoundary[0] && edgeBoundary[1])
+    if ((edgeBoundary[0] && edgeBoundary[1]) && (c1 != -1))
     {
         if (debug > 2)
         {
             WarningIn
             (
                 "dynamicTopoFvMesh::collapseQuadFace"
-                "(const label, face&)"
-            )   << "Collapsing a face that lies on two boundary patches. "
-                << "Algorithm will look for a symmetryPlane and collapse "
-                << "the face preferentially towards it.\n"
+            )   << "Collapsing an internal face that "
+                << "lies on two boundary patches. "
                 << "Face: " << fIndex << ": " << faces_[fIndex] << endl;
         }
 
-        if
-        (
-            boundaryMesh()[whichEdgePatch(checkEdgeIndex[1])].type()
-            == "symmetryPlane"
-        )
-        {
-            edgeBoundary[1] = false;
-        }
-
-        if (edgeBoundary[1])
-        {
-            if
-            (
-                boundaryMesh()[whichEdgePatch(checkEdgeIndex[2])].type()
-                == "symmetryPlane"
-            )
-            {
-                edgeBoundary[0] = false;
-            }
-        }
+        // Bail out for now. If proximity based refinement is
+        // switched on, mesh may be sliced at this point.
+        return map;
     }
 
     // Lists for feasibility checks

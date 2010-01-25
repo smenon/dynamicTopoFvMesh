@@ -44,8 +44,8 @@ inline vector dynamicTopoFvMesh::tangentToEdge
     return (points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
 
-// Find the circumcenter of a face
-inline point dynamicTopoFvMesh::circumCenter
+// Find the circumcentre of a face
+inline point dynamicTopoFvMesh::circumCentre
 (
     const label fIndex
 ) const
@@ -81,8 +81,8 @@ inline point dynamicTopoFvMesh::circumCenter
     return ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
 }
 
-// Find the center of a triangle face
-inline point dynamicTopoFvMesh::quadFaceCenter
+// Find the centre of a triangle face
+inline point dynamicTopoFvMesh::quadFaceCentre
 (
     const label fIndex
 ) const
@@ -98,8 +98,8 @@ inline point dynamicTopoFvMesh::quadFaceCenter
     );
 }
 
-// Find the center of a triangle face
-inline point dynamicTopoFvMesh::triFaceCenter
+// Find the centre of a triangle face
+inline point dynamicTopoFvMesh::triFaceCentre
 (
     const label fIndex
 ) const
@@ -246,24 +246,54 @@ inline label dynamicTopoFvMesh::tetApexPoint
     return apexPoint;
 }
 
-// Given a cell index, find the centroid of a tet cell.
-inline vector dynamicTopoFvMesh::tetCellCenter
+// Given a cell index, find the centroid of a prism cell.
+inline vector dynamicTopoFvMesh::prismCellCentre
 (
     const label cIndex
 ) const
 {
-    vector center = vector::zero;
+    vector centre = vector::zero;
 
     const cell& cellToCheck = cells_[cIndex];
 
     forAll(cellToCheck, faceI)
     {
-        center += triFaceCenter(cellToCheck[faceI]);
+        const face& faceToCheck = faces_[cellToCheck[faceI]];
+
+        if (faceToCheck.size() == 3)
+        {
+            centre += triFaceCentre(cellToCheck[faceI]);
+        }
+
+        if (faceToCheck.size() == 4)
+        {
+            centre += quadFaceCentre(cellToCheck[faceI]);
+        }
     }
 
-    center /= cellToCheck.size();
+    centre /= cellToCheck.size();
 
-    return center;
+    return centre;
+}
+
+// Given a cell index, find the centroid of a tet cell.
+inline vector dynamicTopoFvMesh::tetCellCentre
+(
+    const label cIndex
+) const
+{
+    vector centre = vector::zero;
+
+    const cell& cellToCheck = cells_[cIndex];
+
+    forAll(cellToCheck, faceI)
+    {
+        centre += triFaceCentre(cellToCheck[faceI]);
+    }
+
+    centre /= cellToCheck.size();
+
+    return centre;
 }
 
 // Compare two triangular faces.

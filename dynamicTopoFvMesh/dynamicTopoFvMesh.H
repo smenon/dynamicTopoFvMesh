@@ -408,14 +408,14 @@ class dynamicTopoFvMesh
         // Obtain the tangent-to-edge vector
         inline vector tangentToEdge(const label eIndex) const;
 
-        // Find the circumcenter of three points
-        inline point circumCenter(const label fIndex) const;
+        // Find the circumcentre of three points
+        inline point circumCentre(const label fIndex) const;
 
-        // Find the center of a quad face
-        inline point quadFaceCenter(const label fIndex) const;
+        // Find the centre of a quad face
+        inline point quadFaceCentre(const label fIndex) const;
 
-        // Find the center of a triangle face
-        inline point triFaceCenter(const label fIndex) const;
+        // Find the centre of a triangle face
+        inline point triFaceCentre(const label fIndex) const;
 
         // Find the area of a quad face.
         inline scalar quadFaceArea(const face& quadFace) const;
@@ -436,8 +436,11 @@ class dynamicTopoFvMesh
             const label fIndex
         ) const;
 
+        // Given a cell index, find the centroid of a prism cell.
+        inline vector prismCellCentre(const label cIndex) const;
+
         // Given a cell index, find the centroid of a tet cell.
-        inline vector tetCellCenter(const label cIndex) const;
+        inline vector tetCellCentre(const label cIndex) const;
 
         // Compare two triangular faces
         inline label compare(const face& a, const face& b) const;
@@ -625,11 +628,8 @@ class dynamicTopoFvMesh
             bool forceOp = false
         );
 
-        // Slice the mesh at a particular edge in 3D
-        void sliceMesh
-        (
-            const labelPair& pointPair
-        );
+        // Slice the mesh at a particular location
+        void sliceMesh(const labelPair& pointPair);
 
         // Dijkstra's algorithm for the shortest path problem
         bool Dijkstra
@@ -1118,11 +1118,11 @@ class dynamicTopoFvMesh
         // Handle mesh slicing events.
         void handleMeshSlicing();
 
-        // Test an edge for proximity with other non-neighbouring faces.
+        // Test an edge / face for proximity with other non-neighbouring faces.
         // Return the scalar distance to the nearest face.
         scalar testProximity
         (
-            const label eIndex,
+            const label index,
             label& proximityFace
         ) const;
 

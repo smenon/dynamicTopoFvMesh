@@ -572,8 +572,8 @@ bool dynamicTopoFvMesh::testDelaunay
     // Obtain point references for the first face
     point a = points_[triFaces[0][0]];
 
-    point cCenter = circumCenter(fLabel), otherPoint = vector::zero;
-    scalar rSquared = (a - cCenter)&(a - cCenter);
+    point cCentre = circumCentre(fLabel), otherPoint = vector::zero;
+    scalar rSquared = (a - cCentre)&(a - cCentre);
 
     // Find the isolated point on the second face
     if (procCouple)
@@ -607,10 +607,7 @@ bool dynamicTopoFvMesh::testDelaunay
         otherPoint = points_[pIndex];
     }
 
-    if
-    (
-        ((otherPoint - cCenter)&(otherPoint - cCenter)) < rSquared
-    )
+    if (((otherPoint - cCentre)&(otherPoint - cCentre)) < rSquared)
     {
         // Failed the test.
         failed = true;
@@ -1204,12 +1201,15 @@ label dynamicTopoFvMesh::insertEdge
             Info << boundaryMesh()[patch].name() << endl;
         }
 
-        if (findIndex(edgePoints, -1) != -1)
+        if (!twoDMesh_)
         {
-            FatalErrorIn("dynamicTopoFvMesh::insertEdge()")
-                << " EdgePoints is incorrectly specified." << nl
-                << " edgePoints: " << edgePoints << nl
-                << abort(FatalError);
+            if (findIndex(edgePoints, -1) != -1)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::insertEdge()")
+                    << " EdgePoints is incorrectly specified." << nl
+                    << " edgePoints: " << edgePoints << nl
+                    << abort(FatalError);
+            }
         }
     }
 
@@ -3554,6 +3554,9 @@ void dynamicTopoFvMesh::checkConnectivity
         }
     }
 
+    label allPoints = points_.size();
+    labelList nPointFaces(allPoints, 0);
+
     forAll(faces_, faceI)
     {
         const face& curFace = faces_[faceI];
@@ -3575,6 +3578,12 @@ void dynamicTopoFvMesh::checkConnectivity
             ConnectivityWarning()
                 << nl << "Face-point connectivity is inconsistent."
                 << endl;
+        }
+
+        // Count faces per point
+        forAll(curFace, pointI)
+        {
+            nPointFaces[curFace[pointI]]++;
         }
     }
 
@@ -3598,6 +3607,41 @@ void dynamicTopoFvMesh::checkConnectivity
 
             ConnectivityWarning()
                 << nl << "Cell-Face connectivity is inconsistent."
+                << endl;
+        }
+    }
+
+    Info << "Done." << endl;
+
+    Info << "Checking for unused points...";
+
+    forAll(nPointFaces, pointI)
+    {
+        if (nPointFaces[pointI] == 0)
+        {
+            // This might be a deleted point.
+            if (pointI < nOldPoints_)
+            {
+                if (reversePointMap_[pointI] == -1)
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                if (deletedPoints_.found(pointI))
+                {
+                    continue;
+                }
+            }
+
+            // Looks like this is really an unused point.
+            Pout << "Point " << pointI << " is unused. " << endl;
+
+            nFailedChecks++;
+
+            ConnectivityWarning()
+                << nl << "Point-Face connectivity is inconsistent."
                 << endl;
         }
     }
@@ -4135,7 +4179,11 @@ void dynamicTopoFvMesh::prepareProximityPatches()
     // Loop through all proximity patches and spatially hash patch faces.
     forAll(boundary, patchI)
     {
-        if (proximityPatches_.found(boundary[patchI].name()))
+        if
+        (
+            (proximityPatches_.found(boundary[patchI].name())) ||
+            (twoDMesh_ && boundary[patchI].type() == "symmetryPlane")
+        )
         {
             const polyPatch& proxPatch = boundary[patchI];
 
@@ -4215,20 +4263,43 @@ void dynamicTopoFvMesh::handleMeshSlicing()
 
         bool available = true;
 
-        forAll(pairToCheck, indexI)
+        if (twoDMesh_)
         {
-            if (deletedPoints_.found(pairToCheck[indexI]))
+            forAll(pairToCheck, indexI)
             {
-                available = false;
-                break;
-            }
-
-            if (pairToCheck[indexI] < nOldPoints_)
-            {
-                if (reversePointMap_[pairToCheck[indexI]] == -1)
+                if (deletedFaces_.found(pairToCheck[indexI]))
                 {
                     available = false;
                     break;
+                }
+
+                if (pairToCheck[indexI] < nOldFaces_)
+                {
+                    if (reverseFaceMap_[pairToCheck[indexI]] == -1)
+                    {
+                        available = false;
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            forAll(pairToCheck, indexI)
+            {
+                if (deletedPoints_.found(pairToCheck[indexI]))
+                {
+                    available = false;
+                    break;
+                }
+
+                if (pairToCheck[indexI] < nOldPoints_)
+                {
+                    if (reversePointMap_[pairToCheck[indexI]] == -1)
+                    {
+                        available = false;
+                        break;
+                    }
                 }
             }
         }
@@ -4240,9 +4311,9 @@ void dynamicTopoFvMesh::handleMeshSlicing()
         }
     }
 
-    Info << "Done." << endl;
-
     checkConnectivity(10);
+
+    Info << "Done." << endl;
 
     // Clear out data.
     sliceBoxes_.clear();
@@ -4252,45 +4323,20 @@ void dynamicTopoFvMesh::handleMeshSlicing()
     sliceHoldOff_ = 50;
 }
 
-// Test an edge for proximity with other faces on proximity patches
+// Test an edge / face for proximity with other faces on proximity patches
 // and return the scalar distance to an oppositely-oriented face.
 scalar dynamicTopoFvMesh::testProximity
 (
-    const label eIndex,
+    const label index,
     label& proximityFace
 ) const
 {
-    const edge& thisEdge = edges_[eIndex];
-    const labelList& eFaces = edgeFaces_[eIndex];
-
-    // Reset the proximity face
-    proximityFace = -1;
-
-    // Obtain the edge centre.
-    point eCentre =
-    (
-        0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]])
-    );
-
-    // Obtain the edge-normal
-    vector eNorm = vector::zero;
-
-    forAll(eFaces, faceI)
-    {
-        if (neighbour_[eFaces[faceI]] == -1)
-        {
-            // Obtain the normal.
-            eNorm += triFaceNormal(faces_[eFaces[faceI]]);
-        }
-    }
-
-    eNorm /= (mag(eNorm) + VSMALL);
-
     DynamicList<label> posIndices(20);
-    scalar testStep = edgeLength(eIndex);
-    scalar minDistance = GREAT, minDeviation = -0.9;
+    scalar minDistance = GREAT, minDeviation = -0.9, testStep = 0.0;
     label nD = spatialRes_, binSize = proximityBins_.size();
+    vector gCentre = vector::zero, gNorm = vector::zero;
 
+    // Obtain min/max extents
     const point& bMin = proxBoundBox_.min();
     const point& bMax = proxBoundBox_.max();
 
@@ -4302,14 +4348,54 @@ scalar dynamicTopoFvMesh::testProximity
     scalar yL = nD/(bMax.y() - bMin.y() + ext);
     scalar zL = nD/(bMax.z() - bMin.z() + ext);
 
-    // Now take multiple steps in both edge-normal directions,
+    // Reset the proximity face
+    proximityFace = -1;
+
+    if (twoDMesh_)
+    {
+        // Obtain the face-normal.
+        gNorm = quadFaceNormal(faces_[index]);
+
+        gNorm /= (mag(gNorm) + VSMALL);
+
+        // Obtain the face centre.
+        gCentre = quadFaceCentre(index);
+
+        // Calculate a test step-size
+        testStep = edgeLength(getTriBoundaryEdge(index));
+    }
+    else
+    {
+        const edge& thisEdge = edges_[index];
+        const labelList& eFaces = edgeFaces_[index];
+
+        // Obtain the edge centre.
+        gCentre = (0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]]));
+
+        // Obtain the edge-normal
+        forAll(eFaces, faceI)
+        {
+            if (neighbour_[eFaces[faceI]] == -1)
+            {
+                // Obtain the normal.
+                gNorm += triFaceNormal(faces_[eFaces[faceI]]);
+            }
+        }
+
+        gNorm /= (mag(gNorm) + VSMALL);
+
+        // Calculate a test step-size
+        testStep = edgeLength(index);
+    }
+
+    // Now take multiple steps in both normal directions,
     // and add to the list of boxes to be checked.
     for (scalar dir = -1.0; dir < 2.0; dir += 2.0)
     {
         for (scalar step = 0.0; step < 5.0*testStep; step += testStep)
         {
             // Hash the point-location
-            point p = (eCentre + (dir*step*eNorm)) - bMin;
+            point p = (gCentre + (dir*step*gNorm)) - bMin;
 
             label i = label(mag(::floor(p.x()*xL)));
             label j = label(mag(::floor(p.y()*yL)));
@@ -4335,14 +4421,14 @@ scalar dynamicTopoFvMesh::testProximity
         forAll(posBin, faceI)
         {
             // Step 1: Measure the distance to the face.
-            vector rFace = (faceCentres[posBin[faceI]] - eCentre);
+            vector rFace = (faceCentres[posBin[faceI]] - gCentre);
 
             scalar distance = mag(rFace);
 
-            // Step 2: Check if this face is oriented away from edge.
+            // Step 2: Check if this face is oriented away from face / edge.
             const vector& fNorm = faceAreas[posBin[faceI]];
 
-            scalar deviation = (eNorm & (fNorm/mag(fNorm)));
+            scalar deviation = (gNorm & (fNorm/(mag(fNorm) + VSMALL)));
 
             if
             (
@@ -4356,8 +4442,8 @@ scalar dynamicTopoFvMesh::testProximity
                 // minDeviation = deviation;
 
                 // Define whether rFace went through
-                // domain by comparing with the edge-normal.
-                if ((eNorm & (rFace/distance)) > 0.0)
+                // domain by comparing with the normal.
+                if ((gNorm & (rFace/distance)) > 0.0)
                 {
                     // Outside the domain
                 }
@@ -4374,23 +4460,35 @@ scalar dynamicTopoFvMesh::testProximity
         // Check if we need to mark points for mesh-slicing.
         if (minDistance < sliceThreshold_)
         {
-            // Check if any points on this face are still around.
-            // If yes, mark one of them as the end point
-            // for Dijkstra's algorithm. The start point will be a point
-            // on this edge.
-            labelPair proxPoints(thisEdge[0], -1);
-
-            const face& proxFace = polyMesh::faces()[proximityFace];
-
+            labelPair proxPoints(-1, -1);
             bool foundPoint = false;
 
-            forAll(proxFace, pointI)
+            if (twoDMesh_)
             {
-                if (reversePointMap_[proxFace[pointI]] != -1)
+                proxPoints.first() = index;
+                proxPoints.second() = proximityFace;
+
+                foundPoint = true;
+            }
+            else
+            {
+                const edge& thisEdge = edges_[index];
+                const face& proxFace = polyMesh::faces()[proximityFace];
+
+                // Check if any points on this face are still around.
+                // If yes, mark one of them as the end point
+                // for Dijkstra's algorithm. The start point will be a point
+                // on this edge.
+                proxPoints.first() = thisEdge[0];
+
+                forAll(proxFace, pointI)
                 {
-                    proxPoints.second() = proxFace[pointI];
-                    foundPoint = true;
-                    break;
+                    if (reversePointMap_[proxFace[pointI]] != -1)
+                    {
+                        proxPoints.second() = proxFace[pointI];
+                        foundPoint = true;
+                        break;
+                    }
                 }
             }
 
@@ -7382,7 +7480,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
         // Check if this boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.
-        mesh.remove2DSliver(fIndex);
+        //mesh.remove2DSliver(fIndex);
 
         if (mesh.checkFaceBisection(fIndex))
         {
@@ -7845,7 +7943,7 @@ scalar dynamicTopoFvMesh::computeTrisectionQuality
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;
 
-    point midPoint = triFaceCenter(fIndex);
+    point midPoint = triFaceCentre(fIndex);
 
     FixedList<label,2> apexPoint(-1);
 
@@ -8930,6 +9028,9 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 
         // Set the master thread to implement modifications
         edgeBisectCollapse2D(&(handlerPtr_[0]));
+
+        // Handle mesh slicing events, if necessary
+        handleMeshSlicing();
 
         if (debug)
         {

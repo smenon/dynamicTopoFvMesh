@@ -1323,14 +1323,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             checkList[0] = fIndex;
             checkList[1] = newFaceIndex[3];
 
-            cCentres[0] = quadFaceCenter(checkList[0]);
-            cCentres[1] = quadFaceCenter(checkList[1]);
+            cCentres[0] = quadFaceCentre(checkList[0]);
+            cCentres[1] = quadFaceCentre(checkList[1]);
 
             const labelList afList = coupleMap.addedFaceList();
 
             forAll(afList, faceI)
             {
-                vector centre = quadFaceCenter(afList[faceI]);
+                vector centre = quadFaceCentre(afList[faceI]);
 
                 forAll (checkList, indexI)
                 {
@@ -2766,7 +2766,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     mappingPoints[2] = faces_[fIndex][2];
 
     // Add a new point to the end of the list
-    label newPointIndex = insertPoint(triFaceCenter(fIndex), mappingPoints);
+    label newPointIndex = insertPoint(triFaceCentre(fIndex), mappingPoints);
 
     // Add this point to the map.
     map.addPoint(newPointIndex);
@@ -4027,7 +4027,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     return map;
 }
 
-// Slice the mesh at a particular edge in 3D
+// Slice the mesh at a particular location
 void dynamicTopoFvMesh::sliceMesh
 (
     const labelPair& pointPair
@@ -4040,28 +4040,64 @@ void dynamicTopoFvMesh::sliceMesh
              << " is to be used for mesh slicing. " << endl;
     }
 
-    // Find the patch that the edge-vertex is connected to.
     label patchIndex = -1;
-    const labelList& pEdges = pointEdges_[pointPair.first()];
+    scalar dx = 0.0;
+    vector gCentre = vector::zero;
 
-    forAll(pEdges, edgeI)
+    if (twoDMesh_)
     {
-        if ((patchIndex = whichEdgePatch(pEdges[edgeI])) > -1)
-        {
-            break;
-        }
-    }
+        gCentre =
+        (
+            0.5 *
+            (
+                quadFaceCentre(pointPair.first())
+              + quadFaceCentre(pointPair.second())
+            )
+        );
 
-    // Specify the centre.
-    point eCentre =
-    (
-        0.5 * (points_[pointPair.first()] + points_[pointPair.second()])
-    );
+        // Specify a search distance
+        dx =
+        (
+            1.5 *
+            mag
+            (
+                quadFaceCentre(pointPair.first())
+              - quadFaceCentre(pointPair.second())
+            )
+        );
+
+        patchIndex = whichPatch(pointPair.first());
+    }
+    else
+    {
+        // Find the patch that the edge-vertex is connected to.
+        const labelList& pEdges = pointEdges_[pointPair.first()];
+
+        forAll(pEdges, edgeI)
+        {
+            if ((patchIndex = whichEdgePatch(pEdges[edgeI])) > -1)
+            {
+                break;
+            }
+        }
+
+        // Specify the centre.
+        gCentre =
+        (
+            0.5 * (points_[pointPair.first()] + points_[pointPair.second()])
+        );
+
+        // Specify a search distance
+        dx =
+        (
+            1.5*mag(points_[pointPair.first()] - points_[pointPair.second()])
+        );
+    }
 
     // Is this edge in the vicinity of a previous slice-point?
     forAll(sliceBoxes_, boxI)
     {
-        if (sliceBoxes_[boxI].contains(eCentre))
+        if (sliceBoxes_[boxI].contains(gCentre))
         {
             if (debug > 1)
             {
@@ -4076,201 +4112,273 @@ void dynamicTopoFvMesh::sliceMesh
         }
     }
 
-    // Specify a search distance
-    scalar dx =
-    (
-        1.5*mag(points_[pointPair.first()] - points_[pointPair.second()])
-    );
-
-    // Choose a box around the edge centre and scan all
-    // surface points/edges/faces/cells that fall into this region.
+    // Choose a box around the centre and scan all
+    // surface entities that fall into this region.
     boundBox bBox
     (
-        eCentre - vector(dx, dx, dx),
-        eCentre + vector(dx, dx, dx)
+        gCentre - vector(dx, dx, dx),
+        gCentre + vector(dx, dx, dx)
     );
 
+    vector p = vector::zero, N = vector::zero;
     Map<point> checkPoints;
     Map<edge> checkEdges;
 
-    for (label edgeI = nOldInternalEdges_; edgeI < nEdges_; edgeI++)
+    if (twoDMesh_)
     {
-        if (edgeFaces_[edgeI].empty())
-        {
-            continue;
-        }
+        // Assign plane point / normal
+        p = gCentre;
 
-        if (whichEdgePatch(edgeI) == patchIndex)
-        {
-            const edge& surfaceEdge = edges_[edgeI];
+        vector gNorm = quadFaceNormal(faces_[pointPair.first()]);
 
-            if
-            (
-                (bBox.contains(points_[surfaceEdge[0]])) &&
-                (bBox.contains(points_[surfaceEdge[1]]))
-            )
-            {
-                checkEdges.insert(edgeI, surfaceEdge);
+        gNorm /= (mag(gNorm) + VSMALL);
 
-                if (!checkPoints.found(surfaceEdge[0]))
-                {
-                    checkPoints.insert
-                    (
-                        surfaceEdge[0],
-                        points_[surfaceEdge[0]]
-                    );
-                }
-
-                if (!checkPoints.found(surfaceEdge[1]))
-                {
-                    checkPoints.insert
-                    (
-                        surfaceEdge[1],
-                        points_[surfaceEdge[1]]
-                    );
-                }
-            }
-        }
+        // Since this is 2D, assume XY-plane here.
+        N = (gNorm ^ vector(0.0, 0.0, 1.0));
     }
-
-    if (debug > 1)
+    else
     {
-        Info << nl << nl
-             << " Point [0]: " << points_[pointPair.first()] << nl
-             << " Point [1]: " << points_[pointPair.second()] << endl;
-
-        if (debug > 3)
+        // Prepare surface points / edges for Dijkstra's algorithm
+        for (label edgeI = nOldInternalEdges_; edgeI < nEdges_; edgeI++)
         {
-            writeVTK("slicePoints", checkPoints.toc(), 0);
-            writeVTK("sliceEdges", checkEdges.toc(), 1);
-        }
-    }
-
-    // Find the shortest path using Dijkstra's algorithm.
-    Map<label> shortestPath;
-
-    bool foundPath =
-    (
-        Dijkstra
-        (
-            checkPoints,
-            checkEdges,
-            pointPair.first(),
-            pointPair.second(),
-            shortestPath
-        )
-    );
-
-    // Fit a plane through the shortest path points.
-    if (foundPath)
-    {
-        scalar nPathPoints = 1.0;
-        vector S = checkPoints[pointPair.first()];
-        symmTensor M = sqr(checkPoints[pointPair.first()]);
-
-        label currentPoint = pointPair.second();
-
-        while (currentPoint != pointPair.first())
-        {
-            S += checkPoints[currentPoint];
-            M += sqr(checkPoints[currentPoint]);
-
-            nPathPoints += 1.0;
-
-            currentPoint = shortestPath[currentPoint];
-        }
-
-        // Obtain the plane-normal
-        vector N = inv(M)&S;
-
-        N /= mag(N);
-
-        // Obtain centroid of the point cloud
-        vector p = S / nPathPoints;
-
-        {
-            // Compute plane normal using cross-products.
-
-        }
-
-        // if (debug > 1)
-        {
-            Info << nl << nl
-                 << " Plane point: " << p << nl
-                 << " Plane normal: " << N << endl;
-        }
-
-        // Mark cells and interior faces that fall
-        // within the bounding box.
-        labelHashSet checkCells, checkFaces, splitFaces;
-        Map<bool> cellColors;
-
-        forAll(faces_, faceI)
-        {
-            if (faces_[faceI].empty())
+            if (edgeFaces_[edgeI].empty())
             {
                 continue;
             }
 
-            vector fCentre = triFaceCenter(faceI);
-
-            label own = owner_[faceI];
-            label nei = neighbour_[faceI];
-
-            if (bBox.contains(fCentre) && nei != -1)
+            if (whichEdgePatch(edgeI) == patchIndex)
             {
-                // Add this internal face to the list.
-                checkFaces.insert(faceI);
+                const edge& surfaceEdge = edges_[edgeI];
 
-                if (!checkCells.found(own))
+                if
+                (
+                    (bBox.contains(points_[surfaceEdge[0]])) &&
+                    (bBox.contains(points_[surfaceEdge[1]]))
+                )
                 {
-                    vector center = tetCellCenter(own);
+                    checkEdges.insert(edgeI, surfaceEdge);
 
-                    checkCells.insert(own);
-
-                    if (((center - p) & N) > 0.0)
+                    if (!checkPoints.found(surfaceEdge[0]))
                     {
-                        cellColors.insert(own, true);
+                        checkPoints.insert
+                        (
+                            surfaceEdge[0],
+                            points_[surfaceEdge[0]]
+                        );
                     }
-                    else
-                    {
-                        cellColors.insert(own, false);
-                    }
-                }
 
-                if (!checkCells.found(nei) && nei != -1)
-                {
-                    vector center = tetCellCenter(nei);
-
-                    checkCells.insert(nei);
-
-                    if (((center - p) & N) > 0.0)
+                    if (!checkPoints.found(surfaceEdge[1]))
                     {
-                        cellColors.insert(nei, true);
-                    }
-                    else
-                    {
-                        cellColors.insert(nei, false);
+                        checkPoints.insert
+                        (
+                            surfaceEdge[1],
+                            points_[surfaceEdge[1]]
+                        );
                     }
                 }
             }
         }
 
-        // Prepare a list of internal faces for mesh splitting.
-        forAllIter(labelHashSet, checkFaces, fIter)
+        if (debug > 1)
         {
-            if
-            (
-                cellColors[owner_[fIter.key()]]
-             != cellColors[neighbour_[fIter.key()]]
-            )
+            Info << nl << nl
+                 << " Point [0]: " << points_[pointPair.first()] << nl
+                 << " Point [1]: " << points_[pointPair.second()] << endl;
+
+            if (debug > 3)
             {
-                splitFaces.insert(fIter.key());
+                writeVTK("slicePoints", checkPoints.toc(), 0);
+                writeVTK("sliceEdges", checkEdges.toc(), 1);
+            }
+        }
+
+        // Find the shortest path using Dijkstra's algorithm.
+        Map<label> shortestPath;
+
+        bool foundPath =
+        (
+            Dijkstra
+            (
+                checkPoints,
+                checkEdges,
+                pointPair.first(),
+                pointPair.second(),
+                shortestPath
+            )
+        );
+
+        // Fit a plane through the shortest path points.
+        if (foundPath)
+        {
+            scalar nPathPoints = 1.0;
+            vector S = checkPoints[pointPair.first()];
+            symmTensor M = sqr(checkPoints[pointPair.first()]);
+
+            label currentPoint = pointPair.second();
+
+            while (currentPoint != pointPair.first())
+            {
+                S += checkPoints[currentPoint];
+                M += sqr(checkPoints[currentPoint]);
+
+                nPathPoints += 1.0;
+
+                currentPoint = shortestPath[currentPoint];
             }
 
-            // Loop through all points (and associated pointEdges)
-            // for this face, and check if connected cells are also
-            // present in the checkCells/cellColors list
+            // Obtain the plane-normal
+            N = inv(M)&S;
+
+            N /= mag(N);
+
+            // Obtain centroid of the point cloud
+            p = S / nPathPoints;
+
+            {
+                // Compute plane normal using cross-products.
+
+            }
+        }
+    }
+
+    // if (debug > 1)
+    {
+        Info << nl << nl
+             << " Plane point: " << p << nl
+             << " Plane normal: " << N << endl;
+    }
+
+    // Mark cells and interior faces that fall
+    // within the bounding box.
+    labelHashSet checkCells, checkFaces, splitFaces;
+    Map<bool> cellColors;
+
+    forAll(faces_, faceI)
+    {
+        if (faces_[faceI].empty())
+        {
+            continue;
+        }
+
+        if (twoDMesh_ && faces_[faceI].size() == 3)
+        {
+            continue;
+        }
+
+        vector fCentre = vector::zero;
+
+        if (twoDMesh_)
+        {
+            fCentre = quadFaceCentre(faceI);
+        }
+        else
+        {
+            fCentre = triFaceCentre(faceI);
+        }
+
+        FixedList<label, 2> cellsToCheck(-1);
+        cellsToCheck[0] = owner_[faceI];
+        cellsToCheck[1] = neighbour_[faceI];
+
+        if (bBox.contains(fCentre) && cellsToCheck[1] != -1)
+        {
+            // Add this internal face to the list.
+            checkFaces.insert(faceI);
+
+            vector centre = vector::zero;
+
+            forAll(cellsToCheck, cellI)
+            {
+                if (!checkCells.found(cellsToCheck[cellI]))
+                {
+                    if (twoDMesh_)
+                    {
+                        centre = prismCellCentre(cellsToCheck[cellI]);
+                    }
+                    else
+                    {
+                        centre = tetCellCentre(cellsToCheck[cellI]);
+                    }
+
+                    checkCells.insert(cellsToCheck[cellI]);
+
+                    if (((centre - p) & N) > 0.0)
+                    {
+                        cellColors.insert(cellsToCheck[cellI], true);
+                    }
+                    else
+                    {
+                        cellColors.insert(cellsToCheck[cellI], false);
+                    }
+                }
+            }
+        }
+    }
+
+    // Prepare a list of internal faces for mesh splitting.
+    forAllIter(labelHashSet, checkFaces, fIter)
+    {
+        if
+        (
+            cellColors[owner_[fIter.key()]]
+         != cellColors[neighbour_[fIter.key()]]
+        )
+        {
+            splitFaces.insert(fIter.key());
+        }
+
+        // Loop through all points (and associated pointEdges)
+        // for this face, and check if connected cells are also
+        // present in the checkCells/cellColors list
+        if (twoDMesh_)
+        {
+            const labelList& fEdges = faceEdges_[fIter.key()];
+
+            forAll(fEdges, edgeI)
+            {
+                const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+                forAll(eFaces, faceI)
+                {
+                    label own = owner_[eFaces[faceI]];
+                    label nei = neighbour_[eFaces[faceI]];
+
+                    if (!checkCells.found(own))
+                    {
+                        vector centre = prismCellCentre(own);
+
+                        checkCells.insert(own);
+
+                        if (((centre - p) & N) > 0.0)
+                        {
+                            cellColors.insert(own, true);
+                        }
+                        else
+                        {
+                            cellColors.insert(own, false);
+                        }
+                    }
+
+                    if (!checkCells.found(nei) && nei != -1)
+                    {
+                        vector centre = prismCellCentre(nei);
+
+                        checkCells.insert(nei);
+
+                        if (((centre - p) & N) > 0.0)
+                        {
+                            cellColors.insert(nei, true);
+                        }
+                        else
+                        {
+                            cellColors.insert(nei, false);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
             const face& faceToCheck = faces_[fIter.key()];
 
             forAll(faceToCheck, pointI)
@@ -4288,11 +4396,11 @@ void dynamicTopoFvMesh::sliceMesh
 
                         if (!checkCells.found(own))
                         {
-                            vector center = tetCellCenter(own);
+                            vector centre = tetCellCentre(own);
 
                             checkCells.insert(own);
 
-                            if (((center - p) & N) > 0.0)
+                            if (((centre - p) & N) > 0.0)
                             {
                                 cellColors.insert(own, true);
                             }
@@ -4304,11 +4412,11 @@ void dynamicTopoFvMesh::sliceMesh
 
                         if (!checkCells.found(nei) && nei != -1)
                         {
-                            vector center = tetCellCenter(nei);
+                            vector centre = tetCellCentre(nei);
 
                             checkCells.insert(nei);
 
-                            if (((center - p) & N) > 0.0)
+                            if (((centre - p) & N) > 0.0)
                             {
                                 cellColors.insert(nei, true);
                             }
@@ -4321,21 +4429,21 @@ void dynamicTopoFvMesh::sliceMesh
                 }
             }
         }
-
-        // if (debug > 3)
-        {
-            writeVTK("splitFaces", splitFaces.toc(), 2);
-            writeVTK("checkCells", checkCells.toc(), 3);
-        }
-
-        // Pass this info into the splitInternalFaces routine.
-        splitInternalFaces
-        (
-            patchIndex,
-            splitFaces.toc(),
-            cellColors
-        );
     }
+
+    if (debug > 3)
+    {
+        writeVTK("splitFaces", splitFaces.toc(), 2);
+        writeVTK("checkCells", checkCells.toc(), 3);
+    }
+
+    // Pass this info into the splitInternalFaces routine.
+    splitInternalFaces
+    (
+        patchIndex,
+        splitFaces.toc(),
+        cellColors
+    );
 
     // Add an entry to sliceBoxes.
     label currentSize = sliceBoxes_.size();
@@ -4566,62 +4674,65 @@ void dynamicTopoFvMesh::splitInternalFaces
 
         pIter() = insertPoint(newPoint, labelList(1, pIter.key()));
 
-        const labelList& pEdges = pointEdges_[pIter.key()];
-
-        labelHashSet edgesToRemove;
-
-        forAll(pEdges, edgeI)
+        if (!twoDMesh_)
         {
-            const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+            const labelList& pEdges = pointEdges_[pIter.key()];
 
-            bool allTrue = true;
+            labelHashSet edgesToRemove;
 
-            forAll(eFaces, faceI)
+            forAll(pEdges, edgeI)
             {
-                label own = owner_[eFaces[faceI]];
-                label nei = neighbour_[eFaces[faceI]];
+                const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
 
-                // Check if an owner/neighbour cell is false
-                if (!cellColors[own])
-                {
-                    allTrue = false;
-                    break;
-                }
+                bool allTrue = true;
 
-                if (nei != -1)
+                forAll(eFaces, faceI)
                 {
-                    if (!cellColors[nei])
+                    label own = owner_[eFaces[faceI]];
+                    label nei = neighbour_[eFaces[faceI]];
+
+                    // Check if an owner/neighbour cell is false
+                    if (!cellColors[own])
                     {
                         allTrue = false;
                         break;
                     }
+
+                    if (nei != -1)
+                    {
+                        if (!cellColors[nei])
+                        {
+                            allTrue = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (allTrue)
+                {
+                    // Mark this edge label to be discarded later
+                    edgesToRemove.insert(pEdges[edgeI]);
                 }
             }
 
-            if (allTrue)
+            // It is dangerous to use the pointEdges references,
+            // so call it using array-lookup instead.
+            forAllIter(labelHashSet, edgesToRemove, hsIter)
             {
-                // Mark this edge label to be discarded later
-                edgesToRemove.insert(pEdges[edgeI]);
+                // Add the edge to the mirror point list
+                sizeUpList
+                (
+                    hsIter.key(),
+                    pointEdges_[pIter()]
+                );
+
+                // Remove the edge from the original point list
+                sizeDownList
+                (
+                    hsIter.key(),
+                    pointEdges_[pIter.key()]
+                );
             }
-        }
-
-        // It is dangerous to use the pointEdges references,
-        // so call it using array-lookup instead.
-        forAllIter(labelHashSet, edgesToRemove, hsIter)
-        {
-            // Add the edge to the mirror point list
-            sizeUpList
-            (
-                hsIter.key(),
-                pointEdges_[pIter()]
-            );
-
-            // Remove the edge from the original point list
-            sizeDownList
-            (
-                hsIter.key(),
-                pointEdges_[pIter.key()]
-            );
         }
     }
 
@@ -4630,38 +4741,41 @@ void dynamicTopoFvMesh::splitInternalFaces
         label i = 0;
         labelList mPoints(mirrorPointLabels.size());
 
-        forAllIter(Map<label>, mirrorPointLabels, pIter)
+        if (!twoDMesh_)
         {
+            forAllIter(Map<label>, mirrorPointLabels, pIter)
+            {
+                writeVTK
+                (
+                    "pEdges_o_" + Foam::name(pIter.key()) + '_',
+                    pointEdges_[pIter.key()],
+                    1
+                );
+
+                writeVTK
+                (
+                    "pEdges_m_" + Foam::name(pIter()) + '_',
+                    pointEdges_[pIter()],
+                    1
+                );
+
+                mPoints[i++] = pIter();
+            }
+
             writeVTK
             (
-                "pEdges_o_" + Foam::name(pIter.key()) + '_',
-                pointEdges_[pIter.key()],
-                1
+                "points_o_",
+                mirrorPointLabels.toc(),
+                0
             );
 
             writeVTK
             (
-                "pEdges_m_" + Foam::name(pIter()) + '_',
-                pointEdges_[pIter()],
-                1
+                "points_m_",
+                mPoints,
+                0
             );
-
-            mPoints[i++] = pIter();
         }
-
-        writeVTK
-        (
-            "points_o_",
-            mirrorPointLabels.toc(),
-            0
-        );
-
-        writeVTK
-        (
-            "points_m_",
-            mPoints,
-            0
-        );
     }
 
     // For every internal face, add a new one.
@@ -4671,7 +4785,7 @@ void dynamicTopoFvMesh::splitInternalFaces
     //  - If faces are improperly oriented, reverse them.
     forAll(internalFaces, faceI)
     {
-        FixedList<face, 2> newFace(face(3));
+        FixedList<face, 2> newFace;
         FixedList<label, 2> newFaceIndex(-1);
         FixedList<label, 2> newOwner(-1);
 
@@ -4899,78 +5013,142 @@ void dynamicTopoFvMesh::splitInternalFaces
         }
     }
 
-    // Point renumbering of entities connected to mirror points
-    forAllIter(Map<label>, mirrorPointLabels, pIter)
+    if (twoDMesh_)
     {
-        const labelList& pEdges = pointEdges_[pIter()];
-
-        forAll(pEdges, edgeI)
+        // Renumber edges and faces
+        forAll(mirrorEdgeLabels, indexI)
         {
-            // Renumber this edge.
-            edge& edgeToCheck = edges_[pEdges[edgeI]];
-
-            forAll(edgeToCheck, pointI)
+            forAllIter(Map<label>, mirrorEdgeLabels[indexI], eIter)
             {
-                if (edgeToCheck[pointI] == pIter.key())
+                const labelList& eFaces = edgeFaces_[eIter()];
+
+                // Two levels of indirection to ensure
+                // that all entities we renumbered.
+                // A flip-side for the lack of a pointEdges list in 2D.
+                forAll(eFaces, faceI)
                 {
-                    edgeToCheck[pointI] = pIter();
-                }
-            }
+                    const labelList& fEdges = faceEdges_[eFaces[faceI]];
 
-            // Also renumber faces connected to this edge.
-            const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
-
-            forAll(eFaces, faceI)
-            {
-                face& faceToCheck = faces_[eFaces[faceI]];
-
-                forAll(faceToCheck, pointI)
-                {
-                    if (faceToCheck[pointI] == pIter.key())
+                    forAll(fEdges, edgeI)
                     {
-                        faceToCheck[pointI] = pIter();
+                        // Renumber this edge.
+                        edge& edgeToCheck = edges_[fEdges[edgeI]];
+
+                        forAll(edgeToCheck, pointI)
+                        {
+                            if (mirrorPointLabels.found(edgeToCheck[pointI]))
+                            {
+                                edgeToCheck[pointI] =
+                                (
+                                    mirrorPointLabels[edgeToCheck[pointI]]
+                                );
+                            }
+                        }
+
+                        // Also renumber faces connected to this edge.
+                        const labelList& efFaces = edgeFaces_[fEdges[edgeI]];
+
+                        forAll(efFaces, faceJ)
+                        {
+                            face& faceToCheck = faces_[efFaces[faceJ]];
+
+                            forAll(faceToCheck, pointI)
+                            {
+                                if
+                                (
+                                    mirrorPointLabels.found(faceToCheck[pointI])
+                                )
+                                {
+                                    faceToCheck[pointI] =
+                                    (
+                                        mirrorPointLabels[faceToCheck[pointI]]
+                                    );
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
-
-    // Scan edges connected to mirror points,
-    // and correct any edgePoints entries for
-    // edges connected to the other vertex.
-    forAllIter(Map<label>, mirrorPointLabels, pIter)
+    else
     {
-        const labelList& pEdges = pointEdges_[pIter()];
-
-        forAll(pEdges, edgeI)
+        // Point renumbering of entities connected to mirror points
+        forAllIter(Map<label>, mirrorPointLabels, pIter)
         {
-            label otherVertex = edges_[pEdges[edgeI]].otherVertex(pIter());
+            const labelList& pEdges = pointEdges_[pIter()];
 
-            // Scan edgePoints for edges connected to this point
-            const labelList& opEdges = pointEdges_[otherVertex];
-
-            forAll(opEdges, edgeJ)
+            forAll(pEdges, edgeI)
             {
-                labelList& ePoints = edgePoints_[opEdges[edgeJ]];
+                // Renumber this edge.
+                edge& edgeToCheck = edges_[pEdges[edgeI]];
 
-                forAll(ePoints, pointI)
+                forAll(edgeToCheck, pointI)
                 {
-                    if (mirrorPointLabels.found(ePoints[pointI]))
+                    if (edgeToCheck[pointI] == pIter.key())
                     {
-                        // Replace this point with the mirror point
-                        ePoints[pointI] = mirrorPointLabels[ePoints[pointI]];
+                        edgeToCheck[pointI] = pIter();
+                    }
+                }
+
+                // Also renumber faces connected to this edge.
+                const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+
+                forAll(eFaces, faceI)
+                {
+                    face& faceToCheck = faces_[eFaces[faceI]];
+
+                    forAll(faceToCheck, pointI)
+                    {
+                        if (faceToCheck[pointI] == pIter.key())
+                        {
+                            faceToCheck[pointI] = pIter();
+                        }
                     }
                 }
             }
         }
-    }
 
-    // Build edgePoints for new edges
-    forAll(mirrorEdgeLabels, indexI)
-    {
-        forAllIter(Map<label>, mirrorEdgeLabels[indexI], eIter)
+        // Scan edges connected to mirror points,
+        // and correct any edgePoints entries for
+        // edges connected to the other vertex.
+        forAllIter(Map<label>, mirrorPointLabels, pIter)
         {
-            buildEdgePoints(eIter());
+            const labelList& pEdges = pointEdges_[pIter()];
+
+            forAll(pEdges, edgeI)
+            {
+                label otherVertex = edges_[pEdges[edgeI]].otherVertex(pIter());
+
+                // Scan edgePoints for edges connected to this point
+                const labelList& opEdges = pointEdges_[otherVertex];
+
+                forAll(opEdges, edgeJ)
+                {
+                    labelList& ePoints = edgePoints_[opEdges[edgeJ]];
+
+                    forAll(ePoints, pointI)
+                    {
+                        if (mirrorPointLabels.found(ePoints[pointI]))
+                        {
+                            // Replace this point with the mirror point
+                            ePoints[pointI] =
+                            (
+                                mirrorPointLabels[ePoints[pointI]]
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build edgePoints for new edges
+        forAll(mirrorEdgeLabels, indexI)
+        {
+            forAllIter(Map<label>, mirrorEdgeLabels[indexI], eIter)
+            {
+                buildEdgePoints(eIter());
+            }
         }
     }
 
