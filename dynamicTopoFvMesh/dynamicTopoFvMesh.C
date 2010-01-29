@@ -4131,7 +4131,7 @@ void dynamicTopoFvMesh::spatialHash
         label j = label(mag(::floor(p.y()*yL)));
         label k = label(mag(::floor(p.z()*zL)));
 
-        label pos = ((k*nD*nD)+(j*nD)+i) % binSize;
+        label pos = mag(((k*nD*nD)+(j*nD)+i) % binSize);
 
         if (removeIndex)
         {
@@ -4311,9 +4311,9 @@ void dynamicTopoFvMesh::handleMeshSlicing()
         }
     }
 
-    checkConnectivity(10);
-
     Info << "Done." << endl;
+
+    checkConnectivity(10);
 
     // Clear out data.
     sliceBoxes_.clear();
@@ -4401,7 +4401,7 @@ scalar dynamicTopoFvMesh::testProximity
             label j = label(mag(::floor(p.y()*yL)));
             label k = label(mag(::floor(p.z()*zL)));
 
-            label pos = ((k*nD*nD)+(j*nD)+i) % binSize;
+            label pos = mag(((k*nD*nD)+(j*nD)+i) % binSize);
 
             if (findIndex(posIndices, pos) == -1)
             {
@@ -4468,7 +4468,14 @@ scalar dynamicTopoFvMesh::testProximity
                 proxPoints.first() = index;
                 proxPoints.second() = proximityFace;
 
-                foundPoint = true;
+                if
+                (
+                    (faces_[index].size() == 4) &&
+                    (polyMesh::faces()[proximityFace].size() == 4)
+                )
+                {
+                    foundPoint = true;
+                }
             }
             else
             {
@@ -5546,7 +5553,7 @@ void dynamicTopoFvMesh::readRefinementOptions
             );
 
             // Cap the threshold value
-            sliceThreshold_ = Foam::max(sliceThreshold_, minLengthScale_);
+            // sliceThreshold_ = Foam::max(sliceThreshold_, minLengthScale_);
         }
     }
 
@@ -7480,7 +7487,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
         // Check if this boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.
-        //mesh.remove2DSliver(fIndex);
+        mesh.remove2DSliver(fIndex);
 
         if (mesh.checkFaceBisection(fIndex))
         {
@@ -8013,7 +8020,7 @@ void dynamicTopoFvMesh::remove2DSliver
     scalar area = triFaceArea(faces_[getTriBoundaryFace(fIndex)]);
 
     // This cell has to be removed...
-    if (mag(area) < (sliverThreshold_*length*length))
+    if (mag(area) < (0.1*length*length))
     {
         if (self() == 0)
         {
@@ -9083,7 +9090,7 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
     initCoupledPatches();
 
     // Remove sliver cells first.
-    // removeSlivers();
+    removeSlivers();
 
     // Handle coupled patches.
     handleCoupledPatches();

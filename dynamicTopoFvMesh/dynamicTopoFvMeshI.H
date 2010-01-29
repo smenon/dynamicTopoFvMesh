@@ -625,7 +625,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                 }
             }
 
-            scale = Foam::min(scale, ((distance / 5.0) - gTol_)/ratioMax_);
+            scale = Foam::min(scale, ((distance / 3.0) - gTol_)/ratioMax_);
         }
 
         // If curvature-based refinement is requested,

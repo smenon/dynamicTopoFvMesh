@@ -4121,7 +4121,7 @@ void dynamicTopoFvMesh::sliceMesh
     );
 
     vector p = vector::zero, N = vector::zero;
-    Map<point> checkPoints;
+    Map<vector> checkPoints, surfFaces;
     Map<edge> checkEdges;
 
     if (twoDMesh_)
@@ -4175,6 +4175,25 @@ void dynamicTopoFvMesh::sliceMesh
                             points_[surfaceEdge[1]]
                         );
                     }
+
+                    // Add surface faces as well.
+                    const labelList& eFaces = edgeFaces_[edgeI];
+
+                    forAll(eFaces, faceI)
+                    {
+                        if
+                        (
+                            (neighbour_[eFaces[faceI]] == -1) &&
+                            (!surfFaces.found(eFaces[faceI]))
+                        )
+                        {
+                            surfFaces.insert
+                            (
+                                eFaces[faceI],
+                                triFaceNormal(faces_[eFaces[faceI]])
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -4207,37 +4226,42 @@ void dynamicTopoFvMesh::sliceMesh
             )
         );
 
-        // Fit a plane through the shortest path points.
+        // Fit a plane through the surface points.
         if (foundPath)
         {
-            scalar nPathPoints = 1.0;
-            vector S = checkPoints[pointPair.first()];
-            symmTensor M = sqr(checkPoints[pointPair.first()]);
-
-            label currentPoint = pointPair.second();
-
-            while (currentPoint != pointPair.first())
+            // First normalize all face-normals
+            forAllIter(Map<vector>, surfFaces, sIter)
             {
-                S += checkPoints[currentPoint];
-                M += sqr(checkPoints[currentPoint]);
-
-                nPathPoints += 1.0;
-
-                currentPoint = shortestPath[currentPoint];
+                sIter() /= (mag(sIter()) + VSMALL);
             }
 
-            // Obtain the plane-normal
-            N = inv(M)&S;
-
-            N /= mag(N);
-
-            // Obtain centroid of the point cloud
-            p = S / nPathPoints;
-
+            // Next, take cross-products with every other
+            // vector in the list, an accumulate.
+            forAllIter(Map<vector>, surfFaces, sIterI)
             {
-                // Compute plane normal using cross-products.
+                forAllIter(Map<vector>, surfFaces, sIterJ)
+                {
+                    if (sIterI.key() != sIterJ.key())
+                    {
+                        vector n = (sIterI() ^ sIterJ());
 
+                        n /= (mag(n) + VSMALL);
+
+                        // Reverse the vector if necessary
+                        if ((N & n) < 0.0)
+                        {
+                            n = -n;
+                        }
+
+                        N += n;
+                    }
+                }
             }
+
+            N /= (mag(N) + VSMALL);
+
+            // Obtain point position
+            p = gCentre;
         }
     }
 
@@ -5016,54 +5040,51 @@ void dynamicTopoFvMesh::splitInternalFaces
     if (twoDMesh_)
     {
         // Renumber edges and faces
-        forAll(mirrorEdgeLabels, indexI)
+        forAllIter(Map<label>, mirrorEdgeLabels[0], eIter)
         {
-            forAllIter(Map<label>, mirrorEdgeLabels[indexI], eIter)
+            const labelList& eFaces = edgeFaces_[eIter()];
+
+            // Two levels of indirection to ensure
+            // that all entities we renumbered.
+            // A flip-side for the lack of a pointEdges list in 2D.
+            forAll(eFaces, faceI)
             {
-                const labelList& eFaces = edgeFaces_[eIter()];
+                const labelList& fEdges = faceEdges_[eFaces[faceI]];
 
-                // Two levels of indirection to ensure
-                // that all entities we renumbered.
-                // A flip-side for the lack of a pointEdges list in 2D.
-                forAll(eFaces, faceI)
+                forAll(fEdges, edgeI)
                 {
-                    const labelList& fEdges = faceEdges_[eFaces[faceI]];
+                    // Renumber this edge.
+                    edge& edgeToCheck = edges_[fEdges[edgeI]];
 
-                    forAll(fEdges, edgeI)
+                    forAll(edgeToCheck, pointI)
                     {
-                        // Renumber this edge.
-                        edge& edgeToCheck = edges_[fEdges[edgeI]];
-
-                        forAll(edgeToCheck, pointI)
+                        if (mirrorPointLabels.found(edgeToCheck[pointI]))
                         {
-                            if (mirrorPointLabels.found(edgeToCheck[pointI]))
-                            {
-                                edgeToCheck[pointI] =
-                                (
-                                    mirrorPointLabels[edgeToCheck[pointI]]
-                                );
-                            }
+                            edgeToCheck[pointI] =
+                            (
+                                mirrorPointLabels[edgeToCheck[pointI]]
+                            );
                         }
+                    }
 
-                        // Also renumber faces connected to this edge.
-                        const labelList& efFaces = edgeFaces_[fEdges[edgeI]];
+                    // Also renumber faces connected to this edge.
+                    const labelList& efFaces = edgeFaces_[fEdges[edgeI]];
 
-                        forAll(efFaces, faceJ)
+                    forAll(efFaces, faceJ)
+                    {
+                        face& faceToCheck = faces_[efFaces[faceJ]];
+
+                        forAll(faceToCheck, pointI)
                         {
-                            face& faceToCheck = faces_[efFaces[faceJ]];
-
-                            forAll(faceToCheck, pointI)
+                            if
+                            (
+                                mirrorPointLabels.found(faceToCheck[pointI])
+                            )
                             {
-                                if
+                                faceToCheck[pointI] =
                                 (
-                                    mirrorPointLabels.found(faceToCheck[pointI])
-                                )
-                                {
-                                    faceToCheck[pointI] =
-                                    (
-                                        mirrorPointLabels[faceToCheck[pointI]]
-                                    );
-                                }
+                                    mirrorPointLabels[faceToCheck[pointI]]
+                                );
                             }
                         }
                     }

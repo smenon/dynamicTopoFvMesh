@@ -615,19 +615,28 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             }
 
             // Finally replace the face index
-            replaceLabel
-            (
-                origTriFace,
-                retTriFace,
-                edgeFaces_[edgeToKeep[indexI]]
-            );
+            if (retTriFace == -1)
+            {
+                // Couldn't find a retained face.
+                // This must be a boundary edge, so size-down instead.
+                sizeDownList(origTriFace, edgeFaces_[edgeToKeep[indexI]]);
+            }
+            else
+            {
+                replaceLabel
+                (
+                    origTriFace,
+                    retTriFace,
+                    edgeFaces_[edgeToKeep[indexI]]
+                );
 
-            replaceLabel
-            (
-                edgeToThrow[indexI],
-                edgeToKeep[indexI],
-                faceEdges_[retTriFace]
-            );
+                replaceLabel
+                (
+                    edgeToThrow[indexI],
+                    edgeToKeep[indexI],
+                    faceEdges_[retTriFace]
+                );
+            }
         }
 
         // Correct faceEdges / edgeFaces for quad-faces...
@@ -878,19 +887,28 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             }
 
             // Finally replace the face/edge indices
-            replaceLabel
-            (
-                origTriFace,
-                retTriFace,
-                edgeFaces_[edgeToKeep[indexI]]
-            );
+            if (retTriFace == -1)
+            {
+                // Couldn't find a retained face.
+                // This must be a boundary edge, so size-down instead.
+                sizeDownList(origTriFace, edgeFaces_[edgeToKeep[indexI]]);
+            }
+            else
+            {
+                replaceLabel
+                (
+                    origTriFace,
+                    retTriFace,
+                    edgeFaces_[edgeToKeep[indexI]]
+                );
 
-            replaceLabel
-            (
-                edgeToThrow[indexI],
-                edgeToKeep[indexI],
-                faceEdges_[retTriFace]
-            );
+                replaceLabel
+                (
+                    edgeToThrow[indexI],
+                    edgeToKeep[indexI],
+                    faceEdges_[retTriFace]
+                );
+            }
         }
 
         // Correct faceEdges / edgeFaces for quad-faces...
@@ -1262,22 +1280,44 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
      && (whichPatch(faceToKeep[0]) < 0)
     )
     {
+        // Obtain a copy before adding the new face,
+        // since the reference might become invalid during list resizing.
+        face newFace = faces_[faceToKeep[0]];
+        label newOwn = owner_[faceToKeep[0]];
+        labelList newFaceEdges = faceEdges_[faceToKeep[0]];
+
         // This face is being converted from interior to boundary. Remove
         // from the interior list and add as a boundary face to the end.
         label newFaceIndex = insertFace
                              (
                                  whichPatch(faceToThrow[0]),
-                                 faces_[faceToKeep[0]],
-                                 owner_[faceToKeep[0]],
+                                 newFace,
+                                 newOwn,
                                  -1
                              );
+
+        // Add a faceEdges entry as well.
+        // Edges don't have to change, since they're
+        // all on the boundary anyway.
+        faceEdges_.append(newFaceEdges);
 
         replaceLabel
         (
             faceToKeep[0],
             newFaceIndex,
-            cells_[owner_[faceToKeep[0]]]
+            cells_[newOwn]
         );
+
+        // Correct edgeFaces with the new face label.
+        forAll(newFaceEdges, edgeI)
+        {
+            replaceLabel
+            (
+                faceToKeep[0],
+                newFaceIndex,
+                edgeFaces_[newFaceEdges[edgeI]]
+            );
+        }
 
         // Renumber the neighbour so that this face is removed correctly.
         neighbour_[faceToKeep[0]] = 0;
@@ -1318,22 +1358,44 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
          && (whichPatch(faceToKeep[1]) < 0)
         )
         {
+            // Obtain a copy before adding the new face,
+            // since the reference might become invalid during list resizing.
+            face newFace = faces_[faceToKeep[1]];
+            label newOwn = owner_[faceToKeep[1]];
+            labelList newFaceEdges = faceEdges_[faceToKeep[1]];
+
             // This face is being converted from interior to boundary. Remove
             // from the interior list and add as a boundary face to the end.
             label newFaceIndex = insertFace
                                  (
                                      whichPatch(faceToThrow[1]),
-                                     faces_[faceToKeep[1]],
-                                     owner_[faceToKeep[1]],
+                                     newFace,
+                                     newOwn,
                                      -1
                                  );
+
+            // Add a faceEdges entry as well.
+            // Edges don't have to change, since they're
+            // all on the boundary anyway.
+            faceEdges_.append(newFaceEdges);
 
             replaceLabel
             (
                 faceToKeep[1],
                 newFaceIndex,
-                cells_[owner_[faceToKeep[1]]]
+                cells_[newOwn]
             );
+
+            // Correct edgeFaces with the new face label.
+            forAll(newFaceEdges, edgeI)
+            {
+                replaceLabel
+                (
+                    faceToKeep[1],
+                    newFaceIndex,
+                    edgeFaces_[newFaceEdges[edgeI]]
+                );
+            }
 
             // Renumber the neighbour so that this face is removed correctly.
             neighbour_[faceToKeep[1]] = 0;
@@ -1652,40 +1714,47 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         // Override previous decision for rare cases.
         // Check if either point touches a hull boundary face, and retain that.
-        if (!nBoundCurves[0] && !nBoundCurves[1])
+        FixedList<bool,2> faceCheck(false);
+
+        forAll(ringEntities[1], faceI)
         {
-            FixedList<bool,2> faceCheck(false);
+            if (whichPatch(ringEntities[1][faceI]) > -1)
+            {
+                faceCheck[0] = true;
+                break;
+            }
+        }
 
-            forAll(ringEntities[1], faceI)
+        forAll(ringEntities[3], faceI)
+        {
+            if (whichPatch(ringEntities[3][faceI]) > -1)
             {
-                if (whichPatch(ringEntities[1][faceI]) > -1)
-                {
-                    faceCheck[0] = true;
-                    break;
-                }
+                faceCheck[1] = true;
+                break;
             }
+        }
 
-            forAll(ringEntities[3], faceI)
+        // Check if we can continue...
+        if (faceCheck[0] && !faceCheck[1])
+        {
+            if (collapseCase != 1)
             {
-                if (whichPatch(ringEntities[3][faceI]) > -1)
-                {
-                    faceCheck[1] = true;
-                    break;
-                }
+                return map;
             }
-
-            if (faceCheck[0] && !faceCheck[1])
+        }
+        else
+        if (!faceCheck[0] && faceCheck[1])
+        {
+            if (collapseCase != 2)
             {
-                collapseCase = 1;
+                return map;
             }
-            else
-            if (!faceCheck[0] && faceCheck[1])
+        }
+        else
+        {
+            if (collapseCase != 2)
             {
-                collapseCase = 2;
-            }
-            else
-            {
-                collapseCase = 2;
+                return map;
             }
         }
     }
