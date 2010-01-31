@@ -48,7 +48,12 @@ void dynamicTopoFvMesh::reOrderPoints
 
     if (debug)
     {
-        Info << "ReOrdering points...";
+        if (threaded)
+        {
+            Info << "Thread: " << self() << ": ";
+        }
+
+        Info << "ReOrdering points..." << flush;
     }
 
     // Allocate for the mapping information
@@ -260,7 +265,12 @@ void dynamicTopoFvMesh::reOrderEdges
 
     if (debug)
     {
-        Info << "ReOrdering edges...";
+        if (threaded)
+        {
+            Info << "Thread: " << self() << ": ";
+        }
+
+        Info << "ReOrdering edges..." << flush;
     }
 
     // Allocate for mapping information
@@ -609,7 +619,12 @@ void dynamicTopoFvMesh::reOrderFaces
 
     if (debug)
     {
-        Info << "ReOrdering faces...";
+        if (threaded)
+        {
+            Info << "Thread: " << self() << ": ";
+        }
+
+        Info << "ReOrdering faces..." << flush;
     }
 
     // Allocate for mapping information
@@ -1096,7 +1111,12 @@ void dynamicTopoFvMesh::reOrderCells
 
     if (debug)
     {
-        Info << "ReOrdering cells...";
+        if (threaded)
+        {
+            Info << "Thread: " << self() << ": ";
+        }
+
+        Info << "ReOrdering cells..." << flush;
     }
 
     // Allocate for mapping information
@@ -1411,7 +1431,7 @@ void dynamicTopoFvMesh::reOrderMesh
         checkConnectivity();
     }
 
-    if (threader_->multiThreaded())
+    if (threader_->multiThreaded() && threader_->getNumThreads() >= 4)
     {
         // Initialize multi-threaded reOrdering
         threadedMeshReOrdering

@@ -178,6 +178,22 @@ void dynamicTopoFvMesh::swapQuadFace
             Info << "Old face: " << faces_[fIndex] << endl;
             Info << "Old faceEdges: " << faceEdges_[fIndex] << endl;
         }
+
+        // Write out VTK files before change
+        if (debug > 3)
+        {
+            labelList cellHull(2, -1);
+
+            cellHull[0] = c0;
+            cellHull[1] = c1;
+
+            writeVTK
+            (
+                Foam::name(fIndex)
+              + "Swap_0",
+                cellHull
+            );
+        }
     }
 
     // Find the interior/boundary faces.
@@ -721,6 +737,22 @@ void dynamicTopoFvMesh::swapQuadFace
     // Insert mapping info into the HashTable
     cellsFromCells_.insert(c0,objectMap(c0,c0MasterObjects.toc()));
     cellsFromCells_.insert(c1,objectMap(c1,c1MasterObjects.toc()));
+
+    // Write out VTK files after change
+    if (debug > 3)
+    {
+        labelList cellHull(2, -1);
+
+        cellHull[0] = c0;
+        cellHull[1] = c1;
+
+        writeVTK
+        (
+            Foam::name(fIndex)
+          + "Swap_1",
+            cellHull
+        );
+    }
 
     // Set the flag
     topoChangeFlag_ = true;

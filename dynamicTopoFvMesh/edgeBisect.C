@@ -185,6 +185,22 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 }
             }
         }
+
+        // Write out VTK files prior to change
+        if (debug > 3)
+        {
+            labelList cellHull(2, -1);
+
+            cellHull[0] = owner_[fIndex];
+            cellHull[1] = neighbour_[fIndex];
+
+            writeVTK
+            (
+                Foam::name(fIndex)
+              + "Bisect_0",
+                cellHull
+            );
+        }
     }
 
     // Find the common-edge between the triangular boundary faces
@@ -1388,6 +1404,24 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             // Look for matching slave faces on the patchSubMesh.
 
         }
+    }
+
+    // Write out VTK files after change
+    if (debug > 3)
+    {
+        labelList cellHull(4, -1);
+
+        cellHull[0] = owner_[fIndex];
+        cellHull[1] = neighbour_[fIndex];
+        cellHull[2] = owner_[newFaceIndex[3]];
+        cellHull[3] = neighbour_[newFaceIndex[3]];
+
+        writeVTK
+        (
+            Foam::name(fIndex)
+          + "Bisect_1",
+            cellHull
+        );
     }
 
     // Set the flag

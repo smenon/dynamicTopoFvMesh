@@ -2021,7 +2021,14 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
         if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
         {
             // Obtain the normal.
-            fNorm[count] = triFaceNormal(faces_[edgeFaces[faceI]]);
+            if (twoDMesh_)
+            {
+                fNorm[count] = quadFaceNormal(faces_[edgeFaces[faceI]]);
+            }
+            else
+            {
+                fNorm[count] = triFaceNormal(faces_[edgeFaces[faceI]]);
+            }
 
             // Normalize it.
             fNorm[count] /= mag(fNorm[count]);
@@ -3087,7 +3094,7 @@ void dynamicTopoFvMesh::writeVTK
                 // Size the list
                 cpList[nCells].setSize(6);
 
-                // Figure out one triangle face
+                // Figure out triangle faces
                 forAll(thisCell, faceI)
                 {
                     const face& currFace = faces_[thisCell[faceI]];
@@ -3115,77 +3122,44 @@ void dynamicTopoFvMesh::writeVTK
                                 {
                                     // Search for vertices on currFace
                                     // in this face.
-                                    label i = -1, p = -1, n = -1;
-
-                                    if ((i=nextFace.which(currFace[0])) != -1)
+                                    forAll(currFace, I)
                                     {
-                                        p = nextFace.prevLabel(i);
-                                        n = nextFace.nextLabel(i);
+                                        label i = nextFace.which(currFace[I]);
 
-                                        if
-                                        (
-                                            p != currFace[1] &&
-                                            p != currFace[2]
-                                        )
+                                        if (i != -1)
                                         {
-                                            cpList[nCells][3] = p;
-                                        }
-                                        else
-                                        if
-                                        (
-                                            n != currFace[1] &&
-                                            n != currFace[2]
-                                        )
-                                        {
-                                            cpList[nCells][3] = n;
-                                        }
-                                    }
+                                            label p = nextFace.prevLabel(i);
+                                            label n = nextFace.nextLabel(i);
 
-                                    if ((i=nextFace.which(currFace[1])) != -1)
-                                    {
-                                        p = nextFace.prevLabel(i);
-                                        n = nextFace.nextLabel(i);
+                                            if (p == cpList[nCells][0])
+                                            {
+                                                cpList[nCells][3] = currFace[I];
+                                            }
 
-                                        if
-                                        (
-                                            p != currFace[0] &&
-                                            p != currFace[2]
-                                        )
-                                        {
-                                            cpList[nCells][4] = p;
-                                        }
-                                        else
-                                        if
-                                        (
-                                            n != currFace[0] &&
-                                            n != currFace[2]
-                                        )
-                                        {
-                                            cpList[nCells][4] = n;
-                                        }
-                                    }
+                                            if (p == cpList[nCells][1])
+                                            {
+                                                cpList[nCells][4] = currFace[I];
+                                            }
 
-                                    if ((i=nextFace.which(currFace[2])) != -1)
-                                    {
-                                        p = nextFace.prevLabel(i);
-                                        n = nextFace.nextLabel(i);
+                                            if (p == cpList[nCells][2])
+                                            {
+                                                cpList[nCells][5] = currFace[I];
+                                            }
 
-                                        if
-                                        (
-                                            p != currFace[0] &&
-                                            p != currFace[1]
-                                        )
-                                        {
-                                            cpList[nCells][5] = p;
-                                        }
-                                        else
-                                        if
-                                        (
-                                            n != currFace[0] &&
-                                            n != currFace[1]
-                                        )
-                                        {
-                                            cpList[nCells][5] = n;
+                                            if (n == cpList[nCells][0])
+                                            {
+                                                cpList[nCells][3] = currFace[I];
+                                            }
+
+                                            if (n == cpList[nCells][1])
+                                            {
+                                                cpList[nCells][4] = currFace[I];
+                                            }
+
+                                            if (n == cpList[nCells][2])
+                                            {
+                                                cpList[nCells][5] = currFace[I];
+                                            }
                                         }
                                     }
                                 }
@@ -5687,55 +5661,6 @@ label dynamicTopoFvMesh::getTriBoundaryEdge
     return -1;
 }
 
-// 2D Edge-swapping engine
-void dynamicTopoFvMesh::swap2DEdges(void *argument)
-{
-    // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
-
-    if (thread->slave())
-    {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
-    }
-
-    dynamicTopoFvMesh& mesh = thread->reference();
-
-    // Figure out which thread this is...
-    label tIndex = mesh.self();
-
-    // Pick items off the stack
-    while (!mesh.faceStack(tIndex).empty())
-    {
-        // Retrieve the index for this face
-        label fIndex = mesh.faceStack(tIndex).pop();
-
-        // Perform a Delaunay test and check if a flip is necesary.
-        bool failed = mesh.testDelaunay(fIndex);
-
-        if (failed)
-        {
-            if (thread->master())
-            {
-                // Swap this face.
-                mesh.swapQuadFace(fIndex);
-            }
-            else
-            {
-                // Push this on to the master stack
-                mesh.faceStack(0).push(fIndex);
-            }
-        }
-    }
-
-    if (thread->slave())
-    {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
-    }
-}
-
 // Initialize edge related connectivity lists
 void dynamicTopoFvMesh::initEdges()
 {
@@ -7443,6 +7368,55 @@ void dynamicTopoFvMesh::waitForBuffers() const
     {
         OPstream::waitRequests();
         IPstream::waitRequests();
+    }
+}
+
+// 2D Edge-swapping engine
+void dynamicTopoFvMesh::swap2DEdges(void *argument)
+{
+    // Recast the argument
+    threadHandler<dynamicTopoFvMesh> *thread =
+    (
+        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
+    );
+
+    if (thread->slave())
+    {
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+    }
+
+    dynamicTopoFvMesh& mesh = thread->reference();
+
+    // Figure out which thread this is...
+    label tIndex = mesh.self();
+
+    // Pick items off the stack
+    while (!mesh.faceStack(tIndex).empty())
+    {
+        // Retrieve the index for this face
+        label fIndex = mesh.faceStack(tIndex).pop();
+
+        // Perform a Delaunay test and check if a flip is necesary.
+        bool failed = mesh.testDelaunay(fIndex);
+
+        if (failed)
+        {
+            if (thread->master())
+            {
+                // Swap this face.
+                mesh.swapQuadFace(fIndex);
+            }
+            else
+            {
+                // Push this on to the master stack
+                mesh.faceStack(0).push(fIndex);
+            }
+        }
+    }
+
+    if (thread->slave())
+    {
+        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
     }
 }
 

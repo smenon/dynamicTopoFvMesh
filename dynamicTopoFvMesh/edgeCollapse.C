@@ -393,6 +393,35 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             Info << secondEdgeFaces[indexI]
                  << ": " << faces_[secondEdgeFaces[indexI]] << endl;
         }
+
+        // Write out VTK files prior to change
+        if (debug > 3)
+        {
+            labelHashSet vtkCells;
+
+            forAll(firstCells, cellI)
+            {
+                if (!vtkCells.found(firstCells[cellI]))
+                {
+                    vtkCells.insert(firstCells[cellI]);
+                }
+            }
+
+            forAll(secondCells, cellI)
+            {
+                if (!vtkCells.found(secondCells[cellI]))
+                {
+                    vtkCells.insert(secondCells[cellI]);
+                }
+            }
+
+            writeVTK
+            (
+                Foam::name(fIndex)
+              + "_Collapse_0",
+                vtkCells.toc()
+            );
+        }
     }
 
     // Determine the common vertices for the first and second edges
@@ -428,38 +457,70 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         );
     }
 
-    // Collapse preferentially towards a symmetryPlane.
-    if ((edgeBoundary[0] && edgeBoundary[1]) && (c1 != -1))
-    {
-        if (debug > 2)
-        {
-            WarningIn
-            (
-                "dynamicTopoFvMesh::collapseQuadFace"
-            )   << "Collapsing an internal face that "
-                << "lies on two boundary patches. "
-                << "Face: " << fIndex << ": " << faces_[fIndex] << endl;
-        }
-
-        // Bail out for now. If proximity based refinement is
-        // switched on, mesh may be sliced at this point.
-        return map;
-    }
-
     // Lists for feasibility checks
     label collapseCase = -1;
+    FixedList<bool, 2> nBoundCurves(false);
     FixedList<label,2> original(-1), replacement(-1), ends(-1);
     FixedList<label,2> faceToKeep(-1), faceToThrow(-1);
     FixedList<label,4> edgeToKeep(-1), edgeToThrow(-1);
 
     // Set the collapseCase
+    if (edgeBoundary[0] && !edgeBoundary[1])
+    {
+        collapseCase = 1;
+    }
+    else
     if (!edgeBoundary[0] && edgeBoundary[1])
     {
         collapseCase = 2;
     }
     else
+    if (edgeBoundary[0] && edgeBoundary[1])
     {
-        collapseCase = 1;
+        if (c1 != -1)
+        {
+            if (debug > 2)
+            {
+                WarningIn
+                (
+                    "dynamicTopoFvMesh::collapseQuadFace"
+                )   << "Collapsing an internal face that "
+                    << "lies on two boundary patches. "
+                    << "Face: " << fIndex << ": " << faces_[fIndex] << endl;
+            }
+
+            // Bail out for now. If proximity based refinement is
+            // switched on, mesh may be sliced at this point.
+            return map;
+        }
+
+        // Check if either edge lies on a bounding curve.
+        if (checkBoundingCurve(checkEdgeIndex[1]))
+        {
+            nBoundCurves[0] = true;
+        }
+
+        if (checkBoundingCurve(checkEdgeIndex[2]))
+        {
+            nBoundCurves[1] = true;
+        }
+
+        // Collapse towards a bounding curve
+        if (nBoundCurves[0] && !nBoundCurves[1])
+        {
+            collapseCase = 1;
+        }
+        else
+        if (!nBoundCurves[0] && nBoundCurves[1])
+        {
+            collapseCase = 2;
+        }
+        else
+        {
+            // Two bounding curves? This might cause pinching.
+            // Bail out for now.
+            return map;
+        }
     }
 
     // Perform an override if requested.
@@ -1101,6 +1162,35 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                  << " owner: " << owner_[faceToThrow[1]]
                  << " neighbour: " << neighbour_[faceToThrow[1]]
                  << endl;
+        }
+
+        // Write out VTK files after change
+        if (debug > 3)
+        {
+            labelHashSet vtkCells;
+
+            forAll(firstCells, cellI)
+            {
+                if (!vtkCells.found(firstCells[cellI]))
+                {
+                    vtkCells.insert(firstCells[cellI]);
+                }
+            }
+
+            forAll(secondCells, cellI)
+            {
+                if (!vtkCells.found(secondCells[cellI]))
+                {
+                    vtkCells.insert(secondCells[cellI]);
+                }
+            }
+
+            writeVTK
+            (
+                Foam::name(fIndex)
+              + "_Collapse_1",
+                vtkCells.toc()
+            );
         }
     }
 
