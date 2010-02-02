@@ -800,6 +800,47 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Delete the two points...
         removePoint(cv0);
         removePoint(cv1);
+
+        if (coupledModification_)
+        {
+            if (locallyCoupledFace(fIndex))
+            {
+                // Remove the point entries.
+                const label pointEnum = coupledPatchInfo::POINT;
+
+                forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+                {
+                    // Obtain references
+                    Map<label>& pointMap =
+                    (
+                        patchI().entityMap(pointEnum)
+                    );
+
+                    Map<label>& rPointMap =
+                    (
+                        patchI().reverseEntityMap(pointEnum)
+                    );
+
+                    if (pointMap.found(cv0))
+                    {
+                        // Erase the reverse map first
+                        rPointMap.erase(pointMap[cv0]);
+
+                        // Update pointMap
+                        pointMap.erase(cv0);
+                    }
+
+                    if (pointMap.found(cv1))
+                    {
+                        // Erase the reverse map first
+                        rPointMap.erase(pointMap[cv1]);
+
+                        // Update pointMap
+                        pointMap.erase(cv1);
+                    }
+                }
+            }
+        }
     }
     else
     {
@@ -1072,6 +1113,47 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Delete the two points...
         removePoint(cv2);
         removePoint(cv3);
+
+        if (coupledModification_)
+        {
+            if (locallyCoupledFace(fIndex))
+            {
+                // Remove the point entries.
+                const label pointEnum = coupledPatchInfo::POINT;
+
+                forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+                {
+                    // Obtain references
+                    Map<label>& pointMap =
+                    (
+                        patchI().entityMap(pointEnum)
+                    );
+
+                    Map<label>& rPointMap =
+                    (
+                        patchI().reverseEntityMap(pointEnum)
+                    );
+
+                    if (pointMap.found(cv2))
+                    {
+                        // Erase the reverse map first
+                        rPointMap.erase(pointMap[cv2]);
+
+                        // Update pointMap
+                        pointMap.erase(cv2);
+                    }
+
+                    if (pointMap.found(cv3))
+                    {
+                        // Erase the reverse map first
+                        rPointMap.erase(pointMap[cv3]);
+
+                        // Update pointMap
+                        pointMap.erase(cv3);
+                    }
+                }
+            }
+        }
     }
 
     if (debug > 2)
@@ -1162,35 +1244,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                  << " owner: " << owner_[faceToThrow[1]]
                  << " neighbour: " << neighbour_[faceToThrow[1]]
                  << endl;
-        }
-
-        // Write out VTK files after change
-        if (debug > 3)
-        {
-            labelHashSet vtkCells;
-
-            forAll(firstCells, cellI)
-            {
-                if (!vtkCells.found(firstCells[cellI]))
-                {
-                    vtkCells.insert(firstCells[cellI]);
-                }
-            }
-
-            forAll(secondCells, cellI)
-            {
-                if (!vtkCells.found(secondCells[cellI]))
-                {
-                    vtkCells.insert(secondCells[cellI]);
-                }
-            }
-
-            writeVTK
-            (
-                Foam::name(fIndex)
-              + "_Collapse_1",
-                vtkCells.toc()
-            );
         }
     }
 
@@ -1514,6 +1567,45 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     // Finally remove the face
     removeFace(fIndex);
 
+    // Write out VTK files after change
+    if (debug > 3)
+    {
+        labelHashSet vtkCells;
+
+        forAll(firstCells, cellI)
+        {
+            if (firstCells[cellI] == c0 || firstCells[cellI] == c1)
+            {
+                continue;
+            }
+
+            if (!vtkCells.found(firstCells[cellI]))
+            {
+                vtkCells.insert(firstCells[cellI]);
+            }
+        }
+
+        forAll(secondCells, cellI)
+        {
+            if (secondCells[cellI] == c0 || secondCells[cellI] == c1)
+            {
+                continue;
+            }
+
+            if (!vtkCells.found(secondCells[cellI]))
+            {
+                vtkCells.insert(secondCells[cellI]);
+            }
+        }
+
+        writeVTK
+        (
+            Foam::name(fIndex)
+          + "_Collapse_1",
+            vtkCells.toc()
+        );
+    }
+
     // Set the flag
     topoChangeFlag_ = true;
 
@@ -1587,13 +1679,15 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // Is this a locally coupled edge?
         if (locallyCoupledEdge(eIndex))
         {
-            label slaveIndex = -1;
+            label slaveIndex = -1, pIndex = -1;
 
             // Determine the slave index.
             forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
                 if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
                 {
+                    pIndex = patchI.key();
+
                     break;
                 }
             }
@@ -1612,17 +1706,25 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 // Set the overRideCase for this edge
                 changeMap masterMap;
 
-                // Perform a geometric comparison.
+                const label pointEnum = coupledPatchInfo::POINT;
+
+                // Obtain the pointMap
+                Map<label>& pointMap =
+                (
+                    patchCoupling_[pIndex].entityMap(pointEnum)
+                );
+
+                // Perform a topological comparison.
                 switch (slaveMap.type())
                 {
                     case 1:
 
-                        if (mag(points_[mEdge[0]] - points_[sEdge[0]]) < gTol_)
+                        if (pointMap[mEdge[0]] == sEdge[0])
                         {
                             overRideCase = 1;
                         }
                         else
-                        if (mag(points_[mEdge[1]] - points_[sEdge[0]]) < gTol_)
+                        if (pointMap[mEdge[1]] == sEdge[0])
                         {
                             overRideCase = 2;
                         }
@@ -1639,12 +1741,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                     case 2:
 
-                        if (mag(points_[mEdge[1]] - points_[sEdge[1]]) < gTol_)
+                        if (pointMap[mEdge[1]] == sEdge[1])
                         {
                             overRideCase = 2;
                         }
                         else
-                        if (mag(points_[mEdge[0]] - points_[sEdge[1]]) < gTol_)
+                        if (pointMap[mEdge[0]] == sEdge[1])
                         {
                             overRideCase = 1;
                         }
@@ -2463,6 +2565,32 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     // Remove the collapse point
     removePoint(collapsePoint);
+
+    // Update point maps, if necessary.
+    if (coupledModification_)
+    {
+        if (locallyCoupledEdge(eIndex))
+        {
+            // Remove the point entry.
+            const label pointEnum = coupledPatchInfo::POINT;
+
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            {
+                // Obtain references
+                Map<label>& pointMap = patchI().entityMap(pointEnum);
+                Map<label>& rPointMap = patchI().reverseEntityMap(pointEnum);
+
+                if (pointMap.found(collapsePoint))
+                {
+                    // Erase the reverse map first
+                    rPointMap.erase(pointMap[collapsePoint]);
+
+                    // Update pointMap
+                    pointMap.erase(collapsePoint);
+                }
+            }
+        }
+    }
 
     // Write out VTK files after change
     if (debug > 3)

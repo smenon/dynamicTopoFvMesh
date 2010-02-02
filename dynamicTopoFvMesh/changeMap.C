@@ -38,8 +38,7 @@ changeMap::changeMap()
     firstEdge_(-1),
     secondEdge_(-1),
     apexPoint_(-1),
-    opposingFace_(-1),
-    addedPoint_(-1)
+    opposingFace_(-1)
 {}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -75,60 +74,77 @@ label& changeMap::opposingFace()
 }
 
 // Added entities
-void changeMap::addPoint(const label pIndex)
+void changeMap::addPoint
+(
+    const label pIndex,
+    const label master
+)
 {
-    addedPoint_ = pIndex;
+    addedPoints_.insert(pIndex, master);
 }
 
-void changeMap::addEdge(const label eIndex)
+void changeMap::addEdge
+(
+    const label eIndex,
+    const label master
+)
 {
-    addedEdges_.insert(eIndex);
+    addedEdges_.insert(eIndex, master);
 }
 
-void changeMap::addFace(const label fIndex)
+void changeMap::addFace
+(
+    const label fIndex,
+    const label master
+)
 {
-    addedFaces_.insert(fIndex);
+    addedFaces_.insert(fIndex, master);
 }
 
-void changeMap::addCell(const label cIndex)
+void changeMap::addCell
+(
+    const label cIndex,
+    const label master
+)
 {
-    addedCells_.insert(cIndex);
+    addedCells_.insert(cIndex, master);
 }
 
 // Return an added point
-label changeMap::addedPoint()
+const Map<label>& changeMap::addedPointList() const
 {
-    return addedPoint_;
+    return addedPoints_;
 }
 
 // Return the list of added entities
-const labelList changeMap::addedEdgeList()
+const Map<label>& changeMap::addedEdgeList() const
 {
-    return addedEdges_.toc();
+    return addedEdges_;
 }
 
-const labelList changeMap::addedFaceList()
+const Map<label>& changeMap::addedFaceList() const
 {
-    return addedFaces_.toc();
+    return addedFaces_;
 }
 
-const labelList changeMap::addedCellList()
+const Map<label>& changeMap::addedCellList() const
 {
-    return addedCells_.toc();
+    return addedCells_;
 }
 
 void changeMap::operator=(const changeMap& rhs)
 {
     type_ = rhs.type_;
+
     firstEdge_    = rhs.firstEdge_;
     secondEdge_   = rhs.secondEdge_;
     apexPoint_    = rhs.apexPoint_;
     opposingFace_ = rhs.opposingFace_;
 
-    addedPoint_ = rhs.addedPoint_;
-    addedEdges_ = rhs.addedEdges_;
-    addedFaces_ = rhs.addedFaces_;
-    addedCells_ = rhs.addedCells_;
+    addedPoints_  = rhs.addedPoints_;
+    addedEdges_   = rhs.addedEdges_;
+    addedFaces_   = rhs.addedFaces_;
+    addedCells_   = rhs.addedCells_;
 }
 
 } // End namespace Foam

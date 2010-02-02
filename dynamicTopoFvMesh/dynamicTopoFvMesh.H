@@ -203,7 +203,6 @@ class dynamicTopoFvMesh
         label                 nCollapses_;
         label                 nSwaps_;
         label                 maxModifications_;
-        label                 bisectInterior_;
         Map<scalar>           thresholdSlivers_;
         labelList             noModPatchIDs_;
 
@@ -253,6 +252,9 @@ class dynamicTopoFvMesh
         {
             // Auto pointer to a subMesh
             autoPtr<dynamicTopoFvMesh> subMesh_;
+
+            // Flag to determine whether maps have been built.
+            bool builtMaps_;
 
             // For locally coupled patches, specify a slave index
             label slaveIndex_;
@@ -313,6 +315,12 @@ class dynamicTopoFvMesh
 
                 // Set a new subMesh
                 void setMesh(label index, dynamicTopoFvMesh* mesh);
+
+                // Have maps been built?
+                bool builtMaps() const;
+
+                // Change the flag
+                void setBuiltMaps();
 
                 // Return the slave index
                 label slaveIndex() const;
@@ -404,6 +412,9 @@ class dynamicTopoFvMesh
 
         //- Quality metric for tetrahedra in 3D
         tetMetricReturnType tetMetric_;
+
+        // Obtain the edge centre
+        inline point edgeCentre(const label eIndex) const;
 
         // Obtain the tangent-to-edge vector
         inline vector tangentToEdge(const label eIndex) const;
@@ -588,7 +599,8 @@ class dynamicTopoFvMesh
         const changeMap
         bisectQuadFace
         (
-            const label fIndex
+            const label fIndex,
+            const changeMap& masterMap = changeMap()
         );
 
         // Method for the collapse of a quad-face in 2D
@@ -606,7 +618,8 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             bool checkOnly = false,
-            bool forceOp = false
+            bool forceOp = false,
+            const changeMap& masterMap = changeMap()
         );
 
         // Method for the trisection of a face in 3D
@@ -615,7 +628,8 @@ class dynamicTopoFvMesh
         (
             const label fIndex,
             bool checkOnly = false,
-            bool forceOp = false
+            bool forceOp = false,
+            const changeMap& masterMap = changeMap()
         );
 
         // Method for the collapse of an edge in 3D

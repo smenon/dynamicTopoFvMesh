@@ -190,7 +190,7 @@ void dynamicTopoFvMesh::swapQuadFace
             writeVTK
             (
                 Foam::name(fIndex)
-              + "Swap_0",
+              + "_Swap_0",
                 cellHull
             );
         }
@@ -749,7 +749,7 @@ void dynamicTopoFvMesh::swapQuadFace
         writeVTK
         (
             Foam::name(fIndex)
-          + "Swap_1",
+          + "_Swap_1",
             cellHull
         );
     }

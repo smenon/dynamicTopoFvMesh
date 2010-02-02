@@ -39,6 +39,7 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
     const label sfzIndex
 )
 :
+    builtMaps_(false),
     slaveIndex_(slaveIndex),
     masterFaceZone_(mfzIndex),
     slaveFaceZone_(sfzIndex),
@@ -59,6 +60,18 @@ void dynamicTopoFvMesh::coupledPatchInfo::setMesh
 
     // Modify the subMesh directory as well.
     subMesh_().meshSubDir = "proc_" + Foam::name(index);
+}
+
+// Have maps been built?
+bool dynamicTopoFvMesh::coupledPatchInfo::builtMaps() const
+{
+    return builtMaps_;
+}
+
+// Change the flag
+void dynamicTopoFvMesh::coupledPatchInfo::setBuiltMaps()
+{
+    builtMaps_ = true;
 }
 
 label dynamicTopoFvMesh::coupledPatchInfo::slaveIndex() const

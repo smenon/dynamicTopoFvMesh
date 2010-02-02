@@ -131,7 +131,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nCollapses_(0),
     nSwaps_(0),
     maxModifications_(-1),
-    bisectInterior_(-1),
     proximityBins_(0),
     sliceThreshold_(VSMALL),
     sliceHoldOff_(0),
@@ -251,7 +250,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nCollapses_(0),
     nSwaps_(0),
     maxModifications_(mesh.maxModifications_),
-    bisectInterior_(-1),
     proximityBins_(0),
     sliceThreshold_(VSMALL),
     sliceHoldOff_(0),
@@ -2970,6 +2968,7 @@ void dynamicTopoFvMesh::writeVTK
 
     // Create a map for local points
     Map<label> pointMap, edgeMap, faceMap;
+    Map<label> reversePointMap, reverseCellMap;
 
     // Track surface-points, if requested.
     labelHashSet surfPoints;
@@ -3226,6 +3225,7 @@ void dynamicTopoFvMesh::writeVTK
 
                 // Update the map
                 pointMap.insert(cpList[nCells][pointI], nPoints);
+                reversePointMap.insert(nPoints, cpList[nCells][pointI]);
 
                 // Increment the number of points
                 nPoints++;
@@ -3234,6 +3234,9 @@ void dynamicTopoFvMesh::writeVTK
             // Renumber it.
             cpList[nCells][pointI] = pointMap[cpList[nCells][pointI]];
         }
+
+        // Update the cell map.
+        reverseCellMap.insert(nCells, cList[cellI]);
 
         nCells++;
     }
@@ -3326,6 +3329,32 @@ void dynamicTopoFvMesh::writeVTK
             // Wedge
             file << "13" << nl;
         }
+    }
+
+    // Write out indices for visualization.
+    file << "CELL_DATA " << nCells << endl;
+
+    file << "FIELD CellFields 1" << endl;
+
+    file << "CellIds 1 " << nCells << " int" << endl;
+
+    for (label i = 0; i < nCells; i++)
+    {
+        file << reverseCellMap[i] << ' ';
+    }
+
+    file << endl;
+
+    // Write out indices for visualization.
+    file << "POINT_DATA " << nPoints << endl;
+
+    file << "FIELD PointFields 1" << endl;
+
+    file << "PointIds 1 " << nPoints << " int" << endl;
+
+    for (label i = 0; i < nPoints; i++)
+    {
+        file << reversePointMap[i] << ' ';
     }
 
     if (primitiveType < 4)
@@ -3523,8 +3552,23 @@ void dynamicTopoFvMesh::checkConnectivity
             nFailedChecks++;
 
             ConnectivityWarning()
-                << nl << "Edge-point connectivity is inconsistent."
-                << endl;
+                 << nl << "Edge-point connectivity is inconsistent."
+                 << endl;
+        }
+
+        // Check for unique point-labels
+        if (curEdge[0] == curEdge[1])
+        {
+            Pout << "Edge " << edgeI
+                 << " contains identical vertex labels: "
+                 << curEdge
+                 << endl;
+
+            nFailedChecks++;
+
+            ConnectivityWarning()
+                 << nl << "Edge-point connectivity is inconsistent."
+                 << endl;
         }
     }
 
@@ -3550,8 +3594,30 @@ void dynamicTopoFvMesh::checkConnectivity
             nFailedChecks++;
 
             ConnectivityWarning()
-                << nl << "Face-point connectivity is inconsistent."
-                << endl;
+                 << nl << "Face-point connectivity is inconsistent."
+                 << endl;
+        }
+
+        // Check for unique point-labels
+        labelHashSet uniquePoints;
+
+        forAll(curFace, pointI)
+        {
+            bool inserted = uniquePoints.insert(curFace[pointI]);
+
+            if (!inserted)
+            {
+                Pout << "Face " << faceI
+                     << " contains identical vertex labels: "
+                     << curFace
+                     << endl;
+
+                nFailedChecks++;
+
+                ConnectivityWarning()
+                     << nl << "Face-point connectivity is inconsistent."
+                     << endl;
+            }
         }
 
         // Count faces per point
@@ -3580,8 +3646,30 @@ void dynamicTopoFvMesh::checkConnectivity
             nFailedChecks++;
 
             ConnectivityWarning()
-                << nl << "Cell-Face connectivity is inconsistent."
-                << endl;
+                 << nl << "Cell-Face connectivity is inconsistent."
+                 << endl;
+        }
+
+        // Check for unique face-labels
+        labelHashSet uniqueFaces;
+
+        forAll(curCell, faceI)
+        {
+            bool inserted = uniqueFaces.insert(curCell[faceI]);
+
+            if (!inserted)
+            {
+                Pout << "Cell " << cellI
+                     << " contains identical face labels: "
+                     << curCell
+                     << endl;
+
+                nFailedChecks++;
+
+                ConnectivityWarning()
+                     << nl << "Cell-Face connectivity is inconsistent."
+                     << endl;
+            }
         }
     }
 
@@ -3615,8 +3703,8 @@ void dynamicTopoFvMesh::checkConnectivity
             nFailedChecks++;
 
             ConnectivityWarning()
-                << nl << "Point-Face connectivity is inconsistent."
-                << endl;
+                 << nl << "Point-Face connectivity is inconsistent."
+                 << endl;
         }
     }
 
@@ -7057,7 +7145,11 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
     }
 }
 
-// Build coupled maps
+// Build coupled maps for locally coupled patches.
+//   - Performs a geometric match initially, since the mesh provides
+//     no explicit information for topological coupling.
+//   - For each subsequent topology change, maps are updated during
+//     the re-ordering stage.
 void dynamicTopoFvMesh::buildLocalCoupledMaps()
 {
     if (!patchCoupling_.size())
@@ -7076,6 +7168,13 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
     forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
     {
+        // Build maps only for the first time.
+        // coupledPatchInfo is subsequently mapped for each topo-change.
+        if (patchI().builtMaps())
+        {
+            continue;
+        }
+
         // Clear existing maps.
         patchI().clearMaps();
 
@@ -7099,6 +7198,14 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
             {
                 sList.append(start+i);
             }
+
+            // Sanity check: Do patches have equal number of entities?
+            if (mList.size() != sList.size())
+            {
+                FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
+                    << "Patch sizes are not consistent."
+                    << abort(FatalError);
+            }
         }
         else
         {
@@ -7117,83 +7224,102 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     }
                 }
             }
+        }
 
-            // Build a list of slave entities
-            start = boundary[patchI().slaveIndex()].start();
+        // Perform a geometric match for faces in 2D.
+        if (twoDMesh_)
+        {
+            // Build a list of entity-centres for geometric matching.
+            pointField mCentres(mList.size(), vector::zero);
+            pointField sCentres(sList.size(), vector::zero);
 
-            for (label i = 0; i < boundary[patchI().slaveIndex()].size(); i++)
+            // Assume quad-faces for 2D patches.
+            forAll(mList, faceI)
             {
-                const labelList& sfEdges = faceEdges_[start+i];
+                mCentres[faceI] = quadFaceCentre(mList[faceI]);
+                sCentres[faceI] = quadFaceCentre(sList[faceI]);
+            }
 
-                forAll(sfEdges, edgeI)
+            forAll(mCentres, indexI)
+            {
+                bool matched = false;
+                scalar minDistance = GREAT;
+
+                forAll(sCentres, indexJ)
                 {
-                    if (findIndex(sList, sfEdges[edgeI]) == -1)
+                    scalar distance =
+                    (
+                        mag(mCentres[indexI] - sCentres[indexJ])
+                    );
+
+                    minDistance =
+                    (
+                        minDistance < distance
+                      ? minDistance : distance
+                    );
+
+                    if (distance < gTol_)
                     {
-                        sList.append(sfEdges[edgeI]);
+                        // Add a map entry
+                        patchI().mapSlave
+                        (
+                            mList[indexI],
+                            sList[indexJ]
+                        );
+
+                        patchI().mapMaster
+                        (
+                            sList[indexJ],
+                            mList[indexI]
+                        );
+
+                        matched = true;
+
+                        break;
                     }
+                }
+
+                if (!matched)
+                {
+                    FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
+                        << " Failed to match entity: " << mList[indexI]
+                        << ": " << edges_[mList[indexI]]
+                        << " within a tolerance of: "
+                        << gTol_ << nl << " Missed by: " << minDistance
+                        << abort(FatalError);
                 }
             }
         }
 
+        // Now map points on each patch as well.
+        const label pointEnum = coupledPatchInfo::POINT;
+
+        // Obtain references
+        Map<label>& pointMap = patchI().entityMap(pointEnum);
+        Map<label>& rPointMap = patchI().reverseEntityMap(pointEnum);
+
+        const labelList& mP = boundary[patchI.key()].meshPoints();
+        const labelList& sP = boundary[patchI().slaveIndex()].meshPoints();
+
         // Sanity check: Do patches have equal number of entities?
-        if (mList.size() != sList.size())
+        if (mP.size() != sP.size())
         {
             FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
-                << "Patch sizes are not consistent."
+                << "Patch point sizes are not consistent."
                 << abort(FatalError);
         }
 
-        // Build a list of entity-centres for geometric matching.
-        pointField mCentres(mList.size(), vector::zero);
-        pointField sCentres(sList.size(), vector::zero);
-
-        if (twoDMesh_)
-        {
-            forAll(mList, faceI)
-            {
-                const face& mfaceToCheck = faces_[mList[faceI]];
-                const face& sfaceToCheck = faces_[sList[faceI]];
-
-                // Assume quad-faces for 2D patches.
-                mCentres[faceI] = 0.25 *
-                (
-                    points_[mfaceToCheck[0]]
-                  + points_[mfaceToCheck[1]]
-                  + points_[mfaceToCheck[2]]
-                  + points_[mfaceToCheck[3]]
-                );
-
-                sCentres[faceI] = 0.25 *
-                (
-                    points_[sfaceToCheck[0]]
-                  + points_[sfaceToCheck[1]]
-                  + points_[sfaceToCheck[2]]
-                  + points_[sfaceToCheck[3]]
-                );
-            }
-        }
-        else
-        {
-            forAll(mList, edgeI)
-            {
-                const edge& mE = edges_[mList[edgeI]];
-                const edge& sE = edges_[sList[edgeI]];
-
-                mCentres[edgeI] = 0.5*(points_[mE[0]] + points_[mE[1]]);
-                sCentres[edgeI] = 0.5*(points_[sE[0]] + points_[sE[1]]);
-            }
-        }
-
-        label nMatchedEdges = 0;
-
-        forAll(mCentres, indexI)
+        forAll(mP, indexI)
         {
             bool matched = false;
             scalar minDistance = GREAT;
 
-            forAll(sCentres, indexJ)
+            forAll(sP, indexJ)
             {
-                scalar distance = mag(mCentres[indexI] - sCentres[indexJ]);
+                scalar distance =
+                (
+                    mag(points_[mP[indexI]] - points_[sP[indexJ]])
+                );
 
                 minDistance = minDistance < distance
                             ? minDistance : distance;
@@ -7201,21 +7327,10 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 if (distance < gTol_)
                 {
                     // Add a map entry
-                    patchI().mapSlave
-                    (
-                        mList[indexI],
-                        sList[indexJ]
-                    );
-
-                    patchI().mapMaster
-                    (
-                        sList[indexJ],
-                        mList[indexI]
-                    );
+                    pointMap.insert(mP[indexI], sP[indexJ]);
+                    rPointMap.insert(sP[indexJ], mP[indexI]);
 
                     matched = true;
-
-                    nMatchedEdges++;
 
                     break;
                 }
@@ -7224,29 +7339,70 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
             if (!matched)
             {
                 FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
-                    << " Failed to match edge: " << mList[indexI]
-                    << ": " << edges_[mList[indexI]]
+                    << " Failed to match point: " << mP[indexI]
+                    << ": " << points_[mP[indexI]]
                     << " within a tolerance of: "
                     << gTol_ << nl << " Missed by: " << minDistance
                     << abort(FatalError);
             }
         }
 
-        // Make sure we were successful.
-        if (nMatchedEdges != mCentres.size())
+        // Perform a topological match in 3D.
+        if (!twoDMesh_)
         {
-            FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
-                << " Failed to match all patch edges within a tolerance of: "
-                << gTol_ << nl
-                << " Number of edges required for match: "
-                << mCentres.size() << nl
-                << " Number of matched edges: " << nMatchedEdges
-                << abort(FatalError);
+            forAll(mList, indexI)
+            {
+                const edge& thisEdge = edges_[mList[indexI]];
+
+                label sp0 = pointMap(thisEdge[0]);
+                label sp1 = pointMap(thisEdge[1]);
+
+                bool matched = false;
+
+                // Loop through pointEdges of the first point
+                const labelList& spEdges = pointEdges_[sp0];
+
+                forAll(spEdges, edgeI)
+                {
+                    const edge& sEdge = edges_[spEdges[edgeI]];
+
+                    if (sEdge.start() == sp1 || sEdge.end() == sp1)
+                    {
+                        // Found the slave. Add a map entry
+                        patchI().mapSlave
+                        (
+                            mList[indexI],
+                            spEdges[edgeI]
+                        );
+
+                        patchI().mapMaster
+                        (
+                            spEdges[edgeI],
+                            mList[indexI]
+                        );
+
+                        matched = true;
+
+                        break;
+                    }
+                }
+
+                if (!matched)
+                {
+                    FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
+                        << " Failed to match entity: " << mList[indexI]
+                        << ": " << thisEdge
+                        << abort(FatalError);
+                }
+            }
         }
 
         // Clear the lists
         mList.clear();
         sList.clear();
+
+        // Set maps as built
+        patchI().setBuiltMaps();
     }
 
     if (debug)
@@ -7987,23 +8143,165 @@ void dynamicTopoFvMesh::remove2DSliver
         return;
     }
 
+    label triEdge = getTriBoundaryEdge(fIndex);
+    label triFace = getTriBoundaryFace(fIndex);
+
     // Measure the boundary edge-length of the face in question
-    scalar length = edgeLength(getTriBoundaryEdge(fIndex));
+    scalar length = edgeLength(triEdge);
 
     // Determine the boundary triangular face area
-    scalar area = triFaceArea(faces_[getTriBoundaryFace(fIndex)]);
+    scalar area = triFaceArea(faces_[triFace]);
 
     // This cell has to be removed...
-    if (mag(area) < (0.1*length*length))
+    if (mag(area) < (0.2*length*length))
     {
         if (self() == 0)
         {
-            // Step 1: Bisect the boundary quad face
-            bisectInterior_ = -1;
-            bisectQuadFace(fIndex);
+            // Find the isolated point.
+            label ptIndex = -1, nextPtIndex = -1;
 
-            // Step 2: Collapse the newly created internal quad face
-            collapseQuadFace(bisectInterior_);
+            const edge& edgeToCheck = edges_[triEdge];
+
+            findIsolatedPoint
+            (
+                faces_[triFace],
+                edgeToCheck,
+                ptIndex,
+                nextPtIndex
+            );
+
+            // Find the prism faces
+            label fOwner = owner_[fIndex];
+            FixedList<label,2> c0BdyIndex, c0IntIndex;
+            FixedList<face,2>  c0BdyFace,  c0IntFace;
+
+            findPrismFaces
+            (
+                fIndex,
+                fOwner,
+                c0BdyFace,
+                c0BdyIndex,
+                c0IntFace,
+                c0IntIndex
+            );
+
+            // Determine the interior faces connected to each edge-point.
+            label firstFace = -1, secondFace = -1;
+
+            if (c0IntFace[0].which(edgeToCheck[0]) > -1)
+            {
+                firstFace  = c0IntIndex[0];
+                secondFace = c0IntIndex[1];
+            }
+            else
+            {
+                firstFace  = c0IntIndex[1];
+                secondFace = c0IntIndex[0];
+            }
+
+            point ec =
+            (
+                0.5 * (points_[edgeToCheck[0]] + points_[edgeToCheck[1]])
+            );
+
+            FixedList<vector, 2> p(vector::zero), q(vector::zero);
+            FixedList<scalar, 2> proj(0.0);
+
+            // Find the projection on the edge.
+            forAll(edgeToCheck, pointI)
+            {
+                p[pointI] = (points_[ptIndex] - points_[edgeToCheck[pointI]]);
+                q[pointI] = (ec - points_[edgeToCheck[pointI]]);
+
+                q[pointI] /= (mag(q[pointI]) + VSMALL);
+
+                proj[pointI] = (p[pointI] & q[pointI]);
+            }
+
+            // Take action based on the magnitude of the projection.
+            if (mag(proj[0]) < VSMALL)
+            {
+                collapseQuadFace(firstFace);
+                return;
+            }
+
+            if (mag(proj[1]) < VSMALL)
+            {
+                collapseQuadFace(secondFace);
+                return;
+            }
+
+            if (proj[0] > 0.0 && proj[1] < 0.0)
+            {
+                changeMap map = bisectQuadFace(firstFace);
+
+                // Loop through added faces, and collapse
+                // the appropriate one
+                const Map<label>& aF = map.addedFaceList();
+
+                forAllConstIter(Map<label>, aF, faceI)
+                {
+                    if
+                    (
+                        (owner_[faceI.key()] == fOwner) &&
+                        (faceI.key() != firstFace)
+                    )
+                    {
+                        collapseQuadFace(faceI.key());
+                        break;
+                    }
+                }
+
+                return;
+            }
+
+            if (proj[0] < 0.0 && proj[1] > 0.0)
+            {
+                changeMap map = bisectQuadFace(secondFace);
+
+                // Loop through added faces, and collapse
+                // the appropriate one
+                const Map<label>& aF = map.addedFaceList();
+
+                forAllConstIter(Map<label>, aF, faceI)
+                {
+                    if
+                    (
+                        (owner_[faceI.key()] == fOwner) &&
+                        (faceI.key() != secondFace)
+                    )
+                    {
+                        collapseQuadFace(faceI.key());
+                        break;
+                    }
+                }
+
+                return;
+            }
+
+            if (proj[0] > 0.0 && proj[1] > 0.0)
+            {
+                changeMap map = bisectQuadFace(fIndex);
+
+                // Loop through added faces, and collapse
+                // the appropriate one
+                const Map<label>& aF = map.addedFaceList();
+
+                forAllConstIter(Map<label>, aF, faceI)
+                {
+                    if
+                    (
+                        (owner_[faceI.key()] == fOwner) &&
+                        (faceI.key() != fIndex)
+                    )
+                    {
+                        collapseQuadFace(faceI.key());
+                        break;
+                    }
+                }
+
+                return;
+            }
         }
         else
         {
@@ -8472,23 +8770,27 @@ void dynamicTopoFvMesh::removeSlivers()
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
             // through recently added edges and compare.
-            edge edgeToCheck(firstMap.addedPoint(), secondMap.addedPoint());
+            edge edgeToCheck
+            (
+                firstMap.addedPointList().begin().key(),
+                secondMap.addedPointList().begin().key()
+            );
 
             bool foundCollapseEdge = false;
-            const labelList firstMapEdges = firstMap.addedEdgeList();
-            const labelList secondMapEdges = secondMap.addedEdgeList();
+            const Map<label>& firstMapEdges = firstMap.addedEdgeList();
+            const Map<label>& secondMapEdges = secondMap.addedEdgeList();
 
             // Loop through the first list.
-            forAll(firstMapEdges, edgeI)
+            forAllConstIter(Map<label>, firstMapEdges, edgeI)
             {
-                const edge& thisEdge = edges_[firstMapEdges[edgeI]];
+                const edge& thisEdge = edges_[edgeI.key()];
 
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
                     collapseEdge
                     (
-                        firstMapEdges[edgeI],
+                        edgeI.key(),
                         -1,
                         false,
                         true
@@ -8502,16 +8804,16 @@ void dynamicTopoFvMesh::removeSlivers()
             // Loop through the second list.
             if (!foundCollapseEdge)
             {
-                forAll(secondMapEdges, edgeI)
+                forAllConstIter(Map<label>, secondMapEdges, edgeI)
                 {
-                    const edge& thisEdge = edges_[secondMapEdges[edgeI]];
+                    const edge& thisEdge = edges_[edgeI.key()];
 
                     if (thisEdge == edgeToCheck)
                     {
                         // Collapse this edge.
                         collapseEdge
                         (
-                            secondMapEdges[edgeI],
+                            edgeI.key(),
                             -1,
                             false,
                             true
@@ -8534,18 +8836,22 @@ void dynamicTopoFvMesh::removeSlivers()
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
             // through recently added edges and compare.
-            edge edgeToCheck(map.apexPoint(), faceMap.addedPoint());
+            edge edgeToCheck
+            (
+                map.apexPoint(),
+                faceMap.addedPointList().begin().key()
+            );
 
-            const labelList faceMapEdges = faceMap.addedEdgeList();
+            const Map<label>& faceMapEdges = faceMap.addedEdgeList();
 
-            forAll(faceMapEdges, edgeI)
+            forAllConstIter(Map<label>, faceMapEdges, edgeI)
             {
-                const edge& thisEdge = edges_[faceMapEdges[edgeI]];
+                const edge& thisEdge = edges_[edgeI.key()];
 
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
-                    collapseEdge(faceMapEdges[edgeI], -1, false, true);
+                    collapseEdge(edgeI.key(), -1, false, true);
 
                     break;
                 }
@@ -8562,19 +8868,23 @@ void dynamicTopoFvMesh::removeSlivers()
             // Collapse the intermediate edge.
             // Since we don't know which edge it is, search
             // through recently added edges and compare.
-            edge edgeToCheck(firstMap.addedPoint(), firstMap.apexPoint());
+            edge edgeToCheck
+            (
+                firstMap.addedPointList().begin().key(),
+                firstMap.apexPoint()
+            );
 
-            const labelList firstMapEdges = firstMap.addedEdgeList();
+            const Map<label>& firstMapEdges = firstMap.addedEdgeList();
 
             // Loop through the first list.
-            forAll(firstMapEdges, edgeI)
+            forAllConstIter(Map<label>, firstMapEdges, edgeI)
             {
-                const edge& thisEdge = edges_[firstMapEdges[edgeI]];
+                const edge& thisEdge = edges_[edgeI.key()];
 
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
-                    collapseEdge(firstMapEdges[edgeI], -1, false, true);
+                    collapseEdge(edgeI.key(), -1, false, true);
 
                     break;
                 }

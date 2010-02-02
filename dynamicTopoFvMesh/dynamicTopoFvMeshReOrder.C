@@ -198,6 +198,49 @@ void dynamicTopoFvMesh::reOrderPoints
     // Reset all zones
     pointZones.updateMesh();
 
+    // Loop through all local coupling maps, and renumber points.
+    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+    {
+        const label pointEnum = coupledPatchInfo::POINT;
+
+        // Obtain references
+        Map<label>& pointMap = patchI().entityMap(pointEnum);
+        Map<label>& rPointMap = patchI().reverseEntityMap(pointEnum);
+
+        Map<label> newMap, newRMap;
+
+        forAllIter(Map<label>, pointMap, pIter)
+        {
+            label newMaster = -1, newSlave = -1;
+
+            if (pIter.key() < nOldPoints_)
+            {
+                newMaster = reversePointMap_[pIter.key()];
+            }
+            else
+            {
+                newMaster = addedPointRenumbering_[pIter.key()];
+            }
+
+            if (pIter() < nOldPoints_)
+            {
+                newSlave = reversePointMap_[pIter()];
+            }
+            else
+            {
+                newSlave = addedPointRenumbering_[pIter()];
+            }
+
+            // Update the map.
+            newMap.insert(newMaster, newSlave);
+            newRMap.insert(newSlave, newMaster);
+        }
+
+        // Overwrite the old maps.
+        pointMap.transfer(newMap);
+        rPointMap.transfer(newRMap);
+    }
+
     // Update the local copy
     points_.setSize(nPoints_);
 

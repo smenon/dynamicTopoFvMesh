@@ -42,7 +42,7 @@ SourceFiles
 #define changeMap_H
 
 #include "labelList.H"
-#include "labelHashSet.H"
+#include "Map.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -70,13 +70,13 @@ class changeMap
     label apexPoint_;
     label opposingFace_;
 
-    // For bisections.
-    label addedPoint_;
-
     // Entities that were added during the operation.
-    labelHashSet addedEdges_;
-    labelHashSet addedFaces_;
-    labelHashSet addedCells_;
+    //  - Add a master mapping for slaves.
+    //  - Masters get a map of -1.
+    Map<label> addedPoints_;
+    Map<label> addedEdges_;
+    Map<label> addedFaces_;
+    Map<label> addedCells_;
 
 public:
 
@@ -99,23 +99,35 @@ public:
         label& opposingFace();
 
         // Added entities
-        void addPoint(const label pIndex);
+        void addPoint
+        (
+            const label pIndex,
+            const label master = -1
+        );
 
-        void addEdge(const label eIndex);
+        void addEdge
+        (
+            const label eIndex,
+            const label master = -1
+        );
 
-        void addFace(const label fIndex);
+        void addFace
+        (
+            const label fIndex,
+            const label master = -1
+        );
 
-        void addCell(const label cIndex);
-
-        // Return an added point
-        label addedPoint();
+        void addCell
+        (
+            const label cIndex,
+            const label master = -1
+        );
 
         // Return the list of added entities
-        const labelList addedEdgeList();
-
-        const labelList addedFaceList();
-
-        const labelList addedCellList();
+        const Map<label>& addedPointList() const;
+        const Map<label>& addedEdgeList() const;
+        const Map<label>& addedFaceList() const;
+        const Map<label>& addedCellList() const;
 
     //- Operators
 

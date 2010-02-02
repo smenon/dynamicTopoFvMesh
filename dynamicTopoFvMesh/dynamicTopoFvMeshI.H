@@ -34,6 +34,17 @@ namespace Foam
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Obtain the tangent-to-edge vector
+inline vector dynamicTopoFvMesh::edgeCentre
+(
+    const label eIndex
+) const
+{
+    const edge& thisEdge = edges_[eIndex];
+
+    return 0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]]);
+}
+
+// Obtain the tangent-to-edge vector
 inline vector dynamicTopoFvMesh::tangentToEdge
 (
     const label eIndex
