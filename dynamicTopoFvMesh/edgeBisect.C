@@ -38,10 +38,12 @@ namespace Foam
 
 // Method for the bisection of a quad-face in 2D
 // - Returns a changeMap with a type specifying:
+//     1: Bisection was successful
 //    -1: Bisection failed since max number of topo-changes was reached.
 const changeMap dynamicTopoFvMesh::bisectQuadFace
 (
     const label fIndex,
+    bool checkOnly,
     const changeMap& masterMap
 )
 {
@@ -70,57 +72,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         faceStack(tIndex).clear();
 
         return map;
-    }
-
-    if (coupledModification_)
-    {
-        // Is this a locally coupled face?
-        if (locallyCoupledFace(fIndex))
-        {
-            // Temporarily turn off coupledModification.
-            unsetCoupledModification();
-            setSlaveModification();
-
-            // Loop through master/slave maps
-            // and determine the coupled face index.
-            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
-            {
-                label index = -1;
-
-                if ((index = patchI().findSlaveIndex(fIndex)) > -1)
-                {
-                    // Bisect the slave.
-                    coupleMap = bisectQuadFace(index);
-
-                    // Keep this index for master/slave mapping.
-                    pIndex = patchI.key();
-                }
-
-                // The following bit happens only during the sliver
-                // exudation process, since slave faces are
-                // usually not added to the coupled face-stack.
-                if ((index = patchI().findMasterIndex(fIndex)) > -1)
-                {
-                    // Bisect the master.
-                    coupleMap = bisectQuadFace(index);
-
-                    // Keep this index for master/slave mapping.
-                    pIndex = patchI.key();
-
-                    // Notice that we are bisecting a slave face.
-                    bisectingSlave = true;
-                }
-            }
-
-            // Turn it back on.
-            setCoupledModification();
-            unsetSlaveModification();
-        }
-        else
-        {
-            // Bisect edge on the patchSubMesh.
-
-        }
     }
 
     bool found;
@@ -212,6 +163,97 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     commonEdges[0] = edges_[commonEdgeIndex[0]];
     commonEdges[1] = edges_[commonEdgeIndex[1]];
 
+    if (coupledModification_)
+    {
+        // Is this a locally coupled face?
+        if (locallyCoupledFace(fIndex))
+        {
+            label slaveIndex = -1;
+
+            // Determine the slave index.
+            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            {
+                if ((slaveIndex = patchI().findSlaveIndex(fIndex)) > -1)
+                {
+                    // Keep this index for master/slave mapping.
+                    pIndex = patchI.key();
+
+                    break;
+                }
+
+                // The following bit happens only during the sliver
+                // exudation process, since slave faces are
+                // usually not added to the coupled face-stack.
+                if ((slaveIndex = patchI().findMasterIndex(fIndex)) > -1)
+                {
+                    // Keep this index for master/slave mapping.
+                    pIndex = patchI.key();
+
+                    // Notice that we are bisecting a slave face.
+                    bisectingSlave = true;
+
+                    break;
+                }
+            }
+
+            // Temporarily turn off coupledModification.
+            unsetCoupledModification();
+            setSlaveModification();
+
+            // First check the slave for bisection feasibility.
+            coupleMap = bisectQuadFace(slaveIndex, true);
+
+            if (coupleMap.type() == 1)
+            {
+                // Can the master be bisected as well?
+                changeMap masterMap = bisectQuadFace(fIndex, true);
+
+                // Master couldn't perform bisection
+                if (masterMap.type() != 1)
+                {
+                    setCoupledModification();
+                    unsetSlaveModification();
+
+                    return masterMap;
+                }
+
+                // Fill the masterMap with points that
+                // we seek maps for...
+                masterMap.addPoint(commonEdges[0].start());
+                masterMap.addPoint(commonEdges[1].start());
+
+                // Bisect the slave edge
+                coupleMap = bisectQuadFace(slaveIndex, false, masterMap);
+            }
+            else
+            {
+                // Slave couldn't perform collapse.
+                setCoupledModification();
+                unsetSlaveModification();
+
+                map.type() = -2;
+
+                return map;
+            }
+
+            // Turn it back on.
+            setCoupledModification();
+            unsetSlaveModification();
+        }
+        else
+        {
+            // Bisect edge on the patchSubMesh.
+
+        }
+    }
+
+    // Are we performing only checks?
+    if (checkOnly)
+    {
+        map.type() = 1;
+        return map;
+    }
+
     // Find the isolated point on both boundary faces of cell[0]
     findIsolatedPoint
     (
@@ -269,6 +311,72 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             mappingPoints
         )
     );
+
+    // Add the points to the map. Since this might require master mapping,
+    // first check to see if a slave is being bisected.
+    if (slaveModification_)
+    {
+        const Map<label>& pMap = masterMap.addedPointList();
+
+        // Look through the reverse point map
+        // to check which point it corresponds to.
+        forAllIter
+        (
+            Map<coupledPatchInfo>,
+            patchCoupling_,
+            patchI
+        )
+        {
+            const label pointEnum = coupledPatchInfo::POINT;
+
+            Map<label>& rPointMap =
+            (
+                patchI().reverseEntityMap(pointEnum)
+            );
+
+            forAll(commonEdgeIndex, edgeI)
+            {
+                if (commonEdgeIndex[edgeI] == -1)
+                {
+                    continue;
+                }
+
+                forAll(commonEdges[edgeI], pointI)
+                {
+                    bool found = false;
+                    label mPoint = -1;
+
+                    if (rPointMap.found(commonEdges[edgeI][pointI]))
+                    {
+                        mPoint = rPointMap[commonEdges[edgeI][pointI]];
+
+                        // Now check the master map.
+                        if (pMap.found(mPoint))
+                        {
+                            found = true;
+                        }
+                    }
+
+                    // Add the map entry for the point.
+                    if (found)
+                    {
+                        map.addPoint
+                        (
+                            newPointIndex[edgeI],
+                            mPoint
+                        );
+
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        map.addPoint(newPointIndex[0]);
+        map.addPoint(newPointIndex[1]);
+    }
 
     // Add a new prism cell to the end of the list.
     // Currently invalid, but will be updated later.
@@ -1336,17 +1444,58 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         if (locallyCoupledFace(fIndex))
         {
             FixedList<bool, 2> foundMatch(false);
-            FixedList<label, 2> checkList(-1);
+            FixedList<label, 2> checkFaces(-1);
+
+            // Add the new point to the coupling map
+            const label pointEnum = coupledPatchInfo::POINT;
+
+            if (patchCoupling_.found(pIndex))
+            {
+                const Map<label>& apList = coupleMap.addedPointList();
+
+                FixedList<label, 2> mapPointIndex(-1);
+
+                forAllConstIter(Map<label>, apList, apIter)
+                {
+                    if (apIter() == commonEdges[0].start())
+                    {
+                        mapPointIndex[0] = apIter.key();
+                    }
+
+                    if (apIter() == commonEdges[1].start())
+                    {
+                        mapPointIndex[1] = apIter.key();
+                    }
+                }
+
+                // Update pointMap
+                Map<label>& pointMap =
+                (
+                    patchCoupling_[pIndex].entityMap(pointEnum)
+                );
+
+                pointMap.insert(newPointIndex[0], mapPointIndex[0]);
+                pointMap.insert(newPointIndex[1], mapPointIndex[1]);
+
+                // Update reverse pointMap
+                Map<label>& rPointMap =
+                (
+                    patchCoupling_[pIndex].reverseEntityMap(pointEnum)
+                );
+
+                rPointMap.insert(mapPointIndex[0], newPointIndex[0]);
+                rPointMap.insert(mapPointIndex[1], newPointIndex[1]);
+            }
 
             // Fill in the faces to be check for...
-            checkList[0] = fIndex;
-            checkList[1] = newFaceIndex[3];
+            checkFaces[0] = fIndex;
+            checkFaces[1] = newFaceIndex[3];
 
             const Map<label>& afList = coupleMap.addedFaceList();
 
             forAllConstIter(Map<label>, afList, faceI)
             {
-                forAll (checkList, indexI)
+                forAll (checkFaces, indexI)
                 {
                     //if (mag(cCentres[indexI] - centre) < gTol_)
                     {
@@ -1354,24 +1503,24 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                         {
                             patchCoupling_[pIndex].mapMaster
                             (
-                                checkList[indexI], faceI.key()
+                                checkFaces[indexI], faceI.key()
                             );
 
                             patchCoupling_[pIndex].mapSlave
                             (
-                                faceI.key(), checkList[indexI]
+                                faceI.key(), checkFaces[indexI]
                             );
                         }
                         else
                         {
                             patchCoupling_[pIndex].mapSlave
                             (
-                                checkList[indexI], faceI.key()
+                                checkFaces[indexI], faceI.key()
                             );
 
                             patchCoupling_[pIndex].mapMaster
                             (
-                                faceI.key(), checkList[indexI]
+                                faceI.key(), checkFaces[indexI]
                             );
                         }
 
@@ -1431,6 +1580,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Increment the number of modifications
     nModifications_++;
 
+    // Specify that the operation was successful
+    map.type() = 1;
+
     // Return the changeMap
     return map;
 }
@@ -1440,7 +1592,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 //     1: Bisection was successful
 //    -1: Bisection failed since max number of topo-changes was reached.
 //    -2: Bisection failed since resulting quality would be really bad.
-// - AddedPoint is the index of the newly added point.
+// - AddedPoints contain the index of the newly added point.
 const changeMap dynamicTopoFvMesh::bisectEdge
 (
     const label eIndex,
@@ -1534,7 +1686,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 // Fill the masterMap with points that
                 // we seek edge-maps for...
-                masterMap.addPoint(edges_[eIndex][1]);
+                masterMap.addPoint(edges_[eIndex].end());
                 masterMap.addPoint(ePoints[0]);
                 masterMap.addPoint(ePoints[ePoints.size() - 1]);
 
@@ -1695,14 +1847,25 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 patchI().reverseEntityMap(pointEnum)
             );
 
-            if (rPointMap.found(edges_[eIndex][1]))
+            forAll(edges_[eIndex], pointI)
             {
-                label mPoint = rPointMap[edges_[eIndex][1]];
+                bool found = false;
+                label mPoint = -1;
 
-                // Now check the master map.
-                if (pMap.found(mPoint))
+                if (rPointMap.found(edges_[eIndex][pointI]))
                 {
-                    // Add the map entry for to the point.
+                    mPoint = rPointMap[edges_[eIndex][pointI]];
+
+                    // Now check the master map.
+                    if (pMap.found(mPoint))
+                    {
+                        found = true;
+                    }
+                }
+
+                // Add the map entry for the point.
+                if (found)
+                {
                     map.addEdge
                     (
                         newEdgeIndex,

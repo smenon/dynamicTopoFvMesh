@@ -34,12 +34,16 @@ namespace Foam
 // Constructor for coupledPatchInfo
 dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
 (
+    const dynamicTopoFvMesh& mesh,
+    const label masterIndex,
     const label slaveIndex,
     const label mfzIndex,
     const label sfzIndex
 )
 :
+    mesh_(mesh),
     builtMaps_(false),
+    masterIndex_(masterIndex),
     slaveIndex_(slaveIndex),
     masterFaceZone_(mfzIndex),
     slaveFaceZone_(sfzIndex),
@@ -49,7 +53,6 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-// Set a new subMesh
 void dynamicTopoFvMesh::coupledPatchInfo::setMesh
 (
     label index,
@@ -62,13 +65,11 @@ void dynamicTopoFvMesh::coupledPatchInfo::setMesh
     subMesh_().meshSubDir = "proc_" + Foam::name(index);
 }
 
-// Have maps been built?
 bool dynamicTopoFvMesh::coupledPatchInfo::builtMaps() const
 {
     return builtMaps_;
 }
 
-// Change the flag
 void dynamicTopoFvMesh::coupledPatchInfo::setBuiltMaps()
 {
     builtMaps_ = true;
@@ -79,7 +80,6 @@ label dynamicTopoFvMesh::coupledPatchInfo::slaveIndex() const
     return slaveIndex_;
 }
 
-// Return the master / slave zone IDs
 label dynamicTopoFvMesh::coupledPatchInfo::masterFaceZone() const
 {
     return masterFaceZone_;
@@ -96,7 +96,6 @@ dynamicTopoFvMesh::coupledPatchInfo::nEntities()
     return nEntities_;
 }
 
-// Access to entity sizes
 label& dynamicTopoFvMesh::coupledPatchInfo::nEntities
 (
     const label eType
@@ -105,8 +104,8 @@ label& dynamicTopoFvMesh::coupledPatchInfo::nEntities
     return nEntities_[eType];
 }
 
-// Access to maps
-Map<label>& dynamicTopoFvMesh::coupledPatchInfo::entityMap
+Map<label>&
+dynamicTopoFvMesh::coupledPatchInfo::entityMap
 (
     const label eType
 )
@@ -114,12 +113,25 @@ Map<label>& dynamicTopoFvMesh::coupledPatchInfo::entityMap
     return entityMap_[eType];
 }
 
-Map<label>& dynamicTopoFvMesh::coupledPatchInfo::reverseEntityMap
+Map<label>&
+dynamicTopoFvMesh::coupledPatchInfo::reverseEntityMap
 (
     const label eType
 )
 {
     return reverseEntityMap_[eType];
+}
+
+const Map<label>&
+dynamicTopoFvMesh::coupledPatchInfo::masterToSlaveMap()
+{
+    return masterToSlave_;
+}
+
+const Map<label>&
+dynamicTopoFvMesh::coupledPatchInfo::slaveToMasterMap()
+{
+    return slaveToMaster_;
 }
 
 label dynamicTopoFvMesh::coupledPatchInfo::findSlaveIndex
@@ -152,6 +164,29 @@ label dynamicTopoFvMesh::coupledPatchInfo::findMasterIndex
     }
 }
 
+// Remove a master/slave entry, if found.
+void dynamicTopoFvMesh::coupledPatchInfo::removeSlaveIndex
+(
+    const label Index
+)
+{
+    if (slaveToMaster_.found(Index))
+    {
+        slaveToMaster_.erase(Index);
+    }
+}
+
+void dynamicTopoFvMesh::coupledPatchInfo::removeMasterIndex
+(
+    const label Index
+)
+{
+    if (masterToSlave_.found(Index))
+    {
+        masterToSlave_.erase(Index);
+    }
+}
+
 void dynamicTopoFvMesh::coupledPatchInfo::mapSlave
 (
     const label master,
@@ -170,13 +205,22 @@ void dynamicTopoFvMesh::coupledPatchInfo::mapMaster
     slaveToMaster_.insert(slave, master);
 }
 
+void dynamicTopoFvMesh::coupledPatchInfo::transferMaps
+(
+    Map<label>& newMasterToSlave,
+    Map<label>& newSlaveToMaster
+)
+{
+    masterToSlave_.transfer(newMasterToSlave);
+    slaveToMaster_.transfer(newSlaveToMaster);
+}
+
 void dynamicTopoFvMesh::coupledPatchInfo::clearMaps()
 {
     masterToSlave_.clear();
     slaveToMaster_.clear();
 }
 
-// Access to buffers
 FixedList<labelList,5>&
 dynamicTopoFvMesh::coupledPatchInfo::entityBuffer()
 {

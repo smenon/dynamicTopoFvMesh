@@ -585,10 +585,49 @@ void dynamicTopoFvMesh::reOrderEdges
         entityMutex_[2].unlock();
     }
 
-    // Invert edges to obtain pointEdges
     if (!twoDMesh_)
     {
+        // Invert edges to obtain pointEdges
         invertConnectivity(nPoints_, edges_, pointEdges_);
+
+        // Loop through all local coupling maps, and renumber edges.
+        forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+        {
+            // Obtain references
+            const Map<label>& mtsMap = patchI().masterToSlaveMap();
+
+            Map<label> newMtsMap, newStmMap;
+
+            forAllConstIter(Map<label>, mtsMap, mIter)
+            {
+                label newMaster = -1, newSlave = -1;
+
+                if (mIter.key() < nOldEdges_)
+                {
+                    newMaster = reverseEdgeMap_[mIter.key()];
+                }
+                else
+                {
+                    newMaster = addedEdgeRenumbering_[mIter.key()];
+                }
+
+                if (mIter() < nOldEdges_)
+                {
+                    newSlave = reverseEdgeMap_[mIter()];
+                }
+                else
+                {
+                    newSlave = addedEdgeRenumbering_[mIter()];
+                }
+
+                // Update the map.
+                newMtsMap.insert(newMaster, newSlave);
+                newStmMap.insert(newSlave, newMaster);
+            }
+
+            // Overwrite the old maps.
+            patchI().transferMaps(newMtsMap, newStmMap);
+        }
     }
 
     // Clear the deleted entity map
@@ -1068,6 +1107,48 @@ void dynamicTopoFvMesh::reOrderFaces
 
     // Reset all zones
     faceZones.updateMesh();
+
+    if (twoDMesh_)
+    {
+        // Loop through all local coupling maps, and renumber faces.
+        forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+        {
+            // Obtain references
+            const Map<label>& mtsMap = patchI().masterToSlaveMap();
+
+            Map<label> newMtsMap, newStmMap;
+
+            forAllConstIter(Map<label>, mtsMap, mIter)
+            {
+                label newMaster = -1, newSlave = -1;
+
+                if (mIter.key() < nOldFaces_)
+                {
+                    newMaster = reverseFaceMap_[mIter.key()];
+                }
+                else
+                {
+                    newMaster = addedFaceRenumbering_[mIter.key()];
+                }
+
+                if (mIter() < nOldFaces_)
+                {
+                    newSlave = reverseFaceMap_[mIter()];
+                }
+                else
+                {
+                    newSlave = addedFaceRenumbering_[mIter()];
+                }
+
+                // Update the map.
+                newMtsMap.insert(newMaster, newSlave);
+                newStmMap.insert(newSlave, newMaster);
+            }
+
+            // Overwrite the old maps.
+            patchI().transferMaps(newMtsMap, newStmMap);
+        }
+    }
 
     // Clear the deleted entity map
     deletedFaces_.clear();

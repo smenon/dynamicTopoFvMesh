@@ -1371,13 +1371,18 @@ const changeMap dynamicTopoFvMesh::swap23
         }
     }
 
+    // Specify that the swap was successful
+    map.type() = 1;
+
     // Return the changeMap
     return map;
 }
 
 // Method used to perform a 2-2 / 3-2 swap in 3D
-// - Returns a changeMap with the index of
-//   the triangulated face in opposingFace.
+// - Returns a changeMap with a type specifying:
+//     1: Swap was successful
+// - The index of the triangulated face in opposingFace.
+// - For 2-2 swaps, the newly added edge index.
 const changeMap dynamicTopoFvMesh::swap32
 (
     const label eIndex,
@@ -1706,6 +1711,9 @@ const changeMap dynamicTopoFvMesh::swap32
             )
         );
 
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex);
+
         // Update faceEdges with the new edge
         faceEdges_[newFaceIndex][nE++] = newEdgeIndex;
         bdyFaceEdges[0][nBE[0]++] = newEdgeIndex;
@@ -1759,86 +1767,6 @@ const changeMap dynamicTopoFvMesh::swap32
         // Add faceEdges for the two new boundary faces
         faceEdges_.append(bdyFaceEdges[0]);
         faceEdges_.append(bdyFaceEdges[1]);
-
-        if (coupledModification_)
-        {
-            // Create a masterToSlave entry for the new edge.
-            if (locallyCoupledEdge(eIndex))
-            {
-                // Since we don't know the corresponding edge
-                // on the slave patch, loop through recently
-                // added edges and perform a geometric match.
-                bool foundMatch = false;
-
-                point mCentre =
-                (
-                    0.5 *
-                    (
-                        points_[edges_[newEdgeIndex][0]]
-                      + points_[edges_[newEdgeIndex][1]]
-                    )
-                );
-
-                for
-                (
-                    label edgeI = nOldInternalEdges_;
-                    edgeI < edges_.size();
-                    edgeI++
-                )
-                {
-                    if (!edgeFaces_[edgeI].size())
-                    {
-                        continue;
-                    }
-
-                    // Get the centre.
-                    vector centre =
-                    (
-                        0.5 *
-                        (
-                            points_[edges_[edgeI][0]]
-                          + points_[edges_[edgeI][1]]
-                        )
-                    );
-
-                    if
-                    (
-                        (mag(mCentre - centre) < gTol_) &&
-                        (edgeI != newEdgeIndex) &&
-                        (edgeI != eIndex)
-                    )
-                    {
-                        patchCoupling_[edgePatch].mapSlave
-                        (
-                            newEdgeIndex, edgeI
-                        );
-
-                        patchCoupling_[edgePatch].mapMaster
-                        (
-                            edgeI, newEdgeIndex
-                        );
-
-                        foundMatch = true;
-
-                        break;
-                    }
-                }
-
-                if (!foundMatch)
-                {
-                    FatalErrorIn
-                    (
-                        "dynamicTopoFvMesh::swap32"
-                    ) << "Failed to build coupled maps." << abort(FatalError);
-                }
-            }
-            else
-            if (processorCoupledEdge(eIndex))
-            {
-                // Look for matching slave edges on the patchSubMesh.
-
-            }
-        }
     }
 
     newTetCell[0][nF0++] = newFaceIndex;
@@ -2076,6 +2004,9 @@ const changeMap dynamicTopoFvMesh::swap32
             );
         }
     }
+
+    // Specify that the swap was successful
+    map.type() = 1;
 
     // Return the changeMap
     return map;

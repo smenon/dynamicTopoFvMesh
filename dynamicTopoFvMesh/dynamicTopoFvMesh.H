@@ -250,13 +250,18 @@ class dynamicTopoFvMesh
         // Private sub-class for coupled patches (local and processor)
         class coupledPatchInfo
         {
+            // Reference to the parent mesh
+            const dynamicTopoFvMesh& mesh_;
+
             // Auto pointer to a subMesh
             autoPtr<dynamicTopoFvMesh> subMesh_;
 
             // Flag to determine whether maps have been built.
             bool builtMaps_;
 
-            // For locally coupled patches, specify a slave index
+            // For locally coupled patches,
+            // specify a master / slave index
+            label masterIndex_;
             label slaveIndex_;
 
             // Zone IDs for patches associated with faceZones
@@ -306,6 +311,8 @@ class dynamicTopoFvMesh
             // Constructor
             coupledPatchInfo
             (
+                const dynamicTopoFvMesh& mesh,
+                const label masterIndex = -1,
                 const label slaveIndex = -1,
                 const label mfzIndex = -1,
                 const label sfzIndex = -1
@@ -337,9 +344,17 @@ class dynamicTopoFvMesh
                 Map<label>& entityMap(const label eType);
                 Map<label>& reverseEntityMap(const label eType);
 
+                // Access to master / slave maps
+                const Map<label>& masterToSlaveMap();
+                const Map<label>& slaveToMasterMap();
+
                 // Master-slave mapping
                 label findSlaveIndex(const label Index) const;
                 label findMasterIndex(const label Index) const;
+
+                // Remove a master/slave entry, if found.
+                void removeSlaveIndex(const label Index);
+                void removeMasterIndex(const label Index);
 
                 // Master/slave entries
                 void mapSlave(const label master, const label slave);
@@ -352,6 +367,13 @@ class dynamicTopoFvMesh
                 // Access to auxiliary buffers
                 pointField& pointBuffer();
                 scalarList& lengthBuffer();
+
+                // Transfer maps, replacing old ones
+                void transferMaps
+                (
+                    Map<label>& newMasterToSlave,
+                    Map<label>& newSlaveToMaster
+                );
 
                 // Clear maps
                 void clearMaps();
@@ -600,6 +622,7 @@ class dynamicTopoFvMesh
         bisectQuadFace
         (
             const label fIndex,
+            bool checkOnly = false,
             const changeMap& masterMap = changeMap()
         );
 
@@ -770,14 +793,14 @@ class dynamicTopoFvMesh
         // and add exposed internal faces to the specified patch
         void removeCell
         (
-            const label index,
+            const label cIndex,
             const label patch
         );
 
         // Remove the specified cell from the mesh
         void removeCell
         (
-            const label index
+            const label cIndex
         );
 
         // Insert the specified face to the mesh
@@ -793,7 +816,7 @@ class dynamicTopoFvMesh
         // Remove the specified face from the mesh
         void removeFace
         (
-            const label index
+            const label fIndex
         );
 
         // Split a set of internal faces into boundary faces,
@@ -824,7 +847,7 @@ class dynamicTopoFvMesh
         // Remove the specified edge from the mesh
         void removeEdge
         (
-            const label index
+            const label eIndex
         );
 
         // Insert the specified point to the mesh
@@ -838,7 +861,7 @@ class dynamicTopoFvMesh
         // Remove the specified point from the mesh
         void removePoint
         (
-            const label index
+            const label pIndex
         );
 
         // Utility method to size-up the list to include an item
@@ -961,7 +984,8 @@ class dynamicTopoFvMesh
         ) const;
 
         // Remove the edge according to the swap sequence
-        bool removeEdgeFlips
+        const changeMap
+        removeEdgeFlips
         (
             const label eIndex,
             const scalar minQuality,
@@ -1218,9 +1242,6 @@ class dynamicTopoFvMesh
 
         // Does the mesh perform edge refinement?
         bool edgeRefinement() const;
-
-        // Build the global shared-point list
-        void buildGlobalPoints();
 
         // Identify coupled patches.
         bool identifyCoupledPatches();

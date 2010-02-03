@@ -149,38 +149,24 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             if (slaveMap.type() > 0)
             {
-                // Compute edge-centres
-                FixedList<point, 2> mCentres(vector::zero);
+                const label pointEnum = coupledPatchInfo::POINT;
 
-                mCentres[0] = 0.5 *
+                // Obtain the pointMap
+                Map<label>& pointMap =
                 (
-                    points_[checkEdge[1].start()]
-                  + points_[checkEdge[1].end()]
+                    patchCoupling_[whichPatch(fIndex)].entityMap(pointEnum)
                 );
 
-                mCentres[1] = 0.5 *
-                (
-                    points_[checkEdge[2].start()]
-                  + points_[checkEdge[2].end()]
-                );
+                FixedList<edge, 2> mEdge(edge(-1, -1)), sEdge(edge(-1, -1));
 
-                FixedList<edge, 2> sEdge(edge(-1, -1));
-                FixedList<point, 2> sCentres(vector::zero);
+                mEdge[0][0] = pointMap[checkEdge[1].start()];
+                mEdge[0][1] = pointMap[checkEdge[1].end()];
+
+                mEdge[1][0] = pointMap[checkEdge[2].start()];
+                mEdge[1][1] = pointMap[checkEdge[2].end()];
 
                 sEdge[0] = edges_[slaveMap.firstEdge()];
                 sEdge[1] = edges_[slaveMap.secondEdge()];
-
-                sCentres[0] = 0.5 *
-                (
-                    points_[sEdge[0].start()]
-                  + points_[sEdge[0].end()]
-                );
-
-                sCentres[1] = 0.5 *
-                (
-                    points_[sEdge[1].start()]
-                  + points_[sEdge[1].end()]
-                );
 
                 // Set the overRideCase for this edge
                 changeMap masterMap;
@@ -190,12 +176,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 {
                     case 1:
 
-                        if (mag(mCentres[0] - sCentres[0]) < gTol_)
+                        if (mEdge[0] == sEdge[0])
                         {
                             overRideCase = 1;
                         }
                         else
-                        if (mag(mCentres[1] - sCentres[0]) < gTol_)
+                        if (mEdge[1] == sEdge[0])
                         {
                             overRideCase = 2;
                         }
@@ -220,12 +206,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                     case 2:
 
-                        if (mag(mCentres[1] - sCentres[1]) < gTol_)
+                        if (mEdge[1] == sEdge[1])
                         {
                             overRideCase = 2;
                         }
                         else
-                        if (mag(mCentres[0] - sCentres[1]) < gTol_)
+                        if (mEdge[0] == sEdge[1])
                         {
                             overRideCase = 1;
                         }
@@ -255,6 +241,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 // Master couldn't perform collapse.
                 if (masterMap.type() <= 0)
                 {
+                    // Turn coupledModification back on before bailing out.
+                    setCoupledModification();
+
                     return masterMap;
                 }
 
@@ -2565,32 +2554,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     // Remove the collapse point
     removePoint(collapsePoint);
-
-    // Update point maps, if necessary.
-    if (coupledModification_)
-    {
-        if (locallyCoupledEdge(eIndex))
-        {
-            // Remove the point entry.
-            const label pointEnum = coupledPatchInfo::POINT;
-
-            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
-            {
-                // Obtain references
-                Map<label>& pointMap = patchI().entityMap(pointEnum);
-                Map<label>& rPointMap = patchI().reverseEntityMap(pointEnum);
-
-                if (pointMap.found(collapsePoint))
-                {
-                    // Erase the reverse map first
-                    rPointMap.erase(pointMap[collapsePoint]);
-
-                    // Update pointMap
-                    pointMap.erase(collapsePoint);
-                }
-            }
-        }
-    }
 
     // Write out VTK files after change
     if (debug > 3)
