@@ -29,6 +29,7 @@ License
 #include "IOmanip.H"
 #include "addToRunTimeSelectionTable.H"
 #include "polyMesh.H"
+#include "coupleMap.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -58,7 +59,6 @@ mesquiteSmoother::mesquiteSmoother
     volCorrTolerance_(1e-20),
     volCorrMaxIter_(100),
     tolerance_(1e-4),
-    gTol_(1e-10),
     nSweeps_(1),
     surfInterval_(1),
     vtxCoords_(NULL),
@@ -100,7 +100,6 @@ mesquiteSmoother::mesquiteSmoother
     volCorrTolerance_(1e-20),
     volCorrMaxIter_(100),
     tolerance_(1e-4),
-    gTol_(1e-10),
     nSweeps_(1),
     surfInterval_(1),
     vtxCoords_(NULL),
@@ -169,12 +168,6 @@ void mesquiteSmoother::readOptions()
         if (found("tolerance"))
         {
             tolerance_ = readScalar(lookup("tolerance"));
-        }
-
-        // Check if a geometric tolerance has been specified
-        if (found("gTol"))
-        {
-            gTol_ = readScalar(lookup("gTol"));
         }
 
         // Check if volume correction is enabled
@@ -1057,82 +1050,6 @@ void mesquiteSmoother::initArrays()
             offsets_[patchI + 1] = totalSize;
         }
 
-        // Build coupling maps.
-        if (patchCoupling_.size())
-        {
-            masterToSlave_.setSize(boundary.size());
-
-            const pointField& points = mesh().points();
-
-            forAllIter(Map<label>, patchCoupling_, patchI)
-            {
-                const labelList& mLabels = boundary[patchI.key()].meshPoints();
-                const labelList& sLabels = boundary[patchI()].meshPoints();
-
-                label nMatchedPoints = 0;
-
-                forAll(mLabels, pointI)
-                {
-                    bool matched = false;
-                    scalar minDistance = GREAT;
-
-                    forAll(sLabels, pointJ)
-                    {
-                        scalar distance =
-                        (
-                            mag
-                            (
-                                points[mLabels[pointI]]
-                              - points[sLabels[pointJ]]
-                            )
-                        );
-
-                        minDistance = minDistance < distance
-                                    ? minDistance : distance;
-
-                        if (distance < gTol_)
-                        {
-                            // Add a map entry
-                            masterToSlave_[patchI.key()].insert
-                            (
-                                mLabels[pointI],
-                                sLabels[pointJ]
-                            );
-
-                            matched = true;
-
-                            nMatchedPoints++;
-
-                            break;
-                        }
-                    }
-
-                    if (!matched)
-                    {
-                        FatalErrorIn("mesquiteSmoother::initArrays()")
-                            << " Failed to match point within a tolerance of: "
-                            << gTol_ << nl << " Missed by: " << minDistance
-                            << abort(FatalError);
-                    }
-                }
-
-                // Make sure we were successful.
-                if (nMatchedPoints != mLabels.size())
-                {
-                    FatalErrorIn("mesquiteSmoother::initArrays()")
-                        << " Failed to match all points." << nl
-                        << " Master: " << boundary[patchI.key()].name() << nl
-                        << " Slave: " << boundary[patchI()].name() << nl
-                        << " Number of points required for match: "
-                        << mLabels.size() << nl
-                        << " Number of points on slave patch: "
-                        << sLabels.size() << nl
-                        << " Number of matched points: " << nMatchedPoints
-                        << abort(FatalError);
-                }
-            }
-        }
-
         // Initialize CG variables
         bV_.setSize(totalSize, vector::zero);
         xV_.setSize(totalSize, vector::zero);
@@ -1402,16 +1319,63 @@ void mesquiteSmoother::smoothSurfaces()
         // Update coupled patches
         if (patchCoupling_.size())
         {
+            // Search the registry for all mapping objects.
+            HashTable<const coupleMap*> coupleMaps =
+            (
+                Mesh_.lookupClass<coupleMap>()
+            );
+
             forAllIter(Map<label>, patchCoupling_, patchI)
             {
                 const labelList& meshPts = boundary[patchI.key()].meshPoints();
 
-                forAll(meshPts,pointI)
+                bool foundMap = false;
+
+                forAllIter
+                (
+                    HashTable<const coupleMap*>,
+                    coupleMaps,
+                    cmIter
+                )
                 {
-                    refPoints_[masterToSlave_[patchI.key()][meshPts[pointI]]] =
+                    const coupleMap& cMap = *(cmIter());
+
+                    // Ensure that both master and slave patches match.
+                    if
                     (
-                        refPoints_[meshPts[pointI]]
-                    );
+                        (cMap.masterIndex() == patchI.key()) &&
+                        (cMap.slaveIndex() == patchI())
+                    )
+                    {
+                        const Map<label>& mtsMap =
+                        (
+                            cMap.entityMap(coupleMap::POINT)
+                        );
+
+                        forAll(meshPts, pointI)
+                        {
+                            refPoints_[mtsMap[meshPts[pointI]]] =
+                            (
+                                refPoints_[meshPts[pointI]]
+                            );
+                        }
+
+                        foundMap = true;
+
+                        break;
+                    }
+                }
+
+                if (!foundMap)
+                {
+                    FatalErrorIn
+                    (
+                        "mesquiteSmoother::smoothSurfaces()"
+                    )
+                        << "Could not find coupling map: " << nl
+                        << "Master: " << patchI.key() << nl
+                        << "Slave: " << patchI()
+                        << abort(FatalError);
                 }
             }
         }
@@ -2446,8 +2410,6 @@ void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
         pV_.clear();
         rV_.clear();
         wV_.clear();
-
-        masterToSlave_.clear();
 
         localPts_.clear();
         gradEdgeV_.clear();

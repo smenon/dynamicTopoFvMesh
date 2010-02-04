@@ -53,6 +53,7 @@ SourceFiles
 #include "threadHandler.H"
 #include "eMesh.H"
 #include "stack.H"
+#include "coupleMap.H"
 #include "changeMap.H"
 #include "fvMesh.H"
 
@@ -261,31 +262,11 @@ class dynamicTopoFvMesh
 
             // For locally coupled patches,
             // specify a master / slave index
-            label masterIndex_;
-            label slaveIndex_;
+            coupleMap patchMap_;
 
             // Zone IDs for patches associated with faceZones
             label masterFaceZone_;
             label slaveFaceZone_;
-
-            // Entity sizes (as specified by the entityType enumerant)
-            FixedList<label,6> nEntities_;
-
-            // Maps for entities
-            // - For every local index,
-            //   provide global index
-            FixedList<Map<label>,4> entityMap_;
-
-            // - For every global index,
-            //   provide local index
-            FixedList<Map<label>,4> reverseEntityMap_;
-
-            // Master-Slave mapping
-            Map<label> masterToSlave_;
-            Map<label> slaveToMaster_;
-
-            // Entity Buffers (as specified by the entityType enumerant)
-            FixedList<labelList,5> entityBuffer_;
 
             // Auxiliary buffers
             pointField  pointBuffer_;
@@ -296,24 +277,20 @@ class dynamicTopoFvMesh
 
         public:
 
-            // Enumerants for entity-types
-            enum entityType
-            {
-                POINT = 0,
-                EDGE = 1,
-                FACE = 2,
-                CELL = 3,
-                INTERNAL_EDGE = 4,
-                FACE_EDGE = 4,
-                SHARED_POINT = 5
-            };
-
             // Constructor
             coupledPatchInfo
             (
                 const dynamicTopoFvMesh& mesh,
-                const label masterIndex = -1,
-                const label slaveIndex = -1,
+                const coupleMap& cMap,
+                const label mfzIndex = -1,
+                const label sfzIndex = -1
+            );
+
+            coupledPatchInfo
+            (
+                const dynamicTopoFvMesh& mesh,
+                const label mPatch = -1,
+                const label sPatch = -1,
                 const label mfzIndex = -1,
                 const label sfzIndex = -1
             );
@@ -329,54 +306,16 @@ class dynamicTopoFvMesh
                 // Change the flag
                 void setBuiltMaps();
 
-                // Return the slave index
-                label slaveIndex() const;
+                // Return the coupleMap
+                const coupleMap& patchMap() const;
 
                 // Return the master / slave face zone IDs
                 label masterFaceZone() const;
                 label slaveFaceZone() const;
 
-                // Access to entity sizes
-                FixedList<label,6>& nEntities();
-                label& nEntities(const label eType);
-
-                // Access to maps
-                Map<label>& entityMap(const label eType);
-                Map<label>& reverseEntityMap(const label eType);
-
-                // Access to master / slave maps
-                const Map<label>& masterToSlaveMap();
-                const Map<label>& slaveToMasterMap();
-
-                // Master-slave mapping
-                label findSlaveIndex(const label Index) const;
-                label findMasterIndex(const label Index) const;
-
-                // Remove a master/slave entry, if found.
-                void removeSlaveIndex(const label Index);
-                void removeMasterIndex(const label Index);
-
-                // Master/slave entries
-                void mapSlave(const label master, const label slave);
-                void mapMaster(const label slave, const label master);
-
-                // Access to buffers
-                FixedList<labelList,5>& entityBuffer();
-                labelList& entityBuffer(const label eType);
-
                 // Access to auxiliary buffers
                 pointField& pointBuffer();
                 scalarList& lengthBuffer();
-
-                // Transfer maps, replacing old ones
-                void transferMaps
-                (
-                    Map<label>& newMasterToSlave,
-                    Map<label>& newSlaveToMaster
-                );
-
-                // Clear maps
-                void clearMaps();
         };
 
         // Coupled patch information

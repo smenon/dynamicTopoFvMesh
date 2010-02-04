@@ -1,4 +1,5 @@
 EXE_INC = \
+    -I../coupleMap/lnInclude \
     -I$(WM_THIRD_PARTY_DIR)/mesquite-2.0.2/lnInclude \
     -I$(WM_THIRD_PARTY_DIR)/liblbfgs-1.8/include \
     -I$(LIB_SRC)/meshTools/lnInclude \
@@ -10,4 +11,6 @@ LIB_LIBS = \
     -L$(WM_THIRD_PARTY_DIR)/mesquite-2.0.2/.libs \
     -lmesquite \
     -L$(WM_THIRD_PARTY_DIR)/liblbfgs-1.8/lib/.libs \
-    -llbfgs
+    -llbfgs \
+    -L$(FOAM_USER_LIBBIN) \
+    -lcoupleMap

@@ -1,5 +1,6 @@
 EXE_INC = \
     -I../include \
+    -I../coupleMap/lnInclude \
     -I../multiThreader/lnInclude \
     -I../dynamicTopoFvMesh/lnInclude \
     -I../fluidInterface/lnInclude \
@@ -18,6 +19,7 @@ EXE_LIBS = \
     -ldynamicTopoFvMesh \
     -lfluidInterface \
     -lmultiThreader \
+    -lcoupleMap \
     -lfiniteVolume \
     -lfiniteArea \
     -lmesquiteSmoother \

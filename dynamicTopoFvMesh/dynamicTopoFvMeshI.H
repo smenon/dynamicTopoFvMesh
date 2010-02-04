@@ -1054,7 +1054,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
 
     forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
     {
-        localSlavePatches.insert(patchI().slaveIndex());
+        localSlavePatches.insert(patchI().patchMap().slaveIndex());
     }
 
     // Loop through boundary faces and check whether
@@ -1548,18 +1548,18 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
         if (locallyCoupledEdge(eIndex))
         {
             // Compute the minimum quality of the slave edge as well.
-            label slaveIndex = -1;
+            label sIndex = -1;
 
             // Determine the slave index.
             forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
+                if ((sIndex = patchI().patchMap().findSlaveIndex(eIndex)) > -1)
                 {
                     break;
                 }
             }
 
-            if (slaveIndex == -1)
+            if (sIndex == -1)
             {
                 FatalErrorIn
                 (
@@ -1573,7 +1573,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             // Temporarily turn off coupledModification
             unsetCoupledModification();
 
-            scalar slaveQuality = computeMinQuality(slaveIndex);
+            scalar slaveQuality = computeMinQuality(sIndex);
 
             minQuality = Foam::min(slaveQuality, minQuality);
 
@@ -1841,7 +1841,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
                     iterI
                 )
                 {
-                    if (iterI().slaveIndex() == patch)
+                    if (iterI().patchMap().slaveIndex() == patch)
                     {
                         foundPatch = true;
                     }

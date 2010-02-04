@@ -5,6 +5,7 @@ set -x
 
 wmake libso tetMetrics
 wmake libso multiThreader
+wmake libso coupleMap
 wmake libso fluidInterface
 wmake libso mesquiteSmoother
 wmake libso dynamicTopoFvMesh

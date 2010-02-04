@@ -3,6 +3,7 @@ set -x
 
 wmakeLnInclude tetMetrics
 wmakeLnInclude multiThreader
+wmakeLnInclude coupleMap
 wmakeLnInclude fluidInterface
 wmakeLnInclude mesquiteSmoother
 wmakeLnInclude dynamicTopoFvMesh

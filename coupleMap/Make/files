@@ -1,0 +1,3 @@
+coupleMap.C
+
+LIB = $(FOAM_USER_LIBBIN)/libcoupleMap

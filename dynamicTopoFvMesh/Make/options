@@ -1,9 +1,11 @@
 EXE_INC = \
     -I../multiThreader/lnInclude \
+    -I../coupleMap/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
 
 LIB_LIBS = \
     -lfiniteVolume \
     -L$(FOAM_USER_LIBBIN) \
     -lmultiThreader \
-    -ltetMetrics
+    -ltetMetrics \
+    -lcoupleMap

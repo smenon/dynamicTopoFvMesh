@@ -95,9 +95,6 @@ protected:
     // Specify tolerance for the CG solver
     scalar tolerance_;
 
-    // Specify tolerance for geometric matching
-    scalar gTol_;
-
     //- Specify multiple mesh-motion sweeps
     label nSweeps_;
 
@@ -144,9 +141,6 @@ protected:
 
     //- Explicit patch coupling for surface smoothing
     Map<label> patchCoupling_;
-
-    // Mapping for locally coupled patches
-    List<Map<label> > masterToSlave_;
 
     vectorField bV_;
     vectorField xV_;

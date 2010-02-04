@@ -130,31 +130,45 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Is this a locally coupled edge?
         if (locallyCoupledFace(fIndex))
         {
-            label slaveIndex = -1;
+            label sIndex = -1;
 
             // Determine the slave index.
             forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if ((slaveIndex = patchI().findSlaveIndex(fIndex)) > -1)
+                if ((sIndex = patchI().patchMap().findSlaveIndex(fIndex)) > -1)
                 {
                     break;
                 }
+            }
+
+            if (sIndex == -1)
+            {
+                FatalErrorIn
+                (
+                    "dynamicTopoFvMesh::collapseQuadFace()"
+                ) << "Coupled maps were improperly specified." << nl
+                  << " Slave index not found for: " << nl
+                  << " Face: " << fIndex << nl
+                  << abort(FatalError);
             }
 
             // Temporarily turn off coupledModification.
             unsetCoupledModification();
 
             // First check the slave for collapse feasibility.
-            changeMap slaveMap = collapseQuadFace(slaveIndex, -1, true);
+            changeMap slaveMap = collapseQuadFace(sIndex, -1, true);
 
             if (slaveMap.type() > 0)
             {
-                const label pointEnum = coupledPatchInfo::POINT;
+                const label pointEnum = coupleMap::POINT;
 
                 // Obtain the pointMap
                 Map<label>& pointMap =
                 (
-                    patchCoupling_[whichPatch(fIndex)].entityMap(pointEnum)
+                    patchCoupling_[whichPatch(fIndex)].patchMap().entityMap
+                    (
+                        pointEnum
+                    )
                 );
 
                 FixedList<edge, 2> mEdge(edge(-1, -1)), sEdge(edge(-1, -1));
@@ -248,7 +262,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 }
 
                 // Collapse the slave.
-                collapseQuadFace(slaveIndex);
+                collapseQuadFace(sIndex);
             }
             else
             {
@@ -795,19 +809,19 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             if (locallyCoupledFace(fIndex))
             {
                 // Remove the point entries.
-                const label pointEnum = coupledPatchInfo::POINT;
+                const label pointEnum = coupleMap::POINT;
 
                 forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
                 {
                     // Obtain references
                     Map<label>& pointMap =
                     (
-                        patchI().entityMap(pointEnum)
+                        patchI().patchMap().entityMap(pointEnum)
                     );
 
                     Map<label>& rPointMap =
                     (
-                        patchI().reverseEntityMap(pointEnum)
+                        patchI().patchMap().reverseEntityMap(pointEnum)
                     );
 
                     if (pointMap.found(cv0))
@@ -1108,19 +1122,19 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             if (locallyCoupledFace(fIndex))
             {
                 // Remove the point entries.
-                const label pointEnum = coupledPatchInfo::POINT;
+                const label pointEnum = coupleMap::POINT;
 
                 forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
                 {
                     // Obtain references
                     Map<label>& pointMap =
                     (
-                        patchI().entityMap(pointEnum)
+                        patchI().patchMap().entityMap(pointEnum)
                     );
 
                     Map<label>& rPointMap =
                     (
-                        patchI().reverseEntityMap(pointEnum)
+                        patchI().patchMap().reverseEntityMap(pointEnum)
                     );
 
                     if (pointMap.found(cv2))
@@ -1668,12 +1682,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // Is this a locally coupled edge?
         if (locallyCoupledEdge(eIndex))
         {
-            label slaveIndex = -1, pIndex = -1;
+            label sIndex = -1, pIndex = -1;
 
             // Determine the slave index.
             forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
             {
-                if ((slaveIndex = patchI().findSlaveIndex(eIndex)) > -1)
+                if ((sIndex = patchI().patchMap().findSlaveIndex(eIndex)) > -1)
                 {
                     pIndex = patchI.key();
 
@@ -1681,26 +1695,37 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
             }
 
+            if (sIndex == -1)
+            {
+                FatalErrorIn
+                (
+                    "dynamicTopoFvMesh::collapseEdge"
+                ) << "Coupled maps were improperly specified." << nl
+                  << " Slave index not found for: " << nl
+                  << " Edge: " << eIndex << nl
+                  << abort(FatalError);
+            }
+
             // Temporarily turn off coupledModification
             unsetCoupledModification();
 
             // First check the slave for collapse feasibility.
-            changeMap slaveMap = collapseEdge(slaveIndex, -1, true);
+            changeMap slaveMap = collapseEdge(sIndex, -1, true);
 
             if (slaveMap.type() > 0)
             {
                 edge mEdge = edges_[eIndex];
-                edge sEdge = edges_[slaveIndex];
+                edge sEdge = edges_[sIndex];
 
                 // Set the overRideCase for this edge
                 changeMap masterMap;
 
-                const label pointEnum = coupledPatchInfo::POINT;
+                const label pointEnum = coupleMap::POINT;
 
                 // Obtain the pointMap
                 Map<label>& pointMap =
                 (
-                    patchCoupling_[pIndex].entityMap(pointEnum)
+                    patchCoupling_[pIndex].patchMap().entityMap(pointEnum)
                 );
 
                 // Perform a topological comparison.
@@ -1764,7 +1789,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
 
                 // Collapse the slave edge.
-                collapseEdge(slaveIndex);
+                collapseEdge(sIndex);
             }
             else
             {
