@@ -155,9 +155,6 @@ void mesquiteSmoother::readOptions()
             slipPatchIDs.insert(mesh().boundaryMesh().findPatchID(patchName));
         }
 
-        // Extract the patch list
-        pIDs_ = slipPatchIDs.toc();
-
         // Toggle surface smoothing if slip patches are present
         if (!slipPatches.empty())
         {
@@ -220,23 +217,15 @@ void mesquiteSmoother::readOptions()
                 label mPatch = boundary.findPatchID(masterPatch);
                 label sPatch = boundary.findPatchID(slavePatch);
 
-                // It is considered an error to have slave-patches
-                // on the slip-patches list.
-                if (findIndex(pIDs_, sPatch) > -1)
-                {
-                    FatalErrorIn
-                    (
-                        "mesquiteSmoother::readOptions()"
-                    )
-                        << " Slave Patch: " << slavePatch << nl
-                        << " is specified in the slip-patches list." << nl
-                        << " Please remove the entry."
-                        << abort(FatalError);
-                }
-
                 if (mPatch == -1 && sPatch == -1)
                 {
                     continue;
+                }
+
+                // Add to the patch-list, if the entry hasn't been found.
+                if (!slipPatchIDs.found(sPatch) && (sPatch != -1))
+                {
+                    slipPatchIDs.insert(sPatch);
                 }
 
                 // Add to the list if entries are legitimate
@@ -261,6 +250,9 @@ void mesquiteSmoother::readOptions()
                 }
             }
         }
+
+        // Extract the final slip-patch list
+        pIDs_ = slipPatchIDs.toc();
     }
 
     Mesquite::MsqError err;
@@ -1924,12 +1916,14 @@ void mesquiteSmoother::enforceCylindricalConstraints()
     {
         const dictionary& constraintDict = subDict("cylindricalConstraints");
 
+        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
         // Read patch-information one-by one.
         wordList cstrPatches = constraintDict.toc();
 
         forAll(cstrPatches, wordI)
         {
-            label pID = mesh().boundaryMesh().findPatchID(cstrPatches[wordI]);
+            label pID = boundary.findPatchID(cstrPatches[wordI]);
 
             if (pID == -1 || findIndex(pIDs_, pID) == -1)
             {
@@ -1948,7 +1942,7 @@ void mesquiteSmoother::enforceCylindricalConstraints()
             vector axisVector(pD.lookup("axisVector"));
             scalar radius = readScalar(pD.lookup("radius"));
 
-            const labelList meshPts = mesh().boundaryMesh()[pID].meshPoints();
+            const labelList& meshPts = boundary[pID].meshPoints();
 
             axisVector /= mag(axisVector) + VSMALL;
 
@@ -1976,6 +1970,67 @@ void mesquiteSmoother::enforceCylindricalConstraints()
                         )
                             << " Constraint violation: " << viol << endl;
                     }
+                }
+            }
+
+            // If this is a coupled patch, correct the slave as well.
+            if (patchCoupling_.found(pID))
+            {
+                // Search the registry for all mapping objects.
+                HashTable<const coupleMap*> coupleMaps =
+                (
+                    Mesh_.lookupClass<coupleMap>()
+                );
+
+                const labelList& mMeshPts = boundary[pID].meshPoints();
+
+                bool foundMap = false;
+
+                forAllIter
+                (
+                    HashTable<const coupleMap*>,
+                    coupleMaps,
+                    cmIter
+                )
+                {
+                    const coupleMap& cMap = *(cmIter());
+
+                    // Ensure that both master and slave patches match.
+                    if
+                    (
+                        (cMap.masterIndex() == pID) &&
+                        (cMap.slaveIndex() == patchCoupling_[pID])
+                    )
+                    {
+                        const Map<label>& mtsMap =
+                        (
+                            cMap.entityMap(coupleMap::POINT)
+                        );
+
+                        forAll(mMeshPts, pointI)
+                        {
+                            refPoints_[mtsMap[mMeshPts[pointI]]] =
+                            (
+                                refPoints_[mMeshPts[pointI]]
+                            );
+                        }
+
+                        foundMap = true;
+
+                        break;
+                    }
+                }
+
+                if (!foundMap)
+                {
+                    FatalErrorIn
+                    (
+                        "mesquiteSmoother::enforceCylindricalConstraints()"
+                    )
+                        << "Could not find coupling map: " << nl
+                        << "Master: " << pID << nl
+                        << "Slave: " << patchCoupling_[pID]
+                        << abort(FatalError);
                 }
             }
         }
