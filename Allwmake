@@ -8,5 +8,6 @@ wmake libso multiThreader
 wmake libso coupleMap
 wmake libso fluidInterface
 wmake libso mesquiteSmoother
+wmake libso springMotionSolver
 wmake libso dynamicTopoFvMesh
 wmake interfaceTrackFoam

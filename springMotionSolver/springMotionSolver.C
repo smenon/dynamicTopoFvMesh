@@ -27,7 +27,7 @@ License
 #include "springMotionSolver.H"
 #include "addToRunTimeSelectionTable.H"
 #include "wedgePolyPatch.H"
-#include "dynamicTopoFvMesh.H"
+#include "polyMesh.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -51,7 +51,7 @@ Foam::springMotionSolver::springMotionSolver
 )
 :
     motionSolver(mesh),
-    Mesh_(refCast<const dynamicTopoFvMesh>(mesh)),
+    Mesh_(mesh),
     refPoints_
     (
         IOobject
@@ -159,7 +159,7 @@ Foam::springMotionSolver::springMotionSolver
 )
 :
     motionSolver(mesh),
-    Mesh_(refCast<const dynamicTopoFvMesh>(mesh)),
+    Mesh_(mesh),
     refPoints_
     (
         IOobject
@@ -480,7 +480,7 @@ void Foam::springMotionSolver::A(const vectorField& p, vectorField& w)
 
     vector gradient = vector::zero;
 
-    // Obtain the edge-list from dynamicTopoFvMesh
+    // Obtain the edge-list from the Mesh
     const edgeList& edges = mesh().edges();
 
     // Gradient (n2e) * stiffness

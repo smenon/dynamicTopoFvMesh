@@ -1429,6 +1429,81 @@ inline scalar mesquiteSmoother::tetVolume
     return 0.0;
 }
 
+// Find the quality of a tetrahedron.
+// The function assumes points (a-b-c)
+// are in counter-clockwise fashion when viewed from d.
+inline scalar mesquiteSmoother::tetQuality
+(
+    const label cIndex,
+    const pointField& pField
+)
+{
+    const cell& cellToCheck = mesh().cells()[cIndex];
+
+    const face& currFace = mesh().faces()[cellToCheck[0]];
+    const face& nextFace = mesh().faces()[cellToCheck[1]];
+
+    // Get the fourth point and compute cell quality
+    forAll(nextFace, pointI)
+    {
+        if
+        (
+            nextFace[pointI] != currFace[0] &&
+            nextFace[pointI] != currFace[1] &&
+            nextFace[pointI] != currFace[2]
+        )
+        {
+            // Compute cell-volume
+            if (mesh().faceOwner()[cellToCheck[0]] == cIndex)
+            {
+                const point& a = pField[currFace[2]];
+                const point& b = pField[currFace[1]];
+                const point& c = pField[currFace[0]];
+                const point& d = pField[nextFace[pointI]];
+
+                // Obtain the magSqr edge-lengths
+                scalar Le = ((b-a) & (b-a))
+                          + ((c-a) & (c-a))
+                          + ((d-a) & (d-a))
+                          + ((c-b) & (c-b))
+                          + ((d-b) & (d-b))
+                          + ((d-c) & (d-c));
+
+                scalar V = ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
+
+                return sign(V)*((24.96100588*::cbrt(V*V))/Le);
+            }
+            else
+            {
+                const point& a = pField[currFace[0]];
+                const point& b = pField[currFace[1]];
+                const point& c = pField[currFace[2]];
+                const point& d = pField[nextFace[pointI]];
+
+                // Obtain the magSqr edge-lengths
+                scalar Le = ((b-a) & (b-a))
+                          + ((c-a) & (c-a))
+                          + ((d-a) & (d-a))
+                          + ((c-b) & (c-b))
+                          + ((d-b) & (d-b))
+                          + ((d-c) & (d-c));
+
+                scalar V = ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
+
+                return sign(V)*((24.96100588*::cbrt(V*V))/Le);
+            }
+        }
+    }
+
+    // Something's wrong with connectivity.
+    FatalErrorIn("mesquiteSmoother::tetQuality()")
+        << "Cell: " << cIndex
+        << " has inconsistent connectivity."
+        << abort(FatalError);
+
+    return 0.0;
+}
+
 // Private member function to check for invalid
 // cells and correct if necessary.
 void mesquiteSmoother::correctInvalidCells()
@@ -1437,6 +1512,14 @@ void mesquiteSmoother::correctInvalidCells()
     // and compute cell volume.
     const labelListList& pointCells = mesh().pointCells();
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    // Check if a minimum quality was specified.
+    scalar thresh = 0.45;
+
+    if (found("sliverThreshold"))
+    {
+        thresh = readScalar(lookup("sliverThreshold"));
+    }
 
     // Obtain point-positions after smoothing
     pointField newField = refPoints_;
@@ -1453,7 +1536,8 @@ void mesquiteSmoother::correctInvalidCells()
 
             forAll(pCells, cellI)
             {
-                if (tetVolume(pCells[cellI], refPoints_) < 0.0)
+                // if (tetVolume(pCells[cellI], refPoints_) < 0.0)
+                if (tetQuality(pCells[cellI], refPoints_) < thresh)
                 {
                     // Add this cell to the list
                     if (findIndex(invCells, pCells[cellI]) == -1)
@@ -1470,6 +1554,7 @@ void mesquiteSmoother::correctInvalidCells()
         return;
     }
 
+    /*
     InfoIn("mesquiteSmoother::correctInvalidCells()")
         << "Found " << invCells.size() << " invalid cells. "
         << "Attempting to correct..." << flush;
@@ -1701,9 +1786,10 @@ void mesquiteSmoother::correctInvalidCells()
             }
         }
     }
+    */
 
     bool valid = false;
-    scalar lambda = 2.0, volFraction = 0.75;
+    scalar lambda = 2.0, valFraction = 0.75;
     label nAttempts = 0;
 
     while (!valid)
@@ -1723,14 +1809,15 @@ void mesquiteSmoother::correctInvalidCells()
 
         forAll(invCells, cellI)
         {
-            // Compute original volume
-            scalar origVolume = tetVolume(invCells[cellI], origPoints_);
+            // Compute the original value
+            // scalar origVal = tetVolume(invCells[cellI], origPoints_);
+            scalar origVal = tetQuality(invCells[cellI], origPoints_);
 
-            if
-            (
-                tetVolume(invCells[cellI], refPoints_)
-              < (volFraction*origVolume)
-            )
+            // Compute the new value
+            // scalar newVal = tetVolume(invCells[cellI], refPoints_);
+            scalar newVal = tetQuality(invCells[cellI], refPoints_);
+
+            if (newVal < (valFraction*origVal))
             {
                 valid = false;
 
@@ -1752,7 +1839,7 @@ void mesquiteSmoother::correctInvalidCells()
             Info << endl;
 
             WarningIn("mesquiteSmoother::correctInvalidCells()")
-                    << " Failed to obtain an untangled mesh." << nl
+                    << " Failed to obtain a valid mesh." << nl
                     << " Reverting to original point positions."
                     << endl;
 

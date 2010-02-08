@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 #   include "initTotalVolume.H"
 #   include "createFields.H"
 
-    viscoelasticModel visco(U, phi); 
+    viscoelasticModel visco(U, phi);
 
     fluidInterface interface(mesh, U, p, phi);
 
@@ -184,7 +184,7 @@ int main(int argc, char *argv[])
         // Make the fluxes absolute
         fvc::makeAbsolute(phi, interface.rho(), U);
 
-        bool meshChanged = mesh.updateTopology();
+        bool meshChanged = mesh.update();
 
         if (meshChanged)
         {

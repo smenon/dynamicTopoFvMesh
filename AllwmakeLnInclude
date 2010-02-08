@@ -6,5 +6,6 @@ wmakeLnInclude multiThreader
 wmakeLnInclude coupleMap
 wmakeLnInclude fluidInterface
 wmakeLnInclude mesquiteSmoother
+wmakeLnInclude springMotionSolver
 wmakeLnInclude dynamicTopoFvMesh
 wmakeLnInclude interfaceTrackFoam

@@ -55,7 +55,7 @@ SourceFiles
 #include "stack.H"
 #include "coupleMap.H"
 #include "changeMap.H"
-#include "fvMesh.H"
+#include "dynamicFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -63,6 +63,7 @@ namespace Foam
 {
 
 // Class forward declarations
+class motionSolver;
 class mapPolyMesh;
 class objectMap;
 
@@ -72,7 +73,7 @@ class objectMap;
 
 class dynamicTopoFvMesh
 :
-    public fvMesh
+    public dynamicFvMesh
 {
     // Private data
 
@@ -123,6 +124,9 @@ class dynamicTopoFvMesh
 
         //- PolyMesh mapping structure
         autoPtr<mapPolyMesh> mapper_;
+
+        //- Mesh motion solver
+        autoPtr<motionSolver> mPtr_;
 
         //- Local copies of connectivity information
         resizableList<point> points_;
@@ -442,6 +446,9 @@ class dynamicTopoFvMesh
 
         // Load the mesh-quality metric library
         void loadMetricLibrary();
+
+        // Load the mesh-motion solver
+        void loadMotionSolver();
 
         // Initialize the threading environment
         void initializeThreadingEnvironment
@@ -1233,10 +1240,16 @@ class dynamicTopoFvMesh
         // Wait for buffer transfer completion.
         void waitForBuffers() const;
 
+        // Dump mesh length-scale values
+        void lengthScale();
+
+        // Dump cell-quality statistics
+        void meshQuality(bool outputOption);
+
 public:
 
     // Declare the name of the class and its debug switch
-        ClassName("dynamicTopoFvMesh");
+        TypeName("dynamicTopoFvMesh");
 
     // Constructors
 
@@ -1249,12 +1262,9 @@ public:
 
     // Member Functions
 
-        // Return reference to the dictionary
-        const IOdictionary& dynamicMeshDict() const;
-
         // Update the mesh for topology changes
         // Return true if changes have occurred
-        bool updateTopology();
+        bool update();
 
         //- Update mesh corresponding to the given map
         virtual void updateMesh(const mapPolyMesh& mpm);
@@ -1273,12 +1283,6 @@ public:
 
         // Return old face-centre information (prior to a topology change)
         const vectorField& oldPointPositions() const;
-
-        // Return mesh length-scale values
-        tmp<scalarField> lengthScale();
-
-        // Return mesh cell-quality values
-        tmp<scalarField> meshQuality(bool outputOption);
 };
 
 

@@ -1,7 +1,6 @@
 EXE_INC = \
     -I../include \
-    -I../multiThreader/lnInclude \
-    -I../dynamicTopoFvMesh/lnInclude \
+    -I$(LIB_SRC)/dynamicFvMesh/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/dynamicMesh/lnInclude \
     -I$(LIB_SRC)/meshTools/lnInclude \
@@ -12,8 +11,7 @@ EXE_INC = \
 EXE_LIBS = \
     -L$(FOAM_USER_LIBBIN) \
     -llduSolvers \
-    -ldynamicTopoFvMesh \
+    -ldynamicFvMesh \
     -lmultiThreader \
     -lfiniteVolume \
-    -lmesquiteSmoother \
     $(WM_DECOMP_LIBS)

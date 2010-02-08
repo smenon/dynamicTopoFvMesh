@@ -1,4 +1,6 @@
-#include "tetDecompositionMotionSolver.H"
+#include "tetPolyPatchFields.H"
+#include "tetPointFields.H"
+#include "tetFemMatrices.H"
 #include "faceTetPolyPatch.H"
 #include "tetPolyPatchInterpolation.H"
 
@@ -6,11 +8,26 @@
 void setMotionBC
 (
     fvMesh& mesh,
-    const word& solverType,
     const label& index,
     const vectorField& dispField
 )
 {
+    word solverType
+    (
+        IOdictionary
+        (
+            IOobject
+            (
+                "dynamicMeshDict",
+                mesh.time().constant(),
+                mesh,
+                IOobject::MUST_READ,
+                IOobject::NO_WRITE,
+                false
+            )
+        ).lookup("solver")
+    );
+
     //- Cell decomposition FEM motion solver
     if
     (
@@ -87,10 +104,25 @@ void setMotionBC
 void setMotionBC
 (
     fvMesh& mesh,
-    const word& solverType,
     const vectorField& dispField
 )
 {
+    word solverType
+    (
+        IOdictionary
+        (
+            IOobject
+            (
+                "dynamicMeshDict",
+                mesh.time().constant(),
+                mesh,
+                IOobject::MUST_READ,
+                IOobject::NO_WRITE,
+                false
+            )
+        ).lookup("solver")
+    );
+
     //- Cell decomposition FEM motion solver
     if
     (

@@ -1868,7 +1868,7 @@ tmp<areaVectorField> Foam::fluidInterface::surfaceTensionGrad()
 }
 
 // Update on topology change
-void Foam::fluidInterface::updateMesh(const mapPolyMesh& mpm)
+void Foam::fluidInterface::updateMesh()
 {
     // Wipe out demand-driven data
     clearOut();

@@ -38,10 +38,12 @@ Author
 #include "clockTime.H"
 #include "GeometricFields.H"
 #include "dynamicTopoFvMesh.H"
+#include "addToRunTimeSelectionTable.H"
 #include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
 #include "mapPolyMesh.H"
 
+#include "motionSolver.H"
 #include "fvPatchFields.H"
 #include "fvsPatchFields.H"
 #include "MapFvFields.H"
@@ -58,12 +60,14 @@ namespace Foam
 
 defineTypeNameAndDebug(dynamicTopoFvMesh,0);
 
+addToRunTimeSelectionTable(dynamicFvMesh, dynamicTopoFvMesh, IOobject);
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from IOobject
 dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 :
-    fvMesh(io),
+    dynamicFvMesh(io),
     numPatches_(polyMesh::boundaryMesh().size()),
     topoChangeFlag_(false),
     isSubMesh_(false),
@@ -172,6 +176,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Open the tetMetric dynamic-link library (for 3D only)
     loadMetricLibrary();
 
+    // Load the mesh-motion solver
+    loadMotionSolver();
+
     // Initialize edge-related connectivity structures
     initEdges();
 
@@ -198,11 +205,11 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     const cellList& cells
 )
 :
-    fvMesh(io, points, faces, cells, false),
+    dynamicFvMesh(io, points, faces, cells, false),
     numPatches_(1),
     topoChangeFlag_(false),
     isSubMesh_(true),
-    dict_(mesh.dynamicMeshDict()),
+    dict_(mesh.dict_),
     mandatory_(mesh.mandatory_),
     twoDMesh_(mesh.twoDMesh_),
     edgeRefinement_(mesh.edgeRefinement_),
@@ -386,7 +393,7 @@ const vectorField& dynamicTopoFvMesh::oldCellCentres() const
 }
 
 // Return mesh length-scale values
-tmp<scalarField> dynamicTopoFvMesh::lengthScale()
+void dynamicTopoFvMesh::lengthScale()
 {
     tmp<scalarField> tlengthScale
     (
@@ -406,13 +413,11 @@ tmp<scalarField> dynamicTopoFvMesh::lengthScale()
             internalField[cellI] = lengthScale_[cellI];
         }
     }
-
-    return tlengthScale;
 }
 
 // Return mesh cell-quality values
 // Valid for 3D tetrahedral meshes only...
-tmp<scalarField> dynamicTopoFvMesh::meshQuality
+void dynamicTopoFvMesh::meshQuality
 (
     bool outputOption
 )
@@ -487,8 +492,6 @@ tmp<scalarField> dynamicTopoFvMesh::meshQuality
             Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
         }
     }
-
-    return tQuality;
 }
 
 // Perform a Delaunay test on an internal face
@@ -5961,6 +5964,23 @@ void dynamicTopoFvMesh::loadMetricLibrary()
     }
 }
 
+// Load the mesh-motion solver
+void dynamicTopoFvMesh::loadMotionSolver()
+{
+    if (mPtr_.valid())
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::loadMotionSolver() "
+        ) << nl << " Motion solver already loaded. "
+          << abort(FatalError);
+    }
+    else
+    {
+        mPtr_ = motionSolver::New(*this);
+    }
+}
+
 // Initialize the threading environment.
 //  - Provides an override option to avoid reading from the dictionary.
 void dynamicTopoFvMesh::initializeThreadingEnvironment
@@ -6147,8 +6167,6 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 {
     bool coupledPatchesAbsent = true;
 
-    procIndices_.clear();
-
     // Check if patches are explicitly coupled
     if (patchCoupling_.size())
     {
@@ -6172,8 +6190,11 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             }
         }
 
-        // Build the global shared-points information, if necessary.
+        // Obtain global shared-points information, if necessary.
+        if (!procIndices_.size())
+        {
 
+        }
     }
 
     return coupledPatchesAbsent;
@@ -6395,6 +6416,19 @@ void dynamicTopoFvMesh::handleCoupledPatches()
 void dynamicTopoFvMesh::buildCoupledPatchMeshes()
 {
     if (!procIndices_.size())
+    {
+        return;
+    }
+
+    // If maps are already built, bail out.
+    bool allMapsBuilt = true;
+
+    forAll(sendPatchMeshes_, meshI)
+    {
+        allMapsBuilt = (allMapsBuilt && sendPatchMeshes_[meshI].builtMaps());
+    }
+
+    if (allMapsBuilt && sendPatchMeshes_.size())
     {
         return;
     }
@@ -6834,6 +6868,9 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
             lBuffer[cIter.key()] = lengthScale_[cIter()];
         }
     }
+
+    // Set maps as built.
+    subMesh.setBuiltMaps();
 
     // For debugging purposes...
     if (debug > 3)
@@ -9231,15 +9268,9 @@ void dynamicTopoFvMesh::synchronizeThreads
     }
 }
 
-// Return reference to the dictionary
-const IOdictionary& dynamicTopoFvMesh::dynamicMeshDict() const
-{
-    return dict_;
-}
-
 // Update the mesh for topology changes
 // Return true if changes have occurred
-bool dynamicTopoFvMesh::updateTopology()
+bool dynamicTopoFvMesh::update()
 {
     // Re-read options if they have been modified at run-time
     if (dict_.readIfModified())
@@ -9306,9 +9337,9 @@ bool dynamicTopoFvMesh::updateTopology()
     // Reduce across processors.
     reduce(sliversAbsent, andOp<bool>());
 
-    // Return if the interval is invalid.
+    // Return if the interval is invalid or first time-step (no V0).
     // Handy while using only mesh-motion.
-    if (interval_ < 0)
+    if (interval_ < 0 || time().timeIndex() < 1)
     {
         return false;
     }
@@ -9568,6 +9599,12 @@ bool dynamicTopoFvMesh::updateTopology()
 
         // Update the underlying mesh, and map all related fields
         updateMesh(mapper_);
+
+        // Update the mesh-motion solver
+        if (mPtr_.valid())
+        {
+            mPtr_->updateMesh(mapper_);
+        }
 
         // Discard old information after mapping
         pointPositionsPtr_.clear();

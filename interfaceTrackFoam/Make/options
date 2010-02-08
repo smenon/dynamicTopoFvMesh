@@ -2,12 +2,11 @@ EXE_INC = \
     -I../include \
     -I../coupleMap/lnInclude \
     -I../multiThreader/lnInclude \
-    -I../dynamicTopoFvMesh/lnInclude \
     -I../fluidInterface/lnInclude \
+    -I$(LIB_SRC)/dynamicFvMesh/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/finiteArea/lnInclude \
     -I$(LIB_SRC)/dynamicMesh/lnInclude \
-    -I$(LIB_SRC)/meshTools/lnInclude \
     -I$(LIB_SRC)/tetDecompositionMotionSolver/lnInclude \
     -I$(LIB_SRC)/tetDecompositionFiniteElement/lnInclude \
     -I$(LIB_SRC)/transportModels/viscoelastic/lnInclude \
@@ -16,14 +15,12 @@ EXE_INC = \
 EXE_LIBS = \
     -L$(FOAM_USER_LIBBIN) \
     -llduSolvers \
-    -ldynamicTopoFvMesh \
+    -ldynamicFvMesh \
     -lfluidInterface \
     -lmultiThreader \
     -lcoupleMap \
     -lfiniteVolume \
     -lfiniteArea \
-    -lmesquiteSmoother \
-    -lspringMotionSolver \
     -ldynamicMesh \
     -lviscoelasticTransportModels \
     $(WM_DECOMP_LIBS)

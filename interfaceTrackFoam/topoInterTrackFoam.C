@@ -32,11 +32,10 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "fvCFD.H"
-#include "dynamicTopoFvMesh.H"
+#include "dynamicFvMesh.H"
 #include "fluidInterface.H"
 
-// Mesh motion solvers
-#include "motionSolver.H"
+// Mesh motion
 #include "setMotionBC.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -46,7 +45,7 @@ int main(int argc, char *argv[])
 
 #   include "setRootCase.H"
 #   include "createTime.H"
-#   include "createDynamicMesh.H"
+#   include "createDynamicFvMesh.H"
 #   include "initContinuityErrs.H"
 #   include "initTotalVolume.H"
 #   include "createFields.H"
@@ -69,9 +68,6 @@ int main(int argc, char *argv[])
 
     Info << "\nStarting time loop\n" << endl;
 
-    // Initialize the motion solver
-    autoPtr<motionSolver> mPtr = motionSolver::New(mesh);
-
     while (runTime.run())
     {
 #       include "readPISOControls.H"
@@ -90,7 +86,6 @@ int main(int argc, char *argv[])
         setMotionBC
         (
             mesh,
-            word(mPtr->lookup("solver")),
             interface.aPatchID(),
             interface.displacement()
         );
@@ -106,14 +101,12 @@ int main(int argc, char *argv[])
             setMotionBC
             (
                 mesh,
-                word(mPtr->lookup("solver")),
                 interface.bPatchID(),
                 dispB
             );
         }
 
         // Solve for motion
-        mesh.movePoints(mPtr->newPoints());
 
 #       include "volContinuity.H"
 
@@ -187,7 +180,7 @@ int main(int argc, char *argv[])
         // Make the fluxes absolute
         fvc::makeAbsolute(phi, interface.rho(), U);
 
-        bool meshChanged = mesh.updateTopology();
+        bool meshChanged = mesh.update();
 
         if (meshChanged)
         {
@@ -197,10 +190,7 @@ int main(int argc, char *argv[])
 #           include "CourantNo.H"
 
             // Update the interface
-            interface.updateMesh(mesh.meshMap());
-
-            // Update the motion solver
-            mPtr->updateMesh(mesh.meshMap());
+            interface.updateMesh();
         }
 
         Info << "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
@@ -208,8 +198,6 @@ int main(int argc, char *argv[])
              << nl << endl;
 
         runTime.write();
-
-#       include "meshInfo.H"
     }
 
     Info<< "End\n" << endl;

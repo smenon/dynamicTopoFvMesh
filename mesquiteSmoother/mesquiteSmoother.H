@@ -190,7 +190,15 @@ protected:
     // Private member function to perform Laplacian surface smoothing
     void smoothSurfaces();
 
+    // Compute volume of a tetrahedral cell
     scalar tetVolume
+    (
+        const label cIndex,
+        const pointField& pField
+    );
+
+    // Compute quality of a tetrahedral cell
+    scalar tetQuality
     (
         const label cIndex,
         const pointField& pField

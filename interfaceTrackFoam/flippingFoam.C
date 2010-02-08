@@ -34,13 +34,9 @@ Author
 \*---------------------------------------------------------------------------*/
 
 #include "fvCFD.H"
-#include "dynamicTopoFvMesh.H"
+#include "dynamicFvMesh.H"
 
 // Mesh motion solvers
-#include "motionSolver.H"
-#include "tetDecompositionMotionSolver.H"
-#include "faceTetPolyPatch.H"
-#include "tetPolyPatchInterpolation.H"
 #include "setMotionBC.H"
 #include "rotatePoints.H"
 
@@ -51,10 +47,7 @@ int main(int argc, char *argv[])
 {
 #   include "setRootCase.H"
 #   include "createTime.H"
-#   include "createDynamicMesh.H"
-
-    // Initialize the motion solver
-    autoPtr<motionSolver> mPtr = motionSolver::New(mesh);
+#   include "createDynamicFvMesh.H"
 
     // Define the rotation axis and angle from the dictionary
     IOdictionary rotationParams
@@ -91,20 +84,8 @@ int main(int argc, char *argv[])
         // Update boundary points and solve for mesh-motion
         rotatePoints(mesh, patches, angle, p1, p2, t, solveForMotion);
 
-        // Update mesh motion
-        if (solveForMotion)
-        {
-            mesh.movePoints(mPtr->newPoints());
-        }
-
         // Update mesh for topology changes
-        bool meshChanged = mesh.updateTopology();
-
-        if (meshChanged)
-        {
-            // Update the motion solver
-            mPtr->updateMesh(mesh.meshMap());
-        }
+        mesh.update();
 
         // Write out current parameters
         rotationParams.instance() = runTime.timeName();
@@ -116,8 +97,6 @@ int main(int argc, char *argv[])
         rotationParams.add("solveForMotion", solveForMotion, true);
 
         runTime.write();
-
-#       include "meshInfo.H"
     }
 
     Info << "End\n" << endl;

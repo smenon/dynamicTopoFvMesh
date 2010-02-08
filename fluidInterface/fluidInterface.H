@@ -352,7 +352,7 @@ public:
         void updateBoundaryConditions();
 
         // Update on topology change
-        void updateMesh(const mapPolyMesh& mpm);
+        void updateMesh();
 
 };
 

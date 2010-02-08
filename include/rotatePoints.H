@@ -2,7 +2,7 @@
 // about an axis p1-p2, translate by a distance defined by 't'
 void rotatePoints
 (
-    dynamicTopoFvMesh& mesh,
+    fvMesh& mesh,
     wordList& patchNames,
     doubleScalar theta,
     vector p1,
@@ -94,7 +94,6 @@ void rotatePoints
         setMotionBC
         (
             mesh,
-            word(mesh.dynamicMeshDict().lookup("solver")),
             meshPoints
         );
     }

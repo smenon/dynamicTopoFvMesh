@@ -44,11 +44,10 @@ SourceFiles
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
-{    
+{
 
 // Class forward declarations
 class polyMesh;
-class dynamicTopoFvMesh;
 
 /*---------------------------------------------------------------------------*\
                            Class fvMotionSolver Declaration
@@ -64,11 +63,11 @@ protected:
     // Protected data
 
     //- The mesh to be moved
-    const dynamicTopoFvMesh& Mesh_;
-    
+    const polyMesh& Mesh_;
+
     // Reference points
     mutable pointIOField refPoints_;
-    
+
     // Edge gradient fields
     scalarField gradEdge_;
     vectorField gradEdgeV_;
@@ -100,16 +99,16 @@ protected:
 
     // Specify multiple mesh-motion sweeps
     label nSweeps_;
-    
+
     // Component being solved for (0,1 or 2)
     label cmpt_;
-    
+
     // ID of the patch being smoothed
     label pID_;
 
     // Y-direction constraint
     scalar fixedY_;
-    
+
     // Variables used in the CG solver [2D]
     scalarField b_;
     scalarField x_;
@@ -123,7 +122,7 @@ protected:
     vectorField pV_;
     vectorField rV_;
     vectorField wV_;
-    
+
     // Protected member functions
 
     // Sparse Matrix multiply
@@ -173,7 +172,7 @@ protected:
     // Component-wise sumMag
     scalar cmptSumMag(const scalarField& field);
     scalar cmptSumMag(const vectorField& field);
-    
+
     // Set Dirichlet conditions for the solution field (if any)
     void setDirichlet(scalarField &x);
     void setDirichlet(vectorField &x);
@@ -184,7 +183,7 @@ protected:
 
     // Compute point-to-opposing face connectivity
     void computePointFaces();
-    
+
 public:
 
     //- Runtime type information
@@ -206,14 +205,14 @@ public:
     // Member Functions
 
         //- Return reference to the mesh to be moved
-        const dynamicTopoFvMesh& mesh() const
+        const polyMesh& mesh() const
         {
             return Mesh_;
         }
 
         //- Provide new points for motion.  Solves for motion
-        virtual tmp<pointField> newPoints();        
-        
+        virtual tmp<pointField> newPoints();
+
         //- Return point location obtained from the current motion field
         virtual tmp<pointField> curPoints() const;
 
