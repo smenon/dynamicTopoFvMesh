@@ -16,14 +16,13 @@ void rotatePoints
     doubleScalar costheta = Foam::cos(theta);
     doubleScalar sintheta = Foam::sin(theta);
 
-    labelList patchID(patchNames.size(), -1);
     labelHashSet pointSet;
 
     // Define the rotation axis and normalize it
     vector r = (p2-p1)/mag(p2-p1);
 
     // Fetch the mesh-points
-    const polyBoundaryMesh& bMesh = mesh.boundaryMesh();
+    const polyBoundaryMesh& boundary = mesh.boundaryMesh();
     const pointField& oldMeshPoints(mesh.points());
 
     // Copy existing point locations
@@ -33,37 +32,29 @@ void rotatePoints
     // patch points twice
     forAll(patchNames, wordI)
     {
-        forAll(mesh.boundaryMesh(), patchI)
+        label patchI = boundary.findPatchID(patchNames[wordI]);
+
+        // Add all points of this patch
+        const labelList& patchPoints = boundary[patchI].meshPoints();
+
+        forAll(patchPoints, index)
         {
-            if (bMesh[patchI].name() == patchNames[wordI])
+            if (!pointSet.found(patchPoints[index]))
             {
-                patchID[nP++] = patchI;
-
-                // Add all points of this patch
-                const labelList& patchPoints = bMesh[patchI].meshPoints();
-
-                forAll(patchPoints, index)
-                {
-                    if (!pointSet.found(patchPoints[index]))
-                    {
-                        pointSet.insert(patchPoints[index]);
-                    }
-                }
-
-                break;
+                pointSet.insert(patchPoints[index]);
             }
         }
     }
 
     // Move all patch points cumulatively
-    labelList allPatchPoints = pointSet.toc();
-
-    forAll(allPatchPoints, index)
+    forAllConstIter(labelHashSet, pointSet, pIter)
     {
+        label index = pIter.key();
+
         q = vector::zero;
 
         // Fetch the old point and translate it
-        p = oldMeshPoints[allPatchPoints[index]];
+        p = oldMeshPoints[index];
 
         // Translate to the origin
         p -= p1;
@@ -85,7 +76,7 @@ void rotatePoints
         q += p1;
 
         // Assign to the mesh
-        meshPoints[allPatchPoints[index]] = q + t; //(t*Foam::sign(q.x()));
+        meshPoints[index] = q + t; //(t*Foam::sign(q.x()));
     }
 
     if (solveForMotion)
