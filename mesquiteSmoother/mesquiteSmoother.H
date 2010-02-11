@@ -187,6 +187,9 @@ protected:
     // Private member functions to read dictionary options
     void readOptions();
 
+    // Apply fixed-value boundary conditions, if any.
+    void applyFixedValuePatches();
+
     // Private member function to perform Laplacian surface smoothing
     void smoothSurfaces();
 

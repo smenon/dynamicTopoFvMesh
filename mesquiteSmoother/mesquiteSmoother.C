@@ -1261,6 +1261,52 @@ label mesquiteSmoother::CG
     return iter;
 }
 
+// Apply fixed-value boundary conditions, if any.
+void mesquiteSmoother::applyFixedValuePatches()
+{
+    // Check the dictionary for entries corresponding to constant
+    // fixed-displacement BCs. This is done because a 'motionU'
+    // field is not used to specify such BC types.
+    if (found("fixedValuePatches"))
+    {
+        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+        wordList fixPatches = subDict("fixedValuePatches").toc();
+
+        // Accumulate a set of points, so that common-points
+        // are not moved twice. If an overlap exists, the
+        // first entry is used.
+        Map<vector> pointSet;
+
+        forAll(fixPatches, wordI)
+        {
+            label patchI = boundary.findPatchID(fixPatches[wordI]);
+
+            // Fetch the displacement corresponding to this patch.
+            vector disp
+            (
+                subDict("fixedValuePatches").lookup(fixPatches[wordI])
+            );
+
+            // Add all points of this patch
+            const labelList& patchPoints = boundary[patchI].meshPoints();
+
+            forAll(patchPoints, index)
+            {
+                if (!pointSet.found(patchPoints[index]))
+                {
+                    pointSet.insert(patchPoints[index], disp);
+                }
+            }
+        }
+
+        // Move all patch points cumulatively
+        forAllConstIter(Map<vector>, pointSet, pIter)
+        {
+            refPoints_[pIter.key()] += pIter();
+        }
+    }
+}
+
 // Private member function to perform Laplacian surface smoothing
 void mesquiteSmoother::smoothSurfaces()
 {
@@ -2444,6 +2490,9 @@ mesquiteSmoother::curPoints() const
 
 void mesquiteSmoother::solve()
 {
+    // Apply fixed-value motion BC's, if any.
+    applyFixedValuePatches();
+
     // Perform surface smoothing first
     if
     (
