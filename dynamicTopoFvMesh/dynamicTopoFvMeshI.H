@@ -25,6 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "processorPolyPatch.H"
+#include "triPointRef.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -95,10 +96,22 @@ inline point dynamicTopoFvMesh::circumCentre
 // Find the centre of a triangle face
 inline point dynamicTopoFvMesh::quadFaceCentre
 (
-    const label fIndex
+    const label fIndex,
+    bool useOldPoints
 ) const
 {
     const face& thisFace = faces_[fIndex];
+
+    if (useOldPoints)
+    {
+        return 0.25 *
+        (
+            oldPoints_[thisFace[0]]
+          + oldPoints_[thisFace[1]]
+          + oldPoints_[thisFace[2]]
+          + oldPoints_[thisFace[3]]
+        );
+    }
 
     return 0.25 *
     (
@@ -112,17 +125,30 @@ inline point dynamicTopoFvMesh::quadFaceCentre
 // Find the centre of a triangle face
 inline point dynamicTopoFvMesh::triFaceCentre
 (
-    const label fIndex
+    const label fIndex,
+    bool useOldPoints
 ) const
 {
-    const face& thisFace = faces_[fIndex];
+    const face& tF = faces_[fIndex];
 
-    return
+    scalar oT = (1.0/3.0);
+
+    if (useOldPoints)
+    {
+        return oT *
+        (
+            oldPoints_[tF[0]]
+          + oldPoints_[tF[1]]
+          + oldPoints_[tF[2]]
+        );
+    }
+
+    return oT *
     (
-        points_[thisFace[0]]
-      + points_[thisFace[1]]
-      + points_[thisFace[2]]
-    )/3.0;
+        points_[tF[0]]
+      + points_[tF[1]]
+      + points_[tF[2]]
+    );
 }
 
 // Find the area of a quad face.
@@ -196,6 +222,67 @@ inline vector dynamicTopoFvMesh::triFaceNormal
     vector w = points_[triFace[2]] - points_[triFace[0]];
 
     return 0.5 * (v ^ w);
+}
+
+inline scalar dynamicTopoFvMesh::sweptVolume
+(
+    const label fIndex
+) const
+{
+    point oldCentre = vector::zero, newCentre = vector::zero;
+
+    const face& thisFace = faces_[fIndex];
+
+    label nPoints = thisFace.size();
+
+    if (nPoints == 3)
+    {
+        newCentre = triFaceCentre(fIndex);
+        oldCentre = triFaceCentre(fIndex, true);
+    }
+    else
+    if (nPoints == 4)
+    {
+        newCentre = quadFaceCentre(fIndex);
+        oldCentre = quadFaceCentre(fIndex, true);
+    }
+    else
+    {
+        FatalErrorIn("dynamicTopoFvMesh::sweptVolume()")
+            << "Invalid face size: " << nPoints
+            << " given face: " << fIndex
+            << ": " << thisFace
+            << abort(FatalError);
+    }
+
+    scalar sweptVol = 0.0;
+    point nextOld = oldCentre, nextNew = newCentre;
+
+    register label pI;
+
+    for (pI = 0; pI < nPoints; pI++)
+    {
+        if (pI < nPoints - 1)
+        {
+            nextNew = points_[thisFace[pI + 1]];
+            nextOld = oldPoints_[thisFace[pI + 1]];
+        }
+        else
+        {
+            nextNew = points_[thisFace[0]];
+            nextOld = oldPoints_[thisFace[0]];
+        }
+
+        sweptVol +=
+        (
+            triPointRef(oldCentre, oldPoints_[thisFace[pI]], nextOld).sweptVol
+            (
+                triPointRef(newCentre, points_[thisFace[pI]], nextNew)
+            )
+        );
+    }
+
+    return sweptVol;
 }
 
 // Given a face and cell index, find the apex point for a tet cell.
@@ -354,6 +441,95 @@ inline scalar dynamicTopoFvMesh::tetVolume
 ) const
 {
     return (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
+}
+
+// Find the volume of a tetrahedron, given the cell index.
+inline scalar dynamicTopoFvMesh::tetVolume
+(
+    const label cIndex,
+    bool useOldPoints
+) const
+{
+    const cell& cellToCheck = cells_[cIndex];
+
+    const face& currFace = faces_[cellToCheck[0]];
+    const face& nextFace = faces_[cellToCheck[1]];
+
+    // Get the fourth point and compute cell volume
+    forAll(nextFace, pointI)
+    {
+        if
+        (
+            nextFace[pointI] != currFace[0] &&
+            nextFace[pointI] != currFace[1] &&
+            nextFace[pointI] != currFace[2]
+        )
+        {
+            // Compute cell-volume
+            if (owner_[cellToCheck[0]] == cIndex)
+            {
+                if (useOldPoints)
+                {
+                    return
+                    (
+                        tetVolume
+                        (
+                            oldPoints_[currFace[2]],
+                            oldPoints_[currFace[1]],
+                            oldPoints_[currFace[0]],
+                            oldPoints_[nextFace[pointI]]
+                        )
+                    );
+                }
+
+                return
+                (
+                    tetVolume
+                    (
+                        points_[currFace[2]],
+                        points_[currFace[1]],
+                        points_[currFace[0]],
+                        points_[nextFace[pointI]]
+                    )
+                );
+            }
+            else
+            {
+                if (useOldPoints)
+                {
+                    return
+                    (
+                        tetVolume
+                        (
+                            oldPoints_[currFace[0]],
+                            oldPoints_[currFace[1]],
+                            oldPoints_[currFace[2]],
+                            oldPoints_[nextFace[pointI]]
+                        )
+                    );
+                }
+
+                return
+                (
+                    tetVolume
+                    (
+                        points_[currFace[0]],
+                        points_[currFace[1]],
+                        points_[currFace[2]],
+                        points_[nextFace[pointI]]
+                    )
+                );
+            }
+        }
+    }
+
+    // Something's wrong with connectivity.
+    FatalErrorIn("dynamicTopoFvMesh::tetVolume()")
+        << "Cell: " << cIndex
+        << " has inconsistent connectivity."
+        << abort(FatalError);
+
+    return 0.0;
 }
 
 // Find the volume sign of a tetrahedron

@@ -25,6 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
+#include "interpolator.H"
 #include "multiThreader.H"
 #include "dynamicTopoFvMesh.H"
 
@@ -1859,6 +1860,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     // Configure the new point-position
     point newPoint = vector::zero;
+    point oldPoint = vector::zero;
 
     // Decide which point to remove
     label collapseCase = -1;
@@ -1989,6 +1991,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             removeEdgeIndex = 2;
             removeFaceIndex = 3;
             newPoint = points_[edges_[eIndex][0]];
+            oldPoint = oldPoints_[edges_[eIndex][0]];
 
             break;
 
@@ -2002,6 +2005,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             replaceEdgeIndex = 2;
             replaceFaceIndex = 3;
             newPoint = points_[edges_[eIndex][1]];
+            oldPoint = oldPoints_[edges_[eIndex][1]];
 
             break;
 
@@ -2136,6 +2140,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     checkCollapse
                     (
                         newPoint,
+                        oldPoint,
                         collapsePoint,
                         own,
                         cellsChecked,
@@ -2157,6 +2162,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     checkCollapse
                     (
                         newPoint,
+                        oldPoint,
                         collapsePoint,
                         nei,
                         cellsChecked,
@@ -2261,7 +2267,22 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                          << faceToCheck << endl;
                 }
 
+                // Renumber the face...
                 faces_[rmvEdgeFaces[faceI]][replaceIndex] = replacePoint;
+
+                // Compute the swept volume, and assign to the interpolator.
+                scalar modSweptVol = sweptVolume(rmvEdgeFaces[faceI]);
+
+                iPtr_->setMeshFlux(rmvEdgeFaces[faceI], modSweptVol);
+
+                if (debug > 2)
+                {
+                    Info << "Modified swept volume for face: "
+                         << rmvEdgeFaces[faceI] << ": "
+                         << faces_[rmvEdgeFaces[faceI]] << ":: "
+                         << modSweptVol
+                         << endl;
+                }
             }
 
             // Hull faces should be removed for the replacement edge
@@ -2339,6 +2360,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = neighbour_[faceToRemove];
+
+                    // Flip the flux as well.
+                    iPtr_->flipFaceFlux(replaceFace);
                 }
                 else
                 {
@@ -2373,6 +2397,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     neighbour_[replaceFace] = owner_[replaceFace];
                     owner_[replaceFace] = owner_[faceToRemove];
+
+                    // Flip the flux as well.
+                    iPtr_->flipFaceFlux(replaceFace);
                 }
                 else
                 {
@@ -2460,6 +2487,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Size-up pointEdges for the replacePoint as well.
     const labelList& pEdges = pointEdges_[collapsePoint];
 
+    // While we're at it, compile a set of cells which need
+    // their old-volumes to be modified. Once all faces are
+    // renumbered, old-volumes can be safely computed.
+    labelHashSet modCells;
+
     forAll(pEdges, edgeI)
     {
         // Renumber edges
@@ -2511,6 +2543,22 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             forAll(eFaces, faceI)
             {
+                // Check owner / neighbour for cells.
+                label own = owner_[eFaces[faceI]];
+                label nei = neighbour_[eFaces[faceI]];
+
+                // Check owner cell
+                if (!modCells.found(own))
+                {
+                    modCells.insert(own);
+                }
+
+                // Check neighbour cell
+                if (!modCells.found(nei) && nei != -1)
+                {
+                    modCells.insert(nei);
+                }
+
                 const face& faceToCheck = faces_[eFaces[faceI]];
 
                 if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
@@ -2522,7 +2570,22 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                              << faceToCheck << endl;
                     }
 
+                    // Renumber the face...
                     faces_[eFaces[faceI]][replaceIndex] = replacePoint;
+
+                    // Compute the swept volume, and assign to the interpolator.
+                    scalar modSweptVol = sweptVolume(eFaces[faceI]);
+
+                    iPtr_->setMeshFlux(eFaces[faceI], modSweptVol);
+
+                    if (debug > 2)
+                    {
+                        Info << "Modified swept volume for face: "
+                             << eFaces[faceI] << ": "
+                             << faces_[eFaces[faceI]] << ":: "
+                             << modSweptVol
+                             << endl;
+                    }
 
                     // Look for an edge on this face that doesn't
                     // contain collapsePoint or replacePoint.
@@ -2558,6 +2621,26 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
     }
 
+    // Loop through accumulated cells and compute old-volumes.
+    forAllConstIter(labelHashSet, modCells, cIter)
+    {
+        scalar modOldVol = tetVolume(cIter.key(), true);
+
+        // Set values in the interpolator.
+        iPtr_->setOldVolume(cIter.key(), modOldVol);
+
+        // Check space-conservation
+        checkSpaceConservation(cIter.key());
+
+        if (debug > 2)
+        {
+            Info << "Cell: " << cIter.key()
+                 << " Old volume: " << modOldVol
+                 << " New volume: " << tetVolume(cIter.key())
+                 << endl;
+        }
+    }
+
     // At this point, edgePoints for the replacement edges are broken,
     // but edgeFaces are consistent. So use this information to re-build
     // edgePoints for all replacement edges.
@@ -2575,7 +2658,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Move to the new point
-    points_[replacePoint] = newPoint;
+    // points_[replacePoint] = newPoint;
 
     // Remove the collapse point
     removePoint(collapsePoint);

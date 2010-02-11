@@ -25,6 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
+#include "interpolator.H"
 #include "resizableList.H"
 #include "multiThreader.H"
 #include "dynamicTopoFvMesh.H"
@@ -275,40 +276,34 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     otherEdgePoint[0] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
     otherEdgePoint[1] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
 
-    labelList mappingPoints(2, -1);
+    labelList mP(2, -1);
 
     // Set mapping for this point
-    mappingPoints[0] = commonEdges[0][0];
-    mappingPoints[1] = commonEdges[0][1];
+    mP[0] = commonEdges[0][0];
+    mP[1] = commonEdges[0][1];
 
     // Add two new points to the end of the list
     newPointIndex[0] =
     (
         insertPoint
         (
-            0.5 *
-            (
-                points_[mappingPoints[0]]
-              + points_[mappingPoints[1]]
-            ),
-            mappingPoints
+            0.5 * (points_[mP[0]] + points_[mP[1]]),
+            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]]),
+            mP
         )
     );
 
     // Set mapping for this point
-    mappingPoints[0] = commonEdges[1][0];
-    mappingPoints[1] = commonEdges[1][1];
+    mP[0] = commonEdges[1][0];
+    mP[1] = commonEdges[1][1];
 
     newPointIndex[1] =
     (
         insertPoint
         (
-            0.5 *
-            (
-                points_[mappingPoints[0]]
-              + points_[mappingPoints[1]]
-            ),
-            mappingPoints
+            0.5 * (points_[mP[0]] + points_[mP[1]]),
+            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]]),
+            mP
         )
     );
 
@@ -378,17 +373,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         map.addPoint(newPointIndex[1]);
     }
 
+    // Fill-in mapping information
+    labelList mC0(1, c0);
+    scalarList mW0(1, 1.0);
+
     // Add a new prism cell to the end of the list.
     // Currently invalid, but will be updated later.
-    newCellIndex[0] =
-    (
-        insertCell
-        (
-            newCells[0],
-            lengthScale_[c0],
-            c0
-        )
-    );
+    newCellIndex[0] = insertCell(newCells[0], mC0, mW0, lengthScale_[c0]);
 
     // Modify the two existing triangle boundary faces
 
@@ -860,15 +851,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             c1IntIndex
         );
 
-        newCellIndex[1] =
-        (
-            insertCell
-            (
-                newCells[1],
-                lengthScale_[c1],
-                c1
-            )
-        );
+        // Fill-in mapping information
+        labelList mC1(1, c1);
+        scalarList mW1(1, 1.0);
+
+        newCellIndex[1] = insertCell(newCells[1], mC1, mW1, lengthScale_[c1]);
 
         if (debug > 2)
         {
@@ -1804,23 +1791,20 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         }
     }
 
-    labelList mappingPoints(2, -1);
+    labelList mP(2, -1);
 
     // Set mapping for this point
-    mappingPoints[0] = edges_[eIndex][0];
-    mappingPoints[1] = edges_[eIndex][1];
+    mP[0] = edges_[eIndex][0];
+    mP[1] = edges_[eIndex][1];
 
     // Add a new point to the end of the list
     label newPointIndex =
     (
         insertPoint
         (
-            0.5 *
-            (
-                points_[mappingPoints[0]]
-              + points_[mappingPoints[1]]
-            ),
-            mappingPoints
+            0.5 * (points_[mP[0]] + points_[mP[1]]),
+            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]]),
+            mP
         )
     );
 
@@ -1926,6 +1910,21 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             faces_[faceHull[indexI]]
         );
 
+        // Since the face is modified, compute a new value
+        // for swept-volume, and update the interpolator.
+        scalar modSweptVol = sweptVolume(faceHull[indexI]);
+
+        iPtr_->setMeshFlux(faceHull[indexI], modSweptVol);
+
+        if (debug > 2)
+        {
+            Info << "Modified swept volume for face: "
+                 << faceHull[indexI] << ": "
+                 << faces_[faceHull[indexI]] << ":: "
+                 << modSweptVol
+                 << endl;
+        }
+
         // Modify edgePoints for the edge
         replaceLabel
         (
@@ -1944,14 +1943,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             // Create a new cell. Add it for now, but update later.
             cell newCell(4);
 
+            // Fill-in mapping information
+            labelList mC(1, cellHull[indexI]);
+            scalarList mW(1, 1.0);
+
             addedCellIndices[indexI] =
             (
-                insertCell
-                (
-                    newCell,
-                    lengthScale_[cellHull[indexI]],
-                    cellHull[indexI]
-                )
+                insertCell(newCell, mC, mW, lengthScale_[cellHull[indexI]])
             );
 
             // Add this cell to the map.
@@ -2000,6 +1998,9 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = addedCellIndices[indexI];
+
+                    // Flip the flux as well.
+                    iPtr_->flipFaceFlux(replaceFace);
                 }
             }
             else
@@ -2521,6 +2522,53 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             // Make the final entry for the previous cell
             cells_[addedCellIndices[prevI]][3] = addedFaceIndices[indexI];
+        }
+    }
+
+    // Now that all old / new cells possess correct connectivity,
+    // compute values for old cell volume.
+    forAll(cellHull, indexI)
+    {
+        if (cellHull[indexI] == -1)
+        {
+            continue;
+        }
+
+        // Compute old volumes, using old point positions.
+        scalar modOldVol = tetVolume(cellHull[indexI], true);
+        scalar newOldVol = tetVolume(addedCellIndices[indexI], true);
+
+        // Set values in the interpolator.
+        iPtr_->setOldVolume(cellHull[indexI], modOldVol);
+        iPtr_->setOldVolume(addedCellIndices[indexI], newOldVol);
+
+        if (modOldVol < 0.0 || newOldVol < 0.0)
+        {
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::bisectEdge()"
+            )
+                << "Negative old-volumes encountered." << nl
+                << cellHull[indexI] << ": " << modOldVol
+                << addedCellIndices[indexI] << ": " << newOldVol
+                << abort(FatalError);
+        }
+
+        // Check space-conservation
+        checkSpaceConservation(cellHull[indexI]);
+        checkSpaceConservation(addedCellIndices[indexI]);
+
+        if (debug > 2)
+        {
+            Info << "Cell: " << cellHull[indexI]
+                 << " Old volume: " << modOldVol
+                 << " New volume: " << tetVolume(cellHull[indexI])
+                 << endl;
+
+            Info << "Cell: " << addedCellIndices[indexI]
+                 << " Old volume: " << newOldVol
+                 << " New volume: " << tetVolume(addedCellIndices[indexI])
+                 << endl;
         }
     }
 
@@ -3117,15 +3165,25 @@ const changeMap dynamicTopoFvMesh::trisectFace
         }
     }
 
-    labelList mappingPoints(3, -1);
+    labelList mP(3, -1);
 
     // Fill in mapping information
-    mappingPoints[0] = faces_[fIndex][0];
-    mappingPoints[1] = faces_[fIndex][1];
-    mappingPoints[2] = faces_[fIndex][2];
+    mP[0] = faces_[fIndex][0];
+    mP[1] = faces_[fIndex][1];
+    mP[2] = faces_[fIndex][2];
 
     // Add a new point to the end of the list
-    label newPointIndex = insertPoint(triFaceCentre(fIndex), mappingPoints);
+    scalar oT = (1.0/3.0);
+
+    label newPointIndex =
+    (
+        insertPoint
+        (
+            oT * (points_[mP[0]] + points_[mP[1]] + points_[mP[2]]),
+            oT * (oldPoints_[mP[0]] + oldPoints_[mP[1]] + oldPoints_[mP[2]]),
+            mP
+        )
+    );
 
     // Add this point to the map.
     map.addPoint(newPointIndex);
@@ -3140,15 +3198,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
             parentScale = lengthScale_[cellsForRemoval[0]];
         }
 
-        newCellIndex[i] =
-        (
-            insertCell
-            (
-                newTetCell[i],
-                parentScale,
-                cellsForRemoval[0]
-            )
-        );
+        // Fill-in mapping information
+        labelList mC(1, cellsForRemoval[0]);
+        scalarList mW(1, 1.0);
+
+        newCellIndex[i] = insertCell(newTetCell[i], mC, mW, parentScale);
 
         // Add cells to the map
         map.addCell(newCellIndex[i]);
@@ -3313,6 +3367,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 faces_[faceIndex] = faceToCheck.reverseFace();
                 owner_[faceIndex] = neighbour_[faceIndex];
                 neighbour_[faceIndex] = newIndex;
+
+                // Flip the flux as well.
+                iPtr_->flipFaceFlux(faceIndex);
             }
         }
         else
@@ -3739,15 +3796,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 parentScale = lengthScale_[cellsForRemoval[1]];
             }
 
-            newCellIndex[i] =
-            (
-                insertCell
-                (
-                    newTetCell[i],
-                    parentScale,
-                    cellsForRemoval[1]
-                )
-            );
+            // Fill-in mapping information
+            labelList mC(1, cellsForRemoval[1]);
+            scalarList mW(1, 1.0);
+
+            newCellIndex[i] = insertCell(newTetCell[i], mC, mW, parentScale);
 
             // Add to the map.
             map.addCell(newCellIndex[i]);
@@ -3937,6 +3990,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     faces_[faceIndex] = faceToCheck.reverseFace();
                     owner_[faceIndex] = neighbour_[faceIndex];
                     neighbour_[faceIndex] = newIndex;
+
+                    // Flip the flux as well.
+                    iPtr_->flipFaceFlux(faceIndex);
                 }
             }
             else
@@ -5124,8 +5180,9 @@ void dynamicTopoFvMesh::splitInternalFaces
         // Obtain a copy of the point before adding it,
         // since the reference might become invalid during list resizing.
         point newPoint = points_[pIter.key()];
+        point oldPoint = oldPoints_[pIter.key()];
 
-        pIter() = insertPoint(newPoint, labelList(1, pIter.key()));
+        pIter() = insertPoint(newPoint, oldPoint, labelList(1, pIter.key()));
 
         if (!twoDMesh_)
         {

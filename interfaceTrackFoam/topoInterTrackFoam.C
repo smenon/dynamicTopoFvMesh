@@ -76,6 +76,9 @@ int main(int argc, char *argv[])
 #       include "CourantNo.H"
 #       include "setDeltaT.H"
 
+        // Make the fluxes absolute
+        fvc::makeAbsolute(phi, interface.rho(), U);
+
         runTime++;
 
         Info<< "Time = " << runTime.timeName() << nl << endl;
@@ -83,12 +86,7 @@ int main(int argc, char *argv[])
         // Update the interface
         interface.updateInterface();
 
-        setMotionBC
-        (
-            mesh,
-            interface.aPatchID(),
-            interface.displacement()
-        );
+        setMotionBC(mesh, interface.aPatchID(), interface.displacement());
 
         if (interface.twoFluids())
         {
@@ -98,17 +96,19 @@ int main(int argc, char *argv[])
                                    interface.displacement()
                                );
 
-            setMotionBC
-            (
-                mesh,
-                interface.bPatchID(),
-                dispB
-            );
+            setMotionBC(mesh, interface.bPatchID(), dispB);
         }
 
-        // Solve for motion
+        // Update mesh for both motion and topology
+        bool meshChanged = mesh.update();
 
 #       include "volContinuity.H"
+
+        // Update the interface
+        if (meshChanged)
+        {
+            interface.updateMesh();
+        }
 
         for (int corr=0; corr<nOuterCorr; corr++)
         {
@@ -117,6 +117,8 @@ int main(int argc, char *argv[])
 
             // Make the fluxes relative to the mesh motion
             fvc::makeRelative(phi, interface.rho(), U);
+
+#           include "CourantNo.H"
 
             fvVectorMatrix UEqn
             (
@@ -175,22 +177,6 @@ int main(int argc, char *argv[])
 #           include "freeSurfaceContinuityErrs.H"
 
             Info << endl;
-        }
-
-        // Make the fluxes absolute
-        fvc::makeAbsolute(phi, interface.rho(), U);
-
-        bool meshChanged = mesh.update();
-
-        if (meshChanged)
-        {
-#           include "checkTotalVolume.H"
-            phi = (fvc::interpolate(U) & mesh.Sf());
-#           include "correctPhi.H"
-#           include "CourantNo.H"
-
-            // Update the interface
-            interface.updateMesh();
         }
 
         Info << "ExecutionTime = " << runTime.elapsedCpuTime() << " s"

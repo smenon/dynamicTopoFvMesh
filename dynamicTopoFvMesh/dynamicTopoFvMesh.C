@@ -39,9 +39,10 @@ Author
 #include "GeometricFields.H"
 #include "dynamicTopoFvMesh.H"
 #include "addToRunTimeSelectionTable.H"
-#include "dynamicTopoFvMeshMapper.H"
+// #include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
 #include "mapPolyMesh.H"
+#include "interpolator.H"
 
 #include "motionSolver.H"
 #include "fvPatchFields.H"
@@ -95,6 +96,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     slaveModification_(false),
     interval_(1),
     mapper_(NULL),
+    mPtr_(NULL),
+    iPtr_(NULL),
+    oldPoints_(polyMesh::points()),
     points_(polyMesh::points()),
     faces_(polyMesh::faces()),
     owner_(polyMesh::faceOwner()),
@@ -179,6 +183,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Load the mesh-motion solver
     loadMotionSolver();
 
+    // Load the interpolator
+    loadInterpolator();
+
     // Initialize edge-related connectivity structures
     initEdges();
 
@@ -217,6 +224,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     slaveModification_(false),
     interval_(1),
     mapper_(NULL),
+    mPtr_(NULL),
+    iPtr_(NULL),
+    oldPoints_(points),
     points_(points),
     faces_(faces),
     cells_(cells),
@@ -352,6 +362,7 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+/*
 // Return the mesh-mapper
 const mapPolyMesh& dynamicTopoFvMesh::meshMap() const
 {
@@ -391,18 +402,46 @@ const vectorField& dynamicTopoFvMesh::oldCellCentres() const
 
     return vectorField::null();
 }
+*/
 
-// Return mesh length-scale values
-void dynamicTopoFvMesh::lengthScale()
+// Write out mesh length-scale values
+bool dynamicTopoFvMesh::dumpLengthScale()
 {
-    tmp<scalarField> tlengthScale
-    (
-        new scalarField(nCells(), 0.0)
-    );
-
-    if (edgeRefinement_)
+    if (!edgeRefinement_)
     {
-        scalarField& internalField = tlengthScale();
+        return false;
+    }
+
+    Switch dumpLengthScale(false);
+
+    if
+    (
+        dict_.subDict("dynamicTopoFvMesh").found("dumpLengthScale") ||
+        mandatory_
+    )
+    {
+        dumpLengthScale =
+        (
+            dict_.subDict("dynamicTopoFvMesh").lookup("dumpLengthScale")
+        );
+    }
+
+    if (dumpLengthScale && time().outputTime())
+    {
+        volScalarField lengthScale
+        (
+            IOobject
+            (
+                "lengthScale",
+                time().timeName(),
+                *this,
+                IOobject::NO_READ,
+                IOobject::AUTO_WRITE,
+                false
+            ),
+            *this,
+            dimensionedScalar("scalar", dimLength, 0)
+        );
 
         // Re-calculate lengthScale
         calculateLengthScale();
@@ -410,88 +449,125 @@ void dynamicTopoFvMesh::lengthScale()
         // Obtain length-scale values from the mesh
         forAll(lengthScale_, cellI)
         {
-            internalField[cellI] = lengthScale_[cellI];
+            lengthScale[cellI] = lengthScale_[cellI];
         }
+
+        return lengthScale.write();
     }
+
+    return true;
 }
 
 // Return mesh cell-quality values
 // Valid for 3D tetrahedral meshes only...
-void dynamicTopoFvMesh::meshQuality
+bool dynamicTopoFvMesh::meshQuality
 (
     bool outputOption
 )
 {
-    tmp<scalarField> tQuality
+    // Valid for 3D tetrahedral meshes only...
+    if (twoDMesh_)
+    {
+        return false;
+    }
+
+    Switch dumpMeshQuality(false);
+
+    if
     (
-        new scalarField(cells_.size(), 0.0)
+        dict_.subDict("dynamicTopoFvMesh").found("dumpMeshQuality") ||
+        mandatory_
+    )
+    {
+        dumpMeshQuality =
+        (
+            dict_.subDict("dynamicTopoFvMesh").lookup("dumpMeshQuality")
+        );
+    }
+
+    volScalarField meshQuality
+    (
+        IOobject
+        (
+            "lengthScale",
+            time().timeName(),
+            *this,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        *this,
+        dimensionedScalar("scalar", dimless, 0)
     );
 
-    // Valid for 3D tetrahedral meshes only...
-    if (!twoDMesh_)
+    scalarField& iF = meshQuality.internalField();
+
+    // Compute statistics on the fly
+    label nCells = 0;
+    scalar maxQuality = -GREAT;
+    scalar minQuality =  GREAT;
+    scalar meanQuality = 0.0;
+
+    // Loop through all cells in the mesh and compute cell quality
+    forAll(cells_, cellI)
     {
-        scalarField& iF = tQuality();
-
-        // Compute statistics on the fly
-        label nCells = 0;
-        scalar maxQuality = -GREAT;
-        scalar minQuality =  GREAT;
-        scalar meanQuality = 0.0;
-
-        // Loop through all cells in the mesh and compute cell quality
-        forAll(cells_, cellI)
+        if (cells_[cellI].empty())
         {
-            if (cells_[cellI].empty())
-            {
-                continue;
-            }
-
-            // Compute cell quality
-            iF[cellI] = tetQuality(cellI);
-
-            // Update statistics
-            maxQuality = Foam::max(iF[cellI], maxQuality);
-            minQuality = Foam::min(iF[cellI], minQuality);
-            meanQuality += iF[cellI];
-            nCells++;
-
-            // Add to the list of slivers
-            if
-            (
-                (iF[cellI] < sliverThreshold_)
-             && (iF[cellI] > 0.0)
-            )
-            {
-                thresholdSlivers_.insert(cellI, iF[cellI]);
-            }
+            continue;
         }
 
-        // Output statistics:
-        if (outputOption || (debug > 0))
+        // Compute cell quality
+        iF[cellI] = tetQuality(cellI);
+
+        // Update statistics
+        maxQuality = Foam::max(iF[cellI], maxQuality);
+        minQuality = Foam::min(iF[cellI], minQuality);
+        meanQuality += iF[cellI];
+        nCells++;
+
+        // Add to the list of slivers
+        if
+        (
+            (iF[cellI] < sliverThreshold_)
+         && (iF[cellI] > 0.0)
+        )
         {
-            // Reduce statistics across processors.
-            reduce(minQuality, minOp<scalar>());
-            reduce(maxQuality, maxOp<scalar>());
-            reduce(meanQuality, sumOp<scalar>());
-            reduce(nCells, sumOp<label>());
-
-            if (minQuality < 0.0)
-            {
-                WarningIn
-                (
-                    "dynamicTopoFvMesh::meshQuality()"
-                )   << nl << "Minimum cell quality is: "
-                    << minQuality << endl;
-            }
-
-            Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
-            Info << " Min: " << minQuality << endl;
-            Info << " Max: " << maxQuality << endl;
-            Info << " Mean: " << meanQuality/nCells << endl;
-            Info << " Cells: " << nCells << endl;
-            Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
+            thresholdSlivers_.insert(cellI, iF[cellI]);
         }
     }
+
+    // Output statistics:
+    if (outputOption || (debug > 0))
+    {
+        // Reduce statistics across processors.
+        reduce(minQuality, minOp<scalar>());
+        reduce(maxQuality, maxOp<scalar>());
+        reduce(meanQuality, sumOp<scalar>());
+        reduce(nCells, sumOp<label>());
+
+        if (minQuality < 0.0)
+        {
+            WarningIn
+            (
+                "dynamicTopoFvMesh::meshQuality()"
+            )   << nl << "Minimum cell quality is: "
+                << minQuality << endl;
+        }
+
+        Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
+        Info << " Min: " << minQuality << endl;
+        Info << " Max: " << maxQuality << endl;
+        Info << " Mean: " << meanQuality/nCells << endl;
+        Info << " Cells: " << nCells << endl;
+        Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
+    }
+
+    if (dumpMeshQuality)
+    {
+        return meshQuality.write();
+    }
+
+    return true;
 }
 
 // Perform a Delaunay test on an internal face
@@ -703,12 +779,16 @@ bool dynamicTopoFvMesh::findCommonEdge
     return found;
 }
 
-// Insert the specified cell to the mesh
+// Insert the specified cell to the mesh.
+// - mapCells can have old and/or new cell labels,
+//   since consistency is maintained with
+//   each topo-change.
 label dynamicTopoFvMesh::insertCell
 (
     const cell& newCell,
+    const labelList& mapCells,
+    const scalarList& mapWeights,
     const scalar lengthScale,
-    const label mappingCell,
     const label zoneID
 )
 {
@@ -728,6 +808,12 @@ label dynamicTopoFvMesh::insertCell
         lengthScale_.append(lengthScale);
     }
 
+    if (iPtr_.valid())
+    {
+        iPtr_->insertCell(mapCells, mapWeights);
+    }
+
+    /*
     // Generate mapping information for this new cell
     const labelListList& cc = cellCells();
 
@@ -767,6 +853,7 @@ label dynamicTopoFvMesh::insertCell
             masterObjects.toc()
         )
     );
+    */
 
     // Add to the zone if necessary
     if (zoneID >= 0)
@@ -813,11 +900,13 @@ void dynamicTopoFvMesh::removeCell
         deletedCells_.insert(cIndex);
     }
 
+    /*
     // Check if the cell was added in the current morph, and delete
     if (cellsFromCells_.found(cIndex))
     {
         cellsFromCells_.erase(cIndex);
     }
+    */
 
     // Check if this cell was added to a zone
     if (addedCellZones_.found(cIndex))
@@ -845,6 +934,9 @@ label dynamicTopoFvMesh::insertFace
     owner_.append(newOwner);
     neighbour_.append(newNeighbour);
 
+    // Compute the volume swept-out by this face.
+    scalar sweptVol = sweptVolume(newFaceIndex);
+
     if (debug > 2)
     {
         Info << "Inserting face: "
@@ -855,12 +947,19 @@ label dynamicTopoFvMesh::insertFace
 
         if (patch == -1)
         {
-            Info << "Internal" << endl;
+            Info << "Internal";
         }
         else
         {
-            Info << boundaryMesh()[patch].name() << endl;
+            Info << boundaryMesh()[patch].name();
         }
+
+        Info << " [Swept volume]: " << sweptVol << endl;
+    }
+
+    if (iPtr_.valid())
+    {
+        iPtr_->insertFace(sweptVol);
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -879,7 +978,8 @@ label dynamicTopoFvMesh::insertFace
     }
     else
     {
-        // Increment the number of internal faces, and subsequent patch-starts
+        // Increment the number of internal faces,
+        // and subsequent patch-starts
         nInternalFaces_++;
 
         for(label i=0; i<numPatches_; i++)
@@ -1354,6 +1454,7 @@ void dynamicTopoFvMesh::removeEdge
 label dynamicTopoFvMesh::insertPoint
 (
     const point& newPoint,
+    const point& oldPoint,
     const labelList& mappingPoints,
     const label zoneID
 )
@@ -1362,12 +1463,15 @@ label dynamicTopoFvMesh::insertPoint
     label newPointIndex = points_.size();
 
     points_.append(newPoint);
+    oldPoints_.append(oldPoint);
 
     if (debug > 2)
     {
-        Info << "Inserting point: "
+        Info << "Inserting new point: "
              << newPointIndex << ": "
              << newPoint
+             << " and old point: "
+             << oldPoint
              << "  Mapped from: "
              << mappingPoints << endl;
     }
@@ -1379,6 +1483,7 @@ label dynamicTopoFvMesh::insertPoint
         pointEdges_.append(labelList(0));
     }
 
+    /*
     labelHashSet masterObjects;
 
     forAll(mappingPoints, pointI)
@@ -1461,6 +1566,7 @@ label dynamicTopoFvMesh::insertPoint
             masterObjects.toc()
         )
     );
+    */
 
     // Add to the zone if necessary
     if (zoneID >= 0)
@@ -1487,7 +1593,9 @@ void dynamicTopoFvMesh::removePoint
     }
 
     // Remove the point
-    points_[pIndex] = point();
+    // (or just make sure that it's never used anywhere else)
+    // points_[pIndex] = point();
+    // oldPoints_[pIndex] = point();
 
     // Remove pointEdges as well
     if (!twoDMesh_)
@@ -1505,11 +1613,13 @@ void dynamicTopoFvMesh::removePoint
         deletedPoints_.insert(pIndex);
     }
 
+    /*
     // Check if the point was added in the current morph, and delete
     if (pointsFromPoints_.found(pIndex))
     {
         pointsFromPoints_.erase(pIndex);
     }
+    */
 
     // Check if this point was added to a zone
     if (addedPointZones_.found(pIndex))
@@ -2234,6 +2344,70 @@ bool dynamicTopoFvMesh::checkQuality
     }
 
     return myResult;
+}
+
+// Check whether the space-conservation law is satisfied
+void dynamicTopoFvMesh::checkSpaceConservation
+(
+    const label cIndex
+) const
+{
+    scalar dt = time().deltaT().value();
+
+    scalar V = tetVolume(cIndex);
+    scalar V0 = tetVolume(cIndex, true);
+
+    scalar volChange = (1.0 - V0/V)/dt;
+
+    const cell& cFaces = cells_[cIndex];
+
+    scalar divFlux = 0.0;
+
+    forAll(cFaces, faceI)
+    {
+        if (owner_[cFaces[faceI]] == cIndex)
+        {
+            divFlux += iPtr_->getMeshFlux(cFaces[faceI]);
+        }
+        else
+        {
+            divFlux -= iPtr_->getMeshFlux(cFaces[faceI]);
+        }
+    }
+
+    divFlux /= V;
+
+    scalar error = (volChange - divFlux);
+
+    if (mag(error) > 1e-8)
+    {
+        Info << endl;
+        Info << "volChange: " << volChange << endl;
+        Info << "V: " << V << endl;
+        Info << "V0: " << V0 << endl;
+        Info << "dt: " << dt << endl;
+        Info << "(V - V0)/dt: " << (V - V0)/dt << endl;
+
+        Info << nl << "Mesh fluxes: " << endl;
+
+        forAll(cFaces, faceI)
+        {
+            Info << "\t" << cFaces[faceI] << "::"
+                 << " owner: " << owner_[cFaces[faceI]]
+                 << " neighbour: " << neighbour_[cFaces[faceI]]
+                 << " flux:" << iPtr_->getMeshFlux(cFaces[faceI])
+                 << endl;
+        }
+
+        SeriousErrorIn
+        (
+            "dynamicTopoFvMesh::checkSpaceConservation()"
+        )
+            << "Cell: " << cIndex << ": " << cFaces
+            << " does not satisfy the SCL within tolerance." << nl
+            << "Error: " << error
+            << endl;
+    }
 }
 
 // Utility method to fill the dynamic programming tables
@@ -5981,6 +6155,23 @@ void dynamicTopoFvMesh::loadMotionSolver()
     }
 }
 
+// Load the interpolator
+void dynamicTopoFvMesh::loadInterpolator()
+{
+    if (iPtr_.valid())
+    {
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh::loadInterpolator() "
+        ) << nl << " Interpolator already loaded. "
+          << abort(FatalError);
+    }
+    else
+    {
+        iPtr_.set(new interpolator(*this));
+    }
+}
+
 // Initialize the threading environment.
 //  - Provides an override option to avoid reading from the dictionary.
 void dynamicTopoFvMesh::initializeThreadingEnvironment
@@ -7651,6 +7842,7 @@ bool dynamicTopoFvMesh::checkCollapse
 bool dynamicTopoFvMesh::checkCollapse
 (
     const point& newPoint,
+    const point& oldPoint,
     const label pointIndex,
     const label cellIndex,
     labelHashSet& cellsChecked,
@@ -7658,7 +7850,7 @@ bool dynamicTopoFvMesh::checkCollapse
 ) const
 {
     label faceIndex = -1;
-    scalar cQuality = 0.0;
+    scalar cQuality = 0.0, oldVolume = 0.0;
     const cell& cellToCheck = cells_[cellIndex];
 
     // Look for a face that doesn't contain 'pointIndex'
@@ -7688,6 +7880,17 @@ bool dynamicTopoFvMesh::checkCollapse
                 newPoint
             )
         );
+
+        oldVolume =
+        (
+            tetVolume
+            (
+                oldPoints_[faceToCheck[2]],
+                oldPoints_[faceToCheck[1]],
+                oldPoints_[faceToCheck[0]],
+                oldPoint
+            )
+        );
     }
     else
     {
@@ -7699,6 +7902,17 @@ bool dynamicTopoFvMesh::checkCollapse
                 points_[faceToCheck[1]],
                 points_[faceToCheck[2]],
                 newPoint
+            )
+        );
+
+        oldVolume =
+        (
+            tetVolume
+            (
+                oldPoints_[faceToCheck[0]],
+                oldPoints_[faceToCheck[1]],
+                oldPoints_[faceToCheck[2]],
+                oldPoint
             )
         );
     }
@@ -7722,8 +7936,14 @@ bool dynamicTopoFvMesh::checkCollapse
         return true;
     }
 
-    // Quality below 0.0 is a no-no
+    // Negative quality is a no-no
     if (cQuality < 0.0)
+    {
+        return true;
+    }
+
+    // Negative old-volume is also a no-no
+    if (oldVolume < 0.0)
     {
         return true;
     }
@@ -8892,28 +9112,7 @@ bool dynamicTopoFvMesh::smallPolyhedronReconnection
     return false;
 }
 
-// Update mesh corresponding to the given map
-void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
-{
-    // Delete oldPoints in polyMesh
-    polyMesh::resetMotion();
-
-    // Update polyMesh.
-    polyMesh::updateMesh(mpm);
-
-    // Clear out surface-interpolation
-    surfaceInterpolation::movePoints();
-
-    // Clear-out fvMesh geometry and addressing
-    fvMesh::clearOut();
-
-    // Update topology for all registered classes
-    meshObjectBase::allUpdateTopology<fvMesh>(*this);
-
-    // Map all fields
-    mapFields(mpm);
-}
-
+/*
 // Map all fields in time using the given map
 void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 {
@@ -9050,6 +9249,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
     // Old volumes are not mapped since interpolation is
     // performed at the same time level.
 }
+*/
 
 // MultiThreaded topology modifier [2D]
 void dynamicTopoFvMesh::threadedTopoModifier2D()
@@ -9268,7 +9468,7 @@ void dynamicTopoFvMesh::synchronizeThreads
     }
 }
 
-// Update the mesh for topology changes
+// Update the mesh for topology changes.
 // Return true if changes have occurred
 bool dynamicTopoFvMesh::update()
 {
@@ -9305,6 +9505,22 @@ bool dynamicTopoFvMesh::update()
         Info << "Mesh size: " << nCells()
              << "    Bandwidth before renumbering: " << band << endl;
     }
+
+    // Invoke mesh-motion solver and move points
+    if (mPtr_.valid())
+    {
+        // Obtain new points
+        tmp<vectorField> tNewPoints = mPtr_->newPoints();
+
+        // Move the base-mesh points
+        tmp<scalarField> tSweptVols = movePoints(tNewPoints);
+
+        // Update the interpolator.
+        iPtr_->movePoints(tSweptVols);
+    }
+
+    // Register all necessary fields with the interpolator.
+    iPtr_->registerFields();
 
     // Obtain the most recent point-positions
     const pointField& currentPoints = points();
@@ -9398,15 +9614,15 @@ bool dynamicTopoFvMesh::update()
         labelListList cellZoneMap(cellZones.size());
 
         // Null temporaries
-        List<objectMap> pointsFromPoints(pointsFromPoints_.size());
+        List<objectMap> pointsFromPoints(0); // pointsFromPoints_.size());
         List<objectMap> facesFromPoints(0);
         List<objectMap> facesFromEdges(0);
         List<objectMap> facesFromFaces(0);
         List<objectMap> cellsFromPoints(0);
         List<objectMap> cellsFromEdges(0);
         List<objectMap> cellsFromFaces(0);
-        List<objectMap> cellsFromCells(cellsFromCells_.size());
-        labelHashSet flipFaceFlux(0);
+        List<objectMap> cellsFromCells(0); // cellsFromCells_.size()
+        labelHashSet flipFaceFlux;
         pointField preMotionPoints(0);
 
         // Obtain faceZone point maps before reordering
@@ -9432,6 +9648,7 @@ bool dynamicTopoFvMesh::update()
             cellZoneMap
         );
 
+        /*
         // Copy point-mapping information
         label indexI = 0;
 
@@ -9447,6 +9664,7 @@ bool dynamicTopoFvMesh::update()
         {
             cellsFromCells[indexC++] = cellI();
         }
+        */
 
         // Obtain the patch-point maps before resetting the mesh
         List<Map<label> > oldPatchPointMaps(numPatches_);
@@ -9456,6 +9674,7 @@ bool dynamicTopoFvMesh::update()
             oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
         }
 
+        /*
         // Obtain geometry information for mapping as well
         cellCentresPtr_.set
         (
@@ -9471,6 +9690,7 @@ bool dynamicTopoFvMesh::update()
         (
             new vectorField(currentPoints)
         );
+        */
 
         // Reset the mesh
         polyMesh::resetPrimitives
@@ -9606,10 +9826,18 @@ bool dynamicTopoFvMesh::update()
             mPtr_->updateMesh(mapper_);
         }
 
+        // Update interpolated old-volumes / mesh-fluxes
+        if (iPtr_.valid())
+        {
+            iPtr_->updateMesh(mapper_);
+        }
+
+        /*
         // Discard old information after mapping
         pointPositionsPtr_.clear();
         cellCentresPtr_.clear();
         faceCentresPtr_.clear();
+        */
 
         // Print out the mesh bandwidth
         if (debug > 1)
@@ -9644,10 +9872,16 @@ bool dynamicTopoFvMesh::update()
         addedPointZones_.clear();
         addedFaceZones_.clear();
         addedCellZones_.clear();
-        cellsFromCells_.clear();
-        pointsFromPoints_.clear();
-        cellParents_.clear();
-        pointParents_.clear();
+        // cellsFromCells_.clear();
+        // pointsFromPoints_.clear();
+        // cellParents_.clear();
+        // pointParents_.clear();
+
+        // Clear the deleted entity map
+        deletedPoints_.clear();
+        deletedEdges_.clear();
+        deletedFaces_.clear();
+        deletedCells_.clear();
 
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_, -7);

@@ -66,6 +66,7 @@ namespace Foam
 class motionSolver;
 class mapPolyMesh;
 class objectMap;
+class interpolator;
 
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration
@@ -128,17 +129,22 @@ class dynamicTopoFvMesh
         //- Mesh motion solver
         autoPtr<motionSolver> mPtr_;
 
-        //- Local copies of connectivity information
-        resizableList<point> points_;
-        resizableList<face>  faces_;
-        resizableList<label> owner_;
-        resizableList<label> neighbour_;
-        resizableList<cell>  cells_;
-        resizableList<edge>  edges_;
+        //- Field interpolator
+        autoPtr<interpolator> iPtr_;
+
+        //- Lists that dynamically resize during topo-changes
+        resizableList<point>     oldPoints_;
+        resizableList<point>     points_;
+        resizableList<face>      faces_;
+        resizableList<label>     owner_;
+        resizableList<label>     neighbour_;
+        resizableList<cell>      cells_;
+        resizableList<edge>      edges_;
         resizableList<labelList> pointEdges_;
         resizableList<labelList> edgePoints_;
         resizableList<labelList> edgeFaces_;
         resizableList<labelList> faceEdges_;
+        resizableList<scalar>    lengthScale_;
 
         // Edge-mesh to store up-to-date connectivity information
         autoPtr<eMesh>  eMeshPtr_;
@@ -169,8 +175,8 @@ class dynamicTopoFvMesh
         labelList       cellMap_;
 
         //- Maps for the renumbering of added entities
-        Map<objectMap>  pointsFromPoints_;
-        Map<objectMap>  cellsFromCells_;
+        // Map<objectMap>  pointsFromPoints_;
+        // Map<objectMap>  cellsFromCells_;
         Map<label>      addedPointRenumbering_;
         Map<label>      addedEdgeRenumbering_;
         Map<label>      addedFaceRenumbering_;
@@ -180,8 +186,8 @@ class dynamicTopoFvMesh
         Map<label>      addedPointZones_;
         Map<label>      addedFaceZones_;
         Map<label>      addedCellZones_;
-        Map<label>      pointParents_;
-        Map<label>      cellParents_;
+        // Map<label>      pointParents_;
+        // Map<label>      cellParents_;
 
         //- Maps to keep track of entities deleted after addition
         labelHashSet    deletedPoints_;
@@ -190,12 +196,11 @@ class dynamicTopoFvMesh
         labelHashSet    deletedCells_;
 
         // Geometry-fields for mapping
-        autoPtr<vectorField> pointPositionsPtr_;
-        autoPtr<vectorField> cellCentresPtr_;
-        autoPtr<vectorField> faceCentresPtr_;
+        // autoPtr<vectorField> pointPositionsPtr_;
+        // autoPtr<vectorField> cellCentresPtr_;
+        // autoPtr<vectorField> faceCentresPtr_;
 
         //- Edge bisection/collapse criteria
-        resizableList<scalar> lengthScale_;
         scalar                ratioMin_;
         scalar                ratioMax_;
         scalar                growthFactor_;
@@ -388,10 +393,18 @@ class dynamicTopoFvMesh
         inline point circumCentre(const label fIndex) const;
 
         // Find the centre of a quad face
-        inline point quadFaceCentre(const label fIndex) const;
+        inline point quadFaceCentre
+        (
+            const label fIndex,
+            bool useOldPoints = false
+        ) const;
 
         // Find the centre of a triangle face
-        inline point triFaceCentre(const label fIndex) const;
+        inline point triFaceCentre
+        (
+            const label fIndex,
+            bool useOldPoints = false
+        ) const;
 
         // Find the area of a quad face.
         inline scalar quadFaceArea(const face& quadFace) const;
@@ -404,6 +417,9 @@ class dynamicTopoFvMesh
 
         // Find the normal of a triangle face.
         inline vector triFaceNormal(const face& triFace) const;
+
+        // Find the volume swept by a new face
+        inline scalar sweptVolume(const label fIndex) const;
 
         // Given a face and cell index, find the apex point for a tet cell.
         inline label tetApexPoint
@@ -421,13 +437,20 @@ class dynamicTopoFvMesh
         // Compare two triangular faces
         inline label compare(const face& a, const face& b) const;
 
-        // Find the volume of a tetrahedron.
+        // Find the volume of a tetrahedron (defined by points)
         inline scalar tetVolume
         (
             const point& a,
             const point& b,
             const point& c,
             const point& d
+        ) const;
+
+        // Find the volume of a tetrahedron (defined by cell index)
+        inline scalar tetVolume
+        (
+            const label cIndex,
+            bool useOldPoints = false
         ) const;
 
         // Find the volume sign of a tetrahedron
@@ -449,6 +472,9 @@ class dynamicTopoFvMesh
 
         // Load the mesh-motion solver
         void loadMotionSolver();
+
+        // Load the interpolator
+        void loadInterpolator();
 
         // Initialize the threading environment
         void initializeThreadingEnvironment
@@ -639,6 +665,7 @@ class dynamicTopoFvMesh
         bool checkCollapse
         (
             const point& newPoint,
+            const point& oldPoint,
             const label pointIndex,
             const label cellIndex,
             labelHashSet& cellsChecked,
@@ -729,8 +756,9 @@ class dynamicTopoFvMesh
         label insertCell
         (
             const cell& newCell,
-            const scalar lengthScale = -1.0,
-            const label mappingCell = -1,
+            const labelList& mapCells,
+            const scalarList& mapWeights,
+            const scalar lengthScale,
             const label zoneID = -1
         );
 
@@ -800,6 +828,7 @@ class dynamicTopoFvMesh
         label insertPoint
         (
             const point& newPoint,
+            const point& oldPoint,
             const labelList& mappingPoints,
             const label zoneID = -1
         );
@@ -906,6 +935,12 @@ class dynamicTopoFvMesh
             const PtrList<scalarListList>& Q,
             const scalar minQuality,
             const label checkIndex = 0
+        ) const;
+
+        // Check whether the space-conservation law is satisfied
+        void checkSpaceConservation
+        (
+            const label cIndex
         ) const;
 
         // Utility method to fill the dynamic programming tables
@@ -1241,15 +1276,18 @@ class dynamicTopoFvMesh
         void waitForBuffers() const;
 
         // Dump mesh length-scale values
-        void lengthScale();
+        bool dumpLengthScale();
 
         // Dump cell-quality statistics
-        void meshQuality(bool outputOption);
+        bool meshQuality(bool outputOption);
 
 public:
 
     // Declare the name of the class and its debug switch
         TypeName("dynamicTopoFvMesh");
+
+    //- Declare friendship with the interpolator class
+        friend class interpolator;
 
     // Constructors
 
@@ -1266,23 +1304,20 @@ public:
         // Return true if changes have occurred
         bool update();
 
-        //- Update mesh corresponding to the given map
-        virtual void updateMesh(const mapPolyMesh& mpm);
-
         // Map all fields in time using the given map.
-        virtual void mapFields(const mapPolyMesh& mpm);
+        // virtual void mapFields(const mapPolyMesh& mpm);
 
         // Return the mesh-mapper
-        const mapPolyMesh& meshMap() const;
+        // const mapPolyMesh& meshMap() const;
 
         // Return old cell-centre information (prior to a topology change)
-        const vectorField& oldCellCentres() const;
+        // const vectorField& oldCellCentres() const;
 
         // Return old face-centre information (prior to a topology change)
-        const vectorField& oldFaceCentres() const;
+        // const vectorField& oldFaceCentres() const;
 
         // Return old face-centre information (prior to a topology change)
-        const vectorField& oldPointPositions() const;
+        // const vectorField& oldPointPositions() const;
 };
 
 

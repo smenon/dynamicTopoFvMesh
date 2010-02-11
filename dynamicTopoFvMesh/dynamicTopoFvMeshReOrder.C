@@ -25,6 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
+#include "interpolator.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -115,6 +116,7 @@ void dynamicTopoFvMesh::reOrderPoints
                 << abort(FatalError);
     }
 
+    /*
     // Loop through the pointsFromPoints list, and renumber the map indices.
     // HashTable keys, however, are not altered.
     forAllIter(Map<objectMap>, pointsFromPoints_, pointI)
@@ -130,6 +132,7 @@ void dynamicTopoFvMesh::reOrderPoints
             thisMap.index() = addedPointRenumbering_[thisMap.index()];
         }
     }
+    */
 
     // Prepare the pointZoneMap
     pointZoneMesh& pointZones = polyMesh::pointZones();
@@ -241,13 +244,14 @@ void dynamicTopoFvMesh::reOrderPoints
         rPointMap.transfer(newRMap);
     }
 
-    // Update the local copy
+    // Update the local point copies
     points_.setSize(nPoints_);
+    oldPoints_.setSize(nPoints_);
 
-    points_ = points;
-
-    // Clear the deleted entity map
-    deletedPoints_.clear();
+    forAll(points, pointI)
+    {
+        oldPoints_[pointI] = points_[pointI] = points[pointI];
+    }
 
     if (debug)
     {
@@ -630,9 +634,6 @@ void dynamicTopoFvMesh::reOrderEdges
         }
     }
 
-    // Clear the deleted entity map
-    deletedEdges_.clear();
-
     if (debug)
     {
         Info << "Done." << endl;
@@ -920,6 +921,9 @@ void dynamicTopoFvMesh::reOrderFaces
                 if (neighbourRenumber < ownerRenumber)
                 {
                     faceRenumber = faceRenumber.reverseFace();
+
+                    // Flip the flux as well.
+                    iPtr_->flipFaceFlux(curFaces[nextNei]);
                 }
 
                 // Insert entities into local lists...
@@ -1150,9 +1154,6 @@ void dynamicTopoFvMesh::reOrderFaces
         }
     }
 
-    // Clear the deleted entity map
-    deletedFaces_.clear();
-
     if (debug)
     {
         Info << "Done." << endl;
@@ -1375,6 +1376,7 @@ void dynamicTopoFvMesh::reOrderCells
 
     // Loop through the cellsFromCells list, and renumber the map indices.
     // HashTable keys, however, are not altered.
+    /*
     forAllIter(Map<objectMap>, cellsFromCells_, cellI)
     {
         objectMap& thisMap = cellI();
@@ -1388,6 +1390,7 @@ void dynamicTopoFvMesh::reOrderCells
             thisMap.index() = addedCellRenumbering_[thisMap.index()];
         }
     }
+    */
 
     // Prepare the cellZoneMap
     cellZoneMesh& cellZones = polyMesh::cellZones();
@@ -1455,9 +1458,6 @@ void dynamicTopoFvMesh::reOrderCells
 
     // Reset all zones
     cellZones.updateMesh();
-
-    // Clear the deleted entity map
-    deletedCells_.clear();
 
     if (debug)
     {
