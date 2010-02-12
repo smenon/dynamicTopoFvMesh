@@ -375,7 +375,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     // Fill-in mapping information
     labelList mC0(1, c0);
-    scalarList mW0(1, 1.0);
+    scalarField mW0(1, 1.0);
 
     // Add a new prism cell to the end of the list.
     // Currently invalid, but will be updated later.
@@ -853,7 +853,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         // Fill-in mapping information
         labelList mC1(1, c1);
-        scalarList mW1(1, 1.0);
+        scalarField mW1(1, 1.0);
 
         newCellIndex[1] = insertCell(newCells[1], mC1, mW1, lengthScale_[c1]);
 
@@ -1946,7 +1946,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             // Fill-in mapping information
             labelList mC(1, cellHull[indexI]);
-            scalarList mW(1, 1.0);
+            scalarField mW(1, 1.0);
 
             addedCellIndices[indexI] =
             (
@@ -3190,7 +3190,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
         // Fill-in mapping information
         labelList mC(1, cellsForRemoval[0]);
-        scalarList mW(1, 1.0);
+        scalarField mW(1, 1.0);
 
         newCellIndex[i] = insertCell(newTetCell[i], mC, mW, parentScale);
 
@@ -3785,7 +3785,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             // Fill-in mapping information
             labelList mC(1, cellsForRemoval[1]);
-            scalarList mW(1, 1.0);
+            scalarField mW(1, 1.0);
 
             newCellIndex[i] = insertCell(newTetCell[i], mC, mW, parentScale);
 

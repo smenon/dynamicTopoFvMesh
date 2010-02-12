@@ -119,24 +119,6 @@ void dynamicTopoFvMesh::reOrderPoints
                 << abort(FatalError);
     }
 
-    /*
-    // Loop through the pointsFromPoints list, and renumber the map indices.
-    // HashTable keys, however, are not altered.
-    forAllIter(Map<objectMap>, pointsFromPoints_, pointI)
-    {
-        objectMap& thisMap = pointI();
-
-        if (thisMap.index() < nOldPoints_)
-        {
-            thisMap.index() = reversePointMap_[thisMap.index()];
-        }
-        else
-        {
-            thisMap.index() = addedPointRenumbering_[thisMap.index()];
-        }
-    }
-    */
-
     // Prepare the pointZoneMap
     pointZoneMesh& pointZones = polyMesh::pointZones();
 
@@ -1377,26 +1359,6 @@ void dynamicTopoFvMesh::reOrderCells
                     << " Something's messed up." << nl
                     << abort(FatalError);
         }
-    }
-
-    // Loop through the cellsFromCells list, and renumber the map indices.
-    // HashTable keys, however, are not altered.
-    forAllIter(Map<objectMap>, cellsFromCells_, cellI)
-    {
-        objectMap& thisMap = cellI();
-
-        label newIndex = -1;
-
-        if (thisMap.index() < nOldCells_)
-        {
-            newIndex = reverseCellMap_[thisMap.index()];
-        }
-        else
-        {
-            newIndex = addedCellRenumbering_[thisMap.index()];
-        }
-
-        thisMap.index() = newIndex;
     }
 
     // Prepare the cellZoneMap

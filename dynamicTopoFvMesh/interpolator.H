@@ -44,6 +44,8 @@ SourceFiles
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #include "typeInfo.H"
+#include "Map.H"
+#include "fieldTypes.H"
 #include "scalarField.H"
 #include "resizableList.H"
 
@@ -69,19 +71,23 @@ class interpolator
         //  fields have been registered
         bool fieldsRegistered_;
 
-        //- Volume fluxes
-        mutable resizableList<scalar>* phiPtr_;
+        // List of maps for each primitive-type
+        HashTable<Map<scalar> >          volScalarMap_;
+        HashTable<Map<vector> >          volVectorMap_;
+        HashTable<Map<sphericalTensor> > volSphericalTensorMap_;
+        HashTable<Map<symmTensor> >      volSymmTensorMap_;
+        HashTable<Map<tensor> >          volTensorMap_;
+
+        HashTable<Map<scalar> >          surfScalarMap_;
+        HashTable<Map<vector> >          surfVectorMap_;
+        HashTable<Map<sphericalTensor> > surfSphericalTensorMap_;
+        HashTable<Map<symmTensor> >      surfSymmTensorMap_;
+        HashTable<Map<tensor> >          surfTensorMap_;
 
     // Private Member Functions
 
-        //- Make volume fluxes
-        void makePhi() const;
-
         //- Clear out data
         void clearOut();
-
-        //- Print out mapped fields
-        void printFields() const;
 
 public:
 
@@ -100,20 +106,33 @@ public:
     // Member Functions
 
         // Add a new face entry
-        void insertFace();
+        void insertFace
+        (
+            const label patch,
+            const label newFaceIndex,
+            const labelList& mapFaces,
+            const scalarField& mapWeights
+        );
+
+        // Remove the face, if it exists in the map.
+        void removeFace(const label index);
 
         // Add a new cell entry
         void insertCell
         (
+            const label newCellIndex,
             const labelList& mapCells,
-            const scalarList& mapWeights
+            const scalarField& mapWeights
         );
 
+        // Remove the cell, if it exists in the map.
+        void removeCell(const label index);
+
         // Set the volume-flux for an existing face
-        void setVolFlux
+        void setPhi
         (
             const label faceIndex,
-            const scalar volFlux
+            const scalar facePhi
         );
 
         // Register fields for interpolation
@@ -126,6 +145,11 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Define a few macros for code brevity.
+#include "interpolatorM.C"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -38,7 +38,7 @@ Author
 #include "interpolator.H"
 #include "mapPolyMesh.H"
 #include "dynamicTopoFvMesh.H"
-#include "GeometricField.H"
+#include "GeometricFields.H"
 #include "volMesh.H"
 #include "surfaceMesh.H"
 #include "fvPatchFieldsFwd.H"
@@ -51,15 +51,14 @@ namespace Foam
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-defineTypeNameAndDebug(interpolator,0);
+defineTypeNameAndDebug(interpolator,1);
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 interpolator::interpolator(dynamicTopoFvMesh& mesh)
 :
     mesh_(mesh),
-    fieldsRegistered_(true),
-    phiPtr_(NULL)
+    fieldsRegistered_(false)
 {}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -67,101 +66,116 @@ interpolator::interpolator(dynamicTopoFvMesh& mesh)
 interpolator::~interpolator()
 {
     clearOut();
+
+    fieldsRegistered_ = false;
 }
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 void interpolator::clearOut()
 {
-    deleteDemandDrivenData(phiPtr_);
-}
-
-//- Print out mapped fields
-void interpolator::printFields() const
-{
-    // Output all fields that will be used for mapping.
-
-    Info << "volScalarFields: " << endl;
-
-    HashTable<const volScalarField*> vsf(mesh_.lookupClass<volScalarField>());
-
-    forAllIter(HashTable<const volScalarField*>, vsf, fIter)
-    {
-        Info << "\t" << fIter()->name() << endl;
-    }
-
-    Info << "volVectorFields: " << endl;
-
-    HashTable<const volVectorField*> vvf(mesh_.lookupClass<volVectorField>());
-
-    forAllIter(HashTable<const volVectorField*>, vvf, fIter)
-    {
-        Info << "\t" << fIter()->name() << endl;
-    }
-
-    Info << "surfaceScalarFields: " << endl;
-
-    HashTable<const surfaceScalarField*> ssf
-    (
-        mesh_.lookupClass<surfaceScalarField>()
-    );
-
-    forAllIter(HashTable<const surfaceScalarField*>, ssf, fIter)
-    {
-        Info << "\t" << fIter()->name() << endl;
-    }
-}
-
-void interpolator::makePhi() const
-{
-    if (debug)
-    {
-        Info << "void interpolator::makePhi() const : "
-             << "Assembling volume fluxes"
-             << endl;
-    }
-
-    // It is an error to attempt to recalculate
-    // if the pointer is already set
-    if (phiPtr_)
-    {
-        FatalErrorIn("interpolator::makePhi() const")
-            << "Volume fluxes already exist"
-            << abort(FatalError);
-    }
-
-    phiPtr_ = new resizableList<scalar>(mesh_.nFaces(), 0.0);
+    // Clear vol and surf maps (but not hash-table keys)
+    clearInterpolationMaps(scalar, Scalar);
+    clearInterpolationMaps(vector, Vector);
+    clearInterpolationMaps(sphericalTensor, SphericalTensor);
+    clearInterpolationMaps(symmTensor, SymmTensor);
+    clearInterpolationMaps(tensor, Tensor);
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Add a new face entry
-void interpolator::insertFace()
+void interpolator::insertFace
+(
+    const label patch,
+    const label newFaceIndex,
+    const labelList& mapFaces,
+    const scalarField& mapWeights
+)
 {
-    // (*phiPtr_).append(0.0);
+    // Loop through all volMaps / surfaceMaps, and perform a weighted mapping.
+    // If the key exists, overwrite it.
+    label nOldFaces = mesh_.nOldFaces_;
+
+    const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
+
+    // Map for each primitive type
+    mapInternalFace(scalar, Scalar);
+    mapInternalFace(vector, Vector);
+    mapInternalFace(sphericalTensor, SphericalTensor);
+    mapInternalFace(symmTensor, SymmTensor);
+    mapInternalFace(tensor, Tensor);
+
+    // Map boundary volBoundaryFields only if this is a boundary face.
+    if (patch == -1)
+    {
+        return;
+    }
+
+    // Map for each primitive type
+    mapBoundaryFace(scalar, Scalar);
+    mapBoundaryFace(vector, Vector);
+    mapBoundaryFace(sphericalTensor, SphericalTensor);
+    mapBoundaryFace(symmTensor, SymmTensor);
+    mapBoundaryFace(tensor, Tensor);
+}
+
+// Remove the face, if it exists in the map.
+void interpolator::removeFace
+(
+    const label index
+)
+{
+    // Loop through all surfMaps
+    removeEntity(scalar, surfScalar);
+    removeEntity(vector, surfVector);
+    removeEntity(sphericalTensor, surfSphericalTensor);
+    removeEntity(symmTensor, surfSymmTensor);
+    removeEntity(tensor, surfTensor);
 }
 
 // Add a new cell entry.
 void interpolator::insertCell
 (
+    const label newCellIndex,
     const labelList& mapCells,
-    const scalarList& mapWeights
+    const scalarField& mapWeights
 )
 {
-    // Now loop through all volFields
-    // registered for interpolation,
-    // and map values for the new cell.
+    // Loop through all volMaps, and perform a weighted mapping.
+    // If the key exists, overwrite it.
+    label nOldCells = mesh_.nOldCells_;
 
+    // Map for each primitive type
+    mapCell(scalar, Scalar);
+    mapCell(vector, Vector);
+    mapCell(sphericalTensor, SphericalTensor);
+    mapCell(symmTensor, SymmTensor);
+    mapCell(tensor, Tensor);
+}
+
+// Remove the cell, if it exists in the map.
+void interpolator::removeCell
+(
+    const label index
+)
+{
+    // Loop through all volMaps
+    removeEntity(scalar, volScalar);
+    removeEntity(vector, volVector);
+    removeEntity(sphericalTensor, volSphericalTensor);
+    removeEntity(symmTensor, volSymmTensor);
+    removeEntity(tensor, volTensor);
 }
 
 // Set the volume-flux for an existing face
-void interpolator::setVolFlux
+void interpolator::setPhi
 (
     const label faceIndex,
-    const scalar volFlux
+    const scalar facePhi
 )
 {
-    // (*phiPtr_)[faceIndex] = volFlux;
+
 }
 
 // Register fields for interpolation
@@ -173,40 +187,21 @@ void interpolator::registerFields()
         return;
     }
 
-    bool registerSelectFields = false;
+    // Fetch all volFields and surfaceFields from the registry.
 
-    // First check to see if only certain
-    // fields need to be mapped.
-    if (mesh_.dict_.subDict("dynamicTopoFvMesh").found("mapFields"))
-    {
-        registerSelectFields = true;
-    }
+    // volFields need surface-mapping as well (for boundaries),
+    // so add them to surface maps.
+    registerVolumeField(scalar, Scalar);
+    registerVolumeField(vector, Vector);
+    registerVolumeField(sphericalTensor, SphericalTensor);
+    registerVolumeField(symmTensor, SymmTensor);
+    registerVolumeField(tensor, Tensor);
 
-    if (registerSelectFields)
-    {
-        const dictionary& mapDict =
-        (
-            mesh_.dict_.subDict("dynamicTopoFvMesh").subDict("mapFields")
-        );
-
-        if (mapDict.size() == 0)
-        {
-            FatalErrorIn("interpolator::registerFields()")
-                << " Empty mapFields entry found." << nl
-                << " Either specify fields required for mapping," << nl
-                << " or remove the mapFields entry." << nl
-                << abort(FatalError);
-        }
-    }
-    else
-    {
-        // Register all fields from the registry.
-        FatalErrorIn("interpolator::registerFields()")
-            << " No mapFields entry found"
-            << " in the dynamicTopoFvMesh sub-dictionary." << nl
-            << " Mapping all registry fields is not currently available."
-            << abort(FatalError);
-    }
+    registerSurfaceField(scalar, Scalar);
+    registerSurfaceField(vector, Vector);
+    registerSurfaceField(sphericalTensor, SphericalTensor);
+    registerSurfaceField(symmTensor, SymmTensor);
+    registerSurfaceField(tensor, Tensor);
 
     // Set the flag.
     fieldsRegistered_ = true;
@@ -215,73 +210,10 @@ void interpolator::registerFields()
 // Update fields after a topo-change operation
 void interpolator::updateMesh(const mapPolyMesh& mpm)
 {
-    if (debug)
-    {
-        printFields();
-    }
+    // First re-number maps after re-ordering
 
-    // Check if phi exists
-    bool foundPhi = mesh_.foundObject<surfaceScalarField>("phi");
-
-    if (!foundPhi)
-    {
-        return;
-    }
-
-    label nOldFaces = mpm.nOldFaces(), newIndex = -1;
-    const labelList& reverseFaceMap = mpm.reverseFaceMap();
-
-    // Obtain references
-    resizableList<scalar>& phi = *phiPtr_;
-
-    // Fetch the volume-flux field from the registry.
-    surfaceScalarField& mapPhi =
-    (
-        const_cast<surfaceScalarField&>
-        (
-            mesh_.lookupObject<surfaceScalarField>("phi")
-        )
-    );
-
-    // Update mesh fluxes
-    forAll(phi, faceI)
-    {
-        if (faceI < nOldFaces)
-        {
-            newIndex = reverseFaceMap[faceI];
-
-            // Ensure that the index doesn't
-            // belong to a deleted face.
-            if (newIndex < 0)
-            {
-                continue;
-            }
-        }
-        else
-        {
-            if (mesh_.deletedFaces_.found(faceI))
-            {
-                continue;
-            }
-
-            newIndex = mesh_.addedFaceRenumbering_[faceI];
-        }
-
-        // Figure out which patch the face belongs to,
-        // and add accordingly to internal or boundary.
-        label patch = mpm.mesh().boundaryMesh().whichPatch(newIndex);
-
-        if (patch == -1)
-        {
-            mapPhi.internalField()[newIndex] = phi[faceI];
-        }
-        else
-        {
-            label i = mpm.mesh().boundaryMesh()[patch].whichFace(newIndex);
-
-            mapPhi.boundaryField()[patch][i] = phi[faceI];
-        }
-    }
+    // Now loop through maps, and fill-in values
+    // for inserted elements.
 
     // Clear-out demand-driven data.
     clearOut();

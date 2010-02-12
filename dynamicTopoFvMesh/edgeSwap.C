@@ -680,67 +680,6 @@ void dynamicTopoFvMesh::swapQuadFace
     edges_[commonEdgeIndex[0]] = newEdges[0];
     edges_[commonEdgeIndex[1]] = newEdges[1];
 
-    /*
-    // Generate mapping information for both cells
-    label firstParent, secondParent;
-    const labelListList& cc = cellCells();
-    labelHashSet c0MasterObjects(6);
-    labelHashSet c1MasterObjects(6);
-
-    if (c0 < nOldCells_)
-    {
-        firstParent = c0;
-    }
-    else
-    {
-        firstParent = cellParents_[c0];
-    }
-
-    if (c1 < nOldCells_)
-    {
-        secondParent = c1;
-    }
-    else
-    {
-        secondParent = cellParents_[c1];
-    }
-
-    // Find the cell's neighbours in the old mesh
-    c0MasterObjects.insert(firstParent);
-    c1MasterObjects.insert(firstParent);
-
-    forAll(cc[firstParent],cellI)
-    {
-        if (!c0MasterObjects.found(cc[firstParent][cellI]))
-        {
-            c0MasterObjects.insert(cc[firstParent][cellI]);
-        }
-        if (!c1MasterObjects.found(cc[firstParent][cellI]))
-        {
-            c1MasterObjects.insert(cc[firstParent][cellI]);
-        }
-    }
-
-    c0MasterObjects.insert(secondParent);
-    c1MasterObjects.insert(secondParent);
-
-    forAll(cc[secondParent],cellI)
-    {
-        if (!c0MasterObjects.found(cc[secondParent][cellI]))
-        {
-            c0MasterObjects.insert(cc[secondParent][cellI]);
-        }
-        if (!c1MasterObjects.found(cc[secondParent][cellI]))
-        {
-            c1MasterObjects.insert(cc[secondParent][cellI]);
-        }
-    }
-
-    // Insert mapping info into the HashTable
-    cellsFromCells_.insert(c0,objectMap(c0,c0MasterObjects.toc()));
-    cellsFromCells_.insert(c1,objectMap(c1,c1MasterObjects.toc()));
-    */
-
     // Write out VTK files after change
     if (debug > 3)
     {
@@ -871,13 +810,16 @@ const changeMap dynamicTopoFvMesh::swap23
 
         // Fill-in mapping information
         labelList mC(2, -1);
-        scalarList mW(2, 0.0);
+        scalarField mW(2, 0.0);
 
         forAll(mC, indexI)
         {
             mC[indexI] = cellsForRemoval[indexI];
             mW[indexI] = tetVolume(mC[indexI], true);
         }
+
+        // Normalize weights
+        mW /= sum(mW);
 
         if (edgeRefinement_)
         {
@@ -1532,7 +1474,7 @@ const changeMap dynamicTopoFvMesh::swap32
 
         // Fill-in mapping information
         labelList mC(cellRemovalList.size(), -1);
-        scalarList mW(cellRemovalList.size(), 0.0);
+        scalarField mW(cellRemovalList.size(), 0.0);
 
         forAll(mC, indexI)
         {
@@ -1546,6 +1488,7 @@ const changeMap dynamicTopoFvMesh::swap32
         }
 
         avgScale /= mC.size();
+        mW /= mC.size();
 
         newCellIndex[cellI] = insertCell(newTetCell[cellI], mC, mW, avgScale);
     }

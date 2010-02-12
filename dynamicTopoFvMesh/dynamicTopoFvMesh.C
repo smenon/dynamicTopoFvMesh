@@ -39,7 +39,6 @@ Author
 #include "GeometricFields.H"
 #include "dynamicTopoFvMesh.H"
 #include "addToRunTimeSelectionTable.H"
-// #include "dynamicTopoFvMeshMapper.H"
 #include "multiThreader.H"
 #include "mapPolyMesh.H"
 #include "interpolator.H"
@@ -361,48 +360,6 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 {}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-/*
-// Return the mesh-mapper
-const mapPolyMesh& dynamicTopoFvMesh::meshMap() const
-{
-    if (mapper_.valid())
-    {
-        return mapper_();
-    }
-    else
-    {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::meshMap()"
-        )
-            << nl << " Illegal request for the mesh mapper."
-            << abort(FatalError);
-    }
-
-    return mapper_();
-}
-
-// Return old cell-centre information (prior to a topology change)
-const vectorField& dynamicTopoFvMesh::oldCellCentres() const
-{
-    if (cellCentresPtr_.valid())
-    {
-        return cellCentresPtr_();
-    }
-    else
-    {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::oldCellCentres() "
-        )
-            << nl << " Illegal request for old cell centres."
-            << abort(FatalError);
-    }
-
-    return vectorField::null();
-}
-*/
 
 // Write out mesh length-scale values
 bool dynamicTopoFvMesh::dumpLengthScale()
@@ -787,7 +744,7 @@ label dynamicTopoFvMesh::insertCell
 (
     const cell& newCell,
     const labelList& mapCells,
-    const scalarList& mapWeights,
+    const scalarField& mapWeights,
     const scalar lengthScale,
     const label zoneID
 )
@@ -808,58 +765,9 @@ label dynamicTopoFvMesh::insertCell
         lengthScale_.append(lengthScale);
     }
 
-    /*
     if (iPtr_.valid())
     {
-        iPtr_->insertCell(mapCells, mapWeights);
-    }
-    */
-
-    // Generate mapping information for this new cell
-    // const labelListList& cc = cellCells();
-
-    forAll(mapCells, cellI)
-    {
-        label mappingCell = mapCells[cellI];
-
-        label parent;
-        labelHashSet masterObjects;
-
-        if (mappingCell < nOldCells_)
-        {
-            parent = mappingCell;
-        }
-        else
-        {
-            parent = cellParents_[mappingCell];
-        }
-
-        // Insert the parent cell
-        cellParents_.insert(newCellIndex, parent);
-
-        // Find the cell's neighbours in the old mesh
-        masterObjects.insert(parent);
-
-        /*
-        forAll(cc[parent], cellI)
-        {
-            if (!masterObjects.found(cc[parent][cellI]))
-            {
-                masterObjects.insert(cc[parent][cellI]);
-            }
-        }
-        */
-
-        // Insert mapping info into the HashTable
-        cellsFromCells_.insert
-        (
-            newCellIndex,
-            objectMap
-            (
-                newCellIndex,
-                masterObjects.toc()
-            )
-        );
+        iPtr_->insertCell(newCellIndex, mapCells, mapWeights);
     }
 
     // Add to the zone if necessary
@@ -894,6 +802,11 @@ void dynamicTopoFvMesh::removeCell
         lengthScale_[cIndex] = -1.0;
     }
 
+    if (iPtr_.valid())
+    {
+        iPtr_->removeCell(cIndex);
+    }
+
     // Update the number of cells, and the reverse cell map
     nCells_--;
 
@@ -905,12 +818,6 @@ void dynamicTopoFvMesh::removeCell
     {
         // Store this information for the reOrdering stage
         deletedCells_.insert(cIndex);
-    }
-
-    // Check if the cell was added in the current morph, and delete
-    if (cellsFromCells_.found(cIndex))
-    {
-        cellsFromCells_.erase(cIndex);
     }
 
     // Check if this cell was added to a zone
@@ -927,6 +834,8 @@ label dynamicTopoFvMesh::insertFace
     const face& newFace,
     const label newOwner,
     const label newNeighbour,
+    const labelList& mapFaces,
+    const scalarField& mapWeights,
     const label zoneID
 )
 {
@@ -949,17 +858,17 @@ label dynamicTopoFvMesh::insertFace
 
         if (patch == -1)
         {
-            Info << "Internal";
+            Info << "Internal" << endl;
         }
         else
         {
-            Info << boundaryMesh()[patch].name();
+            Info << boundaryMesh()[patch].name() << endl;
         }
     }
 
     if (iPtr_.valid())
     {
-        iPtr_->insertFace();
+        iPtr_->insertFace(patch, newFaceIndex, mapFaces, mapWeights);
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -1483,91 +1392,6 @@ label dynamicTopoFvMesh::insertPoint
         pointEdges_.append(labelList(0));
     }
 
-    /*
-    labelHashSet masterObjects;
-
-    forAll(mappingPoints, pointI)
-    {
-        label parent;
-
-        if (mappingPoints[pointI] < nOldPoints_)
-        {
-            parent = mappingPoints[pointI];
-        }
-        else
-        {
-            parent = pointParents_[mappingPoints[pointI]];
-        }
-
-        if (!masterObjects.found(parent))
-        {
-            masterObjects.insert(parent);
-        }
-    }
-
-    if (twoDMesh_)
-    {
-        pointParents_.insert(newPointIndex, masterObjects.begin().key());
-    }
-    else
-    {
-        // Insert the parent point.
-        // This has to be done carefully: If a mapping point is on
-        // the surface, then the new point must also preferentially
-        // map from the surface point.
-        label surfPointIndex = -1;
-
-        forAllIter(labelHashSet, masterObjects, oIter)
-        {
-            const labelList& pEdges = pointEdges_[oIter.key()];
-
-            bool foundBoundaryEdge = false;
-
-            forAll(pEdges, edgeI)
-            {
-                if (whichEdgePatch(pEdges[edgeI]) > -1)
-                {
-                    surfPointIndex =
-                    (
-                        edges_[pEdges[edgeI]].otherVertex(oIter.key())
-                    );
-
-                    foundBoundaryEdge = true;
-                    break;
-                }
-            }
-
-            if (foundBoundaryEdge)
-            {
-                break;
-            }
-        }
-
-        if (surfPointIndex == -1)
-        {
-            pointParents_.insert
-            (
-                newPointIndex, masterObjects.begin().key()
-            );
-        }
-        else
-        {
-            pointParents_.insert(newPointIndex, surfPointIndex);
-        }
-    }
-
-    // Insert mapping info into the HashTable
-    pointsFromPoints_.insert
-    (
-        newPointIndex,
-        objectMap
-        (
-            newPointIndex,
-            masterObjects.toc()
-        )
-    );
-    */
-
     // Add to the zone if necessary
     if (zoneID >= 0)
     {
@@ -1612,14 +1436,6 @@ void dynamicTopoFvMesh::removePoint
     {
         deletedPoints_.insert(pIndex);
     }
-
-    /*
-    // Check if the point was added in the current morph, and delete
-    if (pointsFromPoints_.found(pIndex))
-    {
-        pointsFromPoints_.erase(pIndex);
-    }
-    */
 
     // Check if this point was added to a zone
     if (addedPointZones_.found(pIndex))
@@ -9081,145 +8897,6 @@ bool dynamicTopoFvMesh::smallPolyhedronReconnection
     return false;
 }
 
-/*
-// Map all fields in time using the given map
-void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
-{
-    if (debug)
-    {
-        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap):"
-             << "Mapping fvFields."
-             << endl;
-    }
-
-    //- Field mapping class
-    dynamicTopoFvMeshMapper fieldMapper(*this,meshMap);
-
-    // Map all scalar volFields in the objectRegistry
-    MapGeometricFields
-    <
-        scalar,
-        fvPatchField,
-        dynamicTopoFvMeshMapper,
-        volMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all vector volFields in the objectRegistry
-    MapGeometricFields
-    <
-        vector,
-        fvPatchField,
-        dynamicTopoFvMeshMapper,
-        volMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all spherical tensor volFields in the objectRegistry
-    MapGeometricFields
-    <
-        sphericalTensor,
-        fvPatchField,
-        dynamicTopoFvMeshMapper,
-        volMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all symmTensor volFields in the objectRegistry
-    MapGeometricFields
-    <
-        symmTensor,
-        fvPatchField,
-        dynamicTopoFvMeshMapper,
-        volMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all tensor volFields in the objectRegistry
-    MapGeometricFields
-    <
-        tensor,
-        fvPatchField,
-        dynamicTopoFvMeshMapper,
-        volMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all the scalar surfaceFields in the objectRegistry
-    MapGeometricFields
-    <
-        scalar,
-        fvsPatchField,
-        dynamicTopoFvMeshMapper,
-        surfaceMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all the vector surfaceFields in the objectRegistry
-    MapGeometricFields
-    <
-        vector,
-        fvsPatchField,
-        dynamicTopoFvMeshMapper,
-        surfaceMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all the sphericalTensor surfaceFields in the objectRegistry
-    MapGeometricFields
-    <
-        sphericalTensor,
-        fvsPatchField,
-        dynamicTopoFvMeshMapper,
-        surfaceMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all the symmTensor surfaceFields in the objectRegistry
-    MapGeometricFields
-    <
-        symmTensor,
-        fvsPatchField,
-        dynamicTopoFvMeshMapper,
-        surfaceMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Map all the tensor surfaceFields in the objectRegistry
-    MapGeometricFields
-    <
-        tensor,
-        fvsPatchField,
-        dynamicTopoFvMeshMapper,
-        surfaceMesh
-    >
-    (
-        fieldMapper
-    );
-
-    // Old volumes are not mapped since interpolation is
-    // performed at the same time level.
-}
-*/
-
 // MultiThreaded topology modifier [2D]
 void dynamicTopoFvMesh::threadedTopoModifier2D()
 {
@@ -9577,14 +9254,14 @@ bool dynamicTopoFvMesh::update()
         labelListList cellZoneMap(cellZones.size());
 
         // Null temporaries
-        List<objectMap> pointsFromPoints(0); // pointsFromPoints_.size());
+        List<objectMap> pointsFromPoints(0);
         List<objectMap> facesFromPoints(0);
         List<objectMap> facesFromEdges(0);
-        List<objectMap> facesFromFaces(facesFromFaces_.size());
+        List<objectMap> facesFromFaces(0);
         List<objectMap> cellsFromPoints(0);
         List<objectMap> cellsFromEdges(0);
         List<objectMap> cellsFromFaces(0);
-        List<objectMap> cellsFromCells(cellsFromCells_.size());
+        List<objectMap> cellsFromCells(0);
         labelHashSet flipFaceFlux;
 
         // Obtain faceZone point maps before reordering
@@ -9611,32 +9288,6 @@ bool dynamicTopoFvMesh::update()
             cellZoneMap
         );
 
-        /*
-        // Copy point-mapping information
-        label indexI = 0;
-
-        forAllIter(Map<objectMap>, pointsFromPoints_, pointI)
-        {
-            pointsFromPoints[indexI++] = pointI();
-        }
-        */
-
-        // Copy face-mapping information
-        label indexF = 0;
-
-        forAllIter(Map<objectMap>, facesFromFaces_, faceI)
-        {
-            facesFromFaces[indexF++] = faceI();
-        }
-
-        // Copy cell-mapping information
-        label indexC = 0;
-
-        forAllIter(Map<objectMap>, cellsFromCells_, cellI)
-        {
-            cellsFromCells[indexC++] = cellI();
-        }
-
         // Obtain the patch-point maps before resetting the mesh
         List<Map<label> > oldPatchPointMaps(numPatches_);
 
@@ -9644,24 +9295,6 @@ bool dynamicTopoFvMesh::update()
         {
             oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
         }
-
-        /*
-        // Obtain geometry information for mapping as well
-        cellCentresPtr_.set
-        (
-            new vectorField(polyMesh::cellCentres())
-        );
-
-        faceCentresPtr_.set
-        (
-            new vectorField(polyMesh::faceCentres())
-        );
-
-        pointPositionsPtr_.set
-        (
-            new vectorField(currentPoints)
-        );
-        */
 
         // Reset the mesh
         polyMesh::resetPrimitives
@@ -9813,13 +9446,6 @@ bool dynamicTopoFvMesh::update()
         // compute correct mesh-fluxes.
         movePoints(points);
 
-        /*
-        // Discard old information after mapping
-        pointPositionsPtr_.clear();
-        cellCentresPtr_.clear();
-        faceCentresPtr_.clear();
-        */
-
         // Print out the mesh bandwidth
         if (debug > 1)
         {
@@ -9853,13 +9479,6 @@ bool dynamicTopoFvMesh::update()
         addedPointZones_.clear();
         addedFaceZones_.clear();
         addedCellZones_.clear();
-
-        // pointParents_.clear();
-        // pointsFromPoints_.clear();
-        faceParents_.clear();
-        facesFromFaces_.clear();
-        cellParents_.clear();
-        cellsFromCells_.clear();
 
         // Clear the deleted entity map
         deletedPoints_.clear();

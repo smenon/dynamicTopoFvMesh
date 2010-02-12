@@ -175,9 +175,6 @@ class dynamicTopoFvMesh
         labelList       cellMap_;
 
         //- Maps for the renumbering of added entities
-        // Map<objectMap>  pointsFromPoints_;
-        Map<objectMap>  facesFromFaces_;
-        Map<objectMap>  cellsFromCells_;
         Map<label>      addedPointRenumbering_;
         Map<label>      addedEdgeRenumbering_;
         Map<label>      addedFaceRenumbering_;
@@ -187,20 +184,12 @@ class dynamicTopoFvMesh
         Map<label>      addedPointZones_;
         Map<label>      addedFaceZones_;
         Map<label>      addedCellZones_;
-        // Map<label>      pointParents_;
-        Map<label>      faceParents_;
-        Map<label>      cellParents_;
 
         //- Maps to keep track of entities deleted after addition
         labelHashSet    deletedPoints_;
         labelHashSet    deletedEdges_;
         labelHashSet    deletedFaces_;
         labelHashSet    deletedCells_;
-
-        // Geometry-fields for mapping
-        // autoPtr<vectorField> pointPositionsPtr_;
-        // autoPtr<vectorField> cellCentresPtr_;
-        // autoPtr<vectorField> faceCentresPtr_;
 
         //- Edge bisection/collapse criteria
         scalar                ratioMin_;
@@ -756,7 +745,7 @@ class dynamicTopoFvMesh
         (
             const cell& newCell,
             const labelList& mapCells,
-            const scalarList& mapWeights,
+            const scalarField& mapWeights,
             const scalar lengthScale,
             const label zoneID = -1
         );
@@ -783,6 +772,8 @@ class dynamicTopoFvMesh
             const face& newFace,
             const label newOwner,
             const label newNeighbour,
+            const labelList& mapCells = labelList(0),
+            const scalarField& mapWeights = scalarField(0),
             const label zoneID = -1
         );
 
@@ -1296,24 +1287,9 @@ public:
 
     // Member Functions
 
-        // Update the mesh for topology changes
-        // Return true if changes have occurred
+        // Update the mesh for motion / topology changes
+        // Return true if topology changes have occurred
         bool update();
-
-        // Map all fields in time using the given map.
-        // virtual void mapFields(const mapPolyMesh& mpm);
-
-        // Return the mesh-mapper
-        // const mapPolyMesh& meshMap() const;
-
-        // Return old cell-centre information (prior to a topology change)
-        // const vectorField& oldCellCentres() const;
-
-        // Return old face-centre information (prior to a topology change)
-        // const vectorField& oldFaceCentres() const;
-
-        // Return old face-centre information (prior to a topology change)
-        // const vectorField& oldPointPositions() const;
 };
 
 
