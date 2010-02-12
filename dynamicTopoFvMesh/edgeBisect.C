@@ -1718,10 +1718,26 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     // Before we bisect this edge, check whether the operation will
     // yield an acceptable cell-quality.
-    if (computeBisectionQuality(eIndex) < sliverThreshold_ && !forceOp)
+    scalar minQ = 0.0;
+
+    if ((minQ = computeBisectionQuality(eIndex)) < sliverThreshold_)
     {
-        map.type() = -2;
-        return map;
+        // Check if the quality is actually valid before forcing it.
+        if (forceOp && (minQ < 0.0))
+        {
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::bisectEdge()"
+            )
+                << " Forcing bisection on edge: " << eIndex
+                << " will yield an invalid cell."
+                << abort(FatalError);
+        }
+        else
+        {
+            map.type() = -2;
+            return map;
+        }
     }
 
     // Are we performing only checks?
@@ -1910,21 +1926,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             faces_[faceHull[indexI]]
         );
 
-        // Since the face is modified, compute a new value
-        // for swept-volume, and update the interpolator.
-        scalar modSweptVol = sweptVolume(faceHull[indexI]);
-
-        iPtr_->setMeshFlux(faceHull[indexI], modSweptVol);
-
-        if (debug > 2)
-        {
-            Info << "Modified swept volume for face: "
-                 << faceHull[indexI] << ": "
-                 << faces_[faceHull[indexI]] << ":: "
-                 << modSweptVol
-                 << endl;
-        }
-
         // Modify edgePoints for the edge
         replaceLabel
         (
@@ -1998,9 +1999,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = addedCellIndices[indexI];
-
-                    // Flip the flux as well.
-                    iPtr_->flipFaceFlux(replaceFace);
                 }
             }
             else
@@ -2538,10 +2536,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         scalar modOldVol = tetVolume(cellHull[indexI], true);
         scalar newOldVol = tetVolume(addedCellIndices[indexI], true);
 
-        // Set values in the interpolator.
-        iPtr_->setOldVolume(cellHull[indexI], modOldVol);
-        iPtr_->setOldVolume(addedCellIndices[indexI], newOldVol);
-
         if (modOldVol < 0.0 || newOldVol < 0.0)
         {
             FatalErrorIn
@@ -2553,10 +2547,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 << addedCellIndices[indexI] << ": " << newOldVol
                 << abort(FatalError);
         }
-
-        // Check space-conservation
-        checkSpaceConservation(cellHull[indexI]);
-        checkSpaceConservation(addedCellIndices[indexI]);
 
         if (debug > 2)
         {
@@ -3367,9 +3357,6 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 faces_[faceIndex] = faceToCheck.reverseFace();
                 owner_[faceIndex] = neighbour_[faceIndex];
                 neighbour_[faceIndex] = newIndex;
-
-                // Flip the flux as well.
-                iPtr_->flipFaceFlux(faceIndex);
             }
         }
         else
@@ -3990,9 +3977,6 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     faces_[faceIndex] = faceToCheck.reverseFace();
                     owner_[faceIndex] = neighbour_[faceIndex];
                     neighbour_[faceIndex] = newIndex;
-
-                    // Flip the flux as well.
-                    iPtr_->flipFaceFlux(faceIndex);
                 }
             }
             else

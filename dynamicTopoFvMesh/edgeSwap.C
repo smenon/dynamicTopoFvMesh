@@ -1078,9 +1078,6 @@ const changeMap dynamicTopoFvMesh::swap23
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
-
-                        // Flip the flux as well.
-                        iPtr_->flipFaceFlux(faceIndex);
                     }
                 }
                 else
@@ -1190,9 +1187,6 @@ const changeMap dynamicTopoFvMesh::swap23
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
-
-                        // Flip the flux as well.
-                        iPtr_->flipFaceFlux(faceIndex);
                     }
                 }
                 else
@@ -1270,9 +1264,6 @@ const changeMap dynamicTopoFvMesh::swap23
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[2];
-
-                        // Flip the flux as well.
-                        iPtr_->flipFaceFlux(faceIndex);
                     }
                 }
                 else
@@ -1353,20 +1344,6 @@ const changeMap dynamicTopoFvMesh::swap23
 
         // The temporary interior cell can have a negative value,
         // since this gets deleted during the swap sequence anyway.
-        if (newOldVol < 0.0 && cellI == 2)
-        {
-            newOldVol = VSMALL;
-        }
-
-        // Set values in the interpolator.
-        iPtr_->setOldVolume(newCellIndex[cellI], newOldVol);
-
-        // Check space-conservation
-        if (newOldVol > 0.0)
-        {
-            checkSpaceConservation(newCellIndex[cellI]);
-        }
-
         if (debug > 2)
         {
             Info << "Cell: " << newCellIndex[cellI]
@@ -1863,9 +1840,6 @@ const changeMap dynamicTopoFvMesh::swap32
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
-
-                        // Flip the flux as well.
-                        iPtr_->flipFaceFlux(faceIndex);
                     }
                 }
                 else
@@ -1937,9 +1911,6 @@ const changeMap dynamicTopoFvMesh::swap32
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
-
-                        // Flip the flux as well.
-                        iPtr_->flipFaceFlux(faceIndex);
                     }
                 }
                 else
@@ -2004,9 +1975,6 @@ const changeMap dynamicTopoFvMesh::swap32
         // Set the old-volume for this cell
         scalar newOldVol = tetVolume(newCellIndex[cellI], true);
 
-        // Set values in the interpolator.
-        iPtr_->setOldVolume(newCellIndex[cellI], newOldVol);
-
         if (newOldVol <= 0.0)
         {
             FatalErrorIn
@@ -2017,9 +1985,6 @@ const changeMap dynamicTopoFvMesh::swap32
                 << newCellIndex[cellI] << ": " << newOldVol
                 << abort(FatalError);
         }
-
-        // Check space-conservation
-        checkSpaceConservation(newCellIndex[cellI]);
 
         if (debug > 2)
         {

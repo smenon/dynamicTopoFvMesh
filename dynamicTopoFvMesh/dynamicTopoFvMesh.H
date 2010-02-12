@@ -176,7 +176,8 @@ class dynamicTopoFvMesh
 
         //- Maps for the renumbering of added entities
         // Map<objectMap>  pointsFromPoints_;
-        // Map<objectMap>  cellsFromCells_;
+        Map<objectMap>  facesFromFaces_;
+        Map<objectMap>  cellsFromCells_;
         Map<label>      addedPointRenumbering_;
         Map<label>      addedEdgeRenumbering_;
         Map<label>      addedFaceRenumbering_;
@@ -187,7 +188,8 @@ class dynamicTopoFvMesh
         Map<label>      addedFaceZones_;
         Map<label>      addedCellZones_;
         // Map<label>      pointParents_;
-        // Map<label>      cellParents_;
+        Map<label>      faceParents_;
+        Map<label>      cellParents_;
 
         //- Maps to keep track of entities deleted after addition
         labelHashSet    deletedPoints_;
@@ -417,9 +419,6 @@ class dynamicTopoFvMesh
 
         // Find the normal of a triangle face.
         inline vector triFaceNormal(const face& triFace) const;
-
-        // Find the volume swept by a new face
-        inline scalar sweptVolume(const label fIndex) const;
 
         // Given a face and cell index, find the apex point for a tet cell.
         inline label tetApexPoint
@@ -937,12 +936,6 @@ class dynamicTopoFvMesh
             const label checkIndex = 0
         ) const;
 
-        // Check whether the space-conservation law is satisfied
-        void checkSpaceConservation
-        (
-            const label cIndex
-        ) const;
-
         // Utility method to fill the dynamic programming tables
         bool fillTables
         (
@@ -1034,6 +1027,7 @@ class dynamicTopoFvMesh
         void reOrderPoints
         (
             pointField& points,
+            pointField& preMotionPoints,
             labelListList& pointZoneMap,
             bool threaded = false
         );
@@ -1083,6 +1077,7 @@ class dynamicTopoFvMesh
         void reOrderMesh
         (
             pointField& points,
+            pointField& preMotionPoints,
             edgeList& edges,
             faceList& faces,
             labelList& owner,
@@ -1098,6 +1093,7 @@ class dynamicTopoFvMesh
         void threadedMeshReOrdering
         (
             pointField& points,
+            pointField& preMotionPoints,
             edgeList& edges,
             faceList& faces,
             labelList& owner,

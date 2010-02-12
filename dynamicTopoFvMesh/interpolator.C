@@ -58,9 +58,8 @@ defineTypeNameAndDebug(interpolator,0);
 interpolator::interpolator(dynamicTopoFvMesh& mesh)
 :
     mesh_(mesh),
-    fieldsRegistered_(false),
-    meshPhiPtr_(NULL),
-    V0Ptr_(NULL)
+    fieldsRegistered_(true),
+    phiPtr_(NULL)
 {}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -74,8 +73,7 @@ interpolator::~interpolator()
 
 void interpolator::clearOut()
 {
-    deleteDemandDrivenData(meshPhiPtr_);
-    deleteDemandDrivenData(V0Ptr_);
+    deleteDemandDrivenData(phiPtr_);
 }
 
 //- Print out mapped fields
@@ -114,59 +112,33 @@ void interpolator::printFields() const
     }
 }
 
-void interpolator::makeMeshPhi() const
+void interpolator::makePhi() const
 {
     if (debug)
     {
-        Info << "void interpolator::makeMeshPhi() const : "
-             << "Assembling mesh fluxes"
+        Info << "void interpolator::makePhi() const : "
+             << "Assembling volume fluxes"
              << endl;
     }
 
     // It is an error to attempt to recalculate
     // if the pointer is already set
-    if (meshPhiPtr_)
+    if (phiPtr_)
     {
-        FatalErrorIn("interpolator::makeMeshPhi() const")
-            << "Mesh fluxes already exist"
+        FatalErrorIn("interpolator::makePhi() const")
+            << "Volume fluxes already exist"
             << abort(FatalError);
     }
 
-    meshPhiPtr_ = new resizableList<scalar>(mesh_.nFaces(), 0.0);
-}
-
-void interpolator::makeV0() const
-{
-    if (debug)
-    {
-        Info << "void interpolator::makeV0() const : "
-             << "Assembling old cell volumes"
-             << endl;
-    }
-
-    // It is an error to attempt to recalculate
-    // if the pointer is already set
-    if (V0Ptr_)
-    {
-        FatalErrorIn("interpolator::makeV0() const")
-            << "Old cell volumes already exist"
-            << abort(FatalError);
-    }
-
-    V0Ptr_ = new resizableList<scalar>(mesh_.nCells(), 0.0);
+    phiPtr_ = new resizableList<scalar>(mesh_.nFaces(), 0.0);
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Add a new face entry
-void interpolator::insertFace
-(
-    const scalar sweptVol
-)
+void interpolator::insertFace()
 {
-    scalar rDeltaT = 1.0/mesh_.time().deltaT().value();
-
-    (*meshPhiPtr_).append(rDeltaT*sweptVol);
+    // (*phiPtr_).append(0.0);
 }
 
 // Add a new cell entry.
@@ -176,61 +148,20 @@ void interpolator::insertCell
     const scalarList& mapWeights
 )
 {
-    // Append a null value, which will be set later
-    (*V0Ptr_).append(0.0);
-
     // Now loop through all volFields
     // registered for interpolation,
     // and map values for the new cell.
 
 }
 
-// Set the old-volume value for an existing cell
-void interpolator::setOldVolume
-(
-    const label cellIndex,
-    const scalar oldVolume
-)
-{
-    if (oldVolume < 0.0)
-    {
-        WarningIn("interpolator::setOldVolume()") << nl
-            << "Negative value prescribed for old-volume." << nl
-            << "  cellIndex: " << cellIndex << nl
-            << "  oldVolume: " << oldVolume << nl
-            << endl;
-    }
-
-    (*V0Ptr_)[cellIndex] = oldVolume;
-}
-
-// Set the mesh-flux for an existing face
-void interpolator::setMeshFlux
+// Set the volume-flux for an existing face
+void interpolator::setVolFlux
 (
     const label faceIndex,
-    const scalar sweptVol
+    const scalar volFlux
 )
 {
-    scalar rDeltaT = 1.0/mesh_.time().deltaT().value();
-
-    (*meshPhiPtr_)[faceIndex] = (rDeltaT*sweptVol);
-}
-
-// Get the mesh-flux for an existing face.
-scalar interpolator::getMeshFlux
-(
-    const label faceIndex
-) const
-{
-    return (*meshPhiPtr_)[faceIndex];
-}
-
-// Flip the face-flux for an existing face
-void interpolator::flipFaceFlux(const label faceIndex)
-{
-    (*meshPhiPtr_)[faceIndex] *= -1.0;
-
-    // Loop through registered surfaceScalarFields and flip fluxes.
+    // (*phiPtr_)[faceIndex] = volFlux;
 }
 
 // Register fields for interpolation
@@ -270,42 +201,15 @@ void interpolator::registerFields()
     else
     {
         // Register all fields from the registry.
-
+        FatalErrorIn("interpolator::registerFields()")
+            << " No mapFields entry found"
+            << " in the dynamicTopoFvMesh sub-dictionary." << nl
+            << " Mapping all registry fields is not currently available."
+            << abort(FatalError);
     }
 
     // Set the flag.
     fieldsRegistered_ = true;
-}
-
-// Update geometry for a repositioned mesh
-void interpolator::movePoints(const scalarField& sweptVols) const
-{
-    // Update mesh-fluxes from the mesh.
-    if (!meshPhiPtr_)
-    {
-        makeMeshPhi();
-    }
-
-    scalar rDeltaT = 1.0/mesh_.time().deltaT().value();
-
-    resizableList<scalar>& meshPhi = *meshPhiPtr_;
-
-    meshPhi = sweptVols;
-
-    forAll(meshPhi, faceI)
-    {
-        meshPhi[faceI] *= rDeltaT;
-    }
-
-    // Update old-volumes from the mesh.
-    if (!V0Ptr_)
-    {
-        makeV0();
-    }
-
-    resizableList<scalar>& V0 = *V0Ptr_;
-
-    V0 = mesh_.V0().field();
 }
 
 // Update fields after a topo-change operation
@@ -316,65 +220,31 @@ void interpolator::updateMesh(const mapPolyMesh& mpm)
         printFields();
     }
 
-    label nOldCells = mpm.nOldCells();
-    const labelList& reverseCellMap = mpm.reverseCellMap();
-    resizableList<scalar>& V0 = *V0Ptr_;
+    // Check if phi exists
+    bool foundPhi = mesh_.foundObject<surfaceScalarField>("phi");
 
-    // The setV0 member wipes out meshPhi, so this has to be done first.
-    DimensionedField<scalar, volMesh>& mapV0 = mesh_.setV0();
-
-    // Update old-volumes.
-    forAll(V0, cellI)
+    if (!foundPhi)
     {
-        if (cellI < nOldCells)
-        {
-            label newIndex = reverseCellMap[cellI];
-
-            if (newIndex < 0)
-            {
-                continue;
-            }
-
-            mapV0[newIndex] = V0[cellI];
-        }
-        else
-        {
-            if (mesh_.deletedCells_.found(cellI))
-            {
-                continue;
-            }
-
-            mapV0[mesh_.addedCellRenumbering_[cellI]] = V0[cellI];
-        }
+        return;
     }
 
     label nOldFaces = mpm.nOldFaces(), newIndex = -1;
     const labelList& reverseFaceMap = mpm.reverseFaceMap();
-    resizableList<scalar>& meshPhi = *meshPhiPtr_;
 
-    // Check if meshPhi was stored, and remove if it is,
-    // since sizes probably don't match after a topo-change.
-    scalar t0 = mesh_.time().value() - mesh_.time().deltaT().value();
+    // Obtain references
+    resizableList<scalar>& phi = *phiPtr_;
 
-    IOobject meshPhiHeader
+    // Fetch the volume-flux field from the registry.
+    surfaceScalarField& mapPhi =
     (
-        "meshPhi",
-        mesh_.time().timeName(t0),
-        mesh_,
-        IOobject::NO_READ
+        const_cast<surfaceScalarField&>
+        (
+            mesh_.lookupObject<surfaceScalarField>("phi")
+        )
     );
 
-    // Wipe it out
-    if (meshPhiHeader.headerOk())
-    {
-        rm(mesh_.time().path()/mesh_.time().timeName(t0)/"meshPhi");
-    }
-
-    // Set a new empty meshPhi.
-    surfaceScalarField& mapPhi = mesh_.setPhi();
-
     // Update mesh fluxes
-    forAll(meshPhi, faceI)
+    forAll(phi, faceI)
     {
         if (faceI < nOldFaces)
         {
@@ -403,13 +273,13 @@ void interpolator::updateMesh(const mapPolyMesh& mpm)
 
         if (patch == -1)
         {
-            mapPhi.internalField()[newIndex] = meshPhi[faceI];
+            mapPhi.internalField()[newIndex] = phi[faceI];
         }
         else
         {
             label i = mpm.mesh().boundaryMesh()[patch].whichFace(newIndex);
 
-            mapPhi.boundaryField()[patch][i] = meshPhi[faceI];
+            mapPhi.boundaryField()[patch][i] = phi[faceI];
         }
     }
 

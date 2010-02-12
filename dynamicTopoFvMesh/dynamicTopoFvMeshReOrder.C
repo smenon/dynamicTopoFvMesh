@@ -39,6 +39,7 @@ namespace Foam
 void dynamicTopoFvMesh::reOrderPoints
 (
     pointField& points,
+    pointField& preMotionPoints,
     labelListList& pointZoneMap,
     bool threaded
 )
@@ -74,6 +75,7 @@ void dynamicTopoFvMesh::reOrderPoints
 
         // Update the point info
         points[pointInOrder] = points_[pointI];
+        preMotionPoints[pointInOrder] = oldPoints_[pointI];
 
         // Update maps
         pointMap_[pointInOrder]  = pointI;
@@ -93,6 +95,7 @@ void dynamicTopoFvMesh::reOrderPoints
 
         // Update the point info
         points[pointInOrder] = points_[pointI];
+        preMotionPoints[pointInOrder] = oldPoints_[pointI];
 
         // Put inserted points in a seperate hashSet
         addedPointRenumbering_.insert(pointI, pointInOrder);
@@ -285,13 +288,18 @@ void dynamicTopoFvMesh::reOrderPointsThread
         *(reinterpret_cast<pointField*>(thread->operator()(0)))
     );
 
+    pointField& preMotionPoints =
+    (
+        *(reinterpret_cast<pointField*>(thread->operator()(1)))
+    );
+
     labelListList& pointZoneMap =
     (
-        *(reinterpret_cast<labelListList*>(thread->operator()(1)))
+        *(reinterpret_cast<labelListList*>(thread->operator()(2)))
     );
 
     // Reorder the points
-    mesh.reOrderPoints(points, pointZoneMap, true);
+    mesh.reOrderPoints(points, preMotionPoints, pointZoneMap, true);
 
     // Signal the calling thread
     thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
@@ -921,9 +929,6 @@ void dynamicTopoFvMesh::reOrderFaces
                 if (neighbourRenumber < ownerRenumber)
                 {
                     faceRenumber = faceRenumber.reverseFace();
-
-                    // Flip the flux as well.
-                    iPtr_->flipFaceFlux(curFaces[nextNei]);
                 }
 
                 // Insert entities into local lists...
@@ -1376,21 +1381,23 @@ void dynamicTopoFvMesh::reOrderCells
 
     // Loop through the cellsFromCells list, and renumber the map indices.
     // HashTable keys, however, are not altered.
-    /*
     forAllIter(Map<objectMap>, cellsFromCells_, cellI)
     {
         objectMap& thisMap = cellI();
 
+        label newIndex = -1;
+
         if (thisMap.index() < nOldCells_)
         {
-            thisMap.index() = reverseCellMap_[thisMap.index()];
+            newIndex = reverseCellMap_[thisMap.index()];
         }
         else
         {
-            thisMap.index() = addedCellRenumbering_[thisMap.index()];
+            newIndex = addedCellRenumbering_[thisMap.index()];
         }
+
+        thisMap.index() = newIndex;
     }
-    */
 
     // Prepare the cellZoneMap
     cellZoneMesh& cellZones = polyMesh::cellZones();
@@ -1502,6 +1509,7 @@ void dynamicTopoFvMesh::reOrderCellsThread
 void dynamicTopoFvMesh::reOrderMesh
 (
     pointField& points,
+    pointField& preMotionPoints,
     edgeList& edges,
     faceList& faces,
     labelList& owner,
@@ -1561,6 +1569,7 @@ void dynamicTopoFvMesh::reOrderMesh
         threadedMeshReOrdering
         (
             points,
+            preMotionPoints,
             edges,
             faces,
             owner,
@@ -1575,7 +1584,7 @@ void dynamicTopoFvMesh::reOrderMesh
     else
     {
         // Reorder the points
-        reOrderPoints(points, pointZoneMap);
+        reOrderPoints(points, preMotionPoints, pointZoneMap);
 
         // Reorder the cells
         reOrderCells(cellZoneMap);
@@ -1592,6 +1601,7 @@ void dynamicTopoFvMesh::reOrderMesh
 void dynamicTopoFvMesh::threadedMeshReOrdering
 (
     pointField& points,
+    pointField& preMotionPoints,
     edgeList& edges,
     faceList& faces,
     labelList& owner,
@@ -1605,7 +1615,8 @@ void dynamicTopoFvMesh::threadedMeshReOrdering
 {
     // Prepare pointers for point reOrdering
     reOrderPtr_[0].set(0, reinterpret_cast<void *>(&points));
-    reOrderPtr_[0].set(1, reinterpret_cast<void *>(&pointZoneMap));
+    reOrderPtr_[0].set(1, reinterpret_cast<void *>(&preMotionPoints));
+    reOrderPtr_[0].set(2, reinterpret_cast<void *>(&pointZoneMap));
 
     // Prepare pointers for edge reOrdering
     reOrderPtr_[1].set(0, reinterpret_cast<void *>(&edges));

@@ -2269,20 +2269,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 // Renumber the face...
                 faces_[rmvEdgeFaces[faceI]][replaceIndex] = replacePoint;
-
-                // Compute the swept volume, and assign to the interpolator.
-                scalar modSweptVol = sweptVolume(rmvEdgeFaces[faceI]);
-
-                iPtr_->setMeshFlux(rmvEdgeFaces[faceI], modSweptVol);
-
-                if (debug > 2)
-                {
-                    Info << "Modified swept volume for face: "
-                         << rmvEdgeFaces[faceI] << ": "
-                         << faces_[rmvEdgeFaces[faceI]] << ":: "
-                         << modSweptVol
-                         << endl;
-                }
             }
 
             // Hull faces should be removed for the replacement edge
@@ -2360,9 +2346,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = neighbour_[faceToRemove];
-
-                    // Flip the flux as well.
-                    iPtr_->flipFaceFlux(replaceFace);
                 }
                 else
                 {
@@ -2397,9 +2380,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     neighbour_[replaceFace] = owner_[replaceFace];
                     owner_[replaceFace] = owner_[faceToRemove];
-
-                    // Flip the flux as well.
-                    iPtr_->flipFaceFlux(replaceFace);
                 }
                 else
                 {
@@ -2573,20 +2553,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     // Renumber the face...
                     faces_[eFaces[faceI]][replaceIndex] = replacePoint;
 
-                    // Compute the swept volume, and assign to the interpolator.
-                    scalar modSweptVol = sweptVolume(eFaces[faceI]);
-
-                    iPtr_->setMeshFlux(eFaces[faceI], modSweptVol);
-
-                    if (debug > 2)
-                    {
-                        Info << "Modified swept volume for face: "
-                             << eFaces[faceI] << ": "
-                             << faces_[eFaces[faceI]] << ":: "
-                             << modSweptVol
-                             << endl;
-                    }
-
                     // Look for an edge on this face that doesn't
                     // contain collapsePoint or replacePoint.
                     label rplIndex = -1;
@@ -2626,11 +2592,16 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     {
         scalar modOldVol = tetVolume(cIter.key(), true);
 
-        // Set values in the interpolator.
-        iPtr_->setOldVolume(cIter.key(), modOldVol);
-
-        // Check space-conservation
-        checkSpaceConservation(cIter.key());
+        if (modOldVol < 0.0)
+        {
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::collapseEdge()"
+            )
+                << "Negative old-volumes encountered." << nl
+                << cIter.key() << ": " << modOldVol
+                << abort(FatalError);
+        }
 
         if (debug > 2)
         {

@@ -25,7 +25,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "processorPolyPatch.H"
-#include "triPointRef.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -222,67 +221,6 @@ inline vector dynamicTopoFvMesh::triFaceNormal
     vector w = points_[triFace[2]] - points_[triFace[0]];
 
     return 0.5 * (v ^ w);
-}
-
-inline scalar dynamicTopoFvMesh::sweptVolume
-(
-    const label fIndex
-) const
-{
-    point oldCentre = vector::zero, newCentre = vector::zero;
-
-    const face& thisFace = faces_[fIndex];
-
-    label nPoints = thisFace.size();
-
-    if (nPoints == 3)
-    {
-        newCentre = triFaceCentre(fIndex);
-        oldCentre = triFaceCentre(fIndex, true);
-    }
-    else
-    if (nPoints == 4)
-    {
-        newCentre = quadFaceCentre(fIndex);
-        oldCentre = quadFaceCentre(fIndex, true);
-    }
-    else
-    {
-        FatalErrorIn("dynamicTopoFvMesh::sweptVolume()")
-            << "Invalid face size: " << nPoints
-            << " given face: " << fIndex
-            << ": " << thisFace
-            << abort(FatalError);
-    }
-
-    scalar sweptVol = 0.0;
-    point nextOld = oldCentre, nextNew = newCentre;
-
-    register label pI;
-
-    for (pI = 0; pI < nPoints; pI++)
-    {
-        if (pI < nPoints - 1)
-        {
-            nextNew = points_[thisFace[pI + 1]];
-            nextOld = oldPoints_[thisFace[pI + 1]];
-        }
-        else
-        {
-            nextNew = points_[thisFace[0]];
-            nextOld = oldPoints_[thisFace[0]];
-        }
-
-        sweptVol +=
-        (
-            triPointRef(oldCentre, oldPoints_[thisFace[pI]], nextOld).sweptVol
-            (
-                triPointRef(newCentre, points_[thisFace[pI]], nextNew)
-            )
-        );
-    }
-
-    return sweptVol;
 }
 
 // Given a face and cell index, find the apex point for a tet cell.

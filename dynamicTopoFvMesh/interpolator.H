@@ -69,19 +69,13 @@ class interpolator
         //  fields have been registered
         bool fieldsRegistered_;
 
-        //- Mesh motion fluxes
-        mutable resizableList<scalar>* meshPhiPtr_;
-
-        //- Old cell volume field
-        mutable resizableList<scalar>* V0Ptr_;
+        //- Volume fluxes
+        mutable resizableList<scalar>* phiPtr_;
 
     // Private Member Functions
 
-        //- Make mesh motion fluxes
-        void makeMeshPhi() const;
-
-        //- Make old cell volumes
-        void makeV0() const;
+        //- Make volume fluxes
+        void makePhi() const;
 
         //- Clear out data
         void clearOut();
@@ -106,10 +100,7 @@ public:
     // Member Functions
 
         // Add a new face entry
-        void insertFace
-        (
-            const scalar sweptVol
-        );
+        void insertFace();
 
         // Add a new cell entry
         void insertCell
@@ -118,31 +109,15 @@ public:
             const scalarList& mapWeights
         );
 
-        // Set the old-volume value for an existing cell
-        void setOldVolume
-        (
-            const label cellIndex,
-            const scalar oldVolume
-        );
-
-        // Set the mesh-flux for an existing face
-        void setMeshFlux
+        // Set the volume-flux for an existing face
+        void setVolFlux
         (
             const label faceIndex,
-            const scalar sweptVol
+            const scalar volFlux
         );
-
-        // Get the mesh-flux for an existing face.
-        scalar getMeshFlux(const label faceIndex) const;
-
-        // Flip the face-flux for an existing face
-        void flipFaceFlux(const label faceIndex);
 
         // Register fields for interpolation
         void registerFields();
-
-        // Update geometry for a repositioned mesh
-        void movePoints(const scalarField& sweptVols) const;
 
         // Update fields after a topo-change operation
         void updateMesh(const mapPolyMesh& mpm);

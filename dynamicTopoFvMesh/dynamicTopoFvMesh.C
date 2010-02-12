@@ -808,52 +808,59 @@ label dynamicTopoFvMesh::insertCell
         lengthScale_.append(lengthScale);
     }
 
+    /*
     if (iPtr_.valid())
     {
         iPtr_->insertCell(mapCells, mapWeights);
     }
+    */
 
-    /*
     // Generate mapping information for this new cell
-    const labelListList& cc = cellCells();
+    // const labelListList& cc = cellCells();
 
-    label parent;
-    labelHashSet masterObjects;
-
-    if (mappingCell < nOldCells_)
+    forAll(mapCells, cellI)
     {
-        parent = mappingCell;
-    }
-    else
-    {
-        parent = cellParents_[mappingCell];
-    }
+        label mappingCell = mapCells[cellI];
 
-    // Insert the parent cell
-    cellParents_.insert(newCellIndex, parent);
+        label parent;
+        labelHashSet masterObjects;
 
-    // Find the cell's neighbours in the old mesh
-    masterObjects.insert(parent);
-
-    forAll(cc[parent], cellI)
-    {
-        if (!masterObjects.found(cc[parent][cellI]))
+        if (mappingCell < nOldCells_)
         {
-            masterObjects.insert(cc[parent][cellI]);
+            parent = mappingCell;
         }
-    }
+        else
+        {
+            parent = cellParents_[mappingCell];
+        }
 
-    // Insert mapping info into the HashTable
-    cellsFromCells_.insert
-    (
-        newCellIndex,
-        objectMap
+        // Insert the parent cell
+        cellParents_.insert(newCellIndex, parent);
+
+        // Find the cell's neighbours in the old mesh
+        masterObjects.insert(parent);
+
+        /*
+        forAll(cc[parent], cellI)
+        {
+            if (!masterObjects.found(cc[parent][cellI]))
+            {
+                masterObjects.insert(cc[parent][cellI]);
+            }
+        }
+        */
+
+        // Insert mapping info into the HashTable
+        cellsFromCells_.insert
         (
             newCellIndex,
-            masterObjects.toc()
-        )
-    );
-    */
+            objectMap
+            (
+                newCellIndex,
+                masterObjects.toc()
+            )
+        );
+    }
 
     // Add to the zone if necessary
     if (zoneID >= 0)
@@ -900,13 +907,11 @@ void dynamicTopoFvMesh::removeCell
         deletedCells_.insert(cIndex);
     }
 
-    /*
     // Check if the cell was added in the current morph, and delete
     if (cellsFromCells_.found(cIndex))
     {
         cellsFromCells_.erase(cIndex);
     }
-    */
 
     // Check if this cell was added to a zone
     if (addedCellZones_.found(cIndex))
@@ -934,9 +939,6 @@ label dynamicTopoFvMesh::insertFace
     owner_.append(newOwner);
     neighbour_.append(newNeighbour);
 
-    // Compute the volume swept-out by this face.
-    scalar sweptVol = sweptVolume(newFaceIndex);
-
     if (debug > 2)
     {
         Info << "Inserting face: "
@@ -953,13 +955,11 @@ label dynamicTopoFvMesh::insertFace
         {
             Info << boundaryMesh()[patch].name();
         }
-
-        Info << " [Swept volume]: " << sweptVol << endl;
     }
 
     if (iPtr_.valid())
     {
-        iPtr_->insertFace(sweptVol);
+        iPtr_->insertFace();
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -2344,70 +2344,6 @@ bool dynamicTopoFvMesh::checkQuality
     }
 
     return myResult;
-}
-
-// Check whether the space-conservation law is satisfied
-void dynamicTopoFvMesh::checkSpaceConservation
-(
-    const label cIndex
-) const
-{
-    scalar dt = time().deltaT().value();
-
-    scalar V = tetVolume(cIndex);
-    scalar V0 = tetVolume(cIndex, true);
-
-    scalar volChange = (1.0 - V0/V)/dt;
-
-    const cell& cFaces = cells_[cIndex];
-
-    scalar divFlux = 0.0;
-
-    forAll(cFaces, faceI)
-    {
-        if (owner_[cFaces[faceI]] == cIndex)
-        {
-            divFlux += iPtr_->getMeshFlux(cFaces[faceI]);
-        }
-        else
-        {
-            divFlux -= iPtr_->getMeshFlux(cFaces[faceI]);
-        }
-    }
-
-    divFlux /= V;
-
-    scalar error = (volChange - divFlux);
-
-    if (mag(error) > 1e-8)
-    {
-        Info << endl;
-        Info << "volChange: " << volChange << endl;
-        Info << "V: " << V << endl;
-        Info << "V0: " << V0 << endl;
-        Info << "dt: " << dt << endl;
-        Info << "(V - V0)/dt: " << (V - V0)/dt << endl;
-
-        Info << nl << "Mesh fluxes: " << endl;
-
-        forAll(cFaces, faceI)
-        {
-            Info << "\t" << cFaces[faceI] << "::"
-                 << " owner: " << owner_[cFaces[faceI]]
-                 << " neighbour: " << neighbour_[cFaces[faceI]]
-                 << " flux:" << iPtr_->getMeshFlux(cFaces[faceI])
-                 << endl;
-        }
-
-        SeriousErrorIn
-        (
-            "dynamicTopoFvMesh::checkSpaceConservation()"
-        )
-            << "Cell: " << cIndex << ": " << cFaces
-            << " does not satisfy the SCL within tolerance." << nl
-            << "Error: " << error
-            << endl;
-    }
 }
 
 // Utility method to fill the dynamic programming tables
@@ -6321,9 +6257,9 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
 
         // Set argument sizes for individual members
 
-        // Points take two arguments
-        // (One pointField and one labelListList)
-        reOrderPtr_[0].setSize(2);
+        // Points take three arguments
+        // (Two pointFields and one labelListList)
+        reOrderPtr_[0].setSize(3);
 
         // Edges take three arguments
         // (One edgeList and two labelListLists)
@@ -7961,8 +7897,8 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
     const label eIndex
 ) const
 {
-    scalar minQuality = GREAT;
-    scalar cQuality = 0.0;
+    scalar minQuality = GREAT, minVolume = GREAT;
+    scalar cQuality = 0.0, oldVolume = 0.0;
 
     // Obtain a reference to this edge and corresponding edgePoints
     const edge& edgeToCheck = edges_[eIndex];
@@ -7972,8 +7908,12 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
     const point& a = points_[edgeToCheck[0]];
     const point& c = points_[edgeToCheck[1]];
 
+    const point& aOld = oldPoints_[edgeToCheck[0]];
+    const point& cOld = oldPoints_[edgeToCheck[1]];
+
     // Compute the mid-point of the edge
     point midPoint = 0.5*(a + c);
+    point oldPoint = 0.5*(aOld + cOld);
 
     if (whichEdgePatch(eIndex) < 0)
     {
@@ -7986,17 +7926,28 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             const point& b = points_[hullVertices[prevIndex]];
             const point& d = points_[hullVertices[indexI]];
 
+            const point& bOld = oldPoints_[hullVertices[prevIndex]];
+            const point& dOld = oldPoints_[hullVertices[indexI]];
+
             // Compute the quality of the upper half.
             cQuality = (*tetMetric_)(a, b, midPoint, d);
 
-            // Check if the quality is worse
+            // Compute old volume of the upper half.
+            oldVolume = tetVolume(aOld, bOld, oldPoint, dOld);
+
+            // Check if the volume / quality is worse
             minQuality = Foam::min(cQuality, minQuality);
+            minVolume = Foam::min(oldVolume, minVolume);
 
             // Compute the quality of the lower half.
             cQuality = (*tetMetric_)(midPoint, b, c, d);
 
+            // Compute old volume of the lower half.
+            oldVolume = tetVolume(oldPoint, bOld, cOld, dOld);
+
             // Check if the quality is worse
             minQuality = Foam::min(cQuality, minQuality);
+            minVolume = Foam::min(oldVolume, minVolume);
         }
     }
     else
@@ -8008,17 +7959,28 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             const point& b = points_[hullVertices[indexI-1]];
             const point& d = points_[hullVertices[indexI]];
 
+            const point& bOld = oldPoints_[hullVertices[indexI-1]];
+            const point& dOld = oldPoints_[hullVertices[indexI]];
+
             // Compute the quality of the upper half.
             cQuality = (*tetMetric_)(a, b, midPoint, d);
 
+            // Compute old volume of the upper half.
+            oldVolume = tetVolume(aOld, bOld, oldPoint, dOld);
+
             // Check if the quality is worse
             minQuality = Foam::min(cQuality, minQuality);
+            minVolume = Foam::min(oldVolume, minVolume);
 
             // Compute the quality of the lower half.
             cQuality = (*tetMetric_)(midPoint, b, c, d);
 
+            // Compute old volume of the lower half.
+            oldVolume = tetVolume(oldPoint, bOld, cOld, dOld);
+
             // Check if the quality is worse
             minQuality = Foam::min(cQuality, minQuality);
+            minVolume = Foam::min(oldVolume, minVolume);
         }
     }
 
@@ -8059,6 +8021,13 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
                 << "Mid point: " << midPoint
                 << endl;
         }
+    }
+
+    // If a negative old-volume was encountered,
+    // return an invalid quality.
+    if (minVolume < 0.0)
+    {
+        return minVolume;
     }
 
     return minQuality;
@@ -9509,14 +9478,7 @@ bool dynamicTopoFvMesh::update()
     // Invoke mesh-motion solver and move points
     if (mPtr_.valid())
     {
-        // Obtain new points
-        tmp<vectorField> tNewPoints = mPtr_->newPoints();
-
-        // Move the base-mesh points
-        tmp<scalarField> tSweptVols = movePoints(tNewPoints);
-
-        // Update the interpolator.
-        iPtr_->movePoints(tSweptVols);
+        movePoints(mPtr_->newPoints());
     }
 
     // Register all necessary fields with the interpolator.
@@ -9600,6 +9562,7 @@ bool dynamicTopoFvMesh::update()
 
         // Allocate temporary lists for mesh-reset
         pointField points(nPoints_);
+        pointField preMotionPoints(nPoints_);
         edgeList edges(nEdges_);
         faceList faces(nFaces_);
         labelList owner(nFaces_);
@@ -9617,13 +9580,12 @@ bool dynamicTopoFvMesh::update()
         List<objectMap> pointsFromPoints(0); // pointsFromPoints_.size());
         List<objectMap> facesFromPoints(0);
         List<objectMap> facesFromEdges(0);
-        List<objectMap> facesFromFaces(0);
+        List<objectMap> facesFromFaces(facesFromFaces_.size());
         List<objectMap> cellsFromPoints(0);
         List<objectMap> cellsFromEdges(0);
         List<objectMap> cellsFromFaces(0);
-        List<objectMap> cellsFromCells(0); // cellsFromCells_.size()
+        List<objectMap> cellsFromCells(cellsFromCells_.size());
         labelHashSet flipFaceFlux;
-        pointField preMotionPoints(0);
 
         // Obtain faceZone point maps before reordering
         List<Map<label> > oldFaceZonePointMaps(faceZones.size());
@@ -9637,6 +9599,7 @@ bool dynamicTopoFvMesh::update()
         reOrderMesh
         (
             points,
+            preMotionPoints,
             edges,
             faces,
             owner,
@@ -9656,6 +9619,15 @@ bool dynamicTopoFvMesh::update()
         {
             pointsFromPoints[indexI++] = pointI();
         }
+        */
+
+        // Copy face-mapping information
+        label indexF = 0;
+
+        forAllIter(Map<objectMap>, facesFromFaces_, faceI)
+        {
+            facesFromFaces[indexF++] = faceI();
+        }
 
         // Copy cell-mapping information
         label indexC = 0;
@@ -9664,7 +9636,6 @@ bool dynamicTopoFvMesh::update()
         {
             cellsFromCells[indexC++] = cellI();
         }
-        */
 
         // Obtain the patch-point maps before resetting the mesh
         List<Map<label> > oldPatchPointMaps(numPatches_);
@@ -9826,11 +9797,21 @@ bool dynamicTopoFvMesh::update()
             mPtr_->updateMesh(mapper_);
         }
 
-        // Update interpolated old-volumes / mesh-fluxes
+        // Update interpolated fluxes
         if (iPtr_.valid())
         {
             iPtr_->updateMesh(mapper_);
         }
+
+        // Move the mesh to the old-position, and reset
+        // old-volumes / mesh-fluxes.
+        movePoints(mapper_->preMotionPoints());
+        resetMotion();
+        setV0();
+
+        // Now move back to new points and
+        // compute correct mesh-fluxes.
+        movePoints(points);
 
         /*
         // Discard old information after mapping
@@ -9872,10 +9853,13 @@ bool dynamicTopoFvMesh::update()
         addedPointZones_.clear();
         addedFaceZones_.clear();
         addedCellZones_.clear();
-        // cellsFromCells_.clear();
-        // pointsFromPoints_.clear();
-        // cellParents_.clear();
+
         // pointParents_.clear();
+        // pointsFromPoints_.clear();
+        faceParents_.clear();
+        facesFromFaces_.clear();
+        cellParents_.clear();
+        cellsFromCells_.clear();
 
         // Clear the deleted entity map
         deletedPoints_.clear();
