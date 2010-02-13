@@ -1999,6 +1999,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = addedCellIndices[indexI];
+
+                    iPtr_->setFlip(replaceFace);
                 }
             }
             else
@@ -3357,6 +3359,8 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 faces_[faceIndex] = faceToCheck.reverseFace();
                 owner_[faceIndex] = neighbour_[faceIndex];
                 neighbour_[faceIndex] = newIndex;
+
+                iPtr_->setFlip(faceIndex);
             }
         }
         else
@@ -3977,6 +3981,8 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     faces_[faceIndex] = faceToCheck.reverseFace();
                     owner_[faceIndex] = neighbour_[faceIndex];
                     neighbour_[faceIndex] = newIndex;
+
+                    iPtr_->setFlip(faceIndex);
                 }
             }
             else

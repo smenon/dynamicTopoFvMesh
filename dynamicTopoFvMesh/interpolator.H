@@ -47,7 +47,7 @@ SourceFiles
 #include "Map.H"
 #include "fieldTypes.H"
 #include "scalarField.H"
-#include "resizableList.H"
+#include "labelHashSet.H"
 
 namespace Foam
 {
@@ -83,6 +83,8 @@ class interpolator
         HashTable<Map<sphericalTensor> > surfSphericalTensorMap_;
         HashTable<Map<symmTensor> >      surfSymmTensorMap_;
         HashTable<Map<tensor> >          surfTensorMap_;
+
+        labelHashSet flipFaces_;
 
     // Private Member Functions
 
@@ -134,6 +136,17 @@ public:
             const label faceIndex,
             const scalar facePhi
         );
+
+        // Interpolate flux for an existing face
+        void interpolatePhi
+        (
+            const label cellIndex,
+            const label faceIndex,
+            const vector& Sf
+        );
+
+        // Set a particular face index as flipped.
+        void setFlip(const label fIndex);
 
         // Register fields for interpolation
         void registerFields();

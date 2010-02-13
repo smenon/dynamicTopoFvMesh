@@ -869,6 +869,30 @@ label dynamicTopoFvMesh::insertFace
     if (iPtr_.valid())
     {
         iPtr_->insertFace(patch, newFaceIndex, mapFaces, mapWeights);
+
+        // If no addressing is provided, map flux from owner.
+        if (mapFaces.empty())
+        {
+            vector Sf = vector::zero;
+
+            if (newFace.size() == 3)
+            {
+                Sf = triFaceNormal(newFace);
+            }
+            else
+            if (newFace.size() == 4)
+            {
+                Sf = quadFaceNormal(newFace);
+            }
+            else
+            {
+                FatalErrorIn("dynamicTopoFvMesh::insertFace()")
+                    << nl << " Invalid face: " << newFace
+                    << abort(FatalError);
+            }
+
+            iPtr_->interpolatePhi(newOwner, newFaceIndex, Sf);
+        }
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -1176,6 +1200,11 @@ void dynamicTopoFvMesh::removeFace
     if (addedFaceZones_.found(fIndex))
     {
         addedFaceZones_.erase(fIndex);
+    }
+
+    if (iPtr_.valid())
+    {
+        iPtr_->removeFace(fIndex);
     }
 
     // Decrement the total face-count

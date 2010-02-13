@@ -40,8 +40,15 @@ Author
     {                                                                      \
         type mapVal = pTraits<type>::zero;                                 \
                                                                            \
+        if (dynamicTopoFvMesh::debug > 3)                                  \
+        {                                                                  \
+            Info << nl << "Mapping: " << hIter.key() << endl;              \
+        }                                                                  \
+                                                                           \
         forAll(mapCells, cellI)                                            \
         {                                                                  \
+            type oVal = pTraits<type>::zero;                               \
+                                                                           \
             if                                                             \
             (                                                              \
                 (mapCells[cellI] < nOldCells) &&                           \
@@ -53,27 +60,44 @@ Author
                     mesh_.lookupObject<vol##capsType##Field>(hIter.key())  \
                 );                                                         \
                                                                            \
-                mapVal +=                                                  \
-                (                                                          \
-                    mapWeights[cellI]*oF.internalField()[mapCells[cellI]]  \
-                );                                                         \
+                oVal = oF.internalField()[mapCells[cellI]];                \
             }                                                              \
             else                                                           \
             {                                                              \
-                mapVal += (mapWeights[cellI]*hIter()[mapCells[cellI]]);    \
+                oVal = hIter()[mapCells[cellI]];                           \
             }                                                              \
+                                                                           \
+            if (dynamicTopoFvMesh::debug > 3)                              \
+            {                                                              \
+                Info << "\tCell:" << mapCells[cellI]                       \
+                     << " Value: " << oVal << endl;                        \
+            }                                                              \
+                                                                           \
+            mapVal += (mapWeights[cellI]*oVal);                            \
+        }                                                                  \
+                                                                           \
+        if (dynamicTopoFvMesh::debug > 3)                                  \
+        {                                                                  \
+            Info << "\tNew value: " << mapVal << endl;                     \
         }                                                                  \
                                                                            \
         hIter().set(newCellIndex, mapVal);                                 \
     }
 
 #define mapBoundaryFace(type, capsType)                                    \
-    forAllIter(HashTable<Map<type> >, vol##capsType##Map_, hIter)          \
+    forAllIter(HashTable<Map<type> >, surf##capsType##Map_, hIter)         \
     {                                                                      \
         type mapVal = pTraits<type>::zero;                                 \
                                                                            \
+        if (dynamicTopoFvMesh::debug > 3)                                  \
+        {                                                                  \
+            Info << nl << "Mapping: " << hIter.key() << endl;              \
+        }                                                                  \
+                                                                           \
         forAll(mapFaces, faceI)                                            \
         {                                                                  \
+            type oVal = pTraits<type>::zero;                               \
+                                                                           \
             if                                                             \
             (                                                              \
                 (mapFaces[faceI] < nOldFaces) &&                           \
@@ -97,15 +121,25 @@ Author
                                                                            \
                 label i = boundary[oPatch].whichFace(mapFaces[faceI]);     \
                                                                            \
-                mapVal +=                                                  \
-                (                                                          \
-                    mapWeights[faceI]*oF.boundaryField()[oPatch][i]        \
-                );                                                         \
+                oVal = oF.boundaryField()[oPatch][i];                      \
             }                                                              \
             else                                                           \
             {                                                              \
-                mapVal += (mapWeights[faceI]*hIter()[mapFaces[faceI]]);    \
+                oVal = hIter()[mapFaces[faceI]];                           \
             }                                                              \
+                                                                           \
+            if (dynamicTopoFvMesh::debug > 3)                              \
+            {                                                              \
+                Info << "\tFace:" << mapFaces[faceI]                       \
+                     << " Value: " << oVal << endl;                        \
+            }                                                              \
+                                                                           \
+            mapVal += (mapWeights[faceI]*oVal);                            \
+        }                                                                  \
+                                                                           \
+        if (dynamicTopoFvMesh::debug > 3)                                  \
+        {                                                                  \
+            Info << "\tNew value: " << mapVal << endl;                     \
         }                                                                  \
                                                                            \
         hIter().set(newFaceIndex, mapVal);                                 \
@@ -116,8 +150,20 @@ Author
     {                                                                      \
         type mapVal = pTraits<type>::zero;                                 \
                                                                            \
+        if (vol##capsType##Map_.found(hIter.key()))                        \
+        {                                                                  \
+            continue;                                                      \
+        }                                                                  \
+                                                                           \
+        if (dynamicTopoFvMesh::debug > 3)                                  \
+        {                                                                  \
+            Info << nl << "Mapping: " << hIter.key() << endl;              \
+        }                                                                  \
+                                                                           \
         forAll(mapFaces, faceI)                                            \
         {                                                                  \
+            type oVal = pTraits<type>::zero;                               \
+                                                                           \
             if                                                             \
             (                                                              \
                 (mapFaces[faceI] < nOldFaces) &&                           \
@@ -144,13 +190,7 @@ Author
                             << abort(FatalError);                          \
                     }                                                      \
                                                                            \
-                    mapVal +=                                              \
-                    (                                                      \
-                        mapWeights[faceI] *                                \
-                        (                                                  \
-                            oF.internalField()[mapFaces[faceI]]            \
-                        )                                                  \
-                    );                                                     \
+                    oVal = oF.internalField()[mapFaces[faceI]];            \
                 }                                                          \
                 else                                                       \
                 {                                                          \
@@ -164,16 +204,26 @@ Author
                                                                            \
                     label i = boundary[oPatch].whichFace(mapFaces[faceI]); \
                                                                            \
-                    mapVal +=                                              \
-                    (                                                      \
-                        mapWeights[faceI]*oF.boundaryField()[oPatch][i]    \
-                    );                                                     \
+                    oVal = oF.boundaryField()[oPatch][i];                  \
                 }                                                          \
             }                                                              \
             else                                                           \
             {                                                              \
-                mapVal += (mapWeights[faceI]*hIter()[mapFaces[faceI]]);    \
+                oVal = hIter()[mapFaces[faceI]];                           \
             }                                                              \
+                                                                           \
+            if (dynamicTopoFvMesh::debug > 3)                              \
+            {                                                              \
+                Info << "\tFace:" << mapFaces[faceI]                       \
+                     << " Value: " << oVal << endl;                        \
+            }                                                              \
+                                                                           \
+            mapVal += (mapWeights[faceI]*oVal);                            \
+        }                                                                  \
+                                                                           \
+        if (dynamicTopoFvMesh::debug > 3)                                  \
+        {                                                                  \
+            Info << "\tNew value: " << mapVal << endl;                     \
         }                                                                  \
                                                                            \
         hIter().set(newFaceIndex, mapVal);                                 \
@@ -187,7 +237,7 @@ Author
                                                                            \
     forAllIter(HashTable<const vol##capsType##Field*>, v##type##f, fIter)  \
     {                                                                      \
-        if (debug)                                                         \
+        if (dynamicTopoFvMesh::debug)                                      \
         {                                                                  \
             Info << "Registering: " << fIter()->name() << endl;            \
         }                                                                  \
@@ -204,7 +254,7 @@ Author
                                                                            \
     forAllIter(HashTable<const surface##capsType##Field*>, s##type##f, f)  \
     {                                                                      \
-        if (debug)                                                         \
+        if (dynamicTopoFvMesh::debug)                                      \
         {                                                                  \
             Info << "Registering: " << f()->name() << endl;                \
         }                                                                  \
@@ -231,5 +281,158 @@ Author
     {                                                                      \
         hIter().clear();                                                   \
     }                                                                      \
+
+#define fillVolumeMaps(type, capsType)                                     \
+    forAllIter(HashTable<Map<type> >, vol##capsType##Map_, hIter)          \
+    {                                                                      \
+        vol##capsType##Field& vf =                                         \
+        (                                                                  \
+            const_cast<vol##capsType##Field&>                              \
+            (                                                              \
+                mesh_.lookupObject<vol##capsType##Field>(hIter.key())      \
+            )                                                              \
+        );                                                                 \
+                                                                           \
+        if (dynamicTopoFvMesh::debug > 2)                                  \
+        {                                                                  \
+            Info << nl << "Updating: " << hIter.key() << endl;             \
+        }                                                                  \
+                                                                           \
+        const labelList& reverseMap = mpm.reverseCellMap();                \
+                                                                           \
+        forAllConstIter(Map<type>, hIter(), mIter)                         \
+        {                                                                  \
+            label newIndex = -1;                                           \
+                                                                           \
+            if (mIter.key() < mpm.nOldCells())                             \
+            {                                                              \
+                newIndex = reverseMap[mIter.key()];                        \
+            }                                                              \
+            else                                                           \
+            {                                                              \
+                newIndex = mesh_.addedCellRenumbering_[mIter.key()];       \
+            }                                                              \
+                                                                           \
+            vf.internalField()[newIndex] = mIter();                        \
+        }                                                                  \
+    }
+
+#define fillBoundaryMaps(type, capsType)                                   \
+    forAllIter(HashTable<Map<type> >, surf##capsType##Map_, hIter)         \
+    {                                                                      \
+        bool found =                                                       \
+        (                                                                  \
+            mesh_.foundObject<vol##capsType##Field>(hIter.key())           \
+        );                                                                 \
+                                                                           \
+        if (!found)                                                        \
+        {                                                                  \
+            continue;                                                      \
+        }                                                                  \
+                                                                           \
+        if (dynamicTopoFvMesh::debug > 2)                                  \
+        {                                                                  \
+            Info << nl << "Updating: " << hIter.key() << endl;             \
+        }                                                                  \
+                                                                           \
+        vol##capsType##Field& vf =                                         \
+        (                                                                  \
+            const_cast<vol##capsType##Field&>                              \
+            (                                                              \
+                mesh_.lookupObject<vol##capsType##Field>(hIter.key())      \
+            )                                                              \
+        );                                                                 \
+                                                                           \
+        const labelList& reverseMap = mpm.reverseFaceMap();                \
+                                                                           \
+        forAllConstIter(Map<type>, hIter(), mIter)                         \
+        {                                                                  \
+            label newIndex = -1;                                           \
+                                                                           \
+            if (mIter.key() < mpm.nOldFaces())                             \
+            {                                                              \
+                newIndex = reverseMap[mIter.key()];                        \
+            }                                                              \
+            else                                                           \
+            {                                                              \
+                newIndex = mesh_.addedFaceRenumbering_[mIter.key()];       \
+            }                                                              \
+                                                                           \
+            label patch = boundary.whichPatch(newIndex);                   \
+                                                                           \
+            if (patch == -1)                                               \
+            {                                                              \
+                FatalErrorIn("interpolator::updateMesh()")                 \
+                    << nl                                                  \
+                    << " Encountered an internal face"                     \
+                    << " when mapping for the boundary." << nl             \
+                    << " faceIndex: " << mIter.key() << nl                 \
+                    << " newIndex: " << newIndex << nl                     \
+                    << abort(FatalError);                                  \
+            }                                                              \
+            else                                                           \
+            {                                                              \
+                label i = boundary[patch].whichFace(newIndex);             \
+                                                                           \
+                vf.boundaryField()[patch][i] = mIter();                    \
+            }                                                              \
+        }                                                                  \
+    }
+
+#define fillSurfaceMaps(type, capsType)                                    \
+    forAllIter(HashTable<Map<type> >, surf##capsType##Map_, hIter)         \
+    {                                                                      \
+        bool found =                                                       \
+        (                                                                  \
+            mesh_.foundObject<surface##capsType##Field>(hIter.key())       \
+        );                                                                 \
+                                                                           \
+        if (!found)                                                        \
+        {                                                                  \
+            continue;                                                      \
+        }                                                                  \
+                                                                           \
+        if (dynamicTopoFvMesh::debug > 2)                                  \
+        {                                                                  \
+            Info << nl << "Updating: " << hIter.key() << endl;             \
+        }                                                                  \
+                                                                           \
+        surface##capsType##Field& sf =                                     \
+        (                                                                  \
+            const_cast<surface##capsType##Field&>                          \
+            (                                                              \
+                mesh_.lookupObject<surface##capsType##Field>(hIter.key())  \
+            )                                                              \
+        );                                                                 \
+                                                                           \
+        const labelList& reverseMap = mpm.reverseFaceMap();                \
+                                                                           \
+        forAllConstIter(Map<type>, hIter(), mIter)                         \
+        {                                                                  \
+            label newIndex = -1;                                           \
+                                                                           \
+            if (mIter.key() < mpm.nOldFaces())                             \
+            {                                                              \
+                newIndex = reverseMap[mIter.key()];                        \
+            }                                                              \
+            else                                                           \
+            {                                                              \
+                newIndex = mesh_.addedFaceRenumbering_[mIter.key()];       \
+            }                                                              \
+                                                                           \
+            label patch = boundary.whichPatch(newIndex);                   \
+                                                                           \
+            if (patch == -1)                                               \
+            {                                                              \
+                sf.internalField()[newIndex] = mIter();                    \
+            }                                                              \
+            else                                                           \
+            {                                                              \
+                label i = boundary[patch].whichFace(newIndex);             \
+                                                                           \
+                sf.boundaryField()[patch][i] = mIter();                    \
+            }                                                              \
+        }                                                                  \
+    }
 
 // ************************************************************************* //

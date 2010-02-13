@@ -51,7 +51,7 @@ namespace Foam
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-defineTypeNameAndDebug(interpolator,1);
+defineTypeNameAndDebug(interpolator,0);
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -80,6 +80,8 @@ void interpolator::clearOut()
     clearInterpolationMaps(sphericalTensor, SphericalTensor);
     clearInterpolationMaps(symmTensor, SymmTensor);
     clearInterpolationMaps(tensor, Tensor);
+
+    flipFaces_.clear();
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -132,6 +134,11 @@ void interpolator::removeFace
     removeEntity(sphericalTensor, surfSphericalTensor);
     removeEntity(symmTensor, surfSymmTensor);
     removeEntity(tensor, surfTensor);
+
+    if (flipFaces_.found(index))
+    {
+        flipFaces_.erase(index);
+    }
 }
 
 // Add a new cell entry.
@@ -175,7 +182,97 @@ void interpolator::setPhi
     const scalar facePhi
 )
 {
+    // Check surfScalarMaps for an entry named 'phi'.
+    // If it exists, make an entry (or over-write, if necessary).
+    word phiName("phi");
 
+    if (surfScalarMap_.found(phiName))
+    {
+        surfScalarMap_[phiName].set(faceIndex, facePhi);
+    }
+}
+
+// Interpolate flux for an existing face
+void interpolator::interpolatePhi
+(
+    const label cellIndex,
+    const label faceIndex,
+    const vector& Sf
+)
+{
+    vector U = vector::zero;
+
+    // Check volVectorMaps for an entry named 'U'.
+    // If it exists, make an entry (or over-write, if necessary).
+    word Uname("U");
+
+    if (volVectorMap_.found(Uname))
+    {
+        // Looks like an entry exists.
+        // Check if a new value was set for this cell.
+        if (volVectorMap_[Uname].found(cellIndex))
+        {
+            U = volVectorMap_[Uname][cellIndex];
+        }
+        else
+        if (cellIndex < mesh_.nOldCells_)
+        {
+            // Fetch old value from the registry.
+            const volVectorField& oF =
+            (
+                mesh_.lookupObject<volVectorField>(Uname)
+            );
+
+            U = oF.internalField()[cellIndex];
+        }
+        else
+        {
+            // Couldn't find the cell anywhere.
+            FatalErrorIn("interpolator::interpolatePhi()")
+                << " Looking for cell: " << cellIndex
+                << " in maps, but couldn't find it." << nl
+                << " faceIndex: " << faceIndex
+                << " Sf: " << Sf
+                << abort(FatalError);
+        }
+
+        if (dynamicTopoFvMesh::debug > 3)
+        {
+            Info << nl
+                 << "Flux for face: " << faceIndex
+                 << " :: " << (U & Sf)
+                 << " Using cell: " << cellIndex
+                 << " with U: " << U
+                 << " and Sf: " << Sf
+                 << endl;
+        }
+
+        // Take the dot-product and assign.
+        setPhi(faceIndex, (U & Sf));
+    }
+}
+
+// Set a particular face index as flipped.
+void interpolator::setFlip(const label fIndex)
+{
+    if (flipFaces_.found(fIndex))
+    {
+        if (dynamicTopoFvMesh::debug > 3)
+        {
+            Info << "UnFlipping face: " << fIndex << endl;
+        }
+
+        flipFaces_.erase(fIndex);
+    }
+    else
+    {
+        if (dynamicTopoFvMesh::debug > 3)
+        {
+            Info << "Flipping face: " << fIndex << endl;
+        }
+
+        flipFaces_.insert(fIndex);
+    }
 }
 
 // Register fields for interpolation
@@ -210,10 +307,64 @@ void interpolator::registerFields()
 // Update fields after a topo-change operation
 void interpolator::updateMesh(const mapPolyMesh& mpm)
 {
-    // First re-number maps after re-ordering
+    // Mesh should've been reset when this function is called,
+    // so the boundaryMesh contains up-to-date patch information.
+    const polyBoundaryMesh& boundary = mpm.mesh().boundaryMesh();
 
-    // Now loop through maps, and fill-in values
-    // for inserted elements.
+    // Fill internal fields
+    fillVolumeMaps(scalar, Scalar);
+    fillVolumeMaps(vector, Vector);
+    fillVolumeMaps(sphericalTensor, SphericalTensor);
+    fillVolumeMaps(symmTensor, SymmTensor);
+    fillVolumeMaps(tensor, Tensor);
+
+    // Fill volBoundary fields
+    fillBoundaryMaps(scalar, Scalar);
+    fillBoundaryMaps(vector, Vector);
+    fillBoundaryMaps(sphericalTensor, SphericalTensor);
+    fillBoundaryMaps(symmTensor, SymmTensor);
+    fillBoundaryMaps(tensor, Tensor);
+
+    // Fill surface fields
+    fillSurfaceMaps(scalar, Scalar);
+    fillSurfaceMaps(vector, Vector);
+    fillSurfaceMaps(sphericalTensor, SphericalTensor);
+    fillSurfaceMaps(symmTensor, SymmTensor);
+    fillSurfaceMaps(tensor, Tensor);
+
+    // Flip fluxes for specific internal faces.
+    forAllConstIter(labelHashSet, flipFaces_, fIter)
+    {
+        label newIndex = -1;
+
+        if (fIter.key() < mpm.nOldFaces())
+        {
+            newIndex = mpm.reverseFaceMap()[fIter.key()];
+        }
+        else
+        {
+            newIndex = mesh_.addedFaceRenumbering_[fIter.key()];
+        }
+
+        forAllIter(HashTable<Map<scalar> >, surfScalarMap_, hIter)
+        {
+            if (volScalarMap_.found(hIter.key()))
+            {
+                continue;
+            }
+
+            surfaceScalarField& sf =
+            (
+                const_cast<surfaceScalarField&>
+                (
+                    mesh_.lookupObject<surfaceScalarField>(hIter.key())
+                )
+            );
+
+            // Flip fux for the internal face.
+            sf.internalField()[newIndex] *= -1.0;
+        }
+    }
 
     // Clear-out demand-driven data.
     clearOut();

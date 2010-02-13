@@ -772,7 +772,7 @@ class dynamicTopoFvMesh
             const face& newFace,
             const label newOwner,
             const label newNeighbour,
-            const labelList& mapCells = labelList(0),
+            const labelList& mapFaces = labelList(0),
             const scalarField& mapWeights = scalarField(0),
             const label zoneID = -1
         );

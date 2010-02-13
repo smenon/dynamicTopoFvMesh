@@ -1631,10 +1631,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 //     0: Collapse could not be performed.
 //     1: Collapsed to first node.
 //     2: Collapsed to second node.
+//     3: Collapsed to mid-point (default)
 // - overRideCase is used to force a certain collapse configuration.
 //    -1: Use this value to let collapseEdge decide a case.
 //     1: Force collapse to first node.
 //     2: Force collapse to second node.
+//     3: Force collapse to mid-point
 // - checkOnly performs a feasibility check and returns without modifications.
 // - forceOp to force the collapse.
 const changeMap dynamicTopoFvMesh::collapseEdge
@@ -1773,6 +1775,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                 << "Slave: " << sEdge << nl
                                 << abort(FatalError);
                         }
+
+                        break;
+
+                    case 3:
+
+                        overRideCase = 3;
 
                         break;
                 }
@@ -1917,7 +1925,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         else
         {
             // Bounding edge: collapseEdge can collapse this edge
-            collapseCase = 2;
+            collapseCase = 3;
         }
 
         // Override previous decision for rare cases.
@@ -1959,18 +1967,16 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
         }
         else
+        if (collapseCase != 3)
         {
-            if (collapseCase != 2)
-            {
-                return map;
-            }
+            return map;
         }
     }
     else
     {
         // Looks like this is an interior edge.
-        // Collapse case [2] by default
-        collapseCase = 2;
+        // Collapse case [3] by default
+        collapseCase = 3;
     }
 
     // Perform an override if requested.
@@ -2005,6 +2011,24 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             replaceEdgeIndex = 2;
             replaceFaceIndex = 3;
             newPoint = points_[edges_[eIndex][1]];
+            oldPoint = oldPoints_[edges_[eIndex][1]];
+
+            break;
+
+        case 3:
+
+            // Collapse to the mid-point
+            // Uses connectivity of the second case.
+            replacePoint = edges_[eIndex][1];
+            collapsePoint = edges_[eIndex][0];
+            removeEdgeIndex = 0;
+            removeFaceIndex = 1;
+            replaceEdgeIndex = 2;
+            replaceFaceIndex = 3;
+            newPoint = 0.5 *
+            (
+                points_[edges_[eIndex][0]] + points_[edges_[eIndex][1]]
+            );
             oldPoint = oldPoints_[edges_[eIndex][1]];
 
             break;
@@ -2346,6 +2370,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = neighbour_[faceToRemove];
+
+                    iPtr_->setFlip(replaceFace);
                 }
                 else
                 {
@@ -2380,6 +2406,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     faces_[replaceFace] = faces_[replaceFace].reverseFace();
                     neighbour_[replaceFace] = owner_[replaceFace];
                     owner_[replaceFace] = owner_[faceToRemove];
+
+                    iPtr_->setFlip(replaceFace);
                 }
                 else
                 {
@@ -2629,7 +2657,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Move to the new point
-    // points_[replacePoint] = newPoint;
+    points_[replacePoint] = newPoint;
 
     // Remove the collapse point
     removePoint(collapsePoint);

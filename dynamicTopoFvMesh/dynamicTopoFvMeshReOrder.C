@@ -911,6 +911,8 @@ void dynamicTopoFvMesh::reOrderFaces
                 if (neighbourRenumber < ownerRenumber)
                 {
                     faceRenumber = faceRenumber.reverseFace();
+
+                    iPtr_->setFlip(curFaces[nextNei]);
                 }
 
                 // Insert entities into local lists...

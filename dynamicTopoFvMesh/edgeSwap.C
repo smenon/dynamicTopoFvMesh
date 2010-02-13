@@ -815,17 +815,18 @@ const changeMap dynamicTopoFvMesh::swap23
         forAll(mC, indexI)
         {
             mC[indexI] = cellsForRemoval[indexI];
-            mW[indexI] = tetVolume(mC[indexI], true);
+            mW[indexI] = tetVolume(mC[indexI]);
         }
 
         // Normalize weights
-        mW /= sum(mW);
+        mW /= (sum(mW) + VSMALL);
 
         if (edgeRefinement_)
         {
             avgScale = 0.5 * (lengthScale_[mC[0]] + lengthScale_[mC[1]]);
         }
 
+        // Insert the cell, and map all related volFields
         newCellIndex[cellI] = insertCell(newTetCell[cellI], mC, mW, avgScale);
     }
 
@@ -1020,6 +1021,8 @@ const changeMap dynamicTopoFvMesh::swap23
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
+
+                        iPtr_->setFlip(faceIndex);
                     }
                 }
                 else
@@ -1129,6 +1132,8 @@ const changeMap dynamicTopoFvMesh::swap23
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
+
+                        iPtr_->setFlip(faceIndex);
                     }
                 }
                 else
@@ -1206,6 +1211,8 @@ const changeMap dynamicTopoFvMesh::swap23
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[2];
+
+                        iPtr_->setFlip(faceIndex);
                     }
                 }
                 else
@@ -1272,7 +1279,7 @@ const changeMap dynamicTopoFvMesh::swap23
         scalar newOldVol = tetVolume(newCellIndex[cellI], true);
 
         // Cells on either side of the triangulated face
-        // cannot have old negative old-volumes
+        // cannot have negative old-volumes
         if (newOldVol <= 0.0 && cellI < 2)
         {
             FatalErrorIn
@@ -1479,7 +1486,7 @@ const changeMap dynamicTopoFvMesh::swap32
         forAll(mC, indexI)
         {
             mC[indexI] = cellRemovalList[indexI];
-            mW[indexI] = tetVolume(mC[indexI], true);
+            mW[indexI] = tetVolume(mC[indexI]);
 
             if (edgeRefinement_)
             {
@@ -1488,8 +1495,11 @@ const changeMap dynamicTopoFvMesh::swap32
         }
 
         avgScale /= mC.size();
-        mW /= mC.size();
 
+        // Normalize weights
+        mW /= (sum(mW) + VSMALL);
+
+        // Insert the cell, and map all related volFields
         newCellIndex[cellI] = insertCell(newTetCell[cellI], mC, mW, avgScale);
     }
 
@@ -1783,6 +1793,8 @@ const changeMap dynamicTopoFvMesh::swap32
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
+
+                        iPtr_->setFlip(faceIndex);
                     }
                 }
                 else
@@ -1854,6 +1866,8 @@ const changeMap dynamicTopoFvMesh::swap32
                         faces_[faceIndex] = faces_[faceIndex].reverseFace();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
+
+                        iPtr_->setFlip(faceIndex);
                     }
                 }
                 else
