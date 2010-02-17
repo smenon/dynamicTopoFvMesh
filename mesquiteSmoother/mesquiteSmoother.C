@@ -52,6 +52,7 @@ mesquiteSmoother::mesquiteSmoother
 :
     motionSolver(mesh),
     Mesh_(mesh),
+    twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
     surfaceSmoothing_(false),
@@ -93,6 +94,7 @@ mesquiteSmoother::mesquiteSmoother
 :
     motionSolver(mesh),
     Mesh_(mesh),
+    twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
     surfaceSmoothing_(false),
@@ -130,11 +132,16 @@ mesquiteSmoother::mesquiteSmoother
 
 mesquiteSmoother::~mesquiteSmoother()
 {
-    delete [] vtxCoords_;
-    delete [] cellToNode_;
-    delete [] fixFlags_;
+    clearOut();
 }
 
+// Clear out addressing
+void mesquiteSmoother::clearOut()
+{
+    deleteDemandDrivenData(vtxCoords_);
+    deleteDemandDrivenData(cellToNode_);
+    deleteDemandDrivenData(fixFlags_);
+}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -142,23 +149,35 @@ mesquiteSmoother::~mesquiteSmoother()
 void mesquiteSmoother::readOptions()
 {
     // Check if any slip patches are specified
-    if (found("slipPatches"))
+    if (found("slipPatches") || twoDMesh_)
     {
-        wordList slipPatches = subDict("slipPatches").toc();
-
         labelHashSet slipPatchIDs;
 
-        forAll(slipPatches, wordI)
+        // For 2D meshes, add all patches
+        if (twoDMesh_)
         {
-            word& patchName = slipPatches[wordI];
+            forAll(mesh().boundaryMesh(), patchI)
+            {
+                slipPatchIDs.insert(patchI);
+            }
 
-            slipPatchIDs.insert(mesh().boundaryMesh().findPatchID(patchName));
-        }
-
-        // Toggle surface smoothing if slip patches are present
-        if (!slipPatches.empty())
-        {
             surfaceSmoothing_ = true;
+        }
+        else
+        {
+            wordList slipPatches = subDict("slipPatches").toc();
+
+            forAll(slipPatches, wordI)
+            {
+                word& patchName = slipPatches[wordI];
+
+                slipPatchIDs.insert
+                (
+                    mesh().boundaryMesh().findPatchID(patchName)
+                );
+
+                surfaceSmoothing_ = true;
+            }
         }
 
         // Check if a tolerance has been specified
@@ -255,6 +274,12 @@ void mesquiteSmoother::readOptions()
         pIDs_ = slipPatchIDs.toc();
     }
 
+    if (twoDMesh_)
+    {
+        return;
+    }
+
+    // The following applies only to 3D meshes
     Mesquite::MsqError err;
 
     // Add existing metrics to the hash-table
@@ -951,6 +976,49 @@ void mesquiteSmoother::readOptions()
 // Initialize connectivity arrays for Mesquite
 void mesquiteSmoother::initArrays()
 {
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    if (surfaceSmoothing_)
+    {
+        offsets_.setSize(pIDs_.size() + 1, 0);
+        pNormals_.setSize(pIDs_.size());
+        gradEdgeV_.setSize(pIDs_.size());
+        localPts_.setSize(pIDs_.size());
+
+        label totalSize = 0;
+
+        forAll(pIDs_, patchI)
+        {
+            label nPts = boundary[pIDs_[patchI]].nPoints();
+            label nEdg = boundary[pIDs_[patchI]].nEdges();
+
+            pNormals_[patchI].setSize(nPts, vector::zero);
+            gradEdgeV_[patchI].setSize(nEdg, vector::zero);
+            localPts_[patchI].setSize(nEdg, vector::zero);
+
+            // Accumulate the total size
+            totalSize += nPts;
+
+            // Set offsets
+            offsets_[patchI + 1] = totalSize;
+        }
+
+        // Initialize CG variables
+        bV_.setSize(totalSize, vector::zero);
+        xV_.setSize(totalSize, vector::zero);
+        pV_.setSize(totalSize, vector::zero);
+        rV_.setSize(totalSize, vector::zero);
+        wV_.setSize(totalSize, vector::zero);
+
+        origPoints_.setSize(refPoints_.size(), vector::zero);
+    }
+
+    if (twoDMesh_)
+    {
+        return;
+    }
+
+    // Prepare arrays for mesquite
     vtxCoords_ = new double[nPoints_*3];
     cellToNode_ = new unsigned long[nCells_*4];
     fixFlags_ = new int[nPoints_];
@@ -1005,8 +1073,6 @@ void mesquiteSmoother::initArrays()
         fixFlags_[pointI] = 0;
     }
 
-    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-
     forAll(boundary, patchI)
     {
         const labelList& meshPointLabels = boundary[patchI].meshPoints();
@@ -1015,41 +1081,6 @@ void mesquiteSmoother::initArrays()
         {
             fixFlags_[meshPointLabels[pointI]] = 1;
         }
-    }
-
-    if (surfaceSmoothing_)
-    {
-        offsets_.setSize(pIDs_.size() + 1, 0);
-        pNormals_.setSize(pIDs_.size());
-        gradEdgeV_.setSize(pIDs_.size());
-        localPts_.setSize(pIDs_.size());
-
-        label totalSize = 0;
-
-        forAll(pIDs_, patchI)
-        {
-            label nPts = boundary[pIDs_[patchI]].nPoints();
-            label nEdg = boundary[pIDs_[patchI]].nEdges();
-
-            pNormals_[patchI].setSize(nPts, vector::zero);
-            gradEdgeV_[patchI].setSize(nEdg, vector::zero);
-            localPts_[patchI].setSize(nEdg, vector::zero);
-
-            // Accumulate the total size
-            totalSize += nPts;
-
-            // Set offsets
-            offsets_[patchI + 1] = totalSize;
-        }
-
-        // Initialize CG variables
-        bV_.setSize(totalSize, vector::zero);
-        xV_.setSize(totalSize, vector::zero);
-        pV_.setSize(totalSize, vector::zero);
-        rV_.setSize(totalSize, vector::zero);
-        wV_.setSize(totalSize, vector::zero);
-
-        origPoints_.setSize(refPoints_.size(), vector::zero);
     }
 }
 
@@ -1133,6 +1164,11 @@ void mesquiteSmoother::applyBCs
 
             nFixedBC++;
         }
+    }
+
+    if (twoDMesh_)
+    {
+        return;
     }
 
     // If no boundaries were fixed, fix a few points at random
@@ -2503,6 +2539,11 @@ void mesquiteSmoother::solve()
     {
         smoothSurfaces();
 
+        if (twoDMesh_)
+        {
+            return;
+        }
+
         // Check for invalid cells and correct if necessary.
         correctInvalidCells();
 
@@ -2581,18 +2622,6 @@ void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
 {
     motionSolver::updateMesh(mpm);
 
-    // Clear Mesquite arrays
-    delete [] vtxCoords_;
-    delete [] cellToNode_;
-    delete [] fixFlags_;
-
-    nPoints_ = Mesh_.nPoints();
-    nCells_  = Mesh_.nCells();
-
-    // Reset refPoints
-    refPoints_.clear();
-    refPoints_ = Mesh_.points();
-
     if (surfaceSmoothing_)
     {
         // Clear out CG variables
@@ -2607,6 +2636,16 @@ void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
         pNormals_.clear();
         offsets_.clear();
     }
+
+    nPoints_ = Mesh_.nPoints();
+    nCells_  = Mesh_.nCells();
+
+    // Reset refPoints
+    refPoints_.clear();
+    refPoints_ = Mesh_.points();
+
+    // Clear Mesquite arrays
+    clearOut();
 
     // Initialize data structures
     initArrays();

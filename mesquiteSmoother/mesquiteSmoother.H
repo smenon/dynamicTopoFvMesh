@@ -74,6 +74,9 @@ protected:
     //- The mesh to be moved
     const polyMesh& Mesh_;
 
+    //- Mesh characteristics [2D/3D]
+    Switch twoDMesh_;
+
     //- Number of points
     unsigned long nPoints_;
 
@@ -316,6 +319,9 @@ protected:
         const labelList& jList,
         scalar& beta
     );
+
+    // Clear out addressing
+    void clearOut();
 
 public:
 
