@@ -84,6 +84,91 @@ void interpolator::clearOut()
     flipFaces_.clear();
 }
 
+//- Post-processing
+void interpolator::writeFluxes
+(
+    const word& name
+)
+{
+    word phiName("phi");
+
+    // Fetch phi from the registry.
+    const surfaceScalarField& pF =
+    (
+        mesh_.lookupObject<surfaceScalarField>(phiName)
+    );
+
+    // Fetch face-centres from the mesh.
+    const vectorField& fC = mesh_.faceCentres();
+    const vectorField& Sf = mesh_.faceAreas();
+
+    // Make the directory
+    fileName dirName(mesh_.time().path()/mesh_.time().timeName());
+    //fileName dirName(mesh_.time().path()/"VTK"/mesh_.time().timeName());
+
+    mkDir(dirName);
+
+    // Open stream for output
+    OFstream file(dirName/name + ".vtk");
+
+    // Write out the header
+    file << "# vtk DataFile Version 2.0" << nl
+         << name << ".vtk" << nl
+         << "ASCII" << nl
+         << "DATASET UNSTRUCTURED_GRID" << nl
+         << "POINTS " << fC.size() << " double" << nl;
+
+    forAll(fC, faceI)
+    {
+        file << fC[faceI].x() << ' '
+             << fC[faceI].y() << ' '
+             << fC[faceI].z() << ' '
+             << nl;
+    }
+
+    file << "CELLS " << fC.size() << " " << (2 * fC.size()) << endl;
+
+    forAll(fC, faceI)
+    {
+        file << 1 << ' ' << faceI << nl;
+    }
+
+    file << "CELL_TYPES " << fC.size() << endl;
+
+    forAll(fC, faceI)
+    {
+        file << 1 << nl;
+    }
+
+    file << "POINT_DATA " << fC.size() << endl;
+
+    file << "FIELD PointFields 1" << endl;
+
+    file << "Fluxes 3 " << fC.size() << " double" << endl;
+
+    const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
+
+    forAll(fC, faceI)
+    {
+        vector n = (Sf[faceI]/(mag(Sf[faceI]) + VSMALL)), v = vector::zero;
+
+        label patch = boundary.whichPatch(faceI);
+
+        if (patch == -1)
+        {
+            v = (pF.internalField()[faceI]*n);
+        }
+        else
+        {
+            label i = boundary[patch].whichFace(faceI);
+
+            v = (pF.boundaryField()[patch][i]*n);
+        }
+
+        file << v.x() << ' ' << v.y() << ' ' << v.z() << ' ';
+    }
+}
+
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Add a new face entry
@@ -114,12 +199,12 @@ void interpolator::insertFace
         return;
     }
 
-    // Map for each primitive type
-    mapBoundaryFace(scalar, Scalar);
-    mapBoundaryFace(vector, Vector);
-    mapBoundaryFace(sphericalTensor, SphericalTensor);
-    mapBoundaryFace(symmTensor, SymmTensor);
-    mapBoundaryFace(tensor, Tensor);
+    // Map volBoundaryFaces for each primitive type
+    mapVolBoundaryFace(scalar, Scalar);
+    mapVolBoundaryFace(vector, Vector);
+    mapVolBoundaryFace(sphericalTensor, SphericalTensor);
+    mapVolBoundaryFace(symmTensor, SymmTensor);
+    mapVolBoundaryFace(tensor, Tensor);
 }
 
 // Remove the face, if it exists in the map.
@@ -319,11 +404,11 @@ void interpolator::updateMesh(const mapPolyMesh& mpm)
     fillVolumeMaps(tensor, Tensor);
 
     // Fill volBoundary fields
-    fillBoundaryMaps(scalar, Scalar);
-    fillBoundaryMaps(vector, Vector);
-    fillBoundaryMaps(sphericalTensor, SphericalTensor);
-    fillBoundaryMaps(symmTensor, SymmTensor);
-    fillBoundaryMaps(tensor, Tensor);
+    fillVolBoundaryMaps(scalar, Scalar);
+    fillVolBoundaryMaps(vector, Vector);
+    fillVolBoundaryMaps(sphericalTensor, SphericalTensor);
+    fillVolBoundaryMaps(symmTensor, SymmTensor);
+    fillVolBoundaryMaps(tensor, Tensor);
 
     // Fill surface fields
     fillSurfaceMaps(scalar, Scalar);
@@ -353,11 +438,19 @@ void interpolator::updateMesh(const mapPolyMesh& mpm)
                 continue;
             }
 
+            if (!mesh_.foundObject<surfaceScalarField>(hIter.key()))
+            {
+                continue;
+            }
+
             surfaceScalarField& sf =
             (
                 const_cast<surfaceScalarField&>
                 (
-                    mesh_.lookupObject<surfaceScalarField>(hIter.key())
+                    mesh_.lookupObject<surfaceScalarField>
+                    (
+                        hIter.key()
+                    )
                 )
             );
 

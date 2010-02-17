@@ -91,6 +91,9 @@ class interpolator
         //- Clear out data
         void clearOut();
 
+        //- Post-processing
+        void writeVTK(const word& name);
+
 public:
 
     // Declare the name of the class and its debug switch
@@ -144,6 +147,9 @@ public:
             const label faceIndex,
             const vector& Sf
         );
+
+        //- Post-processing
+        void writeFluxes(const word& name);
 
         // Set a particular face index as flipped.
         void setFlip(const label fIndex);

@@ -160,6 +160,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
         }
     }
 
+    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+
     // Initialize the multiThreading environment
     initializeThreadingEnvironment();
 
@@ -167,7 +169,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     readOptionalParameters();
 
     // Initialize patch-size information
-    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
     for(label i=0; i<numPatches_; i++)
     {
         patchNMeshPoints_[i] = boundary[i].meshPoints().size();
@@ -9181,21 +9182,29 @@ bool dynamicTopoFvMesh::update()
              << "    Bandwidth before renumbering: " << band << endl;
     }
 
+    // Register all necessary fields with the interpolator.
+    iPtr_->registerFields();
+
+    // Set old-points before moving the mesh
+    const pointField& oldPoints = points();
+
+    forAll(oldPoints, pointI)
+    {
+        oldPoints_[pointI] = oldPoints[pointI];
+    }
+
     // Invoke mesh-motion solver and move points
     if (mPtr_.valid())
     {
         movePoints(mPtr_->newPoints());
     }
 
-    // Register all necessary fields with the interpolator.
-    iPtr_->registerFields();
-
     // Obtain the most recent point-positions
-    const pointField& currentPoints = points();
+    const pointField& newPoints = points();
 
-    forAll(currentPoints, pointI)
+    forAll(newPoints, pointI)
     {
-        points_[pointI] = currentPoints[pointI];
+        points_[pointI] = newPoints[pointI];
     }
 
     //== Connectivity changes ==//

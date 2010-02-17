@@ -40,6 +40,11 @@ Author
     {                                                                      \
         type mapVal = pTraits<type>::zero;                                 \
                                                                            \
+        if (!mesh_.foundObject<vol##capsType##Field>(hIter.key()))         \
+        {                                                                  \
+            continue;                                                      \
+        }                                                                  \
+                                                                           \
         if (dynamicTopoFvMesh::debug > 3)                                  \
         {                                                                  \
             Info << nl << "Mapping: " << hIter.key() << endl;              \
@@ -84,10 +89,15 @@ Author
         hIter().set(newCellIndex, mapVal);                                 \
     }
 
-#define mapBoundaryFace(type, capsType)                                    \
+#define mapVolBoundaryFace(type, capsType)                                 \
     forAllIter(HashTable<Map<type> >, surf##capsType##Map_, hIter)         \
     {                                                                      \
         type mapVal = pTraits<type>::zero;                                 \
+                                                                           \
+        if (!mesh_.foundObject<vol##capsType##Field>(hIter.key()))         \
+        {                                                                  \
+            continue;                                                      \
+        }                                                                  \
                                                                            \
         if (dynamicTopoFvMesh::debug > 3)                                  \
         {                                                                  \
@@ -151,6 +161,11 @@ Author
         type mapVal = pTraits<type>::zero;                                 \
                                                                            \
         if (vol##capsType##Map_.found(hIter.key()))                        \
+        {                                                                  \
+            continue;                                                      \
+        }                                                                  \
+                                                                           \
+        if (!mesh_.foundObject<surface##capsType##Field>(hIter.key()))     \
         {                                                                  \
             continue;                                                      \
         }                                                                  \
@@ -285,6 +300,21 @@ Author
 #define fillVolumeMaps(type, capsType)                                     \
     forAllIter(HashTable<Map<type> >, vol##capsType##Map_, hIter)          \
     {                                                                      \
+        bool found =                                                       \
+        (                                                                  \
+            mesh_.foundObject<vol##capsType##Field>(hIter.key())           \
+        );                                                                 \
+                                                                           \
+        if (!found)                                                        \
+        {                                                                  \
+            continue;                                                      \
+        }                                                                  \
+                                                                           \
+        if (dynamicTopoFvMesh::debug > 2)                                  \
+        {                                                                  \
+            Info << nl << "Updating: " << hIter.key() << endl;             \
+        }                                                                  \
+                                                                           \
         vol##capsType##Field& vf =                                         \
         (                                                                  \
             const_cast<vol##capsType##Field&>                              \
@@ -292,11 +322,6 @@ Author
                 mesh_.lookupObject<vol##capsType##Field>(hIter.key())      \
             )                                                              \
         );                                                                 \
-                                                                           \
-        if (dynamicTopoFvMesh::debug > 2)                                  \
-        {                                                                  \
-            Info << nl << "Updating: " << hIter.key() << endl;             \
-        }                                                                  \
                                                                            \
         const labelList& reverseMap = mpm.reverseCellMap();                \
                                                                            \
@@ -317,7 +342,7 @@ Author
         }                                                                  \
     }
 
-#define fillBoundaryMaps(type, capsType)                                   \
+#define fillVolBoundaryMaps(type, capsType)                                \
     forAllIter(HashTable<Map<type> >, surf##capsType##Map_, hIter)         \
     {                                                                      \
         bool found =                                                       \
