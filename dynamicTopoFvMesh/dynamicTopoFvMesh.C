@@ -91,6 +91,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     (
         dict_.subDict("dynamicTopoFvMesh").lookup("edgeRefinement")
     ),
+    bandWidthReduction_(false),
     coupledModification_(false),
     slaveModification_(false),
     interval_(1),
@@ -220,6 +221,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     mandatory_(mesh.mandatory_),
     twoDMesh_(mesh.twoDMesh_),
     edgeRefinement_(mesh.edgeRefinement_),
+    bandWidthReduction_(mesh.bandWidthReduction_),
     coupledModification_(false),
     slaveModification_(false),
     interval_(1),
@@ -5332,6 +5334,23 @@ void dynamicTopoFvMesh::readOptionalParameters()
     else
     {
         interval_ = 1;
+    }
+
+    if
+    (
+        dict_.subDict("dynamicTopoFvMesh").found("bandWidthReduction") ||
+        mandatory_
+    )
+    {
+        bandWidthReduction_ =
+        (
+            dict_.subDict
+            ("dynamicTopoFvMesh").lookup("bandWidthReduction")
+        );
+    }
+    else
+    {
+        bandWidthReduction_ = false;
     }
 
     // For tetrahedral meshes...

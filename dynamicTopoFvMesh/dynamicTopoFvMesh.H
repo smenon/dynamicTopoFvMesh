@@ -100,6 +100,9 @@ class dynamicTopoFvMesh
         //- Edge refinement switch
         Switch edgeRefinement_;
 
+        //- Switch for cell-bandwidth reduction
+        Switch bandWidthReduction_;
+
         //- Coupled modification switches
         mutable Switch coupledModification_;
         mutable Switch slaveModification_;

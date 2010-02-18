@@ -114,9 +114,9 @@ void dynamicTopoFvMesh::reOrderPoints
     if (pointInOrder != nPoints_)
     {
         FatalErrorIn("dynamicTopoFvMesh::reOrderPoints()") << nl
-                << " Algorithm did not visit every point in the mesh."
-                << " Something's messed up." << nl
-                << abort(FatalError);
+            << " Algorithm did not visit every point in the mesh."
+            << " Something's messed up." << nl
+            << abort(FatalError);
     }
 
     // Prepare the pointZoneMap
@@ -232,11 +232,6 @@ void dynamicTopoFvMesh::reOrderPoints
     // Update the local point copies
     points_.setSize(nPoints_);
     oldPoints_.setSize(nPoints_);
-
-    forAll(points, pointI)
-    {
-        oldPoints_[pointI] = points_[pointI] = points[pointI];
-    }
 
     if (debug)
     {
@@ -912,6 +907,15 @@ void dynamicTopoFvMesh::reOrderFaces
                 {
                     faceRenumber = faceRenumber.reverseFace();
 
+                    if (!bandWidthReduction_)
+                    {
+                        FatalErrorIn("dynamicTopoFvMesh::reOrderFaces()")
+                            << nl
+                            << " Found an improperly ordered face."
+                            << " Something's messed up." << nl
+                            << abort(FatalError);
+                    }
+
                     iPtr_->setFlip(curFaces[nextNei]);
                 }
 
@@ -1236,16 +1240,15 @@ void dynamicTopoFvMesh::reOrderCells
     // Allocate for mapping information
     cellMap_.setSize(nCells_, -1);
 
-    label currentCell, cellInOrder = 0, allCells = cells_.size();
-    SLList<label> nextCell;
-    labelList ncc(allCells, 0);
-    labelList visited(allCells, 0);
-    labelListList cellCellAddr(allCells);
-    cellList oldCells(allCells);
+    label cellInOrder = 0;
 
     addedCellRenumbering_.clear();
 
     // Make a copy of the old cell-based lists, and clear them
+    label allCells = cells_.size();
+
+    cellList oldCells(allCells);
+
     forAll(cells_, cellI)
     {
         oldCells[cellI].transfer(cells_[cellI]);
@@ -1253,96 +1256,169 @@ void dynamicTopoFvMesh::reOrderCells
 
     cells_.setSize(nCells_);
 
-    // Build a cell-cell addressing list
-    forAll(owner_, faceI)
+    if (bandWidthReduction_)
     {
-        if ((neighbour_[faceI] > -1) && (owner_[faceI] > -1))
+        label currentCell;
+        SLList<label> nextCell;
+        labelList ncc(allCells, 0), visited(allCells, 0);
+        labelListList cellCellAddr(allCells);
+
+        // Build a cell-cell addressing list
+        forAll(owner_, faceI)
         {
-            ncc[owner_[faceI]]++;
-            ncc[neighbour_[faceI]]++;
-        }
-    }
-
-    forAll(cellCellAddr, cellI)
-    {
-        cellCellAddr[cellI].setSize(ncc[cellI]);
-
-        // Mark off deleted cells as "visited"
-        if (ncc[cellI] == 0)
-        {
-            visited[cellI] = 1;
-        }
-    }
-
-    ncc = 0;
-    forAll(owner_, faceI)
-    {
-        if ((owner_[faceI] > -1) && (neighbour_[faceI] > -1))
-        {
-            cellCellAddr[owner_[faceI]][ncc[owner_[faceI]]++] =
-            (
-                neighbour_[faceI]
-            );
-
-            cellCellAddr[neighbour_[faceI]][ncc[neighbour_[faceI]]++] =
-            (
-                owner_[faceI]
-            );
-        }
-    }
-
-    // Let's get to the "business bit" of the band-compression
-    forAll(visited, cellI)
-    {
-        // Find the first cell that has not been visited yet
-        if (visited[cellI] == 0)
-        {
-            // Use this cell as a start
-            currentCell = cellI;
-
-            nextCell.append(currentCell);
-
-            // Loop through the nextCell list. Add the first cell into the
-            // cell order if it has not already been visited and ask for its
-            // neighbours. If the neighbour in question has not been visited,
-            // add it to the end of the nextCell list
-            while (nextCell.size() > 0)
+            if ((neighbour_[faceI] > -1) && (owner_[faceI] > -1))
             {
-                currentCell = nextCell.removeHead();
+                ncc[owner_[faceI]]++;
+                ncc[neighbour_[faceI]]++;
+            }
+        }
 
-                if (visited[currentCell] == 0)
+        forAll(cellCellAddr, cellI)
+        {
+            cellCellAddr[cellI].setSize(ncc[cellI]);
+
+            // Mark off deleted cells as "visited"
+            if (ncc[cellI] == 0)
+            {
+                visited[cellI] = 1;
+            }
+        }
+
+        ncc = 0;
+
+        forAll(owner_, faceI)
+        {
+            if ((owner_[faceI] > -1) && (neighbour_[faceI] > -1))
+            {
+                cellCellAddr[owner_[faceI]][ncc[owner_[faceI]]++] =
+                (
+                    neighbour_[faceI]
+                );
+
+                cellCellAddr[neighbour_[faceI]][ncc[neighbour_[faceI]]++] =
+                (
+                    owner_[faceI]
+                );
+            }
+        }
+
+        // Let's get to the "business bit" of the band-compression
+        forAll(visited, cellI)
+        {
+            // Find the first cell that has not been visited yet
+            if (visited[cellI] == 0)
+            {
+                // Use this cell as a start
+                currentCell = cellI;
+
+                nextCell.append(currentCell);
+
+                // Loop through the nextCell list. Add the first cell
+                // into the cell order if it has not already been visited
+                // and ask for its neighbours. If the neighbour in question
+                // has not been visited, add it to the end of the nextCell list
+                while (nextCell.size() > 0)
                 {
-                    // Mark as visited and update cell mapping info
-                    visited[currentCell] = 1;
+                    currentCell = nextCell.removeHead();
 
-                    if (currentCell < nOldCells_)
+                    if (visited[currentCell] == 0)
                     {
-                        cellMap_[cellInOrder] = currentCell;
-                        reverseCellMap_[currentCell] = cellInOrder;
-                    }
-                    else
-                    {
-                        addedCellRenumbering_.insert(currentCell,cellInOrder);
-                    }
+                        // Mark as visited and update cell mapping info
+                        visited[currentCell] = 1;
 
-                    // Insert entities into local lists...
-                    cells_[cellInOrder].transfer(oldCells[currentCell]);
-
-                    cellInOrder++;
-
-                    // Find if the neighbours have been visited
-                    const labelList& neighbours = cellCellAddr[currentCell];
-
-                    forAll(neighbours, nI)
-                    {
-                        if (visited[neighbours[nI]] == 0)
+                        if (currentCell < nOldCells_)
                         {
-                            // Not visited, add to the list
-                            nextCell.append(neighbours[nI]);
+                            cellMap_[cellInOrder] = currentCell;
+                            reverseCellMap_[currentCell] = cellInOrder;
+                        }
+                        else
+                        {
+                            addedCellRenumbering_.insert
+                            (
+                                currentCell,
+                                cellInOrder
+                            );
+                        }
+
+                        // Insert entities into local lists...
+                        cells_[cellInOrder].transfer(oldCells[currentCell]);
+
+                        cellInOrder++;
+
+                        // Find if the neighbours have been visited
+                        const labelList& neighbours = cellCellAddr[currentCell];
+
+                        forAll(neighbours, nI)
+                        {
+                            if (visited[neighbours[nI]] == 0)
+                            {
+                                // Not visited, add to the list
+                                nextCell.append(neighbours[nI]);
+                            }
                         }
                     }
                 }
             }
+        }
+
+        if (debug > 1)
+        {
+            if (sum(visited) != allCells)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::reOrderCells()") << nl
+                    << " Algorithm did not visit every cell in the mesh."
+                    << " Something's messed up." << nl
+                    << abort(FatalError);
+            }
+        }
+    }
+    else
+    {
+        // No bandwidth reduction. Fill-in sequentially.
+        for (label cellI = 0; cellI < nOldCells_; cellI++)
+        {
+            // Check if this is a deleted cell
+            if (reverseCellMap_[cellI] == -1)
+            {
+                continue;
+            }
+
+            // Update the cell info
+            cells_[cellInOrder].transfer(oldCells[cellI]);
+
+            // Update maps
+            cellMap_[cellInOrder] = cellI;
+            reverseCellMap_[cellI] = cellInOrder;
+
+            // Update the counter
+            cellInOrder++;
+        }
+
+        for (label cellI = nOldCells_; cellI < allCells; cellI++)
+        {
+            // Was this cell removed after addition?
+            if (deletedCells_.found(cellI))
+            {
+                continue;
+            }
+
+            // Update the cell info
+            cells_[cellInOrder].transfer(oldCells[cellI]);
+
+            // Put inserted cells in a seperate hashSet
+            addedCellRenumbering_.insert(cellI, cellInOrder);
+
+            // Update the counter
+            cellInOrder++;
+        }
+
+        // Final check to ensure everything went okay
+        if (cellInOrder != nCells_)
+        {
+            FatalErrorIn("dynamicTopoFvMesh::reOrderCells()") << nl
+                << " Algorithm did not visit every cell in the mesh."
+                << " Something's messed up." << nl
+                << abort(FatalError);
         }
     }
 
@@ -1350,17 +1426,6 @@ void dynamicTopoFvMesh::reOrderCells
     if (threaded)
     {
         entityMutex_[3].unlock();
-    }
-
-    if (debug > 1)
-    {
-        if (sum(visited) != allCells)
-        {
-            FatalErrorIn("dynamicTopoFvMesh::reOrderCells()") << nl
-                    << " Algorithm did not visit every cell in the mesh."
-                    << " Something's messed up." << nl
-                    << abort(FatalError);
-        }
     }
 
     // Prepare the cellZoneMap
