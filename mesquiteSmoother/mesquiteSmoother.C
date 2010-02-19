@@ -62,6 +62,7 @@ mesquiteSmoother::mesquiteSmoother
     tolerance_(1e-4),
     nSweeps_(1),
     surfInterval_(1),
+    relax_(1.0),
     vtxCoords_(NULL),
     cellToNode_(NULL),
     fixFlags_(NULL),
@@ -70,10 +71,10 @@ mesquiteSmoother::mesquiteSmoother
         IOobject
         (
             "refPoints",
-            mesh.instance(),
+            mesh.time().timeName(),
             mesh,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
+            IOobject::READ_IF_PRESENT,
+            IOobject::AUTO_WRITE
         ),
         mesh.points()
     ),
@@ -104,6 +105,7 @@ mesquiteSmoother::mesquiteSmoother
     tolerance_(1e-4),
     nSweeps_(1),
     surfInterval_(1),
+    relax_(1.0),
     vtxCoords_(NULL),
     cellToNode_(NULL),
     fixFlags_(NULL),
@@ -112,10 +114,10 @@ mesquiteSmoother::mesquiteSmoother
         IOobject
         (
             "refPoints",
-            mesh.instance(),
+            mesh.time().timeName(),
             mesh,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
+            IOobject::READ_IF_PRESENT,
+            IOobject::AUTO_WRITE
         ),
         mesh.points()
     ),
@@ -214,6 +216,12 @@ void mesquiteSmoother::readOptions()
         if (found("surfInterval"))
         {
             surfInterval_ = readLabel(lookup("surfInterval"));
+        }
+
+        // Check if a relaxation factor is specified
+        if (found("relaxationFactor"))
+        {
+            relax_ = readScalar(lookup("relaxationFactor"));
         }
 
         // Check if coupled patches exist.
@@ -1379,14 +1387,18 @@ void mesquiteSmoother::smoothSurfaces()
 
         Info << " No Iterations: " << iters << endl;
 
-        // Update refPoints
+        // Update refPoints (with relaxation if necessary)
         forAll(pIDs_, patchI)
         {
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
             forAll(meshPts,pointI)
             {
-                refPoints_[meshPts[pointI]] = xV_[pointI + offsets_[patchI]];
+                refPoints_[meshPts[pointI]] =
+                (
+                    (relax_ * xV_[pointI + offsets_[patchI]])
+                  + ((1.0 - relax_) * origPoints_[meshPts[pointI]])
+                );
             }
         }
 
@@ -2520,6 +2532,8 @@ tmp<pointField>
 mesquiteSmoother::curPoints() const
 {
     tmp<pointField> tcurPoints(refPoints_);
+
+    motionSolver::twoDCorrectPoints(tcurPoints());
 
     return tcurPoints;
 }

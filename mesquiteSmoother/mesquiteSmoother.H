@@ -104,6 +104,9 @@ protected:
     //- Specify the surface-smoothing interval
     label surfInterval_;
 
+    //- Specify a relaxation factor for surface-smoothing
+    scalar relax_;
+
     //- Vertex coordinate array passed into Mesquite
     mutable double* vtxCoords_;
 
