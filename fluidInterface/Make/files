@@ -5,6 +5,7 @@ correctedFvPatchFields/basicCorrectedFvPatchFields/zeroGradient/zeroGradientCorr
 
 patchCorrectedSnGrad/patchCorrectedSnGrads.C
 
+fluidInterfaceDemandDrivenData.C
 fluidInterface.C
 
 LIB = $(FOAM_USER_LIBBIN)/libfluidInterface

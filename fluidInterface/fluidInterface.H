@@ -42,6 +42,9 @@ SourceFiles
 #include "fvCFD.H"
 #include "faCFD.H"
 #include "patchToPatchInterpolation.H"
+#include "dynamicFvMesh.H"
+#include "surfactantProperties.H"
+#include "MeshObject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -54,12 +57,13 @@ namespace Foam
 
 class fluidInterface
 :
-    public IOdictionary
+    public IOdictionary,
+    public MeshObject<fvMesh, fluidInterface>
 {
     // Private data
 
         //- Reference to the underlying mesh
-        fvMesh& mesh_;
+        dynamicFvMesh& mesh_;
 
         //- Reference to the velocity field
         volVectorField& U_;
@@ -76,17 +80,24 @@ class fluidInterface
         //- Name of the interface shadow patch
         word shadowPatch_;
 
+        //- Time index for the interface
+        label curTimeIndex_;
+
         //- Switch for one/two fluids
         Switch twoFluids_;
+
+        //- Free-surface points displacement direction
+        //  parallel to free-surface point normals
+        Switch normalMotionDir_;
+
+        //- Devoid of surfactants?
+        Switch cleanInterface_;
 
         //- Patch ID of the interface (side A)
         label aPatchID_;
 
         //- Patch ID of the interface (side B)
         label bPatchID_;
-
-        //- Time index for the interface
-        label curTimeIndex_;
 
         //- Viscosity of fluid A
         dimensionedScalar muFluidA_;
@@ -112,17 +123,32 @@ class fluidInterface
         //- Specific Heat of fluid B
         dimensionedScalar CpFluidB_;
 
+        //- Reference to gravitational acceleration
+        dimensionedVector g_;
+
         //- Surface tension
-        dimensionedScalar surfaceTension_;
+        dimensionedScalar cleanInterfaceSurfTension_;
 
-        //- Interface displacement field
-        mutable vectorField* displacementPtr_;
+        //- Free surface patches which do not move
+        wordList fixedFreeSurfacePatches_;
 
-        //- Field which determines the motion of interface points
-        mutable scalarField* motionPointsMaskPtr_;
+        //- Free surface patches which require
+        //  point normal correction
+        wordList pointNormalsCorrectionPatches_;
+
+    // Demand driven data
+
+        //- Patch to patch interpolation (A to B)
+        mutable patchToPatchInterpolation* interpolatorABPtr_;
+
+        //- Patch to patch interpolation (B to A)
+        mutable patchToPatchInterpolation* interpolatorBAPtr_;
 
         //- Points which are attached to the interface, defining its shape
         mutable vectorIOField* controlPointsPtr_;
+
+        //- Field which determines the motion of interface points
+        mutable scalarField* motionPointsMaskPtr_;
 
         //- Displacement direction of interface points
         mutable vectorField* pointsDisplacementDirPtr_;
@@ -130,8 +156,9 @@ class fluidInterface
         //- Displacement direction of interface control points
         mutable vectorField* facesDisplacementDirPtr_;
 
-        //- Surface tension field
-        mutable areaScalarField* surfaceTensionPtr_;
+        //- Total displacement of free-surface points
+        //  in one time step
+        mutable vectorIOField* totalDisplacementPtr_;
 
         //- Finite area mesh
         mutable faMesh* aMeshPtr_;
@@ -139,14 +166,17 @@ class fluidInterface
         //- Free-surface velocity field
         mutable areaVectorField* UsPtr_;
 
-        //- Free surface patches which do not move
-        wordList fixedFreeSurfacePatches_;
+        //- Free-surface fluid flux
+        mutable edgeScalarField* phisPtr_;
 
-        //- Patch to patch interpolation (A to B)
-        mutable patchToPatchInterpolation* interpolatorABPtr_;
+        //- Free-surface surfactant concetration
+        mutable areaScalarField* surfactConcPtr_;
 
-        //- Patch to patch interpolation (B to A)
-        mutable patchToPatchInterpolation* interpolatorBAPtr_;
+        //- Surface tension field
+        mutable areaScalarField* surfaceTensionPtr_;
+
+        //- Surfactant properties
+        mutable surfactantProperties* surfactantPtr_;
 
         //- Fluid indicator
         mutable volScalarField* fluidIndicatorPtr_;
@@ -161,20 +191,25 @@ class fluidInterface
 
         // Make demand-driven data
 
-            void makeFluidIndicator();
-            void makeRho();
-            void makeMu();
-            void makeInterpolators();
-            void makeControlPoints();
-            void makeMotionPointsMask();
-            void makeDisplacement();
-            void makeDirections();
-            void makeFaMesh();
-            void makeSurfaceTension();
-            void makeUs();
+            void makeInterpolators() const;
+            void makeControlPoints() const;
+            void makeMotionPointsMask() const;
+            void makeDirections() const;
+            void makeTotalDisplacement() const;
+            void readTotalDisplacement() const;
+            void makeFaMesh() const;
+            void makeUs() const;
+            void readUs() const;
+            void makePhis() const;
+            void makeSurfactConc() const;
+            void makeSurfaceTension() const;
+            void makeSurfactant() const;
+            void makeFluidIndicator() const;
+            void makeRho() const;
+            void makeMu() const;
 
         //- Clear all demand-driven data
-        void clearOut();
+        void clearOut() const;
 
         //- Update pressure boundary conditions
         void updatePressure();
@@ -182,36 +217,69 @@ class fluidInterface
         //- Update velocity boundary conditions
         void updateVelocity();
 
-        //- Compute and return the gradient of surface-tension
-        tmp<areaVectorField> surfaceTensionGrad();
-
         //- Initialize control points
-        void initializeControlPointsPosition();
+        void initializeControlPointsPosition() const;
+
+        //- Return reference to interpolator (A to B)
+        const patchToPatchInterpolation& interpolatorAB() const;
+
+        //- Return reference to interpolator (B to A)
+        const patchToPatchInterpolation& interpolatorBA() const;
 
         //- Return reference to the control points
-        vectorField& controlPoints();
-
-        //- Return reference to point displacement direction field
-        vectorField& pointsDisplacementDir();
-
-        //- Return reference to control points displacement direction field
-        vectorField& facesDisplacementDir();
+        vectorField& controlPoints() const;
 
         //- Return reference to the point-mask
-        scalarField& motionPointsMask();
+        scalarField& motionPointsMask() const;
+
+        //- Return reference to point displacement direction field
+        vectorField& pointsDisplacementDir() const;
+
+        //- Return reference to control points displacement direction field
+        vectorField& facesDisplacementDir() const;
+
+        //- Return total points displacement
+        vectorField& totalDisplacement() const;
+
+        // Return constant reference to the area mesh
+        faMesh& aMesh() const;
 
         //- Return reference to the free-surface velocity field
-        areaVectorField& Us();
+        areaVectorField& Us() const;
+
+        //- Return free-surface fluid flux field
+        edgeScalarField& Phis() const;
+
+        //- Return free-surface surfactant concentration field
+        areaScalarField& surfactantConcentration() const;
+
+        //- Return the surface tension field
+        areaScalarField& surfaceTension() const;
+
+        //- Return surface tension gradient
+        tmp<areaVectorField> surfaceTensionGrad();
 
         //- Correct boundary conditions for Us
-        void correctUsBoundaryConditions();
+        void correctUsBoundaryConditions() const;
+
+        //- Return surfactant properties
+        const surfactantProperties& surfactant() const;
+
+        //- Return the face curvature field
+        const scalarField& faceCurvatures();
+
+        //- Return an indicator field for two fluids
+        const volScalarField& fluidIndicator() const;
 
         //- Move correctedFvPatchField fvSubMeshes
         void moveFvSubMeshes();
 
         //- Move control points by deltaH and calculate interface
         //  points displacement for the new control points position
-        tmp<vectorField> pointDisplacement(const scalarField& deltaH);
+        tmp<vectorField> pointDisplacement
+        (
+            const scalarField& deltaH
+        ) const;
 
         //- Disallow default bitwise copy construct
         fluidInterface(const fluidInterface&);
@@ -229,7 +297,7 @@ public:
 
         fluidInterface
         (
-            fvMesh& m,
+            dynamicFvMesh& m,
             volVectorField& U,
             volScalarField& p,
             surfaceScalarField& phi
@@ -244,10 +312,25 @@ public:
     // Member Functions
 
         // Return constant reference to the mesh
-        fvMesh& mesh();
+        dynamicFvMesh& mesh() const;
 
-        // Return constant reference to the area mesh
-        faMesh& areaMesh();
+        //- Return reference to velocity field
+        volVectorField& U() const
+        {
+            return U_;
+        }
+
+        //- Return reference to pressure field
+        volScalarField& p() const
+        {
+            return p_;
+        }
+
+        //- Return reference to flux field
+        const surfaceScalarField& phi() const
+        {
+            return phi_;
+        }
 
         // Return true if two fluids are present
         bool twoFluids() const
@@ -255,11 +338,23 @@ public:
             return twoFluids_;
         }
 
+        //- Motion direction switch
+        bool normalMotionDir() const
+        {
+            return normalMotionDir_;
+        }
+
+        //- Clean interface switch
+        bool cleanInterface() const
+        {
+            return cleanInterface_;
+        }
+
         // Return the interface patchID
-        label aPatchID();
+        label aPatchID() const;
 
         // Return the shadow patchID
-        label bPatchID();
+        label bPatchID() const;
 
         //- Viscosity of fluid A
         const dimensionedScalar& muFluidA() const
@@ -309,51 +404,47 @@ public:
             return CpFluidB_;
         }
 
-        //- Return the surface tension field
-        areaScalarField& surfaceTension();
+        //- Gravity
+        const dimensionedVector& g() const
+        {
+            return g_;
+        }
 
-        //- Return the face curvature field
-        const scalarField& faceCurvatures();
-
-        //- Return reference to interpolator (A to B)
-        const patchToPatchInterpolation& interpolatorAB();
-
-        //- Return reference to interpolator (B to A)
-        const patchToPatchInterpolation& interpolatorBA();
-
-        //- Return an indicator field for two fluids
-        const volScalarField& fluidIndicator();
+        //- Surface tension for clean interface
+        const dimensionedScalar& cleanInterfaceSurfTension() const
+        {
+            return cleanInterfaceSurfTension_;
+        }
 
         //- Return the combined density field for two fluids
-        volScalarField& rho();
+        volScalarField& rho() const;
 
         //- Return the combined viscosity field for two fluids
-        volScalarField& mu();
+        volScalarField& mu() const;
 
         //- Adjust the surface-tension for temperature
         void adjustSurfaceTension(const volScalarField& T);
 
-        // Return reference to the displacement field
-        vectorField& displacement();
-
-        // Update the interface with fluid velocity
-        void updateInterface();
+        //- Maximal surface tension based Courant number
+        scalar maxCourantNumber();
 
         // Update the interface with the fluid velocity
-        void movePoints();
+        void moveSurfacePoints();
 
         // Update control points end displacement directions
-        void updateDisplacementDirections();
+        void updateDisplacementDirections() const;
 
         // Restore interface position
-        void restorePosition();
+        bool restorePosition();
 
         // Update boundary conditions on velocity and pressure
         void updateBoundaryConditions();
 
-        // Update on topology change
-        void updateMesh();
+        // Update for mesh motion
+        bool movePoints() const;
 
+        // Update on topology change
+        bool updateMesh(const mapPolyMesh&) const;
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
