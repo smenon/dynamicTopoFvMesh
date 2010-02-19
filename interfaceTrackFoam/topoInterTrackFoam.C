@@ -35,14 +35,10 @@ Description
 #include "dynamicFvMesh.H"
 #include "fluidInterface.H"
 
-// Mesh motion
-#include "setMotionBC.H"
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 int main(int argc, char *argv[])
 {
-
 #   include "setRootCase.H"
 #   include "createTime.H"
 #   include "createDynamicFvMesh.H"
@@ -76,39 +72,26 @@ int main(int argc, char *argv[])
 #       include "CourantNo.H"
 #       include "setDeltaT.H"
 
-        // Make the fluxes absolute
-        fvc::makeAbsolute(phi, interface.rho(), U);
-
         runTime++;
 
         Info<< "Time = " << runTime.timeName() << nl << endl;
 
-        // Update the interface
-        interface.updateInterface();
+        interface.updateDisplacementDirections();
 
-        setMotionBC(mesh, interface.aPatchID(), interface.displacement());
-
-        if (interface.twoFluids())
-        {
-            // Interpolate displacement to the shadow patch
-            pointField dispB = interface.interpolatorAB().pointInterpolate
-                               (
-                                   interface.displacement()
-                               );
-
-            setMotionBC(mesh, interface.bPatchID(), dispB);
-        }
-
-        // Update mesh for both motion and topology
-        bool meshChanged = mesh.update();
+        bool meshChanged = interface.restorePosition();
 
 #       include "volContinuity.H"
 
-        // Update the interface
         if (meshChanged)
         {
-            interface.updateMesh();
+            phi = (fvc::interpolate(U) & mesh.Sf());
+#           include "correctPhi.H"
         }
+
+        interface.moveSurfacePoints();
+
+        Info << "\nMax surface Courant Number = "
+             << interface.maxCourantNumber() << endl << endl;
 
         for (int corr=0; corr<nOuterCorr; corr++)
         {
@@ -139,8 +122,6 @@ int main(int argc, char *argv[])
 
                 phi = (fvc::interpolate(U) & mesh.Sf());
 
-                adjustPhi(phi, U, p);
-
                 for (int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
                 {
                     fvScalarMatrix pEqn
@@ -167,12 +148,11 @@ int main(int argc, char *argv[])
 
 #               include "continuityErrs.H"
 
-                // Make the fluxes relative
-                fvc::makeRelative(phi, interface.rho(), U);
-
                 U -= rUA*fvc::grad(p);
                 U.correctBoundaryConditions();
             }
+
+            interface.moveSurfacePoints();
 
 #           include "freeSurfaceContinuityErrs.H"
 
