@@ -102,6 +102,8 @@ void interpolator::writeFluxes
     const vectorField& fC = mesh_.faceCentres();
     const vectorField& Sf = mesh_.faceAreas();
 
+    const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
+
     // Make the directory
     fileName dirName(mesh_.time().path()/mesh_.time().timeName());
     //fileName dirName(mesh_.time().path()/"VTK"/mesh_.time().timeName());
@@ -111,42 +113,71 @@ void interpolator::writeFluxes
     // Open stream for output
     OFstream file(dirName/name + ".vtk");
 
+    label numFaces = fC.size();
+
+    forAll(boundary, patchI)
+    {
+        if
+        (
+            (boundary[patchI].type() == "wedge") ||
+            (boundary[patchI].type() == "empty")
+        )
+        {
+            numFaces -= boundary[patchI].size();
+        }
+    }
+
     // Write out the header
     file << "# vtk DataFile Version 2.0" << nl
          << name << ".vtk" << nl
          << "ASCII" << nl
          << "DATASET UNSTRUCTURED_GRID" << nl
-         << "POINTS " << fC.size() << " double" << nl;
+         << "POINTS " << numFaces << " double" << nl;
 
     forAll(fC, faceI)
     {
-        file << fC[faceI].x() << ' '
-             << fC[faceI].y() << ' '
-             << fC[faceI].z() << ' '
-             << nl;
+        label patch = boundary.whichPatch(faceI);
+
+        if (patch == -1)
+        {
+            file << fC[faceI].x() << ' '
+                 << fC[faceI].y() << ' '
+                 << fC[faceI].z() << ' '
+                 << nl;
+        }
+        else
+        if
+        (
+            (boundary[patch].type() != "wedge") &&
+            (boundary[patch].type() != "empty")
+        )
+        {
+            file << fC[faceI].x() << ' '
+                 << fC[faceI].y() << ' '
+                 << fC[faceI].z() << ' '
+                 << nl;
+        }
     }
 
-    file << "CELLS " << fC.size() << " " << (2 * fC.size()) << endl;
+    file << "CELLS " << numFaces << " " << (2 * numFaces) << endl;
 
-    forAll(fC, faceI)
+    for(label i = 0; i < numFaces; i++)
     {
-        file << 1 << ' ' << faceI << nl;
+        file << 1 << ' ' << i << nl;
     }
 
-    file << "CELL_TYPES " << fC.size() << endl;
+    file << "CELL_TYPES " << numFaces << endl;
 
-    forAll(fC, faceI)
+    for(label i = 0; i < numFaces; i++)
     {
         file << 1 << nl;
     }
 
-    file << "POINT_DATA " << fC.size() << endl;
+    file << "POINT_DATA " << numFaces << endl;
 
     file << "FIELD PointFields 1" << endl;
 
-    file << "Fluxes 3 " << fC.size() << " double" << endl;
-
-    const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
+    file << "Fluxes 3 " << numFaces << " double" << endl;
 
     forAll(fC, faceI)
     {
@@ -160,6 +191,15 @@ void interpolator::writeFluxes
         }
         else
         {
+            if
+            (
+                (boundary[patch].type() == "wedge") ||
+                (boundary[patch].type() == "empty")
+            )
+            {
+                continue;
+            }
+
             label i = boundary[patch].whichFace(faceI);
 
             v = (pF.boundaryField()[patch][i]*n);
@@ -258,6 +298,62 @@ void interpolator::removeCell
     removeEntity(sphericalTensor, volSphericalTensor);
     removeEntity(symmTensor, volSymmTensor);
     removeEntity(tensor, volTensor);
+}
+
+// Get the volume-flux for an existing face
+scalar interpolator::getPhi
+(
+    const label faceIndex
+)
+{
+    // Check surfScalarMaps for an entry named 'phi'.
+    // If it exists, get the value.
+    word phiName("phi");
+
+    scalar phiVal = 0.0;
+
+    if (surfScalarMap_.found(phiName))
+    {
+        if
+        (
+            (faceIndex < mesh_.nOldFaces_) &&
+            (!surfScalarMap_[phiName].found(faceIndex))
+        )
+        {
+            // Fetch phi from the registry.
+            const surfaceScalarField& oF =
+            (
+                mesh_.lookupObject<surfaceScalarField>(phiName)
+            );
+
+            const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
+
+            label oPatch = boundary.whichPatch(faceIndex);
+
+            if (oPatch == -1)
+            {
+                phiVal = oF.internalField()[faceIndex];
+            }
+            else
+            {
+                label i = boundary[oPatch].whichFace(faceIndex);
+
+                phiVal = oF.boundaryField()[oPatch][i];
+            }
+        }
+        else
+        {
+            phiVal = surfScalarMap_[phiName][faceIndex];
+        }
+    }
+
+    // Check if the flux needs to be flipped.
+    if (flipFaces_.found(faceIndex))
+    {
+        phiVal *= -1.0;
+    }
+
+    return phiVal;
 }
 
 // Set the volume-flux for an existing face

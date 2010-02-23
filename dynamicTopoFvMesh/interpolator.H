@@ -133,6 +133,9 @@ public:
         // Remove the cell, if it exists in the map.
         void removeCell(const label index);
 
+        // Get the volume-flux for an existing face
+        scalar getPhi(const label faceIndex);
+
         // Set the volume-flux for an existing face
         void setPhi
         (
