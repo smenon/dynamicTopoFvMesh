@@ -153,57 +153,71 @@ inline point dynamicTopoFvMesh::triFaceCentre
 // Find the area of a quad face.
 inline scalar dynamicTopoFvMesh::quadFaceArea
 (
-    const face& quadFace
+    const face& quadFace,
+    bool useOldPoints
 ) const
 {
-    return Foam::mag(quadFaceNormal(quadFace));
+    return Foam::mag(quadFaceNormal(quadFace, useOldPoints));
 }
 
 // Find the area of a triangle face.
 // This function also assumes face right-handedness
 inline scalar dynamicTopoFvMesh::triFaceArea
 (
-    const face& triFace
+    const face& triFace,
+    bool useOldPoints
 ) const
 {
-    return Foam::mag(triFaceNormal(triFace));
+    return Foam::mag(triFaceNormal(triFace, useOldPoints));
 }
 
 // Find the normal of a quad face.
 // This function also assumes face right-handedness
 inline vector dynamicTopoFvMesh::quadFaceNormal
 (
-    const face& quadFace
+    const face& quadFace,
+    bool useOldPoints
 ) const
 {
     vector n = vector::zero, v = vector::zero, w = vector::zero;
 
-    point centrePoint = 0.25 *
-    (
-        points_[quadFace[0]]
-      + points_[quadFace[1]]
-      + points_[quadFace[2]]
-      + points_[quadFace[3]]
-    );
+    FixedList<point, 4> pts(vector::zero);
+
+    if (useOldPoints)
+    {
+        pts[0] = oldPoints_[quadFace[0]];
+        pts[1] = oldPoints_[quadFace[1]];
+        pts[2] = oldPoints_[quadFace[2]];
+        pts[3] = oldPoints_[quadFace[3]];
+    }
+    else
+    {
+        pts[0] = points_[quadFace[0]];
+        pts[1] = points_[quadFace[1]];
+        pts[2] = points_[quadFace[2]];
+        pts[3] = points_[quadFace[3]];
+    }
+
+    point centrePoint = 0.25*(pts[0] + pts[1] + pts[2] + pts[3]);
 
     // Add normals from four sub-triangles.
-    v = points_[quadFace[1]] - points_[quadFace[0]];
-    w = centrePoint - points_[quadFace[1]];
+    v = pts[1] - pts[0];
+    w = centrePoint - pts[1];
 
     n += 0.5 * (v ^ w);
 
-    v = points_[quadFace[2]] - points_[quadFace[1]];
-    w = centrePoint - points_[quadFace[2]];
+    v = pts[2] - pts[1];
+    w = centrePoint - pts[2];
 
     n += 0.5 * (v ^ w);
 
-    v = points_[quadFace[3]] - points_[quadFace[2]];
-    w = centrePoint - points_[quadFace[3]];
+    v = pts[3] - pts[2];
+    w = centrePoint - pts[3];
 
     n += 0.5 * (v ^ w);
 
-    v = points_[quadFace[0]] - points_[quadFace[3]];
-    w = centrePoint - points_[quadFace[0]];
+    v = pts[0] - pts[3];
+    w = centrePoint - pts[0];
 
     n += 0.5 * (v ^ w);
 
@@ -214,11 +228,27 @@ inline vector dynamicTopoFvMesh::quadFaceNormal
 // This function also assumes face right-handedness
 inline vector dynamicTopoFvMesh::triFaceNormal
 (
-    const face& triFace
+    const face& triFace,
+    bool useOldPoints
 ) const
 {
-    vector v = points_[triFace[1]] - points_[triFace[0]];
-    vector w = points_[triFace[2]] - points_[triFace[0]];
+    FixedList<point, 3> pts(vector::zero);
+
+    if (useOldPoints)
+    {
+        pts[0] = oldPoints_[triFace[0]];
+        pts[1] = oldPoints_[triFace[1]];
+        pts[2] = oldPoints_[triFace[2]];
+    }
+    else
+    {
+        pts[0] = points_[triFace[0]];
+        pts[1] = points_[triFace[1]];
+        pts[2] = points_[triFace[2]];
+    }
+
+    vector v = pts[1] - pts[0];
+    vector w = pts[2] - pts[0];
 
     return 0.5 * (v ^ w);
 }
@@ -285,7 +315,8 @@ inline label dynamicTopoFvMesh::tetApexPoint
 // Given a cell index, find the centroid of a prism cell.
 inline vector dynamicTopoFvMesh::prismCellCentre
 (
-    const label cIndex
+    const label cIndex,
+    bool useOldPoints
 ) const
 {
     vector centre = vector::zero;
@@ -298,12 +329,12 @@ inline vector dynamicTopoFvMesh::prismCellCentre
 
         if (faceToCheck.size() == 3)
         {
-            centre += triFaceCentre(cellToCheck[faceI]);
+            centre += triFaceCentre(cellToCheck[faceI], useOldPoints);
         }
 
         if (faceToCheck.size() == 4)
         {
-            centre += quadFaceCentre(cellToCheck[faceI]);
+            centre += quadFaceCentre(cellToCheck[faceI], useOldPoints);
         }
     }
 
@@ -315,7 +346,8 @@ inline vector dynamicTopoFvMesh::prismCellCentre
 // Given a cell index, find the centroid of a tet cell.
 inline vector dynamicTopoFvMesh::tetCellCentre
 (
-    const label cIndex
+    const label cIndex,
+    bool useOldPoints
 ) const
 {
     vector centre = vector::zero;
@@ -379,6 +411,54 @@ inline scalar dynamicTopoFvMesh::tetVolume
 ) const
 {
     return (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
+}
+
+// Find the volume of a prism cell, given the cell index.
+inline scalar dynamicTopoFvMesh::prismVolume
+(
+    const label cIndex,
+    bool useOldPoints
+) const
+{
+    scalar cVol = 0.0;
+
+    const cell& cellToCheck = cells_[cIndex];
+
+    // Estimate a centroid based on average face centres.
+    vector cEst = prismCellCentre(cIndex, useOldPoints);
+
+    // Calculate 3 * face-pyramid volumes.
+    forAll(cellToCheck, faceI)
+    {
+        scalar pyr3Vol = 0.0;
+
+        const face& fI = faces_[cellToCheck[faceI]];
+
+        scalar fSign = (owner_[cellToCheck[faceI]] == cIndex) ? 1.0 : -1.0;
+
+        if (fI.size() == 3)
+        {
+            pyr3Vol =
+            (
+                triFaceNormal(fI, useOldPoints)
+              & (triFaceCentre(cellToCheck[faceI], useOldPoints) - cEst)
+            );
+        }
+        else
+        {
+            pyr3Vol =
+            (
+                quadFaceNormal(fI, useOldPoints)
+              & (quadFaceCentre(cellToCheck[faceI], useOldPoints) - cEst)
+            );
+        }
+
+        cVol += fSign*pyr3Vol;
+    }
+
+    cVol *= (1.0/3.0);
+
+    return cVol;
 }
 
 // Find the volume of a tetrahedron, given the cell index.

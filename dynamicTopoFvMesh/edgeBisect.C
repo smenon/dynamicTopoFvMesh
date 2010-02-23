@@ -4533,7 +4533,6 @@ void dynamicTopoFvMesh::sliceMesh
         // Specify a search distance
         dx =
         (
-            1.5 *
             mag
             (
                 quadFaceCentre(pointPair.first())
@@ -4563,10 +4562,7 @@ void dynamicTopoFvMesh::sliceMesh
         );
 
         // Specify a search distance
-        dx =
-        (
-            1.5*mag(points_[pointPair.first()] - points_[pointPair.second()])
-        );
+        dx = mag(points_[pointPair.first()] - points_[pointPair.second()]);
     }
 
     // Is this edge in the vicinity of a previous slice-point?
@@ -4701,17 +4697,16 @@ void dynamicTopoFvMesh::sliceMesh
             )
         );
 
-        // Fit a plane through the surface points.
+        // First normalize all face-normals
+        forAllIter(Map<vector>, surfFaces, sIter)
+        {
+            sIter() /= (mag(sIter()) + VSMALL);
+        }
+
         if (foundPath)
         {
-            // First normalize all face-normals
-            forAllIter(Map<vector>, surfFaces, sIter)
-            {
-                sIter() /= (mag(sIter()) + VSMALL);
-            }
-
             // Next, take cross-products with every other
-            // vector in the list, an accumulate.
+            // vector in the list, and accumulate.
             forAllIter(Map<vector>, surfFaces, sIterI)
             {
                 forAllIter(Map<vector>, surfFaces, sIterJ)
@@ -4737,6 +4732,81 @@ void dynamicTopoFvMesh::sliceMesh
 
             // Obtain point position
             p = gCentre;
+        }
+        else
+        {
+            // Probably a membrane-type configuration.
+            labelHashSet checkCells;
+
+            // Prepare a bounding cylinder with radius dx.
+            forAllIter(Map<vector>, surfFaces, sIter)
+            {
+                const face& thisFace = faces_[sIter.key()];
+
+                if (thisFace.which(pointPair.first()) > -1)
+                {
+                    N += sIter();
+                }
+            }
+
+            // Normalize and reverse.
+            N /= -(mag(N) + VSMALL);
+
+            vector a0 = points_[pointPair.first()];
+            vector a1 = points_[pointPair.second()];
+            scalar dist = mag(a1 - a0);
+
+            forAll(cells_, cellI)
+            {
+                if (cells_[cellI].empty())
+                {
+                    continue;
+                }
+
+                vector x = tetCellCentre(cellI);
+
+                vector rx = (x - a0);
+                vector ra = (rx & N)*N;
+
+                // Check if point falls off cylinder ends.
+                if (mag(ra) > dist || mag(ra) < 0.0)
+                {
+                    continue;
+                }
+
+                vector r = (rx - ra);
+
+                // Check if the magnitude of 'r' is within radius.
+                if (mag(r) < dx)
+                {
+                    checkCells.insert(cellI);
+                }
+            }
+
+            labelList cList = checkCells.toc();
+
+            if (debug > 1)
+            {
+                Info << "Dijkstra's algorithm could not find a path." << endl;
+
+                if (debug > 3)
+                {
+                    writeVTK("checkCells", cList, 3);
+                }
+            }
+
+            removeCells(cList, patchIndex);
+
+            checkConnectivity(10);
+
+            // Add an entry to sliceBoxes.
+            label currentSize = sliceBoxes_.size();
+
+            sliceBoxes_.setSize(currentSize + 1);
+
+            sliceBoxes_[currentSize] = bBox;
+
+            return;
         }
     }
 

@@ -401,16 +401,32 @@ class dynamicTopoFvMesh
         ) const;
 
         // Find the area of a quad face.
-        inline scalar quadFaceArea(const face& quadFace) const;
+        inline scalar quadFaceArea
+        (
+            const face& quadFace,
+            bool useOldPoints = false
+        ) const;
 
         // Find the area of a triangle face.
-        inline scalar triFaceArea(const face& triFace) const;
+        inline scalar triFaceArea
+        (
+            const face& triFace,
+            bool useOldPoints = false
+        ) const;
 
         // Find the normal of a quad face.
-        inline vector quadFaceNormal(const face& quadFace) const;
+        inline vector quadFaceNormal
+        (
+            const face& quadFace,
+            bool useOldPoints = false
+        ) const;
 
         // Find the normal of a triangle face.
-        inline vector triFaceNormal(const face& triFace) const;
+        inline vector triFaceNormal
+        (
+            const face& triFace,
+            bool useOldPoints = false
+        ) const;
 
         // Given a face and cell index, find the apex point for a tet cell.
         inline label tetApexPoint
@@ -420,10 +436,18 @@ class dynamicTopoFvMesh
         ) const;
 
         // Given a cell index, find the centroid of a prism cell.
-        inline vector prismCellCentre(const label cIndex) const;
+        inline vector prismCellCentre
+        (
+            const label cIndex,
+            bool useOldPoints = false
+        ) const;
 
         // Given a cell index, find the centroid of a tet cell.
-        inline vector tetCellCentre(const label cIndex) const;
+        inline vector tetCellCentre
+        (
+            const label cIndex,
+            bool useOldPoints = false
+        ) const;
 
         // Compare two triangular faces
         inline label compare(const face& a, const face& b) const;
@@ -435,6 +459,13 @@ class dynamicTopoFvMesh
             const point& b,
             const point& c,
             const point& d
+        ) const;
+
+        // Find the volume of a prism cell, given the cell index.
+        inline scalar prismVolume
+        (
+            const label cIndex,
+            bool useOldPoints = false
         ) const;
 
         // Find the volume of a tetrahedron (defined by cell index)
@@ -753,12 +784,12 @@ class dynamicTopoFvMesh
             const label zoneID = -1
         );
 
-        // Remove the specified cell from the mesh,
+        // Remove the specified cells from the mesh,
         // (including lower entities like points, edges, faces, etc.)
-        // and add exposed internal faces to the specified patch
-        void removeCell
+        // and add exposed internal faces/edges to the specified patch.
+        void removeCells
         (
-            const label cIndex,
+            const labelList& cList,
             const label patch
         );
 
@@ -1270,6 +1301,13 @@ class dynamicTopoFvMesh
 
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);
+
+        // Compute divergence for a particular cell.
+        scalar computeDivergence
+        (
+            const label cIndex,
+            bool useOldPoints = false
+        );
 
 public:
 
