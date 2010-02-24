@@ -1,6 +1,24 @@
 #!/bin/sh
 set -x
 
+# Check for Debug/Release/Clean
+if [ $# = 1 ]
+then
+    if [ $1 = "Debug" ]
+    then
+        export WM_COMPILE_OPTION=Debug
+    fi
+    if [ $1 = "Release" ]
+    then
+        export WM_COMPILE_OPTION=Opt
+    fi
+    if [ $1 = "Clean" ]
+    then
+        ./Allwclean
+        exit 0
+    fi
+fi
+
 ./AllwmakeLnInclude
 
 wmake libso tetMetrics

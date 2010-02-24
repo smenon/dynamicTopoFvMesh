@@ -7654,7 +7654,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
         // Check if this boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.
-        mesh.remove2DSliver(fIndex);
+        // mesh.remove2DSliver(fIndex);
 
         if (mesh.checkFaceBisection(fIndex))
         {
@@ -7895,7 +7895,7 @@ bool dynamicTopoFvMesh::checkCollapse
         if
         (
             (Foam::sign(origArea) != Foam::sign(newArea))
-         || (mag(newArea) < VSMALL)
+         || (mag(newArea) < (1e-3*origArea))
         )
         {
             // Inverted and/or degenerate.

@@ -455,6 +455,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // required for coupled patch mapping.
     map.addFace(fIndex);
 
+    // Set face flux for the modified face.
+    scalar oldPhi = iPtr_->getPhi(fIndex);
+
+    iPtr_->setPhi(fIndex, 0.5 * oldPhi);
+
     if (debug > 1)
     {
         Info << "Modified face: " << fIndex
@@ -507,6 +512,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             faces_[replaceFace] = faces_[replaceFace].reverseFace();
             owner_[replaceFace] = neighbour_[replaceFace];
             neighbour_[replaceFace] = newCellIndex[0];
+
+            iPtr_->setFlip(replaceFace);
         }
     }
     else
@@ -527,16 +534,22 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     tmpQuadFace[2] = newPointIndex[1];
     tmpQuadFace[3] = otherPointIndex[1];
 
-    newFaceIndex[0] = insertFace
-                      (
-                          -1,
-                          tmpQuadFace,
-                          c0,
-                          newCellIndex[0]
-                      );
+    newFaceIndex[0] =
+    (
+        insertFace
+        (
+            -1,
+            tmpQuadFace,
+            c0,
+            newCellIndex[0]
+        )
+    );
 
     // Add a faceEdges entry as well
     faceEdges_.append(tmpQFEdges);
+
+    // Set the flux
+    iPtr_->setPhi(newFaceIndex[0], 0.0);
 
     // Find the common edge between quad/quad faces...
     findCommonEdge
@@ -564,13 +577,16 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     tmpTriFace[1] = newPointIndex[0];
     tmpTriFace[2] = otherEdgePoint[0];
 
-    newFaceIndex[1] = insertFace
-                      (
-                          whichPatch(c0BdyIndex[0]),
-                          tmpTriFace,
-                          newCellIndex[0],
-                          -1
-                      );
+    newFaceIndex[1] =
+    (
+        insertFace
+        (
+            whichPatch(c0BdyIndex[0]),
+            tmpTriFace,
+            newCellIndex[0],
+            -1
+        )
+    );
 
     // Add a faceEdges entry as well
     faceEdges_.append(tmpTFEdges);
@@ -582,13 +598,16 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     tmpTriFace[1] = newPointIndex[1];
     tmpTriFace[2] = otherEdgePoint[1];
 
-    newFaceIndex[2] = insertFace
-                      (
-                          whichPatch(c0BdyIndex[1]),
-                          tmpTriFace,
-                          c0,
-                          -1
-                      );
+    newFaceIndex[2] =
+    (
+        insertFace
+        (
+            whichPatch(c0BdyIndex[1]),
+            tmpTriFace,
+            c0,
+            -1
+        )
+    );
 
     // Add a faceEdges entry as well
     faceEdges_.append(tmpTFEdges);
@@ -603,12 +622,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     tmpTriEdgeFaces[1] = newFaceIndex[0];
     tmpTriEdgeFaces[2] = newFaceIndex[1];
 
-    newEdgeIndex[1] = insertEdge
-                      (
-                          whichEdgePatch(commonEdgeIndex[0]),
-                          edge(newPointIndex[0], otherPointIndex[0]),
-                          tmpTriEdgeFaces
-                      );
+    newEdgeIndex[1] =
+    (
+        insertEdge
+        (
+            whichEdgePatch(commonEdgeIndex[0]),
+            edge(newPointIndex[0], otherPointIndex[0]),
+            tmpTriEdgeFaces
+        )
+    );
 
     // Find the common edge between the quad/tri faces...
     findCommonEdge
@@ -638,12 +660,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     tmpTriEdgeFaces[1] = newFaceIndex[0];
     tmpTriEdgeFaces[2] = newFaceIndex[2];
 
-    newEdgeIndex[2] = insertEdge
-                      (
-                          whichEdgePatch(commonEdgeIndex[1]),
-                          edge(newPointIndex[1], otherPointIndex[1]),
-                          tmpTriEdgeFaces
-                      );
+    newEdgeIndex[2] =
+    (
+        insertEdge
+        (
+            whichEdgePatch(commonEdgeIndex[1]),
+            edge(newPointIndex[1], otherPointIndex[1]),
+            tmpTriEdgeFaces
+        )
+    );
 
     // Find the common edge between the quad/tri faces...
     findCommonEdge
@@ -677,19 +702,25 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpQuadFace[2] = otherEdgePoint[0];
         tmpQuadFace[3] = newPointIndex[0];
 
-        newFaceIndex[3] = insertFace
-                          (
-                              whichPatch(fIndex),
-                              tmpQuadFace,
-                              newCellIndex[0],
-                              -1
-                          );
+        newFaceIndex[3] =
+        (
+            insertFace
+            (
+                whichPatch(fIndex),
+                tmpQuadFace,
+                newCellIndex[0],
+                -1
+            )
+        );
 
         // Add this face to the map.
         map.addFace(newFaceIndex[3]);
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
+
+        // Set the flux
+        iPtr_->setPhi(newFaceIndex[3], 0.5 * oldPhi);
 
         // Correct edgeFaces for otherEdgeIndex[1]
         replaceLabel
@@ -708,12 +739,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpTriEdgeFaces[1] = newFaceIndex[0];
         tmpTriEdgeFaces[2] = fIndex;
 
-        newEdgeIndex[0] = insertEdge
-                          (
-                              whichEdgePatch(otherEdgeIndex[0]),
-                              edge(newPointIndex[0], newPointIndex[1]),
-                              tmpTriEdgeFaces
-                          );
+        newEdgeIndex[0] =
+        (
+            insertEdge
+            (
+                whichEdgePatch(otherEdgeIndex[0]),
+                edge(newPointIndex[0], newPointIndex[1]),
+                tmpTriEdgeFaces
+            )
+        );
 
         // Replace an edge on the bisected face
         replaceLabel
@@ -727,22 +761,28 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpBiEdgeFaces[0] = newFaceIndex[1];
         tmpBiEdgeFaces[1] = newFaceIndex[3];
 
-        newEdgeIndex[3] = insertEdge
-                          (
-                              whichEdgePatch(commonEdgeIndex[0]),
-                              edge(newPointIndex[0], otherEdgePoint[0]),
-                              tmpBiEdgeFaces
-                          );
+        newEdgeIndex[3] =
+        (
+            insertEdge
+            (
+                whichEdgePatch(commonEdgeIndex[0]),
+                edge(newPointIndex[0], otherEdgePoint[0]),
+                tmpBiEdgeFaces
+            )
+        );
 
         tmpBiEdgeFaces[0] = c0BdyIndex[1];
         tmpBiEdgeFaces[1] = newFaceIndex[3];
 
-        newEdgeIndex[4] = insertEdge
-                          (
-                              whichEdgePatch(commonEdgeIndex[1]),
-                              edge(newPointIndex[1], nextToOtherPoint[1]),
-                              tmpBiEdgeFaces
-                          );
+        newEdgeIndex[4] =
+        (
+            insertEdge
+            (
+                whichEdgePatch(commonEdgeIndex[1]),
+                edge(newPointIndex[1], nextToOtherPoint[1]),
+                tmpBiEdgeFaces
+            )
+        );
 
         // Now that edges are defined, configure faceEdges
         // for all new faces
@@ -920,6 +960,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 faces_[replaceFace] = faces_[replaceFace].reverseFace();
                 owner_[replaceFace] = neighbour_[replaceFace];
                 neighbour_[replaceFace] = newCellIndex[1];
+
+                iPtr_->setFlip(replaceFace);
             }
         }
         else
@@ -938,16 +980,22 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpQuadFace[2] = otherEdgePoint[0];
         tmpQuadFace[3] = newPointIndex[0];
 
-        newFaceIndex[3] = insertFace
-                          (
-                              -1,
-                              tmpQuadFace,
-                              newCellIndex[0],
-                              newCellIndex[1]
-                          );
+        newFaceIndex[3] =
+        (
+            insertFace
+            (
+                -1,
+                tmpQuadFace,
+                newCellIndex[0],
+                newCellIndex[1]
+            )
+        );
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
+
+        // Set the flux
+        iPtr_->setPhi(newFaceIndex[3], 0.5 * oldPhi);
 
         // Correct edgeFaces for otherEdgeIndex[1]
         replaceLabel
@@ -1041,16 +1089,22 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpQuadFace[2] = otherPointIndex[3];
         tmpQuadFace[3] = newPointIndex[1];
 
-        newFaceIndex[4] = insertFace
-                          (
-                              -1,
-                              tmpQuadFace,
-                              c1,
-                              newCellIndex[1]
-                          );
+        newFaceIndex[4] =
+        (
+            insertFace
+            (
+                -1,
+                tmpQuadFace,
+                c1,
+                newCellIndex[1]
+            )
+        );
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
+
+        // Set the flux
+        iPtr_->setPhi(newFaceIndex[4], 0.0);
 
         // remove2DSliver requires this face index for removal
         map.addFace(newFaceIndex[4]);
@@ -1078,13 +1132,16 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpTriFace[1] = newPointIndex[0];
         tmpTriFace[2] = otherEdgePoint[2];
 
-        newFaceIndex[5] = insertFace
-                          (
-                              whichPatch(commonFaceIndex[2]),
-                              tmpTriFace,
-                              c1,
-                              -1
-                          );
+        newFaceIndex[5] =
+        (
+            insertFace
+            (
+                whichPatch(commonFaceIndex[2]),
+                tmpTriFace,
+                c1,
+                -1
+            )
+        );
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpTFEdges);
@@ -1096,13 +1153,16 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpTriFace[1] = newPointIndex[1];
         tmpTriFace[2] = otherEdgePoint[3];
 
-        newFaceIndex[6] = insertFace
-                          (
-                              whichPatch(commonFaceIndex[3]),
-                              tmpTriFace,
-                              newCellIndex[1],
-                              -1
-                          );
+        newFaceIndex[6] =
+        (
+            insertFace
+            (
+                whichPatch(commonFaceIndex[3]),
+                tmpTriFace,
+                newCellIndex[1],
+                -1
+            )
+        );
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpTFEdges);
@@ -1118,12 +1178,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpQuadEdgeFaces[2] = newFaceIndex[3];
         tmpQuadEdgeFaces[3] = newFaceIndex[4];
 
-        newEdgeIndex[0] = insertEdge
-                          (
-                              -1,
-                              edge(newPointIndex[0], newPointIndex[1]),
-                              tmpQuadEdgeFaces
-                          );
+        newEdgeIndex[0] =
+        (
+            insertEdge
+            (
+                -1,
+                edge(newPointIndex[0], newPointIndex[1]),
+                tmpQuadEdgeFaces
+            )
+        );
 
         // Replace an edge on the bisected face
         replaceLabel
@@ -1138,35 +1201,44 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpTriEdgeFaces[1] = newFaceIndex[3];
         tmpTriEdgeFaces[2] = newFaceIndex[1];
 
-        newEdgeIndex[3] = insertEdge
-                          (
-                              whichEdgePatch(commonEdgeIndex[2]),
-                              edge(newPointIndex[0], nextToOtherPoint[2]),
-                              tmpTriEdgeFaces
-                          );
+        newEdgeIndex[3] =
+        (
+            insertEdge
+            (
+                whichEdgePatch(commonEdgeIndex[2]),
+                edge(newPointIndex[0], nextToOtherPoint[2]),
+                tmpTriEdgeFaces
+            )
+        );
 
         tmpTriEdgeFaces[0] = c0BdyIndex[1];
         tmpTriEdgeFaces[1] = newFaceIndex[3];
         tmpTriEdgeFaces[2] = newFaceIndex[6];
 
-        newEdgeIndex[4] = insertEdge
-                          (
-                              whichEdgePatch(commonEdgeIndex[3]),
-                              edge(newPointIndex[1], otherEdgePoint[3]),
-                              tmpTriEdgeFaces
-                          );
+        newEdgeIndex[4] =
+        (
+            insertEdge
+            (
+                whichEdgePatch(commonEdgeIndex[3]),
+                edge(newPointIndex[1], otherEdgePoint[3]),
+                tmpTriEdgeFaces
+            )
+        );
 
         // The edge bisecting the second boundary triangular face
         tmpTriEdgeFaces[0] = commonFaceIndex[2];
         tmpTriEdgeFaces[1] = newFaceIndex[4];
         tmpTriEdgeFaces[2] = newFaceIndex[5];
 
-        newEdgeIndex[5] = insertEdge
-                          (
-                              whichEdgePatch(commonEdgeIndex[2]),
-                              edge(newPointIndex[0], otherPointIndex[2]),
-                              tmpTriEdgeFaces
-                          );
+        newEdgeIndex[5] =
+        (
+            insertEdge
+            (
+                whichEdgePatch(commonEdgeIndex[2]),
+                edge(newPointIndex[0], otherPointIndex[2]),
+                tmpTriEdgeFaces
+            )
+        );
 
         // Find the common edge between the quad/tri faces...
         findCommonEdge
@@ -1196,12 +1268,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpTriEdgeFaces[1] = newFaceIndex[4];
         tmpTriEdgeFaces[2] = newFaceIndex[6];
 
-        newEdgeIndex[6] = insertEdge
-                          (
-                              whichEdgePatch(commonEdgeIndex[3]),
-                              edge(newPointIndex[1], otherPointIndex[3]),
-                              tmpTriEdgeFaces
-                          );
+        newEdgeIndex[6] =
+        (
+            insertEdge
+            (
+                whichEdgePatch(commonEdgeIndex[3]),
+                edge(newPointIndex[1], otherPointIndex[3]),
+                tmpTriEdgeFaces
+            )
+        );
 
         // Find the common edge between the quad/tri faces...
         findCommonEdge

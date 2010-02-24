@@ -769,10 +769,40 @@ void dynamicTopoFvMesh::reOrderFaces
         }
     }
 
-    // Upper-triangular ordering of faces:
-
     // Keep track of inserted boundary face indices
     labelList boundaryPatchIndices(patchStarts_);
+
+    // Handle boundaries first. If any coupled interfaces need to be
+    // updated, they can be reshuffled after interior faces are done.
+    // Update maps for boundaries now.
+    for (label faceI = nOldInternalFaces_; faceI < allFaces; faceI++)
+    {
+        if (visited[faceI] == -1)
+        {
+            label patchID = whichPatch(faceI);
+            label bFaceIndex = boundaryPatchIndices[patchID]++;
+
+            // Update the maps
+            if (faceI < nOldFaces_)
+            {
+                faceMap_[bFaceIndex] = faceI;
+                reverseFaceMap_[faceI] = bFaceIndex;
+            }
+            else
+            {
+                addedFaceRenumbering_.insert(faceI, bFaceIndex);
+
+                addedFaceReverseRenumbering.insert(bFaceIndex, faceI);
+
+                faceMap_[bFaceIndex] = -1;
+            }
+
+            // Mark this face as visited
+            visited[faceI] = 0;
+        }
+    }
+
+    // Upper-triangular ordering of internal faces:
 
     // Insertion cannot be done in one go as the faces need to be
     // added into the list in the increasing order of neighbour
@@ -814,40 +844,6 @@ void dynamicTopoFvMesh::reOrderFaces
                     neiCells[faceI] = largerIndex;
                     nNeighbours++;
                 }
-            }
-
-            // Boundary faces are inserted normally. Update maps for now.
-            // Face insertion for boundaries will be done after internal faces.
-            if (visited[curFaces[faceI]] == -1)
-            {
-                label patchID = whichPatch(curFaces[faceI]);
-                label bFaceIndex = boundaryPatchIndices[patchID]++;
-
-                // Update the maps
-                if (curFaces[faceI] < nOldFaces_)
-                {
-                    faceMap_[bFaceIndex] = curFaces[faceI];
-                    reverseFaceMap_[curFaces[faceI]] = bFaceIndex;
-                }
-                else
-                {
-                    addedFaceRenumbering_.insert
-                    (
-                        curFaces[faceI],
-                        bFaceIndex
-                    );
-
-                    addedFaceReverseRenumbering.insert
-                    (
-                        bFaceIndex,
-                        curFaces[faceI]
-                    );
-
-                    faceMap_[bFaceIndex] = -1;
-                }
-
-                // Mark this face as visited
-                visited[curFaces[faceI]] = 0;
             }
         }
 
@@ -957,7 +953,7 @@ void dynamicTopoFvMesh::reOrderFaces
     // All internal faces have been inserted. Now insert boundary faces.
     label oldIndex;
 
-    for(label i=nInternalFaces_; i<nFaces_; i++)
+    for (label i = nInternalFaces_; i < nFaces_; i++)
     {
         if (faceMap_[i] == -1)
         {
@@ -970,9 +966,12 @@ void dynamicTopoFvMesh::reOrderFaces
         }
 
         // Renumber owner/neighbour
-        label ownerRenumber =   oldOwner[oldIndex] < nOldCells_
-                              ? reverseCellMap_[oldOwner[oldIndex]]
-                              : addedCellRenumbering_[oldOwner[oldIndex]];
+        label ownerRenumber =
+        (
+            oldOwner[oldIndex] < nOldCells_
+          ? reverseCellMap_[oldOwner[oldIndex]]
+          : addedCellRenumbering_[oldOwner[oldIndex]]
+        );
 
         // Insert entities into local listsLists...
         faces_[faceInOrder] = oldFaces[oldIndex];
@@ -1026,9 +1025,9 @@ void dynamicTopoFvMesh::reOrderFaces
         if (sum(visited) != 0)
         {
             FatalErrorIn("dynamicTopoFvMesh::reOrderFaces()") << nl
-                    << " Algorithm did not visit every face in the mesh."
-                    << " Something's messed up." << nl
-                    << abort(FatalError);
+                << " Algorithm did not visit every face in the mesh."
+                << " Something's messed up." << nl
+                << abort(FatalError);
         }
     }
 

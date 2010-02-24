@@ -1274,6 +1274,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                 neighbour_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
+
+                iPtr_->setFlip(faceToKeep[0]);
             }
             else
             {
@@ -1294,6 +1296,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                     owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                     neighbour_[faceToKeep[0]] = -1;
+
+                    iPtr_->setFlip(faceToKeep[0]);
                 }
             }
         }
@@ -1319,6 +1323,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 neighbour_[faceToKeep[0]] = owner_[faceToKeep[0]];
                 owner_[faceToKeep[0]] = owner_[faceToThrow[0]];
+
+                iPtr_->setFlip(faceToKeep[0]);
             }
             else
             {
@@ -1355,6 +1361,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                     owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                     neighbour_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
+
+                    iPtr_->setFlip(faceToKeep[1]);
                 }
                 else
                 {
@@ -1375,6 +1383,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                         owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                         neighbour_[faceToKeep[1]] = -1;
+
+                        iPtr_->setFlip(faceToKeep[1]);
                     }
                 }
             }
@@ -1400,6 +1410,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                     neighbour_[faceToKeep[1]] = owner_[faceToKeep[1]];
                     owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
+
+                    iPtr_->setFlip(faceToKeep[1]);
                 }
                 else
                 {
