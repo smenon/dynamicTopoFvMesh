@@ -113,9 +113,8 @@ void fixedGradientCorrectedFvPatchField<Type>::autoMap
     const fvPatchFieldMapper& m
 )
 {
-    Field<Type>::autoMap(m);
-    gradient_.autoMap(m);
     correctedFvPatchField<Type>::autoMap(m);
+    gradient_.autoMap(m);
 
 //     if (m.resizeOnly())
 //     {

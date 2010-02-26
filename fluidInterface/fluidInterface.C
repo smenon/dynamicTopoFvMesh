@@ -158,7 +158,10 @@ Foam::fluidInterface::fluidInterface
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 Foam::fluidInterface::~fluidInterface()
-{}
+{
+    // Clear out other demand-driven data
+    clearOut();
+}
 
 void Foam::fluidInterface::clearOut() const
 {
@@ -822,7 +825,7 @@ bool Foam::fluidInterface::restorePosition()
     // Now update the mesh with motion / topology changes.
     bool meshChanged = mesh().update();
 
-    aMesh().movePoints(newMeshPoints);
+    aMesh().movePoints(mesh().points());
     moveFvSubMeshes();
 
     return meshChanged;
@@ -1101,7 +1104,6 @@ void Foam::fluidInterface::updateVelocity()
             UtPA += aU.corrVecGrad();
         }
 
-
         UtPA -= nA*(nA & UtPA);
 
         vectorField UtPB = interpolatorBA().faceInterpolate
@@ -1128,8 +1130,8 @@ void Foam::fluidInterface::updateVelocity()
 
         vectorField UtFs =
         (
-              muFluidA().value()*DnA*UtPA
-            + muFluidB().value()*DnB*UtPB
+            muFluidA().value()*DnA*UtPA
+          + muFluidB().value()*DnB*UtPB
         );
 
         vectorField UnFs = nA*phi().boundaryField()[aPatchID()]
@@ -1309,8 +1311,28 @@ bool Foam::fluidInterface::updateMesh(const mapPolyMesh& mpm) const
         Info << "Clearing out fluidInterface after topology change" << endl;
     }
 
+    vectorField oldControlPoints(controlPoints());
+
     // Wipe out demand-driven data
     clearOut();
+
+    updateDisplacementDirections();
+
+    vectorField& cP = controlPoints();
+
+    const labelList& fMap = mpm.faceMap();
+    label opStart = mpm.oldPatchStarts()[aPatchID()];
+    label pStart = mpm.mesh().boundaryMesh()[aPatchID()].start();
+
+    forAll(cP, pI)
+    {
+        label oldPos = fMap[pStart + pI];
+
+        if (oldPos > -1)
+        {
+            cP[pI] = oldControlPoints[oldPos - opStart];
+        }
+    }
 
     return true;
 }

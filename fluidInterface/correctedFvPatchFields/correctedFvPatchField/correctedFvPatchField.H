@@ -63,7 +63,7 @@ class correctedFvPatchField
         vectorField correctionVectors_;
 
         //- Field differential along correction vectors
-        Field<Type> corrVecGrad_;
+        mutable Field<Type> corrVecGrad_;
 
         //- Patch fvSubMesh
         mutable fvMeshSubset* patchSubMeshPtr_;
@@ -162,7 +162,7 @@ public:
 
         const GeometricField<Type, fvPatchField, volMesh>& volField() const;
 
-        const Field<Type>& corrVecGrad() const
+        Field<Type>& corrVecGrad() const
         {
             return corrVecGrad_;
         }
@@ -183,9 +183,6 @@ public:
 
         //- Return patch-normal derivative correction
         tmp<Field<Type> > snGradCorrection() const;
-
-        //- Return internal field next to patch as patch field
-//         virtual tmp<Field<Type> > patchInternalField() const;
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();

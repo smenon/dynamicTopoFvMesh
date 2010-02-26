@@ -71,17 +71,11 @@ void dynamicTopoFvMesh::swapQuadFace
         scalarField mW(2, 0.0);
 
         mC[0] = c0; mC[1] = c1;
-        mW[0] = 0.5; mW[0] = 0.5;
+        mW[0] = 0.5; mW[1] = 0.5;
 
         iPtr_->insertCell(c0, mC, mW);
         iPtr_->insertCell(c1, mC, mW);
     }
-
-    // Compute initial divergence for both cells.
-    FixedList<scalar, 2> divPhi(0.0);
-
-    divPhi[0] = computeDivergence(c0);
-    divPhi[1] = computeDivergence(c1);
 
     // Need to find common faces and edges...
     // At the end of this loop, commonFaces [0] & [1] share commonEdge[0]
@@ -197,9 +191,6 @@ void dynamicTopoFvMesh::swapQuadFace
 
             Info << "Old face: " << faces_[fIndex] << endl;
             Info << "Old faceEdges: " << faceEdges_[fIndex] << endl;
-
-            Info << "divPhi[0]: " << divPhi[0] << endl;
-            Info << "divPhi[1]: " << divPhi[1] << endl;
         }
 
         // Write out VTK files before change
@@ -724,78 +715,6 @@ void dynamicTopoFvMesh::swapQuadFace
           + "_Swap_1",
             cellHull
         );
-    }
-
-    // Compute a flux for the flipped face,
-    // so that cells on either side are divergence-free.
-    scalar avgDivPhi = 0.5 * (divPhi[0] + divPhi[1]);
-
-    FixedList<scalar, 2> newFacePhi(0.0);
-    FixedList<scalar, 4> fSign(1.0);
-
-    // Figure out face-signs
-    if (neighbour_[commonIntFaceIndex[0]] == c0)
-    {
-        fSign[0] = -1.0;
-    }
-
-    if (neighbour_[commonIntFaceIndex[1]] == c0)
-    {
-        fSign[1] = -1.0;
-    }
-
-    if (neighbour_[commonIntFaceIndex[2]] == c1)
-    {
-        fSign[2] = -1.0;
-    }
-
-    if (neighbour_[commonIntFaceIndex[3]] == c1)
-    {
-        fSign[3] = -1.0;
-    }
-
-    // Phi based on cell[0]
-    newFacePhi[0] =
-    (
-        (prismVolume(c0)*avgDivPhi)
-      - (
-            fSign[0]*iPtr_->getPhi(commonIntFaceIndex[0])
-          + fSign[1]*iPtr_->getPhi(commonIntFaceIndex[1])
-        )
-    );
-
-    // Phi based on cell[1]
-    newFacePhi[1] = -1.0 *
-    (
-        (prismVolume(c1)*avgDivPhi)
-      - (
-            fSign[2]*iPtr_->getPhi(commonIntFaceIndex[2])
-          + fSign[3]*iPtr_->getPhi(commonIntFaceIndex[3])
-        )
-    );
-
-    iPtr_->setPhi(fIndex, 0.5 * (newFacePhi[0] + newFacePhi[1]));
-
-    if (debug > 2)
-    {
-        Info << "avgDivPhi: " << avgDivPhi << endl;
-
-        forAll(fSign, faceI)
-        {
-            Info << "intFace[" << faceI << "]: "
-                 << commonIntFaceIndex[faceI]
-                 << " sign: " << fSign[faceI]
-                 << endl;
-        }
-
-        Info << "newFacePhi[0]: " << newFacePhi[0] << endl;
-        Info << "newFacePhi[1]: " << newFacePhi[1] << endl;
-
-        divPhi[0] = computeDivergence(c0);
-        divPhi[1] = computeDivergence(c1);
-
-        Info << "divPhi[0]: " << divPhi[0] << endl;
-        Info << "divPhi[1]: " << divPhi[1] << endl;
     }
 
     // Set the flag

@@ -78,7 +78,6 @@ correctedFvPatchField<Type>::correctedFvPatchField
     corrVecGrad_(p.size(), pTraits<Type>::zero),
     patchSubMeshPtr_(NULL),
     subMeshPatchID_(-1)
-
 {
     updateCorrectionVectors();
 }
@@ -103,8 +102,7 @@ correctedFvPatchField<Type>::correctedFvPatchField
 
     if (dict.found("corrVecGrad"))
     {
-        corrVecGrad_ =
-            Field<Type>("corrVecGrad", dict, p.size());
+        corrVecGrad_ = Field<Type>("corrVecGrad", dict, p.size());
     }
 }
 
@@ -155,18 +153,17 @@ void correctedFvPatchField<Type>::autoMap
 {
     Field<Type>::autoMap(m);
     corrVecGrad_.autoMap(m);
-    correctionVectors_.setSize(m.size());
+    correctionVectors_.autoMap(m);
 
-    // Delete the fvMeshSubset and reconstruct
+    // Delete the fvMeshSubset and reconstruct on demand
     deleteDemandDrivenData(patchSubMeshPtr_);
-    makePatchSubMesh();
     subMeshPatchID_ = -1;
 }
 
 template<class Type>
 void correctedFvPatchField<Type>::updateCoeffs()
 {
-    if(this->patch().boundaryMesh().mesh().moving())
+    if (this->patch().boundaryMesh().mesh().moving())
     {
         updateCorrectionVectors();
     }
@@ -182,10 +179,10 @@ const GeometricField<Type, fvPatchField, volMesh>&
 correctedFvPatchField<Type>::volField() const
 {
     return this->db().objectRegistry::lookupObject
-        <
-            GeometricField<Type, fvPatchField, volMesh>
-        >
-        (volFieldName_);
+    <
+        GeometricField<Type, fvPatchField, volMesh>
+    >
+    (volFieldName_);
 }
 
 
@@ -193,17 +190,12 @@ correctedFvPatchField<Type>::volField() const
 template<class Type>
 tmp<Field<Type> > correctedFvPatchField<Type>::snGrad() const
 {
-    return fvPatchField<Type>::snGrad()
-  - this->patch().deltaCoeffs()*corrVecGrad_;
+    return
+    (
+        fvPatchField<Type>::snGrad()
+      - this->patch().deltaCoeffs()*corrVecGrad_
+    );
 }
-
-
-// Return internal field next to patch as patch field
-// template<class Type>
-// tmp<Field<Type> > correctedFvPatchField<Type>::patchInternalField() const
-// {
-//     return fvPatchField<Type>::patchInternalField() + corrVecGrad_;
-// }
 
 // Return gradient at boundary
 template<class Type>
@@ -219,8 +211,7 @@ void correctedFvPatchField<Type>::updateCorrectionVectors()
     const fvPatch& patch = this->patch();
     vectorField delta = patch.delta();
 
-    correctionVectors_ =
-        delta - patch.nf()*(patch.nf()&delta);
+    correctionVectors_ = delta - patch.nf()*(patch.nf()&delta);
 }
 
 
@@ -258,8 +249,7 @@ void correctedFvPatchField<Type>::makePatchSubMesh() const
         cellSet.insert(faceCells[faceI]);
     }
 
-    const labelListList& cellCells =
-        this->patch().boundaryMesh().mesh().cellCells();
+    const labelListList& cellCells = mesh.cellCells();
 
     for(label faceI=0; faceI<faceCells.size(); faceI++)
     {
@@ -282,12 +272,14 @@ template<class Type>
 const fvMeshSubset& correctedFvPatchField<Type>::patchSubMesh() const
 {
     bool foundPatchSubMesh =
+    (
         this->db().objectRegistry::foundObject<fvMeshSubset>
         (
             this->patch().name()
-        );
+        )
+    );
 
-    if(foundPatchSubMesh)
+    if (foundPatchSubMesh)
     {
         return this->db().objectRegistry::lookupObject<fvMeshSubset>
         (
@@ -295,7 +287,7 @@ const fvMeshSubset& correctedFvPatchField<Type>::patchSubMesh() const
         );
     }
 
-    if(!patchSubMeshPtr_)
+    if (!patchSubMeshPtr_)
     {
         makePatchSubMesh();
     }
@@ -307,24 +299,24 @@ const fvMeshSubset& correctedFvPatchField<Type>::patchSubMesh() const
 template<class Type>
 label correctedFvPatchField<Type>::subMeshPatchID() const
 {
-    if(subMeshPatchID_ == -1)
+    if (subMeshPatchID_ == -1)
     {
         forAll(patchSubMesh().patchMap(), patchI)
         {
-            if(patchSubMesh().patchMap()[patchI] == this->patch().index())
+            if (patchSubMesh().patchMap()[patchI] == this->patch().index())
             {
                 subMeshPatchID_ = patchI;
                 break;
             }
         }
 
-        if(subMeshPatchID_ == -1)
+        if (subMeshPatchID_ == -1)
         {
-            if(this->patch().size()>0)
+            if (this->patch().size() > 0)
             {
                 FatalErrorIn("correctedFvPatchField<Type>::subMeshPatchID()")
                     << "Can't determine the subMeshPatchID_"
-                        << abort(FatalError);
+                    << abort(FatalError);
             }
             else
             {
@@ -340,7 +332,7 @@ label correctedFvPatchField<Type>::subMeshPatchID() const
 template<class Type>
 void correctedFvPatchField<Type>::movePatchSubMesh()
 {
-    if(patchSubMeshPtr_)
+    if (patchSubMeshPtr_)
     {
         const fvMesh& mesh = this->patch().boundaryMesh().mesh();
 
@@ -379,20 +371,22 @@ void correctedFvPatchField<Type>::updateCorrVecGrad()
 
     for (direction cmpt = 0; cmpt < pTraits<Type>::nComponents; cmpt++)
     {
-        GeometricField<GradCmptType, fvPatchField, volMesh> gradCmpt =
+        GeometricField<GradCmptType, fvPatchField, volMesh> gC =
+        (
             fvc::grad
             (
                 subVolField.component(cmpt),
                 "snGradCorr(" + volField().name() + ')'
-            );
+            )
+        );
 
-        if(this->patch().size()>0)
+        if (this->patch().size() > 0)
         {
             corrVecGrad_.replace
             (
                 cmpt,
                 correctionVectors_
-               &gradCmpt.boundaryField()[subMeshPatchID()].patchInternalField()
+              & gC.boundaryField()[subMeshPatchID()].patchInternalField()
             );
         }
     }

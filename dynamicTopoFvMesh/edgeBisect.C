@@ -548,9 +548,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Add a faceEdges entry as well
     faceEdges_.append(tmpQFEdges);
 
-    // Set the flux
-    iPtr_->setPhi(newFaceIndex[0], 0.0);
-
     // Find the common edge between quad/quad faces...
     findCommonEdge
     (
@@ -1102,9 +1099,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
-
-        // Set the flux
-        iPtr_->setPhi(newFaceIndex[4], 0.0);
 
         // remove2DSliver requires this face index for removal
         map.addFace(newFaceIndex[4]);

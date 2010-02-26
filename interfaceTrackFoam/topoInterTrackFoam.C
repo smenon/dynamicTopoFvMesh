@@ -84,7 +84,6 @@ int main(int argc, char *argv[])
 
         if (meshChanged)
         {
-            phi = (fvc::interpolate(U) & mesh.Sf());
 #           include "correctPhi.H"
         }
 
@@ -98,10 +97,10 @@ int main(int argc, char *argv[])
             // Update boundary conditions on velocity and pressure
             interface.updateBoundaryConditions();
 
+#           include "CourantNo.H"
+
             // Make the fluxes relative to the mesh motion
             fvc::makeRelative(phi, interface.rho(), U);
-
-#           include "CourantNo.H"
 
             fvVectorMatrix UEqn
             (
