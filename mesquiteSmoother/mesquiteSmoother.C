@@ -55,6 +55,8 @@ mesquiteSmoother::mesquiteSmoother
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
+    nAuxPoints_(0),
+    nAuxCells_(0),
     surfaceSmoothing_(false),
     volumeCorrection_(false),
     volCorrTolerance_(1e-20),
@@ -98,6 +100,8 @@ mesquiteSmoother::mesquiteSmoother
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
+    nAuxPoints_(0),
+    nAuxCells_(0),
     surfaceSmoothing_(false),
     volumeCorrection_(false),
     volCorrTolerance_(1e-20),
@@ -1026,10 +1030,17 @@ void mesquiteSmoother::initArrays()
         return;
     }
 
+    // If this is a parallel run, fetch the halo-mesh
+    // from the registry.
+    if (Pstream::parRun())
+    {
+
+    }
+
     // Prepare arrays for mesquite
-    vtxCoords_ = new double[nPoints_*3];
-    cellToNode_ = new unsigned long[nCells_*4];
-    fixFlags_ = new int[nPoints_];
+    vtxCoords_ = new double[3 * (nPoints_ + nAuxPoints_)];
+    cellToNode_ = new unsigned long[4 * (nCells_ + nAuxCells_)];
+    fixFlags_ = new int[(nPoints_ + nAuxPoints_)];
 
     // Set connectivity information
     label cIndex = 0;
@@ -2653,6 +2664,9 @@ void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
 
     nPoints_ = Mesh_.nPoints();
     nCells_  = Mesh_.nCells();
+
+    nAuxPoints_ = 0;
+    nAuxCells_  = 0;
 
     // Reset refPoints
     refPoints_.clear();

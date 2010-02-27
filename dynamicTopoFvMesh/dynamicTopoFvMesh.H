@@ -271,10 +271,6 @@ class dynamicTopoFvMesh
             label masterFaceZone_;
             label slaveFaceZone_;
 
-            // Auxiliary buffers
-            pointField  pointBuffer_;
-            scalarList  lengthBuffer_;
-
             //- Disallow default bitwise assignment
             void operator=(const coupledPatchInfo&);
 
@@ -315,10 +311,6 @@ class dynamicTopoFvMesh
                 // Return the master / slave face zone IDs
                 label masterFaceZone() const;
                 label slaveFaceZone() const;
-
-                // Access to auxiliary buffers
-                pointField& pointBuffer();
-                scalarList& lengthBuffer();
         };
 
         // Coupled patch information
@@ -1251,8 +1243,8 @@ class dynamicTopoFvMesh
         // Read coupled patch information from dictionary.
         void readCoupledPatches();
 
-        // Initialize coupled patches for topology modifications.
-        void initCoupledPatches();
+        // Initialize parallel connactivity for topology modifications.
+        static void initParallelConnectivity(void *argument);
 
         // Build a list of entities that need to be avoided
         // by regular topo-changes.
@@ -1277,10 +1269,10 @@ class dynamicTopoFvMesh
         void handleCoupledPatches();
 
         // Build patch sub-meshes for processor patches
-        void buildCoupledPatchMeshes();
+        void buildProcessorPatchMeshes();
 
         // Build patch sub-mesh for a specified processor
-        void buildCoupledPatchMesh
+        void buildProcessorPatchMesh
         (
             const label proc,
             coupledPatchInfo& subMesh,
@@ -1291,7 +1283,7 @@ class dynamicTopoFvMesh
         void buildLocalCoupledMaps();
 
         // Build coupled maps for coupled processor patches
-        void buildProcCoupledMaps();
+        void buildProcessorCoupledMaps();
 
         // Wait for buffer transfer completion.
         void waitForBuffers() const;

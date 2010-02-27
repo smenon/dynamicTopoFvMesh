@@ -77,9 +77,7 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
     ),
     masterFaceZone_(mfzIndex),
     slaveFaceZone_(sfzIndex)
-{
-
-}
+{}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -118,16 +116,6 @@ label dynamicTopoFvMesh::coupledPatchInfo::masterFaceZone() const
 label dynamicTopoFvMesh::coupledPatchInfo::slaveFaceZone() const
 {
     return slaveFaceZone_;
-}
-
-pointField& dynamicTopoFvMesh::coupledPatchInfo::pointBuffer()
-{
-    return pointBuffer_;
-}
-
-scalarList& dynamicTopoFvMesh::coupledPatchInfo::lengthBuffer()
-{
-    return lengthBuffer_;
 }
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //

@@ -42,6 +42,7 @@ SourceFiles
 
 #include "regIOobject.H"
 #include "labelList.H"
+#include "pointField.H"
 #include "Map.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -60,6 +61,8 @@ class coupleMap
     // Private data
     label masterIndex_;
     label slaveIndex_;
+
+    mutable pointField pointBuffer_;
 
     // Master-Slave mapping
     mutable Map<label> masterToSlave_;
@@ -119,6 +122,8 @@ public:
 
         label masterIndex() const;
         label slaveIndex() const;
+
+        pointField& pointBuffer() const;
 
         const Map<label>& masterToSlaveMap() const;
         const Map<label>& slaveToMasterMap() const;

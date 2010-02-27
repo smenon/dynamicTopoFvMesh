@@ -190,6 +190,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Initialize edge-related connectivity structures
     initEdges();
 
+    // Initialize parallel connactivity for topology modifications.
+    initParallelConnectivity(this);
+
     // Set sizes for the reverse maps
     reversePointMap_.setSize(nPoints_, -7);
     reverseEdgeMap_.setSize(nEdges_, -7);
@@ -253,8 +256,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nFaces_(faces.size()),
     nOldCells_(cells.size()),
     nCells_(cells.size()),
-    nOldInternalFaces_(0),
-    nInternalFaces_(0),
+    nOldInternalFaces_(polyMesh::nInternalFaces()),
+    nInternalFaces_(polyMesh::nInternalFaces()),
     nOldInternalEdges_(nInternalEdges),
     nInternalEdges_(nInternalEdges),
     ratioMin_(mesh.ratioMin_),
@@ -283,32 +286,19 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     owner_.setSize(faces.size(), -1);
     neighbour_.setSize(faces.size(), -1);
 
-    boolList markedFaces(nFaces_, false);
+    // Set owner and neighbour from polyMesh
+    const labelList& own = polyMesh::faceOwner();
+    const labelList& nei = polyMesh::faceNeighbour();
 
-    forAll(cells, cellI)
+    forAll(own, faceI)
     {
-        const labelList& thisCell = cells[cellI];
-
-        forAll(thisCell, faceI)
-        {
-            if (!markedFaces[thisCell[faceI]])
-            {
-                // First visit: Owner
-                owner_[thisCell[faceI]] = cellI;
-
-                markedFaces[thisCell[faceI]] = true;
-            }
-            else
-            {
-                // Second visit: Neighbour
-                neighbour_[thisCell[faceI]] = cellI;
-
-                nInternalFaces_++;
-            }
-        }
+        owner_[faceI] = own[faceI];
     }
 
-    nOldInternalFaces_ = nInternalFaces_;
+    forAll(nei, faceI)
+    {
+        neighbour_[faceI] = nei[faceI];
+    }
 
     // Initialize the multiThreading environment.
     // Force to single-threaded.
@@ -6222,6 +6212,7 @@ void dynamicTopoFvMesh::loadMotionSolver()
           << abort(FatalError);
     }
     else
+    if (dict_.found("solver"))
     {
         mPtr_ = motionSolver::New(*this);
     }
@@ -6436,7 +6427,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
         coupledPatchesAbsent = false;
     }
 
-    // Maintain a separate list of processor IDs.
+    // Maintain a separate list of processor IDs in procIndices.
     // This is done because this sub-domain may talk to processors
     // that share only edges/points.
     if (Pstream::parRun())
@@ -6456,7 +6447,154 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
         // Obtain global shared-points information, if necessary.
         if (!procIndices_.size())
         {
+            // Fetch the list of global points from polyMesh.
+            const globalMeshData& gData = polyMesh::globalData();
 
+            const labelList& spAddr = gData.sharedPointAddr();
+            const labelList& spLabels = gData.sharedPointLabels();
+
+            labelList nRecvPoints(Pstream::nProcs(), 0);
+            labelListList spBuffer(Pstream::nProcs(), labelList(0));
+
+            // Send others my addressing.
+            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            {
+                if (proc != Pstream::myProcNo())
+                {
+                    // Send number of entities first.
+                    pWrite(proc, spAddr.size());
+
+                    // Send the buffer.
+                    if (spAddr.size())
+                    {
+                        pWrite(proc, spAddr);
+                    }
+                }
+            }
+
+            // Receive addressing from others
+            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            {
+                if (proc != Pstream::myProcNo())
+                {
+                    label procInfoSize = -1;
+
+                    // How many entities am I going to be receiving?
+                    pRead(proc, procInfoSize);
+
+                    if (procInfoSize)
+                    {
+                        // Size the receive buffer.
+                        spBuffer[proc].setSize(procInfoSize, -1);
+
+                        // Schedule for receipt.
+                        pRead(proc, spBuffer[proc]);
+                    }
+                }
+            }
+
+            Map<labelHashSet> procPatchPoints;
+
+            // Insert my immediate neighbours into the list.
+            forAll(boundary, pI)
+            {
+                if (isA<processorPolyPatch>(boundary[pI]))
+                {
+                    const processorPolyPatch& pp =
+                    (
+                        refCast<const processorPolyPatch>(boundary[pI])
+                    );
+
+                    label neiProcNo = pp.neighbProcNo();
+
+                    procPatchPoints.insert(neiProcNo, labelHashSet());
+
+                    labelHashSet& neiSet = procPatchPoints[neiProcNo];
+
+                    // Insert all boundary points.
+                    const labelList& meshPts = pp.meshPoints();
+
+                    forAll(meshPts, pointI)
+                    {
+                        neiSet.insert(meshPts[pointI]);
+                    }
+                }
+            }
+
+            // Wait for all transfers to complete.
+            waitForBuffers();
+
+            // Now loop through all processor addressing, and check if
+            // any labels coincide with my global shared points.
+            // If this is true, we need to be talking to that neighbour
+            // as well (if not already).
+            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            {
+                if (proc != Pstream::myProcNo())
+                {
+                    forAll(spBuffer[proc], pointI)
+                    {
+                        forAll(spAddr, pointJ)
+                        {
+                            if (spAddr[pointJ] == spBuffer[proc][pointI])
+                            {
+                                // Found a match. Are we talking already?
+                                if (!procPatchPoints.found(proc))
+                                {
+                                    procPatchPoints.insert
+                                    (
+                                        proc,
+                                        labelHashSet()
+                                    );
+                                }
+
+                                // Make an entry (over-writing if necessary)
+                                procPatchPoints[proc].set
+                                (
+                                    spLabels[pointJ],
+                                    empty()
+                                );
+
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Copy the indices.
+            procIndices_ = procPatchPoints.toc();
+
+            // Patch sub meshes need to be prepared in ascending
+            // order of neighbouring processors.
+            sort(procIndices_);
+
+            subMeshPoints_.setSize(procIndices_.size());
+
+            // Copy the list of points for each processor.
+            forAll(procIndices_, patchI)
+            {
+                subMeshPoints_[patchI] =
+                (
+                    procPatchPoints[procIndices_[patchI]].toc()
+                );
+            }
+
+            if (debug > 3)
+            {
+                forAll(procIndices_, patchI)
+                {
+                    // Write out points as a VTK
+                    writeVTK
+                    (
+                        "subMeshPoints_" +
+                        Foam::name(Pstream::myProcNo()) + "to" +
+                        Foam::name(procIndices_[patchI]),
+                        subMeshPoints_[patchI],
+                        0
+                    );
+                }
+            }
         }
     }
 
@@ -6577,13 +6715,13 @@ void dynamicTopoFvMesh::readCoupledPatches()
             else
             {
                 FatalErrorIn("dynamicTopoFvMesh::readCoupledPatches()")
-                        << " Coupled patches are either wrongly specified,"
-                        << " or the sizes don't match." << nl
-                        << " Master: " << mPatch << ":" << masterPatch
-                        << " Size: " << boundary[mPatch].size() << nl
-                        << " Slave: " << sPatch << ":" << slavePatch
-                        << " Size: " << boundary[sPatch].size() << nl
-                        << abort(FatalError);
+                    << " Coupled patches are either wrongly specified,"
+                    << " or the sizes don't match." << nl
+                    << " Master: " << mPatch << ":" << masterPatch
+                    << " Size: " << boundary[mPatch].size() << nl
+                    << " Slave: " << sPatch << ":" << slavePatch
+                    << " Size: " << boundary[sPatch].size() << nl
+                    << abort(FatalError);
             }
         }
 
@@ -6595,21 +6733,28 @@ void dynamicTopoFvMesh::readCoupledPatches()
     entitiesToAvoid_.setSize(50, -1);
 }
 
-// Initialize coupled patches for topology modifications.
-//  - Send and receive sub meshes for processor patches
-void dynamicTopoFvMesh::initCoupledPatches()
+// Initialize parallel connectivity for topology modifications.
+//  - Send and receive sub meshes for processor patches.
+//  - Made static because this function may be run in a separate thread.
+void dynamicTopoFvMesh::initParallelConnectivity
+(
+    void *argument
+)
 {
+    // Recast the argument
+    dynamicTopoFvMesh *mesh = reinterpret_cast<dynamicTopoFvMesh*>(argument);
+
     // Identify coupled patches.
-    if (identifyCoupledPatches())
+    if (mesh->identifyCoupledPatches())
     {
         return;
     }
 
-    // Build and send patch sub-meshes (and clear existing ones).
-    buildCoupledPatchMeshes();
+    // Build and send patch sub-meshes.
+    mesh->buildProcessorPatchMeshes();
 
     // Build maps for coupled processor patches.
-    buildProcCoupledMaps();
+    mesh->buildProcessorCoupledMaps();
 }
 
 // Handle topology changes for coupled patches
@@ -6676,7 +6821,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
 }
 
 // Build patch sub-meshes for processor patches
-void dynamicTopoFvMesh::buildCoupledPatchMeshes()
+void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 {
     if (!procIndices_.size())
     {
@@ -6722,7 +6867,7 @@ void dynamicTopoFvMesh::buildCoupledPatchMeshes()
             coupledPatchInfo& sendMesh = sendPatchMeshes_[proc];
 
             // Build the subMesh.
-            buildCoupledPatchMesh
+            buildProcessorPatchMesh
             (
                 proc,
                 sendMesh,
@@ -6741,90 +6886,77 @@ void dynamicTopoFvMesh::buildCoupledPatchMeshes()
             }
 
             // Send the pointBuffer
-            pWrite(proc, sendMesh.pointBuffer());
+            pWrite(proc, sendMesh.patchMap().pointBuffer());
 
             // Send connectivity (points, edges, faces, cells, etc)
             forAll(sendMesh.patchMap().entityBuffer(), bufferI)
             {
                 pWrite(proc, sendMesh.patchMap().entityBuffer(bufferI));
             }
-
-            if (edgeRefinement_)
-            {
-                pWrite(proc, sendMesh.lengthBuffer());
-            }
         }
         else
         {
             recvPatchMeshes_.set(proc, new coupledPatchInfo(*this));
 
+            // Obtain references
             coupledPatchInfo& recvMesh = recvPatchMeshes_[proc];
+            const coupleMap& cMap = recvMesh.patchMap();
 
             // First read entity sizes.
-            pRead(proc, recvMesh.patchMap().nEntities());
+            pRead(proc, cMap.nEntities());
 
             if (debug > 3)
             {
                 Pout << "Receiving:" << nl
-                        << "\t nEntities: "
-                        << recvMesh.patchMap().nEntities()
-                        << endl;
+                     << "\t nEntities: "
+                     << cMap.nEntities()
+                     << endl;
             }
 
             // Size the buffers.
-            recvMesh.pointBuffer().setSize
+            cMap.pointBuffer().setSize
             (
-                recvMesh.patchMap().nEntities(coupleMap::POINT)
+                cMap.nEntities(coupleMap::POINT)
             );
 
-            recvMesh.patchMap().entityBuffer(coupleMap::POINT).setSize
+            cMap.entityBuffer(coupleMap::POINT).setSize
             (
-                recvMesh.patchMap().nEntities(coupleMap::SHARED_POINT)
+                cMap.nEntities(coupleMap::SHARED_POINT)
             );
 
-            recvMesh.patchMap().entityBuffer(coupleMap::EDGE).setSize
+            cMap.entityBuffer(coupleMap::EDGE).setSize
             (
-                2*recvMesh.patchMap().nEntities(coupleMap::EDGE)
+                2*cMap.nEntities(coupleMap::EDGE)
             );
 
-            recvMesh.patchMap().entityBuffer(coupleMap::FACE).setSize
+            cMap.entityBuffer(coupleMap::FACE).setSize
             (
-                3*recvMesh.patchMap().nEntities(coupleMap::FACE)
+                3*cMap.nEntities(coupleMap::FACE)
             );
 
-            recvMesh.patchMap().entityBuffer(coupleMap::CELL).setSize
+            cMap.entityBuffer(coupleMap::CELL).setSize
             (
-                4*recvMesh.patchMap().nEntities(coupleMap::CELL)
+                4*cMap.nEntities(coupleMap::CELL)
             );
 
-            recvMesh.patchMap().entityBuffer(coupleMap::FACE_EDGE).setSize
+            cMap.entityBuffer(coupleMap::FACE_EDGE).setSize
             (
-                3*recvMesh.patchMap().nEntities(coupleMap::FACE)
+                3*cMap.nEntities(coupleMap::FACE)
             );
 
             // Receive the pointBuffer
-            pRead(proc, recvMesh.pointBuffer());
+            pRead(proc, cMap.pointBuffer());
 
             // Receive connectivity (points, edges, faces, cells, etc)
-            forAll(recvMesh.patchMap().entityBuffer(), bufferI)
+            forAll(cMap.entityBuffer(), bufferI)
             {
-                pRead(proc, recvMesh.patchMap().entityBuffer(bufferI));
-            }
-
-            if (edgeRefinement_)
-            {
-                recvMesh.lengthBuffer().setSize
-                (
-                    recvMesh.patchMap().nEntities(coupleMap::CELL)
-                );
-
-                pRead(proc, recvMesh.lengthBuffer());
+                pRead(proc, cMap.entityBuffer(bufferI));
             }
         }
     }
 
     // We won't wait for all transfers to complete for the moment.
-    // Meanwhile, build local coupling maps (or do some other useful work)
+    // Meanwhile, do some other useful work, if possible.
 
     if (debug)
     {
@@ -6833,7 +6965,10 @@ void dynamicTopoFvMesh::buildCoupledPatchMeshes()
 }
 
 // Build patch sub-mesh for a specified processor
-void dynamicTopoFvMesh::buildCoupledPatchMesh
+// - At this point, procIndices is available as a sorted list
+//   of neighbouring processors. This prevents a duplication
+//   of cells being sent to neighbours.
+void dynamicTopoFvMesh::buildProcessorPatchMesh
 (
     const label proc,
     coupledPatchInfo& subMesh,
@@ -6852,15 +6987,17 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
     const label shPointEnum = coupleMap::SHARED_POINT;
 
     // Obtain references
-    Map<label>& rPointMap = subMesh.patchMap().reverseEntityMap(pointEnum);
-    Map<label>& rEdgeMap  = subMesh.patchMap().reverseEntityMap(edgeEnum);
-    Map<label>& rFaceMap  = subMesh.patchMap().reverseEntityMap(faceEnum);
-    Map<label>& rCellMap  = subMesh.patchMap().reverseEntityMap(cellEnum);
+    const coupleMap& cMap = subMesh.patchMap();
 
-    Map<label>& pointMap = subMesh.patchMap().entityMap(pointEnum);
-    Map<label>& edgeMap  = subMesh.patchMap().entityMap(edgeEnum);
-    Map<label>& faceMap  = subMesh.patchMap().entityMap(faceEnum);
-    Map<label>& cellMap  = subMesh.patchMap().entityMap(cellEnum);
+    Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
+    Map<label>& rEdgeMap  = cMap.reverseEntityMap(edgeEnum);
+    Map<label>& rFaceMap  = cMap.reverseEntityMap(faceEnum);
+    Map<label>& rCellMap  = cMap.reverseEntityMap(cellEnum);
+
+    Map<label>& pointMap = cMap.entityMap(pointEnum);
+    Map<label>& edgeMap  = cMap.entityMap(edgeEnum);
+    Map<label>& faceMap  = cMap.entityMap(faceEnum);
+    Map<label>& cellMap  = cMap.entityMap(cellEnum);
 
     // Add all cells connected to points on the subMeshPoints list
     label procIndex = -1;
@@ -6992,7 +7129,7 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
         // Set the number of internal edges at this point
         if (stage == 0)
         {
-            subMesh.patchMap().nEntities(iEdgeEnum) = nE;
+            cMap.nEntities(iEdgeEnum) = nE;
         }
     }
 
@@ -7019,7 +7156,7 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
     // Loop through subMeshPoints for the processor
     // and fill a mapped buffer for them as well.
     // This allows the neighbour to match-up edges easily.
-    labelList& spBuffer = subMesh.patchMap().entityBuffer(pointEnum);
+    labelList& spBuffer = cMap.entityBuffer(pointEnum);
 
     spBuffer.setSize(subMeshPoints_[procIndex].size(), -1);
 
@@ -7035,14 +7172,14 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
     spBuffer.setSize(sP);
 
     // Assign sizes to the mesh
-    subMesh.patchMap().nEntities(pointEnum) = nP;
-    subMesh.patchMap().nEntities(edgeEnum)  = nE;
-    subMesh.patchMap().nEntities(faceEnum)  = nF;
-    subMesh.patchMap().nEntities(cellEnum)  = nC;
-    subMesh.patchMap().nEntities(shPointEnum) = sP;
+    cMap.nEntities(pointEnum) = nP;
+    cMap.nEntities(edgeEnum)  = nE;
+    cMap.nEntities(faceEnum)  = nF;
+    cMap.nEntities(cellEnum)  = nC;
+    cMap.nEntities(shPointEnum) = sP;
 
     // Size up buffers and fill them
-    pointField& pBuffer = subMesh.pointBuffer();
+    pointField& pBuffer = cMap.pointBuffer();
 
     pBuffer.setSize(nP, vector::zero);
 
@@ -7052,7 +7189,7 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
     }
 
     // Edge buffer size: 2 points for every edge
-    labelList& eBuffer = subMesh.patchMap().entityBuffer(edgeEnum);
+    labelList& eBuffer = cMap.entityBuffer(edgeEnum);
 
     eBuffer.setSize(2 * nE, -1);
 
@@ -7066,9 +7203,9 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
         eBuffer[index++] = rPointMap[edgeToCheck[1]];
     }
 
-    labelList& fBuffer  = subMesh.patchMap().entityBuffer(faceEnum);
-    labelList& cBuffer  = subMesh.patchMap().entityBuffer(cellEnum);
-    labelList& feBuffer = subMesh.patchMap().entityBuffer(fEdgeEnum);
+    labelList& fBuffer  = cMap.entityBuffer(faceEnum);
+    labelList& cBuffer  = cMap.entityBuffer(cellEnum);
+    labelList& feBuffer = cMap.entityBuffer(fEdgeEnum);
 
     if (!twoDMesh_)
     {
@@ -7117,18 +7254,6 @@ void dynamicTopoFvMesh::buildCoupledPatchMesh
             cBuffer[index++] = rFaceMap[cellToCheck[1]];
             cBuffer[index++] = rFaceMap[cellToCheck[2]];
             cBuffer[index++] = rFaceMap[cellToCheck[3]];
-        }
-    }
-
-    if (edgeRefinement_)
-    {
-        scalarList& lBuffer = subMesh.lengthBuffer();
-
-        lBuffer.setSize(nC, 0.0);
-
-        forAllIter(Map<label>::iterator, cellMap, cIter)
-        {
-            lBuffer[cIter.key()] = lengthScale_[cIter()];
         }
     }
 
@@ -7291,7 +7416,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                 if (!matched)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
+                    FatalErrorIn("dynamicTopoFvMesh::buildProcessorMaps()")
                         << " Failed to match entity: " << mList[indexI]
                         << ": " << edges_[mList[indexI]]
                         << " within a tolerance of: "
@@ -7355,7 +7480,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
             if (!matched)
             {
-                FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
+                FatalErrorIn("dynamicTopoFvMesh::buildProcessorMaps()")
                     << " Failed to match point: " << mP[indexI]
                     << ": " << points_[mP[indexI]]
                     << " within a tolerance of: "
@@ -7406,7 +7531,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                 if (!matched)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::buildCoupledMaps()")
+                    FatalErrorIn("dynamicTopoFvMesh::buildProcessorMaps()")
                         << " Failed to match entity: " << mList[indexI]
                         << ": " << thisEdge
                         << abort(FatalError);
@@ -7429,7 +7554,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 }
 
 // Build coupled maps for coupled processor patches
-void dynamicTopoFvMesh::buildProcCoupledMaps()
+void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 {
     if (!procIndices_.size())
     {
@@ -7453,15 +7578,16 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
         if (proc > Pstream::myProcNo())
         {
             coupledPatchInfo& recvMesh = recvPatchMeshes_[proc];
+            const coupleMap& cMap = recvMesh.patchMap();
 
-            pointField smPoints(recvMesh.pointBuffer());
-            edgeList smEdges(recvMesh.patchMap().nEntities(edgeEnum));
+            pointField smPoints(cMap.pointBuffer());
+            edgeList smEdges(cMap.nEntities(edgeEnum));
             faceList smFaces;
             cellList smCells;
             labelListList smFEdges;
 
             // Set connectivity from buffers.
-            labelList& eBuffer = recvMesh.patchMap().entityBuffer(edgeEnum);
+            labelList& eBuffer = cMap.entityBuffer(edgeEnum);
 
             forAll(smEdges, edgeI)
             {
@@ -7472,34 +7598,13 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
             if (!twoDMesh_)
             {
                 // Set sizes.
-                smFaces.setSize
-                (
-                    recvMesh.patchMap().nEntities(faceEnum),
-                    face(3)
-                );
-
-                smCells.setSize
-                (
-                    recvMesh.patchMap().nEntities(cellEnum),
-                    cell(4)
-                );
-
-                smFEdges.setSize
-                (
-                    recvMesh.patchMap().nEntities(fEdgeEnum),
-                    labelList(3, -1)
-                );
+                smFaces.setSize(cMap.nEntities(faceEnum), face(3));
+                smCells.setSize(cMap.nEntities(cellEnum), cell(4));
+                smFEdges.setSize(cMap.nEntities(fEdgeEnum), labelList(3, -1));
 
                 // Copy connectivity from buffers.
-                labelList& fBuffer =
-                (
-                    recvMesh.patchMap().entityBuffer(faceEnum)
-                );
-
-                labelList& feBuffer =
-                (
-                    recvMesh.patchMap().entityBuffer(fEdgeEnum)
-                );
+                labelList& fBuffer = cMap.entityBuffer(faceEnum);
+                labelList& feBuffer = cMap.entityBuffer(fEdgeEnum);
 
                 forAll(smFaces, faceI)
                 {
@@ -7512,10 +7617,7 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
                     smFEdges[faceI][2] = feBuffer[(3*faceI) + 2];
                 }
 
-                labelList& cBuffer =
-                (
-                    recvMesh.patchMap().entityBuffer(cellEnum)
-                );
+                labelList& cBuffer = cMap.entityBuffer(cellEnum);
 
                 forAll(smCells, cellI)
                 {
@@ -7540,7 +7642,7 @@ void dynamicTopoFvMesh::buildProcCoupledMaps()
                         time()
                     ),
                     smPoints,
-                    recvMesh.patchMap().nEntities(iEdgeEnum),
+                    cMap.nEntities(iEdgeEnum),
                     smEdges,
                     smFaces,
                     smFEdges,
@@ -9234,9 +9336,6 @@ bool dynamicTopoFvMesh::smallPolyhedronReconnection
 // MultiThreaded topology modifier [2D]
 void dynamicTopoFvMesh::threadedTopoModifier2D()
 {
-    // Initialize coupled patches for topology modifications.
-    initCoupledPatches();
-
     // Handle coupled patches.
     handleCoupledPatches();
 
@@ -9324,9 +9423,6 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 // MultiThreaded topology modifier [3D]
 void dynamicTopoFvMesh::threadedTopoModifier3D()
 {
-    // Initialize coupled patches for topology modifications.
-    initCoupledPatches();
-
     // Remove sliver cells first.
     removeSlivers();
 
@@ -9815,6 +9911,24 @@ bool dynamicTopoFvMesh::update()
             Info << "New Patch MeshPoints: " << patchNMeshPoints_ << endl;
         }
 
+        // Now that all connectivity changes are successful,
+        // update parallel maps (in a separate thread, if available).
+        if (Pstream::parRun())
+        {
+            if (threader_->multiThreaded())
+            {
+                threader_->addToWorkQueue
+                (
+                    &initParallelConnectivity,
+                    reinterpret_cast<void *>(this)
+                );
+            }
+            else
+            {
+                initParallelConnectivity(this);
+            }
+        }
+
         // Clear unwanted member data
         addedFacePatches_.clear();
         addedEdgePatches_.clear();
@@ -9842,7 +9956,7 @@ bool dynamicTopoFvMesh::update()
         nOldInternalFaces_ = nInternalFaces_;
         nOldInternalEdges_ = nInternalEdges_;
 
-        for(label i=0; i<numPatches_; i++)
+        for (label i=0; i<numPatches_; i++)
         {
             oldPatchSizes_[i] = patchSizes_[i];
             oldPatchStarts_[i] = patchStarts_[i];

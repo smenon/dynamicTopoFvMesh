@@ -83,6 +83,12 @@ protected:
     //- Number of elements
     unsigned long nCells_;
 
+    //- Number of auxiliary points
+    unsigned long nAuxPoints_;
+
+    //- Number of auxiliary elements
+    unsigned long nAuxCells_;
+
     //- Switch to toggle surface smoothing
     Switch surfaceSmoothing_;
 

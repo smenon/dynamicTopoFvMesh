@@ -85,7 +85,11 @@ label coupleMap::slaveIndex() const
     return slaveIndex_;
 }
 
-// Access to master / slave maps
+pointField& coupleMap::pointBuffer() const
+{
+    return pointBuffer_;
+}
+
 const Map<label>& coupleMap::masterToSlaveMap() const
 {
     return masterToSlave_;
@@ -154,7 +158,6 @@ void coupleMap::mapMaster
     slaveToMaster_.insert(slave, master);
 }
 
-// Transfer maps, replacing old ones
 void coupleMap::transferMaps
 (
     Map<label>& newMasterToSlave,
