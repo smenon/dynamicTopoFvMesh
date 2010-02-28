@@ -128,6 +128,9 @@ protected:
     //- Original points prior to surface-smoothing
     mutable pointField origPoints_;
 
+    //- Map for the auxiliary point buffer
+    Map<Map<label> > auxPointMap_;
+
     //- The quality metric
     word qMetric_;
 
@@ -195,6 +198,12 @@ protected:
 
     // Private member function to compute connectivity data
     void initArrays();
+
+    // Private member function to construct parallel connectivity data
+    void initParallelConnectivity();
+
+    // Copy auxiliary points to/from buffers
+    void copyAuxiliaryPoints(bool copyBack = false);
 
     // Private member functions to read dictionary options
     void readOptions();

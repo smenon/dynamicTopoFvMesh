@@ -288,8 +288,9 @@ class dynamicTopoFvMesh
             coupledPatchInfo
             (
                 const dynamicTopoFvMesh& mesh,
-                const label mPatch = -1,
-                const label sPatch = -1,
+                const bool isLocal,
+                const label mPatch,
+                const label sPatch,
                 const label mfzIndex = -1,
                 const label sfzIndex = -1
             );
@@ -1243,7 +1244,7 @@ class dynamicTopoFvMesh
         // Read coupled patch information from dictionary.
         void readCoupledPatches();
 
-        // Initialize parallel connactivity for topology modifications.
+        // Initialize parallel connectivity for topology modifications.
         static void initParallelConnectivity(void *argument);
 
         // Build a list of entities that need to be avoided

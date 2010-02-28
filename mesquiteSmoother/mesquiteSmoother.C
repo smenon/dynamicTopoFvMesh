@@ -27,6 +27,8 @@ License
 #include "mesquiteSmoother.H"
 #include "Random.H"
 #include "IOmanip.H"
+#include "globalMeshData.H"
+#include "processorPolyPatch.H"
 #include "addToRunTimeSelectionTable.H"
 #include "polyMesh.H"
 #include "coupleMap.H"
@@ -1030,11 +1032,39 @@ void mesquiteSmoother::initArrays()
         return;
     }
 
-    // If this is a parallel run, fetch the halo-mesh
-    // from the registry.
     if (Pstream::parRun())
     {
+        // Search the registry for all mapping objects.
+        HashTable<const coupleMap*> coupleMaps =
+        (
+            Mesh_.lookupClass<coupleMap>()
+        );
 
+        forAllIter
+        (
+            HashTable<const coupleMap*>,
+            coupleMaps,
+            cmIter
+        )
+        {
+            const coupleMap& cMap = *(cmIter());
+
+            // Pick maps for which this sub-domain is master
+            if
+            (
+                (cMap.masterIndex() == Pstream::myProcNo()) &&
+                (!cMap.isLocal())
+            )
+            {
+                nAuxPoints_ +=
+                (
+                    cMap.nEntities(coupleMap::POINT)
+                  - cMap.nEntities(coupleMap::SHARED_POINT)
+                );
+
+                nAuxCells_ += cMap.nEntities(coupleMap::CELL);
+            }
+        }
     }
 
     // Prepare arrays for mesquite
@@ -1096,10 +1126,374 @@ void mesquiteSmoother::initArrays()
     {
         const labelList& meshPointLabels = boundary[patchI].meshPoints();
 
+        // Leave processor boundaries out.
+        if (boundary[patchI].type() == "processor")
+        {
+            continue;
+        }
+
         forAll(meshPointLabels, pointI)
         {
             fixFlags_[meshPointLabels[pointI]] = 1;
         }
+    }
+
+    if (Pstream::parRun())
+    {
+        initParallelConnectivity();
+    }
+}
+
+// Private member function to construct parallel connectivity data
+void mesquiteSmoother::initParallelConnectivity()
+{
+    Map<label> nPrc;
+    label pIndex = nPoints_, cIndex = (4*nCells_);
+    FixedList<label, 4> p(-1);
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    // Build a list of nearest neighbours.
+    forAll(boundary, patchI)
+    {
+        if (isA<processorPolyPatch>(boundary[patchI]))
+        {
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[patchI])
+            );
+
+            nPrc.insert(pp.neighbProcNo(), patchI);
+        }
+    }
+
+    // Search the registry for all mapping objects.
+    HashTable<const coupleMap*> coupleMaps =
+    (
+        Mesh_.lookupClass<coupleMap>()
+    );
+
+    forAllIter
+    (
+        HashTable<const coupleMap*>,
+        coupleMaps,
+        cmIter
+    )
+    {
+        const coupleMap& cMap = *(cmIter());
+
+        if (cMap.isLocal())
+        {
+            continue;
+        }
+
+        // Pick maps for which this sub-domain is master
+        if (cMap.masterIndex() == Pstream::myProcNo())
+        {
+            // Fetch the neighbour's procIndex
+            label neiProcNo = cMap.slaveIndex();
+
+            // Prepare a new Map for this processor
+            auxPointMap_.insert(neiProcNo, Map<label>());
+
+            // Loop through the cell buffer,
+            // and build cell-point connectivity
+            const labelList& pBuffer =
+            (
+                cMap.entityBuffer(coupleMap::POINT)
+            );
+
+            const labelList& fBuffer =
+            (
+                cMap.entityBuffer(coupleMap::FACE)
+            );
+
+            const labelList& cBuffer =
+            (
+                cMap.entityBuffer(coupleMap::CELL)
+            );
+
+            const labelList& sBuffer =
+            (
+                cMap.entityBuffer(coupleMap::SHARED_POINT)
+            );
+
+            // Assume tet-cells from here on.
+            for (label cellI = 0; cellI < (cBuffer.size()/4); cellI++)
+            {
+                label spi = -1, nI = -1;
+
+                for (label f = 0; f < 4; f++)
+                {
+                    // Fetch sequence of points from the face buffer.
+                    label faceI = cBuffer[(4*cellI)+f];
+
+                    // If none of these points are shared,
+                    // we've found the right opposing face.
+                    bool foundPoint = false;
+
+                    for (label i = 0; i < 3; i++)
+                    {
+                        p[i] = fBuffer[(3*faceI)+i];
+
+                        if ((spi = findIndex(pBuffer, p[i])) > -1)
+                        {
+                            // Note this point for later.
+                            nI = sBuffer[spi];
+                            p[3] = pBuffer[spi];
+
+                            foundPoint = true;
+                            break;
+                        }
+                    }
+
+                    if (foundPoint)
+                    {
+                        continue;
+                    }
+
+                    // Determine addressing for the shared point, p[3].
+                    if (!auxPointMap_[neiProcNo].found(p[3]))
+                    {
+                        if (nPrc.found(neiProcNo))
+                        {
+                            // Fetch addressing for this patch.
+                            const processorPolyPatch& pp =
+                            (
+                                refCast<const processorPolyPatch>
+                                (
+                                    boundary[nPrc[neiProcNo]]
+                                )
+                            );
+
+                            const labelList& neiPoints =
+                            (
+                                pp.neighbPoints()
+                            );
+
+                            const labelList& meshPts =
+                            (
+                                boundary[nPrc[neiProcNo]].meshPoints()
+                            );
+
+                            forAll(neiPoints, pointI)
+                            {
+                                if (neiPoints[pointI] == nI)
+                                {
+                                    // Find the global index.
+                                    auxPointMap_[neiProcNo].insert
+                                    (
+                                        p[3],
+                                        meshPts[pointI]
+                                    );
+
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Disconnected neighbour.
+                            // Look at globalPoint addressing
+                            // for its information.
+                            const globalMeshData& gD = mesh().globalData();
+                            const labelList& spA = gD.sharedPointAddr();
+                            const labelList& spL = gD.sharedPointLabels();
+
+                            forAll(spA, pointI)
+                            {
+                                if (spA[pointI] == nI)
+                                {
+                                    auxPointMap_[neiProcNo].insert
+                                    (
+                                        p[3],
+                                        spL[pointI]
+                                    );
+
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Prepare maps for all points
+                    // and fill in cellToNode.
+                    forAll(p, i)
+                    {
+                        if (!auxPointMap_[neiProcNo].found(p[i]))
+                        {
+                            auxPointMap_[neiProcNo].insert
+                            (
+                                p[i],
+                                pIndex++
+                            );
+                        }
+
+                        p[i] = auxPointMap_[neiProcNo][p[i]];
+
+                        // Set connectivity. Note that orientation
+                        // was ensured by the neighbouring processor.
+                        // So we won't check it now.
+                        cellToNode_[cIndex++] = p[i];
+                    }
+
+                    // Hold auxiliary points fixed.
+                    fixFlags_[p[0]] = 1;
+                    fixFlags_[p[1]] = 1;
+                    fixFlags_[p[2]] = 1;
+
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // Hold all processor points as fixed.
+            const labelList& sBuffer =
+            (
+                cMap.entityBuffer(coupleMap::SHARED_POINT)
+            );
+
+            // Fetch the neighbour's procIndex
+            label neiProcNo = cMap.slaveIndex();
+
+            if (nPrc.found(neiProcNo))
+            {
+                const labelList& meshPts =
+                (
+                    boundary[nPrc[neiProcNo]].meshPoints()
+                );
+
+                forAll(meshPts, pointI)
+                {
+                    fixFlags_[meshPts[pointI]] = 1;
+                }
+            }
+            else
+            {
+                // Disconnected neighbour.
+                // Look at globalPoint addressing
+                // for its information.
+                const globalMeshData& gD = mesh().globalData();
+                const labelList& spA = gD.sharedPointAddr();
+                const labelList& spL = gD.sharedPointLabels();
+
+                forAll(sBuffer, pointI)
+                {
+                    label addrIndex =
+                    (
+                        findIndex(spA, sBuffer[pointI])
+                    );
+
+                    fixFlags_[spL[addrIndex]] = 1;
+                }
+            }
+        }
+    }
+}
+
+// Copy auxiliary points to/from buffers
+void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    // Search the registry for all mapping objects.
+    HashTable<const coupleMap*> coupleMaps =
+    (
+        Mesh_.lookupClass<coupleMap>()
+    );
+
+    forAllIter
+    (
+        HashTable<const coupleMap*>,
+        coupleMaps,
+        cmIter
+    )
+    {
+        coupleMap& cMap = const_cast<coupleMap&>(*cmIter());
+
+        if (cMap.isLocal())
+        {
+            continue;
+        }
+
+        // Obtain a reference to the point buffer
+        pointField& pField = cMap.pointBuffer();
+
+        // Pick maps for which this sub-domain is master
+        if (cMap.masterIndex() == Pstream::myProcNo())
+        {
+            // Fetch the neighbour's procIndex
+            label neiProcNo = cMap.slaveIndex();
+
+            const labelList& pBuffer = cMap.entityBuffer(coupleMap::POINT);
+            const Map<label>& pointMap = auxPointMap_[neiProcNo];
+
+            label pIndex = -1;
+            vector v = vector::zero;
+
+            if (copyBack)
+            {
+                forAll(pBuffer, pointI)
+                {
+                    pIndex = pointMap[pBuffer[pointI]];
+
+                    v.x() = vtxCoords_[(3*pIndex)+0];
+                    v.y() = vtxCoords_[(3*pIndex)+1];
+                    v.z() = vtxCoords_[(3*pIndex)+2];
+
+                    pField[pBuffer[pointI]] = v;
+                }
+
+                // Send points to the slave.
+                OPstream::write
+                (
+                    Pstream::nonBlocking,
+                    neiProcNo,
+                    reinterpret_cast<const char*>(&pField[0]),
+                    pField.size()*sizeof(vector)
+                );
+            }
+            else
+            {
+                forAll(pBuffer, pointI)
+                {
+                    pIndex = pointMap[pBuffer[pointI]];
+
+                    v = pField[pBuffer[pointI]];
+
+                    vtxCoords_[(3*pIndex)+0] = v.x();
+                    vtxCoords_[(3*pIndex)+1] = v.y();
+                    vtxCoords_[(3*pIndex)+2] = v.z();
+                }
+            }
+        }
+        else
+        if (copyBack)
+        {
+            // This sub-domain is a slave.
+            // Prepare for buffer receipt.
+            IPstream::read
+            (
+                Pstream::nonBlocking,
+                cMap.masterIndex(),
+                reinterpret_cast<char*>(pField.begin()),
+                pField.byteSize()
+            );
+        }
+    }
+
+    if (copyBack)
+    {
+        // Wait for all transfers to complete.
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+
+        // Now copy updated locations to refPoints.
+
     }
 }
 
@@ -1329,7 +1723,7 @@ void mesquiteSmoother::applyFixedValuePatches()
 
         // Accumulate a set of points, so that common-points
         // are not moved twice. If an overlap exists, the
-        // first entry is used.
+        // last entry is used.
         Map<vector> pointSet;
 
         forAll(fixPatches, wordI)
@@ -1347,10 +1741,7 @@ void mesquiteSmoother::applyFixedValuePatches()
 
             forAll(patchPoints, index)
             {
-                if (!pointSet.found(patchPoints[index]))
-                {
-                    pointSet.insert(patchPoints[index], disp);
-                }
+                pointSet.set(patchPoints[index], disp);
             }
         }
 
@@ -1441,7 +1832,8 @@ void mesquiteSmoother::smoothSurfaces()
                     if
                     (
                         (cMap.masterIndex() == patchI.key()) &&
-                        (cMap.slaveIndex() == patchI())
+                        (cMap.slaveIndex() == patchI()) &&
+                        (cMap.isLocal())
                     )
                     {
                         const Map<label>& mtsMap =
@@ -1659,239 +2051,247 @@ void mesquiteSmoother::correctInvalidCells()
         return;
     }
 
-    /*
-    InfoIn("mesquiteSmoother::correctInvalidCells()")
-        << "Found " << invCells.size() << " invalid cells. "
-        << "Attempting to correct..." << flush;
+    Switch useBFGS(false);
 
-    // Looks like some inverted cells are present.
-    // Check for free-vertices connected to invalid cells.
-    const labelListList& cellPoints = mesh().cellPoints();
-    const labelListList& pointFaces = mesh().pointFaces();
-
-    labelHashSet freePoints;
-
-    forAll(invCells, cellI)
+    if (found("useBFGS"))
     {
-        const labelList& cPoints = cellPoints[invCells[cellI]];
-
-        forAll(cPoints, pointI)
-        {
-            const labelList& pFaces = pointFaces[cPoints[pointI]];
-
-            bool boundaryPoint = false;
-
-            forAll(pFaces, faceI)
-            {
-                if (!mesh().isInternalFace(pFaces[faceI]))
-                {
-                    boundaryPoint = true;
-                    break;
-                }
-            }
-
-            if (!boundaryPoint && !freePoints.found(cPoints[pointI]))
-            {
-                freePoints.insert(cPoints[pointI]);
-            }
-        }
+        useBFGS = lookup("useBFGS");
     }
 
-    // Obtain mesh connectivity
-    const faceList& meshFaces = mesh().faces();
-    const cellList& meshCells = mesh().cells();
-    const labelList& owner = mesh().faceOwner();
-
-    // For each point, build a local hull for optimization
-    labelList freePointList = freePoints.toc();
-    labelListList jPoints(freePointList.size(), labelList(0));
-
-    forAll(freePointList, pointI)
+    if (useBFGS)
     {
-        const labelList& pCells = pointCells[freePointList[pointI]];
+        InfoIn("mesquiteSmoother::correctInvalidCells()")
+            << "Found " << invCells.size() << " invalid cells. "
+            << "Attempting to correct..." << flush;
 
-        // First size the list. Assume tet-mesh.
-        jPoints[pointI].setSize(3*pCells.size());
+        // Looks like some inverted cells are present.
+        // Check for free-vertices connected to invalid cells.
+        const labelListList& cellPoints = mesh().cellPoints();
+        const labelListList& pointFaces = mesh().pointFaces();
 
-        label i = 0;
+        labelHashSet freePoints;
 
-        forAll(pCells, cellI)
+        forAll(invCells, cellI)
         {
-            const cell& curCell = meshCells[pCells[cellI]];
+            const labelList& cPoints = cellPoints[invCells[cellI]];
 
-            // Find a face which doesn't contain pIndex.
-            forAll(curCell, faceI)
+            forAll(cPoints, pointI)
             {
-                const face& thisFace = meshFaces[curCell[faceI]];
+                const labelList& pFaces = pointFaces[cPoints[pointI]];
 
-                if (thisFace.which(freePointList[pointI]) == -1)
+                bool boundaryPoint = false;
+
+                forAll(pFaces, faceI)
                 {
-                    if (owner[curCell[faceI]] == pCells[cellI])
+                    if (!mesh().isInternalFace(pFaces[faceI]))
                     {
-                        jPoints[pointI][i++] = thisFace[0];
-                        jPoints[pointI][i++] = thisFace[1];
-                        jPoints[pointI][i++] = thisFace[2];
+                        boundaryPoint = true;
+                        break;
                     }
-                    else
-                    {
-                        jPoints[pointI][i++] = thisFace[2];
-                        jPoints[pointI][i++] = thisFace[1];
-                        jPoints[pointI][i++] = thisFace[0];
-                    }
+                }
 
-                    break;
+                if (!boundaryPoint && !freePoints.found(cPoints[pointI]))
+                {
+                    freePoints.insert(cPoints[pointI]);
                 }
             }
         }
-    }
 
-    if (debug)
-    {
+        // Obtain mesh connectivity
+        const faceList& meshFaces = mesh().faces();
+        const cellList& meshCells = mesh().cells();
+        const labelList& owner = mesh().faceOwner();
+
+        // For each point, build a local hull for optimization
+        labelList freePointList = freePoints.toc();
+        labelListList jPoints(freePointList.size(), labelList(0));
+
         forAll(freePointList, pointI)
         {
-            writePoint(freePointList[pointI], jPoints[pointI]);
-        }
-    }
+            const labelList& pCells = pointCells[freePointList[pointI]];
 
-    // Loop through various points, and check for a negative
-    // Jacobian value. If an inverted cell exists, proceed
-    // with the LBFGS algorithm.
-    int N = 3;
-    scalar beta = 0.0;
-    lbfgsfloatval_t fx;
-    lbfgsfloatval_t *m_x = lbfgs_malloc(N);
+            // First size the list. Assume tet-mesh.
+            jPoints[pointI].setSize(3*pCells.size());
 
-    forAll(freePointList, pointI)
-    {
-        const vector& x = refPoints_[freePointList[pointI]];
-
-        bool foundInvalid = checkValidity(x, jPoints[pointI], beta);
-
-        if (foundInvalid)
-        {
-            // Prepare the node-position
-            m_x[0] = x.x();
-            m_x[1] = x.y();
-            m_x[2] = x.z();
-
-            if (debug)
-            {
-                Info << "x0: "
-                     << m_x[0] << " "
-                     << m_x[1] << " "
-                     << m_x[2] << " "
-                     << endl;
-            }
-
-            // Prepare data
-            optInfo data
-            (
-                (*this),
-                beta,
-                jPoints[pointI],
-                refPoints_
-            );
-
-            // Call the lbfgs algorithm
-            lbfgs
-            (
-                N,
-                m_x,
-                &fx,
-                _evaluate,
-                NULL,
-                reinterpret_cast<void *>(&data),
-                NULL
-            );
-
-            if (debug)
-            {
-                Info << "xNew: "
-                     << m_x[0] << " "
-                     << m_x[1] << " "
-                     << m_x[2] << " "
-                     << endl;
-            }
-
-            foundInvalid = checkValidity
-            (
-                vector(m_x[0],m_x[1],m_x[2]),
-                jPoints[pointI],
-                beta
-            );
-
-            // Update position only if untangling was successful
-            if (!foundInvalid)
-            {
-                refPoints_[freePointList[pointI]] =
-                (
-                    vector(m_x[0],m_x[1],m_x[2])
-                );
-            }
-        }
-    }
-
-    // Free allocated memory
-    lbfgs_free(m_x);
-
-    // Perform a final check to ensure everything went okay.
-    bool foundInvalid = false;
-
-    forAll(freePointList, pointI)
-    {
-        const vector& x = refPoints_[freePointList[pointI]];
-
-        foundInvalid = checkValidity(x, jPoints[pointI], beta);
-
-        if (foundInvalid)
-        {
-            break;
-        }
-    }
-
-    if (foundInvalid)
-    {
-        WarningIn
-        (
-            "mesquiteSmoother::correctInvalidCells()"
-        )
-            << " Failed to untangle mesh."
-            << endl;
-
-        Info << "Relaxing points to untangle mesh..." << flush;
-    }
-    else
-    {
-        Info << "Success." << endl;
-
-        return;
-    }
-
-    // Clear out the invalid cell list, and obtain a new list
-    invCells.clear();
-
-    forAll(pIDs_, patchI)
-    {
-        const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
-
-        forAll(meshPts, pointI)
-        {
-            const labelList& pCells = pointCells[meshPts[pointI]];
+            label i = 0;
 
             forAll(pCells, cellI)
             {
-                if (tetVolume(pCells[cellI], refPoints_) < 0.0)
+                const cell& curCell = meshCells[pCells[cellI]];
+
+                // Find a face which doesn't contain pIndex.
+                forAll(curCell, faceI)
                 {
-                    // Add this cell to the list
-                    if (findIndex(invCells, pCells[cellI]) == -1)
+                    const face& thisFace = meshFaces[curCell[faceI]];
+
+                    if (thisFace.which(freePointList[pointI]) == -1)
                     {
-                        invCells.append(pCells[cellI]);
+                        if (owner[curCell[faceI]] == pCells[cellI])
+                        {
+                            jPoints[pointI][i++] = thisFace[0];
+                            jPoints[pointI][i++] = thisFace[1];
+                            jPoints[pointI][i++] = thisFace[2];
+                        }
+                        else
+                        {
+                            jPoints[pointI][i++] = thisFace[2];
+                            jPoints[pointI][i++] = thisFace[1];
+                            jPoints[pointI][i++] = thisFace[0];
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (debug)
+        {
+            forAll(freePointList, pointI)
+            {
+                writePoint(freePointList[pointI], jPoints[pointI]);
+            }
+        }
+
+        // Loop through various points, and check for a negative
+        // Jacobian value. If an inverted cell exists, proceed
+        // with the LBFGS algorithm.
+        int N = 3;
+        scalar beta = 0.0;
+        lbfgsfloatval_t fx;
+        lbfgsfloatval_t *m_x = lbfgs_malloc(N);
+
+        forAll(freePointList, pointI)
+        {
+            const vector& x = refPoints_[freePointList[pointI]];
+
+            bool foundInvalid = checkValidity(x, jPoints[pointI], beta);
+
+            if (foundInvalid)
+            {
+                // Prepare the node-position
+                m_x[0] = x.x();
+                m_x[1] = x.y();
+                m_x[2] = x.z();
+
+                if (debug)
+                {
+                    Info << "x0: "
+                         << m_x[0] << " "
+                         << m_x[1] << " "
+                         << m_x[2] << " "
+                         << endl;
+                }
+
+                // Prepare data
+                optInfo data
+                (
+                    (*this),
+                    beta,
+                    jPoints[pointI],
+                    refPoints_
+                );
+
+                // Call the lbfgs algorithm
+                lbfgs
+                (
+                    N,
+                    m_x,
+                    &fx,
+                    _evaluate,
+                    NULL,
+                    reinterpret_cast<void *>(&data),
+                    NULL
+                );
+
+                if (debug)
+                {
+                    Info << "xNew: "
+                         << m_x[0] << " "
+                         << m_x[1] << " "
+                         << m_x[2] << " "
+                         << endl;
+                }
+
+                foundInvalid = checkValidity
+                (
+                    vector(m_x[0],m_x[1],m_x[2]),
+                    jPoints[pointI],
+                    beta
+                );
+
+                // Update position only if untangling was successful
+                if (!foundInvalid)
+                {
+                    refPoints_[freePointList[pointI]] =
+                    (
+                        vector(m_x[0],m_x[1],m_x[2])
+                    );
+                }
+            }
+        }
+
+        // Free allocated memory
+        lbfgs_free(m_x);
+
+        // Perform a final check to ensure everything went okay.
+        bool foundInvalid = false;
+
+        forAll(freePointList, pointI)
+        {
+            const vector& x = refPoints_[freePointList[pointI]];
+
+            foundInvalid = checkValidity(x, jPoints[pointI], beta);
+
+            if (foundInvalid)
+            {
+                break;
+            }
+        }
+
+        if (foundInvalid)
+        {
+            WarningIn
+            (
+                "mesquiteSmoother::correctInvalidCells()"
+            )
+                << " Failed to untangle mesh."
+                << endl;
+
+            Info << "Relaxing points to untangle mesh." << endl;
+        }
+        else
+        {
+            Info << "Success." << endl;
+
+            return;
+        }
+
+        // Clear out the invalid cell list, and obtain a new list
+        invCells.clear();
+
+        forAll(pIDs_, patchI)
+        {
+            const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+            forAll(meshPts, pointI)
+            {
+                const labelList& pCells = pointCells[meshPts[pointI]];
+
+                forAll(pCells, cellI)
+                {
+                    if (tetVolume(pCells[cellI], refPoints_) < 0.0)
+                    {
+                        // Add this cell to the list
+                        if (findIndex(invCells, pCells[cellI]) == -1)
+                        {
+                            invCells.append(pCells[cellI]);
+                        }
                     }
                 }
             }
         }
     }
-    */
 
     bool valid = false;
     scalar lambda = 2.0, valFraction = 0.75;
@@ -1932,8 +2332,6 @@ void mesquiteSmoother::correctInvalidCells()
 
         if (valid)
         {
-            Info << "Success." << endl;
-
             break;
         }
 
@@ -1944,9 +2342,9 @@ void mesquiteSmoother::correctInvalidCells()
             Info << endl;
 
             WarningIn("mesquiteSmoother::correctInvalidCells()")
-                    << " Failed to obtain a valid mesh." << nl
-                    << " Reverting to original point positions."
-                    << endl;
+                << " Failed to obtain a valid mesh." << nl
+                << " Reverting to original point positions."
+                << endl;
 
             refPoints_ = origPoints_;
 
@@ -2032,7 +2430,10 @@ void mesquiteSmoother::correctGlobalVolume()
             // Final update of refPoints with optimal magnitude
             forAll(pIDs_, patchI)
             {
-                const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+                const labelList& meshPts =
+                (
+                    boundary[pIDs_[patchI]].meshPoints()
+                );
 
                 forAll(meshPts,pointI)
                 {
@@ -2191,7 +2592,8 @@ void mesquiteSmoother::enforceCylindricalConstraints()
                     if
                     (
                         (cMap.masterIndex() == pID) &&
-                        (cMap.slaveIndex() == patchCoupling_[pID])
+                        (cMap.slaveIndex() == patchCoupling_[pID]) &&
+                        (cMap.isLocal())
                     )
                     {
                         const Map<label>& mtsMap =
@@ -2587,6 +2989,9 @@ void mesquiteSmoother::solve()
         vtxCoords_[(3*pointI)+2] = refPoints_[pointI][2];
     }
 
+    // Copy auxiliary points
+    copyAuxiliaryPoints();
+
     Mesquite::MsqError err;
 
     //- ArrayMesh object defined by Mesquite
@@ -2641,6 +3046,9 @@ void mesquiteSmoother::solve()
         refPoints_[pointI][1] = vtxCoords_[(3*pointI)+1];
         refPoints_[pointI][2] = vtxCoords_[(3*pointI)+2];
     }
+
+    // Copy auxiliary points back
+    copyAuxiliaryPoints(true);
 }
 
 void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
@@ -2671,6 +3079,9 @@ void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
     // Reset refPoints
     refPoints_.clear();
     refPoints_ = Mesh_.points();
+
+    // Clear the auxiliary point map
+    auxPointMap_.clear();
 
     // Clear Mesquite arrays
     clearOut();

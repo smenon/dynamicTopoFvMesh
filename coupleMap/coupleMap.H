@@ -59,8 +59,10 @@ class coupleMap
     public regIOobject
 {
     // Private data
-    label masterIndex_;
-    label slaveIndex_;
+    mutable bool isLocal_;
+
+    mutable label masterIndex_;
+    mutable label slaveIndex_;
 
     mutable pointField pointBuffer_;
 
@@ -81,7 +83,7 @@ class coupleMap
     mutable FixedList<Map<label>,4> reverseEntityMap_;
 
     // Entity Buffers (as specified by the entityType enumerant)
-    mutable FixedList<labelList,5> entityBuffer_;
+    mutable FixedList<labelList,6> entityBuffer_;
 
     //- Disallow default bitwise assignment
     void operator=(const coupleMap&);
@@ -107,6 +109,7 @@ public:
     coupleMap
     (
         const IOobject& io,
+        const bool isLocal,
         const label masterIndex,
         const label slaveIndex
     );
@@ -122,6 +125,8 @@ public:
 
         label masterIndex() const;
         label slaveIndex() const;
+
+        bool isLocal() const;
 
         pointField& pointBuffer() const;
 
@@ -143,7 +148,7 @@ public:
         Map<label>& entityMap(const label eType) const;
         Map<label>& reverseEntityMap(const label eType) const;
 
-        FixedList<labelList,5>& entityBuffer() const;
+        FixedList<labelList,6>& entityBuffer() const;
         labelList& entityBuffer(const label eType) const;
 
         void transferMaps

@@ -190,7 +190,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Initialize edge-related connectivity structures
     initEdges();
 
-    // Initialize parallel connactivity for topology modifications.
+    // Initialize parallel connectivity for topology modifications.
     initParallelConnectivity(this);
 
     // Set sizes for the reverse maps
@@ -256,8 +256,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nFaces_(faces.size()),
     nOldCells_(cells.size()),
     nCells_(cells.size()),
-    nOldInternalFaces_(polyMesh::nInternalFaces()),
-    nInternalFaces_(polyMesh::nInternalFaces()),
+    nOldInternalFaces_(primitiveMesh::nInternalFaces()),
+    nInternalFaces_(primitiveMesh::nInternalFaces()),
     nOldInternalEdges_(nInternalEdges),
     nInternalEdges_(nInternalEdges),
     ratioMin_(mesh.ratioMin_),
@@ -6444,7 +6444,8 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             }
         }
 
-        // Obtain global shared-points information, if necessary.
+        // Prepare a list of points for sub-mesh creation.
+        //  - Obtain global shared-points information, if necessary.
         if (!procIndices_.size())
         {
             // Fetch the list of global points from polyMesh.
@@ -6456,44 +6457,61 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             labelList nRecvPoints(Pstream::nProcs(), 0);
             labelListList spBuffer(Pstream::nProcs(), labelList(0));
 
-            // Send others my addressing.
-            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            if (gData.nGlobalPoints())
             {
-                if (proc != Pstream::myProcNo())
+                if (debug)
                 {
-                    // Send number of entities first.
-                    pWrite(proc, spAddr.size());
+                    Info << " Found "
+                         << gData.nGlobalPoints()
+                         << " global points."
+                         << endl;
+                }
 
-                    // Send the buffer.
-                    if (spAddr.size())
+                // Send others my addressing.
+                for (label proc = 0; proc < Pstream::nProcs(); proc++)
+                {
+                    if (proc != Pstream::myProcNo())
                     {
-                        pWrite(proc, spAddr);
+                        // Send number of entities first.
+                        pWrite(proc, spAddr.size());
+
+                        // Send the buffer.
+                        if (spAddr.size())
+                        {
+                            pWrite(proc, spAddr);
+                        }
+                    }
+                }
+
+                // Receive addressing from others
+                for (label proc = 0; proc < Pstream::nProcs(); proc++)
+                {
+                    if (proc != Pstream::myProcNo())
+                    {
+                        label procInfoSize = -1;
+
+                        // How many entities am I going to be receiving?
+                        pRead(proc, procInfoSize);
+
+                        if (procInfoSize)
+                        {
+                            // Size the receive buffer.
+                            spBuffer[proc].setSize(procInfoSize, -1);
+
+                            // Schedule for receipt.
+                            pRead(proc, spBuffer[proc]);
+                        }
                     }
                 }
             }
-
-            // Receive addressing from others
-            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            else
+            if (debug)
             {
-                if (proc != Pstream::myProcNo())
-                {
-                    label procInfoSize = -1;
-
-                    // How many entities am I going to be receiving?
-                    pRead(proc, procInfoSize);
-
-                    if (procInfoSize)
-                    {
-                        // Size the receive buffer.
-                        spBuffer[proc].setSize(procInfoSize, -1);
-
-                        // Schedule for receipt.
-                        pRead(proc, spBuffer[proc]);
-                    }
-                }
+                Info << "Did not find any global points." << endl;
             }
 
-            Map<labelHashSet> procPatchPoints;
+            labelHashSet immNeighbours;
+            labelListList procPatchPoints(Pstream::nProcs());
 
             // Insert my immediate neighbours into the list.
             forAll(boundary, pI)
@@ -6507,77 +6525,85 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
                     label neiProcNo = pp.neighbProcNo();
 
-                    procPatchPoints.insert(neiProcNo, labelHashSet());
-
-                    labelHashSet& neiSet = procPatchPoints[neiProcNo];
-
                     // Insert all boundary points.
-                    const labelList& meshPts = pp.meshPoints();
+                    procPatchPoints[neiProcNo] = pp.meshPoints();
 
-                    forAll(meshPts, pointI)
-                    {
-                        neiSet.insert(meshPts[pointI]);
-                    }
+                    // Keep track of immediate neighbours.
+                    immNeighbours.insert(neiProcNo);
                 }
             }
 
-            // Wait for all transfers to complete.
-            waitForBuffers();
-
-            // Now loop through all processor addressing, and check if
-            // any labels coincide with my global shared points.
-            // If this is true, we need to be talking to that neighbour
-            // as well (if not already).
-            for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            if (gData.nGlobalPoints())
             {
-                if (proc != Pstream::myProcNo())
+                // Wait for all transfers to complete.
+                waitForBuffers();
+
+                // Now loop through all processor addressing, and check if
+                // any labels coincide with my global shared points.
+                // If this is true, we need to be talking to that neighbour
+                // as well (if not already).
+                for (label proc = 0; proc < Pstream::nProcs(); proc++)
                 {
-                    forAll(spBuffer[proc], pointI)
+                    if
+                    (
+                        (proc != Pstream::myProcNo()) &&
+                        (!immNeighbours.found(proc))
+                    )
                     {
-                        forAll(spAddr, pointJ)
+                        bool foundGlobalMatch = false;
+
+                        labelHashSet neiSet;
+
+                        forAll(spBuffer[proc], pointI)
                         {
-                            if (spAddr[pointJ] == spBuffer[proc][pointI])
+                            forAll(spAddr, pointJ)
                             {
-                                // Found a match. Are we talking already?
-                                if (!procPatchPoints.found(proc))
+                                if (spAddr[pointJ] == spBuffer[proc][pointI])
                                 {
-                                    procPatchPoints.insert
-                                    (
-                                        proc,
-                                        labelHashSet()
-                                    );
+                                    // Make an entry
+                                    neiSet.insert(spLabels[pointJ]);
+
+                                    foundGlobalMatch = true;
+
+                                    break;
                                 }
-
-                                // Make an entry (over-writing if necessary)
-                                procPatchPoints[proc].set
-                                (
-                                    spLabels[pointJ],
-                                    empty()
-                                );
-
-                                break;
                             }
                         }
+
+                        if (foundGlobalMatch && debug)
+                        {
+                            Pout << "Additionally talking to processor: "
+                                 << proc << endl;
+                        }
+
+                        procPatchPoints[proc] = neiSet.toc();
                     }
                 }
             }
 
-            // Copy the indices.
-            procIndices_ = procPatchPoints.toc();
+            // Estimate an initial size
+            procIndices_.setSize(Pstream::nProcs());
 
             // Patch sub meshes need to be prepared in ascending
             // order of neighbouring processors.
-            sort(procIndices_);
+            label nTotalProcs = 0;
 
-            subMeshPoints_.setSize(procIndices_.size());
+            forAll(procPatchPoints, procI)
+            {
+                if (procPatchPoints[procI].size())
+                {
+                    procIndices_[nTotalProcs++] = procI;
+                }
+            }
+
+            // Shrink to actual size
+            procIndices_.setSize(nTotalProcs);
+            subMeshPoints_.setSize(nTotalProcs);
 
             // Copy the list of points for each processor.
-            forAll(procIndices_, patchI)
+            forAll(procIndices_, pI)
             {
-                subMeshPoints_[patchI] =
-                (
-                    procPatchPoints[procIndices_[patchI]].toc()
-                );
+                subMeshPoints_[pI] = procPatchPoints[procIndices_[pI]];
             }
 
             if (debug > 3)
@@ -6696,6 +6722,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                         IOobject::NO_WRITE,
                         true
                     ),
+                    true,
                     mPatch,
                     sPatch
                 );
@@ -6862,7 +6889,17 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 
         if (proc < Pstream::myProcNo())
         {
-            sendPatchMeshes_.set(proc, new coupledPatchInfo(*this));
+            sendPatchMeshes_.set
+            (
+                proc,
+                new coupledPatchInfo
+                (
+                    *this,
+                    false,
+                    proc,
+                    Pstream::myProcNo()
+                )
+            );
 
             coupledPatchInfo& sendMesh = sendPatchMeshes_[proc];
 
@@ -6896,7 +6933,17 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         }
         else
         {
-            recvPatchMeshes_.set(proc, new coupledPatchInfo(*this));
+            recvPatchMeshes_.set
+            (
+                proc,
+                new coupledPatchInfo
+                (
+                    *this,
+                    false,
+                    Pstream::myProcNo(),
+                    proc
+                )
+            );
 
             // Obtain references
             coupledPatchInfo& recvMesh = recvPatchMeshes_[proc];
@@ -6975,7 +7022,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     labelHashSet& cellsToAvoid
 )
 {
-    label nP = 0, nE = 0, nF = 0, nC = 0, sP = 0;
+    label nP = 0, nE = 0, nF = 0, nC = 0, sP = 0, shP = 0;
 
     // Shorten enumerants for convenience
     const label pointEnum = coupleMap::POINT;
@@ -7078,6 +7125,9 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     // Allocate the edgeMap. Interior edges need to be detected
     // first and added before boundary ones. Do this in two stages.
+    // - The definition of an 'interior' edge here is one which
+    //   has all its connected faces in the faceMap. In some sense,
+    //   this is a reverse of the traditional definition.
     for (label stage = 0; stage < 2; stage++)
     {
         forAllIter(Map<label>::iterator, rFaceMap, fIter)
@@ -7155,21 +7205,81 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     // Loop through subMeshPoints for the processor
     // and fill a mapped buffer for them as well.
-    // This allows the neighbour to match-up edges easily.
+    // This allows the neighbour to match-up points easily.
     labelList& spBuffer = cMap.entityBuffer(pointEnum);
 
     spBuffer.setSize(subMeshPoints_[procIndex].size(), -1);
 
     forAll(subMeshPoints_[procIndex], pointI)
     {
-        if (rPointMap.found(subMeshPoints_[procIndex][pointI]))
-        {
-            spBuffer[sP++] = rPointMap[subMeshPoints_[procIndex][pointI]];
-        }
+        spBuffer[sP++] = rPointMap[subMeshPoints_[procIndex][pointI]];
     }
 
     // Shorten the buffer to actual size.
     spBuffer.setSize(sP);
+
+    // Also build maps corresponding to global shared points.
+    // This is only necessary if this sub-domain doesn't talk
+    // directly to the neighbour (i.e., through faces).
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    label patchIndex = -1;
+    bool directNeighbour = false;
+
+    forAll(boundary, patchI)
+    {
+        if (isA<processorPolyPatch>(boundary[patchI]))
+        {
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[patchI])
+            );
+
+            if (pp.neighbProcNo() == proc)
+            {
+                patchIndex = patchI;
+                directNeighbour = true;
+
+                break;
+            }
+        }
+    }
+
+    // Set the shared-point buffer size
+    labelList& shpBuffer = cMap.entityBuffer(shPointEnum);
+
+    shpBuffer.setSize(subMeshPoints_[procIndex].size(), -1);
+
+    if (directNeighbour)
+    {
+        // Prepare addressing based on local patch-point indices.
+        forAll(subMeshPoints_[procIndex], pointI)
+        {
+            shpBuffer[shP++] = boundary[patchIndex].whichPoint
+            (
+                subMeshPoints_[procIndex][pointI]
+            );
+        }
+    }
+    else
+    {
+        // Fetch the list of global points from polyMesh.
+        const globalMeshData& gData = polyMesh::globalData();
+
+        const labelList& spAddr = gData.sharedPointAddr();
+        const labelList& spLabels = gData.sharedPointLabels();
+
+        // Prepare global addressing labels for this neighbour.
+        forAll(subMeshPoints_[procIndex], pointI)
+        {
+            label addrIndex =
+            (
+                findIndex(spLabels, subMeshPoints_[procIndex][pointI])
+            );
+
+            shpBuffer[shP++] = spAddr[addrIndex];
+        }
+    }
 
     // Assign sizes to the mesh
     cMap.nEntities(pointEnum) = nP;
@@ -7587,7 +7697,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             labelListList smFEdges;
 
             // Set connectivity from buffers.
-            labelList& eBuffer = cMap.entityBuffer(edgeEnum);
+            const labelList& eBuffer = cMap.entityBuffer(edgeEnum);
 
             forAll(smEdges, edgeI)
             {
@@ -7603,8 +7713,8 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 smFEdges.setSize(cMap.nEntities(fEdgeEnum), labelList(3, -1));
 
                 // Copy connectivity from buffers.
-                labelList& fBuffer = cMap.entityBuffer(faceEnum);
-                labelList& feBuffer = cMap.entityBuffer(fEdgeEnum);
+                const labelList& fBuffer = cMap.entityBuffer(faceEnum);
+                const labelList& feBuffer = cMap.entityBuffer(fEdgeEnum);
 
                 forAll(smFaces, faceI)
                 {
@@ -7617,7 +7727,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                     smFEdges[faceI][2] = feBuffer[(3*faceI) + 2];
                 }
 
-                labelList& cBuffer = cMap.entityBuffer(cellEnum);
+                const labelList& cBuffer = cMap.entityBuffer(cellEnum);
 
                 forAll(smCells, cellI)
                 {

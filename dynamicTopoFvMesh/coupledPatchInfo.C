@@ -50,6 +50,7 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
 dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
 (
     const dynamicTopoFvMesh& mesh,
+    const bool isLocal,
     const label mPatch,
     const label sPatch,
     const label mfzIndex,
@@ -72,6 +73,7 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
             IOobject::NO_WRITE,
             false
         ),
+        isLocal,
         mPatch,
         sPatch
     ),

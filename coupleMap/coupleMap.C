@@ -47,11 +47,13 @@ defineTypeNameAndDebug(coupleMap, 0);
 coupleMap::coupleMap
 (
     const IOobject& io,
+    const bool isLocal,
     const label masterIndex,
     const label slaveIndex
 )
 :
     regIOobject(io),
+    isLocal_(isLocal),
     masterIndex_(masterIndex),
     slaveIndex_(slaveIndex),
     nEntities_(-1)
@@ -61,6 +63,7 @@ coupleMap::coupleMap
 coupleMap::coupleMap(const coupleMap& cm)
 :
     regIOobject(cm, true),
+    isLocal_(cm.isLocal_),
     masterIndex_(cm.masterIndex_),
     slaveIndex_(cm.slaveIndex_),
     nEntities_(cm.nEntities_)
@@ -83,6 +86,11 @@ label coupleMap::masterIndex() const
 label coupleMap::slaveIndex() const
 {
     return slaveIndex_;
+}
+
+bool coupleMap::isLocal() const
+{
+    return isLocal_;
 }
 
 pointField& coupleMap::pointBuffer() const
@@ -194,7 +202,7 @@ Map<label>& coupleMap::reverseEntityMap(const label eType) const
     return reverseEntityMap_[eType];
 }
 
-FixedList<labelList,5>& coupleMap::entityBuffer() const
+FixedList<labelList,6>& coupleMap::entityBuffer() const
 {
     return entityBuffer_;
 }
