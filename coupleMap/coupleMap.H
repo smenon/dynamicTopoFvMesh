@@ -66,6 +66,10 @@ class coupleMap
 
     mutable pointField pointBuffer_;
 
+    // List of points that are required
+    // during patch sub-mesh creation
+    mutable labelList subMeshPoints_;
+
     // Master-Slave mapping
     mutable Map<label> masterToSlave_;
     mutable Map<label> slaveToMaster_;
@@ -129,6 +133,8 @@ public:
         bool isLocal() const;
 
         pointField& pointBuffer() const;
+
+        labelList& subMeshPoints() const;
 
         const Map<label>& masterToSlaveMap() const;
         const Map<label>& slaveToMasterMap() const;

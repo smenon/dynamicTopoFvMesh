@@ -91,7 +91,7 @@ class dynamicTopoFvMesh
         IOdictionary dict_;
 
         //- Should all options be mandatorily specified?
-        //  Useful for first-time use.
+        //  Handy for first-time use.
         Switch mandatory_;
 
         //- Mesh characteristics [2D/3D]
@@ -219,7 +219,7 @@ class dynamicTopoFvMesh
         mutable List<boundBox>  sliceBoxes_;
         mutable List<labelPair> slicePairs_;
 
-        // Buffers for length-scale calculations
+        // Buffers for parallel length-scale calculations
         labelListList       sendLblBuffer_;
         labelListList       recvLblBuffer_;
         scalarListList      sendSclBuffer_;
@@ -314,17 +314,14 @@ class dynamicTopoFvMesh
                 label slaveFaceZone() const;
         };
 
-        // Coupled patch information
-        Map<coupledPatchInfo> patchCoupling_;
+        // Local coupled patch information
+        PtrList<coupledPatchInfo> patchCoupling_;
 
         // Coupled entities to avoid during normal modification
         DynamicList<label> entitiesToAvoid_;
 
-        // List of processors that this domain talks to
+        // List of processors that this sub-domain talks to
         labelList procIndices_;
-
-        // List of points that are required during patch sub-mesh creation
-        labelListList subMeshPoints_;
 
         // Sub-Mesh pointers
         PtrList<coupledPatchInfo> sendPatchMeshes_;
@@ -1275,7 +1272,6 @@ class dynamicTopoFvMesh
         // Build patch sub-mesh for a specified processor
         void buildProcessorPatchMesh
         (
-            const label proc,
             coupledPatchInfo& subMesh,
             labelHashSet& cellsToAvoid
         );

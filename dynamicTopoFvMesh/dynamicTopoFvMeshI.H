@@ -1132,7 +1132,7 @@ inline void dynamicTopoFvMesh::initCoupledFaceStack()
     for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
     {
         // Add only valid faces
-        if (!faces_[faceI].size())
+        if (faces_[faceI].empty())
         {
             continue;
         }
@@ -1145,7 +1145,7 @@ inline void dynamicTopoFvMesh::initCoupledFaceStack()
         }
 
         // Check if this is a locally coupled master face.
-        if (patchCoupling_.found(pIndex))
+        if (patchCoupling_(pIndex))
         {
             // Add this to the coupled modification stack.
             faceStack(0).push(faceI);
@@ -1197,7 +1197,7 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
         }
 
         // Check if this is a locally coupled master face.
-        if (patchCoupling_.found(pIndex))
+        if (patchCoupling_(pIndex))
         {
             const labelList& mfEdges = faceEdges_[faceI];
 
@@ -1246,9 +1246,14 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
     // Determine locally coupled slave patches.
     labelHashSet localSlavePatches;
 
-    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+    forAll(patchCoupling_, patchI)
     {
-        localSlavePatches.insert(patchI().patchMap().slaveIndex());
+        if (patchCoupling_(patchI))
+        {
+            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+            localSlavePatches.insert(cMap.slaveIndex());
+        }
     }
 
     // Loop through boundary faces and check whether
@@ -1256,7 +1261,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
     for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
     {
         // Add only valid faces
-        if (!faces_[faceI].size())
+        if (faces_[faceI].empty())
         {
             continue;
         }
@@ -1271,7 +1276,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
         // Check if this is a coupled face.
         if
         (
-            patchCoupling_.found(pIndex) ||
+            patchCoupling_(pIndex) ||
             localSlavePatches.found(pIndex) ||
             isA<processorPolyPatch>(boundary[pIndex])
         )
@@ -1745,11 +1750,16 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             label sIndex = -1;
 
             // Determine the slave index.
-            forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAll(patchCoupling_, patchI)
             {
-                if ((sIndex = patchI().patchMap().findSlaveIndex(eIndex)) > -1)
+                if (patchCoupling_(patchI))
                 {
-                    break;
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -1983,7 +1993,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledFace
     }
 
     // Check coupled master patches.
-    if (patchCoupling_.found(patch))
+    if (patchCoupling_(patch))
     {
         return true;
     }
@@ -2020,7 +2030,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
             }
 
             // Check coupled master patches.
-            if (patchCoupling_.found(patch))
+            if (patchCoupling_(patch))
             {
                 foundPatch = true;
             }
@@ -2028,16 +2038,16 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
             if (checkSlaves)
             {
                 // Check on slave patches as well.
-                forAllConstIter
-                (
-                    Map<coupledPatchInfo>,
-                    patchCoupling_,
-                    iterI
-                )
+                forAll(patchCoupling_, pI)
                 {
-                    if (iterI().patchMap().slaveIndex() == patch)
+                    if (patchCoupling_(pI))
                     {
-                        foundPatch = true;
+                        const coupleMap& cMap = patchCoupling_[pI].patchMap();
+
+                        if (cMap.slaveIndex() == patch)
+                        {
+                            foundPatch = true;
+                        }
                     }
                 }
             }
@@ -2111,9 +2121,12 @@ inline label dynamicTopoFvMesh::getMaxCouplingIndex() const
     // Allocate a size for coupled patches
     label index = -1;
 
-    forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+    forAll(patchCoupling_, patchI)
     {
-        index = index > patchI.key() ? index : patchI.key();
+        if (patchCoupling_(patchI))
+        {
+            index = index > patchI ? index : patchI;
+        }
     }
 
     return index;

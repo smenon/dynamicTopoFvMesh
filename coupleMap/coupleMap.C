@@ -98,6 +98,11 @@ pointField& coupleMap::pointBuffer() const
     return pointBuffer_;
 }
 
+labelList& coupleMap::subMeshPoints() const
+{
+    return subMeshPoints_;
+}
+
 const Map<label>& coupleMap::masterToSlaveMap() const
 {
     return masterToSlave_;

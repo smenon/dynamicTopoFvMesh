@@ -187,13 +187,18 @@ void dynamicTopoFvMesh::reOrderPoints
     pointZones.updateMesh();
 
     // Loop through all local coupling maps, and renumber points.
-    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+    forAll(patchCoupling_, patchI)
     {
-        const label pointEnum = coupleMap::POINT;
+        if (!patchCoupling_(patchI))
+        {
+            continue;
+        }
+
+        const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
         // Obtain references
-        Map<label>& pointMap = patchI().patchMap().entityMap(pointEnum);
-        Map<label>& rPointMap = patchI().patchMap().reverseEntityMap(pointEnum);
+        Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
+        Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
 
         Map<label> newMap, newRMap;
 
@@ -580,10 +585,17 @@ void dynamicTopoFvMesh::reOrderEdges
         invertConnectivity(nPoints_, edges_, pointEdges_);
 
         // Loop through all local coupling maps, and renumber edges.
-        forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+        forAll(patchCoupling_, patchI)
         {
+            if (!patchCoupling_(patchI))
+            {
+                continue;
+            }
+
+            const coupleMap & cMap = patchCoupling_[patchI].patchMap();
+
             // Obtain references
-            const Map<label>& mtsMap = patchI().patchMap().masterToSlaveMap();
+            const Map<label>& mtsMap = cMap.masterToSlaveMap();
 
             Map<label> newMtsMap, newStmMap;
 
@@ -615,7 +627,7 @@ void dynamicTopoFvMesh::reOrderEdges
             }
 
             // Overwrite the old maps.
-            patchI().patchMap().transferMaps(newMtsMap, newStmMap);
+            cMap.transferMaps(newMtsMap, newStmMap);
         }
     }
 
@@ -1107,10 +1119,17 @@ void dynamicTopoFvMesh::reOrderFaces
     if (twoDMesh_)
     {
         // Loop through all local coupling maps, and renumber faces.
-        forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+        forAll(patchCoupling_, patchI)
         {
+            if (!patchCoupling_(patchI))
+            {
+                continue;
+            }
+
+            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
             // Obtain references
-            const Map<label>& mtsMap = patchI().patchMap().masterToSlaveMap();
+            const Map<label>& mtsMap = cMap.masterToSlaveMap();
 
             Map<label> newMtsMap, newStmMap;
 
@@ -1142,7 +1161,7 @@ void dynamicTopoFvMesh::reOrderFaces
             }
 
             // Overwrite the old maps.
-            patchI().patchMap().transferMaps(newMtsMap, newStmMap);
+            cMap.transferMaps(newMtsMap, newStmMap);
         }
     }
 

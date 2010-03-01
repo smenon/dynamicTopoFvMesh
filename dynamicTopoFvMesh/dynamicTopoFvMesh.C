@@ -992,34 +992,37 @@ label dynamicTopoFvMesh::insertFace
         // No zone was specified. Check if this
         // face is added to a coupled patch associated
         // with a faceZone.
-        forAllIter(Map<coupledPatchInfo>, patchCoupling_, pIter)
+        forAll(patchCoupling_, patchI)
         {
-            if (pIter.key() == patch)
+            if (patchCoupling_(patchI))
             {
-                if (pIter().masterFaceZone() > -1)
+                if (patchI == patch)
                 {
-                    addedFaceZones_.insert
-                    (
-                        newFaceIndex,
-                        pIter().masterFaceZone()
-                    );
+                    if (patchCoupling_[patchI].masterFaceZone() > -1)
+                    {
+                        addedFaceZones_.insert
+                        (
+                            newFaceIndex,
+                            patchCoupling_[patchI].masterFaceZone()
+                        );
+                    }
+
+                    break;
                 }
 
-                break;
-            }
-
-            if (pIter().patchMap().slaveIndex() == patch)
-            {
-                if (pIter().slaveFaceZone() > -1)
+                if (patchCoupling_[patchI].patchMap().slaveIndex() == patch)
                 {
-                    addedFaceZones_.insert
-                    (
-                        newFaceIndex,
-                        pIter().slaveFaceZone()
-                    );
-                }
+                    if (patchCoupling_[patchI].slaveFaceZone() > -1)
+                    {
+                        addedFaceZones_.insert
+                        (
+                            newFaceIndex,
+                            patchCoupling_[patchI].slaveFaceZone()
+                        );
+                    }
 
-                break;
+                    break;
+                }
             }
         }
     }
@@ -1432,10 +1435,13 @@ void dynamicTopoFvMesh::removeFace
         }
 
         // Update coupled face maps, if necessary.
-        forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+        forAll(patchCoupling_, patchI)
         {
-            patchI().patchMap().removeMasterIndex(fIndex);
-            patchI().patchMap().removeSlaveIndex(fIndex);
+            if (patchCoupling_(patchI))
+            {
+                patchCoupling_[patchI].patchMap().removeMasterIndex(fIndex);
+                patchCoupling_[patchI].patchMap().removeSlaveIndex(fIndex);
+            }
         }
     }
 
@@ -1595,10 +1601,13 @@ void dynamicTopoFvMesh::removeEdge
         }
 
         // Update coupled face maps, if necessary.
-        forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+        forAll(patchCoupling_, patchI)
         {
-            patchI().patchMap().removeMasterIndex(eIndex);
-            patchI().patchMap().removeSlaveIndex(eIndex);
+            if (patchCoupling_(patchI))
+            {
+                patchCoupling_[patchI].patchMap().removeMasterIndex(eIndex);
+                patchCoupling_[patchI].patchMap().removeSlaveIndex(eIndex);
+            }
         }
     }
 
@@ -1737,21 +1746,24 @@ void dynamicTopoFvMesh::removePoint
     }
 
     // Update coupled point maps, if necessary.
-    const label pointEnum = coupleMap::POINT;
-
-    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+    forAll(patchCoupling_, patchI)
     {
-        // Obtain references
-        Map<label>& pointMap = patchI().patchMap().entityMap(pointEnum);
-        Map<label>& rPointMap = patchI().patchMap().reverseEntityMap(pointEnum);
-
-        if (pointMap.found(pIndex))
+        if (patchCoupling_(patchI))
         {
-            // Erase the reverse map first
-            rPointMap.erase(pointMap[pIndex]);
+            // Obtain references
+            const coupleMap & cMap = patchCoupling_[patchI].patchMap();
 
-            // Update pointMap
-            pointMap.erase(pIndex);
+            Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
+            Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
+
+            if (pointMap.found(pIndex))
+            {
+                // Erase the reverse map first
+                rPointMap.erase(pointMap[pIndex]);
+
+                // Update pointMap
+                pointMap.erase(pIndex);
+            }
         }
     }
 
@@ -2414,11 +2426,16 @@ bool dynamicTopoFvMesh::checkQuality
             label sIndex = -1;
 
             // Loop through masterToSlave and determine the slave index.
-            forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAll(patchCoupling_, patchI)
             {
-                if ((sIndex = patchI().patchMap().findSlaveIndex(eIndex)) > -1)
+                if (patchCoupling_(patchI))
                 {
-                    break;
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -2560,11 +2577,16 @@ bool dynamicTopoFvMesh::fillTables
             label sIndex = -1;
 
             // Determine the slave index.
-            forAllConstIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAll(patchCoupling_, patchI)
             {
-                if ((sIndex = patchI().patchMap().findSlaveIndex(eIndex)) > -1)
+                if (patchCoupling_(patchI))
                 {
-                    break;
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -2692,7 +2714,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     const label checkIndex
 )
 {
-    changeMap map, coupleMap;
+    changeMap map, slaveMap;
     scalar swapQuality = GREAT;
 
     if (debug > 2)
@@ -2843,11 +2865,16 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             label sIndex = -1;
 
             // Determine the slave index.
-            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAll(patchCoupling_, patchI)
             {
-                if ((sIndex = patchI().patchMap().findSlaveIndex(eIndex)) > -1)
+                if (patchCoupling_(patchI))
                 {
-                    break;
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -2873,7 +2900,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             setSlaveModification();
 
             // Recursively call for the slave edge.
-            coupleMap =
+            slaveMap =
             (
                 removeEdgeFlips(sIndex, minQuality, K, triangulations, 1)
             );
@@ -2883,14 +2910,14 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             unsetSlaveModification();
 
             // Bail out if the slave failed.
-            if (coupleMap.type() == -1)
+            if (slaveMap.type() == -1)
             {
                 // Reset all triangulations and bail out
                 triangulations[checkIndex][0] = -1;
                 triangulations[checkIndex][1] = -1;
                 triangulations[checkIndex][2] = -1;
 
-                return coupleMap;
+                return slaveMap;
             }
         }
     }
@@ -3022,12 +3049,12 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             patchCoupling_[pIndex].patchMap().mapSlave
             (
                 map.addedEdgeList().begin().key(),
-                coupleMap.addedEdgeList().begin().key()
+                slaveMap.addedEdgeList().begin().key()
             );
 
             patchCoupling_[pIndex].patchMap().mapMaster
             (
-                coupleMap.addedEdgeList().begin().key(),
+                slaveMap.addedEdgeList().begin().key(),
                 map.addedEdgeList().begin().key()
             );
         }
@@ -6446,7 +6473,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
         // Prepare a list of points for sub-mesh creation.
         //  - Obtain global shared-points information, if necessary.
-        if (!procIndices_.size())
+        if (procIndices_.empty())
         {
             // Fetch the list of global points from polyMesh.
             const globalMeshData& gData = polyMesh::globalData();
@@ -6598,27 +6625,86 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
             // Shrink to actual size
             procIndices_.setSize(nTotalProcs);
-            subMeshPoints_.setSize(nTotalProcs);
 
-            // Copy the list of points for each processor.
+            // Size the PtrLists.
+            sendPatchMeshes_.setSize(nTotalProcs);
+            recvPatchMeshes_.setSize(nTotalProcs);
+
+            // Create send/recv patch meshes, and copy
+            // the list of points for each processor.
             forAll(procIndices_, pI)
             {
-                subMeshPoints_[pI] = procPatchPoints[procIndices_[pI]];
+                label proc = procIndices_[pI];
+
+                if (proc < Pstream::myProcNo())
+                {
+                    sendPatchMeshes_.set
+                    (
+                        pI,
+                        new coupledPatchInfo
+                        (
+                            *this,
+                            false,
+                            proc,
+                            Pstream::myProcNo()
+                        )
+                    );
+
+                    sendPatchMeshes_[pI].patchMap().subMeshPoints() =
+                    (
+                        procPatchPoints[procIndices_[pI]]
+                    );
+                }
+                else
+                {
+                    recvPatchMeshes_.set
+                    (
+                        pI,
+                        new coupledPatchInfo
+                        (
+                            *this,
+                            false,
+                            Pstream::myProcNo(),
+                            proc
+                        )
+                    );
+
+                    recvPatchMeshes_[pI].patchMap().subMeshPoints() =
+                    (
+                        procPatchPoints[procIndices_[pI]]
+                    );
+                }
             }
 
             if (debug > 3)
             {
-                forAll(procIndices_, patchI)
+                forAll(procIndices_, pI)
                 {
+                    label proc = procIndices_[pI];
+
                     // Write out points as a VTK
-                    writeVTK
-                    (
-                        "subMeshPoints_" +
-                        Foam::name(Pstream::myProcNo()) + "to" +
-                        Foam::name(procIndices_[patchI]),
-                        subMeshPoints_[patchI],
-                        0
-                    );
+                    if (proc < Pstream::myProcNo())
+                    {
+                        writeVTK
+                        (
+                            "subMeshPoints_" +
+                            Foam::name(Pstream::myProcNo()) + "to" +
+                            Foam::name(proc),
+                            sendPatchMeshes_[pI].patchMap().subMeshPoints(),
+                            0
+                        );
+                    }
+                    else
+                    {
+                        writeVTK
+                        (
+                            "subMeshPoints_" +
+                            Foam::name(Pstream::myProcNo()) + "to" +
+                            Foam::name(proc),
+                            recvPatchMeshes_[pI].patchMap().subMeshPoints(),
+                            0
+                        );
+                    }
                 }
             }
         }
@@ -6648,6 +6734,10 @@ void dynamicTopoFvMesh::readCoupledPatches()
         const dictionary& coupledPatches = dict_.subDict("coupledPatches");
 
         const polyBoundaryMesh& boundary = boundaryMesh();
+
+        // Size the initial list
+        patchCoupling_.clear();
+        patchCoupling_.setSize(boundary.size());
 
         // Determine master and slave patches
         forAllConstIter(dictionary, coupledPatches, dIter)
@@ -6727,10 +6817,10 @@ void dynamicTopoFvMesh::readCoupledPatches()
                     sPatch
                 );
 
-                patchCoupling_.insert
+                patchCoupling_.set
                 (
                     mPatch,
-                    coupledPatchInfo
+                    new coupledPatchInfo
                     (
                         *this,
                         cMap,
@@ -6787,7 +6877,7 @@ void dynamicTopoFvMesh::initParallelConnectivity
 // Handle topology changes for coupled patches
 void dynamicTopoFvMesh::handleCoupledPatches()
 {
-    if (!(patchCoupling_.size() || procIndices_.size()))
+    if (!patchCoupling_.size() && procIndices_.empty())
     {
         return;
     }
@@ -6850,7 +6940,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
 // Build patch sub-meshes for processor patches
 void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 {
-    if (!procIndices_.size())
+    if (procIndices_.empty())
     {
         return;
     }
@@ -6873,40 +6963,20 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         Info << "Building patch sub-meshes for processor patches...";
     }
 
-    // Size the PtrLists.
-    sendPatchMeshes_.clear();
-    recvPatchMeshes_.clear();
-
-    sendPatchMeshes_.setSize(Pstream::nProcs());
-    recvPatchMeshes_.setSize(Pstream::nProcs());
-
     // Lists of entities that need to be avoided while building sub meshes.
     labelHashSet cellsToAvoid;
 
-    forAll(procIndices_, procI)
+    forAll(procIndices_, pI)
     {
-        label proc = procIndices_[procI];
+        label proc = procIndices_[pI];
 
         if (proc < Pstream::myProcNo())
         {
-            sendPatchMeshes_.set
-            (
-                proc,
-                new coupledPatchInfo
-                (
-                    *this,
-                    false,
-                    proc,
-                    Pstream::myProcNo()
-                )
-            );
-
-            coupledPatchInfo& sendMesh = sendPatchMeshes_[proc];
+            coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
 
             // Build the subMesh.
             buildProcessorPatchMesh
             (
-                proc,
                 sendMesh,
                 cellsToAvoid
             );
@@ -6933,20 +7003,9 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         }
         else
         {
-            recvPatchMeshes_.set
-            (
-                proc,
-                new coupledPatchInfo
-                (
-                    *this,
-                    false,
-                    Pstream::myProcNo(),
-                    proc
-                )
-            );
-
             // Obtain references
-            coupledPatchInfo& recvMesh = recvPatchMeshes_[proc];
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+
             const coupleMap& cMap = recvMesh.patchMap();
 
             // First read entity sizes.
@@ -7017,7 +7076,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 //   of cells being sent to neighbours.
 void dynamicTopoFvMesh::buildProcessorPatchMesh
 (
-    const label proc,
     coupledPatchInfo& subMesh,
     labelHashSet& cellsToAvoid
 )
@@ -7035,6 +7093,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     // Obtain references
     const coupleMap& cMap = subMesh.patchMap();
+    const labelList& subMeshPoints = cMap.subMeshPoints();
 
     Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
     Map<label>& rEdgeMap  = cMap.reverseEntityMap(edgeEnum);
@@ -7047,61 +7106,53 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     Map<label>& cellMap  = cMap.entityMap(cellEnum);
 
     // Add all cells connected to points on the subMeshPoints list
-    label procIndex = -1;
+    label proc = cMap.masterIndex();
 
-    forAll(procIndices_, procI)
+    // Loop through points detected by identifyCoupledPatches
+    forAll(subMeshPoints, pointI)
     {
-        if (proc == procIndices_[procI])
+        // Loop through pointEdges for this point.
+        const labelList& pEdges =
+        (
+            pointEdges_[subMeshPoints[pointI]]
+        );
+
+        forAll(pEdges, edgeI)
         {
-            procIndex = procI;
+            const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
 
-            // Loop through points detected by identifyCoupledPatches
-            forAll(subMeshPoints_[procIndex], pointI)
+            forAll(eFaces, faceI)
             {
-                // Loop through pointEdges for this point.
-                const labelList& pEdges =
+                label own = owner_[eFaces[faceI]];
+                label nei = neighbour_[eFaces[faceI]];
+
+                // Check owner cell
+                if
                 (
-                    pointEdges_[subMeshPoints_[procIndex][pointI]]
-                );
-
-                forAll(pEdges, edgeI)
+                   !rCellMap.found(own) &&
+                   !cellsToAvoid.found(own)
+                )
                 {
-                    const labelList& eFaces = edgeFaces_[pEdges[edgeI]];
+                    cellMap.insert(nC, own);
+                    rCellMap.insert(own, nC);
+                    nC++;
 
-                    forAll(eFaces, faceI)
-                    {
-                        label own = owner_[eFaces[faceI]];
-                        label nei = neighbour_[eFaces[faceI]];
+                    cellsToAvoid.insert(own);
+                }
 
-                        // Check owner cell
-                        if
-                        (
-                           !rCellMap.found(own) &&
-                           !cellsToAvoid.found(own)
-                        )
-                        {
-                            cellMap.insert(nC, own);
-                            rCellMap.insert(own, nC);
-                            nC++;
+                // Check neighbour cell
+                if
+                (
+                   !rCellMap.found(nei) &&
+                   !cellsToAvoid.found(nei) &&
+                    nei != -1
+                )
+                {
+                    cellMap.insert(nC, nei);
+                    rCellMap.insert(nei, nC);
+                    nC++;
 
-                            cellsToAvoid.insert(own);
-                        }
-
-                        // Check neighbour cell
-                        if
-                        (
-                           !rCellMap.found(nei) &&
-                           !cellsToAvoid.found(nei) &&
-                            nei != -1
-                        )
-                        {
-                            cellMap.insert(nC, nei);
-                            rCellMap.insert(nei, nC);
-                            nC++;
-
-                            cellsToAvoid.insert(nei);
-                        }
-                    }
+                    cellsToAvoid.insert(nei);
                 }
             }
         }
@@ -7208,11 +7259,11 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     // This allows the neighbour to match-up points easily.
     labelList& spBuffer = cMap.entityBuffer(pointEnum);
 
-    spBuffer.setSize(subMeshPoints_[procIndex].size(), -1);
+    spBuffer.setSize(subMeshPoints.size(), -1);
 
-    forAll(subMeshPoints_[procIndex], pointI)
+    forAll(subMeshPoints, pointI)
     {
-        spBuffer[sP++] = rPointMap[subMeshPoints_[procIndex][pointI]];
+        spBuffer[sP++] = rPointMap[subMeshPoints[pointI]];
     }
 
     // Shorten the buffer to actual size.
@@ -7248,16 +7299,16 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     // Set the shared-point buffer size
     labelList& shpBuffer = cMap.entityBuffer(shPointEnum);
 
-    shpBuffer.setSize(subMeshPoints_[procIndex].size(), -1);
+    shpBuffer.setSize(subMeshPoints.size(), -1);
 
     if (directNeighbour)
     {
         // Prepare addressing based on local patch-point indices.
-        forAll(subMeshPoints_[procIndex], pointI)
+        forAll(subMeshPoints, pointI)
         {
             shpBuffer[shP++] = boundary[patchIndex].whichPoint
             (
-                subMeshPoints_[procIndex][pointI]
+                subMeshPoints[pointI]
             );
         }
     }
@@ -7270,11 +7321,11 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         const labelList& spLabels = gData.sharedPointLabels();
 
         // Prepare global addressing labels for this neighbour.
-        forAll(subMeshPoints_[procIndex], pointI)
+        forAll(subMeshPoints, pointI)
         {
             label addrIndex =
             (
-                findIndex(spLabels, subMeshPoints_[procIndex][pointI])
+                findIndex(spLabels, subMeshPoints[pointI])
             );
 
             shpBuffer[shP++] = spAddr[addrIndex];
@@ -7406,17 +7457,24 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
     DynamicList<label> mList(50), sList(50);
 
-    forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+    forAll(patchCoupling_, patchI)
     {
-        // Build maps only for the first time.
-        // coupledPatchInfo is subsequently mapped for each topo-change.
-        if (patchI().builtMaps())
+        if (!patchCoupling_(patchI))
         {
             continue;
         }
 
+        // Build maps only for the first time.
+        // coupledPatchInfo is subsequently mapped for each topo-change.
+        if (patchCoupling_[patchI].builtMaps())
+        {
+            continue;
+        }
+
+        const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
         // Clear existing maps.
-        patchI().patchMap().clearMaps();
+        cMap.clearMaps();
 
         // Build a list of master entities [faces in 2D / edges in 3D]
         label start = -1;
@@ -7424,22 +7482,17 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         if (twoDMesh_)
         {
             // Build a list of master entities
-            start = boundary[patchI.key()].start();
+            start = boundary[patchI].start();
 
-            for (label i = 0; i < boundary[patchI.key()].size(); i++)
+            for (label i = 0; i < boundary[patchI].size(); i++)
             {
                 mList.append(start+i);
             }
 
             // Build a list of slave entities
-            start = boundary[patchI().patchMap().slaveIndex()].start();
+            start = boundary[cMap.slaveIndex()].start();
 
-            for
-            (
-                label i = 0;
-                i < boundary[patchI().patchMap().slaveIndex()].size();
-                i++
-            )
+            for(label i = 0; i < boundary[cMap.slaveIndex()].size(); i++)
             {
                 sList.append(start+i);
             }
@@ -7455,9 +7508,9 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         else
         {
             // Build a list of master entities
-            start = boundary[patchI.key()].start();
+            start = boundary[patchI].start();
 
-            for (label i = 0; i < boundary[patchI.key()].size(); i++)
+            for (label i = 0; i < boundary[patchI].size(); i++)
             {
                 const labelList& mfEdges = faceEdges_[start+i];
 
@@ -7506,17 +7559,8 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     if (distance < gTol_)
                     {
                         // Add a map entry
-                        patchI().patchMap().mapSlave
-                        (
-                            mList[indexI],
-                            sList[indexJ]
-                        );
-
-                        patchI().patchMap().mapMaster
-                        (
-                            sList[indexJ],
-                            mList[indexI]
-                        );
+                        cMap.mapSlave(mList[indexI], sList[indexJ]);
+                        cMap.mapMaster(sList[indexJ], mList[indexI]);
 
                         matched = true;
 
@@ -7537,21 +7581,13 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         }
 
         // Now map points on each patch as well.
-        const label pointEnum = coupleMap::POINT;
 
         // Obtain references
-        Map<label>& pointMap = patchI().patchMap().entityMap(pointEnum);
-        Map<label>& rPointMap = patchI().patchMap().reverseEntityMap(pointEnum);
+        Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
+        Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
 
-        const labelList& mP =
-        (
-            boundary[patchI().patchMap().masterIndex()].meshPoints()
-        );
-
-        const labelList& sP =
-        (
-            boundary[patchI().patchMap().slaveIndex()].meshPoints()
-        );
+        const labelList& mP = boundary[cMap.masterIndex()].meshPoints();
+        const labelList& sP = boundary[cMap.slaveIndex()].meshPoints();
 
         // Sanity check: Do patches have equal number of entities?
         if (mP.size() != sP.size())
@@ -7621,17 +7657,8 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     if (sEdge.start() == sp1 || sEdge.end() == sp1)
                     {
                         // Found the slave. Add a map entry
-                        patchI().patchMap().mapSlave
-                        (
-                            mList[indexI],
-                            spEdges[edgeI]
-                        );
-
-                        patchI().patchMap().mapMaster
-                        (
-                            spEdges[edgeI],
-                            mList[indexI]
-                        );
+                        cMap.mapSlave(mList[indexI], spEdges[edgeI]);
+                        cMap.mapMaster(spEdges[edgeI], mList[indexI]);
 
                         matched = true;
 
@@ -7654,7 +7681,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         sList.clear();
 
         // Set maps as built
-        patchI().setBuiltMaps();
+        patchCoupling_[patchI].setBuiltMaps();
     }
 
     if (debug)
@@ -7666,7 +7693,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 // Build coupled maps for coupled processor patches
 void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 {
-    if (!procIndices_.size())
+    if (procIndices_.empty())
     {
         return;
     }

@@ -1493,7 +1493,40 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
         IPstream::waitRequests();
 
         // Now copy updated locations to refPoints.
+        forAllIter
+        (
+            HashTable<const coupleMap*>,
+            coupleMaps,
+            cmIter
+        )
+        {
+            coupleMap& cMap = const_cast<coupleMap&>(*cmIter());
 
+            if (cMap.isLocal())
+            {
+                continue;
+            }
+
+            // Obtain a reference to the point buffer
+            const pointField& pField = cMap.pointBuffer();
+
+            // Pick maps for which this sub-domain is a slave
+            if (cMap.slaveIndex() == Pstream::myProcNo())
+            {
+                const labelList& pBuffer =
+                (
+                    cMap.entityBuffer(coupleMap::POINT)
+                );
+
+                const labelList& smPoints = cMap.subMeshPoints();
+
+                // Only update shared-point positions.
+                forAll(smPoints, pointI)
+                {
+                    refPoints_[smPoints[pointI]] = pField[pBuffer[pointI]];
+                }
+            }
+        }
     }
 }
 

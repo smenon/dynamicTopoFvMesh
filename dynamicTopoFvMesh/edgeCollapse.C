@@ -134,11 +134,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             label sIndex = -1;
 
             // Determine the slave index.
-            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAll(patchCoupling_, patchI)
             {
-                if ((sIndex = patchI().patchMap().findSlaveIndex(fIndex)) > -1)
+                if (patchCoupling_(patchI))
                 {
-                    break;
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    if ((sIndex = cMap.findSlaveIndex(fIndex)) > -1)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -810,20 +815,20 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             if (locallyCoupledFace(fIndex))
             {
                 // Remove the point entries.
-                const label pointEnum = coupleMap::POINT;
+                const label pEnum = coupleMap::POINT;
 
-                forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+                forAll(patchCoupling_, patchI)
                 {
-                    // Obtain references
-                    Map<label>& pointMap =
-                    (
-                        patchI().patchMap().entityMap(pointEnum)
-                    );
+                    if (!patchCoupling_(patchI))
+                    {
+                        continue;
+                    }
 
-                    Map<label>& rPointMap =
-                    (
-                        patchI().patchMap().reverseEntityMap(pointEnum)
-                    );
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    // Obtain references
+                    Map<label>& pointMap = cMap.entityMap(pEnum);
+                    Map<label>& rPointMap = cMap.reverseEntityMap(pEnum);
 
                     if (pointMap.found(cv0))
                     {
@@ -1123,20 +1128,20 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             if (locallyCoupledFace(fIndex))
             {
                 // Remove the point entries.
-                const label pointEnum = coupleMap::POINT;
+                const label pEnum = coupleMap::POINT;
 
-                forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+                forAll(patchCoupling_, patchI)
                 {
-                    // Obtain references
-                    Map<label>& pointMap =
-                    (
-                        patchI().patchMap().entityMap(pointEnum)
-                    );
+                    if (!patchCoupling_(patchI))
+                    {
+                        continue;
+                    }
 
-                    Map<label>& rPointMap =
-                    (
-                        patchI().patchMap().reverseEntityMap(pointEnum)
-                    );
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    // Obtain references
+                    Map<label>& pointMap = cMap.entityMap(pEnum);
+                    Map<label>& rPointMap = cMap.reverseEntityMap(pEnum);
 
                     if (pointMap.found(cv2))
                     {
@@ -1700,13 +1705,18 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             label sIndex = -1, pIndex = -1;
 
             // Determine the slave index.
-            forAllIter(Map<coupledPatchInfo>, patchCoupling_, patchI)
+            forAll(patchCoupling_, patchI)
             {
-                if ((sIndex = patchI().patchMap().findSlaveIndex(eIndex)) > -1)
+                if (patchCoupling_(patchI))
                 {
-                    pIndex = patchI.key();
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    break;
+                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    {
+                        pIndex = patchI;
+
+                        break;
+                    }
                 }
             }
 
