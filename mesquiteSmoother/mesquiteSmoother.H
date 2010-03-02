@@ -84,10 +84,10 @@ protected:
     unsigned long nCells_;
 
     //- Number of auxiliary points
-    unsigned long nAuxPoints_;
+    label nAuxPoints_;
 
     //- Number of auxiliary elements
-    unsigned long nAuxCells_;
+    label nAuxCells_;
 
     //- Switch to toggle surface smoothing
     Switch surfaceSmoothing_;

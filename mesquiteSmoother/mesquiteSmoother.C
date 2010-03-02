@@ -1149,7 +1149,6 @@ void mesquiteSmoother::initParallelConnectivity()
 {
     Map<label> nPrc;
     label pIndex = nPoints_, cIndex = (4*nCells_);
-    FixedList<label, 4> p(-1);
 
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
@@ -1173,12 +1172,7 @@ void mesquiteSmoother::initParallelConnectivity()
         Mesh_.lookupClass<coupleMap>()
     );
 
-    forAllIter
-    (
-        HashTable<const coupleMap*>,
-        coupleMaps,
-        cmIter
-    )
+    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
     {
         const coupleMap& cMap = *(cmIter());
 
@@ -1186,6 +1180,10 @@ void mesquiteSmoother::initParallelConnectivity()
         {
             continue;
         }
+
+        const labelList& pBuffer = cMap.entityBuffer(coupleMap::POINT);
+        const labelList& fBuffer = cMap.entityBuffer(coupleMap::FACE);
+        const labelList& cBuffer = cMap.entityBuffer(coupleMap::CELL);
 
         // Pick maps for which this sub-domain is master
         if (cMap.masterIndex() == Pstream::myProcNo())
@@ -1196,177 +1194,32 @@ void mesquiteSmoother::initParallelConnectivity()
             // Prepare a new Map for this processor
             auxPointMap_.insert(neiProcNo, Map<label>());
 
-            // Loop through the cell buffer,
-            // and build cell-point connectivity
-            const labelList& pBuffer =
-            (
-                cMap.entityBuffer(coupleMap::POINT)
-            );
-
-            const labelList& fBuffer =
-            (
-                cMap.entityBuffer(coupleMap::FACE)
-            );
-
-            const labelList& cBuffer =
-            (
-                cMap.entityBuffer(coupleMap::CELL)
-            );
-
-            const labelList& sBuffer =
-            (
-                cMap.entityBuffer(coupleMap::SHARED_POINT)
-            );
-
-            // Assume tet-cells from here on.
-            for (label cellI = 0; cellI < (cBuffer.size()/4); cellI++)
-            {
-                label spi = -1, nI = -1;
-
-                for (label f = 0; f < 4; f++)
-                {
-                    // Fetch sequence of points from the face buffer.
-                    label faceI = cBuffer[(4*cellI)+f];
-
-                    // If none of these points are shared,
-                    // we've found the right opposing face.
-                    bool foundPoint = false;
-
-                    for (label i = 0; i < 3; i++)
-                    {
-                        p[i] = fBuffer[(3*faceI)+i];
-
-                        if ((spi = findIndex(pBuffer, p[i])) > -1)
-                        {
-                            // Note this point for later.
-                            nI = sBuffer[spi];
-                            p[3] = pBuffer[spi];
-
-                            foundPoint = true;
-                            break;
-                        }
-                    }
-
-                    if (foundPoint)
-                    {
-                        continue;
-                    }
-
-                    // Determine addressing for the shared point, p[3].
-                    if (!auxPointMap_[neiProcNo].found(p[3]))
-                    {
-                        if (nPrc.found(neiProcNo))
-                        {
-                            // Fetch addressing for this patch.
-                            const processorPolyPatch& pp =
-                            (
-                                refCast<const processorPolyPatch>
-                                (
-                                    boundary[nPrc[neiProcNo]]
-                                )
-                            );
-
-                            const labelList& neiPoints =
-                            (
-                                pp.neighbPoints()
-                            );
-
-                            const labelList& meshPts =
-                            (
-                                boundary[nPrc[neiProcNo]].meshPoints()
-                            );
-
-                            forAll(neiPoints, pointI)
-                            {
-                                if (neiPoints[pointI] == nI)
-                                {
-                                    // Find the global index.
-                                    auxPointMap_[neiProcNo].insert
-                                    (
-                                        p[3],
-                                        meshPts[pointI]
-                                    );
-
-                                    break;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // Disconnected neighbour.
-                            // Look at globalPoint addressing
-                            // for its information.
-                            const globalMeshData& gD = mesh().globalData();
-                            const labelList& spA = gD.sharedPointAddr();
-                            const labelList& spL = gD.sharedPointLabels();
-
-                            forAll(spA, pointI)
-                            {
-                                if (spA[pointI] == nI)
-                                {
-                                    auxPointMap_[neiProcNo].insert
-                                    (
-                                        p[3],
-                                        spL[pointI]
-                                    );
-
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    // Prepare maps for all points
-                    // and fill in cellToNode.
-                    forAll(p, i)
-                    {
-                        if (!auxPointMap_[neiProcNo].found(p[i]))
-                        {
-                            auxPointMap_[neiProcNo].insert
-                            (
-                                p[i],
-                                pIndex++
-                            );
-                        }
-
-                        p[i] = auxPointMap_[neiProcNo][p[i]];
-
-                        // Set connectivity. Note that orientation
-                        // was ensured by the neighbouring processor.
-                        // So we won't check it now.
-                        cellToNode_[cIndex++] = p[i];
-                    }
-
-                    // Hold auxiliary points fixed.
-                    fixFlags_[p[0]] = 1;
-                    fixFlags_[p[1]] = 1;
-                    fixFlags_[p[2]] = 1;
-
-                    break;
-                }
-            }
-        }
-        else
-        {
-            // Hold all processor points as fixed.
-            const labelList& sBuffer =
-            (
-                cMap.entityBuffer(coupleMap::SHARED_POINT)
-            );
-
-            // Fetch the neighbour's procIndex
-            label neiProcNo = cMap.slaveIndex();
-
+            // Determine addressing for all shared points.
             if (nPrc.found(neiProcNo))
             {
-                const labelList& meshPts =
+                // Fetch addressing for this patch.
+                const processorPolyPatch& pp =
+                (
+                    refCast<const processorPolyPatch>
+                    (
+                        boundary[nPrc[neiProcNo]]
+                    )
+                );
+
+                const labelList& neiPoints = pp.neighbPoints();
+
+                const labelList& meshPoints =
                 (
                     boundary[nPrc[neiProcNo]].meshPoints()
                 );
 
-                forAll(meshPts, pointI)
+                forAll(meshPoints, pointI)
                 {
-                    fixFlags_[meshPts[pointI]] = 1;
+                    auxPointMap_[neiProcNo].insert
+                    (
+                        neiPoints[pointI],
+                        meshPoints[pointI]
+                    );
                 }
             }
             else
@@ -1378,15 +1231,101 @@ void mesquiteSmoother::initParallelConnectivity()
                 const labelList& spA = gD.sharedPointAddr();
                 const labelList& spL = gD.sharedPointLabels();
 
-                forAll(sBuffer, pointI)
+                forAll(pBuffer, pointI)
                 {
-                    label addrIndex =
-                    (
-                        findIndex(spA, sBuffer[pointI])
-                    );
+                    label addrIndex = findIndex(spA, pBuffer[pointI]);
 
-                    fixFlags_[spL[addrIndex]] = 1;
+                    // Find the global index.
+                    auxPointMap_[neiProcNo].insert
+                    (
+                        pointI,
+                        spL[addrIndex]
+                    );
                 }
+            }
+
+            // Fetch demand-driven addressing from coupleMap
+            FixedList<label, 4> p(-1);
+            const labelList& own = cMap.owner();
+            label nCells = cMap.nEntities(coupleMap::CELL);
+
+            // Assume tet-cells from here on.
+            for (label cellI = 0; cellI < nCells; cellI++)
+            {
+                // Fetch the first two faces for this cell.
+                label faceI = cBuffer[(4*cellI)+0];
+                label faceJ = cBuffer[(4*cellI)+1];
+
+                // Fetch corresponding points
+                FixedList<label, 3> tFI(-1), tFJ(-1);
+
+                for (label i = 0; i < 3; i++)
+                {
+                    tFI[i] = fBuffer[(3*faceI)+i];
+                    tFJ[i] = fBuffer[(3*faceJ)+i];
+                }
+
+                // Determine a unique point on the second face.
+                forAll(tFJ, pJ)
+                {
+                    if
+                    (
+                        (tFJ[pJ] != tFI[0]) &&
+                        (tFJ[pJ] != tFI[1]) &&
+                        (tFJ[pJ] != tFI[2])
+                    )
+                    {
+                        // Found all necessary points.
+                        // Now check orientation.
+                        if (own[faceI] == cellI)
+                        {
+                            p[0] = tFI[2];
+                            p[1] = tFI[1];
+                            p[2] = tFI[0];
+                            p[3] = tFJ[pJ];
+                        }
+                        else
+                        {
+                            p[0] = tFI[0];
+                            p[1] = tFI[1];
+                            p[2] = tFI[2];
+                            p[3] = tFJ[pJ];
+                        }
+
+                        break;
+                    }
+                }
+
+                // Prepare maps for all new points and fill in cellToNode.
+                forAll(p, i)
+                {
+                    if (!auxPointMap_[neiProcNo].found(p[i]))
+                    {
+                        auxPointMap_[neiProcNo].insert
+                        (
+                            p[i],
+                            pIndex++
+                        );
+
+                        // Hold all new points as fixed.
+                        fixFlags_[p[i]] = 1;
+                    }
+
+                    p[i] = auxPointMap_[neiProcNo][p[i]];
+
+                    cellToNode_[cIndex++] = p[i];
+                }
+            }
+        }
+        else
+        {
+            // Fetch the neighbour's procIndex
+            const labelList& smPoints = cMap.subMeshPoints();
+
+            // Hold all subMeshPoints as fixed.
+            forAll(smPoints, pointI)
+            {
+                fixFlags_[smPoints[pointI]] = 1;
             }
         }
     }
@@ -1406,12 +1345,7 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
         Mesh_.lookupClass<coupleMap>()
     );
 
-    forAllIter
-    (
-        HashTable<const coupleMap*>,
-        coupleMaps,
-        cmIter
-    )
+    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
     {
         coupleMap& cMap = const_cast<coupleMap&>(*cmIter());
 
@@ -1429,7 +1363,6 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
             // Fetch the neighbour's procIndex
             label neiProcNo = cMap.slaveIndex();
 
-            const labelList& pBuffer = cMap.entityBuffer(coupleMap::POINT);
             const Map<label>& pointMap = auxPointMap_[neiProcNo];
 
             label pIndex = -1;
@@ -1437,15 +1370,15 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
 
             if (copyBack)
             {
-                forAll(pBuffer, pointI)
+                forAll(pField, pointI)
                 {
-                    pIndex = pointMap[pBuffer[pointI]];
+                    pIndex = pointMap[pointI];
 
                     v.x() = vtxCoords_[(3*pIndex)+0];
                     v.y() = vtxCoords_[(3*pIndex)+1];
                     v.z() = vtxCoords_[(3*pIndex)+2];
 
-                    pField[pBuffer[pointI]] = v;
+                    pField[pointI] = v;
                 }
 
                 // Send points to the slave.
@@ -1459,11 +1392,11 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
             }
             else
             {
-                forAll(pBuffer, pointI)
+                forAll(pField, pointI)
                 {
-                    pIndex = pointMap[pBuffer[pointI]];
+                    pIndex = pointMap[pointI];
 
-                    v = pField[pBuffer[pointI]];
+                    v = pField[pointI];
 
                     vtxCoords_[(3*pIndex)+0] = v.x();
                     vtxCoords_[(3*pIndex)+1] = v.y();
@@ -1493,12 +1426,7 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
         IPstream::waitRequests();
 
         // Now copy updated locations to refPoints.
-        forAllIter
-        (
-            HashTable<const coupleMap*>,
-            coupleMaps,
-            cmIter
-        )
+        forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
         {
             coupleMap& cMap = const_cast<coupleMap&>(*cmIter());
 
@@ -1513,17 +1441,12 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
             // Pick maps for which this sub-domain is a slave
             if (cMap.slaveIndex() == Pstream::myProcNo())
             {
-                const labelList& pBuffer =
-                (
-                    cMap.entityBuffer(coupleMap::POINT)
-                );
-
                 const labelList& smPoints = cMap.subMeshPoints();
 
                 // Only update shared-point positions.
                 forAll(smPoints, pointI)
                 {
-                    refPoints_[smPoints[pointI]] = pField[pBuffer[pointI]];
+                    refPoints_[smPoints[pointI]] = pField[pointI];
                 }
             }
         }
@@ -3068,6 +2991,12 @@ void mesquiteSmoother::solve()
 
     // Assess the quality of the final mesh after smoothing
     queue.add_quality_assessor(&qA, err);
+
+    // Disable output for parallel runs.
+    if (Pstream::parRun())
+    {
+        qA.disable_printing_results();
+    }
 
     // Launches optimization on the mesh
     queue.run_instructions(&msqMesh, err);

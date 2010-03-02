@@ -71,7 +71,7 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
             mesh,
             IOobject::NO_READ,
             IOobject::NO_WRITE,
-            false
+            true
         ),
         isLocal,
         mPatch,

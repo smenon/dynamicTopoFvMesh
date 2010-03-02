@@ -34,6 +34,8 @@ Author
 \*----------------------------------------------------------------------------*/
 
 #include "coupleMap.H"
+#include "boolList.H"
+#include "demandDrivenData.H"
 
 namespace Foam
 {
@@ -56,7 +58,10 @@ coupleMap::coupleMap
     isLocal_(isLocal),
     masterIndex_(masterIndex),
     slaveIndex_(slaveIndex),
-    nEntities_(-1)
+    nEntities_(-1),
+    nInternalFaces_(-1),
+    ownerPtr_(NULL),
+    neighbourPtr_(NULL)
 {}
 
 // Construct as copy
@@ -66,7 +71,10 @@ coupleMap::coupleMap(const coupleMap& cm)
     isLocal_(cm.isLocal_),
     masterIndex_(cm.masterIndex_),
     slaveIndex_(cm.slaveIndex_),
-    nEntities_(cm.nEntities_)
+    nEntities_(cm.nEntities_),
+    nInternalFaces_(-1),
+    ownerPtr_(NULL),
+    neighbourPtr_(NULL)
 {}
 
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
@@ -74,6 +82,70 @@ coupleMap::coupleMap(const coupleMap& cm)
 coupleMap::~coupleMap()
 {
     clearMaps();
+
+    nInternalFaces_ = -1;
+    deleteDemandDrivenData(ownerPtr_);
+    deleteDemandDrivenData(neighbourPtr_);
+}
+
+// * * * * * * * * * * * * * * * Private Functions * * * * * * * * * * * * * //
+
+void coupleMap::makeAddressing() const
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (ownerPtr_ || neighbourPtr_ || nInternalFaces_ > -1)
+    {
+        FatalErrorIn("coupleMap::makeAddressing()")
+            << "Addressing has already been calculated."
+            << abort(FatalError);
+    }
+
+    label nFaces = nEntities(coupleMap::FACE);
+    label nCells = nEntities(coupleMap::CELL);
+
+    const labelList& cBuffer = entityBuffer(coupleMap::CELL);
+
+    if (nCells < 0 || nFaces < 0)
+    {
+        FatalErrorIn("coupleMap::makeAddressing()")
+            << "Invalid buffers. Cannot continue."
+            << abort(FatalError);
+    }
+
+    // Set sizes.
+    ownerPtr_ = new labelList(nFaces, -1);
+    neighbourPtr_ = new labelList(nFaces, -1);
+
+    labelList& own = *ownerPtr_;
+    labelList& nei = *neighbourPtr_;
+
+    boolList markedFaces(nFaces, false);
+
+    label nInternalFaces_ = 0;
+
+    for (label cellI = 0; cellI < nCells; cellI++)
+    {
+        for (label f = 0; f < 4; f++)
+        {
+            label faceI = cBuffer[(4*cellI)+f];
+
+            if (!markedFaces[faceI])
+            {
+                // First visit: owner
+                own[faceI] = cellI;
+                markedFaces[faceI] = true;
+            }
+            else
+            {
+                // Second visit: neighbour
+                nei[faceI] = cellI;
+                nInternalFaces_++;
+            }
+        }
+    }
+
+    nei.setSize(nInternalFaces_);
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -207,7 +279,7 @@ Map<label>& coupleMap::reverseEntityMap(const label eType) const
     return reverseEntityMap_[eType];
 }
 
-FixedList<labelList,6>& coupleMap::entityBuffer() const
+FixedList<labelList,5>& coupleMap::entityBuffer() const
 {
     return entityBuffer_;
 }
@@ -215,6 +287,36 @@ FixedList<labelList,6>& coupleMap::entityBuffer() const
 labelList& coupleMap::entityBuffer(const label eType) const
 {
     return entityBuffer_[eType];
+}
+
+label coupleMap::nInternalFaces() const
+{
+    if (nInternalFaces_ == -1)
+    {
+        makeAddressing();
+    }
+
+    return nInternalFaces_;
+}
+
+const labelList& coupleMap::owner() const
+{
+    if (!ownerPtr_)
+    {
+        makeAddressing();
+    }
+
+    return *ownerPtr_;
+}
+
+const labelList& coupleMap::neighbour() const
+{
+    if (!neighbourPtr_)
+    {
+        makeAddressing();
+    }
+
+    return *neighbourPtr_;
 }
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //

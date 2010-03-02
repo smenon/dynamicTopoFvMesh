@@ -87,7 +87,14 @@ class coupleMap
     mutable FixedList<Map<label>,4> reverseEntityMap_;
 
     // Entity Buffers (as specified by the entityType enumerant)
-    mutable FixedList<labelList,6> entityBuffer_;
+    mutable FixedList<labelList,5> entityBuffer_;
+
+    //- Demand-driven connectivity data.
+        mutable label nInternalFaces_;
+        mutable labelList* ownerPtr_;
+        mutable labelList* neighbourPtr_;
+
+        void makeAddressing() const;
 
     //- Disallow default bitwise assignment
     void operator=(const coupleMap&);
@@ -154,8 +161,12 @@ public:
         Map<label>& entityMap(const label eType) const;
         Map<label>& reverseEntityMap(const label eType) const;
 
-        FixedList<labelList,6>& entityBuffer() const;
+        FixedList<labelList,5>& entityBuffer() const;
         labelList& entityBuffer(const label eType) const;
+
+        label nInternalFaces() const;
+        const labelList& owner() const;
+        const labelList& neighbour() const;
 
         void transferMaps
         (
