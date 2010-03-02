@@ -1002,6 +1002,14 @@ class dynamicTopoFvMesh
             const scalar tolFraction
         ) const;
 
+        // Check old-volumes for the configuration.
+        bool checkTriangulationVolumes
+        (
+            const label eIndex,
+            const labelList& hullVertices,
+            const labelListList& triangulations
+        ) const;
+
         // Routine to check whether the triangulation at the
         // index lies on the boundary of the vertex ring.
         bool boundaryTriangulation

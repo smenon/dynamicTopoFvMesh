@@ -436,28 +436,31 @@ bool dynamicTopoFvMesh::meshQuality
         );
     }
 
-    volScalarField meshQuality
-    (
-        IOobject
-        (
-            "lengthScale",
-            time().timeName(),
-            *this,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false
-        ),
-        *this,
-        dimensionedScalar("scalar", dimless, 0)
-    );
+    volScalarField *mqPtr(NULL);
 
-    scalarField& iF = meshQuality.internalField();
+    if (dumpMeshQuality)
+    {
+        mqPtr = new volScalarField
+        (
+            IOobject
+            (
+                "lengthScale",
+                time().timeName(),
+                *this,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            *this,
+            dimensionedScalar("scalar", dimless, 0)
+        );
+    }
 
     // Compute statistics on the fly
-    label nCells = 0;
+    label nCells = 0, minCell = -1;
     scalar maxQuality = -GREAT;
     scalar minQuality =  GREAT;
-    scalar meanQuality = 0.0;
+    scalar cQuality, meanQuality = 0.0;
 
     // Loop through all cells in the mesh and compute cell quality
     forAll(cells_, cellI)
@@ -468,22 +471,29 @@ bool dynamicTopoFvMesh::meshQuality
         }
 
         // Compute cell quality
-        iF[cellI] = tetQuality(cellI);
+        cQuality = tetQuality(cellI);
+
+        if (dumpMeshQuality)
+        {
+            mqPtr->internalField()[cellI] = cQuality;
+        }
 
         // Update statistics
-        maxQuality = Foam::max(iF[cellI], maxQuality);
-        minQuality = Foam::min(iF[cellI], minQuality);
-        meanQuality += iF[cellI];
+        maxQuality = Foam::max(cQuality, maxQuality);
+
+        if (cQuality < minQuality)
+        {
+            minQuality = cQuality;
+            minCell = cellI;
+        }
+
+        meanQuality += cQuality;
         nCells++;
 
         // Add to the list of slivers
-        if
-        (
-            (iF[cellI] < sliverThreshold_)
-         && (iF[cellI] > 0.0)
-        )
+        if ((cQuality < sliverThreshold_) && (cQuality > 0.0))
         {
-            thresholdSlivers_.insert(cellI, iF[cellI]);
+            thresholdSlivers_.insert(cellI, cQuality);
         }
     }
 
@@ -501,8 +511,10 @@ bool dynamicTopoFvMesh::meshQuality
             WarningIn
             (
                 "dynamicTopoFvMesh::meshQuality()"
-            )   << nl << "Minimum cell quality is: "
-                << minQuality << endl;
+            )   << nl
+                << "Minimum cell quality is: " << minQuality
+                << " at cell: " << minCell
+                << endl;
         }
 
         Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
@@ -515,7 +527,7 @@ bool dynamicTopoFvMesh::meshQuality
 
     if (dumpMeshQuality)
     {
-        return meshQuality.write();
+        return mqPtr->write();
     }
 
     return true;
@@ -2758,6 +2770,25 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         triangulations[checkIndex]
     );
 
+    // Check old-volumes for the configuration.
+    if
+    (
+        checkTriangulationVolumes
+        (
+            eIndex,
+            hullVertices,
+            triangulations[checkIndex]
+        )
+    )
+    {
+        // Reset all triangulations and bail out
+        triangulations[checkIndex][0] = -1;
+        triangulations[checkIndex][1] = -1;
+        triangulations[checkIndex][2] = -1;
+
+        return map;
+    }
+
     scalar tolF = 0.1;
 
     // Determine the final swap triangulation
@@ -3222,6 +3253,82 @@ label dynamicTopoFvMesh::identify32Swap
     }
 
     return -1;
+}
+
+// Check old-volumes for an input triangulation
+bool dynamicTopoFvMesh::checkTriangulationVolumes
+(
+    const label eIndex,
+    const labelList& hullVertices,
+    const labelListList& triangulations
+) const
+{
+    label m = hullVertices.size();
+    scalar tetVol = 0.0;
+
+    const edge& edgeToCheck = edges_[eIndex];
+
+    for (label i = 0; i < (m-2); i++)
+    {
+        // Compute volume for the upper-half
+        tetVol =
+        (
+            tetVolume
+            (
+                oldPoints_[hullVertices[triangulations[0][i]]],
+                oldPoints_[hullVertices[triangulations[1][i]]],
+                oldPoints_[hullVertices[triangulations[2][i]]],
+                oldPoints_[edgeToCheck[0]]
+            )
+        );
+
+        if (tetVol < 0.0)
+        {
+            if (debug > 2)
+            {
+                InfoIn("dynamicTopoFvMesh::checkTriangulationVolumes") << nl
+                    << "Swap sequence leads to negative old-volumes." << nl
+                    << "Edge: " << edgeToCheck << nl
+                    << "using Points: " << nl
+                    << oldPoints_[hullVertices[triangulations[0][i]]] << nl
+                    << oldPoints_[hullVertices[triangulations[1][i]]] << nl
+                    << oldPoints_[hullVertices[triangulations[2][i]]] << nl
+                    << oldPoints_[edgeToCheck[0]] << endl;
+            }
+
+            return true;
+        }
+
+        tetVol =
+        (
+            tetVolume
+            (
+                oldPoints_[hullVertices[triangulations[2][i]]],
+                oldPoints_[hullVertices[triangulations[1][i]]],
+                oldPoints_[hullVertices[triangulations[0][i]]],
+                oldPoints_[edgeToCheck[1]]
+            )
+        );
+
+        if (tetVol < 0.0)
+        {
+            if (debug > 2)
+            {
+                InfoIn("dynamicTopoFvMesh::checkTriangulationVolumes") << nl
+                    << "Swap sequence leads to negative old-volumes." << nl
+                    << "Edge: " << edgeToCheck << nl
+                    << "using Points: " << nl
+                    << oldPoints_[hullVertices[triangulations[2][i]]] << nl
+                    << oldPoints_[hullVertices[triangulations[1][i]]] << nl
+                    << oldPoints_[hullVertices[triangulations[0][i]]] << nl
+                    << oldPoints_[edgeToCheck[1]] << endl;
+            }
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // Routine to check whether the triangulation at the
@@ -9752,6 +9859,8 @@ bool dynamicTopoFvMesh::update()
     }
 
     Info << " Topo modifier time: " << topologyTimer.elapsedTime() << endl;
+
+    meshQuality(true);
 
     clockTime reOrderingTimer;
 

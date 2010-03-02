@@ -1810,6 +1810,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 << abort(FatalError);
         }
         else
+        if (!forceOp)
         {
             map.type() = -2;
             return map;
@@ -3160,10 +3161,27 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
     // Before we trisect this face, check whether the operation will
     // yield an acceptable cell-quality.
-    if (computeTrisectionQuality(fIndex) < sliverThreshold_ && !forceOp)
+    scalar minQ = 0.0;
+
+    if ((minQ = computeTrisectionQuality(fIndex)) < sliverThreshold_)
     {
-        map.type() = -2;
-        return map;
+        // Check if the quality is actually valid before forcing it.
+        if (forceOp && (minQ < 0.0))
+        {
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::trisectFace()"
+            )
+                << " Forcing trisection on face: " << fIndex
+                << " will yield an invalid cell."
+                << abort(FatalError);
+        }
+        else
+        if (!forceOp)
+        {
+            map.type() = -2;
+            return map;
+        }
     }
 
     // Are we performing only checks?

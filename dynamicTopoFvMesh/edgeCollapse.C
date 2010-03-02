@@ -1885,7 +1885,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     );
 
     // Check whether points of the edge lies on a boundary
-    FixedList<label, 2> nBoundCurves(0);
+    FixedList<label, 2> nBoundCurves(0), checkPoints(-1);
     const FixedList<bool,2> edgeBoundary = checkEdgeBoundary(eIndex);
 
     // Configure the new point-position
@@ -2020,6 +2020,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             removeFaceIndex = 3;
             newPoint = points_[edges_[eIndex][0]];
             oldPoint = oldPoints_[edges_[eIndex][0]];
+            checkPoints[0] = collapsePoint;
 
             break;
 
@@ -2034,6 +2035,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             replaceFaceIndex = 3;
             newPoint = points_[edges_[eIndex][1]];
             oldPoint = oldPoints_[edges_[eIndex][1]];
+            checkPoints[0] = collapsePoint;
 
             break;
 
@@ -2049,9 +2051,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             replaceFaceIndex = 3;
             newPoint = 0.5 *
             (
-                points_[edges_[eIndex][0]] + points_[edges_[eIndex][1]]
+                points_[edges_[eIndex][0]]
+              + points_[edges_[eIndex][1]]
             );
             oldPoint = oldPoints_[edges_[eIndex][1]];
+            checkPoints[0] = collapsePoint;
+            checkPoints[1] = replacePoint;
 
             break;
 
@@ -2085,6 +2090,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         Info << "Cells: " << cellHull << endl;
         Info << "replacePoint: " << replacePoint << endl;
         Info << "collapsePoint: " << collapsePoint << endl;
+        Info << "checkPoints: " << checkPoints << endl;;
         Info << "ringEntities (removed faces): " << endl;
 
         forAll(ringEntities[removeFaceIndex], faceI)
@@ -2165,59 +2171,67 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Check collapsibility of cells around edges with the re-configured point
-    const labelList& checkPointEdges = pointEdges_[collapsePoint];
-
-    forAll(checkPointEdges, edgeI)
+    forAll(checkPoints, pointI)
     {
-        const labelList& eFaces = edgeFaces_[checkPointEdges[edgeI]];
-
-        // Build a list of cells to check
-        forAll(eFaces, faceI)
+        if (checkPoints[pointI] == -1)
         {
-            label own = owner_[eFaces[faceI]];
-            label nei = neighbour_[eFaces[faceI]];
+            continue;
+        }
 
-            // Check owner cell
-            if (!cellsChecked.found(own))
+        const labelList& checkPointEdges = pointEdges_[checkPoints[pointI]];
+
+        forAll(checkPointEdges, edgeI)
+        {
+            const labelList& eFaces = edgeFaces_[checkPointEdges[edgeI]];
+
+            // Build a list of cells to check
+            forAll(eFaces, faceI)
             {
-                // Check if a collapse is feasible
-                if
-                (
-                    checkCollapse
-                    (
-                        newPoint,
-                        oldPoint,
-                        collapsePoint,
-                        own,
-                        cellsChecked,
-                        forceOp
-                    )
-                )
+                label own = owner_[eFaces[faceI]];
+                label nei = neighbour_[eFaces[faceI]];
+
+                // Check owner cell
+                if (!cellsChecked.found(own))
                 {
-                    map.type() = 0;
-                    return map;
+                    // Check if a collapse is feasible
+                    if
+                    (
+                        checkCollapse
+                        (
+                            newPoint,
+                            oldPoint,
+                            collapsePoint,
+                            own,
+                            cellsChecked,
+                            forceOp
+                        )
+                    )
+                    {
+                        map.type() = 0;
+                        return map;
+                    }
                 }
-            }
 
-            // Check neighbour cell
-            if (!cellsChecked.found(nei) && nei != -1)
-            {
-                // Check if a collapse is feasible
-                if
-                (
-                    checkCollapse
-                    (
-                        newPoint,
-                        oldPoint,
-                        collapsePoint,
-                        nei,
-                        cellsChecked,
-                        forceOp
-                    )
-                )
+                // Check neighbour cell
+                if (!cellsChecked.found(nei) && nei != -1)
                 {
-                    map.type() = 0;
-                    return map;
+                    // Check if a collapse is feasible
+                    if
+                    (
+                        checkCollapse
+                        (
+                            newPoint,
+                            oldPoint,
+                            collapsePoint,
+                            nei,
+                            cellsChecked,
+                            forceOp
+                        )
+                    )
+                    {
+                        map.type() = 0;
+                        return map;
+                    }
                 }
             }
         }
