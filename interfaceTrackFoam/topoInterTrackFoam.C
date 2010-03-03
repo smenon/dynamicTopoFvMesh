@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
 
 #       include "volContinuity.H"
 
-        if (meshChanged)
+        if (meshChanged && correctPhi)
         {
 #           include "correctPhi.H"
         }

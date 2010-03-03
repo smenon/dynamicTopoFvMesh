@@ -944,29 +944,66 @@ label dynamicTopoFvMesh::insertFace
     {
         iPtr_->insertFace(patch, newFaceIndex, mapFaces, mapWeights);
 
-        // If no addressing is provided, map flux from owner.
-        if (mapFaces.empty())
+        if (patch > -1 && mapFaces.empty())
         {
-            vector Sf = vector::zero;
-
-            if (newFace.size() == 3)
-            {
-                Sf = triFaceNormal(newFace);
-            }
-            else
-            if (newFace.size() == 4)
-            {
-                Sf = quadFaceNormal(newFace);
-            }
-            else
-            {
-                FatalErrorIn("dynamicTopoFvMesh::insertFace()")
-                    << nl << " Invalid face: " << newFace
-                    << abort(FatalError);
-            }
-
-            iPtr_->interpolatePhi(newOwner, newFaceIndex, Sf);
+            FatalErrorIn("dynamicTopoFvMesh::insertFace()")
+                << nl << " Invalid face master. "
+                << newFace
+                << abort(FatalError);
         }
+        else
+        {
+            // Fetch information for a master mapping face.
+            label parent;
+            labelHashSet masterObjects;
+
+            forAll(mapFaces, faceI)
+            {
+                label mappingFace = mapFaces[faceI];
+
+                if (mappingFace < nOldFaces_)
+                {
+                    parent = mappingFace;
+                }
+                else
+                {
+                    parent = faceParents_[mappingFace];
+                }
+
+                // Insert the parent face
+                faceParents_.insert(newFaceIndex, parent);
+
+                // Find the cell's neighbours in the old mesh
+                masterObjects.insert(parent);
+            }
+        }
+
+        // Map flux from owner / neighbour.
+        vector Sf = vector::zero;
+
+        if (newFace.size() == 3)
+        {
+            Sf = triFaceNormal(newFace);
+        }
+        else
+        if (newFace.size() == 4)
+        {
+            Sf = quadFaceNormal(newFace);
+        }
+        else
+        {
+            FatalErrorIn("dynamicTopoFvMesh::insertFace()")
+                << nl << " Invalid face: " << newFace
+                << abort(FatalError);
+        }
+
+        iPtr_->interpolatePhi
+        (
+            newOwner,
+            newNeighbour,
+            newFaceIndex,
+            Sf
+        );
     }
 
     // Keep track of added boundary faces in a separate hash-table
@@ -9892,14 +9929,6 @@ bool dynamicTopoFvMesh::update()
         labelListList cellZoneMap(cellZones.size());
 
         // Null temporaries
-        List<objectMap> pointsFromPoints(0);
-        List<objectMap> facesFromPoints(0);
-        List<objectMap> facesFromEdges(0);
-        List<objectMap> facesFromFaces(0);
-        List<objectMap> cellsFromPoints(0);
-        List<objectMap> cellsFromEdges(0);
-        List<objectMap> cellsFromFaces(0);
-        List<objectMap> cellsFromCells(0);
         labelHashSet flipFaceFlux;
 
         // Obtain faceZone point maps before reordering
@@ -10033,16 +10062,16 @@ bool dynamicTopoFvMesh::update()
                 nOldFaces_,
                 nOldCells_,
                 pointMap_,
-                pointsFromPoints,
+                pointsFromPoints_,
                 faceMap_,
-                facesFromPoints,
-                facesFromEdges,
-                facesFromFaces,
+                facesFromPoints_,
+                facesFromEdges_,
+                facesFromFaces_,
                 cellMap_,
-                cellsFromPoints,
-                cellsFromEdges,
-                cellsFromFaces,
-                cellsFromCells,
+                cellsFromPoints_,
+                cellsFromEdges_,
+                cellsFromFaces_,
+                cellsFromCells_,
                 reversePointMap_,
                 reverseFaceMap_,
                 reverseCellMap_,
@@ -10135,6 +10164,7 @@ bool dynamicTopoFvMesh::update()
         addedPointZones_.clear();
         addedFaceZones_.clear();
         addedCellZones_.clear();
+        faceParents_.clear();
 
         // Clear the deleted entity map
         deletedPoints_.clear();

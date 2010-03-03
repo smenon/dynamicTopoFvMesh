@@ -1556,7 +1556,7 @@ const changeMap dynamicTopoFvMesh::swap32
     check[2][0] = newTriFace[2]; check[2][1] = newTriFace[0];
 
     // For 2-2 swaps, two faces are introduced
-    label nE = 0;
+    label nE = 0, nBf = 0;
     FixedList<label,2> nBE(0);
     FixedList<labelList,2> bdyFaceEdges(labelList(3, -1));
 
@@ -1568,7 +1568,7 @@ const changeMap dynamicTopoFvMesh::swap32
 
     // For a 2-2 swap on a boundary edge,
     // add two boundary faces and an edge
-    FixedList<label,2> newBdyFaceIndex(-1);
+    FixedList<label,2> oldBdyFaceIndex(-1), newBdyFaceIndex(-1);
     label newEdgeIndex = -1;
 
     if (edgePatch > -1)
@@ -1586,6 +1586,9 @@ const changeMap dynamicTopoFvMesh::swap32
             if (neighbour_[facesForRemoval[faceI]] == -1)
             {
                 facePatch = whichPatch(facesForRemoval[faceI]);
+
+                // Record this face-index for mapping.
+                oldBdyFaceIndex[nBf++] = facesForRemoval[faceI];
 
                 findIsolatedPoint
                 (
@@ -1650,7 +1653,23 @@ const changeMap dynamicTopoFvMesh::swap32
             }
         }
 
-        // Insert the two new faces
+        // Setting mapping variables.
+        labelList mF(1, -1);
+        scalarField mW(1, 1.0);
+
+        // Fetch old flux values.
+        FixedList<scalar, 2> oldPhi(0.0), fArea(0.0);
+
+        oldPhi[0] = iPtr_->getPhi(oldBdyFaceIndex[0]);
+        oldPhi[1] = iPtr_->getPhi(oldBdyFaceIndex[1]);
+
+        // Compute face area with the new faces.
+        fArea[0] = triFaceArea(newBdyTriFace[0]);
+        fArea[1] = triFaceArea(newBdyTriFace[1]);
+
+        // Insert the first of two new faces
+        mF[0] = oldBdyFaceIndex[0];
+
         newBdyFaceIndex[0] =
         (
             insertFace
@@ -1658,9 +1677,14 @@ const changeMap dynamicTopoFvMesh::swap32
                 facePatch,
                 newBdyTriFace[0],
                 newCellIndex[1],
-                -1
+                -1,
+                mF,
+                mW
             )
         );
+
+        // Insert the second of two new faces
+        mF[0] = oldBdyFaceIndex[1];
 
         newBdyFaceIndex[1] =
         (
@@ -1669,9 +1693,22 @@ const changeMap dynamicTopoFvMesh::swap32
                 facePatch,
                 newBdyTriFace[1],
                 newCellIndex[0],
-                -1
+                -1,
+                mF,
+                mW
             )
         );
+
+        // Set area-weighted fluxes for both new faces
+        forAll(newBdyFaceIndex, i)
+        {
+            iPtr_->setPhi
+            (
+                newBdyFaceIndex[i],
+                (fArea[i] / (fArea[0] + fArea[1] + VSMALL))
+              * (oldPhi[0] + oldPhi[1])
+            );
+        }
 
         // Update the new cells
         newTetCell[0][nF0++] = newBdyFaceIndex[1];

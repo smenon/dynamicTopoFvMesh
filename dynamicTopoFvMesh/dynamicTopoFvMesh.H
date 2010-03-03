@@ -188,6 +188,17 @@ class dynamicTopoFvMesh
         Map<label>      addedFaceZones_;
         Map<label>      addedCellZones_;
 
+        // Information for mapPolyMesh
+        Map<label>       faceParents_;
+        List<objectMap>  pointsFromPoints_;
+        List<objectMap>  facesFromPoints_;
+        List<objectMap>  facesFromEdges_;
+        List<objectMap>  facesFromFaces_;
+        List<objectMap>  cellsFromPoints_;
+        List<objectMap>  cellsFromEdges_;
+        List<objectMap>  cellsFromFaces_;
+        List<objectMap>  cellsFromCells_;
+
         //- Maps to keep track of entities deleted after addition
         labelHashSet    deletedPoints_;
         labelHashSet    deletedEdges_;
@@ -854,17 +865,19 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to size-up the list to include an item
+        template <class Type>
         inline void sizeUpList
         (
-            const label item,
-            labelList& list
+            const Type item,
+            List<Type>& list
         ) const;
 
         // Utility method to size-down the list to remove an item
+        template <class Type>
         inline void sizeDownList
         (
-            const label item,
-            labelList& list
+            const Type item,
+            List<Type>& list
         ) const;
 
         // Utility method to build a hull of cells connected to the edge [2D]

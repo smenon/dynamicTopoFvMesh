@@ -971,6 +971,9 @@ void dynamicTopoFvMesh::reOrderFaces
         {
             // This boundary face was added during the topology change
             oldIndex = addedFaceReverseRenumbering[i];
+
+            // Ensure that inserted boundary faces have a mapping master.
+            faceMap_[i] = faceParents_[oldIndex];
         }
         else
         {
@@ -1005,6 +1008,21 @@ void dynamicTopoFvMesh::reOrderFaces
     if (threaded)
     {
         entityMutex_[2].unlock();
+    }
+
+    // Renumber all facesFromFaces maps.
+    forAll(facesFromFaces_, indexI)
+    {
+        objectMap& thisMap = facesFromFaces_[indexI];
+
+        if (thisMap.index() < nOldFaces_)
+        {
+            thisMap.index() = reverseFaceMap_[thisMap.index()];
+        }
+        else
+        {
+            thisMap.index() = addedFaceRenumbering_[thisMap.index()];
+        }
     }
 
     // Renumber all cells with updated face information

@@ -156,6 +156,9 @@ class fluidInterface
         //- Displacement direction of interface control points
         mutable vectorField* facesDisplacementDirPtr_;
 
+        //- Face centres of interface faces
+        mutable vectorField* areaCentresPtr_;
+
         //- Total displacement of free-surface points
         //  in one time step
         mutable vectorIOField* totalDisplacementPtr_;
@@ -237,6 +240,9 @@ class fluidInterface
 
         //- Return reference to control points displacement direction field
         vectorField& facesDisplacementDir() const;
+
+        //- Return reference to the area centres field
+        vectorField& areaCentrePositions() const;
 
         //- Return total points displacement
         vectorField& totalDisplacement() const;

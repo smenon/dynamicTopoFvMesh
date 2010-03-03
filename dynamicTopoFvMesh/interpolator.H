@@ -86,6 +86,10 @@ class interpolator
 
         labelHashSet flipFaces_;
 
+        // Names of velocity / flux fields
+        word Uname_;
+        word phiName_;
+
     // Private Member Functions
 
         //- Clear out data
@@ -146,7 +150,8 @@ public:
         // Interpolate flux for an existing face
         void interpolatePhi
         (
-            const label cellIndex,
+            const label owner,
+            const label neighbour,
             const label faceIndex,
             const vector& Sf
         );

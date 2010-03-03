@@ -228,8 +228,6 @@ void fluidInterface::makeControlPoints() const
 
     if (controlPointsHeader.headerOk())
     {
-        Info << "Reading control-points." << endl;
-
         controlPointsPtr_ =
             new vectorIOField
             (
@@ -245,8 +243,6 @@ void fluidInterface::makeControlPoints() const
     }
     else
     {
-        Info << "Initializing control-points." << endl;
-
         controlPointsPtr_ =
             new vectorIOField
             (
@@ -367,6 +363,13 @@ void fluidInterface::makeDirections() const
         );
 
     facesDisplacementDirPtr_ =
+        new vectorField
+        (
+            mesh().boundaryMesh()[aPatchID()].size(),
+            vector::zero
+        );
+
+    areaCentresPtr_ =
         new vectorField
         (
             mesh().boundaryMesh()[aPatchID()].size(),
@@ -907,6 +910,16 @@ vectorField& fluidInterface::pointsDisplacementDir() const
     }
 
     return *pointsDisplacementDirPtr_;
+}
+
+vectorField& fluidInterface::areaCentrePositions() const
+{
+    if (!areaCentresPtr_)
+    {
+        makeDirections();
+    }
+
+    return *areaCentresPtr_;
 }
 
 // Return reference to control points displacement direction field

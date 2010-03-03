@@ -58,8 +58,23 @@ defineTypeNameAndDebug(interpolator,0);
 interpolator::interpolator(dynamicTopoFvMesh& mesh)
 :
     mesh_(mesh),
-    fieldsRegistered_(false)
-{}
+    fieldsRegistered_(false),
+    Uname_("U"),
+    phiName_("phi")
+{
+    // Check if alternatives names for velocity and flux are defined
+    const dictionary& meshDict = mesh.dict_.subDict("dynamicTopoFvMesh");
+
+    if (meshDict.found("Uname"))
+    {
+        Uname_ = word(meshDict.lookup("Uname"));
+    }
+
+    if (meshDict.found("phiName"))
+    {
+        phiName_ = word(meshDict.lookup("phiName"));
+    }
+}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
@@ -90,12 +105,10 @@ void interpolator::writeFluxes
     const word& name
 )
 {
-    word phiName("phi");
-
     // Fetch phi from the registry.
     const surfaceScalarField& pF =
     (
-        mesh_.lookupObject<surfaceScalarField>(phiName)
+        mesh_.lookupObject<surfaceScalarField>(phiName_)
     );
 
     // Fetch face-centres from the mesh.
@@ -306,24 +319,20 @@ scalar interpolator::getPhi
     const label faceIndex
 )
 {
-    // Check surfScalarMaps for an entry named 'phi'.
-    // If it exists, get the value.
-    word phiName("phi");
-
     scalar phiVal = 0.0;
 
-    if (surfScalarMap_.found(phiName))
+    if (surfScalarMap_.found(phiName_))
     {
         if
         (
             (faceIndex < mesh_.nOldFaces_) &&
-            (!surfScalarMap_[phiName].found(faceIndex))
+            (!surfScalarMap_[phiName_].found(faceIndex))
         )
         {
             // Fetch phi from the registry.
             const surfaceScalarField& oF =
             (
-                mesh_.lookupObject<surfaceScalarField>(phiName)
+                mesh_.lookupObject<surfaceScalarField>(phiName_)
             );
 
             const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
@@ -343,7 +352,7 @@ scalar interpolator::getPhi
         }
         else
         {
-            phiVal = surfScalarMap_[phiName][faceIndex];
+            phiVal = surfScalarMap_[phiName_][faceIndex];
         }
     }
 
@@ -363,73 +372,97 @@ void interpolator::setPhi
     const scalar facePhi
 )
 {
-    // Check surfScalarMaps for an entry named 'phi'.
-    // If it exists, make an entry (or over-write, if necessary).
-    word phiName("phi");
-
-    if (surfScalarMap_.found(phiName))
+    if (surfScalarMap_.found(phiName_))
     {
-        surfScalarMap_[phiName].set(faceIndex, facePhi);
+        surfScalarMap_[phiName_].set(faceIndex, facePhi);
     }
 }
 
 // Interpolate flux for an existing face
 void interpolator::interpolatePhi
 (
-    const label cellIndex,
+    const label owner,
+    const label neighbour,
     const label faceIndex,
     const vector& Sf
 )
 {
-    vector U = vector::zero;
+    FixedList<label, 2> c(-1);
+    FixedList<vector,2> U(vector::zero);
+    FixedList<scalar, 2> w(0.0);
+
+    if (neighbour == -1)
+    {
+        w[0] = 1.0;
+        w[1] = 0.0;
+    }
+    else
+    {
+        w[0] = 0.5;
+        w[1] = 0.5;
+    }
+
+    // Set check indices
+    c[0] = owner; c[1] = neighbour;
 
     // Check volVectorMaps for an entry named 'U'.
     // If it exists, make an entry (or over-write, if necessary).
-    word Uname("U");
-
-    if (volVectorMap_.found(Uname))
+    if (volVectorMap_.found(Uname_))
     {
         // Looks like an entry exists.
         // Check if a new value was set for this cell.
-        if (volVectorMap_[Uname].found(cellIndex))
+        forAll(c, indexI)
         {
-            U = volVectorMap_[Uname][cellIndex];
-        }
-        else
-        if (cellIndex < mesh_.nOldCells_)
-        {
-            // Fetch old value from the registry.
-            const volVectorField& oF =
-            (
-                mesh_.lookupObject<volVectorField>(Uname)
-            );
+            if (c[indexI] == -1)
+            {
+                continue;
+            }
 
-            U = oF.internalField()[cellIndex];
-        }
-        else
-        {
-            // Couldn't find the cell anywhere.
-            FatalErrorIn("interpolator::interpolatePhi()")
-                << " Looking for cell: " << cellIndex
-                << " in maps, but couldn't find it." << nl
-                << " faceIndex: " << faceIndex
-                << " Sf: " << Sf
-                << abort(FatalError);
+            if (volVectorMap_[Uname_].found(c[indexI]))
+            {
+                U[indexI] = volVectorMap_[Uname_][c[indexI]];
+            }
+            else
+            if (c[indexI] < mesh_.nOldCells_)
+            {
+                // Fetch old value from the registry.
+                const volVectorField& oF =
+                (
+                    mesh_.lookupObject<volVectorField>(Uname_)
+                );
+
+                U[indexI] = oF.internalField()[c[indexI]];
+            }
+            else
+            {
+                // Couldn't find the cell anywhere.
+                FatalErrorIn("interpolator::interpolatePhi()")
+                    << " Looking for cell: " << c[indexI]
+                    << " in maps, but couldn't find it." << nl
+                    << " faceIndex: " << faceIndex
+                    << " Sf: " << Sf
+                    << abort(FatalError);
+            }
         }
 
         if (dynamicTopoFvMesh::debug > 3)
         {
             Info << nl
                  << "Flux for face: " << faceIndex
-                 << " :: " << (U & Sf)
-                 << " Using cell: " << cellIndex
+                 << " :: " << ((w[0]*U[0] + w[1]*U[1]) & Sf)
+                 << " Using cells: " << c
                  << " with U: " << U
+                 << " w: " << w
                  << " and Sf: " << Sf
                  << endl;
         }
 
         // Take the dot-product and assign.
-        setPhi(faceIndex, (U & Sf));
+        setPhi
+        (
+            faceIndex,
+            ((w[0]*U[0] + w[1]*U[1]) & Sf)
+        );
     }
 }
 

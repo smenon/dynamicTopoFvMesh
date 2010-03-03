@@ -97,6 +97,7 @@ Foam::fluidInterface::fluidInterface
     motionPointsMaskPtr_(NULL),
     pointsDisplacementDirPtr_(NULL),
     facesDisplacementDirPtr_(NULL),
+    areaCentresPtr_(NULL),
     totalDisplacementPtr_(NULL),
     aMeshPtr_(NULL),
     UsPtr_(NULL),
@@ -171,6 +172,7 @@ void Foam::fluidInterface::clearOut() const
     deleteDemandDrivenData(motionPointsMaskPtr_);
     deleteDemandDrivenData(pointsDisplacementDirPtr_);
     deleteDemandDrivenData(facesDisplacementDirPtr_);
+    deleteDemandDrivenData(areaCentresPtr_);
     deleteDemandDrivenData(totalDisplacementPtr_);
     deleteDemandDrivenData(aMeshPtr_);
     deleteDemandDrivenData(UsPtr_);
@@ -287,12 +289,12 @@ void Foam::fluidInterface::updateDisplacementDirections() const
     facesDisplacementDir() = aMesh().faceAreaNormals().internalField();
 
     // Correction of control points position
-    const vectorField& Cf = aMesh().areaCentres().internalField();
+    areaCentrePositions() = aMesh().areaCentres().internalField();
 
     controlPoints() =
-        Cf
+        areaCentrePositions()
       + facesDisplacementDir()
-      * (facesDisplacementDir()&(controlPoints() - Cf));
+      * (facesDisplacementDir()&(controlPoints() - areaCentrePositions()));
 }
 
 //- Move control points by deltaH and calculate interface
@@ -1311,27 +1313,58 @@ bool Foam::fluidInterface::updateMesh(const mapPolyMesh& mpm) const
         Info << "Clearing out fluidInterface after topology change" << endl;
     }
 
-    vectorField oldControlPoints(controlPoints());
+    // Copy old data
+    vectorField oldCp(controlPoints());
 
     // Wipe out demand-driven data
     clearOut();
 
     updateDisplacementDirections();
 
-    vectorField& cP = controlPoints();
+    vectorField& Cp = controlPoints();
 
+    // Maintain map old areaCentre positions
     const labelList& fMap = mpm.faceMap();
+    const vectorField& XfNew = areaCentrePositions();
+
+    vectorField XfOld(XfNew.size(), vector::zero);
+
     label opStart = mpm.oldPatchStarts()[aPatchID()];
-    label pStart = mpm.mesh().boundaryMesh()[aPatchID()].start();
+    label npStart = mpm.mesh().boundaryMesh()[aPatchID()].start();
 
-    forAll(cP, pI)
+    forAll(XfNew, pI)
     {
-        label oldPos = fMap[pStart + pI];
+        label newIndex = (npStart + pI);
+        label oldIndex = fMap[newIndex];
 
-        if (oldPos > -1)
+        if (oldIndex > -1)
         {
-            cP[pI] = oldControlPoints[oldPos - opStart];
+            XfOld = XfNew[oldIndex - opStart];
         }
+        else
+        {
+            FatalErrorIn("fluidInterface::updateMesh()")
+                << nl << " Failed to determine mapping face. "
+                << abort(FatalError);
+        }
+    }
+
+    forAll(Cp, pI)
+    {
+        label newIndex = (npStart + pI);
+        label oldIndex = fMap[newIndex];
+
+        vector oCp = oldCp[oldIndex - opStart];
+        vector oXf = XfOld[newIndex - npStart];
+        vector nXf = XfNew[newIndex - npStart];
+
+        vector oCv = (oCp - oXf);
+        vector nCv = (oCp - nXf);
+
+        vector noCv = oCv/(mag(oCv) + VSMALL);
+        vector corr = (nCv - (nCv & noCv)*noCv);
+
+        Cp[pI] = ((nXf + nCv) + corr);
     }
 
     return true;

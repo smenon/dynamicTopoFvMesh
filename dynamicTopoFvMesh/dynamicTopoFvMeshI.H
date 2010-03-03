@@ -1634,14 +1634,15 @@ inline void dynamicTopoFvMesh::insertLabel
 }
 
 // Utility method to size-up the list to include an item
+template <class Type>
 inline void dynamicTopoFvMesh::sizeUpList
 (
-    const label item,
-    labelList& list
+    const Type item,
+    List<Type>& list
 ) const
 {
     // Create a new list
-    labelList newList(list.size()+1);
+    List<Type> newList(list.size() + 1);
 
     // Copy individual items
     forAll(list, itemI)
@@ -1655,26 +1656,15 @@ inline void dynamicTopoFvMesh::sizeUpList
 }
 
 // Utility method to size-down the list to remove an item
+template <class Type>
 inline void dynamicTopoFvMesh::sizeDownList
 (
-    const label item,
-    labelList& list
+    const Type item,
+    List<Type>& list
 ) const
 {
     // Create a new list
-    labelList newList(list.size() - 1);
-
-#   ifdef FULLDEBUG
-    // Check that the item actually exists.
-    if (findIndex(list, item) == -1)
-    {
-        FatalErrorIn
-        (
-            "label dynamicTopoFvMesh::sizeDownList()"
-        )   << "Cannot find " << item << " in list: " << list << nl
-            << abort(FatalError);
-    }
-#   endif
+    List<Type> newList(list.size() - 1);
 
     // Copy individual items
     label n = 0;
