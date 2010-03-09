@@ -583,7 +583,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             whichPatch(c0BdyIndex[0]),
             tmpTriFace,
             newCellIndex[0],
-            -1
+            -1,
+            labelList(1, c0BdyIndex[0]),
+            scalarField(1, 1.0)
         )
     );
 
@@ -604,7 +606,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             whichPatch(c0BdyIndex[1]),
             tmpTriFace,
             c0,
-            -1
+            -1,
+            labelList(1, c0BdyIndex[1]),
+            scalarField(1, 1.0)
         )
     );
 
@@ -708,7 +712,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 whichPatch(fIndex),
                 tmpQuadFace,
                 newCellIndex[0],
-                -1
+                -1,
+                labelList(1, fIndex),
+                scalarField(1, 1.0)
             )
         );
 
@@ -1135,7 +1141,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 whichPatch(commonFaceIndex[2]),
                 tmpTriFace,
                 c1,
-                -1
+                -1,
+                labelList(1, commonFaceIndex[2]),
+                scalarField(1, 1.0)
             )
         );
 
@@ -1156,7 +1164,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 whichPatch(commonFaceIndex[3]),
                 tmpTriFace,
                 newCellIndex[1],
-                -1
+                -1,
+                labelList(1, commonFaceIndex[3]),
+                scalarField(1, 1.0)
             )
         );
 
@@ -1576,6 +1586,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
                     if (cP[0] && cP[1] && cP[2] && cP[3])
                     {
+                        sFaceIndex = sfIter.key();
                         foundMatch[indexI] = true;
                         break;
                     }

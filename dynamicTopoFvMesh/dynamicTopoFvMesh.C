@@ -7047,10 +7047,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
             edgeBisectCollapse2D(&(handlerPtr_[0]));
         }
 
-        // Re-Initialize the face stack
-        initCoupledFaceStack();
-
-        swap2DEdges(&(handlerPtr_[0]));
+        // Cannot swap on surfaces in 2D, so don't bother.
     }
     else
     {
