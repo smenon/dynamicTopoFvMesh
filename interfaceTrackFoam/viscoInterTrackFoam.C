@@ -34,7 +34,7 @@ Description
 #include "fvCFD.H"
 #include "viscoelasticModel.H"
 #include "dynamicFvMesh.H"
-#include "fluidInterface.H"
+#include "freeSurface.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
 
     viscoelasticModel visco(U, phi);
 
-    fluidInterface interface(mesh, U, p, phi);
+    freeSurface interface(mesh, U, p, phi);
 
     Info<< "Reading field rUA if present\n" << endl;
     volScalarField rUA

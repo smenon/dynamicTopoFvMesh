@@ -33,7 +33,7 @@ Description
 
 #include "fvCFD.H"
 #include "dynamicFvMesh.H"
-#include "fluidInterface.H"
+#include "freeSurface.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 #   include "initTotalVolume.H"
 #   include "createFields.H"
 
-    fluidInterface interface(mesh, U, p, phi);
+    freeSurface interface(mesh, U, p, phi);
 
     Info<< "Reading field rUA if present\n" << endl;
     volScalarField rUA
