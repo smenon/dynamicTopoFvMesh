@@ -2,7 +2,7 @@ EXE_INC = \
     -I../include \
     -I../coupleMap/lnInclude \
     -I../multiThreader/lnInclude \
-    -I../fluidInterface/lnInclude \
+    -I../freeSurface/lnInclude \
     -I$(LIB_SRC)/dynamicFvMesh/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/finiteArea/lnInclude \
@@ -13,10 +13,10 @@ EXE_INC = \
     $(WM_DECOMP_INC) \
 
 EXE_LIBS = \
+    -lfreeSurface \
     -L$(FOAM_USER_LIBBIN) \
     -llduSolvers \
     -ldynamicFvMesh \
-    -lfluidInterface \
     -lmultiThreader \
     -lcoupleMap \
     -lfiniteVolume \
