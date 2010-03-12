@@ -81,7 +81,7 @@ class freeSurface
         word shadowPatch_;
 
         //- Time index for the interface
-        label curTimeIndex_;
+        mutable label curTimeIndex_;
 
         //- Switch for one/two fluids
         Switch twoFluids_;
@@ -223,6 +223,16 @@ class freeSurface
         //- Initialize control points
         void initializeControlPointsPosition() const;
 
+        //- Initialize control points
+        void reInitializeControlPointsPosition() const;
+
+        //- Write out current control point positions to VTK
+        void writeControlPoints
+        (
+            const word& name,
+            bool writeLagrangian = false
+        ) const;
+
         //- Return reference to interpolator (A to B)
         const patchToPatchInterpolation& interpolatorAB() const;
 
@@ -278,14 +288,11 @@ class freeSurface
         const volScalarField& fluidIndicator() const;
 
         //- Move correctedFvPatchField fvSubMeshes
-        void moveFvSubMeshes();
+        void moveFvSubMeshes() const;
 
         //- Move control points by deltaH and calculate interface
         //  points displacement for the new control points position
-        tmp<vectorField> pointDisplacement
-        (
-            const scalarField& deltaH
-        ) const;
+        tmp<vectorField> pointDisplacement(const scalarField& deltaH) const;
 
         //- Disallow default bitwise copy construct
         freeSurface(const freeSurface&);

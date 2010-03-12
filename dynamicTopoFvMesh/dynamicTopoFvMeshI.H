@@ -1897,10 +1897,7 @@ inline scalar dynamicTopoFvMesh::tetQuality
     }
 
     // This should never happen.
-    FatalErrorIn
-    (
-        "dynamicTopoFvMesh::tetQuality() "
-    )
+    FatalErrorIn("dynamicTopoFvMesh::tetQuality()")
         << nl << " Illegal connectivity."
         << abort(FatalError);
 
@@ -1969,11 +1966,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledFace
 
     if (patch == -1)
     {
-        FatalErrorIn("dynamicTopoFvMesh::locallyCoupledFace()")
-            << "Face: " << fIndex
-            << " is not on a boundary and therefore, "
-            << " cannot possibly be coupled."
-            << abort(FatalError);
+        return false;
     }
 
     // Processor checks receive priority.
@@ -2060,11 +2053,7 @@ inline bool dynamicTopoFvMesh::processorCoupledFace
 
     if (patch == -1)
     {
-        FatalErrorIn("dynamicTopoFvMesh::processorCoupledFace()")
-            << "Face: " << fIndex
-            << " is not on a boundary and therefore, "
-            << " cannot possibly be coupled."
-            << abort(FatalError);
+        return false;
     }
 
     if (isA<processorPolyPatch>(boundary[patch]))

@@ -7988,7 +7988,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
 
         // Check if this boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.
-        // mesh.remove2DSliver(fIndex);
+        mesh.remove2DSliver(fIndex);
 
         if (mesh.checkFaceBisection(fIndex))
         {
@@ -8590,6 +8590,16 @@ void dynamicTopoFvMesh::remove2DSliver
     {
         if (self() == 0)
         {
+            if (debug > 1)
+            {
+                InfoIn("dynamicTopoFvMesh::remove2DSliver() ")
+                    << nl
+                    << " Considering face: " << fIndex
+                    << ":: " << faces_[fIndex]
+                    << " for sliver removal."
+                    << endl;
+            }
+
             // Find the isolated point.
             label ptIndex = -1, nextPtIndex = -1;
 

@@ -424,23 +424,51 @@ void freeSurface::makeTotalDisplacement() const
             << abort(FatalError);
     }
 
-    totalDisplacementPtr_ =
-        new vectorIOField
+    if
+    (
+        IOobject
         (
-            IOobject
+            "totalDisplacement",
+            mesh().time().timeName(),
+            mesh(),
+            IOobject::MUST_READ,
+            IOobject::AUTO_WRITE
+        ).headerOk()
+    )
+    {
+        totalDisplacementPtr_ =
+            new vectorIOField
             (
-                "totalDisplacement",
-                mesh().time().timeName(),
-                mesh(),
-                IOobject::NO_READ,
-                IOobject::AUTO_WRITE
-            ),
-            vectorField
+                IOobject
+                (
+                    "totalDisplacement",
+                    mesh().time().timeName(),
+                    mesh(),
+                    IOobject::MUST_READ,
+                    IOobject::AUTO_WRITE
+                )
+            );
+    }
+    else
+    {
+        totalDisplacementPtr_ =
+            new vectorIOField
             (
-                mesh().boundaryMesh()[aPatchID()].nPoints(),
-                vector::zero
-            )
-        );
+                IOobject
+                (
+                    "totalDisplacement",
+                    mesh().time().timeName(),
+                    mesh(),
+                    IOobject::NO_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                vectorField
+                (
+                    mesh().boundaryMesh()[aPatchID()].nPoints(),
+                    vector::zero
+                )
+            );
+    }
 }
 
 void freeSurface::readTotalDisplacement() const
@@ -825,7 +853,7 @@ void freeSurface::makeRho() const
             mesh().time().timeName(),
             mesh(),
             IOobject::NO_READ,
-            IOobject::AUTO_WRITE
+            IOobject::NO_WRITE
         ),
         mesh(),
         dimensionedScalar("0", dimMass/dimVolume, 0)
@@ -857,7 +885,7 @@ void freeSurface::makeMu() const
             mesh().time().timeName(),
             mesh(),
             IOobject::NO_READ,
-            IOobject::AUTO_WRITE
+            IOobject::NO_WRITE
         ),
         mesh(),
         dimensionedScalar("0", dimPressure*dimTime, 0)

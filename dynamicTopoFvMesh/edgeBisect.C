@@ -114,6 +114,19 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         Info << nl << nl << "Face: " << fIndex
              << ": " << faces_[fIndex] << " is to be bisected. " << endl;
 
+        label epIndex = whichPatch(fIndex);
+
+        Info << "Patch: ";
+
+        if (epIndex == -1)
+        {
+            Info << "Internal" << endl;
+        }
+        else
+        {
+            Info << boundaryMesh()[epIndex].name() << endl;
+        }
+
         if (debug > 2)
         {
             Info << "Cell[0]: " << c0 << ": " << oldCells[0] << endl;

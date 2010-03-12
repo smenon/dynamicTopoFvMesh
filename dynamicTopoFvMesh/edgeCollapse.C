@@ -304,6 +304,19 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
              << "faceEdges: " << fE
              << " is to be collapsed. " << endl;
 
+        label epIndex = whichPatch(fIndex);
+
+        Info << "Patch: ";
+
+        if (epIndex == -1)
+        {
+            Info << "Internal" << endl;
+        }
+        else
+        {
+            Info << boundaryMesh()[epIndex].name() << endl;
+        }
+
         if (debug > 2)
         {
             forAll(fE, edgeI)

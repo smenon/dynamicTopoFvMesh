@@ -39,6 +39,11 @@ Description
 #include "mapPolyMesh.H"
 #include "setMotionBC.H"
 
+// Include the following files for post-processing
+// #include "Cloud.H"
+// #include "IOPosition.H"
+// #include "passiveParticle.H"
+
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 defineTypeNameAndDebug(freeSurface, 0);
@@ -149,8 +154,8 @@ Foam::freeSurface::freeSurface
 
     // Force creation of demand-driven data
     // (and read from disk if this is a restart)
-    //makeControlPoints();
-    //readTotalDisplacement();
+    controlPoints();
+    totalDisplacement();
 }
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -234,6 +239,135 @@ void Foam::freeSurface::initializeControlPointsPosition() const
     }
 
     pointDisplacement(deltaH);
+}
+
+void Foam::freeSurface::reInitializeControlPointsPosition() const
+{
+    // Fetch references
+    const faceList& faces = aMesh().faces();
+
+    vectorField faceArea(faces.size(), vector::zero);
+    pointField newMeshPoints(mesh().points()), newPoints(aMesh().points());
+    pointField displacement(aMesh().points().size(), vector::zero);
+    scalarField deltaH(aMesh().nFaces(), 0.0), sweptVol(faces.size(), 0.0);
+
+    label nIters = 0;
+    scalar dError = 0.0;
+
+    while (true)
+    {
+        nIters++;
+
+        deltaH = 0.0;
+
+        displacement = pointDisplacement(deltaH);
+
+        dError = mag(sum(displacement & displacement));
+
+        if (dError < 1e-20 || nIters > 15)
+        {
+            break;
+        }
+
+        const pointField& points = aMesh().points();
+
+        newPoints = (points + displacement);
+
+        forAll(faces, faceI)
+        {
+            sweptVol[faceI] =
+            (
+                -faces[faceI].sweptVol(points, newPoints)
+            );
+
+            faceArea[faceI] =
+            (
+                faces[faceI].normal(newPoints)
+            );
+
+            deltaH[faceI] =
+            (
+                sweptVol[faceI]/
+                (faceArea[faceI] & facesDisplacementDir()[faceI])
+            );
+        }
+
+        // Only update control points
+        pointDisplacement(deltaH);
+    }
+
+    Info << "control-points position error: " << dError
+         << " nCorrections: " << nIters << endl;
+}
+
+void Foam::freeSurface::writeControlPoints
+(
+    const word& name,
+    bool writeLagrangian
+) const
+{
+    if (writeLagrangian)
+    {
+        /*
+        Cloud<passiveParticle> pCloud(mesh(), name, false);
+
+        forAll(controlPoints(), pI)
+        {
+            pCloud.addParticle
+            (
+                new passiveParticle
+                (
+                    pCloud,
+                    controlPoints()[pI],
+                    (mesh().nCells() - 1)
+                )
+            );
+        }
+
+        IOPosition<passiveParticle> iop(pCloud);
+
+        iop.write();
+        */
+    }
+
+    // Make the directory
+    fileName dirName(mesh().time().path()/"VTK"/mesh().time().timeName());
+
+    mkDir(dirName);
+
+    // Open stream for output
+    OFstream file(dirName/name + ".vtk");
+
+    label nPoints = controlPoints().size();
+
+    // Write out the header
+    file << "# vtk DataFile Version 2.0" << nl
+         << name + ".vtk" << nl
+         << "ASCII" << nl
+         << "DATASET UNSTRUCTURED_GRID" << nl
+         << "POINTS " << nPoints << " double" << nl;
+
+    forAll(controlPoints(), pI)
+    {
+        file << controlPoints()[pI].x() << ' '
+             << controlPoints()[pI].y() << ' '
+             << controlPoints()[pI].z() << ' '
+             << nl;
+    }
+
+    file << "CELLS " << nPoints << " " << (2*nPoints) << endl;
+
+    forAll(controlPoints(), pI)
+    {
+        file << 1 << ' ' << pI << ' ';
+    }
+
+    file << "CELL_TYPES " << nPoints << endl;
+
+    forAll(controlPoints(), pI)
+    {
+        file << 1 << ' ';
+    }
 }
 
 scalar Foam::freeSurface::maxCourantNumber()
@@ -827,6 +961,8 @@ bool Foam::freeSurface::restorePosition()
     aMesh().movePoints(mesh().points());
     moveFvSubMeshes();
 
+    reInitializeControlPointsPosition();
+
     return meshChanged;
 }
 
@@ -875,7 +1011,7 @@ void Foam::freeSurface::correctUsBoundaryConditions() const
 }
 
 //- Move correctedFvPatchField fvSubMeshes
-void Foam::freeSurface::moveFvSubMeshes()
+void Foam::freeSurface::moveFvSubMeshes() const
 {
     // Move correctedFvPatchField fvSubMeshes
     forAll(U().boundaryField(), patchI)
@@ -1137,6 +1273,7 @@ void Foam::freeSurface::updateVelocity()
             /mesh().boundary()[aPatchID()].magSf();
 
         Us().internalField() += UnFs - nA*(nA&Us().internalField());
+        // Us().internalField() = UnFs; // This seems to work too
         correctUsBoundaryConditions();
 
         UtFs -= (muFluidA().value() - muFluidB().value())*
@@ -1311,15 +1448,12 @@ bool Foam::freeSurface::updateMesh(const mapPolyMesh& mpm) const
     }
 
     // Copy old data
-    /*
     vectorField oldXf(areaCentrePositions());
     vectorField oldCp(controlPoints());
-    */
 
     // Wipe out demand-driven data
     clearOut();
 
-    /*
     updateDisplacementDirections();
 
     vectorField& Cp = controlPoints();
@@ -1379,7 +1513,6 @@ bool Foam::freeSurface::updateMesh(const mapPolyMesh& mpm) const
         Info << "Cp: " << endl;
         Info << Cp << endl;
     }
-    */
 
     return true;
 }
