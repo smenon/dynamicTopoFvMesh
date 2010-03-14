@@ -1489,8 +1489,10 @@ void dynamicTopoFvMesh::removeFace
         {
             if (patchCoupling_(patchI))
             {
-                patchCoupling_[patchI].patchMap().removeMasterIndex(fIndex);
-                patchCoupling_[patchI].patchMap().removeSlaveIndex(fIndex);
+                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                cMap.removeMasterIndex(coupleMap::FACE, fIndex);
+                cMap.removeSlaveIndex(coupleMap::FACE, fIndex);
             }
         }
     }
@@ -1655,8 +1657,10 @@ void dynamicTopoFvMesh::removeEdge
         {
             if (patchCoupling_(patchI))
             {
-                patchCoupling_[patchI].patchMap().removeMasterIndex(eIndex);
-                patchCoupling_[patchI].patchMap().removeSlaveIndex(eIndex);
+                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                cMap.removeMasterIndex(coupleMap::EDGE, eIndex);
+                cMap.removeSlaveIndex(coupleMap::EDGE, eIndex);
             }
         }
     }
@@ -2480,9 +2484,10 @@ bool dynamicTopoFvMesh::checkQuality
             {
                 if (patchCoupling_(patchI))
                 {
+                    const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                     {
                         break;
                     }
@@ -2491,13 +2496,11 @@ bool dynamicTopoFvMesh::checkQuality
 
             if (sIndex == -1)
             {
-                FatalErrorIn
-                (
-                    "dynamicTopoFvMesh::checkQuality"
-                ) << "Coupled maps were improperly specified." << nl
-                  << " Slave index not found for: " << nl
-                  << " Edge: " << eIndex << nl
-                  << abort(FatalError);
+                FatalErrorIn("dynamicTopoFvMesh::checkQuality")
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Edge: " << eIndex << nl
+                    << abort(FatalError);
             }
 
             // Turn off switch temporarily.
@@ -2631,9 +2634,10 @@ bool dynamicTopoFvMesh::fillTables
             {
                 if (patchCoupling_(patchI))
                 {
+                    const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                     {
                         break;
                     }
@@ -2642,13 +2646,11 @@ bool dynamicTopoFvMesh::fillTables
 
             if (sIndex == -1)
             {
-                FatalErrorIn
-                (
-                    "dynamicTopoFvMesh::fillTables()"
-                ) << "Coupled maps were improperly specified." << nl
-                  << " Slave index not found for: " << nl
-                  << " Edge: " << eIndex << nl
-                  << abort(FatalError);
+                FatalErrorIn("dynamicTopoFvMesh::fillTables()")
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Edge: " << eIndex << nl
+                    << abort(FatalError);
             }
 
             // Turn off switch temporarily.
@@ -2938,9 +2940,10 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             {
                 if (patchCoupling_(patchI))
                 {
+                    const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                     {
                         break;
                     }
@@ -2949,13 +2952,11 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             if (sIndex == -1)
             {
-                FatalErrorIn
-                (
-                    "dynamicTopoFvMesh::removeEdgeFlips"
-                ) << "Coupled maps were improperly specified." << nl
-                  << " Slave index not found for: " << nl
-                  << " Edge: " << eIndex << nl
-                  << abort(FatalError);
+                FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips")
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Edge: " << eIndex << nl
+                    << abort(FatalError);
             }
 
             if (debug > 2)
@@ -3117,12 +3118,14 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         {
             patchCoupling_[pIndex].patchMap().mapSlave
             (
+                coupleMap::EDGE,
                 map.addedEdgeList().begin().key(),
                 slaveMap.addedEdgeList().begin().key()
             );
 
             patchCoupling_[pIndex].patchMap().mapMaster
             (
+                coupleMap::EDGE,
                 slaveMap.addedEdgeList().begin().key(),
                 map.addedEdgeList().begin().key()
             );
@@ -7652,8 +7655,19 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     if (distance < gTol_)
                     {
                         // Add a map entry
-                        cMap.mapSlave(mList[indexI], sList[indexJ]);
-                        cMap.mapMaster(sList[indexJ], mList[indexI]);
+                        cMap.mapSlave
+                        (
+                            coupleMap::FACE,
+                            mList[indexI],
+                            sList[indexJ]
+                        );
+
+                        cMap.mapMaster
+                        (
+                            coupleMap::FACE,
+                            sList[indexJ],
+                            mList[indexI]
+                        );
 
                         matched = true;
 
@@ -7663,7 +7677,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                 if (!matched)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::buildProcessorMaps()")
+                    FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
                         << " Failed to match entity: " << mList[indexI]
                         << ": " << edges_[mList[indexI]]
                         << " within a tolerance of: "
@@ -7719,7 +7733,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
             if (!matched)
             {
-                FatalErrorIn("dynamicTopoFvMesh::buildProcessorMaps()")
+                FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
                     << " Failed to match point: " << mP[indexI]
                     << ": " << points_[mP[indexI]]
                     << " within a tolerance of: "
@@ -7750,8 +7764,19 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     if (sEdge.start() == sp1 || sEdge.end() == sp1)
                     {
                         // Found the slave. Add a map entry
-                        cMap.mapSlave(mList[indexI], spEdges[edgeI]);
-                        cMap.mapMaster(spEdges[edgeI], mList[indexI]);
+                        cMap.mapSlave
+                        (
+                            coupleMap::EDGE,
+                            mList[indexI],
+                            spEdges[edgeI]
+                        );
+
+                        cMap.mapMaster
+                        (
+                            coupleMap::EDGE,
+                            spEdges[edgeI],
+                            mList[indexI]
+                        );
 
                         matched = true;
 
@@ -7761,7 +7786,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                 if (!matched)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::buildProcessorMaps()")
+                    FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
                         << " Failed to match entity: " << mList[indexI]
                         << ": " << thisEdge
                         << abort(FatalError);

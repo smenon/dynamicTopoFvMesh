@@ -592,10 +592,9 @@ void dynamicTopoFvMesh::reOrderEdges
                 continue;
             }
 
-            const coupleMap & cMap = patchCoupling_[patchI].patchMap();
-
             // Obtain references
-            const Map<label>& mtsMap = cMap.masterToSlaveMap();
+            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+            const Map<label>& mtsMap = cMap.entityMap(coupleMap::EDGE);
 
             Map<label> newMtsMap, newStmMap;
 
@@ -627,7 +626,7 @@ void dynamicTopoFvMesh::reOrderEdges
             }
 
             // Overwrite the old maps.
-            cMap.transferMaps(newMtsMap, newStmMap);
+            cMap.transferMaps(coupleMap::EDGE, newMtsMap, newStmMap);
         }
     }
 
@@ -1144,10 +1143,9 @@ void dynamicTopoFvMesh::reOrderFaces
                 continue;
             }
 
-            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
-
             // Obtain references
-            const Map<label>& mtsMap = cMap.masterToSlaveMap();
+            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+            const Map<label>& mtsMap = cMap.entityMap(coupleMap::FACE);
 
             Map<label> newMtsMap, newStmMap;
 
@@ -1179,7 +1177,7 @@ void dynamicTopoFvMesh::reOrderFaces
             }
 
             // Overwrite the old maps.
-            cMap.transferMaps(newMtsMap, newStmMap);
+            cMap.transferMaps(coupleMap::FACE, newMtsMap, newStmMap);
         }
     }
 

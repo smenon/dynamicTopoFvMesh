@@ -72,6 +72,14 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         return map;
     }
 
+    // Sanity check: Is the index legitimate?
+    if (fIndex < 0 || fIndex >= nFaces_)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::collapseQuadFace()")
+            << " Invalid index: " << fIndex
+            << abort(FatalError);
+    }
+
     // Local variables
     FixedList<bool,2> edgeBoundary(false);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
@@ -138,9 +146,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             {
                 if (patchCoupling_(patchI))
                 {
+                    const label faceEnum  = coupleMap::FACE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(fIndex)) > -1)
+                    if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
                     {
                         break;
                     }
@@ -149,13 +158,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             if (sIndex == -1)
             {
-                FatalErrorIn
-                (
-                    "dynamicTopoFvMesh::collapseQuadFace()"
-                ) << "Coupled maps were improperly specified." << nl
-                  << " Slave index not found for: " << nl
-                  << " Face: " << fIndex << nl
-                  << abort(FatalError);
+                FatalErrorIn("dynamicTopoFvMesh::collapseQuadFace()")
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Face: " << fIndex << nl
+                    << abort(FatalError);
             }
 
             // Temporarily turn off coupledModification.
@@ -1708,6 +1715,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         return map;
     }
 
+    // Sanity check: Is the index legitimate?
+    if (eIndex < 0 || eIndex >= nEdges_)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+            << " Invalid index: " << eIndex
+            << abort(FatalError);
+    }
+
     // If coupled modification is set, and this is a
     // master edge, collapse its slaves first.
     if (coupledModification_)
@@ -1722,9 +1737,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             {
                 if (patchCoupling_(patchI))
                 {
+                    const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -1735,13 +1751,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             if (sIndex == -1)
             {
-                FatalErrorIn
-                (
-                    "dynamicTopoFvMesh::collapseEdge"
-                ) << "Coupled maps were improperly specified." << nl
-                  << " Slave index not found for: " << nl
-                  << " Edge: " << eIndex << nl
-                  << abort(FatalError);
+                FatalErrorIn("dynamicTopoFvMesh::collapseEdge")
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Edge: " << eIndex << nl
+                    << abort(FatalError);
             }
 
             // Temporarily turn off coupledModification

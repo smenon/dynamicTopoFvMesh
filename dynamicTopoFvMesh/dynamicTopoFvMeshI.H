@@ -79,10 +79,8 @@ inline point dynamicTopoFvMesh::circumCentre
 
     if (cd < VSMALL)
     {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::testDelaunay(const label fIndex) "
-        ) << nl << " Encountered a co-linear set of points: " << nl
+        FatalErrorIn("dynamicTopoFvMesh::testDelaunay(const label fIndex)")
+                << nl << " Encountered a co-linear set of points: " << nl
                 << " Point a :: " << thisFace[0] << ": " << a << nl
                 << " Point b :: " << thisFace[1] << ": " << b << nl
                 << " Point c :: " << thisFace[2] << ": " << c << nl
@@ -1744,9 +1742,10 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             {
                 if (patchCoupling_(patchI))
                 {
+                    const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                     {
                         break;
                     }
@@ -1755,13 +1754,11 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
 
             if (sIndex == -1)
             {
-                FatalErrorIn
-                (
-                    "dynamicTopoFvMesh::computeMinQuality"
-                ) << "Coupled maps were improperly specified." << nl
-                  << " Slave index not found for: " << nl
-                  << " Edge: " << eIndex << nl
-                  << abort(FatalError);
+                FatalErrorIn("dynamicTopoFvMesh::computeMinQuality")
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Edge: " << eIndex << nl
+                    << abort(FatalError);
             }
 
             // Temporarily turn off coupledModification

@@ -175,21 +175,15 @@ labelList& coupleMap::subMeshPoints() const
     return subMeshPoints_;
 }
 
-const Map<label>& coupleMap::masterToSlaveMap() const
+label coupleMap::findSlaveIndex
+(
+    const label eType,
+    const label Index
+) const
 {
-    return masterToSlave_;
-}
-
-const Map<label>& coupleMap::slaveToMasterMap() const
-{
-    return slaveToMaster_;
-}
-
-label coupleMap::findSlaveIndex(const label Index) const
-{
-    if (masterToSlave_.found(Index))
+    if (entityMap_[eType].found(Index))
     {
-        return masterToSlave_[Index];
+        return entityMap_[eType][Index];
     }
     else
     {
@@ -197,11 +191,15 @@ label coupleMap::findSlaveIndex(const label Index) const
     }
 }
 
-label coupleMap::findMasterIndex(const label Index) const
+label coupleMap::findMasterIndex
+(
+    const label eType,
+    const label Index
+) const
 {
-    if (slaveToMaster_.found(Index))
+    if (reverseEntityMap_[eType].found(Index))
     {
-        return slaveToMaster_[Index];
+        return reverseEntityMap_[eType][Index];
     }
     else
     {
@@ -209,54 +207,68 @@ label coupleMap::findMasterIndex(const label Index) const
     }
 }
 
-void coupleMap::removeSlaveIndex(const label Index) const
+void coupleMap::removeSlaveIndex
+(
+    const label eType,
+    const label Index
+) const
 {
-    if (slaveToMaster_.found(Index))
+    if (reverseEntityMap_[eType].found(Index))
     {
-        slaveToMaster_.erase(Index);
+        reverseEntityMap_[eType].erase(Index);
     }
 }
 
-void coupleMap::removeMasterIndex(const label Index) const
+void coupleMap::removeMasterIndex
+(
+    const label eType,
+    const label Index
+) const
 {
-    if (masterToSlave_.found(Index))
+    if (entityMap_[eType].found(Index))
     {
-        masterToSlave_.erase(Index);
+        entityMap_[eType].erase(Index);
     }
 }
 
 void coupleMap::mapSlave
 (
+    const label eType,
     const label master,
     const label slave
 ) const
 {
-    masterToSlave_.insert(master, slave);
+    entityMap_[eType].insert(master, slave);
 }
 
 void coupleMap::mapMaster
 (
+    const label eType,
     const label slave,
     const label master
 ) const
 {
-    slaveToMaster_.insert(slave, master);
+    reverseEntityMap_[eType].insert(slave, master);
 }
 
 void coupleMap::transferMaps
 (
-    Map<label>& newMasterToSlave,
-    Map<label>& newSlaveToMaster
+    const label eType,
+    Map<label>& newEntityMap,
+    Map<label>& newReverseEntityMap
 ) const
 {
-    masterToSlave_.transfer(newMasterToSlave);
-    slaveToMaster_.transfer(newSlaveToMaster);
+    entityMap_[eType].transfer(newEntityMap);
+    reverseEntityMap_[eType].transfer(newReverseEntityMap);
 }
 
 void coupleMap::clearMaps() const
 {
-    masterToSlave_.clear();
-    slaveToMaster_.clear();
+    forAll(entityMap_, mapI)
+    {
+        entityMap_[mapI].clear();
+        reverseEntityMap_[mapI].clear();
+    }
 }
 
 FixedList<label,6>& coupleMap::nEntities() const

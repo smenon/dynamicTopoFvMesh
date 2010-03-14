@@ -75,6 +75,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         return map;
     }
 
+    // Sanity check: Is the index legitimate?
+    if (fIndex < 0 || fIndex >= nFaces_)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::bisectQuadFace()")
+            << " Invalid index: " << fIndex
+            << abort(FatalError);
+    }
+
     bool found;
     label replaceFace = -1, retainFace = -1;
     face tmpQuadFace(4), tmpTriFace(3);
@@ -189,9 +197,10 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             {
                 if (patchCoupling_(patchI))
                 {
+                    const label faceEnum  = coupleMap::FACE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(fIndex)) > -1)
+                    if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
                     {
                         // Keep this index for master/slave mapping.
                         pIndex = patchI;
@@ -202,7 +211,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                     // The following bit happens only during the sliver
                     // exudation process, since slave faces are
                     // usually not added to the coupled face-stack.
-                    if ((sIndex = cMap.findMasterIndex(fIndex)) > -1)
+                    if ((sIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
                     {
                         // Keep this index for master/slave mapping.
                         pIndex = patchI;
@@ -213,6 +222,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                         break;
                     }
                 }
+            }
+
+            if (sIndex == -1)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::bisectQuadFace()")
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Face: " << fIndex << nl
+                    << abort(FatalError);
             }
 
             // Temporarily turn off coupledModification.
@@ -1611,33 +1629,40 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                     {
                         patchCoupling_[pIndex].patchMap().mapMaster
                         (
-                            checkFaces[indexI], sFaceIndex
+                            coupleMap::FACE,
+                            checkFaces[indexI],
+                            sFaceIndex
                         );
 
                         patchCoupling_[pIndex].patchMap().mapSlave
                         (
-                            sFaceIndex, checkFaces[indexI]
+                            coupleMap::FACE,
+                            sFaceIndex,
+                            checkFaces[indexI]
                         );
                     }
                     else
                     {
                         patchCoupling_[pIndex].patchMap().mapSlave
                         (
-                            checkFaces[indexI], sFaceIndex
+                            coupleMap::FACE,
+                            checkFaces[indexI],
+                            sFaceIndex
                         );
 
                         patchCoupling_[pIndex].patchMap().mapMaster
                         (
-                            sFaceIndex, checkFaces[indexI]
+                            coupleMap::FACE,
+                            sFaceIndex,
+                            checkFaces[indexI]
                         );
                     }
                 }
                 else
                 {
-                    FatalErrorIn
-                    (
-                        "dynamicTopoFvMesh::bisectQuadFace"
-                    ) << "Failed to build coupled maps." << abort(FatalError);
+                    FatalErrorIn("dynamicTopoFvMesh::bisectQuadFace")
+                        << "Failed to build coupled maps."
+                        << abort(FatalError);
                 }
             }
         }
@@ -1724,6 +1749,14 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         return map;
     }
 
+    // Sanity check: Is the index legitimate?
+    if (eIndex < 0 || eIndex >= nEdges_)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
+            << " Invalid index: " << eIndex
+            << abort(FatalError);
+    }
+
     if (coupledModification_)
     {
         // Is this a locally coupled edge?
@@ -1736,9 +1769,10 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             {
                 if (patchCoupling_(patchI))
                 {
+                    const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(eIndex)) > -1)
+                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                     {
                         // Keep this index for master/slave mapping.
                         pIndex = patchI;
@@ -1749,7 +1783,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     // The following bit happens only during the sliver
                     // exudation process, since slave edges are
                     // usually not added to the coupled edge-stack.
-                    if ((sIndex = cMap.findMasterIndex(eIndex)) > -1)
+                    if ((sIndex = cMap.findMasterIndex(edgeEnum, eIndex)) > -1)
                     {
                         // Keep this index for master/slave mapping.
                         pIndex = patchI;
@@ -1825,10 +1859,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Check if the quality is actually valid before forcing it.
         if (forceOp && (minQ < 0.0))
         {
-            FatalErrorIn
-            (
-                "dynamicTopoFvMesh::bisectEdge()"
-            )
+            FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
                 << " Forcing bisection on edge: " << eIndex
                 << " will yield an invalid cell."
                 << abort(FatalError);
@@ -2798,40 +2829,48 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 {
                     patchCoupling_[pIndex].patchMap().mapMaster
                     (
-                        checkEdges[indexI], mapEdgeIndex
+                        coupleMap::EDGE,
+                        checkEdges[indexI],
+                        mapEdgeIndex
                     );
 
                     patchCoupling_[pIndex].patchMap().mapSlave
                     (
-                        mapEdgeIndex, checkEdges[indexI]
+                        coupleMap::EDGE,
+                        mapEdgeIndex,
+                        checkEdges[indexI]
                     );
 
                     if (debug > 2)
                     {
                         Info << "Mapping: " << endl;
                         Info << " Slave: " << checkEdges[indexI]
-                            << " Master: " << mapEdgeIndex
-                            << endl;
+                             << " Master: " << mapEdgeIndex
+                             << endl;
                     }
                 }
                 else
                 {
                     patchCoupling_[pIndex].patchMap().mapSlave
                     (
-                        checkEdges[indexI], mapEdgeIndex
+                        coupleMap::EDGE,
+                        checkEdges[indexI],
+                        mapEdgeIndex
                     );
 
                     patchCoupling_[pIndex].patchMap().mapMaster
                     (
-                        mapEdgeIndex, checkEdges[indexI]
+                        coupleMap::EDGE,
+                        mapEdgeIndex,
+                        checkEdges[indexI]
                     );
 
                     if (debug > 2)
                     {
                         Info << "Mapping: " << endl;
                         Info << " Master: " << checkEdges[indexI]
-                            << " Slave: " << mapEdgeIndex
-                            << endl;
+                             << " Slave: " << mapEdgeIndex
+                             << endl;
                     }
                 }
 
@@ -2848,13 +2887,11 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                          << endl;
                 }
 
-                FatalErrorIn
-                (
-                    "dynamicTopoFvMesh::bisectEdge"
-                ) << "Failed to build coupled maps." << nl
-                  << " foundMatch: " << foundMatch << nl
-                  << " eCounter: " << eCounter << nl
-                  << abort(FatalError);
+                FatalErrorIn("dynamicTopoFvMesh::bisectEdge")
+                    << "Failed to build coupled maps." << nl
+                    << " foundMatch: " << foundMatch << nl
+                    << " eCounter: " << eCounter << nl
+                    << abort(FatalError);
             }
         }
         else
@@ -3051,6 +3088,14 @@ const changeMap dynamicTopoFvMesh::trisectFace
         return map;
     }
 
+    // Sanity check: Is the index legitimate?
+    if (fIndex < 0 || fIndex >= nFaces_)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
+            << " Invalid index: " << fIndex
+            << abort(FatalError);
+    }
+
     if (coupledModification_)
     {
         // Are all edges of this face locally coupled?
@@ -3081,13 +3126,14 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     continue;
                 }
 
+                const label edgeEnum  = coupleMap::EDGE;
                 const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
                 if
                 (
-                    (cMap.findSlaveIndex(fEdges[0]) > -1) &&
-                    (cMap.findSlaveIndex(fEdges[1]) > -1) &&
-                    (cMap.findSlaveIndex(fEdges[2]) > -1)
+                    (cMap.findSlaveIndex(edgeEnum, fEdges[0]) > -1) &&
+                    (cMap.findSlaveIndex(edgeEnum, fEdges[1]) > -1) &&
+                    (cMap.findSlaveIndex(edgeEnum, fEdges[2]) > -1)
                 )
                 {
                     bool foundFace = false;
@@ -3130,9 +3176,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // exudation process.
                 if
                 (
-                    (cMap.findMasterIndex(fEdges[0]) > -1) &&
-                    (cMap.findMasterIndex(fEdges[1]) > -1) &&
-                    (cMap.findMasterIndex(fEdges[2]) > -1)
+                    (cMap.findMasterIndex(edgeEnum, fEdges[0]) > -1) &&
+                    (cMap.findMasterIndex(edgeEnum, fEdges[1]) > -1) &&
+                    (cMap.findMasterIndex(edgeEnum, fEdges[2]) > -1)
                 )
                 {
                     bool foundFace = false;
@@ -3233,10 +3279,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         // Check if the quality is actually valid before forcing it.
         if (forceOp && (minQ < 0.0))
         {
-            FatalErrorIn
-            (
-                "dynamicTopoFvMesh::trisectFace()"
-            )
+            FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
                 << " Forcing trisection on face: " << fIndex
                 << " will yield an invalid cell."
                 << abort(FatalError);
@@ -3870,13 +3913,35 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
                     if (bisectingSlave)
                     {
-                        cMap.mapMaster(checkEdges[indexI], mapEdgeIndex);
-                        cMap.mapSlave(mapEdgeIndex, checkEdges[indexI]);
+                        cMap.mapMaster
+                        (
+                            coupleMap::EDGE,
+                            checkEdges[indexI],
+                            mapEdgeIndex
+                        );
+
+                        cMap.mapSlave
+                        (
+                            coupleMap::EDGE,
+                            mapEdgeIndex,
+                            checkEdges[indexI]
+                        );
                     }
                     else
                     {
-                        cMap.mapSlave(checkEdges[indexI], mapEdgeIndex);
-                        cMap.mapMaster(mapEdgeIndex, checkEdges[indexI]);
+                        cMap.mapSlave
+                        (
+                            coupleMap::EDGE,
+                            checkEdges[indexI],
+                            mapEdgeIndex
+                        );
+
+                        cMap.mapMaster
+                        (
+                            coupleMap::EDGE,
+                            mapEdgeIndex,
+                            checkEdges[indexI]
+                        );
                     }
 
                     foundMatch[indexI] = true;
@@ -3892,10 +3957,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                              << endl;
                     }
 
-                    FatalErrorIn
-                    (
-                        "dynamicTopoFvMesh::bisectTriFace"
-                    ) << "Failed to build coupled maps." << abort(FatalError);
+                    FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
+                        << "Failed to build coupled maps."
+                        << abort(FatalError);
                 }
             }
             else

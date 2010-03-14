@@ -70,20 +70,11 @@ class coupleMap
     // during patch sub-mesh creation
     mutable labelList subMeshPoints_;
 
-    // Master-Slave mapping
-    mutable Map<label> masterToSlave_;
-    mutable Map<label> slaveToMaster_;
-
     // Entity sizes (as specified by the entityType enumerant)
     mutable FixedList<label,6> nEntities_;
 
     // Maps for entities
-    // - For every local index,
-    //   provide global index
     mutable FixedList<Map<label>,4> entityMap_;
-
-    // - For every global index,
-    //   provide local index
     mutable FixedList<Map<label>,4> reverseEntityMap_;
 
     // Entity Buffers (as specified by the entityType enumerant)
@@ -143,17 +134,43 @@ public:
 
         labelList& subMeshPoints() const;
 
-        const Map<label>& masterToSlaveMap() const;
-        const Map<label>& slaveToMasterMap() const;
+        label findSlaveIndex
+        (
+            const label eType,
+            const label Index
+        ) const;
 
-        label findSlaveIndex(const label Index) const;
-        label findMasterIndex(const label Index) const;
+        label findMasterIndex
+        (
+            const label eType,
+            const label Index
+        ) const;
 
-        void removeSlaveIndex(const label Index) const;
-        void removeMasterIndex(const label Index) const;
+        void removeSlaveIndex
+        (
+            const label eType,
+            const label Index
+        ) const;
 
-        void mapSlave(const label master, const label slave) const;
-        void mapMaster(const label slave, const label master) const;
+        void removeMasterIndex
+        (
+            const label eType,
+            const label Index
+        ) const;
+
+        void mapSlave
+        (
+            const label eType,
+            const label master,
+            const label slave
+        ) const;
+
+        void mapMaster
+        (
+            const label eType,
+            const label slave,
+            const label master
+        ) const;
 
         FixedList<label,6>& nEntities() const;
         label& nEntities(const label eType) const;
@@ -170,8 +187,9 @@ public:
 
         void transferMaps
         (
-            Map<label>& newMasterToSlave,
-            Map<label>& newSlaveToMaster
+            const label eType,
+            Map<label>& newEntityMap,
+            Map<label>& newReverseEntityMap
         ) const;
 
         void clearMaps() const;
