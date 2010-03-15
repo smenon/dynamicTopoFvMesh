@@ -1758,6 +1758,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     << abort(FatalError);
             }
 
+            if (debug > 1)
+            {
+                Info << nl << "Removing slave edge: " << sIndex
+                     << " for master edge: " << eIndex << endl;
+            }
+
             // Temporarily turn off coupledModification
             unsetCoupledModification();
 
@@ -2002,22 +2008,46 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // Check if we can continue...
         if (faceCheck[0] && !faceCheck[1])
         {
-            if (collapseCase != 1)
+            if (collapseCase != 1 && overRideCase == -1)
             {
+                if (debug > 2)
+                {
+                    Info << "Looking for case: 1, collapseCase: "
+                         << collapseCase << nl
+                         << " overRideCase: " << overRideCase << nl
+                         << " returning..." << endl;
+                }
+
                 return map;
             }
         }
         else
         if (!faceCheck[0] && faceCheck[1])
         {
-            if (collapseCase != 2)
+            if (collapseCase != 2 && overRideCase == -1)
             {
+                if (debug > 2)
+                {
+                    Info << "Looking for case: 2, collapseCase: "
+                         << collapseCase << nl
+                         << " overRideCase: " << overRideCase << nl
+                         << " returning..." << endl;
+                }
+
                 return map;
             }
         }
         else
-        if (collapseCase != 3)
+        if (collapseCase != 3 && overRideCase == -1)
         {
+            if (debug > 2)
+            {
+                Info << "Looking for case: 3, collapseCase: "
+                     << collapseCase << nl
+                     << " overRideCase: " << overRideCase << nl
+                     << " returning..." << endl;
+            }
+
             return map;
         }
     }
@@ -2096,91 +2126,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << abort(FatalError);
 
             break;
-    }
-
-    if (debug > 2)
-    {
-        label bPatch = whichEdgePatch(eIndex);
-
-        if (bPatch == -1)
-        {
-            Info << "Patch: Internal" << endl;
-        }
-        else
-        {
-            Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
-        }
-
-        Info << "Vertices: " << edgePoints_[eIndex] << endl;
-        Info << "Edges: " << edgeHull << endl;
-        Info << "Faces: " << faceHull << endl;
-        Info << "Cells: " << cellHull << endl;
-        Info << "replacePoint: " << replacePoint << endl;
-        Info << "collapsePoint: " << collapsePoint << endl;
-        Info << "checkPoints: " << checkPoints << endl;;
-        Info << "ringEntities (removed faces): " << endl;
-
-        forAll(ringEntities[removeFaceIndex], faceI)
-        {
-            label fIndex = ringEntities[removeFaceIndex][faceI];
-
-            if (fIndex == -1)
-            {
-                continue;
-            }
-
-            Info << fIndex << ": " << faces_[fIndex] << endl;
-        }
-
-        Info << "ringEntities (removed edges): " << endl;
-        forAll(ringEntities[removeEdgeIndex], edgeI)
-        {
-            label ieIndex = ringEntities[removeEdgeIndex][edgeI];
-
-            if (ieIndex == -1)
-            {
-                continue;
-            }
-
-            Info << ieIndex << ": " << edges_[ieIndex] << endl;
-        }
-
-        Info << "ringEntities (replacement faces): " << endl;
-        forAll(ringEntities[replaceFaceIndex], faceI)
-        {
-            label fIndex = ringEntities[replaceFaceIndex][faceI];
-
-            if (fIndex == -1)
-            {
-                continue;
-            }
-
-            Info << fIndex << ": " << faces_[fIndex] << endl;
-        }
-
-        Info << "ringEntities (replacement edges): " << endl;
-        forAll(ringEntities[replaceEdgeIndex], edgeI)
-        {
-            label ieIndex = ringEntities[replaceEdgeIndex][edgeI];
-
-            if (ieIndex == -1)
-            {
-                continue;
-            }
-
-            Info << ieIndex << ": " << edges_[ieIndex] << endl;
-        }
-
-        labelList& collapsePointEdges = pointEdges_[collapsePoint];
-
-        Info << "pointEdges (collapsePoint): ";
-
-        forAll(collapsePointEdges, edgeI)
-        {
-            Info << collapsePointEdges[edgeI] << " ";
-        }
-
-        Info << endl;
     }
 
     // Loop through edges and check for feasibility of collapse
@@ -2268,22 +2213,106 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     if (checkOnly)
     {
         map.type() = collapseCase;
+
+        if (debug > 2)
+        {
+            Info << "Edge: " << eIndex
+                 << ":: " << edges_[eIndex] << nl
+                 << " collapseCase determined to be: "
+                 << collapseCase
+                 << endl;
+        }
+
         return map;
     }
 
-    // Write out VTK files prior to change
-    if (debug > 3)
+    if (debug > 2)
     {
-        labelList vtkCells = cellsChecked.toc();
+        Info << "Vertices: " << edgePoints_[eIndex] << endl;
+        Info << "Edges: " << edgeHull << endl;
+        Info << "Faces: " << faceHull << endl;
+        Info << "Cells: " << cellHull << endl;
+        Info << "replacePoint: " << replacePoint << endl;
+        Info << "collapsePoint: " << collapsePoint << endl;
+        Info << "checkPoints: " << checkPoints << endl;;
+        Info << "ringEntities (removed faces): " << endl;
 
-        writeVTK
-        (
-            Foam::name(eIndex)
-          + '(' + Foam::name(edges_[eIndex][0])
-          + ',' + Foam::name(edges_[eIndex][1]) + ')'
-          + "_Collapse_0",
-            vtkCells
-        );
+        forAll(ringEntities[removeFaceIndex], faceI)
+        {
+            label fIndex = ringEntities[removeFaceIndex][faceI];
+
+            if (fIndex == -1)
+            {
+                continue;
+            }
+
+            Info << fIndex << ": " << faces_[fIndex] << endl;
+        }
+
+        Info << "ringEntities (removed edges): " << endl;
+        forAll(ringEntities[removeEdgeIndex], edgeI)
+        {
+            label ieIndex = ringEntities[removeEdgeIndex][edgeI];
+
+            if (ieIndex == -1)
+            {
+                continue;
+            }
+
+            Info << ieIndex << ": " << edges_[ieIndex] << endl;
+        }
+
+        Info << "ringEntities (replacement faces): " << endl;
+        forAll(ringEntities[replaceFaceIndex], faceI)
+        {
+            label fIndex = ringEntities[replaceFaceIndex][faceI];
+
+            if (fIndex == -1)
+            {
+                continue;
+            }
+
+            Info << fIndex << ": " << faces_[fIndex] << endl;
+        }
+
+        Info << "ringEntities (replacement edges): " << endl;
+        forAll(ringEntities[replaceEdgeIndex], edgeI)
+        {
+            label ieIndex = ringEntities[replaceEdgeIndex][edgeI];
+
+            if (ieIndex == -1)
+            {
+                continue;
+            }
+
+            Info << ieIndex << ": " << edges_[ieIndex] << endl;
+        }
+
+        labelList& collapsePointEdges = pointEdges_[collapsePoint];
+
+        Info << "pointEdges (collapsePoint): ";
+
+        forAll(collapsePointEdges, edgeI)
+        {
+            Info << collapsePointEdges[edgeI] << " ";
+        }
+
+        Info << endl;
+
+        // Write out VTK files prior to change
+        if (debug > 3)
+        {
+            labelList vtkCells = cellsChecked.toc();
+
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + '(' + Foam::name(edges_[eIndex][0])
+              + ',' + Foam::name(edges_[eIndex][1]) + ')'
+              + "_Collapse_0",
+                vtkCells
+            );
+        }
     }
 
     // Renumber all hull faces and edges

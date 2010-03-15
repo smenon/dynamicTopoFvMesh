@@ -4471,6 +4471,30 @@ void dynamicTopoFvMesh::checkConnectivity
 
     Info << "Done." << endl;
 
+    // Check coupled-patch sizes
+    forAll(patchCoupling_, patchI)
+    {
+        if (patchCoupling_(patchI))
+        {
+            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+            label mSize = patchSizes_[cMap.masterIndex()];
+            label sSize = patchSizes_[cMap.slaveIndex()];
+
+            if (mSize != sSize)
+            {
+                Pout << "Coupled patch-count is inconsistent." << nl
+                     << " Master Patch: " << cMap.masterIndex()
+                     << " Count: " << mSize << nl
+                     << " Slave Patch: " << cMap.slaveIndex()
+                     << " Count: " << sSize
+                     << endl;
+
+                nFailedChecks++;
+            }
+        }
+    }
+
     if (!twoDMesh_)
     {
         Info << "Checking point-edge connectivity...";
@@ -4706,10 +4730,7 @@ void dynamicTopoFvMesh::checkConnectivity
 
     if (nFailedChecks)
     {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::checkConnectivity()"
-        )
+        FatalErrorIn("dynamicTopoFvMesh::checkConnectivity()")
             << nFailedChecks << " failures were found in connectivity."
             << abort(FatalError);
     }
@@ -7134,6 +7155,32 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     if (debug)
     {
         Info << "Done." << endl;
+
+        // Check coupled-patch sizes
+        forAll(patchCoupling_, patchI)
+        {
+            if (patchCoupling_(patchI))
+            {
+                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                label mSize = patchSizes_[cMap.masterIndex()];
+                label sSize = patchSizes_[cMap.slaveIndex()];
+
+                if (mSize != sSize)
+                {
+                    Pout << "Coupled patch-count is inconsistent." << nl
+                         << " Master Patch: " << cMap.masterIndex()
+                         << " Count: " << mSize << nl
+                         << " Slave Patch: " << cMap.slaveIndex()
+                         << " Count: " << sSize
+                         << endl;
+
+                    FatalErrorIn("dynamicTopoFvMesh::handleCoupledPatches()")
+                        << " Failures were found in connectivity."
+                        << abort(FatalError);
+                }
+            }
+        }
     }
 }
 
@@ -7706,21 +7753,33 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         // perform topological matching for higher entities.
         forAll(mP, indexI)
         {
+            // Fetch global point indices
             label mp = mP[indexI];
             label sp = cMap.entityMap(coupleMap::POINT)[mp];
 
+            // Fetch local point indices
+            label lmp = boundary[cMap.masterIndex()].whichPoint(mp);
+            label lsp = boundary[cMap.slaveIndex()].whichPoint(sp);
+
+            // Fetch patch starts
+            label mStart = boundary[cMap.masterIndex()].start();
+            label sStart = boundary[cMap.slaveIndex()].start();
+
             // Match faces for both 2D and 3D.
-            const labelList& mpFaces = mpF[mp];
-            const labelList& spFaces = spF[sp];
+            const labelList& mpFaces = mpF[lmp];
+            const labelList& spFaces = spF[lsp];
 
             forAll(mpFaces, faceI)
             {
-                if (cMap.entityMap(coupleMap::FACE).found(mpFaces[faceI]))
+                // Fetch the global face index
+                label mfIndex = (mStart + mpFaces[faceI]);
+
+                if (cMap.entityMap(coupleMap::FACE).found(mfIndex))
                 {
                     continue;
                 }
 
-                const face& mFace = faces_[mpFaces[faceI]];
+                const face& mFace = faces_[mfIndex];
 
                 // Configure the face for comparison.
                 forAll(mFace, pointI)
@@ -7737,23 +7796,26 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 {
                     forAll(spFaces, faceJ)
                     {
-                        const face& sFace = faces_[spFaces[faceJ]];
+                        // Fetch the global face index
+                        label sfIndex = (sStart + spFaces[faceJ]);
 
-                        if (quadFaceCompare(sFace, cFace))
+                        const face& sFace = faces_[sfIndex];
+
+                        if (quadFaceCompare(cFace, sFace))
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave
                             (
                                 coupleMap::FACE,
-                                mpFaces[faceI],
-                                spFaces[faceJ]
+                                mfIndex,
+                                sfIndex
                             );
 
                             cMap.mapMaster
                             (
                                 coupleMap::FACE,
-                                spFaces[faceJ],
-                                mpFaces[faceI]
+                                sfIndex,
+                                mfIndex
                             );
 
                             matched = true;
@@ -7766,23 +7828,26 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 {
                     forAll(spFaces, faceJ)
                     {
-                        const face& sFace = faces_[spFaces[faceJ]];
+                        // Fetch the global face index
+                        label sfIndex = (sStart + spFaces[faceJ]);
 
-                        if (triFaceCompare(sFace, cFace))
+                        const face& sFace = faces_[sfIndex];
+
+                        if (triFaceCompare(cFace, sFace))
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave
                             (
                                 coupleMap::FACE,
-                                mpFaces[faceI],
-                                spFaces[faceJ]
+                                mfIndex,
+                                sfIndex
                             );
 
                             cMap.mapMaster
                             (
                                 coupleMap::FACE,
-                                spFaces[faceJ],
-                                mpFaces[faceI]
+                                sfIndex,
+                                mfIndex
                             );
 
                             matched = true;
@@ -7796,7 +7861,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 {
                     FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
                         << " Failed to match face: "
-                        << mpFaces[faceI] << ": " << mFace
+                        << mfIndex << ": " << mFace
                         << abort(FatalError);
                 }
             }
@@ -7814,6 +7879,18 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
             forAll(mpEdges, edgeI)
             {
                 if (cMap.entityMap(coupleMap::EDGE).found(mpEdges[edgeI]))
+                {
+                    continue;
+                }
+
+                // Discount internal edges
+                if (whichEdgePatch(mpEdges[edgeI]) == -1)
+                {
+                    continue;
+                }
+
+                // Discount uncoupled edges
+                if (!locallyCoupledEdge(mpEdges[edgeI]))
                 {
                     continue;
                 }
