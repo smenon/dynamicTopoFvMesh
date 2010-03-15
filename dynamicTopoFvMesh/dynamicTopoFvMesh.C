@@ -145,8 +145,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     sliceBoxes_(0),
     slicePairs_(0),
     maxTetsPerEdge_(-1),
-    allowTableResize_(false),
-    gTol_(1e-20)
+    allowTableResize_(false)
 {
     // For backward compatibility, check the size of owner/neighbour
     if (owner_.size() != neighbour_.size())
@@ -280,7 +279,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     slicePairs_(0),
     maxTetsPerEdge_(mesh.maxTetsPerEdge_),
     allowTableResize_(mesh.allowTableResize_),
-    gTol_(mesh.gTol_),
     tetMetric_(mesh.tetMetric_)
 {
     // Initialize owner and neighbour
@@ -1483,17 +1481,17 @@ void dynamicTopoFvMesh::removeFace
         {
             faceStack_[stackI].remove(fIndex);
         }
+    }
 
-        // Update coupled face maps, if necessary.
-        forAll(patchCoupling_, patchI)
+    // Update coupled face maps, if necessary.
+    forAll(patchCoupling_, patchI)
+    {
+        if (patchCoupling_(patchI))
         {
-            if (patchCoupling_(patchI))
-            {
-                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                cMap.removeMasterIndex(coupleMap::FACE, fIndex);
-                cMap.removeSlaveIndex(coupleMap::FACE, fIndex);
-            }
+            cMap.removeMasterIndex(coupleMap::FACE, fIndex);
+            cMap.removeSlaveIndex(coupleMap::FACE, fIndex);
         }
     }
 
@@ -2020,7 +2018,7 @@ void dynamicTopoFvMesh::constructHull
                         oFace[2] = nextHullPoint;
 
                         // Check if this face contains edgeToCheck[0]
-                        if (compare(cFace, oFace))
+                        if (triFaceCompare(cFace, oFace))
                         {
                             ringEntities[1][indexI] = currCell[faceI];
                         }
@@ -2031,7 +2029,7 @@ void dynamicTopoFvMesh::constructHull
                         oFace[2] = otherPoint;
 
                         // Check if this face contains edgeToCheck[1]
-                        if (compare(cFace, oFace))
+                        if (triFaceCompare(cFace, oFace))
                         {
                             ringEntities[3][indexI] = currCell[faceI];
                         }
@@ -3113,22 +3111,96 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     // Update the coupled map
     if (coupledModification_)
     {
-        // Create a masterToSlave entry for the new edge.
+        // Create a mapping entry for the new edge.
+        const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
+
         if (locallyCoupledEdge(map.addedEdgeList().begin().key()))
         {
-            patchCoupling_[pIndex].patchMap().mapSlave
+            cMap.mapSlave
             (
                 coupleMap::EDGE,
                 map.addedEdgeList().begin().key(),
                 slaveMap.addedEdgeList().begin().key()
             );
 
-            patchCoupling_[pIndex].patchMap().mapMaster
+            cMap.mapMaster
             (
                 coupleMap::EDGE,
                 slaveMap.addedEdgeList().begin().key(),
                 map.addedEdgeList().begin().key()
             );
+        }
+
+        // Add a mapping entry for two new faces as well.
+        face cF(3);
+
+        const Map<label>& amfList = map.addedFaceList();
+        const Map<label>& asfList = slaveMap.addedFaceList();
+
+        forAllConstIter(Map<label>, amfList, mfIter)
+        {
+            // Configure a face for comparison.
+            const face& mF = faces_[mfIter.key()];
+
+            forAll(mF, pointI)
+            {
+                cF[pointI] = cMap.entityMap(coupleMap::POINT)[mF[pointI]];
+            }
+
+            bool matched = false;
+
+            forAllConstIter(Map<label>, asfList, sfIter)
+            {
+                const face& sF = faces_[sfIter.key()];
+
+                if (triFaceCompare(cF, sF))
+                {
+                    cMap.mapSlave
+                    (
+                        coupleMap::FACE,
+                        mfIter.key(),
+                        sfIter.key()
+                    );
+
+                    cMap.mapMaster
+                    (
+                        coupleMap::FACE,
+                        sfIter.key(),
+                        mfIter.key()
+                    );
+
+                    matched = true;
+
+                    break;
+                }
+            }
+
+            if (!matched)
+            {
+                Info << "masterFaces: " << endl;
+                Info << amfList.toc() << endl;
+
+                Info << "slaveFaces: " << endl;
+                Info << asfList.toc() << endl;
+
+                forAllConstIter(Map<label>, amfList, mfIter)
+                {
+                    Info << mfIter.key() << ": "
+                         << faces_[mfIter.key()]
+                         << endl;
+                }
+
+                forAllConstIter(Map<label>, asfList, sfIter)
+                {
+                    Info << sfIter.key() << ": "
+                         << faces_[sfIter.key()]
+                         << endl;
+                }
+
+                FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips")
+                    << "Failed to build coupled face maps."
+                    << abort(FatalError);
+            }
         }
     }
 
@@ -5245,12 +5317,6 @@ void dynamicTopoFvMesh::calculateLengthScale()
     }
 }
 
-// Calculate geometric tolerance for the mesh
-void dynamicTopoFvMesh::calculateGeometricTolerance()
-{
-
-}
-
 // Compute the growth factor of an existing mesh
 scalar dynamicTopoFvMesh::computeGrowthFactor()
 {
@@ -6866,17 +6932,6 @@ void dynamicTopoFvMesh::readCoupledPatches()
 {
     patchCoupling_.clear();
 
-    // Check if a geometric tolerance has been specified.
-    if (dict_.found("gTol") || mandatory_)
-    {
-        gTol_ = readScalar(dict_.lookup("gTol"));
-    }
-    else
-    {
-        // If not, attempt to calculate it from the mesh.
-        calculateGeometricTolerance();
-    }
-
     if (dict_.found("coupledPatches") || mandatory_)
     {
         const dictionary& coupledPatches = dict_.subDict("coupledPatches");
@@ -6956,8 +7011,8 @@ void dynamicTopoFvMesh::readCoupledPatches()
                       + Foam::name(sPatch),
                         this->time().timeName(),
                         *this,
-                        IOobject::NO_READ,
-                        IOobject::NO_WRITE,
+                        IOobject::READ_IF_PRESENT,
+                        IOobject::AUTO_WRITE,
                         true
                     ),
                     true,
@@ -7549,9 +7604,15 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         Info << "Building local coupled maps...";
     }
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
+    // Check if a geometric tolerance has been specified.
+    scalar gTol = 1e-20;
 
-    DynamicList<label> mList(50), sList(50);
+    if (dict_.found("gTol") || mandatory_)
+    {
+        gTol = readScalar(dict_.lookup("gTol"));
+    }
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
 
     forAll(patchCoupling_, patchI)
     {
@@ -7569,130 +7630,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
         const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-        // Clear existing maps.
-        cMap.clearMaps();
-
-        // Build a list of master entities [faces in 2D / edges in 3D]
-        label start = -1;
-
-        if (twoDMesh_)
-        {
-            // Build a list of master entities
-            start = boundary[patchI].start();
-
-            for (label i = 0; i < boundary[patchI].size(); i++)
-            {
-                mList.append(start+i);
-            }
-
-            // Build a list of slave entities
-            start = boundary[cMap.slaveIndex()].start();
-
-            for(label i = 0; i < boundary[cMap.slaveIndex()].size(); i++)
-            {
-                sList.append(start+i);
-            }
-
-            // Sanity check: Do patches have equal number of entities?
-            if (mList.size() != sList.size())
-            {
-                FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
-                    << "Patch sizes are not consistent."
-                    << abort(FatalError);
-            }
-        }
-        else
-        {
-            // Build a list of master entities
-            start = boundary[patchI].start();
-
-            for (label i = 0; i < boundary[patchI].size(); i++)
-            {
-                const labelList& mfEdges = faceEdges_[start+i];
-
-                forAll(mfEdges, edgeI)
-                {
-                    if (findIndex(mList, mfEdges[edgeI]) == -1)
-                    {
-                        mList.append(mfEdges[edgeI]);
-                    }
-                }
-            }
-        }
-
-        // Perform a geometric match for faces in 2D.
-        if (twoDMesh_)
-        {
-            // Build a list of entity-centres for geometric matching.
-            pointField mCentres(mList.size(), vector::zero);
-            pointField sCentres(sList.size(), vector::zero);
-
-            // Assume quad-faces for 2D patches.
-            forAll(mList, faceI)
-            {
-                mCentres[faceI] = quadFaceCentre(mList[faceI]);
-                sCentres[faceI] = quadFaceCentre(sList[faceI]);
-            }
-
-            forAll(mCentres, indexI)
-            {
-                bool matched = false;
-                scalar minDistance = GREAT;
-
-                forAll(sCentres, indexJ)
-                {
-                    scalar distance =
-                    (
-                        mag(mCentres[indexI] - sCentres[indexJ])
-                    );
-
-                    minDistance =
-                    (
-                        minDistance < distance
-                      ? minDistance : distance
-                    );
-
-                    if (distance < gTol_)
-                    {
-                        // Add a map entry
-                        cMap.mapSlave
-                        (
-                            coupleMap::FACE,
-                            mList[indexI],
-                            sList[indexJ]
-                        );
-
-                        cMap.mapMaster
-                        (
-                            coupleMap::FACE,
-                            sList[indexJ],
-                            mList[indexI]
-                        );
-
-                        matched = true;
-
-                        break;
-                    }
-                }
-
-                if (!matched)
-                {
-                    FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
-                        << " Failed to match entity: " << mList[indexI]
-                        << ": " << edges_[mList[indexI]]
-                        << " within a tolerance of: "
-                        << gTol_ << nl << " Missed by: " << minDistance
-                        << abort(FatalError);
-                }
-            }
-        }
-
-        // Now map points on each patch as well.
-
-        // Obtain references
-        Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
-        Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
-
+        // Map points on each patch.
         const labelList& mP = boundary[cMap.masterIndex()].meshPoints();
         const labelList& sP = boundary[cMap.slaveIndex()].meshPoints();
 
@@ -7704,78 +7642,40 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 << abort(FatalError);
         }
 
-        forAll(mP, indexI)
+        // Check if maps were read from disk.
+        // If so, geometric checking is unnecessary.
+        if (cMap.entityMap(coupleMap::POINT).size() == 0)
         {
-            bool matched = false;
-            scalar minDistance = GREAT;
-
-            forAll(sP, indexJ)
+            forAll(mP, indexI)
             {
-                scalar distance =
-                (
-                    mag(points_[mP[indexI]] - points_[sP[indexJ]])
-                );
-
-                minDistance = minDistance < distance
-                            ? minDistance : distance;
-
-                if (distance < gTol_)
-                {
-                    // Add a map entry
-                    pointMap.insert(mP[indexI], sP[indexJ]);
-                    rPointMap.insert(sP[indexJ], mP[indexI]);
-
-                    matched = true;
-
-                    break;
-                }
-            }
-
-            if (!matched)
-            {
-                FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
-                    << " Failed to match point: " << mP[indexI]
-                    << ": " << points_[mP[indexI]]
-                    << " within a tolerance of: "
-                    << gTol_ << nl << " Missed by: " << minDistance
-                    << abort(FatalError);
-            }
-        }
-
-        // Perform a topological match in 3D.
-        if (!twoDMesh_)
-        {
-            forAll(mList, indexI)
-            {
-                const edge& thisEdge = edges_[mList[indexI]];
-
-                label sp0 = pointMap(thisEdge[0]);
-                label sp1 = pointMap(thisEdge[1]);
-
                 bool matched = false;
+                scalar minDistance = GREAT;
 
-                // Loop through pointEdges of the first point
-                const labelList& spEdges = pointEdges_[sp0];
-
-                forAll(spEdges, edgeI)
+                forAll(sP, indexJ)
                 {
-                    const edge& sEdge = edges_[spEdges[edgeI]];
+                    scalar distance =
+                    (
+                        mag(points_[mP[indexI]] - points_[sP[indexJ]])
+                    );
 
-                    if (sEdge.start() == sp1 || sEdge.end() == sp1)
+                    minDistance = minDistance < distance
+                                ? minDistance : distance;
+
+                    if (distance < gTol)
                     {
-                        // Found the slave. Add a map entry
+                        // Add a map entry
                         cMap.mapSlave
                         (
-                            coupleMap::EDGE,
-                            mList[indexI],
-                            spEdges[edgeI]
+                            coupleMap::POINT,
+                            mP[indexI],
+                            sP[indexJ]
                         );
 
                         cMap.mapMaster
                         (
-                            coupleMap::EDGE,
-                            spEdges[edgeI],
-                            mList[indexI]
+                            coupleMap::POINT,
+                            sP[indexJ],
+                            mP[indexI]
                         );
 
                         matched = true;
@@ -7787,16 +7687,186 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 if (!matched)
                 {
                     FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
-                        << " Failed to match entity: " << mList[indexI]
-                        << ": " << thisEdge
+                        << " Failed to match point: " << mP[indexI]
+                        << ": " << points_[mP[indexI]]
+                        << " within a tolerance of: " << gTol << nl
+                        << " Missed by: " << minDistance
                         << abort(FatalError);
                 }
             }
         }
 
-        // Clear the lists
-        mList.clear();
-        sList.clear();
+        const labelListList& mpF = boundary[cMap.masterIndex()].pointFaces();
+        const labelListList& spF = boundary[cMap.slaveIndex()].pointFaces();
+
+        // Set up a comparison face.
+        face cFace(4);
+
+        // Now that all points are matched,
+        // perform topological matching for higher entities.
+        forAll(mP, indexI)
+        {
+            label mp = mP[indexI];
+            label sp = cMap.entityMap(coupleMap::POINT)[mp];
+
+            // Match faces for both 2D and 3D.
+            const labelList& mpFaces = mpF[mp];
+            const labelList& spFaces = spF[sp];
+
+            forAll(mpFaces, faceI)
+            {
+                if (cMap.entityMap(coupleMap::FACE).found(mpFaces[faceI]))
+                {
+                    continue;
+                }
+
+                const face& mFace = faces_[mpFaces[faceI]];
+
+                // Configure the face for comparison.
+                forAll(mFace, pointI)
+                {
+                    cFace[pointI] =
+                    (
+                        cMap.entityMap(coupleMap::POINT)[mFace[pointI]]
+                    );
+                }
+
+                bool matched = false;
+
+                if (twoDMesh_)
+                {
+                    forAll(spFaces, faceJ)
+                    {
+                        const face& sFace = faces_[spFaces[faceJ]];
+
+                        if (quadFaceCompare(sFace, cFace))
+                        {
+                            // Found the slave. Add a map entry
+                            cMap.mapSlave
+                            (
+                                coupleMap::FACE,
+                                mpFaces[faceI],
+                                spFaces[faceJ]
+                            );
+
+                            cMap.mapMaster
+                            (
+                                coupleMap::FACE,
+                                spFaces[faceJ],
+                                mpFaces[faceI]
+                            );
+
+                            matched = true;
+
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    forAll(spFaces, faceJ)
+                    {
+                        const face& sFace = faces_[spFaces[faceJ]];
+
+                        if (triFaceCompare(sFace, cFace))
+                        {
+                            // Found the slave. Add a map entry
+                            cMap.mapSlave
+                            (
+                                coupleMap::FACE,
+                                mpFaces[faceI],
+                                spFaces[faceJ]
+                            );
+
+                            cMap.mapMaster
+                            (
+                                coupleMap::FACE,
+                                spFaces[faceJ],
+                                mpFaces[faceI]
+                            );
+
+                            matched = true;
+
+                            break;
+                        }
+                    }
+                }
+
+                if (!matched)
+                {
+                    FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
+                        << " Failed to match face: "
+                        << mpFaces[faceI] << ": " << mFace
+                        << abort(FatalError);
+                }
+            }
+
+            if (twoDMesh_)
+            {
+                continue;
+            }
+
+            // Perform a topological match for edges in 3D.
+            const labelList& mpEdges = pointEdges_[mp];
+            const labelList& spEdges = pointEdges_[sp];
+
+            // Match all edges connected to the master point
+            forAll(mpEdges, edgeI)
+            {
+                if (cMap.entityMap(coupleMap::EDGE).found(mpEdges[edgeI]))
+                {
+                    continue;
+                }
+
+                const edge& mEdge = edges_[mpEdges[edgeI]];
+
+                label ovm =
+                (
+                    cMap.entityMap(coupleMap::POINT)[mEdge.otherVertex(mp)]
+                );
+
+                bool matched = false;
+
+                // Loop through pointEdges of the slave point
+                forAll(spEdges, edgeJ)
+                {
+                    const edge& sEdge = edges_[spEdges[edgeJ]];
+
+                    label ovs = sEdge.otherVertex(sp);
+
+                    if (ovm == ovs)
+                    {
+                        // Found the slave. Add a map entry
+                        cMap.mapSlave
+                        (
+                            coupleMap::EDGE,
+                            mpEdges[edgeI],
+                            spEdges[edgeJ]
+                        );
+
+                        cMap.mapMaster
+                        (
+                            coupleMap::EDGE,
+                            spEdges[edgeJ],
+                            mpEdges[edgeI]
+                        );
+
+                        matched = true;
+
+                        break;
+                    }
+                }
+
+                if (!matched)
+                {
+                    FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
+                        << " Failed to match edge: "
+                        << mpEdges[edgeI] << ": "
+                        << mEdge
+                        << abort(FatalError);
+                }
+            }
+        }
 
         // Set maps as built
         patchCoupling_[patchI].setBuiltMaps();
@@ -9078,7 +9148,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         {
             const face& thisFace = faces_[cellToCheck[faceI]];
 
-            if (compare(thisFace, faceToCheck) != 0)
+            if (triFaceCompare(thisFace, faceToCheck))
             {
                 map.opposingFace() = cellToCheck[faceI];
 

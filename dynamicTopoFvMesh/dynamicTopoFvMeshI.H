@@ -364,7 +364,7 @@ inline vector dynamicTopoFvMesh::tetCellCentre
 
 // Compare two triangular faces.
 // Identical to triFace definition.
-inline label dynamicTopoFvMesh::compare
+inline label dynamicTopoFvMesh::triFaceCompare
 (
     const face& a,
     const face& b
@@ -385,6 +385,42 @@ inline label dynamicTopoFvMesh::compare
         (a[0] == b[2] && a[1] == b[1] && a[2] == b[0])
      || (a[0] == b[1] && a[1] == b[0] && a[2] == b[2])
      || (a[0] == b[0] && a[1] == b[2] && a[2] == b[1])
+    )
+    {
+        // Same face, but reversed orientation
+        return -1;
+    }
+    else
+    {
+        // Faces don't match.
+        return 0;
+    }
+}
+
+// Compare two quad faces.
+inline label dynamicTopoFvMesh::quadFaceCompare
+(
+    const face& a,
+    const face& b
+) const
+{
+    if
+    (
+        (a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3])
+     || (a[0] == b[1] && a[1] == b[2] && a[2] == b[3] && a[3] == b[0])
+     || (a[0] == b[2] && a[1] == b[3] && a[2] == b[0] && a[3] == b[1])
+     || (a[0] == b[3] && a[1] == b[0] && a[2] == b[1] && a[3] == b[2])
+    )
+    {
+        // Identical
+        return 1;
+    }
+    else if
+    (
+        (a[0] == b[0] && a[1] == b[3] && a[2] == b[2] && a[3] == b[1])
+     || (a[0] == b[3] && a[1] == b[2] && a[2] == b[1] && a[3] == b[0])
+     || (a[0] == b[2] && a[1] == b[1] && a[2] == b[0] && a[3] == b[3])
+     || (a[0] == b[1] && a[1] == b[0] && a[2] == b[3] && a[3] == b[2])
     )
     {
         // Same face, but reversed orientation

@@ -2788,14 +2788,19 @@ void dynamicTopoFvMesh::mergeBoundaryFaces
     // Sanity check: Are these actually boundary faces?
     if (neighbour_[firstFace] != -1 || neighbour_[secondFace] != -1)
     {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::mergeBoundaryFaces()"
-        )
+        FatalErrorIn("dynamicTopoFvMesh::mergeBoundaryFaces()")
             << nl << " Faces: "
             << firstFace << " and " << secondFace
             << " are not on boundaries. "
             << abort(FatalError);
+    }
+
+    // Check if a geometric tolerance has been specified.
+    scalar gTol = 1e-20;
+
+    if (dict_.found("gTol") || mandatory_)
+    {
+        gTol = readScalar(dict_.lookup("gTol"));
     }
 
     // Perform distance-based checks to determine corresponding points
@@ -2845,7 +2850,7 @@ void dynamicTopoFvMesh::mergeBoundaryFaces
             {
                 // Good. Point wasn't matched before.
                 // Does it satisfy the geometric match tolerance?
-                if (pointDistance[minIndex] > gTol_)
+                if (pointDistance[minIndex] > gTol)
                 {
                     matchGeomTol = false;
                 }

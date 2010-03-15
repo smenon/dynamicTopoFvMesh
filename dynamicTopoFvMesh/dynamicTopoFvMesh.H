@@ -338,9 +338,6 @@ class dynamicTopoFvMesh
         PtrList<coupledPatchInfo> sendPatchMeshes_;
         PtrList<coupledPatchInfo> recvPatchMeshes_;
 
-        // Scalar tolerance for geometric matching
-        scalar gTol_;
-
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -451,7 +448,18 @@ class dynamicTopoFvMesh
         ) const;
 
         // Compare two triangular faces
-        inline label compare(const face& a, const face& b) const;
+        inline label triFaceCompare
+        (
+            const face& a,
+            const face& b
+        ) const;
+
+        // Compare two quad faces
+        inline label quadFaceCompare
+        (
+            const face& a,
+            const face& b
+        ) const;
 
         // Find the volume of a tetrahedron (defined by points)
         inline scalar tetVolume
@@ -636,8 +644,7 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             bool checkOnly = false,
-            bool forceOp = false,
-            const changeMap& masterMap = changeMap()
+            bool forceOp = false
         );
 
         // Method for the trisection of a face in 3D
@@ -646,8 +653,7 @@ class dynamicTopoFvMesh
         (
             const label fIndex,
             bool checkOnly = false,
-            bool forceOp = false,
-            const changeMap& masterMap = changeMap()
+            bool forceOp = false
         );
 
         // Method for the collapse of an edge in 3D
@@ -1179,9 +1185,6 @@ class dynamicTopoFvMesh
 
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale();
-
-        // Calculate geometric tolerance for the mesh
-        void calculateGeometricTolerance();
 
         // Compute the growth factor of an existing mesh
         scalar computeGrowthFactor();

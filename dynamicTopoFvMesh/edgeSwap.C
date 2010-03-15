@@ -1683,6 +1683,9 @@ const changeMap dynamicTopoFvMesh::swap32
             )
         );
 
+        // Add this face to the map.
+        map.addFace(newBdyFaceIndex[0]);
+
         // Insert the second of two new faces
         mF[0] = oldBdyFaceIndex[1];
 
@@ -1698,6 +1701,9 @@ const changeMap dynamicTopoFvMesh::swap32
                 mW
             )
         );
+
+        // Add this face to the map.
+        map.addFace(newBdyFaceIndex[1]);
 
         // Set area-weighted fluxes for both new faces
         forAll(newBdyFaceIndex, i)
@@ -1992,10 +1998,7 @@ const changeMap dynamicTopoFvMesh::swap32
 
         if (newOldVol <= 0.0)
         {
-            FatalErrorIn
-            (
-                "dynamicTopoFvMesh::swap32()"
-            )
+            FatalErrorIn("dynamicTopoFvMesh::swap32()")
                 << "Negative old-volume encountered." << nl
                 << newCellIndex[cellI] << ": " << newOldVol
                 << abort(FatalError);

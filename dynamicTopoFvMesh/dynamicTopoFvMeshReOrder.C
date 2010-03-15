@@ -197,12 +197,11 @@ void dynamicTopoFvMesh::reOrderPoints
         const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
         // Obtain references
-        Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
-        Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
+        Map<label>& mtsMap = cMap.entityMap(coupleMap::POINT);
 
-        Map<label> newMap, newRMap;
+        Map<label> newMtsMap, newStmMap;
 
-        forAllIter(Map<label>, pointMap, pIter)
+        forAllIter(Map<label>, mtsMap, pIter)
         {
             label newMaster = -1, newSlave = -1;
 
@@ -225,13 +224,12 @@ void dynamicTopoFvMesh::reOrderPoints
             }
 
             // Update the map.
-            newMap.insert(newMaster, newSlave);
-            newRMap.insert(newSlave, newMaster);
+            newMtsMap.insert(newMaster, newSlave);
+            newStmMap.insert(newSlave, newMaster);
         }
 
         // Overwrite the old maps.
-        pointMap.transfer(newMap);
-        rPointMap.transfer(newRMap);
+        cMap.transferMaps(coupleMap::POINT, newMtsMap, newStmMap);
     }
 
     // Update the local point copies
@@ -1133,52 +1131,49 @@ void dynamicTopoFvMesh::reOrderFaces
     // Reset all zones
     faceZones.updateMesh();
 
-    if (twoDMesh_)
+    // Loop through all local coupling maps, and renumber faces.
+    forAll(patchCoupling_, patchI)
     {
-        // Loop through all local coupling maps, and renumber faces.
-        forAll(patchCoupling_, patchI)
+        if (!patchCoupling_(patchI))
         {
-            if (!patchCoupling_(patchI))
-            {
-                continue;
-            }
-
-            // Obtain references
-            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
-            const Map<label>& mtsMap = cMap.entityMap(coupleMap::FACE);
-
-            Map<label> newMtsMap, newStmMap;
-
-            forAllConstIter(Map<label>, mtsMap, mIter)
-            {
-                label newMaster = -1, newSlave = -1;
-
-                if (mIter.key() < nOldFaces_)
-                {
-                    newMaster = reverseFaceMap_[mIter.key()];
-                }
-                else
-                {
-                    newMaster = addedFaceRenumbering_[mIter.key()];
-                }
-
-                if (mIter() < nOldFaces_)
-                {
-                    newSlave = reverseFaceMap_[mIter()];
-                }
-                else
-                {
-                    newSlave = addedFaceRenumbering_[mIter()];
-                }
-
-                // Update the map.
-                newMtsMap.insert(newMaster, newSlave);
-                newStmMap.insert(newSlave, newMaster);
-            }
-
-            // Overwrite the old maps.
-            cMap.transferMaps(coupleMap::FACE, newMtsMap, newStmMap);
+            continue;
         }
+
+        // Obtain references
+        const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+        const Map<label>& mtsMap = cMap.entityMap(coupleMap::FACE);
+
+        Map<label> newMtsMap, newStmMap;
+
+        forAllConstIter(Map<label>, mtsMap, mIter)
+        {
+            label newMaster = -1, newSlave = -1;
+
+            if (mIter.key() < nOldFaces_)
+            {
+                newMaster = reverseFaceMap_[mIter.key()];
+            }
+            else
+            {
+                newMaster = addedFaceRenumbering_[mIter.key()];
+            }
+
+            if (mIter() < nOldFaces_)
+            {
+                newSlave = reverseFaceMap_[mIter()];
+            }
+            else
+            {
+                newSlave = addedFaceRenumbering_[mIter()];
+            }
+
+            // Update the map.
+            newMtsMap.insert(newMaster, newSlave);
+            newStmMap.insert(newSlave, newMaster);
+        }
+
+        // Overwrite the old maps.
+        cMap.transferMaps(coupleMap::FACE, newMtsMap, newStmMap);
     }
 
     if (debug)
