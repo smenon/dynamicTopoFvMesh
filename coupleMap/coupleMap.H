@@ -194,10 +194,9 @@ public:
 
         void clearMaps() const;
 
-        bool writeData(Ostream&) const
-        {
-            return true;
-        }
+        bool readData(Istream&);
+
+        bool writeData(Ostream&) const;
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

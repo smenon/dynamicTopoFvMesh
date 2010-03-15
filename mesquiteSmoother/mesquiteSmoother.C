@@ -1686,6 +1686,13 @@ void mesquiteSmoother::applyFixedValuePatches()
         {
             label patchI = boundary.findPatchID(fixPatches[wordI]);
 
+            if (patchI == -1)
+            {
+                FatalErrorIn("void mesquiteSmoother::applyFixedValuePatches()")
+                    << "Cannot find patch: " << fixPatches[wordI]
+                    << abort(FatalError);
+            }
+
             // Fetch the displacement corresponding to this patch.
             vector disp
             (

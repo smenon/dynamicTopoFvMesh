@@ -62,7 +62,18 @@ coupleMap::coupleMap
     nInternalFaces_(-1),
     ownerPtr_(NULL),
     neighbourPtr_(NULL)
-{}
+{
+    if
+    (
+        (io.readOpt() == IOobject::MUST_READ)
+     || (io.readOpt() == IOobject::READ_IF_PRESENT && headerOk())
+    )
+    {
+        // Construct an Istream and read from disk.
+        readData(readStream(typeName));
+        close();
+    }
+}
 
 // Construct as copy
 coupleMap::coupleMap(const coupleMap& cm)
@@ -75,7 +86,18 @@ coupleMap::coupleMap(const coupleMap& cm)
     nInternalFaces_(-1),
     ownerPtr_(NULL),
     neighbourPtr_(NULL)
-{}
+{
+    if
+    (
+        (cm.readOpt() == IOobject::MUST_READ)
+     || (cm.readOpt() == IOobject::READ_IF_PRESENT && headerOk())
+    )
+    {
+        // Construct an Istream and read from disk.
+        readData(readStream(typeName));
+        close();
+    }
+}
 
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
 
@@ -238,7 +260,7 @@ void coupleMap::mapSlave
     const label slave
 ) const
 {
-    entityMap_[eType].insert(master, slave);
+    entityMap_[eType].set(master, slave);
 }
 
 void coupleMap::mapMaster
@@ -248,7 +270,7 @@ void coupleMap::mapMaster
     const label master
 ) const
 {
-    reverseEntityMap_[eType].insert(slave, master);
+    reverseEntityMap_[eType].set(slave, master);
 }
 
 void coupleMap::transferMaps
@@ -329,6 +351,23 @@ const labelList& coupleMap::neighbour() const
     }
 
     return *neighbourPtr_;
+}
+
+bool coupleMap::readData(Istream& is)
+{
+    Map<label> tmpMap(is);
+
+    entityMap(coupleMap::POINT).transfer(tmpMap);
+
+    return !is.bad();
+}
+
+bool coupleMap::writeData(Ostream& os) const
+{
+    // Only write-out point-map information
+    // to avoid geometric checking.
+    // The rest can be constructed topologically.
+    return (os << entityMap(coupleMap::POINT)).good();;
 }
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
