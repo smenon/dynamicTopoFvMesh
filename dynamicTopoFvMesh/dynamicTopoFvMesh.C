@@ -93,7 +93,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     ),
     bandWidthReduction_(false),
     coupledModification_(false),
-    slaveModification_(false),
     interval_(1),
     mapper_(NULL),
     mPtr_(NULL),
@@ -226,7 +225,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     edgeRefinement_(mesh.edgeRefinement_),
     bandWidthReduction_(mesh.bandWidthReduction_),
     coupledModification_(false),
-    slaveModification_(false),
     interval_(1),
     mapper_(NULL),
     mPtr_(NULL),
@@ -2965,7 +2963,6 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             // Turn off switch temporarily.
             unsetCoupledModification();
-            setSlaveModification();
 
             // Recursively call for the slave edge.
             slaveMap =
@@ -2975,7 +2972,6 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             // Turn it back on.
             setCoupledModification();
-            unsetSlaveModification();
 
             // Bail out if the slave failed.
             if (slaveMap.type() == -1)
@@ -7108,12 +7104,38 @@ void dynamicTopoFvMesh::handleCoupledPatches()
 
     if (debug)
     {
+        // Check coupled-patch sizes first.
+        forAll(patchCoupling_, patchI)
+        {
+            if (patchCoupling_(patchI))
+            {
+                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                label mSize = patchSizes_[cMap.masterIndex()];
+                label sSize = patchSizes_[cMap.slaveIndex()];
+
+                if (mSize != sSize)
+                {
+                    Pout << "Coupled patch-count is inconsistent." << nl
+                         << " Master Patch: " << cMap.masterIndex()
+                         << " Count: " << mSize << nl
+                         << " Slave Patch: " << cMap.slaveIndex()
+                         << " Count: " << sSize
+                         << endl;
+
+                    FatalErrorIn("dynamicTopoFvMesh::handleCoupledPatches()")
+                        << " Failures were found in connectivity"
+                        << " prior to coupled topo-changes."
+                        << abort(FatalError);
+                }
+            }
+        }
+
         Info << "Handling coupled patches...";
     }
 
     // Set coupled modifications.
     setCoupledModification();
-    unsetSlaveModification();
 
     // Loop through the coupled stack and perform changes.
     if (twoDMesh_)
@@ -7150,13 +7172,12 @@ void dynamicTopoFvMesh::handleCoupledPatches()
 
     // Reset coupled modifications.
     unsetCoupledModification();
-    unsetSlaveModification();
 
     if (debug)
     {
         Info << "Done." << endl;
 
-        // Check coupled-patch sizes
+        // Check coupled-patch sizes after changes.
         forAll(patchCoupling_, patchI)
         {
             if (patchCoupling_(patchI))
@@ -7176,7 +7197,8 @@ void dynamicTopoFvMesh::handleCoupledPatches()
                          << endl;
 
                     FatalErrorIn("dynamicTopoFvMesh::handleCoupledPatches()")
-                        << " Failures were found in connectivity."
+                        << " Failures were found in connectivity"
+                        << " after coupled topo-changes."
                         << abort(FatalError);
                 }
             }
@@ -9298,7 +9320,7 @@ void dynamicTopoFvMesh::removeSlivers()
     // If coupled patches exist, set the flag
     if (patchCoupling_.size() || procIndices_.size())
     {
-        coupledModification_ = true;
+        setCoupledModification();
     }
 
     forAllIter(Map<scalar>, thresholdSlivers_, iter)
@@ -9499,8 +9521,8 @@ void dynamicTopoFvMesh::removeSlivers()
             // through recently added edges and compare.
             edge edgeToCheck
             (
-                firstMap.addedPointList().begin().key(),
-                firstMap.apexPoint()
+                map.apexPoint(),
+                firstMap.addedPointList().begin().key()
             );
 
             const Map<label>& firstMapEdges = firstMap.addedEdgeList();
@@ -9535,7 +9557,7 @@ void dynamicTopoFvMesh::removeSlivers()
     // If coupled patches exist, reset the flag
     if (patchCoupling_.size() || procIndices_.size())
     {
-        coupledModification_ = false;
+        unsetCoupledModification();
     }
 }
 

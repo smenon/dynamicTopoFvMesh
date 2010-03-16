@@ -1700,8 +1700,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Figure out which thread this is...
     label tIndex = self();
 
-    // Prepare the changeMap
-    changeMap map;
+    // Prepare the changeMaps
+    changeMap map, slaveMap;
+    bool collapsingSlave = false;
 
     if
     (
@@ -1727,8 +1728,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // master edge, collapse its slaves first.
     if (coupledModification_)
     {
-        // Is this a locally coupled edge?
-        if (locallyCoupledEdge(eIndex))
+        // Is this a locally coupled edge (either master or slave)?
+        if (locallyCoupledEdge(eIndex, true))
         {
             label sIndex = -1, pIndex = -1;
 
@@ -1743,6 +1744,20 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                     {
                         pIndex = patchI;
+
+                        break;
+                    }
+
+                    // The following bit happens only during the sliver
+                    // exudation process, since slave edges are
+                    // usually not added to the coupled edge-stack.
+                    if ((sIndex = cMap.findMasterIndex(edgeEnum, eIndex)) > -1)
+                    {
+                        // Keep this index for master/slave mapping.
+                        pIndex = patchI;
+
+                        // Notice that we are collapsing a slave edge first.
+                        collapsingSlave = true;
 
                         break;
                     }
@@ -1768,7 +1783,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             unsetCoupledModification();
 
             // First check the slave for collapse feasibility.
-            changeMap slaveMap = collapseEdge(sIndex, -1, true);
+            slaveMap = collapseEdge(sIndex, -1, true, forceOp);
 
             if (slaveMap.type() > 0)
             {
@@ -1841,7 +1856,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
 
                 // Can the overRideCase be used for this edge?
-                masterMap = collapseEdge(eIndex, overRideCase, true);
+                masterMap = collapseEdge(eIndex, overRideCase, true, forceOp);
 
                 // Master couldn't perform collapse.
                 if (masterMap.type() <= 0)
@@ -1853,7 +1868,25 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
 
                 // Collapse the slave edge.
-                collapseEdge(sIndex);
+                changeMap final =
+                (
+                    collapseEdge
+                    (
+                        sIndex,
+                        slaveMap.type(),
+                        false,
+                        forceOp
+                    )
+                );
+
+                // The final operation has to succeed.
+                if (final.type() <= 0)
+                {
+                    FatalErrorIn("dynamicTopoFvMesh::collapseEdge")
+                        << "Coupled topo-change for slave failed." << nl
+                        << " Type: " << final.type()
+                        << abort(FatalError);
+                }
             }
             else
             {
@@ -1885,27 +1918,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     labelList faceHull(m, -1);
     labelList edgeHull(m, -1);
     labelListList ringEntities(4, labelList(m, -1));
-
-    if (debug > 1)
-    {
-        Info << nl << nl
-             << "Edge: " << eIndex
-             << ": " << edges_[eIndex]
-             << " is to be collapsed. " << endl;
-
-        label epIndex = whichEdgePatch(eIndex);
-
-        Info << "Patch: ";
-
-        if (epIndex == -1)
-        {
-            Info << "Internal" << endl;
-        }
-        else
-        {
-            Info << boundaryMesh()[epIndex].name() << endl;
-        }
-    }
 
     // Construct a hull around this edge
     constructHull
@@ -2226,92 +2238,113 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         return map;
     }
 
-    if (debug > 2)
+    if (debug > 1)
     {
-        Info << "Vertices: " << edgePoints_[eIndex] << endl;
-        Info << "Edges: " << edgeHull << endl;
-        Info << "Faces: " << faceHull << endl;
-        Info << "Cells: " << cellHull << endl;
-        Info << "replacePoint: " << replacePoint << endl;
-        Info << "collapsePoint: " << collapsePoint << endl;
-        Info << "checkPoints: " << checkPoints << endl;;
-        Info << "ringEntities (removed faces): " << endl;
+        Info << nl << nl
+             << "Edge: " << eIndex
+             << ": " << edges_[eIndex]
+             << " is to be collapsed. " << endl;
 
-        forAll(ringEntities[removeFaceIndex], faceI)
+        label epIndex = whichEdgePatch(eIndex);
+
+        Info << "Patch: ";
+
+        if (epIndex == -1)
         {
-            label fIndex = ringEntities[removeFaceIndex][faceI];
+            Info << "Internal" << endl;
+        }
+        else
+        {
+            Info << boundaryMesh()[epIndex].name() << endl;
+        }
 
-            if (fIndex == -1)
+        if (debug > 2)
+        {
+            Info << "Vertices: " << edgePoints_[eIndex] << endl;
+            Info << "Edges: " << edgeHull << endl;
+            Info << "Faces: " << faceHull << endl;
+            Info << "Cells: " << cellHull << endl;
+            Info << "replacePoint: " << replacePoint << endl;
+            Info << "collapsePoint: " << collapsePoint << endl;
+            Info << "checkPoints: " << checkPoints << endl;;
+            Info << "ringEntities (removed faces): " << endl;
+
+            forAll(ringEntities[removeFaceIndex], faceI)
             {
-                continue;
+                label fIndex = ringEntities[removeFaceIndex][faceI];
+
+                if (fIndex == -1)
+                {
+                    continue;
+                }
+
+                Info << fIndex << ": " << faces_[fIndex] << endl;
             }
 
-            Info << fIndex << ": " << faces_[fIndex] << endl;
-        }
-
-        Info << "ringEntities (removed edges): " << endl;
-        forAll(ringEntities[removeEdgeIndex], edgeI)
-        {
-            label ieIndex = ringEntities[removeEdgeIndex][edgeI];
-
-            if (ieIndex == -1)
+            Info << "ringEntities (removed edges): " << endl;
+            forAll(ringEntities[removeEdgeIndex], edgeI)
             {
-                continue;
+                label ieIndex = ringEntities[removeEdgeIndex][edgeI];
+
+                if (ieIndex == -1)
+                {
+                    continue;
+                }
+
+                Info << ieIndex << ": " << edges_[ieIndex] << endl;
             }
 
-            Info << ieIndex << ": " << edges_[ieIndex] << endl;
-        }
-
-        Info << "ringEntities (replacement faces): " << endl;
-        forAll(ringEntities[replaceFaceIndex], faceI)
-        {
-            label fIndex = ringEntities[replaceFaceIndex][faceI];
-
-            if (fIndex == -1)
+            Info << "ringEntities (replacement faces): " << endl;
+            forAll(ringEntities[replaceFaceIndex], faceI)
             {
-                continue;
+                label fIndex = ringEntities[replaceFaceIndex][faceI];
+
+                if (fIndex == -1)
+                {
+                    continue;
+                }
+
+                Info << fIndex << ": " << faces_[fIndex] << endl;
             }
 
-            Info << fIndex << ": " << faces_[fIndex] << endl;
-        }
-
-        Info << "ringEntities (replacement edges): " << endl;
-        forAll(ringEntities[replaceEdgeIndex], edgeI)
-        {
-            label ieIndex = ringEntities[replaceEdgeIndex][edgeI];
-
-            if (ieIndex == -1)
+            Info << "ringEntities (replacement edges): " << endl;
+            forAll(ringEntities[replaceEdgeIndex], edgeI)
             {
-                continue;
+                label ieIndex = ringEntities[replaceEdgeIndex][edgeI];
+
+                if (ieIndex == -1)
+                {
+                    continue;
+                }
+
+                Info << ieIndex << ": " << edges_[ieIndex] << endl;
             }
 
-            Info << ieIndex << ": " << edges_[ieIndex] << endl;
-        }
+            labelList& collapsePointEdges = pointEdges_[collapsePoint];
 
-        labelList& collapsePointEdges = pointEdges_[collapsePoint];
+            Info << "pointEdges (collapsePoint): ";
 
-        Info << "pointEdges (collapsePoint): ";
+            forAll(collapsePointEdges, edgeI)
+            {
+                Info << collapsePointEdges[edgeI] << " ";
+            }
 
-        forAll(collapsePointEdges, edgeI)
-        {
-            Info << collapsePointEdges[edgeI] << " ";
-        }
+            Info << endl;
 
-        Info << endl;
+            // Write out VTK files prior to change
+            if (debug > 3)
+            {
+                labelList vtkCells = cellsChecked.toc();
 
-        // Write out VTK files prior to change
-        if (debug > 3)
-        {
-            labelList vtkCells = cellsChecked.toc();
-
-            writeVTK
-            (
-                Foam::name(eIndex)
-              + '(' + Foam::name(edges_[eIndex][0])
-              + ',' + Foam::name(edges_[eIndex][1]) + ')'
-              + "_Collapse_0",
-                vtkCells
-            );
+                writeVTK
+                (
+                    Foam::name(eIndex)
+                  + '(' + Foam::name(edges_[eIndex][0])
+                  + ',' + Foam::name(edges_[eIndex][1]) + ')'
+                  + "_Collapse_0",
+                    vtkCells
+                );
+            }
         }
     }
 

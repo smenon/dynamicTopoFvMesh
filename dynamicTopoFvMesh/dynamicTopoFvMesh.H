@@ -103,9 +103,8 @@ class dynamicTopoFvMesh
         //- Switch for cell-bandwidth reduction
         Switch bandWidthReduction_;
 
-        //- Coupled modification switches
+        //- Coupled modification switch
         mutable Switch coupledModification_;
-        mutable Switch slaveModification_;
 
         //- Specify the re-meshing interval
         label interval_;
@@ -1229,13 +1228,23 @@ class dynamicTopoFvMesh
         void pRead(const label fromID, List<Type>& data) const;
 
         // Method to determine whether the master face is locally coupled
-        inline bool locallyCoupledFace(const label fIndex) const;
+        inline bool locallyCoupledFace
+        (
+            const label fIndex,
+            bool checkSlaves = false
+        ) const;
 
         // Method to determine whether the master edge is locally coupled
         inline bool locallyCoupledEdge
         (
             const label eIndex,
             bool checkSlaves = false
+        ) const;
+
+        // Method to determine the locally coupled patch index
+        inline label locallyCoupledEdgePatch
+        (
+            const label eIndex
         ) const;
 
         // Method to determine whether the master face is on a processor
@@ -1280,12 +1289,6 @@ class dynamicTopoFvMesh
 
         // Unset coupled modification
         inline void unsetCoupledModification() const;
-
-        // Set slave modification
-        inline void setSlaveModification() const;
-
-        // Unset slave modification
-        inline void unsetSlaveModification() const;
 
         // Handle topology changes for coupled patches
         void handleCoupledPatches();

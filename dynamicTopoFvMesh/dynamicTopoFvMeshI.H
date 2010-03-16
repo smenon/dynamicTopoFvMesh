@@ -1366,18 +1366,6 @@ inline void dynamicTopoFvMesh::unsetCoupledModification() const
     coupledModification_ = false;
 }
 
-// Set slave modification
-inline void dynamicTopoFvMesh::setSlaveModification() const
-{
-    slaveModification_ = true;
-}
-
-// Unset slave modification
-inline void dynamicTopoFvMesh::unsetSlaveModification() const
-{
-    slaveModification_ = false;
-}
-
 // Initialize face-stacks
 inline void dynamicTopoFvMesh::initFaceStacks()
 {
@@ -1990,7 +1978,8 @@ inline bool dynamicTopoFvMesh::checkEdgeModification
 // Method to determine whether the master face is locally coupled
 inline bool dynamicTopoFvMesh::locallyCoupledFace
 (
-    const label fIndex
+    const label fIndex,
+    bool checkSlaves
 ) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
@@ -2014,9 +2003,24 @@ inline bool dynamicTopoFvMesh::locallyCoupledFace
         return true;
     }
     else
+    if (checkSlaves)
     {
-        return false;
+        // Check on slave patches as well.
+        forAll(patchCoupling_, pI)
+        {
+            if (patchCoupling_(pI))
+            {
+                const coupleMap& cMap = patchCoupling_[pI].patchMap();
+
+                if (cMap.slaveIndex() == patch)
+                {
+                    return true;
+                }
+            }
+        }
     }
+
+    return false;
 }
 
 // Method to determine whether the master edge is locally coupled.
@@ -2029,8 +2033,6 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
     const polyBoundaryMesh& boundary = boundaryMesh();
 
     const labelList& eFaces = edgeFaces_[eIndex];
-
-    bool foundPatch = false;
 
     // Search for boundary faces, and determine boundary type.
     forAll(eFaces, faceI)
@@ -2048,7 +2050,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
             // Check coupled master patches.
             if (patchCoupling_(patch))
             {
-                foundPatch = true;
+                return true;
             }
 
             if (checkSlaves)
@@ -2062,7 +2064,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
 
                         if (cMap.slaveIndex() == patch)
                         {
-                            foundPatch = true;
+                            return true;
                         }
                     }
                 }
@@ -2071,7 +2073,53 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
     }
 
     // Could not find any faces on locally coupled patches.
-    return foundPatch;
+    return false;
+}
+
+// Method to determine the locally coupled patch index
+inline label dynamicTopoFvMesh::locallyCoupledEdgePatch
+(
+    const label eIndex
+) const
+{
+    const labelList& eFaces = edgeFaces_[eIndex];
+
+    // Search for boundary faces, and determine boundary type.
+    forAll(eFaces, faceI)
+    {
+        if (neighbour_[eFaces[faceI]] == -1)
+        {
+            label patch = whichPatch(eFaces[faceI]);
+
+            // Check coupled master patches.
+            if (patchCoupling_(patch))
+            {
+                return patch;
+            }
+
+            // Check on slave patches as well.
+            forAll(patchCoupling_, pI)
+            {
+                if (patchCoupling_(pI))
+                {
+                    const coupleMap& cMap = patchCoupling_[pI].patchMap();
+
+                    if (cMap.slaveIndex() == patch)
+                    {
+                        return patch;
+                    }
+                }
+            }
+        }
+    }
+
+    // Could not find any faces on locally coupled patches.
+    FatalErrorIn("dynamicTopoFvMesh::locallyCoupledEdgeIndex()")
+        << "Edge: " << eIndex << ":: " << edges_[eIndex]
+        << " does not lie on any coupled patches."
+        << abort(FatalError);
+
+    return -1;
 }
 
 // Method to determine whether the master face is on a processor

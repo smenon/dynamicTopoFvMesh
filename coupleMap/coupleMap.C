@@ -359,6 +359,15 @@ bool coupleMap::readData(Istream& is)
 
     entityMap(coupleMap::POINT).transfer(tmpMap);
 
+    // Prepare the reversePointMap as well.
+    const Map<label>& pMap = entityMap(coupleMap::POINT);
+    Map<label>& rpMap = reverseEntityMap(coupleMap::POINT);
+
+    forAllConstIter(Map<label>, pMap, pIter)
+    {
+        rpMap.set(pIter(), pIter.key());
+    }
+
     return !is.bad();
 }
 
