@@ -343,7 +343,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // first check to see if a slave is being bisected.
     if (masterMap.addedPointList().size())
     {
-        const Map<label>& pMap = masterMap.addedPointList();
+        const List<FixedList<label,2> >& pMap = masterMap.addedPointList();
 
         // Look through the reverse point map
         // to check which point it corresponds to.
@@ -375,9 +375,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                         mPoint = rPointMap[commonEdges[edgeI][pointI]];
 
                         // Now check the master map.
-                        if (pMap.found(mPoint))
+                        forAll(pMap, pI)
                         {
-                            found = true;
+                            if (pMap[pI][0] == mPoint)
+                            {
+                                found = true;
+                                break;
+                            }
                         }
                     }
 
@@ -1543,20 +1547,20 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
             // Add the new point to the coupling map
             const label pointEnum = coupleMap::POINT;
-            const Map<label>& apList = slaveMap.addedPointList();
+            const List<FixedList<label,2> >& apList = slaveMap.addedPointList();
 
             FixedList<label, 2> mapPointIndex(-1);
 
-            forAllConstIter(Map<label>, apList, apIter)
+            forAll(apList, apI)
             {
-                if (apIter() == commonEdges[0].start())
+                if (apList[apI][1] == commonEdges[0].start())
                 {
-                    mapPointIndex[0] = apIter.key();
+                    mapPointIndex[0] = apList[apI][0];
                 }
 
-                if (apIter() == commonEdges[1].start())
+                if (apList[apI][1] == commonEdges[1].start())
                 {
-                    mapPointIndex[1] = apIter.key();
+                    mapPointIndex[1] = apList[apI][0];
                 }
             }
 
@@ -1582,7 +1586,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             checkFaces[0] = fIndex;
             checkFaces[1] = newFaceIndex[3];
 
-            const Map<label>& afList = slaveMap.addedFaceList();
+            const List<FixedList<label,2> >& afList = slaveMap.addedFaceList();
 
             forAll (checkFaces, indexI)
             {
@@ -1590,9 +1594,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
                 label sFaceIndex = -1;
 
-                forAllConstIter(Map<label>, afList, sfIter)
+                forAll(afList, sfI)
                 {
-                    const face& tFace = faces_[sfIter.key()];
+                    const face& tFace = faces_[afList[sfI][0]];
 
                     FixedList <bool, 4> cP(false);
 
@@ -1606,7 +1610,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
                     if (cP[0] && cP[1] && cP[2] && cP[3])
                     {
-                        sFaceIndex = sfIter.key();
+                        sFaceIndex = afList[sfI][0];
                         foundMatch[indexI] = true;
                         break;
                     }
@@ -1738,7 +1742,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     }
 
     // Sanity check: Is the index legitimate?
-    if (eIndex < 0 || eIndex >= nEdges_)
+    if (eIndex < 0)
     {
         FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
             << " Invalid index: " << eIndex
@@ -2625,13 +2629,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     (
                         coupleMap::POINT,
                         newPointIndex,
-                        slaveMap.addedPointList().begin().key()
+                        slaveMap.addedPointList()[0][0]
                     );
 
                     cMap.mapSlave
                     (
                         coupleMap::POINT,
-                        slaveMap.addedPointList().begin().key(),
+                        slaveMap.addedPointList()[0][0],
                         newPointIndex
                     );
                 }
@@ -2641,25 +2645,25 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     (
                         coupleMap::POINT,
                         newPointIndex,
-                        slaveMap.addedPointList().begin().key()
+                        slaveMap.addedPointList()[0][0]
                     );
 
                     cMap.mapMaster
                     (
                         coupleMap::POINT,
-                        slaveMap.addedPointList().begin().key(),
+                        slaveMap.addedPointList()[0][0],
                         newPointIndex
                     );
                 }
             }
 
-            const Map<label>& ameList = map.addedEdgeList();
-            const Map<label>& aseList = slaveMap.addedEdgeList();
+            const List<FixedList<label,2> >& ameList = map.addedEdgeList();
+            const List<FixedList<label,2> >& aseList = slaveMap.addedEdgeList();
 
             // Compare with all check entries.
-            forAllConstIter(Map<label>, ameList, meIter)
+            forAll(ameList, meI)
             {
-                label epIndex = whichEdgePatch(meIter.key());
+                label epIndex = whichEdgePatch(ameList[meI][0]);
 
                 if (epIndex != pIndex && !bisectingSlave)
                 {
@@ -2685,7 +2689,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 // Configure an edge for comparison.
                 edge cE(-1, -1);
 
-                const edge& mE = edges_[meIter.key()];
+                const edge& mE = edges_[ameList[meI][0]];
 
                 if (bisectingSlave)
                 {
@@ -2700,9 +2704,9 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 bool matched = false;
 
-                forAllConstIter(Map<label>, aseList, seIter)
+                forAll(aseList, seI)
                 {
-                    const edge& sE = edges_[seIter.key()];
+                    const edge& sE = edges_[aseList[seI][0]];
 
                     if (cE == sE)
                     {
@@ -2711,15 +2715,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             cMap.mapMaster
                             (
                                 coupleMap::EDGE,
-                                meIter.key(),
-                                seIter.key()
+                                ameList[meI][0],
+                                aseList[seI][0]
                             );
 
                             cMap.mapSlave
                             (
                                 coupleMap::EDGE,
-                                seIter.key(),
-                                meIter.key()
+                                aseList[seI][0],
+                                ameList[meI][0]
                             );
                         }
                         else
@@ -2727,15 +2731,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             cMap.mapSlave
                             (
                                 coupleMap::EDGE,
-                                meIter.key(),
-                                seIter.key()
+                                ameList[meI][0],
+                                aseList[seI][0]
                             );
 
                             cMap.mapMaster
                             (
                                 coupleMap::EDGE,
-                                seIter.key(),
-                                meIter.key()
+                                aseList[seI][0],
+                                ameList[meI][0]
                             );
                         }
 
@@ -2748,22 +2752,22 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 if (!matched)
                 {
                     Info << "masterEdges: " << endl;
-                    Info << ameList.toc() << endl;
+                    Info << ameList << endl;
 
                     Info << "slaveEdges: " << endl;
-                    Info << aseList.toc() << endl;
+                    Info << aseList << endl;
 
-                    forAllConstIter(Map<label>, ameList, meIter)
+                    forAll(ameList, meI)
                     {
-                        Info << meIter.key() << ": "
-                             << edges_[meIter.key()]
+                        Info << ameList[meI][0] << ": "
+                             << edges_[ameList[meI][0]]
                              << endl;
                     }
 
-                    forAllConstIter(Map<label>, aseList, seIter)
+                    forAll(aseList, seI)
                     {
-                        Info << seIter.key() << ": "
-                             << edges_[seIter.key()]
+                        Info << aseList[seI][0] << ": "
+                             << edges_[aseList[seI][0]]
                              << endl;
                     }
 
@@ -2776,12 +2780,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             // Add a mapping entry for two new faces as well.
             face cF(3);
 
-            const Map<label>& amfList = map.addedFaceList();
-            const Map<label>& asfList = slaveMap.addedFaceList();
+            const List<FixedList<label,2> >& amfList = map.addedFaceList();
+            const List<FixedList<label,2> >& asfList = slaveMap.addedFaceList();
 
-            forAllConstIter(Map<label>, amfList, mfIter)
+            forAll(amfList, mfI)
             {
-                label fpIndex = whichPatch(mfIter.key());
+                label fpIndex = whichPatch(amfList[mfI][0]);
 
                 if (fpIndex != pIndex && !bisectingSlave)
                 {
@@ -2805,7 +2809,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
 
                 // Configure a face for comparison.
-                const face& mF = faces_[mfIter.key()];
+                const face& mF = faces_[amfList[mfI][0]];
 
                 forAll(mF, pI)
                 {
@@ -2827,9 +2831,9 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 bool matched = false;
 
-                forAllConstIter(Map<label>, asfList, sfIter)
+                forAll(asfList, sfI)
                 {
-                    const face& sF = faces_[sfIter.key()];
+                    const face& sF = faces_[asfList[sfI][0]];
 
                     if (triFaceCompare(cF, sF))
                     {
@@ -2838,15 +2842,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             cMap.mapMaster
                             (
                                 coupleMap::FACE,
-                                mfIter.key(),
-                                sfIter.key()
+                                amfList[mfI][0],
+                                asfList[sfI][0]
                             );
 
                             cMap.mapSlave
                             (
                                 coupleMap::FACE,
-                                sfIter.key(),
-                                mfIter.key()
+                                asfList[sfI][0],
+                                amfList[mfI][0]
                             );
                         }
                         else
@@ -2854,15 +2858,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             cMap.mapSlave
                             (
                                 coupleMap::FACE,
-                                mfIter.key(),
-                                sfIter.key()
+                                amfList[mfI][0],
+                                asfList[sfI][0]
                             );
 
                             cMap.mapMaster
                             (
                                 coupleMap::FACE,
-                                sfIter.key(),
-                                mfIter.key()
+                                asfList[sfI][0],
+                                amfList[mfI][0]
                             );
                         }
 
@@ -2875,22 +2879,22 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 if (!matched)
                 {
                     Info << "masterFaces: " << endl;
-                    Info << amfList.toc() << endl;
+                    Info << amfList << endl;
 
                     Info << "slaveFaces: " << endl;
-                    Info << asfList.toc() << endl;
+                    Info << asfList << endl;
 
-                    forAllConstIter(Map<label>, amfList, mfIter)
+                    forAll(amfList, mfI)
                     {
-                        Info << mfIter.key() << ": "
-                             << faces_[mfIter.key()]
+                        Info << amfList[mfI][0] << ": "
+                             << faces_[amfList[mfI][0]]
                              << endl;
                     }
 
-                    forAllConstIter(Map<label>, asfList, sfIter)
+                    forAll(asfList, sfI)
                     {
-                        Info << sfIter.key() << ": "
-                             << faces_[sfIter.key()]
+                        Info << asfList[sfI][0] << ": "
+                             << faces_[asfList[sfI][0]]
                              << endl;
                     }
 
@@ -3094,7 +3098,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     }
 
     // Sanity check: Is the index legitimate?
-    if (fIndex < 0 || fIndex >= nFaces_)
+    if (fIndex < 0)
     {
         FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
             << " Invalid index: " << fIndex
@@ -3832,13 +3836,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
                         (
                             coupleMap::POINT,
                             newPointIndex,
-                            slaveMap.addedPointList().begin().key()
+                            slaveMap.addedPointList()[0][0]
                         );
 
                         cMap.mapSlave
                         (
                             coupleMap::POINT,
-                            slaveMap.addedPointList().begin().key(),
+                            slaveMap.addedPointList()[0][0],
                             newPointIndex
                         );
                     }
@@ -3848,25 +3852,32 @@ const changeMap dynamicTopoFvMesh::trisectFace
                         (
                             coupleMap::POINT,
                             newPointIndex,
-                            slaveMap.addedPointList().begin().key()
+                            slaveMap.addedPointList()[0][0]
                         );
 
                         cMap.mapMaster
                         (
                             coupleMap::POINT,
-                            slaveMap.addedPointList().begin().key(),
+                            slaveMap.addedPointList()[0][0],
                             newPointIndex
                         );
                     }
                 }
 
-                const Map<label>& ameList = map.addedEdgeList();
-                const Map<label>& aseList = slaveMap.addedEdgeList();
+                const List<FixedList<label,2> >& ameList =
+                (
+                    map.addedEdgeList()
+                );
+
+                const List<FixedList<label,2> >& aseList =
+                (
+                    slaveMap.addedEdgeList()
+                );
 
                 // Compare with all check entries.
-                forAllConstIter(Map<label>, ameList, meIter)
+                forAll(ameList, meI)
                 {
-                    label epIndex = whichEdgePatch(meIter.key());
+                    label epIndex = whichEdgePatch(ameList[meI][0]);
 
                     if (epIndex != pIndex && !trisectingSlave)
                     {
@@ -3892,7 +3903,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     // Configure an edge for comparison.
                     edge cE(-1, -1);
 
-                    const edge& mE = edges_[meIter.key()];
+                    const edge& mE = edges_[ameList[meI][0]];
 
                     if (trisectingSlave)
                     {
@@ -3907,9 +3918,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
                     bool matched = false;
 
-                    forAllConstIter(Map<label>, aseList, seIter)
+                    forAll(aseList, seI)
                     {
-                        const edge& sE = edges_[seIter.key()];
+                        const edge& sE = edges_[aseList[seI][0]];
 
                         if (cE == sE)
                         {
@@ -3918,15 +3929,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
                                 cMap.mapMaster
                                 (
                                     coupleMap::EDGE,
-                                    meIter.key(),
-                                    seIter.key()
+                                    ameList[meI][0],
+                                    aseList[seI][0]
                                 );
 
                                 cMap.mapSlave
                                 (
                                     coupleMap::EDGE,
-                                    seIter.key(),
-                                    meIter.key()
+                                    aseList[seI][0],
+                                    ameList[meI][0]
                                 );
                             }
                             else
@@ -3934,15 +3945,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
                                 cMap.mapSlave
                                 (
                                     coupleMap::EDGE,
-                                    meIter.key(),
-                                    seIter.key()
+                                    ameList[meI][0],
+                                    aseList[seI][0]
                                 );
 
                                 cMap.mapMaster
                                 (
                                     coupleMap::EDGE,
-                                    seIter.key(),
-                                    meIter.key()
+                                    aseList[seI][0],
+                                    ameList[meI][0]
                                 );
                             }
 
@@ -3955,22 +3966,22 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     if (!matched)
                     {
                         Info << "masterEdges: " << endl;
-                        Info << ameList.toc() << endl;
+                        Info << ameList << endl;
 
                         Info << "slaveEdges: " << endl;
-                        Info << aseList.toc() << endl;
+                        Info << aseList << endl;
 
-                        forAllConstIter(Map<label>, ameList, meIter)
+                        forAll(ameList, meI)
                         {
-                            Info << meIter.key() << ": "
-                                 << edges_[meIter.key()]
+                            Info << ameList[meI][0] << ": "
+                                 << edges_[ameList[meI][0]]
                                  << endl;
                         }
 
-                        forAllConstIter(Map<label>, aseList, seIter)
+                        forAll(aseList, seI)
                         {
-                            Info << seIter.key() << ": "
-                                 << edges_[seIter.key()]
+                            Info << aseList[seI][0] << ": "
+                                 << edges_[aseList[seI][0]]
                                  << endl;
                         }
 
@@ -3983,17 +3994,35 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // Add a mapping entry for three new faces as well.
                 face cF(3);
 
-                const Map<label>& amfList = map.addedFaceList();
-                const Map<label>& asfList = slaveMap.addedFaceList();
+                const List<FixedList<label,2> >& amfList =
+                (
+                    map.addedFaceList()
+                );
 
-                forAllConstIter(Map<label>, amfList, mfIter)
+                const List<FixedList<label,2> >& asfList =
+                (
+                    slaveMap.addedFaceList()
+                );
+
+                forAll(amfList, mfI)
                 {
-                    if (whichPatch(mfIter.key()) != pIndex && !trisectingSlave)
+                    label fpIndex = whichPatch(amfList[mfI][0]);
+
+                    if (fpIndex != pIndex && !trisectingSlave)
                     {
                         continue;
                     }
 
-                    if (!patchCoupling_(pIndex))
+                    if (patchCoupling_(pIndex))
+                    {
+                        const coupleMap& cM = patchCoupling_[pIndex].patchMap();
+
+                        if (trisectingSlave && fpIndex != cM.slaveIndex())
+                        {
+                            continue;
+                        }
+                    }
+                    else
                     {
                         continue;
                     }
@@ -4001,7 +4030,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
 
                     // Configure a face for comparison.
-                    const face& mF = faces_[mfIter.key()];
+                    const face& mF = faces_[amfList[mfI][0]];
 
                     forAll(mF, pI)
                     {
@@ -4023,9 +4052,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
                     bool matched = false;
 
-                    forAllConstIter(Map<label>, asfList, sfIter)
+                    forAll(asfList, sfI)
                     {
-                        const face& sF = faces_[sfIter.key()];
+                        const face& sF = faces_[asfList[sfI][0]];
 
                         if (triFaceCompare(cF, sF))
                         {
@@ -4034,15 +4063,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
                                 cMap.mapMaster
                                 (
                                     coupleMap::FACE,
-                                    mfIter.key(),
-                                    sfIter.key()
+                                    amfList[mfI][0],
+                                    asfList[sfI][0]
                                 );
 
                                 cMap.mapSlave
                                 (
                                     coupleMap::FACE,
-                                    sfIter.key(),
-                                    mfIter.key()
+                                    asfList[sfI][0],
+                                    amfList[mfI][0]
                                 );
                             }
                             else
@@ -4050,15 +4079,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
                                 cMap.mapSlave
                                 (
                                     coupleMap::FACE,
-                                    mfIter.key(),
-                                    sfIter.key()
+                                    amfList[mfI][0],
+                                    asfList[sfI][0]
                                 );
 
                                 cMap.mapMaster
                                 (
                                     coupleMap::FACE,
-                                    sfIter.key(),
-                                    mfIter.key()
+                                    asfList[sfI][0],
+                                    amfList[mfI][0]
                                 );
                             }
 
@@ -4071,22 +4100,22 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     if (!matched)
                     {
                         Info << "masterFaces: " << endl;
-                        Info << amfList.toc() << endl;
+                        Info << amfList << endl;
 
                         Info << "slaveFaces: " << endl;
-                        Info << asfList.toc() << endl;
+                        Info << asfList << endl;
 
-                        forAllConstIter(Map<label>, amfList, mfIter)
+                        forAll(amfList, mfI)
                         {
-                            Info << mfIter.key() << ": "
-                                 << faces_[mfIter.key()]
+                            Info << amfList[mfI][0] << ": "
+                                 << faces_[amfList[mfI][0]]
                                  << endl;
                         }
 
-                        forAllConstIter(Map<label>, asfList, sfIter)
+                        forAll(asfList, sfI)
                         {
-                            Info << sfIter.key() << ": "
-                                 << faces_[sfIter.key()]
+                            Info << asfList[sfI][0] << ": "
+                                 << faces_[asfList[sfI][0]]
                                  << endl;
                         }
 

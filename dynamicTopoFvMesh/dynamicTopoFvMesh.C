@@ -3110,33 +3110,33 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         // Create a mapping entry for the new edge.
         const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
 
-        if (locallyCoupledEdge(map.addedEdgeList().begin().key()))
+        if (locallyCoupledEdge(map.addedEdgeList()[0][0]))
         {
             cMap.mapSlave
             (
                 coupleMap::EDGE,
-                map.addedEdgeList().begin().key(),
-                slaveMap.addedEdgeList().begin().key()
+                map.addedEdgeList()[0][0],
+                slaveMap.addedEdgeList()[0][0]
             );
 
             cMap.mapMaster
             (
                 coupleMap::EDGE,
-                slaveMap.addedEdgeList().begin().key(),
-                map.addedEdgeList().begin().key()
+                slaveMap.addedEdgeList()[0][0],
+                map.addedEdgeList()[0][0]
             );
         }
 
         // Add a mapping entry for two new faces as well.
         face cF(3);
 
-        const Map<label>& amfList = map.addedFaceList();
-        const Map<label>& asfList = slaveMap.addedFaceList();
+        const List<FixedList<label,2> >& amfList = map.addedFaceList();
+        const List<FixedList<label,2> >& asfList = slaveMap.addedFaceList();
 
-        forAllConstIter(Map<label>, amfList, mfIter)
+        forAll(amfList, mfI)
         {
             // Configure a face for comparison.
-            const face& mF = faces_[mfIter.key()];
+            const face& mF = faces_[amfList[mfI][0]];
 
             forAll(mF, pointI)
             {
@@ -3145,24 +3145,24 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             bool matched = false;
 
-            forAllConstIter(Map<label>, asfList, sfIter)
+            forAll(asfList, sfI)
             {
-                const face& sF = faces_[sfIter.key()];
+                const face& sF = faces_[asfList[sfI][0]];
 
                 if (triFaceCompare(cF, sF))
                 {
                     cMap.mapSlave
                     (
                         coupleMap::FACE,
-                        mfIter.key(),
-                        sfIter.key()
+                        amfList[mfI][0],
+                        asfList[sfI][0]
                     );
 
                     cMap.mapMaster
                     (
                         coupleMap::FACE,
-                        sfIter.key(),
-                        mfIter.key()
+                        asfList[sfI][0],
+                        amfList[mfI][0]
                     );
 
                     matched = true;
@@ -3174,22 +3174,22 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             if (!matched)
             {
                 Info << "masterFaces: " << endl;
-                Info << amfList.toc() << endl;
+                Info << amfList << endl;
 
                 Info << "slaveFaces: " << endl;
-                Info << asfList.toc() << endl;
+                Info << asfList << endl;
 
-                forAllConstIter(Map<label>, amfList, mfIter)
+                forAll(amfList, mfI)
                 {
-                    Info << mfIter.key() << ": "
-                         << faces_[mfIter.key()]
+                    Info << amfList[mfI][0] << ": "
+                         << faces_[amfList[mfI][0]]
                          << endl;
                 }
 
-                forAllConstIter(Map<label>, asfList, sfIter)
+                forAll(asfList, sfI)
                 {
-                    Info << sfIter.key() << ": "
-                         << faces_[sfIter.key()]
+                    Info << asfList[sfI][0] << ": "
+                         << faces_[asfList[sfI][0]]
                          << endl;
                 }
 
@@ -8874,17 +8874,17 @@ void dynamicTopoFvMesh::remove2DSliver
 
                 // Loop through added faces, and collapse
                 // the appropriate one
-                const Map<label>& aF = map.addedFaceList();
+                const List<FixedList<label,2> >& aF = map.addedFaceList();
 
-                forAllConstIter(Map<label>, aF, faceI)
+                forAll(aF, faceI)
                 {
                     if
                     (
-                        (owner_[faceI.key()] == fOwner) &&
-                        (faceI.key() != firstFace)
+                        (owner_[aF[faceI][0]] == fOwner) &&
+                        (aF[faceI][0] != firstFace)
                     )
                     {
-                        collapseQuadFace(faceI.key());
+                        collapseQuadFace(aF[faceI][0]);
                         break;
                     }
                 }
@@ -8898,17 +8898,17 @@ void dynamicTopoFvMesh::remove2DSliver
 
                 // Loop through added faces, and collapse
                 // the appropriate one
-                const Map<label>& aF = map.addedFaceList();
+                const List<FixedList<label,2> >& aF = map.addedFaceList();
 
-                forAllConstIter(Map<label>, aF, faceI)
+                forAll(aF, faceI)
                 {
                     if
                     (
-                        (owner_[faceI.key()] == fOwner) &&
-                        (faceI.key() != secondFace)
+                        (owner_[aF[faceI][0]] == fOwner) &&
+                        (aF[faceI][0] != secondFace)
                     )
                     {
-                        collapseQuadFace(faceI.key());
+                        collapseQuadFace(aF[faceI][0]);
                         break;
                     }
                 }
@@ -8922,17 +8922,17 @@ void dynamicTopoFvMesh::remove2DSliver
 
                 // Loop through added faces, and collapse
                 // the appropriate one
-                const Map<label>& aF = map.addedFaceList();
+                const List<FixedList<label,2> >& aF = map.addedFaceList();
 
-                forAllConstIter(Map<label>, aF, faceI)
+                forAll(aF, faceI)
                 {
                     if
                     (
-                        (owner_[faceI.key()] == fOwner) &&
-                        (faceI.key() != fIndex)
+                        (owner_[aF[faceI][0]] == fOwner) &&
+                        (aF[faceI][0] != fIndex)
                     )
                     {
-                        collapseQuadFace(faceI.key());
+                        collapseQuadFace(aF[faceI][0]);
                         break;
                     }
                 }
@@ -9423,25 +9423,33 @@ void dynamicTopoFvMesh::removeSlivers()
             // through recently added edges and compare.
             edge edgeToCheck
             (
-                firstMap.addedPointList().begin().key(),
-                secondMap.addedPointList().begin().key()
+                firstMap.addedPointList()[0][0],
+                secondMap.addedPointList()[0][0]
             );
 
             bool foundCollapseEdge = false;
-            const Map<label>& firstMapEdges = firstMap.addedEdgeList();
-            const Map<label>& secondMapEdges = secondMap.addedEdgeList();
+
+            const List<FixedList<label,2> >& firstMapEdges =
+            (
+                firstMap.addedEdgeList()
+            );
+
+            const List<FixedList<label,2> >& secondMapEdges =
+            (
+                secondMap.addedEdgeList()
+            );
 
             // Loop through the first list.
-            forAllConstIter(Map<label>, firstMapEdges, edgeI)
+            forAll(firstMapEdges, edgeI)
             {
-                const edge& thisEdge = edges_[edgeI.key()];
+                const edge& thisEdge = edges_[firstMapEdges[edgeI][0]];
 
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
                     collapseEdge
                     (
-                        edgeI.key(),
+                        firstMapEdges[edgeI][0],
                         -1,
                         false,
                         true
@@ -9455,16 +9463,16 @@ void dynamicTopoFvMesh::removeSlivers()
             // Loop through the second list.
             if (!foundCollapseEdge)
             {
-                forAllConstIter(Map<label>, secondMapEdges, edgeI)
+                forAll(secondMapEdges, edgeI)
                 {
-                    const edge& thisEdge = edges_[edgeI.key()];
+                    const edge& thisEdge = edges_[secondMapEdges[edgeI][0]];
 
                     if (thisEdge == edgeToCheck)
                     {
                         // Collapse this edge.
                         collapseEdge
                         (
-                            edgeI.key(),
+                            secondMapEdges[edgeI][0],
                             -1,
                             false,
                             true
@@ -9490,19 +9498,22 @@ void dynamicTopoFvMesh::removeSlivers()
             edge edgeToCheck
             (
                 map.apexPoint(),
-                faceMap.addedPointList().begin().key()
+                faceMap.addedPointList()[0][0]
             );
 
-            const Map<label>& faceMapEdges = faceMap.addedEdgeList();
+            const List<FixedList<label,2> >& faceMapEdges =
+            (
+                faceMap.addedEdgeList()
+            );
 
-            forAllConstIter(Map<label>, faceMapEdges, edgeI)
+            forAll(faceMapEdges, edgeI)
             {
-                const edge& thisEdge = edges_[edgeI.key()];
+                const edge& thisEdge = edges_[faceMapEdges[edgeI][0]];
 
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
-                    collapseEdge(edgeI.key(), -1, false, true);
+                    collapseEdge(faceMapEdges[edgeI][0], -1, false, true);
 
                     break;
                 }
@@ -9522,20 +9533,23 @@ void dynamicTopoFvMesh::removeSlivers()
             edge edgeToCheck
             (
                 map.apexPoint(),
-                firstMap.addedPointList().begin().key()
+                firstMap.addedPointList()[0][0]
             );
 
-            const Map<label>& firstMapEdges = firstMap.addedEdgeList();
+            const List<FixedList<label,2> >& firstMapEdges =
+            (
+                firstMap.addedEdgeList()
+            );
 
             // Loop through the first list.
-            forAllConstIter(Map<label>, firstMapEdges, edgeI)
+            forAll(firstMapEdges, edgeI)
             {
-                const edge& thisEdge = edges_[edgeI.key()];
+                const edge& thisEdge = edges_[firstMapEdges[edgeI][0]];
 
                 if (thisEdge == edgeToCheck)
                 {
                     // Collapse this edge.
-                    collapseEdge(edgeI.key(), -1, false, true);
+                    collapseEdge(firstMapEdges[edgeI][0], -1, false, true);
 
                     break;
                 }

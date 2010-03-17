@@ -38,7 +38,11 @@ changeMap::changeMap()
     firstEdge_(-1),
     secondEdge_(-1),
     apexPoint_(-1),
-    opposingFace_(-1)
+    opposingFace_(-1),
+    addedPoints_(0),
+    addedEdges_(0),
+    addedFaces_(0),
+    addedCells_(0)
 {}
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -80,7 +84,12 @@ void changeMap::addPoint
     const label master
 )
 {
-    addedPoints_.insert(pIndex, master);
+    label curSize = addedPoints_.size();
+
+    addedPoints_.setSize(curSize + 1);
+
+    addedPoints_[curSize][0] = pIndex;
+    addedPoints_[curSize][1] = master;
 }
 
 void changeMap::addEdge
@@ -89,7 +98,12 @@ void changeMap::addEdge
     const label master
 )
 {
-    addedEdges_.insert(eIndex, master);
+    label curSize = addedEdges_.size();
+
+    addedEdges_.setSize(curSize + 1);
+
+    addedEdges_[curSize][0] = eIndex;
+    addedEdges_[curSize][1] = master;
 }
 
 void changeMap::addFace
@@ -98,7 +112,12 @@ void changeMap::addFace
     const label master
 )
 {
-    addedFaces_.insert(fIndex, master);
+    label curSize = addedFaces_.size();
+
+    addedFaces_.setSize(curSize + 1);
+
+    addedFaces_[curSize][0] = fIndex;
+    addedFaces_[curSize][1] = master;
 }
 
 void changeMap::addCell
@@ -107,27 +126,32 @@ void changeMap::addCell
     const label master
 )
 {
-    addedCells_.insert(cIndex, master);
+    label curSize = addedCells_.size();
+
+    addedCells_.setSize(curSize + 1);
+
+    addedCells_[curSize][0] = cIndex;
+    addedCells_[curSize][1] = master;
 }
 
 // Return an added point
-const Map<label>& changeMap::addedPointList() const
+const List<FixedList<label,2> >& changeMap::addedPointList() const
 {
     return addedPoints_;
 }
 
 // Return the list of added entities
-const Map<label>& changeMap::addedEdgeList() const
+const List<FixedList<label,2> >& changeMap::addedEdgeList() const
 {
     return addedEdges_;
 }
 
-const Map<label>& changeMap::addedFaceList() const
+const List<FixedList<label,2> >& changeMap::addedFaceList() const
 {
     return addedFaces_;
 }
 
-const Map<label>& changeMap::addedCellList() const
+const List<FixedList<label,2> >& changeMap::addedCellList() const
 {
     return addedCells_;
 }

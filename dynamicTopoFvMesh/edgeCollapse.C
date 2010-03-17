@@ -1717,7 +1717,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Sanity check: Is the index legitimate?
-    if (eIndex < 0 || eIndex >= nEdges_)
+    if (eIndex < 0)
     {
         FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
             << " Invalid index: " << eIndex

@@ -42,7 +42,7 @@ SourceFiles
 #define changeMap_H
 
 #include "labelList.H"
-#include "Map.H"
+#include "FixedList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -73,10 +73,10 @@ class changeMap
     // Entities that were added during the operation.
     //  - Add a master mapping for slaves.
     //  - Masters get a map of -1.
-    Map<label> addedPoints_;
-    Map<label> addedEdges_;
-    Map<label> addedFaces_;
-    Map<label> addedCells_;
+    List<FixedList<label,2> > addedPoints_;
+    List<FixedList<label,2> > addedEdges_;
+    List<FixedList<label,2> > addedFaces_;
+    List<FixedList<label,2> > addedCells_;
 
 public:
 
@@ -124,10 +124,10 @@ public:
         );
 
         // Return the list of added entities
-        const Map<label>& addedPointList() const;
-        const Map<label>& addedEdgeList() const;
-        const Map<label>& addedFaceList() const;
-        const Map<label>& addedCellList() const;
+        const List<FixedList<label,2> >& addedPointList() const;
+        const List<FixedList<label,2> >& addedEdgeList() const;
+        const List<FixedList<label,2> >& addedFaceList() const;
+        const List<FixedList<label,2> >& addedCellList() const;
 
     //- Operators
 
