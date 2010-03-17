@@ -139,9 +139,6 @@ void eMesh::calcOrderedEdgeList()
     // Force calculation of other data...
     calcEdgeFaces();
     calcFaceEdges();
-
-    // ... and write out
-    write();
 }
 
 void eMesh::calcEdgePoints() const

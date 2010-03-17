@@ -13,8 +13,8 @@ EXE_INC = \
     $(WM_DECOMP_INC) \
 
 EXE_LIBS = \
-    -lfreeSurface \
     -L$(FOAM_USER_LIBBIN) \
+    -lfreeSurface \
     -llduSolvers \
     -ldynamicFvMesh \
     -lmultiThreader \

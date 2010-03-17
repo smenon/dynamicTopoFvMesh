@@ -37,6 +37,7 @@ Description
 #include "fixedGradientCorrectedFvPatchFields.H"
 #include "fixedValueCorrectedFvPatchFields.H"
 #include "mapPolyMesh.H"
+#include "coupleMap.H"
 #include "setMotionBC.H"
 
 // Include the following files for post-processing
@@ -75,6 +76,7 @@ Foam::freeSurface::freeSurface
     p_(p),
     phi_(phi),
     interfacePatch_(word(lookup("interfacePatch"))),
+    useCoupleMap_(true),
     curTimeIndex_(U.mesh().time().timeIndex()),
     twoFluids_(lookup("twoFluids")),
     normalMotionDir_(lookup("normalMotionDir")),
@@ -207,6 +209,174 @@ label Foam::freeSurface::bPatchID() const
     return bPatchID_;
 }
 
+// Interpolate from A to B using coupleMap
+template<class Type>
+tmp<Field<Type> > Foam::freeSurface::pointInterpolateAB
+(
+    const Field<Type>& field
+)
+{
+    // Search the registry for all mapping objects.
+    HashTable<const coupleMap*> coupleMaps = mesh().lookupClass<coupleMap>();
+
+    const Map<label>& mPA = mesh().boundaryMesh()[aPatchID()].meshPointMap();
+    const Map<label>& mPB = mesh().boundaryMesh()[bPatchID()].meshPointMap();
+
+    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+    {
+        const coupleMap& cMap = *(cmIter());
+
+        // Ensure that both master and slave patches match.
+        if
+        (
+            (cMap.masterIndex() == aPatchID()) &&
+            (cMap.slaveIndex() == bPatchID()) &&
+            (cMap.isLocal())
+        )
+        {
+            return cMap.pointInterpolate(mPA, mPB, field);
+        }
+    }
+
+    if (useCoupleMap_)
+    {
+        WarningIn("freeSurface::pointInterpolateAB()")
+            << "Could not find coupling map: " << nl
+            << "Master: " << aPatchID() << nl
+            << "Slave: " << bPatchID()
+            << abort(FatalError);
+    }
+
+    // Return conventional interpolation
+    return interpolatorAB().pointInterpolate(field);
+}
+
+// Interpolate from B to A using coupleMap
+template<class Type>
+tmp<Field<Type> > Foam::freeSurface::pointInterpolateBA
+(
+    const Field<Type>& field
+)
+{
+    // Search the registry for all mapping objects.
+    HashTable<const coupleMap*> coupleMaps = mesh().lookupClass<coupleMap>();
+
+    const Map<label>& mPA = mesh().boundaryMesh()[aPatchID()].meshPointMap();
+    const Map<label>& mPB = mesh().boundaryMesh()[bPatchID()].meshPointMap();
+
+    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+    {
+        const coupleMap& cMap = *(cmIter());
+
+        // Ensure that both master and slave patches match.
+        if
+        (
+            (cMap.masterIndex() == aPatchID()) &&
+            (cMap.slaveIndex() == bPatchID()) &&
+            (cMap.isLocal())
+        )
+        {
+            return cMap.pointInterpolate(mPA, mPB, field, true);
+        }
+    }
+
+    if (useCoupleMap_)
+    {
+        WarningIn("freeSurface::pointInterpolateBA()")
+            << "Could not find coupling map: " << nl
+            << "Master: " << aPatchID() << nl
+            << "Slave: " << bPatchID()
+            << abort(FatalError);
+    }
+
+    // Return conventional interpolation
+    return interpolatorBA().pointInterpolate(field);
+}
+
+// Interpolate from A to B using coupleMap
+template<class Type>
+tmp<Field<Type> > Foam::freeSurface::faceInterpolateAB
+(
+    const Field<Type>& field
+)
+{
+    // Search the registry for all mapping objects.
+    HashTable<const coupleMap*> coupleMaps = mesh().lookupClass<coupleMap>();
+
+    label mStart = mesh().boundaryMesh()[aPatchID()].start();
+    label sStart = mesh().boundaryMesh()[bPatchID()].start();
+
+    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+    {
+        const coupleMap& cMap = *(cmIter());
+
+        // Ensure that both master and slave patches match.
+        if
+        (
+            (cMap.masterIndex() == aPatchID()) &&
+            (cMap.slaveIndex() == bPatchID()) &&
+            (cMap.isLocal())
+        )
+        {
+            return cMap.faceInterpolate(mStart, sStart, field);
+        }
+    }
+
+    if (useCoupleMap_)
+    {
+        WarningIn("freeSurface::faceInterpolateAB()")
+            << "Could not find coupling map: " << nl
+            << "Master: " << aPatchID() << nl
+            << "Slave: " << bPatchID()
+            << abort(FatalError);
+    }
+
+    // Return conventional interpolation
+    return interpolatorAB().faceInterpolate(field);
+}
+
+// Interpolate from B to A using coupleMap
+template<class Type>
+tmp<Field<Type> > Foam::freeSurface::faceInterpolateBA
+(
+    const Field<Type>& field
+)
+{
+    // Search the registry for all mapping objects.
+    HashTable<const coupleMap*> coupleMaps = mesh().lookupClass<coupleMap>();
+
+    label mStart = mesh().boundaryMesh()[aPatchID()].start();
+    label sStart = mesh().boundaryMesh()[bPatchID()].start();
+
+    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+    {
+        const coupleMap& cMap = *(cmIter());
+
+        // Ensure that both master and slave patches match.
+        if
+        (
+            (cMap.masterIndex() == aPatchID()) &&
+            (cMap.slaveIndex() == bPatchID()) &&
+            (cMap.isLocal())
+        )
+        {
+            return cMap.faceInterpolate(mStart, sStart, field, true);
+        }
+    }
+
+    if (useCoupleMap_)
+    {
+        WarningIn("freeSurface::faceInterpolateBA()")
+            << "Could not find coupling map: " << nl
+            << "Master: " << aPatchID() << nl
+            << "Slave: " << bPatchID()
+            << abort(FatalError);
+    }
+
+    // Return conventional interpolation
+    return interpolatorBA().faceInterpolate(field);;
+}
+
 void Foam::freeSurface::initializeControlPointsPosition() const
 {
     scalarField deltaH = scalarField(aMesh().nFaces(), 0.0);
@@ -251,8 +421,18 @@ void Foam::freeSurface::reInitializeControlPointsPosition() const
     pointField displacement(aMesh().points().size(), vector::zero);
     scalarField deltaH(aMesh().nFaces(), 0.0), sweptVol(faces.size(), 0.0);
 
-    label nIters = 0;
-    scalar dError = 0.0;
+    label nIters = 0, maxIters = 100;
+    scalar dError = 0.0, tol = 1e-20;
+
+    if (found("maxIters"))
+    {
+        maxIters = readLabel(lookup("maxIters"));
+    }
+
+    if (found("tol"))
+    {
+        tol = readScalar(lookup("tol"));
+    }
 
     while (true)
     {
@@ -264,7 +444,7 @@ void Foam::freeSurface::reInitializeControlPointsPosition() const
 
         dError = mag(sum(displacement & displacement));
 
-        if (dError < 1e-20 || nIters > 15)
+        if (dError < tol || nIters > maxIters)
         {
             break;
         }
@@ -859,14 +1039,12 @@ void Foam::freeSurface::moveSurfacePoints()
 
     if (twoFluids_)
     {
+        // Interpolate using coupleMap or patchToPatchInterpolation
+        pointField displacementB = pointInterpolateAB(displacement);
+
         const labelList& meshPtsB =
         (
             mesh().boundaryMesh()[bPatchID_].meshPoints()
-        );
-
-        pointField displacementB =
-        (
-            interpolatorAB().pointInterpolate(displacement)
         );
 
         forAll (displacementB, pointI)
@@ -920,15 +1098,12 @@ bool Foam::freeSurface::restorePosition()
 
     if (twoFluids())
     {
+        // Interpolate displacement to the shadow patch
+        pointField dispB = pointInterpolateAB(totalDisplacement());
+
         const labelList& meshPtsB =
         (
             mesh().boundaryMesh()[bPatchID()].meshPoints()
-        );
-
-        // Interpolate displacement to the shadow patch
-        pointField dispB =
-        (
-            interpolatorAB().pointInterpolate(totalDisplacement())
         );
 
         forAll(meshPtsB,pointI)
@@ -945,10 +1120,7 @@ bool Foam::freeSurface::restorePosition()
     if (twoFluids())
     {
         // Interpolate displacement to the shadow patch
-        pointField dispB =
-        (
-            interpolatorAB().pointInterpolate(totalDisplacement())
-        );
+        pointField dispB = pointInterpolateAB(totalDisplacement());
 
         setMotionBC(mesh(), bPatchID(), dispB);
     }
@@ -1095,19 +1267,14 @@ void Foam::freeSurface::updatePressure()
 
     if (twoFluids())
     {
-        scalarField pA =
-        (
-            interpolatorBA().faceInterpolate
-            (
-                p().boundaryField()[bPatchID()]
-            )
-        );
+        // Interpolate to patch A
+        scalarField pA = faceInterpolateBA(p().boundaryField()[bPatchID()]);
 
         const scalarField& K = aMesh().faceCurvatures().internalField();
 
         Info << "Free surface curvature: min = " << min(K)
-            << ", max = " << max(K)
-            << ", average = " << average(K) << endl << flush;
+             << ", max = " << max(K)
+             << ", average = " << average(K) << endl << flush;
 
         if (cleanInterface())
         {
@@ -1215,7 +1382,7 @@ void Foam::freeSurface::updateVelocity()
         vectorField nB = mesh().boundary()[bPatchID()].nf();
 
         // Update fixedValue boundary condition on patch B
-        scalarField DnB = interpolatorBA().faceInterpolate
+        scalarField DnB = faceInterpolateBA
         (
             mesh().boundary()[bPatchID()].deltaCoeffs()
         );
@@ -1241,9 +1408,9 @@ void Foam::freeSurface::updateVelocity()
 
         UtPA -= nA*(nA & UtPA);
 
-        vectorField UtPB = interpolatorBA().faceInterpolate
+        vectorField UtPB = faceInterpolateBA
         (
-            U().boundaryField()[bPatchID()].patchInternalField()
+            U().boundaryField()[bPatchID()].patchInternalField()()
         );
 
         if
@@ -1258,7 +1425,7 @@ void Foam::freeSurface::updateVelocity()
                     U().boundaryField()[bPatchID()]
                 );
 
-            UtPB += interpolatorBA().faceInterpolate(bU.corrVecGrad());
+            UtPB += faceInterpolateBA(bU.corrVecGrad());
         }
 
         UtPB -= nA*(nA & UtPB);
@@ -1290,7 +1457,7 @@ void Foam::freeSurface::updateVelocity()
         correctUsBoundaryConditions();
 
         U().boundaryField()[bPatchID()] ==
-            interpolatorAB().faceInterpolate(UtFs)
+            faceInterpolateAB(UtFs)
           + nB*fvc::meshPhi(rho(),U())().boundaryField()[bPatchID()]/
             mesh().boundary()[bPatchID()].magSf();
 
@@ -1448,12 +1615,15 @@ bool Foam::freeSurface::updateMesh(const mapPolyMesh& mpm) const
     }
 
     // Copy old data
+    /*
     vectorField oldXf(areaCentrePositions());
     vectorField oldCp(controlPoints());
+    */
 
     // Wipe out demand-driven data
     clearOut();
 
+    /*
     updateDisplacementDirections();
 
     vectorField& Cp = controlPoints();
@@ -1513,6 +1683,7 @@ bool Foam::freeSurface::updateMesh(const mapPolyMesh& mpm) const
         Info << "Cp: " << endl;
         Info << Cp << endl;
     }
+    */
 
     return true;
 }

@@ -172,21 +172,6 @@ void coupleMap::makeAddressing() const
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-label coupleMap::masterIndex() const
-{
-    return masterIndex_;
-}
-
-label coupleMap::slaveIndex() const
-{
-    return slaveIndex_;
-}
-
-bool coupleMap::isLocal() const
-{
-    return isLocal_;
-}
-
 pointField& coupleMap::pointBuffer() const
 {
     return pointBuffer_;
@@ -291,36 +276,6 @@ void coupleMap::clearMaps() const
         entityMap_[mapI].clear();
         reverseEntityMap_[mapI].clear();
     }
-}
-
-FixedList<label,6>& coupleMap::nEntities() const
-{
-    return nEntities_;
-}
-
-label& coupleMap::nEntities(const label eType) const
-{
-    return nEntities_[eType];
-}
-
-Map<label>& coupleMap::entityMap(const label eType) const
-{
-    return entityMap_[eType];
-}
-
-Map<label>& coupleMap::reverseEntityMap(const label eType) const
-{
-    return reverseEntityMap_[eType];
-}
-
-FixedList<labelList,5>& coupleMap::entityBuffer() const
-{
-    return entityBuffer_;
-}
-
-labelList& coupleMap::entityBuffer(const label eType) const
-{
-    return entityBuffer_[eType];
 }
 
 label coupleMap::nInternalFaces() const

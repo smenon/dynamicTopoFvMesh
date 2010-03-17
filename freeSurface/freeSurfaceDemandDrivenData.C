@@ -271,7 +271,7 @@ void freeSurface::makeControlPoints() const
             )
         );
 
-        initializeControlPointsPosition();
+        //initializeControlPointsPosition();
     }
 }
 

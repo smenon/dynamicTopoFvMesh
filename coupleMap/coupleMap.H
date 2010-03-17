@@ -34,6 +34,7 @@ Author
     All rights reserved
 
 SourceFiles
+    coupleMap.C
 
 \*---------------------------------------------------------------------------*/
 
@@ -43,6 +44,7 @@ SourceFiles
 #include "regIOobject.H"
 #include "labelList.H"
 #include "pointField.H"
+#include "fieldTypes.H"
 #include "Map.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -123,12 +125,52 @@ public:
 
         virtual ~coupleMap();
 
+    // Interpolation functions
+
+        //- Interpolate point field
+        template<class Type>
+        tmp<Field<Type> > pointInterpolate
+        (
+            const Map<label>& mPointMap,
+            const Map<label>& sPointMap,
+            const Field<Type>& pf,
+            bool reverse = false
+        ) const;
+
+        template<class Type>
+        tmp<Field<Type> > pointInterpolate
+        (
+            const Map<label>& mPointMap,
+            const Map<label>& sPointMap,
+            const tmp<Field<Type> >& tpf,
+            bool reverse = false
+        ) const;
+
+        //- Interpolate face field
+        template<class Type>
+        tmp<Field<Type> > faceInterpolate
+        (
+            const label mStart,
+            const label sStart,
+            const Field<Type>& pf,
+            bool reverse = false
+        ) const;
+
+        template<class Type>
+        tmp<Field<Type> > faceInterpolate
+        (
+            const label mStart,
+            const label sStart,
+            const tmp<Field<Type> >& tpf,
+            bool reverse = false
+        ) const;
+
     //- Access
 
-        label masterIndex() const;
-        label slaveIndex() const;
+        inline label masterIndex() const;
+        inline label slaveIndex() const;
 
-        bool isLocal() const;
+        inline bool isLocal() const;
 
         pointField& pointBuffer() const;
 
@@ -172,14 +214,14 @@ public:
             const label master
         ) const;
 
-        FixedList<label,6>& nEntities() const;
-        label& nEntities(const label eType) const;
+        inline FixedList<label,6>& nEntities() const;
+        inline label& nEntities(const label eType) const;
 
-        Map<label>& entityMap(const label eType) const;
-        Map<label>& reverseEntityMap(const label eType) const;
+        inline Map<label>& entityMap(const label eType) const;
+        inline Map<label>& reverseEntityMap(const label eType) const;
 
-        FixedList<labelList,5>& entityBuffer() const;
-        labelList& entityBuffer(const label eType) const;
+        inline FixedList<labelList,5>& entityBuffer() const;
+        inline labelList& entityBuffer(const label eType) const;
 
         label nInternalFaces() const;
         const labelList& owner() const;
@@ -202,6 +244,8 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+#include "coupleMapI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

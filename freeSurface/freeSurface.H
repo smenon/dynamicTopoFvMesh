@@ -80,6 +80,9 @@ class freeSurface
         //- Name of the interface shadow patch
         word shadowPatch_;
 
+        //- Use coupleMaps for interpolation
+        Switch useCoupleMap_;
+
         //- Time index for the interface
         mutable label curTimeIndex_;
 
@@ -238,6 +241,22 @@ class freeSurface
 
         //- Return reference to interpolator (B to A)
         const patchToPatchInterpolation& interpolatorBA() const;
+
+        // Interpolate from A to B using coupleMap
+        template<class Type>
+        tmp<Field<Type> > pointInterpolateAB(const Field<Type>& field);
+
+        // Interpolate from B to A using coupleMap
+        template<class Type>
+        tmp<Field<Type> > pointInterpolateBA(const Field<Type>& field);
+
+        // Interpolate from A to B using coupleMap
+        template<class Type>
+        tmp<Field<Type> > faceInterpolateAB(const Field<Type>& field);
+
+        // Interpolate from B to A using coupleMap
+        template<class Type>
+        tmp<Field<Type> > faceInterpolateBA(const Field<Type>& field);
 
         //- Return reference to the control points
         vectorField& controlPoints() const;
