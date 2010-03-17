@@ -68,7 +68,6 @@ void reportMetrics()
 
 	availableMetrics_.insert("Dihedral");
 	availableMetrics_.insert("Knupp");
-	availableMetrics_.insert("meanRatio");
 	availableMetrics_.insert("cubicMeanRatio");
 	availableMetrics_.insert("Frobenius");
 	availableMetrics_.insert("PGH");
@@ -150,32 +149,6 @@ scalar Knupp
 
     // Return signed quality
     return sign(V)*((24.96100588*::cbrt(V*V))/Le);
-}
-
-// Mean Ratio Tetrahedral mesh metric
-// Liu,A. and Joe, B., “Relationship between tetrahedron shape measures,”
-// BIT Numerical Mathematics, Vol. 34, No. 2, 1994, pp. 268–287.
-scalar meanRatio
-(
-    const point& p0,
-    const point& p1,
-    const point& p2,
-    const point& p3
-)
-{
-    // Obtain signed tet volume
-    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
-
-    // Obtain the magSqr edge-lengths
-    scalar Le = ((p1-p0) & (p1-p0))
-              + ((p2-p0) & (p2-p0))
-              + ((p3-p0) & (p3-p0))
-              + ((p2-p1) & (p2-p1))
-              + ((p3-p1) & (p3-p1))
-              + ((p3-p2) & (p3-p2));
-
-    // Return signed quality
-    return  sign(V)*(12.0*::cbrt(3.0*V*V)/Le);
 }
 
 // Cubic Mean Ratio Tetrahedral mesh metric
