@@ -721,7 +721,7 @@ void dynamicTopoFvMesh::swapQuadFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nSwaps_++;
+    nSwaps_[0]++;
 }
 
 // Method used to perform a 2-3 swap in 3D
@@ -1810,6 +1810,9 @@ const changeMap dynamicTopoFvMesh::swap32
         // Add faceEdges for the two new boundary faces
         faceEdges_.append(bdyFaceEdges[0]);
         faceEdges_.append(bdyFaceEdges[1]);
+
+        // Update the number of surface swaps.
+        nSwaps_[1]++;
     }
 
     newTetCell[0][nF0++] = newFaceIndex;

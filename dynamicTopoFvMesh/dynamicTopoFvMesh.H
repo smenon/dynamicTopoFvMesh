@@ -213,9 +213,9 @@ class dynamicTopoFvMesh
         scalar                maxLengthScale_;
         scalar                sliverThreshold_;
         label                 nModifications_;
-        label                 nBisections_;
-        label                 nCollapses_;
-        label                 nSwaps_;
+        FixedList<label, 2>   nBisections_;
+        FixedList<label, 2>   nCollapses_;
+        FixedList<label, 2>   nSwaps_;
         label                 maxModifications_;
         Map<scalar>           thresholdSlivers_;
         labelList             noModPatchIDs_;
@@ -1183,7 +1183,7 @@ class dynamicTopoFvMesh
         ) const;
 
         // Calculate the edge length-scale for the mesh
-        void calculateLengthScale();
+        void calculateLengthScale(bool dump = false);
 
         // Compute the growth factor of an existing mesh
         scalar computeGrowthFactor();
@@ -1311,9 +1311,6 @@ class dynamicTopoFvMesh
 
         // Wait for buffer transfer completion.
         void waitForBuffers() const;
-
-        // Dump mesh length-scale values
-        bool dumpLengthScale();
 
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);

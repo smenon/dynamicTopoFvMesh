@@ -1528,7 +1528,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     // Remove the cell
     removeCell(c0);
 
-    if (c1 != -1)
+    if (c1 == -1)
+    {
+        // Increment the surface-collapse counter
+        nCollapses_[1]++;
+    }
+    else
     {
         // Remove orphaned faces
         if (owner_[faceToKeep[1]] == -1)
@@ -1651,7 +1656,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nCollapses_++;
+    nCollapses_[0]++;
 
     // Increment the number of modifications
     nModifications_++;
@@ -2238,6 +2243,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         return map;
     }
 
+    // Update number of surface collapses, if necessary.
+    if (whichEdgePatch(eIndex) > -1)
+    {
+        nCollapses_[1]++;
+    }
+
     if (debug > 1)
     {
         Info << nl << nl
@@ -2819,7 +2830,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nCollapses_++;
+    nCollapses_[0]++;
 
     // Increment the number of modifications
     nModifications_++;

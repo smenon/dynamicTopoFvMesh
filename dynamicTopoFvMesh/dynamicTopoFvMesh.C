@@ -51,6 +51,7 @@ Author
 
 #include <iomanip>
 #include "IOmanip.H"
+#include "SortableList.H"
 #include <dlfcn.h>
 
 namespace Foam
@@ -351,60 +352,6 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-// Write out mesh length-scale values
-bool dynamicTopoFvMesh::dumpLengthScale()
-{
-    if (!edgeRefinement_)
-    {
-        return false;
-    }
-
-    Switch dumpLengthScale(false);
-
-    if
-    (
-        dict_.subDict("dynamicTopoFvMesh").found("dumpLengthScale") ||
-        mandatory_
-    )
-    {
-        dumpLengthScale =
-        (
-            dict_.subDict("dynamicTopoFvMesh").lookup("dumpLengthScale")
-        );
-    }
-
-    if (dumpLengthScale && time().outputTime())
-    {
-        volScalarField lengthScale
-        (
-            IOobject
-            (
-                "lengthScale",
-                time().timeName(),
-                *this,
-                IOobject::NO_READ,
-                IOobject::AUTO_WRITE,
-                false
-            ),
-            *this,
-            dimensionedScalar("scalar", dimLength, 0)
-        );
-
-        // Re-calculate lengthScale
-        calculateLengthScale();
-
-        // Obtain length-scale values from the mesh
-        forAll(lengthScale_, cellI)
-        {
-            lengthScale[cellI] = lengthScale_[cellI];
-        }
-
-        return lengthScale.write();
-    }
-
-    return true;
-}
-
 // Return mesh cell-quality values
 // Valid for 3D tetrahedral meshes only...
 bool dynamicTopoFvMesh::meshQuality
@@ -434,13 +381,13 @@ bool dynamicTopoFvMesh::meshQuality
 
     volScalarField *mqPtr(NULL);
 
-    if (dumpMeshQuality)
+    if (dumpMeshQuality && time().outputTime())
     {
         mqPtr = new volScalarField
         (
             IOobject
             (
-                "lengthScale",
+                "meshQuality",
                 time().timeName(),
                 *this,
                 IOobject::NO_READ,
@@ -469,7 +416,7 @@ bool dynamicTopoFvMesh::meshQuality
         // Compute cell quality
         cQuality = tetQuality(cellI);
 
-        if (dumpMeshQuality)
+        if (dumpMeshQuality && time().outputTime())
         {
             mqPtr->internalField()[cellI] = cQuality;
         }
@@ -504,10 +451,8 @@ bool dynamicTopoFvMesh::meshQuality
 
         if (minQuality < 0.0)
         {
-            WarningIn
-            (
-                "dynamicTopoFvMesh::meshQuality()"
-            )   << nl
+            WarningIn("dynamicTopoFvMesh::meshQuality()")
+                << nl
                 << "Minimum cell quality is: " << minQuality
                 << " at cell: " << minCell
                 << endl;
@@ -521,7 +466,7 @@ bool dynamicTopoFvMesh::meshQuality
         Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
     }
 
-    if (dumpMeshQuality)
+    if (dumpMeshQuality && time().outputTime())
     {
         return mqPtr->write();
     }
@@ -3207,7 +3152,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nSwaps_++;
+    nSwaps_[0]++;
 
     // Return a successful operation.
     return map;
@@ -5157,9 +5102,49 @@ scalar dynamicTopoFvMesh::testProximity
 }
 
 // Calculate the edge length-scale for the mesh
-void dynamicTopoFvMesh::calculateLengthScale()
+void dynamicTopoFvMesh::calculateLengthScale(bool dump)
 {
     if (!edgeRefinement_)
+    {
+        return;
+    }
+
+    Switch dumpLengthScale(false);
+
+    if
+    (
+        dict_.subDict("dynamicTopoFvMesh").found("dumpLengthScale") ||
+        mandatory_
+    )
+    {
+        dumpLengthScale =
+        (
+            dict_.subDict("dynamicTopoFvMesh").lookup("dumpLengthScale")
+        );
+    }
+
+    volScalarField *lsPtr(NULL);
+
+    if (dumpLengthScale && time().outputTime() && dump)
+    {
+        lsPtr = new volScalarField
+        (
+            IOobject
+            (
+                "lengthScale",
+                time().timeName(),
+                *this,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            *this,
+            dimensionedScalar("scalar", dimLength, 0)
+        );
+    }
+
+    // Bail-out if a dumping was not requested in dictionary.
+    if (dump && !dumpLengthScale && !time().outputTime())
     {
         return;
     }
@@ -5331,6 +5316,20 @@ void dynamicTopoFvMesh::calculateLengthScale()
                 << " Visited cells: " << visitedCells
                 << " nCells: " << nCells()
                 << abort(FatalError);
+    }
+
+    // Check if length-scale is to be dumped to disk.
+    if (dumpLengthScale && time().outputTime() && dump)
+    {
+        scalarField& lengthScale = lsPtr->internalField();
+
+        // Obtain length-scale values from the mesh
+        forAll(lengthScale_, cellI)
+        {
+            lengthScale[cellI] = lengthScale_[cellI];
+        }
+
+        lsPtr->write();
     }
 }
 
@@ -6947,17 +6946,15 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 // Read coupled patch information from dictionary.
 void dynamicTopoFvMesh::readCoupledPatches()
 {
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Size the initial list
     patchCoupling_.clear();
+    patchCoupling_.setSize(boundary.size());
 
     if (dict_.found("coupledPatches") || mandatory_)
     {
         const dictionary& coupledPatches = dict_.subDict("coupledPatches");
-
-        const polyBoundaryMesh& boundary = boundaryMesh();
-
-        // Size the initial list
-        patchCoupling_.clear();
-        patchCoupling_.setSize(boundary.size());
 
         // Determine master and slave patches
         forAllConstIter(dictionary, coupledPatches, dIter)
@@ -8530,7 +8527,8 @@ bool dynamicTopoFvMesh::checkCollapse
                 << "will yield a quality of: " << cQuality
                 << ", when " << pointIndex
                 << " is moved to location: " << nl
-                << newPoint << endl;
+                << newPoint
+                << endl;
         }
 
         return true;
@@ -8539,12 +8537,42 @@ bool dynamicTopoFvMesh::checkCollapse
     // Negative quality is a no-no
     if (cQuality < 0.0)
     {
+        if (forceOp)
+        {
+            InfoIn("dynamicTopoFvMesh::checkCollapse()")
+                << "\nCollapsing cell: " << cellIndex
+                << " containing points:\n"
+                << faceToCheck[0] << "," << faceToCheck[1] << ","
+                << faceToCheck[2] << "," << pointIndex << nl
+                << "will yield a quality of: " << cQuality
+                << ", when " << pointIndex
+                << " is moved to location: " << nl
+                << newPoint << nl
+                << "Operation cannot be forced."
+                << endl;
+        }
+
         return true;
     }
 
     // Negative old-volume is also a no-no
     if (oldVolume < 0.0)
     {
+        if (forceOp)
+        {
+            InfoIn("dynamicTopoFvMesh::checkCollapse()")
+                << "\nCollapsing cell: " << cellIndex
+                << " containing points:\n"
+                << faceToCheck[0] << "," << faceToCheck[1] << ","
+                << faceToCheck[2] << "," << pointIndex << nl
+                << "will yield an old-volume of: " << oldVolume
+                << ", when " << pointIndex
+                << " is moved to location: " << nl
+                << oldPoint << nl
+                << "Operation cannot be forced."
+                << endl;
+        }
+
         return true;
     }
 
@@ -9323,8 +9351,45 @@ void dynamicTopoFvMesh::removeSlivers()
         setCoupledModification();
     }
 
-    forAllIter(Map<scalar>, thresholdSlivers_, iter)
+    // Sort by sliver-quality.
+    labelList cIndices(thresholdSlivers_.toc());
+    SortableList<scalar> values(cIndices.size());
+
+    // Fill-in values to sort by...
+    forAll(cIndices, indexI)
     {
+        values[indexI] = thresholdSlivers_[cIndices[indexI]];
+    }
+
+    // Explicitly sort by quality value.
+    values.sort();
+
+    const labelList& indices = values.indices();
+
+    if (debug && thresholdSlivers_.size())
+    {
+        Info << "Sliver list: " << endl;
+
+        forAll(indices, indexI)
+        {
+            label cIndex = cIndices[indices[indexI]];
+
+            Info << " Cell: " << cIndex
+                 << " Quality: " << thresholdSlivers_[cIndex]
+                 << endl;
+        }
+
+        if (debug > 1)
+        {
+            writeVTK("sliverCells", cIndices, 3);
+        }
+    }
+
+    forAll(indices, indexI)
+    {
+        // Fetch the cell index
+        label cIndex = cIndices[indices[indexI]];
+
         // First check if this sliver cell is handled elsewhere.
         if (procIndices_.size())
         {
@@ -9344,7 +9409,7 @@ void dynamicTopoFvMesh::removeSlivers()
                         )
                     );
 
-                    if (rCellMap.found(iter.key()))
+                    if (rCellMap.found(cIndex))
                     {
                         // This cell was sent to another sub-domain.
                         foundInSubMesh = true;
@@ -9370,7 +9435,7 @@ void dynamicTopoFvMesh::removeSlivers()
             // Agglomerate cells around the sliver for SPR
             agglomerateTetCells
             (
-                iter.key(),
+                cIndex,
                 agCells,
                 polyCell,
                 polyCellFaces
@@ -9382,7 +9447,7 @@ void dynamicTopoFvMesh::removeSlivers()
             (
                 smallPolyhedronReconnection
                 (
-                    iter(),
+                    thresholdSlivers_[cIndex],
                     polyCellFaces
                 )
             );
@@ -9394,16 +9459,15 @@ void dynamicTopoFvMesh::removeSlivers()
         }
 
         // Identify the sliver type.
-        changeMap map = identifySliverType(iter.key());
+        changeMap map = identifySliverType(cIndex);
 
         if (debug)
         {
-            WarningIn
-            (
-                "dynamicTopoFvMesh::removeSlivers()"
-            )   << nl << "Removing Cell: " << iter.key()
+            WarningIn("dynamicTopoFvMesh::removeSlivers()")
+                << nl << "Removing Cell: " << cIndex
                 << " of sliver type: " << map.type()
-                << " with quality: " << iter() << endl;
+                << " with quality: " << thresholdSlivers_[cIndex]
+                << endl;
         }
 
         // Take action based on the type of sliver.
@@ -10411,17 +10475,23 @@ bool dynamicTopoFvMesh::update()
         }
 
         // Basic checks for mesh-validity
-        if (debug > 1)
+        if (debug > 2)
         {
             checkMesh(true);
         }
     }
 
+    // Dump length-scale to disk, if requested.
+    calculateLengthScale(true);
+
     // Print out topo-stats
     Info << " Reordering time: " << reOrderingTimer.elapsedTime() << endl;
-    Info << " nBisections: " << nBisections_ << endl;
-    Info << " nCollapses: " << nCollapses_ << endl;
-    Info << " nSwaps: " << nSwaps_ << endl;
+    Info << " nBisections: " << nBisections_[0];
+    Info << " nSurfBisections: " << nBisections_[1] << endl;
+    Info << " nCollapses: " << nCollapses_[0];
+    Info << " nSurfCollapses: " << nCollapses_[1] << endl;
+    Info << " nSwaps: " << nSwaps_[0];
+    Info << " nSurfSwaps: " << nSwaps_[1] << endl;
 
     return topoChangeFlag_;
 }

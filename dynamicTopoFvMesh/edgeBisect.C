@@ -1689,7 +1689,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nBisections_++;
+    nBisections_[0]++;
+
+    // Increment surface-counter
+    if (c1 == -1)
+    {
+        nBisections_[1]++;
+    }
 
     // Increment the number of modifications
     nModifications_++;
@@ -1882,6 +1888,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     {
         map.type() = 1;
         return map;
+    }
+
+    // Update number of surface bisections, if necessary.
+    if (whichEdgePatch(eIndex) > -1)
+    {
+        nBisections_[1]++;
     }
 
     // Hull variables
@@ -3044,7 +3056,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nBisections_++;
+    nBisections_[0]++;
 
     // Increment the number of modifications
     nModifications_++;
@@ -3240,6 +3252,12 @@ const changeMap dynamicTopoFvMesh::trisectFace
     {
         map.type() = 1;
         return map;
+    }
+
+    // Update number of surface bisections, if necessary.
+    if (whichPatch(fIndex) > -1)
+    {
+        nBisections_[1]++;
     }
 
     // Hull variables
@@ -4800,7 +4818,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nBisections_++;
+    nBisections_[0]++;
 
     // Increment the number of modifications
     nModifications_++;
