@@ -996,8 +996,10 @@ void mesquiteSmoother::initArrays()
     {
         offsets_.setSize(pIDs_.size() + 1, 0);
         pNormals_.setSize(pIDs_.size());
-        gradEdgeV_.setSize(pIDs_.size());
+        gradEdge_.setSize(pIDs_.size());
         localPts_.setSize(pIDs_.size());
+        auxEdges_.setSize(pIDs_.size(), edgeList(0));
+        extraPoints_.setSize(pIDs_.size());
 
         label totalSize = 0;
 
@@ -1007,8 +1009,8 @@ void mesquiteSmoother::initArrays()
             label nEdg = boundary[pIDs_[patchI]].nEdges();
 
             pNormals_[patchI].setSize(nPts, vector::zero);
-            gradEdgeV_[patchI].setSize(nEdg, vector::zero);
-            localPts_[patchI].setSize(nEdg, vector::zero);
+            localPts_[patchI].setSize(nPts, vector::zero);
+            gradEdge_[patchI].setSize(nEdg, vector::zero);
 
             // Accumulate the total size
             totalSize += nPts;
@@ -1023,6 +1025,24 @@ void mesquiteSmoother::initArrays()
         pV_.setSize(totalSize, vector::zero);
         rV_.setSize(totalSize, vector::zero);
         wV_.setSize(totalSize, vector::zero);
+        bdy_.setSize(totalSize, vector::one);
+
+        // Prepare the boundary condition vectorField
+        forAll(pIDs_, patchI)
+        {
+            const edgeList& edges = boundary[pIDs_[patchI]].edges();
+
+            for
+            (
+                label i = boundary[pIDs_[patchI]].nInternalEdges();
+                i < edges.size();
+                i++
+            )
+            {
+                bdy_[edges[i][0] + offsets_[patchI]] = vector::zero;
+                bdy_[edges[i][1] + offsets_[patchI]] = vector::zero;
+            }
+        }
 
         origPoints_.setSize(refPoints_.size(), vector::zero);
     }
@@ -1167,10 +1187,7 @@ void mesquiteSmoother::initParallelConnectivity()
     }
 
     // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps =
-    (
-        Mesh_.lookupClass<coupleMap>()
-    );
+    HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
 
     forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
     {
@@ -1329,6 +1346,183 @@ void mesquiteSmoother::initParallelConnectivity()
             }
         }
     }
+
+    // Initialize connectivity for surface smoothing.
+    if (!surfaceSmoothing_)
+    {
+        return;
+    }
+
+    // Since auxiliary points/edges are being considered,
+    // arrays will now have to be resized.
+    label totalSize = 0;
+    FixedList<label, 3> gI(-1);
+
+    forAll(pIDs_, patchI)
+    {
+        label nPts = boundary[pIDs_[patchI]].nPoints();
+        label nEdg = boundary[pIDs_[patchI]].nEdges();
+
+        // Prepare a list of edge candidates
+        Map<labelHashSet> eC;
+        Map<label>& extraPoints = extraPoints_[patchI];
+
+        label nNewPoints = nPts;
+
+        forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+        {
+            const coupleMap& cMap = *(cmIter());
+
+            if (cMap.isLocal())
+            {
+                continue;
+            }
+
+            // Pick maps for which this sub-domain is master
+            if (cMap.masterIndex() == Pstream::myProcNo())
+            {
+                // Fetch the neighbour's procIndex
+                label neiProcNo = cMap.slaveIndex();
+
+                const labelList& fB = cMap.entityBuffer(coupleMap::FACE);
+                const labelList& fpB = cMap.entityBuffer(coupleMap::PATCH_ID);
+
+                forAll(fpB, faceI)
+                {
+                    if (pIDs_[patchI] == fpB[faceI])
+                    {
+                        // Fetch the global index.
+                        gI[0] = auxPointMap_[neiProcNo][fB[(3*faceI)+0]];
+                        gI[1] = auxPointMap_[neiProcNo][fB[(3*faceI)+1]];
+                        gI[2] = auxPointMap_[neiProcNo][fB[(3*faceI)+2]];
+
+                        forAll(gI, pI)
+                        {
+                            if (gI[pI] < label(nPoints_))
+                            {
+                                // Add an entry if required
+                                if (!eC.found(gI[pI]))
+                                {
+                                    eC.insert
+                                    (
+                                        gI[pI],
+                                        labelHashSet()
+                                    );
+                                }
+
+                                // Fetch a reference
+                                labelHashSet& eList = eC[gI[pI]];
+
+                                // Check other two points.
+                                label next = gI.fcIndex(pI);
+                                label prev = gI.rcIndex(pI);
+
+                                if (gI[next] >= label(nPoints_))
+                                {
+                                    eList.set(gI[next], empty());
+
+                                    // Add a map entry
+                                    if (!extraPoints.found(gI[next]))
+                                    {
+                                        extraPoints.set
+                                        (
+                                            gI[next],
+                                            nNewPoints++
+                                        );
+                                    }
+                                }
+
+                                if (gI[prev] >= label(nPoints_))
+                                {
+                                    eList.set(gI[prev], empty());
+
+                                    // Add a map entry
+                                    if (!extraPoints.found(gI[prev]))
+                                    {
+                                        extraPoints.set
+                                        (
+                                            gI[prev],
+                                            nNewPoints++
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Accumulate the total size
+        totalSize += (nPts + extraPoints.size());
+
+        // Set offsets
+        offsets_[patchI + 1] = totalSize;
+
+        // First count the number of new edges.
+        label nNewEdges = 0;
+
+        forAllIter(Map<labelHashSet>, eC, pIter)
+        {
+            nNewEdges += pIter().size();
+        }
+
+        // Allocate auxEdges for this patch.
+        auxEdges_[patchI].setSize(nNewEdges, edge(-1, -1));
+
+        // pNormals and localPts stay at the same size.
+        // However, gradEdge needs to account for new edges.
+        gradEdge_[patchI].setSize(nEdg + nNewEdges, vector::zero);
+
+        // Prepare edges in order
+        nNewEdges = 0;
+
+        forAllConstIter(Map<labelHashSet>, eC, pmIter)
+        {
+            label p0 = boundary[pIDs_[patchI]].whichPoint(pmIter.key());
+
+            forAllConstIter(labelHashSet, pmIter(), psIter)
+            {
+                // Fill in the edge.
+                auxEdges_[patchI][nNewEdges][0] = p0;
+                auxEdges_[patchI][nNewEdges][1] = extraPoints[psIter.key()];
+
+                nNewEdges++;
+            }
+        }
+    }
+
+    // Resize CG variables
+    bV_.setSize(totalSize, vector::zero);
+    xV_.setSize(totalSize, vector::zero);
+    pV_.setSize(totalSize, vector::zero);
+    rV_.setSize(totalSize, vector::zero);
+    wV_.setSize(totalSize, vector::zero);
+    bdy_.setSize(totalSize, vector::one);
+
+    // Prepare the boundary condition vectorField
+    forAll(pIDs_, patchI)
+    {
+        const edgeList& edges = boundary[pIDs_[patchI]].edges();
+
+        for
+        (
+            label i = boundary[pIDs_[patchI]].nInternalEdges();
+            i < edges.size();
+            i++
+        )
+        {
+            bdy_[edges[i][0] + offsets_[patchI]] = vector::zero;
+            bdy_[edges[i][1] + offsets_[patchI]] = vector::zero;
+        }
+
+        // Reset auxEdges master points, and blank out slave points
+        forAll(auxEdges_[patchI], edgeI)
+        {
+            bdy_[auxEdges_[patchI][edgeI][0] + offsets_[patchI]] = vector::one;
+            bdy_[auxEdges_[patchI][edgeI][1] + offsets_[patchI]] = vector::zero;
+        }
+    }
 }
 
 // Copy auxiliary points to/from buffers
@@ -1340,10 +1534,7 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
     }
 
     // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps =
-    (
-        Mesh_.lookupClass<coupleMap>()
-    );
+    HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
 
     forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
     {
@@ -1471,10 +1662,23 @@ void mesquiteSmoother::A
 
         forAll(edges, edgeI)
         {
-            gradEdgeV_[patchI][edgeI] =
+            gradEdge_[patchI][edgeI] =
             (
                 p[edges[edgeI][1] + offsets_[patchI]]
               - p[edges[edgeI][0] + offsets_[patchI]]
+            );
+        }
+
+        // Calculate auxiliary edge-gradients
+        label nEdg = edges.size();
+        const edgeList& auxEdges = auxEdges_[patchI];
+
+        forAll(auxEdges, edgeI)
+        {
+            gradEdge_[patchI][edgeI + nEdg] =
+            (
+                p[auxEdges[edgeI][1] + offsets_[patchI]]
+              - p[auxEdges[edgeI][0] + offsets_[patchI]]
             );
         }
     }
@@ -1486,8 +1690,25 @@ void mesquiteSmoother::A
 
         forAll(edges, edgeI)
         {
-            w[edges[edgeI][0] + offsets_[patchI]] += gradEdgeV_[patchI][edgeI];
-            w[edges[edgeI][1] + offsets_[patchI]] -= gradEdgeV_[patchI][edgeI];
+            w[edges[edgeI][0] + offsets_[patchI]] += gradEdge_[patchI][edgeI];
+            w[edges[edgeI][1] + offsets_[patchI]] -= gradEdge_[patchI][edgeI];
+        }
+
+        // Calculate divergence from auxiliary edges
+        label nEdg = edges.size();
+        const edgeList& auxEdges = auxEdges_[patchI];
+
+        forAll(auxEdges, edgeI)
+        {
+            w[auxEdges[edgeI][0] + offsets_[patchI]] +=
+            (
+                gradEdge_[patchI][edgeI + nEdg]
+            );
+
+            w[auxEdges[edgeI][1] + offsets_[patchI]] -=
+            (
+                gradEdge_[patchI][edgeI + nEdg]
+            );
         }
     }
 
@@ -1501,14 +1722,8 @@ void mesquiteSmoother::applyBCs
     vectorField& field
 )
 {
-    // Blank out residuals at boundary nodes
-    label nFixedBC = 0;
-    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-
     forAll(pIDs_, patchI)
     {
-        const edgeList& edges = boundary[pIDs_[patchI]].edges();
-
         // Apply slip conditions for internal nodes
         forAll(pNormals_[patchI], pointI)
         {
@@ -1519,21 +1734,10 @@ void mesquiteSmoother::applyBCs
                 (field[pointI + offsets_[patchI]] & n)*n
             );
         }
-
-        // Blank out residuals for bounding curves
-        for
-        (
-            label i = boundary[pIDs_[patchI]].nInternalEdges();
-            i < edges.size();
-            i++
-        )
-        {
-            field[edges[i][0] + offsets_[patchI]] = vector::zero;
-            field[edges[i][1] + offsets_[patchI]] = vector::zero;
-
-            nFixedBC++;
-        }
     }
+
+    // Component-wise multiply the field with BCs.
+    field = cmptMultiply(field, bdy_);
 
     if (twoDMesh_)
     {
@@ -1541,7 +1745,7 @@ void mesquiteSmoother::applyBCs
     }
 
     // If no boundaries were fixed, fix a few points at random
-    if (nFixedBC == 0)
+    if (min(bdy_) > vector(0.5,0.5,0.5))
     {
         Random randomizer(1);
         label nFix = (field.size()*5)/100;
@@ -1727,15 +1931,20 @@ void mesquiteSmoother::smoothSurfaces()
     // Value to be used later in volume error correction
     if (volumeCorrection_)
     {
-        oldVolume_ = gSum(mesh().cellVolumes());
+        oldVolume_ = sum(mesh().cellVolumes());
     }
 
     for (label i = 0; i < nSweeps_; i++)
     {
+        // Copy auxiliary points from slaves
+        copyAuxiliaryPoints();
+
         // Prepare point-normals with updated point positions
         preparePointNormals();
 
         // Copy existing point-positions
+        vector v = vector::zero;
+
         forAll(pIDs_, patchI)
         {
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
@@ -1743,6 +1952,17 @@ void mesquiteSmoother::smoothSurfaces()
             forAll(meshPts,pointI)
             {
                 xV_[pointI + offsets_[patchI]] = refPoints_[meshPts[pointI]];
+            }
+
+            // Set auxiliary point positions
+            forAllConstIter(Map<label>, extraPoints_[patchI], pIter)
+            {
+                // Fetch the auxiliary point
+                v.x() = vtxCoords_[(3*pIter.key())+0];
+                v.y() = vtxCoords_[(3*pIter.key())+1];
+                v.z() = vtxCoords_[(3*pIter.key())+2];
+
+                xV_[pIter() + offsets_[patchI]] = v;
             }
         }
 
@@ -1764,8 +1984,18 @@ void mesquiteSmoother::smoothSurfaces()
                     (relax_ * xV_[pointI + offsets_[patchI]])
                   + ((1.0 - relax_) * origPoints_[meshPts[pointI]])
                 );
+
+                // Prepare for copyBack to slave
+                v = refPoints_[meshPts[pointI]];
+
+                vtxCoords_[(3*meshPts[pointI])+0] = v.x();
+                vtxCoords_[(3*meshPts[pointI])+1] = v.y();
+                vtxCoords_[(3*meshPts[pointI])+2] = v.z();
             }
         }
+
+        // Copy auxiliary points back to slaves
+        copyAuxiliaryPoints(true);
 
         // Update coupled patches
         if (patchCoupling_.size())
@@ -1782,12 +2012,7 @@ void mesquiteSmoother::smoothSurfaces()
 
                 bool foundMap = false;
 
-                forAllIter
-                (
-                    HashTable<const coupleMap*>,
-                    coupleMaps,
-                    cmIter
-                )
+                forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
                 {
                     const coupleMap& cMap = *(cmIter());
 
@@ -1820,10 +2045,7 @@ void mesquiteSmoother::smoothSurfaces()
 
                 if (!foundMap)
                 {
-                    FatalErrorIn
-                    (
-                        "mesquiteSmoother::smoothSurfaces()"
-                    )
+                    FatalErrorIn("mesquiteSmoother::smoothSurfaces()")
                         << "Could not find coupling map: " << nl
                         << "Master: " << patchI.key() << nl
                         << "Slave: " << patchI()
@@ -2863,6 +3085,10 @@ void mesquiteSmoother::writeVTK
 // Prepare point-normals with updated point positions
 void mesquiteSmoother::preparePointNormals()
 {
+    // Search the registry for all mapping objects.
+    face tmpFace(3);
+    HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
+
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
     forAll(pIDs_, patchI)
@@ -2876,23 +3102,91 @@ void mesquiteSmoother::preparePointNormals()
         }
 
         // Now compute point normals from updated local points
-        const labelListList& pFaces = boundary[pIDs_[patchI]].pointFaces();
+        // const labelListList& pFaces = boundary[pIDs_[patchI]].pointFaces();
         const faceList& faces = boundary[pIDs_[patchI]].localFaces();
 
         pNormals_[patchI] = vector::zero;
 
-        forAll(pNormals_[patchI], pointI)
+        forAll(faces, faceI)
         {
-            vector& n = pNormals_[patchI][pointI];
+            const face& thisFace = faces[faceI];
 
-            forAll(pFaces[pointI], faceI)
+            vector n = thisFace.normal(localPts_[patchI]);
+
+            forAll(thisFace, pointI)
             {
-                n += faces[pFaces[pointI][faceI]].normal(localPts_[patchI]);
+                pNormals_[patchI][thisFace[pointI]] += n;
+            }
+        }
+
+        // Add contributions from neighbouring processors
+        forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+        {
+            const coupleMap& cMap = *(cmIter());
+
+            if (cMap.isLocal())
+            {
+                continue;
             }
 
-            // Normalize the vector
-            n /= mag(n) + VSMALL;
+            // Pick maps for which this sub-domain is master
+            if (cMap.masterIndex() == Pstream::myProcNo())
+            {
+                // Fetch the neighbour's procIndex
+                label neiProcNo = cMap.slaveIndex();
+
+                const labelList& fB = cMap.entityBuffer(coupleMap::FACE);
+                const labelList& fpB = cMap.entityBuffer(coupleMap::PATCH_ID);
+
+                forAll(fpB, faceI)
+                {
+                    // Check if patchIDs match...
+                    if (fpB[faceI] == pIDs_[patchI])
+                    {
+                        // Configure the face.
+                        tmpFace[0] = fB[(3*faceI)+0];
+                        tmpFace[1] = fB[(3*faceI)+1];
+                        tmpFace[2] = fB[(3*faceI)+2];
+
+                        // Compute the normal from buffer values.
+                        vector n = tmpFace.normal(cMap.pointBuffer());
+
+                        forAll(tmpFace, pointI)
+                        {
+                            label globalIndex =
+                            (
+                                auxPointMap_[neiProcNo][tmpFace[pointI]]
+                            );
+
+                            // Check if this is a new auxiliary point
+                            if (globalIndex >= label(nPoints_))
+                            {
+                                continue;
+                            }
+
+                            // Obtain the local point index in patch
+                            label local = boundary[pIDs_[patchI]].whichPoint
+                            (
+                                globalIndex
+                            );
+
+                            // Make the contribution only
+                            // if the point exists.
+                            if (local > -1)
+                            {
+                                pNormals_[patchI][local] += n;
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // Normalize all point-normals
+    forAll(pIDs_, patchI)
+    {
+        pNormals_[patchI] /= mag(pNormals_[patchI]) + VSMALL;
     }
 }
 
@@ -2952,7 +3246,7 @@ void mesquiteSmoother::solve()
         vtxCoords_[(3*pointI)+2] = refPoints_[pointI][2];
     }
 
-    // Copy auxiliary points
+    // Copy auxiliary points from slaves
     copyAuxiliaryPoints();
 
     Mesquite::MsqError err;
@@ -2999,8 +3293,8 @@ void mesquiteSmoother::solve()
     // Assess the quality of the final mesh after smoothing
     queue.add_quality_assessor(&qA, err);
 
-    // Disable output for parallel runs.
-    if (Pstream::parRun())
+    // Disable slave output for parallel runs.
+    if (Pstream::parRun() && !Pstream::master())
     {
         qA.disable_printing_results();
     }
@@ -3008,7 +3302,7 @@ void mesquiteSmoother::solve()
     // Launches optimization on the mesh
     queue.run_instructions(&msqMesh, err);
 
-    // Copy updated positions back
+    // Copy updated positions
     forAll(refPoints_, pointI)
     {
         refPoints_[pointI][0] = vtxCoords_[(3*pointI)+0];
@@ -3016,7 +3310,7 @@ void mesquiteSmoother::solve()
         refPoints_[pointI][2] = vtxCoords_[(3*pointI)+2];
     }
 
-    // Copy auxiliary points back
+    // Copy auxiliary points back to slaves
     copyAuxiliaryPoints(true);
 }
 
@@ -3032,11 +3326,15 @@ void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
         pV_.clear();
         rV_.clear();
         wV_.clear();
+        bdy_.clear();
 
         localPts_.clear();
-        gradEdgeV_.clear();
+        gradEdge_.clear();
         pNormals_.clear();
         offsets_.clear();
+
+        auxEdges_.clear();
+        extraPoints_.clear();
     }
 
     nPoints_ = Mesh_.nPoints();

@@ -27,6 +27,7 @@ Class
 
 Description
     Thin interface to the Mesquite Mesh Improvement library.
+    Also provides surface-mesh smoothing capabilities.
 
 SourceFiles
     mesquiteSmoother.C
@@ -40,6 +41,7 @@ SourceFiles
 #include "Time.H"
 #include "Map.H"
 #include "Switch.H"
+#include "edgeList.H"
 #include "pointIOField.H"
 #include "labelHashSet.H"
 
@@ -128,7 +130,7 @@ protected:
     //- Original points prior to surface-smoothing
     mutable pointField origPoints_;
 
-    //- Map for the auxiliary point buffer
+    //- Map for the auxiliary entities
     Map<Map<label> > auxPointMap_;
 
     //- The quality metric
@@ -151,8 +153,10 @@ protected:
     labelList pIDs_;
     labelList offsets_;
     List<vectorField> pNormals_;
-    List<vectorField> gradEdgeV_;
+    List<vectorField> gradEdge_;
     List<vectorField> localPts_;
+    List<edgeList> auxEdges_;
+    List<Map<label> > extraPoints_;
 
     //- Explicit patch coupling for surface smoothing
     Map<label> patchCoupling_;
@@ -162,6 +166,7 @@ protected:
     vectorField pV_;
     vectorField rV_;
     vectorField wV_;
+    vectorField bdy_;
 
     scalar oldVolume_;
 
