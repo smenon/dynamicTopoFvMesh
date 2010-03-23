@@ -80,7 +80,7 @@ class coupleMap
     mutable FixedList<Map<label>,4> reverseEntityMap_;
 
     // Entity Buffers (as specified by the entityType enumerant)
-    mutable FixedList<labelList,5> entityBuffer_;
+    mutable FixedList<labelList,6> entityBuffer_;
 
     //- Demand-driven connectivity data.
         mutable label nInternalFaces_;
@@ -103,7 +103,8 @@ public:
         CELL = 3,
         INTERNAL_EDGE = 4,
         FACE_EDGE = 4,
-        SHARED_POINT = 5
+        SHARED_POINT = 5,
+        PATCH_ID = 5
     };
 
     //- Runtime type information
@@ -220,7 +221,7 @@ public:
         inline Map<label>& entityMap(const label eType) const;
         inline Map<label>& reverseEntityMap(const label eType) const;
 
-        inline FixedList<labelList,5>& entityBuffer() const;
+        inline FixedList<labelList,6>& entityBuffer() const;
         inline labelList& entityBuffer(const label eType) const;
 
         label nInternalFaces() const;
