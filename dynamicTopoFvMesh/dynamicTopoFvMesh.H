@@ -1312,6 +1312,9 @@ class dynamicTopoFvMesh
         // Wait for buffer transfer completion.
         void waitForBuffers() const;
 
+        // Write out proc IDs for post-processing
+        void writeProcIDs() const;
+
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);
 

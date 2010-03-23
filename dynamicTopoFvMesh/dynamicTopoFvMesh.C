@@ -7247,7 +7247,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
             // Send connectivity (points, edges, faces, cells, etc)
             forAll(cMap.entityBuffer(), bufferI)
             {
-                if (cMap.nEntities(bufferI))
+                if (cMap.entityBuffer(bufferI).size())
                 {
                     pWrite(proc, cMap.entityBuffer(bufferI));
                 }
@@ -7301,13 +7301,18 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
                 3*cMap.nEntities(coupleMap::FACE)
             );
 
+            cMap.entityBuffer(coupleMap::PATCH_ID).setSize
+            (
+                cMap.nEntities(coupleMap::FACE)
+            );
+
             // Receive the pointBuffer
             pRead(proc, cMap.pointBuffer());
 
             // Receive connectivity (points, edges, faces, cells, etc)
             forAll(cMap.entityBuffer(), bufferI)
             {
-                if (cMap.nEntities(bufferI))
+                if (cMap.entityBuffer(bufferI).size())
                 {
                     pRead(proc, cMap.entityBuffer(bufferI));
                 }
@@ -7584,6 +7589,31 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     labelList& fBuffer  = cMap.entityBuffer(coupleMap::FACE);
     labelList& cBuffer  = cMap.entityBuffer(coupleMap::CELL);
     labelList& feBuffer = cMap.entityBuffer(coupleMap::FACE_EDGE);
+    labelList& fpBuffer = cMap.entityBuffer(coupleMap::PATCH_ID);
+
+    // Set the patch buffer size
+    fpBuffer.setSize(nF, -2);
+
+    label faceIndex = 0;
+
+    forAllIter(Map<label>::iterator, faceMap, fIter)
+    {
+        // Find the actual patchID for this face.
+        label pIndex = whichPatch(fIter());
+
+        // Fill it in, provided it isn't a
+        // processor boundary or an interior face.
+        if (pIndex > -1)
+        {
+            if (!isA<processorPolyPatch>(boundary[pIndex]))
+            {
+                fpBuffer[faceIndex] = pIndex;
+            }
+        }
+
+        // Increment the face index
+        faceIndex++;
+    }
 
     if (!twoDMesh_)
     {
@@ -7592,7 +7622,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         feBuffer.setSize(3 * nF, -1);
 
         index = 0;
-
         face thisFace(3);
 
         forAllIter(Map<label>::iterator, faceMap, fIter)
@@ -7985,13 +8014,6 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
     // Wait for all transfers to complete.
     waitForBuffers();
 
-    // Shorten enumerants for convenience
-    const label edgeEnum  = coupleMap::EDGE;
-    const label faceEnum  = coupleMap::FACE;
-    const label cellEnum  = coupleMap::CELL;
-    const label iEdgeEnum = coupleMap::INTERNAL_EDGE;
-    const label fEdgeEnum = coupleMap::FACE_EDGE;
-
     forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
@@ -8002,13 +8024,13 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             const coupleMap& cMap = recvMesh.patchMap();
 
             pointField smPoints(cMap.pointBuffer());
-            edgeList smEdges(cMap.nEntities(edgeEnum));
+            edgeList smEdges(cMap.nEntities(coupleMap::EDGE));
             faceList smFaces;
             cellList smCells;
             labelListList smFEdges;
 
             // Set connectivity from buffers.
-            const labelList& eBuffer = cMap.entityBuffer(edgeEnum);
+            const labelList& eBuffer = cMap.entityBuffer(coupleMap::EDGE);
 
             forAll(smEdges, edgeI)
             {
@@ -8019,12 +8041,28 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             if (!twoDMesh_)
             {
                 // Set sizes.
-                smFaces.setSize(cMap.nEntities(faceEnum), face(3));
-                smFEdges.setSize(cMap.nEntities(faceEnum), labelList(3, -1));
+                smFaces.setSize
+                (
+                    cMap.nEntities(coupleMap::FACE),
+                    face(3)
+                );
+
+                smFEdges.setSize
+                (
+                    cMap.nEntities(coupleMap::FACE),
+                    labelList(3, -1)
+                );
 
                 // Copy connectivity from buffers.
-                const labelList& fBuffer = cMap.entityBuffer(faceEnum);
-                const labelList& feBuffer = cMap.entityBuffer(fEdgeEnum);
+                const labelList& fBuffer =
+                (
+                    cMap.entityBuffer(coupleMap::FACE)
+                );
+
+                const labelList& feBuffer =
+                (
+                    cMap.entityBuffer(coupleMap::FACE_EDGE)
+                );
 
                 forAll(smFaces, faceI)
                 {
@@ -8038,9 +8076,9 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 }
 
                 // Set sizes.
-                smCells.setSize(cMap.nEntities(cellEnum), cell(4));
+                smCells.setSize(cMap.nEntities(coupleMap::CELL), cell(4));
 
-                const labelList& cBuffer = cMap.entityBuffer(cellEnum);
+                const labelList& cBuffer = cMap.entityBuffer(coupleMap::CELL);
 
                 forAll(smCells, cellI)
                 {
@@ -8065,7 +8103,10 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                         time()
                     ),
                     smPoints,
-                    cMap.nEntities(iEdgeEnum),
+                    cMap.nEntities
+                    (
+                        coupleMap::INTERNAL_EDGE
+                    ),
                     smEdges,
                     smFaces,
                     smFEdges,
@@ -8086,6 +8127,47 @@ void dynamicTopoFvMesh::waitForBuffers() const
     {
         OPstream::waitRequests();
         IPstream::waitRequests();
+    }
+}
+
+// Write out proc IDs for post-processing
+void dynamicTopoFvMesh::writeProcIDs() const
+{
+    if (Pstream::parRun())
+    {
+        Switch writeProcIDs(false);
+
+        if
+        (
+            dict_.subDict("dynamicTopoFvMesh").found("writeProcIDs") ||
+            mandatory_
+        )
+        {
+            writeProcIDs =
+            (
+                dict_.subDict("dynamicTopoFvMesh").lookup("writeProcIDs")
+            );
+        }
+
+        if (time().outputTime() && writeProcIDs)
+        {
+            volScalarField procID
+            (
+                IOobject
+                (
+                    "procID",
+                    time().timeName(),
+                    *this,
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    false
+                ),
+                *this,
+                dimensionedScalar("scalar", dimless, Pstream::myProcNo())
+            );
+
+            procID.write();
+        }
     }
 }
 
@@ -10148,6 +10230,9 @@ bool dynamicTopoFvMesh::update()
     // Handy while using only mesh-motion.
     if (interval_ < 0 || time().timeIndex() < 1)
     {
+        // Dump procIDs to disk, if requested.
+        writeProcIDs();
+
         return false;
     }
 
@@ -10155,6 +10240,9 @@ bool dynamicTopoFvMesh::update()
     // or sliver cells are absent.
     if ((time().timeIndex() % interval_ != 0) && sliversAbsent)
     {
+        // Dump procIDs to disk, if requested.
+        writeProcIDs();
+
         return false;
     }
 
@@ -10483,6 +10571,9 @@ bool dynamicTopoFvMesh::update()
 
     // Dump length-scale to disk, if requested.
     calculateLengthScale(true);
+
+    // Dump procIDs to disk, if requested.
+    writeProcIDs();
 
     // Print out topo-stats
     Info << " Reordering time: " << reOrderingTimer.elapsedTime() << endl;
