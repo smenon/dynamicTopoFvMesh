@@ -922,18 +922,6 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
         scale = Foam::min(scale, maxLengthScale_);
     }
 
-    if (coupledModification_)
-    {
-        // Check if this is a coupled processor edge.
-        // - Locally coupled edges use length-scale information only
-        //   from the master patch.
-        if (processorCoupledEdge(eIndex))
-        {
-            // Check patchSubMeshes for length-scale info.
-
-        }
-    }
-
     return scale;
 }
 

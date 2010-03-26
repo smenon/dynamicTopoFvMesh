@@ -310,6 +310,9 @@ class dynamicTopoFvMesh
                 // Set a new subMesh
                 void setMesh(label index, dynamicTopoFvMesh* mesh);
 
+                // Return a reference to the subMesh
+                dynamicTopoFvMesh& subMesh();
+
                 // Have maps been built?
                 bool builtMaps() const;
 
@@ -1274,8 +1277,8 @@ class dynamicTopoFvMesh
         // Read coupled patch information from dictionary.
         void readCoupledPatches();
 
-        // Initialize parallel connectivity for topology modifications.
-        static void initParallelConnectivity(void *argument);
+        // Initialize coupled patch connectivity for topology modifications.
+        static void initCoupledConnectivity(void *argument);
 
         // Build a list of entities that need to be avoided
         // by regular topo-changes.

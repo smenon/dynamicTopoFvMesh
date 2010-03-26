@@ -95,6 +95,18 @@ void dynamicTopoFvMesh::coupledPatchInfo::setMesh
     subMesh_().meshSubDir = "proc_" + Foam::name(index);
 }
 
+dynamicTopoFvMesh& dynamicTopoFvMesh::coupledPatchInfo::subMesh()
+{
+    if (!subMesh_.valid())
+    {
+        FatalErrorIn("coupledPatchInfo::subMesh()")
+            << " Sub-mesh pointer has not been set."
+            << abort(FatalError);
+    }
+
+    return subMesh_();
+}
+
 bool dynamicTopoFvMesh::coupledPatchInfo::builtMaps() const
 {
     return builtMaps_;
