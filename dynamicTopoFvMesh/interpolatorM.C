@@ -78,7 +78,50 @@ Author
                      << " Value: " << oVal << endl;                        \
             }                                                              \
                                                                            \
-            mapVal += (mapWeights[cellI]*oVal);                            \
+            mapVal += (cellWeights[cellI]*oVal);                           \
+        }                                                                  \
+                                                                           \
+        forAll(mapFaces, faceI)                                            \
+        {                                                                  \
+            type oVal = pTraits<type>::zero;                               \
+                                                                           \
+            if                                                             \
+            (                                                              \
+                (mapFaces[faceI] < nOldFaces) &&                           \
+                (!hIter().found(mapFaces[faceI]))                          \
+            )                                                              \
+            {                                                              \
+                const vol##capsType##Field& oF =                           \
+                (                                                          \
+                    mesh_.lookupObject<vol##capsType##Field>(hIter.key())  \
+                );                                                         \
+                                                                           \
+                label oPatch = boundary.whichPatch(mapFaces[faceI]);       \
+                                                                           \
+                if (oPatch == -1)                                          \
+                {                                                          \
+                    FatalErrorIn("interpolator::insertCell()")             \
+                        << nl                                              \
+                        << " Cannot map from internal to boundary face."   \
+                        << abort(FatalError);                              \
+                }                                                          \
+                                                                           \
+                label i = boundary[oPatch].whichFace(mapFaces[faceI]);     \
+                                                                           \
+                oVal = oF.boundaryField()[oPatch][i];                      \
+            }                                                              \
+            else                                                           \
+            {                                                              \
+                oVal = hIter()[mapFaces[faceI]];                           \
+            }                                                              \
+                                                                           \
+            if (dynamicTopoFvMesh::debug > 3)                              \
+            {                                                              \
+                Info << "\tFace:" << mapFaces[faceI]                       \
+                     << " Value: " << oVal << endl;                        \
+            }                                                              \
+                                                                           \
+            mapVal += (faceWeights[faceI]*oVal);                           \
         }                                                                  \
                                                                            \
         if (dynamicTopoFvMesh::debug > 3)                                  \

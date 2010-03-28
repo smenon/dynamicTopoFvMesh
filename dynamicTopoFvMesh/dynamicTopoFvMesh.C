@@ -752,14 +752,11 @@ bool dynamicTopoFvMesh::findCommonEdge
 }
 
 // Insert the specified cell to the mesh.
-// - mapCells can have old and/or new cell labels,
-//   since consistency is maintained with
-//   each topo-change.
+// - mapCells/mapFaces can have old and/or new cell/face labels,
+//   since consistency is maintained with each topo-change.
 label dynamicTopoFvMesh::insertCell
 (
     const cell& newCell,
-    const labelList& mapCells,
-    const scalarField& mapWeights,
     const scalar lengthScale,
     const label zoneID
 )
@@ -780,11 +777,6 @@ label dynamicTopoFvMesh::insertCell
         lengthScale_.append(lengthScale);
     }
 
-    if (iPtr_.valid())
-    {
-        iPtr_->insertCell(newCellIndex, mapCells, mapWeights);
-    }
-
     // Add to the zone if necessary
     if (zoneID >= 0)
     {
@@ -794,6 +786,185 @@ label dynamicTopoFvMesh::insertCell
     nCells_++;
 
     return newCellIndex;
+}
+
+// Set fill-in mapping information for a particular cell
+//  - Requires cell-face connectivity information to be valid.
+void dynamicTopoFvMesh::setCellMapping
+(
+    const label cIndex,
+    const labelList& mappingCells
+)
+{
+    if (iPtr_.valid())
+    {
+        labelHashSet masterCells, masterFaces;
+
+        forAll(mappingCells, cellI)
+        {
+            label parent = -1;
+
+            if (mappingCells[cellI] < nOldCells_)
+            {
+                parent = mappingCells[cellI];
+            }
+            else
+            {
+                parent = cellParents_[mappingCells[cellI]];
+            }
+
+            // Insert the parent cell
+            cellParents_.set(cIndex, parent);
+            masterCells.set(parent, empty());
+        }
+
+        // Fetch connectivity from the old mesh.
+        const cellList& cells = polyMesh::cells();
+        const faceList& faces = polyMesh::faces();
+        const labelList& own = polyMesh::faceOwner();
+        const labelList& nei = polyMesh::faceNeighbour();
+        const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+
+        // Accumulate a larger stencil of cell neighbours
+        labelList initList = masterCells.toc();
+
+        forAll(initList, indexI)
+        {
+            label cellIndex = initList[indexI];
+            const cell& cellToCheck = cells[cellIndex];
+
+            forAll(cellToCheck, faceI)
+            {
+                if (own[cellToCheck[faceI]] == cellIndex)
+                {
+                    // Check the neighbour.
+                    if (cellToCheck[faceI] < nei.size())
+                    {
+                        masterCells.set(nei[cellToCheck[faceI]], empty());
+                    }
+                    else
+                    {
+                        // Add the boundary face. But do so only if it
+                        // is worth mapping from.
+                        label pIndex = whichPatch(cellToCheck[faceI]);
+                        const polyPatch& bdyPatch = boundary[pIndex];
+
+                        if
+                        (
+                            (bdyPatch.type() != "processor") &&
+                            (bdyPatch.type() != "cyclic") &&
+                            (bdyPatch.type() != "wedge") &&
+                            (bdyPatch.type() != "empty") &&
+                            (bdyPatch.type() != "symmetryPlane")
+                        )
+                        {
+                            masterFaces.set(cellToCheck[faceI], empty());
+                        }
+                    }
+                }
+                else
+                {
+                    // Add owner to the list.
+                    masterCells.set(own[cellToCheck[faceI]], empty());
+                }
+            }
+        }
+
+        // Extract lists
+        labelList mapCells = masterCells.toc();
+        labelList mapFaces = masterFaces.toc();
+
+        // Prepare cell/face weights
+        scalarField cellWeights(mapCells.size(), 0.0);
+        scalarField faceWeights(mapFaces.size(), 0.0);
+
+        // Compute the cell-centre location.
+        vector newCellCentre(vector::zero);
+
+        if (twoDMesh_)
+        {
+            newCellCentre = prismCellCentre(cIndex, true);
+        }
+        else
+        {
+            newCellCentre = tetCellCentre(cIndex, true);
+        }
+
+        scalar totalWeight = 0.0;
+
+        forAll(mapCells, cellI)
+        {
+            vector oldCellCentre(vector::zero);
+
+            // Manually calculate cell-centres using old face-connectivity.
+            // Note: This might use old points which have been removed in
+            //       this morph (due to a collapse). The removePoint()
+            //       function still maintains these points while only
+            //       updating maps. But current connectivity doesn't use them.
+            const cell& cellToCheck = cells[mapCells[cellI]];
+
+            forAll(cellToCheck, faceI)
+            {
+                const face& faceToCheck = faces[cellToCheck[faceI]];
+
+                if (faceToCheck.size() == 3)
+                {
+                    oldCellCentre += triFaceCentre(faceToCheck, true);
+                }
+
+                if (faceToCheck.size() == 4)
+                {
+                    oldCellCentre += quadFaceCentre(faceToCheck, true);
+                }
+            }
+
+            oldCellCentre /= cellToCheck.size();
+
+            cellWeights[cellI] =
+            (
+                1.0/stabilise(magSqr(newCellCentre - oldCellCentre), VSMALL)
+            );
+
+            totalWeight += cellWeights[cellI];
+        }
+
+        forAll(mapFaces, faceI)
+        {
+            vector oldFaceCentre(vector::zero);
+
+            const face& faceToCheck = faces[mapFaces[faceI]];
+
+            if (faceToCheck.size() == 3)
+            {
+                oldFaceCentre += triFaceCentre(faceToCheck, true);
+            }
+
+            if (faceToCheck.size() == 4)
+            {
+                oldFaceCentre += quadFaceCentre(faceToCheck, true);
+            }
+
+            faceWeights[faceI] =
+            (
+                1.0/stabilise(magSqr(newCellCentre - oldFaceCentre), VSMALL)
+            );
+
+            totalWeight += faceWeights[faceI];
+        }
+
+        // Normalize weights
+        cellWeights *= (1.0/totalWeight);
+        faceWeights *= (1.0/totalWeight);
+
+        iPtr_->insertCell
+        (
+            cIndex,
+            mapCells,
+            cellWeights,
+            mapFaces,
+            faceWeights
+        );
+    }
 }
 
 // Remove the specified cell from the mesh
@@ -10853,6 +11024,7 @@ bool dynamicTopoFvMesh::update()
         addedFaceZones_.clear();
         addedCellZones_.clear();
         faceParents_.clear();
+        cellParents_.clear();
 
         // Clear the deleted entity map
         deletedPoints_.clear();

@@ -64,19 +64,6 @@ void dynamicTopoFvMesh::swapQuadFace
     // Prepare two new cells
     FixedList<cell, 2> newCell(cell(5));
 
-    forAll(newCell, cellI)
-    {
-        // Fill-in mapping information
-        labelList mC(2, -1);
-        scalarField mW(2, 0.0);
-
-        mC[0] = c0; mC[1] = c1;
-        mW[0] = 0.5; mW[1] = 0.5;
-
-        iPtr_->insertCell(c0, mC, mW);
-        iPtr_->insertCell(c1, mC, mW);
-    }
-
     // Need to find common faces and edges...
     // At the end of this loop, commonFaces [0] & [1] share commonEdge[0]
     // and commonFaces [2] & [3] share commonEdge[1]
@@ -701,6 +688,13 @@ void dynamicTopoFvMesh::swapQuadFace
     edges_[commonEdgeIndex[0]] = newEdges[0];
     edges_[commonEdgeIndex[1]] = newEdges[1];
 
+    // Fill-in mapping information
+    labelList mC(2, -1);
+    mC[0] = c0; mC[1] = c1;
+
+    setCellMapping(c0, mC);
+    setCellMapping(c1, mC);
+
     // Write out VTK files after change
     if (debug > 3)
     {
@@ -829,26 +823,20 @@ const changeMap dynamicTopoFvMesh::swap23
     {
         scalar avgScale = -1.0;
 
-        // Fill-in mapping information
-        labelList mC(2, -1);
-        scalarField mW(2, 0.0);
-
-        forAll(mC, indexI)
-        {
-            mC[indexI] = cellsForRemoval[indexI];
-            mW[indexI] = tetVolume(mC[indexI]);
-        }
-
-        // Normalize weights
-        mW /= (sum(mW) + VSMALL);
-
         if (edgeRefinement_)
         {
-            avgScale = 0.5 * (lengthScale_[mC[0]] + lengthScale_[mC[1]]);
+            avgScale =
+            (
+                0.5 *
+                (
+                    lengthScale_[cellsForRemoval[0]]
+                  + lengthScale_[cellsForRemoval[1]]
+                )
+            );
         }
 
-        // Insert the cell, and map all related volFields
-        newCellIndex[cellI] = insertCell(newTetCell[cellI], mC, mW, avgScale);
+        // Insert the cell
+        newCellIndex[cellI] = insertCell(newTetCell[cellI], avgScale);
     }
 
     // Obtain point-ordering for the other vertices
@@ -1296,6 +1284,16 @@ const changeMap dynamicTopoFvMesh::swap23
     {
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
 
+        // Fill-in mapping information
+        labelList mC(2, -1);
+
+        forAll(mC, indexI)
+        {
+            mC[indexI] = cellsForRemoval[indexI];
+        }
+
+        setCellMapping(newCellIndex[cellI], mC);
+
         // Set the old-volume for this cell
         scalar newOldVol = tetVolume(newCellIndex[cellI], true);
 
@@ -1500,28 +1498,18 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         scalar avgScale = 0.0;
 
-        // Fill-in mapping information
-        labelList mC(cellRemovalList.size(), -1);
-        scalarField mW(cellRemovalList.size(), 0.0);
-
-        forAll(mC, indexI)
+        if (edgeRefinement_)
         {
-            mC[indexI] = cellRemovalList[indexI];
-            mW[indexI] = tetVolume(mC[indexI]);
-
-            if (edgeRefinement_)
+            forAll(cellRemovalList, indexI)
             {
-                avgScale += lengthScale_[mC[indexI]];
+                avgScale += lengthScale_[cellRemovalList[indexI]];
             }
+
+            avgScale /= cellRemovalList.size();
         }
 
-        avgScale /= mC.size();
-
-        // Normalize weights
-        mW /= (sum(mW) + VSMALL);
-
-        // Insert the cell, and map all related volFields
-        newCellIndex[cellI] = insertCell(newTetCell[cellI], mC, mW, avgScale);
+        // Insert the cell
+        newCellIndex[cellI] = insertCell(newTetCell[cellI], avgScale);
     }
 
     // Insert a new internal face
@@ -1995,6 +1983,16 @@ const changeMap dynamicTopoFvMesh::swap32
     forAll(newCellIndex, cellI)
     {
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
+
+        // Fill-in mapping information
+        labelList mC(cellRemovalList.size(), -1);
+
+        forAll(mC, indexI)
+        {
+            mC[indexI] = cellRemovalList[indexI];
+        }
+
+        setCellMapping(newCellIndex[cellI], mC);
 
         // Set the old-volume for this cell
         scalar newOldVol = tetVolume(newCellIndex[cellI], true);

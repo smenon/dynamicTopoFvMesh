@@ -131,7 +131,9 @@ public:
         (
             const label newCellIndex,
             const labelList& mapCells,
-            const scalarField& mapWeights
+            const scalarField& cellWeights,
+            const labelList& mapFaces,
+            const scalarField& faceWeights
         );
 
         // Remove the cell, if it exists in the map.

@@ -189,6 +189,7 @@ class dynamicTopoFvMesh
 
         // Information for mapPolyMesh
         Map<label>       faceParents_;
+        Map<label>       cellParents_;
         List<objectMap>  pointsFromPoints_;
         List<objectMap>  facesFromPoints_;
         List<objectMap>  facesFromEdges_;
@@ -397,6 +398,20 @@ class dynamicTopoFvMesh
         inline point triFaceCentre
         (
             const label fIndex,
+            bool useOldPoints = false
+        ) const;
+
+        // Find the centre of a quad face.
+        inline point quadFaceCentre
+        (
+            const face& quadFace,
+            bool useOldPoints = false
+        ) const;
+
+        // Find the centre of a triangle face
+        inline point triFaceCentre
+        (
+            const face& triFace,
             bool useOldPoints = false
         ) const;
 
@@ -787,10 +802,15 @@ class dynamicTopoFvMesh
         label insertCell
         (
             const cell& newCell,
-            const labelList& mapCells,
-            const scalarField& mapWeights,
             const scalar lengthScale,
             const label zoneID = -1
+        );
+
+        // Set fill-in mapping information for a particular cell
+        void setCellMapping
+        (
+            const label cIndex,
+            const labelList& mappingCells
         );
 
         // Remove the specified cells from the mesh,

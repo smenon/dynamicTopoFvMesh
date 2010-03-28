@@ -406,13 +406,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         map.addPoint(newPointIndex[1]);
     }
 
-    // Fill-in mapping information
-    labelList mC0(1, c0);
-    scalarField mW0(1, 1.0);
-
     // Add a new prism cell to the end of the list.
     // Currently invalid, but will be updated later.
-    newCellIndex[0] = insertCell(newCells[0], mC0, mW0, lengthScale_[c0]);
+    newCellIndex[0] = insertCell(newCells[0], lengthScale_[c0]);
 
     // Modify the two existing triangle boundary faces
 
@@ -927,11 +923,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             c1IntIndex
         );
 
-        // Fill-in mapping information
-        labelList mC1(1, c1);
-        scalarField mW1(1, 1.0);
-
-        newCellIndex[1] = insertCell(newCells[1], mC1, mW1, lengthScale_[c1]);
+        newCellIndex[1] = insertCell(newCells[1], lengthScale_[c1]);
 
         if (debug > 2)
         {
@@ -1512,11 +1504,19 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Update the cell list.
         cells_[c1] = oldCells[1];
         cells_[newCellIndex[1]] = newCells[1];
+
+        // Fill-in mapping information
+        labelList mC1(1, c1);
+        setCellMapping(newCellIndex[1], mC1);
     }
 
     // Update the cell list.
     cells_[c0] = oldCells[0];
     cells_[newCellIndex[0]] = newCells[0];
+
+    // Fill-in mapping information
+    labelList mC0(1, c0);
+    setCellMapping(newCellIndex[0], mC0);
 
     // Modify point labels for common edges
     if (edges_[commonEdgeIndex[0]].start() == otherEdgePoint[0])
@@ -2065,13 +2065,9 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             // Create a new cell. Add it for now, but update later.
             cell newCell(4);
 
-            // Fill-in mapping information
-            labelList mC(1, cellHull[indexI]);
-            scalarField mW(1, 1.0);
-
             addedCellIndices[indexI] =
             (
-                insertCell(newCell, mC, mW, lengthScale_[cellHull[indexI]])
+                insertCell(newCell, lengthScale_[cellHull[indexI]])
             );
 
             // Add this cell to the map.
@@ -2596,6 +2592,11 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         {
             continue;
         }
+
+        // Fill-in mapping information
+        labelList mC(1, cellHull[indexI]);
+
+        setCellMapping(addedCellIndices[indexI], mC);
 
         // Compute old volumes, using old point positions.
         scalar modOldVol = tetVolume(cellHull[indexI], true);
@@ -3348,11 +3349,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
             parentScale = lengthScale_[cellsForRemoval[0]];
         }
 
-        // Fill-in mapping information
-        labelList mC(1, cellsForRemoval[0]);
-        scalarField mW(1, 1.0);
-
-        newCellIndex[i] = insertCell(newTetCell[i], mC, mW, parentScale);
+        newCellIndex[i] = insertCell(newTetCell[i], parentScale);
 
         // Add cells to the map
         map.addCell(newCellIndex[i]);
@@ -4163,11 +4160,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 parentScale = lengthScale_[cellsForRemoval[1]];
             }
 
-            // Fill-in mapping information
-            labelList mC(1, cellsForRemoval[1]);
-            scalarField mW(1, 1.0);
-
-            newCellIndex[i] = insertCell(newTetCell[i], mC, mW, parentScale);
+            newCellIndex[i] = insertCell(newTetCell[i], parentScale);
 
             // Add to the map.
             map.addCell(newCellIndex[i]);
@@ -4713,12 +4706,17 @@ const changeMap dynamicTopoFvMesh::trisectFace
             continue;
         }
 
+        // Fill-in mapping information
+        labelList mC(1, cellsForRemoval[cellI]);
+
         if (cellI == 0)
         {
             for (label i = 0; i < 3; i++)
             {
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
+
+                setCellMapping(newCellIndex[i], mC);
             }
         }
         else
@@ -4727,6 +4725,8 @@ const changeMap dynamicTopoFvMesh::trisectFace
             {
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
+
+                setCellMapping(newCellIndex[i], mC);
             }
         }
 

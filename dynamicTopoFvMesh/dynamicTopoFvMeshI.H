@@ -90,32 +90,40 @@ inline point dynamicTopoFvMesh::circumCentre
     return ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
 }
 
-// Find the centre of a triangle face
+// Find the centre of a quad face
 inline point dynamicTopoFvMesh::quadFaceCentre
 (
     const label fIndex,
     bool useOldPoints
 ) const
 {
-    const face& thisFace = faces_[fIndex];
+    return quadFaceCentre(faces_[fIndex], useOldPoints);
+}
 
+// Find the centre of a quad face
+inline point dynamicTopoFvMesh::quadFaceCentre
+(
+    const face& quadFace,
+    bool useOldPoints
+) const
+{
     if (useOldPoints)
     {
         return 0.25 *
         (
-            oldPoints_[thisFace[0]]
-          + oldPoints_[thisFace[1]]
-          + oldPoints_[thisFace[2]]
-          + oldPoints_[thisFace[3]]
+            oldPoints_[quadFace[0]]
+          + oldPoints_[quadFace[1]]
+          + oldPoints_[quadFace[2]]
+          + oldPoints_[quadFace[3]]
         );
     }
 
     return 0.25 *
     (
-        points_[thisFace[0]]
-      + points_[thisFace[1]]
-      + points_[thisFace[2]]
-      + points_[thisFace[3]]
+        points_[quadFace[0]]
+      + points_[quadFace[1]]
+      + points_[quadFace[2]]
+      + points_[quadFace[3]]
     );
 }
 
@@ -126,25 +134,33 @@ inline point dynamicTopoFvMesh::triFaceCentre
     bool useOldPoints
 ) const
 {
-    const face& tF = faces_[fIndex];
+    return triFaceCentre(faces_[fIndex], useOldPoints);
+}
 
+// Find the centre of a triangle face
+inline point dynamicTopoFvMesh::triFaceCentre
+(
+    const face& triFace,
+    bool useOldPoints
+) const
+{
     scalar oT = (1.0/3.0);
 
     if (useOldPoints)
     {
         return oT *
         (
-            oldPoints_[tF[0]]
-          + oldPoints_[tF[1]]
-          + oldPoints_[tF[2]]
+            oldPoints_[triFace[0]]
+          + oldPoints_[triFace[1]]
+          + oldPoints_[triFace[2]]
         );
     }
 
     return oT *
     (
-        points_[tF[0]]
-      + points_[tF[1]]
-      + points_[tF[2]]
+        points_[triFace[0]]
+      + points_[triFace[1]]
+      + points_[triFace[2]]
     );
 }
 
@@ -327,12 +343,12 @@ inline vector dynamicTopoFvMesh::prismCellCentre
 
         if (faceToCheck.size() == 3)
         {
-            centre += triFaceCentre(cellToCheck[faceI], useOldPoints);
+            centre += triFaceCentre(faceToCheck, useOldPoints);
         }
 
         if (faceToCheck.size() == 4)
         {
-            centre += quadFaceCentre(cellToCheck[faceI], useOldPoints);
+            centre += quadFaceCentre(faceToCheck, useOldPoints);
         }
     }
 
@@ -354,7 +370,7 @@ inline vector dynamicTopoFvMesh::tetCellCentre
 
     forAll(cellToCheck, faceI)
     {
-        centre += triFaceCentre(cellToCheck[faceI]);
+        centre += triFaceCentre(cellToCheck[faceI], useOldPoints);
     }
 
     centre /= cellToCheck.size();
@@ -475,7 +491,7 @@ inline scalar dynamicTopoFvMesh::prismVolume
             pyr3Vol =
             (
                 triFaceNormal(fI, useOldPoints)
-              & (triFaceCentre(cellToCheck[faceI], useOldPoints) - cEst)
+              & (triFaceCentre(fI, useOldPoints) - cEst)
             );
         }
         else
@@ -483,7 +499,7 @@ inline scalar dynamicTopoFvMesh::prismVolume
             pyr3Vol =
             (
                 quadFaceNormal(fI, useOldPoints)
-              & (quadFaceCentre(cellToCheck[faceI], useOldPoints) - cEst)
+              & (quadFaceCentre(fI, useOldPoints) - cEst)
             );
         }
 
