@@ -932,16 +932,17 @@ void dynamicTopoFvMesh::setCellMapping
         {
             vector oldFaceCentre(vector::zero);
 
+            // See Note above.
             const face& faceToCheck = faces[mapFaces[faceI]];
 
             if (faceToCheck.size() == 3)
             {
-                oldFaceCentre += triFaceCentre(faceToCheck, true);
+                oldFaceCentre = triFaceCentre(faceToCheck, true);
             }
 
             if (faceToCheck.size() == 4)
             {
-                oldFaceCentre += quadFaceCentre(faceToCheck, true);
+                oldFaceCentre = quadFaceCentre(faceToCheck, true);
             }
 
             faceWeights[faceI] =
@@ -964,6 +965,158 @@ void dynamicTopoFvMesh::setCellMapping
             mapFaces,
             faceWeights
         );
+    }
+}
+
+// Set fill-in mapping information for a particular face
+//  - If fluxes are being interpolated, velocities for new
+//    cells need to be present in the interpolator maps.
+void dynamicTopoFvMesh::setFaceMapping
+(
+    const label fIndex,
+    const labelList& mappingFaces,
+    const scalar flux,
+    bool interpolateFlux
+)
+{
+    if (iPtr_.valid())
+    {
+        label patch = whichPatch(fIndex);
+
+        const face& faceToCheck = faces_[fIndex];
+
+        if (patch == -1)
+        {
+            // Internal faces get inserted without weights
+            iPtr_->insertFace(patch, fIndex, labelList(0), scalarField(0));
+        }
+        else
+        {
+            if (mappingFaces.empty())
+            {
+                FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
+                    << nl << " Invalid boundary face master for: "
+                    << fIndex << ":: " << faceToCheck << nl
+                    << " mappingFaces: " << mappingFaces
+                    << abort(FatalError);
+            }
+
+            labelHashSet masterFaces;
+
+            forAll(mappingFaces, faceI)
+            {
+                label parent = -1;
+
+                if (mappingFaces[faceI] < nOldFaces_)
+                {
+                    parent = mappingFaces[faceI];
+                }
+                else
+                {
+                    parent = faceParents_[mappingFaces[faceI]];
+                }
+
+                // Insert the parent face
+                faceParents_.set(fIndex, parent);
+                masterFaces.set(parent, empty());
+            }
+
+            // Fetch connectivity from the old mesh.
+            const faceList& faces = polyMesh::faces();
+
+            // Extract lists
+            labelList mapFaces = masterFaces.toc();
+
+            // Prepare face weights
+            scalarField faceWeights(mapFaces.size(), 0.0);
+
+            // Compute the new face-centre location
+            vector newFaceCentre(vector::zero);
+
+            if (twoDMesh_)
+            {
+                newFaceCentre = quadFaceCentre(fIndex, true);
+            }
+            else
+            {
+                newFaceCentre = triFaceCentre(fIndex, true);
+            }
+
+            scalar totalWeight = 0.0;
+
+            forAll(mapFaces, faceI)
+            {
+                vector oldFaceCentre(vector::zero);
+
+                // Manually calculate face-centres using old face connectivity.
+                // Note: This might use old points which have been removed in
+                //       this morph (due to a collapse). The removePoint()
+                //       function still maintains these points while only
+                //       updating maps. But current connectivity doesn't
+                //       use them.
+                const face& oldFaceToCheck = faces[mapFaces[faceI]];
+
+                if (faceToCheck.size() == 3)
+                {
+                    oldFaceCentre = triFaceCentre(oldFaceToCheck, true);
+                }
+
+                if (faceToCheck.size() == 4)
+                {
+                    oldFaceCentre = quadFaceCentre(oldFaceToCheck, true);
+                }
+
+                faceWeights[faceI] =
+                (
+                    1.0/stabilise
+                    (
+                        magSqr(newFaceCentre - oldFaceCentre), VSMALL
+                    )
+                );
+
+                totalWeight += faceWeights[faceI];
+            }
+
+            // Normalize weights
+            faceWeights *= (1.0/totalWeight);
+
+            iPtr_->insertFace(patch, fIndex, mapFaces, faceWeights);
+        }
+
+        if (interpolateFlux)
+        {
+            // Map flux from owner / neighbour.
+            vector Sf = vector::zero;
+
+            if (faceToCheck.size() == 3)
+            {
+                Sf = triFaceNormal(faceToCheck);
+            }
+            else
+            if (faceToCheck.size() == 4)
+            {
+                Sf = quadFaceNormal(faceToCheck);
+            }
+            else
+            {
+                FatalErrorIn("dynamicTopoFvMesh::insertFace()")
+                    << nl << " Invalid face: " << faceToCheck
+                    << abort(FatalError);
+            }
+
+            iPtr_->interpolatePhi
+            (
+                owner_[fIndex],
+                neighbour_[fIndex],
+                fIndex,
+                Sf
+            );
+        }
+        else
+        {
+            // Set face with provided flux.
+            iPtr_->setPhi(fIndex, flux);
+        }
     }
 }
 
@@ -1020,8 +1173,6 @@ label dynamicTopoFvMesh::insertFace
     const face& newFace,
     const label newOwner,
     const label newNeighbour,
-    const labelList& mapFaces,
-    const scalarField& mapWeights,
     const label zoneID
 )
 {
@@ -1050,72 +1201,6 @@ label dynamicTopoFvMesh::insertFace
         {
             Info << boundaryMesh()[patch].name() << endl;
         }
-    }
-
-    if (iPtr_.valid())
-    {
-        iPtr_->insertFace(patch, newFaceIndex, mapFaces, mapWeights);
-
-        if (patch > -1 && mapFaces.empty())
-        {
-            FatalErrorIn("dynamicTopoFvMesh::insertFace()")
-                << nl << " Invalid face master. "
-                << newFace
-                << abort(FatalError);
-        }
-        else
-        {
-            // Fetch information for a master mapping face.
-            label parent;
-            labelHashSet masterObjects;
-
-            forAll(mapFaces, faceI)
-            {
-                label mappingFace = mapFaces[faceI];
-
-                if (mappingFace < nOldFaces_)
-                {
-                    parent = mappingFace;
-                }
-                else
-                {
-                    parent = faceParents_[mappingFace];
-                }
-
-                // Insert the parent face
-                faceParents_.insert(newFaceIndex, parent);
-
-                // Find the cell's neighbours in the old mesh
-                masterObjects.insert(parent);
-            }
-        }
-
-        // Map flux from owner / neighbour.
-        vector Sf = vector::zero;
-
-        if (newFace.size() == 3)
-        {
-            Sf = triFaceNormal(newFace);
-        }
-        else
-        if (newFace.size() == 4)
-        {
-            Sf = quadFaceNormal(newFace);
-        }
-        else
-        {
-            FatalErrorIn("dynamicTopoFvMesh::insertFace()")
-                << nl << " Invalid face: " << newFace
-                << abort(FatalError);
-        }
-
-        iPtr_->interpolatePhi
-        (
-            newOwner,
-            newNeighbour,
-            newFaceIndex,
-            Sf
-        );
     }
 
     // Keep track of added boundary faces in a separate hash-table

@@ -484,10 +484,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // required for coupled patch mapping.
     map.addFace(fIndex);
 
-    // Set face flux for the modified face.
+    // Fetch face flux for the old face.
     scalar oldPhi = iPtr_->getPhi(fIndex);
-
-    iPtr_->setPhi(fIndex, 0.5 * oldPhi);
 
     if (debug > 1)
     {
@@ -610,9 +608,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             whichPatch(c0BdyIndex[0]),
             tmpTriFace,
             newCellIndex[0],
-            -1,
-            labelList(1, c0BdyIndex[0]),
-            scalarField(1, 1.0)
+            -1
         )
     );
 
@@ -633,9 +629,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             whichPatch(c0BdyIndex[1]),
             tmpTriFace,
             c0,
-            -1,
-            labelList(1, c0BdyIndex[1]),
-            scalarField(1, 1.0)
+            -1
         )
     );
 
@@ -739,9 +733,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 whichPatch(fIndex),
                 tmpQuadFace,
                 newCellIndex[0],
-                -1,
-                labelList(1, fIndex),
-                scalarField(1, 1.0)
+                -1
             )
         );
 
@@ -750,9 +742,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
-
-        // Set the flux
-        iPtr_->setPhi(newFaceIndex[3], 0.5 * oldPhi);
 
         // Correct edgeFaces for otherEdgeIndex[1]
         replaceLabel
@@ -1022,9 +1011,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
 
-        // Set the flux
-        iPtr_->setPhi(newFaceIndex[3], 0.5 * oldPhi);
-
         // Correct edgeFaces for otherEdgeIndex[1]
         replaceLabel
         (
@@ -1164,9 +1150,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 whichPatch(commonFaceIndex[2]),
                 tmpTriFace,
                 c1,
-                -1,
-                labelList(1, commonFaceIndex[2]),
-                scalarField(1, 1.0)
+                -1
             )
         );
 
@@ -1187,9 +1171,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 whichPatch(commonFaceIndex[3]),
                 tmpTriFace,
                 newCellIndex[1],
-                -1,
-                labelList(1, commonFaceIndex[3]),
-                scalarField(1, 1.0)
+                -1
             )
         );
 
@@ -1517,6 +1499,67 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Fill-in mapping information
     labelList mC0(1, c0);
     setCellMapping(newCellIndex[0], mC0);
+
+    // Set fill-in mapping information for the modified face.
+    setFaceMapping
+    (
+        fIndex,
+        labelList(1, fIndex),
+        (0.5*oldPhi),
+        false
+    );
+
+    // Default mapping for internal faces
+    setFaceMapping(newFaceIndex[0]);
+
+    // Wedge / empty faces get zero flux.
+    setFaceMapping
+    (
+        newFaceIndex[1],
+        labelList(1, c0BdyIndex[0]),
+        0.0,
+        false
+    );
+
+    setFaceMapping
+    (
+        newFaceIndex[2],
+        labelList(1, c0BdyIndex[1]),
+        0.0,
+        false
+    );
+
+    // Set fill-in mapping information for the new face
+    setFaceMapping
+    (
+        newFaceIndex[3],
+        labelList(1, fIndex),
+        (0.5*oldPhi),
+        false
+    );
+
+    if (c1 != -1)
+    {
+        // Default mapping for internal faces
+        setFaceMapping(newFaceIndex[4]);
+
+        // Wedge / empty faces get zero flux.
+        setFaceMapping
+        (
+            newFaceIndex[5],
+            labelList(1, commonFaceIndex[2]),
+            0.0,
+            false
+        );
+
+        setFaceMapping
+        (
+            newFaceIndex[6],
+            labelList(1, commonFaceIndex[3]),
+            0.0,
+            false
+        );
+    }
 
     // Modify point labels for common edges
     if (edges_[commonEdgeIndex[0]].start() == otherEdgePoint[0])
@@ -2025,8 +2068,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     labelList addedEdgeIndices(faceHull.size(),-1);
     labelList addedIntFaceIndices(faceHull.size(),-1);
 
-    scalar oldPhi = 0.0;
-
     // Now loop through the hull and bisect individual entities
     forAll(vertexHull, indexI)
     {
@@ -2037,15 +2078,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             newPointIndex,
             faces_[faceHull[indexI]]
         );
-
-        // Set face flux for the modified face.
-        oldPhi = iPtr_->getPhi(faceHull[indexI]);
-
-        iPtr_->setPhi(faceHull[indexI], 0.5 * oldPhi);
-
-        // Prepare a mapping master face list (and corresponding weight)
-        labelList mF(1, faceHull[indexI]);
-        scalarField mW(1, 1.0);
 
         // Modify edgePoints for the edge
         replaceLabel
@@ -2173,17 +2205,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                         whichPatch(faceHull[indexI]),
                         tmpTriFace,
                         addedCellIndices[indexI],
-                        -1,
-                        mF,
-                        mW
+                        -1
                     )
                 );
 
                 // Add this face to the map.
                 map.addFace(addedFaceIndices[indexI]);
-
-                // Set the flux
-                iPtr_->setPhi(addedFaceIndices[indexI], 0.5 * oldPhi);
 
                 // Configure edgeFaces
                 tmpEdgeFaces[0] = faceHull[indexI];
@@ -2277,16 +2304,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 // Add this face to the map.
                 map.addFace(addedFaceIndices[indexI]);
-
-                // Set the flux, but check orientation first.
-                scalar fSign = 1.0;
-
-                if (cellHull[indexI] < cellHull[prevI])
-                {
-                    fSign = -1.0;
-                }
-
-                iPtr_->setPhi(addedFaceIndices[indexI], (0.5*fSign*oldPhi));
 
                 // Configure edgeFaces
                 tmpIntEdgeFaces[0] = faceHull[indexI];
@@ -2392,16 +2409,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 // Add this face to the map.
                 map.addFace(addedFaceIndices[0]);
 
-                // Set the flux, but check orientation first.
-                scalar fSign = 1.0;
-
-                if (cellHull[indexI] < cellHull[0])
-                {
-                    fSign = -1.0;
-                }
-
-                iPtr_->setPhi(addedFaceIndices[0], (0.5*fSign*oldPhi));
-
                 // Configure edgeFaces
                 tmpIntEdgeFaces[0] = faceHull[0];
                 tmpIntEdgeFaces[1] = addedIntFaceIndices[0];
@@ -2501,17 +2508,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     whichPatch(faceHull[indexI]),
                     tmpTriFace,
                     addedCellIndices[prevI],
-                    -1,
-                    mF,
-                    mW
+                    -1
                 )
             );
 
             // Add this face to the map.
             map.addFace(addedFaceIndices[indexI]);
-
-            // Set the flux
-            iPtr_->setPhi(addedFaceIndices[indexI], 0.5 * oldPhi);
 
             // Configure edgeFaces
             tmpEdgeFaces[0] = addedFaceIndices[indexI];
@@ -2622,6 +2624,99 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                  << " Old volume: " << newOldVol
                  << " New volume: " << tetVolume(addedCellIndices[indexI])
                  << endl;
+        }
+    }
+
+    // Generate mapping info for new faces
+    forAll(vertexHull, indexI)
+    {
+        // Set face flux for the modified face.
+        scalar oldPhi = iPtr_->getPhi(faceHull[indexI]);
+
+        // Map for the bisected face.
+        setFaceMapping
+        (
+            faceHull[indexI],
+            labelList(1, faceHull[indexI]),
+            (0.5 * oldPhi),
+            false
+        );
+
+        // Obtain circular indices
+        label prevI = vertexHull.rcIndex(indexI);
+
+        // Check if this is an interior/boundary face
+        if (cellHull[indexI] != -1)
+        {
+            // Default mapping for the internal face.
+            setFaceMapping(addedIntFaceIndices[indexI]);
+
+            // Check if this is a boundary face
+            if (cellHull[prevI] == -1)
+            {
+                // Set the flux
+                setFaceMapping
+                (
+                    addedFaceIndices[indexI],
+                    labelList(1, faceHull[indexI]),
+                    (0.5 * oldPhi),
+                    false
+                );
+            }
+            else
+            // Check if a cell was added before this
+            if (addedCellIndices[prevI] != -1)
+            {
+                // Set the flux, but check orientation first.
+                scalar fSign = 1.0;
+
+                if (cellHull[indexI] < cellHull[prevI])
+                {
+                    fSign = -1.0;
+                }
+
+                // Set mapping for the internal face.
+                setFaceMapping
+                (
+                    addedFaceIndices[indexI],
+                    labelList(1, faceHull[indexI]),
+                    (0.5 * fSign * oldPhi),
+                    false
+                );
+            }
+
+            // Do the first interior face at the end
+            if (indexI == vertexHull.size() - 1)
+            {
+                // Set the flux, but check orientation first.
+                scalar fSign = 1.0;
+
+                if (cellHull[indexI] < cellHull[0])
+                {
+                    fSign = -1.0;
+                }
+
+                setFaceMapping
+                (
+                    addedFaceIndices[0],
+                    labelList(1, faceHull[indexI]),
+                    (0.5 * fSign * oldPhi),
+                    false
+                );
+            }
+        }
+        else
+        {
+            // Configure the final boundary face
+
+            // Set the flux
+            setFaceMapping
+            (
+                addedFaceIndices[indexI],
+                labelList(1, faceHull[indexI]),
+                (0.5 * oldPhi),
+                false
+            );
         }
     }
 
@@ -3530,13 +3625,6 @@ const changeMap dynamicTopoFvMesh::trisectFace
         // Boundary face. Determine its patch.
         label facePatch = whichPatch(fIndex);
 
-        // Setting mapping variables.
-        labelList mF(1, fIndex);
-        scalarField mW(1, 1.0);
-
-        // Fetch old flux values.
-        scalar newPhi = (1.0/3.0)*(iPtr_->getPhi(fIndex));
-
         // Add three new boundary faces.
 
         // Fourth face: Owner: newCellIndex[0], Neighbour: -1
@@ -3551,14 +3639,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 facePatch,
                 tmpTriFace,
                 newCellIndex[0],
-                -1,
-                mF,
-                mW
+                -1
             )
         );
-
-        // Set the flux
-        iPtr_->setPhi(newFaceIndex[3], newPhi);
 
         // Fifth face: Owner: newCellIndex[1], Neighbour: -1
         tmpTriFace[0] = newPointIndex;
@@ -3572,14 +3655,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 facePatch,
                 tmpTriFace,
                 newCellIndex[1],
-                -1,
-                mF,
-                mW
+                -1
             )
         );
-
-        // Set the flux
-        iPtr_->setPhi(newFaceIndex[4], newPhi);
 
         // Sixth face: Owner: newCellIndex[2], Neighbour: -1
         tmpTriFace[0] = newPointIndex;
@@ -3593,14 +3671,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 facePatch,
                 tmpTriFace,
                 newCellIndex[2],
-                -1,
-                mF,
-                mW
+                -1
             )
         );
-
-        // Set the flux
-        iPtr_->setPhi(newFaceIndex[5], newPhi);
 
         // Add the newly created faces to cells
         newTetCell[0][nF[0]++] = newFaceIndex[3];
@@ -4731,6 +4804,35 @@ const changeMap dynamicTopoFvMesh::trisectFace
         }
 
         removeCell(cIndex);
+    }
+
+    // Set default mapping for three interior faces.
+    for (label i = 0; i < 3; i++)
+    {
+        setFaceMapping(newFaceIndex[i]);
+    }
+
+    // Set new face fluxes.
+    scalar newPhi = (1.0/3.0)*(iPtr_->getPhi(fIndex));
+
+    for (label i = 3; i < 6; i++)
+    {
+        setFaceMapping
+        (
+            newFaceIndex[i],
+            labelList(1, fIndex),
+            newPhi,
+            false
+        );
+    }
+
+    if (cellsForRemoval[1] != -1)
+    {
+        // Set default mapping for three interior faces.
+        for (label i = 6; i < 9; i++)
+        {
+            setFaceMapping(newFaceIndex[i]);
+        }
     }
 
     // Now finally remove the face...

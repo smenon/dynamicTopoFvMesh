@@ -813,6 +813,15 @@ class dynamicTopoFvMesh
             const labelList& mappingCells
         );
 
+        // Set fill-in mapping information for a particular face
+        void setFaceMapping
+        (
+            const label fIndex,
+            const labelList& mappingFaces = labelList(0),
+            const scalar flux = 0.0,
+            bool interpolateFlux = true
+        );
+
         // Remove the specified cells from the mesh,
         // (including lower entities like points, edges, faces, etc.)
         // and add exposed internal faces/edges to the specified patch.
@@ -835,8 +844,6 @@ class dynamicTopoFvMesh
             const face& newFace,
             const label newOwner,
             const label newNeighbour,
-            const labelList& mapFaces = labelList(0),
-            const scalarField& mapWeights = scalarField(0),
             const label zoneID = -1
         );
 
