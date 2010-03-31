@@ -1191,7 +1191,9 @@ label dynamicTopoFvMesh::insertFace
     {
         Info << "Inserting face: "
              << newFaceIndex << ": "
-             << newFace;
+             << newFace
+             << " Owner: " << newOwner
+             << " Neighbour: " << newNeighbour;
 
         Info << " Patch: ";
 
@@ -2332,7 +2334,6 @@ void dynamicTopoFvMesh::buildEdgePoints
     // Shuffle vertices to appear in CCW order
     forAll(ePoints, indexI)
     {
-
         findIsolatedPoint
         (
             faces_[faceIndex],
@@ -2413,6 +2414,20 @@ void dynamicTopoFvMesh::buildEdgePoints
 
         if (!found)
         {
+            Info << "edgeFaces: " << endl;
+
+            forAll(eFaces, faceI)
+            {
+                Info << " Face: " << eFaces[faceI]
+                     << ":: " << faces_[eFaces[faceI]]
+                     << " Owner: " << owner_[eFaces[faceI]]
+                     << " Neighbour: " << neighbour_[eFaces[faceI]]
+                     << endl;
+            }
+
+            writeVTK("vRingEdgeFaces", eFaces, 2);
+            writeVTK("vRingCellToCheck", cellIndex);
+
             // Something's terribly wrong
             FatalErrorIn
             (
@@ -2421,7 +2436,11 @@ void dynamicTopoFvMesh::buildEdgePoints
                 << " Failed to determine a vertex ring. " << nl
                 << " edgeFaces connectivity is inconsistent. " << nl
                 << " Edge: " << eIndex << ":: " << edgeToCheck << nl
-                << " edgeFaces: " << eFaces
+                << " edgeFaces: " << eFaces << nl
+                << " Patch: " << whichEdgePatch(eIndex) << nl
+                << " cellIndex: " << cellIndex
+                << " :: " << cellToCheck << nl
+                << " Current edgePoints: " << ePoints
                 << abort(FatalError);
         }
     }

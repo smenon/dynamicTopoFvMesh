@@ -1999,74 +1999,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Bounding edge: collapseEdge can collapse this edge
             collapseCase = 3;
         }
-
-        // Override previous decision for rare cases.
-        // Check if either point touches a hull boundary face, and retain that.
-        FixedList<bool,2> faceCheck(false);
-
-        forAll(ringEntities[1], faceI)
-        {
-            if (whichPatch(ringEntities[1][faceI]) > -1)
-            {
-                faceCheck[0] = true;
-                break;
-            }
-        }
-
-        forAll(ringEntities[3], faceI)
-        {
-            if (whichPatch(ringEntities[3][faceI]) > -1)
-            {
-                faceCheck[1] = true;
-                break;
-            }
-        }
-
-        // Check if we can continue...
-        if (faceCheck[0] && !faceCheck[1])
-        {
-            if (collapseCase != 1 && overRideCase == -1)
-            {
-                if (debug > 2)
-                {
-                    Info << "Looking for case: 1, collapseCase: "
-                         << collapseCase << nl
-                         << " overRideCase: " << overRideCase << nl
-                         << " returning..." << endl;
-                }
-
-                return map;
-            }
-        }
-        else
-        if (!faceCheck[0] && faceCheck[1])
-        {
-            if (collapseCase != 2 && overRideCase == -1)
-            {
-                if (debug > 2)
-                {
-                    Info << "Looking for case: 2, collapseCase: "
-                         << collapseCase << nl
-                         << " overRideCase: " << overRideCase << nl
-                         << " returning..." << endl;
-                }
-
-                return map;
-            }
-        }
-        else
-        if (collapseCase != 3 && overRideCase == -1)
-        {
-            if (debug > 2)
-            {
-                Info << "Looking for case: 3, collapseCase: "
-                     << collapseCase << nl
-                     << " overRideCase: " << overRideCase << nl
-                     << " returning..." << endl;
-            }
-
-            return map;
-        }
     }
     else
     {
@@ -2268,6 +2200,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         {
             Info << boundaryMesh()[epIndex].name() << endl;
         }
+
+        Info << "collapseCase: " << collapseCase << endl;
 
         if (debug > 2)
         {
@@ -2510,10 +2444,246 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     iPtr_->setFlip(replaceFace);
                 }
                 else
+                if (neighbour_[faceToRemove] == -1)
+                {
+                    // This interior face would need to be converted
+                    // to a boundary one, and flipped as well.
+                    face newFace = faces_[replaceFace].reverseFace();
+                    label newOwner = neighbour_[replaceFace];
+                    label newNeighbour = neighbour_[faceToRemove];
+                    labelList newFE = faceEdges_[replaceFace];
+
+                    label newFaceIndex =
+                    (
+                        insertFace
+                        (
+                            whichPatch(faceToRemove),
+                            newFace,
+                            newOwner,
+                            newNeighbour
+                        )
+                    );
+
+                    // Ensure that all edges of this face are
+                    // on the boundary.
+                    forAll(newFE, edgeI)
+                    {
+                        if (whichEdgePatch(newFE[edgeI]) == -1)
+                        {
+                            edge newEdge = edges_[newFE[edgeI]];
+                            labelList newEF = edgeFaces_[newFE[edgeI]];
+                            labelList newEP = edgePoints_[newFE[edgeI]];
+
+                            // Need patch information for the new edge.
+                            // Find the corresponding edge in ringEntities.
+                            // Note that hullEdges doesn't need to be checked,
+                            // since they are common to both faces.
+                            label i =
+                            (
+                                findIndex
+                                (
+                                    ringEntities[replaceEdgeIndex],
+                                    newFE[edgeI]
+                                )
+                            );
+
+                            label repIndex =
+                            (
+                                whichEdgePatch
+                                (
+                                    ringEntities[removeEdgeIndex][i]
+                                )
+                            );
+
+                            // Insert the new edge
+                            label newEdgeIndex =
+                            (
+                                insertEdge
+                                (
+                                    repIndex,
+                                    newEdge,
+                                    newEF,
+                                    newEP
+                                )
+                            );
+
+                            // Replace faceEdges for all
+                            // connected faces.
+                            forAll(newEF, faceI)
+                            {
+                                replaceLabel
+                                (
+                                    newFE[edgeI],
+                                    newEdgeIndex,
+                                    faceEdges_[newEF[faceI]]
+                                );
+                            }
+
+                            // Remove the edge
+                            removeEdge(newFE[edgeI]);
+
+                            // Replace faceEdges with new edge index
+                            newFE[edgeI] = newEdgeIndex;
+
+                            // Modify ringEntities
+                            ringEntities[replaceEdgeIndex][i] = newEdgeIndex;
+                        }
+                    }
+
+                    // Add the new faceEdges
+                    faceEdges_.append(newFE);
+
+                    // Replace edgeFaces with the new face index
+                    const labelList& newFEdges = faceEdges_[newFaceIndex];
+
+                    forAll(newFEdges, edgeI)
+                    {
+                        replaceLabel
+                        (
+                            replaceFace,
+                            newFaceIndex,
+                            edgeFaces_[newFEdges[edgeI]]
+                        );
+                    }
+
+                    // Remove the face
+                    removeFace(replaceFace);
+
+                    // Replace label for the new owner
+                    replaceLabel
+                    (
+                        replaceFace,
+                        newFaceIndex,
+                        cells_[newOwner]
+                    );
+
+                    // Modify ringEntities and replaceFace
+                    replaceFace = newFaceIndex;
+                    ringEntities[replaceFaceIndex][indexI] = newFaceIndex;
+                }
+                else
                 {
                     // Keep orientation intact, and update the owner
                     owner_[replaceFace] = neighbour_[faceToRemove];
                 }
+            }
+            else
+            if (neighbour_[faceToRemove] == -1)
+            {
+                // This interior face would need to be converted
+                // to a boundary one, but with orientation intact.
+                face newFace = faces_[replaceFace];
+                label newOwner = owner_[replaceFace];
+                label newNeighbour = neighbour_[faceToRemove];
+                labelList newFE = faceEdges_[replaceFace];
+
+                label newFaceIndex =
+                (
+                    insertFace
+                    (
+                        whichPatch(faceToRemove),
+                        newFace,
+                        newOwner,
+                        newNeighbour
+                    )
+                );
+
+                // Ensure that all edges of this face are
+                // on the boundary.
+                forAll(newFE, edgeI)
+                {
+                    if (whichEdgePatch(newFE[edgeI]) == -1)
+                    {
+                        edge newEdge = edges_[newFE[edgeI]];
+                        labelList newEF = edgeFaces_[newFE[edgeI]];
+                        labelList newEP = edgePoints_[newFE[edgeI]];
+
+                        // Need patch information for the new edge.
+                        // Find the corresponding edge in ringEntities.
+                        // Note that hullEdges doesn't need to be checked,
+                        // since they are common to both faces.
+                        label i =
+                        (
+                            findIndex
+                            (
+                                ringEntities[replaceEdgeIndex],
+                                newFE[edgeI]
+                            )
+                        );
+
+                        label repIndex =
+                        (
+                            whichEdgePatch
+                            (
+                                ringEntities[removeEdgeIndex][i]
+                            )
+                        );
+
+                        // Insert the new edge
+                        label newEdgeIndex =
+                        (
+                            insertEdge
+                            (
+                                repIndex,
+                                newEdge,
+                                newEF,
+                                newEP
+                            )
+                        );
+
+                        // Replace faceEdges for all
+                        // connected faces.
+                        forAll(newEF, faceI)
+                        {
+                            replaceLabel
+                            (
+                                newFE[edgeI],
+                                newEdgeIndex,
+                                faceEdges_[newEF[faceI]]
+                            );
+                        }
+
+                        // Remove the edge
+                        removeEdge(newFE[edgeI]);
+
+                        // Replace faceEdges with new edge index
+                        newFE[edgeI] = newEdgeIndex;
+
+                        // Modify ringEntities
+                        ringEntities[replaceEdgeIndex][i] = newEdgeIndex;
+                    }
+                }
+
+                // Add the new faceEdges
+                faceEdges_.append(newFE);
+
+                // Replace edgeFaces with the new face index
+                const labelList& newFEdges = faceEdges_[newFaceIndex];
+
+                forAll(newFEdges, edgeI)
+                {
+                    replaceLabel
+                    (
+                        replaceFace,
+                        newFaceIndex,
+                        edgeFaces_[newFEdges[edgeI]]
+                    );
+                }
+
+                // Remove the face
+                removeFace(replaceFace);
+
+                // Replace label for the new owner
+                replaceLabel
+                (
+                    replaceFace,
+                    newFaceIndex,
+                    cells_[newOwner]
+                );
+
+                // Modify ringEntities and replaceFace
+                replaceFace = newFaceIndex;
+                ringEntities[replaceFaceIndex][indexI] = newFaceIndex;
             }
             else
             {
@@ -2558,48 +2728,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
 
             // Update the cell
-            if (owner_[faceToRemove] != -1)
-            {
-                replaceLabel
-                (
-                    faceToRemove,
-                    replaceFace,
-                    cells_[owner_[faceToRemove]]
-                );
-            }
-        }
-
-        // Check orientation of faces
-        if (owner_[replaceFace] == -1)
-        {
-            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                << "Face: " << replaceFace << ": " << faces_[replaceFace]
-                << " is an orphan, i.e, no owner cell." << nl
-                << " Error occurred while collapsing edge: "
-                << eIndex << " :: " << edges_[eIndex]
-                << " Patch: " << whichEdgePatch(eIndex)
-                << " edgeBoundary: " << edgeBoundary
-                << " nBoundCurves: " << nBoundCurves
-                << " collapseCase: " << collapseCase
-                << abort(FatalError);
-        }
-        else
-        if
-        (
-            (neighbour_[replaceFace] == -1)
-         && (whichPatch(replaceFace) < 0)
-        )
-        {
-            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                << "Face: " << replaceFace << faces_[replaceFace]
-                << " is being converted to a boundary." << nl
-                << " Error occurred while collapsing edge: "
-                << eIndex << " :: " << edges_[eIndex]
-                << " Patch: " << whichEdgePatch(eIndex)
-                << " edgeBoundary: " << edgeBoundary
-                << " nBoundCurves: " << nBoundCurves
-                << " collapseCase: " << collapseCase
-                << abort(FatalError);
+            replaceLabel
+            (
+                faceToRemove,
+                replaceFace,
+                cells_[owner_[faceToRemove]]
+            );
         }
     }
 
