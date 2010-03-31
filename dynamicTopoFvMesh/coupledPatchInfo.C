@@ -51,6 +51,7 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
 (
     const dynamicTopoFvMesh& mesh,
     const bool isLocal,
+    const bool isSend,
     const label mPatch,
     const label sPatch,
     const label mfzIndex,
@@ -66,7 +67,9 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
             "coupleMap_"
           + Foam::name(mPatch)
           + "_To_"
-          + Foam::name(sPatch),
+          + Foam::name(sPatch)
+          + word(isLocal ? "_Local" : "_Proc")
+          + word(isSend ? "_Send" : "_Recv"),
             mesh.time().timeName(),
             mesh,
             IOobject::NO_READ,
@@ -74,6 +77,7 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
             true
         ),
         isLocal,
+        isSend,
         mPatch,
         sPatch
     ),

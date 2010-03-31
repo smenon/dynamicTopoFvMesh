@@ -300,6 +300,7 @@ class dynamicTopoFvMesh
             (
                 const dynamicTopoFvMesh& mesh,
                 const bool isLocal,
+                const bool isSend,
                 const label mPatch,
                 const label sPatch,
                 const label mfzIndex = -1,
@@ -357,6 +358,8 @@ class dynamicTopoFvMesh
             const edgeList& edges,
             const faceList& faces,
             const labelListList& faceEdges,
+            const labelList& owner,
+            const labelList& neighbour,
             const cellList& cells
         );
 
@@ -609,6 +612,9 @@ class dynamicTopoFvMesh
 
         // Return the edge-stack for a particular thread
         inline stack& edgeStack(const label threadID);
+
+        // Synchronize all processes
+        inline void synchronize();
 
         // Return the integer threadID for a given pthread
         inline label self() const;
@@ -1176,7 +1182,15 @@ class dynamicTopoFvMesh
             labelListList& cellZoneMap
         );
 
-        // Output a list of cells as a VTK file
+        // Output an entity as a VTK file
+        void writeVTK
+        (
+            const word& name,
+            const label entity,
+            const label primitiveType = 3
+        ) const;
+
+        // Output a list of entities as a VTK file
         void writeVTK
         (
             const word& name,
@@ -1330,7 +1344,7 @@ class dynamicTopoFvMesh
         void buildProcessorPatchMesh
         (
             coupledPatchInfo& subMesh,
-            labelHashSet& cellsToAvoid
+            labelHashSet& commonCells
         );
 
         // Build coupled maps for locally coupled patches

@@ -50,18 +50,24 @@ coupleMap::coupleMap
 (
     const IOobject& io,
     const bool isLocal,
+    const bool isSend,
     const label masterIndex,
     const label slaveIndex
 )
 :
     regIOobject(io),
     isLocal_(isLocal),
+    isSend_(isSend),
     masterIndex_(masterIndex),
     slaveIndex_(slaveIndex),
     nEntities_(-1),
     nInternalFaces_(-1),
     ownerPtr_(NULL),
-    neighbourPtr_(NULL)
+    neighbourPtr_(NULL),
+    edgesPtr_(NULL),
+    facesPtr_(NULL),
+    cellsPtr_(NULL),
+    faceEdgesPtr_(NULL)
 {
     if
     (
@@ -80,12 +86,17 @@ coupleMap::coupleMap(const coupleMap& cm)
 :
     regIOobject(cm, true),
     isLocal_(cm.isLocal_),
+    isSend_(cm.isSend_),
     masterIndex_(cm.masterIndex_),
     slaveIndex_(cm.slaveIndex_),
     nEntities_(cm.nEntities_),
     nInternalFaces_(-1),
     ownerPtr_(NULL),
-    neighbourPtr_(NULL)
+    neighbourPtr_(NULL),
+    edgesPtr_(NULL),
+    facesPtr_(NULL),
+    cellsPtr_(NULL),
+    faceEdgesPtr_(NULL)
 {
     if
     (
@@ -104,13 +115,22 @@ coupleMap::coupleMap(const coupleMap& cm)
 coupleMap::~coupleMap()
 {
     clearMaps();
-
-    nInternalFaces_ = -1;
-    deleteDemandDrivenData(ownerPtr_);
-    deleteDemandDrivenData(neighbourPtr_);
+    clearBuffers();
+    clearAddressing();
 }
 
 // * * * * * * * * * * * * * * * Private Functions * * * * * * * * * * * * * //
+
+void coupleMap::clearAddressing() const
+{
+    nInternalFaces_ = -1;
+    deleteDemandDrivenData(ownerPtr_);
+    deleteDemandDrivenData(neighbourPtr_);
+    deleteDemandDrivenData(edgesPtr_);
+    deleteDemandDrivenData(facesPtr_);
+    deleteDemandDrivenData(cellsPtr_);
+    deleteDemandDrivenData(faceEdgesPtr_);
+}
 
 void coupleMap::makeAddressing() const
 {
@@ -124,11 +144,8 @@ void coupleMap::makeAddressing() const
     }
 
     label nFaces = nEntities(coupleMap::FACE);
-    label nCells = nEntities(coupleMap::CELL);
 
-    const labelList& cBuffer = entityBuffer(coupleMap::CELL);
-
-    if (nCells < 0 || nFaces < 0)
+    if (nFaces < 0)
     {
         FatalErrorIn("coupleMap::makeAddressing()")
             << "Invalid buffers. Cannot continue."
@@ -146,28 +163,115 @@ void coupleMap::makeAddressing() const
 
     label nInternalFaces_ = 0;
 
-    for (label cellI = 0; cellI < nCells; cellI++)
-    {
-        for (label f = 0; f < 4; f++)
-        {
-            label faceI = cBuffer[(4*cellI)+f];
+    // Fetch the demand-driven cell list.
+    const cellList& cList = cells();
 
-            if (!markedFaces[faceI])
+    forAll(cList, cellI)
+    {
+        const cell& cellToCheck = cList[cellI];
+
+        forAll(cellToCheck, faceI)
+        {
+            if (!markedFaces[cellToCheck[faceI]])
             {
                 // First visit: owner
-                own[faceI] = cellI;
-                markedFaces[faceI] = true;
+                own[cellToCheck[faceI]] = cellI;
+                markedFaces[cellToCheck[faceI]] = true;
             }
             else
             {
                 // Second visit: neighbour
-                nei[faceI] = cellI;
+                nei[cellToCheck[faceI]] = cellI;
                 nInternalFaces_++;
             }
         }
     }
 
     nei.setSize(nInternalFaces_);
+}
+
+void coupleMap::makeEdges() const
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (edgesPtr_)
+    {
+        FatalErrorIn("coupleMap::makeEdges()")
+            << "Edges have already been calculated."
+            << abort(FatalError);
+    }
+
+    label nEdges = nEntities(coupleMap::EDGE);
+    const labelList& eBuffer = entityBuffer(coupleMap::EDGE);
+
+    edgesPtr_ = new edgeList(nEdges);
+
+    edgeList& edges = *edgesPtr_;
+
+    forAll(edges, edgeI)
+    {
+        edges[edgeI][0] = eBuffer[(2*edgeI)+0];
+        edges[edgeI][1] = eBuffer[(2*edgeI)+1];
+    }
+}
+
+void coupleMap::makeFaces() const
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (facesPtr_ || faceEdgesPtr_)
+    {
+        FatalErrorIn("coupleMap::makeFaces()")
+            << "Faces have already been calculated."
+            << abort(FatalError);
+    }
+
+    label nFaces = nEntities(coupleMap::FACE);
+
+    const labelList& fBuffer = entityBuffer(coupleMap::FACE);
+    const labelList& feBuffer = entityBuffer(coupleMap::FACE_EDGE);
+
+    facesPtr_ = new faceList(nFaces, face(3));
+    faceEdgesPtr_ = new labelListList(nFaces, face(3));
+
+    faceList& faces = *facesPtr_;
+    labelListList& faceEdges = *faceEdgesPtr_;
+
+    forAll(faces, faceI)
+    {
+        for (label p = 0; p < 3; p++)
+        {
+            faces[faceI][p] = fBuffer[(3*faceI)+p];
+            faceEdges[faceI][p] = feBuffer[(3*faceI)+p];
+        }
+    }
+}
+
+void coupleMap::makeCells() const
+{
+    // It is an error to attempt to recalculate
+    // if the pointer is already set
+    if (cellsPtr_)
+    {
+        FatalErrorIn("coupleMap::makeCells()")
+            << "Cells have already been calculated."
+            << abort(FatalError);
+    }
+
+    label nCells = nEntities(coupleMap::CELL);
+    const labelList& cBuffer = entityBuffer(coupleMap::CELL);
+
+    cellsPtr_ = new cellList(nCells, cell(4));
+
+    cellList& cells = *cellsPtr_;
+
+    forAll(cells, cellI)
+    {
+        for (label f = 0; f < 4; f++)
+        {
+            cells[cellI][f] = cBuffer[(4*cellI)+f];
+        }
+    }
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -180,6 +284,28 @@ pointField& coupleMap::pointBuffer() const
 labelList& coupleMap::subMeshPoints() const
 {
     return subMeshPoints_;
+}
+
+void coupleMap::allocateBuffers() const
+{
+    forAll(nEntities_, entityI)
+    {
+        if (nEntities_[entityI] < 0)
+        {
+            FatalErrorIn("coupleMap::allocateBuffers()")
+                << " Entity sizes are not valid." << nl
+                << " nEntities: " << nEntities_
+                << abort(FatalError);
+        }
+    }
+
+    pointBuffer().setSize(nEntities(coupleMap::POINT));
+    entityBuffer(coupleMap::POINT).setSize(nEntities(coupleMap::SHARED_POINT));
+    entityBuffer(coupleMap::EDGE).setSize(2*nEntities(coupleMap::EDGE));
+    entityBuffer(coupleMap::FACE).setSize(3*nEntities(coupleMap::FACE));
+    entityBuffer(coupleMap::CELL).setSize(4*nEntities(coupleMap::CELL));
+    entityBuffer(coupleMap::FACE_EDGE).setSize(3*nEntities(coupleMap::FACE));
+    entityBuffer(coupleMap::PATCH_ID).setSize(nEntities(coupleMap::FACE));
 }
 
 label coupleMap::findSlaveIndex
@@ -278,6 +404,16 @@ void coupleMap::clearMaps() const
     }
 }
 
+void coupleMap::clearBuffers() const
+{
+    pointBuffer_.clear();
+
+    forAll(entityBuffer_, bufferI)
+    {
+        entityBuffer_[bufferI].clear();
+    }
+}
+
 label coupleMap::nInternalFaces() const
 {
     if (nInternalFaces_ == -1)
@@ -306,6 +442,46 @@ const labelList& coupleMap::neighbour() const
     }
 
     return *neighbourPtr_;
+}
+
+const edgeList& coupleMap::edges() const
+{
+    if (!edgesPtr_)
+    {
+        makeEdges();
+    }
+
+    return *edgesPtr_;
+}
+
+const faceList& coupleMap::faces() const
+{
+    if (!facesPtr_)
+    {
+        makeFaces();
+    }
+
+    return *facesPtr_;
+}
+
+const cellList& coupleMap::cells() const
+{
+    if (!cellsPtr_)
+    {
+        makeCells();
+    }
+
+    return *cellsPtr_;
+}
+
+const labelListList& coupleMap::faceEdges() const
+{
+    if (!faceEdgesPtr_)
+    {
+        makeFaces();
+    }
+
+    return *faceEdgesPtr_;
 }
 
 bool coupleMap::readData(Istream& is)

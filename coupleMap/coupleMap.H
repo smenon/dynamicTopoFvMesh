@@ -45,6 +45,9 @@ SourceFiles
 #include "labelList.H"
 #include "pointField.H"
 #include "fieldTypes.H"
+#include "edgeList.H"
+#include "faceList.H"
+#include "cellList.H"
 #include "Map.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -62,6 +65,7 @@ class coupleMap
 {
     // Private data
     mutable bool isLocal_;
+    mutable bool isSend_;
 
     mutable label masterIndex_;
     mutable label slaveIndex_;
@@ -73,7 +77,7 @@ class coupleMap
     mutable labelList subMeshPoints_;
 
     // Entity sizes (as specified by the entityType enumerant)
-    mutable FixedList<label,6> nEntities_;
+    mutable FixedList<label,7> nEntities_;
 
     // Maps for entities
     mutable FixedList<Map<label>,4> entityMap_;
@@ -86,8 +90,18 @@ class coupleMap
         mutable label nInternalFaces_;
         mutable labelList* ownerPtr_;
         mutable labelList* neighbourPtr_;
+        mutable edgeList* edgesPtr_;
+        mutable faceList* facesPtr_;
+        mutable cellList* cellsPtr_;
+        mutable labelListList* faceEdgesPtr_;
+
+        void makeEdges() const;
+        void makeFaces() const;
+        void makeCells() const;
 
         void makeAddressing() const;
+
+        void clearAddressing() const;
 
     //- Disallow default bitwise assignment
     void operator=(const coupleMap&);
@@ -104,7 +118,8 @@ public:
         INTERNAL_EDGE = 4,
         FACE_EDGE = 4,
         SHARED_POINT = 5,
-        PATCH_ID = 5
+        PATCH_ID = 5,
+        UNIQUE_CELL = 6
     };
 
     //- Runtime type information
@@ -115,6 +130,7 @@ public:
     (
         const IOobject& io,
         const bool isLocal,
+        const bool isSend,
         const label masterIndex,
         const label slaveIndex
     );
@@ -172,10 +188,14 @@ public:
         inline label slaveIndex() const;
 
         inline bool isLocal() const;
+        inline bool isSend() const;
+        inline bool isRecv() const;
 
         pointField& pointBuffer() const;
 
         labelList& subMeshPoints() const;
+
+        void allocateBuffers() const;
 
         label findSlaveIndex
         (
@@ -215,7 +235,7 @@ public:
             const label master
         ) const;
 
-        inline FixedList<label,6>& nEntities() const;
+        inline FixedList<label,7>& nEntities() const;
         inline label& nEntities(const label eType) const;
 
         inline Map<label>& entityMap(const label eType) const;
@@ -224,9 +244,14 @@ public:
         inline FixedList<labelList,6>& entityBuffer() const;
         inline labelList& entityBuffer(const label eType) const;
 
+        //- Demand-driven data
         label nInternalFaces() const;
         const labelList& owner() const;
         const labelList& neighbour() const;
+        const edgeList& edges() const;
+        const faceList& faces() const;
+        const cellList& cells() const;
+        const labelListList& faceEdges() const;
 
         void transferMaps
         (
@@ -236,6 +261,8 @@ public:
         ) const;
 
         void clearMaps() const;
+
+        void clearBuffers() const;
 
         bool readData(Istream&);
 

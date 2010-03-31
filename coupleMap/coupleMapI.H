@@ -186,7 +186,17 @@ inline bool coupleMap::isLocal() const
     return isLocal_;
 }
 
-inline FixedList<label,6>& coupleMap::nEntities() const
+inline bool coupleMap::isSend() const
+{
+    return isSend_;
+}
+
+inline bool coupleMap::isRecv() const
+{
+    return !isSend_;
+}
+
+inline FixedList<label,7>& coupleMap::nEntities() const
 {
     return nEntities_;
 }

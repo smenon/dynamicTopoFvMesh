@@ -1067,6 +1067,13 @@ inline stack& dynamicTopoFvMesh::edgeStack
     return edgeStack_[threadID];
 }
 
+// Synchronize all processes
+inline void dynamicTopoFvMesh::synchronize()
+{
+    bool reached = true;
+    reduce(reached, andOp<bool>());
+}
+
 // Return the integer threadID for a given pthread
 // Return zero for single-threaded operation
 inline label dynamicTopoFvMesh::self() const

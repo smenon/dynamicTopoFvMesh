@@ -132,6 +132,7 @@ protected:
 
     //- Map for the auxiliary entities
     Map<Map<label> > auxPointMap_;
+    Map<Map<label> > auxSurfPointMap_;
 
     //- The quality metric
     word qMetric_;
@@ -155,18 +156,22 @@ protected:
     List<vectorField> pNormals_;
     List<vectorField> gradEdge_;
     List<vectorField> localPts_;
-    List<edgeList> auxEdges_;
-    List<Map<label> > extraPoints_;
+    List<scalarField> edgeMarker_;
+
+    Map<vectorField> sendFields_;
+    Map<vectorField> recvFields_;
 
     //- Explicit patch coupling for surface smoothing
     Map<label> patchCoupling_;
 
+    // Fields for the CG solver
     vectorField bV_;
     vectorField xV_;
     vectorField pV_;
     vectorField rV_;
     vectorField wV_;
     vectorField bdy_;
+    scalarField pointMarker_;
 
     scalar oldVolume_;
 
@@ -197,6 +202,9 @@ protected:
 
     // Component-wise sumMag
     scalar cmptSumMag(const vectorField& field);
+
+    // Transfer buffers after divergence compute.
+    void transferBuffers(vectorField &field);
 
     // Apply boundary conditions
     void applyBCs(vectorField &field);
