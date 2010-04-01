@@ -108,7 +108,10 @@ Author
                                                                            \
                 label i = boundary[oPatch].whichFace(mapFaces[faceI]);     \
                                                                            \
-                oVal = oF.boundaryField()[oPatch][i];                      \
+                if (oF.boundaryField()[oPatch].size())                     \
+                {                                                          \
+                    oVal = oF.boundaryField()[oPatch][i];                  \
+                }                                                          \
             }                                                              \
             else                                                           \
             {                                                              \
@@ -174,7 +177,10 @@ Author
                                                                            \
                 label i = boundary[oPatch].whichFace(mapFaces[faceI]);     \
                                                                            \
-                oVal = oF.boundaryField()[oPatch][i];                      \
+                if (oF.boundaryField()[oPatch].size())                     \
+                {                                                          \
+                    oVal = oF.boundaryField()[oPatch][i];                  \
+                }                                                          \
             }                                                              \
             else                                                           \
             {                                                              \
@@ -262,7 +268,10 @@ Author
                                                                            \
                     label i = boundary[oPatch].whichFace(mapFaces[faceI]); \
                                                                            \
-                    oVal = oF.boundaryField()[oPatch][i];                  \
+                    if (oF.boundaryField()[oPatch].size())                 \
+                    {                                                      \
+                        oVal = oF.boundaryField()[oPatch][i];              \
+                    }                                                      \
                 }                                                          \
             }                                                              \
             else                                                           \
@@ -442,7 +451,10 @@ Author
             {                                                              \
                 label i = boundary[patch].whichFace(newIndex);             \
                                                                            \
-                vf.boundaryField()[patch][i] = mIter();                    \
+                if (vf.boundaryField()[patch].size())                      \
+                {                                                          \
+                    vf.boundaryField()[patch][i] = mIter();                \
+                }                                                          \
             }                                                              \
         }                                                                  \
     }
@@ -498,7 +510,10 @@ Author
             {                                                              \
                 label i = boundary[patch].whichFace(newIndex);             \
                                                                            \
-                sf.boundaryField()[patch][i] = mIter();                    \
+                if (sf.boundaryField()[patch].size())                      \
+                {                                                          \
+                    sf.boundaryField()[patch][i] = mIter();                \
+                }                                                          \
             }                                                              \
         }                                                                  \
     }
