@@ -2007,6 +2007,7 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         // Set mapping masters
         labelList mF(2, -1);
+        scalarField mW(2, 0.0);
 
         mF[0] = oldBdyFaceIndex[0];
         mF[1] = oldBdyFaceIndex[1];
@@ -2019,6 +2020,7 @@ const changeMap dynamicTopoFvMesh::swap32
             (
                 newBdyFaceIndex[i],
                 mF,
+                mW,
                 (fArea[i] / (fArea[0] + fArea[1] + VSMALL))
               * (oldPhi[0] + oldPhi[1]),
                 false

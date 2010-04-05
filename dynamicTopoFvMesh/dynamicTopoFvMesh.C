@@ -795,169 +795,223 @@ label dynamicTopoFvMesh::insertCell
 void dynamicTopoFvMesh::setCellMapping
 (
     const label cIndex,
-    const labelList& mappingCells
+    const labelList& mappingCells,
+    const scalarField& mappingWeights
 )
 {
+    // Specify mapping method:
+    //  0: Use raw-weights provided
+    //  1: Inverse-distance
+    label method = 1;
+
     if (iPtr_.valid())
     {
-        labelHashSet masterCells, masterFaces;
+        labelList mapCells, mapFaces;
+        scalarField cellWeights, faceWeights;
 
-        forAll(mappingCells, cellI)
+        if (method == 0)
         {
-            label parent = -1;
-
-            if (mappingCells[cellI] < nOldCells_)
-            {
-                parent = mappingCells[cellI];
-            }
-            else
-            {
-                parent = cellParents_[mappingCells[cellI]];
-            }
-
-            // Insert the parent cell
-            cellParents_.set(cIndex, parent);
-            masterCells.set(parent, empty());
+            // Use raw weights.
+            mapCells = mappingCells;
+            cellWeights = mappingWeights;
         }
-
-        // Fetch connectivity from the old mesh.
-        const cellList& cells = polyMesh::cells();
-        const faceList& faces = polyMesh::faces();
-        const labelList& own = polyMesh::faceOwner();
-        const labelList& nei = polyMesh::faceNeighbour();
-        const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
-
-        // Accumulate a larger stencil of cell neighbours
-        labelList initList = masterCells.toc();
-
-        forAll(initList, indexI)
+        else
+        if (method == 1)
         {
-            label cellIndex = initList[indexI];
-            const cell& cellToCheck = cells[cellIndex];
+            labelHashSet masterCells, masterFaces;
 
-            forAll(cellToCheck, faceI)
+            forAll(mappingCells, cellI)
             {
-                if (own[cellToCheck[faceI]] == cellIndex)
-                {
-                    // Check the neighbour.
-                    if (cellToCheck[faceI] < nei.size())
-                    {
-                        masterCells.set(nei[cellToCheck[faceI]], empty());
-                    }
-                    else
-                    {
-                        // Add the boundary face. But do so only if it
-                        // is worth mapping from.
-                        label pIndex = whichPatch(cellToCheck[faceI]);
-                        const polyPatch& bdyPatch = boundary[pIndex];
+                label parent = -1;
 
-                        if
-                        (
-                            (bdyPatch.type() != "processor") &&
-                            (bdyPatch.type() != "cyclic") &&
-                            (bdyPatch.type() != "wedge") &&
-                            (bdyPatch.type() != "empty") &&
-                            (bdyPatch.type() != "symmetryPlane")
-                        )
-                        {
-                            masterFaces.set(cellToCheck[faceI], empty());
-                        }
-                    }
+                if (mappingCells[cellI] < nOldCells_)
+                {
+                    parent = mappingCells[cellI];
                 }
                 else
                 {
-                    // Add owner to the list.
-                    masterCells.set(own[cellToCheck[faceI]], empty());
+                    parent = cellParents_[mappingCells[cellI]];
+                }
+
+                // Insert the parent cell
+                cellParents_.set(cIndex, parent);
+                masterCells.set(parent, empty());
+            }
+
+            // Fetch connectivity from the old mesh.
+            const cellList& cells = polyMesh::cells();
+            const faceList& faces = polyMesh::faces();
+            const labelList& own = polyMesh::faceOwner();
+            const labelList& nei = polyMesh::faceNeighbour();
+            const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+
+            // Accumulate a larger stencil of cell neighbours
+            labelList initList = masterCells.toc();
+
+            forAll(initList, indexI)
+            {
+                label cellIndex = initList[indexI];
+                const cell& cellToCheck = cells[cellIndex];
+
+                forAll(cellToCheck, faceI)
+                {
+                    if (own[cellToCheck[faceI]] == cellIndex)
+                    {
+                        // Check the neighbour.
+                        if (cellToCheck[faceI] < nei.size())
+                        {
+                            masterCells.set(nei[cellToCheck[faceI]], empty());
+                        }
+                        else
+                        {
+                            // Add the boundary face. But do so only if it
+                            // is worth mapping from.
+                            label pIndex = whichPatch(cellToCheck[faceI]);
+                            const polyPatch& bdyPatch = boundary[pIndex];
+
+                            if
+                            (
+                                (bdyPatch.type() != "processor") &&
+                                (bdyPatch.type() != "cyclic") &&
+                                (bdyPatch.type() != "wedge") &&
+                                (bdyPatch.type() != "empty") &&
+                                (bdyPatch.type() != "symmetryPlane")
+                            )
+                            {
+                                masterFaces.set(cellToCheck[faceI], empty());
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Add owner to the list.
+                        masterCells.set(own[cellToCheck[faceI]], empty());
+                    }
                 }
             }
-        }
 
-        // Extract lists
-        labelList mapCells = masterCells.toc();
-        labelList mapFaces = masterFaces.toc();
+            // Extract lists
+            mapCells = masterCells.toc();
+            mapFaces = masterFaces.toc();
 
-        // Prepare cell/face weights
-        scalarField cellWeights(mapCells.size(), 0.0);
-        scalarField faceWeights(mapFaces.size(), 0.0);
+            // Prepare cell/face weights
+            cellWeights.setSize(mapCells.size(), 0.0);
+            faceWeights.setSize(mapFaces.size(), 0.0);
 
-        // Compute the cell-centre location.
-        vector newCellCentre(vector::zero);
+            // Compute the cell-centre location.
+            vector newCellCentre(vector::zero);
 
-        if (twoDMesh_)
-        {
-            newCellCentre = prismCellCentre(cIndex, true);
-        }
-        else
-        {
-            newCellCentre = tetCellCentre(cIndex, true);
-        }
-
-        scalar totalWeight = 0.0;
-
-        forAll(mapCells, cellI)
-        {
-            vector oldCellCentre(vector::zero);
-
-            // Manually calculate cell-centres using old face-connectivity.
-            // Note: This might use old points which have been removed in
-            //       this morph (due to a collapse). The removePoint()
-            //       function still maintains these points while only
-            //       updating maps. But current connectivity doesn't use them.
-            const cell& cellToCheck = cells[mapCells[cellI]];
-
-            forAll(cellToCheck, faceI)
+            if (twoDMesh_)
             {
-                const face& faceToCheck = faces[cellToCheck[faceI]];
+                newCellCentre = prismCellCentre(cIndex, true);
+            }
+            else
+            {
+                newCellCentre = tetCellCentre(cIndex, true);
+            }
+
+            scalar totalWeight = 0.0;
+
+            forAll(mapCells, cellI)
+            {
+                vector oldCellCentre(vector::zero);
+
+                // Manually calculate cell-centres using old face-connectivity.
+                // Note: This might use old points which have been removed in
+                //       this morph (due to a collapse). The removePoint()
+                //       function still maintains these points while only
+                //       updating maps. But current connectivity doesn't
+                //       use them.
+                const cell& cellToCheck = cells[mapCells[cellI]];
+
+                forAll(cellToCheck, faceI)
+                {
+                    const face& faceToCheck = faces[cellToCheck[faceI]];
+
+                    if (faceToCheck.size() == 3)
+                    {
+                        oldCellCentre += triFaceCentre(faceToCheck, true);
+                    }
+
+                    if (faceToCheck.size() == 4)
+                    {
+                        oldCellCentre += quadFaceCentre(faceToCheck, true);
+                    }
+                }
+
+                oldCellCentre /= cellToCheck.size();
+
+                cellWeights[cellI] =
+                (
+                    1.0/stabilise
+                    (
+                        magSqr(newCellCentre - oldCellCentre),
+                        VSMALL
+                    )
+                );
+
+                totalWeight += cellWeights[cellI];
+            }
+
+            forAll(mapFaces, faceI)
+            {
+                vector oldFaceCentre(vector::zero);
+
+                // See Note above.
+                const face& faceToCheck = faces[mapFaces[faceI]];
 
                 if (faceToCheck.size() == 3)
                 {
-                    oldCellCentre += triFaceCentre(faceToCheck, true);
+                    oldFaceCentre = triFaceCentre(faceToCheck, true);
                 }
 
                 if (faceToCheck.size() == 4)
                 {
-                    oldCellCentre += quadFaceCentre(faceToCheck, true);
+                    oldFaceCentre = quadFaceCentre(faceToCheck, true);
                 }
+
+                faceWeights[faceI] =
+                (
+                    1.0/stabilise
+                    (
+                        magSqr(newCellCentre - oldFaceCentre),
+                        VSMALL
+                    )
+                );
+
+                totalWeight += faceWeights[faceI];
             }
 
-            oldCellCentre /= cellToCheck.size();
-
-            cellWeights[cellI] =
-            (
-                1.0/stabilise(magSqr(newCellCentre - oldCellCentre), VSMALL)
-            );
-
-            totalWeight += cellWeights[cellI];
+            // Normalize weights
+            cellWeights *= (1.0/totalWeight);
+            faceWeights *= (1.0/totalWeight);
         }
 
-        forAll(mapFaces, faceI)
+        if (debug > 3)
         {
-            vector oldFaceCentre(vector::zero);
-
-            // See Note above.
-            const face& faceToCheck = faces[mapFaces[faceI]];
-
-            if (faceToCheck.size() == 3)
-            {
-                oldFaceCentre = triFaceCentre(faceToCheck, true);
-            }
-
-            if (faceToCheck.size() == 4)
-            {
-                oldFaceCentre = quadFaceCentre(faceToCheck, true);
-            }
-
-            faceWeights[faceI] =
-            (
-                1.0/stabilise(magSqr(newCellCentre - oldFaceCentre), VSMALL)
-            );
-
-            totalWeight += faceWeights[faceI];
+            Info << "Inserting mapping cell: " << cIndex << nl
+                 << " mapCells: " << mapCells << nl
+                 << " cellWeights: " << cellWeights << nl
+                 << " mapFaces: " << mapFaces << nl
+                 << " faceWeights: " << faceWeights << nl
+                 << endl;
         }
 
-        // Normalize weights
-        cellWeights *= (1.0/totalWeight);
-        faceWeights *= (1.0/totalWeight);
+        // Ensure compatible sizes.
+        if
+        (
+            (mapCells.size() != cellWeights.size()) ||
+            (mapFaces.size() != faceWeights.size())
+        )
+        {
+            FatalErrorIn("dynamicTopoFvMesh::setCellMapping()")
+                << nl << " Incompatible mapping: " << nl
+                << " mapCells: " << mapCells
+                << " cellWeights: " << cellWeights << nl
+                << " mapFaces: " << mapFaces
+                << " faceWeights: " << faceWeights
+                << abort(FatalError);
+        }
 
         iPtr_->insertCell
         (
@@ -977,12 +1031,21 @@ void dynamicTopoFvMesh::setFaceMapping
 (
     const label fIndex,
     const labelList& mappingFaces,
+    const scalarField& mappingWeights,
     const scalar flux,
     bool interpolateFlux
 )
 {
+    // Specify mapping method:
+    //  0: Use raw-weights provided
+    //  1: Inverse-distance
+    label method = 1;
+
     if (iPtr_.valid())
     {
+        labelList mapFaces(0);
+        scalarField faceWeights(0);
+
         label patch = whichPatch(fIndex);
 
         const face& faceToCheck = faces_[fIndex];
@@ -990,99 +1053,150 @@ void dynamicTopoFvMesh::setFaceMapping
         if (patch == -1)
         {
             // Internal faces get inserted without weights
-            iPtr_->insertFace(patch, fIndex, labelList(0), scalarField(0));
+            iPtr_->insertFace
+            (
+                patch,
+                fIndex,
+                mapFaces,
+                faceWeights
+            );
         }
         else
         {
-            if (mappingFaces.empty())
+            if (method == 0)
             {
-                FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
-                    << nl << " Invalid boundary face master for: "
-                    << fIndex << ":: " << faceToCheck << nl
-                    << " mappingFaces: " << mappingFaces
-                    << abort(FatalError);
+                // Use raw weights.
+                mapFaces = mappingFaces;
+                faceWeights = mappingWeights;
             }
-
-            labelHashSet masterFaces;
-
-            forAll(mappingFaces, faceI)
+            else
+            if (method == 1)
             {
-                label parent = -1;
-
-                if (mappingFaces[faceI] < nOldFaces_)
+                if (mappingFaces.empty())
                 {
-                    parent = mappingFaces[faceI];
+                    FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
+                        << nl << " Invalid boundary face master for: "
+                        << fIndex << ":: " << faceToCheck << nl
+                        << " mappingFaces: " << mappingFaces
+                        << abort(FatalError);
+                }
+
+                labelHashSet masterFaces;
+
+                forAll(mappingFaces, faceI)
+                {
+                    label parent = -1;
+
+                    if (mappingFaces[faceI] < nOldFaces_)
+                    {
+                        parent = mappingFaces[faceI];
+                    }
+                    else
+                    {
+                        parent = faceParents_[mappingFaces[faceI]];
+                    }
+
+                    // Insert the parent face
+                    faceParents_.set(fIndex, parent);
+                    masterFaces.set(parent, empty());
+                }
+
+                // Fetch connectivity from the old mesh.
+                const faceList& faces = polyMesh::faces();
+
+                // Extract lists
+                mapFaces = masterFaces.toc();
+
+                // Prepare face weights
+                faceWeights.setSize(mapFaces.size(), 0.0);
+
+                // Compute the new face-centre location
+                vector newFaceCentre(vector::zero);
+
+                if (twoDMesh_)
+                {
+                    if (faceToCheck.size() == 3)
+                    {
+                        newFaceCentre = triFaceCentre(faceToCheck, true);
+                    }
+
+                    if (faceToCheck.size() == 4)
+                    {
+                        newFaceCentre = quadFaceCentre(faceToCheck, true);
+                    }
                 }
                 else
                 {
-                    parent = faceParents_[mappingFaces[faceI]];
+                    newFaceCentre = triFaceCentre(faceToCheck, true);
                 }
 
-                // Insert the parent face
-                faceParents_.set(fIndex, parent);
-                masterFaces.set(parent, empty());
-            }
+                scalar totalWeight = 0.0;
 
-            // Fetch connectivity from the old mesh.
-            const faceList& faces = polyMesh::faces();
-
-            // Extract lists
-            labelList mapFaces = masterFaces.toc();
-
-            // Prepare face weights
-            scalarField faceWeights(mapFaces.size(), 0.0);
-
-            // Compute the new face-centre location
-            vector newFaceCentre(vector::zero);
-
-            if (twoDMesh_)
-            {
-                newFaceCentre = quadFaceCentre(fIndex, true);
-            }
-            else
-            {
-                newFaceCentre = triFaceCentre(fIndex, true);
-            }
-
-            scalar totalWeight = 0.0;
-
-            forAll(mapFaces, faceI)
-            {
-                vector oldFaceCentre(vector::zero);
-
-                // Manually calculate face-centres using old face connectivity.
-                // Note: This might use old points which have been removed in
-                //       this morph (due to a collapse). The removePoint()
-                //       function still maintains these points while only
-                //       updating maps. But current connectivity doesn't
-                //       use them.
-                const face& oldFaceToCheck = faces[mapFaces[faceI]];
-
-                if (faceToCheck.size() == 3)
+                forAll(mapFaces, faceI)
                 {
-                    oldFaceCentre = triFaceCentre(oldFaceToCheck, true);
-                }
+                    vector oldFaceCentre(vector::zero);
 
-                if (faceToCheck.size() == 4)
-                {
-                    oldFaceCentre = quadFaceCentre(oldFaceToCheck, true);
-                }
+                    // Manually calculate face-centres using
+                    // old face connectivity.
+                    // Note: This might use old points which
+                    //       have been removed in this morph
+                    //       (due to a collapse). The removePoint()
+                    //       function still maintains these points
+                    //       while only updating maps. But current
+                    //       connectivity doesn't use them.
+                    const face& oldFaceToCheck = faces[mapFaces[faceI]];
 
-                faceWeights[faceI] =
-                (
-                    1.0/stabilise
+                    if (faceToCheck.size() == 3)
+                    {
+                        oldFaceCentre = triFaceCentre(oldFaceToCheck, true);
+                    }
+
+                    if (faceToCheck.size() == 4)
+                    {
+                        oldFaceCentre = quadFaceCentre(oldFaceToCheck, true);
+                    }
+
+                    faceWeights[faceI] =
                     (
-                        magSqr(newFaceCentre - oldFaceCentre), VSMALL
-                    )
-                );
+                        1.0/stabilise
+                        (
+                            magSqr(newFaceCentre - oldFaceCentre), VSMALL
+                        )
+                    );
 
-                totalWeight += faceWeights[faceI];
+                    totalWeight += faceWeights[faceI];
+                }
+
+                // Normalize weights
+                faceWeights *= (1.0/totalWeight);
             }
 
-            // Normalize weights
-            faceWeights *= (1.0/totalWeight);
+            if (debug > 3)
+            {
+                Info << "Inserting mapping face: " << fIndex << nl
+                     << " patch: " << patch << nl
+                     << " mapFaces: " << mapFaces << nl
+                     << " faceWeights: " << faceWeights
+                     << endl;
+            }
 
-            iPtr_->insertFace(patch, fIndex, mapFaces, faceWeights);
+            // Ensure compatible sizes.
+            if (mapFaces.size() != faceWeights.size())
+            {
+                FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
+                    << nl << " Incompatible mapping: " << nl
+                    << " mapFaces: " << mapFaces
+                    << " faceWeights: " << faceWeights
+                    << abort(FatalError);
+            }
+
+            iPtr_->insertFace
+            (
+                patch,
+                fIndex,
+                mapFaces,
+                faceWeights
+            );
         }
 
         if (interpolateFlux)
@@ -1092,12 +1206,12 @@ void dynamicTopoFvMesh::setFaceMapping
 
             if (faceToCheck.size() == 3)
             {
-                Sf = triFaceNormal(faceToCheck);
+                Sf = triFaceNormal(faceToCheck, true);
             }
             else
             if (faceToCheck.size() == 4)
             {
-                Sf = quadFaceNormal(faceToCheck);
+                Sf = quadFaceNormal(faceToCheck, true);
             }
             else
             {
@@ -1286,12 +1400,14 @@ label dynamicTopoFvMesh::insertFace
 
 // Remove the specified cells from the mesh,
 // and add internal faces/edges to the specified patch
-void dynamicTopoFvMesh::removeCells
+const changeMap dynamicTopoFvMesh::removeCells
 (
     const labelList& cList,
     const label patch
 )
 {
+    changeMap map;
+
     labelHashSet pointsToRemove, edgesToRemove, facesToRemove;
     Map<label> facesToConvert, edgesToConvert;
 
@@ -1439,7 +1555,7 @@ void dynamicTopoFvMesh::removeCells
         if (nConvFaces > 2)
         {
             Info << "Invalid conversion. Bailing out." << endl;
-            return;
+            return map;
         }
     }
 
@@ -1499,6 +1615,9 @@ void dynamicTopoFvMesh::removeCells
         // Edges will be corrected later.
         faceEdges_.append(fEdges);
 
+        // Add this face to the map.
+        map.addFace(fIter());
+
         // Replace cell with the new face label
         replaceLabel
         (
@@ -1531,6 +1650,9 @@ void dynamicTopoFvMesh::removeCells
                     ePoints
                 )
             );
+
+            // Add this edge to the map.
+            map.addEdge(eIter());
 
             // Remove the edge
             removeEdge(eIter.key());
@@ -1632,6 +1754,8 @@ void dynamicTopoFvMesh::removeCells
 
     // Set the flag
     topoChangeFlag_ = true;
+
+    return map;
 }
 
 // Remove the specified face from the mesh
@@ -4632,6 +4756,18 @@ void dynamicTopoFvMesh::checkConnectivity
             else
             {
                 patchInfo[patchID]++;
+            }
+
+            if (nBF > 2)
+            {
+                Pout << "Edge: " << edgeI
+                     << ": " << edges_[edgeI]
+                     << " has " << nBF
+                     << " boundary faces connected to it." << nl
+                     << " Pinched manifolds are not allowed."
+                     << endl;
+
+                nFailedChecks++;
             }
         }
     }
@@ -8876,6 +9012,65 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     }
 }
 
+// Method for the swapping of an edge in 3D
+//  - To be used mainly for testing purposes only.
+//  - Use swap3DEdges on the entire mesh for efficiency.
+void dynamicTopoFvMesh::swapEdge
+(
+    const label eIndex,
+    bool forceOp
+)
+{
+    // Dynamic programming variables
+    labelList m;
+    PtrList<scalarListList> Q;
+    PtrList<labelListList> K, triangulations;
+
+    // Allocate dynamic programming tables
+    initTables(m, Q, K, triangulations);
+
+    // Compute the minimum quality of cells around this edge
+    scalar minQuality = computeMinQuality(eIndex);
+
+    // Check if this edge is on a bounding curve
+    if (checkBoundingCurve(eIndex))
+    {
+        FatalErrorIn("dynamicTopoFvMesh::swapEdge(const label eIndex)")
+            << nl << " Cannot swap edges on bounding curves. "
+            << abort(FatalError);
+    }
+
+    // Fill the dynamic programming tables
+    if (fillTables(eIndex, minQuality, m, Q, K, triangulations))
+    {
+        // Check if edge-swapping is required.
+        scalar newQuality = Q[0][0][m[0]-1];
+
+        if (newQuality > minQuality)
+        {
+            // Remove this edge according to the swap sequence
+            removeEdgeFlips(eIndex, minQuality, K, triangulations);
+        }
+        else
+        if (forceOp)
+        {
+            if (newQuality < 0.0)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::swapEdge(const label eIndex)")
+                    << " Forcing swap on edge: " << eIndex
+                    << ":: " << edges_[eIndex]
+                    << " will yield an invalid cell quality: "
+                    << newQuality << " Old Quality: " << minQuality
+                    << abort(FatalError);
+            }
+            else
+            {
+                removeEdgeFlips(eIndex, minQuality, K, triangulations);
+            }
+        }
+    }
+}
+
 // 3D Edge-swapping engine
 void dynamicTopoFvMesh::swap3DEdges
 (
@@ -11042,7 +11237,7 @@ bool dynamicTopoFvMesh::update()
             mPtr_->updateMesh(mapper_);
         }
 
-        // Update interpolated fluxes
+        // Update interpolated fields/fluxes
         if (iPtr_.valid())
         {
             iPtr_->updateMesh(mapper_);

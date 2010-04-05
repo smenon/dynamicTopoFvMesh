@@ -1505,6 +1505,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     (
         fIndex,
         labelList(1, fIndex),
+        scalarField(1, 0.0),
         (0.5*oldPhi),
         false
     );
@@ -1517,6 +1518,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     (
         newFaceIndex[1],
         labelList(1, c0BdyIndex[0]),
+        scalarField(1, 0.0),
         0.0,
         false
     );
@@ -1525,6 +1527,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     (
         newFaceIndex[2],
         labelList(1, c0BdyIndex[1]),
+        scalarField(1, 0.0),
         0.0,
         false
     );
@@ -1534,6 +1537,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     (
         newFaceIndex[3],
         labelList(1, fIndex),
+        scalarField(1, 0.0),
         (0.5*oldPhi),
         false
     );
@@ -1548,6 +1552,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         (
             newFaceIndex[5],
             labelList(1, commonFaceIndex[2]),
+            scalarField(1, 0.0),
             0.0,
             false
         );
@@ -1556,6 +1561,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         (
             newFaceIndex[6],
             labelList(1, commonFaceIndex[3]),
+            scalarField(1, 0.0),
             0.0,
             false
         );
@@ -2638,6 +2644,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         (
             faceHull[indexI],
             labelList(1, faceHull[indexI]),
+            scalarField(1, 0.0),
             (0.5 * oldPhi),
             false
         );
@@ -2659,6 +2666,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 (
                     addedFaceIndices[indexI],
                     labelList(1, faceHull[indexI]),
+                    scalarField(1, 0.0),
                     (0.5 * oldPhi),
                     false
                 );
@@ -2680,6 +2688,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 (
                     addedFaceIndices[indexI],
                     labelList(1, faceHull[indexI]),
+                    scalarField(1, 0.0),
                     (0.5 * fSign * oldPhi),
                     false
                 );
@@ -2700,6 +2709,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 (
                     addedFaceIndices[0],
                     labelList(1, faceHull[indexI]),
+                    scalarField(1, 0.0),
                     (0.5 * fSign * oldPhi),
                     false
                 );
@@ -2714,6 +2724,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             (
                 addedFaceIndices[indexI],
                 labelList(1, faceHull[indexI]),
+                scalarField(1, 0.0),
                 (0.5 * oldPhi),
                 false
             );
@@ -4821,6 +4832,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         (
             newFaceIndex[i],
             labelList(1, fIndex),
+            scalarField(1, 0.0),
             newPhi,
             false
         );
@@ -5225,9 +5237,31 @@ void dynamicTopoFvMesh::sliceMesh
                 }
             }
 
-            removeCells(cList, patchIndex);
+            changeMap sliceMap = removeCells(cList, patchIndex);
 
-            checkConnectivity(10);
+            if (debug)
+            {
+                checkConnectivity(10);
+            }
+
+            // Accumulate a list of projection points
+            labelHashSet pPoints;
+            const List<FixedList<label, 2> >& afList =
+            (
+                sliceMap.addedFaceList()
+            );
+
+            forAll(afList, faceI)
+            {
+                const face& thisFace = faces_[afList[faceI][0]];
+
+                forAll(thisFace, pointI)
+                {
+                    pPoints.set(thisFace[pointI], empty());
+                }
+            }
+
+            // Now project points in a series of intermediate steps.
 
             // Add an entry to sliceBoxes.
             label currentSize = sliceBoxes_.size();

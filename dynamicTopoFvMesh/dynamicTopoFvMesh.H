@@ -539,6 +539,9 @@ class dynamicTopoFvMesh
         // Return a reference to the entity mutexes
         inline const Mutex& entityMutex(const label entity) const;
 
+        // Return the edge index for a provided edge
+        inline label getEdgeIndex(const edge& edgeToCheck) const;
+
         // Given a boundary quad face, return a boundary triangular face.
         label getTriBoundaryFace(const label fIndex) const;
 
@@ -659,6 +662,13 @@ class dynamicTopoFvMesh
             const label fIndex,
             label overRideCase = -1,
             bool checkOnly = false
+        );
+
+        // Method for the swapping of an edge in 3D
+        void swapEdge
+        (
+            const label eIndex,
+            bool forceOp = false
         );
 
         // Method for the bisection of an edge in 3D
@@ -816,7 +826,8 @@ class dynamicTopoFvMesh
         void setCellMapping
         (
             const label cIndex,
-            const labelList& mappingCells
+            const labelList& mappingCells,
+            const scalarField& mappingWeights = scalarField(0)
         );
 
         // Set fill-in mapping information for a particular face
@@ -824,6 +835,7 @@ class dynamicTopoFvMesh
         (
             const label fIndex,
             const labelList& mappingFaces = labelList(0),
+            const scalarField& mappingWeights = scalarField(0),
             const scalar flux = 0.0,
             bool interpolateFlux = true
         );
@@ -831,7 +843,8 @@ class dynamicTopoFvMesh
         // Remove the specified cells from the mesh,
         // (including lower entities like points, edges, faces, etc.)
         // and add exposed internal faces/edges to the specified patch.
-        void removeCells
+        const changeMap
+        removeCells
         (
             const labelList& cList,
             const label patch

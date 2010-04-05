@@ -2444,7 +2444,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     iPtr_->setFlip(replaceFace);
                 }
                 else
-                if (neighbour_[faceToRemove] == -1)
+                if
+                (
+                    (neighbour_[faceToRemove] == -1) &&
+                    (neighbour_[replaceFace] != -1)
+                )
                 {
                     // This interior face would need to be converted
                     // to a boundary one, and flipped as well.
@@ -2560,6 +2564,58 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     // Modify ringEntities and replaceFace
                     replaceFace = newFaceIndex;
                     ringEntities[replaceFaceIndex][indexI] = newFaceIndex;
+                }
+                else
+                if
+                (
+                    (neighbour_[faceToRemove] == -1) &&
+                    (neighbour_[replaceFace] == -1)
+                )
+                {
+                    // Wierd overhanging cell. Since replaceFace
+                    // would be an orphan if this continued, remove
+                    // the face entirely.
+                    labelList rmFE = faceEdges_[replaceFace];
+
+                    forAll(rmFE, edgeI)
+                    {
+                        if
+                        (
+                            (edgeFaces_[rmFE[edgeI]].size() == 1) &&
+                            (edgeFaces_[rmFE[edgeI]][0] == replaceFace)
+                        )
+                        {
+                            // This edge has to be removed entirely.
+                            removeEdge(rmFE[edgeI]);
+
+                            label i =
+                            (
+                                findIndex
+                                (
+                                    ringEntities[replaceEdgeIndex],
+                                    rmFE[edgeI]
+                                )
+                            );
+
+                            // Modify ringEntities
+                            ringEntities[replaceEdgeIndex][i] = -1;
+                        }
+                        else
+                        {
+                            // Size-down edgeFaces
+                            sizeDownList
+                            (
+                                replaceFace,
+                                edgeFaces_[rmFE[edgeI]]
+                            );
+                        }
+                    }
+
+                    removeFace(replaceFace);
+
+                    // Modify ringEntities and replaceFace
+                    replaceFace = -1;
+                    ringEntities[replaceFaceIndex][indexI] = -1;
                 }
                 else
                 {
@@ -2915,6 +2971,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // edgePoints for all replacement edges.
     forAll(ringEntities[replaceEdgeIndex], edgeI)
     {
+        // If the ring edge was removed, don't bother.
+        if (ringEntities[replaceEdgeIndex][edgeI] == -1)
+        {
+            continue;
+        }
+
         if (debug > 2)
         {
             Info << "Building edgePoints for edge: "

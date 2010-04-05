@@ -639,6 +639,46 @@ inline const Mutex& dynamicTopoFvMesh::entityMutex
     return entityMutex_[entity];
 }
 
+// Return the edge index for a provided edge
+inline label dynamicTopoFvMesh::getEdgeIndex
+(
+    const edge& edgeToCheck
+) const
+{
+    if (twoDMesh_)
+    {
+        // No efficient search method. Loop through all edges.
+        forAll(edges_, edgeI)
+        {
+            if (edges_[edgeI] == edgeToCheck)
+            {
+                return edgeI;
+            }
+        }
+    }
+    else
+    {
+        // Look througg pointEdges list
+        const labelList& pEdges = pointEdges_[edgeToCheck.start()];
+
+        forAll(pEdges, edgeI)
+        {
+            if (edges_[pEdges[edgeI]] == edgeToCheck)
+            {
+                return pEdges[edgeI];
+            }
+        }
+    }
+
+    // Probably not a valid edge.
+    FatalErrorIn("dynamicTopoFvMesh::getEdgeIndex")
+        << "Could not find an appropriate edge index for edge:"
+        << edgeToCheck
+        << abort(FatalError);
+
+    return -1;
+}
+
 // Return the appropriate length-scale for boundary face
 inline scalar dynamicTopoFvMesh::boundaryLengthScale
 (
