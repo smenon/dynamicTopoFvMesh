@@ -186,6 +186,11 @@ inline bool coupleMap::isLocal() const
     return isLocal_;
 }
 
+inline bool coupleMap::isProcessor() const
+{
+    return !isLocal_;
+}
+
 inline bool coupleMap::isSend() const
 {
     return isSend_;

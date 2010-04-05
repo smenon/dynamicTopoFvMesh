@@ -188,6 +188,7 @@ public:
         inline label slaveIndex() const;
 
         inline bool isLocal() const;
+        inline bool isProcessor() const;
         inline bool isSend() const;
         inline bool isRecv() const;
 
