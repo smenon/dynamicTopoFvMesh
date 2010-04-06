@@ -3,7 +3,6 @@ set -x
 
 # Clean out existing object files
 wclean tetMetrics
-wclean multiThreader
 wclean coupleMap
 wclean mesquiteSmoother
 wclean freeSurface

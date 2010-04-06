@@ -22,7 +22,6 @@ fi
 ./AllwmakeLnInclude
 
 wmake libso tetMetrics
-wmake libso multiThreader
 wmake libso coupleMap
 wmake libso freeSurface
 wmake libso mesquiteSmoother

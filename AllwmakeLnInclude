@@ -2,7 +2,6 @@
 set -x
 
 wmakeLnInclude tetMetrics
-wmakeLnInclude multiThreader
 wmakeLnInclude coupleMap
 wmakeLnInclude freeSurface
 wmakeLnInclude mesquiteSmoother
