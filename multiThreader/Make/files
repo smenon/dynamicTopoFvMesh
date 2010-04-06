@@ -1,3 +1,0 @@
-multiThreader.C
-
-LIB = $(FOAM_USER_LIBBIN)/libmultiThreader
