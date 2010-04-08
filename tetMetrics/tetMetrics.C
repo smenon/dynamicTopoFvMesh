@@ -39,20 +39,45 @@ Description
 
 Author
     Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
 
 \*----------------------------------------------------------------------------*/
 
 #include "tetMetrics.H"
-
-#include "point.H"
-#include "scalar.H"
-#include "HashSet.H"
+#include "dlLibraryTable.H"
+#include "addToMemberFunctionSelectionTable.H"
 
 namespace Foam
 {
 
+defineMemberFunctionSelectionTable
+(
+    tetMetric,
+    metric,
+    Point
+);
+
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+defineTypeNameAndDebug(Knupp,0);
+defineTypeNameAndDebug(Dihedral,0);
+defineTypeNameAndDebug(cubicMeanRatio,0);
+defineTypeNameAndDebug(Frobenius,0);
+defineTypeNameAndDebug(PGH,0);
+defineTypeNameAndDebug(CSG,0);
+
+
+addToMemberFunctionSelectionTable(tetMetric, Knupp, metric, Point);
+addToMemberFunctionSelectionTable(tetMetric, Dihedral, metric, Point);
+addToMemberFunctionSelectionTable(tetMetric, cubicMeanRatio, metric, Point);
+addToMemberFunctionSelectionTable(tetMetric, Frobenius, metric, Point);
+addToMemberFunctionSelectionTable(tetMetric, PGH, metric, Point);
+addToMemberFunctionSelectionTable(tetMetric, CSG, metric, Point);
+
+
 // Enumeration for tets
-label tetEnum[6][4] =
+label Dihedral::tetEnum[6][4] =
 {
     {0,1,2,3},
     {0,2,3,1},
@@ -62,23 +87,80 @@ label tetEnum[6][4] =
     {2,3,0,1}
 };
 
-void reportMetrics()
+// * * * * * * * * * * * * * Static Members Functions * * * * * * * * * * *  //
+
+tetMetricReturnType tetMetric::New
+(
+    const dictionary& dict,
+    const word& metricName
+)
 {
-	wordHashSet availableMetrics_;
+    Info << "Selecting metric " << metricName << endl;
 
-	availableMetrics_.insert("Dihedral");
-	availableMetrics_.insert("Knupp");
-	availableMetrics_.insert("cubicMeanRatio");
-	availableMetrics_.insert("Frobenius");
-	availableMetrics_.insert("PGH");
-	availableMetrics_.insert("CSG");
+    dlLibraryTable::open
+    (
+        dict,
+        "tetMetricLibs",
+        metricPointMemberFunctionTablePtr_
+    );
 
-	Info << availableMetrics_ << endl;
+    if (!metricPointMemberFunctionTablePtr_)
+    {
+        FatalErrorIn
+        (
+            "tetMetric::New(const dictionary&, const word&)"
+        )   << "tetMetric table is empty"
+            << exit(FatalError);
+    }
+
+    metricPointMemberFunctionTable::iterator mfIter =
+        metricPointMemberFunctionTablePtr_->find(metricName);
+
+    if (mfIter == metricPointMemberFunctionTablePtr_->end())
+    {
+        FatalErrorIn
+        (
+            "tetMetric::New"
+            "(const dictionary&, const word&)"
+        )   << "Unknown metric " << metricName
+            << endl << endl
+            << "Valid metrics are :" << endl
+            << metricPointMemberFunctionTablePtr_->toc()
+            << exit(FatalError);
+    }
+
+    return mfIter();
 }
+
+
+// Tetrahedral mesh-quality metric suggested by Knupp [2003].
+scalar Knupp::metric
+(
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
+)
+{
+    // Obtain signed tet volume
+    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
+
+    // Obtain the magSqr edge-lengths
+    scalar Le = ((p1-p0) & (p1-p0))
+              + ((p2-p0) & (p2-p0))
+              + ((p3-p0) & (p3-p0))
+              + ((p2-p1) & (p2-p1))
+              + ((p3-p1) & (p3-p1))
+              + ((p3-p2) & (p3-p2));
+
+    // Return signed quality
+    return sign(V)*((24.96100588*::cbrt(V*V))/Le);
+}
+
 
 // Minimum dihedral angle among six edges of the tetrahedron. Normalized
 // by 70.529 degrees (equilateral tet) and signed by volume.
-scalar Dihedral
+scalar Dihedral::metric
 (
     const point& p0,
     const point& p1,
@@ -127,34 +209,11 @@ scalar Dihedral
     return sign(((p1 - p0) ^ (p2 - p0)) & (p3 - p0))*(minAngle/1.2309632);
 }
 
-// Tetrahedral mesh-quality metric suggested by Knupp [2003].
-scalar Knupp
-(
-    const point& p0,
-    const point& p1,
-    const point& p2,
-    const point& p3
-)
-{
-    // Obtain signed tet volume
-    scalar V = (1.0/6.0)*(((p1 - p0) ^ (p2 - p0)) & (p3 - p0));
-
-    // Obtain the magSqr edge-lengths
-    scalar Le = ((p1-p0) & (p1-p0))
-              + ((p2-p0) & (p2-p0))
-              + ((p3-p0) & (p3-p0))
-              + ((p2-p1) & (p2-p1))
-              + ((p3-p1) & (p3-p1))
-              + ((p3-p2) & (p3-p2));
-
-    // Return signed quality
-    return sign(V)*((24.96100588*::cbrt(V*V))/Le);
-}
 
 // Cubic Mean Ratio Tetrahedral mesh metric
 // Liu,A. and Joe, B., “On the shape of tetrahedra from bisection”
 // Mathematics of Computation, Vol. 63, 1994, pp. 141–154.
-scalar cubicMeanRatio
+scalar cubicMeanRatio::metric
 (
     const point& p0,
     const point& p1,
@@ -177,11 +236,12 @@ scalar cubicMeanRatio
     return  sign(V)*((15552.0*V*V)/(Le*Le*Le));
 }
 
+
 // Tetrahedral mesh-metric based on the Frobenius Condition Number
 // Patrick M. Knupp. Matrix Norms & the Condition Number: A General Framework
 // to Improve Mesh Quality via Node-Movement. Eighth International Meshing
 // Roundtable (Lake Tahoe, California), pages 13–22, October 1999.
-scalar Frobenius
+scalar Frobenius::metric
 (
     const point& p0,
     const point& p1,
@@ -210,10 +270,11 @@ scalar Frobenius
     return 3.67423461*(V/sqrt((Le/6.0)*(A/4.0)));
 }
 
+
 // Tetrahedral mesh-metric suggested by:
 // V. N. Parthasarathy, C. M. Graichen, and A. F. Hathaway.
 // Fast Evaluation & Improvement of Tetrahedral 3-D Grid Quality. [1991]
-scalar PGH
+scalar PGH::metric
 (
     const point& p0,
     const point& p1,
@@ -236,12 +297,13 @@ scalar PGH
     return 8.48528137*(V/pow(Le/4.0,1.5));
 }
 
+
 // Metric suggested by:
 // Hugues L. de Cougny, Mark S. Shephard, and Marcel K. Georges.
 // Explicit Node Point Smoothing Within Octree. Technical Report 10-1990,
-// Scientiﬁc Computation Research Center, Rensselaer Polytechnic Institute,
+// Scientific Computation Research Center, Rensselaer Polytechnic Institute,
 // Troy, New York. [1990]
-scalar CSG
+scalar CSG::metric
 (
     const point& p0,
     const point& p1,
@@ -261,6 +323,7 @@ scalar CSG
     // Return signed quality
     return 6.83852117*(V/pow(A,0.75));
 }
+
 
 } // End namespace Foam
 

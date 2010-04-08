@@ -1,7 +1,6 @@
 EXE_INC = \
     -I../include \
     -I../coupleMap/lnInclude \
-    -I../multiThreader/lnInclude \
     -I../freeSurface/lnInclude \
     -I$(LIB_SRC)/dynamicFvMesh/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
@@ -17,7 +16,6 @@ EXE_LIBS = \
     -lfreeSurface \
     -llduSolvers \
     -ldynamicFvMesh \
-    -lmultiThreader \
     -lcoupleMap \
     -lfiniteVolume \
     -lfiniteArea \

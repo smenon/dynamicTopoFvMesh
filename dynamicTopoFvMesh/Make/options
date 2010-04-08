@@ -1,5 +1,5 @@
 EXE_INC = \
-    -I../multiThreader/lnInclude \
+    -I../include \
     -I../coupleMap/lnInclude \
     -I$(LIB_SRC)/meshTools/lnInclude \
     -I$(LIB_SRC)/dynamicMesh/lnInclude \
@@ -11,6 +11,5 @@ LIB_LIBS = \
     -ldynamicFvMesh \
     -lfiniteVolume \
     -L$(FOAM_USER_LIBBIN) \
-    -lmultiThreader \
     -ltetMetrics \
     -lcoupleMap

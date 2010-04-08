@@ -1667,6 +1667,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     return map;
 }
 
+
 // Method for the collapse of an edge in 3D
 // - Returns a changeMap with a type specifying:
 //    -1: Collapse failed since max number of topo-changes was reached.
@@ -3037,6 +3038,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     return map;
 }
 
+
 // Merge two triangular boundary faces
 //  - If a separation distance exists, attempt to fill the space
 //    with tetrahedra, but otherwise, perform an exact merge, removing one
@@ -3192,6 +3194,368 @@ void dynamicTopoFvMesh::mergeBoundaryFaces
 
     // Looks like there's a separation distance.
 }
+
+
+// Remove the specified cells from the mesh,
+// and add internal faces/edges to the specified patch
+const changeMap dynamicTopoFvMesh::removeCells
+(
+    const labelList& cList,
+    const label patch
+)
+{
+    changeMap map;
+
+    labelHashSet pointsToRemove, edgesToRemove, facesToRemove;
+    Map<label> facesToConvert, edgesToConvert;
+
+    // First loop through all cells and accumulate
+    // a set of faces to be removed/converted.
+    forAll(cList, cellI)
+    {
+        const cell& cellToCheck = cells_[cList[cellI]];
+
+        forAll(cellToCheck, faceI)
+        {
+            label own = owner_[cellToCheck[faceI]];
+            label nei = neighbour_[cellToCheck[faceI]];
+
+            if (nei == -1)
+            {
+                facesToRemove.set(cellToCheck[faceI], empty());
+            }
+            else
+            if
+            (
+                (findIndex(cList, own) != -1) &&
+                (findIndex(cList, nei) != -1)
+            )
+            {
+                facesToRemove.set(cellToCheck[faceI], empty());
+            }
+            else
+            {
+                facesToConvert.set(cellToCheck[faceI], -1);
+            }
+        }
+    }
+
+    // Add all edges as candidates for conversion.
+    // Some of these will be removed altogether.
+    forAllConstIter(labelHashSet, facesToRemove, fIter)
+    {
+        const labelList& fEdges = faceEdges_[fIter.key()];
+
+        forAll(fEdges, edgeI)
+        {
+            if (whichEdgePatch(fEdges[edgeI]) == patch)
+            {
+                // Make an identical map
+                edgesToConvert.set(fEdges[edgeI], fEdges[edgeI]);
+            }
+            else
+            {
+                edgesToConvert.set(fEdges[edgeI], -1);
+            }
+        }
+    }
+
+    forAllConstIter(Map<label>, facesToConvert, fIter)
+    {
+        const labelList& fEdges = faceEdges_[fIter.key()];
+
+        forAll(fEdges, edgeI)
+        {
+            if (whichEdgePatch(fEdges[edgeI]) == patch)
+            {
+                // Make an identical map
+                edgesToConvert.set(fEdges[edgeI], fEdges[edgeI]);
+            }
+            else
+            {
+                edgesToConvert.set(fEdges[edgeI], -1);
+            }
+        }
+    }
+
+    // Build a list of edges to be removed.
+    forAllConstIter(Map<label>, edgesToConvert, eIter)
+    {
+        const labelList& eFaces = edgeFaces_[eIter.key()];
+
+        bool allRemove = true;
+
+        forAll(eFaces, faceI)
+        {
+            if (facesToConvert.found(eFaces[faceI]))
+            {
+                allRemove = false;
+                break;
+            }
+        }
+
+        if (allRemove)
+        {
+            edgesToRemove.set(eIter.key(), empty());
+        }
+    }
+
+    // Weed-out the conversion list.
+    forAllConstIter(labelHashSet, edgesToRemove, eIter)
+    {
+        edgesToConvert.erase(eIter.key());
+    }
+
+    // Build a set of points to be removed.
+    if (!twoDMesh_)
+    {
+        forAllConstIter(labelHashSet, edgesToRemove, eIter)
+        {
+            const edge& edgeToCheck = edges_[eIter.key()];
+
+            forAll(edgeToCheck, pointI)
+            {
+                const labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
+
+                bool allRemove = true;
+
+                forAll(pEdges, edgeI)
+                {
+                    if (!edgesToRemove.found(pEdges[edgeI]))
+                    {
+                        allRemove = false;
+                        break;
+                    }
+                }
+
+                if (allRemove)
+                {
+                    pointsToRemove.set(edgeToCheck[pointI], empty());
+                }
+            }
+        }
+    }
+
+    forAllIter(Map<label>, edgesToConvert, eIter)
+    {
+        const labelList& eFaces = edgeFaces_[eIter.key()];
+
+        label nConvFaces = 0;
+
+        forAll(eFaces, faceI)
+        {
+            if (facesToConvert.found(eFaces[faceI]))
+            {
+                nConvFaces++;
+            }
+        }
+
+        if (nConvFaces > 2)
+        {
+            Info << "Invalid conversion. Bailing out." << endl;
+            return map;
+        }
+    }
+
+    // Write out candidates for post-processing
+    if (debug > 2)
+    {
+        writeVTK("pointsToRemove", pointsToRemove.toc(), 0);
+        writeVTK("edgesToRemove", edgesToRemove.toc(), 1);
+        writeVTK("facesToRemove", facesToRemove.toc(), 2);
+        writeVTK("cellsToRemove", cList, 3);
+        writeVTK("edgesToConvert", edgesToConvert.toc(), 1);
+        writeVTK("facesToConvert", facesToConvert.toc(), 2);
+    }
+
+    // Loop through all faces for conversion, check orientation
+    // and create new faces in their place.
+    forAllIter(Map<label>, facesToConvert, fIter)
+    {
+        // Check if this internal face is oriented properly.
+        face newFace;
+        label newOwner = -1;
+        labelList fEdges = faceEdges_[fIter.key()];
+
+        if (findIndex(cList, neighbour_[fIter.key()]) != -1)
+        {
+            // Orientation is correct
+            newFace = faces_[fIter.key()];
+            newOwner = owner_[fIter.key()];
+        }
+        else
+        if (findIndex(cList, owner_[fIter.key()]) != -1)
+        {
+            newFace = faces_[fIter.key()].reverseFace();
+            newOwner = neighbour_[fIter.key()];
+        }
+        else
+        {
+            // Something's terribly wrong
+            FatalErrorIn("dynamicTopoFvMesh::removeCells()")
+                << nl << " Invalid mesh. "
+                << abort(FatalError);
+        }
+
+        // Insert the reconfigured face at the boundary.
+        fIter() =
+        (
+            insertFace
+            (
+                patch,
+                newFace,
+                newOwner,
+                -1
+            )
+        );
+
+        // Add the faceEdges entry.
+        // Edges will be corrected later.
+        faceEdges_.append(fEdges);
+
+        // Add this face to the map.
+        map.addFace(fIter());
+
+        // Replace cell with the new face label
+        replaceLabel
+        (
+            fIter.key(),
+            fIter(),
+            cells_[newOwner]
+        );
+
+        // Remove the internal face.
+        removeFace(fIter.key());
+    }
+
+    // Create a new edge for each converted edge
+    forAllIter(Map<label>, edgesToConvert, eIter)
+    {
+        if (eIter() == -1)
+        {
+            // Create copies before appending.
+            edge newEdge = edges_[eIter.key()];
+            labelList eFaces = edgeFaces_[eIter.key()];
+            labelList ePoints = edgePoints_[eIter.key()];
+
+            eIter() =
+            (
+                insertEdge
+                (
+                    patch,
+                    newEdge,
+                    eFaces,
+                    ePoints
+                )
+            );
+
+            // Add this edge to the map.
+            map.addEdge(eIter());
+
+            // Remove the edge
+            removeEdge(eIter.key());
+        }
+    }
+
+    // Loop through all faces for conversion, and replace edgeFaces.
+    forAllConstIter(Map<label>, facesToConvert, fIter)
+    {
+        // Make a copy, because this list is going to
+        // be modified within this loop.
+        labelList fEdges = faceEdges_[fIter()];
+
+        forAll(fEdges, edgeI)
+        {
+            if (edgesToConvert.found(fEdges[edgeI]))
+            {
+                replaceLabel
+                (
+                    fIter.key(),
+                    fIter(),
+                    edgeFaces_[edgesToConvert[fEdges[edgeI]]]
+                );
+
+                replaceLabel
+                (
+                    fEdges[edgeI],
+                    edgesToConvert[fEdges[edgeI]],
+                    faceEdges_[fIter()]
+                );
+            }
+        }
+    }
+
+    // Loop through all edges for conversion, and size-down edgeFaces.
+    forAllConstIter(Map<label>, edgesToConvert, eIter)
+    {
+        // Make a copy, because this list is going to
+        // be modified within this loop.
+        labelList eFaces = edgeFaces_[eIter()];
+
+        forAll(eFaces, faceI)
+        {
+            if (facesToRemove.found(eFaces[faceI]))
+            {
+                sizeDownList
+                (
+                    eFaces[faceI],
+                    edgeFaces_[eIter()]
+                );
+            }
+
+            // Replace old edges with new ones.
+            labelList& fEdges = faceEdges_[eFaces[faceI]];
+
+            forAll(fEdges, edgeI)
+            {
+                if (edgesToConvert.found(fEdges[edgeI]))
+                {
+                    fEdges[edgeI] = edgesToConvert[fEdges[edgeI]];
+                }
+            }
+        }
+    }
+
+    // At this point, edgeFaces is consistent.
+    // Correct edge-points for all converted edges
+    if (!twoDMesh_)
+    {
+        forAllConstIter(Map<label>, edgesToConvert, eIter)
+        {
+            buildEdgePoints(eIter());
+        }
+    }
+
+    // Remove unwanted faces
+    forAllConstIter(labelHashSet, facesToRemove, fIter)
+    {
+        removeFace(fIter.key());
+    }
+
+    // Remove unwanted edges
+    forAllConstIter(labelHashSet, edgesToRemove, eIter)
+    {
+        removeEdge(eIter.key());
+    }
+
+    // Remove unwanted points
+    forAllConstIter(labelHashSet, pointsToRemove, pIter)
+    {
+        removePoint(pIter.key());
+    }
+
+    // Remove all cells
+    forAll(cList, cellI)
+    {
+        removeCell(cList[cellI]);
+    }
+
+    // Set the flag
+    topoChangeFlag_ = true;
+
+    return map;
+}
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

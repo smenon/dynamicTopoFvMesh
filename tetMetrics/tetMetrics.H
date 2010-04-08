@@ -30,6 +30,8 @@ Description
 
 Author
     Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
 
 SourceFiles
     tetMetrics.C
@@ -39,79 +41,181 @@ SourceFiles
 #ifndef tetMetrics_H
 #define tetMetrics_H
 
-#include "point.H"
-#include "scalar.H"
+#include "tetMetric.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-extern "C"
-void reportMetrics();
+/*---------------------------------------------------------------------------*\
+                           Metric Class Declarations
+\*---------------------------------------------------------------------------*/
 
-extern "C"
-scalar Dihedral
-(
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
-);
+class Knupp
+:
+    public tetMetric
+{
+    // Private Member Functions
 
-extern "C"
-scalar Knupp
-(
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
-);
+        //- Disallow default bitwise copy construct
+        Knupp(const Knupp&);
 
-extern "C"
-scalar meanRatio
-(
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
-);
+        //- Disallow default bitwise assignment
+        void operator=(const Knupp&);
 
-extern "C"
-scalar cubicMeanRatio
-(
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
-);
+    public:
 
-extern "C"
-scalar Frobenius
-(
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
-);
+        //- Runtime type information
+        TypeName("Knupp");
 
-extern "C"
-scalar PGH
-(
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
-);
+        static scalar metric
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
+};
 
-extern "C"
-scalar CSG
-(
-    const Foam::point& p0,
-    const Foam::point& p1,
-    const Foam::point& p2,
-    const Foam::point& p3
-);
+
+class Dihedral
+:
+    public tetMetric
+{
+    // Private Member Functions
+
+        //- Disallow default bitwise copy construct
+        Dihedral(const Dihedral&);
+
+        //- Disallow default bitwise assignment
+        void operator=(const Dihedral&);
+
+        // Enumeration for tets
+        static label tetEnum[6][4];
+
+    public:
+
+        //- Runtime type information
+        TypeName("Dihedral");
+
+        static scalar metric
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
+};
+
+
+class cubicMeanRatio
+:
+    public tetMetric
+{
+    // Private Member Functions
+
+        //- Disallow default bitwise copy construct
+        cubicMeanRatio(const cubicMeanRatio&);
+
+        //- Disallow default bitwise assignment
+        void operator=(const cubicMeanRatio&);
+
+    public:
+
+        //- Runtime type information
+        TypeName("cubicMeanRatio");
+
+        static scalar metric
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
+};
+
+
+class Frobenius
+:
+    public tetMetric
+{
+    // Private Member Functions
+
+        //- Disallow default bitwise copy construct
+        Frobenius(const Frobenius&);
+
+        //- Disallow default bitwise assignment
+        void operator=(const Frobenius&);
+
+    public:
+
+        //- Runtime type information
+        TypeName("Frobenius");
+
+        static scalar metric
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
+};
+
+
+class PGH
+:
+    public tetMetric
+{
+    // Private Member Functions
+
+        //- Disallow default bitwise copy construct
+        PGH(const PGH&);
+
+        //- Disallow default bitwise assignment
+        void operator=(const PGH&);
+
+    public:
+
+        //- Runtime type information
+        TypeName("PGH");
+
+        static scalar metric
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
+};
+
+
+class CSG
+:
+    public tetMetric
+{
+    // Private Member Functions
+
+        //- Disallow default bitwise copy construct
+        CSG(const CSG&);
+
+        //- Disallow default bitwise assignment
+        void operator=(const CSG&);
+
+    public:
+
+        //- Runtime type information
+        TypeName("CSG");
+
+        static scalar metric
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
+};
+
 
 } // End namespace Foam
 

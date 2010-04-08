@@ -55,6 +55,7 @@ SourceFiles
 #include "stack.H"
 #include "coupleMap.H"
 #include "changeMap.H"
+#include "tetMetric.H"
 #include "dynamicFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -369,15 +370,6 @@ class dynamicTopoFvMesh
         // Perform a Delaunay test on an internal face
         bool testDelaunay(const label fIndex) const;
 
-        // Typedef for tetrahedral metrics
-        typedef scalar (*tetMetricReturnType)
-        (
-            const point& p0,
-            const point& p1,
-            const point& p2,
-            const point& p3
-        );
-
         //- Quality metric for tetrahedra in 3D
         tetMetricReturnType tetMetric_;
 
@@ -518,8 +510,8 @@ class dynamicTopoFvMesh
         // Initialize mesh edges and related connectivity lists
         void initEdges();
 
-        // Load the mesh-quality metric library
-        void loadMetricLibrary();
+        // Load the mesh-quality metric from the library
+        void loadMetric();
 
         // Load the mesh-motion solver
         void loadMotionSolver();
@@ -534,7 +526,7 @@ class dynamicTopoFvMesh
         );
 
         // Return a reference to the multiThreader
-        const multiThreader& threader() const;
+        inline const multiThreader& threader() const;
 
         // Return a reference to the entity mutexes
         inline const Mutex& entityMutex(const label entity) const;
@@ -736,36 +728,13 @@ class dynamicTopoFvMesh
 
         // Check if the boundary face is adjacent to a sliver-cell,
         // and remove it by a two-step bisection/collapse operation.
-        void remove2DSliver
-        (
-            const label fIndex
-        );
+        void remove2DSliver(const label fIndex);
 
         // Indentify the sliver type in 3D
-        const changeMap
-        identifySliverType
-        (
-            const label cIndex
-        );
+        const changeMap identifySliverType(const label cIndex);
 
         // Remove sliver cells in 3D
         void removeSlivers();
-
-        // Agglomerate tetrahedral cells around a certain cell index
-        void agglomerateTetCells
-        (
-            const label cIndex,
-            DynamicList<label>& aggCells,
-            DynamicList<label>& polyCell,
-            DynamicList<face>& polyCellFaces
-        ) const;
-
-        // Small polyhedron reconnection for sliver removal
-        bool smallPolyhedronReconnection
-        (
-            const scalar minQuality,
-            DynamicList<face>& polyCellFaces
-        );
 
         // Method to find the interior/boundary faces
         // for an input quad-face and adjacent triangle-prism cell.
@@ -969,11 +938,7 @@ class dynamicTopoFvMesh
         ) const;
 
         // Utility to check whether points of an edge lie on a boundary
-        const FixedList<bool,2>
-        checkEdgeBoundary
-        (
-            const label eIndex
-        ) const;
+        const FixedList<bool,2> checkEdgeBoundary(const label eIndex) const;
 
         // Utility method to compute the minimum quality of a vertex hull
         inline scalar computeMinQuality(const label eIndex) const;
@@ -1242,8 +1207,9 @@ class dynamicTopoFvMesh
         // Calculate the edge length-scale for the mesh
         void calculateLengthScale(bool dump = false);
 
-        // Compute the growth factor of an existing mesh
-        scalar computeGrowthFactor();
+        // Fill buffers with length-scale info
+        // and exchange across processors.
+        void exchangeLengthBuffers();
 
         // Send length-scale info across processors
         void writeLengthScaleInfo
@@ -1273,6 +1239,10 @@ class dynamicTopoFvMesh
         template <class Type>
         void pWrite(const label toID, const List<Type>& data) const;
 
+        // Parallel send (for resizableLists)
+        template <class Type>
+        void pWrite(const label toID, const resizableList<Type>& data) const;
+
         // Parallel receive
         void pRead(const label fromID, label& data) const;
 
@@ -1283,6 +1253,10 @@ class dynamicTopoFvMesh
         // Parallel receive (for lists)
         template <class Type>
         void pRead(const label fromID, List<Type>& data) const;
+
+        // Parallel receive (for resizableLists)
+        template <class Type>
+        void pRead(const label fromID, resizableList<Type>& data) const;
 
         // Method to determine whether the master face is locally coupled
         inline bool locallyCoupledFace
@@ -1323,7 +1297,7 @@ class dynamicTopoFvMesh
         void checkPatches(const wordList& patchList) const;
 
         // Does the mesh perform edge refinement?
-        bool edgeRefinement() const;
+        inline bool edgeRefinement() const;
 
         // Identify coupled patches.
         bool identifyCoupledPatches();
@@ -1374,13 +1348,6 @@ class dynamicTopoFvMesh
 
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);
-
-        // Compute divergence for a particular cell.
-        scalar computeDivergence
-        (
-            const label cIndex,
-            bool useOldPoints = false
-        );
 
 public:
 

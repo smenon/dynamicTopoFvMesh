@@ -12,6 +12,5 @@ EXE_LIBS = \
     -L$(FOAM_USER_LIBBIN) \
     -llduSolvers \
     -ldynamicFvMesh \
-    -lmultiThreader \
     -lfiniteVolume \
     $(WM_DECOMP_LIBS)

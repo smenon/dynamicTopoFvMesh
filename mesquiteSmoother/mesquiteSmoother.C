@@ -1377,15 +1377,13 @@ void mesquiteSmoother::initParallelConnectivity()
         return;
     }
 
-    FixedList<label, 3> gI(-1);
-
     forAll(pIDs_, patchI)
     {
         forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
         {
             const coupleMap& cMap = *(cmIter());
 
-            if (cMap.isLocal() || cMap.isSend())
+            if (cMap.isLocal())
             {
                 continue;
             }
@@ -1394,14 +1392,21 @@ void mesquiteSmoother::initParallelConnectivity()
             bool slaveProc = false;
 
             // Fetch the neighbour's procIndex
-            if (cMap.masterIndex() == Pstream::myProcNo())
+            if (cMap.masterIndex() == Pstream::myProcNo() && cMap.isRecv())
             {
                 neiProcNo = cMap.slaveIndex();
             }
             else
+            if (cMap.slaveIndex() == Pstream::myProcNo() && cMap.isSend())
             {
                 neiProcNo = cMap.masterIndex();
                 slaveProc = true;
+            }
+            else
+            {
+                // Either a sendMesh where I'm a master,
+                // or a recvMesh where I'm a slave.
+                continue;
             }
 
             // Prepare a new Map for this processor
@@ -1422,69 +1427,107 @@ void mesquiteSmoother::initParallelConnectivity()
                 );
             }
 
-            const Map<label>& pMap = cMap.entityMap(coupleMap::POINT);
-            const labelList& fB = cMap.entityBuffer(coupleMap::FACE);
+            const Map<label>& pMap = cMap.entityMap(coupleMap::POINT);;
             const labelList& fpB = cMap.entityBuffer(coupleMap::PATCH_ID);
+            const faceList& fList = cMap.faces();
 
-            forAll(fpB, faceI)
+            forAll(fList, faceI)
             {
                 // Check if patchIDs match...
                 if (fpB[faceI] == pIDs_[patchI])
                 {
-                    forAll(gI, pI)
+                    const face& thisFace = fList[faceI];
+
+                    forAll(thisFace, pI)
                     {
                         // Fetch the global index.
+                        label gIndex = -1, local = -1, fieldIndex = -1;
+
                         if (slaveProc)
                         {
-                            gI[pI] = pMap[fB[(3*faceI)+pI]];
+                            gIndex = pMap[thisFace[pI]];
+                        }
+                        else
+                        {
+                            gIndex = auxPointMap_[neiProcNo][thisFace[pI]];
+                        }
 
+                        local = boundary[pIDs_[patchI]].whichPoint(gIndex);
+
+                        fieldIndex = local + offsets_[patchI];
+
+                        if (local > -1)
+                        {
                             // Fix boundary condition for this point.
-                            label local =
-                            (
-                                boundary[pIDs_[patchI]].whichPoint(gI[pI])
-                            );
-
-                            label fieldIndex = local + offsets_[patchI];
-
                             bdy_[fieldIndex] = vector::one;
 
                             // Modify point marker
-                            pointMarker_[fieldIndex] = 0.0;
+                            if (slaveProc)
+                            {
+                                pointMarker_[fieldIndex] = 0.0;
+                            }
 
                             // Add a mapping entry.
                             auxSurfPointMap_[neiProcNo].set
                             (
-                                fB[(3*faceI)+pI],
+                                thisFace[pI],
                                 fieldIndex
                             );
-                        }
-                        else
-                        {
-                            gI[pI] = auxPointMap_[neiProcNo][fB[(3*faceI)+pI]];
-
-                            if (gI[pI] < label(nPoints_))
-                            {
-                                // Fix boundary condition for this point.
-                                label local =
-                                (
-                                    boundary[pIDs_[patchI]].whichPoint(gI[pI])
-                                );
-
-                                label fieldIndex = local + offsets_[patchI];
-
-                                bdy_[fieldIndex] = vector::one;
-
-                                // Add a mapping entry.
-                                auxSurfPointMap_[neiProcNo].set
-                                (
-                                    fB[(3*faceI)+pI],
-                                    fieldIndex
-                                );
-                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    // Write out points for post processing, if necessary.
+    if (debug)
+    {
+        forAllConstIter(Map<Map<label> >, auxSurfPointMap_, procIter)
+        {
+            const Map<label>& procMap = procIter();
+
+            label i = 0;
+            pointField sProcPoints(procMap.size(), vector::zero);
+
+            forAllConstIter(Map<label>, procMap, pIter)
+            {
+                label fIndex = pIter();
+
+                label pIndex = -1;
+                label local = -1;
+
+                // Find the patch index
+                forAll(pIDs_, patchI)
+                {
+                    if
+                    (
+                        fIndex >= offsets_[patchI]
+                     && fIndex < offsets_[patchI + 1]
+                    )
+                    {
+                        pIndex = pIDs_[patchI];
+                        local = (fIndex - offsets_[patchI]);
+                        break;
+                    }
+                }
+
+                sProcPoints[i++] = boundary[pIndex].localPoints()[local];
+            }
+
+            // Write out points
+            writeVTK
+            (
+                word
+                (
+                    "sProcPoints_"
+                  + Foam::name(Pstream::myProcNo())
+                  + '_'
+                  + Foam::name(procIter.key())
+                ),
+                sProcPoints,
+                labelListList(0)
+            );
         }
     }
 
@@ -1798,31 +1841,34 @@ void mesquiteSmoother::transferBuffers
                 continue;
             }
 
+            // Fetch the neighbour's procIndex
             if
             (
-                cMap.masterIndex() == neiProcNo ||
-                cMap.slaveIndex() == neiProcNo
+                (cMap.masterIndex() == Pstream::myProcNo() && cMap.isSend()) ||
+                (cMap.slaveIndex() == Pstream::myProcNo() && cMap.isRecv())
             )
             {
-                const labelList& smPoints = cMap.subMeshPoints();
+                continue;
+            }
 
-                // Only update shared-point values.
+            const labelList& smPoints = cMap.subMeshPoints();
+
+            // Only update shared-point values.
+            forAll(pIDs_, patchI)
+            {
                 forAll(smPoints, pointI)
                 {
-                    forAll(pIDs_, patchI)
-                    {
-                        label local =
+                    label local =
+                    (
+                        boundary[pIDs_[patchI]].whichPoint
                         (
-                            boundary[pIDs_[patchI]].whichPoint
-                            (
-                                smPoints[pointI]
-                            )
-                        );
+                            smPoints[pointI]
+                        )
+                    );
 
-                        if (local > -1)
-                        {
-                            field[local+offsets_[patchI]] += recvField[pointI];
-                        }
+                    if (local > -1)
+                    {
+                        field[local+offsets_[patchI]] += recvField[pointI];
                     }
                 }
             }
@@ -3135,7 +3181,6 @@ void mesquiteSmoother::writePoint
         "pointCells_"
       + Foam::name(mesh().time().timeIndex()) + '_'
       + Foam::name(pointIndex),
-        mesh(),
         points,
         cpList
     );
@@ -3146,14 +3191,13 @@ void mesquiteSmoother::writePoint
 void mesquiteSmoother::writeVTK
 (
     const word& name,
-    const polyMesh& mesh,
     const pointField& points,
     const labelListList& cellPoints
 )
 {
     // Make the directory
     // fileName dirName(mesh.time().path()/"VTK"/mesh.time().timeName());
-    fileName dirName(mesh.time().path()/"VTK");
+    fileName dirName(mesh().time().path()/"VTK");
 
     mkDir(dirName);
 
@@ -3223,7 +3267,6 @@ void mesquiteSmoother::writeVTK
 void mesquiteSmoother::preparePointNormals()
 {
     // Search the registry for all mapping objects.
-    face tmpFace(3);
     HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
 
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
@@ -3257,7 +3300,64 @@ void mesquiteSmoother::preparePointNormals()
         }
 
         // Add contributions from neighbouring processors
+        forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+        {
+            const coupleMap& cMap = *(cmIter());
 
+            if (cMap.isLocal())
+            {
+                continue;
+            }
+
+            label neiProcNo = -1;
+            bool slaveProc = false;
+
+            // Fetch the neighbour's procIndex
+            if (cMap.masterIndex() == Pstream::myProcNo() && cMap.isRecv())
+            {
+                neiProcNo = cMap.slaveIndex();
+            }
+            else
+            if (cMap.slaveIndex() == Pstream::myProcNo() && cMap.isSend())
+            {
+                neiProcNo = cMap.masterIndex();
+                slaveProc = true;
+            }
+            else
+            {
+                // Either a sendMesh where I'm a master,
+                // or a recvMesh where I'm a slave.
+                continue;
+            }
+
+            const Map<label>& aspMap = auxSurfPointMap_[neiProcNo];
+            const labelList& fpB = cMap.entityBuffer(coupleMap::PATCH_ID);
+            const faceList& fList = cMap.faces();
+
+            forAll(fList, faceI)
+            {
+                // Check if patchIDs match...
+                if (fpB[faceI] == pIDs_[patchI])
+                {
+                    const face& thisFace = fList[faceI];
+
+                    vector n = thisFace.normal(cMap.pointBuffer());
+
+                    forAll(thisFace, pI)
+                    {
+                        if (aspMap.found(thisFace[pI]))
+                        {
+                            label fI = aspMap[thisFace[pI]] - offsets_[patchI];
+
+                            // Fetch the local point index
+                            label local = (fI - offsets_[patchI]);
+
+                            pNormals_[patchI][local] += n;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Normalize all point-normals

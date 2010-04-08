@@ -33,6 +33,21 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+
+// Return a reference to the multiThreader
+inline const multiThreader& dynamicTopoFvMesh::threader() const
+{
+    return threader_();
+}
+
+
+// Does the mesh perform edge refinement?
+inline bool dynamicTopoFvMesh::edgeRefinement() const
+{
+    return edgeRefinement_;
+}
+
+
 // Obtain the tangent-to-edge vector
 inline vector dynamicTopoFvMesh::edgeCentre
 (
@@ -44,6 +59,7 @@ inline vector dynamicTopoFvMesh::edgeCentre
     return 0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]]);
 }
 
+
 // Obtain the tangent-to-edge vector
 inline vector dynamicTopoFvMesh::tangentToEdge
 (
@@ -54,6 +70,7 @@ inline vector dynamicTopoFvMesh::tangentToEdge
 
     return (points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
+
 
 // Find the circumcentre of a face
 inline point dynamicTopoFvMesh::circumCentre
@@ -90,6 +107,7 @@ inline point dynamicTopoFvMesh::circumCentre
     return ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
 }
 
+
 // Find the centre of a quad face
 inline point dynamicTopoFvMesh::quadFaceCentre
 (
@@ -99,6 +117,7 @@ inline point dynamicTopoFvMesh::quadFaceCentre
 {
     return quadFaceCentre(faces_[fIndex], useOldPoints);
 }
+
 
 // Find the centre of a quad face
 inline point dynamicTopoFvMesh::quadFaceCentre
@@ -127,6 +146,7 @@ inline point dynamicTopoFvMesh::quadFaceCentre
     );
 }
 
+
 // Find the centre of a triangle face
 inline point dynamicTopoFvMesh::triFaceCentre
 (
@@ -136,6 +156,7 @@ inline point dynamicTopoFvMesh::triFaceCentre
 {
     return triFaceCentre(faces_[fIndex], useOldPoints);
 }
+
 
 // Find the centre of a triangle face
 inline point dynamicTopoFvMesh::triFaceCentre
@@ -164,6 +185,7 @@ inline point dynamicTopoFvMesh::triFaceCentre
     );
 }
 
+
 // Find the area of a quad face.
 inline scalar dynamicTopoFvMesh::quadFaceArea
 (
@@ -173,6 +195,7 @@ inline scalar dynamicTopoFvMesh::quadFaceArea
 {
     return Foam::mag(quadFaceNormal(quadFace, useOldPoints));
 }
+
 
 // Find the area of a triangle face.
 // This function also assumes face right-handedness
@@ -184,6 +207,7 @@ inline scalar dynamicTopoFvMesh::triFaceArea
 {
     return Foam::mag(triFaceNormal(triFace, useOldPoints));
 }
+
 
 // Find the normal of a quad face.
 // This function also assumes face right-handedness
@@ -238,6 +262,7 @@ inline vector dynamicTopoFvMesh::quadFaceNormal
     return n;
 }
 
+
 // Find the normal of a triangle face.
 // This function also assumes face right-handedness
 inline vector dynamicTopoFvMesh::triFaceNormal
@@ -266,6 +291,7 @@ inline vector dynamicTopoFvMesh::triFaceNormal
 
     return 0.5 * (v ^ w);
 }
+
 
 // Given a face and cell index, find the apex point for a tet cell.
 inline label dynamicTopoFvMesh::tetApexPoint
@@ -326,6 +352,7 @@ inline label dynamicTopoFvMesh::tetApexPoint
     return apexPoint;
 }
 
+
 // Given a cell index, find the centroid of a prism cell.
 inline vector dynamicTopoFvMesh::prismCellCentre
 (
@@ -357,6 +384,7 @@ inline vector dynamicTopoFvMesh::prismCellCentre
     return centre;
 }
 
+
 // Given a cell index, find the centroid of a tet cell.
 inline vector dynamicTopoFvMesh::tetCellCentre
 (
@@ -377,6 +405,7 @@ inline vector dynamicTopoFvMesh::tetCellCentre
 
     return centre;
 }
+
 
 // Compare two triangular faces.
 // Identical to triFace definition.
@@ -412,6 +441,7 @@ inline label dynamicTopoFvMesh::triFaceCompare
         return 0;
     }
 }
+
 
 // Compare two quad faces.
 inline label dynamicTopoFvMesh::quadFaceCompare
@@ -449,6 +479,7 @@ inline label dynamicTopoFvMesh::quadFaceCompare
     }
 }
 
+
 // Find the volume of a tetrahedron.
 // The function assumes points (a-b-c)
 // are in counter-clockwise fashion when viewed from d.
@@ -462,6 +493,7 @@ inline scalar dynamicTopoFvMesh::tetVolume
 {
     return (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
 }
+
 
 // Find the volume of a prism cell, given the cell index.
 inline scalar dynamicTopoFvMesh::prismVolume
@@ -510,6 +542,7 @@ inline scalar dynamicTopoFvMesh::prismVolume
 
     return cVol;
 }
+
 
 // Find the volume of a tetrahedron, given the cell index.
 inline scalar dynamicTopoFvMesh::tetVolume
@@ -600,6 +633,7 @@ inline scalar dynamicTopoFvMesh::tetVolume
     return 0.0;
 }
 
+
 // Find the volume sign of a tetrahedron
 // The function assumes points (a-b-c)
 // are in counter-clockwise fashion when viewed from d;
@@ -629,6 +663,7 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     return 1;
 }
 
+
 // Return a reference to the entity mutexes.
 // The index 'entity' ranges from 0 to 3 for point/edge/face/cell.
 inline const Mutex& dynamicTopoFvMesh::entityMutex
@@ -638,6 +673,7 @@ inline const Mutex& dynamicTopoFvMesh::entityMutex
 {
     return entityMutex_[entity];
 }
+
 
 // Return the edge index for a provided edge
 inline label dynamicTopoFvMesh::getEdgeIndex
@@ -678,6 +714,7 @@ inline label dynamicTopoFvMesh::getEdgeIndex
 
     return -1;
 }
+
 
 // Return the appropriate length-scale for boundary face
 inline scalar dynamicTopoFvMesh::boundaryLengthScale
@@ -744,6 +781,7 @@ inline scalar dynamicTopoFvMesh::boundaryLengthScale
         return (edgeLength/fEdges.size());
     }
 }
+
 
 // Return length-scale at an face-location in the mesh [2D]
 inline scalar dynamicTopoFvMesh::faceLengthScale
@@ -843,6 +881,7 @@ inline scalar dynamicTopoFvMesh::faceLengthScale
 
     return scale;
 }
+
 
 // Compute length-scale at an edge-location in the mesh [3D]
 inline scalar dynamicTopoFvMesh::edgeLengthScale
@@ -981,6 +1020,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
     return scale;
 }
 
+
 // Check for face bisection
 inline bool dynamicTopoFvMesh::checkFaceBisection
 (
@@ -1002,6 +1042,7 @@ inline bool dynamicTopoFvMesh::checkFaceBisection
         return false;
     }
 }
+
 
 // Check for face collapse
 inline bool dynamicTopoFvMesh::checkFaceCollapse
@@ -1025,6 +1066,7 @@ inline bool dynamicTopoFvMesh::checkFaceCollapse
     }
 }
 
+
 // Check for edge bisection
 inline bool dynamicTopoFvMesh::checkEdgeBisection
 (
@@ -1046,6 +1088,7 @@ inline bool dynamicTopoFvMesh::checkEdgeBisection
         return false;
     }
 }
+
 
 // Check for edge collapse
 inline bool dynamicTopoFvMesh::checkEdgeCollapse
@@ -1069,6 +1112,7 @@ inline bool dynamicTopoFvMesh::checkEdgeCollapse
     }
 }
 
+
 // Check if a given face is a quad
 inline bool dynamicTopoFvMesh::checkQuadFace
 (
@@ -1077,6 +1121,7 @@ inline bool dynamicTopoFvMesh::checkQuadFace
 {
     return (faces_[fIndex].size() == 4);
 }
+
 
 // Compute the length of an edge
 inline scalar dynamicTopoFvMesh::edgeLength
@@ -1089,6 +1134,7 @@ inline scalar dynamicTopoFvMesh::edgeLength
     return mag(points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
 
+
 // Return the face-stack
 inline stack& dynamicTopoFvMesh::faceStack
 (
@@ -1097,6 +1143,7 @@ inline stack& dynamicTopoFvMesh::faceStack
 {
     return faceStack_[threadID];
 }
+
 
 // Return the edge-stack for a particular thread
 inline stack& dynamicTopoFvMesh::edgeStack
@@ -1107,12 +1154,14 @@ inline stack& dynamicTopoFvMesh::edgeStack
     return edgeStack_[threadID];
 }
 
+
 // Synchronize all processes
 inline void dynamicTopoFvMesh::synchronize()
 {
     bool reached = true;
     reduce(reached, andOp<bool>());
 }
+
 
 // Return the integer threadID for a given pthread
 // Return zero for single-threaded operation
@@ -1131,6 +1180,7 @@ inline label dynamicTopoFvMesh::self() const
 
     return 0;
 }
+
 
 // Initialize edge-stacks
 inline void dynamicTopoFvMesh::initEdgeStacks()
@@ -1204,6 +1254,7 @@ inline void dynamicTopoFvMesh::initEdgeStacks()
     }
 }
 
+
 // Initialize the coupled face-stack
 inline void dynamicTopoFvMesh::initCoupledFaceStack()
 {
@@ -1255,6 +1306,7 @@ inline void dynamicTopoFvMesh::initCoupledFaceStack()
         }
     }
 }
+
 
 // Initialize the coupled edge-stack
 inline void dynamicTopoFvMesh::initCoupledEdgeStack()
@@ -1317,6 +1369,7 @@ inline void dynamicTopoFvMesh::initCoupledEdgeStack()
         }
     }
 }
+
 
 // Build a list of entities that need to be avoided
 // by regular topo-changes.
@@ -1391,6 +1444,7 @@ inline void dynamicTopoFvMesh::buildEntitiesToAvoid()
     }
 }
 
+
 // Check whether the specified edge is a coupled master edge.
 inline bool dynamicTopoFvMesh::isCoupledMaster
 (
@@ -1405,17 +1459,20 @@ inline bool dynamicTopoFvMesh::isCoupledMaster
     return locallyCoupledEdge(eIndex);
 }
 
+
 // Set coupled modification
 inline void dynamicTopoFvMesh::setCoupledModification() const
 {
     coupledModification_ = true;
 }
 
+
 // Unset coupled modification
 inline void dynamicTopoFvMesh::unsetCoupledModification() const
 {
     coupledModification_ = false;
 }
+
 
 // Initialize face-stacks
 inline void dynamicTopoFvMesh::initFaceStacks()
@@ -1489,6 +1546,7 @@ inline void dynamicTopoFvMesh::initFaceStacks()
     }
 }
 
+
 // Method to determine the old boundary patch index for a given face
 // Similar to the polyBoundaryMesh routine, but works on local information
 inline label dynamicTopoFvMesh::whichPatch
@@ -1534,6 +1592,7 @@ inline label dynamicTopoFvMesh::whichPatch
     return -2;
 }
 
+
 // Method to determine the old boundary patch index for a given edge
 inline label dynamicTopoFvMesh::whichEdgePatch
 (
@@ -1577,6 +1636,7 @@ inline label dynamicTopoFvMesh::whichEdgePatch
 
     return -2;
 }
+
 
 // Utility method to find the isolated point on a triangular face
 // that doesn't lie on the specified edge. Also returns the point next to it.
@@ -1622,6 +1682,7 @@ inline void dynamicTopoFvMesh::findIsolatedPoint
         << abort(FatalError);
 }
 
+
 // Utility method to replace a label in a given list
 inline void dynamicTopoFvMesh::replaceLabel
 (
@@ -1652,6 +1713,7 @@ inline void dynamicTopoFvMesh::replaceLabel
             << abort(FatalError);
     }
 }
+
 
 // Method to insert a label between two labels in a list
 // Assumes that all labels are unique.
@@ -1706,6 +1768,7 @@ inline void dynamicTopoFvMesh::insertLabel
     list.transfer(newList);
 }
 
+
 // Utility method to size-up the list to include an item
 template <class Type>
 inline void dynamicTopoFvMesh::sizeUpList
@@ -1727,6 +1790,7 @@ inline void dynamicTopoFvMesh::sizeUpList
     newList[list.size()] = item;
     list.transfer(newList);
 }
+
 
 // Utility method to size-down the list to remove an item
 template <class Type>
@@ -1752,6 +1816,7 @@ inline void dynamicTopoFvMesh::sizeDownList
     // Overwrite
     list.transfer(newList);
 }
+
 
 // Utility method to compute the minimum quality of a vertex hull
 inline scalar dynamicTopoFvMesh::computeMinQuality
@@ -1917,6 +1982,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
     return minQuality;
 }
 
+
 // Utility method to compute the quality of a tetrahedral cell
 inline scalar dynamicTopoFvMesh::tetQuality
 (
@@ -1976,6 +2042,7 @@ inline scalar dynamicTopoFvMesh::tetQuality
     return 0.0;
 }
 
+
 // Check whether the given face should not be bisected/collapsed
 inline bool dynamicTopoFvMesh::checkFaceModification
 (
@@ -2001,6 +2068,7 @@ inline bool dynamicTopoFvMesh::checkFaceModification
     return false;
 }
 
+
 // Check whether the given edge should not be bisected/collapsed
 inline bool dynamicTopoFvMesh::checkEdgeModification
 (
@@ -2025,6 +2093,7 @@ inline bool dynamicTopoFvMesh::checkEdgeModification
 
     return false;
 }
+
 
 // Method to determine whether the master face is locally coupled
 inline bool dynamicTopoFvMesh::locallyCoupledFace
@@ -2073,6 +2142,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledFace
 
     return false;
 }
+
 
 // Method to determine whether the master edge is locally coupled.
 inline bool dynamicTopoFvMesh::locallyCoupledEdge
@@ -2127,6 +2197,7 @@ inline bool dynamicTopoFvMesh::locallyCoupledEdge
     return false;
 }
 
+
 // Method to determine the locally coupled patch index
 inline label dynamicTopoFvMesh::locallyCoupledEdgePatch
 (
@@ -2173,6 +2244,7 @@ inline label dynamicTopoFvMesh::locallyCoupledEdgePatch
     return -1;
 }
 
+
 // Method to determine whether the master face is on a processor
 inline bool dynamicTopoFvMesh::processorCoupledFace
 (
@@ -2197,6 +2269,7 @@ inline bool dynamicTopoFvMesh::processorCoupledFace
         return false;
     }
 }
+
 
 // Method to determine whether the master edge is coupled at a processor.
 inline bool dynamicTopoFvMesh::processorCoupledEdge
@@ -2226,6 +2299,7 @@ inline bool dynamicTopoFvMesh::processorCoupledEdge
     return false;
 }
 
+
 // Obtain the maximum coupled patch index
 inline label dynamicTopoFvMesh::getMaxCouplingIndex() const
 {
@@ -2242,6 +2316,7 @@ inline label dynamicTopoFvMesh::getMaxCouplingIndex() const
 
     return index;
 }
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

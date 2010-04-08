@@ -263,7 +263,6 @@ protected:
     void writeVTK
     (
         const word& name,
-        const polyMesh& mesh,
         const pointField& points,
         const labelListList& cellPoints
     );
