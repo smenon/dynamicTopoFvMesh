@@ -371,7 +371,7 @@ class dynamicTopoFvMesh
         bool testDelaunay(const label fIndex) const;
 
         //- Quality metric for tetrahedra in 3D
-        tetMetricReturnType tetMetric_;
+        tetMetric::tetMetricReturnType tetMetric_;
 
         // Obtain the edge centre
         inline point edgeCentre(const label eIndex) const;

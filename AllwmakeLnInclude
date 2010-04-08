@@ -1,7 +1,6 @@
 #!/bin/sh
 set -x
 
-wmakeLnInclude tetMetrics
 wmakeLnInclude coupleMap
 wmakeLnInclude freeSurface
 wmakeLnInclude mesquiteSmoother
