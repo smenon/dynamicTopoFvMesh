@@ -1,3 +1,0 @@
-tetMetrics.c
-
-LIB = $(FOAM_USER_LIBBIN)/libtetMetrics

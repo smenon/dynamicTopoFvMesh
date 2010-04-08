@@ -1,4 +1,0 @@
-EXE_INC = \
-    -I../include \
-
-LIB_LIBS = 
