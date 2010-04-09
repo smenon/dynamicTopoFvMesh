@@ -1847,7 +1847,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             const point& d = points_[hullVertices[indexI]];
 
             // Compute the quality
-            cQuality = (*tetMetric_)(a, b, c, d);
+            cQuality = tetMetric_(a, b, c, d);
 
             // Check if the quality is worse
             minQuality = Foam::min(cQuality, minQuality);
@@ -1863,7 +1863,7 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             const point& d = points_[hullVertices[indexI]];
 
             // Compute the quality
-            cQuality = (*tetMetric_)(a, b, c, d);
+            cQuality = tetMetric_(a, b, c, d);
 
             // Check if the quality is worse
             minQuality = Foam::min(cQuality, minQuality);
@@ -2009,7 +2009,7 @@ inline scalar dynamicTopoFvMesh::tetQuality
             {
                 return
                 (
-                    (*tetMetric_)
+                    tetMetric_
                     (
                         points_[currFace[2]],
                         points_[currFace[1]],
@@ -2022,7 +2022,7 @@ inline scalar dynamicTopoFvMesh::tetQuality
             {
                 return
                 (
-                    (*tetMetric_)
+                    tetMetric_
                     (
                         points_[currFace[0]],
                         points_[currFace[1]],

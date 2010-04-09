@@ -253,11 +253,9 @@ class dynamicTopoFvMesh
 
         // Pointer-list of thread-handlers
         PtrList<threadHandler<dynamicTopoFvMesh> > handlerPtr_;
-        PtrList<threadHandler<dynamicTopoFvMesh> > reOrderPtr_;
 
         // Scheduling sequences for thread locking
         labelList           topoSeq_;
-        labelList           reOrderSeq_;
 
         // Entity mutexes used for synchronization
         // in multi-threaded reOrdering

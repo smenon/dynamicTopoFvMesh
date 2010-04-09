@@ -6530,50 +6530,6 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
                 handlerPtr_[threadI].setSlave();
             }
         }
-
-        // For reOrdering, one handler for each reOrdering method
-        reOrderPtr_.setSize(4);
-
-        // Initialize reOrdering handlers
-        forAll(reOrderPtr_, memberI)
-        {
-            reOrderPtr_.set
-            (
-                memberI,
-                new threadHandler<dynamicTopoFvMesh>
-                (
-                    (*this),
-                    threader()
-                )
-            );
-        }
-
-        // Set the thread scheduling sequence
-        reOrderSeq_.setSize(4);
-
-        // Points, cells, faces and edges (in that order)
-        reOrderSeq_[0] = 0;
-        reOrderSeq_[1] = 3;
-        reOrderSeq_[2] = 2;
-        reOrderSeq_[3] = 1;
-
-        // Set argument sizes for individual members
-
-        // Points take three arguments
-        // (Two pointFields and one labelListList)
-        reOrderPtr_[0].setSize(3);
-
-        // Edges take three arguments
-        // (One edgeList and two labelListLists)
-        reOrderPtr_[1].setSize(3);
-
-        // Faces take five arguments
-        // (One faceList, two labelLists, and two labelListLists)
-        reOrderPtr_[2].setSize(5);
-
-        // Cells take one argument
-        // (One labelListList)
-        reOrderPtr_[3].setSize(1);
     }
 }
 

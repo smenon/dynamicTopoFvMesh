@@ -280,9 +280,6 @@ void dynamicTopoFvMesh::reOrderPointsThread
 
     // Reorder the points
     mesh.reOrderPoints(points, preMotionPoints, pointZoneMap, true);
-
-    // Signal the calling thread
-    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // Reorder edges after a topology change
@@ -1238,9 +1235,6 @@ void dynamicTopoFvMesh::reOrderFacesThread
         faceZoneFaceMap,
         true
     );
-
-    // Signal the calling thread
-    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // Reorder & renumber cells with bandwidth reduction after a topology change
@@ -1558,9 +1552,6 @@ void dynamicTopoFvMesh::reOrderCellsThread
 
     // Reorder the cells
     mesh.reOrderCells(cellZoneMap, true);
-
-    // Signal the calling thread
-    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // Reorder the faces in upper-triangular order, and generate mapping information
@@ -1621,7 +1612,7 @@ void dynamicTopoFvMesh::reOrderMesh
         checkConnectivity();
     }
 
-    if (threader_->multiThreaded() && threader_->getNumThreads() >= 4)
+    if (threader_->multiThreaded())
     {
         // Initialize multi-threaded reOrdering
         threadedMeshReOrdering
@@ -1671,71 +1662,130 @@ void dynamicTopoFvMesh::threadedMeshReOrdering
     labelListList& cellZoneMap
 )
 {
+    // For reOrdering, one handler for each reOrdering method
+    PtrList<threadHandler<dynamicTopoFvMesh> > reOrderPtr(4);
+
+    // Initialize reOrdering handlers
+    forAll(reOrderPtr, memberI)
+    {
+        reOrderPtr.set
+        (
+            memberI,
+            new threadHandler<dynamicTopoFvMesh>
+            (
+                (*this),
+                threader()
+            )
+        );
+    }
+
+    // Set argument sizes for individual members
+
+    // Points take three arguments
+    // (Two pointFields and one labelListList)
+    reOrderPtr[0].setSize(3);
+
     // Prepare pointers for point reOrdering
-    reOrderPtr_[0].set(0, reinterpret_cast<void *>(&points));
-    reOrderPtr_[0].set(1, reinterpret_cast<void *>(&preMotionPoints));
-    reOrderPtr_[0].set(2, reinterpret_cast<void *>(&pointZoneMap));
+    reOrderPtr[0].set(0, reinterpret_cast<void *>(&points));
+    reOrderPtr[0].set(1, reinterpret_cast<void *>(&preMotionPoints));
+    reOrderPtr[0].set(2, reinterpret_cast<void *>(&pointZoneMap));
+
+    // Edges take three arguments
+    // (One edgeList and two labelListLists)
+    reOrderPtr[1].setSize(3);
 
     // Prepare pointers for edge reOrdering
-    reOrderPtr_[1].set(0, reinterpret_cast<void *>(&edges));
-    reOrderPtr_[1].set(1, reinterpret_cast<void *>(&edgeFaces));
-    reOrderPtr_[1].set(2, reinterpret_cast<void *>(&faceEdges));
+    reOrderPtr[1].set(0, reinterpret_cast<void *>(&edges));
+    reOrderPtr[1].set(1, reinterpret_cast<void *>(&edgeFaces));
+    reOrderPtr[1].set(2, reinterpret_cast<void *>(&faceEdges));
+
+    // Faces take five arguments
+    // (One faceList, two labelLists, and two labelListLists)
+    reOrderPtr[2].setSize(5);
 
     // Prepare pointers for face reOrdering
-    reOrderPtr_[2].set(0, reinterpret_cast<void *>(&faces));
-    reOrderPtr_[2].set(1, reinterpret_cast<void *>(&owner));
-    reOrderPtr_[2].set(2, reinterpret_cast<void *>(&neighbour));
-    reOrderPtr_[2].set(3, reinterpret_cast<void *>(&faceEdges));
-    reOrderPtr_[2].set(4, reinterpret_cast<void *>(&faceZoneFaceMap));
+    reOrderPtr[2].set(0, reinterpret_cast<void *>(&faces));
+    reOrderPtr[2].set(1, reinterpret_cast<void *>(&owner));
+    reOrderPtr[2].set(2, reinterpret_cast<void *>(&neighbour));
+    reOrderPtr[2].set(3, reinterpret_cast<void *>(&faceEdges));
+    reOrderPtr[2].set(4, reinterpret_cast<void *>(&faceZoneFaceMap));
+
+    // Cells take one argument
+    // (One labelListList)
+    reOrderPtr[3].setSize(1);
 
     // Prepare pointers for cell reOrdering
-    reOrderPtr_[3].set(0, reinterpret_cast<void *>(&cellZoneMap));
+    reOrderPtr[3].set(0, reinterpret_cast<void *>(&cellZoneMap));
+
+    // Set the thread scheduling sequence
+    labelList reOrderSeq(4, -1);
+
+    // Points, cells, faces and edges (in that order)
+    reOrderSeq[0] = 0;
+    reOrderSeq[1] = 3;
+    reOrderSeq[2] = 2;
+    reOrderSeq[3] = 1;
 
     // Lock all slave threads first
-    lockSlaveThreads(reOrderSeq_, reOrderPtr_);
+    forAll(reOrderSeq, i)
+    {
+        reOrderPtr[reOrderSeq[i]].lock
+        (
+            threadHandler<dynamicTopoFvMesh>::START
+        );
+
+        reOrderPtr[reOrderSeq[i]].unsetPredicate
+        (
+            threadHandler<dynamicTopoFvMesh>::START
+        );
+    }
 
     // Submit points to the work queue
     threader_->addToWorkQueue
     (
         &reOrderPointsThread,
-        reinterpret_cast<void *>(&(reOrderPtr_[0]))
+        reinterpret_cast<void *>(&(reOrderPtr[0]))
     );
 
     // Wait for a signal from this thread before moving on.
-    reOrderPtr_[0].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+    reOrderPtr[0].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
 
     // Submit cells to the work queue
     threader_->addToWorkQueue
     (
         &reOrderCellsThread,
-        reinterpret_cast<void *>(&(reOrderPtr_[3]))
+        reinterpret_cast<void *>(&(reOrderPtr[3]))
     );
 
     // Wait for a signal from this thread before moving on.
-    reOrderPtr_[3].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+    reOrderPtr[3].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
 
     // Submit faces to the work queue
     threader_->addToWorkQueue
     (
         &reOrderFacesThread,
-        reinterpret_cast<void *>(&(reOrderPtr_[2]))
+        reinterpret_cast<void *>(&(reOrderPtr[2]))
     );
 
     // Wait for a signal from this thread before moving on.
-    reOrderPtr_[2].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+    reOrderPtr[2].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+
+    // Lock the edge stop-mutex
+    reOrderPtr[1].lock(threadHandler<dynamicTopoFvMesh>::STOP);
+    reOrderPtr[1].unsetPredicate(threadHandler<dynamicTopoFvMesh>::STOP);
 
     // Submit edges to the work queue
     threader_->addToWorkQueue
     (
         &reOrderEdgesThread,
-        reinterpret_cast<void *>(&(reOrderPtr_[1]))
+        reinterpret_cast<void *>(&(reOrderPtr[1]))
     );
 
     // Wait for a signal from this thread before moving on.
-    reOrderPtr_[1].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+    reOrderPtr[1].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
 
-    // Synchronize slave threads
-    synchronizeThreads(reOrderSeq_, reOrderPtr_);
+    // Wait for edges to be reOrdered before moving on.
+    reOrderPtr[1].waitForSignal(threadHandler<dynamicTopoFvMesh>::STOP);
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
