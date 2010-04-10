@@ -33,6 +33,10 @@ License
 #include "polyMesh.H"
 #include "coupleMap.H"
 
+#include "DimensionedField.H"
+#include "pointPatchField.H"
+#include "pointMesh.H"
+
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
@@ -2046,7 +2050,29 @@ void mesquiteSmoother::applyFixedValuePatches()
     if (found("fixedValuePatches"))
     {
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+        const dictionary& fvpDict = subDict("fixedValuePatches");
+
+        // Extract a list of patch names.
         wordList fixPatches = subDict("fixedValuePatches").toc();
+
+        // Construct a pointMesh.
+        pointMesh pMesh(Mesh_);
+
+        // Create a temporary dimensioned field
+        DimensionedField<point, pointMesh> dPointField
+        (
+            IOobject
+            (
+                "dPointField",
+                Mesh_.time().timeName(),
+                Mesh_,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            pMesh,
+            dimLength,
+            pointField(refPoints_.size(), vector::zero)
+        );
 
         // Accumulate a set of points, so that common-points
         // are not moved twice. If an overlap exists, the
@@ -2064,26 +2090,30 @@ void mesquiteSmoother::applyFixedValuePatches()
                     << abort(FatalError);
             }
 
-            // Fetch the displacement corresponding to this patch.
-            vector disp
+            // Create a patchField and evaluate.
+            autoPtr<pointPatchField<point> > pField
             (
-                subDict("fixedValuePatches").lookup(fixPatches[wordI])
+                pointPatchField<point>::New
+                (
+                    pMesh.boundary()[patchI],
+                    dPointField,
+                    fvpDict.subDict(fixPatches[wordI])
+                )
             );
 
-            // Add all points of this patch
-            const labelList& patchPoints = boundary[patchI].meshPoints();
-
-            forAll(patchPoints, index)
+            if (!pField().storesFieldData())
             {
-                pointSet.set(patchPoints[index], disp);
+                FatalErrorIn("void mesquiteSmoother::applyFixedValuePatches()")
+                    << "Patch: " << fixPatches[wordI]
+                    << " Does not store field data and cannot be used."
+                    << abort(FatalError);
             }
+
+            pField().updateCoeffs();
         }
 
-        // Move all patch points cumulatively
-        forAllConstIter(Map<vector>, pointSet, pIter)
-        {
-            refPoints_[pIter.key()] += pIter();
-        }
+        // Now update refPoints with patch values
+        refPoints_ += dPointField;
 
         // Apply values to points common with coupleMaps
 
