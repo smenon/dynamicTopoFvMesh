@@ -12,6 +12,8 @@ interpolator.C
 dynamicTopoFvMesh.C
 coupledPatchInfo.C
 dynamicTopoFvMeshReOrder.C
+dynamicTopoFvMeshCheck.C
+dynamicTopoFvMeshCoupled.C
 edgeSwap.C
 edgeCollapse.C
 edgeBisect.C
