@@ -304,30 +304,17 @@ inline label dynamicTopoFvMesh::tetApexPoint
     bool foundApex = false;
 
     const cell& cellToCheck = cells_[cIndex];
-    const face& checkFace = faces_[fIndex];
+    const face& baseFace = faces_[fIndex];
 
     forAll(cellToCheck, faceI)
     {
         const face& faceToCheck = faces_[cellToCheck[faceI]];
 
-        forAll(faceToCheck, pointI)
-        {
-            if
-            (
-                faceToCheck[pointI] != checkFace[0] &&
-                faceToCheck[pointI] != checkFace[1] &&
-                faceToCheck[pointI] != checkFace[2]
-            )
-            {
-                apexPoint = faceToCheck[pointI];
+        apexPoint = findIsolatedPoint(baseFace, faceToCheck);
 
-                foundApex = true;
-                break;
-            }
-        }
-
-        if (foundApex)
+        if (foundApex > -1)
         {
+            foundApex = true;
             break;
         }
     }
@@ -553,75 +540,75 @@ inline scalar dynamicTopoFvMesh::tetVolume
 {
     const cell& cellToCheck = cells_[cIndex];
 
-    const face& currFace = faces_[cellToCheck[0]];
-    const face& nextFace = faces_[cellToCheck[1]];
+    const face& baseFace = faces_[cellToCheck[0]];
+    const face& checkFace = faces_[cellToCheck[1]];
 
-    // Get the fourth point and compute cell volume
-    forAll(nextFace, pointI)
+    // Get the fourth point
+    label apexPoint = findIsolatedPoint(baseFace, checkFace);
+
+    // Something's wrong with connectivity.
+    if (apexPoint == -1)
     {
-        if
-        (
-            nextFace[pointI] != currFace[0] &&
-            nextFace[pointI] != currFace[1] &&
-            nextFace[pointI] != currFace[2]
-        )
+        FatalErrorIn("dynamicTopoFvMesh::tetVolume()")
+            << "Cell: " << cIndex
+            << " has inconsistent connectivity."
+            << abort(FatalError);
+    }
+
+    // Compute cell-volume
+    if (owner_[cellToCheck[0]] == cIndex)
+    {
+        if (useOldPoints)
         {
-            // Compute cell-volume
-            if (owner_[cellToCheck[0]] == cIndex)
-            {
-                if (useOldPoints)
-                {
-                    return
-                    (
-                        tetVolume
-                        (
-                            oldPoints_[currFace[2]],
-                            oldPoints_[currFace[1]],
-                            oldPoints_[currFace[0]],
-                            oldPoints_[nextFace[pointI]]
-                        )
-                    );
-                }
-
-                return
+            return
+            (
+                tetVolume
                 (
-                    tetVolume
-                    (
-                        points_[currFace[2]],
-                        points_[currFace[1]],
-                        points_[currFace[0]],
-                        points_[nextFace[pointI]]
-                    )
-                );
-            }
-            else
-            {
-                if (useOldPoints)
-                {
-                    return
-                    (
-                        tetVolume
-                        (
-                            oldPoints_[currFace[0]],
-                            oldPoints_[currFace[1]],
-                            oldPoints_[currFace[2]],
-                            oldPoints_[nextFace[pointI]]
-                        )
-                    );
-                }
-
-                return
-                (
-                    tetVolume
-                    (
-                        points_[currFace[0]],
-                        points_[currFace[1]],
-                        points_[currFace[2]],
-                        points_[nextFace[pointI]]
-                    )
-                );
-            }
+                    oldPoints_[baseFace[2]],
+                    oldPoints_[baseFace[1]],
+                    oldPoints_[baseFace[0]],
+                    oldPoints_[apexPoint]
+                )
+            );
         }
+
+        return
+        (
+            tetVolume
+            (
+                points_[baseFace[2]],
+                points_[baseFace[1]],
+                points_[baseFace[0]],
+                points_[apexPoint]
+            )
+        );
+    }
+    else
+    {
+        if (useOldPoints)
+        {
+            return
+            (
+                tetVolume
+                (
+                    oldPoints_[baseFace[0]],
+                    oldPoints_[baseFace[1]],
+                    oldPoints_[baseFace[2]],
+                    oldPoints_[apexPoint]
+                )
+            );
+        }
+
+        return
+        (
+            tetVolume
+            (
+                points_[baseFace[0]],
+                points_[baseFace[1]],
+                points_[baseFace[2]],
+                points_[apexPoint]
+            )
+        );
     }
 
     // Something's wrong with connectivity.
@@ -661,6 +648,48 @@ inline label dynamicTopoFvMesh::tetVolumeSign
     }
 
     return 1;
+}
+
+
+// Determine the intersection volume between two tetrahedra
+inline bool dynamicTopoFvMesh::tetIntersection
+(
+    const label newCellIndex,
+    const label oldCellIndex,
+    scalar& intVol
+) const
+{
+    // Reset intersection volume
+    intVol = 0.0;
+
+    bool intersects = false;
+
+    // Check indices first
+    if (newCellIndex >= nCells_ || newCellIndex < 0)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::tetIntersection")
+            << " Wrong newCellIndex: " << newCellIndex << nl
+            << " nCells: " << nCells_
+            << abort(FatalError);
+    }
+
+    if (oldCellIndex >= nOldCells_ || oldCellIndex < 0)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::tetIntersection")
+            << " Wrong oldCellIndex: " << oldCellIndex << nl
+            << " nOldCells: " << nOldCells_
+            << abort(FatalError);
+    }
+
+    // Fetch connectivity.
+    /*
+    const cell& newCell = cells_[newCellIndex];
+    const cell& oldCell = polyMesh::cells()[oldCellIndex];
+    */
+
+    // First topologically check for common faces.
+
+    return intersects;
 }
 
 
@@ -1638,6 +1667,32 @@ inline label dynamicTopoFvMesh::whichEdgePatch
 }
 
 
+// Utility method to find the isolated point given two triangular faces.
+//  - Returns the point on checkFace that does not belong to baseFace.
+inline label dynamicTopoFvMesh::findIsolatedPoint
+(
+    const face& baseFace,
+    const face& checkFace
+) const
+{
+    // Get the fourth point
+    forAll(checkFace, pointI)
+    {
+        if
+        (
+            checkFace[pointI] != baseFace[0] &&
+            checkFace[pointI] != baseFace[1] &&
+            checkFace[pointI] != baseFace[2]
+        )
+        {
+            return checkFace[pointI];
+        }
+    }
+
+    return -1;
+}
+
+
 // Utility method to find the isolated point on a triangular face
 // that doesn't lie on the specified edge. Also returns the point next to it.
 inline void dynamicTopoFvMesh::findIsolatedPoint
@@ -1989,49 +2044,49 @@ inline scalar dynamicTopoFvMesh::tetQuality
     const label cIndex
 ) const
 {
-    const cell& curCell = cells_[cIndex];
+    const cell& cellToCheck = cells_[cIndex];
 
-    const face& currFace = faces_[curCell[0]];
-    const face& nextFace = faces_[curCell[1]];
+    const face& baseFace = faces_[cellToCheck[0]];
+    const face& checkFace = faces_[cellToCheck[1]];
 
     // Get the fourth point
-    forAll(nextFace, pointI)
+    label apexPoint = findIsolatedPoint(baseFace, checkFace);
+
+    // Something's wrong with connectivity.
+    if (apexPoint == -1)
     {
-        if
+        FatalErrorIn("dynamicTopoFvMesh::tetQuality()")
+            << "Cell: " << cIndex
+            << " has inconsistent connectivity."
+            << abort(FatalError);
+    }
+
+    // Compute cell-quality and write-out
+    if (owner_[cellToCheck[0]] == cIndex)
+    {
+        return
         (
-            nextFace[pointI] != currFace[0] &&
-            nextFace[pointI] != currFace[1] &&
-            nextFace[pointI] != currFace[2]
-        )
-        {
-            // Compute cell-quality and write-out
-            if (owner_[curCell[0]] == cIndex)
-            {
-                return
-                (
-                    tetMetric_
-                    (
-                        points_[currFace[2]],
-                        points_[currFace[1]],
-                        points_[currFace[0]],
-                        points_[nextFace[pointI]]
-                    )
-                );
-            }
-            else
-            {
-                return
-                (
-                    tetMetric_
-                    (
-                        points_[currFace[0]],
-                        points_[currFace[1]],
-                        points_[currFace[2]],
-                        points_[nextFace[pointI]]
-                    )
-                );
-            }
-        }
+            tetMetric_
+            (
+                points_[baseFace[2]],
+                points_[baseFace[1]],
+                points_[baseFace[0]],
+                points_[apexPoint]
+            )
+        );
+    }
+    else
+    {
+        return
+        (
+            tetMetric_
+            (
+                points_[baseFace[0]],
+                points_[baseFace[1]],
+                points_[baseFace[2]],
+                points_[apexPoint]
+            )
+        );
     }
 
     // This should never happen.

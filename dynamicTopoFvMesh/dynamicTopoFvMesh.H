@@ -36,6 +36,8 @@ Author
 SourceFiles
     dynamicTopoFvMesh.C
     dynamicTopoFvMeshI.H
+    dynamicTopoFvMeshCheck.C
+    dynamicTopoFvMeshCoupled.C
     dynamicTopoFvMeshReOrder.C
     edgeBisect.C
     edgeCollapse.C
@@ -505,6 +507,14 @@ class dynamicTopoFvMesh
             scalar& vol
         ) const;
 
+        // Determine the intersection volume between two tetrahedra
+        inline bool tetIntersection
+        (
+            const label newCellIndex,
+            const label oldCellIndex,
+            scalar& intVol
+        ) const;
+
         // Initialize mesh edges and related connectivity lists
         void initEdges();
 
@@ -762,6 +772,14 @@ class dynamicTopoFvMesh
             const edge& e,
             label& ptIndex,
             label& nextPtIndex
+        ) const;
+
+        // Utility method to find the isolated point
+        // given two triangular faces.
+        inline label findIsolatedPoint
+        (
+            const face& baseFace,
+            const face& checkFace
         ) const;
 
         // Method to replace a label in a given list
@@ -1163,7 +1181,9 @@ class dynamicTopoFvMesh
         (
             const word& name,
             const label entity,
-            const label primitiveType = 3
+            const label primitiveType = 3,
+            const bool useOldConnectivity = false,
+            const bool useOldPoints = false
         ) const;
 
         // Output a list of entities as a VTK file
@@ -1171,7 +1191,9 @@ class dynamicTopoFvMesh
         (
             const word& name,
             const labelList& cList,
-            const label primitiveType = 3
+            const label primitiveType = 3,
+            const bool useOldConnectivity = false,
+            const bool useOldPoints = false
         ) const;
 
         // Check the state of local connectivity lists

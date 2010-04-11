@@ -967,7 +967,7 @@ void dynamicTopoFvMesh::reOrderFaces
             oldIndex = addedFaceReverseRenumbering[i];
 
             // Ensure that inserted boundary faces have a mapping master.
-            faceMap_[i] = faceParents_[oldIndex];
+            // faceMap_[i] = faceParents_[oldIndex];
         }
         else
         {

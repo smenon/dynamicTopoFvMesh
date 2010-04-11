@@ -514,44 +514,48 @@ void dynamicTopoFvMesh::writeVTK
 (
     const word& name,
     const label entity,
-    const label primitiveType
+    const label primitiveType,
+    const bool useOldConnectivity,
+    const bool useOldPoints
 ) const
 {
-    writeVTK(name, labelList(1, entity), primitiveType);
+    writeVTK
+    (
+        name,
+        labelList(1, entity),
+        primitiveType,
+        useOldConnectivity,
+        useOldPoints
+    );
 }
 
 
 // Output a list of primitives as a VTK file.
-// Uses the current state of connectivity.
-// primitiveType is:
-//   0: List of points
-//   1: List of edges
-//   2: List of faces
-//   3: List of cells
-//   4: List of cells w/ associated connectivity as fields
+//  - primitiveType is:
+//      0: List of points
+//      1: List of edges
+//      2: List of faces
+//      3: List of cells
 void dynamicTopoFvMesh::writeVTK
 (
     const word& name,
     const labelList& cList,
-    const label primitiveType
+    const label primitiveType,
+    const bool useOldConnectivity,
+    const bool useOldPoints
 ) const
 {
     label nTotalCells = 0;
-    label nPoints = 0, nEdges = 0, nFaces = 0, nCells = 0;
+    label nPoints = 0, nCells = 0;
 
     // Estimate a size for points and cellPoints
     List<vector> points(6*cList.size());
 
     // Connectivity lists
     labelListList cpList(cList.size());
-    labelListList feList, epList, fpList;
 
     // Create a map for local points
-    Map<label> pointMap, edgeMap, faceMap;
-    Map<label> reversePointMap, reverseCellMap;
-
-    // Track surface-points, if requested.
-    labelHashSet surfPoints;
+    Map<label> pointMap, reversePointMap, reverseCellMap;
 
     forAll(cList, cellI)
     {
@@ -577,10 +581,19 @@ void dynamicTopoFvMesh::writeVTK
             // Size the list
             cpList[nCells].setSize(2);
 
-            const edge& thisEdge = edges_[cList[cellI]];
+            // Can't use old connectivity for edges,
+            // because the convention differs from FOAM.
+            if (useOldConnectivity)
+            {
+                FatalErrorIn("void dynamicTopoFvMesh::writeVTK()")
+                    << "Cannot use old connectivity for edges."
+                    << abort(FatalError);
+            }
 
-            cpList[nCells][0] = thisEdge[0];
-            cpList[nCells][1] = thisEdge[1];
+            const edge& tEdge = edges_[cList[cellI]];
+
+            cpList[nCells][0] = tEdge[0];
+            cpList[nCells][1] = tEdge[1];
 
             nTotalCells += 2;
         }
@@ -588,78 +601,116 @@ void dynamicTopoFvMesh::writeVTK
         // Are we looking at faces?
         if (primitiveType == 2)
         {
-            const face& thisFace = faces_[cList[cellI]];
+            face tFace;
 
-            if (thisFace.size() == 3)
+            if (useOldConnectivity)
+            {
+                tFace = polyMesh::faces()[cList[cellI]];
+            }
+            else
+            {
+                tFace = faces_[cList[cellI]];
+            }
+
+            if (tFace.size() == 3)
             {
                 // Size the list
                 cpList[nCells].setSize(3);
 
                 // Write out in order
-                cpList[nCells][0] = thisFace[0];
-                cpList[nCells][1] = thisFace[1];
-                cpList[nCells][2] = thisFace[2];
+                cpList[nCells][0] = tFace[0];
+                cpList[nCells][1] = tFace[1];
+                cpList[nCells][2] = tFace[2];
 
                 nTotalCells += 3;
             }
             else
-            if (thisFace.size() == 4)
+            if (tFace.size() == 4)
             {
                 // Size the list
                 cpList[nCells].setSize(4);
 
                 // Write out in order
-                cpList[nCells][0] = thisFace[0];
-                cpList[nCells][1] = thisFace[1];
-                cpList[nCells][2] = thisFace[2];
-                cpList[nCells][3] = thisFace[3];
+                cpList[nCells][0] = tFace[0];
+                cpList[nCells][1] = tFace[1];
+                cpList[nCells][2] = tFace[2];
+                cpList[nCells][3] = tFace[3];
 
                 nTotalCells += 4;
             }
         }
 
         // Are we looking at cells?
-        if (primitiveType == 3 || primitiveType == 4)
+        if (primitiveType == 3)
         {
-            const cell& tCell = cells_[cList[cellI]];
+            cell tCell;
+
+            if (useOldConnectivity)
+            {
+                tCell = polyMesh::cells()[cList[cellI]];
+            }
+            else
+            {
+                tCell = cells_[cList[cellI]];
+            }
 
             if (tCell.size() == 4)
             {
                 // Point-ordering for tetrahedra
-                const face& currFace = faces_[tCell[0]];
-                const face& nextFace = faces_[tCell[1]];
+                face baseFace, checkFace;
+
+                if (useOldConnectivity)
+                {
+                    baseFace = polyMesh::faces()[tCell[0]];
+                    checkFace = polyMesh::faces()[tCell[1]];
+                }
+                else
+                {
+                    baseFace = faces_[tCell[0]];
+                    checkFace = faces_[tCell[1]];
+                }
 
                 // Size the list
                 cpList[nCells].setSize(4);
 
                 // Get the fourth point
-                forAll(nextFace, pointI)
-                {
-                    if
-                    (
-                        nextFace[pointI] != currFace[0]
-                     && nextFace[pointI] != currFace[1]
-                     && nextFace[pointI] != currFace[2]
-                    )
-                    {
-                        // Write-out in order
-                        if (owner_[tCell[0]] == cList[cellI])
-                        {
-                            cpList[nCells][0] = currFace[2];
-                            cpList[nCells][1] = currFace[1];
-                            cpList[nCells][2] = currFace[0];
-                            cpList[nCells][3] = nextFace[pointI];
-                        }
-                        else
-                        {
-                            cpList[nCells][0] = currFace[0];
-                            cpList[nCells][1] = currFace[1];
-                            cpList[nCells][2] = currFace[2];
-                            cpList[nCells][3] = nextFace[pointI];
-                        }
+                label apexPoint = findIsolatedPoint(baseFace, checkFace);
 
-                        break;
-                    }
+                // Something's wrong with connectivity.
+                if (apexPoint == -1)
+                {
+                    FatalErrorIn("dynamicTopoFvMesh::writeVTK()")
+                        << "Cell: " << cList[cellI]
+                        << ":: " << tCell
+                        << " has inconsistent connectivity."
+                        << abort(FatalError);
+                }
+
+                // Write-out in order
+                label ownCell = -1;
+
+                if (useOldConnectivity)
+                {
+                    ownCell = polyMesh::faceOwner()[tCell[0]];
+                }
+                else
+                {
+                    ownCell = owner_[tCell[0]];
+                }
+
+                if (ownCell == cList[cellI])
+                {
+                    cpList[nCells][0] = baseFace[2];
+                    cpList[nCells][1] = baseFace[1];
+                    cpList[nCells][2] = baseFace[0];
+                    cpList[nCells][3] = apexPoint;
+                }
+                else
+                {
+                    cpList[nCells][0] = baseFace[0];
+                    cpList[nCells][1] = baseFace[1];
+                    cpList[nCells][2] = baseFace[2];
+                    cpList[nCells][3] = apexPoint;
                 }
 
                 nTotalCells += 4;
@@ -668,6 +719,7 @@ void dynamicTopoFvMesh::writeVTK
             if (tCell.size() == 5)
             {
                 // Point-ordering for wedge cells
+                face cFace, nFace;
                 label firstTriFace = -1;
 
                 // Size the list
@@ -676,7 +728,14 @@ void dynamicTopoFvMesh::writeVTK
                 // Figure out triangle faces
                 forAll(tCell, faceI)
                 {
-                    const face& cFace = faces_[tCell[faceI]];
+                    if (useOldConnectivity)
+                    {
+                        cFace = polyMesh::faces()[tCell[faceI]];
+                    }
+                    else
+                    {
+                        cFace = faces_[tCell[faceI]];
+                    }
 
                     if (cFace.size() == 3)
                     {
@@ -695,20 +754,27 @@ void dynamicTopoFvMesh::writeVTK
                             // Detect the three other points.
                             forAll(tCell, faceJ)
                             {
-                                const face& nextFace = faces_[tCell[faceJ]];
+                                if (useOldConnectivity)
+                                {
+                                    nFace = polyMesh::faces()[tCell[faceJ]];
+                                }
+                                else
+                                {
+                                    nFace = faces_[tCell[faceJ]];
+                                }
 
-                                if (nextFace.size() == 4)
+                                if (nFace.size() == 4)
                                 {
                                     // Search for vertices on cFace
                                     // in this face.
                                     forAll(cFace, I)
                                     {
-                                        label i = nextFace.which(cFace[I]);
+                                        label i = nFace.which(cFace[I]);
 
                                         if (i != -1)
                                         {
-                                            label p = nextFace.prevLabel(i);
-                                            label n = nextFace.nextLabel(i);
+                                            label p = nFace.prevLabel(i);
+                                            label n = nFace.nextLabel(i);
 
                                             if (p == cpList[nCells][0])
                                             {
@@ -751,47 +817,6 @@ void dynamicTopoFvMesh::writeVTK
 
                 nTotalCells += 6;
             }
-
-            // Add to the list of surface points
-            if (primitiveType == 4)
-            {
-                forAll(tCell, faceI)
-                {
-                    const face& thisFace = faces_[tCell[faceI]];
-
-                    if (whichPatch(tCell[faceI]) > -1)
-                    {
-                        forAll(thisFace, pointI)
-                        {
-                            if (!surfPoints.found(thisFace[pointI]))
-                            {
-                                surfPoints.insert(thisFace[pointI]);
-                            }
-                        }
-                    }
-
-                    // Check if this face was added to the map
-                    if (!faceMap.found(tCell[faceI]))
-                    {
-                        faceMap.insert(tCell[faceI], nFaces);
-
-                        nFaces++;
-                    }
-
-                    // Check if edges of this face were added
-                    const labelList& fEdges = faceEdges_[tCell[faceI]];
-
-                    forAll(fEdges, edgeI)
-                    {
-                        if (!edgeMap.found(fEdges[edgeI]))
-                        {
-                            edgeMap.insert(fEdges[edgeI], nEdges);
-
-                            nEdges++;
-                        }
-                    }
-                }
-            }
         }
 
         // Renumber to local ordering
@@ -801,7 +826,14 @@ void dynamicTopoFvMesh::writeVTK
             if (!pointMap.found(cpList[nCells][pointI]))
             {
                 // Point was not found, so add it
-                points[nPoints] = points_[cpList[nCells][pointI]];
+                if (useOldPoints)
+                {
+                    points[nPoints] = oldPoints_[cpList[nCells][pointI]];
+                }
+                else
+                {
+                    points[nPoints] = points_[cpList[nCells][pointI]];
+                }
 
                 // Update the map
                 pointMap.insert(cpList[nCells][pointI], nPoints);
@@ -897,7 +929,7 @@ void dynamicTopoFvMesh::writeVTK
         if
         (
             (cpList[i].size() == 4) &&
-            (primitiveType == 3 || primitiveType == 4)
+            (primitiveType == 3)
         )
         {
             // Tetrahedron
@@ -935,157 +967,6 @@ void dynamicTopoFvMesh::writeVTK
     for (label i = 0; i < nPoints; i++)
     {
         file << reversePointMap[i] << ' ';
-    }
-
-    if (primitiveType < 4)
-    {
-        return;
-    }
-
-    // Write out auxiliary connectivity fields, if necessary
-    label nAuxFields = 0;
-
-    if (surfPoints.size())
-    {
-        nAuxFields++;
-    }
-
-    if (nCells)
-    {
-        nAuxFields++;
-    }
-
-    if (nFaces)
-    {
-        nAuxFields += 2;
-
-        // Size the feList and fpList.
-        // Assume a uniform mesh
-        fpList.setSize(nFaces, labelList(3, -1));
-        feList.setSize(nFaces, labelList(3, -1));
-
-        forAllIter(Map<label>, faceMap, fIter)
-        {
-            const face& thisFace = faces_[fIter.key()];
-
-            forAll(thisFace, pointI)
-            {
-                fpList[fIter()][pointI] = pointMap[thisFace[pointI]];
-            }
-
-            const labelList& fEdges = faceEdges_[fIter.key()];
-
-            forAll(fEdges, edgeI)
-            {
-                feList[fIter()][edgeI] = edgeMap[fEdges[edgeI]];
-            }
-        }
-    }
-
-    if (nEdges)
-    {
-        nAuxFields++;
-
-        // Size the epList
-        epList.setSize(nEdges, labelList(2, -1));
-
-        forAllIter(Map<label>, edgeMap, eIter)
-        {
-            const edge& thisEdge = edges_[eIter.key()];
-
-            forAll(thisEdge, pointI)
-            {
-                epList[eIter()][pointI] = pointMap[thisEdge[pointI]];
-            }
-        }
-    }
-
-    if (nAuxFields)
-    {
-        file << "FIELD ConnData " << nAuxFields << endl;
-
-        if (nFaces)
-        {
-            // Write out cellFaces.
-            file << "cellFaces " << 4 << ' ' << nCells << " int" << endl;
-
-            forAll(cList, cellI)
-            {
-                if (cList[cellI] < 0)
-                {
-                    continue;
-                }
-
-                const cell& thisCell = cells_[cList[cellI]];
-
-                forAll(thisCell, faceI)
-                {
-                    file << faceMap[thisCell[faceI]] << " ";
-                }
-
-                file << nl;
-            }
-
-            // Write out facePoints
-            file << "facePoints " << 3 << ' ' << nFaces << " int" << endl;
-
-            forAll(fpList, faceI)
-            {
-                const labelList& list = fpList[faceI];
-
-                forAll(list, indexI)
-                {
-                    file << list[indexI] << " ";
-                }
-
-                file << nl;
-            }
-
-            // Write out faceEdges
-            file << "faceEdges " << 3 << ' ' << nFaces << " int" << endl;
-
-            forAll(feList, faceI)
-            {
-                const labelList& list = feList[faceI];
-
-                forAll(list, indexI)
-                {
-                    file << list[indexI] << " ";
-                }
-
-                file << nl;
-            }
-        }
-
-        // Write out edges
-        if (nEdges)
-        {
-            file << "edgePoints " << 2 << ' ' << nEdges << " int" << endl;
-
-            forAll(epList, edgeI)
-            {
-                const labelList& list = epList[edgeI];
-
-                forAll(list, indexI)
-                {
-                    file << list[indexI] << " ";
-                }
-
-                file << nl;
-            }
-        }
-
-        // Write out surface points
-        if (surfPoints.size())
-        {
-            file << "surfacePoints 1 " << surfPoints.size() << " int" << endl;
-
-            // Write out surface points
-            forAllIter(labelHashSet, surfPoints, spIter)
-            {
-                file << pointMap[spIter.key()] << nl;
-            }
-        }
     }
 
     file << nl;

@@ -2053,7 +2053,7 @@ void mesquiteSmoother::applyFixedValuePatches()
         const dictionary& fvpDict = subDict("fixedValuePatches");
 
         // Extract a list of patch names.
-        wordList fixPatches = subDict("fixedValuePatches").toc();
+        wordList fixPatches = fvpDict.toc();
 
         // Construct a pointMesh.
         pointMesh pMesh(Mesh_);
@@ -2077,8 +2077,6 @@ void mesquiteSmoother::applyFixedValuePatches()
         // Accumulate a set of points, so that common-points
         // are not moved twice. If an overlap exists, the
         // last entry is used.
-        Map<vector> pointSet;
-
         forAll(fixPatches, wordI)
         {
             label patchI = boundary.findPatchID(fixPatches[wordI]);
@@ -2100,14 +2098,6 @@ void mesquiteSmoother::applyFixedValuePatches()
                     fvpDict.subDict(fixPatches[wordI])
                 )
             );
-
-            if (!pField().storesFieldData())
-            {
-                FatalErrorIn("void mesquiteSmoother::applyFixedValuePatches()")
-                    << "Patch: " << fixPatches[wordI]
-                    << " Does not store field data and cannot be used."
-                    << abort(FatalError);
-            }
 
             pField().updateCoeffs();
         }
