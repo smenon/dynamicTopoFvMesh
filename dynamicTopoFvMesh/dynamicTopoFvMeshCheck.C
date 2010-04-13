@@ -37,7 +37,6 @@ Author
 
 #include "dynamicTopoFvMesh.H"
 
-#include <iomanip>
 #include "IOmanip.H"
 #include "volFields.H"
 
@@ -381,8 +380,14 @@ void dynamicTopoFvMesh::printTables
 
     for (label j = 0; j < m[checkIndex]; j++)
     {
-        std::cout << std::setfill('-')
-                  << std::setw(12) << j;
+        Info << setw(12) << j;
+    }
+
+    Info << nl;
+
+    for (label j = 0; j < m[checkIndex]; j++)
+    {
+        Info << "-------------";
     }
 
     Info << nl;
@@ -393,8 +398,7 @@ void dynamicTopoFvMesh::printTables
 
         for (label j = 0; j < m[checkIndex]; j++)
         {
-            std::cout << std::setfill(' ')
-                      << std::setw(12) << Q[checkIndex][i][j];
+            Info << setw(12) << Q[checkIndex][i][j];
         }
 
         Info << nl;
@@ -409,8 +413,7 @@ void dynamicTopoFvMesh::printTables
 
     for (label j = 0; j < m[checkIndex]; j++)
     {
-        std::cout << std::setfill('-')
-                  << std::setw(12) << j;
+        Info << setw(12) << j;
     }
 
     Info << nl;
@@ -421,8 +424,7 @@ void dynamicTopoFvMesh::printTables
 
         for (label j = 0; j < m[checkIndex]; j++)
         {
-            std::cout << std::setfill(' ')
-                      << std::setw(12) << K[checkIndex][i][j];
+            Info << setw(12) << K[checkIndex][i][j];
         }
 
         Info << nl;
@@ -549,7 +551,7 @@ void dynamicTopoFvMesh::writeVTK
     label nPoints = 0, nCells = 0;
 
     // Estimate a size for points and cellPoints
-    List<vector> points(6*cList.size());
+    pointField points(6*cList.size());
 
     // Connectivity lists
     labelListList cpList(cList.size());
@@ -853,6 +855,36 @@ void dynamicTopoFvMesh::writeVTK
         nCells++;
     }
 
+    // Finally write it out
+    writeVTK
+    (
+        name,
+        nPoints,
+        nCells,
+        nTotalCells,
+        points,
+        cpList,
+        primitiveType,
+        reversePointMap,
+        reverseCellMap
+    );
+}
+
+
+// Actual routine to write out the VTK file
+void dynamicTopoFvMesh::writeVTK
+(
+    const word& name,
+    const label nPoints,
+    const label nCells,
+    const label nTotalCells,
+    const pointField& points,
+    const labelListList& cpList,
+    const label primitiveType,
+    const Map<label>& reversePointMap,
+    const Map<label>& reverseCellMap
+) const
+{
     // Make the directory
     fileName dirName(time().path()/"VTK"/time().timeName());
 
@@ -944,32 +976,38 @@ void dynamicTopoFvMesh::writeVTK
     }
 
     // Write out indices for visualization.
-    file << "CELL_DATA " << nCells << endl;
-
-    file << "FIELD CellFields 1" << endl;
-
-    file << "CellIds 1 " << nCells << " int" << endl;
-
-    for (label i = 0; i < nCells; i++)
+    if (reverseCellMap.size())
     {
-        file << reverseCellMap[i] << ' ';
-    }
+        file << "CELL_DATA " << nCells << endl;
 
-    file << endl;
+        file << "FIELD CellFields 1" << endl;
+
+        file << "CellIds 1 " << nCells << " int" << endl;
+
+        for (label i = 0; i < nCells; i++)
+        {
+            file << reverseCellMap[i] << ' ';
+        }
+
+        file << endl;
+    }
 
     // Write out indices for visualization.
-    file << "POINT_DATA " << nPoints << endl;
-
-    file << "FIELD PointFields 1" << endl;
-
-    file << "PointIds 1 " << nPoints << " int" << endl;
-
-    for (label i = 0; i < nPoints; i++)
+    if (reversePointMap.size())
     {
-        file << reversePointMap[i] << ' ';
-    }
+        file << "POINT_DATA " << nPoints << endl;
 
-    file << nl;
+        file << "FIELD PointFields 1" << endl;
+
+        file << "PointIds 1 " << nPoints << " int" << endl;
+
+        for (label i = 0; i < nPoints; i++)
+        {
+            file << reversePointMap[i] << ' ';
+        }
+
+        file << endl;
+    }
 }
 
 

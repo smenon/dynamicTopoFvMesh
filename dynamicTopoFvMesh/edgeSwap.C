@@ -816,8 +816,8 @@ void dynamicTopoFvMesh::swapQuadFace
     labelList mC(2, -1);
     mC[0] = c0; mC[1] = c1;
 
-    setCellMapping(c0, mC);
-    setCellMapping(c1, mC);
+    setCellMapping(c0, mC, scalarField(2, 0.5));
+    setCellMapping(c1, mC, scalarField(2, 0.5));
 
     // Interpolate new fluxes for the flipped face.
     setFaceMapping(fIndex);
@@ -1143,7 +1143,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         return map;
     }
 
-    scalar tolF = 0.1;
+    scalar tolF = 0.01;
 
     // Determine the final swap triangulation
     label tF =
@@ -1162,6 +1162,16 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
     if (tF == -1)
     {
+        const edge& edgeToCheck = edges_[eIndex];
+
+        FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips()") << nl
+            << "Could not determine 3-2 swap triangulation." << nl
+            << "Edge: " << edgeToCheck << nl
+            << "Edge Points: "
+            << points_[edgeToCheck[0]] << ","
+            << points_[edgeToCheck[1]] << nl
+            << abort(FatalError);
+
         // Reset all triangulations and bail out
         triangulations[checkIndex][0] = -1;
         triangulations[checkIndex][1] = -1;
@@ -1267,7 +1277,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips")
+                FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips()")
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Edge: " << eIndex << nl
@@ -1563,10 +1573,7 @@ void dynamicTopoFvMesh::extractTriangulation
 
 
 // Identify the 3-2 swap from the triangulation sequence
-// Algorithm taken from:
-//   ALGORITHMS TO TEST RAY-TRIANGLE INTERSECTION.
-//   R. J. Segura and F. R. Feito,
-//   Journal of WSCG, pp. 200-1, 2001.
+//  - Use an edge-plane intersection formula
 label dynamicTopoFvMesh::identify32Swap
 (
     const label eIndex,
@@ -1576,85 +1583,36 @@ label dynamicTopoFvMesh::identify32Swap
 ) const
 {
     label m = hullVertices.size();
-    scalar tolerance = VSMALL;
-
     const edge& edgeToCheck = edges_[eIndex];
-    FixedList<label, 3> sign(-2);
-    FixedList<scalar, 3> vol(0.0);
 
-    // Relax the tolerance for boundary edges
-    if (whichEdgePatch(eIndex) > -1)
-    {
-        tolerance = tolFraction*mag(tangentToEdge(eIndex));
-    }
+    // Obtain intersection point.
+    FixedList<vector, 2> segment(vector::zero);
+
+    segment[0] = points_[edgeToCheck[0]];
+    segment[1] = points_[edgeToCheck[1]];
+
+    // Configure a face with triangulation
+    face triFace(3);
+    vector intPt = vector::zero;
 
     for (label i = 0; i < (m-2); i++)
     {
-        sign[0] =
+        triFace[0] = hullVertices[triangulations[0][i]];
+        triFace[1] = hullVertices[triangulations[1][i]];
+        triFace[2] = hullVertices[triangulations[2][i]];
+
+        bool intersects =
         (
-            tetVolumeSign
+            segmentTriFaceIntersection
             (
-                points_[hullVertices[triangulations[0][i]]],
-                points_[hullVertices[triangulations[1][i]]],
-                points_[edgeToCheck[1]],
-                points_[edgeToCheck[0]],
-                tolerance,
-                vol[0]
+                segment,
+                triFace,
+                tolFraction,
+                intPt
             )
         );
 
-        sign[1] =
-        (
-            tetVolumeSign
-            (
-                points_[hullVertices[triangulations[1][i]]],
-                points_[hullVertices[triangulations[2][i]]],
-                points_[edgeToCheck[1]],
-                points_[edgeToCheck[0]],
-                tolerance,
-                vol[1]
-            )
-        );
-
-        sign[2] =
-        (
-            tetVolumeSign
-            (
-                points_[hullVertices[triangulations[2][i]]],
-                points_[hullVertices[triangulations[0][i]]],
-                points_[edgeToCheck[1]],
-                points_[edgeToCheck[0]],
-                tolerance,
-                vol[2]
-            )
-        );
-
-        if (debug > 2)
-        {
-            Info << " tetVolumeSign: " << sign << endl;
-            Info << " tetVolume: " << vol << endl;
-        }
-
-        // Intersects at edge AC
-        if ((sign[0]==0) && (sign[1]==sign[2]))
-        {
-            return i;
-        }
-
-        // Intersects at edge BC
-        if ((sign[1]==0) && (sign[0]==sign[2]))
-        {
-            return i;
-        }
-
-        // Intersects at edge AB
-        if ((sign[2]==0) && (sign[0]==sign[1]))
-        {
-            return i;
-        }
-
-        // Intersects inside
-        if ((sign[0]==sign[1]) && (sign[1]==sign[2]))
+        if (intersects)
         {
             return i;
         }
@@ -2315,21 +2273,52 @@ const changeMap dynamicTopoFvMesh::swap23
             mC[indexI] = cellsForRemoval[indexI];
         }
 
-        setCellMapping(newCellIndex[cellI], mC);
+        // Obtain parents for this cell
+        labelList parents = cellParents(newCellIndex[cellI], mC);
+
+        // Compute intersection weights
+        scalarField weights(parents.size(), 0.0);
+
+        forAll(parents, indexI)
+        {
+            weights[indexI] =
+            (
+                tetIntersection(newCellIndex[cellI], parents[indexI])
+            );
+        }
 
         // Set the old-volume for this cell
         scalar newOldVol = tetVolume(newCellIndex[cellI], true);
+
+        // Normalize by current volume
+        weights /= newOldVol;
+
+        // Set the mapping for this cell
+        setCellMapping(newCellIndex[cellI], parents, weights);
 
         // Cells on either side of the triangulated face
         // cannot have negative old-volumes
         if (newOldVol <= 0.0 && cellI < 2)
         {
-            FatalErrorIn
-            (
-                "dynamicTopoFvMesh::swap23()"
-            )
+            FatalErrorIn("dynamicTopoFvMesh::swap23()")
                 << "Negative old-volume encountered." << nl
                 << newCellIndex[cellI] << ": " << newOldVol
+                << abort(FatalError);
+        }
+
+        if (mag(1.0 - sum(weights)) > SMALL  && cellI < 2)
+        {
+            // Write out for post-processing
+            label newIdx = newCellIndex[cellI];
+
+            writeVTK("nCell_" + Foam::name(newIdx), newIdx, 3, false, true);
+            writeVTK("oCell_" + Foam::name(newIdx), parents, 3, true, true);
+
+            FatalErrorIn("dynamicTopoFvMesh::swap23()")
+                << "Encountered non-conservative weighting factors." << nl
+                << " Old volume: " << newOldVol << nl
+                << " Weights: " << weights << nl
+                << " Sum(Weights): " << sum(weights)
                 << abort(FatalError);
         }
 
@@ -2338,8 +2327,11 @@ const changeMap dynamicTopoFvMesh::swap23
         if (debug > 2)
         {
             Info << "Cell: " << newCellIndex[cellI]
-                 << " Old volume: " << newOldVol
-                 << " New volume: " << tetVolume(newCellIndex[cellI])
+                 << " Old volume: " << newOldVol << nl
+                 << " New volume: " << tetVolume(newCellIndex[cellI]) << nl
+                 << " Parents: " << parents << nl
+                 << " Weights: " << weights << nl
+                 << " Sum(Weights): " << sum(weights)
                  << endl;
         }
     }
@@ -3001,10 +2993,28 @@ const changeMap dynamicTopoFvMesh::swap32
             mC[indexI] = cellRemovalList[indexI];
         }
 
-        setCellMapping(newCellIndex[cellI], mC);
+        // Obtain parents for this cell
+        labelList parents = cellParents(newCellIndex[cellI], mC);
+
+        // Compute intersection weights
+        scalarField weights(parents.size(), 0.0);
+
+        forAll(parents, indexI)
+        {
+            weights[indexI] =
+            (
+                tetIntersection(newCellIndex[cellI], parents[indexI])
+            );
+        }
 
         // Set the old-volume for this cell
         scalar newOldVol = tetVolume(newCellIndex[cellI], true);
+
+        // Normalize by current volume
+        weights /= newOldVol;
+
+        // Set the mapping for this cell
+        setCellMapping(newCellIndex[cellI], parents, weights);
 
         if (newOldVol <= 0.0)
         {
@@ -3014,11 +3024,30 @@ const changeMap dynamicTopoFvMesh::swap32
                 << abort(FatalError);
         }
 
+        if (mag(1.0 - sum(weights)) > SMALL)
+        {
+            // Write out for post-processing
+            label newIdx = newCellIndex[cellI];
+
+            writeVTK("nCell_" + Foam::name(newIdx), newIdx, 3, false, true);
+            writeVTK("oCell_" + Foam::name(newIdx), parents, 3, true, true);
+
+            FatalErrorIn("dynamicTopoFvMesh::swap32()")
+                << "Encountered non-conservative weighting factors." << nl
+                << " Old volume: " << newOldVol << nl
+                << " Weights: " << weights << nl
+                << " Sum(Weights): " << sum(weights)
+                << abort(FatalError);
+        }
+
         if (debug > 2)
         {
             Info << "Cell: " << newCellIndex[cellI]
-                 << " Old volume: " << newOldVol
-                 << " New volume: " << tetVolume(newCellIndex[cellI])
+                 << " Old volume: " << newOldVol << nl
+                 << " New volume: " << tetVolume(newCellIndex[cellI]) << nl
+                 << " Parents: " << parents << nl
+                 << " Weights: " << weights << nl
+                 << " Sum(Weights): " << sum(weights)
                  << endl;
         }
     }

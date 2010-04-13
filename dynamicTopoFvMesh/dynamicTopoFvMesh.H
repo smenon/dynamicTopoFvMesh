@@ -496,24 +496,38 @@ class dynamicTopoFvMesh
             bool useOldPoints = false
         ) const;
 
-        // Find the volume sign of a tetrahedron
-        inline label tetVolumeSign
+        inline bool segmentTriFaceIntersection
         (
-            const point& a,
-            const point& b,
-            const point& c,
-            const point& d,
+            const FixedList<vector,2>& segment,
+            const face& triFace,
+            const scalar tolFraction,
+            vector& intersectionPoint,
+            const bool useOldPoints = false
+        ) const;
+
+        // Determine whether the particular point lies
+        // inside the given face
+        inline bool pointInTriFace
+        (
+            const face& checkFace,
+            const point& checkPoint,
             const scalar tolerance,
-            scalar& vol
+            const bool useOldPoints = false
         ) const;
 
         // Determine the intersection volume between two tetrahedra
-        inline bool tetIntersection
+        scalar tetIntersection
         (
             const label newCellIndex,
-            const label oldCellIndex,
-            scalar& intVol
+            const label oldCellIndex
         ) const;
+
+        // Obtain a list of possible parent cells from the old mesh
+        labelList cellParents
+        (
+            const label cIndex,
+            const labelList& mappingCells
+        );
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();
@@ -811,8 +825,8 @@ class dynamicTopoFvMesh
         void setCellMapping
         (
             const label cIndex,
-            const labelList& mappingCells,
-            const scalarField& mappingWeights = scalarField(0)
+            const labelList& mapCells,
+            const scalarField& mapWeights
         );
 
         // Set fill-in mapping information for a particular face
@@ -1194,6 +1208,20 @@ class dynamicTopoFvMesh
             const label primitiveType = 3,
             const bool useOldConnectivity = false,
             const bool useOldPoints = false
+        ) const;
+
+        // Actual routine to write out the VTK file
+        void writeVTK
+        (
+            const word& name,
+            const label nPoints,
+            const label nCells,
+            const label nTotalCells,
+            const pointField& points,
+            const labelListList& cpList,
+            const label primitiveType = 3,
+            const Map<label>& reversePointMap = Map<label>(),
+            const Map<label>& reverseCellMap = Map<label>()
         ) const;
 
         // Check the state of local connectivity lists

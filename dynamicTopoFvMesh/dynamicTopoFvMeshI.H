@@ -621,75 +621,125 @@ inline scalar dynamicTopoFvMesh::tetVolume
 }
 
 
-// Find the volume sign of a tetrahedron
-// The function assumes points (a-b-c)
-// are in counter-clockwise fashion when viewed from d;
-// (to obtain positive orientation)
-inline label dynamicTopoFvMesh::tetVolumeSign
+inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
 (
-    const point& a,
-    const point& b,
-    const point& c,
-    const point& d,
-    const scalar tolerance,
-    scalar& vol
+    const FixedList<vector,2>& segment,
+    const face& triFace,
+    const scalar tolFraction,
+    vector& intersectionPoint,
+    const bool useOldPoints
 ) const
 {
-    vol = (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
+    // Specify unit face-normals
+    vector n = triFaceNormal(triFace, useOldPoints);
+    n /= mag(n) + VSMALL;
 
-    if (mag(vol) < tolerance)
+    vector p1 = segment[0], p2 = segment[1], p3;
+
+    if (useOldPoints)
     {
-        return 0;
+        p3 = oldPoints_[triFace[0]];
+    }
+    else
+    {
+        p3 = points_[triFace[0]];
     }
 
-    if (Foam::sign(vol) < 0.0)
+    // Compute uValue
+    scalar numerator = n & (p3 - p1);
+    scalar denominator = n & (p2 - p1);
+
+    if (mag(denominator) < VSMALL)
     {
-        return -1;
+        FatalErrorIn("dynamicTopoFvMesh::segmentTriFaceIntersection()")
+            << nl << " Segment is parallel to face. " << nl
+            << " Segment: " << segment << nl
+            << " Face: " << triFace << nl
+            << " tolFraction: " << tolFraction
+            << abort(FatalError);
     }
 
-    return 1;
+    scalar u = numerator / denominator;
+
+    scalar tolerance = tolFraction*mag(p2 - p1);
+
+    // Check for intersection along line.
+    if (u > tolerance && u < 1.0)
+    {
+        // Compute point of intersection
+        vector p = p1 + u*(p2 - p1);
+
+        // Also make sure that 'p' lies within triFace
+        if (pointInTriFace(triFace, p, tolerance, useOldPoints))
+        {
+            intersectionPoint = p;
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 
-// Determine the intersection volume between two tetrahedra
-inline bool dynamicTopoFvMesh::tetIntersection
+// Determine whether the particular point lies
+// inside the given face
+inline bool dynamicTopoFvMesh::pointInTriFace
 (
-    const label newCellIndex,
-    const label oldCellIndex,
-    scalar& intVol
+    const face& triFace,
+    const point& checkPoint,
+    const scalar tolerance,
+    const bool useOldPoints
 ) const
 {
-    // Reset intersection volume
-    intVol = 0.0;
+    FixedList<bool, 3> sign(false);
 
-    bool intersects = false;
-
-    // Check indices first
-    if (newCellIndex >= nCells_ || newCellIndex < 0)
+    forAll(triFace, pI)
     {
-        FatalErrorIn("dynamicTopoFvMesh::tetIntersection")
-            << " Wrong newCellIndex: " << newCellIndex << nl
-            << " nCells: " << nCells_
-            << abort(FatalError);
+        vector p, q;
+
+        vector n = triFaceNormal(triFace, useOldPoints);
+
+        n /= mag(n) + VSMALL;
+
+        label nI = triFace.fcIndex(pI);
+
+        if (useOldPoints)
+        {
+            p = oldPoints_[triFace[nI]] - oldPoints_[triFace[pI]];
+            q = checkPoint - oldPoints_[triFace[nI]];
+        }
+        else
+        {
+            p = points_[triFace[nI]] - points_[triFace[pI]];
+            q = checkPoint - points_[triFace[nI]];
+        }
+
+        scalar area = 0.5 * ((p ^ q) & n);
+
+        if (Foam::sign(area) < 0.0)
+        {
+            if (mag(area) < tolerance)
+            {
+                sign[pI] = true;
+            }
+            else
+            {
+                sign[pI] = false;
+            }
+        }
+        else
+        {
+            sign[pI] = true;
+        }
     }
 
-    if (oldCellIndex >= nOldCells_ || oldCellIndex < 0)
+    if (sign[0] && sign[1] && sign[2])
     {
-        FatalErrorIn("dynamicTopoFvMesh::tetIntersection")
-            << " Wrong oldCellIndex: " << oldCellIndex << nl
-            << " nOldCells: " << nOldCells_
-            << abort(FatalError);
+        return true;
     }
 
-    // Fetch connectivity.
-    /*
-    const cell& newCell = cells_[newCellIndex];
-    const cell& oldCell = polyMesh::cells()[oldCellIndex];
-    */
-
-    // First topologically check for common faces.
-
-    return intersects;
+    return false;
 }
 
 

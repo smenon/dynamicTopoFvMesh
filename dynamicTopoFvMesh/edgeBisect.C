@@ -1489,7 +1489,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         // Fill-in mapping information
         labelList mC1(1, c1);
-        setCellMapping(newCellIndex[1], mC1);
+        setCellMapping(newCellIndex[1], mC1, scalarField(1, 1.0));
     }
 
     // Update the cell list.
@@ -1498,7 +1498,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     // Fill-in mapping information
     labelList mC0(1, c0);
-    setCellMapping(newCellIndex[0], mC0);
+    setCellMapping(newCellIndex[0], mC0, scalarField(1, 1.0));
 
     // Set fill-in mapping information for the modified face.
     setFaceMapping
@@ -2604,7 +2604,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Fill-in mapping information
         labelList mC(1, cellHull[indexI]);
 
-        setCellMapping(addedCellIndices[indexI], mC);
+        setCellMapping(addedCellIndices[indexI], mC, scalarField(1, 1.0));
 
         // Compute old volumes, using old point positions.
         scalar modOldVol = tetVolume(cellHull[indexI], true);
@@ -4800,7 +4800,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
 
-                setCellMapping(newCellIndex[i], mC);
+                setCellMapping(newCellIndex[i], mC, scalarField(1, 1.0));
             }
         }
         else
@@ -4810,7 +4810,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
 
-                setCellMapping(newCellIndex[i], mC);
+                setCellMapping(newCellIndex[i], mC, scalarField(1, 1.0));
             }
         }
 

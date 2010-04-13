@@ -438,6 +438,357 @@ bool dynamicTopoFvMesh::findCommonEdge
 }
 
 
+// Determine the intersection volume between two tetrahedra
+scalar dynamicTopoFvMesh::tetIntersection
+(
+    const label newCellIndex,
+    const label oldCellIndex
+) const
+{
+    // Reset intersection volume
+    scalar intVol = 0.0;
+
+    bool intersects = false;
+
+    // Check indices first
+    if (newCellIndex >= cells_.size() || newCellIndex < 0)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::tetIntersection")
+            << " Wrong newCellIndex: " << newCellIndex << nl
+            << " nCells: " << nCells_
+            << abort(FatalError);
+    }
+
+    if (oldCellIndex >= nOldCells_ || oldCellIndex < 0)
+    {
+        FatalErrorIn("dynamicTopoFvMesh::tetIntersection")
+            << " Wrong oldCellIndex: " << oldCellIndex << nl
+            << " nOldCells: " << nOldCells_
+            << abort(FatalError);
+    }
+
+    // Fetch connectivity.
+    const cellList& oldCells = polyMesh::cells();
+    const faceList& oldFaces = polyMesh::faces();
+    const labelList& oldOwner = polyMesh::faceOwner();
+
+    const cell& newCell = cells_[newCellIndex];
+    const cell& oldCell = oldCells[oldCellIndex];
+
+    if (debug > 3)
+    {
+        writeVTK
+        (
+            "tetInt_" + Foam::name(newCellIndex),
+            newCellIndex,
+            3,
+            false,
+            true
+        );
+
+        writeVTK
+        (
+            "tetInt_" + Foam::name(oldCellIndex),
+            oldCellIndex,
+            3,
+            true,
+            true
+        );
+    }
+
+    // First topologically check for common faces.
+    // If a common face exists, computation is vastly simplified.
+    label commonOldIndex = -1, commonNewIndex = -1;
+
+    forAll(oldCell, faceI)
+    {
+        const face& oldFace = oldFaces[oldCell[faceI]];
+
+        forAll(newCell, faceJ)
+        {
+            const face& newFace = faces_[newCell[faceJ]];
+
+            if (triFaceCompare(oldFace, newFace))
+            {
+                commonOldIndex = oldCell[faceI];
+                commonNewIndex = newCell[faceJ];
+                break;
+            }
+        }
+
+        if (commonOldIndex != -1)
+        {
+            break;
+        }
+    }
+
+    if (commonOldIndex > -1)
+    {
+        // Fetch references
+        const face& newFace = faces_[commonNewIndex];
+        const face& oldFace = oldFaces[commonOldIndex];
+
+        // Look for an adjacent face
+        label nextNewFace = -1;
+
+        forAll(newCell, faceI)
+        {
+            if (newCell[faceI] != commonNewIndex)
+            {
+                nextNewFace = newCell[faceI];
+                break;
+            }
+        }
+
+        const face& newCheckFace = faces_[nextNewFace];
+
+        // Find the apex-point
+        label apexPoint = findIsolatedPoint(oldFace, newCheckFace);
+
+        vector intPoint = vector::zero;
+        FixedList<vector,4> tP(vector::zero);
+        FixedList<vector,2> segment(vector::zero);
+
+        forAll(oldCell, fI)
+        {
+            if (oldCell[fI] == commonOldIndex)
+            {
+                continue;
+            }
+
+            const face& oldCheckFace = oldFaces[oldCell[fI]];
+
+            forAll(oldFace, pI)
+            {
+                segment[0] = oldPoints_[oldFace[pI]];
+                segment[1] = oldPoints_[apexPoint];
+
+                bool foundIntersection =
+                (
+                    segmentTriFaceIntersection
+                    (
+                        segment,
+                        oldCheckFace,
+                        1e-2,
+                        intPoint,
+                        true
+                    )
+                );
+
+                if (foundIntersection)
+                {
+                    // Compute volume as well.
+                    if (owner_[commonNewIndex] == newCellIndex)
+                    {
+                        tP[0] = oldPoints_[newFace[2]];
+                        tP[1] = oldPoints_[newFace[1]];
+                        tP[2] = oldPoints_[newFace[0]];
+                        tP[3] = intPoint;
+                    }
+                    else
+                    {
+                        tP[0] = oldPoints_[newFace[0]];
+                        tP[1] = oldPoints_[newFace[1]];
+                        tP[2] = oldPoints_[newFace[2]];
+                        tP[3] = intPoint;
+                    }
+
+                    // Compute intersection volume.
+                    intVol = tetVolume(tP[0],tP[1],tP[2],tP[3]);
+
+                    intersects = true;
+                    break;
+                }
+            }
+
+            if (intersects)
+            {
+                break;
+            }
+        }
+
+        if (!intersects)
+        {
+            // None of the new cell edges pass through old
+            // faces. Try the converse, where old edges pass
+            // through new faces.
+
+            // Look for an adjacent face
+            label nextOldFace = -1;
+
+            forAll(oldCell, faceI)
+            {
+                if (oldCell[faceI] != commonOldIndex)
+                {
+                    nextOldFace = oldCell[faceI];
+                    break;
+                }
+            }
+
+            const face& oldCheckFace = oldFaces[nextOldFace];
+
+            // Find the apex-point
+            label apexPoint = findIsolatedPoint(oldFace, oldCheckFace);
+
+            forAll(newCell, fI)
+            {
+                if (newCell[fI] == commonNewIndex)
+                {
+                    continue;
+                }
+
+                const face& newCheckFace = faces_[newCell[fI]];
+
+                forAll(newFace, pI)
+                {
+                    segment[0] = oldPoints_[newFace[pI]];
+                    segment[1] = oldPoints_[apexPoint];
+
+                    bool foundIntersection =
+                    (
+                        segmentTriFaceIntersection
+                        (
+                            segment,
+                            newCheckFace,
+                            1e-2,
+                            intPoint,
+                            true
+                        )
+                    );
+
+                    if (foundIntersection)
+                    {
+                        // Compute volume as well.
+                        if (oldOwner[commonOldIndex] == oldCellIndex)
+                        {
+                            tP[0] = oldPoints_[oldFace[2]];
+                            tP[1] = oldPoints_[oldFace[1]];
+                            tP[2] = oldPoints_[oldFace[0]];
+                            tP[3] = intPoint;
+                        }
+                        else
+                        {
+                            tP[0] = oldPoints_[oldFace[0]];
+                            tP[1] = oldPoints_[oldFace[1]];
+                            tP[2] = oldPoints_[oldFace[2]];
+                            tP[3] = intPoint;
+                        }
+
+                        // Compute intersection volume.
+                        intVol = tetVolume(tP[0],tP[1],tP[2],tP[3]);
+
+                        intersects = true;
+                        break;
+                    }
+                }
+
+                if (intersects)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (/*debug > 3 &&*/ intersects)
+        {
+            label cPoints[4] = {0, 1, 2, 3};
+            FixedList<label, 4> ctn(cPoints);
+
+            word cellName =
+            (
+                "Int_"
+              + Foam::name(newCellIndex) + '_'
+              + Foam::name(oldCellIndex)
+            );
+
+            vectorField intTetPoints(4, vector::zero);
+
+            forAll(tP, pI)
+            {
+                intTetPoints[pI] = tP[pI];
+            }
+
+            // Write it out.
+            writeVTK
+            (
+                cellName,
+                4, 1, 4,
+                intTetPoints,
+                labelListList(1, ctn)
+            );
+        }
+    }
+
+    // Return intersection volume.
+    return intVol;
+}
+
+
+// Obtain a list of possible parent cells from the old mesh.
+//  - Also update cellParents information on-the-fly.
+labelList dynamicTopoFvMesh::cellParents
+(
+    const label cIndex,
+    const labelList& mappingCells
+)
+{
+    labelHashSet masterCells;
+
+    // Fetch connectivity from the old mesh.
+    const cellList& cells = polyMesh::cells();
+    const labelList& owner = polyMesh::faceOwner();
+    const labelList& neighbour = polyMesh::faceNeighbour();
+
+    forAll(mappingCells, cellI)
+    {
+        label parent = -1;
+
+        if (mappingCells[cellI] < nOldCells_)
+        {
+            parent = mappingCells[cellI];
+        }
+        else
+        {
+            parent = cellParents_[mappingCells[cellI]];
+        }
+
+        // Insert the parent cell
+        cellParents_.set(cIndex, parent);
+        masterCells.set(parent, empty());
+    }
+
+    // Accumulate a larger stencil of cell neighbours
+    labelList initList = masterCells.toc();
+
+    forAll(initList, indexI)
+    {
+        label cellIndex = initList[indexI];
+
+        const cell& cellToCheck = cells[cellIndex];
+
+        forAll(cellToCheck, faceI)
+        {
+            if
+            (
+                (owner[cellToCheck[faceI]] == cellIndex) &&
+                (cellToCheck[faceI] < neighbour.size())
+            )
+            {
+                // Add the neighbour.
+                masterCells.set(neighbour[cellToCheck[faceI]], empty());
+            }
+            else
+            {
+                // Add owner to the list.
+                masterCells.set(owner[cellToCheck[faceI]], empty());
+            }
+        }
+    }
+
+    return masterCells.toc();
+}
+
+
 // Set fill-in mapping information for a particular cell
 //  - Requires cell-face connectivity information to be valid.
 //  - mapCells/mapFaces can have old and/or new cell/face labels,
@@ -445,221 +796,28 @@ bool dynamicTopoFvMesh::findCommonEdge
 void dynamicTopoFvMesh::setCellMapping
 (
     const label cIndex,
-    const labelList& mappingCells,
-    const scalarField& mappingWeights
+    const labelList& mapCells,
+    const scalarField& mapWeights
 )
 {
-    // Specify mapping method:
-    //  0: Use raw-weights provided
-    //  1: Inverse-distance
-    label method = 1;
-
     if (iPtr_.valid())
     {
-        labelList mapCells, mapFaces;
-        scalarField cellWeights, faceWeights;
-
-        if (method == 0)
-        {
-            // Use raw weights.
-            mapCells = mappingCells;
-            cellWeights = mappingWeights;
-        }
-        else
-        if (method == 1)
-        {
-            labelHashSet masterCells, masterFaces;
-
-            forAll(mappingCells, cellI)
-            {
-                label parent = -1;
-
-                if (mappingCells[cellI] < nOldCells_)
-                {
-                    parent = mappingCells[cellI];
-                }
-                else
-                {
-                    parent = cellParents_[mappingCells[cellI]];
-                }
-
-                // Insert the parent cell
-                cellParents_.set(cIndex, parent);
-                masterCells.set(parent, empty());
-            }
-
-            // Fetch connectivity from the old mesh.
-            const cellList& cells = polyMesh::cells();
-            const faceList& faces = polyMesh::faces();
-            const labelList& own = polyMesh::faceOwner();
-            const labelList& nei = polyMesh::faceNeighbour();
-            const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
-
-            // Accumulate a larger stencil of cell neighbours
-            labelList initList = masterCells.toc();
-
-            forAll(initList, indexI)
-            {
-                label cellIndex = initList[indexI];
-                const cell& cellToCheck = cells[cellIndex];
-
-                forAll(cellToCheck, faceI)
-                {
-                    if (own[cellToCheck[faceI]] == cellIndex)
-                    {
-                        // Check the neighbour.
-                        if (cellToCheck[faceI] < nei.size())
-                        {
-                            masterCells.set(nei[cellToCheck[faceI]], empty());
-                        }
-                        else
-                        {
-                            // Add the boundary face. But do so only if it
-                            // is worth mapping from.
-                            label pIndex = whichPatch(cellToCheck[faceI]);
-                            const polyPatch& bdyPatch = boundary[pIndex];
-
-                            if
-                            (
-                                (bdyPatch.type() != "processor") &&
-                                (bdyPatch.type() != "cyclic") &&
-                                (bdyPatch.type() != "wedge") &&
-                                (bdyPatch.type() != "empty") &&
-                                (bdyPatch.type() != "symmetryPlane")
-                            )
-                            {
-                                masterFaces.set(cellToCheck[faceI], empty());
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // Add owner to the list.
-                        masterCells.set(own[cellToCheck[faceI]], empty());
-                    }
-                }
-            }
-
-            // Extract lists
-            mapCells = masterCells.toc();
-            mapFaces = masterFaces.toc();
-
-            // Prepare cell/face weights
-            cellWeights.setSize(mapCells.size(), 0.0);
-            faceWeights.setSize(mapFaces.size(), 0.0);
-
-            // Compute the cell-centre location.
-            vector newCellCentre(vector::zero);
-
-            if (twoDMesh_)
-            {
-                newCellCentre = prismCellCentre(cIndex, true);
-            }
-            else
-            {
-                newCellCentre = tetCellCentre(cIndex, true);
-            }
-
-            scalar totalWeight = 0.0;
-
-            forAll(mapCells, cellI)
-            {
-                vector oldCellCentre(vector::zero);
-
-                // Manually calculate cell-centres using old face-connectivity.
-                // Note: This might use old points which have been removed in
-                //       this morph (due to a collapse). The removePoint()
-                //       function still maintains these points while only
-                //       updating maps. But current connectivity doesn't
-                //       use them.
-                const cell& cellToCheck = cells[mapCells[cellI]];
-
-                forAll(cellToCheck, faceI)
-                {
-                    const face& faceToCheck = faces[cellToCheck[faceI]];
-
-                    if (faceToCheck.size() == 3)
-                    {
-                        oldCellCentre += triFaceCentre(faceToCheck, true);
-                    }
-
-                    if (faceToCheck.size() == 4)
-                    {
-                        oldCellCentre += quadFaceCentre(faceToCheck, true);
-                    }
-                }
-
-                oldCellCentre /= cellToCheck.size();
-
-                cellWeights[cellI] =
-                (
-                    1.0/stabilise
-                    (
-                        magSqr(newCellCentre - oldCellCentre),
-                        VSMALL
-                    )
-                );
-
-                totalWeight += cellWeights[cellI];
-            }
-
-            forAll(mapFaces, faceI)
-            {
-                vector oldFaceCentre(vector::zero);
-
-                // See Note above.
-                const face& faceToCheck = faces[mapFaces[faceI]];
-
-                if (faceToCheck.size() == 3)
-                {
-                    oldFaceCentre = triFaceCentre(faceToCheck, true);
-                }
-
-                if (faceToCheck.size() == 4)
-                {
-                    oldFaceCentre = quadFaceCentre(faceToCheck, true);
-                }
-
-                faceWeights[faceI] =
-                (
-                    1.0/stabilise
-                    (
-                        magSqr(newCellCentre - oldFaceCentre),
-                        VSMALL
-                    )
-                );
-
-                totalWeight += faceWeights[faceI];
-            }
-
-            // Normalize weights
-            cellWeights *= (1.0/totalWeight);
-            faceWeights *= (1.0/totalWeight);
-        }
-
         if (debug > 3)
         {
             Info << "Inserting mapping cell: " << cIndex << nl
                  << " mapCells: " << mapCells << nl
-                 << " cellWeights: " << cellWeights << nl
-                 << " mapFaces: " << mapFaces << nl
-                 << " faceWeights: " << faceWeights << nl
+                 << " cellWeights: " << mapWeights
                  << endl;
         }
 
         // Ensure compatible sizes.
-        if
-        (
-            (mapCells.size() != cellWeights.size()) ||
-            (mapFaces.size() != faceWeights.size())
-        )
+        if (mapCells.size() != mapWeights.size())
         {
             FatalErrorIn("dynamicTopoFvMesh::setCellMapping()")
-                << nl << " Incompatible mapping: " << nl
+                << nl << " Incompatible mapping for cell: "
+                << cIndex << ":: " << cells_[cIndex] << nl
                 << " mapCells: " << mapCells
-                << " cellWeights: " << cellWeights << nl
-                << " mapFaces: " << mapFaces
-                << " faceWeights: " << faceWeights
+                << " cellWeights: " << mapWeights
                 << abort(FatalError);
         }
 
@@ -667,9 +825,7 @@ void dynamicTopoFvMesh::setCellMapping
         (
             cIndex,
             mapCells,
-            cellWeights,
-            mapFaces,
-            faceWeights
+            mapWeights
         );
     }
 }

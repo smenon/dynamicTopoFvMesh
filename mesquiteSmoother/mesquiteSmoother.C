@@ -3471,11 +3471,7 @@ void mesquiteSmoother::solve()
     optAlgorithm_->set_inner_termination_criterion(&tcInner_);
 
     // Set up the quality assessor
-    Mesquite::QualityAssessor qA
-    (
-        &qMetricTable_[qMetric_](),
-        err
-    );
+    Mesquite::QualityAssessor qA(&qMetricTable_[qMetric_]());
 
     // Assess the quality of the initial mesh before smoothing
     queue.add_quality_assessor(&qA, err);

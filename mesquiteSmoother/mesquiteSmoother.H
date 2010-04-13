@@ -49,7 +49,7 @@ SourceFiles
 
 // Have gcc ignore certain warnings while including mesquite headers
 #pragma GCC diagnostic ignored "-Wold-style-cast"
-#pragma GCC diagnostic ignored "-Wempty-body"
+
 #include "Mesquite_all_headers.hpp"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

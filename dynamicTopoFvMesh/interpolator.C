@@ -284,17 +284,12 @@ void interpolator::insertCell
 (
     const label newCellIndex,
     const labelList& mapCells,
-    const scalarField& cellWeights,
-    const labelList& mapFaces,
-    const scalarField& faceWeights
+    const scalarField& cellWeights
 )
 {
     // Loop through all volMaps, and perform a weighted mapping.
     // If the key exists, overwrite it.
     label nOldCells = mesh_.nOldCells_;
-    label nOldFaces = mesh_.nOldFaces_;
-
-    const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
 
     // Map for each primitive type
     mapCell(scalar, Scalar);
