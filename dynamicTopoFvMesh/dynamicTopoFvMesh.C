@@ -446,7 +446,7 @@ scalar dynamicTopoFvMesh::tetIntersection
 ) const
 {
     // Reset intersection volume
-    scalar intVol = 0.0;
+    scalar intVol = 0.0, tolFactor = 1e-5;
 
     bool intersects = false;
 
@@ -569,7 +569,7 @@ scalar dynamicTopoFvMesh::tetIntersection
                     (
                         segment,
                         oldCheckFace,
-                        1e-2,
+                        tolFactor,
                         intPoint,
                         true
                     )
@@ -650,7 +650,7 @@ scalar dynamicTopoFvMesh::tetIntersection
                         (
                             segment,
                             newCheckFace,
-                            1e-2,
+                            tolFactor,
                             intPoint,
                             true
                         )
@@ -689,7 +689,199 @@ scalar dynamicTopoFvMesh::tetIntersection
             }
         }
 
-        if (/*debug > 3 &&*/ intersects)
+        // Return intersection volume.
+        return intVol;
+    }
+
+    // No common faces are present.
+    // Next, check topologically for common edges.
+    FixedList<edge, 6> oldEdges(edge(-1,-1));
+    FixedList<label, 6> newEdges(-1);
+
+    const face& oldBaseFace = oldFaces[oldCell[0]];
+
+    label oldApex =
+    (
+        findIsolatedPoint
+        (
+            oldBaseFace,
+            oldFaces[oldCell[1]]
+        )
+    );
+
+    // Build the old edge list
+    oldEdges[0] = edge(oldBaseFace[0], oldBaseFace[1]);
+    oldEdges[1] = edge(oldBaseFace[1], oldBaseFace[2]);
+    oldEdges[2] = edge(oldBaseFace[2], oldBaseFace[0]);
+    oldEdges[3] = edge(oldBaseFace[0], oldApex);
+    oldEdges[4] = edge(oldBaseFace[1], oldApex);
+    oldEdges[5] = edge(oldBaseFace[2], oldApex);
+
+    // Get a list of edge indices for the new cell.
+    label nEdg = 0;
+
+    forAll(newCell, fI)
+    {
+        const labelList& fEdges = faceEdges_[newCell[fI]];
+
+        forAll(fEdges, edgeI)
+        {
+            if (findIndex(newEdges, fEdges[edgeI]) == -1)
+            {
+                newEdges[nEdg++] = fEdges[edgeI];
+            }
+        }
+
+        if (nEdg == 6)
+        {
+            break;
+        }
+    }
+
+    // Check for one common edge.
+    // Note that two common edges cannot occur,
+    // since we've already checked faces.
+    label commonOldEdgeIndex = -1, commonNewEdgeIndex = -1;
+
+    forAll(newEdges, edgeI)
+    {
+        forAll(oldEdges, edgeJ)
+        {
+            if (oldEdges[edgeJ] == edges_[newEdges[edgeI]])
+            {
+                commonOldEdgeIndex = edgeJ;
+                commonNewEdgeIndex = newEdges[edgeI];
+                break;
+            }
+        }
+    }
+
+    if (commonNewEdgeIndex > -1)
+    {
+        vector intPoint = vector::zero;
+        FixedList<vector,4> tP(vector::zero);
+        FixedList<vector,2> segment(vector::zero);
+
+        const edge& commonEdge = edges_[commonNewEdgeIndex];
+
+        // Fill in first two points from the common edge.
+        label nInts = 0;
+
+        tP[nInts++] = oldPoints_[commonEdge[0]];
+        tP[nInts++] = oldPoints_[commonEdge[1]];
+
+        // Loop through all new edges, and find possible intersections.
+        forAll(newEdges, edgeI)
+        {
+            if (newEdges[edgeI] == commonNewEdgeIndex)
+            {
+                continue;
+            }
+
+            const edge& edgeToCheck = edges_[newEdges[edgeI]];
+
+            forAll(oldCell, fI)
+            {
+                const face& oldCheckFace = oldFaces[oldCell[fI]];
+
+                segment[0] = oldPoints_[edgeToCheck[0]];
+                segment[1] = oldPoints_[edgeToCheck[1]];
+
+                bool foundIntersection =
+                (
+                    segmentTriFaceIntersection
+                    (
+                        segment,
+                        oldCheckFace,
+                        tolFactor,
+                        intPoint,
+                        true
+                    )
+                );
+
+                if (foundIntersection)
+                {
+                    // Add to the list.
+                    tP[nInts++] = intPoint;
+                    break;
+                }
+            }
+
+            if (nInts == 4)
+            {
+                break;
+            }
+        }
+
+        if (nInts == 4)
+        {
+            // Found what we need. Compute intersection volume.
+            // We use absolute magnitudes here, since there's
+            // no clear way to figure out the orientation.
+            intVol = mag(tetVolume(tP[0],tP[1],tP[2],tP[3]));
+
+            intersects = true;
+        }
+        else
+        {
+            // Need to find more intersection points.
+
+            // Loop through all new edges, and find possible intersections.
+            forAll(oldEdges, edgeI)
+            {
+                if (edgeI == commonOldEdgeIndex)
+                {
+                    continue;
+                }
+
+                const edge& edgeToCheck = oldEdges[edgeI];
+
+                forAll(newCell, fI)
+                {
+                    const face& newCheckFace = faces_[newCell[fI]];
+
+                    segment[0] = oldPoints_[edgeToCheck[0]];
+                    segment[1] = oldPoints_[edgeToCheck[1]];
+
+                    bool foundIntersection =
+                    (
+                        segmentTriFaceIntersection
+                        (
+                            segment,
+                            newCheckFace,
+                            tolFactor,
+                            intPoint,
+                            true
+                        )
+                    );
+
+                    if (foundIntersection)
+                    {
+                        // Add to the list.
+                        tP[nInts++] = intPoint;
+                        break;
+                    }
+                }
+
+                if (nInts == 4)
+                {
+                    break;
+                }
+            }
+
+            // Check again.
+            if (nInts == 4)
+            {
+                // Found what we need. Compute intersection volume.
+                // We use absolute magnitudes here, since there's
+                // no clear way to figure out the orientation.
+                intVol = mag(tetVolume(tP[0],tP[1],tP[2],tP[3]));
+
+                intersects = true;
+            }
+        }
+
+        if (debug > 3 && intersects)
         {
             label cPoints[4] = {0, 1, 2, 3};
             FixedList<label, 4> ctn(cPoints);
@@ -717,9 +909,12 @@ scalar dynamicTopoFvMesh::tetIntersection
                 labelListList(1, ctn)
             );
         }
+
+        // Return intersection volume.
+        return intVol;
     }
 
-    // Return intersection volume.
+    // Return null intersection volume.
     return intVol;
 }
 

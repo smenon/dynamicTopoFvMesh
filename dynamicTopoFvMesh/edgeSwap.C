@@ -2306,7 +2306,7 @@ const changeMap dynamicTopoFvMesh::swap23
                 << abort(FatalError);
         }
 
-        if (mag(1.0 - sum(weights)) > SMALL  && cellI < 2)
+        if (mag(1.0 - sum(weights)) > SMALL && cellI < 2)
         {
             // Write out for post-processing
             label newIdx = newCellIndex[cellI];
@@ -2316,7 +2316,9 @@ const changeMap dynamicTopoFvMesh::swap23
 
             FatalErrorIn("dynamicTopoFvMesh::swap23()")
                 << "Encountered non-conservative weighting factors." << nl
+                << " Cell: " << newCellIndex[cellI] << nl
                 << " Old volume: " << newOldVol << nl
+                << " Parents: " << parents << nl
                 << " Weights: " << weights << nl
                 << " Sum(Weights): " << sum(weights)
                 << abort(FatalError);
@@ -3034,7 +3036,9 @@ const changeMap dynamicTopoFvMesh::swap32
 
             FatalErrorIn("dynamicTopoFvMesh::swap32()")
                 << "Encountered non-conservative weighting factors." << nl
+                << " Cell: " << newCellIndex[cellI] << nl
                 << " Old volume: " << newOldVol << nl
+                << " Parents: " << parents << nl
                 << " Weights: " << weights << nl
                 << " Sum(Weights): " << sum(weights)
                 << abort(FatalError);
