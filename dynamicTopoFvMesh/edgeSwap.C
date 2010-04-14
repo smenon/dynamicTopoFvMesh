@@ -1606,6 +1606,7 @@ label dynamicTopoFvMesh::identify32Swap
             segmentTriFaceIntersection
             (
                 segment,
+                edgeToCheck,
                 triFace,
                 tolFraction,
                 intPt
@@ -2306,7 +2307,7 @@ const changeMap dynamicTopoFvMesh::swap23
                 << abort(FatalError);
         }
 
-        if (mag(1.0 - sum(weights)) > SMALL && cellI < 2)
+        if (mag(1.0 - sum(weights)) > 1e-10 && cellI < 2)
         {
             // Write out for post-processing
             label newIdx = newCellIndex[cellI];
@@ -2320,7 +2321,8 @@ const changeMap dynamicTopoFvMesh::swap23
                 << " Old volume: " << newOldVol << nl
                 << " Parents: " << parents << nl
                 << " Weights: " << weights << nl
-                << " Sum(Weights): " << sum(weights)
+                << " Sum(Weights): " << sum(weights) << nl
+                << " Error: " << mag(1.0 - sum(weights))
                 << abort(FatalError);
         }
 
@@ -2333,7 +2335,8 @@ const changeMap dynamicTopoFvMesh::swap23
                  << " New volume: " << tetVolume(newCellIndex[cellI]) << nl
                  << " Parents: " << parents << nl
                  << " Weights: " << weights << nl
-                 << " Sum(Weights): " << sum(weights)
+                 << " Sum(Weights): " << sum(weights) << nl
+                 << " Error: " << mag(1.0 - sum(weights))
                  << endl;
         }
     }
@@ -3026,7 +3029,7 @@ const changeMap dynamicTopoFvMesh::swap32
                 << abort(FatalError);
         }
 
-        if (mag(1.0 - sum(weights)) > SMALL)
+        if (mag(1.0 - sum(weights)) > 1e-10)
         {
             // Write out for post-processing
             label newIdx = newCellIndex[cellI];
@@ -3040,7 +3043,8 @@ const changeMap dynamicTopoFvMesh::swap32
                 << " Old volume: " << newOldVol << nl
                 << " Parents: " << parents << nl
                 << " Weights: " << weights << nl
-                << " Sum(Weights): " << sum(weights)
+                << " Sum(Weights): " << sum(weights) << nl
+                << " Error: " << mag(1.0 - sum(weights))
                 << abort(FatalError);
         }
 
@@ -3051,7 +3055,8 @@ const changeMap dynamicTopoFvMesh::swap32
                  << " New volume: " << tetVolume(newCellIndex[cellI]) << nl
                  << " Parents: " << parents << nl
                  << " Weights: " << weights << nl
-                 << " Sum(Weights): " << sum(weights)
+                 << " Sum(Weights): " << sum(weights) << nl
+                 << " Error: " << mag(1.0 - sum(weights))
                  << endl;
         }
     }

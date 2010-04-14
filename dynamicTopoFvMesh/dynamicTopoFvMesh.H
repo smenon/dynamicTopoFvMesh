@@ -499,6 +499,7 @@ class dynamicTopoFvMesh
         inline bool segmentTriFaceIntersection
         (
             const FixedList<vector,2>& segment,
+            const edge& pIndices,
             const face& triFace,
             const scalar tolFraction,
             vector& intersectionPoint,

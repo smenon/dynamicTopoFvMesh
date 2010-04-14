@@ -624,6 +624,7 @@ inline scalar dynamicTopoFvMesh::tetVolume
 inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
 (
     const FixedList<vector,2>& segment,
+    const edge& pIndices,
     const face& triFace,
     const scalar tolFraction,
     vector& intersectionPoint,
@@ -653,6 +654,7 @@ inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
     {
         FatalErrorIn("dynamicTopoFvMesh::segmentTriFaceIntersection()")
             << nl << " Segment is parallel to face. " << nl
+            << " pIndices: " << pIndices << nl
             << " Segment: " << segment << nl
             << " Face: " << triFace << nl
             << " tolFraction: " << tolFraction
@@ -664,7 +666,7 @@ inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
     scalar tolerance = tolFraction*mag(p2 - p1);
 
     // Check for intersection along line.
-    if (u > tolerance && u < 1.0)
+    if ((u > tolerance) && u < (1.0 - tolerance))
     {
         // Compute point of intersection
         vector p = p1 + u*(p2 - p1);
