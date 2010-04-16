@@ -191,8 +191,8 @@ class dynamicTopoFvMesh
         Map<label>      addedCellZones_;
 
         // Information for mapPolyMesh
-        Map<label>       faceParents_;
-        Map<label>       cellParents_;
+        Map<labelList>   faceParents_;
+        Map<labelList>   cellParents_;
         List<objectMap>  pointsFromPoints_;
         List<objectMap>  facesFromPoints_;
         List<objectMap>  facesFromEdges_;
@@ -523,6 +523,10 @@ class dynamicTopoFvMesh
             const label oldCellIndex
         ) const;
 
+        // Compute the volume of a polyhedron
+        // formed by a convex set of points.
+        scalar convexSetVolume(const vectorField& cvxSet) const;
+
         // Obtain a list of possible parent cells from the old mesh
         labelList cellParents
         (
@@ -834,8 +838,8 @@ class dynamicTopoFvMesh
         void setFaceMapping
         (
             const label fIndex,
-            const labelList& mappingFaces = labelList(0),
-            const scalarField& mappingWeights = scalarField(0),
+            const labelList& mapFaces = labelList(0),
+            const scalarField& mapWeights = scalarField(0),
             const scalar flux = 0.0,
             bool interpolateFlux = true
         );

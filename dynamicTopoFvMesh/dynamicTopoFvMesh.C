@@ -813,7 +813,7 @@ scalar dynamicTopoFvMesh::tetIntersection
     if (commonNewEdgeIndex > -1)
     {
         vector intPoint = vector::zero;
-        FixedList<vector,10> tP(vector::zero);
+        vectorField tP(2, vector::zero);
         FixedList<vector,2> segment(vector::zero);
 
         const edge& commonEdge = edges_[commonNewEdgeIndex];
@@ -867,7 +867,9 @@ scalar dynamicTopoFvMesh::tetIntersection
                 if (foundIntersection)
                 {
                     // Add to the list.
-                    tP[nInts++] = intPoint;
+                    sizeUpList(intPoint, tP);
+
+                    nInts++;
                 }
             }
         }
@@ -915,7 +917,9 @@ scalar dynamicTopoFvMesh::tetIntersection
                 if (foundIntersection)
                 {
                     // Add to the list.
-                    tP[nInts++] = intPoint;
+                    sizeUpList(intPoint, tP);
+
+                    nInts++;
                 }
             }
         }
@@ -935,42 +939,9 @@ scalar dynamicTopoFvMesh::tetIntersection
         {
             // Found a polyhedral intersecting volume.
             // Compute the volume from points and return.
-        }
+            intVol = convexSetVolume(tP);
 
-        if (debug > 3 && intersects)
-        {
-            label cPoints[4] = {0, 1, 2, 3};
-            FixedList<label, 4> ctn(cPoints);
-
-            word cellName =
-            (
-                "Int_"
-              + Foam::name(newCellIndex) + '_'
-              + Foam::name(oldCellIndex)
-            );
-
-            vectorField intTetPoints(4, vector::zero);
-
-            scalar tVol = tetVolume(tP[0],tP[1],tP[2],tP[3]);
-
-            if (tVol < 0.0)
-            {
-                Swap(tP[0], tP[1]);
-            }
-
-            forAll(intTetPoints, pI)
-            {
-                intTetPoints[pI] = tP[pI];
-            }
-
-            // Write it out.
-            writeVTK
-            (
-                cellName,
-                4, 1, 4,
-                intTetPoints,
-                labelListList(1, ctn)
-            );
+            intersects = true;
         }
 
         // Return intersection volume.
@@ -979,6 +950,218 @@ scalar dynamicTopoFvMesh::tetIntersection
 
     // Return null intersection volume.
     return intVol;
+}
+
+// Compute the volume of a polyhedron
+// formed by a convex set of points.
+scalar dynamicTopoFvMesh::convexSetVolume
+(
+    const vectorField& cvxSet
+) const
+{
+    scalar cVol = 0.0;
+    face tmpFace(3);
+
+    DynamicList<face> cellFaces(10);
+
+    // Loop through all points, and build faces with every
+    // other point in the set
+    forAll(cvxSet, i)
+    {
+        forAll(cvxSet, j)
+        {
+            // Skip duplicates.
+            if (j == i)
+            {
+                continue;
+            }
+
+            forAll(cvxSet, k)
+            {
+                // Skip duplicates.
+                if (k == i || k == j)
+                {
+                    continue;
+                }
+
+                // Configure the face.
+                tmpFace[0] = i;
+                tmpFace[1] = j;
+                tmpFace[2] = k;
+
+                // Compute the normal to this face
+                vector n = tmpFace.normal(cvxSet);
+
+                n /= mag(n) + VSMALL;
+
+                label curFaceSign = 0;
+                bool foundInternalFace = false;
+
+                // Check for all other points in the set,
+                // and decide if all points lie on one side.
+                forAll(cvxSet, l)
+                {
+                    // Skip duplicates.
+                    if (findIndex(tmpFace, l) > -1)
+                    {
+                        continue;
+                    }
+
+                    // Check if this point is co-planar
+                    // with the current face. If it is,
+                    // then it needs to be included in it.
+                    scalar dotProd =
+                    (
+                        (
+                             (cvxSet[l] - cvxSet[i])
+                        / mag(cvxSet[l] - cvxSet[i])
+                        ) & n
+                    );
+
+                    if (mag(dotProd) < SMALL)
+                    {
+                        // Need to configure a new face.
+                        bool foundLocation = false;
+
+                        forAll(tmpFace, pI)
+                        {
+                            label nI = tmpFace.fcIndex(pI);
+
+                            face newFace(3);
+
+                            newFace[0] = tmpFace[pI];
+                            newFace[1] = l;
+                            newFace[2] = tmpFace[nI];
+
+                            // Compute the normal.
+                            vector nNew = newFace.normal(cvxSet);
+
+                            if ((n & nNew) > 0.0)
+                            {
+                                // Insert the point.
+                                insertLabel
+                                (
+                                    l,
+                                    tmpFace[pI],
+                                    tmpFace[nI],
+                                    tmpFace
+                                );
+
+                                foundLocation = true;
+
+                                break;
+                            }
+                        }
+
+                        if (!foundLocation)
+                        {
+                            FatalErrorIn
+                            (
+                                "label dynamicTopoFvMesh::convexSetVolume()"
+                            )   << "Cannot find appropriate configuration."
+                                << nl << "Face: " << tmpFace.points(cvxSet)
+                                << nl << " with point: " << cvxSet[l]
+                                << abort(FatalError);
+                        }
+
+                        continue;
+                    }
+                    else
+                    {
+                        // Obtain the sign of this point.
+                        label fSign = Foam::sign(dotProd);
+
+                        // Update the current sign if necessary.
+                        if (curFaceSign == 0)
+                        {
+                            curFaceSign = fSign;
+                        }
+                        else
+                        if (curFaceSign != fSign)
+                        {
+                            // Interior face. Bail out.
+                            foundInternalFace = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!foundInternalFace)
+                {
+                    // Looks like we found a face on the boundary.
+                    // Check its sign to ensure that it points outward.
+                    if (curFaceSign == 1)
+                    {
+                        tmpFace = tmpFace.reverseFace();
+                    }
+
+                    // Ensure that the face wasn't checked in.
+                    bool alreadyCheckedIn = false;
+
+                    forAll(cellFaces, faceI)
+                    {
+                        const face& checkFace = cellFaces[faceI];
+
+                        if (face::compare(tmpFace, checkFace))
+                        {
+                            alreadyCheckedIn = true;
+                            break;
+                        }
+
+                        // Cannot be a subset of a previously
+                        // checked-in face either.
+                        if (checkFace.size() > tmpFace.size())
+                        {
+                            bool foundUniquePoint = false;
+
+                            forAll(tmpFace, pI)
+                            {
+                                if (findIndex(checkFace, tmpFace[pI]) == -1)
+                                {
+                                    foundUniquePoint = true;
+                                    break;
+                                }
+                            }
+
+                            if (!foundUniquePoint)
+                            {
+                                alreadyCheckedIn = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Add this face to the list of faces.
+                    if (!alreadyCheckedIn)
+                    {
+                        cellFaces.append(tmpFace);
+                    }
+                }
+
+                // Reset the face size.
+                tmpFace.setSize(3, -1);
+            }
+        }
+    }
+
+    // Find cell-centroid
+    vector xC = average(cvxSet);
+
+    // Calculate volume from all accumulated faces.
+    forAll(cellFaces, faceI)
+    {
+        const face& checkFace = cellFaces[faceI];
+
+        vector xF = checkFace.centre(cvxSet);
+        vector Sf = checkFace.normal(cvxSet);
+
+        cVol += Sf & (xF - xC);
+    }
+
+    cVol *= (1.0/3.0);
+
+    // Return the computed volume.
+    return cVol;
 }
 
 
@@ -999,51 +1182,53 @@ labelList dynamicTopoFvMesh::cellParents
 
     forAll(mappingCells, cellI)
     {
-        label parent = -1;
-
         if (mappingCells[cellI] < nOldCells_)
         {
-            parent = mappingCells[cellI];
+            masterCells.set(mappingCells[cellI], empty());
         }
         else
         {
-            parent = cellParents_[mappingCells[cellI]];
-        }
+            const labelList& nParents = cellParents_[mappingCells[cellI]];
 
-        // Insert the parent cell
-        cellParents_.set(cIndex, parent);
-        masterCells.set(parent, empty());
+            forAll(nParents, cellI)
+            {
+                masterCells.set(nParents[cellI], empty());
+            }
+        }
     }
 
-    // Accumulate a larger stencil of cell neighbours
-    labelList initList = masterCells.toc();
-
-    forAll(initList, indexI)
+    for (label attempt = 0; attempt < 2; attempt++)
     {
-        label cellIndex = initList[indexI];
+        // Fetch the initial set of candidates
+        labelList initList = masterCells.toc();
 
-        const cell& cellToCheck = cells[cellIndex];
-
-        forAll(cellToCheck, faceI)
+        // Accumulate a larger stencil of cell neighbours
+        forAll(initList, indexI)
         {
-            if
-            (
-                (owner[cellToCheck[faceI]] == cellIndex) &&
-                (cellToCheck[faceI] < neighbour.size())
-            )
-            {
-                // Add the neighbour.
-                masterCells.set(neighbour[cellToCheck[faceI]], empty());
-            }
-            else
+            label cellIndex = initList[indexI];
+
+            const cell& cellToCheck = cells[cellIndex];
+
+            forAll(cellToCheck, faceI)
             {
                 // Add owner to the list.
                 masterCells.set(owner[cellToCheck[faceI]], empty());
+
+                if (cellToCheck[faceI] < neighbour.size())
+                {
+                    // Add the neighbour.
+                    masterCells.set(neighbour[cellToCheck[faceI]], empty());
+                }
             }
         }
     }
 
-    return masterCells.toc();
+    // Set the final parent list
+    labelList finalList = masterCells.toc();
+
+    cellParents_.set(cIndex, finalList);
+
+    return finalList;
 }
 
 
@@ -1095,174 +1280,44 @@ void dynamicTopoFvMesh::setCellMapping
 void dynamicTopoFvMesh::setFaceMapping
 (
     const label fIndex,
-    const labelList& mappingFaces,
-    const scalarField& mappingWeights,
+    const labelList& mapFaces,
+    const scalarField& mapWeights,
     const scalar flux,
     bool interpolateFlux
 )
 {
-    // Specify mapping method:
-    //  0: Use raw-weights provided
-    //  1: Inverse-distance
-    label method = 1;
-
     if (iPtr_.valid())
     {
-        labelList mapFaces(0);
-        scalarField faceWeights(0);
-
         label patch = whichPatch(fIndex);
 
         const face& faceToCheck = faces_[fIndex];
 
-        if (patch == -1)
+        if (debug > 3)
         {
-            // Internal faces get inserted without weights
-            iPtr_->insertFace
-            (
-                patch,
-                fIndex,
-                mapFaces,
-                faceWeights
-            );
+            Info << "Inserting mapping face: " << fIndex << nl
+                 << " patch: " << patch << nl
+                 << " mapFaces: " << mapFaces << nl
+                 << " faceWeights: " << mapWeights
+                 << endl;
         }
-        else
+
+        // Ensure compatible sizes.
+        if (mapFaces.size() != mapWeights.size())
         {
-            if (method == 0)
-            {
-                // Use raw weights.
-                mapFaces = mappingFaces;
-                faceWeights = mappingWeights;
-            }
-            else
-            if (method == 1)
-            {
-                if (mappingFaces.empty())
-                {
-                    FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
-                        << nl << " Invalid boundary face master for: "
-                        << fIndex << ":: " << faceToCheck << nl
-                        << " mappingFaces: " << mappingFaces
-                        << abort(FatalError);
-                }
-
-                labelHashSet masterFaces;
-
-                forAll(mappingFaces, faceI)
-                {
-                    label parent = -1;
-
-                    if (mappingFaces[faceI] < nOldFaces_)
-                    {
-                        parent = mappingFaces[faceI];
-                    }
-                    else
-                    {
-                        parent = faceParents_[mappingFaces[faceI]];
-                    }
-
-                    // Insert the parent face
-                    faceParents_.set(fIndex, parent);
-                    masterFaces.set(parent, empty());
-                }
-
-                // Fetch connectivity from the old mesh.
-                const faceList& faces = polyMesh::faces();
-
-                // Extract lists
-                mapFaces = masterFaces.toc();
-
-                // Prepare face weights
-                faceWeights.setSize(mapFaces.size(), 0.0);
-
-                // Compute the new face-centre location
-                vector newFaceCentre(vector::zero);
-
-                if (twoDMesh_)
-                {
-                    if (faceToCheck.size() == 3)
-                    {
-                        newFaceCentre = triFaceCentre(faceToCheck, true);
-                    }
-
-                    if (faceToCheck.size() == 4)
-                    {
-                        newFaceCentre = quadFaceCentre(faceToCheck, true);
-                    }
-                }
-                else
-                {
-                    newFaceCentre = triFaceCentre(faceToCheck, true);
-                }
-
-                scalar totalWeight = 0.0;
-
-                forAll(mapFaces, faceI)
-                {
-                    vector oldFaceCentre(vector::zero);
-
-                    // Manually calculate face-centres using
-                    // old face connectivity.
-                    // Note: This might use old points which
-                    //       have been removed in this morph
-                    //       (due to a collapse). The removePoint()
-                    //       function still maintains these points
-                    //       while only updating maps. But current
-                    //       connectivity doesn't use them.
-                    const face& oldFaceToCheck = faces[mapFaces[faceI]];
-
-                    if (faceToCheck.size() == 3)
-                    {
-                        oldFaceCentre = triFaceCentre(oldFaceToCheck, true);
-                    }
-
-                    if (faceToCheck.size() == 4)
-                    {
-                        oldFaceCentre = quadFaceCentre(oldFaceToCheck, true);
-                    }
-
-                    faceWeights[faceI] =
-                    (
-                        1.0/stabilise
-                        (
-                            magSqr(newFaceCentre - oldFaceCentre), VSMALL
-                        )
-                    );
-
-                    totalWeight += faceWeights[faceI];
-                }
-
-                // Normalize weights
-                faceWeights *= (1.0/totalWeight);
-            }
-
-            if (debug > 3)
-            {
-                Info << "Inserting mapping face: " << fIndex << nl
-                     << " patch: " << patch << nl
-                     << " mapFaces: " << mapFaces << nl
-                     << " faceWeights: " << faceWeights
-                     << endl;
-            }
-
-            // Ensure compatible sizes.
-            if (mapFaces.size() != faceWeights.size())
-            {
-                FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
-                    << nl << " Incompatible mapping: " << nl
-                    << " mapFaces: " << mapFaces
-                    << " faceWeights: " << faceWeights
-                    << abort(FatalError);
-            }
-
-            iPtr_->insertFace
-            (
-                patch,
-                fIndex,
-                mapFaces,
-                faceWeights
-            );
+            FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
+                << nl << " Incompatible mapping: " << nl
+                << " mapFaces: " << mapFaces
+                << " faceWeights: " << mapWeights
+                << abort(FatalError);
         }
+
+        iPtr_->insertFace
+        (
+            patch,
+            fIndex,
+            mapFaces,
+            mapWeights
+        );
 
         if (interpolateFlux)
         {

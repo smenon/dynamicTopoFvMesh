@@ -2277,6 +2277,9 @@ const changeMap dynamicTopoFvMesh::swap23
         // Obtain parents for this cell
         labelList parents = cellParents(newCellIndex[cellI], mC);
 
+        // Track actual intersections
+        label nIntersects = 0;
+
         // Compute intersection weights
         scalarField weights(parents.size(), 0.0);
 
@@ -2286,7 +2289,33 @@ const changeMap dynamicTopoFvMesh::swap23
             (
                 tetIntersection(newCellIndex[cellI], parents[indexI])
             );
+
+            if (weights[indexI] > SMALL)
+            {
+                nIntersects++;
+            }
         }
+
+        // Now copy only valid intersections.
+        labelList newParents(nIntersects, -1);
+        scalarField newWeights(nIntersects, 0.0);
+
+        // Reset counter
+        nIntersects = 0;
+
+        forAll(weights, indexI)
+        {
+            if (weights[indexI] > SMALL)
+            {
+                newParents[nIntersects] = parents[indexI];
+                newWeights[nIntersects] = weights[indexI];
+                nIntersects++;
+            }
+        }
+
+        // Transfer lists.
+        parents.transfer(newParents);
+        weights.transfer(newWeights);
 
         // Set the old-volume for this cell
         scalar newOldVol = tetVolume(newCellIndex[cellI], true);
@@ -3001,6 +3030,9 @@ const changeMap dynamicTopoFvMesh::swap32
         // Obtain parents for this cell
         labelList parents = cellParents(newCellIndex[cellI], mC);
 
+        // Track actual intersections
+        label nIntersects = 0;
+
         // Compute intersection weights
         scalarField weights(parents.size(), 0.0);
 
@@ -3010,7 +3042,33 @@ const changeMap dynamicTopoFvMesh::swap32
             (
                 tetIntersection(newCellIndex[cellI], parents[indexI])
             );
+
+            if (weights[indexI] > SMALL)
+            {
+                nIntersects++;
+            }
         }
+
+        // Now copy only valid intersections.
+        labelList newParents(nIntersects, -1);
+        scalarField newWeights(nIntersects, 0.0);
+
+        // Reset counter
+        nIntersects = 0;
+
+        forAll(weights, indexI)
+        {
+            if (weights[indexI] > SMALL)
+            {
+                newParents[nIntersects] = parents[indexI];
+                newWeights[nIntersects] = weights[indexI];
+                nIntersects++;
+            }
+        }
+
+        // Transfer lists.
+        parents.transfer(newParents);
+        weights.transfer(newWeights);
 
         // Set the old-volume for this cell
         scalar newOldVol = tetVolume(newCellIndex[cellI], true);
@@ -3086,6 +3144,10 @@ const changeMap dynamicTopoFvMesh::swap32
             );
         }
     }
+
+    // Fill in mapping information for the new face.
+    // Since it is internal, interpolate fluxes by default.
+    setFaceMapping(newFaceIndex);
 
     if (debug > 2)
     {
