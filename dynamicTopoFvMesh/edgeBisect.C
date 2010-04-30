@@ -2604,11 +2604,67 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Fill-in mapping information
         labelList mC(1, cellHull[indexI]);
 
-        setCellMapping(addedCellIndices[indexI], mC, scalarField(1, 1.0));
+        // Obtain parents for this cell
+        labelList parents = cellParents(mC);
+
+        // Track actual intersections
+        label nIntersects = 0;
+
+        // Compute intersection weights
+        scalarField weights(parents.size(), 0.0);
+
+        forAll(parents, indexJ)
+        {
+            weights[indexJ] =
+            (
+                tetIntersection
+                (
+                    addedCellIndices[indexI],
+                    parents[indexJ]
+                )
+            );
+
+            if (weights[indexJ] > SMALL)
+            {
+                nIntersects++;
+            }
+        }
+
+        // Now copy only valid intersections.
+        labelList newParents(nIntersects, -1);
+        scalarField newWeights(nIntersects, 0.0);
+
+        // Reset counter
+        nIntersects = 0;
+
+        forAll(weights, indexJ)
+        {
+            if (weights[indexJ] > SMALL)
+            {
+                newParents[nIntersects] = parents[indexJ];
+                newWeights[nIntersects] = weights[indexJ];
+                nIntersects++;
+            }
+        }
+
+        // Transfer lists.
+        parents.transfer(newParents);
+        weights.transfer(newWeights);
+
+        // Set the old-volume for this cell
+        scalar newOldVol = tetVolume(addedCellIndices[indexI], true);
+
+        // Normalize by current volume
+        weights /= newOldVol;
+
+        // Set the mapping for this cell
+        setCellMapping(addedCellIndices[indexI], parents, weights);
+
+        // Set parents for this cell
+        cellParents_.set(addedCellIndices[indexI], parents);
 
         // Compute old volumes, using old point positions.
         scalar modOldVol = tetVolume(cellHull[indexI], true);
-        scalar newOldVol = tetVolume(addedCellIndices[indexI], true);
 
         if (modOldVol < 0.0 || newOldVol < 0.0)
         {
@@ -2619,17 +2675,35 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 << abort(FatalError);
         }
 
-        if (debug > 2)
+        if (mag(1.0 - sum(weights)) > 1e-10)
         {
-            Info << "Cell: " << cellHull[indexI]
-                 << " Old volume: " << modOldVol
-                 << " New volume: " << tetVolume(cellHull[indexI])
-                 << endl;
+            // Write out for post-processing
+            label newIdx = addedCellIndices[indexI];
 
-            Info << "Cell: " << addedCellIndices[indexI]
-                 << " Old volume: " << newOldVol
-                 << " New volume: " << tetVolume(addedCellIndices[indexI])
-                 << endl;
+            writeVTK
+            (
+                "nCell_" + Foam::name(newIdx),
+                newIdx,
+                3, false, true
+            );
+
+            writeVTK
+            (
+                "oCell_" + Foam::name(newIdx),
+                cellParents(mC),
+                3, true, true
+            );
+
+            FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
+                << "Encountered non-conservative weighting factors." << nl
+                << " Cell: " << newIdx << nl
+                << " Old volume: " << newOldVol << nl
+                << " Candidate parents: " << cellParents(mC) << nl
+                << " Parents: " << parents << nl
+                << " Weights: " << weights << nl
+                << " Sum(Weights): " << sum(weights) << nl
+                << " Error: " << mag(1.0 - sum(weights))
+                << abort(FatalError);
         }
     }
 

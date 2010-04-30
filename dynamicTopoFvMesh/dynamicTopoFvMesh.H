@@ -496,6 +496,17 @@ class dynamicTopoFvMesh
             bool useOldPoints = false
         ) const;
 
+        // Determine whether a specified point lies on a segment
+        inline bool segmentPointIntersection
+        (
+            const FixedList<vector,2>& segment,
+            const edge& pIndices,
+            const label pIndex,
+            const scalar tolFraction,
+            const bool useOldPoints
+        ) const;
+
+        // Determine whether a segment intersects a triangular face
         inline bool segmentTriFaceIntersection
         (
             const FixedList<vector,2>& segment,
@@ -528,11 +539,7 @@ class dynamicTopoFvMesh
         scalar convexSetVolume(const vectorField& cvxSet) const;
 
         // Obtain a list of possible parent cells from the old mesh
-        labelList cellParents
-        (
-            const label cIndex,
-            const labelList& mappingCells
-        );
+        labelList cellParents(const labelList& mappingCells) const;
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();

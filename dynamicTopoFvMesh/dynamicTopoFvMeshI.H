@@ -621,6 +621,55 @@ inline scalar dynamicTopoFvMesh::tetVolume
 }
 
 
+// Determine whether a specified point lies on a segment
+inline bool dynamicTopoFvMesh::segmentPointIntersection
+(
+    const FixedList<vector,2>& segment,
+    const edge& pIndices,
+    const label pIndex,
+    const scalar tolFraction,
+    const bool useOldPoints
+) const
+{
+    vector te = (segment[1] - segment[0]), pe;
+
+    if (useOldPoints)
+    {
+        pe = (oldPoints_[pIndex] - segment[0]);
+    }
+    else
+    {
+        pe = (points_[pIndex] - segment[0]);
+    }
+
+    // Compute uValue
+    scalar u = (pe & pe) / ((pe & te) + VSMALL);
+
+    scalar magTe = mag(te), magPe = mag(pe);
+
+    // Normalize vectors
+    te /= magTe + VSMALL;
+    pe /= magPe + VSMALL;
+
+    scalar tolerance = tolFraction*magTe;
+
+    // Check if vectors are parallel, and uValue is within range.
+    if
+    (
+        (mag(1.0 - (pe & te)) < tolerance) &&
+        (u > tolerance) &&
+        (u < (1.0 - tolerance))
+    )
+    {
+        return true;
+    }
+
+    // Does not intersect
+    return false;
+}
+
+
+// Determine whether a segment intersects a triangular face
 inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
 (
     const FixedList<vector,2>& segment,
@@ -650,20 +699,26 @@ inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
     scalar numerator = n & (p3 - p1);
     scalar denominator = n & (p2 - p1);
 
-    if (mag(denominator) < VSMALL)
+    // Specify a tolerance
+    scalar tolerance = tolFraction*mag(p2 - p1);
+
+    if (mag(denominator) < tolerance)
     {
-        FatalErrorIn("dynamicTopoFvMesh::segmentTriFaceIntersection()")
-            << nl << " Segment is parallel to face. " << nl
-            << " pIndices: " << pIndices << nl
-            << " Segment: " << segment << nl
-            << " Face: " << triFace << nl
-            << " tolFraction: " << tolFraction
-            << abort(FatalError);
+        if (debug > 4)
+        {
+            WarningIn("dynamicTopoFvMesh::segmentTriFaceIntersection()")
+                << nl << " Segment is parallel to face. " << nl
+                << " pIndices: " << pIndices << nl
+                << " Segment: " << segment << nl
+                << " Face: " << triFace << nl
+                << " tolerance: " << tolerance << nl
+                << abort(FatalError);
+        }
+
+        return false;
     }
 
     scalar u = numerator / denominator;
-
-    scalar tolerance = tolFraction*mag(p2 - p1);
 
     // Check for intersection along line.
     if ((u > tolerance) && u < (1.0 - tolerance))
@@ -675,6 +730,17 @@ inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
         if (pointInTriFace(triFace, p, tolerance, useOldPoints))
         {
             intersectionPoint = p;
+
+            if (debug > 4)
+            {
+                Info << " Segment: " << pIndices << nl
+                     << " Face: " << triFace << nl
+                     << " uValue: " << u << nl
+                     << " IntPoint: " << p << nl
+                     << " tolerance: " << tolerance << nl
+                     << " denominator: " << denominator << nl
+                     << endl;
+            }
 
             return true;
         }

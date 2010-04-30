@@ -1785,16 +1785,13 @@ const changeMap dynamicTopoFvMesh::swap23
     // Check if this is an internal face
     if (cellsForRemoval[1] == -1)
     {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh::swap23()"
-        )
-          << "Expected an internal face, "
-          << "but found a boundary one instead. "
-          << "Looks like identify32Swap couldn't correctly identify "
-          << "the 2-2 swap triangulation. Change tolerance for "
-          << "tetVolumeSign to rectify this."
-          << abort(FatalError);
+        FatalErrorIn("dynamicTopoFvMesh::swap23()")
+            << " Expected an internal face,"
+            << " but found a boundary one instead." << nl
+            << " Looks like identify32Swap couldn't correctly identify"
+            << " the 2-2 swap triangulation. Change tolerance in"
+            << " identify32Swap() to rectify this."
+            << abort(FatalError);
     }
 
     // Add three new cells to the end of the cell list
@@ -2275,7 +2272,7 @@ const changeMap dynamicTopoFvMesh::swap23
         }
 
         // Obtain parents for this cell
-        labelList parents = cellParents(newCellIndex[cellI], mC);
+        labelList parents = cellParents(mC);
 
         // Track actual intersections
         label nIntersects = 0;
@@ -2326,6 +2323,9 @@ const changeMap dynamicTopoFvMesh::swap23
         // Set the mapping for this cell
         setCellMapping(newCellIndex[cellI], parents, weights);
 
+        // Set parents for this cell
+        cellParents_.set(newCellIndex[cellI], parents);
+
         // Cells on either side of the triangulated face
         // cannot have negative old-volumes
         if (newOldVol <= 0.0 && cellI < 2)
@@ -2341,13 +2341,25 @@ const changeMap dynamicTopoFvMesh::swap23
             // Write out for post-processing
             label newIdx = newCellIndex[cellI];
 
-            writeVTK("nCell_" + Foam::name(newIdx), newIdx, 3, false, true);
-            writeVTK("oCell_" + Foam::name(newIdx), parents, 3, true, true);
+            writeVTK
+            (
+                "nCell_" + Foam::name(newIdx),
+                newIdx,
+                3, false, true
+            );
+
+            writeVTK
+            (
+                "oCell_" + Foam::name(newIdx),
+                cellParents(mC),
+                3, true, true
+            );
 
             FatalErrorIn("dynamicTopoFvMesh::swap23()")
                 << "Encountered non-conservative weighting factors." << nl
                 << " Cell: " << newCellIndex[cellI] << nl
                 << " Old volume: " << newOldVol << nl
+                << " Candidate parents: " << cellParents(mC) << nl
                 << " Parents: " << parents << nl
                 << " Weights: " << weights << nl
                 << " Sum(Weights): " << sum(weights) << nl
@@ -3028,7 +3040,7 @@ const changeMap dynamicTopoFvMesh::swap32
         }
 
         // Obtain parents for this cell
-        labelList parents = cellParents(newCellIndex[cellI], mC);
+        labelList parents = cellParents(mC);
 
         // Track actual intersections
         label nIntersects = 0;
@@ -3079,6 +3091,9 @@ const changeMap dynamicTopoFvMesh::swap32
         // Set the mapping for this cell
         setCellMapping(newCellIndex[cellI], parents, weights);
 
+        // Set parents for this cell
+        cellParents_.set(newCellIndex[cellI], parents);
+
         if (newOldVol <= 0.0)
         {
             FatalErrorIn("dynamicTopoFvMesh::swap32()")
@@ -3092,13 +3107,25 @@ const changeMap dynamicTopoFvMesh::swap32
             // Write out for post-processing
             label newIdx = newCellIndex[cellI];
 
-            writeVTK("nCell_" + Foam::name(newIdx), newIdx, 3, false, true);
-            writeVTK("oCell_" + Foam::name(newIdx), parents, 3, true, true);
+            writeVTK
+            (
+                "nCell_" + Foam::name(newIdx),
+                newIdx,
+                3, false, true
+            );
+
+            writeVTK
+            (
+                "oCell_" + Foam::name(newIdx),
+                cellParents(mC),
+                3, true, true
+            );
 
             FatalErrorIn("dynamicTopoFvMesh::swap32()")
                 << "Encountered non-conservative weighting factors." << nl
                 << " Cell: " << newCellIndex[cellI] << nl
                 << " Old volume: " << newOldVol << nl
+                << " Candidate parents: " << cellParents(mC) << nl
                 << " Parents: " << parents << nl
                 << " Weights: " << weights << nl
                 << " Sum(Weights): " << sum(weights) << nl
