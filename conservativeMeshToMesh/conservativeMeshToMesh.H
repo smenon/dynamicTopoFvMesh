@@ -139,7 +139,8 @@ class conservativeMeshToMesh
         // formed by a convex set of points.
         void convexSetVolume
         (
-            const word& cvxSetName,
+            const label newCellIndex,
+            const label oldCellIndex,
             const scalar tolFraction,
             const vectorField& cvxSet,
             scalar& cVolume,
@@ -153,6 +154,37 @@ class conservativeMeshToMesh
             const label labelA,
             const label labelB,
             labelList& list
+        ) const;
+
+    // Private debugging routines
+
+        void writeVTK
+        (
+            const word& name,
+            const fvMesh& mesh,
+            const label entity,
+            const label primitiveType
+        ) const;
+
+        void writeVTK
+        (
+            const word& name,
+            const fvMesh& mesh,
+            const labelList& cList,
+            const label primitiveType
+        ) const;
+
+        void writeVTK
+        (
+            const word& name,
+            const label nPoints,
+            const label nCells,
+            const label nTotalCells,
+            const pointField& points,
+            const labelListList& cpList,
+            const label primitiveType,
+            const Map<label>& reversePointMap = Map<label>(),
+            const Map<label>& reverseCellMap = Map<label>()
         ) const;
 
     // Private static members

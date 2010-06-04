@@ -69,7 +69,7 @@ void conservativeMeshToMesh::calcAddressingAndWeights
         scalarField& weights = weights_[cellI];
         vectorField& centres = centres_[cellI];
 
-        for (label attempt = 0; attempt < 5; attempt++)
+        for (label attempt = 0; attempt < 10; attempt++)
         {
             consistent =
             (
@@ -98,6 +98,24 @@ void conservativeMeshToMesh::calcAddressingAndWeights
 
         if (!consistent)
         {
+            // Write out for post-processing
+            label uIdx = 0;
+            labelList candid = cellParents(cellI, searchFactor, cAddr[cellI]);
+            labelList unMatch(candid.size() - parents.size(), -1);
+
+            forAll(candid, cI)
+            {
+                if (findIndex(parents, candid[cI]) == -1)
+                {
+                    unMatch[uIdx++] = candid[cI];
+                }
+            }
+
+            writeVTK("nCell_" + Foam::name(cellI), toMesh(), cellI, 3);
+            writeVTK("oCell_" + Foam::name(cellI), fromMesh(), candid, 3);
+            writeVTK("mCell_" + Foam::name(cellI), fromMesh(), parents, 3);
+            writeVTK("uCell_" + Foam::name(cellI), fromMesh(), unMatch, 3);
+
             FatalErrorIn
             (
                 "conservativeMeshToMesh::calcIntersectionAddressing()"
@@ -165,12 +183,6 @@ bool conservativeMeshToMesh::computeCellWeights
         }
     }
 
-    // Test weights for consistency
-    if (mag(1.0 - sum(intVolumes/newCellVolume)) > 1e-10)
-    {
-        return false;
-    }
-
     // Now copy only valid intersections.
     parents.setSize(nIntersects, -1);
     weights.setSize(nIntersects, 0.0);
@@ -189,6 +201,12 @@ bool conservativeMeshToMesh::computeCellWeights
 
             nIntersects++;
         }
+    }
+
+    // Test weights for consistency
+    if (mag(1.0 - (sum(intVolumes)/newCellVolume)) > (1e-2*newCellVolume))
+    {
+        return false;
     }
 
     return true;
@@ -297,15 +315,6 @@ bool conservativeMeshToMesh::cellIntersection
     intVolume = 0.0;
     intCentre = vector::zero;
 
-    // For post-processing purposes, define a name
-    word cvxName
-    (
-        "cvxSet_"
-      + Foam::name(newCellIndex)
-      + '_'
-      + Foam::name(oldCellIndex)
-    );
-
     // Fetch references for each mesh
     const edgeList& fromEdges = fromMesh().edges();
     const faceList& fromFaces = fromMesh().faces();
@@ -355,7 +364,7 @@ bool conservativeMeshToMesh::cellIntersection
                     fromCellPoints[pointI]
                 );
 
-                tP.setSize(++nInts, fromPoints[fromCellPoints[pointI]]);
+                tP.setSize(++nInts, toPoints[toCellPoints[pointJ]]);
             }
         }
     }
@@ -365,7 +374,8 @@ bool conservativeMeshToMesh::cellIntersection
     {
         convexSetVolume
         (
-            cvxName,
+            newCellIndex,
+            oldCellIndex,
             tolFactor,
             tP,
             intVolume,
@@ -555,7 +565,8 @@ bool conservativeMeshToMesh::cellIntersection
     {
         convexSetVolume
         (
-            cvxName,
+            newCellIndex,
+            oldCellIndex,
             tolFactor,
             tP,
             intVolume,
@@ -761,7 +772,8 @@ bool conservativeMeshToMesh::pointInFace
 // formed by a convex set of points.
 void conservativeMeshToMesh::convexSetVolume
 (
-    const word& cvxSetName,
+    const label newCellIndex,
+    const label oldCellIndex,
     const scalar tolFraction,
     const vectorField& cvxSet,
     scalar& cVolume,
@@ -932,7 +944,8 @@ void conservativeMeshToMesh::convexSetVolume
                                 (
                                     "conservativeMeshToMesh::convexSetVolume()"
                                 )   << "Cannot find appropriate configuration."
-                                    << nl << " Name: " << cvxSetName
+                                    << nl << " New: " << newCellIndex
+                                    << nl << " Old: " << oldCellIndex
                                     << nl << " Face: " << tmpFace.points(cvxSet)
                                     << nl << " with point: " << cvxSet[l]
                                     << nl << " Set: " << cvxSet
@@ -1048,6 +1061,34 @@ void conservativeMeshToMesh::convexSetVolume
 
     if (debug)
     {
+        // Write out points for post-processing
+        labelListList cpList(cvxSet.size(), labelList(1));
+
+        forAll(cpList, i)
+        {
+            cpList[i][0] = i;
+        }
+
+        // For post-processing purposes, define a name
+        word cvxSetName
+        (
+            "cvxSet_"
+          + Foam::name(newCellIndex)
+          + '_'
+          + Foam::name(oldCellIndex)
+        );
+
+        writeVTK
+        (
+            cvxSetName,
+            cvxSet.size(),
+            cvxSet.size(),
+            cvxSet.size(),
+            cvxSet,
+            cpList,
+            0
+        );
+
         Info << nl
              << " Convex set: " << cvxSetName << nl
              << " cellFaces: " << cellFaces

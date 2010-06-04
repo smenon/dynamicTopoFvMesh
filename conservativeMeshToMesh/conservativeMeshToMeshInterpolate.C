@@ -26,7 +26,6 @@ License
 
 #include "conservativeMeshToMesh.H"
 #include "fvCFD.H"
-#include "cellLimitedGrad.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -66,25 +65,16 @@ void conservativeMeshToMesh::interpolateInternalField
             << exit(FatalError);
     }
 
+    // Evaluate the boundary condition
+    const_cast<GeometricField<Type, fvPatchField, volMesh>&>
+    (fromVf).boundaryField().evaluate();
+
     // Get the gradient of the original field.
     typedef typename outerProduct<vector, Type>::type GradCmptType;
 
-    // Specify a compile-time gradient scheme
-    tokenList gScheme(2);
-
-    gScheme[0] = token(word("leastSquares"));
-    gScheme[1] = token(1.0);
-
-    // Construct an input token stream
-    ITstream gSchemeData("grad(" + fromVf.name() + ")", gScheme);
-
     tmp<GeometricField<GradCmptType, fvPatchField, volMesh> > gVf =
     (
-        fv::cellLimitedGrad<Type>
-        (
-            fromVf.mesh(),
-            gSchemeData
-        ).grad(fromVf)
+        fvc::grad(fromVf)
     );
 
     // Fetch geometry
