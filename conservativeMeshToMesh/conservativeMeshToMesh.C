@@ -143,6 +143,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
         fromMesh().cellCentres();
         fromMesh().cellEdges();
         fromMesh().cellPoints();
+        fromMesh().cellCells();
 
         toMesh().edges();
         toMesh().cells();

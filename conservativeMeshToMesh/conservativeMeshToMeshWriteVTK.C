@@ -31,6 +31,44 @@ License
 namespace Foam
 {
 
+void conservativeMeshToMesh::writeVTK
+(
+    const label newCellIndex,
+    const label oldCellIndex,
+    const vectorField& cvxSet
+) const
+{
+    // Write out points for post-processing
+    labelListList cpList(cvxSet.size(), labelList(1));
+
+    forAll(cpList, i)
+    {
+        cpList[i][0] = i;
+    }
+
+    // For post-processing purposes, define a name
+    word cvxSetName
+    (
+        "cvxSet_"
+      + Foam::name(newCellIndex)
+      + '<'
+      + Foam::name(oldCellIndex)
+      + '>'
+    );
+
+    writeVTK
+    (
+        cvxSetName,
+        cvxSet.size(),
+        cvxSet.size(),
+        cvxSet.size(),
+        cvxSet,
+        cpList,
+        0
+    );
+}
+
+
 // Output an entity as a VTK file
 void conservativeMeshToMesh::writeVTK
 (

@@ -31,6 +31,8 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "conservativeMeshToMesh.H"
+#include "IOmanip.H"
+#include "SortableList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -56,160 +58,197 @@ void conservativeMeshToMesh::calcAddressingAndWeights
 
     for (label cellI = cellStart; cellI < (cellStart + cellSize); cellI++)
     {
-        // Fetch the volume of the new cell
-        scalar newVol = toMesh().cellVolumes()[cellI];
-
-        // Obtain weighting factors for this cell.
-        // Perform several attempts for robustness.
-        bool consistent = false;
-        scalar searchFactor = 1.0;
-
         // Fetch references
         labelList& parents = addressing_[cellI];
         scalarField& weights = weights_[cellI];
         vectorField& centres = centres_[cellI];
 
-        for (label attempt = 0; attempt < 10; attempt++)
-        {
-            consistent =
-            (
-                computeCellWeights
-                (
-                    cellI,
-                    newVol,
-                    cAddr[cellI],
-                    searchFactor,
-                    parents,
-                    weights,
-                    centres
-                )
-            );
-
-            if (consistent)
-            {
-                break;
-            }
-            else
-            {
-                // Expand the search radius and try again.
-                searchFactor *= 1.2;
-            }
-        }
-
-        if (!consistent)
-        {
-            // Write out for post-processing
-            label uIdx = 0;
-            labelList candid = cellParents(cellI, searchFactor, cAddr[cellI]);
-            labelList unMatch(candid.size() - parents.size(), -1);
-
-            forAll(candid, cI)
-            {
-                if (findIndex(parents, candid[cI]) == -1)
-                {
-                    unMatch[uIdx++] = candid[cI];
-                }
-            }
-
-            writeVTK("nCell_" + Foam::name(cellI), toMesh(), cellI, 3);
-            writeVTK("oCell_" + Foam::name(cellI), fromMesh(), candid, 3);
-            writeVTK("mCell_" + Foam::name(cellI), fromMesh(), parents, 3);
-            writeVTK("uCell_" + Foam::name(cellI), fromMesh(), unMatch, 3);
-
-            FatalErrorIn
-            (
-                "conservativeMeshToMesh::calcIntersectionAddressing()"
-            )
-                << "Encountered non-conservative weighting factors." << nl
-                << " Cell: " << cellI << nl
-                << " New cell volume: " << newVol << nl
-                << " Candidate parent: " << cAddr[cellI] << nl
-                << " Parents: " << parents << nl
-                << " Weights: " << weights << nl
-                << " Sum(Weights): " << sum(weights/newVol) << nl
-                << " Error: " << mag(1.0 - sum(weights/newVol))
-                << abort(FatalError);
-        }
+        // Obtain weighting factors for this cell.
+        computeCellWeights
+        (
+            cellI,
+            cAddr[cellI],
+            parents,
+            weights,
+            centres
+        );
     }
 }
 
 
 // Compute cell weighting factors for a particular cell
-bool conservativeMeshToMesh::computeCellWeights
+void conservativeMeshToMesh::computeCellWeights
 (
     const label newCellIndex,
-    const scalar newCellVolume,
     const label oldCandidate,
-    const scalar searchFactor,
     labelList& parents,
     scalarField& weights,
     vectorField& centres
 ) const
 {
-    // Obtain candidate parents for this cell
-    labelList candidates =
-    (
-        cellParents
-        (
-            newCellIndex,
-            searchFactor,
-            oldCandidate
-        )
-    );
+    scalar searchFactor = 1.0;
 
-    // Track actual intersections
-    label nIntersects = 0;
+    label nOldIntersects = 0, nIntersects = 0, nAttempts = 0;
 
-    // Compute intersection volumes with candidates
-    scalarField intVolumes(candidates.size(), 0.0);
-    vectorField intCentres(candidates.size(), vector::zero);
+    // Maintain a list of candidates and intersection points
+    labelList candidates;
+    List<vectorField> tP;
 
-    forAll(candidates, indexI)
+    // Fetch the volume of the new cell
+    scalar newCellVolume = toMesh().cellVolumes()[newCellIndex];
+
+    while (nAttempts < 10)
     {
-        bool intersects =
+        // Obtain candidate parents for this cell
+        candidates =
         (
-            cellIntersection
+            cellParents
             (
                 newCellIndex,
-                candidates[indexI],
-                intVolumes[indexI],
-                intCentres[indexI]
+                searchFactor,
+                oldCandidate
             )
         );
 
-        if (intersects)
+        // Set sizes
+        boolList intersects(candidates.size(), false);
+        tP.setSize(candidates.size());
+
+        // Test for intersections
+        forAll(candidates, indexI)
         {
-            nIntersects++;
+            intersects[indexI] =
+            (
+                cellIntersection
+                (
+                    newCellIndex,
+                    candidates[indexI],
+                    tP[indexI]
+                )
+            );
+
+            if (intersects[indexI])
+            {
+                nIntersects++;
+            }
         }
-    }
 
-    // Now copy only valid intersections.
-    parents.setSize(nIntersects, -1);
-    weights.setSize(nIntersects, 0.0);
-    centres.setSize(nIntersects, vector::zero);
-
-    // Reset counter
-    nIntersects = 0;
-
-    forAll(intVolumes, indexI)
-    {
-        if (intVolumes[indexI] > 0.0)
+        if (nIntersects == nOldIntersects)
         {
-            parents[nIntersects] = candidates[indexI];
-            weights[nIntersects] = intVolumes[indexI];
-            centres[nIntersects] = intCentres[indexI];
+            // Set sizes
+            parents.setSize(nIntersects, -1);
+            weights.setSize(nIntersects, 0.0);
+            centres.setSize(nIntersects, vector::zero);
 
-            nIntersects++;
+            // Reset counter
+            nIntersects = 0;
+
+            forAll(intersects, indexI)
+            {
+                if (intersects[indexI])
+                {
+                    parents[nIntersects] = candidates[indexI];
+
+                    // Compute weights
+                    convexSetVolume
+                    (
+                        newCellIndex,
+                        parents[nIntersects],
+                        tP[indexI],
+                        weights[nIntersects],
+                        centres[nIntersects]
+                    );
+
+                    nIntersects++;
+                }
+            }
+
+            break;
+        }
+        else
+        {
+            nAttempts++;
+            nOldIntersects = nIntersects;
+            nIntersects = 0;
+
+            // Expand the search radius and try again.
+            searchFactor *= 1.6;
         }
     }
 
     // Test weights for consistency
-    if (mag(1.0 - (sum(intVolumes)/newCellVolume)) > (1e-2*newCellVolume))
+    if (mag(newCellVolume - sum(weights)) > 1e-15)
     {
-        return false;
-    }
+        // Write out for post-processing
+        label uIdx = 0, cellI = newCellIndex;
+        labelList unMatch(candidates.size() - parents.size(), -1);
 
-    return true;
+        forAll(candidates, cI)
+        {
+            if (findIndex(parents, candidates[cI]) == -1)
+            {
+                unMatch[uIdx++] = candidates[cI];
+            }
+        }
+
+        writeVTK("nCell_" + Foam::name(cellI), toMesh(), cellI, 3);
+        writeVTK("oCell_" + Foam::name(cellI), fromMesh(), candidates, 3);
+        writeVTK("mCell_" + Foam::name(cellI), fromMesh(), parents, 3);
+        writeVTK("uCell_" + Foam::name(cellI), fromMesh(), unMatch, 3);
+
+        // Write out intersection points
+        forAll(tP, indexI)
+        {
+            if (tP[indexI].size() >= 4)
+            {
+                writeVTK(cellI, candidates[indexI], tP[indexI]);
+
+                // Write out to screen
+                scalar dummyWeight = 0.0;
+                vector dummyCentre = vector::zero;
+
+                convexSetVolume
+                (
+                    cellI,
+                    candidates[indexI],
+                    tP[indexI],
+                    dummyWeight,
+                    dummyCentre,
+                    true
+                );
+            }
+        }
+
+        // Sort list for easier post-processing
+        SortableList<label> sortedParents(parents);
+
+        // In-place reorder weights
+        const labelList& indices = sortedParents.indices();
+
+        forAll(indices, indexI)
+        {
+            Info << sortedParents[indexI] << ": "
+                 << setprecision(16)
+                 << weights[indices[indexI]]
+                 << endl;
+        }
+
+        FatalErrorIn
+        (
+            "conservativeMeshToMesh::calcIntersectionAddressing()"
+        )
+            << "Encountered non-conservative weighting factors." << nl
+            << " Cell: " << newCellIndex << nl
+            << " Candidate parent: " << oldCandidate << nl
+            << " nAttempts: " << nAttempts << nl
+            << setprecision(16)
+            << " New cell volume: " << newCellVolume << nl
+            << " Sum(Weights): " << sum(weights) << nl
+            << " Error: " << (newCellVolume - sum(weights)) << nl
+            << " Norm Sum(Weights): " << sum(weights/newCellVolume) << nl
+            << " Norm Error: " << mag(1.0 - sum(weights/newCellVolume))
+            << abort(FatalError);
+    }
 }
 
 
@@ -221,43 +260,30 @@ labelList conservativeMeshToMesh::cellParents
     const label oldCandidate
 ) const
 {
-    labelHashSet masterCells, finalCells;
+    labelList finalCells;
+    DynamicList<label> masterCells(100);
 
     // Fetch connectivity from the old mesh.
-    const cellList& fromCells = fromMesh().cells();
-    const labelList& fromOwner = fromMesh().faceOwner();
-    const labelList& fromNeighbour = fromMesh().faceNeighbour();
+    const labelListList& fromCellCells = fromMesh().cellCells();
 
     // Insert the old candidate first
-    masterCells.insert(oldCandidate);
+    masterCells.append(oldCandidate);
 
     for (label attempt = 0; attempt < 10; attempt++)
     {
         // Fetch the initial set of candidates
-        labelList initList = masterCells.toc();
+        DynamicList<label> initList(masterCells);
 
         // Accumulate a larger stencil of cell neighbours
         forAll(initList, indexI)
         {
-            const cell& cellToCheck = fromCells[initList[indexI]];
+            const labelList& cc = fromCellCells[initList[indexI]];
 
-            forAll(cellToCheck, faceI)
+            forAll(cc, cellI)
             {
-                // Add owner to the list.
-                masterCells.set
-                (
-                    fromOwner[cellToCheck[faceI]],
-                    empty()
-                );
-
-                if (fromMesh().isInternalFace(cellToCheck[faceI]))
+                if (findIndex(masterCells, cc[cellI]) == -1)
                 {
-                    // Add the neighbour.
-                    masterCells.set
-                    (
-                        fromNeighbour[cellToCheck[faceI]],
-                        empty()
-                    );
+                    masterCells.append(cc[cellI]);
                 }
             }
         }
@@ -276,13 +302,30 @@ labelList conservativeMeshToMesh::cellParents
 
     const vectorField& cellCentres = fromMesh().cellCentres();
 
-    forAllIter(labelHashSet, masterCells, mIter)
+    label nEntries = 0;
+
+    // Count the number of entries
+    forAll(masterCells, cellI)
     {
-        vector xC = (cellCentres[mIter.key()] - bC);
+        vector xC = (cellCentres[masterCells[cellI]] - bC);
 
         if ((xC & xC) < (bMax & bMax))
         {
-            finalCells.insert(mIter.key());
+            nEntries++;
+        }
+    }
+
+    // Set size and reset counter
+    finalCells.setSize(nEntries, -1);
+    nEntries = 0;
+
+    forAll(masterCells, cellI)
+    {
+        vector xC = (cellCentres[masterCells[cellI]] - bC);
+
+        if ((xC & xC) < (bMax & bMax))
+        {
+            finalCells[nEntries++] = masterCells[cellI];
         }
     }
 
@@ -290,13 +333,13 @@ labelList conservativeMeshToMesh::cellParents
     {
         Info << " Cell: " << newCellIndex
              << " No. of parent candidates: "
-             << finalCells.size()
+             << nEntries
              << " searchFactor: "
              << searchFactor
              << endl;
     }
 
-    return finalCells.toc();
+    return finalCells;
 }
 
 
@@ -305,15 +348,13 @@ bool conservativeMeshToMesh::cellIntersection
 (
     const label newCellIndex,
     const label oldCellIndex,
-    scalar& intVolume,
-    vector& intCentre
+    vectorField& tP
 ) const
 {
-    scalar tolFactor = 1e-8;
+    scalar tolFactor = 1e-12;
 
     // Reset inputs
-    intVolume = 0.0;
-    intCentre = vector::zero;
+    tP.clear();
 
     // Fetch references for each mesh
     const edgeList& fromEdges = fromMesh().edges();
@@ -332,7 +373,6 @@ bool conservativeMeshToMesh::cellIntersection
 
     // Track all possible intersections from here on.
     label nInts = 0;
-    vectorField tP(0);
     vector intPoint = vector::zero;
     FixedList<vector,2> segment(vector::zero);
 
@@ -372,16 +412,6 @@ bool conservativeMeshToMesh::cellIntersection
     // If all points are common, this is identical to the old cell.
     if (FtoT.size() == fromCellPoints.size())
     {
-        convexSetVolume
-        (
-            newCellIndex,
-            oldCellIndex,
-            tolFactor,
-            tP,
-            intVolume,
-            intCentre
-        );
-
         return true;
     }
 
@@ -559,20 +589,9 @@ bool conservativeMeshToMesh::cellIntersection
         }
     }
 
-    // Found a polyhedral intersecting volume.
-    // Compute the volume from points and return.
+    // Found a convex set of points.
     if (nInts >= 4)
     {
-        convexSetVolume
-        (
-            newCellIndex,
-            oldCellIndex,
-            tolFactor,
-            tP,
-            intVolume,
-            intCentre
-        );
-
         return true;
     }
 
@@ -774,10 +793,10 @@ void conservativeMeshToMesh::convexSetVolume
 (
     const label newCellIndex,
     const label oldCellIndex,
-    const scalar tolFraction,
     const vectorField& cvxSet,
     scalar& cVolume,
-    vector& cCentre
+    vector& cCentre,
+    bool output
 ) const
 {
     // Reset inputs
@@ -807,7 +826,9 @@ void conservativeMeshToMesh::convexSetVolume
 
     // Track faces
     face tmpFace(3);
-    DynamicList<face> testFaces(10);
+    label nFaces = 0;
+    faceList testFaces(0);
+    labelHashSet uniquePts;
 
     // Loop through all points, and build faces with every
     // other point in the set
@@ -834,16 +855,51 @@ void conservativeMeshToMesh::convexSetVolume
                 tmpFace[1] = j;
                 tmpFace[2] = k;
 
-                // Specify a tolerance
-                scalar tolerance = tolFraction*magSqr(cvxSet[j] - cvxSet[i]);
+                // Quick-reject test:
+                //   If this is a subset of an existing face, skip it.
+                bool foundSubSet = false;
+
+                forAll(testFaces, faceI)
+                {
+                    const face& checkFace = testFaces[faceI];
+
+                    if (checkFace.size() >= tmpFace.size())
+                    {
+                        bool foundUniquePoint = false;
+
+                        forAll(tmpFace, pI)
+                        {
+                            if (findIndex(checkFace, tmpFace[pI]) == -1)
+                            {
+                                foundUniquePoint = true;
+                                break;
+                            }
+                        }
+
+                        if (!foundUniquePoint)
+                        {
+                            foundSubSet = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundSubSet)
+                {
+                    continue;
+                }
+
+                // Specify a tolerance for planarity
+                scalar tolerance = 1e-14;
+                //tolFraction*magSqr(cvxSet[j] - cvxSet[i]);
 
                 // Compute the normal to this face
                 vector n = tmpFace.normal(cvxSet);
 
-                n /= mag(n) + VSMALL;
+                n /= mag(n);
 
                 label curFaceSign = 0;
-                bool foundInternalFace = false, foundCoPlanar = false;
+                bool foundInternalFace = false;
 
                 // Quick-reject test:
                 //   Check all other points in the set,
@@ -857,13 +913,11 @@ void conservativeMeshToMesh::convexSetVolume
                     }
 
                     vector rfVec = (cvxSet[l] - cvxSet[i]);
-                    scalar dotProd = (rfVec & n);
+                    scalar dotProd = (rfVec/mag(rfVec)) & n;
 
-                    // Skip co-planar points for now,
-                    // but keep note for later stage
+                    // Skip nearly co-planar points.
                     if (mag(dotProd) < tolerance)
                     {
-                        foundCoPlanar = true;
                         continue;
                     }
 
@@ -889,76 +943,11 @@ void conservativeMeshToMesh::convexSetVolume
                     continue;
                 }
 
-                // Include all other co-planar points,
-                // if any were found in the quick-reject test
-                if (foundCoPlanar)
-                {
-                    forAll(cvxSet, l)
-                    {
-                        // Skip duplicates.
-                        if (findIndex(tmpFace, l) > -1)
-                        {
-                            continue;
-                        }
-
-                        vector rfVec = (cvxSet[l] - cvxSet[i]);
-                        scalar dotProd = (rfVec & n);
-
-                        if (mag(dotProd) < tolerance)
-                        {
-                            // Need to configure a new face.
-                            face newFace(3);
-                            bool foundLocation = false;
-
-                            forAll(tmpFace, pI)
-                            {
-                                label nI = tmpFace.fcIndex(pI);
-
-                                newFace[0] = tmpFace[pI];
-                                newFace[1] = l;
-                                newFace[2] = tmpFace[nI];
-
-                                // Compute the normal.
-                                vector nNew = newFace.normal(cvxSet);
-
-                                if ((n & nNew) > 0.0)
-                                {
-                                    // Insert the point.
-                                    insertLabel
-                                    (
-                                        l,
-                                        tmpFace[pI],
-                                        tmpFace[nI],
-                                        tmpFace
-                                    );
-
-                                    foundLocation = true;
-
-                                    break;
-                                }
-                            }
-
-                            if (!foundLocation)
-                            {
-                                FatalErrorIn
-                                (
-                                    "conservativeMeshToMesh::convexSetVolume()"
-                                )   << "Cannot find appropriate configuration."
-                                    << nl << " New: " << newCellIndex
-                                    << nl << " Old: " << oldCellIndex
-                                    << nl << " Face: " << tmpFace.points(cvxSet)
-                                    << nl << " with point: " << cvxSet[l]
-                                    << nl << " Set: " << cvxSet
-                                    << abort(FatalError);
-                            }
-                        }
-                    }
-                }
-
                 // Looks like we found a face on the boundary.
                 // Check its sign to ensure that it points outward.
                 if (curFaceSign == 1)
                 {
+                    n *= -1.0;
                     tmpFace = tmpFace.reverseFace();
                 }
 
@@ -967,19 +956,79 @@ void conservativeMeshToMesh::convexSetVolume
 
                 forAll(testFaces, faceI)
                 {
-                    const face& checkFace = testFaces[faceI];
+                    // Fetch a non-const reference, since this face
+                    // might be modified in this loop.
+                    face& checkFace = testFaces[faceI];
 
-                    if (face::compare(tmpFace, checkFace))
+                    label nCommon = 0;
+
+                    uniquePts.clear();
+
+                    forAll(tmpFace, pI)
                     {
-                        alreadyCheckedIn = true;
-                        break;
+                        if (findIndex(checkFace, tmpFace[pI]) > -1)
+                        {
+                            nCommon++;
+                        }
+                        else
+                        {
+                            uniquePts.insert(tmpFace[pI]);
+                        }
+                    }
+
+                    if (nCommon >= 2)
+                    {
+                        if (checkFace.size() >= tmpFace.size())
+                        {
+                            // Check for unique points
+                            if (uniquePts.size() > 0)
+                            {
+                                // Compute the existing normal
+                                vector eNorm = checkFace.normal(cvxSet);
+
+                                scalar dotProd = (n & (eNorm/mag(eNorm)));
+
+                                if
+                                (
+                                    (mag(1.0 - dotProd) < tolerance) &&
+                                    (dotProd > 0.0)
+                                )
+                                {
+                                    // Add all unique points to checkFace
+                                    insertPointLabels
+                                    (
+                                        n,
+                                        cvxSet,
+                                        uniquePts,
+                                        checkFace
+                                    );
+
+                                    alreadyCheckedIn = true;
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                // Subset face
+                                alreadyCheckedIn = true;
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            // checkFace is a subset. Replace it.
+                            checkFace = tmpFace;
+
+                            alreadyCheckedIn = true;
+                            break;
+                        }
                     }
                 }
 
                 // Add this face to the list of faces.
                 if (!alreadyCheckedIn)
                 {
-                    testFaces.append(tmpFace);
+                    testFaces.setSize(++nFaces, tmpFace);
                 }
 
                 // Reset the face size.
@@ -988,57 +1037,87 @@ void conservativeMeshToMesh::convexSetVolume
         }
     }
 
-    // Weed-out faces that are sub-sets of larger faces
-    label nFaces = 0;
-    faceList cellFaces(testFaces.size());
-
+    // Account for planarity test failure.
+    //  - Check for subsets.
     forAll(testFaces, faceI)
     {
-        bool subset = false;
+        // Fetch a non-const reference, since this face
+        // might be modified in this loop.
+        face& checkFace = testFaces[faceI];
 
-        const face& checkFace = testFaces[faceI];
+        // Account for deleted testFaces
+        if (checkFace.empty())
+        {
+            continue;
+        }
+
+        // Compute the normal to this face
+        vector n = checkFace.normal(cvxSet);
 
         forAll(testFaces, faceJ)
         {
-            const face& testFace = testFaces[faceJ];
-
-            if (testFace.size() > checkFace.size())
+            if (faceI == faceJ)
             {
-                bool foundUniquePoint = false;
+                continue;
+            }
 
-                forAll(checkFace, pI)
+            // Fetch a non-const reference, since this face
+            // might be modified in this loop.
+            face& testFace = testFaces[faceJ];
+
+            if (checkFace.size() >= testFace.size())
+            {
+                label nCommon = 0;
+
+                uniquePts.clear();
+
+                forAll(testFace, pI)
                 {
-                    if (findIndex(testFace, checkFace[pI]) == -1)
+                    if (findIndex(checkFace, testFace[pI]) > -1)
                     {
-                        foundUniquePoint = true;
-                        break;
+                        nCommon++;
+                    }
+                    else
+                    {
+                        uniquePts.insert(testFace[pI]);
                     }
                 }
 
-                if (!foundUniquePoint)
+                if (nCommon >= 3)
                 {
-                    subset = true;
-                    break;
+                    // Delete the test face
+                    testFace.clear();
+
+                    // Add all unique points to checkFace
+                    // Failed the tolerance test before,
+                    // so don't check for it now
+                    if (uniquePts.size())
+                    {
+                        insertPointLabels
+                        (
+                            n,
+                            cvxSet,
+                            uniquePts,
+                            checkFace
+                        );
+                    }
                 }
             }
         }
-
-        if (!subset)
-        {
-            cellFaces[nFaces++] = testFaces[faceI];
-        }
     }
-
-    // Set to actual size
-    cellFaces.setSize(nFaces);
 
     // Find an approximate cell-centroid
     vector xC = average(cvxSet);
 
     // Calculate volume from all accumulated faces.
-    forAll(cellFaces, faceI)
+    forAll(testFaces, faceI)
     {
-        const face& checkFace = cellFaces[faceI];
+        const face& checkFace = testFaces[faceI];
+
+        if (checkFace.empty())
+        {
+            continue;
+        }
 
         vector xF = checkFace.centre(cvxSet);
         vector Sf = checkFace.normal(cvxSet);
@@ -1059,42 +1138,66 @@ void conservativeMeshToMesh::convexSetVolume
     cCentre /= cVolume + VSMALL;
     cVolume *= (1.0/3.0);
 
-    if (debug)
+    if (output)
     {
-        // Write out points for post-processing
-        labelListList cpList(cvxSet.size(), labelList(1));
-
-        forAll(cpList, i)
-        {
-            cpList[i][0] = i;
-        }
-
-        // For post-processing purposes, define a name
-        word cvxSetName
-        (
-            "cvxSet_"
-          + Foam::name(newCellIndex)
-          + '_'
-          + Foam::name(oldCellIndex)
-        );
-
-        writeVTK
-        (
-            cvxSetName,
-            cvxSet.size(),
-            cvxSet.size(),
-            cvxSet.size(),
-            cvxSet,
-            cpList,
-            0
-        );
-
-        Info << nl
-             << " Convex set: " << cvxSetName << nl
-             << " cellFaces: " << cellFaces
-             << " Volume: " << cVolume << nl
+        Info << " newCellIndex: " << newCellIndex
+             << " oldCellIndex: " << oldCellIndex << nl
+             << " Faces: " << testFaces << nl
+             // << " Volume: " << cVolume << nl
+             // << " Centre: " << cCentre << nl
              << endl;
     }
+}
+
+
+// Method to insert labels in a face, so that
+// right-handedness is preserved.
+void conservativeMeshToMesh::insertPointLabels
+(
+    const vector& refNorm,
+    const vectorField& points,
+    const labelHashSet& pLabels,
+    face& modFace
+) const
+{
+    // Need to configure a new face.
+    face newFace(modFace);
+
+    forAllConstIter(labelHashSet, pLabels, pIter)
+    {
+        forAll(newFace, pI)
+        {
+            label nI = newFace.fcIndex(pI);
+
+            // Compute the normal.
+            vector newNorm =
+            (
+                triPointRef
+                (
+                    points[newFace[pI]],
+                    points[pIter.key()],
+                    points[newFace[nI]]
+                ).normal()
+            );
+
+            if ((refNorm & newNorm) > 0.0)
+            {
+                // Insert the point.
+                insertLabel
+                (
+                    pIter.key(),
+                    newFace[pI],
+                    newFace[nI],
+                    newFace
+                );
+
+                break;
+            }
+        }
+    }
+
+    // Take over storage
+    modFace.transfer(newFace);
 }
 
 

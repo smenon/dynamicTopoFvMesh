@@ -77,12 +77,10 @@ class conservativeMeshToMesh
         );
 
         // Compute cell weighting factors for a particular cell
-        bool computeCellWeights
+        void computeCellWeights
         (
             const label newCellIndex,
-            const scalar newCellVolume,
             const label oldCandidate,
-            const scalar searchFactor,
             labelList& parents,
             scalarField& weights,
             vectorField& centres
@@ -101,8 +99,7 @@ class conservativeMeshToMesh
         (
             const label newCellIndex,
             const label oldCellIndex,
-            scalar& intVolume,
-            vector& intCentre
+            vectorField& intPoints
         ) const;
 
         // Determine whether the particular point lies
@@ -141,13 +138,24 @@ class conservativeMeshToMesh
         (
             const label newCellIndex,
             const label oldCellIndex,
-            const scalar tolFraction,
             const vectorField& cvxSet,
             scalar& cVolume,
-            vector& cCentre
+            vector& cCentre,
+            bool output = false
+        ) const;
+
+        // Method to insert labels in a face, so that
+        // right-handedness is preserved.
+        void insertPointLabels
+        (
+            const vector& refNorm,
+            const vectorField& points,
+            const labelHashSet& pLabels,
+            face& modFace
         ) const;
 
         // Method to insert a label between two labels in a face
+        // Assumes that all labels are unique.
         void insertLabel
         (
             const label newLabel,
@@ -157,6 +165,13 @@ class conservativeMeshToMesh
         ) const;
 
     // Private debugging routines
+
+        void writeVTK
+        (
+            const label newCellIndex,
+            const label oldCellIndex,
+            const vectorField& cvxSet
+        ) const;
 
         void writeVTK
         (
