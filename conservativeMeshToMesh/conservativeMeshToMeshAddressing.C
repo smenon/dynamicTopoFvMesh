@@ -33,6 +33,7 @@ Description
 #include "conservativeMeshToMesh.H"
 #include "IOmanip.H"
 #include "SortableList.H"
+#include "StaticHashTable.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -72,6 +73,13 @@ void conservativeMeshToMesh::calcAddressingAndWeights
             weights,
             centres
         );
+
+        if ((cellI - cellStart) % 50 == 0)
+        {
+            ctrMutex_.lock();
+            counter_ += 50;
+            ctrMutex_.unlock();
+        }
     }
 }
 
@@ -88,11 +96,11 @@ void conservativeMeshToMesh::computeCellWeights
 {
     scalar searchFactor = 1.0;
 
-    label nOldIntersects = 0, nIntersects = 0, nAttempts = 0;
+    label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
     // Maintain a list of candidates and intersection points
-    labelList candidates;
-    List<vectorField> tP;
+    labelList oldCandidates, candidates;
+    List<vectorField> oldtP, tP;
 
     // Fetch the volume of the new cell
     scalar newCellVolume = toMesh().cellVolumes()[newCellIndex];
@@ -117,15 +125,28 @@ void conservativeMeshToMesh::computeCellWeights
         // Test for intersections
         forAll(candidates, indexI)
         {
-            intersects[indexI] =
-            (
-                cellIntersection
+            label oIdx = -1;
+
+            // Check if this was tested before
+            if ((oIdx = findIndex(oldCandidates, candidates[indexI])) > -1)
+            {
+                // Copy old intersections
+                tP[indexI] = oldtP[oIdx];
+
+                intersects[indexI] = true;
+            }
+            else
+            {
+                intersects[indexI] =
                 (
-                    newCellIndex,
-                    candidates[indexI],
-                    tP[indexI]
-                )
-            );
+                    cellIntersection
+                    (
+                        newCellIndex,
+                        candidates[indexI],
+                        tP[indexI]
+                    )
+                );
+            }
 
             if (intersects[indexI])
             {
@@ -168,6 +189,9 @@ void conservativeMeshToMesh::computeCellWeights
         else
         {
             nAttempts++;
+
+            // Copy / reset parameters
+            oldtP = tP;
             nOldIntersects = nIntersects;
             nIntersects = 0;
 
@@ -177,7 +201,7 @@ void conservativeMeshToMesh::computeCellWeights
     }
 
     // Test weights for consistency
-    if (mag(newCellVolume - sum(weights)) > 1e-15)
+    if (mag(newCellVolume - sum(weights)) > 1e-16)
     {
         // Write out for post-processing
         label uIdx = 0, cellI = newCellIndex;
@@ -260,19 +284,21 @@ labelList conservativeMeshToMesh::cellParents
     const label oldCandidate
 ) const
 {
+    typedef StaticHashTable<empty, label, Hash<label> > labelStaticHashSet;
+
     labelList finalCells;
-    DynamicList<label> masterCells(100);
+    labelStaticHashSet masterCells;
 
     // Fetch connectivity from the old mesh.
     const labelListList& fromCellCells = fromMesh().cellCells();
 
     // Insert the old candidate first
-    masterCells.append(oldCandidate);
+    masterCells.insert(oldCandidate, empty());
 
     for (label attempt = 0; attempt < 10; attempt++)
     {
         // Fetch the initial set of candidates
-        DynamicList<label> initList(masterCells);
+        labelList initList = masterCells.toc();
 
         // Accumulate a larger stencil of cell neighbours
         forAll(initList, indexI)
@@ -281,10 +307,7 @@ labelList conservativeMeshToMesh::cellParents
 
             forAll(cc, cellI)
             {
-                if (findIndex(masterCells, cc[cellI]) == -1)
-                {
-                    masterCells.append(cc[cellI]);
-                }
+                masterCells.insert(cc[cellI], empty());
             }
         }
     }
@@ -305,9 +328,9 @@ labelList conservativeMeshToMesh::cellParents
     label nEntries = 0;
 
     // Count the number of entries
-    forAll(masterCells, cellI)
+    forAllConstIter(labelStaticHashSet, masterCells, cIter)
     {
-        vector xC = (cellCentres[masterCells[cellI]] - bC);
+        vector xC = (cellCentres[cIter.key()] - bC);
 
         if ((xC & xC) < (bMax & bMax))
         {
@@ -319,13 +342,13 @@ labelList conservativeMeshToMesh::cellParents
     finalCells.setSize(nEntries, -1);
     nEntries = 0;
 
-    forAll(masterCells, cellI)
+    forAllConstIter(labelStaticHashSet, masterCells, cIter)
     {
-        vector xC = (cellCentres[masterCells[cellI]] - bC);
+        vector xC = (cellCentres[cIter.key()] - bC);
 
         if ((xC & xC) < (bMax & bMax))
         {
-            finalCells[nEntries++] = masterCells[cellI];
+            finalCells[nEntries++] = cIter.key();
         }
     }
 
@@ -351,7 +374,7 @@ bool conservativeMeshToMesh::cellIntersection
     vectorField& tP
 ) const
 {
-    scalar tolFactor = 1e-12;
+    scalar tolFactor = 1e-13;
 
     // Reset inputs
     tP.clear();

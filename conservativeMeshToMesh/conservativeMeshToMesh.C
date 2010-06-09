@@ -102,7 +102,8 @@ conservativeMeshToMesh::conservativeMeshToMesh
             IOobject::NO_WRITE
         ),
         meshTo.nCells()
-    )
+    ),
+    counter_(0)
 {
     if (addressing_.headerOk() && weights_.headerOk() && centres_.headerOk())
     {
@@ -230,6 +231,28 @@ conservativeMeshToMesh::conservativeMeshToMesh
             (
                 threadHandler<conservativeMeshToMesh>::START
             );
+        }
+
+        // Track progress of threads
+        while (true)
+        {
+            sleep(5);
+
+            ctrMutex_.lock();
+
+            Info << " Progress: "
+                 << 100.0 * (double(counter_) / toMesh().nCells()) << "%"
+                 << " Cells processed: " << counter_
+                 << " out of " << toMesh().nCells()
+                 << endl;
+
+            if (counter_ > (0.98*toMesh().nCells()))
+            {
+                ctrMutex_.unlock();
+                break;
+            }
+
+            ctrMutex_.unlock();
         }
 
         // Synchronize all threads

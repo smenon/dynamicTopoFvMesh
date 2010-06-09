@@ -43,6 +43,7 @@ SourceFiles
 
 #include "meshToMesh.H"
 #include "className.H"
+#include "multiThreader.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -67,6 +68,12 @@ class conservativeMeshToMesh
 
         //- Interpolation centres
         IOList<vectorField> centres_;
+
+        //- Mutex for the progress counter
+        Mutex ctrMutex_;
+
+        //- Progress counter
+        label counter_;
 
     // Private Member Functions
 
