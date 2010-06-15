@@ -100,10 +100,6 @@ void conservativeMeshToMesh::computeCellWeights
 
     // Maintain a list of candidates and intersection points
     labelList oldCandidates, candidates;
-    List<vectorField> oldtP, tP;
-
-    // Fetch the volume of the new cell
-    scalar newCellVolume = toMesh().cellVolumes()[newCellIndex];
 
     while (nAttempts < 10)
     {
@@ -120,33 +116,18 @@ void conservativeMeshToMesh::computeCellWeights
 
         // Set sizes
         boolList intersects(candidates.size(), false);
-        tP.setSize(candidates.size());
 
         // Test for intersections
         forAll(candidates, indexI)
         {
-            label oIdx = -1;
-
-            // Check if this was tested before
-            if ((oIdx = findIndex(oldCandidates, candidates[indexI])) > -1)
-            {
-                // Copy old intersections
-                tP[indexI] = oldtP[oIdx];
-
-                intersects[indexI] = true;
-            }
-            else
-            {
-                intersects[indexI] =
+            intersects[indexI] =
+            (
+                testIntersection
                 (
-                    cellIntersection
-                    (
-                        newCellIndex,
-                        candidates[indexI],
-                        tP[indexI]
-                    )
-                );
-            }
+                    newCellIndex,
+                    candidates[indexI]
+                )
+            );
 
             if (intersects[indexI])
             {
@@ -156,6 +137,13 @@ void conservativeMeshToMesh::computeCellWeights
 
         if (nIntersects == nOldIntersects)
         {
+            if (debug)
+            {
+                Info << " nCandidates: " << candidates.size() << nl
+                     << " nIntersects: " << nIntersects
+                     << endl;
+            }
+
             // Set sizes
             parents.setSize(nIntersects, -1);
             weights.setSize(nIntersects, 0.0);
@@ -168,6 +156,25 @@ void conservativeMeshToMesh::computeCellWeights
             {
                 if (intersects[indexI])
                 {
+                    // Compute actual intersections
+                    vectorField tP(0);
+
+                    intersects[indexI] =
+                    (
+                        cellIntersection
+                        (
+                            newCellIndex,
+                            candidates[indexI],
+                            tP
+                        )
+                    );
+
+                    // Skip false positives
+                    if (tP.size() < 4)
+                    {
+                        continue;
+                    }
+
                     parents[nIntersects] = candidates[indexI];
 
                     // Compute weights
@@ -175,7 +182,7 @@ void conservativeMeshToMesh::computeCellWeights
                     (
                         newCellIndex,
                         parents[nIntersects],
-                        tP[indexI],
+                        tP,
                         weights[nIntersects],
                         centres[nIntersects]
                     );
@@ -184,6 +191,11 @@ void conservativeMeshToMesh::computeCellWeights
                 }
             }
 
+            // Shorten to actual sizes
+            parents.setSize(nIntersects);
+            weights.setSize(nIntersects);
+            centres.setSize(nIntersects);
+
             break;
         }
         else
@@ -191,7 +203,6 @@ void conservativeMeshToMesh::computeCellWeights
             nAttempts++;
 
             // Copy / reset parameters
-            oldtP = tP;
             nOldIntersects = nIntersects;
             nIntersects = 0;
 
@@ -199,6 +210,9 @@ void conservativeMeshToMesh::computeCellWeights
             searchFactor *= 1.6;
         }
     }
+
+    // Fetch the volume of the new cell
+    scalar newCellVolume = toMesh().cellVolumes()[newCellIndex];
 
     // Test weights for consistency
     if (mag(newCellVolume - sum(weights)) > 1e-16)
@@ -221,11 +235,20 @@ void conservativeMeshToMesh::computeCellWeights
         writeVTK("uCell_" + Foam::name(cellI), fromMesh(), unMatch, 3);
 
         // Write out intersection points
-        forAll(tP, indexI)
+        forAll(candidates, indexI)
         {
-            if (tP[indexI].size() >= 4)
+            vectorField tP(0);
+
+            cellIntersection
+            (
+                newCellIndex,
+                candidates[indexI],
+                tP
+            );
+
+            if (tP.size() >= 4)
             {
-                writeVTK(cellI, candidates[indexI], tP[indexI]);
+                writeVTK(cellI, candidates[indexI], tP);
 
                 // Write out to screen
                 scalar dummyWeight = 0.0;
@@ -235,7 +258,7 @@ void conservativeMeshToMesh::computeCellWeights
                 (
                     cellI,
                     candidates[indexI],
-                    tP[indexI],
+                    tP,
                     dummyWeight,
                     dummyCentre,
                     true
@@ -264,6 +287,8 @@ void conservativeMeshToMesh::computeCellWeights
             << "Encountered non-conservative weighting factors." << nl
             << " Cell: " << newCellIndex << nl
             << " Candidate parent: " << oldCandidate << nl
+            << " nCandidates: " << candidates.size() << nl
+            << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
             << setprecision(16)
             << " New cell volume: " << newCellVolume << nl
@@ -366,7 +391,187 @@ labelList conservativeMeshToMesh::cellParents
 }
 
 
-// Return the intersection volume between cells in old/new meshes
+label conservativeMeshToMesh::whichSide
+(
+    const labelList& cellPoints,
+    const pointField& points,
+    const point& dir,
+    const point& p
+) const
+{
+    label nP = 0, nN = 0;
+
+    forAll(cellPoints, pointI)
+    {
+        scalar t = (dir & (points[cellPoints[pointI]] - p));
+
+        if (t > 0.0)
+        {
+            nP++;
+        }
+        else
+        if (t < 0.0)
+        {
+            nN++;
+        }
+
+        if (nP && nN)
+        {
+            return 0;
+        }
+    }
+
+    return (nP ? 1 : -1);
+}
+
+// Test for intersection between two cells
+//   - Uses the static separating axis test for polyhedra,
+//     outlined in work by David Eberly
+//     'Intersection of Convex Objects: The Method of Separating Axes'
+//     http://www.geometrictools.com/
+bool conservativeMeshToMesh::testIntersection
+(
+    const label newCellIndex,
+    const label oldCellIndex
+) const
+{
+    // Direction vector
+    vector dir(vector::zero);
+
+    // Fetch references for each mesh
+    const edgeList& fromEdges = fromMesh().edges();
+    const faceList& fromFaces = fromMesh().faces();
+    const pointField& fromPoints = fromMesh().points();
+    const labelList& fromOwner = fromMesh().faceOwner();
+    const vectorField& fromAreas = fromMesh().faceAreas();
+    const cell& fromCell = fromMesh().cells()[oldCellIndex];
+    const labelList& fromCellEdges = fromMesh().cellEdges()[oldCellIndex];
+    const labelList& fromCellPoints = fromMesh().cellPoints()[oldCellIndex];
+
+    const edgeList& toEdges = toMesh().edges();
+    const faceList& toFaces = toMesh().faces();
+    const pointField& toPoints = toMesh().points();
+    const labelList& toOwner = toMesh().faceOwner();
+    const vectorField& toAreas = toMesh().faceAreas();
+    const cell& toCell = toMesh().cells()[newCellIndex];
+    const labelList& toCellEdges = toMesh().cellEdges()[newCellIndex];
+    const labelList& toCellPoints = toMesh().cellPoints()[newCellIndex];
+
+    // Test faces of oldCell for separation
+    forAll(fromCell, faceI)
+    {
+        const label fIndex = fromCell[faceI];
+
+        dir = fromAreas[fIndex];
+
+        // Reverse normal if necessary
+        if (fromOwner[fIndex] != oldCellIndex)
+        {
+            dir *= -1.0;
+        }
+
+        if
+        (
+            whichSide
+            (
+                toCellPoints,
+                toPoints,
+                dir,
+                fromPoints[fromFaces[fIndex][0]]
+            ) > 0
+        )
+        {
+            return false;
+        }
+    }
+
+    // Test faces of newCell for separation
+    forAll(toCell, faceI)
+    {
+        const label fIndex = toCell[faceI];
+
+        dir = toAreas[fIndex];
+
+        // Reverse normal if necessary
+        if (toOwner[fIndex] != newCellIndex)
+        {
+            dir *= -1.0;
+        }
+
+        if
+        (
+            whichSide
+            (
+                fromCellPoints,
+                fromPoints,
+                dir,
+                toPoints[toFaces[fIndex][0]]
+            ) > 0
+        )
+        {
+            return false;
+        }
+    }
+
+    // Test edges of oldCell for separation
+    forAll(fromCellEdges, edgeI)
+    {
+        const edge& fromEdge = fromEdges[fromCellEdges[edgeI]];
+
+        vector fromVec = fromEdge.vec(fromPoints);
+
+        forAll(toCellEdges, edgeJ)
+        {
+            const edge& toEdge = toEdges[toCellEdges[edgeJ]];
+
+            vector toVec = toEdge.vec(toPoints);
+
+            dir = (fromVec ^ toVec);
+
+            label firstSide =
+            (
+                whichSide
+                (
+                    fromCellPoints,
+                    fromPoints,
+                    dir,
+                    fromPoints[fromEdge[0]]
+                )
+            );
+
+            if (firstSide == 0)
+            {
+                continue;
+            }
+
+            label secondSide =
+            (
+                whichSide
+                (
+                    toCellPoints,
+                    toPoints,
+                    dir,
+                    fromPoints[fromEdge[0]]
+                )
+            );
+
+            if (secondSide == 0)
+            {
+                continue;
+            }
+
+            if ((firstSide * secondSide) < 0)
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+
+// Return the intersection points between cells in old/new meshes
 bool conservativeMeshToMesh::cellIntersection
 (
     const label newCellIndex,
@@ -919,7 +1124,7 @@ void conservativeMeshToMesh::convexSetVolume
                 // Compute the normal to this face
                 vector n = tmpFace.normal(cvxSet);
 
-                n /= mag(n);
+                n /= mag(n) + VSMALL;
 
                 label curFaceSign = 0;
                 bool foundInternalFace = false;
@@ -936,7 +1141,7 @@ void conservativeMeshToMesh::convexSetVolume
                     }
 
                     vector rfVec = (cvxSet[l] - cvxSet[i]);
-                    scalar dotProd = (rfVec/mag(rfVec)) & n;
+                    scalar dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
 
                     // Skip nearly co-planar points.
                     if (mag(dotProd) < tolerance)
@@ -1009,7 +1214,10 @@ void conservativeMeshToMesh::convexSetVolume
                                 // Compute the existing normal
                                 vector eNorm = checkFace.normal(cvxSet);
 
-                                scalar dotProd = (n & (eNorm/mag(eNorm)));
+                                scalar dotProd =
+                                (
+                                    n & (eNorm/(mag(eNorm) + VSMALL))
+                                );
 
                                 if
                                 (

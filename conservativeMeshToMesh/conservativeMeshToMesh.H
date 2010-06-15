@@ -101,7 +101,22 @@ class conservativeMeshToMesh
             const label oldCandidate
         ) const;
 
-        // Return the intersection volume between cells in old/new meshes
+        label whichSide
+        (
+            const labelList& cellPoints,
+            const pointField& points,
+            const point& dir,
+            const point& p
+        ) const;
+
+        // Test for intersection between two cells
+        bool testIntersection
+        (
+            const label newCellIndex,
+            const label oldCellIndex
+        ) const;
+
+        // Return the intersection points between cells in old/new meshes
         bool cellIntersection
         (
             const label newCellIndex,
