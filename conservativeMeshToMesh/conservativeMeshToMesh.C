@@ -144,12 +144,14 @@ conservativeMeshToMesh::conservativeMeshToMesh
         fromMesh().cellCentres();
         fromMesh().cellEdges();
         fromMesh().cellPoints();
+        fromMesh().faceEdges();
         fromMesh().cellCells();
 
         toMesh().edges();
         toMesh().cells();
         toMesh().cellEdges();
         toMesh().cellPoints();
+        toMesh().faceEdges();
 
         multiThreader threader(nThreads);
 
@@ -236,23 +238,22 @@ conservativeMeshToMesh::conservativeMeshToMesh
         // Track progress of threads
         while (true)
         {
-            sleep(5);
+            sleep(3);
 
             ctrMutex_.lock();
 
             Info << " Progress: "
-                 << 100.0 * (double(counter_) / toMesh().nCells()) << "%"
+                 << 100.0 * (double(counter_) / toMesh().nCells()) << "% : "
                  << " Cells processed: " << counter_
                  << " out of " << toMesh().nCells()
                  << endl;
 
-            if (counter_ > (0.98*toMesh().nCells()))
+            ctrMutex_.unlock();
+
+            if (counter_ == toMesh().nCells())
             {
-                ctrMutex_.unlock();
                 break;
             }
-
-            ctrMutex_.unlock();
         }
 
         // Synchronize all threads

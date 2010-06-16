@@ -133,6 +133,14 @@ class conservativeMeshToMesh
             const bool useFromMesh
         ) const;
 
+        // Determine whether a two line segments intersect
+        bool segmentSegmentIntersection
+        (
+            const edge& fromSegment,
+            const edge& toSegment,
+            point& intPoint
+        ) const;
+
         // Determine whether a particular line segment
         // intersects with a given face
         bool segmentFaceIntersection
@@ -140,7 +148,6 @@ class conservativeMeshToMesh
             const FixedList<vector,2>& segment,
             const edge& segmentIndices,
             const label faceIndex,
-            const scalar tolFactor,
             point& intPoint,
             const bool useFromMesh
         ) const;
