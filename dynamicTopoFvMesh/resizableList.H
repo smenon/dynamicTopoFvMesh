@@ -26,10 +26,12 @@ Class
     resizableList
 
 Description
-    Similar in intent to DynamicList, but without inheritance.
+    Special list type that allows addition and removal of elements.
 
 Author
     Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
 
 SourceFiles
     resizableListI.H
@@ -41,7 +43,7 @@ SourceFiles
 
 #include "label.H"
 #include "bool.H"
-#include "List.H"
+#include "UList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -49,7 +51,7 @@ namespace Foam
 {
 
 // Class forward declarations
-template<class T> class List;
+template<class T> class UList;
 
 template<class T> class resizableList;
 
@@ -68,13 +70,15 @@ template<class T> Ostream& operator<<
 
 template<class T>
 class resizableList
+:
+    public UList<T>
 {
     // Private data
 
         //- Vector of values of type T.
         T* __restrict__ v_;
 
-        // Size of the list
+        // Size of the allocated memory
         label size_;
 
         // Keeps track of the last index
@@ -92,11 +96,8 @@ public:
         //- Construct given a size and value for all elements
         resizableList(const label size, const T& data);
 
-        //- Construct from an existing List<T> structure
-        resizableList(const List<T>& data);
-
-        //- Construct as copy
-        resizableList(const resizableList<T>& data);
+        //- Construct from an existing UList<T> structure
+        resizableList(const UList<T>& data);
 
 
     // Destructor
@@ -132,28 +133,11 @@ public:
             //- Return the allocated size of the list.
             inline label allocSize() const;
 
-            //- Return the number of elements in the list.
-            inline label size() const;
-
-        // Check
-
-            //- Return true if the list is empty (i.e., if size == 0).
-            inline bool empty() const;
-
-            //- Check the validity of an index
-            inline bool checkIndex(const label index) const;
-
     // Member Operators
 
         resizableList<T>& operator=(const resizableList& data);
 
-        void operator=(const List<T>& data);
-
-        //- Return subscript-checked data reference of HashList.
-        inline T& operator[](const label index);
-
-        //- Return subscript-checked data reference of constant HashList.
-        inline const T& operator[](const label index) const;
+        inline void operator=(const UList<T>& data);
 
         //- Assignment of all entries to the given value
         inline void operator=(const T& data);

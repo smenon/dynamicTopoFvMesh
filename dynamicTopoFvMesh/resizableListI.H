@@ -30,6 +30,8 @@ Description
 
 Author
     Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
 
 \*---------------------------------------------------------------------------*/
 
@@ -63,69 +65,41 @@ resizableList<T>::resizableList
     size_(0),
     lastIndex_(-1)
 {
-    // Allocate
+    // Allocate storage
     setSize(size, data);
+
+    // Set UList properties and lastIndex
+    UList<T>::reset(v_, size_);
+    lastIndex_ = (size_ - 1);
 }
 
-//- Construct from an existing List<T> structure
+//- Construct from an existing UList<T> structure
 template<class T>
 resizableList<T>::resizableList
 (
-    const List<T>& data
+    const UList<T>& data
 )
 :
     v_(0),
     size_(0),
     lastIndex_(-1)
 {
-    if (data.size() < 0)
-    {
-        FatalErrorIn("resizableList<T>::resizableList(const List<T>&)") << nl
-            << " Cannot allocate to size " << data.size()
-            << abort(FatalError);
-    }
-
     if (data.size() == 0)
     {
         return;
     }
 
+    // Allocate storage
+    setSize(data.size());
+
     // Assign
     this->operator=(data);
+
+    // Set UList properties and lastIndex
+    UList<T>::reset(v_, size_);
+    lastIndex_ = (size_ - 1);
 }
 
-//- Construct as copy
-template<class T>
-resizableList<T>::resizableList
-(
-    const resizableList<T>& data
-)
-:
-    v_(0),
-    size_(0),
-    lastIndex_(-1)
-{
-    if (data.size() < 0)
-    {
-        FatalErrorIn
-        (
-            "resizableList<T>::resizableList(const resizableList<T>&)"
-        ) << nl << " Cannot allocate to size " << data.size()
-          << abort(FatalError);
-    }
-
-    if (data.size_)
-    {
-        size_ = data.size_;
-
-        this->v_ = new T[this->size_];
-
-        forAll(data, indexI)
-        {
-            v_[++lastIndex_] = data[indexI];
-        }
-    }
-}
 
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
 
@@ -183,7 +157,9 @@ void resizableList<T>::setSize(const label size)
             size_ = size;
         }
 
-        lastIndex_ = size - 1;
+        // Set UList properties and lastIndex
+        UList<T>::reset(v_, size);
+        lastIndex_ = (size - 1);
     }
     else
     {
@@ -196,7 +172,9 @@ template<class T>
 void resizableList<T>::setSize(const label size, const T& data)
 {
     label oldSize = this->size_;
-    this->setSize(size);
+
+    // Allocate storage
+    setSize(size);
 
     // Padding for extra elements.
     if (size > oldSize)
@@ -205,6 +183,10 @@ void resizableList<T>::setSize(const label size, const T& data)
         register T* vv = &this->v_[size];
         while (i--) *--vv = data;
     }
+
+    // Set UList properties and lastIndex
+    UList<T>::reset(v_, size);
+    lastIndex_ = (size - 1);
 }
 
 //- Append an element to the end of the list
@@ -212,7 +194,7 @@ void resizableList<T>::setSize(const label size, const T& data)
 template<class T>
 inline label resizableList<T>::append(const T& data)
 {
-    label index = ++lastIndex_;
+    label index = (lastIndex_ + 1);
 
     if (index >= size_)
     {
@@ -229,10 +211,11 @@ inline label resizableList<T>::append(const T& data)
     // The setSize operation changes lastIndex_ to (size_ - 1)
     // We don't want that to happen in this case.
     lastIndex_ = index;
+    UList<T>::reset(v_, (lastIndex_ + 1));
 
     this->operator[](lastIndex_) = data;
 
-    return index;
+    return lastIndex_;
 }
 
 //- Return the last element in the list
@@ -247,20 +230,33 @@ inline T resizableList<T>::remove()
         ) << "List is empty." << abort(FatalError);
     }
 
-    return this->operator[](lastIndex_--);
+    // Fetch the reference
+    T& tRef = UList<T>::operator[](lastIndex_);
+
+    // Reset UList parameters
+    UList<T>::reset(v_, lastIndex_--);
+
+    return tRef;
 }
 
 //- Clear contents of the list (i.e., reset lastIndex)
 template<class T>
 void resizableList<T>::clear()
 {
+    // Reset the lastIndex
     lastIndex_ = -1;
+
+    // Reset UList parameters
+    UList<T>::reset(v_, 0);
 }
 
 //- Deallocate all memory
 template<class T>
 void resizableList<T>::clearOut()
 {
+    // Reset UList parameters
+    UList<T>::reset(0, 0);
+
     if (size_)
     {
         delete[] this->v_;
@@ -275,43 +271,6 @@ template<class T>
 inline label resizableList<T>::allocSize() const
 {
     return size_;
-}
-
-//- Return the number of elements in the list.
-template<class T>
-inline label resizableList<T>::size() const
-{
-    return (lastIndex_ + 1);
-}
-
-//- Return true if the list is empty (i.e., if size == 0).
-template<class T>
-inline bool resizableList<T>::empty() const
-{
-    return (size() == 0);
-}
-
-//- Check the validity of an index
-template<class T>
-inline bool resizableList<T>::checkIndex(const label index) const
-{
-    // Out-of-bounds check
-    if (!size_)
-    {
-        FatalErrorIn("resizableList<T>::checkIndex(const label)")
-            << "attempt to access element from zero sized list"
-            << abort(FatalError);
-    }
-    else
-    if (index < 0 || index >= size_)
-    {
-        FatalErrorIn("resizableList<T>::checkIndex(const label)")
-            << "index " << index << " out of range 0 ... " << (size_-1) << nl
-            << "lastIndex: " << lastIndex_
-            << abort(FatalError);
-    }
-
-    return true;
 }
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
@@ -346,21 +305,24 @@ resizableList<T>& resizableList<T>::operator=
         }
     }
 
+    // Reset UList parameters
+    UList<T>::reset(v_, (lastIndex_ + 1));
+
     return (*this);
 }
 
-// Assigment operator to List<T>
+// Assigment operator to UList<T>
 template<class T>
-void resizableList<T>::operator=
+inline void resizableList<T>::operator=
 (
-    const List<T>& data
+    const UList<T>& data
 )
 {
     if (data.size() < 0)
     {
         FatalErrorIn
         (
-            "resizableList<T>::operator=(const resizableList<T>&)"
+            "resizableList<T>::operator=(const UList<T>&)"
         ) << nl << " Cannot allocate to size " << data.size()
           << abort(FatalError);
     }
@@ -379,32 +341,9 @@ void resizableList<T>::operator=
             v_[++lastIndex_] = data[indexI];
         }
     }
-}
 
-//- Return subscript-checked data reference of HashList.
-template<class T>
-inline T& resizableList<T>::operator[]
-(
-    const label index
-)
-{
-#   ifdef FULLDEBUG
-    checkIndex(index);
-#   endif
-    return v_[index];
-}
-
-//- Return subscript-checked data reference of constant HashList.
-template<class T>
-inline const T& resizableList<T>::operator[]
-(
-    const label index
-) const
-{
-#   ifdef FULLDEBUG
-    checkIndex(index);
-#   endif
-    return v_[index];
+    // Reset UList parameters
+    UList<T>::reset(v_, (lastIndex_ + 1));
 }
 
 //- Assignment of all entries to the given value
@@ -423,6 +362,9 @@ inline void resizableList<T>::operator=
 
         lastIndex_ = (size_ - 1);
     }
+
+    // Reset UList parameters
+    UList<T>::reset(v_, (lastIndex_ + 1));
 }
 
 // * * * * * * * * * * * * * * * Ostream Operator  * * * * * * * * * * * * * //
