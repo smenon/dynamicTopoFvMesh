@@ -24,7 +24,9 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "triFace.H"
 #include "objectMap.H"
+#include "triPointRef.H"
 #include "multiThreader.H"
 #include "dynamicTopoFvMesh.H"
 
@@ -114,7 +116,19 @@ bool dynamicTopoFvMesh::testDelaunay
     // Obtain point references for the first face
     point a = points_[triFaces[0][0]];
 
-    point cCentre = circumCentre(fLabel), otherPoint = vector::zero;
+    const face& faceToCheck = faces_[fLabel];
+
+    vector cCentre =
+    (
+        triPointRef
+        (
+            points_[faceToCheck[0]],
+            points_[faceToCheck[1]],
+            points_[faceToCheck[2]]
+        ).circumCentre()
+    );
+
+    point otherPoint = vector::zero;
     scalar rSquared = (a - cCentre)&(a - cCentre);
 
     // Find the isolated point on the second face
@@ -1419,7 +1433,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             {
                 const face& sF = faces_[asfList[sfI][0]];
 
-                if (triFaceCompare(cF, sF))
+                if (triFace::compare(triFace(cF), triFace(sF)))
                 {
                     cMap.mapSlave
                     (
@@ -2234,7 +2248,7 @@ const changeMap dynamicTopoFvMesh::swap23
         }
 
         // Compute the old-volume for this cell
-        scalar newOldVol = tetVolume(newCellIndex[cellI], true);
+        scalar newOldVol = tetVolume(newCellIndex[cellI], oldPoints_);
 
         // Cells on either side of the triangulated face
         // cannot have negative old-volumes. Note that the
@@ -2290,6 +2304,7 @@ const changeMap dynamicTopoFvMesh::swap23
             }
         }
 
+        /*
         if (!consistent)
         {
             // Write out for post-processing
@@ -2331,13 +2346,15 @@ const changeMap dynamicTopoFvMesh::swap23
         {
             Info << "Cell:: " << newCellIndex[cellI]
                  << "  Old volume: " << newOldVol << nl
-                 << "  New volume: " << tetVolume(newCellIndex[cellI]) << nl
+                 << "  New volume: "
+                 << tetVolume(newCellIndex[cellI], points_) << nl
                  << "  Parents: " << parents << nl
                  << "  Weights: " << weights << nl
                  << "  Sum(Weights): " << sum(weights) << nl
                  << "  Error: " << mag(1.0 - sum(weights))
                  << endl;
         }
+        */
     }
 
     // Fill in mapping information for three new faces.
@@ -2979,7 +2996,7 @@ const changeMap dynamicTopoFvMesh::swap32
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
 
         // Compute the old-volume for this cell
-        scalar newOldVol = tetVolume(newCellIndex[cellI], true);
+        scalar newOldVol = tetVolume(newCellIndex[cellI], oldPoints_);
 
         if (newOldVol <= 0.0)
         {
@@ -3031,6 +3048,7 @@ const changeMap dynamicTopoFvMesh::swap32
             }
         }
 
+        /*
         if (!consistent)
         {
             // Write out for post-processing
@@ -3072,13 +3090,15 @@ const changeMap dynamicTopoFvMesh::swap32
         {
             Info << "Cell:: " << newCellIndex[cellI]
                  << "  Old volume: " << newOldVol << nl
-                 << "  New volume: " << tetVolume(newCellIndex[cellI]) << nl
+                 << "  New volume: "
+                 << tetVolume(newCellIndex[cellI], points_) << nl
                  << "  Parents: " << parents << nl
                  << "  Weights: " << weights << nl
                  << "  Sum(Weights): " << sum(weights) << nl
                  << "  Error: " << mag(1.0 - sum(weights))
                  << endl;
         }
+        */
     }
 
     // Set fill-in mapping for two new boundary faces

@@ -128,11 +128,7 @@ void Foam::topoMapper::setOldCellCentres
 {
     if (oldCellCentresPtr_)
     {
-        FatalErrorIn
-        (
-            "void topoMapper::setOldCellCentres()"
-        ) << nl << " Pointer has already been set. "
-          << abort(FatalError);
+        clearOut();
     }
 
     // Set the pointer.

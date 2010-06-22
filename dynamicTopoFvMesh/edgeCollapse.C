@@ -2999,7 +2999,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
 
         // Compute the old-volume for this cell
-        scalar newOldVol = tetVolume(cIter.key(), true);
+        scalar newOldVol = tetVolume(cIter.key(), oldPoints_);
 
         if (newOldVol < 0.0)
         {

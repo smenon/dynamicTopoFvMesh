@@ -39,6 +39,7 @@ Author
 
 #include "IOmanip.H"
 #include "volFields.H"
+#include "tetPointRef.H"
 
 namespace Foam
 {
@@ -452,13 +453,13 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
         // Compute volume for the upper-half
         tetVol =
         (
-            tetVolume
+            tetPointRef
             (
                 oldPoints_[hullVertices[triangulations[0][i]]],
                 oldPoints_[hullVertices[triangulations[1][i]]],
                 oldPoints_[hullVertices[triangulations[2][i]]],
                 oldPoints_[edgeToCheck[0]]
-            )
+            ).mag()
         );
 
         if (tetVol < 0.0)
@@ -480,13 +481,13 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
 
         tetVol =
         (
-            tetVolume
+            tetPointRef
             (
                 oldPoints_[hullVertices[triangulations[2][i]]],
                 oldPoints_[hullVertices[triangulations[1][i]]],
                 oldPoints_[hullVertices[triangulations[0][i]]],
                 oldPoints_[edgeToCheck[1]]
-            )
+            ).mag()
         );
 
         if (tetVol < 0.0)
@@ -1888,13 +1889,13 @@ bool dynamicTopoFvMesh::checkCollapse
 
         oldVolume =
         (
-            tetVolume
+            tetPointRef
             (
                 oldPoints_[faceToCheck[2]],
                 oldPoints_[faceToCheck[1]],
                 oldPoints_[faceToCheck[0]],
                 oldPoint
-            )
+            ).mag()
         );
     }
     else
@@ -1912,13 +1913,13 @@ bool dynamicTopoFvMesh::checkCollapse
 
         oldVolume =
         (
-            tetVolume
+            tetPointRef
             (
                 oldPoints_[faceToCheck[0]],
                 oldPoints_[faceToCheck[1]],
                 oldPoints_[faceToCheck[2]],
                 oldPoint
-            )
+            ).mag()
         );
     }
 

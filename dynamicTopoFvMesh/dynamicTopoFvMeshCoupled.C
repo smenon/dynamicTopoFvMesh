@@ -37,6 +37,7 @@ Author
 
 #include "dynamicTopoFvMesh.H"
 
+#include "triFace.H"
 #include "globalMeshData.H"
 
 namespace Foam
@@ -1292,7 +1293,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                         const face& sFace = faces_[sfIndex];
 
-                        if (triFaceCompare(cFace, sFace))
+                        if (triFace::compare(triFace(cFace), triFace(sFace)))
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave
@@ -1674,7 +1675,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
                         const face& sFace = slaveFaces[sfIndex];
 
-                        if (triFaceCompare(cFace, sFace))
+                        if (triFace::compare(triFace(cFace), triFace(sFace)))
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave

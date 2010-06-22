@@ -24,6 +24,7 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "triFace.H"
 #include "objectMap.H"
 #include "resizableList.H"
 #include "multiThreader.H"
@@ -2565,7 +2566,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         forAll(cmIndex, cmI)
         {
             // Compute the old-volume for this cell
-            scalar newOldVol = tetVolume(cmIndex[cmI], true);
+            scalar newOldVol = tetVolume(cmIndex[cmI], oldPoints_);
 
             if (newOldVol < 0.0)
             {
@@ -2609,6 +2610,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 }
             }
 
+            /*
             if (!consistent)
             {
                 // Write out for post-processing
@@ -2652,6 +2654,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                      << "  Parents: " << parents << nl
                      << "  Weights: " << weights << endl;
             }
+            */
         }
     }
 
@@ -2897,7 +2900,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 {
                     const face& sF = faces_[asfList[sfI][0]];
 
-                    if (triFaceCompare(cF, sF))
+                    if (triFace::compare(triFace(cF), triFace(sF)))
                     {
                         if (bisectingSlave)
                         {
@@ -3530,19 +3533,19 @@ const changeMap dynamicTopoFvMesh::trisectFace
         label newIndex = -1;
 
         // Check against faces.
-        if (triFaceCompare(faceToCheck, checkFace[0]))
+        if (triFace::compare(triFace(faceToCheck), triFace(checkFace[0])))
         {
             newIndex = newCellIndex[0];
             newTetCell[0][nF[0]++] = faceIndex;
         }
         else
-        if (triFaceCompare(faceToCheck, checkFace[1]))
+        if (triFace::compare(triFace(faceToCheck), triFace(checkFace[1])))
         {
             newIndex = newCellIndex[1];
             newTetCell[1][nF[1]++] = faceIndex;
         }
         else
-        if (triFaceCompare(faceToCheck, checkFace[2]))
+        if (triFace::compare(triFace(faceToCheck), triFace(checkFace[2])))
         {
             newIndex = newCellIndex[2];
             newTetCell[2][nF[2]++] = faceIndex;
@@ -4104,7 +4107,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     {
                         const face& sF = faces_[asfList[sfI][0]];
 
-                        if (triFaceCompare(cF, sF))
+                        if (triFace::compare(triFace(cF), triFace(sF)))
                         {
                             if (trisectingSlave)
                             {
@@ -4344,19 +4347,19 @@ const changeMap dynamicTopoFvMesh::trisectFace
             label newIndex = -1;
 
             // Check against faces.
-            if (triFaceCompare(faceToCheck, checkFace[0]))
+            if (triFace::compare(triFace(faceToCheck), triFace(checkFace[0])))
             {
                 newIndex = newCellIndex[3];
                 newTetCell[3][nF[3]++] = faceIndex;
             }
             else
-            if (triFaceCompare(faceToCheck, checkFace[1]))
+            if (triFace::compare(triFace(faceToCheck), triFace(checkFace[1])))
             {
                 newIndex = newCellIndex[4];
                 newTetCell[4][nF[4]++] = faceIndex;
             }
             else
-            if (triFaceCompare(faceToCheck, checkFace[2]))
+            if (triFace::compare(triFace(faceToCheck), triFace(checkFace[2])))
             {
                 newIndex = newCellIndex[5];
                 newTetCell[5][nF[5]++] = faceIndex;

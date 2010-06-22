@@ -38,6 +38,7 @@ Author
 #include "dynamicTopoFvMesh.H"
 #include "addToRunTimeSelectionTable.H"
 
+#include "triFace.H"
 #include "clockTime.H"
 #include "mapPolyMesh.H"
 #include "volFields.H"
@@ -745,7 +746,7 @@ scalar dynamicTopoFvMesh::tetIntersection
         {
             const face& newFace = faces_[newCell[faceJ]];
 
-            if (triFaceCompare(oldFace, newFace))
+            if (triFace::compare(triFace(oldFace), triFace(newFace)))
             {
                 // Fill in first three points from the common face.
                 const face& commonFace = faces_[newCell[faceJ]];
@@ -1478,7 +1479,7 @@ void dynamicTopoFvMesh::setCellMapping
     }
 
     // Insert weights into the list, and overwrite if necessary
-    bool index = -1;
+    label index = -1;
 
     forAll(cellsFromCells_, indexI)
     {
@@ -1532,7 +1533,7 @@ void dynamicTopoFvMesh::setFaceMapping
     }
 
     // Insert weights into the list, and overwrite if necessary
-    bool index = -1;
+    label index = -1;
 
     forAll(facesFromFaces_, indexI)
     {
@@ -2440,7 +2441,7 @@ void dynamicTopoFvMesh::constructHull
                         oFace[2] = nextHullPoint;
 
                         // Check if this face contains edgeToCheck[0]
-                        if (triFaceCompare(cFace, oFace))
+                        if (triFace::compare(triFace(cFace), triFace(oFace)))
                         {
                             ringEntities[1][indexI] = currCell[faceI];
                         }
@@ -2451,7 +2452,7 @@ void dynamicTopoFvMesh::constructHull
                         oFace[2] = otherPoint;
 
                         // Check if this face contains edgeToCheck[1]
-                        if (triFaceCompare(cFace, oFace))
+                        if (triFace::compare(triFace(cFace), triFace(oFace)))
                         {
                             ringEntities[3][indexI] = currCell[faceI];
                         }
@@ -3393,6 +3394,11 @@ void dynamicTopoFvMesh::readOptionalParameters()
     else
     {
         debug = 0;
+    }
+
+    if (debug > 3)
+    {
+        polyMesh::debug = true;
     }
 
     if (dict_.subDict("dynamicTopoFvMesh").found("interval") || mandatory_)
@@ -4441,7 +4447,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             cQuality = tetMetric_(a, b, midPoint, d);
 
             // Compute old volume of the upper half.
-            oldVolume = tetVolume(aOld, bOld, oldPoint, dOld);
+            oldVolume = tetPointRef(aOld, bOld, oldPoint, dOld).mag();
 
             // Check if the volume / quality is worse
             minQuality = Foam::min(cQuality, minQuality);
@@ -4451,7 +4457,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             cQuality = tetMetric_(midPoint, b, c, d);
 
             // Compute old volume of the lower half.
-            oldVolume = tetVolume(oldPoint, bOld, cOld, dOld);
+            oldVolume = tetPointRef(oldPoint, bOld, cOld, dOld).mag();
 
             // Check if the quality is worse
             minQuality = Foam::min(cQuality, minQuality);
@@ -4474,7 +4480,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             cQuality = tetMetric_(a, b, midPoint, d);
 
             // Compute old volume of the upper half.
-            oldVolume = tetVolume(aOld, bOld, oldPoint, dOld);
+            oldVolume = tetPointRef(aOld, bOld, oldPoint, dOld).mag();
 
             // Check if the quality is worse
             minQuality = Foam::min(cQuality, minQuality);
@@ -4484,7 +4490,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
             cQuality = tetMetric_(midPoint, b, c, d);
 
             // Compute old volume of the lower half.
-            oldVolume = tetVolume(oldPoint, bOld, cOld, dOld);
+            oldVolume = tetPointRef(oldPoint, bOld, cOld, dOld).mag();
 
             // Check if the quality is worse
             minQuality = Foam::min(cQuality, minQuality);
@@ -4811,7 +4817,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
 
     label fourthPoint = -1;
     scalar minDistance = GREAT;
-    face triFace(3), testFace(3), faceToCheck(3);
+    face tFace(3), testFace(3), faceToCheck(3);
     FixedList<edge, 2> edgeToCheck(edge(-1,-1));
 
     const cell& cellToCheck = cells_[cIndex];
@@ -4873,24 +4879,24 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         {
             // Use this point-face pair.
             fourthPoint = isolatedPoint;
-            triFace = testFace;
+            tFace = testFace;
             minDistance = distance;
         }
     }
 
     // Obtain the face-normal.
-    vector refArea = triFaceNormal(triFace);
+    vector refArea = triFaceNormal(tFace);
 
     // Normalize it.
     vector n = refArea/mag(refArea);
 
     // Define edge-vectors.
-    vector r1 = points_[triFace[1]] - points_[triFace[0]];
-    vector r2 = points_[triFace[2]] - points_[triFace[1]];
-    vector r3 = points_[triFace[0]] - points_[triFace[2]];
+    vector r1 = points_[tFace[1]] - points_[tFace[0]];
+    vector r2 = points_[tFace[2]] - points_[tFace[1]];
+    vector r3 = points_[tFace[0]] - points_[tFace[2]];
 
     // Project the fourth point onto the face.
-    vector r4 = points_[fourthPoint] - points_[triFace[0]];
+    vector r4 = points_[fourthPoint] - points_[tFace[0]];
 
     r4 = r4 - ((r4 & n)*n);
 
@@ -4898,7 +4904,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     vector r5 = r4 - r1;
     vector r6 = r5 - r2;
 
-    // Calculate three signed triangle areas, using triFace[0] as the origin.
+    // Calculate three signed triangle areas, using tFace[0] as the origin.
     scalar t1 = n & (0.5 * (r1 ^ r4));
     scalar t2 = n & (0.5 * (r2 ^ r5));
     scalar t3 = n & (0.5 * (r3 ^ r6));
@@ -4910,9 +4916,9 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         map.type() = 2;
         map.apexPoint() = fourthPoint;
 
-        faceToCheck[0] = triFace[0];
-        faceToCheck[1] = triFace[1];
-        faceToCheck[2] = triFace[2];
+        faceToCheck[0] = tFace[0];
+        faceToCheck[1] = tFace[1];
+        faceToCheck[2] = tFace[2];
     }
 
     if (t1 < 0 && t2 > 0 && t3 > 0)
@@ -4920,10 +4926,10 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         // Region R1: Sliver cell.
         map.type() = 1;
 
-        edgeToCheck[0][0] = triFace[2];
+        edgeToCheck[0][0] = tFace[2];
         edgeToCheck[0][1] = fourthPoint;
-        edgeToCheck[1][0] = triFace[0];
-        edgeToCheck[1][1] = triFace[1];
+        edgeToCheck[1][0] = tFace[0];
+        edgeToCheck[1][1] = tFace[1];
     }
 
     if (t1 > 0 && t2 < 0 && t3 > 0)
@@ -4931,10 +4937,10 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         // Region R2: Sliver cell.
         map.type() = 1;
 
-        edgeToCheck[0][0] = triFace[0];
+        edgeToCheck[0][0] = tFace[0];
         edgeToCheck[0][1] = fourthPoint;
-        edgeToCheck[1][0] = triFace[1];
-        edgeToCheck[1][1] = triFace[2];
+        edgeToCheck[1][0] = tFace[1];
+        edgeToCheck[1][1] = tFace[2];
     }
 
     if (t1 > 0 && t2 > 0 && t3 < 0)
@@ -4942,20 +4948,20 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         // Region R3: Sliver cell.
         map.type() = 1;
 
-        edgeToCheck[0][0] = triFace[1];
+        edgeToCheck[0][0] = tFace[1];
         edgeToCheck[0][1] = fourthPoint;
-        edgeToCheck[1][0] = triFace[2];
-        edgeToCheck[1][1] = triFace[0];
+        edgeToCheck[1][0] = tFace[2];
+        edgeToCheck[1][1] = tFace[0];
     }
 
     if (t1 < 0 && t2 > 0 && t3 < 0)
     {
         // Region R4: Cap cell.
         map.type() = 2;
-        map.apexPoint() = triFace[0];
+        map.apexPoint() = tFace[0];
 
-        faceToCheck[0] = triFace[1];
-        faceToCheck[1] = triFace[2];
+        faceToCheck[0] = tFace[1];
+        faceToCheck[1] = tFace[2];
         faceToCheck[2] = fourthPoint;
     }
 
@@ -4963,10 +4969,10 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     {
         // Region R5: Cap cell.
         map.type() = 2;
-        map.apexPoint() = triFace[1];
+        map.apexPoint() = tFace[1];
 
-        faceToCheck[0] = triFace[2];
-        faceToCheck[1] = triFace[0];
+        faceToCheck[0] = tFace[2];
+        faceToCheck[1] = tFace[0];
         faceToCheck[2] = fourthPoint;
     }
 
@@ -4974,10 +4980,10 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     {
         // Region R6: Cap cell.
         map.type() = 2;
-        map.apexPoint() = triFace[2];
+        map.apexPoint() = tFace[2];
 
-        faceToCheck[0] = triFace[0];
-        faceToCheck[1] = triFace[1];
+        faceToCheck[0] = tFace[0];
+        faceToCheck[1] = tFace[1];
         faceToCheck[2] = fourthPoint;
     }
 
@@ -4992,7 +4998,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
             // Wedge case: Too close to point [0]
             map.type() = 4;
 
-            edgeToCheck[0][0] = triFace[0];
+            edgeToCheck[0][0] = tFace[0];
             edgeToCheck[0][1] = fourthPoint;
         }
         else
@@ -5001,7 +5007,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
             // Wedge case: Too close to point [1]
             map.type() = 4;
 
-            edgeToCheck[0][0] = triFace[1];
+            edgeToCheck[0][0] = tFace[1];
             edgeToCheck[0][1] = fourthPoint;
         }
         else
@@ -5011,8 +5017,8 @@ const changeMap dynamicTopoFvMesh::identifySliverType
             map.type() = 3;
             map.apexPoint() = fourthPoint;
 
-            edgeToCheck[0][0] = triFace[0];
-            edgeToCheck[0][1] = triFace[1];
+            edgeToCheck[0][0] = tFace[0];
+            edgeToCheck[0][1] = tFace[1];
         }
     }
 
@@ -5023,7 +5029,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
             // Wedge case: Too close to point [2]
             map.type() = 4;
 
-            edgeToCheck[0][0] = triFace[2];
+            edgeToCheck[0][0] = tFace[2];
             edgeToCheck[0][1] = fourthPoint;
         }
         else
@@ -5033,8 +5039,8 @@ const changeMap dynamicTopoFvMesh::identifySliverType
             map.type() = 3;
             map.apexPoint() = fourthPoint;
 
-            edgeToCheck[0][0] = triFace[1];
-            edgeToCheck[0][1] = triFace[2];
+            edgeToCheck[0][0] = tFace[1];
+            edgeToCheck[0][1] = tFace[2];
         }
     }
 
@@ -5046,8 +5052,8 @@ const changeMap dynamicTopoFvMesh::identifySliverType
             map.type() = 3;
             map.apexPoint() = fourthPoint;
 
-            edgeToCheck[0][0] = triFace[2];
-            edgeToCheck[0][1] = triFace[0];
+            edgeToCheck[0][0] = tFace[2];
+            edgeToCheck[0][1] = tFace[0];
         }
     }
 
@@ -5094,7 +5100,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         {
             const face& thisFace = faces_[cellToCheck[faceI]];
 
-            if (triFaceCompare(thisFace, faceToCheck))
+            if (triFace::compare(triFace(thisFace), triFace(faceToCheck)))
             {
                 map.opposingFace() = cellToCheck[faceI];
 
@@ -5650,7 +5656,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
              << "Mapping fv fields."
              << endl;
     }
-
+    /*
     // Set the mapPolyMesh object in the mapper
     mapper_().setMapper(meshMap);
 
@@ -5685,6 +5691,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 
     // Clear mapper
     mapper_().clear();
+    */
 }
 
 
@@ -5994,13 +6001,16 @@ bool dynamicTopoFvMesh::update()
             true
         );
 
+        // Wipe out old-points, since the size may have changed
+        resetMotion();
+
         // Move points to positions before mesh-motion
         movePoints(mpm.preMotionPoints());
 
         // Update the underlying mesh, and map all related fields
         updateMesh(mpm);
 
-        // Reset old-volumes / mesh-fluxes.
+        // Reset old-volumes.
         // This overrides mapped V0 values.
         resetMotion();
         setV0();

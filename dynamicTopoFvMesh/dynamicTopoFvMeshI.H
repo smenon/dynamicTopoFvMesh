@@ -24,6 +24,7 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "tetPointRef.H"
 #include "processorPolyPatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -69,42 +70,6 @@ inline vector dynamicTopoFvMesh::tangentToEdge
     const edge& thisEdge = edges_[eIndex];
 
     return (points_[thisEdge[1]] - points_[thisEdge[0]]);
-}
-
-
-// Find the circumcentre of a face
-inline point dynamicTopoFvMesh::circumCentre
-(
-    const label fIndex
-) const
-{
-    // Obtain references
-    const face& thisFace = faces_[fIndex];
-    const point a = points_[thisFace[0]];
-    const point b = points_[thisFace[1]];
-    const point c = points_[thisFace[2]];
-
-    scalar d1 =  (c - a)&(b - a);
-    scalar d2 = -(c - b)&(b - a);
-    scalar d3 =  (c - a)&(c - b);
-
-    scalar c1 = d2*d3;
-    scalar c2 = d3*d1;
-    scalar c3 = d1*d2;
-
-    scalar cd = c1 + c2 + c3;
-
-    if (cd < VSMALL)
-    {
-        FatalErrorIn("dynamicTopoFvMesh::testDelaunay(const label fIndex)")
-                << nl << " Encountered a co-linear set of points: " << nl
-                << " Point a :: " << thisFace[0] << ": " << a << nl
-                << " Point b :: " << thisFace[1] << ": " << b << nl
-                << " Point c :: " << thisFace[2] << ": " << c << nl
-                << abort(FatalError);
-    }
-
-    return ((c2 + c3)*a + (c3 + c1)*b + (c1 + c2)*c)/(2*cd);
 }
 
 
@@ -394,42 +359,6 @@ inline vector dynamicTopoFvMesh::tetCellCentre
 }
 
 
-// Compare two triangular faces.
-// Identical to triFace definition.
-inline label dynamicTopoFvMesh::triFaceCompare
-(
-    const face& a,
-    const face& b
-) const
-{
-    if
-    (
-        (a[0] == b[0] && a[1] == b[1] && a[2] == b[2])
-     || (a[0] == b[1] && a[1] == b[2] && a[2] == b[0])
-     || (a[0] == b[2] && a[1] == b[0] && a[2] == b[1])
-    )
-    {
-        // Identical
-        return 1;
-    }
-    else if
-    (
-        (a[0] == b[2] && a[1] == b[1] && a[2] == b[0])
-     || (a[0] == b[1] && a[1] == b[0] && a[2] == b[2])
-     || (a[0] == b[0] && a[1] == b[2] && a[2] == b[1])
-    )
-    {
-        // Same face, but reversed orientation
-        return -1;
-    }
-    else
-    {
-        // Faces don't match.
-        return 0;
-    }
-}
-
-
 // Compare two quad faces.
 inline label dynamicTopoFvMesh::quadFaceCompare
 (
@@ -464,21 +393,6 @@ inline label dynamicTopoFvMesh::quadFaceCompare
         // Faces don't match.
         return 0;
     }
-}
-
-
-// Find the volume of a tetrahedron.
-// The function assumes points (a-b-c)
-// are in counter-clockwise fashion when viewed from d.
-inline scalar dynamicTopoFvMesh::tetVolume
-(
-    const point& a,
-    const point& b,
-    const point& c,
-    const point& d
-) const
-{
-    return (1.0/6.0)*(((b - a) ^ (c - a)) & (d - a));
 }
 
 
@@ -535,7 +449,7 @@ inline scalar dynamicTopoFvMesh::prismVolume
 inline scalar dynamicTopoFvMesh::tetVolume
 (
     const label cIndex,
-    bool useOldPoints
+    const UList<point>& meshPoints
 ) const
 {
     const cell& cellToCheck = cells_[cIndex];
@@ -558,56 +472,28 @@ inline scalar dynamicTopoFvMesh::tetVolume
     // Compute cell-volume
     if (owner_[cellToCheck[0]] == cIndex)
     {
-        if (useOldPoints)
-        {
-            return
-            (
-                tetVolume
-                (
-                    oldPoints_[baseFace[2]],
-                    oldPoints_[baseFace[1]],
-                    oldPoints_[baseFace[0]],
-                    oldPoints_[apexPoint]
-                )
-            );
-        }
-
         return
         (
-            tetVolume
+            tetPointRef
             (
-                points_[baseFace[2]],
-                points_[baseFace[1]],
-                points_[baseFace[0]],
-                points_[apexPoint]
-            )
+                meshPoints[baseFace[2]],
+                meshPoints[baseFace[1]],
+                meshPoints[baseFace[0]],
+                meshPoints[apexPoint]
+            ).mag()
         );
     }
     else
     {
-        if (useOldPoints)
-        {
-            return
-            (
-                tetVolume
-                (
-                    oldPoints_[baseFace[0]],
-                    oldPoints_[baseFace[1]],
-                    oldPoints_[baseFace[2]],
-                    oldPoints_[apexPoint]
-                )
-            );
-        }
-
         return
         (
-            tetVolume
+            tetPointRef
             (
-                points_[baseFace[0]],
-                points_[baseFace[1]],
-                points_[baseFace[2]],
-                points_[apexPoint]
-            )
+                meshPoints[baseFace[0]],
+                meshPoints[baseFace[1]],
+                meshPoints[baseFace[2]],
+                meshPoints[apexPoint]
+            ).mag()
         );
     }
 

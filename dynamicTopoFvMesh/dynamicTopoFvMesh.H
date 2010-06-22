@@ -371,9 +371,6 @@ class dynamicTopoFvMesh
         // Obtain the tangent-to-edge vector
         inline vector tangentToEdge(const label eIndex) const;
 
-        // Find the circumcentre of three points
-        inline point circumCentre(const label fIndex) const;
-
         // Find the centre of a quad face
         inline point quadFaceCentre
         (
@@ -451,27 +448,11 @@ class dynamicTopoFvMesh
             bool useOldPoints = false
         ) const;
 
-        // Compare two triangular faces
-        inline label triFaceCompare
-        (
-            const face& a,
-            const face& b
-        ) const;
-
         // Compare two quad faces
         inline label quadFaceCompare
         (
             const face& a,
             const face& b
-        ) const;
-
-        // Find the volume of a tetrahedron (defined by points)
-        inline scalar tetVolume
-        (
-            const point& a,
-            const point& b,
-            const point& c,
-            const point& d
         ) const;
 
         // Find the volume of a prism cell, given the cell index.
@@ -485,7 +466,7 @@ class dynamicTopoFvMesh
         inline scalar tetVolume
         (
             const label cIndex,
-            bool useOldPoints = false
+            const UList<point>& meshPoints
         ) const;
 
         // Determine whether a specified point lies on a segment
