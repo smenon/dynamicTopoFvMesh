@@ -124,10 +124,18 @@ public:
         void setMapper(const mapPolyMesh& mpm);
 
         //- Set face weighting information
-        void setFaceWeights(Map<scalarField>& weights);
+        void setFaceWeights
+        (
+			Map<scalarField>& weights,
+			Map<vectorField>& centres
+		);
 
         //- Set cell weighting information
-        void setCellWeights(Map<scalarField>& weights);
+        void setCellWeights
+        (
+			Map<scalarField>& weights,
+			Map<vectorField>& centres
+		);
 
         //- Set old cell-centre information
         void setOldCellCentres(const volVectorField& oldCentres);

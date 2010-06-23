@@ -2998,97 +2998,34 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             continue;
         }
 
-        // Compute the old-volume for this cell
-        scalar newOldVol = tetVolume(cIter.key(), oldPoints_);
-
-        if (newOldVol < 0.0)
-        {
-            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                << "Negative old-volumes encountered." << nl
-                << cIter.key() << ": " << newOldVol
-                << abort(FatalError);
-        }
+        labelList parents;
+        scalarField weights;
+        vectorField centres;
 
         // Fill-in candidate mapping information
         labelList mC(cellsChecked.toc());
 
-        labelList parents;
-        scalarField weights;
-
         // Obtain weighting factors for this cell.
-        // Perform several attempts for robustness.
-        bool consistent = false;
-        scalar searchFactor = 1.0;
-
-        for (label attempt = 0; attempt < 5; attempt++)
-        {
-            consistent =
-            (
-                computeTetWeights
-                (
-                    cIter.key(),
-                    newOldVol,
-                    mC,
-                    searchFactor,
-                    parents,
-                    weights
-                )
-            );
-
-            if (consistent)
-            {
-                break;
-            }
-            else
-            {
-                // Expand the search radius and try again.
-                searchFactor *= 1.2;
-            }
-        }
-
-        if (!consistent)
-        {
-            // Write out for post-processing
-            label nIdx = cIter.key(), uIdx = 0;
-            labelList candid = cellParents(nIdx, searchFactor, mC);
-            labelList unMatch(candid.size() - parents.size(), -1);
-
-            forAll(candid, cI)
-            {
-                if (findIndex(parents, candid[cI]) == -1)
-                {
-                    unMatch[uIdx++] = candid[cI];
-                }
-            }
-
-            writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
-            writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
-            writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
-            writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
-
-            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
-                << "Encountered non-conservative weighting factors." << nl
-                << " Cell: " << nIdx << nl
-                << " Old volume: " << newOldVol << nl
-                << " Parents: " << parents << nl
-                << " Weights: " << weights << nl
-                << " Sum(Weights): " << sum(weights) << nl
-                << " Error: " << mag(1.0 - sum(weights))
-                << abort(FatalError);
-        }
+        computeCellWeights
+        (
+            cIter.key(),
+            mC,
+            parents,
+            weights,
+            centres
+        );
 
         // Set the mapping for this cell
-        setCellMapping(cIter.key(), parents, weights);
+        setCellMapping
+        (
+            cIter.key(),
+            parents,
+            weights,
+            centres
+        );
 
-        // Set parents for this cell
+        // Update cellParents information
         cellParents_.set(cIter.key(), parents);
-
-        if (debug > 2)
-        {
-            Info << " Cell:: " << cIter.key() << nl
-                 << "  Parents: " << parents << nl
-                 << "  Weights: " << weights << endl;
-        }
     }
 
     // Set face mapping information for modified faces

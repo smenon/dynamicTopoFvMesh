@@ -236,14 +236,7 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
         if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
         {
             // Obtain the normal.
-            if (twoDMesh_)
-            {
-                fNorm[count] = quadFaceNormal(faces_[edgeFaces[faceI]]);
-            }
-            else
-            {
-                fNorm[count] = triFaceNormal(faces_[edgeFaces[faceI]]);
-            }
+            fNorm[count] = faceNormal(faces_[edgeFaces[faceI]], points_);
 
             // Normalize it.
             fNorm[count] /= mag(fNorm[count]);
@@ -1822,8 +1815,8 @@ bool dynamicTopoFvMesh::checkCollapse
         }
 
         // Compute the area and check if it's zero/negative
-        scalar origArea = triFaceArea(triFace);
-        scalar newArea  = triFaceArea(tmpTriFace);
+        scalar origArea = mag(faceNormal(triFace, points_));
+        scalar newArea = mag(faceNormal(tmpTriFace, points_));
 
         if
         (

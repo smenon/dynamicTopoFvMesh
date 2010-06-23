@@ -1251,7 +1251,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                         const face& sFace = faces_[sfIndex];
 
-                        if (quadFaceCompare(cFace, sFace))
+                        if (face::compare(cFace, sFace))
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave
@@ -1634,7 +1634,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
                         const face& sFace = slaveFaces[sfIndex];
 
-                        if (quadFaceCompare(cFace, sFace))
+                        if (face::compare(cFace, sFace))
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave

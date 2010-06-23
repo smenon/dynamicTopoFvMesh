@@ -24,6 +24,7 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "triPointRef.H"
 #include "tetPointRef.H"
 #include "processorPolyPatch.H"
 
@@ -49,212 +50,56 @@ inline bool dynamicTopoFvMesh::edgeRefinement() const
 }
 
 
-// Obtain the tangent-to-edge vector
-inline vector dynamicTopoFvMesh::edgeCentre
+// Return the magnitude of an edge
+inline scalar dynamicTopoFvMesh::edgeLength
 (
-    const label eIndex
+    const edge& edgeToCheck,
+    const UList<point>& points
 ) const
 {
-    const edge& thisEdge = edges_[eIndex];
-
-    return 0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]]);
+    return mag(points[edgeToCheck.end()] - points[edgeToCheck.start()]);
 }
 
 
-// Obtain the tangent-to-edge vector
-inline vector dynamicTopoFvMesh::tangentToEdge
+// Compute the centroid for a given face
+inline vector dynamicTopoFvMesh::faceCentre
 (
-    const label eIndex
+    const face& faceToCheck,
+    const UList<point>& points
 ) const
 {
-    const edge& thisEdge = edges_[eIndex];
+    face localFace(faceToCheck.size());
+    pointField localPoints(faceToCheck.size(), vector::zero);
 
-    return (points_[thisEdge[1]] - points_[thisEdge[0]]);
-}
-
-
-// Find the centre of a quad face
-inline point dynamicTopoFvMesh::quadFaceCentre
-(
-    const label fIndex,
-    bool useOldPoints
-) const
-{
-    return quadFaceCentre(faces_[fIndex], useOldPoints);
-}
-
-
-// Find the centre of a quad face
-inline point dynamicTopoFvMesh::quadFaceCentre
-(
-    const face& quadFace,
-    bool useOldPoints
-) const
-{
-    if (useOldPoints)
+    // Fill in local points
+    forAll(localPoints, pointI)
     {
-        return 0.25 *
-        (
-            oldPoints_[quadFace[0]]
-          + oldPoints_[quadFace[1]]
-          + oldPoints_[quadFace[2]]
-          + oldPoints_[quadFace[3]]
-        );
+        localFace[pointI] = pointI;
+        localPoints[pointI] = points[faceToCheck[pointI]];
     }
 
-    return 0.25 *
-    (
-        points_[quadFace[0]]
-      + points_[quadFace[1]]
-      + points_[quadFace[2]]
-      + points_[quadFace[3]]
-    );
+    return localFace.centre(localPoints);
 }
 
 
-// Find the centre of a triangle face
-inline point dynamicTopoFvMesh::triFaceCentre
+// Compute the normal for a given face
+inline vector dynamicTopoFvMesh::faceNormal
 (
-    const label fIndex,
-    bool useOldPoints
+    const face& faceToCheck,
+    const UList<point>& points
 ) const
 {
-    return triFaceCentre(faces_[fIndex], useOldPoints);
-}
+    face localFace(faceToCheck.size());
+    pointField localPoints(faceToCheck.size(), vector::zero);
 
-
-// Find the centre of a triangle face
-inline point dynamicTopoFvMesh::triFaceCentre
-(
-    const face& triFace,
-    bool useOldPoints
-) const
-{
-    scalar oT = (1.0/3.0);
-
-    if (useOldPoints)
+    // Fill in local points
+    forAll(localPoints, pointI)
     {
-        return oT *
-        (
-            oldPoints_[triFace[0]]
-          + oldPoints_[triFace[1]]
-          + oldPoints_[triFace[2]]
-        );
+        localFace[pointI] = pointI;
+        localPoints[pointI] = points[faceToCheck[pointI]];
     }
 
-    return oT *
-    (
-        points_[triFace[0]]
-      + points_[triFace[1]]
-      + points_[triFace[2]]
-    );
-}
-
-
-// Find the area of a quad face.
-inline scalar dynamicTopoFvMesh::quadFaceArea
-(
-    const face& quadFace,
-    bool useOldPoints
-) const
-{
-    return Foam::mag(quadFaceNormal(quadFace, useOldPoints));
-}
-
-
-// Find the area of a triangle face.
-// This function also assumes face right-handedness
-inline scalar dynamicTopoFvMesh::triFaceArea
-(
-    const face& triFace,
-    bool useOldPoints
-) const
-{
-    return Foam::mag(triFaceNormal(triFace, useOldPoints));
-}
-
-
-// Find the normal of a quad face.
-// This function also assumes face right-handedness
-inline vector dynamicTopoFvMesh::quadFaceNormal
-(
-    const face& quadFace,
-    bool useOldPoints
-) const
-{
-    vector n = vector::zero, v = vector::zero, w = vector::zero;
-
-    FixedList<point, 4> pts(vector::zero);
-
-    if (useOldPoints)
-    {
-        pts[0] = oldPoints_[quadFace[0]];
-        pts[1] = oldPoints_[quadFace[1]];
-        pts[2] = oldPoints_[quadFace[2]];
-        pts[3] = oldPoints_[quadFace[3]];
-    }
-    else
-    {
-        pts[0] = points_[quadFace[0]];
-        pts[1] = points_[quadFace[1]];
-        pts[2] = points_[quadFace[2]];
-        pts[3] = points_[quadFace[3]];
-    }
-
-    point centrePoint = 0.25*(pts[0] + pts[1] + pts[2] + pts[3]);
-
-    // Add normals from four sub-triangles.
-    v = pts[1] - pts[0];
-    w = centrePoint - pts[1];
-
-    n += 0.5 * (v ^ w);
-
-    v = pts[2] - pts[1];
-    w = centrePoint - pts[2];
-
-    n += 0.5 * (v ^ w);
-
-    v = pts[3] - pts[2];
-    w = centrePoint - pts[3];
-
-    n += 0.5 * (v ^ w);
-
-    v = pts[0] - pts[3];
-    w = centrePoint - pts[0];
-
-    n += 0.5 * (v ^ w);
-
-    return n;
-}
-
-
-// Find the normal of a triangle face.
-// This function also assumes face right-handedness
-inline vector dynamicTopoFvMesh::triFaceNormal
-(
-    const face& triFace,
-    bool useOldPoints
-) const
-{
-    FixedList<point, 3> pts(vector::zero);
-
-    if (useOldPoints)
-    {
-        pts[0] = oldPoints_[triFace[0]];
-        pts[1] = oldPoints_[triFace[1]];
-        pts[2] = oldPoints_[triFace[2]];
-    }
-    else
-    {
-        pts[0] = points_[triFace[0]];
-        pts[1] = points_[triFace[1]];
-        pts[2] = points_[triFace[2]];
-    }
-
-    vector v = pts[1] - pts[0];
-    vector w = pts[2] - pts[0];
-
-    return 0.5 * (v ^ w);
+    return localFace.normal(localPoints);
 }
 
 
@@ -305,219 +150,104 @@ inline label dynamicTopoFvMesh::tetApexPoint
 }
 
 
-// Given a cell index, find the centroid of a prism cell.
-inline vector dynamicTopoFvMesh::prismCellCentre
+// Given a cell index, find the centroid / volume of a cell.
+inline void dynamicTopoFvMesh::cellCentreAndVolume
 (
     const label cIndex,
-    bool useOldPoints
+    const UList<point>& points,
+    vector& centre,
+    scalar& volume
 ) const
 {
-    vector centre = vector::zero;
+    // Reset inputs
+    volume = 0.0;
+    centre = vector::zero;
 
     const cell& cellToCheck = cells_[cIndex];
 
+    // Average face-centres to get an estimate centroid
+    vector cEst = vector::zero;
+
     forAll(cellToCheck, faceI)
     {
-        const face& faceToCheck = faces_[cellToCheck[faceI]];
+        cEst += faceCentre(faces_[cellToCheck[faceI]], points);
+    }
 
-        if (faceToCheck.size() == 3)
+    cEst /= cellToCheck.size();
+
+    forAll(cellToCheck, faceI)
+    {
+        vector fArea = faceNormal(faces_[cellToCheck[faceI]], points);
+        vector fCentre = faceCentre(faces_[cellToCheck[faceI]], points);
+
+        if (owner_[cellToCheck[faceI]] != cIndex)
         {
-            centre += triFaceCentre(faceToCheck, useOldPoints);
+            fArea *= -1.0;
         }
 
-        if (faceToCheck.size() == 4)
+        // Calculate 3*face-pyramid volume
+        scalar pyr3Vol = fArea & (fCentre - cEst);
+
+        // Calculate face-pyramid centre
+        vector pc = (3.0/4.0)*fCentre + (1.0/4.0)*cEst;
+
+        // Accumulate volume-weighted face-pyramid centre
+        centre += pyr3Vol*pc;
+
+        // Accumulate face-pyramid volume
+        volume += pyr3Vol;
+    }
+
+    centre /= volume + VSMALL;
+    volume *= (1.0/3.0);
+}
+
+
+// Utility member function for separating axis tests
+inline label dynamicTopoFvMesh::whichSide
+(
+    const labelList& cellPoints,
+    const UList<point>& points,
+    const point& dir,
+    const point& p
+) const
+{
+    label nP = 0, nN = 0;
+
+    forAll(cellPoints, pointI)
+    {
+        scalar t = (dir & (points[cellPoints[pointI]] - p));
+
+        if (t > 0.0)
         {
-            centre += quadFaceCentre(faceToCheck, useOldPoints);
-        }
-    }
-
-    centre /= cellToCheck.size();
-
-    return centre;
-}
-
-
-// Given a cell index, find the centroid of a tet cell.
-inline vector dynamicTopoFvMesh::tetCellCentre
-(
-    const label cIndex,
-    bool useOldPoints
-) const
-{
-    vector centre = vector::zero;
-
-    const cell& cellToCheck = cells_[cIndex];
-
-    forAll(cellToCheck, faceI)
-    {
-        centre += triFaceCentre(cellToCheck[faceI], useOldPoints);
-    }
-
-    centre /= cellToCheck.size();
-
-    return centre;
-}
-
-
-// Compare two quad faces.
-inline label dynamicTopoFvMesh::quadFaceCompare
-(
-    const face& a,
-    const face& b
-) const
-{
-    if
-    (
-        (a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3])
-     || (a[0] == b[1] && a[1] == b[2] && a[2] == b[3] && a[3] == b[0])
-     || (a[0] == b[2] && a[1] == b[3] && a[2] == b[0] && a[3] == b[1])
-     || (a[0] == b[3] && a[1] == b[0] && a[2] == b[1] && a[3] == b[2])
-    )
-    {
-        // Identical
-        return 1;
-    }
-    else if
-    (
-        (a[0] == b[0] && a[1] == b[3] && a[2] == b[2] && a[3] == b[1])
-     || (a[0] == b[3] && a[1] == b[2] && a[2] == b[1] && a[3] == b[0])
-     || (a[0] == b[2] && a[1] == b[1] && a[2] == b[0] && a[3] == b[3])
-     || (a[0] == b[1] && a[1] == b[0] && a[2] == b[3] && a[3] == b[2])
-    )
-    {
-        // Same face, but reversed orientation
-        return -1;
-    }
-    else
-    {
-        // Faces don't match.
-        return 0;
-    }
-}
-
-
-// Find the volume of a prism cell, given the cell index.
-inline scalar dynamicTopoFvMesh::prismVolume
-(
-    const label cIndex,
-    bool useOldPoints
-) const
-{
-    scalar cVol = 0.0;
-
-    const cell& cellToCheck = cells_[cIndex];
-
-    // Estimate a centroid based on average face centres.
-    vector cEst = prismCellCentre(cIndex, useOldPoints);
-
-    // Calculate 3 * face-pyramid volumes.
-    forAll(cellToCheck, faceI)
-    {
-        scalar pyr3Vol = 0.0;
-
-        const face& fI = faces_[cellToCheck[faceI]];
-
-        scalar fSign = (owner_[cellToCheck[faceI]] == cIndex) ? 1.0 : -1.0;
-
-        if (fI.size() == 3)
-        {
-            pyr3Vol =
-            (
-                triFaceNormal(fI, useOldPoints)
-              & (triFaceCentre(fI, useOldPoints) - cEst)
-            );
+            nP++;
         }
         else
+        if (t < 0.0)
         {
-            pyr3Vol =
-            (
-                quadFaceNormal(fI, useOldPoints)
-              & (quadFaceCentre(fI, useOldPoints) - cEst)
-            );
+            nN++;
         }
 
-        cVol += fSign*pyr3Vol;
+        if (nP && nN)
+        {
+            return 0;
+        }
     }
 
-    cVol *= (1.0/3.0);
-
-    return cVol;
-}
-
-
-// Find the volume of a tetrahedron, given the cell index.
-inline scalar dynamicTopoFvMesh::tetVolume
-(
-    const label cIndex,
-    const UList<point>& meshPoints
-) const
-{
-    const cell& cellToCheck = cells_[cIndex];
-
-    const face& baseFace = faces_[cellToCheck[0]];
-    const face& checkFace = faces_[cellToCheck[1]];
-
-    // Get the fourth point
-    label apexPoint = findIsolatedPoint(baseFace, checkFace);
-
-    // Something's wrong with connectivity.
-    if (apexPoint == -1)
-    {
-        FatalErrorIn("dynamicTopoFvMesh::tetVolume()")
-            << "Cell: " << cIndex
-            << " has inconsistent connectivity."
-            << abort(FatalError);
-    }
-
-    // Compute cell-volume
-    if (owner_[cellToCheck[0]] == cIndex)
-    {
-        return
-        (
-            tetPointRef
-            (
-                meshPoints[baseFace[2]],
-                meshPoints[baseFace[1]],
-                meshPoints[baseFace[0]],
-                meshPoints[apexPoint]
-            ).mag()
-        );
-    }
-    else
-    {
-        return
-        (
-            tetPointRef
-            (
-                meshPoints[baseFace[0]],
-                meshPoints[baseFace[1]],
-                meshPoints[baseFace[2]],
-                meshPoints[apexPoint]
-            ).mag()
-        );
-    }
-
-    // Something's wrong with connectivity.
-    FatalErrorIn("dynamicTopoFvMesh::tetVolume()")
-        << "Cell: " << cIndex
-        << " has inconsistent connectivity."
-        << abort(FatalError);
-
-    return 0.0;
+    return (nP ? 1 : -1);
 }
 
 
 // Determine whether a specified point lies on a segment
 inline bool dynamicTopoFvMesh::segmentPointIntersection
 (
-    const FixedList<vector,2>& segment,
-    const edge& pIndices,
-    const point& checkPoint,
-    const scalar tolFraction
+    const edge& edgeToCheck,
+    const UList<point>& points,
+    const point& checkPoint
 ) const
 {
-    vector te = (segment[1] - segment[0]);
-    vector pe = (checkPoint - segment[0]);
+    vector te = (points[edgeToCheck[1]] - points[edgeToCheck[0]]);
+    vector pe = (checkPoint - points[edgeToCheck[0]]);
 
     // Compute uValue
     scalar u = (pe & pe) / ((pe & te) + VSMALL);
@@ -528,7 +258,7 @@ inline bool dynamicTopoFvMesh::segmentPointIntersection
     te /= magTe + VSMALL;
     pe /= magPe + VSMALL;
 
-    scalar tolerance = tolFraction*magTe;
+    scalar tolerance = 1e-4 * magTe;
 
     // Check if vectors are parallel, and uValue is within range.
     if
@@ -546,114 +276,44 @@ inline bool dynamicTopoFvMesh::segmentPointIntersection
 }
 
 
-// Determine whether a specified point lies on a segment
-inline bool dynamicTopoFvMesh::segmentPointIntersection
+// Determine whether a segment intersects a face
+inline bool dynamicTopoFvMesh::segmentFaceIntersection
 (
-    const FixedList<vector,2>& segment,
-    const edge& pIndices,
-    const label pIndex,
-    const scalar tolFraction,
-    const bool useOldPoints
-) const
-{
-    vector checkPoint;
-
-    if (useOldPoints)
-    {
-        checkPoint = oldPoints_[pIndex];
-    }
-    else
-    {
-        checkPoint = points_[pIndex];
-    }
-
-    return
-    (
-        segmentPointIntersection
-        (
-            segment,
-            pIndices,
-            checkPoint,
-            tolFraction
-        )
-    );
-}
-
-
-// Determine whether a segment intersects a triangular face
-inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
-(
-    const FixedList<vector,2>& segment,
-    const edge& pIndices,
-    const face& triFace,
-    const scalar tolFraction,
-    vector& intersectionPoint,
-    const bool useOldPoints
+    const edge& edgeToCheck,
+    const face& faceToCheck,
+    const UList<point>& points,
+    vector& intersectionPoint
 ) const
 {
     // Specify unit face-normals
-    vector n = triFaceNormal(triFace, useOldPoints);
+    vector n = faceNormal(faceToCheck, points);
     n /= mag(n) + VSMALL;
 
-    vector p1 = segment[0], p2 = segment[1], p3;
-
-    if (useOldPoints)
-    {
-        p3 = oldPoints_[triFace[0]];
-    }
-    else
-    {
-        p3 = points_[triFace[0]];
-    }
+    point p1 = points[edgeToCheck[0]];
+    point p2 = points[edgeToCheck[1]];
+    point p3 = points[faceToCheck[0]];
 
     // Compute uValue
     scalar numerator = n & (p3 - p1);
     scalar denominator = n & (p2 - p1);
 
-    // Specify a tolerance
-    scalar tolerance = tolFraction*mag(p2 - p1);
-
-    if (mag(denominator) < tolerance)
+    // Check if the edge is parallel to the face
+    if (mag(denominator) < VSMALL)
     {
-        if (debug > 4)
-        {
-            WarningIn("dynamicTopoFvMesh::segmentTriFaceIntersection()")
-                << nl << " Segment is parallel to face. " << nl
-                << " pIndices: " << pIndices << nl
-                << " Segment: " << segment << nl
-                << " Face: " << triFace << nl
-                << " tolerance: " << tolerance << nl
-                << endl;
-        }
-
         return false;
     }
 
-    scalar u = numerator / denominator;
+    scalar u = (numerator / denominator);
 
     // Check for intersection along line.
-    if ((u > tolerance) && u < (1.0 - tolerance))
+    if ((u >= 0.0) && (u <= 1.0))
     {
         // Compute point of intersection
-        vector p = p1 + u*(p2 - p1);
+        intersectionPoint = p1 + u*(p2 - p1);
 
-        // Also make sure that 'p' lies within triFace
-        if (pointInTriFace(triFace, p, useOldPoints))
+        // Also make sure that intPoint lies within the face
+        if (pointInFace(faceToCheck, points, intersectionPoint))
         {
-            // Record the intersection point
-            intersectionPoint = p;
-
-            if (debug > 4)
-            {
-                Info << " Segment: " << pIndices << nl
-                     << " Face: " << triFace << nl
-                     << " uValue: " << u << nl
-                     << " IntPoint: " << p << nl
-                     << " tolerance: " << tolerance << nl
-                     << " denominator: " << denominator << nl
-                     << endl;
-            }
-
             return true;
         }
     }
@@ -664,132 +324,76 @@ inline bool dynamicTopoFvMesh::segmentTriFaceIntersection
 
 // Determine whether the particular point lies
 // inside the given face
-inline bool dynamicTopoFvMesh::pointInTriFace
+inline bool dynamicTopoFvMesh::pointInFace
 (
-    const face& triFace,
-    const point& checkPoint,
-    const bool useOldPoints
+    const face& faceToCheck,
+    const UList<point>& points,
+    const point& checkPoint
 ) const
 {
-    FixedList<bool, 3> sign(false);
-    FixedList<vector, 2> segment(vector::zero);
+    vector nf = faceNormal(faceToCheck, points);
+    nf /= mag(nf) + VSMALL;
 
-    forAll(triFace, pI)
+    forAll(faceToCheck, pI)
     {
         vector p, q;
 
-        vector n = triFaceNormal(triFace, useOldPoints);
-
-        n /= mag(n) + VSMALL;
-
-        label nI = triFace.fcIndex(pI);
-
-        if (useOldPoints)
-        {
-            segment[0] = oldPoints_[triFace[pI]];
-            segment[1] = oldPoints_[triFace[nI]];
-        }
-        else
-        {
-            segment[0] = points_[triFace[pI]];
-            segment[1] = points_[triFace[nI]];
-        }
+        label nI = faceToCheck.fcIndex(pI);
 
         // Identify vectors
-        p = (segment[1] - segment[0]);
-        q = (checkPoint - segment[1]);
+        p = (points[faceToCheck[nI]] - points[faceToCheck[pI]]);
+        q = (checkPoint - points[faceToCheck[nI]]);
 
-        scalar area = 0.5 * ((p ^ q) & n);
+        scalar area = 0.5 * ((p ^ q) & nf);
 
-        sign[pI] = (area > 0.0) ? true : false;
+        if (area < 0.0)
+        {
+            return false;
+        }
     }
 
-    if (sign[0] && sign[1] && sign[2])
-    {
-        return true;
-    }
-
-    return false;
+    // Passed test with all edges
+    return true;
 }
 
 
 // Determine whether the particular point lies
-// inside the given tetrahedron
-inline bool dynamicTopoFvMesh::pointInTet
+// inside the given cell
+inline bool dynamicTopoFvMesh::pointInCell
 (
     const label cIndex,
-    const point& checkPoint,
-    const bool useOldConnectivity,
-    const bool useOldPoints
+    const cell& cellToCheck,
+    const UList<face>& faces,
+    const UList<label>& owner,
+    const UList<point>& points,
+    const point& checkPoint
 ) const
 {
-    FixedList<bool, 4> sign(false);
+    vector xf(vector::zero), nf(vector::zero);
 
-    if (useOldConnectivity)
+    forAll(cellToCheck, faceI)
     {
-        const cell& oldCell = polyMesh::cells()[cIndex];
+        xf = faceCentre(faces[cellToCheck[faceI]], points);
+        nf = faceNormal(faces[cellToCheck[faceI]], points);
 
-        forAll(oldCell, faceI)
+        if (((xf - checkPoint) & nf) > 0.0)
         {
-            const face& oldFace = polyMesh::faces()[oldCell[faceI]];
-
-            vector xf = triFaceCentre(oldFace, useOldPoints);
-            vector nf = triFaceNormal(oldFace, useOldPoints);
-
-            label own = polyMesh::faceOwner()[oldCell[faceI]];
-
-            if (((xf - checkPoint) & nf) > 0.0)
+            if (owner[cellToCheck[faceI]] != cIndex)
             {
-                if (own == cIndex)
-                {
-                    sign[faceI] = true;
-                }
-            }
-            else
-            {
-                if (own != cIndex)
-                {
-                    sign[faceI] = true;
-                }
+                return false;
             }
         }
-    }
-    else
-    {
-        const cell& newCell = cells_[cIndex];
-
-        forAll(newCell, faceI)
+        else
         {
-            const face& newFace = faces_[newCell[faceI]];
-
-            vector xf = triFaceCentre(newFace, useOldPoints);
-            vector nf = triFaceNormal(newFace, useOldPoints);
-
-            label own = owner_[newCell[faceI]];
-
-            if (((xf - checkPoint) & nf) > 0.0)
+            if (owner[cellToCheck[faceI]] == cIndex)
             {
-                if (own == cIndex)
-                {
-                    sign[faceI] = true;
-                }
-            }
-            else
-            {
-                if (own != cIndex)
-                {
-                    sign[faceI] = true;
-                }
+                return false;
             }
         }
     }
 
-    if (sign[0] && sign[1] && sign[2] && sign[3])
-    {
-        return true;
-    }
-
-    return false;
+    // Passed test with all faces
+    return true;
 }
 
 
@@ -1108,7 +712,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                 if (neighbour_[eFaces[faceI]] == -1)
                 {
                     // Obtain the normal.
-                    fNorm[count] = triFaceNormal(faces_[eFaces[faceI]]);
+                    fNorm[count] = faceNormal(faces_[eFaces[faceI]], points_);
 
                     // Normalize it.
                     fNorm[count] /= mag(fNorm[count]);
@@ -1122,7 +726,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
             if (mag(deviation) < curvatureDeviation_)
             {
                 // Get the edge-length.
-                scalar length = edgeLength(eIndex);
+                scalar length = edgeLength(edges_[eIndex], points_);
 
                 if (debug > 3 && self() == 0)
                 {
@@ -1157,7 +761,7 @@ inline bool dynamicTopoFvMesh::checkFaceBisection
 ) const
 {
     // Measure the boundary edge-length of the face in question
-    scalar length = edgeLength(getTriBoundaryEdge(fIndex));
+    scalar length = edgeLength(edges_[getTriBoundaryEdge(fIndex)], points_);
 
     // Determine the length-scale at this face
     scalar scale = faceLengthScale(fIndex);
@@ -1180,7 +784,7 @@ inline bool dynamicTopoFvMesh::checkFaceCollapse
 ) const
 {
     // Measure the boundary edge-length of the face in question
-    scalar length = edgeLength(getTriBoundaryEdge(fIndex));
+    scalar length = edgeLength(edges_[getTriBoundaryEdge(fIndex)], points_);
 
     // Determine the length-scale at this face
     scalar scale = faceLengthScale(fIndex);
@@ -1203,7 +807,7 @@ inline bool dynamicTopoFvMesh::checkEdgeBisection
 ) const
 {
     // Measure the edge-length
-    scalar length = edgeLength(eIndex);
+    scalar length = edgeLength(edges_[eIndex], points_);
 
     // Determine the length-scale at this point in the mesh
     scalar scale = edgeLengthScale(eIndex);
@@ -1226,7 +830,7 @@ inline bool dynamicTopoFvMesh::checkEdgeCollapse
 ) const
 {
     // Measure the edge-length
-    scalar length = edgeLength(eIndex);
+    scalar length = edgeLength(edges_[eIndex], points_);
 
     // Determine the length-scale at this point in the mesh
     scalar scale = edgeLengthScale(eIndex);
@@ -1249,18 +853,6 @@ inline bool dynamicTopoFvMesh::checkQuadFace
 ) const
 {
     return (faces_[fIndex].size() == 4);
-}
-
-
-// Compute the length of an edge
-inline scalar dynamicTopoFvMesh::edgeLength
-(
-    const label eIndex
-) const
-{
-    const edge& thisEdge = edges_[eIndex];
-
-    return mag(points_[thisEdge[1]] - points_[thisEdge[0]]);
 }
 
 
@@ -1867,6 +1459,57 @@ inline void dynamicTopoFvMesh::replaceLabel
             << " Label: " << replacement << " was not used in replacement."
             << abort(FatalError);
     }
+}
+
+
+// Method to insert labels in a face, so that
+// right-handedness is preserved.
+inline void dynamicTopoFvMesh::insertPointLabels
+(
+    const vector& refNorm,
+    const vectorField& points,
+    const labelHashSet& pLabels,
+    face& modFace
+) const
+{
+    // Need to configure a new face.
+    face newFace(modFace);
+
+    forAllConstIter(labelHashSet, pLabels, pIter)
+    {
+        forAll(newFace, pI)
+        {
+            label nI = newFace.fcIndex(pI);
+
+            // Compute the normal.
+            vector newNorm =
+            (
+                triPointRef
+                (
+                    points[newFace[pI]],
+                    points[pIter.key()],
+                    points[newFace[nI]]
+                ).normal()
+            );
+
+            if ((refNorm & newNorm) > 0.0)
+            {
+                // Insert the point.
+                insertLabel
+                (
+                    pIter.key(),
+                    newFace[pI],
+                    newFace[nI],
+                    newFace
+                );
+
+                break;
+            }
+        }
+    }
+
+    // Take over storage
+    modFace.transfer(newFace);
 }
 
 

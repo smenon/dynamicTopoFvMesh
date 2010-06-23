@@ -38,6 +38,7 @@ Author
 #include "dynamicTopoFvMesh.H"
 #include "addToRunTimeSelectionTable.H"
 
+#include "IOmanip.H"
 #include "triFace.H"
 #include "clockTime.H"
 #include "mapPolyMesh.H"
@@ -439,66 +440,148 @@ bool dynamicTopoFvMesh::findCommonEdge
 }
 
 
-// Obtain map weighting factors for a tetrahedral cell.
-//  - Returns true when weights are consistent (i.e., sum to 1.0)
-bool dynamicTopoFvMesh::computeTetWeights
+// Obtain map weighting factors for a cell.
+void dynamicTopoFvMesh::computeCellWeights
 (
     const label cIndex,
-    const scalar cellVolume,
-    const labelList& mappingCells,
-    const scalar searchFactor,
+    const labelList& mapCandidates,
     labelList& parents,
-    scalarField& weights
+    scalarField& weights,
+    vectorField& centres
 ) const
 {
-    // Obtain candidate parents for this cell
-    labelList candidates = cellParents(cIndex, searchFactor, mappingCells);
+    scalar searchFactor = 1.2;
 
-    // Track actual intersections
-    label nIntersects = 0;
+    label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
-    // Compute intersection volumes with candidates
-    scalarField intVolumes(candidates.size(), 0.0);
+    // Maintain a list of candidates and intersection points
+    labelList oldCandidates, candidates;
 
-    forAll(candidates, indexI)
+    while (nAttempts < 10)
     {
-        intVolumes[indexI] =
+        // Obtain candidate parents for this cell
+        candidates =
         (
-            tetIntersection
+            cellParents
             (
                 cIndex,
-                candidates[indexI]
+                searchFactor,
+                mapCandidates
             )
         );
 
-        if (intVolumes[indexI] > 0.0)
+        // Set sizes
+        boolList intersects(candidates.size(), false);
+
+        // Test for intersections
+        forAll(candidates, indexI)
         {
-            nIntersects++;
+            intersects[indexI] =
+            (
+                testIntersection
+                (
+                    cIndex,
+                    candidates[indexI]
+                )
+            );
+
+            if (intersects[indexI])
+            {
+                nIntersects++;
+            }
+        }
+
+        if (nIntersects == nOldIntersects)
+        {
+            if (debug > 2)
+            {
+                Info << " Cell: " << cIndex << nl
+                     << " nCandidates: " << candidates.size() << nl
+                     << " nIntersects: " << nIntersects
+                     << endl;
+            }
+
+            // Set sizes
+            parents.setSize(nIntersects, -1);
+            weights.setSize(nIntersects, 0.0);
+            centres.setSize(nIntersects, vector::zero);
+
+            // Reset counter
+            nIntersects = 0;
+
+            forAll(intersects, indexI)
+            {
+                if (intersects[indexI])
+                {
+                    // Compute actual intersections
+                    vectorField tP(0);
+
+                    intersects[indexI] =
+                    (
+                        cellIntersection
+                        (
+                            cIndex,
+                            candidates[indexI],
+                            tP
+                        )
+                    );
+
+                    // Skip false positives
+                    if (tP.size() < 4)
+                    {
+                        continue;
+                    }
+
+                    parents[nIntersects] = candidates[indexI];
+
+                    // Compute weights
+                    convexSetVolume
+                    (
+                        cIndex,
+                        parents[nIntersects],
+                        tP,
+                        weights[nIntersects],
+                        centres[nIntersects]
+                    );
+
+                    nIntersects++;
+                }
+            }
+
+            // Shorten to actual sizes
+            parents.setSize(nIntersects);
+            weights.setSize(nIntersects);
+            centres.setSize(nIntersects);
+
+            break;
+        }
+        else
+        {
+            nAttempts++;
+
+            // Copy / reset parameters
+            nOldIntersects = nIntersects;
+            nIntersects = 0;
+
+            // Expand the search radius and try again.
+            searchFactor *= 1.6;
         }
     }
 
-    // Now copy only valid intersections.
-    parents.setSize(nIntersects, -1);
-    weights.setSize(nIntersects, 0.0);
+    // Fetch the volume of the cell
+    scalar cellVolume = 0.0;
+    vector cellCentre = vector::zero;
 
-    // Reset counter
-    nIntersects = 0;
+    cellCentreAndVolume
+    (
+        cIndex,
+        oldPoints_,
+        cellCentre,
+        cellVolume
+    );
 
-    forAll(intVolumes, indexI)
-    {
-        if (intVolumes[indexI] > 0.0)
-        {
-            parents[nIntersects] = candidates[indexI];
-            weights[nIntersects] = intVolumes[indexI];
-
-            nIntersects++;
-        }
-    }
-
-    // Test the weights for consistency
-    scalarField testWeights = (weights/cellVolume);
-
-    if (mag(1.0 - sum(testWeights)) > 1e-10)
+    // Test weights for consistency
+    if (mag(cellVolume - sum(weights)) > 1e-16)
     {
         // Inconsistent weights. Check whether any edges
         // lie on boundary patches. These cells can have
@@ -522,58 +605,126 @@ bool dynamicTopoFvMesh::computeTetWeights
 
             if (foundBoundary)
             {
-                break;
+                return;
             }
         }
 
-        if (foundBoundary)
-        {
-            // Normalize by sum of intersections
-            weights /= sum(weights);
-        }
-        else
-        {
-            // Weights are inconsistent. Notify caller.
-            weights /= cellVolume;
+        // Write out for post-processing
+        label uIdx = 0;
+        labelList unMatched(candidates.size() - parents.size(), -1);
 
-            return false;
+        forAll(candidates, cI)
+        {
+            if (findIndex(parents, candidates[cI]) == -1)
+            {
+                unMatched[uIdx++] = candidates[cI];
+            }
         }
-    }
-    else
-    {
-        // Normalize by volume
-        weights /= cellVolume;
-    }
 
-    // Return consistent weights
-    return true;
+        writeVTK("nCell_" + Foam::name(cIndex), cIndex, 3, false, true);
+        writeVTK("oCell_" + Foam::name(cIndex), candidates, 3, true, true);
+        writeVTK("mCell_" + Foam::name(cIndex), parents, 3, true, true);
+        writeVTK("uCell_" + Foam::name(cIndex), unMatched, 3, true, true);
+
+        // Write out intersection points
+        forAll(candidates, indexI)
+        {
+            vectorField tP(0);
+
+            cellIntersection
+            (
+                cIndex,
+                candidates[indexI],
+                tP
+            );
+
+            if (tP.size() >= 4)
+            {
+                // Write out intersection points to VTK
+                labelListList cpList(tP.size(), labelList(1));
+
+                forAll(cpList, i)
+                {
+                    cpList[i][0] = i;
+                }
+
+                writeVTK
+                (
+                    "cvxSet_"
+                  + Foam::name(cIndex)
+                  + '<' + Foam::name(candidates[indexI]) + '>',
+                    tP.size(),
+                    tP.size(),
+                    tP.size(),
+                    tP,
+                    cpList,
+                    0
+                );
+
+                // Write out convex set info to screen
+                scalar dummyVolume = 0.0;
+                vector dummyCentre = vector::zero;
+
+                convexSetVolume
+                (
+                    cIndex,
+                    candidates[indexI],
+                    tP,
+                    dummyVolume,
+                    dummyCentre,
+                    true
+                );
+            }
+        }
+
+        // Write out weights
+        forAll(parents, indexI)
+        {
+            Info << parents[indexI] << ": "
+                 << setprecision(16)
+                 << weights[indexI]
+                 << endl;
+        }
+
+        FatalErrorIn
+        (
+            "conservativeMeshToMesh::calcIntersectionAddressing()"
+        )
+            << "Encountered non-conservative weighting factors." << nl
+            << " Cell: " << cIndex << nl
+            << " Candidate parents: " << oldCandidates << nl
+            << " nCandidates: " << candidates.size() << nl
+            << " nParents: " << parents.size() << nl
+            << " nAttempts: " << nAttempts << nl
+            << setprecision(16)
+            << " Cell volume: " << cellVolume << nl
+            << " Sum(Weights): " << sum(weights) << nl
+            << " Error: " << (cellVolume - sum(weights)) << nl
+            << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
+            << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
+            << abort(FatalError);
+    }
 }
 
 
-// Determine the intersection volume between two tetrahedra
-scalar dynamicTopoFvMesh::tetIntersection
+// Test for intersection between cells in old/new meshes
+//   - Uses the static separating axis test for polyhedra,
+//     outlined in work by David Eberly
+//     'Intersection of Convex Objects: The Method of Separating Axes'
+//     http://www.geometrictools.com/
+bool dynamicTopoFvMesh::testIntersection
 (
     const label newCellIndex,
     const label oldCellIndex
 ) const
 {
-    scalar intVol = 0.0, tolFactor = 1e-8;
-
-    // For post-processing purposes, define a name
-    word cvxName
-    (
-        "cvxSet_"
-      + Foam::name(newCellIndex)
-      + '_'
-      + Foam::name(oldCellIndex)
-    );
-
-    bool intersects = false;
+    // Direction vector
+    vector dir(vector::zero);
 
     // Check indices first
     if (newCellIndex >= cells_.size() || newCellIndex < 0)
     {
-        FatalErrorIn("dynamicTopoFvMesh::tetIntersection")
+        FatalErrorIn("dynamicTopoFvMesh::testIntersection")
             << " Wrong newCellIndex: " << newCellIndex << nl
             << " nCells: " << nCells_
             << abort(FatalError);
@@ -581,511 +732,435 @@ scalar dynamicTopoFvMesh::tetIntersection
 
     if (oldCellIndex >= nOldCells_ || oldCellIndex < 0)
     {
-        FatalErrorIn("dynamicTopoFvMesh::tetIntersection")
+        FatalErrorIn("dynamicTopoFvMesh::testIntersection")
             << " Wrong oldCellIndex: " << oldCellIndex << nl
             << " nOldCells: " << nOldCells_
             << abort(FatalError);
     }
 
-    // Fetch connectivity.
-    const cellList& oldCells = polyMesh::cells();
-    const faceList& oldFaces = polyMesh::faces();
+    // Fetch references for each mesh
+    const faceList& fromFaces = polyMesh::faces();
+    const labelList& fromOwner = polyMesh::faceOwner();
+    const cell& fromCell = polyMesh::cells()[oldCellIndex];
+    const edgeList fromCellEdges = fromCell.edges(polyMesh::faces());
+    const labelList fromCellPoints = fromCell.labels(polyMesh::faces());
 
-    const cell& newCell = cells_[newCellIndex];
-    const cell& oldCell = oldCells[oldCellIndex];
+    const cell& toCell = cells_[newCellIndex];
+    const edgeList toCellEdges = toCell.edges(faces_);
+    const labelList toCellPoints = toCell.labels(faces_);
 
-    // Check topologically for common points / edges / faces.
-    // These count as intersections.
-    FixedList<label, 4> oldCellPoints(-1), newCellPoints(-1);
-    FixedList<edge, 6> oldEdges(edge(-1,-1));
-    FixedList<label, 6> newEdges(-1);
-
-    const face& oldBaseFace = oldFaces[oldCell[0]];
-    const face& newBaseFace = faces_[newCell[0]];
-
-    label oldApex =
-    (
-        findIsolatedPoint
-        (
-            oldBaseFace,
-            oldFaces[oldCell[1]]
-        )
-    );
-
-    label newApex =
-    (
-        findIsolatedPoint
-        (
-            newBaseFace,
-            faces_[newCell[1]]
-        )
-    );
-
-    // Build the old / new points list
-    oldCellPoints[0] = oldBaseFace[0];
-    oldCellPoints[1] = oldBaseFace[1];
-    oldCellPoints[2] = oldBaseFace[2];
-    oldCellPoints[3] = oldApex;
-
-    newCellPoints[0] = newBaseFace[0];
-    newCellPoints[1] = newBaseFace[1];
-    newCellPoints[2] = newBaseFace[2];
-    newCellPoints[3] = newApex;
-
-    // Build the old edge list
-    oldEdges[0] = edge(oldBaseFace[0], oldBaseFace[1]);
-    oldEdges[1] = edge(oldBaseFace[1], oldBaseFace[2]);
-    oldEdges[2] = edge(oldBaseFace[2], oldBaseFace[0]);
-    oldEdges[3] = edge(oldBaseFace[0], oldApex);
-    oldEdges[4] = edge(oldBaseFace[1], oldApex);
-    oldEdges[5] = edge(oldBaseFace[2], oldApex);
-
-    // Get a list of edge indices for the new cell.
-    label nEdg = 0;
-
-    forAll(newCell, fI)
+    // Test faces of oldCell for separation
+    forAll(fromCell, faceI)
     {
-        const labelList& fEdges = faceEdges_[newCell[fI]];
+        const label fIndex = fromCell[faceI];
 
-        forAll(fEdges, edgeI)
+        dir = faceNormal(fromFaces[fIndex], oldPoints_);
+
+        // Reverse normal if necessary
+        if (fromOwner[fIndex] != oldCellIndex)
         {
-            if (findIndex(newEdges, fEdges[edgeI]) == -1)
-            {
-                newEdges[nEdg++] = fEdges[edgeI];
-            }
+            dir *= -1.0;
         }
 
-        if (nEdg == 6)
-        {
-            break;
-        }
-    }
-
-    // Track all possible intersections from here on.
-    label nInts = 0;
-    vectorField tP(0);
-    vector intPoint = vector::zero;
-    FixedList<vector,2> segment(vector::zero);
-
-    // Check whether any old points are within
-    // the new cell. Count these as 'intersections'.
-    bool allCommon = true;
-
-    forAll(oldCellPoints, pI)
-    {
-        bool foundUnique = true;
-
-        forAll(newCellPoints, pJ)
-        {
-            if (oldCellPoints[pI] == newCellPoints[pJ])
-            {
-                foundUnique = false;
-                break;
-            }
-        }
-
-        if (foundUnique)
-        {
-            const point& checkPoint = oldPoints_[oldCellPoints[pI]];
-
-            if (pointInTet(newCellIndex, checkPoint, false, true))
-            {
-                sizeUpList(checkPoint, tP);
-
-                nInts++;
-            }
-
-            // Set the flag
-            allCommon = false;
-        }
-    }
-
-    if (allCommon)
-    {
-        // Looks like this cell is identical to the old cell.
-        tP.setSize(4, vector::zero);
-
-        forAll(newCellPoints, pI)
-        {
-            tP[pI] = oldPoints_[newCellPoints[pI]];
-        }
-
-        // Compute intersection volume.
-        intVol =
+        if
         (
-            convexSetVolume
+            whichSide
             (
-                cvxName,
-                tolFactor,
-                tP
-            )
+                toCellPoints,
+                oldPoints_,
+                dir,
+                oldPoints_[fromFaces[fIndex][0]]
+            ) > 0
+        )
+        {
+            return false;
+        }
+    }
+
+    // Test faces of newCell for separation
+    forAll(toCell, faceI)
+    {
+        const label fIndex = toCell[faceI];
+
+        dir = faceNormal(faces_[fIndex], oldPoints_);
+
+        // Reverse normal if necessary
+        if (owner_[fIndex] != newCellIndex)
+        {
+            dir *= -1.0;
+        }
+
+        if
+        (
+            whichSide
+            (
+                fromCellPoints,
+                oldPoints_,
+                dir,
+                oldPoints_[faces_[fIndex][0]]
+            ) > 0
+        )
+        {
+            return false;
+        }
+    }
+
+    // Test edges of both cells for separation
+    forAll(fromCellEdges, edgeI)
+    {
+        const edge& fromEdge = fromCellEdges[edgeI];
+
+        vector fromVec =
+        (
+            oldPoints_[fromEdge[1]] - oldPoints_[fromEdge[0]]
         );
 
-        intersects = true;
-
-        return intVol;
-    }
-
-    // Common flags
-    bool foundCommonFace = false;
-    bool foundCommonEdge = false;
-    bool foundCommonPoint = false;
-
-    // Check for a common face.
-    // Note that two common faces cannot occur,
-    // since we've already checked points.
-    label nCo = 0, nCn = 0;
-    FixedList<label, 3> commonOldEdgeIndices(-1);
-    FixedList<label, 3> commonNewEdgeIndices(-1);
-
-    forAll(oldCell, faceI)
-    {
-        const face& oldFace = oldFaces[oldCell[faceI]];
-
-        forAll(newCell, faceJ)
+        forAll(toCellEdges, edgeJ)
         {
-            const face& newFace = faces_[newCell[faceJ]];
+            const edge& toEdge = toCellEdges[edgeJ];
 
-            if (triFace::compare(triFace(oldFace), triFace(newFace)))
-            {
-                // Fill in first three points from the common face.
-                const face& commonFace = faces_[newCell[faceJ]];
-
-                // Add to the list.
-                forAll(commonFace, pI)
-                {
-                    sizeUpList(oldPoints_[commonFace[pI]], tP);
-                }
-
-                nInts += 3;
-
-                foundCommonFace = true;
-
-                // Also identify common edges.
-                const labelList& fEdges = faceEdges_[newCell[faceJ]];
-
-                forAll(fEdges, edgeI)
-                {
-                    forAll(oldEdges, edgeJ)
-                    {
-                        if (oldEdges[edgeJ] == edges_[fEdges[edgeI]])
-                        {
-                            commonOldEdgeIndices[nCo++] = edgeJ;
-                            commonNewEdgeIndices[nCn++] = fEdges[edgeI];
-
-                            break;
-                        }
-                    }
-                }
-
-                break;
-            }
-        }
-
-        if (foundCommonFace)
-        {
-            break;
-        }
-    }
-
-    // Check for one common edge.
-    // Note that two common edges cannot occur,
-    // since we've already checked faces.
-    if (!foundCommonFace)
-    {
-        forAll(newEdges, edgeI)
-        {
-            forAll(oldEdges, edgeJ)
-            {
-                if (oldEdges[edgeJ] == edges_[newEdges[edgeI]])
-                {
-                    commonOldEdgeIndices[nCo++] = edgeJ;
-                    commonNewEdgeIndices[nCn++] = newEdges[edgeI];
-
-                    // Fill in first two points from the common edge.
-                    const edge& commonEdge = edges_[newEdges[edgeI]];
-
-                    // Add to the list.
-                    forAll(commonEdge, pI)
-                    {
-                        sizeUpList(oldPoints_[commonEdge[pI]], tP);
-                    }
-
-                    nInts += 2;
-
-                    foundCommonEdge = true;
-
-                    break;
-                }
-            }
-
-            if (foundCommonEdge)
-            {
-                break;
-            }
-        }
-    }
-
-    // If a common edge wasn't found, look for a common point.
-    // Obviously, two common points cannot occur,
-    // since we've already checked edges.
-    if (!foundCommonFace && !foundCommonEdge)
-    {
-        forAll(newCellPoints, pointI)
-        {
-            forAll(oldCellPoints, pointJ)
-            {
-                if (oldCellPoints[pointJ] == newCellPoints[pointI])
-                {
-                    // Add the common point to the list.
-                    sizeUpList(oldPoints_[oldCellPoints[pointJ]], tP);
-
-                    nInts++;
-
-                    foundCommonPoint = true;
-
-                    break;
-                }
-            }
-
-            if (foundCommonPoint)
-            {
-                break;
-            }
-        }
-    }
-
-    // Loop through all new edges, and find possible intersections.
-    forAll(newEdges, edgeI)
-    {
-        // Avoid common edges.
-        if (findIndex(commonNewEdgeIndices, newEdges[edgeI]) > -1)
-        {
-            continue;
-        }
-
-        const edge& edgeToCheck = edges_[newEdges[edgeI]];
-
-        // Deal with segment-point intersections first.
-        bool foundIntersection = false;
-
-        forAll(oldCellPoints, pI)
-        {
-            // Skip common points
-            if
+            vector toVec =
             (
-                (oldCellPoints[pI] == edgeToCheck[0]) ||
-                (oldCellPoints[pI] == edgeToCheck[1])
-            )
+                oldPoints_[toEdge[1]] - oldPoints_[toEdge[0]]
+            );
+
+            dir = (fromVec ^ toVec);
+
+            label firstSide =
+            (
+                whichSide
+                (
+                    fromCellPoints,
+                    oldPoints_,
+                    dir,
+                    oldPoints_[fromEdge[0]]
+                )
+            );
+
+            if (firstSide == 0)
             {
                 continue;
             }
 
-            segment[0] = oldPoints_[edgeToCheck[0]];
-            segment[1] = oldPoints_[edgeToCheck[1]];
-
-            foundIntersection =
+            label secondSide =
             (
-                segmentPointIntersection
+                whichSide
                 (
-                    segment,
-                    edgeToCheck,
-                    oldCellPoints[pI],
-                    tolFactor,
-                    true
+                    toCellPoints,
+                    oldPoints_,
+                    dir,
+                    oldPoints_[fromEdge[0]]
                 )
             );
 
-            if (foundIntersection)
+            if (secondSide == 0)
             {
-                // Add to the list.
-                sizeUpList(oldPoints_[oldCellPoints[pI]], tP);
+                continue;
+            }
 
-                nInts++;
-
-                break;
+            if ((firstSide * secondSide) < 0)
+            {
+                return false;
             }
         }
+    }
 
-        if (!foundIntersection)
+    return true;
+}
+
+
+// Return the intersection points between cells in old/new meshes
+bool dynamicTopoFvMesh::cellIntersection
+(
+    const label newCellIndex,
+    const label oldCellIndex,
+    vectorField& tP
+) const
+{
+    // Reset inputs
+    tP.clear();
+
+    // Fetch references for each mesh
+    const cell& fromCell = polyMesh::cells()[oldCellIndex];
+    const edgeList fromCellEdges = fromCell.edges(polyMesh::faces());
+    const labelList fromCellPoints = fromCell.labels(polyMesh::faces());
+
+    const cell& toCell = cells_[newCellIndex];
+    const edgeList toCellEdges = toCell.edges(faces_);
+    const labelList toCellPoints = toCell.labels(faces_);
+
+    // Track all possible intersections from here on.
+    label nInts = 0;
+    Map<vector> intersections;
+    vector intPoint = vector::zero;
+
+    // Topologically check for common points
+    labelHashSet commonPoints;
+
+    forAll(fromCellPoints, pointI)
+    {
+        forAll(toCellPoints, pointJ)
         {
-            forAll(oldCell, fI)
+            if (fromCellPoints[pointI] == toCellPoints[pointJ])
             {
-                const face& oldCheckFace = oldFaces[oldCell[fI]];
+                commonPoints.insert(toCellPoints[pointJ]);
 
-                // Ensure that face doesn't contain edgeToCheck
-                if
-                (
-                    (oldCheckFace.which(edgeToCheck[0]) > -1) &&
-                    (oldCheckFace.which(edgeToCheck[1]) > -1)
-                )
-                {
-                    continue;
-                }
-
-                segment[0] = oldPoints_[edgeToCheck[0]];
-                segment[1] = oldPoints_[edgeToCheck[1]];
-
-                // Reset flag
-                foundIntersection = false;
-
-                foundIntersection =
-                (
-                    segmentTriFaceIntersection
-                    (
-                        segment,
-                        edgeToCheck,
-                        oldCheckFace,
-                        tolFactor,
-                        intPoint,
-                        true
-                    )
-                );
-
-                if (foundIntersection)
-                {
-                    // Add to the list.
-                    sizeUpList(intPoint, tP);
-
-                    nInts++;
-                }
+                intersections.set(++nInts, oldPoints_[toCellPoints[pointJ]]);
             }
+        }
+    }
+
+    // If all points are common, this is identical to the old cell.
+    if (nInts == fromCellPoints.size())
+    {
+        // Copy intersections
+        tP.setSize(nInts, vector::zero);
+
+        nInts = 0;
+
+        forAllConstIter(Map<vector>, intersections, pI)
+        {
+            tP[nInts++] = pI();
+        }
+
+        return true;
+    }
+
+    // Check whether any old points are within
+    // the new cell. Count these as 'intersections'.
+    forAll(fromCellPoints, pointI)
+    {
+        if (commonPoints.found(fromCellPoints[pointI]))
+        {
+            continue;
+        }
+
+        const point& checkPoint = oldPoints_[fromCellPoints[pointI]];
+
+        if
+        (
+            pointInCell
+            (
+                newCellIndex,
+                toCell,
+                faces_,
+                owner_,
+                oldPoints_,
+                checkPoint
+            )
+        )
+        {
+            intersections.set(++nInts, checkPoint);
+        }
+    }
+
+    bool foundIntersection = false;
+
+    // Check whether any new points are within
+    // the old cell. Count these as 'intersections'.
+    forAll(toCellPoints, pointI)
+    {
+        if (commonPoints.found(toCellPoints[pointI]))
+        {
+            continue;
+        }
+
+        const point& checkPoint = oldPoints_[toCellPoints[pointI]];
+
+        if
+        (
+            pointInCell
+            (
+                oldCellIndex,
+                fromCell,
+                polyMesh::faces(),
+                polyMesh::faceOwner(),
+                oldPoints_,
+                checkPoint
+            )
+        )
+        {
+            intersections.set(++nInts, checkPoint);
         }
     }
 
     // Loop through all old edges, and find possible
-    // intersections with new cell faces.
-    forAll(oldEdges, edgeI)
+    // intersections with faces of the new cell.
+    forAll(fromCellEdges, edgeI)
     {
-        // Avoid common edges.
-        if (findIndex(commonOldEdgeIndices, edgeI) > -1)
+        const edge& edgeToCheck = fromCellEdges[edgeI];
+
+        forAll(toCell, faceI)
         {
-            continue;
-        }
+            // Avoid common points, since this implies that
+            // the edge intersects at a face point
+            const face& faceToCheck = faces_[toCell[faceI]];
 
-        const edge& edgeToCheck = oldEdges[edgeI];
+            bool foundCommon = false;
 
-        // Deal with segment-point intersections first.
-        bool foundIntersection = false;
+            forAllConstIter(labelHashSet, commonPoints, pIter)
+            {
+                if (faceToCheck.which(pIter.key()) > -1)
+                {
+                    if
+                    (
+                        (edgeToCheck[0] == pIter.key()) ||
+                        (edgeToCheck[1] == pIter.key())
+                    )
+                    {
+                        foundCommon = true;
+                        break;
+                    }
+                }
+            }
 
-        forAll(newCellPoints, pI)
-        {
-            // Skip common points
-            if
-            (
-                (newCellPoints[pI] == edgeToCheck[0]) ||
-                (newCellPoints[pI] == edgeToCheck[1])
-            )
+            if (foundCommon)
             {
                 continue;
             }
 
-            segment[0] = oldPoints_[edgeToCheck[0]];
-            segment[1] = oldPoints_[edgeToCheck[1]];
+            foundIntersection = false;
 
             foundIntersection =
             (
-                segmentPointIntersection
+                segmentFaceIntersection
                 (
-                    segment,
                     edgeToCheck,
-                    newCellPoints[pI],
-                    tolFactor,
-                    true
+                    faceToCheck,
+                    oldPoints_,
+                    intPoint
                 )
             );
 
             if (foundIntersection)
             {
                 // Add to the list.
-                sizeUpList(oldPoints_[newCellPoints[pI]], tP);
-
-                nInts++;
-
-                break;
-            }
-        }
-
-        if (!foundIntersection)
-        {
-            forAll(newCell, fI)
-            {
-                const face& newCheckFace = faces_[newCell[fI]];
-
-                // Ensure that face doesn't contain edgeToCheck
-                if
-                (
-                    (newCheckFace.which(edgeToCheck[0]) > -1) &&
-                    (newCheckFace.which(edgeToCheck[1]) > -1)
-                )
-                {
-                    continue;
-                }
-
-                segment[0] = oldPoints_[edgeToCheck[0]];
-                segment[1] = oldPoints_[edgeToCheck[1]];
-
-                // Reset flag
-                foundIntersection = false;
-
-                foundIntersection =
-                (
-                    segmentTriFaceIntersection
-                    (
-                        segment,
-                        edgeToCheck,
-                        newCheckFace,
-                        tolFactor,
-                        intPoint,
-                        true
-                    )
-                );
-
-                if (foundIntersection)
-                {
-                    // Add to the list.
-                    sizeUpList(intPoint, tP);
-
-                    nInts++;
-                }
+                intersections.set(++nInts, intPoint);
             }
         }
     }
 
-    // Found a polyhedral intersecting volume.
-    // Compute the volume from points and return.
+    // Loop through all new edges, and find possible
+    // intersections with faces of the old cell.
+    forAll(toCellEdges, edgeI)
+    {
+        const edge& edgeToCheck = toCellEdges[edgeI];
+
+        forAll(fromCell, faceI)
+        {
+            // Avoid common points, since this implies that
+            // the edge intersects at a face point
+            const face& faceToCheck = polyMesh::faces()[fromCell[faceI]];
+
+            bool foundCommon = false;
+
+            forAllConstIter(labelHashSet, commonPoints, pIter)
+            {
+                if (faceToCheck.which(pIter.key()) > -1)
+                {
+                    if
+                    (
+                        (edgeToCheck[0] == pIter.key()) ||
+                        (edgeToCheck[1] == pIter.key())
+                    )
+                    {
+                        foundCommon = true;
+                        break;
+                    }
+                }
+            }
+
+            if (foundCommon)
+            {
+                continue;
+            }
+
+            foundIntersection = false;
+
+            foundIntersection =
+            (
+                segmentFaceIntersection
+                (
+                    edgeToCheck,
+                    faceToCheck,
+                    oldPoints_,
+                    intPoint
+                )
+            );
+
+            if (foundIntersection)
+            {
+                // Add to the list.
+                intersections.set(++nInts, intPoint);
+            }
+        }
+    }
+
+    // Copy intersections
+    tP.setSize(nInts, vector::zero);
+
+    nInts = 0;
+
+    forAllConstIter(Map<vector>, intersections, pI)
+    {
+        tP[nInts++] = pI();
+    }
+
+    // Found a convex set of points.
     if (nInts >= 4)
     {
-        intVol =
+        return true;
+    }
+
+    // Does not intersect
+    return false;
+}
+
+
+// Compute the volume / centre of a polyhedron
+// formed by a convex set of points.
+void dynamicTopoFvMesh::convexSetVolume
+(
+    const label newCellIndex,
+    const label oldCellIndex,
+    const vectorField& cvxSet,
+    scalar& cVolume,
+    vector& cCentre,
+    bool output
+) const
+{
+    // Reset inputs
+    cVolume = 0.0;
+    cCentre = vector::zero;
+
+    // Try the trivial case for a tetrahedron.
+    // No checking for orientation here.
+    if (cvxSet.size() == 4)
+    {
+        cCentre = average(cvxSet);
+
+        cVolume =
         (
-            convexSetVolume
+            mag
             (
-                cvxName,
-                tolFactor,
-                tP
+                tetPointRef
+                (
+                    cvxSet[0],
+                    cvxSet[1],
+                    cvxSet[2],
+                    cvxSet[3]
+                ).mag()
             )
         );
 
-        intersects = true;
+        return;
     }
 
-    // Return intersection volume.
-    return intVol;
-}
-
-// Compute the volume of a polyhedron
-// formed by a convex set of points.
-scalar dynamicTopoFvMesh::convexSetVolume
-(
-    const word& cvxSetName,
-    const scalar tolFraction,
-    const vectorField& cvxSet
-) const
-{
-    scalar cVol = 0.0;
+    // Track faces
     face tmpFace(3);
-
-    DynamicList<face> testFaces(10);
+    label nFaces = 0;
+    faceList testFaces(0);
+    labelHashSet uniquePts;
 
     // Loop through all points, and build faces with every
     // other point in the set
@@ -1112,86 +1187,70 @@ scalar dynamicTopoFvMesh::convexSetVolume
                 tmpFace[1] = j;
                 tmpFace[2] = k;
 
+                // Quick-reject test:
+                //   If this is a subset of an existing face, skip it.
+                bool foundSubSet = false;
+
+                forAll(testFaces, faceI)
+                {
+                    const face& checkFace = testFaces[faceI];
+
+                    if (checkFace.size() >= tmpFace.size())
+                    {
+                        bool foundUniquePoint = false;
+
+                        forAll(tmpFace, pI)
+                        {
+                            if (findIndex(checkFace, tmpFace[pI]) == -1)
+                            {
+                                foundUniquePoint = true;
+                                break;
+                            }
+                        }
+
+                        if (!foundUniquePoint)
+                        {
+                            foundSubSet = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundSubSet)
+                {
+                    continue;
+                }
+
+                // Specify a tolerance for planarity
+                scalar tolerance = 1e-14;
+
                 // Compute the normal to this face
                 vector n = tmpFace.normal(cvxSet);
 
                 n /= mag(n) + VSMALL;
 
-                // Include all other co-planar points
-                forAll(cvxSet, l)
-                {
-                    // Skip duplicates.
-                    if (findIndex(tmpFace, l) > -1)
-                    {
-                        continue;
-                    }
-
-                    vector rfVec = (cvxSet[l] - cvxSet[i]);
-                    scalar dotProd = (rfVec/mag(rfVec)) & n;
-
-                    if (mag(dotProd) < tolFraction*mag(rfVec))
-                    {
-                        // Need to configure a new face.
-                        face newFace(3);
-                        bool foundLocation = false;
-
-                        forAll(tmpFace, pI)
-                        {
-                            label nI = tmpFace.fcIndex(pI);
-
-                            newFace[0] = tmpFace[pI];
-                            newFace[1] = l;
-                            newFace[2] = tmpFace[nI];
-
-                            // Compute the normal.
-                            vector nNew = newFace.normal(cvxSet);
-
-                            if ((n & nNew) > 0.0)
-                            {
-                                // Insert the point.
-                                insertLabel
-                                (
-                                    l,
-                                    tmpFace[pI],
-                                    tmpFace[nI],
-                                    tmpFace
-                                );
-
-                                foundLocation = true;
-
-                                break;
-                            }
-                        }
-
-                        if (!foundLocation)
-                        {
-                            FatalErrorIn
-                            (
-                                "label dynamicTopoFvMesh::convexSetVolume()"
-                            )   << "Cannot find appropriate configuration."
-                                << nl << "Face: " << tmpFace.points(cvxSet)
-                                << nl << " with point: " << cvxSet[l]
-                                << nl << " Set: " << cvxSet
-                                << abort(FatalError);
-                        }
-                    }
-                }
-
                 label curFaceSign = 0;
                 bool foundInternalFace = false;
 
-                // Check all other points in the set,
-                // and decide if all points lie on one side.
+                // Quick-reject test:
+                //   Check all other points in the set,
+                //   and decide if all points lie on one side.
                 forAll(cvxSet, l)
                 {
                     // Skip duplicates.
-                    if (findIndex(tmpFace, l) > -1)
+                    if (tmpFace[0] == l || tmpFace[1] == l || tmpFace[2] == l)
                     {
                         continue;
                     }
 
                     vector rfVec = (cvxSet[l] - cvxSet[i]);
-                    scalar dotProd = (rfVec/mag(rfVec)) & n;
+                    scalar dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
+
+                    // Skip nearly co-planar points.
+                    if (mag(dotProd) < tolerance)
+                    {
+                        continue;
+                    }
 
                     // Obtain the sign of this point.
                     label fSign = Foam::sign(dotProd);
@@ -1210,34 +1269,100 @@ scalar dynamicTopoFvMesh::convexSetVolume
                     }
                 }
 
-                if (!foundInternalFace)
+                if (foundInternalFace)
                 {
-                    // Looks like we found a face on the boundary.
-                    // Check its sign to ensure that it points outward.
-                    if (curFaceSign == 1)
+                    continue;
+                }
+
+                // Looks like we found a face on the boundary.
+                // Check its sign to ensure that it points outward.
+                if (curFaceSign == 1)
+                {
+                    n *= -1.0;
+                    tmpFace = tmpFace.reverseFace();
+                }
+
+                // Ensure that the face wasn't checked in.
+                bool alreadyCheckedIn = false;
+
+                forAll(testFaces, faceI)
+                {
+                    // Fetch a non-const reference, since this face
+                    // might be modified in this loop.
+                    face& checkFace = testFaces[faceI];
+
+                    label nCommon = 0;
+
+                    uniquePts.clear();
+
+                    forAll(tmpFace, pI)
                     {
-                        tmpFace = tmpFace.reverseFace();
+                        if (findIndex(checkFace, tmpFace[pI]) > -1)
+                        {
+                            nCommon++;
+                        }
+                        else
+                        {
+                            uniquePts.insert(tmpFace[pI]);
+                        }
                     }
 
-                    // Ensure that the face wasn't checked in.
-                    bool alreadyCheckedIn = false;
-
-                    forAll(testFaces, faceI)
+                    if (nCommon >= 2)
                     {
-                        const face& checkFace = testFaces[faceI];
-
-                        if (face::compare(tmpFace, checkFace))
+                        if (checkFace.size() >= tmpFace.size())
                         {
+                            // Check for unique points
+                            if (uniquePts.size() > 0)
+                            {
+                                // Compute the existing normal
+                                vector eNorm = checkFace.normal(cvxSet);
+
+                                scalar dotProd =
+                                (
+                                    n & (eNorm/(mag(eNorm) + VSMALL))
+                                );
+
+                                if
+                                (
+                                    (mag(1.0 - dotProd) < tolerance) &&
+                                    (dotProd > 0.0)
+                                )
+                                {
+                                    // Add all unique points to checkFace
+                                    insertPointLabels
+                                    (
+                                        n,
+                                        cvxSet,
+                                        uniquePts,
+                                        checkFace
+                                    );
+
+                                    alreadyCheckedIn = true;
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                // Subset face
+                                alreadyCheckedIn = true;
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            // checkFace is a subset. Replace it.
+                            checkFace = tmpFace;
+
                             alreadyCheckedIn = true;
                             break;
                         }
                     }
+                }
 
-                    // Add this face to the list of faces.
-                    if (!alreadyCheckedIn)
-                    {
-                        testFaces.append(tmpFace);
-                    }
+                // Add this face to the list of faces.
+                if (!alreadyCheckedIn)
+                {
+                    testFaces.setSize(++nFaces, tmpFace);
                 }
 
                 // Reset the face size.
@@ -1246,128 +1371,149 @@ scalar dynamicTopoFvMesh::convexSetVolume
         }
     }
 
-    // Weed-out faces that are sub-sets of larger faces
-    label nFaces = 0;
-    faceList cellFaces(testFaces.size());
-
+    // Account for planarity test failure.
+    //  - Check for subsets.
     forAll(testFaces, faceI)
     {
-        bool subset = false;
+        // Fetch a non-const reference, since this face
+        // might be modified in this loop.
+        face& checkFace = testFaces[faceI];
 
-        const face& checkFace = testFaces[faceI];
+        // Account for deleted testFaces
+        if (checkFace.empty())
+        {
+            continue;
+        }
+
+        // Compute the normal to this face
+        vector n = checkFace.normal(cvxSet);
 
         forAll(testFaces, faceJ)
         {
-            const face& testFace = testFaces[faceJ];
-
-            if (testFace.size() > checkFace.size())
+            if (faceI == faceJ)
             {
-                bool foundUniquePoint = false;
+                continue;
+            }
 
-                forAll(checkFace, pI)
+            // Fetch a non-const reference, since this face
+            // might be modified in this loop.
+            face& testFace = testFaces[faceJ];
+
+            if (checkFace.size() >= testFace.size())
+            {
+                label nCommon = 0;
+
+                uniquePts.clear();
+
+                forAll(testFace, pI)
                 {
-                    if (findIndex(testFace, checkFace[pI]) == -1)
+                    if (findIndex(checkFace, testFace[pI]) > -1)
                     {
-                        foundUniquePoint = true;
-                        break;
+                        nCommon++;
+                    }
+                    else
+                    {
+                        uniquePts.insert(testFace[pI]);
                     }
                 }
 
-                if (!foundUniquePoint)
+                if (nCommon >= 3)
                 {
-                    subset = true;
-                    break;
+                    // Delete the test face
+                    testFace.clear();
+
+                    // Add all unique points to checkFace
+                    // Failed the tolerance test before,
+                    // so don't check for it now
+                    if (uniquePts.size())
+                    {
+                        insertPointLabels
+                        (
+                            n,
+                            cvxSet,
+                            uniquePts,
+                            checkFace
+                        );
+                    }
                 }
             }
         }
-
-        if (!subset)
-        {
-            cellFaces[nFaces++] = testFaces[faceI];
-        }
     }
 
-    // Set to actual size
-    cellFaces.setSize(nFaces);
-
-    // Find cell-centroid
+    // Find an approximate cell-centroid
     vector xC = average(cvxSet);
 
     // Calculate volume from all accumulated faces.
-    forAll(cellFaces, faceI)
+    forAll(testFaces, faceI)
     {
-        const face& checkFace = cellFaces[faceI];
+        const face& checkFace = testFaces[faceI];
+
+        if (checkFace.empty())
+        {
+            continue;
+        }
 
         vector xF = checkFace.centre(cvxSet);
         vector Sf = checkFace.normal(cvxSet);
 
-        cVol += Sf & (xF - xC);
+        // Calculate 3*face-pyramid volume
+        scalar pyr3Vol = Sf & (xF - xC);
+
+        // Calculate face-pyramid centre
+        vector pc = (3.0/4.0)*xF + (1.0/4.0)*xC;
+
+        // Accumulate volume-weighted face-pyramid centre
+        cCentre += pyr3Vol*pc;
+
+        // Accumulate face-pyramid volume
+        cVolume += pyr3Vol;
     }
 
-    cVol *= (1.0/3.0);
+    cCentre /= cVolume + VSMALL;
+    cVolume *= (1.0/3.0);
 
-    if (debug > 4)
+    if (output)
     {
-        // Write out points for post-processing
-        labelListList cpList(cvxSet.size(), labelList(1));
-
-        forAll(cpList, i)
-        {
-            cpList[i][0] = i;
-        }
-
-        writeVTK
-        (
-            cvxSetName,
-            cvxSet.size(),
-            cvxSet.size(),
-            cvxSet.size(),
-            cvxSet,
-            cpList,
-            0
-        );
-
-        Info << " Convex set: " << cvxSetName
-             << " cellFaces: " << cellFaces
-             << " Volume: " << cVol
+        Info << " newCellIndex: " << newCellIndex
+             << " oldCellIndex: " << oldCellIndex << nl
+             << " Faces: " << testFaces << nl
+             << " Volume: " << cVolume << nl
+             << " Centre: " << cCentre << nl
              << endl;
     }
-
-    // Return the computed volume.
-    return cVol;
 }
 
 
 // Obtain a list of possible parent cells from the old mesh.
 labelList dynamicTopoFvMesh::cellParents
 (
-    const label newCellIndex,
+    const label cIndex,
     const scalar searchFactor,
-    const labelList& mappingCells
+    const labelList& oldCandidates
 ) const
 {
-    labelHashSet masterCells, finalCells;
+    labelList finalCells;
+    labelHashSet masterCells;
 
     // Fetch connectivity from the old mesh.
-    const cellList& cells = polyMesh::cells();
-    const labelList& owner = polyMesh::faceOwner();
-    const labelList& neighbour = polyMesh::faceNeighbour();
+    const labelListList& fromCellCells = polyMesh::cellCells();
 
-    forAll(mappingCells, cellI)
+    // Insert the old candidates first
+    forAll(oldCandidates, cellI)
     {
-        if (mappingCells[cellI] < 0)
+        if (oldCandidates[cellI] < 0)
         {
             continue;
         }
 
-        if (mappingCells[cellI] < nOldCells_)
+        if (oldCandidates[cellI] < nOldCells_)
         {
-            masterCells.set(mappingCells[cellI], empty());
+            masterCells.set(oldCandidates[cellI], empty());
         }
         else
-        if (cellParents_.found(mappingCells[cellI]))
+        if (cellParents_.found(oldCandidates[cellI]))
         {
-            const labelList& nParents = cellParents_[mappingCells[cellI]];
+            const labelList& nParents = cellParents_[oldCandidates[cellI]];
 
             forAll(nParents, cI)
             {
@@ -1376,7 +1522,7 @@ labelList dynamicTopoFvMesh::cellParents
         }
     }
 
-    for (label attempt = 0; attempt < 5; attempt++)
+    for (label attempt = 0; attempt < 10; attempt++)
     {
         // Fetch the initial set of candidates
         labelList initList = masterCells.toc();
@@ -1384,47 +1530,25 @@ labelList dynamicTopoFvMesh::cellParents
         // Accumulate a larger stencil of cell neighbours
         forAll(initList, indexI)
         {
-            label cellIndex = initList[indexI];
+            const labelList& cc = fromCellCells[initList[indexI]];
 
-            const cell& cellToCheck = cells[cellIndex];
-
-            forAll(cellToCheck, faceI)
+            forAll(cc, cellI)
             {
-                // Add owner to the list.
-                masterCells.set(owner[cellToCheck[faceI]], empty());
-
-                if (cellToCheck[faceI] < neighbour.size())
-                {
-                    // Add the neighbour.
-                    masterCells.set(neighbour[cellToCheck[faceI]], empty());
-                }
+                masterCells.set(cc[cellI], empty());
             }
         }
     }
 
     // Fetch the new cell, and determine its bounds.
-    const cell& newCell = cells_[newCellIndex];
+    const cell& newCell = cells_[cIndex];
 
-    DynamicList<label> pointLabels(6);
+    labelList pLabels = newCell.labels(faces_);
 
-    forAll(newCell, faceI)
-    {
-        const face& faceToCheck = faces_[newCell[faceI]];
-
-        forAll(faceToCheck, pointI)
-        {
-            if (findIndex(pointLabels, faceToCheck[pointI]) == -1)
-            {
-                pointLabels.append(faceToCheck[pointI]);
-            }
-        }
-    }
-
-    pointField cellPoints(pointLabels.size());
+    pointField cellPoints(pLabels.size());
 
     forAll(cellPoints, pointI)
     {
-        cellPoints[pointI] = oldPoints_[pointLabels[pointI]];
+        cellPoints[pointI] = oldPoints_[pLabels[pointI]];
     }
 
     // Prepare an axis-aligned bounding box around the cell,
@@ -1437,17 +1561,44 @@ labelList dynamicTopoFvMesh::cellParents
 
     const vectorField& cellCentres = polyMesh::cellCentres();
 
-    forAllIter(labelHashSet, masterCells, mIter)
+    label nEntries = 0;
+
+    // Count the number of entries
+    forAllConstIter(labelHashSet, masterCells, cIter)
     {
-        vector xC = (cellCentres[mIter.key()] - bC);
+        vector xC = (cellCentres[cIter.key()] - bC);
 
         if ((xC & xC) < (bMax & bMax))
         {
-            finalCells.insert(mIter.key());
+            nEntries++;
         }
     }
 
-    return finalCells.toc();
+    // Set size and reset counter
+    finalCells.setSize(nEntries, -1);
+    nEntries = 0;
+
+    forAllConstIter(labelHashSet, masterCells, cIter)
+    {
+        vector xC = (cellCentres[cIter.key()] - bC);
+
+        if ((xC & xC) < (bMax & bMax))
+        {
+            finalCells[nEntries++] = cIter.key();
+        }
+    }
+
+    if (debug > 2)
+    {
+        Info << " Cell: " << cIndex
+             << " No. of parent candidates: "
+             << nEntries
+             << " searchFactor: "
+             << searchFactor
+             << endl;
+    }
+
+    return finalCells;
 }
 
 
@@ -1456,14 +1607,16 @@ void dynamicTopoFvMesh::setCellMapping
 (
     const label cIndex,
     const labelList& mapCells,
-    const scalarField& mapWeights
+    const scalarField& mapWeights,
+    const vectorField& mapCentres
 )
 {
     if (debug > 3)
     {
         Info << "Inserting mapping cell: " << cIndex << nl
              << " mapCells: " << mapCells << nl
-             << " cellWeights: " << mapWeights
+             << " mapWeights: " << mapWeights << nl
+             << " mapCentres: " << mapCentres
              << endl;
     }
 
@@ -1473,8 +1626,9 @@ void dynamicTopoFvMesh::setCellMapping
         FatalErrorIn("dynamicTopoFvMesh::setCellMapping()")
             << nl << " Incompatible mapping for cell: "
             << cIndex << ":: " << cells_[cIndex] << nl
-            << " mapCells: " << mapCells
-            << " cellWeights: " << mapWeights
+            << " mapCells: " << mapCells << nl
+            << " mapWeights: " << mapWeights << nl
+            << " mapCentres: " << mapCentres
             << abort(FatalError);
     }
 
@@ -1499,7 +1653,9 @@ void dynamicTopoFvMesh::setCellMapping
         cellsFromCells_[index].masterObjects() = mapCells;
     }
 
+    // Set weights and centres
     cellWeights_.set(cIndex, mapWeights);
+    cellCentres_.set(cIndex, mapCentres);
 }
 
 
@@ -1508,7 +1664,8 @@ void dynamicTopoFvMesh::setFaceMapping
 (
     const label fIndex,
     const labelList& mapFaces,
-    const scalarField& mapWeights
+    const scalarField& mapWeights,
+    const vectorField& mapCentres
 )
 {
     label patch = whichPatch(fIndex);
@@ -1518,7 +1675,8 @@ void dynamicTopoFvMesh::setFaceMapping
         Info << "Inserting mapping face: " << fIndex << nl
              << " patch: " << patch << nl
              << " mapFaces: " << mapFaces << nl
-             << " faceWeights: " << mapWeights
+             << " mapWeights: " << mapWeights << nl
+             << " mapCentres: " << mapCentres
              << endl;
     }
 
@@ -1527,8 +1685,9 @@ void dynamicTopoFvMesh::setFaceMapping
     {
         FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
             << nl << " Incompatible mapping: " << nl
-            << " mapFaces: " << mapFaces
-            << " faceWeights: " << mapWeights
+            << " mapFaces: " << mapFaces << nl
+            << " mapWeights: " << mapWeights << nl
+            << " mapCentres: " << mapCentres
             << abort(FatalError);
     }
 
@@ -1553,7 +1712,9 @@ void dynamicTopoFvMesh::setFaceMapping
         facesFromFaces_[index].masterObjects() = mapFaces;
     }
 
+    // Set weights and centres
     faceWeights_.set(fIndex, mapWeights);
+    faceCentres_.set(fIndex, mapCentres);
 }
 
 
@@ -2828,6 +2989,8 @@ void dynamicTopoFvMesh::prepareProximityPatches()
             // For spatial resolution, pick an edge on this patch.
             if (!setSpatialRes)
             {
+                scalar eIndex = faceEdges_[proxPatch.start()][0];
+
                 spatialRes_ =
                 (
                     label
@@ -2835,7 +2998,7 @@ void dynamicTopoFvMesh::prepareProximityPatches()
                         ::floor
                         (
                             mag(bMax - bMin)
-                          / (3.0*edgeLength(faceEdges_[proxPatch.start()][0]))
+                          / (3.0 * edgeLength(edges_[eIndex], points_))
                         )
                     )
                 );
@@ -2974,15 +3137,15 @@ scalar dynamicTopoFvMesh::testProximity
     if (twoDMesh_)
     {
         // Obtain the face-normal.
-        gNorm = quadFaceNormal(faces_[index]);
+        gNorm = faceNormal(faces_[index], points_);
 
         gNorm /= (mag(gNorm) + VSMALL);
 
         // Obtain the face centre.
-        gCentre = quadFaceCentre(index);
+        gCentre = faceCentre(faces_[index], points_);
 
         // Calculate a test step-size
-        testStep = edgeLength(getTriBoundaryEdge(index));
+        testStep = edgeLength(edges_[getTriBoundaryEdge(index)], points_);
     }
     else
     {
@@ -2990,7 +3153,7 @@ scalar dynamicTopoFvMesh::testProximity
         const labelList& eFaces = edgeFaces_[index];
 
         // Obtain the edge centre.
-        gCentre = (0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]]));
+        gCentre = 0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]]);
 
         // Obtain the edge-normal
         forAll(eFaces, faceI)
@@ -2998,14 +3161,14 @@ scalar dynamicTopoFvMesh::testProximity
             if (neighbour_[eFaces[faceI]] == -1)
             {
                 // Obtain the normal.
-                gNorm += triFaceNormal(faces_[eFaces[faceI]]);
+                gNorm += faceNormal(faces_[eFaces[faceI]], points_);
             }
         }
 
         gNorm /= (mag(gNorm) + VSMALL);
 
         // Calculate a test step-size
-        testStep = edgeLength(index);
+        testStep = edgeLength(edges_[index], points_);
     }
 
     // Now take multiple steps in both normal directions,
@@ -4558,7 +4721,7 @@ scalar dynamicTopoFvMesh::computeTrisectionQuality
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;
 
-    point midPoint = triFaceCentre(fIndex);
+    point midPoint = faceCentre(faces_[fIndex], points_);
 
     FixedList<label,2> apexPoint(-1);
 
@@ -4626,10 +4789,10 @@ void dynamicTopoFvMesh::remove2DSliver
     label triFace = getTriBoundaryFace(fIndex);
 
     // Measure the boundary edge-length of the face in question
-    scalar length = edgeLength(triEdge);
+    scalar length = edgeLength(edges_[triEdge], points_);
 
     // Determine the boundary triangular face area
-    scalar area = triFaceArea(faces_[triFace]);
+    scalar area = mag(faceNormal(faces_[triFace], points_));
 
     // This cell has to be removed...
     if (mag(area) < (0.2*length*length))
@@ -4863,7 +5026,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         }
 
         // Obtain the unit normal.
-        vector testNormal = triFaceNormal(testFace);
+        vector testNormal = faceNormal(testFace, points_);
 
         testNormal /= (mag(testNormal) + VSMALL);
 
@@ -4885,7 +5048,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     }
 
     // Obtain the face-normal.
-    vector refArea = triFaceNormal(tFace);
+    vector refArea = faceNormal(tFace, points_);
 
     // Normalize it.
     vector n = refArea/mag(refArea);
@@ -5656,14 +5819,14 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
              << "Mapping fv fields."
              << endl;
     }
-    /*
+
     // Set the mapPolyMesh object in the mapper
     mapper_().setMapper(meshMap);
 
     // Set weighting information.
     // This takes over the weight data.
-    mapper_().setFaceWeights(faceWeights_);
-    mapper_().setCellWeights(cellWeights_);
+    mapper_().setFaceWeights(faceWeights_, faceCentres_);
+    mapper_().setCellWeights(cellWeights_, cellCentres_);
 
     // Map all the volFields in the objectRegistry
     MapGeometricFields<scalar,fvPatchField,topoMapper,volMesh>
@@ -5691,7 +5854,6 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 
     // Clear mapper
     mapper_().clear();
-    */
 }
 
 

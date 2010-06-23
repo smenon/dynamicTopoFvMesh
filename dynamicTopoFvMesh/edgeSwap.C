@@ -829,8 +829,8 @@ void dynamicTopoFvMesh::swapQuadFace
     labelList mC(2, -1);
     mC[0] = c0; mC[1] = c1;
 
-    setCellMapping(c0, mC, scalarField(2, 0.5));
-    setCellMapping(c1, mC, scalarField(2, 0.5));
+    //setCellMapping(c0, mC, scalarField(2, 0.5));
+    //setCellMapping(c1, mC, scalarField(2, 0.5));
 
     // Interpolate new fluxes for the flipped face.
     setFaceMapping(fIndex);
@@ -1558,12 +1558,11 @@ label dynamicTopoFvMesh::identify32Swap
 
         bool intersects =
         (
-            segmentTriFaceIntersection
+            segmentFaceIntersection
             (
-                segment,
                 edgeToCheck,
                 triFace,
-                tolFraction,
+                points_,
                 intPt
             )
         );
@@ -1591,7 +1590,7 @@ label dynamicTopoFvMesh::identify32Swap
             triFace[2] = hullVertices[triangulations[2][i]];
 
             // Compute edge to face-centre distance.
-            dist[i] = mag(eCentre - triFaceCentre(triFace));
+            dist[i] = mag(eCentre - faceCentre(triFace, points_));
         }
 
         // Return the minimum index
@@ -2247,20 +2246,9 @@ const changeMap dynamicTopoFvMesh::swap23
             continue;
         }
 
-        // Compute the old-volume for this cell
-        scalar newOldVol = tetVolume(newCellIndex[cellI], oldPoints_);
-
-        // Cells on either side of the triangulated face
-        // cannot have negative old-volumes. Note that the
-        // temporary interior cell can have a negative value,
-        // since it gets deleted during the swap sequence anyway.
-        if (newOldVol < 0.0)
-        {
-            FatalErrorIn("dynamicTopoFvMesh::swap23()")
-                << "Negative old-volume encountered." << nl
-                << newCellIndex[cellI] << ": " << newOldVol
-                << abort(FatalError);
-        }
+        labelList parents;
+        scalarField weights;
+        vectorField centres;
 
         // Fill-in candidate mapping information
         labelList mC(2, -1);
@@ -2270,91 +2258,27 @@ const changeMap dynamicTopoFvMesh::swap23
             mC[indexI] = cellsForRemoval[indexI];
         }
 
-        labelList parents;
-        scalarField weights;
-
         // Obtain weighting factors for this cell.
-        // Perform several attempts for robustness.
-        bool consistent = false;
-        scalar searchFactor = 1.0;
-
-        for (label attempt = 0; attempt < 5; attempt++)
-        {
-            consistent =
-            (
-                computeTetWeights
-                (
-                    newCellIndex[cellI],
-                    newOldVol,
-                    mC,
-                    searchFactor,
-                    parents,
-                    weights
-                )
-            );
-
-            if (consistent)
-            {
-                break;
-            }
-            else
-            {
-                // Expand the search radius and try again.
-                searchFactor *= 1.2;
-            }
-        }
-
-        /*
-        if (!consistent)
-        {
-            // Write out for post-processing
-            label nIdx = newCellIndex[cellI], uIdx = 0;
-            labelList candid = cellParents(nIdx, searchFactor, mC);
-            labelList unMatch(candid.size() - parents.size(), -1);
-
-            forAll(candid, cI)
-            {
-                if (findIndex(parents, candid[cI]) == -1)
-                {
-                    unMatch[uIdx++] = candid[cI];
-                }
-            }
-
-            writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
-            writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
-            writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
-            writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
-
-            FatalErrorIn("dynamicTopoFvMesh::swap23()")
-                << "Encountered non-conservative weighting factors." << nl
-                << " Cell: " << newCellIndex[cellI] << nl
-                << " Old volume: " << newOldVol << nl
-                << " Parents: " << parents << nl
-                << " Weights: " << weights << nl
-                << " Sum(Weights): " << sum(weights) << nl
-                << " Error: " << mag(1.0 - sum(weights))
-                << abort(FatalError);
-        }
+        computeCellWeights
+        (
+            newCellIndex[cellI],
+            mC,
+            parents,
+            weights,
+            centres
+        );
 
         // Set the mapping for this cell
-        setCellMapping(newCellIndex[cellI], parents, weights);
+        setCellMapping
+        (
+            newCellIndex[cellI],
+            parents,
+            weights,
+            centres
+        );
 
-        // Set parents for this cell
+        // Update cellParents information
         cellParents_.set(newCellIndex[cellI], parents);
-
-        if (debug > 2)
-        {
-            Info << "Cell:: " << newCellIndex[cellI]
-                 << "  Old volume: " << newOldVol << nl
-                 << "  New volume: "
-                 << tetVolume(newCellIndex[cellI], points_) << nl
-                 << "  Parents: " << parents << nl
-                 << "  Weights: " << weights << nl
-                 << "  Sum(Weights): " << sum(weights) << nl
-                 << "  Error: " << mag(1.0 - sum(weights))
-                 << endl;
-        }
-        */
     }
 
     // Fill in mapping information for three new faces.
@@ -2995,16 +2919,9 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
 
-        // Compute the old-volume for this cell
-        scalar newOldVol = tetVolume(newCellIndex[cellI], oldPoints_);
-
-        if (newOldVol <= 0.0)
-        {
-            FatalErrorIn("dynamicTopoFvMesh::swap32()")
-                << "Negative old-volume encountered." << nl
-                << newCellIndex[cellI] << ": " << newOldVol
-                << abort(FatalError);
-        }
+        labelList parents;
+        scalarField weights;
+        vectorField centres;
 
         // Fill-in candidate mapping information
         labelList mC(cellRemovalList.size(), -1);
@@ -3014,91 +2931,27 @@ const changeMap dynamicTopoFvMesh::swap32
             mC[indexI] = cellRemovalList[indexI];
         }
 
-        labelList parents;
-        scalarField weights;
-
         // Obtain weighting factors for this cell.
-        // Perform several attempts for robustness.
-        bool consistent = false;
-        scalar searchFactor = 1.0;
-
-        for (label attempt = 0; attempt < 5; attempt++)
-        {
-            consistent =
-            (
-                computeTetWeights
-                (
-                    newCellIndex[cellI],
-                    newOldVol,
-                    mC,
-                    searchFactor,
-                    parents,
-                    weights
-                )
-            );
-
-            if (consistent)
-            {
-                break;
-            }
-            else
-            {
-                // Expand the search radius and try again.
-                searchFactor *= 1.2;
-            }
-        }
-
-        /*
-        if (!consistent)
-        {
-            // Write out for post-processing
-            label nIdx = newCellIndex[cellI], uIdx = 0;
-            labelList candid = cellParents(nIdx, searchFactor, mC);
-            labelList unMatch(candid.size() - parents.size(), -1);
-
-            forAll(candid, cI)
-            {
-                if (findIndex(parents, candid[cI]) == -1)
-                {
-                    unMatch[uIdx++] = candid[cI];
-                }
-            }
-
-            writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
-            writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
-            writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
-            writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
-
-            FatalErrorIn("dynamicTopoFvMesh::swap32()")
-                << "Encountered non-conservative weighting factors." << nl
-                << " Cell: " << newCellIndex[cellI] << nl
-                << " Old volume: " << newOldVol << nl
-                << " Parents: " << parents << nl
-                << " Weights: " << weights << nl
-                << " Sum(Weights): " << sum(weights) << nl
-                << " Error: " << mag(1.0 - sum(weights))
-                << abort(FatalError);
-        }
+        computeCellWeights
+        (
+            newCellIndex[cellI],
+            mC,
+            parents,
+            weights,
+            centres
+        );
 
         // Set the mapping for this cell
-        setCellMapping(newCellIndex[cellI], parents, weights);
+        setCellMapping
+        (
+            newCellIndex[cellI],
+            parents,
+            weights,
+            centres
+        );
 
-        // Set parents for this cell
+        // Update cellParents information
         cellParents_.set(newCellIndex[cellI], parents);
-
-        if (debug > 2)
-        {
-            Info << "Cell:: " << newCellIndex[cellI]
-                 << "  Old volume: " << newOldVol << nl
-                 << "  New volume: "
-                 << tetVolume(newCellIndex[cellI], points_) << nl
-                 << "  Parents: " << parents << nl
-                 << "  Weights: " << weights << nl
-                 << "  Sum(Weights): " << sum(weights) << nl
-                 << "  Error: " << mag(1.0 - sum(weights))
-                 << endl;
-        }
-        */
     }
 
     // Set fill-in mapping for two new boundary faces

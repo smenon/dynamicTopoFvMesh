@@ -182,11 +182,15 @@ class dynamicTopoFvMesh
         Map<label> addedFaceZones_;
         Map<label> addedCellZones_;
 
-        // Information for mapPolyMesh
+        // Information for field-mapping
         Map<labelList> faceParents_;
         Map<scalarField> faceWeights_;
+        Map<vectorField> faceCentres_;
         Map<labelList> cellParents_;
         Map<scalarField> cellWeights_;
+        Map<vectorField> cellCentres_;
+
+        // Information for mapPolyMesh
         List<objectMap> pointsFromPoints_;
         List<objectMap> facesFromPoints_;
         List<objectMap> facesFromEdges_;
@@ -365,66 +369,25 @@ class dynamicTopoFvMesh
         //- Quality metric for tetrahedra in 3D
         tetMetric::tetMetricReturnType tetMetric_;
 
-        // Obtain the edge centre
-        inline point edgeCentre(const label eIndex) const;
-
-        // Obtain the tangent-to-edge vector
-        inline vector tangentToEdge(const label eIndex) const;
-
-        // Find the centre of a quad face
-        inline point quadFaceCentre
+        // Return the magnitude of an edge
+        inline scalar edgeLength
         (
-            const label fIndex,
-            bool useOldPoints = false
+            const edge& edgeToCheck,
+            const UList<point>& points
         ) const;
 
-        // Find the centre of a triangle face
-        inline point triFaceCentre
+        // Compute the centre for a given face
+        inline vector faceCentre
         (
-            const label fIndex,
-            bool useOldPoints = false
+            const face& faceToCheck,
+            const UList<point>& points
         ) const;
 
-        // Find the centre of a quad face.
-        inline point quadFaceCentre
+        // Compute the normal for a given face
+        inline vector faceNormal
         (
-            const face& quadFace,
-            bool useOldPoints = false
-        ) const;
-
-        // Find the centre of a triangle face
-        inline point triFaceCentre
-        (
-            const face& triFace,
-            bool useOldPoints = false
-        ) const;
-
-        // Find the area of a quad face.
-        inline scalar quadFaceArea
-        (
-            const face& quadFace,
-            bool useOldPoints = false
-        ) const;
-
-        // Find the area of a triangle face.
-        inline scalar triFaceArea
-        (
-            const face& triFace,
-            bool useOldPoints = false
-        ) const;
-
-        // Find the normal of a quad face.
-        inline vector quadFaceNormal
-        (
-            const face& quadFace,
-            bool useOldPoints = false
-        ) const;
-
-        // Find the normal of a triangle face.
-        inline vector triFaceNormal
-        (
-            const face& triFace,
-            bool useOldPoints = false
+            const face& faceToCheck,
+            const UList<point>& points
         ) const;
 
         // Given a face and cell index, find the apex point for a tet cell.
@@ -434,123 +397,105 @@ class dynamicTopoFvMesh
             const label fIndex
         ) const;
 
-        // Given a cell index, find the centroid of a prism cell.
-        inline vector prismCellCentre
+        // Given a cell index, find the centroid / volume of a cell.
+        inline void cellCentreAndVolume
         (
             const label cIndex,
-            bool useOldPoints = false
+            const UList<point>& points,
+            vector& centre,
+            scalar& volume
         ) const;
 
-        // Given a cell index, find the centroid of a tet cell.
-        inline vector tetCellCentre
+        // Utility member function for separating axis tests
+        inline label whichSide
         (
-            const label cIndex,
-            bool useOldPoints = false
-        ) const;
-
-        // Compare two quad faces
-        inline label quadFaceCompare
-        (
-            const face& a,
-            const face& b
-        ) const;
-
-        // Find the volume of a prism cell, given the cell index.
-        inline scalar prismVolume
-        (
-            const label cIndex,
-            bool useOldPoints = false
-        ) const;
-
-        // Find the volume of a tetrahedron (defined by cell index)
-        inline scalar tetVolume
-        (
-            const label cIndex,
-            const UList<point>& meshPoints
+            const labelList& cellPoints,
+            const UList<point>& points,
+            const point& dir,
+            const point& p
         ) const;
 
         // Determine whether a specified point lies on a segment
         inline bool segmentPointIntersection
         (
-            const FixedList<vector,2>& segment,
-            const edge& pIndices,
-            const point& checkPoint,
-            const scalar tolFraction
+            const edge& edgeToCheck,
+            const UList<point>& points,
+            const point& checkPoint
         ) const;
 
-        // Determine whether a specified point lies on a segment
-        inline bool segmentPointIntersection
+        // Determine whether a segment intersects a face
+        inline bool segmentFaceIntersection
         (
-            const FixedList<vector,2>& segment,
-            const edge& pIndices,
-            const label pIndex,
-            const scalar tolFraction,
-            const bool useOldPoints
-        ) const;
-
-        // Determine whether a segment intersects a triangular face
-        inline bool segmentTriFaceIntersection
-        (
-            const FixedList<vector,2>& segment,
-            const edge& pIndices,
-            const face& triFace,
-            const scalar tolFraction,
-            vector& intersectionPoint,
-            const bool useOldPoints = false
+            const edge& edgeToCheck,
+            const face& faceToCheck,
+            const UList<point>& points,
+            vector& intersectionPoint
         ) const;
 
         // Determine whether the particular point lies
         // inside the given face
-        inline bool pointInTriFace
+        inline bool pointInFace
         (
-            const face& checkFace,
-            const point& checkPoint,
-            const bool useOldPoints = false
+            const face& faceToCheck,
+            const UList<point>& points,
+            const point& checkPoint
         ) const;
 
         // Determine whether the particular point lies
-        // inside the given tetrahedron
-        inline bool pointInTet
+        // inside the given cell
+        inline bool pointInCell
         (
             const label cIndex,
-            const point& checkPoint,
-            const bool useOldConnectivity = false,
-            const bool useOldPoints = false
+            const cell& cellToCheck,
+            const UList<face>& faces,
+            const UList<label>& owner,
+            const UList<point>& points,
+            const point& checkPoint
         ) const;
 
-        // Obtain map weighting factors for a tetrahedral cell.
-        bool computeTetWeights
+        // Obtain map weighting factors for a cell.
+        void computeCellWeights
         (
             const label cIndex,
-            const scalar cellVolume,
-            const labelList& mappingCells,
-            const scalar searchFactor,
+            const labelList& mapCandidates,
             labelList& parents,
-            scalarField& weights
+            scalarField& weights,
+            vectorField& centres
         ) const;
 
-        // Determine the intersection volume between two tetrahedra
-        scalar tetIntersection
+        // Test for intersection between cells in old/new meshes
+        bool testIntersection
         (
             const label newCellIndex,
             const label oldCellIndex
         ) const;
 
-        // Compute the volume of a polyhedron
-        // formed by a convex set of points.
-        scalar convexSetVolume
+        // Return the intersection points between cells in old/new meshes
+        bool cellIntersection
         (
-            const word& cvxSetName,
-            const scalar tolFraction,
-            const vectorField& cvxSet
+            const label newCellIndex,
+            const label oldCellIndex,
+            vectorField& intPoints
+        ) const;
+
+        // Compute the volume / centre of a polyhedron
+        // formed by a convex set of points.
+        void convexSetVolume
+        (
+            const label newCellIndex,
+            const label oldCellIndex,
+            const vectorField& cvxSet,
+            scalar& cVolume,
+            vector& cCentre,
+            bool output = false
         ) const;
 
         // Obtain a list of possible parent cells from the old mesh
         labelList cellParents
         (
-            const label newCellIndex,
+            const label cIndex,
             const scalar searchFactor,
-            const labelList& mappingCells
+            const labelList& oldCandidates
         ) const;
 
         // Initialize mesh edges and related connectivity lists
@@ -610,9 +555,6 @@ class dynamicTopoFvMesh
 
         // Check if a given face is a quad
         inline bool checkQuadFace(const label fIndex) const;
-
-        // Return the length of an edge
-        inline scalar edgeLength(const label eIndex) const;
 
         // MultiThreaded topology modifier [2D]
         void threadedTopoModifier2D();
@@ -828,6 +770,16 @@ class dynamicTopoFvMesh
             labelList& list
         ) const;
 
+        // Method to insert labels in a face, so that
+        // right-handedness is preserved.
+        inline void insertPointLabels
+        (
+            const vector& refNorm,
+            const vectorField& points,
+            const labelHashSet& pLabels,
+            face& modFace
+        ) const;
+
         // Method to insert a label between two labels in a list
         inline void insertLabel
         (
@@ -850,7 +802,8 @@ class dynamicTopoFvMesh
         (
             const label cIndex,
             const labelList& mapCells,
-            const scalarField& mapWeights
+            const scalarField& mapWeights,
+            const vectorField& mapCentres
         );
 
         // Set fill-in mapping information for a particular face
@@ -858,7 +811,8 @@ class dynamicTopoFvMesh
         (
             const label fIndex,
             const labelList& mapFaces = labelList(0),
-            const scalarField& mapWeights = scalarField(0)
+            const scalarField& mapWeights = scalarField(0),
+            const vectorField& mapCentres = vectorField(0)
         );
 
         // Remove the specified cells from the mesh

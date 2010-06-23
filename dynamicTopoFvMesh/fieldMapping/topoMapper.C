@@ -103,7 +103,8 @@ void Foam::topoMapper::setMapper(const mapPolyMesh& mpm)
 //- Set face weighting information
 void Foam::topoMapper::setFaceWeights
 (
-    Map<scalarField>& weights
+    Map<scalarField>& weights,
+    Map<vectorField>& centres
 )
 {
 
@@ -113,7 +114,8 @@ void Foam::topoMapper::setFaceWeights
 //- Set cell weighting information
 void Foam::topoMapper::setCellWeights
 (
-    Map<scalarField>& weights
+    Map<scalarField>& weights,
+    Map<vectorField>& centres
 )
 {
 
@@ -128,7 +130,7 @@ void Foam::topoMapper::setOldCellCentres
 {
     if (oldCellCentresPtr_)
     {
-        clearOut();
+    	deleteDemandDrivenData(oldCellCentresPtr_);
     }
 
     // Set the pointer.

@@ -1486,7 +1486,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         // Fill-in mapping information
         labelList mC1(1, c1);
-        setCellMapping(newCellIndex[1], mC1, scalarField(1, 1.0));
+        //setCellMapping(newCellIndex[1], mC1, scalarField(1, 1.0));
     }
 
     // Update the cell list.
@@ -1495,7 +1495,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     // Fill-in mapping information
     labelList mC0(1, c0);
-    setCellMapping(newCellIndex[0], mC0, scalarField(1, 1.0));
+    //setCellMapping(newCellIndex[0], mC0, scalarField(1, 1.0));
 
     // Set fill-in mapping information for the modified face.
     setFaceMapping(fIndex);
@@ -2565,96 +2565,31 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
         forAll(cmIndex, cmI)
         {
-            // Compute the old-volume for this cell
-            scalar newOldVol = tetVolume(cmIndex[cmI], oldPoints_);
-
-            if (newOldVol < 0.0)
-            {
-                FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
-                    << "Negative old-volume encountered." << nl
-                    << cmIndex[cmI] << ": " << newOldVol
-                    << abort(FatalError);
-            }
-
             labelList parents;
             scalarField weights;
+            vectorField centres;
 
             // Obtain weighting factors for this cell.
-            // Perform several attempts for robustness.
-            bool consistent = false;
-            scalar searchFactor = 1.0;
-
-            for (label attempt = 0; attempt < 5; attempt++)
-            {
-                consistent =
-                (
-                    computeTetWeights
-                    (
-                        cmIndex[cmI],
-                        newOldVol,
-                        mC,
-                        searchFactor,
-                        parents,
-                        weights
-                    )
-                );
-
-                if (consistent)
-                {
-                    break;
-                }
-                else
-                {
-                    // Expand the search radius and try again.
-                    searchFactor *= 1.2;
-                }
-            }
-
-            /*
-            if (!consistent)
-            {
-                // Write out for post-processing
-                label nIdx = cmIndex[cmI], uIdx = 0;
-                labelList candid = cellParents(nIdx, searchFactor, mC);
-                labelList unMatch(candid.size() - parents.size(), -1);
-
-                forAll(candid, cI)
-                {
-                    if (findIndex(parents, candid[cI]) == -1)
-                    {
-                        unMatch[uIdx++] = candid[cI];
-                    }
-                }
-
-                writeVTK("nCell_" + Foam::name(nIdx), nIdx, 3, false, true);
-                writeVTK("oCell_" + Foam::name(nIdx), candid, 3, true, true);
-                writeVTK("mCell_" + Foam::name(nIdx), parents, 3, true, true);
-                writeVTK("uCell_" + Foam::name(nIdx), unMatch, 3, true, true);
-
-                FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
-                    << "Encountered non-conservative weighting factors." << nl
-                    << " Cell: " << nIdx << nl
-                    << " Old volume: " << newOldVol << nl
-                    << " Parents: " << parents << nl
-                    << " Weights: " << weights << nl
-                    << " Sum(Weights): " << sum(weights) << nl
-                    << " Error: " << mag(1.0 - sum(weights))
-                    << abort(FatalError);
-            }
+            computeCellWeights
+            (
+                cmIndex[cmI],
+                mC,
+                parents,
+                weights,
+                centres
+            );
 
             // Set the mapping for this cell
-            setCellMapping(cmIndex[cmI], parents, weights);
+            setCellMapping
+            (
+                cmIndex[cmI],
+                parents,
+                weights,
+                centres
+            );
 
-            // Set parents for this cell
+            // Update cellParents information
             cellParents_.set(cmIndex[cmI], parents);
-
-            if (debug > 2)
-            {
-                Info << " Cell:: " << cmIndex[cmI] << nl
-                     << "  Parents: " << parents << nl
-                     << "  Weights: " << weights << endl;
-            }
-            */
         }
     }
 
@@ -4752,7 +4687,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
 
-                setCellMapping(newCellIndex[i], mC, scalarField(1, 1.0));
+                //setCellMapping(newCellIndex[i], mC, scalarField(1, 1.0));
             }
         }
         else
@@ -4762,7 +4697,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
 
-                setCellMapping(newCellIndex[i], mC, scalarField(1, 1.0));
+                //setCellMapping(newCellIndex[i], mC, scalarField(1, 1.0));
             }
         }
 
@@ -4904,8 +4839,8 @@ void dynamicTopoFvMesh::sliceMesh
         (
             0.5 *
             (
-                quadFaceCentre(pointPair.first())
-              + quadFaceCentre(pointPair.second())
+                faceCentre(faces_[pointPair.first()], points_)
+              + faceCentre(faces_[pointPair.second()], points_)
             )
         );
 
@@ -4914,8 +4849,8 @@ void dynamicTopoFvMesh::sliceMesh
         (
             mag
             (
-                quadFaceCentre(pointPair.first())
-              - quadFaceCentre(pointPair.second())
+                faceCentre(faces_[pointPair.first()], points_)
+              - faceCentre(faces_[pointPair.second()], points_)
             )
         );
 
@@ -4979,7 +4914,7 @@ void dynamicTopoFvMesh::sliceMesh
         // Assign plane point / normal
         p = gCentre;
 
-        vector gNorm = quadFaceNormal(faces_[pointPair.first()]);
+        vector gNorm = faceNormal(faces_[pointPair.first()], points_);
 
         gNorm /= (mag(gNorm) + VSMALL);
 
@@ -5040,7 +4975,7 @@ void dynamicTopoFvMesh::sliceMesh
                             surfFaces.insert
                             (
                                 eFaces[faceI],
-                                triFaceNormal(faces_[eFaces[faceI]])
+                                faceNormal(faces_[eFaces[faceI]], points_)
                             );
                         }
                     }
@@ -5142,7 +5077,16 @@ void dynamicTopoFvMesh::sliceMesh
                     continue;
                 }
 
-                vector x = tetCellCentre(cellI);
+                scalar v = 0.0;
+                vector x = vector::zero;
+
+                cellCentreAndVolume
+                (
+                    cellI,
+                    points_,
+                    x,
+                    v
+                );
 
                 vector rx = (x - a0);
                 vector ra = (rx & N)*N;
@@ -5235,16 +5179,7 @@ void dynamicTopoFvMesh::sliceMesh
             continue;
         }
 
-        vector fCentre = vector::zero;
-
-        if (twoDMesh_)
-        {
-            fCentre = quadFaceCentre(faceI);
-        }
-        else
-        {
-            fCentre = triFaceCentre(faceI);
-        }
+        vector fCentre = faceCentre(faces_[faceI], points_);
 
         FixedList<label, 2> cellsToCheck(-1);
         cellsToCheck[0] = owner_[faceI];
@@ -5255,20 +5190,20 @@ void dynamicTopoFvMesh::sliceMesh
             // Add this internal face to the list.
             checkFaces.insert(faceI);
 
+            scalar volume = 0.0;
             vector centre = vector::zero;
 
             forAll(cellsToCheck, cellI)
             {
                 if (!checkCells.found(cellsToCheck[cellI]))
                 {
-                    if (twoDMesh_)
-                    {
-                        centre = prismCellCentre(cellsToCheck[cellI]);
-                    }
-                    else
-                    {
-                        centre = tetCellCentre(cellsToCheck[cellI]);
-                    }
+                    cellCentreAndVolume
+                    (
+                        cellsToCheck[cellI],
+                        points_,
+                        centre,
+                        volume
+                    );
 
                     checkCells.insert(cellsToCheck[cellI]);
 
@@ -5315,7 +5250,16 @@ void dynamicTopoFvMesh::sliceMesh
 
                     if (!checkCells.found(own))
                     {
-                        vector centre = prismCellCentre(own);
+                        scalar volume = 0.0;
+                        vector centre = vector::zero;
+
+                        cellCentreAndVolume
+                        (
+                            own,
+                            points_,
+                            centre,
+                            volume
+                        );
 
                         checkCells.insert(own);
 
@@ -5331,7 +5275,16 @@ void dynamicTopoFvMesh::sliceMesh
 
                     if (!checkCells.found(nei) && nei != -1)
                     {
-                        vector centre = prismCellCentre(nei);
+                        scalar volume = 0.0;
+                        vector centre = vector::zero;
+
+                        cellCentreAndVolume
+                        (
+                            nei,
+                            points_,
+                            centre,
+                            volume
+                        );
 
                         checkCells.insert(nei);
 
@@ -5366,7 +5319,16 @@ void dynamicTopoFvMesh::sliceMesh
 
                         if (!checkCells.found(own))
                         {
-                            vector centre = tetCellCentre(own);
+                            scalar volume = 0.0;
+                            vector centre = vector::zero;
+
+                            cellCentreAndVolume
+                            (
+                                own,
+                                points_,
+                                centre,
+                                volume
+                            );
 
                             checkCells.insert(own);
 
@@ -5382,7 +5344,16 @@ void dynamicTopoFvMesh::sliceMesh
 
                         if (!checkCells.found(nei) && nei != -1)
                         {
-                            vector centre = tetCellCentre(nei);
+                            scalar volume = 0.0;
+                            vector centre = vector::zero;
+
+                            cellCentreAndVolume
+                            (
+                                nei,
+                                points_,
+                                centre,
+                                volume
+                            );
 
                             checkCells.insert(nei);
 
