@@ -2235,12 +2235,20 @@ const changeMap dynamicTopoFvMesh::swap23
         removeCell(cellsForRemoval[cellI]);
     }
 
+    // Fill-in candidate mapping information
+    labelList mC(2, -1);
+
+    forAll(mC, indexI)
+    {
+        mC[indexI] = cellsForRemoval[indexI];
+    }
+
     // Update the cell list with newly configured cells.
     forAll(newCellIndex, cellI)
     {
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
 
-        // Skip the intermediate cell.
+        // Skip mapping for the intermediate cell.
         if (cellI == 2)
         {
             continue;
@@ -2249,14 +2257,6 @@ const changeMap dynamicTopoFvMesh::swap23
         labelList parents;
         scalarField weights;
         vectorField centres;
-
-        // Fill-in candidate mapping information
-        labelList mC(2, -1);
-
-        forAll(mC, indexI)
-        {
-            mC[indexI] = cellsForRemoval[indexI];
-        }
 
         // Obtain weighting factors for this cell.
         computeCellWeights
@@ -2279,6 +2279,13 @@ const changeMap dynamicTopoFvMesh::swap23
 
         // Update cellParents information
         cellParents_.set(newCellIndex[cellI], parents);
+
+        // Set mapping parents for the intermediate cell.
+        // The following 3-2 swap may need this information.
+        if (cellI == 1)
+        {
+            cellParents_.set(newCellIndex[2], parents);
+        }
     }
 
     // Fill in mapping information for three new faces.

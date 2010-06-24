@@ -50,6 +50,7 @@ Author
 #include "MeshObject.H"
 #include "topoMapper.H"
 #include "SortableList.H"
+#include "StaticHashTable.H"
 
 namespace Foam
 {
@@ -450,12 +451,12 @@ void dynamicTopoFvMesh::computeCellWeights
     vectorField& centres
 ) const
 {
-    scalar searchFactor = 1.2;
+    scalar searchFactor = 1.0;
 
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
     // Maintain a list of candidates and intersection points
-    labelList oldCandidates, candidates;
+    labelList candidates;
 
     while (nAttempts < 10)
     {
@@ -491,7 +492,7 @@ void dynamicTopoFvMesh::computeCellWeights
             }
         }
 
-        if (nIntersects == nOldIntersects)
+        if ((nIntersects == nOldIntersects) && (nIntersects != 0))
         {
             if (debug > 2)
             {
@@ -564,7 +565,7 @@ void dynamicTopoFvMesh::computeCellWeights
             nIntersects = 0;
 
             // Expand the search radius and try again.
-            searchFactor *= 1.6;
+            searchFactor *= 1.4;
         }
     }
 
@@ -686,13 +687,10 @@ void dynamicTopoFvMesh::computeCellWeights
                  << endl;
         }
 
-        FatalErrorIn
-        (
-            "conservativeMeshToMesh::calcIntersectionAddressing()"
-        )
+        FatalErrorIn("dynamicTopoFvMesh::computeCellWeights()")
             << "Encountered non-conservative weighting factors." << nl
             << " Cell: " << cIndex << nl
-            << " Candidate parents: " << oldCandidates << nl
+            << " mapCandidates: " << mapCandidates << nl
             << " nCandidates: " << candidates.size() << nl
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
@@ -895,7 +893,7 @@ bool dynamicTopoFvMesh::cellIntersection
     vector intPoint = vector::zero;
 
     // Topologically check for common points
-    labelHashSet commonPoints;
+    Map<labelList> commonPoints;
 
     forAll(fromCellPoints, pointI)
     {
@@ -903,9 +901,52 @@ bool dynamicTopoFvMesh::cellIntersection
         {
             if (fromCellPoints[pointI] == toCellPoints[pointJ])
             {
-                commonPoints.insert(toCellPoints[pointJ]);
+                commonPoints.insert(toCellPoints[pointJ], labelList(0));
 
                 intersections.set(++nInts, oldPoints_[toCellPoints[pointJ]]);
+            }
+        }
+    }
+
+    // Add all new points as well, if they resulted
+    // from bisections of old cell edges.
+    forAll(toCellPoints, pointI)
+    {
+        label pIndex = toCellPoints[pointI];
+
+        if (pIndex >= nOldPoints_)
+        {
+            // Check pointsFromPoints info
+            label index = -1;
+
+            forAll(pointsFromPoints_, indexI)
+            {
+                if (pointsFromPoints_[indexI].index() == pIndex)
+                {
+                    index = indexI;
+                    break;
+                }
+            }
+
+            const labelList& mObj = pointsFromPoints_[index].masterObjects();
+
+            // Check if the old cell contains all master points
+            bool allMaster = true;
+
+            forAll(mObj, pointJ)
+            {
+                if (findIndex(fromCellPoints, mObj[pointJ]) == -1)
+                {
+                    allMaster = false;
+                    break;
+                }
+            }
+
+            if (allMaster)
+            {
+                commonPoints.insert(toCellPoints[pointI], mObj);
+
+                intersections.set(++nInts, oldPoints_[toCellPoints[pointI]]);
             }
         }
     }
@@ -921,6 +962,11 @@ bool dynamicTopoFvMesh::cellIntersection
         forAllConstIter(Map<vector>, intersections, pI)
         {
             tP[nInts++] = pI();
+        }
+
+        if (debug)
+        {
+            checkPointNearness(tP, 1e-20);
         }
 
         return true;
@@ -954,8 +1000,6 @@ bool dynamicTopoFvMesh::cellIntersection
         }
     }
 
-    bool foundIntersection = false;
-
     // Check whether any new points are within
     // the old cell. Count these as 'intersections'.
     forAll(toCellPoints, pointI)
@@ -984,6 +1028,8 @@ bool dynamicTopoFvMesh::cellIntersection
         }
     }
 
+    bool foundIntersection = false;
+
     // Loop through all old edges, and find possible
     // intersections with faces of the new cell.
     forAll(fromCellEdges, edgeI)
@@ -992,20 +1038,31 @@ bool dynamicTopoFvMesh::cellIntersection
 
         forAll(toCell, faceI)
         {
-            // Avoid common points, since this implies that
-            // the edge intersects at a face point
             const face& faceToCheck = faces_[toCell[faceI]];
 
             bool foundCommon = false;
 
-            forAllConstIter(labelHashSet, commonPoints, pIter)
+            forAllConstIter(Map<labelList>, commonPoints, pIter)
             {
                 if (faceToCheck.which(pIter.key()) > -1)
                 {
+                    // Avoid common points, since this implies that
+                    // the edge intersects at a face point
                     if
                     (
                         (edgeToCheck[0] == pIter.key()) ||
                         (edgeToCheck[1] == pIter.key())
+                    )
+                    {
+                        foundCommon = true;
+                        break;
+                    }
+
+                    // Also check for bisection points
+                    if
+                    (
+                        (findIndex(pIter(), edgeToCheck[0]) > -1) &&
+                        (findIndex(pIter(), edgeToCheck[1]) > -1)
                     )
                     {
                         foundCommon = true;
@@ -1048,20 +1105,31 @@ bool dynamicTopoFvMesh::cellIntersection
 
         forAll(fromCell, faceI)
         {
-            // Avoid common points, since this implies that
-            // the edge intersects at a face point
             const face& faceToCheck = polyMesh::faces()[fromCell[faceI]];
 
             bool foundCommon = false;
 
-            forAllConstIter(labelHashSet, commonPoints, pIter)
+            forAllConstIter(Map<labelList>, commonPoints, pIter)
             {
+                // Avoid common points, since this implies that
+                // the edge intersects at a face point
                 if (faceToCheck.which(pIter.key()) > -1)
                 {
                     if
                     (
                         (edgeToCheck[0] == pIter.key()) ||
                         (edgeToCheck[1] == pIter.key())
+                    )
+                    {
+                        foundCommon = true;
+                        break;
+                    }
+
+                    // Also check for bisection points
+                    if
+                    (
+                        (findIndex(pIter(), edgeToCheck[0]) > -1) &&
+                        (findIndex(pIter(), edgeToCheck[1]) > -1)
                     )
                     {
                         foundCommon = true;
@@ -1104,6 +1172,12 @@ bool dynamicTopoFvMesh::cellIntersection
     forAllConstIter(Map<vector>, intersections, pI)
     {
         tP[nInts++] = pI();
+    }
+
+    // Check for concurrent points.
+    if (debug)
+    {
+        checkPointNearness(tP, 1e-20);
     }
 
     // Found a convex set of points.
@@ -1492,8 +1566,9 @@ labelList dynamicTopoFvMesh::cellParents
     const labelList& oldCandidates
 ) const
 {
-    labelList finalCells;
-    labelHashSet masterCells;
+    typedef StaticHashTable<empty, label, Hash<label> > labelStaticHashSet;
+
+    labelStaticHashSet masterCells;
 
     // Fetch connectivity from the old mesh.
     const labelListList& fromCellCells = polyMesh::cellCells();
@@ -1508,7 +1583,7 @@ labelList dynamicTopoFvMesh::cellParents
 
         if (oldCandidates[cellI] < nOldCells_)
         {
-            masterCells.set(oldCandidates[cellI], empty());
+            masterCells.insert(oldCandidates[cellI], empty());
         }
         else
         if (cellParents_.found(oldCandidates[cellI]))
@@ -1517,12 +1592,12 @@ labelList dynamicTopoFvMesh::cellParents
 
             forAll(nParents, cI)
             {
-                masterCells.set(nParents[cI], empty());
+                masterCells.insert(nParents[cI], empty());
             }
         }
     }
 
-    for (label attempt = 0; attempt < 10; attempt++)
+    for (label attempt = 0; attempt < 5; attempt++)
     {
         // Fetch the initial set of candidates
         labelList initList = masterCells.toc();
@@ -1534,7 +1609,7 @@ labelList dynamicTopoFvMesh::cellParents
 
             forAll(cc, cellI)
             {
-                masterCells.set(cc[cellI], empty());
+                masterCells.insert(cc[cellI], empty());
             }
         }
     }
@@ -1562,23 +1637,10 @@ labelList dynamicTopoFvMesh::cellParents
     const vectorField& cellCentres = polyMesh::cellCentres();
 
     label nEntries = 0;
+    labelList finalCells(masterCells.size(), -1);
 
     // Count the number of entries
-    forAllConstIter(labelHashSet, masterCells, cIter)
-    {
-        vector xC = (cellCentres[cIter.key()] - bC);
-
-        if ((xC & xC) < (bMax & bMax))
-        {
-            nEntries++;
-        }
-    }
-
-    // Set size and reset counter
-    finalCells.setSize(nEntries, -1);
-    nEntries = 0;
-
-    forAllConstIter(labelHashSet, masterCells, cIter)
+    forAllConstIter(labelStaticHashSet, masterCells, cIter)
     {
         vector xC = (cellCentres[cIter.key()] - bC);
 
@@ -1587,6 +1649,9 @@ labelList dynamicTopoFvMesh::cellParents
             finalCells[nEntries++] = cIter.key();
         }
     }
+
+    // Shrink to actual size
+    finalCells.setSize(nEntries);
 
     if (debug > 2)
     {
@@ -1839,6 +1904,7 @@ void dynamicTopoFvMesh::removeCell
     if (cellWeights_.found(cIndex))
     {
         cellWeights_.erase(cIndex);
+        cellCentres_.erase(cIndex);
     }
 }
 
@@ -2090,6 +2156,7 @@ void dynamicTopoFvMesh::removeFace
     if (faceWeights_.found(fIndex))
     {
         faceWeights_.erase(fIndex);
+        faceCentres_.erase(fIndex);
     }
 
     // Decrement the total face-count
@@ -2288,7 +2355,7 @@ label dynamicTopoFvMesh::insertPoint
 (
     const point& newPoint,
     const point& oldPoint,
-    const labelList& mappingPoints,
+    const labelList& mapPoints,
     const label zoneID
 )
 {
@@ -2306,8 +2373,15 @@ label dynamicTopoFvMesh::insertPoint
              << " and old point: "
              << oldPoint
              << "  Mapped from: "
-             << mappingPoints << endl;
+             << mapPoints << endl;
     }
+
+    // Make a pointsFromPoints entry
+    sizeUpList
+    (
+        objectMap(newPointIndex, mapPoints),
+        pointsFromPoints_
+    );
 
     // Add an empty entry to pointEdges as well.
     // This entry can be sized-up appropriately at a later stage.

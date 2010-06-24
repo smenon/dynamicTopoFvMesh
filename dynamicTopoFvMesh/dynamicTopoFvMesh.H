@@ -415,14 +415,6 @@ class dynamicTopoFvMesh
             const point& p
         ) const;
 
-        // Determine whether a specified point lies on a segment
-        inline bool segmentPointIntersection
-        (
-            const edge& edgeToCheck,
-            const UList<point>& points,
-            const point& checkPoint
-        ) const;
-
         // Determine whether a segment intersects a face
         inline bool segmentFaceIntersection
         (
@@ -552,9 +544,6 @@ class dynamicTopoFvMesh
 
         // Check for edge collapse
         inline bool checkEdgeCollapse(const label eIndex) const;
-
-        // Check if a given face is a quad
-        inline bool checkQuadFace(const label fIndex) const;
 
         // MultiThreaded topology modifier [2D]
         void threadedTopoModifier2D();
@@ -712,6 +701,13 @@ class dynamicTopoFvMesh
             const label cellIndex,
             labelHashSet& cellsChecked,
             bool forceOp = false
+        ) const;
+
+        // Utility method to check for concurrent points.
+        void checkPointNearness
+        (
+            const pointField& points,
+            const scalar magSqrTol
         ) const;
 
         // Check if the boundary face is adjacent to a sliver-cell,
@@ -881,7 +877,7 @@ class dynamicTopoFvMesh
         (
             const point& newPoint,
             const point& oldPoint,
-            const labelList& mappingPoints,
+            const labelList& mapPoints,
             const label zoneID = -1
         );
 

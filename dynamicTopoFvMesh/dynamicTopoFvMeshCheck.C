@@ -1985,6 +1985,40 @@ bool dynamicTopoFvMesh::checkCollapse
 }
 
 
+// Utility method to check for concurrent points.
+void dynamicTopoFvMesh::checkPointNearness
+(
+    const pointField& points,
+    const scalar magSqrTol
+) const
+{
+    forAll(points, pI)
+    {
+        forAll(points, pJ)
+        {
+            if (pI == pJ)
+            {
+                continue;
+            }
+
+            scalar magSqrDist = magSqr(points[pI] - points[pJ]);
+
+            if (magSqrDist < magSqrTol)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::checkPointNearness()")
+                    << " Found concurrent points: " << nl
+                    << " pI: " << pI << " pJ: " << pJ << nl
+                    << " point: " << points[pI] << nl
+                    << " Points: " << points << nl
+                    << " distance: " << magSqrDist << nl
+                    << " tolerance: " << magSqrTol
+                    << abort(FatalError);
+            }
+        }
+    }
+}
+
+
 } // End namespace Foam
 
 // ************************************************************************* //

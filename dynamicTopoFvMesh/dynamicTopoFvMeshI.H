@@ -238,44 +238,6 @@ inline label dynamicTopoFvMesh::whichSide
 }
 
 
-// Determine whether a specified point lies on a segment
-inline bool dynamicTopoFvMesh::segmentPointIntersection
-(
-    const edge& edgeToCheck,
-    const UList<point>& points,
-    const point& checkPoint
-) const
-{
-    vector te = (points[edgeToCheck[1]] - points[edgeToCheck[0]]);
-    vector pe = (checkPoint - points[edgeToCheck[0]]);
-
-    // Compute uValue
-    scalar u = (pe & pe) / ((pe & te) + VSMALL);
-
-    scalar magTe = mag(te), magPe = mag(pe);
-
-    // Normalize vectors
-    te /= magTe + VSMALL;
-    pe /= magPe + VSMALL;
-
-    scalar tolerance = 1e-4 * magTe;
-
-    // Check if vectors are parallel, and uValue is within range.
-    if
-    (
-        (mag(1.0 - (pe & te)) < tolerance) &&
-        (u > tolerance) &&
-        (u < (1.0 - tolerance))
-    )
-    {
-        return true;
-    }
-
-    // Does not intersect
-    return false;
-}
-
-
 // Determine whether a segment intersects a face
 inline bool dynamicTopoFvMesh::segmentFaceIntersection
 (
@@ -298,7 +260,9 @@ inline bool dynamicTopoFvMesh::segmentFaceIntersection
     scalar denominator = n & (p2 - p1);
 
     // Check if the edge is parallel to the face
-    if (mag(denominator) < VSMALL)
+    scalar tolerance = (1e-4 * mag(p2 - p1));
+
+    if (mag(denominator) < tolerance)
     {
         return false;
     }
@@ -306,7 +270,7 @@ inline bool dynamicTopoFvMesh::segmentFaceIntersection
     scalar u = (numerator / denominator);
 
     // Check for intersection along line.
-    if ((u >= 0.0) && (u <= 1.0))
+    if ((u > tolerance) && (u < (1.0 - tolerance)))
     {
         // Compute point of intersection
         intersectionPoint = p1 + u*(p2 - p1);
@@ -843,16 +807,6 @@ inline bool dynamicTopoFvMesh::checkEdgeCollapse
     {
         return false;
     }
-}
-
-
-// Check if a given face is a quad
-inline bool dynamicTopoFvMesh::checkQuadFace
-(
-    const label fIndex
-) const
-{
-    return (faces_[fIndex].size() == 4);
 }
 
 

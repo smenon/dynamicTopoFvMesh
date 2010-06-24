@@ -1059,13 +1059,13 @@ void dynamicTopoFvMesh::reOrderFaces
     }
 
     // Renumber all flipFaces
-    labelHashSet newFlipFaces;
+    labelHashSet flipFaces;
 
     forAllIter(labelHashSet, flipFaces_, fIter)
     {
         if (fIter.key() < nOldFaces_)
         {
-            newFlipFaces.insert(reverseFaceMap_[fIter.key()]);
+            flipFaces.insert(reverseFaceMap_[fIter.key()]);
         }
         else
         {
@@ -1078,24 +1078,35 @@ void dynamicTopoFvMesh::reOrderFaces
         }
     }
 
-    flipFaces_.transfer(newFlipFaces);
+    flipFaces_.transfer(flipFaces);
 
-    // Renumber all faceWeights
-    Map<scalarField> newFaceWeights;
+    // Renumber all faceWeights and faceCentres
+    Map<scalarField> faceWeights;
+    Map<vectorField> faceCentres;
 
-    forAllIter(Map<scalarField>, faceWeights_, fIter)
+    Map<scalarField>::const_iterator fwIter = faceWeights_.begin();
+    Map<vectorField>::const_iterator fcIter = faceCentres_.begin();
+
+    while (fwIter != faceWeights_.end())
     {
-        if (fIter.key() < nOldFaces_)
+        if (fwIter.key() < nOldFaces_)
         {
-            newFaceWeights.insert(reverseFaceMap_[fIter.key()], fIter());
+            faceWeights.insert(reverseFaceMap_[fwIter.key()], fwIter());
+            faceCentres.insert(reverseFaceMap_[fcIter.key()], fcIter());
         }
         else
         {
-            newFaceWeights.insert(addedFaceRenumbering_[fIter.key()], fIter());
+            faceWeights.insert(addedFaceRenumbering_[fwIter.key()], fwIter());
+            faceCentres.insert(addedFaceRenumbering_[fcIter.key()], fcIter());
         }
+
+        // Increment iterators
+        fwIter++;
+        fcIter++;
     }
 
-    faceWeights_.transfer(newFaceWeights);
+    faceWeights_.transfer(faceWeights);
+    faceCentres_.transfer(faceCentres);
 
     // Renumber all cells with updated face information
     forAll(cells_, cellI)
@@ -1586,22 +1597,33 @@ void dynamicTopoFvMesh::reOrderCells
         }
     }
 
-    // Renumber all cellWeights
-    Map<scalarField> newCellWeights;
+    // Renumber all cellWeights and cellCentres
+    Map<scalarField> cellWeights;
+    Map<vectorField> cellCentres;
 
-    forAllIter(Map<scalarField>, cellWeights_, cIter)
+    Map<scalarField>::const_iterator cwIter = cellWeights_.begin();
+    Map<vectorField>::const_iterator ccIter = cellCentres_.begin();
+
+    while (cwIter != cellWeights_.end())
     {
-        if (cIter.key() < nOldCells_)
+        if (cwIter.key() < nOldCells_)
         {
-            newCellWeights.insert(reverseCellMap_[cIter.key()], cIter());
+            cellWeights.insert(reverseCellMap_[cwIter.key()], cwIter());
+            cellCentres.insert(reverseCellMap_[ccIter.key()], ccIter());
         }
         else
         {
-            newCellWeights.insert(addedCellRenumbering_[cIter.key()], cIter());
+            cellWeights.insert(addedCellRenumbering_[cwIter.key()], cwIter());
+            cellCentres.insert(addedCellRenumbering_[ccIter.key()], ccIter());
         }
+
+        // Increment iterators
+        cwIter++;
+        ccIter++;
     }
 
-    cellWeights_.transfer(newCellWeights);
+    cellWeights_.transfer(cellWeights);
+    cellCentres_.transfer(cellCentres);
 
     // Prepare the cellZoneMap
     cellZoneMesh& cellZones = polyMesh::cellZones();

@@ -107,7 +107,8 @@ void Foam::topoMapper::setFaceWeights
     Map<vectorField>& centres
 )
 {
-
+    weights.clear();
+    centres.clear();
 }
 
 
@@ -118,7 +119,8 @@ void Foam::topoMapper::setCellWeights
     Map<vectorField>& centres
 )
 {
-
+    weights.clear();
+    centres.clear();
 }
 
 
@@ -130,7 +132,7 @@ void Foam::topoMapper::setOldCellCentres
 {
     if (oldCellCentresPtr_)
     {
-    	deleteDemandDrivenData(oldCellCentresPtr_);
+        deleteDemandDrivenData(oldCellCentresPtr_);
     }
 
     // Set the pointer.

@@ -113,7 +113,7 @@ void conservativeMeshToMesh::computeCellWeights
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
     // Maintain a list of candidates and intersection points
-    labelList oldCandidates, candidates;
+    labelList candidates;
 
     while (nAttempts < 10)
     {
@@ -325,7 +325,6 @@ labelList conservativeMeshToMesh::cellParents
 {
     typedef StaticHashTable<empty, label, Hash<label> > labelStaticHashSet;
 
-    labelList finalCells;
     labelStaticHashSet masterCells;
 
     // Fetch connectivity from the old mesh.
@@ -365,22 +364,9 @@ labelList conservativeMeshToMesh::cellParents
     const vectorField& cellCentres = fromMesh().cellCentres();
 
     label nEntries = 0;
+    labelList finalCells(masterCells.size(), -1);
 
     // Count the number of entries
-    forAllConstIter(labelStaticHashSet, masterCells, cIter)
-    {
-        vector xC = (cellCentres[cIter.key()] - bC);
-
-        if ((xC & xC) < (bMax & bMax))
-        {
-            nEntries++;
-        }
-    }
-
-    // Set size and reset counter
-    finalCells.setSize(nEntries, -1);
-    nEntries = 0;
-
     forAllConstIter(labelStaticHashSet, masterCells, cIter)
     {
         vector xC = (cellCentres[cIter.key()] - bC);
@@ -390,6 +376,9 @@ labelList conservativeMeshToMesh::cellParents
             finalCells[nEntries++] = cIter.key();
         }
     }
+
+    // Shrink to actual size
+    finalCells.setSize(nEntries);
 
     if (debug)
     {
