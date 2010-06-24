@@ -140,7 +140,14 @@ inline label dynamicTopoFvMesh::tetApexPoint
                  << faces_[cellToCheck[faceI]] << endl;
         }
 
-        FatalErrorIn("dynamicTopoFvMesh::tetApexPoint()")
+        FatalErrorIn
+        (
+            "inline label dynamicTopoFvMesh::tetApexPoint\n"
+            "(\n"
+            "	const label cIndex,\n"
+            "	const label fIndex\n"
+            ") const"
+        )
             << "Could not find an apex point in cell: " << cIndex
             << " given face: " << fIndex
             << abort(FatalError);
@@ -404,7 +411,13 @@ inline label dynamicTopoFvMesh::getEdgeIndex
     }
 
     // Probably not a valid edge.
-    FatalErrorIn("dynamicTopoFvMesh::getEdgeIndex")
+    FatalErrorIn
+    (
+        "inline label dynamicTopoFvMesh::getEdgeIndex\n"
+        "(\n"
+        "	const edge& edgeToCheck\n"
+        ") const"
+    )
         << "Could not find an appropriate edge index for edge:"
         << edgeToCheck
         << abort(FatalError);
@@ -498,8 +511,14 @@ inline scalar dynamicTopoFvMesh::faceLengthScale
         // Check whether neighbour is valid
         if (neighbour_[fIndex] == -1)
         {
-            FatalErrorIn("dynamicTopoFvMesh::faceLengthScale()")
-                << "Face: " << fIndex
+            FatalErrorIn
+            (
+                "inline scalar dynamicTopoFvMesh::faceLengthScale\n"
+                "(\n"
+                "	const label fIndex\n"
+                ") const"
+            )
+                << nl << "Face: " << fIndex
                 << ": " << faces_[fIndex]
                 << " is not internal."
                 << abort(FatalError);
@@ -602,8 +621,14 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
             // Check whether neighbour is valid
             if (neighbour_[eFaces[faceI]] == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::edgeLengthScale()")
-                    << "Face: " << eFaces[faceI]
+                FatalErrorIn
+                (
+                    "inline scalar dynamicTopoFvMesh::edgeLengthScale\n"
+                    "(\n"
+                    "	const label eIndex\n"
+                    ") const"
+                )
+                    << nl << "Face: " << eFaces[faceI]
                     << ": " << faces_[eFaces[faceI]]
                     << " is not internal, while edge: "
                     << eIndex << ": " << edges_[eIndex] << " is."
@@ -1256,7 +1281,7 @@ inline label dynamicTopoFvMesh::whichPatch
     {
         FatalErrorIn
         (
-            "label dynamicTopoFvMesh::whichPatch(const label& index) const"
+            "label dynamicTopoFvMesh::whichPatch(const label index) const"
         )
             << "Cannot find patch information for face index: " << index << nl
             << " It appears that face ordering is"
@@ -1376,7 +1401,13 @@ inline void dynamicTopoFvMesh::findIsolatedPoint
     // This bit should never happen.
     FatalErrorIn
     (
-        "label dynamicTopoFvMesh::findIsolatedPoint()"
+        "inline void dynamicTopoFvMesh::findIsolatedPoint\n"
+        "(\n"
+        "	const face& f,\n"
+        "	const edge& e,\n"
+        "	label& ptIndex,\n"
+        "	label& nextPtIndex\n"
+        ") const\n"
     )
         << "Cannot find isolated point in face " << f << endl
         << " Using edge: " << e
@@ -1408,9 +1439,16 @@ inline void dynamicTopoFvMesh::replaceLabel
     {
         FatalErrorIn
         (
-            "label dynamicTopoFvMesh::replaceLabel()"
-        )   << "Cannot find " << original << " in list: " << list << endl
-            << " Label: " << replacement << " was not used in replacement."
+            "inline void label dynamicTopoFvMesh::replaceLabel\n"
+            "(\n"
+            "	 const label original,\n"
+            "	 const label replacement,\n"
+            "	 labelList& list\n"
+            ") const"
+        )   << nl << "Cannot find " << original
+            << " in list: " << list << nl
+            << " Label: " << replacement
+            << " was not used in replacement."
             << abort(FatalError);
     }
 }
@@ -1509,10 +1547,18 @@ inline void dynamicTopoFvMesh::insertLabel
     {
         FatalErrorIn
         (
-            "label dynamicTopoFvMesh::insertLabel()"
-        )   << "Cannot insert " << newLabel << " in list: " << list << endl
+            "inline void dynamicTopoFvMesh::insertLabel\n"
+            "(\n"
+            "	const label newLabel,\n"
+            "	const label labelA,\n"
+            "	const label labelB,\n"
+            "	labelList& list\n"
+            ") const"
+        )   << nl << "Cannot insert " << newLabel
+            << " in list: " << list << nl
             << " Labels: "
-            << labelA << " and " << labelB << " were not found in sequence."
+            << labelA << " and " << labelB
+            << " were not found in sequence."
             << abort(FatalError);
     }
 
@@ -1560,8 +1606,15 @@ inline void dynamicTopoFvMesh::sizeDownList
     }
     else
     {
-        FatalErrorIn("dynamicTopoFvMesh::sizeDownList")
-            << "Item: " << item
+        FatalErrorIn
+        (
+            "inline void dynamicTopoFvMesh::sizeDownList\n"
+            "(\n"
+            "	const Type item,\n"
+            "	List<Type>& list\n"
+            ") const"
+        )
+            << nl << "Item: " << item
             << " was not found in list. " << nl
             << " List: " << nl << list
             << abort(FatalError);
@@ -1691,8 +1744,14 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::computeMinQuality")
-                    << "Coupled maps were improperly specified." << nl
+                FatalErrorIn
+                (
+                    "inline scalar dynamicTopoFvMesh::computeMinQuality\n"
+                    "(\n"
+                    "	const label eIndex\n"
+                    ") const"
+                )
+                    << nl << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Edge: " << eIndex << nl
                     << abort(FatalError);
@@ -1768,7 +1827,13 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
             writeVTK(Foam::name(eIndex) + "_bFaces", bFaces.toc(), 2);
         }
 
-        FatalErrorIn("dynamicTopoFvMesh::computeMinQuality()")
+        FatalErrorIn
+        (
+            "inline scalar dynamicTopoFvMesh::computeMinQuality\n"
+            "(\n"
+            "	const label eIndex\n"
+            ") const"
+        )
             << "Encountered negative cell-quality!" << nl
             << "Edge: " << eIndex << ": " << edgeToCheck << nl
             << "EdgePoints: " << hullVertices << nl
@@ -1797,8 +1862,14 @@ inline scalar dynamicTopoFvMesh::tetQuality
     // Something's wrong with connectivity.
     if (apexPoint == -1)
     {
-        FatalErrorIn("dynamicTopoFvMesh::tetQuality()")
-            << "Cell: " << cIndex
+        FatalErrorIn
+        (
+            "inline scalar dynamicTopoFvMesh::tetQuality"
+            "(\n"
+            "	const label cIndex\n"
+            ") const"
+        )
+            << nl << "Cell: " << cIndex
             << " has inconsistent connectivity."
             << abort(FatalError);
     }
@@ -1832,7 +1903,13 @@ inline scalar dynamicTopoFvMesh::tetQuality
     }
 
     // This should never happen.
-    FatalErrorIn("dynamicTopoFvMesh::tetQuality()")
+    FatalErrorIn
+    (
+        "inline scalar dynamicTopoFvMesh::tetQuality"
+        "(\n"
+        "	const label cIndex\n"
+        ") const"
+    )
         << nl << " Illegal connectivity."
         << abort(FatalError);
 
@@ -2033,7 +2110,13 @@ inline label dynamicTopoFvMesh::locallyCoupledEdgePatch
     }
 
     // Could not find any faces on locally coupled patches.
-    FatalErrorIn("dynamicTopoFvMesh::locallyCoupledEdgeIndex()")
+    FatalErrorIn
+    (
+        "inline label dynamicTopoFvMesh::locallyCoupledEdgeIndex"
+        "(\n"
+        "	const label cIndex\n"
+        ") const"
+    )
         << "Edge: " << eIndex << ":: " << edges_[eIndex]
         << " does not lie on any coupled patches."
         << abort(FatalError);

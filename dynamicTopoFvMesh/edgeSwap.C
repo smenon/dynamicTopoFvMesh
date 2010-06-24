@@ -1043,7 +1043,19 @@ bool dynamicTopoFvMesh::fillTables
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::fillTables()")
+                FatalErrorIn
+                (
+                    "bool dynamicTopoFvMesh::fillTables\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	const scalar minQuality,\n"
+                    "	labelList& m,\n"
+                    "	PtrList<scalarListList>& Q,\n"
+                    "	PtrList<labelListList>& K,\n"
+                    "	PtrList<labelListList>& triangulations,\n"
+                    "	const label checkIndex\n"
+                    ") const\n"
+                )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Edge: " << eIndex << nl
@@ -1177,7 +1189,17 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     {
         const edge& edgeToCheck = edges_[eIndex];
 
-        FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips()") << nl
+        FatalErrorIn
+        (
+            "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
+            "(\n"
+            "	const label eIndex,\n"
+            "	const scalar minQuality,\n"
+            "	const PtrList<labelListList>& K,\n"
+            "	PtrList<labelListList>& triangulations,\n"
+            "	const label checkIndex\n"
+            ")\n"
+        )
             << "Could not determine 3-2 swap triangulation." << nl
             << "Edge: " << edgeToCheck << nl
             << "Edge Points: "
@@ -1232,7 +1254,17 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips()")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	const scalar minQuality,\n"
+                    "	const PtrList<labelListList>& K,\n"
+                    "	PtrList<labelListList>& triangulations,\n"
+                    "	const label checkIndex\n"
+                    ")\n"
+                )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Edge: " << eIndex << nl
@@ -1339,7 +1371,17 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             }
 
             // Should have performed at least one swap
-            FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips()") << nl
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
+                "(\n"
+                "	const label eIndex,\n"
+                "	const scalar minQuality,\n"
+                "	const PtrList<labelListList>& K,\n"
+                "	PtrList<labelListList>& triangulations,\n"
+                "	const label checkIndex\n"
+                ")\n"
+            )
                 << "Did not perform any 2-3 swaps" << nl
                 << abort(FatalError);
         }
@@ -1375,7 +1417,17 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
         if (swapQuality < minQuality)
         {
-            WarningIn("dynamicTopoFvMesh::removeEdgeFlips()") << nl
+            WarningIn
+            (
+                "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
+                "(\n"
+                "	const label eIndex,\n"
+                "	const scalar minQuality,\n"
+                "	const PtrList<labelListList>& K,\n"
+                "	PtrList<labelListList>& triangulations,\n"
+                "	const label checkIndex\n"
+                ")\n"
+            )
                 << " Swap failed to improve quality." << nl
                 << " MinQuality: " << minQuality << nl
                 << " SwapQuality: " << swapQuality
@@ -1477,7 +1529,17 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
                          << endl;
                 }
 
-                FatalErrorIn("dynamicTopoFvMesh::removeEdgeFlips")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	const scalar minQuality,\n"
+                    "	const PtrList<labelListList>& K,\n"
+                    "	PtrList<labelListList>& triangulations,\n"
+                    "	const label checkIndex\n"
+                    ")\n"
+                )
                     << "Failed to build coupled face maps."
                     << abort(FatalError);
             }
@@ -1762,12 +1824,24 @@ const changeMap dynamicTopoFvMesh::swap23
     // Check if this is an internal face
     if (cellsForRemoval[1] == -1)
     {
-        FatalErrorIn("dynamicTopoFvMesh::swap23()")
+        FatalErrorIn
+        (
+            "const changeMap dynamicTopoFvMesh::swap23\n"
+            "(\n"
+            "	const label isolatedVertex,\n"
+            "	const label eIndex,\n"
+            "	const label triangulationIndex,\n"
+            "	const label numTriangulations,\n"
+            "	const labelListList& triangulations,\n"
+            "	const labelList& hullVertices,\n"
+            "	const labelList& hullFaces,\n"
+            "	const labelList& hullCells\n"
+            ")\n"
+        )
             << " Expected an internal face,"
             << " but found a boundary one instead." << nl
             << " Looks like identify32Swap couldn't correctly identify"
-            << " the 2-2 swap triangulation. Change tolerance in"
-            << " identify32Swap() to rectify this."
+            << " the 2-2 swap triangulation."
             << abort(FatalError);
     }
 

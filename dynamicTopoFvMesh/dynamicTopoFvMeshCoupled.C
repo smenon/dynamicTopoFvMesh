@@ -465,7 +465,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
             }
             else
             {
-                FatalErrorIn("dynamicTopoFvMesh::readCoupledPatches()")
+                FatalErrorIn("void dynamicTopoFvMesh::readCoupledPatches()")
                     << " Coupled patches are either wrongly specified,"
                     << " or the sizes don't match." << nl
                     << " Master: " << mPatch << ":" << masterPatch
@@ -1132,7 +1132,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         // Sanity check: Do patches have equal number of entities?
         if (mP.size() != sP.size())
         {
-            FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
+            FatalErrorIn("void dynamicTopoFvMesh::buildLocalCoupledMaps()")
                 << "Patch point sizes are not consistent."
                 << abort(FatalError);
         }
@@ -1181,7 +1181,11 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                 if (!matched)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::buildLocalCoupledMaps()")
+                    FatalErrorIn
+                    (
+                        "void dynamicTopoFvMesh::"
+                        "buildLocalCoupledMaps()"
+                    )
                         << " Failed to match point: " << mP[indexI]
                         << ": " << points_[mP[indexI]]
                         << " within a tolerance of: " << gTol << nl
@@ -1276,7 +1280,11 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                     if (!matched)
                     {
-                        FatalErrorIn("buildLocalCoupledMaps()")
+                        FatalErrorIn
+                        (
+                            "void dynamicTopoFvMesh::"
+                            "buildLocalCoupledMaps()"
+                        )
                             << " Failed to match face: "
                             << mfIndex << ": " << mFace
                             << abort(FatalError);
@@ -1318,7 +1326,11 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                     if (slaveFaceIndex == -1)
                     {
-                        FatalErrorIn("buildLocalCoupledMaps()")
+                        FatalErrorIn
+                        (
+                            "void dynamicTopoFvMesh::"
+                            "buildLocalCoupledMaps()"
+                        )
                             << " Failed to match face: "
                             << mfIndex << ": " << mFace
                             << abort(FatalError);
@@ -1371,7 +1383,11 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                         if (!matchedEdge)
                         {
-                            FatalErrorIn("buildProcessorCoupledMaps()")
+                            FatalErrorIn
+                            (
+                                "void dynamicTopoFvMesh::"
+                                "buildLocalCoupledMaps()"
+                            )
                                 << " Failed to match edge: "
                                 << mfEdges[edgeI] << ": "
                                 << mEdge << nl
@@ -1464,7 +1480,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
          != cMap.nEntities(coupleMap::SHARED_POINT)
         )
         {
-            FatalErrorIn("dynamicTopoFvMesh::buildProcessorCoupledMaps()")
+            FatalErrorIn("void dynamicTopoFvMesh::buildProcessorCoupledMaps()")
                 << " Sub-mesh point sizes don't match." << nl
                 << " My procID: " << Pstream::myProcNo() << nl
                 << " Slave processor: " << proc << nl
@@ -1494,7 +1510,11 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             {
                 if (findIndex(neiPoints, -1) > -1)
                 {
-                    FatalErrorIn("buildProcessorCoupledMaps()")
+                    FatalErrorIn
+                    (
+                        "void dynamicTopoFvMesh::"
+                        "buildProcessorCoupledMaps()"
+                    )
                         << " Multiply connected point." << nl
                         << " My procID: " << Pstream::myProcNo() << nl
                         << " Slave processor: " << proc << nl
@@ -1567,7 +1587,8 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 {
                     FatalErrorIn
                     (
-                        "dynamicTopoFvMesh::buildProcessorCoupledMaps()"
+                        "void dynamicTopoFvMesh::"
+                        "buildProcessorCoupledMaps()"
                     )
                         << " Failed to match point: " << pIter.key()
                         << ": " << points_[pIter.key()]
@@ -1761,7 +1782,11 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                             // Write out the edge
                             writeVTK("mEdge", mfEdges[edgeI], 1);
 
-                            FatalErrorIn("buildProcessorCoupledMaps()")
+                            FatalErrorIn
+                            (
+                                "void dynamicTopoFvMesh::"
+                                "buildProcessorCoupledMaps()"
+                            )
                                 << " Failed to match edge: "
                                 << mfEdges[edgeI] << ": "
                                 << mEdge << nl
@@ -1784,7 +1809,11 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             // Write out the face
             writeVTK("mFaces", unMatchedFaces.toc(), 2);
 
-            FatalErrorIn("dynamicTopoFvMesh::buildProcessorCoupledMaps()")
+            FatalErrorIn
+            (
+                "void dynamicTopoFvMesh::"
+                "buildProcessorCoupledMaps()"
+            )
                 << " Unmatched faces were found for processor: " << proc
                 << abort(FatalError);
         }

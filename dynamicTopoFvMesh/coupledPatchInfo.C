@@ -103,7 +103,11 @@ dynamicTopoFvMesh& dynamicTopoFvMesh::coupledPatchInfo::subMesh()
 {
     if (!subMesh_.valid())
     {
-        FatalErrorIn("coupledPatchInfo::subMesh()")
+        FatalErrorIn
+        (
+            "dynamicTopoFvMesh& "
+            "dynamicTopoFvMesh::coupledPatchInfo::subMesh()"
+        )
             << " Sub-mesh pointer has not been set."
             << abort(FatalError);
     }
@@ -148,7 +152,9 @@ void dynamicTopoFvMesh::coupledPatchInfo::operator=
     {
         FatalErrorIn
         (
-            "coupledPatchInfo::operator=(const Foam::coupledPatchInfo&)"
+            "void dynamicTopoFvMesh::"
+            "coupledPatchInfo::operator="
+            "(const Foam::coupledPatchInfo&)"
         )
             << "Attempted assignment to self"
             << abort(FatalError);

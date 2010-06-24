@@ -324,7 +324,17 @@ bool dynamicTopoFvMesh::checkQuality
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::checkQuality")
+                FatalErrorIn
+                (
+                    "bool dynamicTopoFvMesh::checkQuality\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	const labelList& m,\n"
+                    "	const PtrList<scalarListList>& Q,\n"
+                    "	const scalar minQuality,\n"
+                    "	const label checkIndex\n"
+                    ") const\n"
+                )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Edge: " << eIndex << nl
@@ -459,7 +469,15 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
         {
             if (debug > 2)
             {
-                InfoIn("dynamicTopoFvMesh::checkTriangulationVolumes") << nl
+                InfoIn
+                (
+                    "bool dynamicTopoFvMesh::checkTriangulationVolumes\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	const labelList& hullVertices,\n"
+                    "	const labelListList& triangulations\n"
+                    ") const\n"
+                )
                     << "Swap sequence leads to negative old-volumes." << nl
                     << "Edge: " << edgeToCheck << nl
                     << "using Points: " << nl
@@ -487,7 +505,15 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
         {
             if (debug > 2)
             {
-                InfoIn("dynamicTopoFvMesh::checkTriangulationVolumes") << nl
+                InfoIn
+                (
+                    "bool dynamicTopoFvMesh::checkTriangulationVolumes\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	const labelList& hullVertices,\n"
+                    "	const labelListList& triangulations\n"
+                    ") const\n"
+                )
                     << "Swap sequence leads to negative old-volumes." << nl
                     << "Edge: " << edgeToCheck << nl
                     << "using Points: " << nl
@@ -581,7 +607,17 @@ void dynamicTopoFvMesh::writeVTK
             // because the convention differs from FOAM.
             if (useOldConnectivity)
             {
-                FatalErrorIn("void dynamicTopoFvMesh::writeVTK()")
+                FatalErrorIn
+                (
+                    "void dynamicTopoFvMesh::writeVTK\n"
+                    "(\n"
+                    "	const word& name,\n"
+                    "	const labelList& cList,\n"
+                    "	const label primitiveType,\n"
+                    "	const bool useOldConnectivity,\n"
+                    "	const bool useOldPoints\n"
+                    ") const\n"
+                )
                     << "Cannot use old connectivity for edges."
                     << abort(FatalError);
             }
@@ -675,7 +711,17 @@ void dynamicTopoFvMesh::writeVTK
                 // Something's wrong with connectivity.
                 if (apexPoint == -1)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::writeVTK()")
+                    FatalErrorIn
+                    (
+                        "void dynamicTopoFvMesh::writeVTK\n"
+                        "(\n"
+                        "	const word& name,\n"
+                        "	const labelList& cList,\n"
+                        "	const label primitiveType,\n"
+                        "	const bool useOldConnectivity,\n"
+                        "	const bool useOldPoints\n"
+                        ") const\n"
+                    )
                         << "Cell: " << cList[cellI]
                         << ":: " << tCell
                         << " has inconsistent connectivity."
@@ -1679,7 +1725,13 @@ void dynamicTopoFvMesh::checkConnectivity
 
     if (nFailedChecks)
     {
-        FatalErrorIn("dynamicTopoFvMesh::checkConnectivity()")
+        FatalErrorIn
+        (
+            "void dynamicTopoFvMesh::checkConnectivity\n"
+            "(\n"
+            "	label maxErrors\n"
+            ") const\n"
+        )
             << nFailedChecks << " failures were found in connectivity."
             << abort(FatalError);
     }
@@ -1709,7 +1761,13 @@ void dynamicTopoFvMesh::checkPatches
 
         if (!foundPatch)
         {
-            FatalErrorIn("dynamicTopoFvMesh::checkPatches()")
+            FatalErrorIn
+            (
+                "void dynamicTopoFvMesh::checkPatches\n"
+                "(\n"
+                "	const wordList& patchList\n"
+                ") const\n"
+            )
                 << " Could not find patch: "
                 << patchList[wordI] << nl
                 << abort(FatalError);
@@ -2005,7 +2063,14 @@ void dynamicTopoFvMesh::checkPointNearness
 
             if (magSqrDist < magSqrTol)
             {
-                FatalErrorIn("dynamicTopoFvMesh::checkPointNearness()")
+                FatalErrorIn
+                (
+                    "void dynamicTopoFvMesh::checkPointNearness\n"
+                    "(\n"
+                    "	const pointField& points,\n"
+                    "	const scalar magSqrTol\n"
+                    ") const\n"
+                )
                     << " Found concurrent points: " << nl
                     << " pI: " << pI << " pJ: " << pJ << nl
                     << " point: " << points[pI] << nl

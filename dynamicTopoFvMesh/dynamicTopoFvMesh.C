@@ -687,7 +687,17 @@ void dynamicTopoFvMesh::computeCellWeights
                  << endl;
         }
 
-        FatalErrorIn("dynamicTopoFvMesh::computeCellWeights()")
+        FatalErrorIn
+        (
+            "void dynamicTopoFvMesh::computeCellWeights\n"
+            "(\n"
+            "	const label cIndex,\n"
+            "	const labelList& mapCandidates,\n"
+            "	labelList& parents,\n"
+            "	scalarField& weights,\n"
+            "	vectorField& centres\n"
+            ") const"
+        )
             << "Encountered non-conservative weighting factors." << nl
             << " Cell: " << cIndex << nl
             << " mapCandidates: " << mapCandidates << nl
@@ -722,7 +732,14 @@ bool dynamicTopoFvMesh::testIntersection
     // Check indices first
     if (newCellIndex >= cells_.size() || newCellIndex < 0)
     {
-        FatalErrorIn("dynamicTopoFvMesh::testIntersection")
+        FatalErrorIn
+        (
+            "bool dynamicTopoFvMesh::testIntersection\n"
+            "(\n"
+            "	const label newCellIndex,\n"
+            "	const label oldCellIndex\n"
+            ") const"
+        )
             << " Wrong newCellIndex: " << newCellIndex << nl
             << " nCells: " << nCells_
             << abort(FatalError);
@@ -730,7 +747,14 @@ bool dynamicTopoFvMesh::testIntersection
 
     if (oldCellIndex >= nOldCells_ || oldCellIndex < 0)
     {
-        FatalErrorIn("dynamicTopoFvMesh::testIntersection")
+        FatalErrorIn
+        (
+            "bool dynamicTopoFvMesh::testIntersection\n"
+            "(\n"
+            "	const label newCellIndex,\n"
+            "	const label oldCellIndex\n"
+            ") const"
+        )
             << " Wrong oldCellIndex: " << oldCellIndex << nl
             << " nOldCells: " << nOldCells_
             << abort(FatalError);
@@ -1688,7 +1712,16 @@ void dynamicTopoFvMesh::setCellMapping
     // Ensure compatible sizes.
     if (mapCells.size() != mapWeights.size())
     {
-        FatalErrorIn("dynamicTopoFvMesh::setCellMapping()")
+        FatalErrorIn
+        (
+            "void dynamicTopoFvMesh::setCellMapping\n"
+            "(\n"
+            "	const label cIndex,\n"
+            "	const labelList& mapCells,\n"
+            "	const scalarField& mapWeights,\n"
+            "	const vectorField& mapCentres\n"
+            ")"
+        )
             << nl << " Incompatible mapping for cell: "
             << cIndex << ":: " << cells_[cIndex] << nl
             << " mapCells: " << mapCells << nl
@@ -1748,7 +1781,16 @@ void dynamicTopoFvMesh::setFaceMapping
     // Ensure compatible sizes.
     if (mapFaces.size() != mapWeights.size())
     {
-        FatalErrorIn("dynamicTopoFvMesh::setFaceMapping()")
+        FatalErrorIn
+        (
+            "void dynamicTopoFvMesh::setFaceMapping\n"
+            "(\n"
+            "	const label fIndex,\n"
+            "	const labelList& mapFaces,\n"
+            "	const scalarField& mapWeights,\n"
+            "	const vectorField& mapCentres\n"
+            ")"
+        )
             << nl << " Incompatible mapping: " << nl
             << " mapFaces: " << mapFaces << nl
             << " mapWeights: " << mapWeights << nl
@@ -2204,7 +2246,16 @@ label dynamicTopoFvMesh::insertEdge
         {
             if (findIndex(edgePoints, -1) != -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::insertEdge()")
+                FatalErrorIn
+                (
+                    "label dynamicTopoFvMesh::insertEdge\n"
+                    "(\n"
+                    "	const label patch,\n"
+                    "	const edge& newEdge,\n"
+                    "	const labelList& edgeFaces,\n"
+                    "	const labelList& edgePoints\n"
+                    ")"
+                )
                     << " EdgePoints is incorrectly specified." << nl
                     << " edgePoints: " << edgePoints << nl
                     << abort(FatalError);
@@ -2652,7 +2703,14 @@ void dynamicTopoFvMesh::constructHull
                     // Something's terribly wrong
                     FatalErrorIn
                     (
-                        "dynamicTopoFvMesh::constructHull()"
+                        "void dynamicTopoFvMesh::constructHull\n"
+                        "(\n"
+                        "	const label eIndex,\n"
+                        "	labelList& hullEdges,\n"
+                        "	labelList& hullFaces,\n"
+                        "	labelList& hullCells,\n"
+                        "	labelListList& ringEntities\n"
+                        ") const"
                     )
                         << nl << " Failed to construct hull. "
                         << nl << " Possibly not a tetrahedral mesh. "
@@ -2724,7 +2782,14 @@ void dynamicTopoFvMesh::constructHull
             // Something's terribly wrong
             FatalErrorIn
             (
-                "dynamicTopoFvMesh::constructHull()"
+                "void dynamicTopoFvMesh::constructHull\n"
+                "(\n"
+                "	const label eIndex,\n"
+                "	labelList& hullEdges,\n"
+                "	labelList& hullFaces,\n"
+                "	labelList& hullCells,\n"
+                "	labelListList& ringEntities\n"
+                ") const"
             )
                 << " Failed to construct hull. " << nl
                 << " edgeFaces connectivity is inconsistent. " << nl
@@ -2887,7 +2952,11 @@ void dynamicTopoFvMesh::buildEdgePoints
             // Something's terribly wrong
             FatalErrorIn
             (
-                "void dynamicTopoFvMesh::buildEdgePoints"
+                "void dynamicTopoFvMesh::buildEdgePoints\n"
+                "(\n"
+                "	const label eIndex,\n"
+                "	const label checkIndex\n"
+                ")"
             )
                 << " Failed to determine a vertex ring. " << nl
                 << " edgeFaces connectivity is inconsistent. " << nl
@@ -3593,7 +3662,7 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
     // Check if everything went okay
     if (visitedCells != nCells())
     {
-        FatalErrorIn("dynamicTopoFvMesh::calculateLengthScale()")
+        FatalErrorIn("void dynamicTopoFvMesh::calculateLengthScale(bool dump)")
                 << " Algorithm did not visit every cell in the mesh."
                 << " Something's messed up." << nl
                 << " Visited cells: " << visitedCells
@@ -3633,8 +3702,10 @@ void dynamicTopoFvMesh::readOptionalParameters()
         debug = 0;
     }
 
+    // Set debug option for underlying classes as well.
     if (debug > 3)
     {
+        fvMesh::debug = true;
         polyMesh::debug = true;
     }
 
@@ -3820,7 +3891,7 @@ void dynamicTopoFvMesh::readRefinementOptions
     // Sanity check: Are length scales correctly specified?
     if (minLengthScale_ > maxLengthScale_)
     {
-        FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions()")
+        FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions(bool reRead)")
             << " Length-scales are incorrectly specified." << nl
             << " minLengthScale: " << minLengthScale_ << nl
             << " maxLengthScale: " << maxLengthScale_ << nl
@@ -3930,7 +4001,8 @@ void dynamicTopoFvMesh::readRefinementOptions
                     {
                         FatalErrorIn
                         (
-                            "dynamicTopoFvMesh::readRefinementOptions()"
+                            "dynamicTopoFvMesh::readRefinementOptions"
+                            "(bool reRead)"
                         )
                             << " Conflicting fixed/free patches." << nl
                             << " Fixed patch: " << fixedPatchList[wordI] << nl
@@ -3965,7 +4037,10 @@ void dynamicTopoFvMesh::readRefinementOptions
             (curvatureDeviation_ > 1.0 || curvatureDeviation_ < 0.0)
         )
         {
-            FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions()")
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::readRefinementOptions(bool reRead)"
+            )
                 << " Curvature deviation out of range [0..1]"
                 << abort(FatalError);
         }
@@ -4006,7 +4081,10 @@ void dynamicTopoFvMesh::readRefinementOptions
             (sliverThreshold_ > 1.0 || sliverThreshold_ < 0.0)
         )
         {
-            FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions()")
+            FatalErrorIn
+            (
+                "dynamicTopoFvMesh::readRefinementOptions(bool reRead)"
+            )
                 << " Sliver threshold out of range [0..1]"
                 << abort(FatalError);
         }
@@ -4049,7 +4127,7 @@ label dynamicTopoFvMesh::getTriBoundaryFace
     // This bit should never happen.
     FatalErrorIn
     (
-        "label dynamicTopoFvMesh::getTriBoundaryFace()"
+        "label dynamicTopoFvMesh::getTriBoundaryFace(const label fIndex) const"
     )
         << "Cannot find a triangular face bordering face: "
         << fIndex << " :: " << faces_[fIndex]
@@ -4086,7 +4164,7 @@ label dynamicTopoFvMesh::getTriBoundaryEdge
     // This bit should never happen.
     FatalErrorIn
     (
-        "label dynamicTopoFvMesh::getTriBoundaryEdge()"
+        "label dynamicTopoFvMesh::getTriBoundaryEdge(const label fIndex) const"
     )
         << "Cannot find a triangular face bordering face: "
         << fIndex << " :: " << faces_[fIndex]
@@ -4153,7 +4231,7 @@ void dynamicTopoFvMesh::loadMotionSolver()
     {
         FatalErrorIn
         (
-            "dynamicTopoFvMesh::loadMotionSolver() "
+            "void dynamicTopoFvMesh::loadMotionSolver() "
         ) << nl << " Motion solver already loaded. "
           << abort(FatalError);
     }
@@ -4172,7 +4250,7 @@ void dynamicTopoFvMesh::loadFieldMapper()
     {
         FatalErrorIn
         (
-            "dynamicTopoFvMesh::loadFieldMapper() "
+            "void dynamicTopoFvMesh::loadFieldMapper() "
         ) << nl << " Field mapper already loaded. "
           << abort(FatalError);
     }
@@ -4459,7 +4537,11 @@ void dynamicTopoFvMesh::swapEdge
     // Check if this edge is on a bounding curve
     if (checkBoundingCurve(eIndex))
     {
-        FatalErrorIn("dynamicTopoFvMesh::swapEdge(const label eIndex)")
+        FatalErrorIn
+        (
+            "void dynamicTopoFvMesh::swapEdge"
+            "(const label eIndex, bool forceOp)"
+        )
             << nl << " Cannot swap edges on bounding curves. "
             << abort(FatalError);
     }
@@ -4480,7 +4562,11 @@ void dynamicTopoFvMesh::swapEdge
         {
             if (newQuality < 0.0)
             {
-                FatalErrorIn("dynamicTopoFvMesh::swapEdge(const label eIndex)")
+                FatalErrorIn
+                (
+                    "void dynamicTopoFvMesh::swapEdge"
+                    "(const label eIndex, bool forceOp)"
+                )
                     << " Forcing swap on edge: " << eIndex
                     << ":: " << edges_[eIndex]
                     << " will yield an invalid cell quality: "
@@ -4763,7 +4849,11 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
 
         if (debug > 2)
         {
-            InfoIn("dynamicTopoFvMesh::computeBisectionQuality()")
+            InfoIn
+            (
+                "scalar dynamicTopoFvMesh::computeBisectionQuality"
+                "(const label eIndex) const"
+            )
                 << "Bisecting edge will fall below the "
                 << "sliver threshold of: " << sliverThreshold_ << nl
                 << "Edge: " << eIndex << ": " << edgeToCheck << nl
@@ -4875,7 +4965,11 @@ void dynamicTopoFvMesh::remove2DSliver
         {
             if (debug > 1)
             {
-                InfoIn("dynamicTopoFvMesh::remove2DSliver() ")
+                InfoIn
+                (
+                    "void dynamicTopoFvMesh::remove2DSliver"
+                    "(const label fIndex)"
+                )
                     << nl
                     << " Considering face: " << fIndex
                     << ":: " << faces_[fIndex]
@@ -5492,7 +5586,7 @@ void dynamicTopoFvMesh::removeSlivers()
 
         if (debug)
         {
-            WarningIn("dynamicTopoFvMesh::removeSlivers()")
+            WarningIn("void dynamicTopoFvMesh::removeSlivers()")
                 << nl << "Removing Cell: " << cIndex
                 << " of sliver type: " << map.type()
                 << " with quality: " << thresholdSlivers_[cIndex]
@@ -5894,40 +5988,42 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
              << endl;
     }
 
+    topoMapper& fieldMapper = mapper_();
+
     // Set the mapPolyMesh object in the mapper
-    mapper_().setMapper(meshMap);
+    fieldMapper.setMapper(meshMap);
 
     // Set weighting information.
     // This takes over the weight data.
-    mapper_().setFaceWeights(faceWeights_, faceCentres_);
-    mapper_().setCellWeights(cellWeights_, cellCentres_);
+    fieldMapper.setFaceWeights(faceWeights_, faceCentres_);
+    fieldMapper.setCellWeights(cellWeights_, cellCentres_);
 
     // Map all the volFields in the objectRegistry
     MapGeometricFields<scalar,fvPatchField,topoMapper,volMesh>
-        (mapper_());
+        (fieldMapper);
     MapGeometricFields<vector,fvPatchField,topoMapper,volMesh>
-        (mapper_());
+        (fieldMapper);
     MapGeometricFields<sphericalTensor,fvPatchField,topoMapper,volMesh>
-        (mapper_());
+        (fieldMapper);
     MapGeometricFields<symmTensor,fvPatchField,topoMapper,volMesh>
-        (mapper_());
+        (fieldMapper);
     MapGeometricFields<tensor,fvPatchField,topoMapper,volMesh>
-        (mapper_());
+        (fieldMapper);
 
     // Map all the surfaceFields in the objectRegistry
     MapGeometricFields<scalar,fvsPatchField,topoMapper,surfaceMesh>
-        (mapper_());
+        (fieldMapper);
     MapGeometricFields<vector,fvsPatchField,topoMapper,surfaceMesh>
-        (mapper_());
+        (fieldMapper);
     MapGeometricFields<sphericalTensor,fvsPatchField,topoMapper,surfaceMesh>
-        (mapper_());
+        (fieldMapper);
     MapGeometricFields<symmTensor,fvsPatchField,topoMapper,surfaceMesh>
-        (mapper_());
+        (fieldMapper);
     MapGeometricFields<tensor,fvsPatchField,topoMapper,surfaceMesh>
-        (mapper_());
+        (fieldMapper);
 
     // Clear mapper
-    mapper_().clear();
+    fieldMapper.clear();
 }
 
 
@@ -6243,16 +6339,16 @@ bool dynamicTopoFvMesh::update()
         // Move points to positions before mesh-motion
         movePoints(mpm.preMotionPoints());
 
-        // Update the underlying mesh, and map all related fields
-        updateMesh(mpm);
-
         // Reset old-volumes.
         // This overrides mapped V0 values.
         resetMotion();
         setV0();
 
+        // Update the underlying mesh, and map all related fields
+        updateMesh(mpm);
+
         // Correct volume fluxes on the old mesh
-        mapper_().correctFluxes();
+        mapper_->correctFluxes();
 
         // Update the mesh-motion solver
         if (mPtr_.valid())

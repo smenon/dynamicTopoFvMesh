@@ -44,7 +44,6 @@ SourceFiles
 #define topoCellMapper_H
 
 #include "FieldMapper.H"
-#include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -85,9 +84,14 @@ class topoCellMapper
         //- Interpolated addressing
         mutable labelListList* interpolationAddrPtr_;
 
-        //- Interpolation weights
+        //- Inverse-distance weights
         mutable scalarListList* weightsPtr_;
 
+        //- Interpolation volumes
+        mutable List<scalarField>* volumesPtr_;
+
+        //- Interpolation centres
+        mutable List<vectorField>* centresPtr_;
 
     // Private Member Functions
 
@@ -99,6 +103,12 @@ class topoCellMapper
 
         //- Calculate addressing for interpolative mapping
         void calcAddressing() const;
+
+        //- Calculate inverse-distance weights for interpolative mapping
+        void calcInverseDistanceWeights() const;
+
+        //- Calculate intersection weights for conservative mapping
+        void calcIntersectionWeights() const;
 
         //- Clear out local storage
         void clearOut();
@@ -135,11 +145,17 @@ public:
         //- Return direct addressing
         virtual const unallocLabelList& directAddressing() const;
 
-        //- Return interpolated addressing
+        //- Return interpolation addressing
         virtual const labelListList& addressing() const;
 
-        //- Return interpolaion weights
+        //- Return inverse-distance weights
         virtual const scalarListList& weights() const;
+
+        //- Return intersection volume weights
+        const List<scalarField>& intersectionWeights() const;
+
+        //- Return intersection volumes centres
+        const List<vectorField>& intersectionCentres() const;
 };
 
 

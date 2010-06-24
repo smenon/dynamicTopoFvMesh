@@ -74,7 +74,15 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     // Sanity check: Is the index legitimate?
     if (fIndex < 0 || fIndex >= nFaces_)
     {
-        FatalErrorIn("dynamicTopoFvMesh::collapseQuadFace()")
+        FatalErrorIn
+        (
+            "const changeMap dynamicTopoFvMesh::collapseQuadFace\n"
+            "(\n"
+            "	const label fIndex,\n"
+            "	label overRideCase,\n"
+            "	bool checkOnly\n"
+            ")\n"
+        )
             << " Invalid index: " << fIndex
             << abort(FatalError);
     }
@@ -157,7 +165,15 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::collapseQuadFace()")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::collapseQuadFace\n"
+                    "(\n"
+                    "	const label fIndex,\n"
+                    "	label overRideCase,\n"
+                    "	bool checkOnly\n"
+                    ")\n"
+                )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Face: " << fIndex << nl
@@ -213,7 +229,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         }
                         else
                         {
-                            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                            FatalErrorIn
+                            (
+                                "const changeMap dynamicTopoFvMesh"
+                                "::collapseQuadFace\n"
+                                "(\n"
+                                "	const label fIndex,\n"
+                                "	label overRideCase,\n"
+                                "	bool checkOnly\n"
+                                ")\n"
+                            )
                                 << "Coupled collapse failed." << nl
                                 << "Masters: " << nl
                                 << checkEdgeIndex[1] << ": "
@@ -243,7 +268,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         }
                         else
                         {
-                            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                            FatalErrorIn
+                            (
+                                "const changeMap dynamicTopoFvMesh"
+                                "::collapseQuadFace\n"
+                                "(\n"
+                                "	const label fIndex,\n"
+                                "	label overRideCase,\n"
+                                "	bool checkOnly\n"
+                                ")\n"
+                            )
                                 << "Coupled collapse failed." << nl
                                 << "Masters: " << nl
                                 << checkEdgeIndex[1] << ": "
@@ -1724,7 +1758,16 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Sanity check: Is the index legitimate?
     if (eIndex < 0)
     {
-        FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+        FatalErrorIn
+        (
+            "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+            "(\n"
+            "	const label eIndex,\n"
+            "	label overRideCase,\n"
+            "	bool checkOnly,\n"
+            "	bool forceOp\n"
+            ")\n"
+        )
             << " Invalid index: " << eIndex
             << abort(FatalError);
     }
@@ -1771,7 +1814,16 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::collapseEdge")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	label overRideCase,\n"
+                    "	bool checkOnly,\n"
+                    "	bool forceOp\n"
+                    ")\n"
+                )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Edge: " << eIndex << nl
@@ -1822,7 +1874,17 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         }
                         else
                         {
-                            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                            FatalErrorIn
+                            (
+                                "const changeMap dynamicTopoFvMesh"
+                                "::collapseEdge\n"
+                                "(\n"
+                                "	const label eIndex,\n"
+                                "	label overRideCase,\n"
+                                "	bool checkOnly,\n"
+                                "	bool forceOp\n"
+                                ")\n"
+                            )
                                 << "Coupled collapse failed." << nl
                                 << "Master: " << mEdge << nl
                                 << "Slave: " << sEdge << nl
@@ -1844,7 +1906,17 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         }
                         else
                         {
-                            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+                            FatalErrorIn
+                            (
+                                "const changeMap dynamicTopoFvMesh"
+                                "::collapseEdge\n"
+                                "(\n"
+                                "	const label eIndex,\n"
+                                "	label overRideCase,\n"
+                                "	bool checkOnly,\n"
+                                "	bool forceOp\n"
+                                ")\n"
+                            )
                                 << "Coupled collapse failed." << nl
                                 << "Master: " << mEdge << nl
                                 << "Slave: " << sEdge << nl
@@ -1887,7 +1959,16 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 // The final operation has to succeed.
                 if (final.type() <= 0)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::collapseEdge")
+                    FatalErrorIn
+                    (
+                        "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+                        "(\n"
+                        "	const label eIndex,\n"
+                        "	label overRideCase,\n"
+                        "	bool checkOnly,\n"
+                        "	bool forceOp\n"
+                        ")\n"
+                    )
                         << "Coupled topo-change for slave failed." << nl
                         << " Type: " << final.type()
                         << abort(FatalError);
@@ -2069,7 +2150,16 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         default:
 
             // Don't think this will ever happen.
-            FatalErrorIn("dynamicTopoFvMesh::collapseEdge()")
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+                "(\n"
+                "	const label eIndex,\n"
+                "	label overRideCase,\n"
+                "	bool checkOnly,\n"
+                "	bool forceOp\n"
+                ")\n"
+            )
                 << "Edge: " << eIndex << ": " << edges_[eIndex]
                 << ". Couldn't decide on collapseCase."
                 << abort(FatalError);
@@ -2868,7 +2958,16 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             else
             {
                 // Looks like pointEdges is inconsistent
-                FatalErrorIn("dynamicTopoFvMesh::collapseEdge()") << nl
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	label overRideCase,\n"
+                    "	bool checkOnly,\n"
+                    "	bool forceOp\n"
+                    ")\n"
+                )
                     << "pointEdges is inconsistent." << nl
                     << "Point: " << collapsePoint << nl
                     << "pointEdges: " << pEdges << nl
@@ -3070,7 +3169,14 @@ void dynamicTopoFvMesh::mergeBoundaryFaces
     // Sanity check: Are these actually boundary faces?
     if (neighbour_[firstFace] != -1 || neighbour_[secondFace] != -1)
     {
-        FatalErrorIn("dynamicTopoFvMesh::mergeBoundaryFaces()")
+        FatalErrorIn
+        (
+            "void dynamicTopoFvMesh::mergeBoundaryFaces\n"
+            "(\n"
+            "	const label firstFace,\n"
+            "	const label secondFace\n"
+            ")\n"
+        )
             << nl << " Faces: "
             << firstFace << " and " << secondFace
             << " are not on boundaries. "
@@ -3150,7 +3256,11 @@ void dynamicTopoFvMesh::mergeBoundaryFaces
     {
         FatalErrorIn
         (
-            "dynamicTopoFvMesh::mergeBoundaryFaces()"
+            "void dynamicTopoFvMesh::mergeBoundaryFaces\n"
+            "(\n"
+            "	const label firstFace,\n"
+            "	const label secondFace\n"
+            ")\n"
         )
             << nl << " Faces: "
             << firstFace << " and " << secondFace
@@ -3406,7 +3516,14 @@ const changeMap dynamicTopoFvMesh::removeCells
         else
         {
             // Something's terribly wrong
-            FatalErrorIn("dynamicTopoFvMesh::removeCells()")
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::removeCells\n"
+                "(\n"
+                "	const labelList& cList,\n"
+                "	const label patch\n"
+                ")\n"
+            )
                 << nl << " Invalid mesh. "
                 << abort(FatalError);
         }

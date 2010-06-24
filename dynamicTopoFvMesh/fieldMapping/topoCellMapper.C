@@ -36,26 +36,30 @@ Author
 \*----------------------------------------------------------------------------*/
 
 #include "topoMapper.H"
+#include "mapPolyMesh.H"
 #include "topoCellMapper.H"
 #include "demandDrivenData.H"
-#include "mapPolyMesh.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
+//- Clear out local storage
 void Foam::topoCellMapper::clearOut()
 {
     deleteDemandDrivenData(directAddrPtr_);
     deleteDemandDrivenData(interpolationAddrPtr_);
     deleteDemandDrivenData(weightsPtr_);
+    deleteDemandDrivenData(volumesPtr_);
+    deleteDemandDrivenData(centresPtr_);
 }
 
+
+//- Calculate addressing for interpolative mapping
 void Foam::topoCellMapper::calcAddressing() const
 {
     if
     (
         directAddrPtr_
      || interpolationAddrPtr_
-     || weightsPtr_
     )
     {
         FatalErrorIn("void topoCellMapper::calcAddressing() const")
@@ -76,13 +80,6 @@ void Foam::topoCellMapper::calcAddressing() const
         interpolationAddrPtr_ = new labelListList(mesh_.nCells());
         labelListList& addr = *interpolationAddrPtr_;
 
-        weightsPtr_ = new scalarListList(mesh_.nCells());
-        scalarListList& w = *weightsPtr_;
-
-        // Obtain cell-centre information from old/new meshes
-        const vectorField& oldCentres = tMapper_.oldCentres().internalField();
-        const vectorField& newCentres = mesh_.cellCentres();
-
         const List<objectMap>& cfc = mpm_.cellsFromCellsMap();
 
         forAll (cfc, cfcI)
@@ -101,36 +98,8 @@ void Foam::topoCellMapper::calcAddressing() const
                     << abort(FatalError);
             }
 
-            // Map from masters, inverse-distance weights
+            // Set master objects
             addr[cellI] = mo;
-            scalar totalWeight = 0.0;
-            w[cellI] = scalarList(mo.size(), 0.0);
-
-            forAll (mo, oldCellI)
-            {
-                w[cellI][oldCellI] =
-                (
-                    1.0/stabilise
-                    (
-                        magSqr
-                        (
-                            newCentres[cellI]
-                          - oldCentres[mo[oldCellI]]
-                        ),
-                        VSMALL
-                    )
-                );
-
-                totalWeight += w[cellI][oldCellI];
-            }
-
-            // Normalize weights
-            scalar normFactor = (1.0/totalWeight);
-
-            forAll (mo, oldCellI)
-            {
-                w[cellI][oldCellI] *= normFactor;
-            }
         }
 
         // Do mapped cells. Note that this can already be set by cellsFromCells
@@ -143,10 +112,81 @@ void Foam::topoCellMapper::calcAddressing() const
             {
                 // Mapped from a single cell
                 addr[cellI] = labelList(1, cm[cellI]);
-                w[cellI] = scalarList(1, 1.0);
             }
         }
     }
+}
+
+
+//- Calculate inverse-distance weights for interpolative mapping
+void Foam::topoCellMapper::calcInverseDistanceWeights() const
+{
+    if (weightsPtr_)
+    {
+        FatalErrorIn("void topoCellMapper::calcInverseDistanceWeights() const")
+            << "Weights already calculated."
+            << abort(FatalError);
+    }
+
+    // Fetch interpolative addressing
+    const labelListList& addr = addressing();
+
+    weightsPtr_ = new scalarListList(mesh_.nCells());
+    scalarListList& w = *weightsPtr_;
+
+    // Obtain cell-centre information from old/new meshes
+    const vectorField& oldCentres = tMapper_.oldCentres().internalField();
+    const vectorField& newCentres = mesh_.cellCentres();
+
+    forAll(addr, cellI)
+    {
+        const labelList& mo = addr[cellI];
+
+        // Do mapped cells
+        if (mo.size() == 1)
+        {
+            w[cellI] = scalarList(1, 1.0);
+
+            continue;
+        }
+
+        // Map from masters, inverse-distance weights
+        scalar totalWeight = 0.0;
+        w[cellI] = scalarList(mo.size(), 0.0);
+
+        forAll (mo, oldCellI)
+        {
+            w[cellI][oldCellI] =
+            (
+                1.0/stabilise
+                (
+                    magSqr
+                    (
+                        newCentres[cellI]
+                      - oldCentres[mo[oldCellI]]
+                    ),
+                    VSMALL
+                )
+            );
+
+            totalWeight += w[cellI][oldCellI];
+        }
+
+        // Normalize weights
+        scalar normFactor = (1.0/totalWeight);
+
+        forAll (mo, oldCellI)
+        {
+            w[cellI][oldCellI] *= normFactor;
+        }
+    }
+}
+
+
+//- Calculate intersection weights for conservative mapping
+void Foam::topoCellMapper::calcIntersectionWeights() const
+{
+
 }
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -164,7 +204,9 @@ Foam::topoCellMapper::topoCellMapper
     direct_(false),
     directAddrPtr_(NULL),
     interpolationAddrPtr_(NULL),
-    weightsPtr_(NULL)
+    weightsPtr_(NULL),
+    volumesPtr_(NULL),
+    centresPtr_(NULL)
 {}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -195,7 +237,8 @@ Foam::topoCellMapper::directAddressing() const
     {
         FatalErrorIn
         (
-            "const unallocLabelList& topoCellMapper::directAddressing() const"
+            "const unallocLabelList&"
+            "topoCellMapper::directAddressing() const"
         )   << "Requested direct addressing for an interpolative mapper."
             << abort(FatalError);
     }
@@ -209,13 +252,15 @@ Foam::topoCellMapper::directAddressing() const
 }
 
 
-const Foam::labelListList& Foam::topoCellMapper::addressing() const
+const Foam::labelListList&
+Foam::topoCellMapper::addressing() const
 {
     if (direct())
     {
         FatalErrorIn
         (
-            "const labelListList& topoCellMapper::addressing() const"
+            "const labelListList&"
+            "topoCellMapper::addressing() const"
         )   << "Requested interpolative addressing for a direct mapper."
             << abort(FatalError);
     }
@@ -229,23 +274,69 @@ const Foam::labelListList& Foam::topoCellMapper::addressing() const
 }
 
 
-const Foam::scalarListList& Foam::topoCellMapper::weights() const
+const Foam::scalarListList&
+Foam::topoCellMapper::weights() const
 {
     if (direct())
     {
         FatalErrorIn
         (
-            "const scalarListList& cellMapper::weights() const"
+            "const scalarListList&"
+            "topoCellMapper::weights() const"
         )   << "Requested interpolative weights for a direct mapper."
             << abort(FatalError);
     }
 
     if (!weightsPtr_)
     {
-        calcAddressing();
+        calcInverseDistanceWeights();
     }
 
     return *weightsPtr_;
+}
+
+
+const Foam::List<Foam::scalarField>&
+Foam::topoCellMapper::intersectionWeights() const
+{
+    if (direct())
+    {
+        FatalErrorIn
+        (
+            "const List<scalarField>&"
+            "topoCellMapper::intersectionWeights() const"
+        )   << "Requested interpolative weights for a direct mapper."
+            << abort(FatalError);
+    }
+
+    if (!volumesPtr_)
+    {
+        calcIntersectionWeights();
+    }
+
+    return *volumesPtr_;
+}
+
+
+const Foam::List<Foam::vectorField>&
+Foam::topoCellMapper::intersectionCentres() const
+{
+    if (direct())
+    {
+        FatalErrorIn
+        (
+            "const List<vectorField>&"
+            "topoCellMapper::intersectionCentres() const"
+        )   << "Requested interpolative weights for a direct mapper."
+            << abort(FatalError);
+    }
+
+    if (!centresPtr_)
+    {
+        calcIntersectionWeights();
+    }
+
+    return *centresPtr_;
 }
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //

@@ -78,8 +78,16 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Sanity check: Is the index legitimate?
     if (fIndex < 0 || fIndex >= nFaces_)
     {
-        FatalErrorIn("dynamicTopoFvMesh::bisectQuadFace()")
-            << " Invalid index: " << fIndex
+        FatalErrorIn
+        (
+            "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
+            "(\n"
+            "	const label fIndex,\n"
+            "	bool checkOnly,\n"
+            "	const changeMap& masterMap\n"
+            ")"
+        )
+            << nl << " Invalid index: " << fIndex
             << abort(FatalError);
     }
 
@@ -226,7 +234,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::bisectQuadFace()")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
+                    "(\n"
+                    "	const label fIndex,\n"
+                    "	bool checkOnly,\n"
+                    "	const changeMap& masterMap\n"
+                    ")"
+                )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Face: " << fIndex << nl
@@ -1655,7 +1671,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 }
                 else
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::bisectQuadFace")
+                    FatalErrorIn
+                    (
+                        "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
+                        "(\n"
+                        "	const label fIndex,\n"
+                        "	bool checkOnly,\n"
+                        "	const changeMap& masterMap\n"
+                        ")"
+                    )
                         << "Failed to build coupled maps."
                         << abort(FatalError);
                 }
@@ -1752,7 +1776,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Sanity check: Is the index legitimate?
     if (eIndex < 0)
     {
-        FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
+        FatalErrorIn
+        (
+            "const changeMap dynamicTopoFvMesh::bisectEdge\n"
+            "(\n"
+            "	const label eIndex,\n"
+            "	bool checkOnly,\n"
+            "	bool forceOp\n"
+            ")\n"
+        )
             << " Invalid index: " << eIndex
             << abort(FatalError);
     }
@@ -1798,7 +1830,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::bisectEdge")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::bisectEdge\n"
+                    "(\n"
+                    "	const label eIndex,\n"
+                    "	bool checkOnly,\n"
+                    "	bool forceOp\n"
+                    ")\n"
+                )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Edge: " << eIndex << nl
@@ -1836,7 +1876,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 // The final operation has to succeed.
                 if (slaveMap.type() <= 0)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::bisectEdge")
+                    FatalErrorIn
+                    (
+                        "const changeMap dynamicTopoFvMesh::bisectEdge\n"
+                        "(\n"
+                        "	const label eIndex,\n"
+                        "	bool checkOnly,\n"
+                        "	bool forceOp\n"
+                        ")\n"
+                    )
                         << "Coupled topo-change for slave failed." << nl
                         << " Type: " << slaveMap.type()
                         << abort(FatalError);
@@ -1872,7 +1920,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Check if the quality is actually valid before forcing it.
         if (forceOp && (minQ < 0.0))
         {
-            FatalErrorIn("dynamicTopoFvMesh::bisectEdge()")
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::bisectEdge\n"
+                "(\n"
+                "	const label eIndex,\n"
+                "	bool checkOnly,\n"
+                "	bool forceOp\n"
+                ")\n"
+            )
                 << " Forcing bisection on edge: " << eIndex
                 << " will yield an invalid cell."
                 << abort(FatalError);
@@ -2771,7 +2827,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                              << endl;
                     }
 
-                    FatalErrorIn("dynamicTopoFvMesh::bisectEdge")
+                    FatalErrorIn
+                    (
+                        "const changeMap dynamicTopoFvMesh::bisectEdge\n"
+                        "(\n"
+                        "	const label eIndex,\n"
+                        "	bool checkOnly,\n"
+                        "	bool forceOp\n"
+                        ")\n"
+                    )
                         << "Failed to build coupled edge maps."
                         << abort(FatalError);
                 }
@@ -2898,7 +2962,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                              << endl;
                     }
 
-                    FatalErrorIn("dynamicTopoFvMesh::bisectFace")
+                    FatalErrorIn
+                    (
+                        "const changeMap dynamicTopoFvMesh::bisectEdge\n"
+                        "(\n"
+                        "	const label eIndex,\n"
+                        "	bool checkOnly,\n"
+                        "	bool forceOp\n"
+                        ")\n"
+                    )
                         << "Failed to build coupled face maps."
                         << abort(FatalError);
                 }
@@ -3106,7 +3178,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
     // Sanity check: Is the index legitimate?
     if (fIndex < 0)
     {
-        FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
+        FatalErrorIn
+        (
+            "const changeMap dynamicTopoFvMesh::trisectFace\n"
+            "(\n"
+            "	const label fIndex,\n"
+            "	bool checkOnly,\n"
+            "	bool forceOp\n"
+            ")\n"
+        )
             << " Invalid index: " << fIndex
             << abort(FatalError);
     }
@@ -3154,7 +3234,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             if (sIndex == -1)
             {
-                FatalErrorIn("dynamicTopoFvMesh::trisectFace")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::trisectFace\n"
+                    "(\n"
+                    "	const label fIndex,\n"
+                    "	bool checkOnly,\n"
+                    "	bool forceOp\n"
+                    ")\n"
+                )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
                     << " Face: " << fIndex << nl
@@ -3192,7 +3280,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // The final operation has to succeed.
                 if (slaveMap.type() <= 0)
                 {
-                    FatalErrorIn("dynamicTopoFvMesh::trisectEdge")
+                    FatalErrorIn
+                    (
+                        "const changeMap dynamicTopoFvMesh::trisectFace\n"
+                        "(\n"
+                        "	const label fIndex,\n"
+                        "	bool checkOnly,\n"
+                        "	bool forceOp\n"
+                        ")\n"
+                    )
                         << "Coupled topo-change for slave failed." << nl
                         << " Type: " << slaveMap.type()
                         << abort(FatalError);
@@ -3228,7 +3324,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
         // Check if the quality is actually valid before forcing it.
         if (forceOp && (minQ < 0.0))
         {
-            FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::trisectFace\n"
+                "(\n"
+                "	const label fIndex,\n"
+                "	bool checkOnly,\n"
+                "	bool forceOp\n"
+                ")\n"
+            )
                 << " Forcing trisection on face: " << fIndex
                 << " will yield an invalid cell."
                 << abort(FatalError);
@@ -3488,7 +3592,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
         else
         {
             // Something's terribly wrong.
-            FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::trisectFace\n"
+                "(\n"
+                "	const label fIndex,\n"
+                "	bool checkOnly,\n"
+                "	bool forceOp\n"
+                ")\n"
+            )
                 << "Failed to determine a face match."
                 << abort(FatalError);
         }
@@ -3971,7 +4083,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
                                  << endl;
                         }
 
-                        FatalErrorIn("dynamicTopoFvMesh::trisectFace")
+                        FatalErrorIn
+                        (
+                            "const changeMap dynamicTopoFvMesh::trisectFace\n"
+                            "(\n"
+                            "	const label fIndex,\n"
+                            "	bool checkOnly,\n"
+                            "	bool forceOp\n"
+                            ")\n"
+                        )
                             << "Failed to build coupled edge maps."
                             << abort(FatalError);
                     }
@@ -4105,7 +4225,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
                                  << endl;
                         }
 
-                        FatalErrorIn("dynamicTopoFvMesh::trisectFace")
+                        FatalErrorIn
+                        (
+                            "const changeMap dynamicTopoFvMesh::trisectFace\n"
+                            "(\n"
+                            "	const label fIndex,\n"
+                            "	bool checkOnly,\n"
+                            "	bool forceOp\n"
+                            ")\n"
+                        )
                             << "Failed to build coupled face maps."
                             << abort(FatalError);
                     }
@@ -4302,7 +4430,15 @@ const changeMap dynamicTopoFvMesh::trisectFace
             else
             {
                 // Something's terribly wrong.
-                FatalErrorIn("dynamicTopoFvMesh::trisectFace()")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::trisectFace\n"
+                    "(\n"
+                    "	const label fIndex,\n"
+                    "	bool checkOnly,\n"
+                    "	bool forceOp\n"
+                    ")\n"
+                )
                     << "Failed to determine a face match."
                     << abort(FatalError);
             }
@@ -5767,7 +5903,12 @@ void dynamicTopoFvMesh::splitInternalFaces
             // Something's wrong here.
             FatalErrorIn
             (
-                "dynamicTopoFvMesh::splitInternalFaces()"
+                "dynamicTopoFvMesh::splitInternalFaces\n"
+                "(\n"
+                "	const label patchIndex,\n"
+                "	const labelList& internalFaces,\n"
+                "	const Map<bool>& cellColors\n"
+                ")\n"
             )
                 << nl << " Face: "
                 << internalFaces[faceI]
