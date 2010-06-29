@@ -51,6 +51,7 @@ Author
 #include "topoMapper.H"
 #include "SortableList.H"
 #include "StaticHashTable.H"
+#include "lengthScaleEstimator.H"
 
 namespace Foam
 {
@@ -95,13 +96,14 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     interval_(1),
     mapper_(NULL),
     mPtr_(NULL),
+    lsPtr_(NULL),
+    eMeshPtr_(NULL),
     oldPoints_(polyMesh::points()),
     points_(polyMesh::points()),
     faces_(polyMesh::faces()),
     owner_(polyMesh::faceOwner()),
     neighbour_(polyMesh::faceNeighbour()),
     cells_(primitiveMesh::cells()),
-    eMeshPtr_(NULL),
     oldPatchSizes_(numPatches_,0),
     patchSizes_(numPatches_,0),
     oldPatchStarts_(numPatches_,-1),
@@ -124,22 +126,12 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nInternalFaces_(primitiveMesh::nInternalFaces()),
     nOldInternalEdges_(0),
     nInternalEdges_(0),
-    ratioMin_(0.0),
-    ratioMax_(0.0),
-    growthFactor_(1.0),
-    curvatureDeviation_(0.0),
-    minLengthScale_(VSMALL),
-    maxLengthScale_(GREAT),
-    sliverThreshold_(0.1),
     nModifications_(0),
+    maxModifications_(-1),
     nBisections_(0),
     nCollapses_(0),
     nSwaps_(0),
-    maxModifications_(-1),
-    proximityBins_(0),
-    sliceThreshold_(VSMALL),
-    sliceHoldOff_(0),
-    sliceBoxes_(0),
+    sliverThreshold_(0.1),
     slicePairs_(0),
     maxTetsPerEdge_(-1),
     allowTableResize_(false)
@@ -197,7 +189,23 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     reverseCellMap_.setSize(nCells_, -7);
 
     // Define edgeRefinement options
-    readRefinementOptions();
+    if (edgeRefinement_)
+    {
+        // Load the length-scale estimator
+        loadLengthScaleEstimator();
+
+        // Read refinement options
+        lengthEstimator().readRefinementOptions(false, mandatory_);
+
+        // Set coupled patch options, if available
+        if (dict_.found("coupledPatches") || mandatory_)
+        {
+            lengthEstimator().setCoupledPatches
+            (
+                dict_.subDict("coupledPatches")
+            );
+        }
+    }
 }
 
 
@@ -229,13 +237,14 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     interval_(1),
     mapper_(NULL),
     mPtr_(NULL),
+    lsPtr_(NULL),
+    eMeshPtr_(NULL),
     oldPoints_(points),
     points_(points),
     faces_(faces),
     cells_(cells),
     edges_(edges),
     faceEdges_(faceEdges),
-    eMeshPtr_(NULL),
     oldPatchSizes_(numPatches_,0),
     patchSizes_(numPatches_,0),
     oldPatchStarts_(numPatches_,-1),
@@ -258,22 +267,12 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nInternalFaces_(primitiveMesh::nInternalFaces()),
     nOldInternalEdges_(nInternalEdges),
     nInternalEdges_(nInternalEdges),
-    ratioMin_(mesh.ratioMin_),
-    ratioMax_(mesh.ratioMax_),
-    growthFactor_(mesh.growthFactor_),
-    curvatureDeviation_(mesh.curvatureDeviation_),
-    minLengthScale_(mesh.minLengthScale_),
-    maxLengthScale_(mesh.maxLengthScale_),
-    sliverThreshold_(mesh.sliverThreshold_),
     nModifications_(0),
+    maxModifications_(mesh.maxModifications_),
     nBisections_(0),
     nCollapses_(0),
     nSwaps_(0),
-    maxModifications_(mesh.maxModifications_),
-    proximityBins_(0),
-    sliceThreshold_(VSMALL),
-    sliceHoldOff_(0),
-    sliceBoxes_(0),
+    sliverThreshold_(mesh.sliverThreshold_),
     slicePairs_(0),
     maxTetsPerEdge_(mesh.maxTetsPerEdge_),
     allowTableResize_(mesh.allowTableResize_),
@@ -333,13 +332,13 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     reverseCellMap_.setSize(nCells_, -7);
 
     // Now build edgeFaces and pointEdges information.
-    invertConnectivity(nEdges_, faceEdges_, edgeFaces_);
+    invertManyToMany(nEdges_, faceEdges_, edgeFaces_);
 
     // Size-up edgePoints for now, but explicitly construct
     // for each edge later, based on point coupling.
     if (!twoDMesh_)
     {
-        invertConnectivity(nPoints_, edges_, pointEdges_);
+        invertManyToMany(nPoints_, edges_, pointEdges_);
         edgePoints_.setSize(nEdges_, labelList(0));
     }
 }
@@ -1798,30 +1797,33 @@ void dynamicTopoFvMesh::setFaceMapping
             << abort(FatalError);
     }
 
-    // Insert weights into the list, and overwrite if necessary
-    label index = -1;
-
-    forAll(facesFromFaces_, indexI)
+    if (mapFaces.size())
     {
-        if (facesFromFaces_[indexI].index() == fIndex)
+        // Insert weights into the list, and overwrite if necessary
+        label index = -1;
+
+        forAll(facesFromFaces_, indexI)
         {
-            index = indexI;
-            break;
+            if (facesFromFaces_[indexI].index() == fIndex)
+            {
+                index = indexI;
+                break;
+            }
         }
-    }
 
-    if (index == -1)
-    {
-        sizeUpList(objectMap(fIndex, mapFaces), facesFromFaces_);
-    }
-    else
-    {
-        facesFromFaces_[index].masterObjects() = mapFaces;
-    }
+        if (index == -1)
+        {
+            sizeUpList(objectMap(fIndex, mapFaces), facesFromFaces_);
+        }
+        else
+        {
+            facesFromFaces_[index].masterObjects() = mapFaces;
+        }
 
-    // Set weights and centres
-    faceWeights_.set(fIndex, mapWeights);
-    faceCentres_.set(fIndex, mapCentres);
+        // Set weights and centres
+        faceWeights_.set(fIndex, mapWeights);
+        faceCentres_.set(fIndex, mapCentres);
+    }
 }
 
 
@@ -2114,9 +2116,9 @@ void dynamicTopoFvMesh::removeFace
     if (twoDMesh_)
     {
         // Remove from the stack as well
-        forAll(faceStack_, stackI)
+        forAll(entityStack_, stackI)
         {
-            faceStack_[stackI].remove(fIndex);
+            Stack(stackI).remove(fIndex);
         }
     }
 
@@ -2332,9 +2334,9 @@ void dynamicTopoFvMesh::removeEdge
         }
 
         // Remove from the stack as well
-        forAll(edgeStack_, stackI)
+        forAll(entityStack_, stackI)
         {
-            edgeStack(stackI).remove(eIndex);
+            Stack(stackI).remove(eIndex);
         }
 
         // Update coupled face maps, if necessary.
@@ -2972,201 +2974,6 @@ void dynamicTopoFvMesh::buildEdgePoints
 }
 
 
-// Utility to invert a connectivity list (pointEdges from edges, etc)
-// Re-write of invertManyToMany, to work on resizableLists
-template<class InList, class OutList>
-void dynamicTopoFvMesh::invertConnectivity
-(
-    const label nEntities,
-    const resizableList<InList>& inEntities,
-    resizableList<OutList>& outEntities
-) const
-{
-    labelList nInPerOut(nEntities, 0);
-
-    forAll(inEntities, indexI)
-    {
-        const InList& inEntity = inEntities[indexI];
-
-        forAll(inEntity, indexJ)
-        {
-            nInPerOut[inEntity[indexJ]]++;
-        }
-    }
-
-    // Size outEntities
-    outEntities.setSize(nEntities);
-
-    forAll(nInPerOut, indexI)
-    {
-        outEntities[indexI].setSize(nInPerOut[indexI]);
-    }
-
-    nInPerOut = 0;
-
-    // Fill outEntities
-    forAll(inEntities, indexI)
-    {
-        const InList& inEntity = inEntities[indexI];
-
-        forAll(inEntity, indexJ)
-        {
-            label entityI = inEntity[indexJ];
-
-            outEntities[entityI][nInPerOut[entityI]++] = indexI;
-        }
-    }
-}
-
-
-// Perform spatial hashing on a set of points
-void dynamicTopoFvMesh::spatialHash
-(
-    const pointField& pointLocations,
-    const labelList& pointIndices,
-    const boundBox& box,
-    const label resolution,
-    labelListList& bins,
-    label removeIndex
-) const
-{
-    label binSize = bins.size(), nD = resolution;
-
-    const point& bMin = box.min();
-    const point& bMax = box.max();
-
-    // Extend bounding-box dimensions a bit to avoid edge-effects.
-    scalar ext = 0.02*(mag(bMax - bMin));
-
-    // Define an inverse grid-cell size.
-    scalar xL = nD/(bMax.x() - bMin.x() + ext);
-    scalar yL = nD/(bMax.y() - bMin.y() + ext);
-    scalar zL = nD/(bMax.z() - bMin.z() + ext);
-
-    // Loop through all points and bin them.
-    forAll(pointLocations, pointI)
-    {
-        // Translate to boundBox minimum.
-        point p = pointLocations[pointI] - bMin;
-
-        // Hash the position.
-        label i = label(mag(::floor(p.x()*xL)));
-        label j = label(mag(::floor(p.y()*yL)));
-        label k = label(mag(::floor(p.z()*zL)));
-
-        label pos = mag(((k*nD*nD)+(j*nD)+i) % binSize);
-
-        if (removeIndex)
-        {
-            // Remove the index.
-            sizeDownList
-            (
-                pointIndices[pointI],
-                bins[pos]
-            );
-        }
-        else
-        {
-            // Store the index.
-            sizeUpList
-            (
-                pointIndices[pointI],
-                bins[pos]
-            );
-        }
-    }
-}
-
-
-// Prepare for proximity-based refinement, if necessary
-void dynamicTopoFvMesh::prepareProximityPatches()
-{
-    if (!proximityPatches_.size())
-    {
-        return;
-    }
-
-    if (debug)
-    {
-        Info << "Preparing patches for proximity-based refinement...";
-    }
-
-    // Clear out existing lists.
-    proximityBins_.clear();
-
-    proximityBins_.setSize(997, labelList(0));
-
-    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
-
-    bool setSpatialRes = false;
-
-    // Loop through all proximity patches and spatially hash patch faces.
-    forAll(boundary, patchI)
-    {
-        if
-        (
-            (proximityPatches_.found(boundary[patchI].name())) ||
-            (twoDMesh_ && boundary[patchI].type() == "symmetryPlane")
-        )
-        {
-            const polyPatch& proxPatch = boundary[patchI];
-
-            // Construct a bounding-box of face centres.
-            // Do not synchronize in parallel, since the patch
-            // may not be present on all sub-domains.
-            boundBox box(proxPatch.faceCentres(), false);
-
-            const point& bMin = box.min();
-            const point& bMax = box.max();
-
-            // Further hashing requires this information.
-            proxBoundBox_.min() = bMin;
-            proxBoundBox_.max() = bMax;
-
-            // Build a list of face indices
-            labelList faceIndices
-            (
-                identity(proxPatch.size()) + proxPatch.start()
-            );
-
-            // For spatial resolution, pick an edge on this patch.
-            if (!setSpatialRes)
-            {
-                scalar eIndex = faceEdges_[proxPatch.start()][0];
-
-                spatialRes_ =
-                (
-                    label
-                    (
-                        ::floor
-                        (
-                            mag(bMax - bMin)
-                          / (3.0 * edgeLength(edges_[eIndex], points_))
-                        )
-                    )
-                );
-
-                setSpatialRes = true;
-            }
-
-            spatialHash
-            (
-                proxPatch.faceCentres(),
-                faceIndices,
-                box,
-                spatialRes_,
-                proximityBins_
-            );
-        }
-    }
-
-    if (debug)
-    {
-        Info << "Done." << endl;
-    }
-}
-
-
 void dynamicTopoFvMesh::handleMeshSlicing()
 {
     if (slicePairs_.empty())
@@ -3174,10 +2981,15 @@ void dynamicTopoFvMesh::handleMeshSlicing()
         return;
     }
 
-    if (sliceHoldOff_)
+    if (lengthEstimator().holdOff())
     {
+        // Clear out data.
+        slicePairs_.clear();
+        lengthEstimator().clearBoxes();
+
         // Hold-off mesh slicing for a few time-steps.
-        sliceHoldOff_--;
+        lengthEstimator().decrementHoldOff();
+
         return;
     }
 
@@ -3241,11 +3053,11 @@ void dynamicTopoFvMesh::handleMeshSlicing()
     Info << "Done." << endl;
 
     // Clear out data.
-    sliceBoxes_.clear();
     slicePairs_.clear();
+    lengthEstimator().clearBoxes();
 
     // Set the sliceHoldOff value
-    sliceHoldOff_ = 50;
+    lengthEstimator().setHoldOff(50);
 }
 
 
@@ -3257,32 +3069,13 @@ scalar dynamicTopoFvMesh::testProximity
     label& proximityFace
 ) const
 {
-    DynamicList<label> posIndices(20);
-    scalar minDistance = GREAT, minDeviation = -0.9, testStep = 0.0;
-    label nD = spatialRes_, binSize = proximityBins_.size();
-    vector gCentre = vector::zero, gNorm = vector::zero;
-
-    // Obtain min/max extents
-    const point& bMin = proxBoundBox_.min();
-    const point& bMax = proxBoundBox_.max();
-
-    // Extend bounding-box dimensions a bit to avoid edge-effects.
-    scalar ext = 0.02*(mag(bMax - bMin));
-
-    // Define an inverse grid-cell size.
-    scalar xL = nD/(bMax.x() - bMin.x() + ext);
-    scalar yL = nD/(bMax.y() - bMin.y() + ext);
-    scalar zL = nD/(bMax.z() - bMin.z() + ext);
-
-    // Reset the proximity face
-    proximityFace = -1;
+    scalar proxDistance = GREAT, testStep = 0.0;
+    vector gCentre = vector::zero, gNormal = vector::zero;
 
     if (twoDMesh_)
     {
         // Obtain the face-normal.
-        gNorm = faceNormal(faces_[index], points_);
-
-        gNorm /= (mag(gNorm) + VSMALL);
+        gNormal = faceNormal(faces_[index], points_);
 
         // Obtain the face centre.
         gCentre = faceCentre(faces_[index], points_);
@@ -3304,146 +3097,89 @@ scalar dynamicTopoFvMesh::testProximity
             if (neighbour_[eFaces[faceI]] == -1)
             {
                 // Obtain the normal.
-                gNorm += faceNormal(faces_[eFaces[faceI]], points_);
+                gNormal += faceNormal(faces_[eFaces[faceI]], points_);
             }
         }
-
-        gNorm /= (mag(gNorm) + VSMALL);
 
         // Calculate a test step-size
         testStep = edgeLength(edges_[index], points_);
     }
 
-    // Now take multiple steps in both normal directions,
-    // and add to the list of boxes to be checked.
-    for (scalar dir = -1.0; dir < 2.0; dir += 2.0)
+    // Normalize
+    gNormal /= (mag(gNormal) + VSMALL);
+
+    // Test for proximity, and mark slice-pairs
+    // is the distance is below threshold.
+    if
+    (
+        lengthEstimator().testProximity
+        (
+            gCentre,
+            gNormal,
+            testStep,
+            proximityFace,
+            proxDistance
+        )
+    )
     {
-        for (scalar step = 0.0; step < 5.0*testStep; step += testStep)
+        labelPair proxPoints(-1, -1);
+        bool foundPoint = false;
+
+        if (twoDMesh_)
         {
-            // Hash the point-location
-            point p = (gCentre + (dir*step*gNorm)) - bMin;
-
-            label i = label(mag(::floor(p.x()*xL)));
-            label j = label(mag(::floor(p.y()*yL)));
-            label k = label(mag(::floor(p.z()*zL)));
-
-            label pos = mag(((k*nD*nD)+(j*nD)+i) % binSize);
-
-            if (findIndex(posIndices, pos) == -1)
-            {
-                posIndices.append(pos);
-            }
-        }
-    }
-
-    // Obtain old-mesh face geometry for reference.
-    const vectorField& faceAreas = primitiveMesh::faceAreas();
-    const vectorField& faceCentres = primitiveMesh::faceCentres();
-
-    forAll(posIndices, indexI)
-    {
-        const labelList& posBin = proximityBins_[posIndices[indexI]];
-
-        forAll(posBin, faceI)
-        {
-            // Step 1: Measure the distance to the face.
-            vector rFace = (faceCentres[posBin[faceI]] - gCentre);
-
-            scalar distance = mag(rFace);
-
-            // Step 2: Check if this face is oriented away from face / edge.
-            const vector& fNorm = faceAreas[posBin[faceI]];
-
-            scalar deviation = (gNorm & (fNorm/(mag(fNorm) + VSMALL)));
+            proxPoints.first() = index;
+            proxPoints.second() = proximityFace;
 
             if
             (
-                (deviation < minDeviation) &&
-                (distance < minDistance)
+                (faces_[index].size() == 4) &&
+                (polyMesh::faces()[proximityFace].size() == 4)
             )
             {
-                // Update statistics
-                proximityFace = posBin[faceI];
-                minDistance = distance;
-                // minDeviation = deviation;
-
-                // Define whether rFace went through
-                // domain by comparing with the normal.
-                if ((gNorm & (rFace/distance)) > 0.0)
-                {
-                    // Outside the domain
-                }
-                else
-                {
-                    // Inside the domain
-                }
+                foundPoint = true;
             }
         }
-    }
-
-    if (proximityFace != -1)
-    {
-        // Check if we need to mark points for mesh-slicing.
-        if (minDistance < sliceThreshold_)
+        else
         {
-            labelPair proxPoints(-1, -1);
-            bool foundPoint = false;
+            const edge& thisEdge = edges_[index];
+            const face& proxFace = polyMesh::faces()[proximityFace];
 
-            if (twoDMesh_)
+            // Check if any points on this face are still around.
+            // If yes, mark one of them as the end point
+            // for Dijkstra's algorithm. The start point will be a point
+            // on this edge.
+            proxPoints.first() = thisEdge[0];
+
+            forAll(proxFace, pointI)
             {
-                proxPoints.first() = index;
-                proxPoints.second() = proximityFace;
-
-                if
-                (
-                    (faces_[index].size() == 4) &&
-                    (polyMesh::faces()[proximityFace].size() == 4)
-                )
+                if (reversePointMap_[proxFace[pointI]] != -1)
                 {
+                    proxPoints.second() = proxFace[pointI];
                     foundPoint = true;
+                    break;
                 }
             }
-            else
-            {
-                const edge& thisEdge = edges_[index];
-                const face& proxFace = polyMesh::faces()[proximityFace];
+        }
 
-                // Check if any points on this face are still around.
-                // If yes, mark one of them as the end point
-                // for Dijkstra's algorithm. The start point will be a point
-                // on this edge.
-                proxPoints.first() = thisEdge[0];
+        if (foundPoint)
+        {
+            // Lock the edge mutex
+            entityMutex_[1].lock();
 
-                forAll(proxFace, pointI)
-                {
-                    if (reversePointMap_[proxFace[pointI]] != -1)
-                    {
-                        proxPoints.second() = proxFace[pointI];
-                        foundPoint = true;
-                        break;
-                    }
-                }
-            }
+            label newSize = slicePairs_.size() + 1;
 
-            if (foundPoint)
-            {
-                // Lock the edge mutex
-                entityMutex_[1].lock();
+            // Const-cast slicePairs for resize
+            List<labelPair>& sP = const_cast<List<labelPair>&>(slicePairs_);
 
-                // Add this entry as a candidate for mesh slicing.
-                label curSize = slicePairs_.size();
+            // Add this entry as a candidate for mesh slicing.
+            sP.setSize(newSize, proxPoints);
 
-                slicePairs_.setSize(curSize + 1);
-
-                slicePairs_[curSize] = proxPoints;
-
-                // Unlock the edge mutex
-                entityMutex_[1].unlock();
-            }
+            // Unlock the edge mutex
+            entityMutex_[1].unlock();
         }
     }
 
-    return minDistance;
+    return proxDistance;
 }
 
 
@@ -3457,35 +3193,33 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
 
     Switch dumpLengthScale(false);
 
-    if
-    (
-        dict_.subDict("dynamicTopoFvMesh").found("dumpLengthScale") ||
-        mandatory_
-    )
+    const dictionary& meshDict = dict_.subDict("dynamicTopoFvMesh");
+
+    if (meshDict.found("dumpLengthScale") || mandatory_)
     {
-        dumpLengthScale =
-        (
-            dict_.subDict("dynamicTopoFvMesh").lookup("dumpLengthScale")
-        );
+        dumpLengthScale = meshDict.lookup("dumpLengthScale");
     }
 
-    volScalarField *lsPtr(NULL);
+    autoPtr<volScalarField> lsfPtr(NULL);
 
     if (dumpLengthScale && time().outputTime() && dump)
     {
-        lsPtr = new volScalarField
+        lsfPtr.set
         (
-            IOobject
+            new volScalarField
             (
-                "lengthScale",
-                time().timeName(),
+                IOobject
+                (
+                    "lengthScale",
+                    time().timeName(),
+                    *this,
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    false
+                ),
                 *this,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            *this,
-            dimensionedScalar("scalar", dimLength, 0)
+                dimensionedScalar("scalar", dimLength, 0)
+            )
         );
     }
 
@@ -3495,197 +3229,28 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
         return;
     }
 
-    label level = 1, visitedCells = 0;
-    labelList cellLevels(nCells(), 0);
+    // Size the field and calculate length-scale
+    lengthScale_.setSize(nCells_, 0.0);
 
-    // Size the local field
-    lengthScale_.setSize(nCells(), 0.0);
-
-    // HashSet to keep track of cells in each level
-    labelHashSet levelCells;
-
-    // Prepare for proximity-based refinement, if necessary
-    prepareProximityPatches();
-
-    // Obtain the cellCells addressing list
-    const labelListList& cc = polyMesh::cellCells();
-    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
-    const labelList& own = polyMesh::faceOwner();
-
-    forAll(boundary,patchI)
-    {
-        const polyPatch& bdyPatch = boundary[patchI];
-
-        if
-        (
-            (!freePatches_.found(bdyPatch.name())) &&
-            (bdyPatch.type() != "processor") &&
-            (bdyPatch.type() != "cyclic") &&
-            (bdyPatch.type() != "wedge") &&
-            (bdyPatch.type() != "empty") &&
-            (bdyPatch.type() != "symmetryPlane")
-        )
-        {
-            label pStart = bdyPatch.start();
-
-            forAll(bdyPatch,faceI)
-            {
-                label ownCell = own[pStart+faceI];
-
-                if (cellLevels[ownCell] != 0)
-                {
-                    continue;
-                }
-
-                cellLevels[ownCell] = level;
-
-                lengthScale_[ownCell] =
-                (
-                    boundaryLengthScale(pStart+faceI)*growthFactor_
-                );
-
-                levelCells.insert(ownCell);
-
-                visitedCells++;
-            }
-        }
-    }
-
-    bool doneWithSweeps = false;
-
-    // Perform multiple sweeps through the mesh...
-    while (!doneWithSweeps)
-    {
-        if (Pstream::parRun())
-        {
-            writeLengthScaleInfo
-            (
-                cellLevels,
-                lengthScale_
-            );
-        }
-
-        // Loop through cells of the current level
-        labelList currLvlCells = levelCells.toc();
-        levelCells.clear();
-
-        // Loop through cells, and increment neighbour
-        // cells of the current level
-        forAll(currLvlCells,cellI)
-        {
-            // Obtain the cells neighbouring this one
-            const labelList& cList = cc[currLvlCells[cellI]];
-
-            forAll(cList, indexI)
-            {
-                label& ngbLevel = cellLevels[cList[indexI]];
-
-                if (ngbLevel == 0)
-                {
-                    ngbLevel = level + 1;
-
-                    // Compute the mean of the existing
-                    // neighbour length-scales
-                    const labelList& ncList = cc[cList[indexI]];
-                    scalar sumLength = 0.0;
-                    label nTouchedNgb = 0;
-
-                    forAll(ncList, indexJ)
-                    {
-                        label sLevel = cellLevels[ncList[indexJ]];
-
-                        if ((sLevel < ngbLevel) && (sLevel > 0))
-                        {
-                            sumLength += lengthScale_[ncList[indexJ]];
-
-                            nTouchedNgb++;
-                        }
-                    }
-
-                    sumLength /= nTouchedNgb;
-
-                    // Scale the length and assign to this cell
-                    scalar sLength = sumLength*growthFactor_;
-
-                    lengthScale_[cList[indexI]] = sLength;
-
-                    levelCells.insert(cList[indexI]);
-
-                    visitedCells++;
-                }
-            }
-        }
-
-        if (Pstream::parRun())
-        {
-            readLengthScaleInfo
-            (
-                level,
-                visitedCells,
-                cellLevels,
-                lengthScale_,
-                levelCells
-            );
-        }
-
-        if (debug > 4)
-        {
-            Pout << "Processed level: " << level << nl
-                << " Visited: " << visitedCells
-                << " out of " << nCells() << endl;
-        }
-
-        // Move on to the next level
-        level++;
-
-        if (visitedCells >= nCells())
-        {
-            doneWithSweeps = true;
-        }
-
-        // Wait for everyone to complete.
-        reduce(doneWithSweeps, andOp<bool>());
-    }
-
-    // Exchange length-scale buffers across processors.
-    if (Pstream::parRun())
-    {
-        exchangeLengthBuffers();
-    }
-
-    if (debug)
-    {
-        Info << "Max Length Scale: " << maxLengthScale_ << endl;
-        Info << "Length Scale sweeps: " << level << endl;
-    }
-
-    // Check if everything went okay
-    if (visitedCells != nCells())
-    {
-        FatalErrorIn("void dynamicTopoFvMesh::calculateLengthScale(bool dump)")
-                << " Algorithm did not visit every cell in the mesh."
-                << " Something's messed up." << nl
-                << " Visited cells: " << visitedCells
-                << " nCells: " << nCells()
-                << abort(FatalError);
-    }
+    lengthEstimator().calculateLengthScale(lengthScale_);
 
     // Check if length-scale is to be dumped to disk.
     if (dumpLengthScale && time().outputTime() && dump)
     {
-        scalarField& lengthScale = lsPtr->internalField();
-
         // Obtain length-scale values from the mesh
-        forAll(lengthScale_, cellI)
-        {
-            lengthScale[cellI] = lengthScale_[cellI];
-        }
+        lsfPtr->internalField() = lengthScale_;
 
-        lsPtr->write();
+        lsfPtr->write();
     }
 
-    // Wait for transfers before continuing.
-    waitForBuffers();
+    if (Pstream::parRun())
+    {
+        // Exchange length-scale buffers across processors.
+        exchangeLengthBuffers();
+
+        // Wait for transfers before continuing.
+        waitForBuffers();
+    }
 }
 
 
@@ -3702,6 +3267,8 @@ void dynamicTopoFvMesh::readOptionalParameters()
         debug = 0;
     }
 
+    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
     // Set debug option for underlying classes as well.
     if (debug > 3)
     {
@@ -3709,7 +3276,7 @@ void dynamicTopoFvMesh::readOptionalParameters()
         polyMesh::debug = true;
     }
 
-    if (dict_.subDict("dynamicTopoFvMesh").found("interval") || mandatory_)
+    if (meshSubDict.found("interval") || mandatory_)
     {
         interval_ =
         (
@@ -3725,43 +3292,39 @@ void dynamicTopoFvMesh::readOptionalParameters()
         interval_ = 1;
     }
 
-    if
-    (
-        dict_.subDict("dynamicTopoFvMesh").found("bandWidthReduction") ||
-        mandatory_
-    )
+    if (meshSubDict.found("bandWidthReduction") || mandatory_)
     {
-        bandWidthReduction_ =
-        (
-            dict_.subDict
-            ("dynamicTopoFvMesh").lookup("bandWidthReduction")
-        );
+        bandWidthReduction_ = meshSubDict.lookup("bandWidthReduction");
     }
     else
     {
         bandWidthReduction_ = false;
     }
 
+    if (meshSubDict.found("sliverThreshold") ||	mandatory_)
+    {
+        sliverThreshold_ = readScalar(meshSubDict.lookup("sliverThreshold"));
+
+        if (sliverThreshold_ > 1.0 || sliverThreshold_ < 0.0)
+        {
+            FatalErrorIn("void dynamicTopoFvMesh::readOptionalParameters()")
+                << " Sliver threshold out of range [0..1]"
+                << abort(FatalError);
+        }
+    }
+
+    if (meshSubDict.found("maxModifications") || mandatory_)
+    {
+        maxModifications_ = readLabel(meshSubDict.lookup("maxModifications"));
+    }
+
     // For tetrahedral meshes...
     if (!twoDMesh_)
     {
         // Check if swapping is to be avoided on any patches
-        if
-        (
-            dict_.subDict("dynamicTopoFvMesh").found("noSwapPatches") ||
-            mandatory_
-        )
+        if (meshSubDict.found("noSwapPatches") || mandatory_)
         {
-            wordList noSwapPatches =
-            (
-                dict_.subDict
-                (
-                    "dynamicTopoFvMesh"
-                ).subDict("noSwapPatches").toc()
-            );
-
-            // Ensure that patches are legitimate.
-            checkPatches(noSwapPatches);
+            wordList noSwapPatches = meshSubDict.subDict("noSwapPatches").toc();
 
             noSwapPatchIDs_.setSize(noSwapPatches.size());
 
@@ -3779,22 +3342,9 @@ void dynamicTopoFvMesh::readOptionalParameters()
         }
 
         // Check if a limit has been imposed on maxTetsPerEdge
-        if
-        (
-            dict_.subDict("dynamicTopoFvMesh").found("maxTetsPerEdge") ||
-            mandatory_
-        )
+        if (meshSubDict.found("maxTetsPerEdge") || mandatory_)
         {
-            maxTetsPerEdge_ =
-            (
-                readLabel
-                (
-                    dict_.subDict
-                    (
-                        "dynamicTopoFvMesh"
-                    ).lookup("maxTetsPerEdge")
-                )
-            );
+            maxTetsPerEdge_ = readLabel(meshSubDict.lookup("maxTetsPerEdge"));
         }
         else
         {
@@ -3802,300 +3352,17 @@ void dynamicTopoFvMesh::readOptionalParameters()
         }
 
         // Check if programming tables can be resized at runtime
-        if
-        (
-            dict_.subDict("dynamicTopoFvMesh").found("allowTableResize") ||
-            mandatory_
-        )
+        if (meshSubDict.found("allowTableResize") || mandatory_)
         {
             allowTableResize_ =
             (
-                readBool
-                (
-                    dict_.subDict
-                    (
-                        "dynamicTopoFvMesh"
-                    ).lookup("allowTableResize")
-                )
+                readBool(meshSubDict.lookup("allowTableResize"))
             );
         }
         else
         {
             allowTableResize_ = false;
         }
-    }
-}
-
-
-// Read edge refinement options from the dictionary
-void dynamicTopoFvMesh::readRefinementOptions
-(
-    bool reRead
-)
-{
-    if (!edgeRefinement_)
-    {
-        return;
-    }
-
-    const dictionary& edgeOptionDict =
-    (
-        dict_.subDict("dynamicTopoFvMesh").subDict("refinementOptions")
-    );
-
-    scalar oldRatioMax = ratioMax_;
-    scalar oldRatioMin = ratioMin_;
-    scalar oldGrowthFactor = growthFactor_;
-
-    ratioMax_ = readScalar(edgeOptionDict.lookup("bisectionRatio"));
-    ratioMin_ = readScalar(edgeOptionDict.lookup("collapseRatio"));
-
-    if (reRead)
-    {
-        // Check if values have changed, and report it.
-        if (mag(oldRatioMax - ratioMax_) > SMALL)
-        {
-            Info << "\tOld ratioMax: " << oldRatioMax << nl
-                 << "\tNew ratioMax: " << ratioMax_ << endl;
-        }
-
-        if (mag(oldRatioMin - ratioMin_) > SMALL)
-        {
-            Info << "\tOld ratioMin: " << oldRatioMin << nl
-                 << "\tNew ratioMin: " << ratioMin_ << endl;
-        }
-
-        if (mag(oldGrowthFactor - growthFactor_) > SMALL)
-        {
-            Info << "\tOld growthFactor: " << oldGrowthFactor << nl
-                 << "\tNew growthFactor: " << growthFactor_ << endl;
-        }
-    }
-
-    if (edgeOptionDict.found("maxLengthScale") || mandatory_)
-    {
-        maxLengthScale_ =
-        (
-            readScalar(edgeOptionDict.lookup("maxLengthScale"))
-        );
-    }
-
-    if (edgeOptionDict.found("minLengthScale") || mandatory_)
-    {
-        minLengthScale_ =
-        (
-            readScalar(edgeOptionDict.lookup("minLengthScale"))
-        );
-    }
-
-    // Sanity check: Are length scales correctly specified?
-    if (minLengthScale_ > maxLengthScale_)
-    {
-        FatalErrorIn("dynamicTopoFvMesh::readRefinementOptions(bool reRead)")
-            << " Length-scales are incorrectly specified." << nl
-            << " minLengthScale: " << minLengthScale_ << nl
-            << " maxLengthScale: " << maxLengthScale_ << nl
-            << abort(FatalError);
-    }
-
-    if (edgeOptionDict.found("fixedLengthScalePatches") || mandatory_)
-    {
-        fixedPatches_ =
-        (
-            edgeOptionDict.subDict("fixedLengthScalePatches")
-        );
-
-        // Ensure that patches are legitimate.
-        checkPatches(fixedPatches_.toc());
-    }
-
-    // Check if swapping is to be avoided on any patches
-    if (edgeOptionDict.found("noModificationPatches") || mandatory_)
-    {
-        wordList noModPatches =
-        (
-            edgeOptionDict.subDict("noModificationPatches").toc()
-        );
-
-        // Ensure that patches are legitimate.
-        checkPatches(noModPatches);
-
-        noModPatchIDs_.setSize(noModPatches.size());
-
-        label indexI = 0;
-
-        forAll(noModPatches, wordI)
-        {
-            const word& patchName = noModPatches[wordI];
-
-            noModPatchIDs_[indexI++] =
-            (
-                boundaryMesh().findPatchID(patchName)
-            );
-        }
-    }
-
-    // Check local coupled patches for fixed length-scales
-    if (dict_.found("coupledPatches") || mandatory_)
-    {
-        const dictionary coupledPatches = dict_.subDict("coupledPatches");
-
-        // Determine master and slave patches
-        label indexI = 0;
-        wordList masterPatches(coupledPatches.size());
-        wordList slavePatches(coupledPatches.size());
-
-        forAllConstIter(dictionary, coupledPatches, dIter)
-        {
-            const dictionary& dictI = dIter().dict();
-
-            masterPatches[indexI] = word(dictI.lookup("master"));
-            slavePatches[indexI] = word(dictI.lookup("slave"));
-
-            indexI++;
-        }
-
-        // Ensure that patches are legitimate.
-        checkPatches(masterPatches);
-
-        // Check whether coupled patches are fixedPatches as well.
-        forAll(masterPatches, wordI)
-        {
-            word pName(masterPatches[wordI]);
-
-            if (fixedPatches_.found(pName))
-            {
-                // Add the slave patch to the list as well.
-                // If it already exists, over-ride the value.
-                fixedPatches_.add
-                (
-                    slavePatches[wordI],
-                    fixedPatches_[pName][0].scalarToken(),
-                    true
-                );
-            }
-        }
-    }
-
-    if (edgeOptionDict.found("freeLengthScalePatches") || mandatory_)
-    {
-        freePatches_ =
-        (
-            edgeOptionDict.subDict("freeLengthScalePatches")
-        );
-
-        // Ensure that patches are legitimate.
-        checkPatches(freePatches_.toc());
-
-        // Check if fixed and free patches are conflicting
-        if (fixedPatches_.size() && freePatches_.size())
-        {
-            wordList fixedPatchList = fixedPatches_.toc();
-            wordList freePatchList = freePatches_.toc();
-
-            forAll(fixedPatchList, wordI)
-            {
-                forAll(freePatchList, wordJ)
-                {
-                    if (fixedPatchList[wordI] == freePatchList[wordJ])
-                    {
-                        FatalErrorIn
-                        (
-                            "dynamicTopoFvMesh::readRefinementOptions"
-                            "(bool reRead)"
-                        )
-                            << " Conflicting fixed/free patches." << nl
-                            << " Fixed patch: " << fixedPatchList[wordI] << nl
-                            << " Free patch: " << freePatchList[wordJ] << nl
-                            << abort(FatalError);
-                    }
-                }
-            }
-        }
-    }
-
-    // Read growthFactor from dictionary
-    growthFactor_ = readScalar(edgeOptionDict.lookup("growthFactor"));
-
-    if (edgeOptionDict.found("curvaturePatches") || mandatory_)
-    {
-        curvaturePatches_ =
-        (
-            edgeOptionDict.subDict("curvaturePatches")
-        );
-
-        // Ensure that patches are legitimate.
-        checkPatches(curvaturePatches_.toc());
-
-        curvatureDeviation_ =
-        (
-            readScalar(edgeOptionDict.lookup("curvatureDeviation"))
-        );
-
-        if
-        (
-            (curvatureDeviation_ > 1.0 || curvatureDeviation_ < 0.0)
-        )
-        {
-            FatalErrorIn
-            (
-                "dynamicTopoFvMesh::readRefinementOptions(bool reRead)"
-            )
-                << " Curvature deviation out of range [0..1]"
-                << abort(FatalError);
-        }
-    }
-
-    if (edgeOptionDict.found("proximityPatches") || mandatory_)
-    {
-        proximityPatches_ =
-        (
-            edgeOptionDict.subDict("proximityPatches")
-        );
-
-        // Ensure that patches are legitimate.
-        checkPatches(proximityPatches_.toc());
-
-        // Check if a threshold for slicing has been specified.
-        if (edgeOptionDict.found("sliceThreshold") || mandatory_)
-        {
-            sliceThreshold_ =
-            (
-                readScalar(edgeOptionDict.lookup("sliceThreshold"))
-            );
-
-            // Cap the threshold value
-            // sliceThreshold_ = Foam::max(sliceThreshold_, minLengthScale_);
-        }
-    }
-
-    if (edgeOptionDict.found("sliverThreshold") || mandatory_)
-    {
-        sliverThreshold_ =
-        (
-            readScalar(edgeOptionDict.lookup("sliverThreshold"))
-        );
-
-        if
-        (
-            (sliverThreshold_ > 1.0 || sliverThreshold_ < 0.0)
-        )
-        {
-            FatalErrorIn
-            (
-                "dynamicTopoFvMesh::readRefinementOptions(bool reRead)"
-            )
-                << " Sliver threshold out of range [0..1]"
-                << abort(FatalError);
-        }
-    }
-
-    if (edgeOptionDict.found("maxModifications") || mandatory_)
-    {
-        maxModifications_ =
-        (
-            readLabel(edgeOptionDict.lookup("maxModifications"))
-        );
     }
 }
 
@@ -4127,7 +3394,8 @@ label dynamicTopoFvMesh::getTriBoundaryFace
     // This bit should never happen.
     FatalErrorIn
     (
-        "label dynamicTopoFvMesh::getTriBoundaryFace(const label fIndex) const"
+        "label dynamicTopoFvMesh::getTriBoundaryFace"
+        "(const label fIndex) const"
     )
         << "Cannot find a triangular face bordering face: "
         << fIndex << " :: " << faces_[fIndex]
@@ -4164,7 +3432,8 @@ label dynamicTopoFvMesh::getTriBoundaryEdge
     // This bit should never happen.
     FatalErrorIn
     (
-        "label dynamicTopoFvMesh::getTriBoundaryEdge(const label fIndex) const"
+        "label dynamicTopoFvMesh::getTriBoundaryEdge"
+        "(const label fIndex) const"
     )
         << "Cannot find a triangular face bordering face: "
         << fIndex << " :: " << faces_[fIndex]
@@ -4261,6 +3530,36 @@ void dynamicTopoFvMesh::loadFieldMapper()
 }
 
 
+// Load the length scale estimator
+void dynamicTopoFvMesh::loadLengthScaleEstimator()
+{
+    if (edgeRefinement_)
+    {
+        if (lsPtr_.valid())
+        {
+            FatalErrorIn
+            (
+                "void dynamicTopoFvMesh::loadLengthScaleEstimator() "
+            ) << nl << " Length scale estimator already loaded. "
+              << abort(FatalError);
+        }
+        else
+        {
+            const dictionary& meshDict = dict_.subDict("dynamicTopoFvMesh");
+
+            lsPtr_.set
+            (
+                new lengthScaleEstimator
+                (
+                    *this,
+                    meshDict.subDict("refinementOptions")
+                )
+            );
+        }
+    }
+}
+
+
 // Initialize the threading environment.
 //  - Provides an override option to avoid reading from the dictionary.
 void dynamicTopoFvMesh::initializeThreadingEnvironment
@@ -4325,14 +3624,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         handlerPtr_[0].setMaster();
 
         // Size the stacks
-        if (twoDMesh_)
-        {
-            faceStack_.setSize(1);
-        }
-        else
-        {
-            edgeStack_.setSize(1);
-        }
+        entityStack_.setSize(1);
     }
     else
     {
@@ -4349,14 +3641,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         }
 
         // Size the stacks
-        if (twoDMesh_)
-        {
-            faceStack_.setSize(nThreads + 1);
-        }
-        else
-        {
-            edgeStack_.setSize(nThreads + 1);
-        }
+        entityStack_.setSize(nThreads + 1);
 
         forAll(handlerPtr_, threadI)
         {
@@ -4405,10 +3690,10 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     label tIndex = mesh.self();
 
     // Pick items off the stack
-    while (!mesh.faceStack(tIndex).empty())
+    while (!mesh.Stack(tIndex).empty())
     {
         // Retrieve the index for this face
-        label fIndex = mesh.faceStack(tIndex).pop();
+        label fIndex = mesh.Stack(tIndex).pop();
 
         // Perform a Delaunay test and check if a flip is necesary.
         bool failed = mesh.testDelaunay(fIndex);
@@ -4423,7 +3708,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
             else
             {
                 // Push this on to the master stack
-                mesh.faceStack(0).push(fIndex);
+                mesh.Stack(0).push(fIndex);
             }
         }
     }
@@ -4463,13 +3748,15 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
     label tIndex = mesh.self();
 
     // Pick items off the stack
-    while (!mesh.faceStack(tIndex).empty())
+    while (!mesh.Stack(tIndex).empty())
     {
         // Retrieve the index for this face
-        label fIndex = mesh.faceStack(tIndex).pop();
+        label fIndex = mesh.Stack(tIndex).pop();
 
-        // Check if edgeRefinements are to be avoided.
-        if (mesh.checkFaceModification(fIndex))
+        // Check if edgeRefinements are to be avoided on patch.
+        label pIndex = mesh.whichPatch(fIndex);
+
+        if (mesh.lengthEstimator().checkRefinementPatch(pIndex))
         {
             continue;
         }
@@ -4478,7 +3765,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
         // and remove it by a two-step bisection/collapse operation.
         mesh.remove2DSliver(fIndex);
 
-        if (mesh.checkFaceBisection(fIndex))
+        if (mesh.checkBisection(fIndex))
         {
             if (thread->master())
             {
@@ -4488,11 +3775,11 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
             else
             {
                 // Push this on to the master stack
-                mesh.faceStack(0).push(fIndex);
+                mesh.Stack(0).push(fIndex);
             }
         }
         else
-        if (mesh.checkFaceCollapse(fIndex))
+        if (mesh.checkCollapse(fIndex))
         {
             if (thread->master())
             {
@@ -4502,7 +3789,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse2D
             else
             {
                 // Push this on to the master stack
-                mesh.faceStack(0).push(fIndex);
+                mesh.Stack(0).push(fIndex);
             }
         }
     }
@@ -4613,10 +3900,10 @@ void dynamicTopoFvMesh::swap3DEdges
     mesh.initTables(m, Q, K, triangulations);
 
     // Pick edges off the stack
-    while (!mesh.edgeStack(tIndex).empty())
+    while (!mesh.Stack(tIndex).empty())
     {
         // Retrieve an edge from the stack
-        label eIndex = mesh.edgeStack(tIndex).pop();
+        label eIndex = mesh.Stack(tIndex).pop();
 
         // Compute the minimum quality of cells around this edge
         scalar minQuality = mesh.computeMinQuality(eIndex);
@@ -4641,7 +3928,7 @@ void dynamicTopoFvMesh::swap3DEdges
                 else
                 {
                     // Push this on to the master stack
-                    mesh.edgeStack(0).push(eIndex);
+                    mesh.Stack(0).push(eIndex);
                 }
             }
         }
@@ -4680,18 +3967,20 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     // Figure out which thread this is...
     label tIndex = mesh.self();
 
-    while (!mesh.edgeStack(tIndex).empty())
+    while (!mesh.Stack(tIndex).empty())
     {
         // Retrieve an edge from the stack
-        label eIndex = mesh.edgeStack(tIndex).pop();
+        label eIndex = mesh.Stack(tIndex).pop();
 
         // Check if edgeRefinements are to be avoided.
-        if (mesh.checkEdgeModification(eIndex))
+        label pIndex = mesh.whichEdgePatch(eIndex);
+
+        if (mesh.lengthEstimator().checkRefinementPatch(pIndex))
         {
             continue;
         }
 
-        if (mesh.checkEdgeBisection(eIndex))
+        if (mesh.checkBisection(eIndex))
         {
             if (thread->master())
             {
@@ -4701,11 +3990,11 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
             else
             {
                 // Push this on to the master stack
-                mesh.edgeStack(0).push(eIndex);
+                mesh.Stack(0).push(eIndex);
             }
         }
         else
-        if (mesh.checkEdgeCollapse(eIndex))
+        if (mesh.checkCollapse(eIndex))
         {
             if (thread->master())
             {
@@ -4715,7 +4004,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
             else
             {
                 // Push this on to the master stack
-                mesh.edgeStack(0).push(eIndex);
+                mesh.Stack(0).push(eIndex);
             }
         }
     }
@@ -5126,7 +4415,7 @@ void dynamicTopoFvMesh::remove2DSliver
         else
         {
             // Push this on to the master stack
-            faceStack(0).push(fIndex);
+            Stack(0).push(fIndex);
         }
     }
 }
@@ -5771,8 +5060,8 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
 
     if (edgeRefinement_)
     {
-        // Initialize the face stacks
-        initFaceStacks();
+        // Initialize stacks
+        initStacks();
 
         if (threader_->multiThreaded())
         {
@@ -5812,8 +5101,8 @@ void dynamicTopoFvMesh::threadedTopoModifier2D()
         }
     }
 
-    // Re-initialize the face stacks
-    initFaceStacks();
+    // Re-initialize stacks
+    initStacks();
 
     if (threader_->multiThreaded())
     {
@@ -5862,8 +5151,8 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
 
     if (edgeRefinement_)
     {
-        // Initialize the cell stacks
-        initEdgeStacks();
+        // Initialize stacks
+        initStacks();
 
         if (threader_->multiThreaded())
         {
@@ -5903,8 +5192,8 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
         }
     }
 
-    // Initialize the edge stacks
-    initEdgeStacks();
+    // Initialize stacks
+    initStacks();
 
     if (threader_->multiThreaded())
     {
@@ -6037,33 +5326,15 @@ bool dynamicTopoFvMesh::update()
         // Re-read optional parameters
         readOptionalParameters();
 
-        // Re-read edge options
-        readRefinementOptions(true);
+        // Read edge refinement options
+        if (edgeRefinement_)
+        {
+            lengthEstimator().readRefinementOptions(true, mandatory_);
+        }
     }
 
     // Print out the mesh bandwidth
-    if (debug > 1)
-    {
-        label band=0;
-
-        const labelList& oldOwner = faceOwner();
-        const labelList& oldNeighbour = faceNeighbour();
-
-        for(label faceI = 0; faceI < nInternalFaces_; faceI++)
-        {
-            label diff = oldNeighbour[faceI] - oldOwner[faceI];
-
-            if (diff > band)
-            {
-                band = diff;
-            }
-        }
-
-        reduce(band, maxOp<label>());
-
-        Info << "Mesh size: " << nCells()
-             << "    Bandwidth before renumbering: " << band << endl;
-    }
+    printBandwidth();
 
     // Set old-points before moving the mesh
     const pointField& oldPoints = points();
@@ -6090,9 +5361,7 @@ bool dynamicTopoFvMesh::update()
         points_[pointI] = newPoints[pointI];
     }
 
-    //== Connectivity changes ==//
-
-    // Reset the flag
+    // Reset statistics
     thresholdSlivers_.clear();
     topoChangeFlag_ = false;
     nModifications_ = 0;
@@ -6136,6 +5405,8 @@ bool dynamicTopoFvMesh::update()
     // Calculate the edge length-scale for the mesh
     calculateLengthScale();
 
+    // ~~ Connectivity changes ~~ //
+
     // Track mesh topology modification time
     clockTime topologyTimer;
 
@@ -6151,9 +5422,12 @@ bool dynamicTopoFvMesh::update()
 
     Info << " Topo modifier time: " << topologyTimer.elapsedTime() << endl;
 
-    meshQuality(true);
+    // Write out statistics
+    Info << " nBisections (Interior | Surface): " << nBisections_ << endl;
+    Info << " nCollapses (Interior | Surface): " << nCollapses_ << endl;
+    Info << " nSwaps (Interior | Surface): " << nSwaps_ << endl;
 
-    clockTime reOrderingTimer;
+    meshQuality(true);
 
     // Reduce across processors.
     reduce(topoChangeFlag_, orOp<bool>());
@@ -6190,6 +5464,8 @@ bool dynamicTopoFvMesh::update()
             oldFaceZonePointMaps[fzI] = faceZones[fzI]().meshPointMap();
         }
 
+        clockTime reOrderingTimer;
+
         // Reorder the mesh and obtain current topological information
         reOrderMesh
         (
@@ -6206,6 +5482,9 @@ bool dynamicTopoFvMesh::update()
             cellZoneMap
         );
 
+        // Print out topo-stats
+        Info << " Reordering time: " << reOrderingTimer.elapsedTime() << endl;
+
         // Obtain the patch-point maps before resetting the mesh
         List<Map<label> > oldPatchPointMaps(numPatches_);
 
@@ -6214,11 +5493,11 @@ bool dynamicTopoFvMesh::update()
             oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
         }
 
-        // Reset the mesh
+        // Reset the mesh with pre-motion points
         polyMesh::resetPrimitives
         (
             nFaces_,
-            points,
+            preMotionPoints,
             faces,
             owner,
             neighbour,
@@ -6333,22 +5612,19 @@ bool dynamicTopoFvMesh::update()
             true
         );
 
-        // Wipe out old-points, since the size may have changed
-        resetMotion();
-
-        // Move points to positions before mesh-motion
-        movePoints(mpm.preMotionPoints());
-
-        // Reset old-volumes.
-        // This overrides mapped V0 values.
-        resetMotion();
-        setV0();
-
         // Update the underlying mesh, and map all related fields
         updateMesh(mpm);
 
+        // Reset old-volumes
+        resetMotion();
+        setV0();
+
         // Correct volume fluxes on the old mesh
         mapper_->correctFluxes();
+
+        // Now move back to new points and
+        // compute correct mesh-fluxes.
+        movePoints(points);
 
         // Update the mesh-motion solver
         if (mPtr_.valid())
@@ -6356,36 +5632,8 @@ bool dynamicTopoFvMesh::update()
             mPtr_->updateMesh(mpm);
         }
 
-        // Now move back to new points and
-        // compute correct mesh-fluxes.
-        movePoints(points);
-
         // Print out the mesh bandwidth
-        if (debug > 1)
-        {
-            label band=0;
-
-            for(label faceI = 0; faceI < nInternalFaces_; faceI++)
-            {
-                label diff = neighbour[faceI] - owner[faceI];
-
-                if (diff > band)
-                {
-                    band = diff;
-                }
-            }
-
-            reduce(band, maxOp<label>());
-
-            Info << "Mesh size: " << nCells()
-                 << "    Bandwidth after renumbering: " << band << endl;
-
-            Info << "----------- " << endl;
-            Info << "Patch Info: " << endl;
-            Info << "----------- " << endl;
-            Info << "Old Patch MeshPoints: " << oldPatchNMeshPoints_ << endl;
-            Info << "New Patch MeshPoints: " << patchNMeshPoints_ << endl;
-        }
+        printBandwidth();
 
         // Now that all connectivity changes are successful,
         // update coupled maps (in a separate thread, if available).
@@ -6458,15 +5706,6 @@ bool dynamicTopoFvMesh::update()
 
     // Dump procIDs to disk, if requested.
     writeProcIDs();
-
-    // Print out topo-stats
-    Info << " Reordering time: " << reOrderingTimer.elapsedTime() << endl;
-    Info << " nBisections: " << nBisections_[0];
-    Info << " nSurfBisections: " << nBisections_[1] << endl;
-    Info << " nCollapses: " << nCollapses_[0];
-    Info << " nSurfCollapses: " << nCollapses_[1] << endl;
-    Info << " nSwaps: " << nSwaps_[0];
-    Info << " nSurfSwaps: " << nSwaps_[1] << endl;
 
     return topoChangeFlag_;
 }

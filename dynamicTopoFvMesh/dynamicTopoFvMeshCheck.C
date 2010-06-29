@@ -302,7 +302,7 @@ bool dynamicTopoFvMesh::checkQuality
 
     if (coupledModification_)
     {
-        if (locallyCoupledEdge(eIndex))
+        if (locallyCoupledEntity(eIndex))
         {
             // Check the quality of the slave edge as well.
             label sIndex = -1;
@@ -354,7 +354,7 @@ bool dynamicTopoFvMesh::checkQuality
             setCoupledModification();
         }
         else
-        if (processorCoupledEdge(eIndex))
+        if (processorCoupledEntity(eIndex))
         {
 
         }
@@ -1738,40 +1738,30 @@ void dynamicTopoFvMesh::checkConnectivity
 }
 
 
-// Check for legitimacy of patches
-void dynamicTopoFvMesh::checkPatches
-(
-    const wordList& patchList
-) const
+// Write out mesh bandwidth
+void dynamicTopoFvMesh::printBandwidth() const
 {
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
-    forAll(patchList, wordI)
+    if (debug > 1)
     {
-        bool foundPatch = false;
+        label band = 0;
 
-        forAll(boundary, patchI)
+        const labelList& owner = faceOwner();
+        const labelList& neighbour = faceNeighbour();
+
+        forAll(owner, faceI)
         {
-            if (boundary[patchI].name() == patchList[wordI])
+            label diff = owner[faceI] - neighbour[faceI];
+
+            if (diff > band)
             {
-                foundPatch = true;
-                break;
+                band = diff;
             }
         }
 
-        if (!foundPatch)
-        {
-            FatalErrorIn
-            (
-                "void dynamicTopoFvMesh::checkPatches\n"
-                "(\n"
-                "	const wordList& patchList\n"
-                ") const\n"
-            )
-                << " Could not find patch: "
-                << patchList[wordI] << nl
-                << abort(FatalError);
-        }
+        reduce(band, maxOp<label>());
+
+        Info << "Mesh size: " << nCells()
+             << "    Bandwidth: " << band << endl;
     }
 }
 

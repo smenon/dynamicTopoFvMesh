@@ -556,14 +556,14 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     // Set coupled modifications.
     setCoupledModification();
 
+    // Initialize the coupled stack
+    initCoupledStack();
+
     // Loop through the coupled stack and perform changes.
     if (twoDMesh_)
     {
         if (edgeRefinement_)
         {
-            // Initialize the face stack
-            initCoupledFaceStack();
-
             edgeBisectCollapse2D(&(handlerPtr_[0]));
         }
 
@@ -573,14 +573,11 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     {
         if (edgeRefinement_)
         {
-            // Initialize the edge stack
-            initCoupledEdgeStack();
-
             edgeBisectCollapse3D(&(handlerPtr_[0]));
         }
 
         // Re-Initialize the edge stack
-        initCoupledEdgeStack();
+        initCoupledStack();
 
         swap3DEdges(&(handlerPtr_[0]));
     }
@@ -1891,233 +1888,6 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 }
 
 
-// Send length-scale info across processors
-void dynamicTopoFvMesh::writeLengthScaleInfo
-(
-    const labelList& cellLevels,
-    const resizableList<scalar>& lengthScale
-)
-{
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
-    // Clear existing buffers
-    sendLblBuffer_.clear();
-    recvLblBuffer_.clear();
-    sendSclBuffer_.clear();
-    recvSclBuffer_.clear();
-
-    // Number of sent faces across processors
-    labelList nSendFaces(boundary.size(), 0);
-    labelList nRecvFaces(boundary.size(), 0);
-
-    // Corresponding face labels
-    sendLblBuffer_.setSize(boundary.size());
-    recvLblBuffer_.setSize(boundary.size());
-
-    // Length-scales corresponding to face-labels
-    sendSclBuffer_.setSize(boundary.size());
-    recvSclBuffer_.setSize(boundary.size());
-
-    // Fill send buffers with cell-level and length-scale info.
-    forAll(boundary, pI)
-    {
-        if (isA<processorPolyPatch>(boundary[pI]))
-        {
-            const labelList& fCells = boundary[pI].faceCells();
-
-            // Set the initial buffer size
-            sendLblBuffer_[pI].setSize(boundary[pI].size(), 0);
-            sendSclBuffer_[pI].setSize(boundary[pI].size(), 0.0);
-
-            forAll(fCells, faceI)
-            {
-                label cI = fCells[faceI];
-
-                // Does the adjacent cell have a non-zero level?
-                if (cellLevels[cI] > 0)
-                {
-                    // Fill the send buffer.
-                    sendLblBuffer_[pI][nSendFaces[pI]] = faceI;
-                    sendSclBuffer_[pI][nSendFaces[pI]] = lengthScale[cI];
-
-                    nSendFaces[pI]++;
-                }
-            }
-
-            // Resize to actual value
-            sendLblBuffer_[pI].setSize(nSendFaces[pI]);
-            sendSclBuffer_[pI].setSize(nSendFaces[pI]);
-
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[pI])
-            );
-
-            label neiProcNo = pp.neighbProcNo();
-
-            // First perform a blocking send/receive of the number of faces.
-            pWrite(neiProcNo, nSendFaces[pI]);
-            pRead(neiProcNo, nRecvFaces[pI]);
-        }
-    }
-
-    // Send info to neighbouring processors.
-    forAll(boundary, patchI)
-    {
-        if (isA<processorPolyPatch>(boundary[patchI]))
-        {
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[patchI])
-            );
-
-            label neiProcNo = pp.neighbProcNo();
-
-            if (debug > 4)
-            {
-                Pout << " Processor patch " << patchI << ' ' << pp.name()
-                     << " communicating with " << neiProcNo
-                     << "  Sending: " << nSendFaces[patchI]
-                     << endl;
-            }
-
-            // Next, perform a non-blocking send/receive of buffers.
-            // But only if the buffer size is non-zero.
-            if (nSendFaces[patchI] != 0)
-            {
-                pWrite(neiProcNo, sendLblBuffer_[patchI]);
-                pWrite(neiProcNo, sendSclBuffer_[patchI]);
-            }
-
-            if (nRecvFaces[patchI] != 0)
-            {
-                // Size the receive buffers
-                recvLblBuffer_[patchI].setSize(nRecvFaces[patchI], 0);
-                recvSclBuffer_[patchI].setSize(nRecvFaces[patchI], 0.0);
-
-                pRead(neiProcNo, recvLblBuffer_[patchI]);
-                pRead(neiProcNo, recvSclBuffer_[patchI]);
-            }
-        }
-    }
-}
-
-
-// Receive length-scale info across processors
-void dynamicTopoFvMesh::readLengthScaleInfo
-(
-    const label level,
-    label& visitedCells,
-    labelList& cellLevels,
-    resizableList<scalar>& lengthScale,
-    labelHashSet& levelCells
-)
-{
-    const polyBoundaryMesh& boundary = boundaryMesh();
-    const labelList& own = faceOwner();
-    const labelList& nei = faceNeighbour();
-
-    // Wait for all transfers to complete.
-    OPstream::waitRequests();
-    IPstream::waitRequests();
-
-    // Now re-visit cells and update length-scales.
-    forAll(boundary, patchI)
-    {
-        if (recvLblBuffer_[patchI].size())
-        {
-            const labelList& fCells = boundary[patchI].faceCells();
-
-            forAll(recvLblBuffer_[patchI], i)
-            {
-                label nLabel = recvLblBuffer_[patchI][i];
-
-                label cI = fCells[nLabel];
-
-                label& ngbLevel = cellLevels[cI];
-
-                // For an unvisited cell, update the level
-                if (ngbLevel == 0)
-                {
-                    ngbLevel = level + 1;
-                    levelCells.insert(cI);
-                    visitedCells++;
-                }
-
-                // Visit all neighbours and re-calculate length-scale
-                const cell& cellCheck = cells()[cI];
-                scalar sumLength = 0.0;
-                label nTouchedNgb = 0;
-
-                forAll(cellCheck, faceI)
-                {
-                    label sLevel = -1, sLCell = -1;
-                    label pF = boundary.whichPatch(cellCheck[faceI]);
-
-                    if (pF == -1)
-                    {
-                        // Internal face. Determine neighbour.
-                        if (own[cellCheck[faceI]] == cI)
-                        {
-                            sLCell = nei[cellCheck[faceI]];
-                        }
-                        else
-                        {
-                            sLCell = own[cellCheck[faceI]];
-                        }
-
-                        sLevel = cellLevels[sLCell];
-
-                        if ((sLevel < ngbLevel) && (sLevel > 0))
-                        {
-                            sumLength += lengthScale[sLCell];
-
-                            nTouchedNgb++;
-                        }
-                    }
-                    else
-                    if (isA<processorPolyPatch>(boundary[pF]))
-                    {
-                        // Determine the local index.
-                        label local = boundary[pF].whichFace(cellCheck[faceI]);
-
-                        // Is this label present in the list?
-                        forAll(recvLblBuffer_[pF], j)
-                        {
-                            if (recvLblBuffer_[pF][j] == local)
-                            {
-                                sumLength += recvSclBuffer_[pF][j];
-
-                                nTouchedNgb++;
-
-                                break;
-                            }
-                        }
-                    }
-                    else
-                    if (fixedPatches_.found(boundary[pF].name()))
-                    {
-                        sumLength +=
-                        (
-                            fixedPatches_[boundary[pF].name()][0].scalarToken()
-                        );
-
-                        nTouchedNgb++;
-                    }
-                }
-
-                sumLength /= nTouchedNgb;
-
-                // Scale the length and assign to this cell
-                scalar sLength = sumLength*growthFactor_;
-
-                lengthScale[cI] = sLength;
-            }
-        }
-    }
-}
-
-
 // Wait for buffer transfer completion.
 void dynamicTopoFvMesh::waitForBuffers() const
 {
@@ -2229,42 +1999,6 @@ void dynamicTopoFvMesh::pRead
 (
     const label fromID,
     List<Type>& data
-) const
-{
-    IPstream::read
-    (
-        Pstream::nonBlocking,
-        fromID,
-        reinterpret_cast<char*>(&data[0]),
-        data.size()*sizeof(Type)
-    );
-}
-
-
-// Parallel non-blocking send for resizableLists
-template <class Type>
-void dynamicTopoFvMesh::pWrite
-(
-    const label toID,
-    const resizableList<Type>& data
-) const
-{
-    OPstream::write
-    (
-        Pstream::nonBlocking,
-        toID,
-        reinterpret_cast<const char*>(&data[0]),
-        data.size()*sizeof(Type)
-    );
-}
-
-
-// Parallel non-blocking receive for resizableLists
-template <class Type>
-void dynamicTopoFvMesh::pRead
-(
-    const label fromID,
-    resizableList<Type>& data
 ) const
 {
     IPstream::read

@@ -591,7 +591,7 @@ void dynamicTopoFvMesh::reOrderEdges
     if (!twoDMesh_)
     {
         // Invert edges to obtain pointEdges
-        invertConnectivity(nPoints_, edges_, pointEdges_);
+        invertManyToMany(nPoints_, edges_, pointEdges_);
 
         // Loop through all local coupling maps, and renumber edges.
         forAll(patchCoupling_, patchI)

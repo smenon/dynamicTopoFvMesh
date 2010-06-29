@@ -53,6 +53,7 @@ resizableList<T>::resizableList()
     lastIndex_(-1)
 {}
 
+
 //- Construct given a size and value for all elements
 template<class T>
 resizableList<T>::resizableList
@@ -72,6 +73,7 @@ resizableList<T>::resizableList
     UList<T>::reset(v_, size_);
     lastIndex_ = (size_ - 1);
 }
+
 
 //- Construct from an existing UList<T> structure
 template<class T>
@@ -109,6 +111,7 @@ resizableList<T>::~resizableList()
 {
     clearOut();
 }
+
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -167,6 +170,7 @@ void resizableList<T>::setSize(const label size)
     }
 }
 
+
 //- Construct given a size and value for all elements
 template<class T>
 void resizableList<T>::setSize(const label size, const T& data)
@@ -188,6 +192,7 @@ void resizableList<T>::setSize(const label size, const T& data)
     UList<T>::reset(v_, size);
     lastIndex_ = (size - 1);
 }
+
 
 //- Append an element to the end of the list
 //- Returns the index of the added element
@@ -218,6 +223,7 @@ inline label resizableList<T>::append(const T& data)
     return lastIndex_;
 }
 
+
 //- Return the last element in the list
 template<class T>
 inline T resizableList<T>::remove()
@@ -239,6 +245,7 @@ inline T resizableList<T>::remove()
     return tRef;
 }
 
+
 //- Clear contents of the list (i.e., reset lastIndex)
 template<class T>
 void resizableList<T>::clear()
@@ -249,6 +256,7 @@ void resizableList<T>::clear()
     // Reset UList parameters
     UList<T>::reset(v_, 0);
 }
+
 
 //- Deallocate all memory
 template<class T>
@@ -266,12 +274,14 @@ void resizableList<T>::clearOut()
     lastIndex_ = -1;
 }
 
+
 //- Return the number of elements in the list.
 template<class T>
 inline label resizableList<T>::allocSize() const
 {
     return size_;
 }
+
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
@@ -311,6 +321,7 @@ resizableList<T>& resizableList<T>::operator=
     return (*this);
 }
 
+
 // Assigment operator to UList<T>
 template<class T>
 inline void resizableList<T>::operator=
@@ -346,6 +357,7 @@ inline void resizableList<T>::operator=
     UList<T>::reset(v_, (lastIndex_ + 1));
 }
 
+
 //- Assignment of all entries to the given value
 template<class T>
 inline void resizableList<T>::operator=
@@ -366,6 +378,7 @@ inline void resizableList<T>::operator=
     // Reset UList parameters
     UList<T>::reset(v_, (lastIndex_ + 1));
 }
+
 
 // * * * * * * * * * * * * * * * Ostream Operator  * * * * * * * * * * * * * //
 

@@ -66,7 +66,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     )
     {
         // Reached the max allowable topo-changes.
-        faceStack(tIndex).clear();
+        Stack(tIndex).clear();
 
         return map;
     }
@@ -144,7 +144,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     if (coupledModification_)
     {
         // Is this a locally coupled edge?
-        if (locallyCoupledFace(fIndex))
+        if (locallyCoupledEntity(fIndex))
         {
             label sIndex = -1;
 
@@ -324,7 +324,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             setCoupledModification();
         }
         else
-        if (processorCoupledFace(fIndex))
+        if (processorCoupledEntity(fIndex))
         {
             // Collapse face on the patchSubMesh.
 
@@ -865,7 +865,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (coupledModification_)
         {
-            if (locallyCoupledFace(fIndex))
+            if (locallyCoupledEntity(fIndex))
             {
                 // Remove the point entries.
                 const label pEnum = coupleMap::POINT;
@@ -1178,7 +1178,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (coupledModification_)
         {
-            if (locallyCoupledFace(fIndex))
+            if (locallyCoupledEntity(fIndex))
             {
                 // Remove the point entries.
                 const label pEnum = coupleMap::POINT;
@@ -1750,7 +1750,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     )
     {
         // Reached the max allowable topo-changes.
-        edgeStack(tIndex).clear();
+        Stack(tIndex).clear();
 
         return map;
     }
@@ -1777,7 +1777,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     if (coupledModification_)
     {
         // Is this a locally coupled edge (either master or slave)?
-        if (locallyCoupledEdge(eIndex, true))
+        if (locallyCoupledEntity(eIndex, true))
         {
             label sIndex = -1, pIndex = -1;
 
@@ -1988,7 +1988,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             setCoupledModification();
         }
         else
-        if (processorCoupledEdge(eIndex))
+        if (processorCoupledEntity(eIndex))
         {
             // Collapse edge on the patchSubMesh.
 

@@ -70,7 +70,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     )
     {
         // Reached the max allowable topo-changes.
-        faceStack(tIndex).clear();
+        Stack(tIndex).clear();
 
         return map;
     }
@@ -196,7 +196,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     if (coupledModification_)
     {
         // Is this a locally coupled face?
-        if (locallyCoupledFace(fIndex))
+        if (locallyCoupledEntity(fIndex))
         {
             label sIndex = -1;
 
@@ -1558,7 +1558,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     if (coupledModification_)
     {
         // Create a master/slave entry for the new face on the patch.
-        if (locallyCoupledFace(fIndex))
+        if (locallyCoupledEntity(fIndex))
         {
             FixedList<bool, 2> foundMatch(false);
             FixedList<label, 2> checkFaces(-1);
@@ -1686,7 +1686,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             }
         }
         else
-        if (processorCoupledFace(fIndex))
+        if (processorCoupledEntity(fIndex))
         {
             // Look for matching slave faces on the patchSubMesh.
 
@@ -1768,7 +1768,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     )
     {
         // Reached the max allowable topo-changes.
-        edgeStack(tIndex).clear();
+        Stack(tIndex).clear();
 
         return map;
     }
@@ -1792,7 +1792,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     if (coupledModification_)
     {
         // Is this a locally coupled edge (either master or slave)?
-        if (locallyCoupledEdge(eIndex, true))
+        if (locallyCoupledEntity(eIndex, true))
         {
             label sIndex = -1;
 
@@ -1904,7 +1904,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             setCoupledModification();
         }
         else
-        if (processorCoupledEdge(eIndex))
+        if (processorCoupledEntity(eIndex))
         {
             // Bisect edge on the patchSubMesh.
 
@@ -2040,7 +2040,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // This makes it convenient for coupled patch matching.
     label nePatch = -1;
 
-    if (locallyCoupledEdge(eIndex, true))
+    if (locallyCoupledEntity(eIndex, true))
     {
         nePatch = locallyCoupledEdgePatch(eIndex);
     }
@@ -2672,7 +2672,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     if (coupledModification_)
     {
         // Create a master/slave entry for the new edges/faces on the patch.
-        if (locallyCoupledEdge(eIndex, true))
+        if (locallyCoupledEntity(eIndex, true))
         {
             if (patchCoupling_(pIndex))
             {
@@ -2977,7 +2977,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             }
         }
         else
-        if (processorCoupledEdge(eIndex))
+        if (processorCoupledEntity(eIndex))
         {
             // Look for matching slave edges on the patchSubMesh.
 
@@ -3170,7 +3170,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     )
     {
         // Reached the max allowable topo-changes.
-        edgeStack(tIndex).clear();
+        Stack(tIndex).clear();
 
         return map;
     }
@@ -3194,7 +3194,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     if (coupledModification_)
     {
         // Is this a locally coupled face (either master or slave)?
-        if (locallyCoupledFace(fIndex, true))
+        if (locallyCoupledEntity(fIndex, true))
         {
             label sIndex = -1;
 
@@ -3308,7 +3308,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
             setCoupledModification();
         }
         else
-        if (processorCoupledFace(fIndex))
+        if (processorCoupledEntity(fIndex))
         {
             // Trisect face on the patchSubMesh.
 
@@ -3921,7 +3921,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         if (coupledModification_)
         {
             // Create a master/slave entry for the new edges/faces on the patch.
-            if (locallyCoupledFace(fIndex, true))
+            if (locallyCoupledEntity(fIndex, true))
             {
                 if (patchCoupling_(pIndex))
                 {
@@ -4240,7 +4240,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 }
             }
             else
-            if (processorCoupledFace(fIndex))
+            if (processorCoupledEntity(fIndex))
             {
                 // Look for matching slave edges on the patchSubMesh.
 
@@ -5016,21 +5016,18 @@ void dynamicTopoFvMesh::sliceMesh
     }
 
     // Is this edge in the vicinity of a previous slice-point?
-    forAll(sliceBoxes_, boxI)
+    if (lengthEstimator().checkOldSlices(gCentre))
     {
-        if (sliceBoxes_[boxI].contains(gCentre))
+        if (debug > 1)
         {
-            if (debug > 1)
-            {
-                Info << nl << nl
-                     << "Pair: " << pointPair
-                     << " is too close to another slice point. "
-                     << endl;
-            }
-
-            // Too close to another slice-point. Bail out.
-            return;
+            Info << nl << nl
+                 << "Pair: " << pointPair
+                 << " is too close to another slice point. "
+                 << endl;
         }
+
+        // Too close to another slice-point. Bail out.
+        return;
     }
 
     // Choose a box around the centre and scan all
@@ -5281,11 +5278,7 @@ void dynamicTopoFvMesh::sliceMesh
             // Now project points in a series of intermediate steps.
 
             // Add an entry to sliceBoxes.
-            label currentSize = sliceBoxes_.size();
-
-            sliceBoxes_.setSize(currentSize + 1);
-
-            sliceBoxes_[currentSize] = bBox;
+            lengthEstimator().appendBox(bBox);
 
             return;
         }
@@ -5523,12 +5516,9 @@ void dynamicTopoFvMesh::sliceMesh
     );
 
     // Add an entry to sliceBoxes.
-    label currentSize = sliceBoxes_.size();
-
-    sliceBoxes_.setSize(currentSize + 1);
-
-    sliceBoxes_[currentSize] = bBox;
+    lengthEstimator().appendBox(bBox);
 }
+
 
 // Given a set of points and edges, find the shortest path
 // between the start and end point, using Dijkstra's algorithm.

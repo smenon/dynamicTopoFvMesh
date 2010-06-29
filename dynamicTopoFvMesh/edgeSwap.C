@@ -51,7 +51,7 @@ bool dynamicTopoFvMesh::testDelaunay
     // Boundary faces are discarded.
     if (whichPatch(fIndex) > -1)
     {
-        procCouple = processorCoupledFace(fIndex);
+        procCouple = processorCoupledEntity(fIndex);
 
         if (!procCouple)
         {
@@ -949,7 +949,9 @@ bool dynamicTopoFvMesh::fillTables
         {
             // Resize the tables to account for
             // more tets per edge
-            maxTetsPerEdge_ = m[checkIndex];
+            label& mtpe = const_cast<label&>(maxTetsPerEdge_);
+
+            mtpe = m[checkIndex];
 
             // Clear tables for this index.
             Q[checkIndex].clear();
@@ -1021,7 +1023,7 @@ bool dynamicTopoFvMesh::fillTables
 
     if (coupledModification_)
     {
-        if (locallyCoupledEdge(eIndex))
+        if (locallyCoupledEntity(eIndex))
         {
             // Fill tables for the slave edge as well.
             label sIndex = -1;
@@ -1077,7 +1079,7 @@ bool dynamicTopoFvMesh::fillTables
             return success;
         }
         else
-        if (processorCoupledEdge(eIndex))
+        if (processorCoupledEntity(eIndex))
         {
 
         }
@@ -1232,7 +1234,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
     if (coupledModification_)
     {
-        if (locallyCoupledEdge(eIndex))
+        if (locallyCoupledEntity(eIndex))
         {
             // Flip the slave edge as well.
             label sIndex = -1;
@@ -1446,7 +1448,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         // Create a mapping entry for the new edge.
         const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
 
-        if (locallyCoupledEdge(map.addedEdgeList()[0][0]))
+        if (locallyCoupledEntity(map.addedEdgeList()[0][0]))
         {
             cMap.mapSlave
             (

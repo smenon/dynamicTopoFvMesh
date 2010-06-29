@@ -69,6 +69,7 @@ namespace Foam
 class motionSolver;
 class topoMapper;
 class objectMap;
+class lengthScaleEstimator;
 
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration
@@ -111,27 +112,17 @@ class dynamicTopoFvMesh
         //- Specify the re-meshing interval
         label interval_;
 
-        //- Sub-dictionary which specifies
-        //  fixed length-scales for patches
-        dictionary fixedPatches_;
-
-        //- Sub-dictionary which specifies
-        //  floating length-scales for patches
-        dictionary freePatches_;
-
-        //- Sub-dictionary which specifies
-        //  patches with curvature-based length-scale
-        dictionary curvaturePatches_;
-
-        //- Sub-dictionary which specifies
-        //  patches with proximity-based length-scale
-        dictionary proximityPatches_;
-
         //- Field mapper
         autoPtr<topoMapper> mapper_;
 
         //- Mesh motion solver
         autoPtr<motionSolver> mPtr_;
+
+        //- Length scale estimator
+        autoPtr<lengthScaleEstimator> lsPtr_;
+
+        //- Edge-mesh to store up-to-date connectivity information
+        autoPtr<eMesh> eMeshPtr_;
 
         //- Lists that dynamically resize during topo-changes
         resizableList<point> oldPoints_, points_;
@@ -142,9 +133,6 @@ class dynamicTopoFvMesh
         resizableList<labelList> pointEdges_, edgePoints_;
         resizableList<labelList> edgeFaces_, faceEdges_;
         resizableList<scalar> lengthScale_;
-
-        // Edge-mesh to store up-to-date connectivity information
-        autoPtr<eMesh> eMeshPtr_;
 
         //- Size information
         labelList oldPatchSizes_, patchSizes_;
@@ -206,45 +194,27 @@ class dynamicTopoFvMesh
         labelHashSet deletedFaces_;
         labelHashSet deletedCells_;
 
-        // List of flipped faces
+        //- List of flipped faces
         labelHashSet flipFaces_;
 
-        //- Edge bisection/collapse criteria
-        scalar ratioMin_, ratioMax_, growthFactor_;
-        scalar curvatureDeviation_;
-        scalar minLengthScale_, maxLengthScale_;
-        scalar sliverThreshold_;
-        label nModifications_;
+        //- Run-time statistics
+        label nModifications_, maxModifications_;
         FixedList<label, 2> nBisections_, nCollapses_, nSwaps_;
-        label maxModifications_;
+
+        //- Sliver exudation
+        scalar sliverThreshold_;
         Map<scalar> thresholdSlivers_;
-        labelList noModPatchIDs_;
 
-        // Specific to proximity-based refinement
-        label spatialRes_;
-        boundBox proxBoundBox_;
-        labelListList proximityBins_;
-        scalar sliceThreshold_;
-        label sliceHoldOff_;
-        mutable List<boundBox> sliceBoxes_;
-        mutable List<labelPair> slicePairs_;
-
-        // Buffers for parallel length-scale calculations
-        labelListList sendLblBuffer_;
-        labelListList recvLblBuffer_;
-        scalarListList sendSclBuffer_;
-        scalarListList recvSclBuffer_;
+        //- Specific to proximity-based refinement
+        List<labelPair> slicePairs_;
 
         //- 3D Mesh Flipping data
-        mutable label maxTetsPerEdge_;
+        label maxTetsPerEdge_;
         Switch allowTableResize_;
         labelList noSwapPatchIDs_;
 
-        // Stack-list of faces to be checked for topo-changes [2D].
-        List<stack> faceStack_;
-
-        // Stack-list of edges to be checked for topo-changes [3D].
-        List<stack> edgeStack_;
+        //- Stack-list of entities to be checked for topo-changes.
+        List<stack> entityStack_;
 
         //- Support for multithreading
         autoPtr<IOmultiThreader> threader_;
@@ -502,13 +472,19 @@ class dynamicTopoFvMesh
         // Load the field mapper
         void loadFieldMapper();
 
-        // Initialize the threading environment
-        void initializeThreadingEnvironment
-        (
-            const label specThreads = -1
-        );
+        // Load the length scale estimator
+        void loadLengthScaleEstimator();
 
-        // Return a reference to the multiThreader
+        // Initialize the threading environment
+        void initializeThreadingEnvironment(const label specThreads = -1);
+
+        // Return a non-const reference to the lengthScaleEstimator
+        inline lengthScaleEstimator& lengthEstimator();
+
+        // Return a const reference to the lengthScaleEstimator
+        inline const lengthScaleEstimator& lengthEstimator() const;
+
+        // Return a const reference to the multiThreader
         inline const multiThreader& threader() const;
 
         // Return a reference to the entity mutexes
@@ -524,26 +500,17 @@ class dynamicTopoFvMesh
         // contains a triangular face.
         label getTriBoundaryEdge(const label fIndex) const;
 
-        // Return the appropriate length-scale for boundary face
-        inline scalar boundaryLengthScale(const label fIndex) const;
-
         // Return length-scale at an face-location in the mesh [2D]
         inline scalar faceLengthScale(const label fIndex) const;
 
         // Return length-scale at an edge-location in the mesh [3D]
         inline scalar edgeLengthScale(const label eIndex) const;
 
-        // Check for face bisection
-        inline bool checkFaceBisection(const label fIndex) const;
+        // Check for bisection
+        inline bool checkBisection(const label index) const;
 
-        // Check for face collapse
-        inline bool checkFaceCollapse(const label fIndex) const;
-
-        // Check for edge bisection
-        inline bool checkEdgeBisection(const label eIndex) const;
-
-        // Check for edge collapse
-        inline bool checkEdgeCollapse(const label eIndex) const;
+        // Check for collapse
+        inline bool checkCollapse(const label index) const;
 
         // MultiThreaded topology modifier [2D]
         void threadedTopoModifier2D();
@@ -579,11 +546,8 @@ class dynamicTopoFvMesh
         // 3D Edge-bisection/collapse engine
         static void edgeBisectCollapse3D(void *argument);
 
-        // Return the face-stack for a particular thread
-        inline stack& faceStack(const label threadID);
-
-        // Return the edge-stack for a particular thread
-        inline stack& edgeStack(const label threadID);
+        // Return the entity stack for a particular thread
+        inline stack& Stack(const label threadID);
 
         // Synchronize all processes
         inline void synchronize();
@@ -591,17 +555,11 @@ class dynamicTopoFvMesh
         // Return the integer threadID for a given pthread
         inline label self() const;
 
-        // Initialize face-stacks
-        inline void initFaceStacks();
+        // Initialize stacks
+        inline void initStacks();
 
-        // Initialize edge-stacks
-        inline void initEdgeStacks();
-
-        // Initialize the coupled face-stack
-        inline void initCoupledFaceStack();
-
-        // Initialize the coupled edge-stack
-        inline void initCoupledEdgeStack();
+        // Initialize the coupled stack
+        inline void initCoupledStack();
 
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label index) const;
@@ -936,15 +894,6 @@ class dynamicTopoFvMesh
             const label checkIndex = 0
         );
 
-        // Utility to invert a connectivity list (pointEdges from edges, etc)
-        template<class InList, class OutList>
-        void invertConnectivity
-        (
-            const label nEntities,
-            const resizableList<InList>& inEntities,
-            resizableList<OutList>& outEntities
-        ) const;
-
         // Utility to check whether points of an edge lie on a boundary
         const FixedList<bool,2> checkEdgeBoundary(const label eIndex) const;
 
@@ -964,12 +913,6 @@ class dynamicTopoFvMesh
         // Utility method to compute the quality of cells
         // around a face after trisection.
         scalar computeTrisectionQuality(const label fIndex) const;
-
-        // Check whether the given face should not be bisected/collapsed
-        inline bool checkFaceModification(const label eIndex) const;
-
-        // Check whether the given edge should not be bisected/collapsed
-        inline bool checkEdgeModification(const label eIndex) const;
 
         // Check whether the given edge is on a bounding curve
         bool checkBoundingCurve(const label eIndex) const;
@@ -1088,6 +1031,9 @@ class dynamicTopoFvMesh
             const labelList& hullFaces,
             const labelList& hullCells
         );
+
+        // Write out mesh bandwidth
+        void printBandwidth() const;
 
         // Reorder points after a topology change
         void reOrderPoints
@@ -1208,20 +1154,6 @@ class dynamicTopoFvMesh
         // Check the state of local connectivity lists
         void checkConnectivity(label maxErrors = 0) const;
 
-        // Perform spatial hashing on a set of points
-        void spatialHash
-        (
-            const pointField& pointLocations,
-            const labelList& pointIndices,
-            const boundBox& box,
-            const label resolution,
-            labelListList& bins,
-            label removeIndex = false
-        ) const;
-
-        // Prepare for proximity-based refinement, if necessary
-        void prepareProximityPatches();
-
         // Handle mesh slicing events.
         void handleMeshSlicing();
 
@@ -1240,23 +1172,6 @@ class dynamicTopoFvMesh
         // and exchange across processors.
         void exchangeLengthBuffers();
 
-        // Send length-scale info across processors
-        void writeLengthScaleInfo
-        (
-            const labelList& cellLevels,
-            const resizableList<scalar>& lengthScale
-        );
-
-        // Receive length-scale info across processors
-        void readLengthScaleInfo
-        (
-            const label level,
-            label& visitedCells,
-            labelList& cellLevels,
-            resizableList<scalar>& lengthScale,
-            labelHashSet& levelCells
-        );
-
         // Parallel send
         void pWrite(const label toID, const label& data) const;
 
@@ -1267,10 +1182,6 @@ class dynamicTopoFvMesh
         // Parallel send (for lists)
         template <class Type>
         void pWrite(const label toID, const List<Type>& data) const;
-
-        // Parallel send (for resizableLists)
-        template <class Type>
-        void pWrite(const label toID, const resizableList<Type>& data) const;
 
         // Parallel receive
         void pRead(const label fromID, label& data) const;
@@ -1283,21 +1194,10 @@ class dynamicTopoFvMesh
         template <class Type>
         void pRead(const label fromID, List<Type>& data) const;
 
-        // Parallel receive (for resizableLists)
-        template <class Type>
-        void pRead(const label fromID, resizableList<Type>& data) const;
-
-        // Method to determine whether the master face is locally coupled
-        inline bool locallyCoupledFace
+        // Method to determine whether the master entity is locally coupled
+        inline bool locallyCoupledEntity
         (
-            const label fIndex,
-            bool checkSlaves = false
-        ) const;
-
-        // Method to determine whether the master edge is locally coupled
-        inline bool locallyCoupledEdge
-        (
-            const label eIndex,
+            const label index,
             bool checkSlaves = false
         ) const;
 
@@ -1307,23 +1207,14 @@ class dynamicTopoFvMesh
             const label eIndex
         ) const;
 
-        // Method to determine whether the master face is on a processor
-        inline bool processorCoupledFace(const label fIndex) const;
-
-        // Method to determine whether the master edge is on a processor
-        inline bool processorCoupledEdge(const label eIndex) const;
+        // Method to determine whether the master entity is on a processor
+        inline bool processorCoupledEntity(const label index) const;
 
         // Obtain the maximum coupled patch index
         inline label getMaxCouplingIndex() const;
 
         // Read optional dictionary parameters
         void readOptionalParameters();
-
-        // Read edge refinement options from the dictionary
-        void readRefinementOptions(bool reRead = false);
-
-        // Check for legitimacy of patches
-        void checkPatches(const wordList& patchList) const;
 
         // Does the mesh perform edge refinement?
         inline bool edgeRefinement() const;
@@ -1395,11 +1286,11 @@ public:
     // Member Functions
 
         // Map all fields in time using a customized mapper
-        void mapFields(const mapPolyMesh& meshMap);
+        virtual void mapFields(const mapPolyMesh& meshMap);
 
         // Update the mesh for motion / topology changes
         // Return true if topology changes have occurred
-        bool update();
+        virtual bool update();
 };
 
 
