@@ -150,9 +150,15 @@ mesquiteSmoother::~mesquiteSmoother()
 // Clear out addressing
 void mesquiteSmoother::clearOut()
 {
-    deleteDemandDrivenData(vtxCoords_);
-    deleteDemandDrivenData(cellToNode_);
-    deleteDemandDrivenData(fixFlags_);
+    // Delete memory pointers
+    delete [] vtxCoords_;
+    delete [] cellToNode_;
+    delete [] fixFlags_;
+
+    // Reset to NULL
+    vtxCoords_ = NULL;
+    cellToNode_ = NULL;
+    fixFlags_ = NULL;
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
