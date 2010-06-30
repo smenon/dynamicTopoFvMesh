@@ -95,6 +95,7 @@ mesquiteSmoother::mesquiteSmoother
     initArrays();
 }
 
+
 mesquiteSmoother::mesquiteSmoother
 (
     const polyMesh& mesh,
@@ -146,6 +147,7 @@ mesquiteSmoother::~mesquiteSmoother()
 {
     clearOut();
 }
+
 
 // Clear out addressing
 void mesquiteSmoother::clearOut()
@@ -997,6 +999,7 @@ void mesquiteSmoother::readOptions()
     }
 }
 
+
 // Initialize connectivity arrays for Mesquite
 void mesquiteSmoother::initArrays()
 {
@@ -1139,6 +1142,7 @@ void mesquiteSmoother::initArrays()
         initParallelConnectivity();
     }
 }
+
 
 // Private member function to construct parallel connectivity data
 void mesquiteSmoother::initParallelConnectivity()
@@ -1566,6 +1570,7 @@ void mesquiteSmoother::initParallelConnectivity()
     }
 }
 
+
 // Copy auxiliary points to/from buffers
 void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
 {
@@ -1734,6 +1739,7 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
     }
 }
 
+
 // Sparse matrix-vector multiply [3D]
 void mesquiteSmoother::A
 (
@@ -1780,6 +1786,7 @@ void mesquiteSmoother::A
     // Apply boundary conditions
     applyBCs(w);
 }
+
 
 // Transfer buffers after divergence compute.
 void mesquiteSmoother::transferBuffers
@@ -1886,6 +1893,7 @@ void mesquiteSmoother::transferBuffers
     }
 }
 
+
 // Apply boundary conditions
 void mesquiteSmoother::applyBCs
 (
@@ -1927,6 +1935,7 @@ void mesquiteSmoother::applyBCs
     }
 }
 
+
 // Vector dot-product
 scalar mesquiteSmoother::dot
 (
@@ -1947,6 +1956,7 @@ scalar mesquiteSmoother::dot
     return s;
 }
 
+
 scalar mesquiteSmoother::normFactor
 (
     const vectorField& x,
@@ -1964,6 +1974,7 @@ scalar mesquiteSmoother::normFactor
 
     return cmptSumMag(nFw) + cmptSumMag(nFb) + 1.0e-20;
 }
+
 
 // Component-wise sumMag
 scalar mesquiteSmoother::cmptSumMag
@@ -1984,6 +1995,7 @@ scalar mesquiteSmoother::cmptSumMag
 
     return cSum;
 }
+
 
 // CG solver
 label mesquiteSmoother::CG
@@ -2046,6 +2058,7 @@ label mesquiteSmoother::CG
 
     return iter;
 }
+
 
 // Apply fixed-value boundary conditions, if any.
 void mesquiteSmoother::applyFixedValuePatches()
@@ -2154,6 +2167,7 @@ void mesquiteSmoother::applyFixedValuePatches()
         }
     }
 }
+
 
 // Private member function to perform Laplacian surface smoothing
 void mesquiteSmoother::smoothSurfaces()
@@ -2265,6 +2279,7 @@ void mesquiteSmoother::smoothSurfaces()
     }
 }
 
+
 // Find the volume of a tetrahedron.
 // The function assumes points (a-b-c)
 // are in counter-clockwise fashion when viewed from d.
@@ -2319,6 +2334,7 @@ inline scalar mesquiteSmoother::tetVolume
 
     return 0.0;
 }
+
 
 // Find the quality of a tetrahedron.
 // The function assumes points (a-b-c)
@@ -2394,6 +2410,7 @@ inline scalar mesquiteSmoother::tetQuality
 
     return 0.0;
 }
+
 
 // Private member function to check for invalid
 // cells and correct if necessary.
@@ -2747,6 +2764,7 @@ void mesquiteSmoother::correctInvalidCells()
     }
 }
 
+
 //  Member function to adjust domain volume back to pre-smoothing value
 //  +/- some tolerance. Uses the bisection method to identify an
 //  approriate magnitude to displace all surface nodes (along point normals)
@@ -3025,6 +3043,7 @@ void mesquiteSmoother::enforceCylindricalConstraints()
     }
 }
 
+
 // Utility method to check validity of cells connected to a point.
 bool mesquiteSmoother::checkValidity
 (
@@ -3067,6 +3086,7 @@ bool mesquiteSmoother::checkValidity
     return foundInvalid;
 }
 
+
 // Static function for callback
 lbfgsfloatval_t mesquiteSmoother::_evaluate
 (
@@ -3098,6 +3118,7 @@ lbfgsfloatval_t mesquiteSmoother::_evaluate
 
     return fnVal;
 }
+
 
 // Actual function evaulation routine
 lbfgsfloatval_t mesquiteSmoother::evaluate
@@ -3144,6 +3165,7 @@ lbfgsfloatval_t mesquiteSmoother::evaluate
 
     return fx;
 }
+
 
 // Write a particular point out for post-processing
 void mesquiteSmoother::writePoint
@@ -3211,6 +3233,7 @@ void mesquiteSmoother::writePoint
         cpList
     );
 }
+
 
 // Output a list of points / cells as a VTK file.
 //  - CellPoints are required to be ordered.
@@ -3288,6 +3311,7 @@ void mesquiteSmoother::writeVTK
         }
     }
 }
+
 
 // Prepare point-normals with updated point positions
 void mesquiteSmoother::preparePointNormals()
@@ -3393,12 +3417,6 @@ void mesquiteSmoother::preparePointNormals()
     }
 }
 
-tmp<pointField> mesquiteSmoother::newPoints()
-{
-    solve();
-
-    return curPoints();
-}
 
 //- Return point location obtained from the current motion field
 tmp<pointField>
@@ -3411,6 +3429,8 @@ mesquiteSmoother::curPoints() const
     return tcurPoints;
 }
 
+
+//- Solve for new mesh points
 void mesquiteSmoother::solve()
 {
     // Apply fixed-value motion BC's, if any.
@@ -3513,6 +3533,8 @@ void mesquiteSmoother::solve()
     copyAuxiliaryPoints(true);
 }
 
+
+//- Update on topology change
 void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
 {
     motionSolver::updateMesh(mpm);

@@ -379,9 +379,6 @@ public:
             return Mesh_;
         }
 
-        //- Provide new points for motion.  Solves for motion
-        virtual tmp<pointField> newPoints();
-
         //- Return point location obtained from the current motion field
         virtual tmp<pointField> curPoints() const;
 
