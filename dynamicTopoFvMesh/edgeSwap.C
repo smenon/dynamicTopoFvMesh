@@ -1047,15 +1047,16 @@ bool dynamicTopoFvMesh::fillTables
             {
                 FatalErrorIn
                 (
+                    "\n"
                     "bool dynamicTopoFvMesh::fillTables\n"
                     "(\n"
-                    "	const label eIndex,\n"
-                    "	const scalar minQuality,\n"
-                    "	labelList& m,\n"
-                    "	PtrList<scalarListList>& Q,\n"
-                    "	PtrList<labelListList>& K,\n"
-                    "	PtrList<labelListList>& triangulations,\n"
-                    "	const label checkIndex\n"
+                    "    const label eIndex,\n"
+                    "    const scalar minQuality,\n"
+                    "    labelList& m,\n"
+                    "    PtrList<scalarListList>& Q,\n"
+                    "    PtrList<labelListList>& K,\n"
+                    "    PtrList<labelListList>& triangulations,\n"
+                    "    const label checkIndex\n"
                     ") const\n"
                 )
                     << "Coupled maps were improperly specified." << nl
@@ -1109,7 +1110,6 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 )
 {
     changeMap map, slaveMap;
-    scalar swapQuality = GREAT;
 
     if (debug > 2)
     {
@@ -1170,8 +1170,6 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         return map;
     }
 
-    scalar tolF = 1e-5;
-
     // Determine the final swap triangulation
     label tF =
     (
@@ -1179,8 +1177,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         (
             eIndex,
             hullVertices,
-            triangulations[checkIndex],
-            tolF
+            triangulations[checkIndex]
         )
     );
 
@@ -1191,15 +1188,22 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     {
         const edge& edgeToCheck = edges_[eIndex];
 
+        Info << " All triangulations: " << nl
+             << ' ' << triangulations[checkIndex][0] << nl
+             << ' ' << triangulations[checkIndex][1] << nl
+             << ' ' << triangulations[checkIndex][2] << nl
+             << endl;
+
         FatalErrorIn
         (
+            "\n"
             "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
             "(\n"
-            "	const label eIndex,\n"
-            "	const scalar minQuality,\n"
-            "	const PtrList<labelListList>& K,\n"
-            "	PtrList<labelListList>& triangulations,\n"
-            "	const label checkIndex\n"
+            "    const label eIndex,\n"
+            "    const scalar minQuality,\n"
+            "    const PtrList<labelListList>& K,\n"
+            "    PtrList<labelListList>& triangulations,\n"
+            "    const label checkIndex\n"
             ")\n"
         )
             << "Could not determine 3-2 swap triangulation." << nl
@@ -1258,13 +1262,14 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             {
                 FatalErrorIn
                 (
+                    "\n"
                     "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                     "(\n"
-                    "	const label eIndex,\n"
-                    "	const scalar minQuality,\n"
-                    "	const PtrList<labelListList>& K,\n"
-                    "	PtrList<labelListList>& triangulations,\n"
-                    "	const label checkIndex\n"
+                    "    const label eIndex,\n"
+                    "    const scalar minQuality,\n"
+                    "    const PtrList<labelListList>& K,\n"
+                    "    PtrList<labelListList>& triangulations,\n"
+                    "    const label checkIndex\n"
                     ")\n"
                 )
                     << "Coupled maps were improperly specified." << nl
@@ -1340,20 +1345,6 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
                         )
                     );
 
-                    if (debug > 2)
-                    {
-                        scalar triQuality =
-                        (
-                            Foam::min
-                            (
-                                tetQuality(owner_[map.opposingFace()]),
-                                tetQuality(neighbour_[map.opposingFace()])
-                            )
-                        );
-
-                        swapQuality = Foam::min(triQuality, swapQuality);
-                    }
-
                     // Done with this face, so reset it
                     triangulations[checkIndex][0][i] = -1;
                     triangulations[checkIndex][1][i] = -1;
@@ -1375,13 +1366,14 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             // Should have performed at least one swap
             FatalErrorIn
             (
+                "\n"
                 "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                 "(\n"
-                "	const label eIndex,\n"
-                "	const scalar minQuality,\n"
-                "	const PtrList<labelListList>& K,\n"
-                "	PtrList<labelListList>& triangulations,\n"
-                "	const label checkIndex\n"
+                "    const label eIndex,\n"
+                "    const scalar minQuality,\n"
+                "    const PtrList<labelListList>& K,\n"
+                "    PtrList<labelListList>& triangulations,\n"
+                "    const label checkIndex\n"
                 ")\n"
             )
                 << "Did not perform any 2-3 swaps" << nl
@@ -1403,39 +1395,6 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             hullCells
         )
     );
-
-    if (debug > 2)
-    {
-        scalar triQuality =
-        (
-            Foam::min
-            (
-                tetQuality(owner_[map.opposingFace()]),
-                tetQuality(neighbour_[map.opposingFace()])
-            )
-        );
-
-        swapQuality = Foam::min(triQuality, swapQuality);
-
-        if (swapQuality < minQuality)
-        {
-            WarningIn
-            (
-                "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
-                "(\n"
-                "	const label eIndex,\n"
-                "	const scalar minQuality,\n"
-                "	const PtrList<labelListList>& K,\n"
-                "	PtrList<labelListList>& triangulations,\n"
-                "	const label checkIndex\n"
-                ")\n"
-            )
-                << " Swap failed to improve quality." << nl
-                << " MinQuality: " << minQuality << nl
-                << " SwapQuality: " << swapQuality
-                << abort(FatalError);
-        }
-    }
 
     // Done with this face, so reset it
     triangulations[checkIndex][0][tF] = -1;
@@ -1533,13 +1492,14 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
                 FatalErrorIn
                 (
+                    "\n"
                     "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                     "(\n"
-                    "	const label eIndex,\n"
-                    "	const scalar minQuality,\n"
-                    "	const PtrList<labelListList>& K,\n"
-                    "	PtrList<labelListList>& triangulations,\n"
-                    "	const label checkIndex\n"
+                    "    const label eIndex,\n"
+                    "    const scalar minQuality,\n"
+                    "    const PtrList<labelListList>& K,\n"
+                    "    PtrList<labelListList>& triangulations,\n"
+                    "    const label checkIndex\n"
                     ")\n"
                 )
                     << "Failed to build coupled face maps."
@@ -1597,8 +1557,7 @@ label dynamicTopoFvMesh::identify32Swap
 (
     const label eIndex,
     const labelList& hullVertices,
-    const labelListList& triangulations,
-    const scalar tolFraction
+    const labelListList& triangulations
 ) const
 {
     label m = hullVertices.size();
@@ -1641,7 +1600,8 @@ label dynamicTopoFvMesh::identify32Swap
     //  - If this is a boundary edge, a concave surface
     //    was probably the reason why this failed.
     //  - If so, declare the nearest triangulation instead.
-    if (whichEdgePatch(eIndex) > -1)
+    //  - Internal edges also occasionally encounter
+    //    precision issues. Use the same approach.
     {
         vector eCentre = 0.5 * (segment[0] + segment[1]);
 
@@ -1663,7 +1623,7 @@ label dynamicTopoFvMesh::identify32Swap
 
     if (debug > 1)
     {
-        Info << "Hull Vertices: " << endl;
+        Info << nl << nl << "Hull Vertices: " << endl;
 
         forAll(hullVertices, vertexI)
         {
@@ -1672,7 +1632,16 @@ label dynamicTopoFvMesh::identify32Swap
                  << endl;
         }
 
-        InfoIn("dynamicTopoFvMesh::identify32Swap()") << nl
+        InfoIn
+        (
+            "\n"
+            "label dynamicTopoFvMesh::identify32Swap\n"
+            "(\n"
+            "    const label eIndex,\n"
+            "    const labelList& hullVertices,\n"
+            "    const labelListList& triangulations\n"
+            ") const\n"
+        ) << nl
             << "Could not determine 3-2 swap triangulation." << nl
             << "Edge: " << edgeToCheck << nl
             << "Edge Points: "
@@ -1828,16 +1797,17 @@ const changeMap dynamicTopoFvMesh::swap23
     {
         FatalErrorIn
         (
+            "\n"
             "const changeMap dynamicTopoFvMesh::swap23\n"
             "(\n"
-            "	const label isolatedVertex,\n"
-            "	const label eIndex,\n"
-            "	const label triangulationIndex,\n"
-            "	const label numTriangulations,\n"
-            "	const labelListList& triangulations,\n"
-            "	const labelList& hullVertices,\n"
-            "	const labelList& hullFaces,\n"
-            "	const labelList& hullCells\n"
+            "    const label isolatedVertex,\n"
+            "    const label eIndex,\n"
+            "    const label triangulationIndex,\n"
+            "    const label numTriangulations,\n"
+            "    const labelListList& triangulations,\n"
+            "    const labelList& hullVertices,\n"
+            "    const labelList& hullFaces,\n"
+            "    const labelList& hullCells\n"
             ")\n"
         )
             << " Expected an internal face,"

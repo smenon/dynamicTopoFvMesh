@@ -856,7 +856,7 @@ void lengthScaleEstimator::calculateLengthScale
             );
         }
 
-        if (debug)
+        if (debug > 2)
         {
             Pout << "Processed level: " << level << nl
                  << " Visited: " << visitedCells

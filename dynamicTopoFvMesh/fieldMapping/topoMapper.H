@@ -79,8 +79,20 @@ class topoMapper
 
     // Demand-driven private data
 
+        // Stored gradients for mapping
+        HashTable<autoPtr<volVectorField> > sGrads_;
+        HashTable<autoPtr<volTensorField> > vGrads_;
+
         //- Old cell-centre information
         mutable volVectorField* oldCellCentresPtr_;
+
+        //- Intersection volume weights
+        Map<scalarField> faceWeights_;
+        Map<scalarField> cellWeights_;
+
+        //- Intersection centre weights
+        Map<vectorField> faceCentres_;
+        Map<vectorField> cellCentres_;
 
     // Private Member Functions
 
@@ -89,6 +101,14 @@ class topoMapper
 
         //- Disallow default bitwise assignment
         void operator=(const topoMapper&);
+
+        // Store gradients of volFields on the mesh
+        // prior to topology changes
+        template <class Type, class gradType>
+        void storeGradients
+        (
+            HashTable<autoPtr<gradType> >& gradTable
+        );
 
         //- Clear out local storage
         void clearOut();
@@ -120,22 +140,40 @@ public:
         //- Return reference to objectRegistry storing fields.
         const objectRegistry& db() const;
 
+        //- Return mapping method
+        label method(const word& typeName) const;
+
         //- Set mapping information
         void setMapper(const mapPolyMesh& mpm);
 
         //- Set face weighting information
         void setFaceWeights
         (
-			Map<scalarField>& weights,
-			Map<vectorField>& centres
-		);
+            Map<scalarField>& weights,
+            Map<vectorField>& centres
+        );
 
         //- Set cell weighting information
         void setCellWeights
         (
-			Map<scalarField>& weights,
-			Map<vectorField>& centres
-		);
+            Map<scalarField>& weights,
+            Map<vectorField>& centres
+        );
+
+        //- Fetch face weights
+        const Map<scalarField>& faceWeights() const;
+
+        //- Fetch cell weights
+        const Map<scalarField>& cellWeights() const;
+
+        //- Fetch face centres
+        const Map<vectorField>& faceCentres() const;
+
+        //- Fetch cell centres
+        const Map<vectorField>& cellCentres() const;
+
+        //- Store gradients prior to mesh reset
+        void storeGradients();
 
         //- Set old cell-centre information
         void setOldCellCentres(const volVectorField& oldCentres);
@@ -143,11 +181,15 @@ public:
         //- Return old cell-centre information
         const volVectorField& oldCentres() const;
 
+        //- Fetch the gradient field
+        template <class Type>
+        const Type& gradient(const word& name) const;
+
         //- Correct fluxes after topology change
         void correctFluxes();
 
         //- Return volume mapper
-        const FieldMapper& volMap() const;
+        const topoCellMapper& volMap() const;
 
         //- Return surface mapper
         const fvSurfaceMapper& surfaceMap() const;

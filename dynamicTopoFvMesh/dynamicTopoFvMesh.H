@@ -59,6 +59,7 @@ SourceFiles
 #include "changeMap.H"
 #include "tetMetric.H"
 #include "dynamicFvMesh.H"
+#include "StaticHashTable.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -199,7 +200,9 @@ class dynamicTopoFvMesh
 
         //- Run-time statistics
         label nModifications_, maxModifications_;
-        FixedList<label, 2> nBisections_, nCollapses_, nSwaps_;
+        FixedList<label, 2> nBisections_;
+        FixedList<label, 2> nCollapses_;
+        FixedList<label, 2> nSwaps_;
 
         //- Sliver exudation
         scalar sliverThreshold_;
@@ -299,8 +302,10 @@ class dynamicTopoFvMesh
         // Local coupled patch information
         PtrList<coupledPatchInfo> patchCoupling_;
 
+        typedef StaticHashTable<empty, label, Hash<label> > labelStaticHashSet;
+
         // Coupled entities to avoid during normal modification
-        DynamicList<label> entitiesToAvoid_;
+        labelStaticHashSet entitiesToAvoid_;
 
         // List of processors that this sub-domain talks to
         labelList procIndices_;
@@ -662,7 +667,7 @@ class dynamicTopoFvMesh
         ) const;
 
         // Utility method to check for concurrent points.
-        void checkPointNearness
+        bool checkPointNearness
         (
             const pointField& points,
             const scalar magSqrTol
@@ -984,8 +989,7 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             const labelList& hullVertices,
-            const labelListList& triangulations,
-            const scalar tolFraction
+            const labelListList& triangulations
         ) const;
 
         // Check old-volumes for the configuration.
@@ -1117,6 +1121,13 @@ class dynamicTopoFvMesh
             labelListList& cellZoneMap
         );
 
+        // Conservatively map all fvFields in the registry
+        template <class Type>
+        void ConservativeMapFields(const topoMapper&);
+
+        // Reset the mesh and generate mapping information
+        void resetMesh();
+
         // Output an entity as a VTK file
         void writeVTK
         (
@@ -1145,14 +1156,14 @@ class dynamicTopoFvMesh
             const label nCells,
             const label nTotalCells,
             const pointField& points,
-            const labelListList& cpList,
+            const labelListList& cpList = labelListList(0),
             const label primitiveType = 3,
             const Map<label>& reversePointMap = Map<label>(),
             const Map<label>& reverseCellMap = Map<label>()
         ) const;
 
         // Check the state of local connectivity lists
-        void checkConnectivity(label maxErrors = 0) const;
+        void checkConnectivity(const label maxErrors = 0) const;
 
         // Handle mesh slicing events.
         void handleMeshSlicing();

@@ -363,12 +363,14 @@ void dynamicTopoFvMesh::readCoupledPatches()
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
-    // Size the initial list
+    // Clear list
     patchCoupling_.clear();
-    patchCoupling_.setSize(boundary.size());
 
     if (dict_.found("coupledPatches") || mandatory_)
     {
+        // Size the initial list
+        patchCoupling_.setSize(boundary.size());
+
         const dictionary& coupledPatches = dict_.subDict("coupledPatches");
 
         // Determine master and slave patches
@@ -476,9 +478,6 @@ void dynamicTopoFvMesh::readCoupledPatches()
             }
         }
     }
-
-    // Initialize entitiesToAvoid to some arbitrary size
-    entitiesToAvoid_.setSize(50, -1);
 }
 
 
@@ -542,7 +541,10 @@ void dynamicTopoFvMesh::handleCoupledPatches()
                          << " Count: " << sSize
                          << endl;
 
-                    FatalErrorIn("dynamicTopoFvMesh::handleCoupledPatches()")
+                    FatalErrorIn
+                    (
+                        "void dynamicTopoFvMesh::handleCoupledPatches()"
+                    )
                         << " Failures were found in connectivity"
                         << " prior to coupled topo-changes."
                         << abort(FatalError);

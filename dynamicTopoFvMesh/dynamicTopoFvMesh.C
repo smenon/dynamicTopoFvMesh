@@ -38,13 +38,14 @@ Author
 #include "dynamicTopoFvMesh.H"
 #include "addToRunTimeSelectionTable.H"
 
+#include "fvc.H"
 #include "IOmanip.H"
 #include "triFace.H"
 #include "clockTime.H"
 #include "mapPolyMesh.H"
 #include "volFields.H"
 #include "motionSolver.H"
-#include "MapTopoFvFields.H"
+#include "MapFvFields.H"
 #include "fvPatchFields.H"
 #include "fvsPatchFields.H"
 #include "MeshObject.H"
@@ -188,24 +189,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     reverseFaceMap_.setSize(nFaces_, -7);
     reverseCellMap_.setSize(nCells_, -7);
 
-    // Define edgeRefinement options
-    if (edgeRefinement_)
-    {
-        // Load the length-scale estimator
-        loadLengthScaleEstimator();
-
-        // Read refinement options
-        lengthEstimator().readRefinementOptions(false, mandatory_);
-
-        // Set coupled patch options, if available
-        if (dict_.found("coupledPatches") || mandatory_)
-        {
-            lengthEstimator().setCoupledPatches
-            (
-                dict_.subDict("coupledPatches")
-            );
-        }
-    }
+    // Load the length-scale estimator,
+    // and read refinement options
+    loadLengthScaleEstimator();
 }
 
 
@@ -493,7 +479,7 @@ void dynamicTopoFvMesh::computeCellWeights
 
         if ((nIntersects == nOldIntersects) && (nIntersects != 0))
         {
-            if (debug > 2)
+            if (debug > 3)
             {
                 Info << " Cell: " << cIndex << nl
                      << " nCandidates: " << candidates.size() << nl
@@ -641,13 +627,6 @@ void dynamicTopoFvMesh::computeCellWeights
             if (tP.size() >= 4)
             {
                 // Write out intersection points to VTK
-                labelListList cpList(tP.size(), labelList(1));
-
-                forAll(cpList, i)
-                {
-                    cpList[i][0] = i;
-                }
-
                 writeVTK
                 (
                     "cvxSet_"
@@ -656,9 +635,7 @@ void dynamicTopoFvMesh::computeCellWeights
                     tP.size(),
                     tP.size(),
                     tP.size(),
-                    tP,
-                    cpList,
-                    0
+                    tP
                 );
 
                 // Write out convex set info to screen
@@ -688,13 +665,14 @@ void dynamicTopoFvMesh::computeCellWeights
 
         FatalErrorIn
         (
+            "\n"
             "void dynamicTopoFvMesh::computeCellWeights\n"
             "(\n"
-            "	const label cIndex,\n"
-            "	const labelList& mapCandidates,\n"
-            "	labelList& parents,\n"
-            "	scalarField& weights,\n"
-            "	vectorField& centres\n"
+            "    const label cIndex,\n"
+            "    const labelList& mapCandidates,\n"
+            "    labelList& parents,\n"
+            "    scalarField& weights,\n"
+            "    vectorField& centres\n"
             ") const"
         )
             << "Encountered non-conservative weighting factors." << nl
@@ -733,10 +711,11 @@ bool dynamicTopoFvMesh::testIntersection
     {
         FatalErrorIn
         (
+            "\n"
             "bool dynamicTopoFvMesh::testIntersection\n"
             "(\n"
-            "	const label newCellIndex,\n"
-            "	const label oldCellIndex\n"
+            "    const label newCellIndex,\n"
+            "    const label oldCellIndex\n"
             ") const"
         )
             << " Wrong newCellIndex: " << newCellIndex << nl
@@ -748,10 +727,11 @@ bool dynamicTopoFvMesh::testIntersection
     {
         FatalErrorIn
         (
+            "\n"
             "bool dynamicTopoFvMesh::testIntersection\n"
             "(\n"
-            "	const label newCellIndex,\n"
-            "	const label oldCellIndex\n"
+            "    const label newCellIndex,\n"
+            "    const label oldCellIndex\n"
             ") const"
         )
             << " Wrong oldCellIndex: " << oldCellIndex << nl
@@ -989,7 +969,21 @@ bool dynamicTopoFvMesh::cellIntersection
 
         if (debug)
         {
-            checkPointNearness(tP, 1e-20);
+            if (checkPointNearness(tP, 1e-20))
+            {
+                writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
+                writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
+                writeVTK
+                (
+                    "ccSet_"
+                  + Foam::name(newCellIndex)
+                  + '<' + Foam::name(oldCellIndex) + '>',
+                    tP.size(),
+                    tP.size(),
+                    tP.size(),
+                    tP
+                );
+            }
         }
 
         return true;
@@ -1200,7 +1194,21 @@ bool dynamicTopoFvMesh::cellIntersection
     // Check for concurrent points.
     if (debug)
     {
-        checkPointNearness(tP, 1e-20);
+        if (checkPointNearness(tP, 1e-20))
+        {
+            writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
+            writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
+            writeVTK
+            (
+                "ccSet_"
+              + Foam::name(newCellIndex)
+              + '<' + Foam::name(oldCellIndex) + '>',
+                tP.size(),
+                tP.size(),
+                tP.size(),
+                tP
+            );
+        }
     }
 
     // Found a convex set of points.
@@ -1589,8 +1597,6 @@ labelList dynamicTopoFvMesh::cellParents
     const labelList& oldCandidates
 ) const
 {
-    typedef StaticHashTable<empty, label, Hash<label> > labelStaticHashSet;
-
     labelStaticHashSet masterCells;
 
     // Fetch connectivity from the old mesh.
@@ -1676,7 +1682,7 @@ labelList dynamicTopoFvMesh::cellParents
     // Shrink to actual size
     finalCells.setSize(nEntries);
 
-    if (debug > 2)
+    if (debug > 3)
     {
         Info << " Cell: " << cIndex
              << " No. of parent candidates: "
@@ -1713,12 +1719,13 @@ void dynamicTopoFvMesh::setCellMapping
     {
         FatalErrorIn
         (
+            "\n"
             "void dynamicTopoFvMesh::setCellMapping\n"
             "(\n"
-            "	const label cIndex,\n"
-            "	const labelList& mapCells,\n"
-            "	const scalarField& mapWeights,\n"
-            "	const vectorField& mapCentres\n"
+            "    const label cIndex,\n"
+            "    const labelList& mapCells,\n"
+            "    const scalarField& mapWeights,\n"
+            "    const vectorField& mapCentres\n"
             ")"
         )
             << nl << " Incompatible mapping for cell: "
@@ -1782,12 +1789,13 @@ void dynamicTopoFvMesh::setFaceMapping
     {
         FatalErrorIn
         (
+            "\n"
             "void dynamicTopoFvMesh::setFaceMapping\n"
             "(\n"
-            "	const label fIndex,\n"
-            "	const labelList& mapFaces,\n"
-            "	const scalarField& mapWeights,\n"
-            "	const vectorField& mapCentres\n"
+            "    const label fIndex,\n"
+            "    const labelList& mapFaces,\n"
+            "    const scalarField& mapWeights,\n"
+            "    const vectorField& mapCentres\n"
             ")"
         )
             << nl << " Incompatible mapping: " << nl
@@ -2250,12 +2258,13 @@ label dynamicTopoFvMesh::insertEdge
             {
                 FatalErrorIn
                 (
+                    "\n"
                     "label dynamicTopoFvMesh::insertEdge\n"
                     "(\n"
-                    "	const label patch,\n"
-                    "	const edge& newEdge,\n"
-                    "	const labelList& edgeFaces,\n"
-                    "	const labelList& edgePoints\n"
+                    "    const label patch,\n"
+                    "    const edge& newEdge,\n"
+                    "    const labelList& edgeFaces,\n"
+                    "    const labelList& edgePoints\n"
                     ")"
                 )
                     << " EdgePoints is incorrectly specified." << nl
@@ -2705,13 +2714,14 @@ void dynamicTopoFvMesh::constructHull
                     // Something's terribly wrong
                     FatalErrorIn
                     (
+                        "\n"
                         "void dynamicTopoFvMesh::constructHull\n"
                         "(\n"
-                        "	const label eIndex,\n"
-                        "	labelList& hullEdges,\n"
-                        "	labelList& hullFaces,\n"
-                        "	labelList& hullCells,\n"
-                        "	labelListList& ringEntities\n"
+                        "    const label eIndex,\n"
+                        "    labelList& hullEdges,\n"
+                        "    labelList& hullFaces,\n"
+                        "    labelList& hullCells,\n"
+                        "    labelListList& ringEntities\n"
                         ") const"
                     )
                         << nl << " Failed to construct hull. "
@@ -2786,11 +2796,11 @@ void dynamicTopoFvMesh::constructHull
             (
                 "void dynamicTopoFvMesh::constructHull\n"
                 "(\n"
-                "	const label eIndex,\n"
-                "	labelList& hullEdges,\n"
-                "	labelList& hullFaces,\n"
-                "	labelList& hullCells,\n"
-                "	labelListList& ringEntities\n"
+                "    const label eIndex,\n"
+                "    labelList& hullEdges,\n"
+                "    labelList& hullFaces,\n"
+                "    labelList& hullCells,\n"
+                "    labelListList& ringEntities\n"
                 ") const"
             )
                 << " Failed to construct hull. " << nl
@@ -2954,10 +2964,11 @@ void dynamicTopoFvMesh::buildEdgePoints
             // Something's terribly wrong
             FatalErrorIn
             (
+                "\n"
                 "void dynamicTopoFvMesh::buildEdgePoints\n"
                 "(\n"
-                "	const label eIndex,\n"
-                "	const label checkIndex\n"
+                "    const label eIndex,\n"
+                "    const label checkIndex\n"
                 ")"
             )
                 << " Failed to determine a vertex ring. " << nl
@@ -3267,14 +3278,16 @@ void dynamicTopoFvMesh::readOptionalParameters()
         debug = 0;
     }
 
-    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
-
     // Set debug option for underlying classes as well.
+    lengthScaleEstimator::debug = debug;
+
     if (debug > 3)
     {
         fvMesh::debug = true;
         polyMesh::debug = true;
     }
+
+    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
 
     if (meshSubDict.found("interval") || mandatory_)
     {
@@ -3301,7 +3314,7 @@ void dynamicTopoFvMesh::readOptionalParameters()
         bandWidthReduction_ = false;
     }
 
-    if (meshSubDict.found("sliverThreshold") ||	mandatory_)
+    if (meshSubDict.found("sliverThreshold") || mandatory_)
     {
         sliverThreshold_ = readScalar(meshSubDict.lookup("sliverThreshold"));
 
@@ -3554,6 +3567,18 @@ void dynamicTopoFvMesh::loadLengthScaleEstimator()
                     *this,
                     meshDict.subDict("refinementOptions")
                 )
+            );
+        }
+
+        // Read options
+        lengthEstimator().readRefinementOptions(false, mandatory_);
+
+        // Set coupled patch options, if available
+        if (dict_.found("coupledPatches") || mandatory_)
+        {
+            lengthEstimator().setCoupledPatches
+            (
+                dict_.subDict("coupledPatches")
             );
         }
     }
@@ -5267,172 +5292,102 @@ void dynamicTopoFvMesh::synchronizeThreads
 }
 
 
-// Map all fields in time using a customized mapper
-void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
+// Conservatively map all fvFields in the registry
+template <class Type>
+void dynamicTopoFvMesh::ConservativeMapFields
+(
+    const topoMapper& mapper
+)
 {
-    if (debug)
+    // Define a few typedefs for convenience
+    typedef typename outerProduct<vector, Type>::type gCmptType;
+    typedef GeometricField<Type, fvPatchField, volMesh> volType;
+    typedef GeometricField<gCmptType, fvPatchField, volMesh> gradVolType;
+
+    HashTable<const volType*> fields(objectRegistry::lookupClass<volType>());
+
+    // Store old-times before mapping
+    forAllIter(typename HashTable<const volType*>, fields, fIter)
     {
-        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh&): "
-             << "Mapping fv fields."
-             << endl;
+        volType& field = const_cast<volType&>(*fIter());
+
+        field.storeOldTimes();
     }
 
-    topoMapper& fieldMapper = mapper_();
+    // Fetch addressing
+    const topoCellMapper& fMap = mapper.volMap();
+    const labelListList& addressing = fMap.addressing();
+    const List<scalarField>& wC = fMap.intersectionWeights();
+    const List<vectorField>& xC = fMap.intersectionCentres();
 
-    // Set the mapPolyMesh object in the mapper
-    fieldMapper.setMapper(meshMap);
+    // Fetch geometry
+    const scalarField& newCellVolumes = primitiveMesh::cellVolumes();
+    const vectorField& oldCellCentres = mapper.oldCentres().internalField();
 
-    // Set weighting information.
-    // This takes over the weight data.
-    fieldMapper.setFaceWeights(faceWeights_, faceCentres_);
-    fieldMapper.setCellWeights(cellWeights_, cellCentres_);
+    // Now map all fields
+    forAllIter(typename HashTable<const volType*>, fields, fIter)
+    {
+        volType& field = const_cast<volType&>(*fIter());
 
-    // Map all the volFields in the objectRegistry
-    MapGeometricFields<scalar,fvPatchField,topoMapper,volMesh>
-        (fieldMapper);
-    MapGeometricFields<vector,fvPatchField,topoMapper,volMesh>
-        (fieldMapper);
-    MapGeometricFields<sphericalTensor,fvPatchField,topoMapper,volMesh>
-        (fieldMapper);
-    MapGeometricFields<symmTensor,fvPatchField,topoMapper,volMesh>
-        (fieldMapper);
-    MapGeometricFields<tensor,fvPatchField,topoMapper,volMesh>
-        (fieldMapper);
+        if (debug)
+        {
+            Info << "Conservatively mapping "
+                 << field.typeName
+                 << ' ' << field.name()
+                 << endl;
+        }
 
-    // Map all the surfaceFields in the objectRegistry
-    MapGeometricFields<scalar,fvsPatchField,topoMapper,surfaceMesh>
-        (fieldMapper);
-    MapGeometricFields<vector,fvsPatchField,topoMapper,surfaceMesh>
-        (fieldMapper);
-    MapGeometricFields<sphericalTensor,fvsPatchField,topoMapper,surfaceMesh>
-        (fieldMapper);
-    MapGeometricFields<symmTensor,fvsPatchField,topoMapper,surfaceMesh>
-        (fieldMapper);
-    MapGeometricFields<tensor,fvsPatchField,topoMapper,surfaceMesh>
-        (fieldMapper);
+        // Fetch the gradient
+        const gradVolType& gf = mapper.gradient<gradVolType>(field.name());
 
-    // Clear mapper
-    fieldMapper.clear();
+        // Copy the original field
+        Field<Type> fieldCpy(field.internalField());
+
+        // Resize to current dimensions
+        Field<Type>& iF = field.internalField();
+        iF.setSize(fMap.size(), pTraits<Type>::zero);
+
+        // Map the internal field
+        forAll(iF, cellI)
+        {
+            const labelList& addr = addressing[cellI];
+
+            forAll(addr, cellJ)
+            {
+                vector xCo = oldCellCentres[addr[cellJ]];
+
+                // Accumulate volume-weighted Taylor-series interpolate
+                iF[cellI] +=
+                (
+                    wC[cellI][cellJ] *
+                    (
+                        fieldCpy[addr[cellJ]]
+                      + (gf[addr[cellJ]] & (xC[cellI][cellJ] - xCo))
+                    )
+                );
+            }
+
+            // Divide by current volume
+            iF[cellI] /= newCellVolumes[cellI];
+        }
+
+        // Map the patch fields
+        forAll(field.boundaryField(), patchi)
+        {
+
+        }
+
+        field.instance() = field.mesh().db().time().timeName();
+    }
 }
 
 
-// Update the mesh for topology changes.
-// Return true if changes have occurred
-bool dynamicTopoFvMesh::update()
+// Reset the mesh and generate mapping information
+void dynamicTopoFvMesh::resetMesh()
 {
-    // Re-read options if they have been modified at run-time
-    if (dict_.readIfModified())
-    {
-        // Re-read optional parameters
-        readOptionalParameters();
-
-        // Read edge refinement options
-        if (edgeRefinement_)
-        {
-            lengthEstimator().readRefinementOptions(true, mandatory_);
-        }
-    }
-
-    // Print out the mesh bandwidth
-    printBandwidth();
-
-    // Set old-points before moving the mesh
-    const pointField& oldPoints = points();
-
-    forAll(oldPoints, pointI)
-    {
-        oldPoints_[pointI] = oldPoints[pointI];
-    }
-
-    // Set old cell-centre information for the mapping stage
-    mapper_().setOldCellCentres(fvMesh::C());
-
-    // Invoke mesh-motion solver and move points
-    if (mPtr_.valid())
-    {
-        movePoints(mPtr_->newPoints());
-    }
-
-    // Obtain the most recent point-positions
-    const pointField& newPoints = points();
-
-    forAll(newPoints, pointI)
-    {
-        points_[pointI] = newPoints[pointI];
-    }
-
-    // Reset statistics
-    thresholdSlivers_.clear();
-    topoChangeFlag_ = false;
-    nModifications_ = 0;
-    nBisections_ = 0;
-    nCollapses_ = 0;
-    nSwaps_ = 0;
-
-    // Obtain mesh stats before topo-changes
-    meshQuality(true);
-
-    bool sliversAbsent = true;
-
-    if (thresholdSlivers_.size())
-    {
-        sliversAbsent = false;
-    }
-
-    // Reduce across processors.
-    reduce(sliversAbsent, andOp<bool>());
-
-    // Return if the interval is invalid or first time-step (no V0).
-    // Handy while using only mesh-motion.
-    if (interval_ < 0 || time().timeIndex() < 1)
-    {
-        // Dump procIDs to disk, if requested.
-        writeProcIDs();
-
-        return false;
-    }
-
-    // Return if re-meshing is not at interval,
-    // or sliver cells are absent.
-    if ((time().timeIndex() % interval_ != 0) && sliversAbsent)
-    {
-        // Dump procIDs to disk, if requested.
-        writeProcIDs();
-
-        return false;
-    }
-
-    // Calculate the edge length-scale for the mesh
-    calculateLengthScale();
-
-    // ~~ Connectivity changes ~~ //
-
-    // Track mesh topology modification time
-    clockTime topologyTimer;
-
-    // Invoke the threaded topoModifier
-    if (twoDMesh_)
-    {
-        threadedTopoModifier2D();
-    }
-    else
-    {
-        threadedTopoModifier3D();
-    }
-
-    Info << " Topo modifier time: " << topologyTimer.elapsedTime() << endl;
-
-    // Write out statistics
-    Info << " nBisections (Interior | Surface): " << nBisections_ << endl;
-    Info << " nCollapses (Interior | Surface): " << nCollapses_ << endl;
-    Info << " nSwaps (Interior | Surface): " << nSwaps_ << endl;
-
-    meshQuality(true);
-
     // Reduce across processors.
     reduce(topoChangeFlag_, orOp<bool>());
 
-    // Apply all pending topology changes, if necessary
     if (topoChangeFlag_)
     {
         // Obtain references to zones, if any
@@ -5492,6 +5447,11 @@ bool dynamicTopoFvMesh::update()
         {
             oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
         }
+
+        // Set old cell-centres and gradient information
+        // for the mapping stage, prior to mesh reset
+        mapper_->storeGradients();
+        mapper_->setOldCellCentres(fvMesh::C());
 
         // Reset the mesh with pre-motion points
         polyMesh::resetPrimitives
@@ -5622,7 +5582,7 @@ bool dynamicTopoFvMesh::update()
         // Correct volume fluxes on the old mesh
         mapper_->correctFluxes();
 
-        // Now move back to new points and
+        // Now move mesh to new points and
         // compute correct mesh-fluxes.
         movePoints(points);
 
@@ -5631,9 +5591,6 @@ bool dynamicTopoFvMesh::update()
         {
             mPtr_->updateMesh(mpm);
         }
-
-        // Print out the mesh bandwidth
-        printBandwidth();
 
         // Now that all connectivity changes are successful,
         // update coupled maps (in a separate thread, if available).
@@ -5685,7 +5642,7 @@ bool dynamicTopoFvMesh::update()
         nOldInternalFaces_ = nInternalFaces_;
         nOldInternalEdges_ = nInternalEdges_;
 
-        for (label i=0; i<numPatches_; i++)
+        for (label i = 0; i < numPatches_; i++)
         {
             oldPatchSizes_[i] = patchSizes_[i];
             oldPatchStarts_[i] = patchStarts_[i];
@@ -5706,6 +5663,145 @@ bool dynamicTopoFvMesh::update()
 
     // Dump procIDs to disk, if requested.
     writeProcIDs();
+}
+
+
+// Map all fields in time using a customized mapper
+void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
+{
+    if (debug)
+    {
+        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh&): "
+             << "Mapping fv fields."
+             << endl;
+    }
+
+    topoMapper& fieldMapper = mapper_();
+
+    // Set the mapPolyMesh object in the mapper
+    fieldMapper.setMapper(meshMap);
+
+    // Set weighting information.
+    // This takes over the weight data.
+    fieldMapper.setFaceWeights(faceWeights_, faceCentres_);
+    fieldMapper.setCellWeights(cellWeights_, cellCentres_);
+
+    // Conservatively map scalar/vector volFields
+    ConservativeMapFields<scalar>(fieldMapper);
+    ConservativeMapFields<vector>(fieldMapper);
+
+    // Map all the volFields in the objectRegistry
+    MapGeometricFields<sphericalTensor,fvPatchField,topoMapper,volMesh>
+        (fieldMapper);
+    MapGeometricFields<symmTensor,fvPatchField,topoMapper,volMesh>
+        (fieldMapper);
+    MapGeometricFields<tensor,fvPatchField,topoMapper,volMesh>
+        (fieldMapper);
+
+    // Map all the surfaceFields in the objectRegistry
+    MapGeometricFields<scalar,fvsPatchField,topoMapper,surfaceMesh>
+        (fieldMapper);
+    MapGeometricFields<vector,fvsPatchField,topoMapper,surfaceMesh>
+        (fieldMapper);
+    MapGeometricFields<sphericalTensor,fvsPatchField,topoMapper,surfaceMesh>
+        (fieldMapper);
+    MapGeometricFields<symmTensor,fvsPatchField,topoMapper,surfaceMesh>
+        (fieldMapper);
+    MapGeometricFields<tensor,fvsPatchField,topoMapper,surfaceMesh>
+        (fieldMapper);
+
+    // Clear mapper
+    fieldMapper.clear();
+}
+
+
+// Update the mesh for motion / topology changes.
+//  - Return true if topology changes have occurred
+bool dynamicTopoFvMesh::update()
+{
+    // Re-read options if they have been modified at run-time
+    if (dict_.readIfModified())
+    {
+        // Re-read optional parameters
+        readOptionalParameters();
+
+        // Read edge refinement options
+        if (edgeRefinement_)
+        {
+            lengthEstimator().readRefinementOptions(true, mandatory_);
+        }
+    }
+
+    // Set old point positions
+    oldPoints_ = polyMesh::points();
+
+    // Invoke mesh-motion solver and store new points
+    if (mPtr_.valid())
+    {
+        points_ = mPtr_->newPoints()();
+    }
+
+    // Reset statistics
+    topoChangeFlag_ = false;
+    nModifications_ = 0;
+    nBisections_ = 0;
+    nCollapses_ = 0;
+    nSwaps_ = 0;
+
+    // Obtain mesh stats before topo-changes
+    bool sliversAbsent = meshQuality(true);
+
+    // Return if the interval is invalid,
+    // not at re-mesh interval, or slivers are absent.
+    // Handy while using only mesh-motion.
+    if
+    (
+        (interval_ < 0) ||
+        (time().timeIndex() < 1) ||
+        ((time().timeIndex() % interval_ != 0) && sliversAbsent)
+    )
+    {
+        // Move mesh to new positions
+        if (mPtr_.valid())
+        {
+            movePoints(mPtr_->curPoints());
+        }
+
+        // Dump procIDs to disk, if requested.
+        writeProcIDs();
+
+        // Motion only.
+        return false;
+    }
+
+    // Calculate the edge length-scale for the mesh
+    calculateLengthScale();
+
+    // Track mesh topology modification time
+    clockTime topologyTimer;
+
+    // Invoke the threaded topoModifier
+    if (twoDMesh_)
+    {
+        threadedTopoModifier2D();
+    }
+    else
+    {
+        threadedTopoModifier3D();
+    }
+
+    Info << " Topo modifier time: " << topologyTimer.elapsedTime() << endl;
+
+    // Write out statistics
+    Info << " nBisections (Interior | Surface): " << nBisections_ << endl;
+    Info << " nCollapses (Interior | Surface): " << nCollapses_ << endl;
+    Info << " nSwaps (Interior | Surface): " << nSwaps_ << endl;
+
+    // Obtain mesh stats after topo-changes
+    meshQuality(true);
+
+    // Apply all topology changes (if any) and reset mesh.
+    resetMesh();
 
     return topoChangeFlag_;
 }

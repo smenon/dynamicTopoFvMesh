@@ -65,7 +65,24 @@ inline bool lengthScaleEstimator::isFreePatch
     const label pIndex
 ) const
 {
-    if (freePatches_.found(mesh_.boundaryMesh()[pIndex].name()))
+    const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
+
+    if (freePatches_.found(boundary[pIndex].name()))
+    {
+        return true;
+    }
+
+    // Certain boundary types are also considered floating
+    const word& pType = boundary[pIndex].type();
+
+    if
+    (
+        (pType == "processor") ||
+        (pType == "cyclic") ||
+        (pType == "wedge") ||
+        (pType == "empty") ||
+        (pType == "symmetryPlane")
+    )
     {
         return true;
     }
@@ -197,7 +214,7 @@ inline scalar lengthScaleEstimator::fixedLengthScale
     // Approximate a length-scale from face area
     if (usePolyMesh)
     {
-        scale = Foam::sqrt(mag(mesh_.faceAreas()[fIndex]));
+        scale = Foam::sqrt(2.0 * mag(mesh_.faceAreas()[fIndex]));
     }
 
     return scale;

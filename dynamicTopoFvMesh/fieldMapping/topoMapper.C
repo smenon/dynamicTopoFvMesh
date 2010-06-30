@@ -42,16 +42,72 @@ Author
 #include "fvBoundaryMeshMapper.H"
 #include "volFields.H"
 
+namespace Foam
+{
+
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-void Foam::topoMapper::clearOut()
+// Store gradients of fields on the mesh prior to topology changes
+template <class Type, class gradType>
+void topoMapper::storeGradients
+(
+    HashTable<autoPtr<gradType> >& gradTable
+)
+{
+    // Fetch all fields from registry
+    HashTable<const Type*> fields(mesh_.objectRegistry::lookupClass<Type>());
+
+    forAllConstIter(typename HashTable<const Type*>, fields, fIter)
+    {
+        const Type& field = *fIter();
+
+        // Compute the gradient.
+        tmp<gradType> tGrad = fvc::grad(field);
+
+        // Make a new entry, but don't register the field.
+        gradTable.insert
+        (
+            field.name(),
+            autoPtr<gradType>
+            (
+                new gradType
+                (
+                    IOobject
+                    (
+                        tGrad().name(),
+                        mesh_.time().timeName(),
+                        mesh_,
+                        IOobject::NO_READ,
+                        IOobject::NO_WRITE,
+                        false
+                    ),
+                    tGrad()
+                )
+            )
+        );
+    }
+}
+
+
+void topoMapper::clearOut()
 {
     deleteDemandDrivenData(oldCellCentresPtr_);
+
+    // Clear stored gradients
+    sGrads_.clear();
+    vGrads_.clear();
+
+    // Clear maps
+    faceWeights_.clear();
+    cellWeights_.clear();
+
+    faceCentres_.clear();
+    cellCentres_.clear();
 }
 
 // * * * * * * * * * * * * * * * * Destructor * * * * * * * * * * * * * * *  //
 
-Foam::topoMapper::~topoMapper()
+topoMapper::~topoMapper()
 {
     clearOut();
 }
@@ -59,23 +115,33 @@ Foam::topoMapper::~topoMapper()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 //- Return reference to the mesh
-const Foam::fvMesh&
-Foam::topoMapper::mesh() const
+const fvMesh&
+topoMapper::mesh() const
 {
     return mesh_;
 }
 
 
 //- Return reference to objectRegistry storing fields.
-const Foam::objectRegistry&
-Foam::topoMapper::db() const
+const objectRegistry&
+topoMapper::db() const
 {
     return mesh_;
 }
 
 
+//- Return mapping method
+label topoMapper::method
+(
+    const word& typeName
+) const
+{
+    return -1;
+}
+
+
 //- Set mapping information
-void Foam::topoMapper::setMapper(const mapPolyMesh& mpm)
+void topoMapper::setMapper(const mapPolyMesh& mpm)
 {
     if
     (
@@ -101,31 +167,71 @@ void Foam::topoMapper::setMapper(const mapPolyMesh& mpm)
 
 
 //- Set face weighting information
-void Foam::topoMapper::setFaceWeights
+void topoMapper::setFaceWeights
 (
     Map<scalarField>& weights,
     Map<vectorField>& centres
 )
 {
-    weights.clear();
-    centres.clear();
+    faceWeights_.transfer(weights);
+    faceCentres_.transfer(centres);
 }
 
 
 //- Set cell weighting information
-void Foam::topoMapper::setCellWeights
+void topoMapper::setCellWeights
 (
     Map<scalarField>& weights,
     Map<vectorField>& centres
 )
 {
-    weights.clear();
-    centres.clear();
+    cellWeights_.transfer(weights);
+    cellCentres_.transfer(centres);
+}
+
+
+//- Fetch face weights
+const Map<scalarField>&
+topoMapper::faceWeights() const
+{
+    return faceWeights_;
+}
+
+
+//- Fetch cell weights
+const Map<scalarField>&
+topoMapper::cellWeights() const
+{
+    return cellWeights_;
+}
+
+
+//- Fetch face centres
+const Map<vectorField>&
+topoMapper::faceCentres() const
+{
+    return faceCentres_;
+}
+
+
+//- Fetch cell centres
+const Map<vectorField>&
+topoMapper::cellCentres() const
+{
+    return cellCentres_;
+}
+
+
+//- Store gradients prior to mesh reset
+void topoMapper::storeGradients()
+{
+    storeGradients<volScalarField>(sGrads_);
+    storeGradients<volVectorField>(vGrads_);
 }
 
 
 //- Set old cell-centre information
-void Foam::topoMapper::setOldCellCentres
+void topoMapper::setOldCellCentres
 (
     const volVectorField& oldCentres
 )
@@ -158,8 +264,8 @@ void Foam::topoMapper::setOldCellCentres
 
 
 //- Return old cell-centre information
-const Foam::volVectorField&
-Foam::topoMapper::oldCentres() const
+const volVectorField&
+topoMapper::oldCentres() const
 {
     if (!oldCellCentresPtr_)
     {
@@ -174,22 +280,40 @@ Foam::topoMapper::oldCentres() const
 }
 
 
+//- Fetch the gradient field (template specialisation)
+template <>
+const volVectorField&
+topoMapper::gradient(const word& name) const
+{
+    return sGrads_[name]();
+}
+
+
+//- Fetch the gradient field (template specialisation)
+template <>
+const volTensorField&
+topoMapper::gradient(const word& name) const
+{
+    return vGrads_[name]();
+}
+
+
 //- Correct fluxes after topology change
-void Foam::topoMapper::correctFluxes()
+void topoMapper::correctFluxes()
 {
 
 }
 
 
 //- Return volume mapper
-const Foam::FieldMapper&
-Foam::topoMapper::volMap() const
+const topoCellMapper&
+topoMapper::volMap() const
 {
     if (!cellMap_.valid())
     {
         FatalErrorIn
         (
-            "const FieldMapper& topoMapper::volMap()"
+            "const topoCellMapper& topoMapper::volMap()"
         ) << nl << " Volume mapper has not been set. "
           << abort(FatalError);
     }
@@ -199,8 +323,8 @@ Foam::topoMapper::volMap() const
 
 
 //- Return surface mapper
-const Foam::fvSurfaceMapper&
-Foam::topoMapper::surfaceMap() const
+const fvSurfaceMapper&
+topoMapper::surfaceMap() const
 {
     if (!surfaceMap_.valid())
     {
@@ -216,8 +340,8 @@ Foam::topoMapper::surfaceMap() const
 
 
 //- Return boundary mapper
-const Foam::fvBoundaryMeshMapper&
-Foam::topoMapper::boundaryMap() const
+const fvBoundaryMeshMapper&
+topoMapper::boundaryMap() const
 {
     if (!boundaryMap_.valid())
     {
@@ -233,7 +357,7 @@ Foam::topoMapper::boundaryMap() const
 
 
 //- Clear out member data
-void Foam::topoMapper::clear()
+void topoMapper::clear()
 {
     // Clear out pointers
     faceMap_.clear();
@@ -244,7 +368,7 @@ void Foam::topoMapper::clear()
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
-void Foam::topoMapper::operator=(const topoMapper& rhs)
+void topoMapper::operator=(const topoMapper& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)
@@ -257,5 +381,7 @@ void Foam::topoMapper::operator=(const topoMapper& rhs)
             << abort(FatalError);
     }
 }
+
+} // End namespace Foam
 
 // ************************************************************************* //

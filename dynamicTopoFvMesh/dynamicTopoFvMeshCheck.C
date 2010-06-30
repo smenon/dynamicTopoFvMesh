@@ -46,7 +46,7 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-// Return mesh cell-quality values
+// Compute mesh-quality, and return true if no slivers are present
 // Valid for 3D tetrahedral meshes only...
 bool dynamicTopoFvMesh::meshQuality
 (
@@ -56,7 +56,7 @@ bool dynamicTopoFvMesh::meshQuality
     // Valid for 3D tetrahedral meshes only...
     if (twoDMesh_)
     {
-        return false;
+        return true;
     }
 
     Switch dumpMeshQuality(false);
@@ -99,6 +99,10 @@ bool dynamicTopoFvMesh::meshQuality
     scalar minQuality =  GREAT;
     scalar cQuality, meanQuality = 0.0;
 
+    // Track slivers
+    bool sliversAbsent = true;
+    thresholdSlivers_.clear();
+
     // Loop through all cells in the mesh and compute cell quality
     forAll(cells_, cellI)
     {
@@ -134,6 +138,14 @@ bool dynamicTopoFvMesh::meshQuality
         }
     }
 
+    if (thresholdSlivers_.size())
+    {
+        sliversAbsent = false;
+    }
+
+    // Reduce across processors.
+    reduce(sliversAbsent, andOp<bool>());
+
     // Output statistics:
     if (outputOption || (debug > 0))
     {
@@ -162,10 +174,10 @@ bool dynamicTopoFvMesh::meshQuality
 
     if (dumpMeshQuality && time().outputTime())
     {
-        return mqPtr->write();
+        mqPtr->write();
     }
 
-    return true;
+    return sliversAbsent;
 }
 
 
@@ -293,7 +305,8 @@ bool dynamicTopoFvMesh::checkQuality
 
         if (debug > 2)
         {
-            Info << " eIndex: " << eIndex
+            Info << nl << nl
+                 << " eIndex: " << eIndex
                  << " minQuality: " << minQuality
                  << " newQuality: " << Q[checkIndex][0][m[checkIndex]-1]
                  << endl;
@@ -328,11 +341,11 @@ bool dynamicTopoFvMesh::checkQuality
                 (
                     "bool dynamicTopoFvMesh::checkQuality\n"
                     "(\n"
-                    "	const label eIndex,\n"
-                    "	const labelList& m,\n"
-                    "	const PtrList<scalarListList>& Q,\n"
-                    "	const scalar minQuality,\n"
-                    "	const label checkIndex\n"
+                    "    const label eIndex,\n"
+                    "    const labelList& m,\n"
+                    "    const PtrList<scalarListList>& Q,\n"
+                    "    const scalar minQuality,\n"
+                    "    const label checkIndex\n"
                     ") const\n"
                 )
                     << "Coupled maps were improperly specified." << nl
@@ -473,9 +486,9 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
                 (
                     "bool dynamicTopoFvMesh::checkTriangulationVolumes\n"
                     "(\n"
-                    "	const label eIndex,\n"
-                    "	const labelList& hullVertices,\n"
-                    "	const labelListList& triangulations\n"
+                    "    const label eIndex,\n"
+                    "    const labelList& hullVertices,\n"
+                    "    const labelListList& triangulations\n"
                     ") const\n"
                 )
                     << "Swap sequence leads to negative old-volumes." << nl
@@ -509,9 +522,9 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
                 (
                     "bool dynamicTopoFvMesh::checkTriangulationVolumes\n"
                     "(\n"
-                    "	const label eIndex,\n"
-                    "	const labelList& hullVertices,\n"
-                    "	const labelListList& triangulations\n"
+                    "    const label eIndex,\n"
+                    "    const labelList& hullVertices,\n"
+                    "    const labelListList& triangulations\n"
                     ") const\n"
                 )
                     << "Swap sequence leads to negative old-volumes." << nl
@@ -611,11 +624,11 @@ void dynamicTopoFvMesh::writeVTK
                 (
                     "void dynamicTopoFvMesh::writeVTK\n"
                     "(\n"
-                    "	const word& name,\n"
-                    "	const labelList& cList,\n"
-                    "	const label primitiveType,\n"
-                    "	const bool useOldConnectivity,\n"
-                    "	const bool useOldPoints\n"
+                    "    const word& name,\n"
+                    "    const labelList& cList,\n"
+                    "    const label primitiveType,\n"
+                    "    const bool useOldConnectivity,\n"
+                    "    const bool useOldPoints\n"
                     ") const\n"
                 )
                     << "Cannot use old connectivity for edges."
@@ -715,11 +728,11 @@ void dynamicTopoFvMesh::writeVTK
                     (
                         "void dynamicTopoFvMesh::writeVTK\n"
                         "(\n"
-                        "	const word& name,\n"
-                        "	const labelList& cList,\n"
-                        "	const label primitiveType,\n"
-                        "	const bool useOldConnectivity,\n"
-                        "	const bool useOldPoints\n"
+                        "    const word& name,\n"
+                        "    const labelList& cList,\n"
+                        "    const label primitiveType,\n"
+                        "    const bool useOldConnectivity,\n"
+                        "    const bool useOldPoints\n"
                         ") const\n"
                     )
                         << "Cell: " << cList[cellI]
@@ -951,67 +964,90 @@ void dynamicTopoFvMesh::writeVTK
 
     file << "CELLS " << nCells << " " << nTotalCells + nCells << endl;
 
-    forAll(cpList, i)
+    if (cpList.size())
     {
-        if (cpList[i].size())
+        forAll(cpList, i)
         {
-            file << cpList[i].size() << ' ';
-
-            forAll(cpList[i], j)
+            if (cpList[i].size())
             {
-                file << cpList[i][j] << ' ';
-            }
+                file << cpList[i].size() << ' ';
 
-            file << nl;
+                forAll(cpList[i], j)
+                {
+                    file << cpList[i][j] << ' ';
+                }
+
+                file << nl;
+            }
+        }
+    }
+    else
+    {
+        // List of points
+        for (label i = 0; i < nPoints; i++)
+        {
+            file << 1 << ' ' << i << nl;
         }
     }
 
     file << "CELL_TYPES " << nCells << endl;
 
-    forAll(cpList, i)
+    if (cpList.size())
     {
-        if (cpList[i].size() == 1)
+        forAll(cpList, i)
+        {
+            if (cpList[i].size() == 1)
+            {
+                // Vertex
+                file << "1" << nl;
+            }
+
+            if (cpList[i].size() == 2)
+            {
+                // Edge
+                file << "3" << nl;
+            }
+
+            if (cpList[i].size() == 3)
+            {
+                // Triangle face
+                file << "5" << nl;
+            }
+
+            if
+            (
+                (cpList[i].size() == 4) &&
+                (primitiveType == 2)
+            )
+            {
+                // Quad face
+                file << "9" << nl;
+            }
+
+            if
+            (
+                (cpList[i].size() == 4) &&
+                (primitiveType == 3)
+            )
+            {
+                // Tetrahedron
+                file << "10" << nl;
+            }
+
+            if (cpList[i].size() == 6)
+            {
+                // Wedge
+                file << "13" << nl;
+            }
+        }
+    }
+    else
+    {
+        // List of points
+        for (label i = 0; i < nPoints; i++)
         {
             // Vertex
-            file << "1" << nl;
-        }
-
-        if (cpList[i].size() == 2)
-        {
-            // Edge
-            file << "3" << nl;
-        }
-
-        if (cpList[i].size() == 3)
-        {
-            // Triangle face
-            file << "5" << nl;
-        }
-
-        if
-        (
-            (cpList[i].size() == 4) &&
-            (primitiveType == 2)
-        )
-        {
-            // Quad face
-            file << "9" << nl;
-        }
-
-        if
-        (
-            (cpList[i].size() == 4) &&
-            (primitiveType == 3)
-        )
-        {
-            // Tetrahedron
-            file << "10" << nl;
-        }
-
-        if (cpList[i].size() == 6)
-        {
-            // Wedge
-            file << "13" << nl;
+            file << '1' << nl;
         }
     }
 
@@ -1052,10 +1088,7 @@ void dynamicTopoFvMesh::writeVTK
 
 
 // Check the state of connectivity lists
-void dynamicTopoFvMesh::checkConnectivity
-(
-    label maxErrors
-) const
+void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 {
     label nFailedChecks = 0;
 
@@ -1727,10 +1760,8 @@ void dynamicTopoFvMesh::checkConnectivity
     {
         FatalErrorIn
         (
-            "void dynamicTopoFvMesh::checkConnectivity\n"
-            "(\n"
-            "	label maxErrors\n"
-            ") const\n"
+            "void dynamicTopoFvMesh::checkConnectivity"
+            "(const label maxErrors) const"
         )
             << nFailedChecks << " failures were found in connectivity."
             << abort(FatalError);
@@ -1748,7 +1779,7 @@ void dynamicTopoFvMesh::printBandwidth() const
         const labelList& owner = faceOwner();
         const labelList& neighbour = faceNeighbour();
 
-        forAll(owner, faceI)
+        forAll(neighbour, faceI)
         {
             label diff = owner[faceI] - neighbour[faceI];
 
@@ -1969,7 +2000,13 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         if (debug > 3)
         {
-            InfoIn("dynamicTopoFvMesh::checkCollapse()")
+            InfoIn
+            (
+                "bool dynamicTopoFvMesh::checkCollapse"
+                "(const point&, const point&,"
+                " const label, const label,"
+                " labelHashSet&, bool) const"
+            )
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
                 << faceToCheck[0] << "," << faceToCheck[1] << ","
@@ -1989,7 +2026,13 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         if (forceOp)
         {
-            InfoIn("dynamicTopoFvMesh::checkCollapse()")
+            InfoIn
+            (
+                "bool dynamicTopoFvMesh::checkCollapse"
+                "(const point&, const point&,"
+                " const label, const label,"
+                " labelHashSet&, bool) const"
+            )
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
                 << faceToCheck[0] << "," << faceToCheck[1] << ","
@@ -2010,7 +2053,13 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         if (forceOp)
         {
-            InfoIn("dynamicTopoFvMesh::checkCollapse()")
+            InfoIn
+            (
+                "bool dynamicTopoFvMesh::checkCollapse"
+                "(const point&, const point&,"
+                " const label, const label,"
+                " labelHashSet&, bool) const"
+            )
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
                 << faceToCheck[0] << "," << faceToCheck[1] << ","
@@ -2034,7 +2083,7 @@ bool dynamicTopoFvMesh::checkCollapse
 
 
 // Utility method to check for concurrent points.
-void dynamicTopoFvMesh::checkPointNearness
+bool dynamicTopoFvMesh::checkPointNearness
 (
     const pointField& points,
     const scalar magSqrTol
@@ -2053,13 +2102,10 @@ void dynamicTopoFvMesh::checkPointNearness
 
             if (magSqrDist < magSqrTol)
             {
-                FatalErrorIn
+                SeriousErrorIn
                 (
-                    "void dynamicTopoFvMesh::checkPointNearness\n"
-                    "(\n"
-                    "	const pointField& points,\n"
-                    "	const scalar magSqrTol\n"
-                    ") const\n"
+                    "void dynamicTopoFvMesh::checkPointNearness"
+                    "(const pointField&, const scalar) const"
                 )
                     << " Found concurrent points: " << nl
                     << " pI: " << pI << " pJ: " << pJ << nl
@@ -2067,10 +2113,15 @@ void dynamicTopoFvMesh::checkPointNearness
                     << " Points: " << points << nl
                     << " distance: " << magSqrDist << nl
                     << " tolerance: " << magSqrTol
-                    << abort(FatalError);
+                    << endl;
+
+                return true;
             }
         }
     }
+
+    // No errors detected.
+    return false;
 }
 
 

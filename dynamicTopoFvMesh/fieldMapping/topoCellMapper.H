@@ -108,7 +108,7 @@ class topoCellMapper
         void calcInverseDistanceWeights() const;
 
         //- Calculate intersection weights for conservative mapping
-        void calcIntersectionWeights() const;
+        void calcIntersectionWeightsAndCentres() const;
 
         //- Clear out local storage
         void clearOut();
