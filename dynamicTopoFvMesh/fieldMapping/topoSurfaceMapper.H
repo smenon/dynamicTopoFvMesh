@@ -23,11 +23,11 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    topoCellMapper
+    topoSurfaceMapper
 
 Description
     This object provides mapping and fill-in information for internal
-    cell data between the two meshes after topological changes.
+    face data between the two meshes after topological changes.
     It is constructed from mapPolyMesh.
 
 Author
@@ -36,12 +36,12 @@ Author
     All rights reserved
 
 SourceFiles
-    topoCellMapper.C
+    topoSurfaceMapper.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef topoCellMapper_H
-#define topoCellMapper_H
+#ifndef topoSurfaceMapper_H
+#define topoSurfaceMapper_H
 
 #include "morphFieldMapper.H"
 
@@ -55,10 +55,10 @@ class topoMapper;
 class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
-                        Class topoCellMapper Declaration
+                        Class topoSurfaceMapper Declaration
 \*---------------------------------------------------------------------------*/
 
-class topoCellMapper
+class topoSurfaceMapper
 :
     public morphFieldMapper
 {
@@ -87,31 +87,22 @@ class topoCellMapper
         //- Inverse-distance weights
         mutable scalarListList* weightsPtr_;
 
-        //- Inserted cells
-        mutable labelList* insertedCellLabelsPtr_;
-
-        //- Interpolation volumes
-        mutable List<scalarField>* volumesPtr_;
-
-        //- Interpolation centres
-        mutable List<vectorField>* centresPtr_;
+        //- Inserted faces
+        mutable labelList* insertedFaceLabelsPtr_;
 
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
-        topoCellMapper(const topoCellMapper&);
+        topoSurfaceMapper(const topoSurfaceMapper&);
 
         //- Disallow default bitwise assignment
-        void operator=(const topoCellMapper&);
+        void operator=(const topoSurfaceMapper&);
 
-        //- Calculate addressing for interpolative mapping
+        //- Calculate the insertedFaceLabels list
+        void calcInsertedFaceLabels() const;
+
+        //- Calculate addressing for mapping
         void calcAddressing() const;
-
-        //- Calculate inverse-distance weights for interpolative mapping
-        void calcInverseDistanceWeights() const;
-
-        //- Calculate intersection weights for conservative mapping
-        void calcIntersectionWeightsAndCentres() const;
 
         //- Clear out local storage
         void clearOut();
@@ -121,7 +112,7 @@ public:
     // Constructors
 
         //- Construct from mapPolyMesh
-        topoCellMapper
+        topoSurfaceMapper
         (
             const mapPolyMesh& mpm,
             const topoMapper& mapper
@@ -129,7 +120,7 @@ public:
 
     // Destructor
 
-        virtual ~topoCellMapper();
+        virtual ~topoSurfaceMapper();
 
     // Member Functions
 
@@ -151,17 +142,14 @@ public:
         //- Return weights
         virtual const scalarListList& weights() const;
 
-        //- Are there any inserted cells
+        //- Are there any inserted faces
         virtual bool insertedObjects() const;
 
-        //- Return list of inserted cells
+        //- Return list of inserted faces
         virtual const labelList& insertedObjectLabels() const;
 
-        //- Return intersection volume weights
-        const List<scalarField>& intersectionWeights() const;
-
-        //- Return intersection volumes centres
-        const List<vectorField>& intersectionCentres() const;
+        //- Return flux flip map
+        const labelHashSet& flipFaceFlux() const;
 };
 
 
@@ -170,8 +158,9 @@ public:
 } // End namespace Foam
 
 #ifdef NoRepository
-#    include "topoCellMapper.C"
+#include "topoSurfaceMapper.C"
 #endif
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #endif

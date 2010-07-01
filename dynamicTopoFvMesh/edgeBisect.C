@@ -82,9 +82,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         (
             "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
             "(\n"
-            "	const label fIndex,\n"
-            "	bool checkOnly,\n"
-            "	const changeMap& masterMap\n"
+            "    const label fIndex,\n"
+            "    bool checkOnly,\n"
+            "    const changeMap& masterMap\n"
             ")"
         )
             << nl << " Invalid index: " << fIndex
@@ -238,9 +238,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 (
                     "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
                     "(\n"
-                    "	const label fIndex,\n"
-                    "	bool checkOnly,\n"
-                    "	const changeMap& masterMap\n"
+                    "    const label fIndex,\n"
+                    "    bool checkOnly,\n"
+                    "    const changeMap& masterMap\n"
                     ")"
                 )
                     << "Coupled maps were improperly specified." << nl
@@ -1675,9 +1675,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                     (
                         "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
                         "(\n"
-                        "	const label fIndex,\n"
-                        "	bool checkOnly,\n"
-                        "	const changeMap& masterMap\n"
+                        "    const label fIndex,\n"
+                        "    bool checkOnly,\n"
+                        "    const changeMap& masterMap\n"
                         ")"
                     )
                         << "Failed to build coupled maps."
@@ -1778,11 +1778,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     {
         FatalErrorIn
         (
+            "\n"
             "const changeMap dynamicTopoFvMesh::bisectEdge\n"
             "(\n"
-            "	const label eIndex,\n"
-            "	bool checkOnly,\n"
-            "	bool forceOp\n"
+            "    const label eIndex,\n"
+            "    bool checkOnly,\n"
+            "    bool forceOp\n"
             ")\n"
         )
             << " Invalid index: " << eIndex
@@ -1832,11 +1833,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             {
                 FatalErrorIn
                 (
+                    "\n"
                     "const changeMap dynamicTopoFvMesh::bisectEdge\n"
                     "(\n"
-                    "	const label eIndex,\n"
-                    "	bool checkOnly,\n"
-                    "	bool forceOp\n"
+                    "    const label eIndex,\n"
+                    "    bool checkOnly,\n"
+                    "    bool forceOp\n"
                     ")\n"
                 )
                     << "Coupled maps were improperly specified." << nl
@@ -1878,11 +1880,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 {
                     FatalErrorIn
                     (
+                        "\n"
                         "const changeMap dynamicTopoFvMesh::bisectEdge\n"
                         "(\n"
-                        "	const label eIndex,\n"
-                        "	bool checkOnly,\n"
-                        "	bool forceOp\n"
+                        "    const label eIndex,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
                         ")\n"
                     )
                         << "Coupled topo-change for slave failed." << nl
@@ -1922,11 +1925,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         {
             FatalErrorIn
             (
+                "\n"
                 "const changeMap dynamicTopoFvMesh::bisectEdge\n"
                 "(\n"
-                "	const label eIndex,\n"
-                "	bool checkOnly,\n"
-                "	bool forceOp\n"
+                "    const label eIndex,\n"
+                "    bool checkOnly,\n"
+                "    bool forceOp\n"
                 ")\n"
             )
                 << " Forcing bisection on edge: " << eIndex
@@ -2829,11 +2833,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                     FatalErrorIn
                     (
+                        "\n"
                         "const changeMap dynamicTopoFvMesh::bisectEdge\n"
                         "(\n"
-                        "	const label eIndex,\n"
-                        "	bool checkOnly,\n"
-                        "	bool forceOp\n"
+                        "    const label eIndex,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
                         ")\n"
                     )
                         << "Failed to build coupled edge maps."
@@ -2964,11 +2969,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                     FatalErrorIn
                     (
+                        "\n"
                         "const changeMap dynamicTopoFvMesh::bisectEdge\n"
                         "(\n"
-                        "	const label eIndex,\n"
-                        "	bool checkOnly,\n"
-                        "	bool forceOp\n"
+                        "    const label eIndex,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
                         ")\n"
                     )
                         << "Failed to build coupled face maps."
@@ -3182,9 +3188,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
         (
             "const changeMap dynamicTopoFvMesh::trisectFace\n"
             "(\n"
-            "	const label fIndex,\n"
-            "	bool checkOnly,\n"
-            "	bool forceOp\n"
+            "    const label fIndex,\n"
+            "    bool checkOnly,\n"
+            "    bool forceOp\n"
             ")\n"
         )
             << " Invalid index: " << fIndex
@@ -3238,9 +3244,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 (
                     "const changeMap dynamicTopoFvMesh::trisectFace\n"
                     "(\n"
-                    "	const label fIndex,\n"
-                    "	bool checkOnly,\n"
-                    "	bool forceOp\n"
+                    "    const label fIndex,\n"
+                    "    bool checkOnly,\n"
+                    "    bool forceOp\n"
                     ")\n"
                 )
                     << "Coupled maps were improperly specified." << nl
@@ -3284,9 +3290,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     (
                         "const changeMap dynamicTopoFvMesh::trisectFace\n"
                         "(\n"
-                        "	const label fIndex,\n"
-                        "	bool checkOnly,\n"
-                        "	bool forceOp\n"
+                        "    const label fIndex,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
                         ")\n"
                     )
                         << "Coupled topo-change for slave failed." << nl
@@ -3328,9 +3334,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
             (
                 "const changeMap dynamicTopoFvMesh::trisectFace\n"
                 "(\n"
-                "	const label fIndex,\n"
-                "	bool checkOnly,\n"
-                "	bool forceOp\n"
+                "    const label fIndex,\n"
+                "    bool checkOnly,\n"
+                "    bool forceOp\n"
                 ")\n"
             )
                 << " Forcing trisection on face: " << fIndex
@@ -3596,9 +3602,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
             (
                 "const changeMap dynamicTopoFvMesh::trisectFace\n"
                 "(\n"
-                "	const label fIndex,\n"
-                "	bool checkOnly,\n"
-                "	bool forceOp\n"
+                "    const label fIndex,\n"
+                "    bool checkOnly,\n"
+                "    bool forceOp\n"
                 ")\n"
             )
                 << "Failed to determine a face match."
@@ -4087,9 +4093,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                         (
                             "const changeMap dynamicTopoFvMesh::trisectFace\n"
                             "(\n"
-                            "	const label fIndex,\n"
-                            "	bool checkOnly,\n"
-                            "	bool forceOp\n"
+                            "    const label fIndex,\n"
+                            "    bool checkOnly,\n"
+                            "    bool forceOp\n"
                             ")\n"
                         )
                             << "Failed to build coupled edge maps."
@@ -4229,9 +4235,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                         (
                             "const changeMap dynamicTopoFvMesh::trisectFace\n"
                             "(\n"
-                            "	const label fIndex,\n"
-                            "	bool checkOnly,\n"
-                            "	bool forceOp\n"
+                            "    const label fIndex,\n"
+                            "    bool checkOnly,\n"
+                            "    bool forceOp\n"
                             ")\n"
                         )
                             << "Failed to build coupled face maps."
@@ -4434,9 +4440,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 (
                     "const changeMap dynamicTopoFvMesh::trisectFace\n"
                     "(\n"
-                    "	const label fIndex,\n"
-                    "	bool checkOnly,\n"
-                    "	bool forceOp\n"
+                    "    const label fIndex,\n"
+                    "    bool checkOnly,\n"
+                    "    bool forceOp\n"
                     ")\n"
                 )
                     << "Failed to determine a face match."
@@ -5895,9 +5901,9 @@ void dynamicTopoFvMesh::splitInternalFaces
             (
                 "dynamicTopoFvMesh::splitInternalFaces\n"
                 "(\n"
-                "	const label patchIndex,\n"
-                "	const labelList& internalFaces,\n"
-                "	const Map<bool>& cellColors\n"
+                "    const label patchIndex,\n"
+                "    const labelList& internalFaces,\n"
+                "    const Map<bool>& cellColors\n"
                 ")\n"
             )
                 << nl << " Face: "

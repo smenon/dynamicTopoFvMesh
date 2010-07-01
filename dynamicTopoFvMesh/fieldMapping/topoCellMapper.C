@@ -40,21 +40,25 @@ Author
 #include "topoCellMapper.H"
 #include "demandDrivenData.H"
 
+namespace Foam
+{
+
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 //- Clear out local storage
-void Foam::topoCellMapper::clearOut()
+void topoCellMapper::clearOut()
 {
     deleteDemandDrivenData(directAddrPtr_);
     deleteDemandDrivenData(interpolationAddrPtr_);
     deleteDemandDrivenData(weightsPtr_);
+    deleteDemandDrivenData(insertedCellLabelsPtr_);
     deleteDemandDrivenData(volumesPtr_);
     deleteDemandDrivenData(centresPtr_);
 }
 
 
 //- Calculate addressing for interpolative mapping
-void Foam::topoCellMapper::calcAddressing() const
+void topoCellMapper::calcAddressing() const
 {
     if
     (
@@ -66,6 +70,12 @@ void Foam::topoCellMapper::calcAddressing() const
             << "Addressing already calculated."
             << abort(FatalError);
     }
+
+    // Allocate for inserted cell labels
+    label nInsertedCells = 0;
+
+    insertedCellLabelsPtr_ = new labelList(mesh_.nCells(), -1);
+    labelList& insertedCells = *insertedCellLabelsPtr_;
 
     if (direct())
     {
@@ -114,20 +124,31 @@ void Foam::topoCellMapper::calcAddressing() const
                 addr[cellI] = labelList(1, cm[cellI]);
             }
 
-            if (cm[cellI] < 0)
+            // Check for inserted cells without any addressing
+            if (cm[cellI] < 0 && addr[cellI].empty())
             {
-                FatalErrorIn("void topoCellMapper::calcAddressing() const")
-                    << "Cell " << cellI
-                    << " is not mapped from any parent cell."
-                    << abort(FatalError);
+                insertedCells[nInsertedCells++] = cellI;
             }
         }
+    }
+
+    // Shorten inserted cells to actual size
+    insertedCells.setSize(nInsertedCells);
+
+    if (nInsertedCells)
+    {
+        FatalErrorIn("void topoCellMapper::calcAddressing() const")
+            << " Found " << nInsertedCells << " which are"
+            << " not mapped from any parent cells." << nl
+            << " List: " << nl
+            << insertedCells
+            << abort(FatalError);
     }
 }
 
 
 //- Calculate inverse-distance weights for interpolative mapping
-void Foam::topoCellMapper::calcInverseDistanceWeights() const
+void topoCellMapper::calcInverseDistanceWeights() const
 {
     if (weightsPtr_)
     {
@@ -193,7 +214,7 @@ void Foam::topoCellMapper::calcInverseDistanceWeights() const
 
 
 //- Calculate intersection weights for conservative mapping
-void Foam::topoCellMapper::calcIntersectionWeightsAndCentres() const
+void topoCellMapper::calcIntersectionWeightsAndCentres() const
 {
     if (volumesPtr_ || centresPtr_)
     {
@@ -261,7 +282,7 @@ void Foam::topoCellMapper::calcIntersectionWeightsAndCentres() const
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
-Foam::topoCellMapper::topoCellMapper
+topoCellMapper::topoCellMapper
 (
     const mapPolyMesh& mpm,
     const topoMapper& mapper
@@ -274,39 +295,66 @@ Foam::topoCellMapper::topoCellMapper
     directAddrPtr_(NULL),
     interpolationAddrPtr_(NULL),
     weightsPtr_(NULL),
+    insertedCellLabelsPtr_(NULL),
     volumesPtr_(NULL),
     centresPtr_(NULL)
-{}
+{
+    // Check for possibility of direct mapping
+    if
+    (
+        (min(mpm_.cellMap()) > -1)
+     && mpm_.cellsFromPointsMap().empty()
+     && mpm_.cellsFromEdgesMap().empty()
+     && mpm_.cellsFromFacesMap().empty()
+     && mpm_.cellsFromCellsMap().empty()
+    )
+    {
+        direct_ = true;
+    }
+    else
+    {
+        direct_ = false;
+    }
+}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-Foam::topoCellMapper::~topoCellMapper()
+topoCellMapper::~topoCellMapper()
 {
     clearOut();
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-Foam::label Foam::topoCellMapper::size() const
+//- Return size
+label topoCellMapper::size() const
 {
-    return mpm_.cellMap().size();
+    return mesh_.nCells();
 }
 
 
-Foam::label Foam::topoCellMapper::sizeBeforeMapping() const
+//- Return size before mapping
+label topoCellMapper::sizeBeforeMapping() const
 {
     return mpm_.nOldCells();
 }
 
 
-const Foam::unallocLabelList&
-Foam::topoCellMapper::directAddressing() const
+//- Is the mapping direct
+bool topoCellMapper::direct() const
+{
+    return direct_;
+}
+
+
+//- Return direct addressing
+const unallocLabelList& topoCellMapper::directAddressing() const
 {
     if (!direct())
     {
         FatalErrorIn
         (
-            "const unallocLabelList&"
+            "const unallocLabelList& "
             "topoCellMapper::directAddressing() const"
         )   << "Requested direct addressing for an interpolative mapper."
             << abort(FatalError);
@@ -321,14 +369,14 @@ Foam::topoCellMapper::directAddressing() const
 }
 
 
-const Foam::labelListList&
-Foam::topoCellMapper::addressing() const
+//- Return interpolation addressing
+const labelListList& topoCellMapper::addressing() const
 {
     if (direct())
     {
         FatalErrorIn
         (
-            "const labelListList&"
+            "const labelListList& "
             "topoCellMapper::addressing() const"
         )   << "Requested interpolative addressing for a direct mapper."
             << abort(FatalError);
@@ -343,14 +391,14 @@ Foam::topoCellMapper::addressing() const
 }
 
 
-const Foam::scalarListList&
-Foam::topoCellMapper::weights() const
+//- Return weights
+const scalarListList& topoCellMapper::weights() const
 {
     if (direct())
     {
         FatalErrorIn
         (
-            "const scalarListList&"
+            "const scalarListList& "
             "topoCellMapper::weights() const"
         )   << "Requested interpolative weights for a direct mapper."
             << abort(FatalError);
@@ -365,14 +413,32 @@ Foam::topoCellMapper::weights() const
 }
 
 
-const Foam::List<Foam::scalarField>&
-Foam::topoCellMapper::intersectionWeights() const
+//- Are there any inserted cells
+bool topoCellMapper::insertedObjects() const
+{
+    return insertedObjectLabels().size();
+}
+
+
+//- Return list of inserted cells
+const labelList& topoCellMapper::insertedObjectLabels() const
+{
+    if (!insertedCellLabelsPtr_)
+    {
+        calcAddressing();
+    }
+
+    return *insertedCellLabelsPtr_;
+}
+
+
+const List<scalarField>& topoCellMapper::intersectionWeights() const
 {
     if (direct())
     {
         FatalErrorIn
         (
-            "const List<scalarField>&"
+            "const List<scalarField>& "
             "topoCellMapper::intersectionWeights() const"
         )   << "Requested interpolative weights for a direct mapper."
             << abort(FatalError);
@@ -387,14 +453,13 @@ Foam::topoCellMapper::intersectionWeights() const
 }
 
 
-const Foam::List<Foam::vectorField>&
-Foam::topoCellMapper::intersectionCentres() const
+const List<vectorField>& topoCellMapper::intersectionCentres() const
 {
     if (direct())
     {
         FatalErrorIn
         (
-            "const List<vectorField>&"
+            "const List<vectorField>& "
             "topoCellMapper::intersectionCentres() const"
         )   << "Requested interpolative weights for a direct mapper."
             << abort(FatalError);
@@ -410,25 +475,17 @@ Foam::topoCellMapper::intersectionCentres() const
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void Foam::topoCellMapper::operator=
-(
-    const topoCellMapper& rhs
-)
+void topoCellMapper::operator=(const topoCellMapper& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorIn("topoCellMapper::operator=")
+        FatalErrorIn("void topoCellMapper::operator=")
             << "Attempted assignment to self"
             << abort(FatalError);
     }
 }
 
-
-// * * * * * * * * * * * * * * * Friend Functions  * * * * * * * * * * * * * //
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
+} // End namespace Foam
 
 // ************************************************************************* //

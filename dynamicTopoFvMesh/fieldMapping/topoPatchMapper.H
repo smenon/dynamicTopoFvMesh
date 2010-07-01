@@ -23,12 +23,12 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    topoCellMapper
+    topoPatchMapper
 
 Description
-    This object provides mapping and fill-in information for internal
-    cell data between the two meshes after topological changes.
-    It is constructed from mapPolyMesh.
+    This object provides mapping and fill-in information for patch data
+    between the two meshes after the topological change.  It is
+    constructed from mapPolyMesh.
 
 Author
     Sandeep Menon
@@ -36,14 +36,12 @@ Author
     All rights reserved
 
 SourceFiles
-    topoCellMapper.C
+    topoPatchMapper.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef topoCellMapper_H
-#define topoCellMapper_H
-
-#include "morphFieldMapper.H"
+#ifndef topoPatchMapper_H
+#define topoPatchMapper_H
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -55,17 +53,17 @@ class topoMapper;
 class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
-                        Class topoCellMapper Declaration
+                    Class topoPatchMapper Declaration
 \*---------------------------------------------------------------------------*/
 
-class topoCellMapper
+class topoPatchMapper
 :
-    public morphFieldMapper
+    public fvPatchFieldMapper
 {
     // Private data
 
-        //- Reference to polyMesh
-        const polyMesh& mesh_;
+        //- Reference to patch
+        const polyPatch& patch_;
 
         //- Reference to mapPolyMesh
         const mapPolyMesh& mpm_;
@@ -87,31 +85,16 @@ class topoCellMapper
         //- Inverse-distance weights
         mutable scalarListList* weightsPtr_;
 
-        //- Inserted cells
-        mutable labelList* insertedCellLabelsPtr_;
-
-        //- Interpolation volumes
-        mutable List<scalarField>* volumesPtr_;
-
-        //- Interpolation centres
-        mutable List<vectorField>* centresPtr_;
-
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
-        topoCellMapper(const topoCellMapper&);
+        topoPatchMapper(const topoPatchMapper&);
 
         //- Disallow default bitwise assignment
-        void operator=(const topoCellMapper&);
+        void operator=(const topoPatchMapper&);
 
-        //- Calculate addressing for interpolative mapping
+        //- Calculate addressing for mapping
         void calcAddressing() const;
-
-        //- Calculate inverse-distance weights for interpolative mapping
-        void calcInverseDistanceWeights() const;
-
-        //- Calculate intersection weights for conservative mapping
-        void calcIntersectionWeightsAndCentres() const;
 
         //- Clear out local storage
         void clearOut();
@@ -121,22 +104,23 @@ public:
     // Constructors
 
         //- Construct from mapPolyMesh
-        topoCellMapper
+        topoPatchMapper
         (
+            const polyPatch& patch,
             const mapPolyMesh& mpm,
             const topoMapper& mapper
         );
 
     // Destructor
 
-        virtual ~topoCellMapper();
+        virtual ~topoPatchMapper();
 
     // Member Functions
 
         //- Return size
         virtual label size() const;
 
-        //- Return size before mapping
+        //- Return size of field before mapping
         virtual label sizeBeforeMapping() const;
 
         //- Is the mapping direct
@@ -145,23 +129,11 @@ public:
         //- Return direct addressing
         virtual const unallocLabelList& directAddressing() const;
 
-        //- Return interpolation addressing
+        //- Return interpolated addressing
         virtual const labelListList& addressing() const;
 
-        //- Return weights
+        //- Return interpolaion weights
         virtual const scalarListList& weights() const;
-
-        //- Are there any inserted cells
-        virtual bool insertedObjects() const;
-
-        //- Return list of inserted cells
-        virtual const labelList& insertedObjectLabels() const;
-
-        //- Return intersection volume weights
-        const List<scalarField>& intersectionWeights() const;
-
-        //- Return intersection volumes centres
-        const List<vectorField>& intersectionCentres() const;
 };
 
 
@@ -170,8 +142,9 @@ public:
 } // End namespace Foam
 
 #ifdef NoRepository
-#    include "topoCellMapper.C"
+#include "topoPatchMapper.C"
 #endif
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #endif

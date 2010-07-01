@@ -1785,7 +1785,11 @@ void dynamicTopoFvMesh::setFaceMapping
     }
 
     // Ensure compatible sizes.
-    if (mapFaces.size() != mapWeights.size())
+    if
+    (
+        (mapFaces.size() != mapWeights.size()) ||
+        (mapFaces.size() != mapCentres.size())
+    )
     {
         FatalErrorIn
         (

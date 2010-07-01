@@ -37,9 +37,8 @@ Author
 
 #include "topoMapper.H"
 #include "topoCellMapper.H"
-#include "faceMapper.H"
-#include "fvSurfaceMapper.H"
-#include "fvBoundaryMeshMapper.H"
+#include "topoSurfaceMapper.H"
+#include "topoBoundaryMeshMapper.H"
 #include "volFields.H"
 
 namespace Foam
@@ -115,28 +114,16 @@ topoMapper::~topoMapper()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 //- Return reference to the mesh
-const fvMesh&
-topoMapper::mesh() const
+const fvMesh& topoMapper::mesh() const
 {
     return mesh_;
 }
 
 
 //- Return reference to objectRegistry storing fields.
-const objectRegistry&
-topoMapper::db() const
+const objectRegistry& topoMapper::db() const
 {
     return mesh_;
-}
-
-
-//- Return mapping method
-label topoMapper::method
-(
-    const word& typeName
-) const
-{
-    return -1;
 }
 
 
@@ -145,7 +132,6 @@ void topoMapper::setMapper(const mapPolyMesh& mpm)
 {
     if
     (
-        faceMap_.valid() ||
         cellMap_.valid() ||
         surfaceMap_.valid() ||
         boundaryMap_.valid()
@@ -159,10 +145,9 @@ void topoMapper::setMapper(const mapPolyMesh& mpm)
     }
 
     // Set pointers
-    faceMap_.set(new faceMapper(mpm));
     cellMap_.set(new topoCellMapper(mpm, *this));
-    surfaceMap_.set(new fvSurfaceMapper(mesh(), faceMap_()));
-    boundaryMap_.set(new fvBoundaryMeshMapper(mesh(), faceMap_()));
+    surfaceMap_.set(new topoSurfaceMapper(mpm, *this));
+    boundaryMap_.set(new topoBoundaryMeshMapper(mpm, *this));
 }
 
 
@@ -191,32 +176,28 @@ void topoMapper::setCellWeights
 
 
 //- Fetch face weights
-const Map<scalarField>&
-topoMapper::faceWeights() const
+const Map<scalarField>& topoMapper::faceWeights() const
 {
     return faceWeights_;
 }
 
 
 //- Fetch cell weights
-const Map<scalarField>&
-topoMapper::cellWeights() const
+const Map<scalarField>& topoMapper::cellWeights() const
 {
     return cellWeights_;
 }
 
 
 //- Fetch face centres
-const Map<vectorField>&
-topoMapper::faceCentres() const
+const Map<vectorField>& topoMapper::faceCentres() const
 {
     return faceCentres_;
 }
 
 
 //- Fetch cell centres
-const Map<vectorField>&
-topoMapper::cellCentres() const
+const Map<vectorField>& topoMapper::cellCentres() const
 {
     return cellCentres_;
 }
@@ -264,8 +245,7 @@ void topoMapper::setOldCellCentres
 
 
 //- Return old cell-centre information
-const volVectorField&
-topoMapper::oldCentres() const
+const volVectorField& topoMapper::oldCentres() const
 {
     if (!oldCellCentresPtr_)
     {
@@ -282,8 +262,7 @@ topoMapper::oldCentres() const
 
 //- Fetch the gradient field (template specialisation)
 template <>
-const volVectorField&
-topoMapper::gradient(const word& name) const
+const volVectorField& topoMapper::gradient(const word& name) const
 {
     return sGrads_[name]();
 }
@@ -291,8 +270,7 @@ topoMapper::gradient(const word& name) const
 
 //- Fetch the gradient field (template specialisation)
 template <>
-const volTensorField&
-topoMapper::gradient(const word& name) const
+const volTensorField& topoMapper::gradient(const word& name) const
 {
     return vGrads_[name]();
 }
@@ -306,8 +284,7 @@ void topoMapper::correctFluxes()
 
 
 //- Return volume mapper
-const topoCellMapper&
-topoMapper::volMap() const
+const topoCellMapper& topoMapper::volMap() const
 {
     if (!cellMap_.valid())
     {
@@ -323,14 +300,13 @@ topoMapper::volMap() const
 
 
 //- Return surface mapper
-const fvSurfaceMapper&
-topoMapper::surfaceMap() const
+const topoSurfaceMapper& topoMapper::surfaceMap() const
 {
     if (!surfaceMap_.valid())
     {
         FatalErrorIn
         (
-            "const fvSurfaceMapper& topoMapper::surfaceMap()"
+            "const topoSurfaceMapper& topoMapper::surfaceMap()"
         ) << nl << " Surface mapper has not been set. "
           << abort(FatalError);
     }
@@ -340,14 +316,13 @@ topoMapper::surfaceMap() const
 
 
 //- Return boundary mapper
-const fvBoundaryMeshMapper&
-topoMapper::boundaryMap() const
+const topoBoundaryMeshMapper& topoMapper::boundaryMap() const
 {
     if (!boundaryMap_.valid())
     {
         FatalErrorIn
         (
-            "const fvBoundaryMapper& topoMapper::boundaryMap()"
+            "const topoBoundaryMeshMapper& topoMapper::boundaryMap()"
         ) << nl << " Boundary mapper has not been set. "
           << abort(FatalError);
     }
@@ -360,7 +335,6 @@ topoMapper::boundaryMap() const
 void topoMapper::clear()
 {
     // Clear out pointers
-    faceMap_.clear();
     cellMap_.clear();
     surfaceMap_.clear();
     boundaryMap_.clear();

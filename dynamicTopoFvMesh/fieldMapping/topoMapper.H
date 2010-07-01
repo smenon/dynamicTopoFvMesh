@@ -48,10 +48,9 @@ namespace Foam
 {
 
 // Class forward declarations
-class faceMapper;
 class topoCellMapper;
-class fvSurfaceMapper;
-class fvBoundaryMeshMapper;
+class topoSurfaceMapper;
+class topoBoundaryMeshMapper;
 class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
@@ -65,17 +64,14 @@ class topoMapper
         //- Reference to fvMesh
         const fvMesh& mesh_;
 
-        //- Face mapper
-        autoPtr<faceMapper> faceMap_;
-
         //- Cell mapper
         autoPtr<topoCellMapper> cellMap_;
 
         //- Surface mapper
-        autoPtr<fvSurfaceMapper> surfaceMap_;
+        autoPtr<topoSurfaceMapper> surfaceMap_;
 
         //- Boundary mapper
-        autoPtr<fvBoundaryMeshMapper> boundaryMap_;
+        autoPtr<topoBoundaryMeshMapper> boundaryMap_;
 
     // Demand-driven private data
 
@@ -121,7 +117,6 @@ public:
         topoMapper(const fvMesh& mesh)
         :
             mesh_(mesh),
-            faceMap_(NULL),
             cellMap_(NULL),
             surfaceMap_(NULL),
             boundaryMap_(NULL),
@@ -139,9 +134,6 @@ public:
 
         //- Return reference to objectRegistry storing fields.
         const objectRegistry& db() const;
-
-        //- Return mapping method
-        label method(const word& typeName) const;
 
         //- Set mapping information
         void setMapper(const mapPolyMesh& mpm);
@@ -192,10 +184,10 @@ public:
         const topoCellMapper& volMap() const;
 
         //- Return surface mapper
-        const fvSurfaceMapper& surfaceMap() const;
+        const topoSurfaceMapper& surfaceMap() const;
 
         //- Return boundary mapper
-        const fvBoundaryMeshMapper& boundaryMap() const;
+        const topoBoundaryMeshMapper& boundaryMap() const;
 
         //- Clear out member data
         void clear();
