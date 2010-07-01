@@ -2,6 +2,7 @@
 set -x
 
 wmakeLnInclude coupleMap
+wmakeLnInclude lengthScaleEstimator
 wmakeLnInclude conservativeMeshToMesh
 wmakeLnInclude freeSurface
 wmakeLnInclude mesquiteSmoother

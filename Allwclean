@@ -3,6 +3,7 @@ set -x
 
 # Clean out existing object files
 wclean coupleMap
+wclean lengthScaleEstimator
 wclean conservativeMeshToMesh
 wclean mesquiteSmoother
 wclean freeSurface
