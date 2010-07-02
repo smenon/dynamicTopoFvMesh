@@ -426,7 +426,178 @@ bool dynamicTopoFvMesh::findCommonEdge
 }
 
 
-// Obtain map weighting factors for a cell.
+// Obtain map weighting factors for a face
+void dynamicTopoFvMesh::computeFaceWeights
+(
+    const label fIndex,
+    const labelList& mapCandidates,
+    labelList& parents,
+    scalarField& weights,
+    vectorField& centres
+) const
+{
+    scalar searchFactor = 1.0;
+
+    label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
+
+    // Maintain a list of candidates and intersection points
+    labelList candidates;
+
+    while (nAttempts < 10)
+    {
+        // Obtain candidate parents for this cell
+        candidates =
+        (
+            faceParents
+            (
+                fIndex,
+                searchFactor,
+                mapCandidates
+            )
+        );
+
+        // Set sizes
+        boolList intersects(candidates.size(), false);
+
+        // Test for intersections
+        forAll(candidates, indexI)
+        {
+            intersects[indexI] =
+            (
+                testFaceIntersection
+                (
+                    fIndex,
+                    candidates[indexI]
+                )
+            );
+
+            if (intersects[indexI])
+            {
+                nIntersects++;
+            }
+        }
+
+        if ((nIntersects == nOldIntersects) && (nIntersects != 0))
+        {
+            if (debug > 3)
+            {
+                Info << " Face: " << fIndex << nl
+                     << " nCandidates: " << candidates.size() << nl
+                     << " nIntersects: " << nIntersects
+                     << endl;
+            }
+
+            // Set sizes
+            parents.setSize(nIntersects, -1);
+            weights.setSize(nIntersects, 0.0);
+            centres.setSize(nIntersects, vector::zero);
+
+            // Reset counter
+            nIntersects = 0;
+
+            forAll(intersects, indexI)
+            {
+                if (intersects[indexI])
+                {
+                    // Compute actual intersections
+                    vectorField tP(0);
+
+                    // Skip false positives
+                    if (tP.size() < 3)
+                    {
+                        continue;
+                    }
+
+                    parents[nIntersects] = candidates[indexI];
+
+                    // Compute weights
+
+                    nIntersects++;
+                }
+            }
+
+            // Shorten to actual sizes
+            parents.setSize(nIntersects);
+            weights.setSize(nIntersects);
+            centres.setSize(nIntersects);
+
+            break;
+        }
+        else
+        {
+            nAttempts++;
+
+            // Copy / reset parameters
+            nOldIntersects = nIntersects;
+            nIntersects = 0;
+
+            // Expand the search radius and try again.
+            searchFactor *= 1.4;
+        }
+    }
+
+    // Fetch the face area
+    scalar faceArea = 0.0;
+
+    // Test weights for consistency
+    if (mag(faceArea - sum(weights)) > 1e-16)
+    {
+        // Write out for post-processing
+        label uIdx = 0;
+        labelList unMatched(candidates.size() - parents.size(), -1);
+
+        forAll(candidates, cI)
+        {
+            if (findIndex(parents, candidates[cI]) == -1)
+            {
+                unMatched[uIdx++] = candidates[cI];
+            }
+        }
+
+        writeVTK("nCell_" + Foam::name(fIndex), fIndex, 2, false, true);
+        writeVTK("oCell_" + Foam::name(fIndex), candidates, 2, true, true);
+        writeVTK("mCell_" + Foam::name(fIndex), parents, 2, true, true);
+        writeVTK("uCell_" + Foam::name(fIndex), unMatched, 2, true, true);
+
+        // Write out weights
+        forAll(parents, indexI)
+        {
+            Info << parents[indexI] << ": "
+                 << setprecision(16)
+                 << weights[indexI]
+                 << endl;
+        }
+
+        FatalErrorIn
+        (
+            "\n"
+            "void dynamicTopoFvMesh::computeFaceWeights\n"
+            "(\n"
+            "    const label fIndex,\n"
+            "    const labelList& mapCandidates,\n"
+            "    labelList& parents,\n"
+            "    scalarField& weights,\n"
+            "    vectorField& centres\n"
+            ") const"
+        )
+            << "Encountered non-conservative weighting factors." << nl
+            << " Face: " << fIndex << nl
+            << " mapCandidates: " << mapCandidates << nl
+            << " nCandidates: " << candidates.size() << nl
+            << " nParents: " << parents.size() << nl
+            << " nAttempts: " << nAttempts << nl
+            << setprecision(16)
+            << " Face area: " << faceArea << nl
+            << " Sum(Weights): " << sum(weights) << nl
+            << " Error: " << (faceArea - sum(weights)) << nl
+            << " Norm Sum(Weights): " << sum(weights/faceArea) << nl
+            << " Norm Error: " << mag(1.0 - sum(weights/faceArea))
+            << abort(FatalError);
+    }
+}
+
+
+// Obtain map weighting factors for a cell
 void dynamicTopoFvMesh::computeCellWeights
 (
     const label cIndex,
@@ -464,7 +635,7 @@ void dynamicTopoFvMesh::computeCellWeights
         {
             intersects[indexI] =
             (
-                testIntersection
+                testCellIntersection
                 (
                     cIndex,
                     candidates[indexI]
@@ -692,12 +863,23 @@ void dynamicTopoFvMesh::computeCellWeights
 }
 
 
+// Test for intersection between faces in old/new meshes
+bool dynamicTopoFvMesh::testFaceIntersection
+(
+    const label newFaceIndex,
+    const label oldFaceIndex
+) const
+{
+    return true;
+}
+
+
 // Test for intersection between cells in old/new meshes
 //   - Uses the static separating axis test for polyhedra,
 //     outlined in work by David Eberly
 //     'Intersection of Convex Objects: The Method of Separating Axes'
 //     http://www.geometrictools.com/
-bool dynamicTopoFvMesh::testIntersection
+bool dynamicTopoFvMesh::testCellIntersection
 (
     const label newCellIndex,
     const label oldCellIndex
@@ -1589,6 +1771,151 @@ void dynamicTopoFvMesh::convexSetVolume
 }
 
 
+// Obtain a list of possible parent faces from the old mesh
+labelList dynamicTopoFvMesh::faceParents
+(
+    const label fIndex,
+    const scalar searchFactor,
+    const labelList& oldCandidates
+) const
+{
+    labelStaticHashSet masterFaces;
+
+    const face& faceToCheck = faces_[fIndex];
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Determine the patch that this face belongs to..
+    label patchIndex = whichPatch(fIndex);
+
+    if (patchIndex == -1)
+    {
+        FatalErrorIn
+        (
+            "\n"
+            "labelList dynamicTopoFvMesh::faceParents\n"
+            "(\n"
+            "    const label fIndex,\n"
+            "    const scalar searchFactor,\n"
+            "    const labelList& oldCandidates\n"
+            ") const"
+        )
+            << nl << " Request for parents of an internal face: "
+            << fIndex << ":: " << faces_[fIndex] << nl
+            << " oldCandidates: " << oldCandidates
+            << abort(FatalError);
+    }
+
+    // Fetch patch start
+    label patchStart = boundary[patchIndex].start();
+
+    // Insert the old candidates first
+    // Assume that candidates / parents are global face indices,
+    // and all addressing into the same patch.
+    forAll(oldCandidates, faceI)
+    {
+        if (oldCandidates[faceI] < 0)
+        {
+            continue;
+        }
+
+        if (boundary.whichPatch(oldCandidates[faceI]) != patchIndex)
+        {
+            continue;
+        }
+
+        if (oldCandidates[faceI] < nOldFaces_)
+        {
+            masterFaces.insert
+            (
+                (oldCandidates[faceI] - patchStart),
+                empty()
+            );
+        }
+        else
+        if (faceParents_.found(oldCandidates[faceI]))
+        {
+            const labelList& nParents = faceParents_[oldCandidates[faceI]];
+
+            forAll(nParents, fI)
+            {
+                masterFaces.insert
+                (
+                    (nParents[fI] - patchStart),
+                    empty()
+                );
+            }
+        }
+    }
+
+    // Fetch connectivity from the old mesh.
+    const labelListList& oldFaceFaces = boundary[patchIndex].faceFaces();
+
+    for (label attempt = 0; attempt < 5; attempt++)
+    {
+        // Fetch the initial set of candidates
+        labelList initList = masterFaces.toc();
+
+        // Accumulate a larger stencil of face neighbours
+        forAll(initList, indexI)
+        {
+            const labelList& ff = oldFaceFaces[initList[indexI]];
+
+            forAll(ff, faceI)
+            {
+                masterFaces.insert(ff[faceI], empty());
+            }
+        }
+    }
+
+    // Fetch the list of face points
+    pointField facePoints(faceToCheck.size());
+
+    forAll(facePoints, pointI)
+    {
+        facePoints[pointI] = oldPoints_[faceToCheck[pointI]];
+    }
+
+    // Prepare an axis-aligned bounding box around the face,
+    // and add faces according to face-centre positions.
+    boundBox faceBox(facePoints, false);
+
+    // Define a search radius
+    vector bC = faceBox.midpoint();
+    vector bMax = searchFactor * (faceBox.max() - bC);
+
+    const vectorField& faceCentres = boundary[patchIndex].faceCentres();
+
+    label nEntries = 0;
+    labelList finalFaces(masterFaces.size(), -1);
+
+    forAllConstIter(labelStaticHashSet, masterFaces, fIter)
+    {
+        vector xC = (faceCentres[fIter.key()] - bC);
+
+        if ((xC & xC) < (bMax & bMax))
+        {
+            // Store global indices in finalFaces
+            finalFaces[nEntries++] = (fIter.key() + patchStart);
+        }
+    }
+
+    // Shrink to actual size
+    finalFaces.setSize(nEntries);
+
+    if (debug > 3)
+    {
+        Info << " Face: " << fIndex
+             << " No. of parent candidates: "
+             << nEntries
+             << " searchFactor: "
+             << searchFactor
+             << endl;
+    }
+
+    return finalFaces;
+}
+
+
 // Obtain a list of possible parent cells from the old mesh.
 labelList dynamicTopoFvMesh::cellParents
 (
@@ -1598,9 +1925,6 @@ labelList dynamicTopoFvMesh::cellParents
 ) const
 {
     labelStaticHashSet masterCells;
-
-    // Fetch connectivity from the old mesh.
-    const labelListList& fromCellCells = polyMesh::cellCells();
 
     // Insert the old candidates first
     forAll(oldCandidates, cellI)
@@ -1626,6 +1950,9 @@ labelList dynamicTopoFvMesh::cellParents
         }
     }
 
+    // Fetch connectivity from the old mesh.
+    const labelListList& oldCellCells = polyMesh::cellCells();
+
     for (label attempt = 0; attempt < 5; attempt++)
     {
         // Fetch the initial set of candidates
@@ -1634,7 +1961,7 @@ labelList dynamicTopoFvMesh::cellParents
         // Accumulate a larger stencil of cell neighbours
         forAll(initList, indexI)
         {
-            const labelList& cc = fromCellCells[initList[indexI]];
+            const labelList& cc = oldCellCells[initList[indexI]];
 
             forAll(cc, cellI)
             {
@@ -1668,7 +1995,6 @@ labelList dynamicTopoFvMesh::cellParents
     label nEntries = 0;
     labelList finalCells(masterCells.size(), -1);
 
-    // Count the number of entries
     forAllConstIter(labelStaticHashSet, masterCells, cIter)
     {
         vector xC = (cellCentres[cIter.key()] - bC);
@@ -1784,12 +2110,33 @@ void dynamicTopoFvMesh::setFaceMapping
              << endl;
     }
 
+    bool foundError = false;
+
+    // Check to ensure that internal faces are not mapped
+    // from any faces in the mesh
+    if (patch == -1 && mapFaces.size())
+    {
+        foundError = true;
+    }
+
+    // Check to ensure that boundary faces map
+    // only from other faces on the same patch
+    if (patch > -1 && mapFaces.empty())
+    {
+        foundError = true;
+    }
+
     // Ensure compatible sizes.
     if
     (
         (mapFaces.size() != mapWeights.size()) ||
         (mapFaces.size() != mapCentres.size())
     )
+    {
+        foundError = true;
+    }
+
+    if (foundError)
     {
         FatalErrorIn
         (
@@ -1803,35 +2150,36 @@ void dynamicTopoFvMesh::setFaceMapping
             ")"
         )
             << nl << " Incompatible mapping: " << nl
+            << " Face: " << fIndex << nl
             << " mapFaces: " << mapFaces << nl
             << " mapWeights: " << mapWeights << nl
             << " mapCentres: " << mapCentres
             << abort(FatalError);
     }
 
+    // Insert addressing into the list, and overwrite if necessary
+    label index = -1;
+
+    forAll(facesFromFaces_, indexI)
+    {
+        if (facesFromFaces_[indexI].index() == fIndex)
+        {
+            index = indexI;
+            break;
+        }
+    }
+
+    if (index == -1)
+    {
+        sizeUpList(objectMap(fIndex, mapFaces), facesFromFaces_);
+    }
+    else
+    {
+        facesFromFaces_[index].masterObjects() = mapFaces;
+    }
+
     if (mapFaces.size())
     {
-        // Insert weights into the list, and overwrite if necessary
-        label index = -1;
-
-        forAll(facesFromFaces_, indexI)
-        {
-            if (facesFromFaces_[indexI].index() == fIndex)
-            {
-                index = indexI;
-                break;
-            }
-        }
-
-        if (index == -1)
-        {
-            sizeUpList(objectMap(fIndex, mapFaces), facesFromFaces_);
-        }
-        else
-        {
-            facesFromFaces_[index].masterObjects() = mapFaces;
-        }
-
         // Set weights and centres
         faceWeights_.set(fIndex, mapWeights);
         faceCentres_.set(fIndex, mapCentres);

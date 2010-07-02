@@ -2760,6 +2760,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     )
                 );
 
+                // Set this face aside for mapping
+                modifiedFaces.set(newFaceIndex, empty());
+
                 // Ensure that all edges of this face are
                 // on the boundary.
                 forAll(newFE, edgeI)
@@ -3148,7 +3151,43 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Set face mapping information for modified faces
     forAllConstIter(labelHashSet, modifiedFaces, fIter)
     {
-        setFaceMapping(fIter.key());
+        // Decide between default / weighted mapping
+        // based on boundary information
+        if (whichPatch(fIter.key()) == -1)
+        {
+            setFaceMapping(fIter.key());
+        }
+        else
+        {
+            // Fill-in candidate mapping information
+            labelList mF(1, -1);
+
+            labelList parents;
+            scalarField weights;
+            vectorField centres;
+
+            // Obtain weighting factors for this face.
+            computeFaceWeights
+            (
+                fIter.key(),
+                mF,
+                parents,
+                weights,
+                centres
+            );
+
+            // Set the mapping for this face
+            setFaceMapping
+            (
+                fIter.key(),
+                parents,
+                weights,
+                centres
+            );
+
+            // Update faceParents information
+            faceParents_.set(fIter.key(), parents);
+        }
     }
 
     // Set the flag

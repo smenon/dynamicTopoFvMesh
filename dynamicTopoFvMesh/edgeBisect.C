@@ -2656,19 +2656,59 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Set mapping information for old / new faces
     forAll(faceHull, indexI)
     {
-        if (faceHull[indexI] > -1)
-        {
-            setFaceMapping(faceHull[indexI]);
-        }
-
-        if (addedFaceIndices[indexI] > -1)
-        {
-            setFaceMapping(addedFaceIndices[indexI]);
-        }
-
+        // Interior faces get default mapping
         if (addedIntFaceIndices[indexI] > -1)
         {
             setFaceMapping(addedIntFaceIndices[indexI]);
+        }
+
+        // Decide between default / weighted mapping
+        // based on boundary information
+        if (whichPatch(faceHull[indexI]) == -1)
+        {
+            // Interior faces get default mapping
+            setFaceMapping(faceHull[indexI]);
+            setFaceMapping(addedFaceIndices[indexI]);
+        }
+        else
+        {
+            // Compute mapping weights for boundary faces
+            FixedList<label, 2> fmIndex;
+
+            fmIndex[0] = faceHull[indexI];
+            fmIndex[1] = addedFaceIndices[indexI];
+
+            // Fill-in candidate mapping information
+            labelList mF(1, faceHull[indexI]);
+
+            forAll(fmIndex, fmI)
+            {
+                labelList parents;
+                scalarField weights;
+                vectorField centres;
+
+                // Obtain weighting factors for this face.
+                computeFaceWeights
+                (
+                    fmIndex[fmI],
+                    mF,
+                    parents,
+                    weights,
+                    centres
+                );
+
+                // Set the mapping for this face
+                setFaceMapping
+                (
+                    fmIndex[fmI],
+                    parents,
+                    weights,
+                    centres
+                );
+
+                // Update faceParents information
+                faceParents_.set(fmIndex[fmI], parents);
+            }
         }
     }
 

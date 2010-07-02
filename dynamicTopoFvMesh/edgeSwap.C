@@ -2577,8 +2577,8 @@ const changeMap dynamicTopoFvMesh::swap32
 
     // For a 2-2 swap on a boundary edge,
     // add two boundary faces and an edge
-    FixedList<label,2> oldBdyFaceIndex(-1), newBdyFaceIndex(-1);
     label newEdgeIndex = -1;
+    labelList oldBdyFaceIndex(2, -1), newBdyFaceIndex(2, -1);
 
     if (edgePatch > -1)
     {
@@ -3012,7 +3012,31 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         forAll(newBdyFaceIndex, i)
         {
-            setFaceMapping(newBdyFaceIndex[i]);
+            labelList parents;
+            scalarField weights;
+            vectorField centres;
+
+            // Obtain weighting factors for this face.
+            computeFaceWeights
+            (
+                newBdyFaceIndex[i],
+                newBdyFaceIndex,
+                parents,
+                weights,
+                centres
+            );
+
+            // Set the mapping for this face
+            setFaceMapping
+            (
+                newBdyFaceIndex[i],
+                parents,
+                weights,
+                centres
+            );
+
+            // Update faceParents information
+            faceParents_.set(newBdyFaceIndex[i], parents);
         }
     }
 

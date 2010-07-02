@@ -420,7 +420,17 @@ class dynamicTopoFvMesh
             const point& checkPoint
         ) const;
 
-        // Obtain map weighting factors for a cell.
+        // Obtain map weighting factors for a face
+        void computeFaceWeights
+        (
+            const label fIndex,
+            const labelList& mapCandidates,
+            labelList& parents,
+            scalarField& weights,
+            vectorField& centres
+        ) const;
+
+        // Obtain map weighting factors for a cell
         void computeCellWeights
         (
             const label cIndex,
@@ -430,8 +440,15 @@ class dynamicTopoFvMesh
             vectorField& centres
         ) const;
 
+        // Test for intersection between faces in old/new meshes
+        bool testFaceIntersection
+        (
+            const label newFaceIndex,
+            const label oldFaceIndex
+        ) const;
+
         // Test for intersection between cells in old/new meshes
-        bool testIntersection
+        bool testCellIntersection
         (
             const label newCellIndex,
             const label oldCellIndex
@@ -455,6 +472,14 @@ class dynamicTopoFvMesh
             scalar& cVolume,
             vector& cCentre,
             bool output = false
+        ) const;
+
+        // Obtain a list of possible parent faces from the old mesh
+        labelList faceParents
+        (
+            const label fIndex,
+            const scalar searchFactor,
+            const labelList& oldCandidates
         ) const;
 
         // Obtain a list of possible parent cells from the old mesh

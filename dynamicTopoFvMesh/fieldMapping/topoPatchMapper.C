@@ -51,12 +51,179 @@ void topoPatchMapper::clearOut()
     deleteDemandDrivenData(directAddrPtr_);
     deleteDemandDrivenData(interpolationAddrPtr_);
     deleteDemandDrivenData(weightsPtr_);
+    deleteDemandDrivenData(insertedFaceLabelsPtr_);
+}
+
+
+//- Calculate the insertedFaceLabels list
+void topoPatchMapper::calcInsertedFaceLabels() const
+{
+    if (insertedFaceLabelsPtr_)
+    {
+        FatalErrorIn
+        (
+            "void topoPatchMapper::calcInsertedFaceLabels() const"
+        )   << " Inserted labels has already been calculated."
+            << abort(FatalError);
+    }
+
+    // Allocate for inserted face labels
+    label nInsertedFaces = 0;
+
+    insertedFaceLabelsPtr_ = new labelList(size(), -1);
+    labelList& insertedFaces = *insertedFaceLabelsPtr_;
+
+    // Fetch the current boundary
+    const polyBoundaryMesh& boundary = mpm_.mesh().boundaryMesh();
+
+    // Loop through the facesFromFaces map, and ensure that
+    // inserted faces are only mapped from faces on the same patch.
+    const List<objectMap>& fff = mpm_.facesFromFacesMap();
+
+    forAll(fff, objectI)
+    {
+        const objectMap& fffI = fff[objectI];
+
+        // Only pick boundary faces in this patch
+        if (boundary.whichPatch(fffI.index()) == patch_.index())
+        {
+            if (fffI.masterObjects().empty())
+            {
+                FatalErrorIn
+                (
+                    "void topoPatchMapper::calcInsertedFaceLabels() const"
+                )   << " Mapping for inserted boundary face is incorrect."
+                    << " Found an empty masterObjects list."
+                    << nl << " Face: " << fffI.index()
+                    << nl << " Patch: " << patch_.name()
+                    << abort(FatalError);
+            }
+            else
+            {
+                insertedFaces[nInsertedFaces++] = fffI.index();
+            }
+        }
+    }
+
+    // Shorten inserted faces to actual size
+    insertedFaces.setSize(nInsertedFaces);
 }
 
 
 //- Calculate addressing for mapping
 void topoPatchMapper::calcAddressing() const
 {
+    if
+    (
+        directAddrPtr_
+     || interpolationAddrPtr_
+    )
+    {
+        FatalErrorIn("void topoPatchMapper::calcAddressing() const")
+            << "Addressing already calculated."
+            << abort(FatalError);
+    }
+
+    // Information from the old patch
+    const label oldPatchSize = mpm_.oldPatchSizes()[patch_.index()];
+    const label oldPatchStart = mpm_.oldPatchStarts()[patch_.index()];
+    const label oldPatchEnd = oldPatchStart + oldPatchSize;
+
+    // Assemble the maps: slice to patch
+    if (direct())
+    {
+        // Direct mapping - slice to size
+        directAddrPtr_ = new labelList(patch_.patchSlice(mpm_.faceMap()));
+
+        labelList& addr = *directAddrPtr_;
+
+        // Shift to local patch indices.
+        // Also, check mapping for hits into other patches / internal faces.
+        forAll (addr, faceI)
+        {
+            if
+            (
+                addr[faceI] >= oldPatchStart
+             && addr[faceI] < oldPatchEnd
+            )
+            {
+                addr[faceI] -= oldPatchStart;
+            }
+            else
+            {
+                FatalErrorIn
+                (
+                    "void topoPatchMapper::calcAddressing() const"
+                )
+                    << "Addressing into another patch is not allowed."
+                    << nl << " Patch face index: " << faceI
+                    << nl << " addr[faceI]: " << addr[faceI]
+                    << nl << " oldPatchStart: " << oldPatchStart
+                    << nl << " oldPatchSize: " << oldPatchSize
+                    << nl << " oldPatchEnd: " << oldPatchEnd
+                    << abort(FatalError);
+            }
+        }
+    }
+    else
+    {
+        // Interpolative addressing
+        interpolationAddrPtr_ = new labelListList(size());
+        labelListList& addr = *interpolationAddrPtr_;
+
+        // Do mapped faces. Note that this can already be set by facesFromFaces
+        // so check if addressing size still zero.
+        const labelList& fm = patch_.patchSlice(mpm_.faceMap());
+
+        forAll(fm, faceI)
+        {
+            if (fm[faceI] > -1 && addr[faceI].size() == 0)
+            {
+                // Mapped from a single face
+                label oldFace = fm[faceI];
+
+                if
+                (
+                    oldFace >= oldPatchStart
+                 && oldFace < oldPatchEnd
+                )
+                {
+                    oldFace -= oldPatchStart;
+                }
+                else
+                {
+                    FatalErrorIn
+                    (
+                        "void topoPatchMapper::calcAddressing() const"
+                    )
+                        << "Addressing into another patch is not allowed."
+                        << nl << " Patch face index: " << faceI
+                        << nl << " faceMap[faceI]: " << oldFace
+                        << nl << " oldPatchStart: " << oldPatchStart
+                        << nl << " oldPatchSize: " << oldPatchSize
+                        << nl << " oldPatchEnd: " << oldPatchEnd
+                        << abort(FatalError);
+                }
+
+                addr[faceI] = labelList(1, oldFace);
+            }
+        }
+    }
+}
+
+
+//- Calculate inverse-distance weights for interpolative mapping
+void topoPatchMapper::calcInverseDistanceWeights() const
+{
+    if (weightsPtr_)
+    {
+        FatalErrorIn
+        (
+            "void topoPatchMapper::calcInverseDistanceWeights() const"
+        )
+            << "Weights already calculated."
+            << abort(FatalError);
+    }
 
 }
 
@@ -77,8 +244,19 @@ topoPatchMapper::topoPatchMapper
     direct_(false),
     directAddrPtr_(NULL),
     interpolationAddrPtr_(NULL),
-    weightsPtr_(NULL)
-{}
+    weightsPtr_(NULL),
+    insertedFaceLabelsPtr_(NULL)
+{
+    // Check for the possibility of direct mapping
+    if (insertedObjects())
+    {
+        direct_ = false;
+    }
+    else
+    {
+        direct_ = true;
+    }
+}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
@@ -174,6 +352,26 @@ const scalarListList& topoPatchMapper::weights() const
 
     return *weightsPtr_;
 }
+
+
+//- Are there any inserted faces
+bool topoPatchMapper::insertedObjects() const
+{
+    return insertedObjectLabels().size();
+}
+
+
+//- Return list of inserted faces
+const labelList& topoPatchMapper::insertedObjectLabels() const
+{
+    if (!insertedFaceLabelsPtr_)
+    {
+        calcInsertedFaceLabels();
+    }
+
+    return *insertedFaceLabelsPtr_;
+}
+
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 

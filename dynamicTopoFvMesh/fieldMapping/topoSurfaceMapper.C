@@ -70,7 +70,7 @@ void topoSurfaceMapper::calcInsertedFaceLabels() const
     // Allocate for inserted face labels
     label nInsertedFaces = 0;
 
-    insertedFaceLabelsPtr_ = new labelList(mesh_.nInternalFaces(), -1);
+    insertedFaceLabelsPtr_ = new labelList(size(), -1);
     labelList& insertedFaces = *insertedFaceLabelsPtr_;
 
     label nIntFaces = size();
@@ -83,6 +83,7 @@ void topoSurfaceMapper::calcInsertedFaceLabels() const
     {
         const objectMap& fffI = fff[objectI];
 
+        // Only pick internal faces
         if (fffI.index() < nIntFaces)
         {
             if (fffI.masterObjects().empty())

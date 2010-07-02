@@ -80,13 +80,11 @@ void topoCellMapper::calcAddressing() const
     if (direct())
     {
         // Direct addressing, no weights
-
         directAddrPtr_ = new labelList(mpm_.cellMap());
     }
     else
     {
         // Interpolative addressing
-
         interpolationAddrPtr_ = new labelListList(mesh_.nCells());
         labelListList& addr = *interpolationAddrPtr_;
 

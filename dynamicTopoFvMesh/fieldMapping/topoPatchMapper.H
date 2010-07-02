@@ -43,6 +43,8 @@ SourceFiles
 #ifndef topoPatchMapper_H
 #define topoPatchMapper_H
 
+#include "morphFieldMapper.H"
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -58,7 +60,8 @@ class mapPolyMesh;
 
 class topoPatchMapper
 :
-    public fvPatchFieldMapper
+    public fvPatchFieldMapper,
+    public morphFieldMapper
 {
     // Private data
 
@@ -85,6 +88,9 @@ class topoPatchMapper
         //- Inverse-distance weights
         mutable scalarListList* weightsPtr_;
 
+        //- Inserted faces
+        mutable labelList* insertedFaceLabelsPtr_;
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -93,8 +99,14 @@ class topoPatchMapper
         //- Disallow default bitwise assignment
         void operator=(const topoPatchMapper&);
 
+        //- Calculate the insertedFaceLabels list
+        void calcInsertedFaceLabels() const;
+
         //- Calculate addressing for mapping
         void calcAddressing() const;
+
+        //- Calculate inverse-distance weights for interpolative mapping
+        void calcInverseDistanceWeights() const;
 
         //- Clear out local storage
         void clearOut();
@@ -134,6 +146,12 @@ public:
 
         //- Return interpolaion weights
         virtual const scalarListList& weights() const;
+
+        //- Are there any inserted faces
+        virtual bool insertedObjects() const;
+
+        //- Return list of inserted faces
+        virtual const labelList& insertedObjectLabels() const;
 };
 
 
