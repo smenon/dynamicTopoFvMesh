@@ -113,6 +113,12 @@ class topoCellMapper
         //- Calculate intersection weights for conservative mapping
         void calcIntersectionWeightsAndCentres() const;
 
+        //- Return intersection volume weights
+        const List<scalarField>& intersectionWeights() const;
+
+        //- Return intersection volumes centres
+        const List<vectorField>& intersectionCentres() const;
+
         //- Clear out local storage
         void clearOut();
 
@@ -157,11 +163,13 @@ public:
         //- Return list of inserted cells
         virtual const labelList& insertedObjectLabels() const;
 
-        //- Return intersection volume weights
-        const List<scalarField>& intersectionWeights() const;
-
-        //- Return intersection volumes centres
-        const List<vectorField>& intersectionCentres() const;
+        //- Conservatively map the internal field
+        template <class Type, class gradType>
+        void mapInternalField
+        (
+            const Field<gradType>& gF,
+            Field<Type>& iF
+        ) const;
 };
 
 

@@ -38,7 +38,6 @@ Author
 #include "dynamicTopoFvMesh.H"
 #include "addToRunTimeSelectionTable.H"
 
-#include "fvc.H"
 #include "IOmanip.H"
 #include "triFace.H"
 #include "clockTime.H"
@@ -159,7 +158,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     readOptionalParameters();
 
     // Initialize patch-size information
-    for(label i=0; i<numPatches_; i++)
+    for (label i = 0; i < numPatches_; i++)
     {
         patchNMeshPoints_[i] = boundary[i].meshPoints().size();
         oldPatchSizes_[i] = patchSizes_[i]  = boundary[i].size();
@@ -445,7 +444,7 @@ void dynamicTopoFvMesh::computeFaceWeights
 
     while (nAttempts < 10)
     {
-        // Obtain candidate parents for this cell
+        // Obtain candidate parents for this face
         candidates =
         (
             faceParents
@@ -502,17 +501,33 @@ void dynamicTopoFvMesh::computeFaceWeights
                     // Compute actual intersections
                     vectorField tP(0);
 
+                    intersects[indexI] =
+                    (
+                        faceIntersection
+                        (
+                            fIndex,
+                            candidates[indexI],
+                            tP
+                        )
+                    );
+
                     // Skip false positives
-                    if (tP.size() < 3)
+                    if (intersects[indexI])
                     {
-                        continue;
+                        parents[nIntersects] = candidates[indexI];
+
+                        // Compute weights
+                        convexSetArea
+                        (
+                            fIndex,
+                            parents[nIntersects],
+                            tP,
+                            weights[nIntersects],
+                            centres[nIntersects]
+                        );
+
+                        nIntersects++;
                     }
-
-                    parents[nIntersects] = candidates[indexI];
-
-                    // Compute weights
-
-                    nIntersects++;
                 }
             }
 
@@ -537,10 +552,11 @@ void dynamicTopoFvMesh::computeFaceWeights
     }
 
     // Fetch the face area
-    scalar faceArea = 0.0;
+    scalar fArea = mag(faceNormal(faces_[fIndex], oldPoints_));
+    vector fCentre = faceCentre(faces_[fIndex], oldPoints_);
 
     // Test weights for consistency
-    if (mag(faceArea - sum(weights)) > 1e-16)
+    if (mag(fArea - sum(weights)) > 1e-16)
     {
         // Write out for post-processing
         label uIdx = 0;
@@ -587,13 +603,16 @@ void dynamicTopoFvMesh::computeFaceWeights
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
             << setprecision(16)
-            << " Face area: " << faceArea << nl
+            << " Face area: " << fArea << nl
             << " Sum(Weights): " << sum(weights) << nl
-            << " Error: " << (faceArea - sum(weights)) << nl
-            << " Norm Sum(Weights): " << sum(weights/faceArea) << nl
-            << " Norm Error: " << mag(1.0 - sum(weights/faceArea))
+            << " Error: " << (fArea - sum(weights)) << nl
+            << " Norm Sum(Weights): " << sum(weights/fArea) << nl
+            << " Norm Error: " << mag(1.0 - sum(weights/fArea))
             << abort(FatalError);
     }
+
+    // Return normalized weights
+    weights /= fArea;
 }
 
 
@@ -684,24 +703,22 @@ void dynamicTopoFvMesh::computeCellWeights
                     );
 
                     // Skip false positives
-                    if (tP.size() < 4)
+                    if (intersects[indexI])
                     {
-                        continue;
+                        parents[nIntersects] = candidates[indexI];
+
+                        // Compute weights
+                        convexSetVolume
+                        (
+                            cIndex,
+                            parents[nIntersects],
+                            tP,
+                            weights[nIntersects],
+                            centres[nIntersects]
+                        );
+
+                        nIntersects++;
                     }
-
-                    parents[nIntersects] = candidates[indexI];
-
-                    // Compute weights
-                    convexSetVolume
-                    (
-                        cIndex,
-                        parents[nIntersects],
-                        tP,
-                        weights[nIntersects],
-                        centres[nIntersects]
-                    );
-
-                    nIntersects++;
                 }
             }
 
@@ -762,6 +779,9 @@ void dynamicTopoFvMesh::computeCellWeights
 
             if (foundBoundary)
             {
+                // Normalize by sum of weights
+                weights /= sum(weights);
+
                 return;
             }
         }
@@ -860,6 +880,9 @@ void dynamicTopoFvMesh::computeCellWeights
             << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
             << abort(FatalError);
     }
+
+    // Return normalized weights
+    weights /= cellVolume;
 }
 
 
@@ -870,7 +893,52 @@ bool dynamicTopoFvMesh::testFaceIntersection
     const label oldFaceIndex
 ) const
 {
-    return true;
+    // Check indices first
+    if (newFaceIndex >= faces_.size() || newFaceIndex < 0)
+    {
+        FatalErrorIn
+        (
+            "\n"
+            "bool dynamicTopoFvMesh::testFaceIntersection\n"
+            "(\n"
+            "    const label newFaceIndex,\n"
+            "    const label oldFaceIndex\n"
+            ") const"
+        )
+            << " Wrong newFaceIndex: " << newFaceIndex << nl
+            << " nFaces: " << nFaces_
+            << abort(FatalError);
+    }
+
+    if (oldFaceIndex >= nOldFaces_ || oldFaceIndex < 0)
+    {
+        FatalErrorIn
+        (
+            "\n"
+            "bool dynamicTopoFvMesh::testFaceIntersection\n"
+            "(\n"
+            "    const label newFaceIndex,\n"
+            "    const label oldFaceIndex\n"
+            ") const"
+        )
+            << " Wrong oldFaceIndex: " << oldFaceIndex << nl
+            << " nOldFaces: " << nOldFaces_
+            << abort(FatalError);
+    }
+
+    // Check for common points.
+    const face& fromFace = polyMesh::faces()[oldFaceIndex];
+    const face& toFace = faces_[newFaceIndex];
+
+    forAll(fromFace, pointI)
+    {
+        if (findIndex(toFace, fromFace[pointI]) > -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 
@@ -894,7 +962,7 @@ bool dynamicTopoFvMesh::testCellIntersection
         FatalErrorIn
         (
             "\n"
-            "bool dynamicTopoFvMesh::testIntersection\n"
+            "bool dynamicTopoFvMesh::testCellIntersection\n"
             "(\n"
             "    const label newCellIndex,\n"
             "    const label oldCellIndex\n"
@@ -910,7 +978,7 @@ bool dynamicTopoFvMesh::testCellIntersection
         FatalErrorIn
         (
             "\n"
-            "bool dynamicTopoFvMesh::testIntersection\n"
+            "bool dynamicTopoFvMesh::testCellIntersection\n"
             "(\n"
             "    const label newCellIndex,\n"
             "    const label oldCellIndex\n"
@@ -1052,6 +1120,161 @@ bool dynamicTopoFvMesh::testCellIntersection
 }
 
 
+// Return the intersection points between faces in old/new meshes
+bool dynamicTopoFvMesh::faceIntersection
+(
+    const label newFaceIndex,
+    const label oldFaceIndex,
+    vectorField& tP
+) const
+{
+    // Reset inputs
+    tP.clear();
+
+    // Fetch references for each mesh
+    const face& fromFace = polyMesh::faces()[oldFaceIndex];
+
+    const face& toFace = faces_[newFaceIndex];
+
+    // Track all possible intersections from here on.
+    label nInts = 0;
+    Map<vector> intersections;
+    vector intPoint = vector::zero;
+
+    // Topologically check for common points
+    Map<labelList> commonPoints;
+
+    forAll(fromFace, pointI)
+    {
+        label pIndex = findIndex(toFace, fromFace[pointI]);
+
+        if (pIndex > -1)
+        {
+            commonPoints.insert(toFace[pIndex], labelList(0));
+
+            intersections.set(++nInts, oldPoints_[toFace[pIndex]]);
+        }
+    }
+
+    // Add all new points as well, if they resulted
+    // from bisections of old face edges.
+    forAll(toFace, pointI)
+    {
+        label pIndex = toFace[pointI];
+
+        if (pIndex >= nOldPoints_)
+        {
+            // Check pointsFromPoints info
+            label index = -1;
+
+            forAll(pointsFromPoints_, indexI)
+            {
+                if (pointsFromPoints_[indexI].index() == pIndex)
+                {
+                    index = indexI;
+                    break;
+                }
+            }
+
+            const labelList& mObj = pointsFromPoints_[index].masterObjects();
+
+            // Check if the old face contains all master points
+            bool allMaster = true;
+
+            forAll(mObj, pointJ)
+            {
+                if (findIndex(fromFace, mObj[pointJ]) == -1)
+                {
+                    allMaster = false;
+                    break;
+                }
+            }
+
+            if (allMaster)
+            {
+                commonPoints.insert(toFace[pointI], mObj);
+
+                intersections.set(++nInts, oldPoints_[toFace[pointI]]);
+            }
+        }
+    }
+
+    // If all points are common, this is identical to the old face.
+    if (nInts == fromFace.size())
+    {
+        // Copy intersections
+        tP.setSize(nInts, vector::zero);
+
+        nInts = 0;
+
+        forAllConstIter(Map<vector>, intersections, pI)
+        {
+            tP[nInts++] = pI();
+        }
+
+        if (debug)
+        {
+            if (checkPointNearness(tP, 1e-20))
+            {
+                writeVTK(Foam::name(newFaceIndex),newFaceIndex,2,false,true);
+                writeVTK(Foam::name(oldFaceIndex),oldFaceIndex,2,true,true);
+                writeVTK
+                (
+                    "ccSet_"
+                  + Foam::name(newFaceIndex)
+                  + '<' + Foam::name(oldFaceIndex) + '>',
+                    tP.size(),
+                    tP.size(),
+                    tP.size(),
+                    tP
+                );
+            }
+        }
+
+        return true;
+    }
+
+    // Copy intersections
+    tP.setSize(nInts, vector::zero);
+
+    nInts = 0;
+
+    forAllConstIter(Map<vector>, intersections, pI)
+    {
+        tP[nInts++] = pI();
+    }
+
+    // Check for concurrent points.
+    if (debug)
+    {
+        if (checkPointNearness(tP, 1e-20))
+        {
+            writeVTK(Foam::name(newFaceIndex),newFaceIndex,2,false,true);
+            writeVTK(Foam::name(oldFaceIndex),oldFaceIndex,2,true,true);
+            writeVTK
+            (
+                "ccSet_"
+              + Foam::name(newFaceIndex)
+              + '<' + Foam::name(oldFaceIndex) + '>',
+                tP.size(),
+                tP.size(),
+                tP.size(),
+                tP
+            );
+        }
+    }
+
+    // Found a convex set of points.
+    if (nInts >= 3)
+    {
+        return true;
+    }
+
+    // Does not intersect
+    return false;
+}
+
+
 // Return the intersection points between cells in old/new meshes
 bool dynamicTopoFvMesh::cellIntersection
 (
@@ -1082,14 +1305,13 @@ bool dynamicTopoFvMesh::cellIntersection
 
     forAll(fromCellPoints, pointI)
     {
-        forAll(toCellPoints, pointJ)
-        {
-            if (fromCellPoints[pointI] == toCellPoints[pointJ])
-            {
-                commonPoints.insert(toCellPoints[pointJ], labelList(0));
+        label pIndex = findIndex(toCellPoints, fromCellPoints[pointI]);
 
-                intersections.set(++nInts, oldPoints_[toCellPoints[pointJ]]);
-            }
+        if (pIndex > -1)
+        {
+            commonPoints.insert(toCellPoints[pIndex], labelList(0));
+
+            intersections.set(++nInts, oldPoints_[toCellPoints[pIndex]]);
         }
     }
 
@@ -1401,6 +1623,193 @@ bool dynamicTopoFvMesh::cellIntersection
 
     // Does not intersect
     return false;
+}
+
+
+// Compute the area / centre of a polygon
+// formed by a convex set of points.
+void dynamicTopoFvMesh::convexSetArea
+(
+    const label newFaceIndex,
+    const label oldFaceIndex,
+    const vectorField& cvxSet,
+    scalar& fArea,
+    vector& fCentre,
+    bool output
+) const
+{
+    // Reset inputs
+    fArea = 0.0;
+    fCentre = vector::zero;
+
+    // Try the trivial case for a triangle.
+    if (cvxSet.size() == 3)
+    {
+        triPointRef tpr(cvxSet[0], cvxSet[1], cvxSet[2]);
+
+        fArea = tpr.mag();
+        fCentre = tpr.centre();
+
+        return;
+    }
+
+    // We need a reference normal. Use the new face.
+    vector refNorm = faceNormal(faces_[newFaceIndex], oldPoints_);
+    refNorm /= mag(refNorm) + VSMALL;
+
+    // Track edges
+    label nEdges = 0;
+    edgeList testEdges(0);
+
+    // Loop through all points, and build edges with every
+    // other point in the set
+    forAll(cvxSet, i)
+    {
+        forAll(cvxSet, j)
+        {
+            // Skip duplicates.
+            if (j == i)
+            {
+                continue;
+            }
+
+            // Define the edge
+            edge tmpEdge(i, j);
+
+            // If this is an existing edge, skip it.
+            bool foundExisting = false;
+
+            forAll(testEdges, edgeI)
+            {
+                if (testEdges[edgeI] == tmpEdge)
+                {
+                    foundExisting = true;
+                    break;
+                }
+            }
+
+            if (foundExisting)
+            {
+                continue;
+            }
+
+            // Specify a tolerance for collinearity
+            scalar tolerance = 1e-14;
+
+            // Compute the normal to this edge
+            vector n = (tmpEdge.vec(cvxSet) ^ refNorm);
+
+            n /= mag(n) + VSMALL;
+
+            label curEdgeSign = 0;
+            bool foundInternalEdge = false;
+
+            // Quick-reject test:
+            //   Check all other points in the set,
+            //   and decide if all points lie on one side.
+            forAll(cvxSet, k)
+            {
+                // Skip duplicates.
+                if (tmpEdge[0] == k || tmpEdge[1] == k)
+                {
+                    continue;
+                }
+
+                vector rfVec = (cvxSet[k] - cvxSet[i]);
+                scalar dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
+
+                // Skip nearly collinear points.
+                if (mag(dotProd) < tolerance)
+                {
+                    continue;
+                }
+
+                // Obtain the sign of this point.
+                label eSign = Foam::sign(dotProd);
+
+                // Update the current sign if necessary.
+                if (curEdgeSign == 0)
+                {
+                    curEdgeSign = eSign;
+                }
+                else
+                if (curEdgeSign != eSign)
+                {
+                    // Interior edge. Bail out.
+                    foundInternalEdge = true;
+                    break;
+                }
+            }
+
+            if (foundInternalEdge)
+            {
+                continue;
+            }
+
+            // Looks like we found an edge on the boundary.
+            // Check its sign to ensure that it points outward.
+            if (curEdgeSign == 1)
+            {
+                n *= -1.0;
+                tmpEdge = tmpEdge.reverseEdge();
+            }
+
+            // Add to the list of edges.
+            testEdges.setSize(++nEdges, tmpEdge);
+        }
+    }
+
+    // Sanity check - do points match edges?
+    if (testEdges.size() != cvxSet.size())
+    {
+        FatalErrorIn
+        (
+            "\n"
+            "void dynamicTopoFvMesh::convexSetArea\n"
+            "(\n"
+            "    const label newFaceIndex,\n"
+            "    const label oldFaceIndex,\n"
+            "    const vectorField& cvxSet,\n"
+            "    scalar& fArea,\n"
+            "    vector& fCentre,\n"
+            "    bool output\n"
+            ") const"
+        )
+            << " Points do not match edges. " << nl
+            << " nPoints: " << cvxSet.size() << nl
+            << " nEdges: " << testEdges.size() << nl
+            << " Edge list: " << testEdges
+            << abort(FatalError);
+    }
+
+    // Find an approximate face-centroid
+    scalar sumA = 0.0;
+    vector sumAc = vector::zero;
+    vector xC = average(cvxSet);
+
+    forAll(testEdges, edgeI)
+    {
+        const edge& e = testEdges[edgeI];
+
+        vector c = cvxSet[e[0]] + cvxSet[e[1]] + xC;
+        scalar a = mag(e.vec(cvxSet) ^ (xC - cvxSet[e[0]]));
+
+        sumA += a;
+        sumAc += a*c;
+    }
+
+    fCentre = (1.0/3.0)*sumAc/(sumA + VSMALL);
+    fArea = 0.5*sumA;
+
+    if (output)
+    {
+        Info << " newFaceIndex: " << newFaceIndex
+             << " oldFaceIndex: " << oldFaceIndex << nl
+             << " Edges: " << testEdges << nl
+             << " Area: " << fArea << nl
+             << " Centre: " << fCentre << nl
+             << endl;
+    }
 }
 
 
@@ -3146,6 +3555,7 @@ void dynamicTopoFvMesh::constructHull
             // Something's terribly wrong
             FatalErrorIn
             (
+                "\n"
                 "void dynamicTopoFvMesh::constructHull\n"
                 "(\n"
                 "    const label eIndex,\n"
@@ -3633,7 +4043,7 @@ void dynamicTopoFvMesh::readOptionalParameters()
     // Set debug option for underlying classes as well.
     lengthScaleEstimator::debug = debug;
 
-    if (debug > 3)
+    if (debug > 2)
     {
         fvMesh::debug = true;
         polyMesh::debug = true;
@@ -4802,7 +5212,7 @@ void dynamicTopoFvMesh::remove2DSliver
 const changeMap dynamicTopoFvMesh::identifySliverType
 (
     const label cIndex
-)
+) const
 {
     changeMap map;
 
@@ -5055,82 +5465,104 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     }
 
     // Determine appropriate information for sliver exudation.
-    if (map.type() == 1)
+    switch (map.type())
     {
-        FixedList<bool, 2> foundEdge(false);
-
-        // Search the cell-faces for first and second edges.
-        forAll(cellToCheck, faceI)
+        case 1:
         {
-            const labelList& fEdges = faceEdges_[cellToCheck[faceI]];
+            FixedList<bool, 2> foundEdge(false);
 
-            forAll(fEdges, edgeI)
+            // Search the cell-faces for first and second edges.
+            forAll(cellToCheck, faceI)
             {
-                const edge& thisEdge = edges_[fEdges[edgeI]];
+                const labelList& fEdges = faceEdges_[cellToCheck[faceI]];
 
-                if (thisEdge == edgeToCheck[0])
+                forAll(fEdges, edgeI)
                 {
-                    map.firstEdge() = fEdges[edgeI];
+                    const edge& thisEdge = edges_[fEdges[edgeI]];
 
-                    foundEdge[0] = true;
+                    if (thisEdge == edgeToCheck[0])
+                    {
+                        map.firstEdge() = fEdges[edgeI];
+
+                        foundEdge[0] = true;
+                    }
+
+                    if (thisEdge == edgeToCheck[1])
+                    {
+                        map.secondEdge() = fEdges[edgeI];
+
+                        foundEdge[1] = true;
+                    }
                 }
 
-                if (thisEdge == edgeToCheck[1])
+                if (foundEdge[0] && foundEdge[1])
                 {
-                    map.secondEdge() = fEdges[edgeI];
-
-                    foundEdge[1] = true;
+                    break;
                 }
             }
 
-            if (foundEdge[0] && foundEdge[1])
-            {
-                break;
-            }
+            break;
         }
-    }
-    else
-    if (map.type() == 2)
-    {
-        // Search the cell-faces for opposing faces.
-        forAll(cellToCheck, faceI)
+
+        case 2:
         {
-            const face& thisFace = faces_[cellToCheck[faceI]];
-
-            if (triFace::compare(triFace(thisFace), triFace(faceToCheck)))
+            // Search the cell-faces for opposing faces.
+            forAll(cellToCheck, faceI)
             {
-                map.opposingFace() = cellToCheck[faceI];
+                const face& thisFace = faces_[cellToCheck[faceI]];
 
-                break;
-            }
-        }
-    }
-    else
-    if (map.type() == 3 || map.type() == 4)
-    {
-        bool foundEdge = false;
-
-        // Search the cell-faces for first edge.
-        forAll(cellToCheck, faceI)
-        {
-            const labelList& fEdges = faceEdges_[cellToCheck[faceI]];
-
-            forAll(fEdges, edgeI)
-            {
-                const edge& thisEdge = edges_[fEdges[edgeI]];
-
-                if (thisEdge == edgeToCheck[0])
+                if (triFace::compare(triFace(thisFace), triFace(faceToCheck)))
                 {
-                    map.firstEdge() = fEdges[edgeI];
+                    map.opposingFace() = cellToCheck[faceI];
 
-                    foundEdge = true;
+                    break;
                 }
             }
 
-            if (foundEdge)
+            break;
+        }
+
+        case 3:
+        case 4:
+        {
+            bool foundEdge = false;
+
+            // Search the cell-faces for first edge.
+            forAll(cellToCheck, faceI)
             {
-                break;
+                const labelList& fEdges = faceEdges_[cellToCheck[faceI]];
+
+                forAll(fEdges, edgeI)
+                {
+                    const edge& thisEdge = edges_[fEdges[edgeI]];
+
+                    if (thisEdge == edgeToCheck[0])
+                    {
+                        map.firstEdge() = fEdges[edgeI];
+
+                        foundEdge = true;
+                    }
+                }
+
+                if (foundEdge)
+                {
+                    break;
+                }
             }
+
+            break;
+        }
+
+        default:
+        {
+            WarningIn
+            (
+                "void dynamicTopoFvMesh::identifySliverType"
+                "(const label cIndex) const"
+            )
+                << nl << "Could not identify sliver type for cell: "
+                << cIndex
+                << endl;
         }
     }
 
@@ -5252,7 +5684,7 @@ void dynamicTopoFvMesh::removeSlivers()
 
         if (debug)
         {
-            WarningIn("void dynamicTopoFvMesh::removeSlivers()")
+            InfoIn("void dynamicTopoFvMesh::removeSlivers()")
                 << nl << "Removing Cell: " << cIndex
                 << " of sliver type: " << map.type()
                 << " with quality: " << thresholdSlivers_[cIndex]
@@ -5260,72 +5692,128 @@ void dynamicTopoFvMesh::removeSlivers()
         }
 
         // Take action based on the type of sliver.
-        if (map.type() == 1)
+        switch (map.type())
         {
-            // Sliver cell.
-            // Determine which edges need to be bisected.
-            label firstEdge = map.firstEdge();
-            label secondEdge = map.secondEdge();
-
-            // Force bisection on both edges.
-            changeMap firstMap  = bisectEdge(firstEdge, false, true);
-            changeMap secondMap = bisectEdge(secondEdge, false, true);
-
-            // Collapse the intermediate edge.
-            // Since we don't know which edge it is, search
-            // through recently added edges and compare.
-            edge edgeToCheck
-            (
-                firstMap.addedPointList()[0][0],
-                secondMap.addedPointList()[0][0]
-            );
-
-            bool foundCollapseEdge = false;
-
-            const List<FixedList<label,2> >& firstMapEdges =
-            (
-                firstMap.addedEdgeList()
-            );
-
-            const List<FixedList<label,2> >& secondMapEdges =
-            (
-                secondMap.addedEdgeList()
-            );
-
-            // Loop through the first list.
-            forAll(firstMapEdges, edgeI)
+            case 1:
             {
-                const edge& thisEdge = edges_[firstMapEdges[edgeI][0]];
+                // Sliver cell.
+                // Determine which edges need to be bisected.
+                label firstEdge = map.firstEdge();
+                label secondEdge = map.secondEdge();
 
-                if (thisEdge == edgeToCheck)
+                // Force bisection on both edges.
+                changeMap firstMap  = bisectEdge(firstEdge, false, true);
+                changeMap secondMap = bisectEdge(secondEdge, false, true);
+
+                // Collapse the intermediate edge.
+                // Since we don't know which edge it is, search
+                // through recently added edges and compare.
+                edge edgeToCheck
+                (
+                    firstMap.addedPointList()[0][0],
+                    secondMap.addedPointList()[0][0]
+                );
+
+                bool foundCollapseEdge = false;
+
+                const List<FixedList<label,2> >& firstMapEdges =
+                (
+                    firstMap.addedEdgeList()
+                );
+
+                const List<FixedList<label,2> >& secondMapEdges =
+                (
+                    secondMap.addedEdgeList()
+                );
+
+                // Loop through the first list.
+                forAll(firstMapEdges, edgeI)
                 {
-                    // Collapse this edge.
-                    collapseEdge
+                    const edge& thisEdge =
                     (
-                        firstMapEdges[edgeI][0],
-                        -1,
-                        false,
-                        true
+                        edges_[firstMapEdges[edgeI][0]]
                     );
-
-                    foundCollapseEdge = true;
-                    break;
-                }
-            }
-
-            // Loop through the second list.
-            if (!foundCollapseEdge)
-            {
-                forAll(secondMapEdges, edgeI)
-                {
-                    const edge& thisEdge = edges_[secondMapEdges[edgeI][0]];
 
                     if (thisEdge == edgeToCheck)
                     {
                         // Collapse this edge.
                         collapseEdge
                         (
-                            secondMapEdges[edgeI][0],
+                            firstMapEdges[edgeI][0],
+                            -1,
+                            false,
+                            true
+                        );
+
+                        foundCollapseEdge = true;
+                        break;
+                    }
+                }
+
+                // Loop through the second list.
+                if (!foundCollapseEdge)
+                {
+                    forAll(secondMapEdges, edgeI)
+                    {
+                        const edge& thisEdge =
+                        (
+                            edges_[secondMapEdges[edgeI][0]]
+                        );
+
+                        if (thisEdge == edgeToCheck)
+                        {
+                            // Collapse this edge.
+                            collapseEdge
+                            (
+                                secondMapEdges[edgeI][0],
+                                -1,
+                                false,
+                                true
+                            );
+
+                            break;
+                        }
+                    }
+                }
+
+                break;
+            }
+
+            case 2:
+            {
+                // Cap cell.
+                label opposingFace = map.opposingFace();
+
+                // Force trisection of the opposing face.
+                changeMap faceMap =
+                (
+                    trisectFace(opposingFace, false, true)
+                );
+
+                // Collapse the intermediate edge.
+                // Since we don't know which edge it is, search
+                // through recently added edges and compare.
+                edge edgeToCheck
+                (
+                    map.apexPoint(),
+                    faceMap.addedPointList()[0][0]
+                );
+
+                const List<FixedList<label,2> >& faceMapEdges =
+                (
+                    faceMap.addedEdgeList()
+                );
+
+                forAll(faceMapEdges, edgeI)
+                {
+                    const edge& thisEdge = edges_[faceMapEdges[edgeI][0]];
+
+                    if (thisEdge == edgeToCheck)
+                    {
+                        // Collapse this edge.
+                        collapseEdge
+                        (
+                            faceMapEdges[edgeI][0],
                             -1,
                             false,
                             true
@@ -5334,87 +5822,80 @@ void dynamicTopoFvMesh::removeSlivers()
                         break;
                     }
                 }
+
+                break;
             }
-        }
-        else
-        if (map.type() == 2)
-        {
-            // Cap cell.
-            label opposingFace = map.opposingFace();
 
-            // Force trisection of the opposing face.
-            changeMap faceMap = trisectFace(opposingFace, false, true);
-
-            // Collapse the intermediate edge.
-            // Since we don't know which edge it is, search
-            // through recently added edges and compare.
-            edge edgeToCheck
-            (
-                map.apexPoint(),
-                faceMap.addedPointList()[0][0]
-            );
-
-            const List<FixedList<label,2> >& faceMapEdges =
-            (
-                faceMap.addedEdgeList()
-            );
-
-            forAll(faceMapEdges, edgeI)
+            case 3:
             {
-                const edge& thisEdge = edges_[faceMapEdges[edgeI][0]];
+                // Spade cell.
 
-                if (thisEdge == edgeToCheck)
+                // Force bisection on the first edge.
+                changeMap firstMap =
+                (
+                    bisectEdge(map.firstEdge(), false, true)
+                );
+
+                // Collapse the intermediate edge.
+                // Since we don't know which edge it is, search
+                // through recently added edges and compare.
+                edge edgeToCheck
+                (
+                    map.apexPoint(),
+                    firstMap.addedPointList()[0][0]
+                );
+
+                const List<FixedList<label,2> >& firstMapEdges =
+                (
+                    firstMap.addedEdgeList()
+                );
+
+                // Loop through the first list.
+                forAll(firstMapEdges, edgeI)
                 {
-                    // Collapse this edge.
-                    collapseEdge(faceMapEdges[edgeI][0], -1, false, true);
+                    const edge& thisEdge = edges_[firstMapEdges[edgeI][0]];
 
-                    break;
+                    if (thisEdge == edgeToCheck)
+                    {
+                        // Collapse this edge.
+                        collapseEdge
+                        (
+                            firstMapEdges[edgeI][0],
+                            -1,
+                            false,
+                            true
+                        );
+
+                        break;
+                    }
                 }
+
+                break;
             }
-        }
-        else
-        if (map.type() == 3)
-        {
-            // Spade cell.
 
-            // Force bisection on the first edge.
-            changeMap firstMap = bisectEdge(map.firstEdge(), false, true);
-
-            // Collapse the intermediate edge.
-            // Since we don't know which edge it is, search
-            // through recently added edges and compare.
-            edge edgeToCheck
-            (
-                map.apexPoint(),
-                firstMap.addedPointList()[0][0]
-            );
-
-            const List<FixedList<label,2> >& firstMapEdges =
-            (
-                firstMap.addedEdgeList()
-            );
-
-            // Loop through the first list.
-            forAll(firstMapEdges, edgeI)
+            case 4:
             {
-                const edge& thisEdge = edges_[firstMapEdges[edgeI][0]];
+                // Wedge cell.
 
-                if (thisEdge == edgeToCheck)
-                {
-                    // Collapse this edge.
-                    collapseEdge(firstMapEdges[edgeI][0], -1, false, true);
+                // Collapse the first edge.
+                collapseEdge
+                (
+                    map.firstEdge(),
+                    -1,
+                    false,
+                    true
+                );
 
-                    break;
-                }
+                break;
             }
-        }
-        else
-        if (map.type() == 4)
-        {
-            // Wedge cell.
 
-            // Collapse the first edge.
-            collapseEdge(map.firstEdge(), -1, false, true);
+            default:
+            {
+                WarningIn("void dynamicTopoFvMesh::removeSlivers()")
+                    << nl << "Could not identify sliver type for cell: "
+                    << cIndex
+                    << endl;
+            }
         }
     }
 
@@ -5644,96 +6125,6 @@ void dynamicTopoFvMesh::synchronizeThreads
 }
 
 
-// Conservatively map all fvFields in the registry
-template <class Type>
-void dynamicTopoFvMesh::ConservativeMapFields
-(
-    const topoMapper& mapper
-)
-{
-    // Define a few typedefs for convenience
-    typedef typename outerProduct<vector, Type>::type gCmptType;
-    typedef GeometricField<Type, fvPatchField, volMesh> volType;
-    typedef GeometricField<gCmptType, fvPatchField, volMesh> gradVolType;
-
-    HashTable<const volType*> fields(objectRegistry::lookupClass<volType>());
-
-    // Store old-times before mapping
-    forAllIter(typename HashTable<const volType*>, fields, fIter)
-    {
-        volType& field = const_cast<volType&>(*fIter());
-
-        field.storeOldTimes();
-    }
-
-    // Fetch addressing
-    const topoCellMapper& fMap = mapper.volMap();
-    const labelListList& addressing = fMap.addressing();
-    const List<scalarField>& wC = fMap.intersectionWeights();
-    const List<vectorField>& xC = fMap.intersectionCentres();
-
-    // Fetch geometry
-    const scalarField& newCellVolumes = primitiveMesh::cellVolumes();
-    const vectorField& oldCellCentres = mapper.oldCentres().internalField();
-
-    // Now map all fields
-    forAllIter(typename HashTable<const volType*>, fields, fIter)
-    {
-        volType& field = const_cast<volType&>(*fIter());
-
-        if (debug)
-        {
-            Info << "Conservatively mapping "
-                 << field.typeName
-                 << ' ' << field.name()
-                 << endl;
-        }
-
-        // Fetch the gradient
-        const gradVolType& gf = mapper.gradient<gradVolType>(field.name());
-
-        // Copy the original field
-        Field<Type> fieldCpy(field.internalField());
-
-        // Resize to current dimensions
-        Field<Type>& iF = field.internalField();
-        iF.setSize(fMap.size(), pTraits<Type>::zero);
-
-        // Map the internal field
-        forAll(iF, cellI)
-        {
-            const labelList& addr = addressing[cellI];
-
-            forAll(addr, cellJ)
-            {
-                vector xCo = oldCellCentres[addr[cellJ]];
-
-                // Accumulate volume-weighted Taylor-series interpolate
-                iF[cellI] +=
-                (
-                    wC[cellI][cellJ] *
-                    (
-                        fieldCpy[addr[cellJ]]
-                      + (gf[addr[cellJ]] & (xC[cellI][cellJ] - xCo))
-                    )
-                );
-            }
-
-            // Divide by current volume
-            iF[cellI] /= newCellVolumes[cellI];
-        }
-
-        // Map the patch fields
-        forAll(field.boundaryField(), patchi)
-        {
-
-        }
-
-        field.instance() = field.mesh().db().time().timeName();
-    }
-}
-
-
 // Reset the mesh and generate mapping information
 void dynamicTopoFvMesh::resetMesh()
 {
@@ -5800,10 +6191,26 @@ void dynamicTopoFvMesh::resetMesh()
             oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
         }
 
-        // Set old cell-centres and gradient information
+        topoMapper& fieldMapper = mapper_();
+
+        volScalarField alpha
+        (
+            IOobject
+            (
+                "alpha",
+                time().timeName(),
+                *this,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            *this,
+            dimensionedScalar("scalar", dimless, 1.0)
+        );
+
+        // Set face/cell centres and gradient information
         // for the mapping stage, prior to mesh reset
-        mapper_->storeGradients();
-        mapper_->setOldCellCentres(fvMesh::C());
+        fieldMapper.storeCentres();
+        fieldMapper.storeGradients();
 
         // Reset the mesh with pre-motion points
         polyMesh::resetPrimitives
@@ -5927,12 +6334,26 @@ void dynamicTopoFvMesh::resetMesh()
         // Update the underlying mesh, and map all related fields
         updateMesh(mpm);
 
+        // If this is the first time-step,
+        // perform a dummy movePoints to force V0 creation
+        if (time().timeIndex() == 1)
+        {
+            if (debug > 2)
+            {
+                InfoIn("void dynamicTopoFvMesh::resetMesh()")
+                    << " Setting preMotionPoints for first move."
+                    << nl << endl;
+            }
+
+            movePoints(mpm.preMotionPoints());
+        }
+
         // Reset old-volumes
         resetMotion();
         setV0();
 
         // Correct volume fluxes on the old mesh
-        mapper_->correctFluxes();
+        fieldMapper.correctFluxes();
 
         // Now move mesh to new points and
         // compute correct mesh-fluxes.
@@ -6039,8 +6460,8 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
     fieldMapper.setCellWeights(cellWeights_, cellCentres_);
 
     // Conservatively map scalar/vector volFields
-    ConservativeMapFields<scalar>(fieldMapper);
-    ConservativeMapFields<vector>(fieldMapper);
+    fieldMapper.conservativeMapFields<scalar>();
+    fieldMapper.conservativeMapFields<vector>();
 
     // Map all the volFields in the objectRegistry
     MapGeometricFields<sphericalTensor,fvPatchField,topoMapper,volMesh>
@@ -6101,17 +6522,12 @@ bool dynamicTopoFvMesh::update()
     nSwaps_ = 0;
 
     // Obtain mesh stats before topo-changes
-    bool sliversAbsent = meshQuality(true);
+    bool noSlivers = meshQuality(true);
 
     // Return if the interval is invalid,
     // not at re-mesh interval, or slivers are absent.
     // Handy while using only mesh-motion.
-    if
-    (
-        (interval_ < 0) ||
-        (time().timeIndex() < 1) ||
-        ((time().timeIndex() % interval_ != 0) && sliversAbsent)
-    )
+    if (interval_ < 0 || ((time().timeIndex() % interval_ != 0) && noSlivers))
     {
         // Move mesh to new positions
         if (mPtr_.valid())
@@ -6145,9 +6561,12 @@ bool dynamicTopoFvMesh::update()
     Info << " Topo modifier time: " << topologyTimer.elapsedTime() << endl;
 
     // Write out statistics
-    Info << " nBisections (Interior | Surface): " << nBisections_ << endl;
-    Info << " nCollapses (Interior | Surface): " << nCollapses_ << endl;
-    Info << " nSwaps (Interior | Surface): " << nSwaps_ << endl;
+    Info << " Bisections :: Interior: " << nBisections_[0]
+         << ", Surface: " << nBisections_[1] << endl;
+    Info << " Collapses  :: Interior: " << nCollapses_[0]
+         << ", Surface: " << nCollapses_[1] << endl;
+    Info << " Swaps      :: Interior: " << nSwaps_[0]
+         << ", Surface: " << nSwaps_[1] << endl;
 
     // Obtain mesh stats after topo-changes
     meshQuality(true);

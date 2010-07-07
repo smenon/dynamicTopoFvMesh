@@ -60,11 +60,7 @@ void topoCellMapper::clearOut()
 //- Calculate addressing for interpolative mapping
 void topoCellMapper::calcAddressing() const
 {
-    if
-    (
-        directAddrPtr_
-     || interpolationAddrPtr_
-    )
+    if (directAddrPtr_ || interpolationAddrPtr_)
     {
         FatalErrorIn("void topoCellMapper::calcAddressing() const")
             << "Addressing already calculated."
@@ -150,7 +146,10 @@ void topoCellMapper::calcInverseDistanceWeights() const
 {
     if (weightsPtr_)
     {
-        FatalErrorIn("void topoCellMapper::calcInverseDistanceWeights() const")
+        FatalErrorIn
+        (
+            "void topoCellMapper::calcInverseDistanceWeights() const"
+        )
             << "Weights already calculated."
             << abort(FatalError);
     }
@@ -159,11 +158,15 @@ void topoCellMapper::calcInverseDistanceWeights() const
     const labelListList& addr = addressing();
 
     // Allocate memory
-    weightsPtr_ = new scalarListList(mesh_.nCells());
+    weightsPtr_ = new scalarListList(size());
     scalarListList& w = *weightsPtr_;
 
     // Obtain cell-centre information from old/new meshes
-    const vectorField& oldCentres = tMapper_.oldCentres().internalField();
+    const vectorField& oldCentres =
+    (
+        tMapper_.centres().internalField()
+    );
+
     const vectorField& newCentres = mesh_.cellCentres();
 
     forAll(addr, cellI)
@@ -239,7 +242,6 @@ void topoCellMapper::calcIntersectionWeightsAndCentres() const
     //  - Point positions must be set to old locations
     //    for mapping to be valid.
     const vectorField& cellCentres = mesh_.cellCentres();
-    const scalarField& cellVolumes = mesh_.cellVolumes();
 
     // Fetch maps
     const Map<vectorField>& mapCellCentres = tMapper_.cellCentres();
@@ -253,28 +255,57 @@ void topoCellMapper::calcIntersectionWeightsAndCentres() const
         if (mo.size() == 1)
         {
             x[cellI] = vectorField(1, cellCentres[cellI]);
-            v[cellI] = scalarField(1, cellVolumes[cellI]);
+            v[cellI] = scalarField(1, 1.0);
         }
         else
         {
             // Map from masters, intersection weights
             x[cellI] = mapCellCentres[cellI];
             v[cellI] = mapCellWeights[cellI];
-
-            if (mag(sum(v[cellI]) - cellVolumes[cellI]) > 1e-16)
-            {
-                FatalErrorIn
-                (
-                    "void topoCellMapper::"
-                    "calcIntersectionWeightsAndCentres() const"
-                )
-                    << "Weights are inconsistent." << nl
-                    << " Cell volume: " << cellVolumes[cellI] << nl
-                    << " sum(weights): " << sum(v[cellI]) << nl
-                    << abort(FatalError);
-            }
         }
     }
+}
+
+
+const List<scalarField>& topoCellMapper::intersectionWeights() const
+{
+    if (direct())
+    {
+        FatalErrorIn
+        (
+            "const List<scalarField>& "
+            "topoCellMapper::intersectionWeights() const"
+        )   << "Requested interpolative weights for a direct mapper."
+            << abort(FatalError);
+    }
+
+    if (!volumesPtr_)
+    {
+        calcIntersectionWeightsAndCentres();
+    }
+
+    return *volumesPtr_;
+}
+
+
+const List<vectorField>& topoCellMapper::intersectionCentres() const
+{
+    if (direct())
+    {
+        FatalErrorIn
+        (
+            "const List<vectorField>& "
+            "topoCellMapper::intersectionCentres() const"
+        )   << "Requested interpolative weights for a direct mapper."
+            << abort(FatalError);
+    }
+
+    if (!centresPtr_)
+    {
+        calcIntersectionWeightsAndCentres();
+    }
+
+    return *centresPtr_;
 }
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -430,46 +461,50 @@ const labelList& topoCellMapper::insertedObjectLabels() const
 }
 
 
-const List<scalarField>& topoCellMapper::intersectionWeights() const
+//- Conservatively map the internal field
+template <class Type, class gradType>
+void topoCellMapper::mapInternalField
+(
+    const Field<gradType>& gF,
+    Field<Type>& iF
+) const
 {
-    if (direct())
-    {
-        FatalErrorIn
-        (
-            "const List<scalarField>& "
-            "topoCellMapper::intersectionWeights() const"
-        )   << "Requested interpolative weights for a direct mapper."
-            << abort(FatalError);
-    }
+    // Fetch addressing
+    const labelListList& cAddressing = addressing();
+    const List<scalarField>& wC = intersectionWeights();
+    const List<vectorField>& xC = intersectionCentres();
 
-    if (!volumesPtr_)
-    {
-        calcIntersectionWeightsAndCentres();
-    }
+    // Fetch geometry
+    const vectorField& oldCellCentres = tMapper_.centres().internalField();
 
-    return *volumesPtr_;
+    // Copy the original field
+    Field<Type> fieldCpy(iF);
+
+    // Resize to current dimensions
+    iF.setSize(size(), pTraits<Type>::zero);
+
+    // Map the internal field
+    forAll(iF, cellI)
+    {
+        const labelList& addr = cAddressing[cellI];
+
+        forAll(addr, cellJ)
+        {
+            vector xCo = oldCellCentres[addr[cellJ]];
+
+            // Accumulate volume-weighted Taylor-series interpolate
+            iF[cellI] +=
+            (
+                wC[cellI][cellJ] *
+                (
+                    fieldCpy[addr[cellJ]]
+                  + (gF[addr[cellJ]] & (xC[cellI][cellJ] - xCo))
+                )
+            );
+        }
+    }
 }
 
-
-const List<vectorField>& topoCellMapper::intersectionCentres() const
-{
-    if (direct())
-    {
-        FatalErrorIn
-        (
-            "const List<vectorField>& "
-            "topoCellMapper::intersectionCentres() const"
-        )   << "Requested interpolative weights for a direct mapper."
-            << abort(FatalError);
-    }
-
-    if (!centresPtr_)
-    {
-        calcIntersectionWeightsAndCentres();
-    }
-
-    return *centresPtr_;
-}
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 

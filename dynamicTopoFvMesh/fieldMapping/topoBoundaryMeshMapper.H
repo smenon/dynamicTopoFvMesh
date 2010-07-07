@@ -72,13 +72,14 @@ public:
         //- Construct from components
         topoBoundaryMeshMapper
         (
+            const fvMesh& mesh,
             const mapPolyMesh& mpm,
             const topoMapper& mapper
         )
         :
-            PtrList<topoPatchMapper>(mpm.mesh().boundaryMesh().size())
+            PtrList<topoPatchMapper>(mesh.boundary().size())
         {
-            const polyBoundaryMesh& patches = mpm.mesh().boundaryMesh();
+            const fvBoundaryMesh& patches = mesh.boundary();
 
             forAll (patches, patchI)
             {

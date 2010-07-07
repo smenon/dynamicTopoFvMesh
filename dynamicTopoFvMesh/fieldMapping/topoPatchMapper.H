@@ -60,13 +60,12 @@ class mapPolyMesh;
 
 class topoPatchMapper
 :
-    public fvPatchFieldMapper,
-    public morphFieldMapper
+    public fvPatchFieldMapper
 {
     // Private data
 
         //- Reference to patch
-        const polyPatch& patch_;
+        const fvPatch& patch_;
 
         //- Reference to mapPolyMesh
         const mapPolyMesh& mpm_;
@@ -91,6 +90,9 @@ class topoPatchMapper
         //- Inserted faces
         mutable labelList* insertedFaceLabelsPtr_;
 
+        //- Inserted face addressing
+        mutable labelListList* insertedFaceAddressingPtr_;
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -99,8 +101,8 @@ class topoPatchMapper
         //- Disallow default bitwise assignment
         void operator=(const topoPatchMapper&);
 
-        //- Calculate the insertedFaceLabels list
-        void calcInsertedFaceLabels() const;
+        //- Calculate the insertedFace addressing list
+        void calcInsertedFaceAddressing() const;
 
         //- Calculate addressing for mapping
         void calcAddressing() const;
@@ -118,7 +120,7 @@ public:
         //- Construct from mapPolyMesh
         topoPatchMapper
         (
-            const polyPatch& patch,
+            const fvPatch& patch,
             const mapPolyMesh& mpm,
             const topoMapper& mapper
         );
@@ -152,6 +154,13 @@ public:
 
         //- Return list of inserted faces
         virtual const labelList& insertedObjectLabels() const;
+
+        //- Return addressing for inserted faces
+        const labelListList& insertedFaceAddressing() const;
+
+        //- Map the patch field
+        template <class Type>
+        void mapPatchField(Field<Type>& pF) const;
 };
 
 

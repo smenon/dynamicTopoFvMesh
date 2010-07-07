@@ -454,12 +454,32 @@ class dynamicTopoFvMesh
             const label oldCellIndex
         ) const;
 
+        // Return the intersection points between faces in old/new meshes
+        bool faceIntersection
+        (
+            const label newFaceIndex,
+            const label oldFaceIndex,
+            vectorField& intPoints
+        ) const;
+
         // Return the intersection points between cells in old/new meshes
         bool cellIntersection
         (
             const label newCellIndex,
             const label oldCellIndex,
             vectorField& intPoints
+        ) const;
+
+        // Compute the area / centre of a polygon
+        // formed by a convex set of points.
+        void convexSetArea
+        (
+            const label newFaceIndex,
+            const label oldFaceIndex,
+            const vectorField& cvxSet,
+            scalar& fArea,
+            vector& fCentre,
+            bool output = false
         ) const;
 
         // Compute the volume / centre of a polyhedron
@@ -703,7 +723,7 @@ class dynamicTopoFvMesh
         void remove2DSliver(const label fIndex);
 
         // Indentify the sliver type in 3D
-        const changeMap identifySliverType(const label cIndex);
+        const changeMap identifySliverType(const label cIndex) const;
 
         // Remove sliver cells in 3D
         void removeSlivers();
@@ -1145,10 +1165,6 @@ class dynamicTopoFvMesh
             labelListList& faceZoneFaceMap,
             labelListList& cellZoneMap
         );
-
-        // Conservatively map all fvFields in the registry
-        template <class Type>
-        void ConservativeMapFields(const topoMapper&);
 
         // Reset the mesh and generate mapping information
         void resetMesh();

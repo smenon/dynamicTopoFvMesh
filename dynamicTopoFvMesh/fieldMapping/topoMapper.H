@@ -79,8 +79,8 @@ class topoMapper
         HashTable<autoPtr<volVectorField> > sGrads_;
         HashTable<autoPtr<volTensorField> > vGrads_;
 
-        //- Old cell-centre information
-        mutable volVectorField* oldCellCentresPtr_;
+        //- Face / cell centre information
+        mutable volVectorField* centresPtr_;
 
         //- Intersection volume weights
         Map<scalarField> faceWeights_;
@@ -106,6 +106,10 @@ class topoMapper
             HashTable<autoPtr<gradType> >& gradTable
         );
 
+        //- Fetch the gradient field
+        template <class Type>
+        const Type& gradient(const word& name) const;
+
         //- Clear out local storage
         void clearOut();
 
@@ -120,7 +124,7 @@ public:
             cellMap_(NULL),
             surfaceMap_(NULL),
             boundaryMap_(NULL),
-            oldCellCentresPtr_(NULL)
+            centresPtr_(NULL)
         {}
 
     // Destructor
@@ -167,18 +171,18 @@ public:
         //- Store gradients prior to mesh reset
         void storeGradients();
 
-        //- Set old cell-centre information
-        void setOldCellCentres(const volVectorField& oldCentres);
+        //- Set face/cell centre information
+        void storeCentres();
 
-        //- Return old cell-centre information
-        const volVectorField& oldCentres() const;
+        //- Return stored face/cell centre information
+        const volVectorField& centres() const;
 
-        //- Fetch the gradient field
+        // Conservatively map all fvFields in the registry
         template <class Type>
-        const Type& gradient(const word& name) const;
+        void conservativeMapFields() const;
 
         //- Correct fluxes after topology change
-        void correctFluxes();
+        void correctFluxes() const;
 
         //- Return volume mapper
         const topoCellMapper& volMap() const;
