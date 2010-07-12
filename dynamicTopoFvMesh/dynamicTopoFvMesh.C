@@ -95,8 +95,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     coupledModification_(false),
     interval_(1),
     mapper_(NULL),
-    mPtr_(NULL),
-    lsPtr_(NULL),
+    motionSolver_(NULL),
+    lengthEstimator_(NULL),
     eMeshPtr_(NULL),
     oldPoints_(polyMesh::points()),
     points_(polyMesh::points()),
@@ -221,8 +221,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     coupledModification_(false),
     interval_(1),
     mapper_(NULL),
-    mPtr_(NULL),
-    lsPtr_(NULL),
+    motionSolver_(NULL),
+    lengthEstimator_(NULL),
     eMeshPtr_(NULL),
     oldPoints_(points),
     points_(points),
@@ -4271,7 +4271,7 @@ void dynamicTopoFvMesh::loadMetric()
 // Load the mesh-motion solver
 void dynamicTopoFvMesh::loadMotionSolver()
 {
-    if (mPtr_.valid())
+    if (motionSolver_.valid())
     {
         FatalErrorIn
         (
@@ -4282,7 +4282,7 @@ void dynamicTopoFvMesh::loadMotionSolver()
     else
     if (dict_.found("solver"))
     {
-        mPtr_ = motionSolver::New(*this);
+        motionSolver_ = motionSolver::New(*this);
     }
 }
 
@@ -4310,7 +4310,7 @@ void dynamicTopoFvMesh::loadLengthScaleEstimator()
 {
     if (edgeRefinement_)
     {
-        if (lsPtr_.valid())
+        if (lengthEstimator_.valid())
         {
             FatalErrorIn
             (
@@ -4322,7 +4322,7 @@ void dynamicTopoFvMesh::loadLengthScaleEstimator()
         {
             const dictionary& meshDict = dict_.subDict("dynamicTopoFvMesh");
 
-            lsPtr_.set
+            lengthEstimator_.set
             (
                 new lengthScaleEstimator
                 (
@@ -4401,11 +4401,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         handlerPtr_.set
         (
             0,
-            new threadHandler<dynamicTopoFvMesh>
-            (
-                (*this),
-                threader()
-            )
+            new meshHandler(*this, threader())
         );
 
         handlerPtr_[0].setMaster();
@@ -4418,15 +4414,6 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
         // Index '0' is master, rest are slaves
         handlerPtr_.setSize(nThreads + 1);
 
-        // Set the thread scheduling sequence
-        topoSeq_.setSize(nThreads);
-
-        // Linear sequence from 1 to nThreads
-        forAll(topoSeq_, indexI)
-        {
-            topoSeq_[indexI] = indexI + 1;
-        }
-
         // Size the stacks
         entityStack_.setSize(nThreads + 1);
 
@@ -4435,11 +4422,7 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
             handlerPtr_.set
             (
                 threadI,
-                new threadHandler<dynamicTopoFvMesh>
-                (
-                    (*this),
-                    threader()
-                )
+                new meshHandler(*this, threader())
             );
 
             if (threadI == 0)
@@ -4461,14 +4444,11 @@ void dynamicTopoFvMesh::initializeThreadingEnvironment
 void dynamicTopoFvMesh::swap2DEdges(void *argument)
 {
     // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
+    meshHandler *thread = static_cast<meshHandler*>(argument);
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+        thread->sendSignal(meshHandler::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->reference();
@@ -4502,88 +4482,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
-    }
-}
-
-
-// 2D Edge-bisection/collapse engine
-void dynamicTopoFvMesh::edgeBisectCollapse2D
-(
-    void *argument
-)
-{
-    // Loop through all quad-faces and bisect/collapse
-    // edges (quad-faces) by the criterion:
-    // Bisect when boundary edge-length > ratioMax_*lengthScale
-    // Collapse when boundary edge-length < ratioMin_*lengthScale
-
-    // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
-
-    if (thread->slave())
-    {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
-    }
-
-    dynamicTopoFvMesh& mesh = thread->reference();
-
-    // Figure out which thread this is...
-    label tIndex = mesh.self();
-
-    // Pick items off the stack
-    while (!mesh.Stack(tIndex).empty())
-    {
-        // Retrieve the index for this face
-        label fIndex = mesh.Stack(tIndex).pop();
-
-        // Check if edgeRefinements are to be avoided on patch.
-        label pIndex = mesh.whichPatch(fIndex);
-
-        if (mesh.lengthEstimator().checkRefinementPatch(pIndex))
-        {
-            continue;
-        }
-
-        // Check if this boundary face is adjacent to a sliver-cell,
-        // and remove it by a two-step bisection/collapse operation.
-        mesh.remove2DSliver(fIndex);
-
-        if (mesh.checkBisection(fIndex))
-        {
-            if (thread->master())
-            {
-                // Bisect this face
-                mesh.bisectQuadFace(fIndex);
-            }
-            else
-            {
-                // Push this on to the master stack
-                mesh.Stack(0).push(fIndex);
-            }
-        }
-        else
-        if (mesh.checkCollapse(fIndex))
-        {
-            if (thread->master())
-            {
-                // Collapse this face
-                mesh.collapseQuadFace(fIndex);
-            }
-            else
-            {
-                // Push this on to the master stack
-                mesh.Stack(0).push(fIndex);
-            }
-        }
-    }
-
-    if (thread->slave())
-    {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
+        thread->sendSignal(meshHandler::STOP);
     }
 }
 
@@ -4663,14 +4562,11 @@ void dynamicTopoFvMesh::swap3DEdges
 )
 {
     // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
+    meshHandler *thread = static_cast<meshHandler*>(argument);
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+        thread->sendSignal(meshHandler::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->reference();
@@ -4723,13 +4619,13 @@ void dynamicTopoFvMesh::swap3DEdges
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
+        thread->sendSignal(meshHandler::STOP);
     }
 }
 
 
-// 3D Edge-bisection/collapse engine
-void dynamicTopoFvMesh::edgeBisectCollapse3D
+// Edge refinement engine
+void dynamicTopoFvMesh::edgeRefinementEngine
 (
     void *argument
 )
@@ -4739,14 +4635,11 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
     // Collapse when edge-length < ratioMin_*lengthScale
 
     // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
+    meshHandler *thread = static_cast<meshHandler*>(argument);
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+        thread->sendSignal(meshHandler::START);
     }
 
     dynamicTopoFvMesh& mesh = thread->reference();
@@ -4756,16 +4649,8 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 
     while (!mesh.Stack(tIndex).empty())
     {
-        // Retrieve an edge from the stack
+        // Retrieve an entity from the stack
         label eIndex = mesh.Stack(tIndex).pop();
-
-        // Check if edgeRefinements are to be avoided.
-        label pIndex = mesh.whichEdgePatch(eIndex);
-
-        if (mesh.lengthEstimator().checkRefinementPatch(pIndex))
-        {
-            continue;
-        }
 
         if (mesh.checkBisection(eIndex))
         {
@@ -4798,7 +4683,7 @@ void dynamicTopoFvMesh::edgeBisectCollapse3D
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
+        thread->sendSignal(meshHandler::STOP);
     }
 }
 
@@ -5578,7 +5463,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
 }
 
 
-// Remove sliver cells in 3D
+// Remove sliver cells
 void dynamicTopoFvMesh::removeSlivers()
 {
     if (!edgeRefinement_)
@@ -5910,102 +5795,23 @@ void dynamicTopoFvMesh::removeSlivers()
 }
 
 
-// MultiThreaded topology modifier [2D]
-void dynamicTopoFvMesh::threadedTopoModifier2D()
-{
-    // Handle coupled patches.
-    handleCoupledPatches();
-
-    if (edgeRefinement_)
-    {
-        // Initialize stacks
-        initStacks();
-
-        if (threader_->multiThreaded())
-        {
-            // Lock slaves
-            lockSlaveThreads(topoSeq_, handlerPtr_);
-
-            // Submit jobs to the work queue
-            forAll(topoSeq_, i)
-            {
-                threader_->addToWorkQueue
-                (
-                    &edgeBisectCollapse2D,
-                    reinterpret_cast<void *>(&(handlerPtr_[topoSeq_[i]]))
-                );
-
-                // Wait for a signal from this thread
-                // before moving on.
-                handlerPtr_[topoSeq_[i]].waitForSignal
-                (
-                    threadHandler<dynamicTopoFvMesh>::START
-                );
-            }
-
-            // Synchronize threads
-            synchronizeThreads(topoSeq_, handlerPtr_);
-        }
-
-        // Set the master thread to implement modifications
-        edgeBisectCollapse2D(&(handlerPtr_[0]));
-
-        // Handle mesh slicing events, if necessary
-        handleMeshSlicing();
-
-        if (debug)
-        {
-            Info << nl << "2D Edge Bisection/Collapse complete." << endl;
-        }
-    }
-
-    // Re-initialize stacks
-    initStacks();
-
-    if (threader_->multiThreaded())
-    {
-        // Lock slaves
-        lockSlaveThreads(topoSeq_, handlerPtr_);
-
-        // Submit jobs to the work queue
-        forAll(topoSeq_, i)
-        {
-            threader_->addToWorkQueue
-            (
-                &swap2DEdges,
-                reinterpret_cast<void *>(&(handlerPtr_[topoSeq_[i]]))
-            );
-
-            // Wait for a signal from this thread
-            // before moving on.
-            handlerPtr_[topoSeq_[i]].waitForSignal
-            (
-                threadHandler<dynamicTopoFvMesh>::START
-            );
-        }
-
-        // Synchronize threads
-        synchronizeThreads(topoSeq_, handlerPtr_);
-    }
-
-    // Set the master thread to implement modifications
-    swap2DEdges(reinterpret_cast<void *>(&(handlerPtr_[0])));
-
-    if (debug)
-    {
-        Info << nl << "2D Edge Swapping complete." << endl;
-    }
-}
-
-
-// MultiThreaded topology modifier [3D]
-void dynamicTopoFvMesh::threadedTopoModifier3D()
+// MultiThreaded topology modifier
+void dynamicTopoFvMesh::threadedTopoModifier()
 {
     // Remove sliver cells first.
     removeSlivers();
 
     // Handle coupled patches.
     handleCoupledPatches();
+
+    // Set the thread scheduling sequence
+    labelList topoSequence(threader_->getNumThreads());
+
+    // Linear sequence from 1 to nThreads
+    forAll(topoSequence, indexI)
+    {
+        topoSequence[indexI] = indexI + 1;
+    }
 
     if (edgeRefinement_)
     {
@@ -6015,76 +5821,94 @@ void dynamicTopoFvMesh::threadedTopoModifier3D()
         if (threader_->multiThreaded())
         {
             // Lock slave threads
-            lockSlaveThreads(topoSeq_, handlerPtr_);
+            lockSlaveThreads(topoSequence, handlerPtr_);
 
             // Submit jobs to the work queue
-            forAll(topoSeq_, i)
+            forAll(topoSequence, i)
             {
                 threader_->addToWorkQueue
                 (
-                    &edgeBisectCollapse3D,
-                    reinterpret_cast<void *>(&(handlerPtr_[topoSeq_[i]]))
+                    &edgeRefinementEngine,
+                    &(handlerPtr_[topoSequence[i]])
                 );
 
                 // Wait for a signal from this thread
                 // before moving on.
-                handlerPtr_[topoSeq_[i]].waitForSignal
+                handlerPtr_[topoSequence[i]].waitForSignal
                 (
-                    threadHandler<dynamicTopoFvMesh>::START
+                    meshHandler::START
                 );
             }
 
             // Synchronize threads
-            synchronizeThreads(topoSeq_, handlerPtr_);
+            synchronizeThreads(topoSequence, handlerPtr_);
         }
 
         // Set the master thread to implement modifications
-        edgeBisectCollapse3D(&(handlerPtr_[0]));
+        edgeRefinementEngine(&(handlerPtr_[0]));
 
         // Handle mesh slicing events, if necessary
         handleMeshSlicing();
 
         if (debug)
         {
-            Info << nl << "3D Edge Bisection/Collapse complete." << endl;
+            Info << nl << "Edge Bisection/Collapse complete." << endl;
         }
     }
 
-    // Initialize stacks
+    // Re-Initialize stacks
     initStacks();
 
     if (threader_->multiThreaded())
     {
         // Lock slave threads
-        lockSlaveThreads(topoSeq_, handlerPtr_);
+        lockSlaveThreads(topoSequence, handlerPtr_);
 
         // Submit jobs to the work queue
-        forAll(topoSeq_, i)
+        forAll(topoSequence, i)
         {
-            threader_->addToWorkQueue
-            (
-                &swap3DEdges,
-                reinterpret_cast<void *>(&(handlerPtr_[topoSeq_[i]]))
-            );
+            if (twoDMesh_)
+            {
+                threader_->addToWorkQueue
+                (
+                    &swap2DEdges,
+                    &(handlerPtr_[topoSequence[i]])
+                );
+            }
+            else
+            {
+                threader_->addToWorkQueue
+                (
+                    &swap3DEdges,
+                    &(handlerPtr_[topoSequence[i]])
+                );
+            }
 
             // Wait for a signal from this thread
             // before moving on.
-            handlerPtr_[topoSeq_[i]].waitForSignal
+            handlerPtr_[topoSequence[i]].waitForSignal
             (
-                threadHandler<dynamicTopoFvMesh>::START
+                meshHandler::START
             );
         }
 
         // Synchronize threads
-        synchronizeThreads(topoSeq_, handlerPtr_);
+        synchronizeThreads(topoSequence, handlerPtr_);
     }
 
     // Set the master thread to implement modifications
-    swap3DEdges(reinterpret_cast<void *>(&(handlerPtr_[0])));
+    if (twoDMesh_)
+    {
+        swap2DEdges(&(handlerPtr_[0]));
+    }
+    else
+    {
+        swap3DEdges(&(handlerPtr_[0]));
+    }
 
     if (debug)
     {
-        Info << nl << "3D Edge Swapping complete." << endl;
+        Info << nl << "Edge Swapping complete." << endl;
     }
 }
 
@@ -6192,20 +6016,6 @@ void dynamicTopoFvMesh::resetMesh()
         }
 
         topoMapper& fieldMapper = mapper_();
-
-        volScalarField alpha
-        (
-            IOobject
-            (
-                "alpha",
-                time().timeName(),
-                *this,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
-            ),
-            *this,
-            dimensionedScalar("scalar", dimless, 1.0)
-        );
 
         // Set face/cell centres and gradient information
         // for the mapping stage, prior to mesh reset
@@ -6360,9 +6170,9 @@ void dynamicTopoFvMesh::resetMesh()
         movePoints(points);
 
         // Update the mesh-motion solver
-        if (mPtr_.valid())
+        if (motionSolver_.valid())
         {
-            mPtr_->updateMesh(mpm);
+            motionSolver_->updateMesh(mpm);
         }
 
         // Now that all connectivity changes are successful,
@@ -6374,7 +6184,7 @@ void dynamicTopoFvMesh::resetMesh()
                 threader_->addToWorkQueue
                 (
                     &initCoupledConnectivity,
-                    reinterpret_cast<void *>(this)
+                    this
                 );
             }
             else
@@ -6509,9 +6319,9 @@ bool dynamicTopoFvMesh::update()
     oldPoints_ = polyMesh::points();
 
     // Invoke mesh-motion solver and store new points
-    if (mPtr_.valid())
+    if (motionSolver_.valid())
     {
-        points_ = mPtr_->newPoints()();
+        points_ = motionSolver_->newPoints()();
     }
 
     // Reset statistics
@@ -6530,9 +6340,9 @@ bool dynamicTopoFvMesh::update()
     if (interval_ < 0 || ((time().timeIndex() % interval_ != 0) && noSlivers))
     {
         // Move mesh to new positions
-        if (mPtr_.valid())
+        if (motionSolver_.valid())
         {
-            movePoints(mPtr_->curPoints());
+            movePoints(motionSolver_->curPoints());
         }
 
         // Dump procIDs to disk, if requested.
@@ -6549,14 +6359,7 @@ bool dynamicTopoFvMesh::update()
     clockTime topologyTimer;
 
     // Invoke the threaded topoModifier
-    if (twoDMesh_)
-    {
-        threadedTopoModifier2D();
-    }
-    else
-    {
-        threadedTopoModifier3D();
-    }
+    threadedTopoModifier();
 
     Info << " Topo modifier time: " << topologyTimer.elapsedTime() << endl;
 

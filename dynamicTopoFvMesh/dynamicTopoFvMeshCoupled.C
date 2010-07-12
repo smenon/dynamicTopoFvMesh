@@ -562,23 +562,18 @@ void dynamicTopoFvMesh::handleCoupledPatches()
     initCoupledStack();
 
     // Loop through the coupled stack and perform changes.
+    if (edgeRefinement_)
+    {
+        edgeRefinementEngine(&(handlerPtr_[0]));
+    }
+
     if (twoDMesh_)
     {
-        if (edgeRefinement_)
-        {
-            edgeBisectCollapse2D(&(handlerPtr_[0]));
-        }
-
         // Cannot swap on surfaces in 2D, so don't bother.
     }
     else
     {
-        if (edgeRefinement_)
-        {
-            edgeBisectCollapse3D(&(handlerPtr_[0]));
-        }
-
-        // Re-Initialize the edge stack
+        // Re-Initialize the stack
         initCoupledStack();
 
         swap3DEdges(&(handlerPtr_[0]));

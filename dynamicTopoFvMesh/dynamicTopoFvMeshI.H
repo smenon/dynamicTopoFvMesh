@@ -40,7 +40,7 @@ namespace Foam
 inline lengthScaleEstimator&
 dynamicTopoFvMesh::lengthEstimator()
 {
-    if (!lsPtr_.valid())
+    if (!lengthEstimator_.valid())
     {
         FatalErrorIn
         (
@@ -51,14 +51,15 @@ dynamicTopoFvMesh::lengthEstimator()
           << abort(FatalError);
     }
 
-    return lsPtr_();
+    return lengthEstimator_();
 }
+
 
 // Return a const reference to the lengthScaleEstimator
 inline const lengthScaleEstimator&
 dynamicTopoFvMesh::lengthEstimator() const
 {
-    if (!lsPtr_.valid())
+    if (!lengthEstimator_.valid())
     {
         FatalErrorIn
         (
@@ -69,8 +70,9 @@ dynamicTopoFvMesh::lengthEstimator() const
           << abort(FatalError);
     }
 
-    return lsPtr_();
+    return lengthEstimator_();
 }
+
 
 // Return a const reference to the multiThreader
 inline const multiThreader&
@@ -1676,12 +1678,24 @@ inline scalar dynamicTopoFvMesh::computeMinQuality
 }
 
 
-// Utility method to compute the quality of a tetrahedral cell
-inline scalar dynamicTopoFvMesh::tetQuality
+// Utility method to compute the quality of a cell
+inline scalar dynamicTopoFvMesh::cellQuality
 (
     const label cIndex
 ) const
 {
+    if (twoDMesh_)
+    {
+        FatalErrorIn
+        (
+            "inline scalar dynamicTopoFvMesh::cellQuality"
+            "(const label cIndex) const"
+        )
+            << nl << "Cell: " << cIndex
+            << " 2D Mesh."
+            << abort(FatalError);
+    }
+
     const cell& cellToCheck = cells_[cIndex];
 
     const face& baseFace = faces_[cellToCheck[0]];
@@ -1695,7 +1709,7 @@ inline scalar dynamicTopoFvMesh::tetQuality
     {
         FatalErrorIn
         (
-            "inline scalar dynamicTopoFvMesh::tetQuality"
+            "inline scalar dynamicTopoFvMesh::cellQuality"
             "(const label cIndex) const"
         )
             << nl << "Cell: " << cIndex
@@ -1734,7 +1748,7 @@ inline scalar dynamicTopoFvMesh::tetQuality
     // This should never happen.
     FatalErrorIn
     (
-        "inline scalar dynamicTopoFvMesh::tetQuality"
+        "inline scalar dynamicTopoFvMesh::cellQuality"
         "(const label cIndex) const"
     )
         << nl << " Illegal connectivity."

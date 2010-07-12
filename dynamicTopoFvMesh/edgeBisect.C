@@ -75,6 +75,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         return map;
     }
 
+    // Check if edgeRefinements are to be avoided on patch.
+    if (lengthEstimator().checkRefinementPatch(whichPatch(fIndex)))
+    {
+        return map;
+    }
+
     // Sanity check: Is the index legitimate?
     if (fIndex < 0 || fIndex >= nFaces_)
     {
@@ -1754,6 +1760,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     //      [5] Create internal faces for each bisected cell
     //      Update faceEdges, edgeFaces and edgePoints information
 
+    // For 2D meshes, perform face-bisection
+    if (twoDMesh_)
+    {
+        return bisectQuadFace(eIndex, checkOnly);
+    }
+
     // Figure out which thread this is...
     label tIndex = self(), pIndex = -1;
 
@@ -1770,6 +1782,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Reached the max allowable topo-changes.
         Stack(tIndex).clear();
 
+        return map;
+    }
+
+    // Check if edgeRefinements are to be avoided on patch.
+    if (lengthEstimator().checkRefinementPatch(whichEdgePatch(eIndex)))
+    {
         return map;
     }
 

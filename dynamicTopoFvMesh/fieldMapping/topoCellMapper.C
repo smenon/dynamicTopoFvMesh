@@ -97,8 +97,8 @@ void topoCellMapper::calcAddressing() const
             {
                 FatalErrorIn("void topoCellMapper::calcAddressing() const")
                     << "Master cell " << cellI
-                    << " mapped from cell " << mo
-                    << " already destination of mapping."
+                    << " mapped from cells " << mo
+                    << " is already destination for mapping."
                     << abort(FatalError);
             }
 
@@ -112,9 +112,9 @@ void topoCellMapper::calcAddressing() const
 
         forAll (cm, cellI)
         {
-            if (cm[cellI] > -1 && addr[cellI].size() == 0)
+            // Mapped from a single cell
+            if (cm[cellI] > -1 && addr[cellI].empty())
             {
-                // Mapped from a single cell
                 addr[cellI] = labelList(1, cm[cellI]);
             }
 
@@ -232,36 +232,43 @@ void topoCellMapper::calcIntersectionWeightsAndCentres() const
     const labelListList& addr = addressing();
 
     // Allocate memory
-    volumesPtr_ = new List<scalarField>(mesh_.nCells());
+    volumesPtr_ = new List<scalarField>(mesh_.nCells(), scalarField(0));
     List<scalarField>& v = *volumesPtr_;
 
-    centresPtr_ = new List<vectorField>(mesh_.nCells());
+    centresPtr_ = new List<vectorField>(mesh_.nCells(), vectorField(0));
     List<vectorField>& x = *centresPtr_;
 
-    // Obtain cell-centre / volume information from the mesh.
-    //  - Point positions must be set to old locations
-    //    for mapping to be valid.
-    const vectorField& cellCentres = mesh_.cellCentres();
+    // Obtain stored cell-centres
+    const vectorField& cellCentres = tMapper_.centres().internalField();
 
     // Fetch maps
     const Map<vectorField>& mapCellCentres = tMapper_.cellCentres();
     const Map<scalarField>& mapCellWeights = tMapper_.cellWeights();
 
+    // Fill in maps first
+    Map<scalarField>::const_iterator cwIter = mapCellWeights.begin();
+    Map<vectorField>::const_iterator ccIter = mapCellCentres.begin();
+
+    while (cwIter != mapCellWeights.end())
+    {
+        x[ccIter.key()] = ccIter();
+        v[cwIter.key()] = cwIter();
+
+        // Increment iterators
+        cwIter++;
+        ccIter++;
+    }
+
+    // Now do mapped cells
     forAll(addr, cellI)
     {
         const labelList& mo = addr[cellI];
 
-        // Do mapped cells
-        if (mo.size() == 1)
+        // Check if this is indeed a mapped cell
+        if (mo.size() == 1 && x[cellI].empty() && v[cellI].empty())
         {
-            x[cellI] = vectorField(1, cellCentres[cellI]);
+            x[cellI] = vectorField(1, cellCentres[mo[0]]);
             v[cellI] = scalarField(1, 1.0);
-        }
-        else
-        {
-            // Map from masters, intersection weights
-            x[cellI] = mapCellCentres[cellI];
-            v[cellI] = mapCellWeights[cellI];
         }
     }
 }
@@ -475,30 +482,36 @@ void topoCellMapper::mapInternalField
     const List<vectorField>& xC = intersectionCentres();
 
     // Fetch geometry
-    const vectorField& oldCellCentres = tMapper_.centres().internalField();
+    const vectorField& centres = tMapper_.centres().internalField();
 
     // Copy the original field
     Field<Type> fieldCpy(iF);
 
     // Resize to current dimensions
-    iF.setSize(size(), pTraits<Type>::zero);
+    iF.setSize(size());
 
     // Map the internal field
     forAll(iF, cellI)
     {
         const labelList& addr = cAddressing[cellI];
 
+        iF[cellI] = pTraits<Type>::zero;
+
         forAll(addr, cellJ)
         {
-            vector xCo = oldCellCentres[addr[cellJ]];
-
             // Accumulate volume-weighted Taylor-series interpolate
             iF[cellI] +=
             (
                 wC[cellI][cellJ] *
                 (
                     fieldCpy[addr[cellJ]]
-                  + (gF[addr[cellJ]] & (xC[cellI][cellJ] - xCo))
+                  + (
+                        gF[addr[cellJ]] &
+                        (
+                            xC[cellI][cellJ]
+                          - centres[addr[cellJ]]
+                        )
+                    )
                 )
             );
         }

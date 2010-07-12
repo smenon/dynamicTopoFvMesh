@@ -47,18 +47,11 @@ namespace Foam
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Compute mesh-quality, and return true if no slivers are present
-// Valid for 3D tetrahedral meshes only...
 bool dynamicTopoFvMesh::meshQuality
 (
     bool outputOption
 )
 {
-    // Valid for 3D tetrahedral meshes only...
-    if (twoDMesh_)
-    {
-        return true;
-    }
-
     Switch dumpMeshQuality(false);
 
     if
@@ -112,7 +105,7 @@ bool dynamicTopoFvMesh::meshQuality
         }
 
         // Compute cell quality
-        cQuality = tetQuality(cellI);
+        cQuality = cellQuality(cellI);
 
         if (dumpMeshQuality && time().outputTime())
         {
@@ -157,7 +150,11 @@ bool dynamicTopoFvMesh::meshQuality
 
         if (minQuality < 0.0)
         {
-            WarningIn("dynamicTopoFvMesh::meshQuality()")
+            WarningIn
+            (
+                "bool dynamicTopoFvMesh::meshQuality"
+                "(bool outputOption)"
+            )
                 << nl
                 << "Minimum cell quality is: " << minQuality
                 << " at cell: " << minCell

@@ -71,6 +71,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         return map;
     }
 
+    // Check if edgeRefinements are to be avoided on patch.
+    if (lengthEstimator().checkRefinementPatch(whichPatch(fIndex)))
+    {
+        return map;
+    }
+
     // Sanity check: Is the index legitimate?
     if (fIndex < 0 || fIndex >= nFaces_)
     {
@@ -1747,6 +1753,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     //      [7] Remove one of the vertices of the edge
     //      Update faceEdges, edgeFaces and edgePoints information
 
+    // For 2D meshes, perform face-collapse
+    if (twoDMesh_)
+    {
+        return collapseQuadFace(eIndex, overRideCase, checkOnly);
+    }
+
     // Figure out which thread this is...
     label tIndex = self();
 
@@ -1763,6 +1775,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // Reached the max allowable topo-changes.
         Stack(tIndex).clear();
 
+        return map;
+    }
+
+    // Check if edgeRefinements are to be avoided on patch.
+    if (lengthEstimator().checkRefinementPatch(whichEdgePatch(eIndex)))
+    {
         return map;
     }
 

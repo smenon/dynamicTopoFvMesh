@@ -117,10 +117,10 @@ class dynamicTopoFvMesh
         autoPtr<topoMapper> mapper_;
 
         //- Mesh motion solver
-        autoPtr<motionSolver> mPtr_;
+        autoPtr<motionSolver> motionSolver_;
 
         //- Length scale estimator
-        autoPtr<lengthScaleEstimator> lsPtr_;
+        autoPtr<lengthScaleEstimator> lengthEstimator_;
 
         //- Edge-mesh to store up-to-date connectivity information
         autoPtr<eMesh> eMeshPtr_;
@@ -223,10 +223,9 @@ class dynamicTopoFvMesh
         autoPtr<IOmultiThreader> threader_;
 
         // Pointer-list of thread-handlers
-        PtrList<threadHandler<dynamicTopoFvMesh> > handlerPtr_;
+        typedef threadHandler<dynamicTopoFvMesh> meshHandler;
 
-        // Scheduling sequences for thread locking
-        labelList topoSeq_;
+        PtrList<meshHandler> handlerPtr_;
 
         // Entity mutexes used for synchronization
         // in multi-threaded reOrdering
@@ -562,11 +561,8 @@ class dynamicTopoFvMesh
         // Check for collapse
         inline bool checkCollapse(const label index) const;
 
-        // MultiThreaded topology modifier [2D]
-        void threadedTopoModifier2D();
-
-        // MultiThreaded topology modifier [3D]
-        void threadedTopoModifier3D();
+        // MultiThreaded topology modifier
+        void threadedTopoModifier();
 
         // Lock all slave threads
         template <class Type>
@@ -587,14 +583,11 @@ class dynamicTopoFvMesh
         // 2D Edge-swapping engine
         static void swap2DEdges(void *argument);
 
-        // 2D Edge-bisection/collapse engine
-        static void edgeBisectCollapse2D(void *argument);
-
         // 3D Edge-swapping engine
         static void swap3DEdges(void *argument);
 
-        // 3D Edge-bisection/collapse engine
-        static void edgeBisectCollapse3D(void *argument);
+        // Edge refinement engine
+        static void edgeRefinementEngine(void *argument);
 
         // Return the entity stack for a particular thread
         inline stack& Stack(const label threadID);
@@ -725,7 +718,7 @@ class dynamicTopoFvMesh
         // Indentify the sliver type in 3D
         const changeMap identifySliverType(const label cIndex) const;
 
-        // Remove sliver cells in 3D
+        // Remove sliver cells
         void removeSlivers();
 
         // Method to find the interior/boundary faces
@@ -953,8 +946,8 @@ class dynamicTopoFvMesh
         // Utility method to compute the minimum quality of a vertex hull
         inline scalar computeMinQuality(const label eIndex) const;
 
-        // Utility method to compute the quality of a tetrahedral cell
-        inline scalar tetQuality(const label cIndex) const;
+        // Utility method to compute the quality of a cell
+        inline scalar cellQuality(const label cIndex) const;
 
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.

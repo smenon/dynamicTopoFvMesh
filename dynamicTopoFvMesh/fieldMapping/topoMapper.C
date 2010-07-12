@@ -35,7 +35,7 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
-#include "fvc.H"
+#include "fvCFD.H"
 #include "leastSquaresGrad.H"
 #include "topoMapper.H"
 #include "topoCellMapper.H"
@@ -384,7 +384,45 @@ void topoMapper::conservativeMapFields() const
 //- Correct fluxes after topology change
 void topoMapper::correctFluxes() const
 {
+    const fvMesh& mesh = mesh_;
 
+    // Check if a flux field exists in the registry
+    if (mesh.foundObject<surfaceScalarField>("phi"))
+    {
+        // Interpolate velocity for inserted faces
+        const labelList& insertedFaces = surfaceMap_->insertedObjectLabels();
+
+        // Lookup fields from the registry
+        surfaceScalarField& phi =
+        (
+            const_cast<surfaceScalarField&>
+            (
+                mesh.lookupObject<surfaceScalarField>("phi")
+            )
+        );
+
+        const volVectorField& U = mesh.lookupObject<volVectorField>("U");
+
+        // Interpolate mapped velocity to faces
+        surfaceScalarField phiU = fvc::interpolate(U) & mesh.Sf();
+
+        forAll(insertedFaces, faceI)
+        {
+            phi[insertedFaces[faceI]] = phiU[insertedFaces[faceI]];
+        }
+
+        // Fetch relevant fields for flux correction
+        const Time& runTime = mesh.time();
+        const volScalarField& p = mesh.lookupObject<volScalarField>("p");
+        const volScalarField& rUA = mesh.lookupObject<volScalarField>("rUA");
+
+        label pRefCell = 0;
+        scalar pRefValue = 0.0;
+        label nNonOrthCorr = 1;
+
+        // Correct fluxes
+#       include "correctPhi.H"
+    }
 }
 
 
