@@ -564,22 +564,6 @@ class dynamicTopoFvMesh
         // MultiThreaded topology modifier
         void threadedTopoModifier();
 
-        // Lock all slave threads
-        template <class Type>
-        void lockSlaveThreads
-        (
-            const labelList& sequence,
-            PtrList<threadHandler<Type> >& handler
-        );
-
-        // Synchronize all slave threads
-        template <class Type>
-        void synchronizeThreads
-        (
-            const labelList& sequence,
-            PtrList<threadHandler<Type> >& handler
-        );
-
         // 2D Edge-swapping engine
         static void swap2DEdges(void *argument);
 

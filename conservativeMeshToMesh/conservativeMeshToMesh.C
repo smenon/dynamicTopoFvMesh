@@ -156,21 +156,14 @@ conservativeMeshToMesh::conservativeMeshToMesh
         multiThreader threader(nThreads);
 
         // Set one handler per thread
-        PtrList<threadHandler<conservativeMeshToMesh> > hdl
-        (
-            threader.getNumThreads()
-        );
+        PtrList<handler> hdl(threader.getNumThreads());
 
         forAll(hdl, i)
         {
             hdl.set
             (
                 i,
-                new threadHandler<conservativeMeshToMesh>
-                (
-                    *this,
-                    threader
-                )
+                new handler(*this, threader)
             );
         }
 
@@ -207,15 +200,15 @@ conservativeMeshToMesh::conservativeMeshToMesh
             hdl[i].setSize(2);
 
             // Set the start/end cell indices
-            hdl[i].set(0, reinterpret_cast<void *>(&tStarts[i]));
-            hdl[i].set(1, reinterpret_cast<void *>(&tSizes[i]));
+            hdl[i].set(0, &tStarts[i]);
+            hdl[i].set(1, &tSizes[i]);
 
             // Lock the slave thread first
-            hdl[i].lock(threadHandler<conservativeMeshToMesh>::START);
-            hdl[i].unsetPredicate(threadHandler<conservativeMeshToMesh>::START);
+            hdl[i].lock(handler::START);
+            hdl[i].unsetPredicate(handler::START);
 
-            hdl[i].lock(threadHandler<conservativeMeshToMesh>::STOP);
-            hdl[i].unsetPredicate(threadHandler<conservativeMeshToMesh>::STOP);
+            hdl[i].lock(handler::STOP);
+            hdl[i].unsetPredicate(handler::STOP);
         }
 
         // Submit jobs to the work queue
@@ -224,15 +217,12 @@ conservativeMeshToMesh::conservativeMeshToMesh
             threader.addToWorkQueue
             (
                 &calcAddressingAndWeightsThreaded,
-                reinterpret_cast<void *>(&(hdl[i]))
+                &(hdl[i])
             );
 
             // Wait for a signal from this thread
             // before moving on.
-            hdl[i].waitForSignal
-            (
-                threadHandler<conservativeMeshToMesh>::START
-            );
+            hdl[i].waitForSignal(handler::START);
         }
 
         // Track progress of threads
@@ -259,7 +249,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
         // Synchronize all threads
         forAll(hdl, i)
         {
-            hdl[i].waitForSignal(threadHandler<conservativeMeshToMesh>::STOP);
+            hdl[i].waitForSignal(handler::STOP);
         }
     }
 
@@ -288,28 +278,25 @@ void conservativeMeshToMesh::calcAddressingAndWeightsThreaded
 )
 {
     // Recast the argument
-    threadHandler<conservativeMeshToMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<conservativeMeshToMesh>*>(argument)
-    );
+    handler *thread = static_cast<handler*>(argument);
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler<conservativeMeshToMesh>::START);
+        thread->sendSignal(handler::START);
     }
 
     conservativeMeshToMesh& interpolator = thread->reference();
 
     // Recast the pointers for the argument
-    label& cellStart = *(reinterpret_cast<label*>(thread->operator()(0)));
-    label& cellSize = *(reinterpret_cast<label*>(thread->operator()(1)));
+    label& cellStart = *(static_cast<label*>(thread->operator()(0)));
+    label& cellSize = *(static_cast<label*>(thread->operator()(1)));
 
     // Now calculate addressing
     interpolator.calcAddressingAndWeights(cellStart, cellSize);
 
     if (thread->slave())
     {
-        thread->sendSignal(threadHandler<conservativeMeshToMesh>::STOP);
+        thread->sendSignal(handler::STOP);
     }
 }
 

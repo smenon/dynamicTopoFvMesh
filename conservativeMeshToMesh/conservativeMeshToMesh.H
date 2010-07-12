@@ -44,6 +44,7 @@ SourceFiles
 #include "meshToMesh.H"
 #include "className.H"
 #include "multiThreader.H"
+#include "threadHandler.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -74,6 +75,9 @@ class conservativeMeshToMesh
 
         //- Progress counter
         label counter_;
+
+        //- Typedef for convenience
+        typedef threadHandler<conservativeMeshToMesh> handler;
 
     // Private Member Functions
 

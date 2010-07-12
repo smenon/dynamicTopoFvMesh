@@ -263,10 +263,7 @@ void dynamicTopoFvMesh::reOrderPointsThread
 )
 {
     // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
+    meshHandler *thread = static_cast<meshHandler*>(argument);
 
     dynamicTopoFvMesh& mesh = thread->reference();
 
@@ -274,22 +271,22 @@ void dynamicTopoFvMesh::reOrderPointsThread
     mesh.entityMutex(0).lock();
 
     // Signal the calling thread
-    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+    thread->sendSignal(meshHandler::START);
 
     // Recast the pointers for the reOrderPoints argument
     pointField& points =
     (
-        *(reinterpret_cast<pointField*>(thread->operator()(0)))
+        *(static_cast<pointField*>(thread->operator()(0)))
     );
 
     pointField& preMotionPoints =
     (
-        *(reinterpret_cast<pointField*>(thread->operator()(1)))
+        *(static_cast<pointField*>(thread->operator()(1)))
     );
 
     labelListList& pointZoneMap =
     (
-        *(reinterpret_cast<labelListList*>(thread->operator()(2)))
+        *(static_cast<labelListList*>(thread->operator()(2)))
     );
 
     // Reorder the points
@@ -652,10 +649,7 @@ void dynamicTopoFvMesh::reOrderEdgesThread
 )
 {
     // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
+    meshHandler *thread = static_cast<meshHandler*>(argument);
 
     dynamicTopoFvMesh& mesh = thread->reference();
 
@@ -663,29 +657,29 @@ void dynamicTopoFvMesh::reOrderEdgesThread
     mesh.entityMutex(1).lock();
 
     // Signal the calling thread
-    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+    thread->sendSignal(meshHandler::START);
 
     // Recast the pointers for the argument
     edgeList& edges =
     (
-        *(reinterpret_cast<edgeList*>(thread->operator()(0)))
+        *(static_cast<edgeList*>(thread->operator()(0)))
     );
 
     labelListList& edgeFaces =
     (
-        *(reinterpret_cast<labelListList*>(thread->operator()(1)))
+        *(static_cast<labelListList*>(thread->operator()(1)))
     );
 
     labelListList& faceEdges =
     (
-        *(reinterpret_cast<labelListList*>(thread->operator()(2)))
+        *(static_cast<labelListList*>(thread->operator()(2)))
     );
 
     // Reorder the edges
     mesh.reOrderEdges(edges, edgeFaces, faceEdges, true);
 
     // Signal the calling thread
-    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::STOP);
+    thread->sendSignal(meshHandler::STOP);
 }
 
 // Reorder faces in upper-triangular order after a topology change
@@ -1275,10 +1269,7 @@ void dynamicTopoFvMesh::reOrderFacesThread
 )
 {
     // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
+    meshHandler *thread = static_cast<meshHandler*>(argument);
 
     dynamicTopoFvMesh& mesh = thread->reference();
 
@@ -1286,32 +1277,32 @@ void dynamicTopoFvMesh::reOrderFacesThread
     mesh.entityMutex(2).lock();
 
     // Signal the calling thread
-    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+    thread->sendSignal(meshHandler::START);
 
     // Recast the pointers for the argument
     faceList& faces =
     (
-        *(reinterpret_cast<faceList*>(thread->operator()(0)))
+        *(static_cast<faceList*>(thread->operator()(0)))
     );
 
     labelList& owner =
     (
-        *(reinterpret_cast<labelList*>(thread->operator()(1)))
+        *(static_cast<labelList*>(thread->operator()(1)))
     );
 
     labelList& neighbour =
     (
-        *(reinterpret_cast<labelList*>(thread->operator()(2)))
+        *(static_cast<labelList*>(thread->operator()(2)))
     );
 
     labelListList& faceEdges =
     (
-        *(reinterpret_cast<labelListList*>(thread->operator()(3)))
+        *(static_cast<labelListList*>(thread->operator()(3)))
     );
 
     labelListList& faceZoneFaceMap =
     (
-        *(reinterpret_cast<labelListList*>(thread->operator()(4)))
+        *(static_cast<labelListList*>(thread->operator()(4)))
     );
 
     // Reorder the faces
@@ -1705,10 +1696,7 @@ void dynamicTopoFvMesh::reOrderCellsThread
 )
 {
     // Recast the argument
-    threadHandler<dynamicTopoFvMesh> *thread =
-    (
-        reinterpret_cast<threadHandler<dynamicTopoFvMesh>*>(argument)
-    );
+    meshHandler *thread = static_cast<meshHandler*>(argument);
 
     dynamicTopoFvMesh& mesh = thread->reference();
 
@@ -1716,12 +1704,12 @@ void dynamicTopoFvMesh::reOrderCellsThread
     mesh.entityMutex(3).lock();
 
     // Signal the calling thread
-    thread->sendSignal(threadHandler<dynamicTopoFvMesh>::START);
+    thread->sendSignal(meshHandler::START);
 
     // Recast the pointers for the argument
     labelListList& cellZoneMap =
     (
-        *(reinterpret_cast<labelListList*>(thread->operator()(0)))
+        *(static_cast<labelListList*>(thread->operator()(0)))
     );
 
     // Reorder the cells
@@ -1837,7 +1825,7 @@ void dynamicTopoFvMesh::threadedMeshReOrdering
 )
 {
     // For reOrdering, one handler for each reOrdering method
-    PtrList<threadHandler<dynamicTopoFvMesh> > reOrderPtr(4);
+    PtrList<meshHandler> reOrderPtr(4);
 
     // Initialize reOrdering handlers
     forAll(reOrderPtr, memberI)
@@ -1845,11 +1833,7 @@ void dynamicTopoFvMesh::threadedMeshReOrdering
         reOrderPtr.set
         (
             memberI,
-            new threadHandler<dynamicTopoFvMesh>
-            (
-                (*this),
-                threader()
-            )
+            new meshHandler(*this, threader())
         );
     }
 
@@ -1860,36 +1844,36 @@ void dynamicTopoFvMesh::threadedMeshReOrdering
     reOrderPtr[0].setSize(3);
 
     // Prepare pointers for point reOrdering
-    reOrderPtr[0].set(0, reinterpret_cast<void *>(&points));
-    reOrderPtr[0].set(1, reinterpret_cast<void *>(&preMotionPoints));
-    reOrderPtr[0].set(2, reinterpret_cast<void *>(&pointZoneMap));
+    reOrderPtr[0].set(0, &points);
+    reOrderPtr[0].set(1, &preMotionPoints);
+    reOrderPtr[0].set(2, &pointZoneMap);
 
     // Edges take three arguments
     // (One edgeList and two labelListLists)
     reOrderPtr[1].setSize(3);
 
     // Prepare pointers for edge reOrdering
-    reOrderPtr[1].set(0, reinterpret_cast<void *>(&edges));
-    reOrderPtr[1].set(1, reinterpret_cast<void *>(&edgeFaces));
-    reOrderPtr[1].set(2, reinterpret_cast<void *>(&faceEdges));
+    reOrderPtr[1].set(0, &edges);
+    reOrderPtr[1].set(1, &edgeFaces);
+    reOrderPtr[1].set(2, &faceEdges);
 
     // Faces take five arguments
     // (One faceList, two labelLists, and two labelListLists)
     reOrderPtr[2].setSize(5);
 
     // Prepare pointers for face reOrdering
-    reOrderPtr[2].set(0, reinterpret_cast<void *>(&faces));
-    reOrderPtr[2].set(1, reinterpret_cast<void *>(&owner));
-    reOrderPtr[2].set(2, reinterpret_cast<void *>(&neighbour));
-    reOrderPtr[2].set(3, reinterpret_cast<void *>(&faceEdges));
-    reOrderPtr[2].set(4, reinterpret_cast<void *>(&faceZoneFaceMap));
+    reOrderPtr[2].set(0, &faces);
+    reOrderPtr[2].set(1, &owner);
+    reOrderPtr[2].set(2, &neighbour);
+    reOrderPtr[2].set(3, &faceEdges);
+    reOrderPtr[2].set(4, &faceZoneFaceMap);
 
     // Cells take one argument
     // (One labelListList)
     reOrderPtr[3].setSize(1);
 
     // Prepare pointers for cell reOrdering
-    reOrderPtr[3].set(0, reinterpret_cast<void *>(&cellZoneMap));
+    reOrderPtr[3].set(0, &cellZoneMap);
 
     // Set the thread scheduling sequence
     labelList reOrderSeq(4, -1);
@@ -1903,63 +1887,56 @@ void dynamicTopoFvMesh::threadedMeshReOrdering
     // Lock all slave threads first
     forAll(reOrderSeq, i)
     {
-        reOrderPtr[reOrderSeq[i]].lock
-        (
-            threadHandler<dynamicTopoFvMesh>::START
-        );
-
-        reOrderPtr[reOrderSeq[i]].unsetPredicate
-        (
-            threadHandler<dynamicTopoFvMesh>::START
-        );
+        reOrderPtr[reOrderSeq[i]].lock(meshHandler::START);
+        reOrderPtr[reOrderSeq[i]].unsetPredicate(meshHandler::START);
     }
 
     // Submit points to the work queue
     threader_->addToWorkQueue
     (
         &reOrderPointsThread,
-        reinterpret_cast<void *>(&(reOrderPtr[0]))
+        &(reOrderPtr[0])
     );
 
     // Wait for a signal from this thread before moving on.
-    reOrderPtr[0].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+    reOrderPtr[0].waitForSignal(meshHandler::START);
 
     // Submit cells to the work queue
     threader_->addToWorkQueue
     (
         &reOrderCellsThread,
-        reinterpret_cast<void *>(&(reOrderPtr[3]))
+        &(reOrderPtr[3])
     );
 
     // Wait for a signal from this thread before moving on.
-    reOrderPtr[3].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+    reOrderPtr[3].waitForSignal(meshHandler::START);
 
     // Submit faces to the work queue
     threader_->addToWorkQueue
     (
         &reOrderFacesThread,
-        reinterpret_cast<void *>(&(reOrderPtr[2]))
+        &(reOrderPtr[2])
     );
 
     // Wait for a signal from this thread before moving on.
-    reOrderPtr[2].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+    reOrderPtr[2].waitForSignal(meshHandler::START);
 
     // Lock the edge stop-mutex
-    reOrderPtr[1].lock(threadHandler<dynamicTopoFvMesh>::STOP);
-    reOrderPtr[1].unsetPredicate(threadHandler<dynamicTopoFvMesh>::STOP);
+    reOrderPtr[1].lock(meshHandler::STOP);
+    reOrderPtr[1].unsetPredicate(meshHandler::STOP);
 
     // Submit edges to the work queue
     threader_->addToWorkQueue
     (
         &reOrderEdgesThread,
-        reinterpret_cast<void *>(&(reOrderPtr[1]))
+        &(reOrderPtr[1])
     );
 
     // Wait for a signal from this thread before moving on.
-    reOrderPtr[1].waitForSignal(threadHandler<dynamicTopoFvMesh>::START);
+    reOrderPtr[1].waitForSignal(meshHandler::START);
 
     // Wait for edges to be reOrdered before moving on.
-    reOrderPtr[1].waitForSignal(threadHandler<dynamicTopoFvMesh>::STOP);
+    reOrderPtr[1].waitForSignal(meshHandler::STOP);
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

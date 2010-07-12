@@ -5821,7 +5821,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
         if (threader_->multiThreaded())
         {
             // Lock slave threads
-            lockSlaveThreads(topoSequence, handlerPtr_);
+            lockThreads(topoSequence, handlerPtr_);
 
             // Submit jobs to the work queue
             forAll(topoSequence, i)
@@ -5862,7 +5862,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     if (threader_->multiThreaded())
     {
         // Lock slave threads
-        lockSlaveThreads(topoSequence, handlerPtr_);
+        lockThreads(topoSequence, handlerPtr_);
 
         // Submit jobs to the work queue
         forAll(topoSequence, i)
@@ -5909,42 +5909,6 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     if (debug)
     {
         Info << nl << "Edge Swapping complete." << endl;
-    }
-}
-
-
-// Lock all slave threads
-template <class Type>
-void dynamicTopoFvMesh::lockSlaveThreads
-(
-    const labelList& sequence,
-    PtrList<threadHandler<Type> >& handler
-)
-{
-    forAll(sequence, i)
-    {
-        handler[sequence[i]].lock(threadHandler<Type>::START);
-        handler[sequence[i]].lock(threadHandler<Type>::STOP);
-
-        handler[sequence[i]].unsetPredicate(threadHandler<Type>::START);
-        handler[sequence[i]].unsetPredicate(threadHandler<Type>::STOP);
-    }
-}
-
-
-// Synchronize all slave threads
-template <class Type>
-void dynamicTopoFvMesh::synchronizeThreads
-(
-    const labelList& sequence,
-    PtrList<threadHandler<Type> >& handler
-)
-{
-    forAll(sequence, i)
-    {
-        // Wait for a signal from this thread
-        // before moving on.
-        handler[sequence[i]].waitForSignal(threadHandler<Type>::STOP);
     }
 }
 
