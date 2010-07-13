@@ -461,12 +461,15 @@ void dynamicTopoFvMesh::computeFaceWeights
         // Test for intersections
         forAll(candidates, indexI)
         {
+            vectorField tP;
+
             intersects[indexI] =
             (
-                testFaceIntersection
+                faceIntersection
                 (
                     fIndex,
-                    candidates[indexI]
+                    candidates[indexI],
+                    tP
                 )
             );
 
@@ -499,7 +502,7 @@ void dynamicTopoFvMesh::computeFaceWeights
                 if (intersects[indexI])
                 {
                     // Compute actual intersections
-                    vectorField tP(0);
+                    vectorField tP;
 
                     intersects[indexI] =
                     (
@@ -886,62 +889,6 @@ void dynamicTopoFvMesh::computeCellWeights
 }
 
 
-// Test for intersection between faces in old/new meshes
-bool dynamicTopoFvMesh::testFaceIntersection
-(
-    const label newFaceIndex,
-    const label oldFaceIndex
-) const
-{
-    // Check indices first
-    if (newFaceIndex >= faces_.size() || newFaceIndex < 0)
-    {
-        FatalErrorIn
-        (
-            "\n"
-            "bool dynamicTopoFvMesh::testFaceIntersection\n"
-            "(\n"
-            "    const label newFaceIndex,\n"
-            "    const label oldFaceIndex\n"
-            ") const"
-        )
-            << " Wrong newFaceIndex: " << newFaceIndex << nl
-            << " nFaces: " << nFaces_
-            << abort(FatalError);
-    }
-
-    if (oldFaceIndex >= nOldFaces_ || oldFaceIndex < 0)
-    {
-        FatalErrorIn
-        (
-            "\n"
-            "bool dynamicTopoFvMesh::testFaceIntersection\n"
-            "(\n"
-            "    const label newFaceIndex,\n"
-            "    const label oldFaceIndex\n"
-            ") const"
-        )
-            << " Wrong oldFaceIndex: " << oldFaceIndex << nl
-            << " nOldFaces: " << nOldFaces_
-            << abort(FatalError);
-    }
-
-    // Check for common points.
-    const face& fromFace = polyMesh::faces()[oldFaceIndex];
-    const face& toFace = faces_[newFaceIndex];
-
-    forAll(fromFace, pointI)
-    {
-        if (findIndex(toFace, fromFace[pointI]) > -1)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-
 // Test for intersection between cells in old/new meshes
 //   - Uses the static separating axis test for polyhedra,
 //     outlined in work by David Eberly
@@ -1133,26 +1080,45 @@ bool dynamicTopoFvMesh::faceIntersection
 
     // Fetch references for each mesh
     const face& fromFace = polyMesh::faces()[oldFaceIndex];
-
     const face& toFace = faces_[newFaceIndex];
+
+    // Obtain face centre and projection normal
+    vector xf = faceCentre(toFace, oldPoints_);
+    vector nf = faceNormal(toFace, oldPoints_);
+
+    nf /= mag(nf) + VSMALL;
 
     // Track all possible intersections from here on.
     label nInts = 0;
     Map<vector> intersections;
     vector intPoint = vector::zero;
 
-    // Topologically check for common points
+    // Topologically check for common points,
+    // and project uniques ones on to the face plane
+    Map<label> projPoints;
     Map<labelList> commonPoints;
+    vectorField projections(fromFace.size(), vector::zero);
 
     forAll(fromFace, pointI)
     {
         label pIndex = findIndex(toFace, fromFace[pointI]);
 
-        if (pIndex > -1)
+        vector r = oldPoints_[fromFace[pointI]];
+
+        if (pIndex == -1)
+        {
+            // Project this point on to the toFace plane.
+            projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
+
+            projPoints.insert(fromFace[pointI], pointI);
+        }
+        else
         {
             commonPoints.insert(toFace[pIndex], labelList(0));
 
-            intersections.set(++nInts, oldPoints_[toFace[pIndex]]);
+            projections[pointI] = r;
+
+            intersections.set(++nInts, r);
         }
     }
 
@@ -1232,6 +1198,100 @@ bool dynamicTopoFvMesh::faceIntersection
         }
 
         return true;
+    }
+
+    // Check whether any old projections are within
+    // the new face. Count these as 'intersections'.
+    forAll(fromFace, pointI)
+    {
+        if (commonPoints.found(fromFace[pointI]))
+        {
+            continue;
+        }
+
+        const point& checkPoint = projections[pointI];
+
+        if (pointInFace(toFace, oldPoints_, checkPoint))
+        {
+            intersections.set(++nInts, checkPoint);
+        }
+    }
+
+    // Check whether and new points are within
+    // projected old faces. Count these as 'intersections'.
+    face ifFace(identity(fromFace.size()));
+
+    forAll(toFace, pointI)
+    {
+        if (commonPoints.found(toFace[pointI]))
+        {
+            continue;
+        }
+
+        const point& checkPoint = oldPoints_[toFace[pointI]];
+
+        if (pointInFace(ifFace, projections, checkPoint))
+        {
+            intersections.set(++nInts, checkPoint);
+        }
+    }
+
+    // Loop through all new edges, and find possible intersections
+    // with (projections of) old face edges,
+    forAll(toFace, pointI)
+    {
+        edge toEdge = toFace.faceEdge(pointI);
+        label nextLabel = toFace.nextLabel(pointI);
+
+        forAll(fromFace, pointJ)
+        {
+            label nextJ = fromFace.fcIndex(pointJ);
+            edge fromEdge = fromFace.faceEdge(pointJ);
+
+            // Avoid common points
+            if (toEdge.commonVertex(fromEdge) > -1)
+            {
+                continue;
+            }
+
+            // Also check for bisection points
+
+            point p1 = projections[pointJ];
+            point p2 = projections[nextJ];
+            point p3 = oldPoints_[toFace[pointI]];
+            point p4 = oldPoints_[nextLabel];
+
+            // Compute edge normal and tangent-to-edge
+            vector te = (p4 - p3);
+            vector n = (nf ^ te);
+            n /= mag(n) + VSMALL;
+
+            // Compute uValues
+            scalar numOld = n & (p3 - p1);
+            scalar denOld = n & (p2 - p1);
+
+            // Check if the edges are parallel
+            scalar tolerance = (1e-4 * mag(p2 - p1));
+
+            if (mag(denOld) < tolerance)
+            {
+                continue;
+            }
+
+            scalar u = (numOld / denOld);
+            vector checkPoint = p1 + u*(p2 - p1);
+            scalar v = (te & (checkPoint - p3)) / (te & te);
+
+            // Check for intersection along lines.
+            if
+            (
+                ((u > tolerance) && (u < (1.0 - tolerance))) &&
+                ((v > tolerance) && (v < (1.0 - tolerance)))
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
+        }
     }
 
     // Copy intersections
@@ -2170,6 +2230,22 @@ void dynamicTopoFvMesh::convexSetVolume
 
     if (output)
     {
+        // Write out faces as a standalone patch
+        fileName dirName(time().path()/"VTK"/time().timeName());
+        mkDir(dirName);
+
+        PrimitivePatch<face, List, pointField>::writeVTK
+        (
+            dirName/fileName
+            (
+                "int_"
+              + Foam::name(newCellIndex) + '_'
+              + Foam::name(oldCellIndex)
+            ),
+            testFaces,
+            cvxSet
+        );
+
         Info << " newCellIndex: " << newCellIndex
              << " oldCellIndex: " << oldCellIndex << nl
              << " Faces: " << testFaces << nl
@@ -2196,7 +2272,7 @@ labelList dynamicTopoFvMesh::faceParents
     // Determine the patch that this face belongs to..
     label patchIndex = whichPatch(fIndex);
 
-    if (patchIndex == -1)
+    if (patchIndex == -1 || faceToCheck.empty())
     {
         FatalErrorIn
         (
@@ -2208,7 +2284,7 @@ labelList dynamicTopoFvMesh::faceParents
             "    const labelList& oldCandidates\n"
             ") const"
         )
-            << nl << " Request for parents of an internal face: "
+            << nl << " Illegal request for face: "
             << fIndex << ":: " << faces_[fIndex] << nl
             << " oldCandidates: " << oldCandidates
             << abort(FatalError);
@@ -2227,7 +2303,7 @@ labelList dynamicTopoFvMesh::faceParents
             continue;
         }
 
-        if (boundary.whichPatch(oldCandidates[faceI]) != patchIndex)
+        if (whichPatch(oldCandidates[faceI]) != patchIndex)
         {
             continue;
         }
@@ -6204,6 +6280,15 @@ void dynamicTopoFvMesh::resetMesh()
             checkMesh(true);
         }
     }
+    else
+    {
+        // No topology changes were made.
+        // Only execute mesh-motion.
+        if (motionSolver_.valid())
+        {
+            movePoints(motionSolver_->curPoints());
+        }
+    }
 
     // Dump length-scale to disk, if requested.
     calculateLengthScale(true);
@@ -6335,11 +6420,11 @@ bool dynamicTopoFvMesh::update()
     Info << " Swaps      :: Interior: " << nSwaps_[0]
          << ", Surface: " << nSwaps_[1] << endl;
 
-    // Obtain mesh stats after topo-changes
-    meshQuality(true);
-
     // Apply all topology changes (if any) and reset mesh.
     resetMesh();
+
+    // Obtain mesh stats after topo-changes
+    meshQuality(true);
 
     return topoChangeFlag_;
 }

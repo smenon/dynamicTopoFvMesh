@@ -162,11 +162,7 @@ void topoCellMapper::calcInverseDistanceWeights() const
     scalarListList& w = *weightsPtr_;
 
     // Obtain cell-centre information from old/new meshes
-    const vectorField& oldCentres =
-    (
-        tMapper_.centres().internalField()
-    );
-
+    const vectorField& oldCentres = tMapper_.internalCentres();
     const vectorField& newCentres = mesh_.cellCentres();
 
     forAll(addr, cellI)
@@ -239,7 +235,7 @@ void topoCellMapper::calcIntersectionWeightsAndCentres() const
     List<vectorField>& x = *centresPtr_;
 
     // Obtain stored cell-centres
-    const vectorField& cellCentres = tMapper_.centres().internalField();
+    const vectorField& cellCentres = tMapper_.internalCentres();
 
     // Fetch maps
     const Map<vectorField>& mapCellCentres = tMapper_.cellCentres();
@@ -482,7 +478,7 @@ void topoCellMapper::mapInternalField
     const List<vectorField>& xC = intersectionCentres();
 
     // Fetch geometry
-    const vectorField& centres = tMapper_.centres().internalField();
+    const vectorField& centres = tMapper_.internalCentres();
 
     // Copy the original field
     Field<Type> fieldCpy(iF);

@@ -2301,9 +2301,25 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Update number of surface collapses, if necessary.
+    labelList faceCandidates;
+
     if (whichEdgePatch(eIndex) > -1)
     {
         nCollapses_[1]++;
+
+        const labelList& eFaces = edgeFaces_[eIndex];
+
+        forAll(eFaces, faceI)
+        {
+            if (whichPatch(eFaces[faceI]) > -1)
+            {
+                faceCandidates.setSize
+                (
+                    faceCandidates.size() + 1,
+                    eFaces[faceI]
+                );
+            }
+        }
     }
 
     if (debug > 1)
@@ -3169,6 +3185,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Set face mapping information for modified faces
     forAllConstIter(labelHashSet, modifiedFaces, fIter)
     {
+        // Exclude deleted faces
+        if (faces_[fIter.key()].empty())
+        {
+            continue;
+        }
+
         // Decide between default / weighted mapping
         // based on boundary information
         if (whichPatch(fIter.key()) == -1)
@@ -3178,8 +3200,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         else
         {
             // Fill-in candidate mapping information
-            labelList mF(1, -1);
-
             labelList parents;
             scalarField weights;
             vectorField centres;
@@ -3188,7 +3208,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             computeFaceWeights
             (
                 fIter.key(),
-                mF,
+                faceCandidates,
                 parents,
                 weights,
                 centres

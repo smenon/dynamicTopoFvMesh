@@ -80,7 +80,8 @@ class topoMapper
         HashTable<autoPtr<volTensorField> > vGrads_;
 
         //- Face / cell centre information
-        mutable volVectorField* centresPtr_;
+        mutable vectorField* cellCentresPtr_;
+        mutable PtrList<vectorField> patchCentresPtr_;
 
         //- Intersection volume weights
         Map<scalarField> faceWeights_;
@@ -110,9 +111,6 @@ class topoMapper
         template <class Type>
         const Type& gradient(const word& name) const;
 
-        //- Clear out local storage
-        void clearOut();
-
 public:
 
     // Constructors
@@ -124,7 +122,8 @@ public:
             cellMap_(NULL),
             surfaceMap_(NULL),
             boundaryMap_(NULL),
-            centresPtr_(NULL)
+            cellCentresPtr_(NULL),
+            patchCentresPtr_(mesh.boundary().size())
         {}
 
     // Destructor
@@ -174,8 +173,11 @@ public:
         //- Set face/cell centre information
         void storeCentres();
 
-        //- Return stored face/cell centre information
-        const volVectorField& centres() const;
+        //- Return stored cell centre information
+        const vectorField& internalCentres() const;
+
+        //- Return stored patch centre information
+        const vectorField& patchCentres(const label i) const;
 
         // Conservatively map all fvFields in the registry
         template <class Type>

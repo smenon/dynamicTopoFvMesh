@@ -99,13 +99,56 @@ bool dynamicTopoFvMesh::meshQuality
     // Loop through all cells in the mesh and compute cell quality
     forAll(cells_, cellI)
     {
-        if (cells_[cellI].empty())
+        const cell& cellToCheck = cells_[cellI];
+
+        if (cellToCheck.empty())
         {
             continue;
         }
 
-        // Compute cell quality
-        cQuality = cellQuality(cellI);
+        if (twoDMesh_)
+        {
+
+        }
+        else
+        {
+            const label bfIndex = cellToCheck[0];
+            const label cfIndex = cellToCheck[1];
+
+            const face& baseFace = faces_[bfIndex];
+            const face& checkFace = faces_[cfIndex];
+
+            // Get the fourth point
+            label apexPoint = findIsolatedPoint(baseFace, checkFace);
+
+            // Compute cell quality
+            if (owner_[bfIndex] == cellI)
+            {
+                cQuality =
+                (
+                    tetMetric_
+                    (
+                        points_[baseFace[2]],
+                        points_[baseFace[1]],
+                        points_[baseFace[0]],
+                        points_[apexPoint]
+                    )
+                );
+            }
+            else
+            {
+                cQuality =
+                (
+                    tetMetric_
+                    (
+                        points_[baseFace[0]],
+                        points_[baseFace[1]],
+                        points_[baseFace[2]],
+                        points_[apexPoint]
+                    )
+                );
+            }
+        }
 
         if (dumpMeshQuality && time().outputTime())
         {

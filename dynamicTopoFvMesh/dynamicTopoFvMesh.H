@@ -439,13 +439,6 @@ class dynamicTopoFvMesh
             vectorField& centres
         ) const;
 
-        // Test for intersection between faces in old/new meshes
-        bool testFaceIntersection
-        (
-            const label newFaceIndex,
-            const label oldFaceIndex
-        ) const;
-
         // Test for intersection between cells in old/new meshes
         bool testCellIntersection
         (
@@ -929,9 +922,6 @@ class dynamicTopoFvMesh
 
         // Utility method to compute the minimum quality of a vertex hull
         inline scalar computeMinQuality(const label eIndex) const;
-
-        // Utility method to compute the quality of a cell
-        inline scalar cellQuality(const label cIndex) const;
 
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.

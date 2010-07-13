@@ -148,27 +148,11 @@ const volTensorField& topoMapper::gradient(const word& name) const
 }
 
 
-void topoMapper::clearOut()
-{
-    deleteDemandDrivenData(centresPtr_);
-
-    // Clear stored gradients
-    sGrads_.clear();
-    vGrads_.clear();
-
-    // Clear maps
-    faceWeights_.clear();
-    cellWeights_.clear();
-
-    faceCentres_.clear();
-    cellCentres_.clear();
-}
-
 // * * * * * * * * * * * * * * * * Destructor * * * * * * * * * * * * * * *  //
 
 topoMapper::~topoMapper()
 {
-    clearOut();
+    clear();
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -283,46 +267,65 @@ void topoMapper::storeGradients()
 //- Store face/cell centre information
 void topoMapper::storeCentres()
 {
-    if (centresPtr_)
+    if (cellCentresPtr_)
     {
-        deleteDemandDrivenData(centresPtr_);
+        deleteDemandDrivenData(cellCentresPtr_);
+
+        patchCentresPtr_.clear();
     }
 
-    // Set the pointer.
-    // Only copy values, but don't register the field,
-    // since we don't want it to be mapped like the others
-    centresPtr_ =
-    (
-        new volVectorField
+    const volVectorField& meshCentres = mesh_.C();
+
+    // Set the cell-centres pointer.
+    cellCentresPtr_ = new vectorField(meshCentres.internalField());
+
+    // Set patch-centres
+    patchCentresPtr_.setSize(mesh_.boundary().size());
+
+    forAll(meshCentres.boundaryField(), patchI)
+    {
+        patchCentresPtr_.set
         (
-            IOobject
+            patchI,
+            new vectorField
             (
-                "centres",
-                mesh_.time().timeName(),
-                mesh_,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            mesh_.C()
-        )
-    );
+                meshCentres.boundaryField()[patchI]
+            )
+        );
+    }
 }
 
 
-//- Return stored face/cell centre information
-const volVectorField& topoMapper::centres() const
+//- Return stored cell centre information
+const vectorField& topoMapper::internalCentres() const
 {
-    if (!centresPtr_)
+    if (!cellCentresPtr_)
     {
         FatalErrorIn
         (
-            "void topoMapper::centres()"
+            "const vectorField& topoMapper::internalCentres()"
         ) << nl << " Pointer has not been set. "
           << abort(FatalError);
     }
 
-    return *centresPtr_;
+    return *cellCentresPtr_;
+}
+
+
+//- Return stored patch centre information
+const vectorField& topoMapper::patchCentres(const label i) const
+{
+    if (!patchCentresPtr_.set(i))
+    {
+        FatalErrorIn
+        (
+            "const vectorField& topoMapper::patchCentres"
+            "(const label i) const"
+        ) << nl << " Pointer has not been set at index: " << i
+          << abort(FatalError);
+    }
+
+    return patchCentresPtr_[i];
 }
 
 
@@ -477,10 +480,25 @@ const topoBoundaryMeshMapper& topoMapper::boundaryMap() const
 //- Clear out member data
 void topoMapper::clear()
 {
-    // Clear out pointers
+    // Clear out mappers
     cellMap_.clear();
     surfaceMap_.clear();
     boundaryMap_.clear();
+
+    // Clear stored gradients
+    sGrads_.clear();
+    vGrads_.clear();
+
+    // Wipe out old centres information
+    deleteDemandDrivenData(cellCentresPtr_);
+    patchCentresPtr_.clear();
+
+    // Clear maps
+    faceWeights_.clear();
+    cellWeights_.clear();
+
+    faceCentres_.clear();
+    cellCentres_.clear();
 }
 
 

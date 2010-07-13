@@ -307,11 +307,7 @@ void topoPatchMapper::calcInverseDistanceWeights() const
     scalarListList& w = *weightsPtr_;
 
     // Obtain cell-centre information from old/new meshes
-    const vectorField& oldCentres =
-    (
-        tMapper_.centres().boundaryField()[patch_.index()]
-    );
-
+    const vectorField& oldCentres = tMapper_.patchCentres(patch_.index());
     const vectorField& newCentres = patch_.patch().faceCentres();
 
     forAll(addr, faceI)

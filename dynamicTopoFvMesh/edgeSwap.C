@@ -3020,7 +3020,7 @@ const changeMap dynamicTopoFvMesh::swap32
             computeFaceWeights
             (
                 newBdyFaceIndex[i],
-                newBdyFaceIndex,
+                oldBdyFaceIndex,
                 parents,
                 weights,
                 centres
