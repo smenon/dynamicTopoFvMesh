@@ -246,9 +246,9 @@ void dynamicTopoFvMesh::reOrderPoints
         cMap.transferMaps(coupleMap::POINT, newMtsMap, newStmMap);
     }
 
-    // Update the local point copies
-    points_.setSize(nPoints_);
-    oldPoints_.setSize(nPoints_);
+    // Clear local point copies
+    points_.clear();
+    oldPoints_.clear();
 
     if (debug)
     {
@@ -588,7 +588,7 @@ void dynamicTopoFvMesh::reOrderEdges
     if (!twoDMesh_)
     {
         // Invert edges to obtain pointEdges
-        invertManyToMany(nPoints_, edges_, pointEdges_);
+        pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
 
         // Loop through all local coupling maps, and renumber edges.
         forAll(patchCoupling_, patchI)

@@ -1047,7 +1047,7 @@ bool dynamicTopoFvMesh::fillTables
             {
                 FatalErrorIn
                 (
-                    "\n"
+                    "\n\n"
                     "bool dynamicTopoFvMesh::fillTables\n"
                     "(\n"
                     "    const label eIndex,\n"
@@ -1196,7 +1196,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
         FatalErrorIn
         (
-            "\n"
+            "\n\n"
             "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
             "(\n"
             "    const label eIndex,\n"
@@ -1262,7 +1262,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             {
                 FatalErrorIn
                 (
-                    "\n"
+                    "\n\n"
                     "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                     "(\n"
                     "    const label eIndex,\n"
@@ -1366,7 +1366,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             // Should have performed at least one swap
             FatalErrorIn
             (
-                "\n"
+                "\n\n"
                 "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                 "(\n"
                 "    const label eIndex,\n"
@@ -1492,7 +1492,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
                 FatalErrorIn
                 (
-                    "\n"
+                    "\n\n"
                     "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                     "(\n"
                     "    const label eIndex,\n"
@@ -1596,31 +1596,6 @@ label dynamicTopoFvMesh::identify32Swap
         }
     }
 
-    // Could not find an intersecting triangulation.
-    //  - If this is a boundary edge, a concave surface
-    //    was probably the reason why this failed.
-    //  - If so, declare the nearest triangulation instead.
-    //  - Internal edges also occasionally encounter
-    //    precision issues. Use the same approach.
-    {
-        vector eCentre = 0.5 * (segment[0] + segment[1]);
-
-        scalarField dist(m-2, 0.0);
-
-        for (label i = 0; i < (m-2); i++)
-        {
-            triFace[0] = hullVertices[triangulations[0][i]];
-            triFace[1] = hullVertices[triangulations[1][i]];
-            triFace[2] = hullVertices[triangulations[2][i]];
-
-            // Compute edge to face-centre distance.
-            dist[i] = mag(eCentre - faceCentre(triFace, points_));
-        }
-
-        // Return the minimum index
-        return findMin(dist);
-    }
-
     if (debug > 1)
     {
         Info << nl << nl << "Hull Vertices: " << endl;
@@ -1634,14 +1609,14 @@ label dynamicTopoFvMesh::identify32Swap
 
         InfoIn
         (
-            "\n"
+            "\n\n"
             "label dynamicTopoFvMesh::identify32Swap\n"
             "(\n"
             "    const label eIndex,\n"
             "    const labelList& hullVertices,\n"
             "    const labelListList& triangulations\n"
             ") const\n"
-        ) << nl
+        )   << nl
             << "Could not determine 3-2 swap triangulation." << nl
             << "Edge: " << edgeToCheck << nl
             << "Edge Points: "
@@ -1650,7 +1625,58 @@ label dynamicTopoFvMesh::identify32Swap
             << endl;
     }
 
-    return -1;
+    // Could not find an intersecting triangulation.
+    //  - If this is a boundary edge, a curved surface-mesh.
+    //    was probably the reason why this failed.
+    //  - If so, declare the nearest triangulation instead.
+    //  - Internal edges also occasionally encounter
+    //    precision issues. Use the same approach.
+    vector eCentre = 0.5 * (segment[0] + segment[1]);
+
+    scalarField dist(m-2, 0.0);
+
+    label mT = -1, ePatch = whichEdgePatch(eIndex);
+    bool foundTriangulation = false;
+
+    for (label i = 0; i < (m-2); i++)
+    {
+        triFace[0] = hullVertices[triangulations[0][i]];
+        triFace[1] = hullVertices[triangulations[1][i]];
+        triFace[2] = hullVertices[triangulations[2][i]];
+
+        // Compute edge to face-centre distance.
+        dist[i] = mag(eCentre - faceCentre(triFace, points_));
+    }
+
+    while (!foundTriangulation)
+    {
+        mT = findMin(dist);
+
+        // Check validity for boundary edges
+        if
+        (
+            (ePatch > -1) &&
+            ((triangulations[0][mT] != 0) || (triangulations[2][mT] != m-1))
+        )
+        {
+            // This is a 2-3 triangulation. Try again.
+            dist[mT] = GREAT;
+        }
+        else
+        {
+            foundTriangulation = true;
+        }
+    }
+
+    if (debug > 1)
+    {
+        Info << " All distances :" << dist << nl
+             << " Triangulation index: " << mT
+             << endl;
+    }
+
+    // Return the index
+    return mT;
 }
 
 
@@ -1797,7 +1823,7 @@ const changeMap dynamicTopoFvMesh::swap23
     {
         FatalErrorIn
         (
-            "\n"
+            "\n\n"
             "const changeMap dynamicTopoFvMesh::swap23\n"
             "(\n"
             "    const label isolatedVertex,\n"
@@ -1813,7 +1839,7 @@ const changeMap dynamicTopoFvMesh::swap23
             << " Expected an internal face,"
             << " but found a boundary one instead." << nl
             << " Looks like identify32Swap couldn't correctly identify"
-            << " the 2-2 swap triangulation."
+            << " the 2-2 swap triangulation." << nl
             << abort(FatalError);
     }
 

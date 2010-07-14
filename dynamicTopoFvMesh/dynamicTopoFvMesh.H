@@ -376,6 +376,9 @@ class dynamicTopoFvMesh
         (
             const label cIndex,
             const UList<point>& points,
+            const UList<face>& faces,
+            const UList<cell>& cells,
+            const UList<label>& owner,
             vector& centre,
             scalar& volume
         ) const;
@@ -387,6 +390,15 @@ class dynamicTopoFvMesh
             const UList<point>& points,
             const point& dir,
             const point& p
+        ) const;
+
+        // Determine whether a two line segments intersect
+        inline bool segmentSegmentIntersection
+        (
+            const edge& fromSegment,
+            const edge& toSegment,
+            const UList<point>& points,
+            point& intPoint
         ) const;
 
         // Determine whether a segment intersects a face
@@ -568,9 +580,6 @@ class dynamicTopoFvMesh
 
         // Return the entity stack for a particular thread
         inline stack& Stack(const label threadID);
-
-        // Synchronize all processes
-        inline void synchronize();
 
         // Return the integer threadID for a given pthread
         inline label self() const;
@@ -1200,7 +1209,7 @@ class dynamicTopoFvMesh
 
         // Parallel send (for lists)
         template <class Type>
-        void pWrite(const label toID, const List<Type>& data) const;
+        void pWrite(const label toID, const UList<Type>& data) const;
 
         // Parallel receive
         void pRead(const label fromID, label& data) const;
@@ -1211,7 +1220,7 @@ class dynamicTopoFvMesh
 
         // Parallel receive (for lists)
         template <class Type>
-        void pRead(const label fromID, List<Type>& data) const;
+        void pRead(const label fromID, UList<Type>& data) const;
 
         // Method to determine whether the master entity is locally coupled
         inline bool locallyCoupledEntity

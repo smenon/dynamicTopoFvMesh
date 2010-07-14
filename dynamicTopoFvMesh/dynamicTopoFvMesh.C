@@ -317,13 +317,13 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     reverseCellMap_.setSize(nCells_, -7);
 
     // Now build edgeFaces and pointEdges information.
-    invertManyToMany(nEdges_, faceEdges_, edgeFaces_);
+    edgeFaces_ = invertManyToMany<labelList, labelList>(nEdges_, faceEdges_);
 
     // Size-up edgePoints for now, but explicitly construct
     // for each edge later, based on point coupling.
     if (!twoDMesh_)
     {
-        invertManyToMany(nPoints_, edges_, pointEdges_);
+        pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
         edgePoints_.setSize(nEdges_, labelList(0));
     }
 }
@@ -442,6 +442,9 @@ void dynamicTopoFvMesh::computeFaceWeights
     // Maintain a list of candidates and intersection points
     labelList candidates;
 
+    // Output option for the convex set algorithm
+    bool output = false;
+
     while (nAttempts < 10)
     {
         // Obtain candidate parents for this face
@@ -487,6 +490,9 @@ void dynamicTopoFvMesh::computeFaceWeights
                      << " nCandidates: " << candidates.size() << nl
                      << " nIntersects: " << nIntersects
                      << endl;
+
+                // Specify output option as well
+                output = true;
             }
 
             // Set sizes
@@ -526,7 +532,8 @@ void dynamicTopoFvMesh::computeFaceWeights
                             parents[nIntersects],
                             tP,
                             weights[nIntersects],
-                            centres[nIntersects]
+                            centres[nIntersects],
+                            output
                         );
 
                         nIntersects++;
@@ -636,6 +643,9 @@ void dynamicTopoFvMesh::computeCellWeights
     // Maintain a list of candidates and intersection points
     labelList candidates;
 
+    // Output option for the convex set algorithm
+    bool output = false;
+
     while (nAttempts < 10)
     {
         // Obtain candidate parents for this cell
@@ -678,6 +688,9 @@ void dynamicTopoFvMesh::computeCellWeights
                      << " nCandidates: " << candidates.size() << nl
                      << " nIntersects: " << nIntersects
                      << endl;
+
+                // Specify output option as well
+                output = true;
             }
 
             // Set sizes
@@ -717,7 +730,8 @@ void dynamicTopoFvMesh::computeCellWeights
                             parents[nIntersects],
                             tP,
                             weights[nIntersects],
-                            centres[nIntersects]
+                            centres[nIntersects],
+                            output
                         );
 
                         nIntersects++;
@@ -753,6 +767,9 @@ void dynamicTopoFvMesh::computeCellWeights
     (
         cIndex,
         oldPoints_,
+        faces_,
+        cells_,
+        owner_,
         cellCentre,
         cellVolume
     );
@@ -805,48 +822,6 @@ void dynamicTopoFvMesh::computeCellWeights
         writeVTK("oCell_" + Foam::name(cIndex), candidates, 3, true, true);
         writeVTK("mCell_" + Foam::name(cIndex), parents, 3, true, true);
         writeVTK("uCell_" + Foam::name(cIndex), unMatched, 3, true, true);
-
-        // Write out intersection points
-        forAll(candidates, indexI)
-        {
-            vectorField tP(0);
-
-            cellIntersection
-            (
-                cIndex,
-                candidates[indexI],
-                tP
-            );
-
-            if (tP.size() >= 4)
-            {
-                // Write out intersection points to VTK
-                writeVTK
-                (
-                    "cvxSet_"
-                  + Foam::name(cIndex)
-                  + '<' + Foam::name(candidates[indexI]) + '>',
-                    tP.size(),
-                    tP.size(),
-                    tP.size(),
-                    tP
-                );
-
-                // Write out convex set info to screen
-                scalar dummyVolume = 0.0;
-                vector dummyCentre = vector::zero;
-
-                convexSetVolume
-                (
-                    cIndex,
-                    candidates[indexI],
-                    tP,
-                    dummyVolume,
-                    dummyCentre,
-                    true
-                );
-            }
-        }
 
         // Write out weights
         forAll(parents, indexI)
@@ -1509,7 +1484,53 @@ bool dynamicTopoFvMesh::cellIntersection
         }
     }
 
-    bool foundIntersection = false;
+    bool foundIntersection = false, edgeIntersections = false;
+
+    // Loop through edges from each cell, and check whether they intersect.
+    List<Pair<edge> > FeToTe, TeToFe;
+
+    forAll(fromCellEdges, edgeI)
+    {
+        const edge& fromEdge = fromCellEdges[edgeI];
+
+        forAll(toCellEdges, edgeJ)
+        {
+            const edge& toEdge = toCellEdges[edgeJ];
+
+            foundIntersection = false;
+
+            foundIntersection =
+            (
+                segmentSegmentIntersection
+                (
+                    fromEdge,
+                    toEdge,
+                    oldPoints_,
+                    intPoint
+                )
+            );
+
+            if (foundIntersection)
+            {
+                FeToTe.setSize
+                (
+                    FeToTe.size() + 1,
+                    Pair<edge>(fromEdge, toEdge)
+                );
+
+                TeToFe.setSize
+                (
+                    TeToFe.size() + 1,
+                    Pair<edge>(toEdge, fromEdge)
+                );
+
+                intersections.set(++nInts, intPoint);
+
+                // Note for later that edge-intersections exist.
+                edgeIntersections = true;
+            }
+        }
+    }
 
     // Loop through all old edges, and find possible
     // intersections with faces of the new cell.
@@ -1520,6 +1541,41 @@ bool dynamicTopoFvMesh::cellIntersection
         forAll(toCell, faceI)
         {
             const face& faceToCheck = faces_[toCell[faceI]];
+
+            // Avoid edge-edge intersections, if any.
+            if (edgeIntersections)
+            {
+                // Is edgeToCheck in the list?
+                bool foundEdge = false;
+                const edgeList fEdges = faceToCheck.edges();
+
+                forAll(FeToTe, indexI)
+                {
+                    if (FeToTe[indexI].first() == edgeToCheck)
+                    {
+                        // Check whether the intersecting edge
+                        // exists on this face.
+                        forAll(fEdges, edgeJ)
+                        {
+                            if (fEdges[edgeJ] == FeToTe[indexI].second())
+                            {
+                                foundEdge = true;
+                                break;
+                            }
+                        }
+
+                        if (foundEdge)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (foundEdge)
+                {
+                    continue;
+                }
+            }
 
             bool foundCommon = false;
 
@@ -1587,6 +1643,41 @@ bool dynamicTopoFvMesh::cellIntersection
         forAll(fromCell, faceI)
         {
             const face& faceToCheck = polyMesh::faces()[fromCell[faceI]];
+
+            // Avoid edge-edge intersections, if any.
+            if (edgeIntersections)
+            {
+                // Is edgeToCheck in the list?
+                bool foundEdge = false;
+                const edgeList fEdges = faceToCheck.edges();
+
+                forAll(TeToFe, indexI)
+                {
+                    if (TeToFe[indexI].first() == edgeToCheck)
+                    {
+                        // Check whether the intersecting edge
+                        // exists on this face.
+                        forAll(fEdges, edgeJ)
+                        {
+                            if (fEdges[edgeJ] == TeToFe[indexI].second())
+                            {
+                                foundEdge = true;
+                                break;
+                            }
+                        }
+
+                        if (foundEdge)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (foundEdge)
+                {
+                    continue;
+                }
+            }
 
             bool foundCommon = false;
 
@@ -2290,7 +2381,7 @@ labelList dynamicTopoFvMesh::faceParents
             << abort(FatalError);
     }
 
-    // Fetch patch start
+    // Fetch old patch start
     label patchStart = boundary[patchIndex].start();
 
     // Insert the old candidates first
@@ -2303,18 +2394,16 @@ labelList dynamicTopoFvMesh::faceParents
             continue;
         }
 
-        if (whichPatch(oldCandidates[faceI]) != patchIndex)
-        {
-            continue;
-        }
-
         if (oldCandidates[faceI] < nOldFaces_)
         {
-            masterFaces.insert
-            (
-                (oldCandidates[faceI] - patchStart),
-                empty()
-            );
+            if (whichPatch(oldCandidates[faceI]) == patchIndex)
+            {
+                masterFaces.insert
+                (
+                    (oldCandidates[faceI] - patchStart),
+                    empty()
+                );
+            }
         }
         else
         if (faceParents_.found(oldCandidates[faceI]))
@@ -2323,11 +2412,14 @@ labelList dynamicTopoFvMesh::faceParents
 
             forAll(nParents, fI)
             {
-                masterFaces.insert
-                (
-                    (nParents[fI] - patchStart),
-                    empty()
-                );
+                if (whichPatch(nParents[fI]) == patchIndex)
+                {
+                    masterFaces.insert
+                    (
+                        (nParents[fI] - patchStart),
+                        empty()
+                    );
+                }
             }
         }
     }
@@ -2526,7 +2618,7 @@ void dynamicTopoFvMesh::setCellMapping
     }
 
     // Ensure compatible sizes.
-    if (mapCells.size() != mapWeights.size())
+    if (mapCells.size() != mapWeights.size() || mapCells.empty())
     {
         FatalErrorIn
         (
@@ -6420,11 +6512,11 @@ bool dynamicTopoFvMesh::update()
     Info << " Swaps      :: Interior: " << nSwaps_[0]
          << ", Surface: " << nSwaps_[1] << endl;
 
-    // Apply all topology changes (if any) and reset mesh.
-    resetMesh();
-
     // Obtain mesh stats after topo-changes
     meshQuality(true);
+
+    // Apply all topology changes (if any) and reset mesh.
+    resetMesh();
 
     return topoChangeFlag_;
 }

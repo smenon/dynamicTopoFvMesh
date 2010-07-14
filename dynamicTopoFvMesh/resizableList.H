@@ -43,7 +43,7 @@ SourceFiles
 
 #include "label.H"
 #include "bool.H"
-#include "List.H"
+#include "UList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -51,8 +51,6 @@ namespace Foam
 {
 
 // Class forward declarations
-template<class T> class List;
-
 template<class T> class resizableList;
 
 // * * * * * * Forward declaration of template friend fuctions * * * * * * * //
@@ -71,7 +69,7 @@ template<class T> Ostream& operator<<
 template<class T>
 class resizableList
 :
-    public List<T>
+    public UList<T>
 {
     // Private data
 

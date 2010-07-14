@@ -5281,6 +5281,9 @@ void dynamicTopoFvMesh::sliceMesh
                 (
                     cellI,
                     points_,
+                    faces_,
+                    cells_,
+                    owner_,
                     x,
                     v
                 );
@@ -5394,6 +5397,9 @@ void dynamicTopoFvMesh::sliceMesh
                     (
                         cellsToCheck[cellI],
                         points_,
+                        faces_,
+                        cells_,
+                        owner_,
                         centre,
                         volume
                     );
@@ -5450,6 +5456,9 @@ void dynamicTopoFvMesh::sliceMesh
                         (
                             own,
                             points_,
+                            faces_,
+                            cells_,
+                            owner_,
                             centre,
                             volume
                         );
@@ -5475,6 +5484,9 @@ void dynamicTopoFvMesh::sliceMesh
                         (
                             nei,
                             points_,
+                            faces_,
+                            cells_,
+                            owner_,
                             centre,
                             volume
                         );
@@ -5519,6 +5531,9 @@ void dynamicTopoFvMesh::sliceMesh
                             (
                                 own,
                                 points_,
+                                faces_,
+                                cells_,
+                                owner_,
                                 centre,
                                 volume
                             );
@@ -5544,6 +5559,9 @@ void dynamicTopoFvMesh::sliceMesh
                             (
                                 nei,
                                 points_,
+                                faces_,
+                                cells_,
+                                owner_,
                                 centre,
                                 volume
                             );

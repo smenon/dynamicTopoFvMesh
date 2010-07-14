@@ -209,6 +209,9 @@ inline void dynamicTopoFvMesh::cellCentreAndVolume
 (
     const label cIndex,
     const UList<point>& points,
+    const UList<face>& faces,
+    const UList<cell>& cells,
+    const UList<label>& owner,
     vector& centre,
     scalar& volume
 ) const
@@ -217,24 +220,24 @@ inline void dynamicTopoFvMesh::cellCentreAndVolume
     volume = 0.0;
     centre = vector::zero;
 
-    const cell& cellToCheck = cells_[cIndex];
+    const cell& cellToCheck = cells[cIndex];
 
     // Average face-centres to get an estimate centroid
     vector cEst = vector::zero;
 
     forAll(cellToCheck, faceI)
     {
-        cEst += faceCentre(faces_[cellToCheck[faceI]], points);
+        cEst += faceCentre(faces[cellToCheck[faceI]], points);
     }
 
     cEst /= cellToCheck.size();
 
     forAll(cellToCheck, faceI)
     {
-        vector fArea = faceNormal(faces_[cellToCheck[faceI]], points);
-        vector fCentre = faceCentre(faces_[cellToCheck[faceI]], points);
+        vector fArea = faceNormal(faces[cellToCheck[faceI]], points);
+        vector fCentre = faceCentre(faces[cellToCheck[faceI]], points);
 
-        if (owner_[cellToCheck[faceI]] != cIndex)
+        if (owner[cellToCheck[faceI]] != cIndex)
         {
             fArea *= -1.0;
         }
@@ -292,6 +295,67 @@ inline label dynamicTopoFvMesh::whichSide
 }
 
 
+// Determine whether a two line segments intersect
+inline bool dynamicTopoFvMesh::segmentSegmentIntersection
+(
+    const edge& fromSegment,
+    const edge& toSegment,
+    const UList<point>& points,
+    point& intPoint
+) const
+{
+    if (fromSegment.commonVertex(toSegment) > -1)
+    {
+        // Edges share a common vertex. We won't deal
+        // with that situation here.
+        return false;
+    }
+
+    vector u = points[fromSegment.end()] - points[fromSegment.start()];
+    vector v = points[toSegment.end()] - points[toSegment.start()];
+
+    vector p = points[fromSegment.start()];
+    vector q = points[toSegment.start()];
+
+    vector w = (p - q);
+
+    // Get parameters
+    scalar a = (u & u), b = (u & v), c = (v & v), d = (u & w), e = (v & w);
+
+    // Parallel / collinear check
+    scalar denom = (a * c) - (b * b);
+
+    scalar tolerance = (1e-12 * Foam::min(mag(u), mag(v)));
+
+    if (mag(denom) < tolerance)
+    {
+        return false;
+    }
+
+    scalar s = ((b * e) - (c * d))/(denom);
+    scalar t = ((a * e) - (b * d))/(denom);
+
+    // Out-of-bounds check
+    if (s < 0.0 || t < 0.0 || s > 1.0 || t > 1.0)
+    {
+        return false;
+    }
+
+    // Proximity check
+    scalar dist = magSqr( w + (s * u) - (t * v) );
+
+    if (dist > tolerance)
+    {
+        return false;
+    }
+
+    // Calculate the intersection point
+    intPoint = points[fromSegment.start()] + (s * u);
+
+    return true;
+}
+
+
 // Determine whether a segment intersects a face
 inline bool dynamicTopoFvMesh::segmentFaceIntersection
 (
@@ -336,6 +400,7 @@ inline bool dynamicTopoFvMesh::segmentFaceIntersection
         }
     }
 
+    // Failed to fall within edge-bounds, or within face
     return false;
 }
 
@@ -826,14 +891,6 @@ inline stack& dynamicTopoFvMesh::Stack
 }
 
 
-// Synchronize all processes
-inline void dynamicTopoFvMesh::synchronize()
-{
-    bool reached = true;
-    reduce(reached, andOp<bool>());
-}
-
-
 // Return the integer threadID for a given pthread
 // Return zero for single-threaded operation
 inline label dynamicTopoFvMesh::self() const
@@ -1137,7 +1194,11 @@ inline label dynamicTopoFvMesh::whichPatch
             << "Cannot find patch information for face index: "
             << index << nl
             << " It appears that face ordering is"
-            << " inconsistent with patch information."
+            << " inconsistent with patch information." << nl
+            << " Mesh info: " << nl
+            << "    nOldInternalFaces: " << nOldInternalFaces_ << nl
+            << "    oldPatchStarts: " << oldPatchStarts_ << nl
+            << "    oldPatchSizes: " << oldPatchSizes_ << nl
             << abort(FatalError);
     }
 
@@ -1184,7 +1245,11 @@ inline label dynamicTopoFvMesh::whichEdgePatch
             << "Cannot find patch information for edge index: "
             << index << nl
             << " It appears that edge ordering is"
-            << " inconsistent with patch information."
+            << " inconsistent with patch information." << nl
+            << " Mesh info: " << nl
+            << "    nOldInternalEdges: " << nOldInternalEdges_ << nl
+            << "    oldEdgePatchStarts: " << oldEdgePatchStarts_ << nl
+            << "    oldEdgePatchSizes: " << oldEdgePatchSizes_ << nl
             << abort(FatalError);
     }
 

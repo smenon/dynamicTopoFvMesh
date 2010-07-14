@@ -508,7 +508,6 @@ void dynamicTopoFvMesh::initCoupledConnectivity
     mesh->buildProcessorCoupledMaps();
 
     // Synchronize before continuing
-    mesh->synchronize();
 }
 
 
@@ -1977,7 +1976,7 @@ template <class Type>
 void dynamicTopoFvMesh::pWrite
 (
     const label toID,
-    const List<Type>& data
+    const UList<Type>& data
 ) const
 {
     OPstream::write
@@ -1995,7 +1994,7 @@ template <class Type>
 void dynamicTopoFvMesh::pRead
 (
     const label fromID,
-    List<Type>& data
+    UList<Type>& data
 ) const
 {
     IPstream::read
