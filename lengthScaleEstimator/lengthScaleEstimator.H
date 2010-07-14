@@ -141,9 +141,9 @@ class lengthScaleEstimator
             const label level,
             label& visitedCells,
             labelList& cellLevels,
-            scalarList& lengthScale,
+            UList<scalar>& lengthScale,
             labelHashSet& levelCells
-        );
+        ) const;
 
 public:
 
@@ -179,7 +179,7 @@ public:
         );
 
         //- Calculate the length scale field
-        void calculateLengthScale(scalarList& lengthScale);
+        void calculateLengthScale(UList<scalar>& lengthScale);
 
         //- Return refinement criteria
         inline scalar ratioMin() const;

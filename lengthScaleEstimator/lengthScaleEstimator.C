@@ -382,9 +382,9 @@ void lengthScaleEstimator::readLengthScaleInfo
     const label level,
     label& visitedCells,
     labelList& cellLevels,
-    scalarList& lengthScale,
+    UList<scalar>& lengthScale,
     labelHashSet& levelCells
-)
+) const
 {
     const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
 
@@ -724,7 +724,7 @@ void lengthScaleEstimator::setCoupledPatches
 //- Calculate the length scale field
 void lengthScaleEstimator::calculateLengthScale
 (
-    scalarList& lengthScale
+    UList<scalar>& lengthScale
 )
 {
     label level = 1, visitedCells = 0;
