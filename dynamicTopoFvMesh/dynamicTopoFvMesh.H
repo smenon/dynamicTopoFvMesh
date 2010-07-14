@@ -58,6 +58,7 @@ SourceFiles
 #include "coupleMap.H"
 #include "changeMap.H"
 #include "tetMetric.H"
+#include "objectMap.H"
 #include "dynamicFvMesh.H"
 #include "StaticHashTable.H"
 
@@ -69,7 +70,6 @@ namespace Foam
 // Class forward declarations
 class motionSolver;
 class topoMapper;
-class objectMap;
 class lengthScaleEstimator;
 
 /*---------------------------------------------------------------------------*\
@@ -502,6 +502,7 @@ class dynamicTopoFvMesh
         labelList faceParents
         (
             const label fIndex,
+            const vector& fCentre,
             const scalar searchFactor,
             const labelList& oldCandidates
         ) const;
@@ -510,6 +511,7 @@ class dynamicTopoFvMesh
         labelList cellParents
         (
             const label cIndex,
+            const vector& cCentre,
             const scalar searchFactor,
             const labelList& oldCandidates
         ) const;

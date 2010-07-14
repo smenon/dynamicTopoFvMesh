@@ -311,6 +311,43 @@ inline bool dynamicTopoFvMesh::segmentSegmentIntersection
         return false;
     }
 
+    // Deal with edge-bisection cases
+    forAll(toSegment, pointI)
+    {
+        label pIndex = toSegment[pointI];
+
+        if (pIndex >= nOldPoints_)
+        {
+            forAll(pointsFromPoints_, indexI)
+            {
+                if (pointsFromPoints_[indexI].index() == pIndex)
+                {
+                    const labelList& mObj =
+                    (
+                        pointsFromPoints_[indexI].masterObjects()
+                    );
+
+                    // Check if the old edge contains all master points
+                    bool allMaster = true;
+
+                    forAll(mObj, pointJ)
+                    {
+                        if (findIndex(fromSegment, mObj[pointJ]) == -1)
+                        {
+                            allMaster = false;
+                            break;
+                        }
+                    }
+
+                    if (allMaster)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
     vector u = points[fromSegment.end()] - points[fromSegment.start()];
     vector v = points[toSegment.end()] - points[toSegment.start()];
 
@@ -325,7 +362,7 @@ inline bool dynamicTopoFvMesh::segmentSegmentIntersection
     // Parallel / collinear check
     scalar denom = (a * c) - (b * b);
 
-    scalar tolerance = (1e-12 * Foam::min(mag(u), mag(v)));
+    scalar tolerance = (1e-6 * Foam::min(mag(u), mag(v)));
 
     if (mag(denom) < tolerance)
     {
@@ -342,7 +379,7 @@ inline bool dynamicTopoFvMesh::segmentSegmentIntersection
     }
 
     // Proximity check
-    scalar dist = magSqr( w + (s * u) - (t * v) );
+    scalar dist = mag( w + (s * u) - (t * v) );
 
     if (dist > tolerance)
     {

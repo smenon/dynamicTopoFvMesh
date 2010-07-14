@@ -118,6 +118,10 @@ void dynamicTopoFvMesh::reOrderPoints
             << abort(FatalError);
     }
 
+    // Wipe out pointsFromPoints, since this is not
+    // really used in this context for mapping.
+    pointsFromPoints_.clear();
+
     // Renumber all maps.
     forAll(pointsFromPoints_, indexI)
     {

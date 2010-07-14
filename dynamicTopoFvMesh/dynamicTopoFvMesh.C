@@ -445,6 +445,10 @@ void dynamicTopoFvMesh::computeFaceWeights
     // Output option for the convex set algorithm
     bool output = false;
 
+    // Fetch the area / centre of the cell
+    scalar fArea = mag(faceNormal(faces_[fIndex], oldPoints_));
+    vector fCentre = faceCentre(faces_[fIndex], oldPoints_);
+
     while (nAttempts < 10)
     {
         // Obtain candidate parents for this face
@@ -453,6 +457,7 @@ void dynamicTopoFvMesh::computeFaceWeights
             faceParents
             (
                 fIndex,
+                fCentre,
                 searchFactor,
                 mapCandidates
             )
@@ -561,13 +566,28 @@ void dynamicTopoFvMesh::computeFaceWeights
         }
     }
 
-    // Fetch the face area
-    scalar fArea = mag(faceNormal(faces_[fIndex], oldPoints_));
-    vector fCentre = faceCentre(faces_[fIndex], oldPoints_);
-
     // Test weights for consistency
     if (mag(fArea - sum(weights)) > 1e-16)
     {
+        // Inconsistent weights. Check whether any edges
+        // lie on bounding curves. These faces can have
+        // relaxed weights to account for addressing into
+        // patches on the other side of the curve.
+        if (weights.size())
+        {
+            const labelList& fEdges = faceEdges_[fIndex];
+
+            forAll(fEdges, edgeI)
+            {
+                if (checkBoundingCurve(fEdges[edgeI]))
+                {
+                    // Normalize by sum of weights
+                    weights /= sum(weights);
+                    return;
+                }
+            }
+        }
+
         // Write out for post-processing
         label uIdx = 0;
         labelList unMatched(candidates.size() - parents.size(), -1);
@@ -580,10 +600,10 @@ void dynamicTopoFvMesh::computeFaceWeights
             }
         }
 
-        writeVTK("nCell_" + Foam::name(fIndex), fIndex, 2, false, true);
-        writeVTK("oCell_" + Foam::name(fIndex), candidates, 2, true, true);
-        writeVTK("mCell_" + Foam::name(fIndex), parents, 2, true, true);
-        writeVTK("uCell_" + Foam::name(fIndex), unMatched, 2, true, true);
+        writeVTK("nFace_" + Foam::name(fIndex), fIndex, 2, false, true);
+        writeVTK("oFace_" + Foam::name(fIndex), candidates, 2, true, true);
+        writeVTK("mFace_" + Foam::name(fIndex), parents, 2, true, true);
+        writeVTK("uFace_" + Foam::name(fIndex), unMatched, 2, true, true);
 
         // Write out weights
         forAll(parents, indexI)
@@ -646,6 +666,21 @@ void dynamicTopoFvMesh::computeCellWeights
     // Output option for the convex set algorithm
     bool output = false;
 
+    // Fetch the volume / centre of the cell
+    scalar cellVolume = 0.0;
+    vector cellCentre = vector::zero;
+
+    cellCentreAndVolume
+    (
+        cIndex,
+        oldPoints_,
+        faces_,
+        cells_,
+        owner_,
+        cellCentre,
+        cellVolume
+    );
+
     while (nAttempts < 10)
     {
         // Obtain candidate parents for this cell
@@ -654,6 +689,7 @@ void dynamicTopoFvMesh::computeCellWeights
             cellParents
             (
                 cIndex,
+                cellCentre,
                 searchFactor,
                 mapCandidates
             )
@@ -759,29 +795,12 @@ void dynamicTopoFvMesh::computeCellWeights
         }
     }
 
-    // Fetch the volume of the cell
-    scalar cellVolume = 0.0;
-    vector cellCentre = vector::zero;
-
-    cellCentreAndVolume
-    (
-        cIndex,
-        oldPoints_,
-        faces_,
-        cells_,
-        owner_,
-        cellCentre,
-        cellVolume
-    );
-
     // Test weights for consistency
     if (mag(cellVolume - sum(weights)) > 1e-16)
     {
         // Inconsistent weights. Check whether any edges
         // lie on boundary patches. These cells can have
         // relaxed weights to account for mild convexity.
-        bool foundBoundary = false;
-
         const cell& cellToCheck = cells_[cIndex];
 
         forAll(cellToCheck, faceI)
@@ -792,17 +811,10 @@ void dynamicTopoFvMesh::computeCellWeights
             {
                 if (whichEdgePatch(fEdges[edgeI]) > -1)
                 {
-                    foundBoundary = true;
-                    break;
+                    // Normalize by sum of weights
+                    weights /= sum(weights);
+                    return;
                 }
-            }
-
-            if (foundBoundary)
-            {
-                // Normalize by sum of weights
-                weights /= sum(weights);
-
-                return;
             }
         }
 
@@ -1530,6 +1542,14 @@ bool dynamicTopoFvMesh::cellIntersection
                 edgeIntersections = true;
             }
         }
+    }
+
+    if (edgeIntersections && debug > 1)
+    {
+        Info << "Edge Intersections exist: " << nl
+             << " newCellIndex: " << newCellIndex
+             << " oldCellIndex: " << oldCellIndex
+             << endl;
     }
 
     // Loop through all old edges, and find possible
@@ -2351,6 +2371,7 @@ void dynamicTopoFvMesh::convexSetVolume
 labelList dynamicTopoFvMesh::faceParents
 (
     const label fIndex,
+    const vector& fCentre,
     const scalar searchFactor,
     const labelList& oldCandidates
 ) const
@@ -2427,7 +2448,7 @@ labelList dynamicTopoFvMesh::faceParents
     // Fetch connectivity from the old mesh.
     const labelListList& oldFaceFaces = boundary[patchIndex].faceFaces();
 
-    for (label attempt = 0; attempt < 5; attempt++)
+    for (label attempt = 0; attempt < 10; attempt++)
     {
         // Fetch the initial set of candidates
         labelList initList = masterFaces.toc();
@@ -2457,8 +2478,7 @@ labelList dynamicTopoFvMesh::faceParents
     boundBox faceBox(facePoints, false);
 
     // Define a search radius
-    vector bC = faceBox.midpoint();
-    vector bMax = searchFactor * (faceBox.max() - bC);
+    vector bMax = searchFactor * (faceBox.max() - fCentre);
 
     const vectorField& faceCentres = boundary[patchIndex].faceCentres();
 
@@ -2467,7 +2487,7 @@ labelList dynamicTopoFvMesh::faceParents
 
     forAllConstIter(labelStaticHashSet, masterFaces, fIter)
     {
-        vector xC = (faceCentres[fIter.key()] - bC);
+        vector xC = (faceCentres[fIter.key()] - fCentre);
 
         if ((xC & xC) < (bMax & bMax))
         {
@@ -2497,6 +2517,7 @@ labelList dynamicTopoFvMesh::faceParents
 labelList dynamicTopoFvMesh::cellParents
 (
     const label cIndex,
+    const vector& cCentre,
     const scalar searchFactor,
     const labelList& oldCandidates
 ) const
@@ -2530,7 +2551,7 @@ labelList dynamicTopoFvMesh::cellParents
     // Fetch connectivity from the old mesh.
     const labelListList& oldCellCells = polyMesh::cellCells();
 
-    for (label attempt = 0; attempt < 5; attempt++)
+    for (label attempt = 0; attempt < 10; attempt++)
     {
         // Fetch the initial set of candidates
         labelList initList = masterCells.toc();
@@ -2564,8 +2585,7 @@ labelList dynamicTopoFvMesh::cellParents
     boundBox cellBox(cellPoints, false);
 
     // Define a search radius
-    vector bC = cellBox.midpoint();
-    vector bMax = searchFactor * (cellBox.max() - bC);
+    vector bMax = searchFactor * (cellBox.max() - cCentre);
 
     const vectorField& cellCentres = polyMesh::cellCentres();
 
@@ -2574,7 +2594,7 @@ labelList dynamicTopoFvMesh::cellParents
 
     forAllConstIter(labelStaticHashSet, masterCells, cIter)
     {
-        vector xC = (cellCentres[cIter.key()] - bC);
+        vector xC = (cellCentres[cIter.key()] - cCentre);
 
         if ((xC & xC) < (bMax & bMax))
         {
@@ -2728,6 +2748,9 @@ void dynamicTopoFvMesh::setFaceMapping
         )
             << nl << " Incompatible mapping: " << nl
             << " Face: " << fIndex << nl
+            << " Patch: " << patch << nl
+            << " Owner: " << owner_[fIndex] << nl
+            << " Neighbour: " << neighbour_[fIndex] << nl
             << " mapFaces: " << mapFaces << nl
             << " mapWeights: " << mapWeights << nl
             << " mapCentres: " << mapCentres
