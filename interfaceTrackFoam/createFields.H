@@ -33,10 +33,3 @@
     label pRefCell = 0;
     scalar pRefValue = 0.0;
     setRefCell(p, piso, pRefCell, pRefValue);
-
-    bool correctPhi = false;
-    if (piso.found("correctPhi"))
-    {
-        correctPhi = Switch(piso.lookup("correctPhi"));
-    }
-
