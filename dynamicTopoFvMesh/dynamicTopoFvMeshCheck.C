@@ -310,7 +310,7 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
     scalar deviation = (fNorm[0] & fNorm[1]);
 
     // Check if the curvature is too high
-    if (mag(deviation) < 0.85)
+    if (mag(deviation) < lengthEstimator().curvatureDeviation())
     {
         return true;
     }
@@ -1964,6 +1964,7 @@ bool dynamicTopoFvMesh::checkCollapse
     const label pointIndex,
     const label cellIndex,
     labelHashSet& cellsChecked,
+    scalar& collapseQuality,
     bool forceOp
 ) const
 {
@@ -2042,10 +2043,17 @@ bool dynamicTopoFvMesh::checkCollapse
         {
             InfoIn
             (
-                "bool dynamicTopoFvMesh::checkCollapse"
-                "(const point&, const point&,"
-                " const label, const label,"
-                " labelHashSet&, bool) const"
+                "\n\n"
+                "bool dynamicTopoFvMesh::checkCollapse\n"
+                "(\n"
+                "    const point& newPoint,\n"
+                "    const point& oldPoint,\n"
+                "    const label pointIndex,\n"
+                "    const label cellIndex,\n"
+                "    labelHashSet& cellsChecked,\n"
+                "    scalar& collapseQuality,\n"
+                "    bool forceOp\n"
+                ") const\n"
             )
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
@@ -2068,10 +2076,17 @@ bool dynamicTopoFvMesh::checkCollapse
         {
             InfoIn
             (
-                "bool dynamicTopoFvMesh::checkCollapse"
-                "(const point&, const point&,"
-                " const label, const label,"
-                " labelHashSet&, bool) const"
+                "\n\n"
+                "bool dynamicTopoFvMesh::checkCollapse\n"
+                "(\n"
+                "    const point& newPoint,\n"
+                "    const point& oldPoint,\n"
+                "    const label pointIndex,\n"
+                "    const label cellIndex,\n"
+                "    labelHashSet& cellsChecked,\n"
+                "    scalar& collapseQuality,\n"
+                "    bool forceOp\n"
+                ") const\n"
             )
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
@@ -2095,10 +2110,17 @@ bool dynamicTopoFvMesh::checkCollapse
         {
             InfoIn
             (
-                "bool dynamicTopoFvMesh::checkCollapse"
-                "(const point&, const point&,"
-                " const label, const label,"
-                " labelHashSet&, bool) const"
+                "\n\n"
+                "bool dynamicTopoFvMesh::checkCollapse\n"
+                "(\n"
+                "    const point& newPoint,\n"
+                "    const point& oldPoint,\n"
+                "    const label pointIndex,\n"
+                "    const label cellIndex,\n"
+                "    labelHashSet& cellsChecked,\n"
+                "    scalar& collapseQuality,\n"
+                "    bool forceOp\n"
+                ") const\n"
             )
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
@@ -2117,6 +2139,9 @@ bool dynamicTopoFvMesh::checkCollapse
 
     // No problems, so a collapse is feasible
     cellsChecked.insert(cellIndex);
+
+    // Update input quality
+    collapseQuality = Foam::min(collapseQuality, cQuality);
 
     return false;
 }

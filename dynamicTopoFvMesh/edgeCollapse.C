@@ -2216,6 +2216,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         cellsChecked.insert(cellHull[cellI]);
     }
 
+    // Keep track of resulting cell quality,
+    // if collapse is indeed feasible
+    scalar collapseQuality = GREAT;
+
     // Check collapsibility of cells around edges with the re-configured point
     forAll(checkPoints, pointI)
     {
@@ -2249,6 +2253,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             collapsePoint,
                             own,
                             cellsChecked,
+                            collapseQuality,
                             forceOp
                         )
                     )
@@ -2271,6 +2276,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             collapsePoint,
                             nei,
                             cellsChecked,
+                            collapseQuality,
                             forceOp
                         )
                     )
@@ -2293,7 +2299,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             Info << "Edge: " << eIndex
                  << ":: " << edges_[eIndex] << nl
                  << " collapseCase determined to be: "
-                 << collapseCase
+                 << collapseCase << nl
+                 << " Resulting quality: "
+                 << collapseQuality
                  << endl;
         }
 
@@ -2301,25 +2309,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Update number of surface collapses, if necessary.
-    labelList faceCandidates;
-
     if (whichEdgePatch(eIndex) > -1)
     {
         nCollapses_[1]++;
-
-        const labelList& eFaces = edgeFaces_[eIndex];
-
-        forAll(eFaces, faceI)
-        {
-            if (whichPatch(eFaces[faceI]) > -1)
-            {
-                faceCandidates.setSize
-                (
-                    faceCandidates.size() + 1,
-                    eFaces[faceI]
-                );
-            }
-        }
     }
 
     if (debug > 1)
@@ -2342,7 +2334,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             Info << boundaryMesh()[epIndex].name() << endl;
         }
 
-        Info << "collapseCase: " << collapseCase << endl;
+        Info << " nBoundCurves: " << nBoundCurves << endl;
+        Info << " collapseCase: " << collapseCase << endl;
+
+        Info << " Resulting quality: " << collapseQuality << endl;
 
         if (debug > 2)
         {
@@ -3193,7 +3188,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         // Decide between default / weighted mapping
         // based on boundary information
-        if (whichPatch(fIter.key()) == -1)
+        label fPatch = whichPatch(fIter.key());
+
+        if (fPatch == -1)
         {
             setFaceMapping(fIter.key());
         }
@@ -3203,6 +3200,35 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             labelList parents;
             scalarField weights;
             vectorField centres;
+
+            labelList faceCandidates;
+
+            const labelList& fEdges = faceEdges_[fIter.key()];
+
+            forAll(fEdges, edgeI)
+            {
+                if (whichEdgePatch(fEdges[edgeI]) == fPatch)
+                {
+                    // Loop through associated edgeFaces
+                    const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+                    forAll(eFaces, faceI)
+                    {
+                        if
+                        (
+                            (eFaces[faceI] != fIter.key()) &&
+                            (whichPatch(eFaces[faceI]) == fPatch)
+                        )
+                        {
+                            faceCandidates.setSize
+                            (
+                                faceCandidates.size() + 1,
+                                eFaces[faceI]
+                            );
+                        }
+                    }
+                }
+            }
 
             // Obtain weighting factors for this face.
             computeFaceWeights

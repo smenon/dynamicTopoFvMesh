@@ -562,7 +562,7 @@ void dynamicTopoFvMesh::computeFaceWeights
             nIntersects = 0;
 
             // Expand the search radius and try again.
-            searchFactor *= 1.4;
+            searchFactor *= 1.6;
         }
     }
 
@@ -4188,7 +4188,7 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
     }
 
     // Bail-out if a dumping was not requested in dictionary.
-    if (dump && !dumpLengthScale && !time().outputTime())
+    if (dump && !dumpLengthScale)
     {
         return;
     }
