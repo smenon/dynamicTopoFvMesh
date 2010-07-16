@@ -305,6 +305,58 @@ const labelHashSet& topoSurfaceMapper::flipFaceFlux() const
 }
 
 
+//- Map the internal field
+template <class Type>
+void topoSurfaceMapper::mapInternalField
+(
+    Field<Type>& iF
+) const
+{
+    if (iF.size() != sizeBeforeMapping())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "void topoSurfaceMapper::mapInternalField<Type>\n"
+            "(\n"
+            "    Field<Type>& iF\n"
+            ") const\n"
+        )  << "Incompatible size before mapping." << nl
+           << " Field size: " << iF.size() << nl
+           << " map size: " << sizeBeforeMapping() << nl
+           << abort(FatalError);
+    }
+
+    // Map the internal field
+    iF.autoMap(*this);
+
+    // Flip the flux
+    const labelList flipFaces = flipFaceFlux().toc();
+
+    forAll (flipFaces, i)
+    {
+        if (flipFaces[i] < iF.size())
+        {
+            iF[flipFaces[i]] *= -1.0;
+        }
+        else
+        {
+            FatalErrorIn
+            (
+                "\n\n"
+                "void topoSurfaceMapper::mapInternalField<Type>\n"
+                "(\n"
+                "    Field<Type>& iF\n"
+                ") const\n"
+            )  << "Cannot flip boundary face fluxes." << nl
+               << " Field size: " << iF.size() << nl
+               << " Face flip index: " << flipFaces[i] << nl
+               << abort(FatalError);
+        }
+    }
+}
+
+
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 void topoSurfaceMapper::operator=(const topoSurfaceMapper& rhs)

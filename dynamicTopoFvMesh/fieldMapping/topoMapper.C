@@ -329,9 +329,9 @@ const vectorField& topoMapper::patchCentres(const label i) const
 }
 
 
-// Conservatively map all fvFields in the registry
+// Conservatively map all volFields in the registry
 template <class Type>
-void topoMapper::conservativeMapFields() const
+void topoMapper::conservativeMapVolFields() const
 {
     // Define a few typedefs for convenience
     typedef typename outerProduct<vector, Type>::type gCmptType;
@@ -384,6 +384,58 @@ void topoMapper::conservativeMapFields() const
 }
 
 
+// Conservatively map all surfaceFields in the registry
+template <class Type>
+void topoMapper::conservativeMapSurfaceFields() const
+{
+    // Define a few typedefs for convenience
+    typedef GeometricField<Type, fvsPatchField, surfaceMesh> surfType;
+
+    HashTable<const surfType*> fields(mesh_.lookupClass<surfType>());
+
+    // Store old-times before mapping
+    forAllIter(typename HashTable<const surfType*>, fields, fIter)
+    {
+        surfType& field = const_cast<surfType&>(*fIter());
+
+        field.storeOldTimes();
+    }
+
+    // Fetch internal/boundary mappers
+    const topoSurfaceMapper& fMap = surfaceMap();
+    const topoBoundaryMeshMapper& bMap = boundaryMap();
+
+    // Now map all fields
+    forAllIter(typename HashTable<const surfType*>, fields, fIter)
+    {
+        surfType& field = const_cast<surfType&>(*fIter());
+
+        if (fvMesh::debug)
+        {
+            Info << "Conservatively mapping "
+                 << field.typeName
+                 << ' ' << field.name()
+                 << endl;
+        }
+
+        // Map the internal field
+        fMap.mapInternalField
+        (
+            field.internalField()
+        );
+
+        // Map patch fields
+        forAll(bMap, patchI)
+        {
+            bMap[patchI].mapPatchField(field.boundaryField()[patchI]);
+        }
+
+        // Set the field instance
+        field.instance() = field.mesh().db().time().timeName();
+    }
+}
+
+
 //- Correct fluxes after topology change
 void topoMapper::correctFluxes() const
 {
@@ -419,9 +471,18 @@ void topoMapper::correctFluxes() const
         const volScalarField& p = mesh.lookupObject<volScalarField>("p");
         const volScalarField& rUA = mesh.lookupObject<volScalarField>("rUA");
 
+        // Read PISO options
+        dictionary piso = mesh.solutionDict().subDict("PISO");
+
+        int nNonOrthCorr = 0;
+        if (piso.found("nNonOrthogonalCorrectors"))
+        {
+            nNonOrthCorr = readInt(piso.lookup("nNonOrthogonalCorrectors"));
+        }
+
         label pRefCell = 0;
         scalar pRefValue = 0.0;
-        label nNonOrthCorr = 1;
+        setRefCell(p, piso, pRefCell, pRefValue);
 
         // Correct fluxes
 #       include "correctPhi.H"

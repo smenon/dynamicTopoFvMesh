@@ -567,7 +567,7 @@ void dynamicTopoFvMesh::computeFaceWeights
     }
 
     // Test weights for consistency
-    if (mag(fArea - sum(weights)) > 1e-16)
+    if (mag(1.0 - sum(weights/fArea)) > 1e-10)
     {
         // Inconsistent weights. Check whether any edges
         // lie on bounding curves. These faces can have
@@ -639,6 +639,18 @@ void dynamicTopoFvMesh::computeFaceWeights
             << " Norm Sum(Weights): " << sum(weights/fArea) << nl
             << " Norm Error: " << mag(1.0 - sum(weights/fArea))
             << abort(FatalError);
+    }
+    else
+    if (debug > 2)
+    {
+        Info << " Face: " << fIndex << nl
+             << setprecision(16)
+             << " Face area: " << fArea << nl
+             << " Sum(Weights): " << sum(weights) << nl
+             << " Error: " << (fArea - sum(weights)) << nl
+             << " Norm Sum(Weights): " << sum(weights/fArea) << nl
+             << " Norm Error: " << mag(1.0 - sum(weights/fArea))
+             << endl;
     }
 
     // Return normalized weights
@@ -796,7 +808,7 @@ void dynamicTopoFvMesh::computeCellWeights
     }
 
     // Test weights for consistency
-    if (mag(cellVolume - sum(weights)) > 1e-16)
+    if (mag(1.0 - sum(weights/cellVolume)) > 1e-10)
     {
         // Inconsistent weights. Check whether any edges
         // lie on boundary patches. These cells can have
@@ -869,6 +881,18 @@ void dynamicTopoFvMesh::computeCellWeights
             << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
             << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
             << abort(FatalError);
+    }
+    else
+    if (debug > 2)
+    {
+        Info << " Cell: " << cIndex << nl
+             << setprecision(16)
+             << " Cell volume: " << cellVolume << nl
+             << " Sum(Weights): " << sum(weights) << nl
+             << " Error: " << (cellVolume - sum(weights)) << nl
+             << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
+             << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
+             << endl;
     }
 
     // Return normalized weights
@@ -4290,7 +4314,10 @@ void dynamicTopoFvMesh::readOptionalParameters()
         // Check if swapping is to be avoided on any patches
         if (meshSubDict.found("noSwapPatches") || mandatory_)
         {
-            wordList noSwapPatches = meshSubDict.subDict("noSwapPatches").toc();
+            wordList noSwapPatches =
+            (
+                meshSubDict.subDict("noSwapPatches").toc()
+            );
 
             noSwapPatchIDs_.setSize(noSwapPatches.size());
 
@@ -6320,6 +6347,9 @@ void dynamicTopoFvMesh::resetMesh()
         // Correct volume fluxes on the old mesh
         fieldMapper.correctFluxes();
 
+        // Clear mapper after use
+        fieldMapper.clear();
+
         // Now move mesh to new points and
         // compute correct mesh-fluxes.
         movePoints(points);
@@ -6434,8 +6464,8 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
     fieldMapper.setCellWeights(cellWeights_, cellCentres_);
 
     // Conservatively map scalar/vector volFields
-    fieldMapper.conservativeMapFields<scalar>();
-    fieldMapper.conservativeMapFields<vector>();
+    fieldMapper.conservativeMapVolFields<scalar>();
+    fieldMapper.conservativeMapVolFields<vector>();
 
     // Map all the volFields in the objectRegistry
     MapGeometricFields<sphericalTensor,fvPatchField,topoMapper,volMesh>
@@ -6445,20 +6475,17 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
     MapGeometricFields<tensor,fvPatchField,topoMapper,volMesh>
         (fieldMapper);
 
+    // Conservatively map scalar/vector surfaceFields
+    fieldMapper.conservativeMapSurfaceFields<scalar>();
+    fieldMapper.conservativeMapSurfaceFields<vector>();
+
     // Map all the surfaceFields in the objectRegistry
-    MapGeometricFields<scalar,fvsPatchField,topoMapper,surfaceMesh>
-        (fieldMapper);
-    MapGeometricFields<vector,fvsPatchField,topoMapper,surfaceMesh>
-        (fieldMapper);
     MapGeometricFields<sphericalTensor,fvsPatchField,topoMapper,surfaceMesh>
         (fieldMapper);
     MapGeometricFields<symmTensor,fvsPatchField,topoMapper,surfaceMesh>
         (fieldMapper);
     MapGeometricFields<tensor,fvsPatchField,topoMapper,surfaceMesh>
         (fieldMapper);
-
-    // Clear mapper
-    fieldMapper.clear();
 }
 
 

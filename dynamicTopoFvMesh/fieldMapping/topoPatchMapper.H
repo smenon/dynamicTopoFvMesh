@@ -93,6 +93,12 @@ class topoPatchMapper
         //- Inserted face addressing
         mutable labelListList* insertedFaceAddressingPtr_;
 
+        //- Interpolation areas
+        mutable List<scalarField>* areasPtr_;
+
+        //- Interpolation centres
+        mutable List<vectorField>* centresPtr_;
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -109,6 +115,15 @@ class topoPatchMapper
 
         //- Calculate inverse-distance weights for interpolative mapping
         void calcInverseDistanceWeights() const;
+
+        //- Calculate intersection weights for conservative mapping
+        void calcIntersectionWeightsAndCentres() const;
+
+        //- Return intersection area weights
+        const List<scalarField>& intersectionWeights() const;
+
+        //- Return intersection area centres
+        const List<vectorField>& intersectionCentres() const;
 
         //- Clear out local storage
         void clearOut();

@@ -179,9 +179,13 @@ public:
         //- Return stored patch centre information
         const vectorField& patchCentres(const label i) const;
 
-        // Conservatively map all fvFields in the registry
+        // Conservatively map all volFields in the registry
         template <class Type>
-        void conservativeMapFields() const;
+        void conservativeMapVolFields() const;
+
+        // Conservatively map all surfaceFields in the registry
+        template <class Type>
+        void conservativeMapSurfaceFields() const;
 
         //- Correct fluxes after topology change
         void correctFluxes() const;

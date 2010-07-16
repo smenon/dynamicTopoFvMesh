@@ -116,7 +116,7 @@ class topoCellMapper
         //- Return intersection volume weights
         const List<scalarField>& intersectionWeights() const;
 
-        //- Return intersection volumes centres
+        //- Return intersection volume centres
         const List<vectorField>& intersectionCentres() const;
 
         //- Clear out local storage

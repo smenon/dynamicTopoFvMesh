@@ -228,10 +228,10 @@ void topoCellMapper::calcIntersectionWeightsAndCentres() const
     const labelListList& addr = addressing();
 
     // Allocate memory
-    volumesPtr_ = new List<scalarField>(mesh_.nCells(), scalarField(0));
+    volumesPtr_ = new List<scalarField>(size(), scalarField(0));
     List<scalarField>& v = *volumesPtr_;
 
-    centresPtr_ = new List<vectorField>(mesh_.nCells(), vectorField(0));
+    centresPtr_ = new List<vectorField>(size(), vectorField(0));
     List<vectorField>& x = *centresPtr_;
 
     // Obtain stored cell-centres
@@ -472,6 +472,23 @@ void topoCellMapper::mapInternalField
     Field<Type>& iF
 ) const
 {
+    if (iF.size() != sizeBeforeMapping() || gF.size() != sizeBeforeMapping())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "void topoCellMapper::mapInternalField<Type>\n"
+            "(\n"
+            "    const Field<gradType>& gF,\n"
+            "    Field<Type>& iF\n"
+            ") const\n"
+        )  << "Incompatible size before mapping." << nl
+           << " Field size: " << iF.size() << nl
+           << " Gradient Field size: " << gF.size() << nl
+           << " map size: " << sizeBeforeMapping() << nl
+           << abort(FatalError);
+    }
+
     // Fetch addressing
     const labelListList& cAddressing = addressing();
     const List<scalarField>& wC = intersectionWeights();

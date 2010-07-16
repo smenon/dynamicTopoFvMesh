@@ -150,6 +150,10 @@ public:
 
         //- Return flux flip map
         const labelHashSet& flipFaceFlux() const;
+
+        //- Map the internal field
+        template <class Type>
+        void mapInternalField(Field<Type>& iF) const;
 };
 
 

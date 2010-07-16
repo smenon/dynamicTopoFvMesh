@@ -53,6 +53,8 @@ void topoPatchMapper::clearOut()
     deleteDemandDrivenData(weightsPtr_);
     deleteDemandDrivenData(insertedFaceLabelsPtr_);
     deleteDemandDrivenData(insertedFaceAddressingPtr_);
+    deleteDemandDrivenData(areasPtr_);
+    deleteDemandDrivenData(centresPtr_);
 }
 
 
@@ -81,6 +83,9 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
 
     insertedFaceAddressingPtr_ = new labelListList(size(), labelList(0));
     labelListList& insertedAddressing = *insertedFaceAddressingPtr_;
+
+    // Fetch current patch start
+    label pStart = patch_.patch().start();
 
     // Fetch the current boundary
     const polyBoundaryMesh& boundary = mpm_.mesh().boundaryMesh();
@@ -112,10 +117,7 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
             {
                 // Make an entry for the inserted label,
                 // and renumber addressing to patch.
-                insertedFaces[nInsertedFaces] =
-                (
-                    fffI.index() - patch_.patch().start()
-                );
+                insertedFaces[nInsertedFaces] = fffI.index() - pStart;
 
                 // Make an entry for addressing
                 labelList& addr = insertedAddressing[nInsertedFaces];
@@ -306,7 +308,7 @@ void topoPatchMapper::calcInverseDistanceWeights() const
     weightsPtr_ = new scalarListList(size());
     scalarListList& w = *weightsPtr_;
 
-    // Obtain cell-centre information from old/new meshes
+    // Obtain face-centre information from old/new meshes
     const vectorField& oldCentres = tMapper_.patchCentres(patch_.index());
     const vectorField& newCentres = patch_.patch().faceCentres();
 
@@ -355,6 +357,127 @@ void topoPatchMapper::calcInverseDistanceWeights() const
 }
 
 
+//- Calculate intersection weights for conservative mapping
+void topoPatchMapper::calcIntersectionWeightsAndCentres() const
+{
+    if (areasPtr_ || centresPtr_)
+    {
+        FatalErrorIn
+        (
+            "void topoPatchMapper::"
+            "calcIntersectionWeightsAndCentres() const"
+        )
+            << "Weights already calculated."
+            << abort(FatalError);
+    }
+
+    // Fetch interpolative addressing
+    const labelListList& addr = addressing();
+
+    // Allocate memory
+    areasPtr_ = new List<scalarField>(size(), scalarField(0));
+    List<scalarField>& a = *areasPtr_;
+
+    centresPtr_ = new List<vectorField>(size(), vectorField(0));
+    List<vectorField>& x = *centresPtr_;
+
+    // Fetch current patch start
+    label pStart = patch_.patch().start();
+
+    // Obtain stored face-centres
+    const vectorField& faceCentres = tMapper_.patchCentres(patch_.index());
+
+    // Fetch maps
+    const Map<vectorField>& mapFaceCentres = tMapper_.faceCentres();
+    const Map<scalarField>& mapFaceWeights = tMapper_.faceWeights();
+
+    // Fill in maps first
+    const labelList& insertedFaces = insertedObjectLabels();
+
+    forAll(insertedFaces, faceI)
+    {
+        // Fetch the local / global indices
+        label lIndex = insertedFaces[faceI];
+        label gIndex = lIndex + pStart;
+
+        // Fill-in the array
+        a[lIndex] = mapFaceWeights[gIndex];
+        x[lIndex] = mapFaceCentres[gIndex];
+    }
+
+    // Now do mapped faces
+    forAll(addr, faceI)
+    {
+        const labelList& mo = addr[faceI];
+
+        // Check if this is indeed a mapped face
+        if (mo.size() == 1 && x[faceI].empty() && a[faceI].empty())
+        {
+            x[faceI] = vectorField(1, faceCentres[mo[0]]);
+            a[faceI] = scalarField(1, 1.0);
+        }
+    }
+
+    // Final check to ensure everything went okay
+    forAll(a, faceI)
+    {
+        if (a[faceI].empty())
+        {
+            FatalErrorIn
+            (
+                "void topoPatchMapper::"
+                "calcIntersectionWeightsAndCentres() const"
+            )
+                << "Weights / centres is missing."
+                << nl << " Patch face index: " << faceI
+                << abort(FatalError);
+        }
+    }
+}
+
+
+const List<scalarField>& topoPatchMapper::intersectionWeights() const
+{
+    if (direct())
+    {
+        FatalErrorIn
+        (
+            "const List<scalarField>& "
+            "topoPatchMapper::intersectionWeights() const"
+        )   << "Requested interpolative weights for a direct mapper."
+            << abort(FatalError);
+    }
+
+    if (!areasPtr_)
+    {
+        calcIntersectionWeightsAndCentres();
+    }
+
+    return *areasPtr_;
+}
+
+
+const List<vectorField>& topoPatchMapper::intersectionCentres() const
+{
+    if (direct())
+    {
+        FatalErrorIn
+        (
+            "const List<vectorField>& "
+            "topoPatchMapper::intersectionCentres() const"
+        )   << "Requested interpolative weights for a direct mapper."
+            << abort(FatalError);
+    }
+
+    if (!centresPtr_)
+    {
+        calcIntersectionWeightsAndCentres();
+    }
+
+    return *centresPtr_;
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
@@ -373,7 +496,9 @@ topoPatchMapper::topoPatchMapper
     interpolationAddrPtr_(NULL),
     weightsPtr_(NULL),
     insertedFaceLabelsPtr_(NULL),
-    insertedFaceAddressingPtr_(NULL)
+    insertedFaceAddressingPtr_(NULL),
+    areasPtr_(NULL),
+    centresPtr_(NULL)
 {
     // Check for the possibility of direct mapping
     if (insertedObjects())
@@ -517,7 +642,43 @@ const labelListList& topoPatchMapper::insertedFaceAddressing() const
 template <class Type>
 void topoPatchMapper::mapPatchField(Field<Type>& pF) const
 {
-    pF.autoMap(*this);
+    // To invoke inverse-distance weighting, use this:
+    // pF.autoMap(*this);
+
+    // Check for possibility of direct mapping
+    if (direct())
+    {
+        pF.autoMap(*this);
+    }
+    else
+    {
+        // Fetch addressing
+        const labelListList& pAddressing = addressing();
+        const List<scalarField>& wF = intersectionWeights();
+
+        // Copy the original field
+        Field<Type> fieldCpy(pF);
+
+        // Resize to current dimensions
+        pF.setSize(size());
+
+        // Map the patch field
+        forAll(pF, faceI)
+        {
+            const labelList& addr = pAddressing[faceI];
+
+            pF[faceI] = pTraits<Type>::zero;
+
+            // Accumulate area-weighted interpolate
+            forAll(addr, faceJ)
+            {
+                pF[faceI] +=
+                (
+                    wF[faceI][faceJ] * fieldCpy[addr[faceJ]]
+                );
+            }
+        }
+    }
 }
 
 
