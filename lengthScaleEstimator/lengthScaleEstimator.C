@@ -50,12 +50,10 @@ defineTypeNameAndDebug(lengthScaleEstimator,0);
 // Construct from polyMesh and dictionary
 lengthScaleEstimator::lengthScaleEstimator
 (
-    const polyMesh& mesh,
-    const dictionary& parentDict
+    const polyMesh& mesh
 )
 :
     mesh_(mesh),
-    parentDict_(parentDict),
     ratioMin_(0.0),
     ratioMax_(0.0),
     growthFactor_(1.0),
@@ -498,6 +496,7 @@ void lengthScaleEstimator::readLengthScaleInfo
 // Read edge refinement options from the dictionary
 void lengthScaleEstimator::readRefinementOptions
 (
+    const dictionary& parentDict,
     bool reRead,
     bool mandatory
 )
@@ -506,9 +505,57 @@ void lengthScaleEstimator::readRefinementOptions
     scalar oldRatioMax = ratioMax_;
     scalar oldRatioMin = ratioMin_;
     scalar oldGrowthFactor = growthFactor_;
+    scalar oldMinScale = minLengthScale_;
+    scalar oldMaxScale = maxLengthScale_;
 
-    ratioMax_ = readScalar(parentDict_.lookup("bisectionRatio"));
-    ratioMin_ = readScalar(parentDict_.lookup("collapseRatio"));
+    ratioMax_ = readScalar(parentDict.lookup("bisectionRatio"));
+    ratioMin_ = readScalar(parentDict.lookup("collapseRatio"));
+    growthFactor_ = readScalar(parentDict.lookup("growthFactor"));
+
+    // Sanity check: Are ratios and growth-factor correctly specified?
+    if
+    (
+        ratioMin_ > ratioMax_ ||
+        ratioMin_ < VSMALL ||
+        ratioMax_ < VSMALL ||
+        growthFactor_ < 1.0
+    )
+    {
+        FatalErrorIn
+        (
+            "void lengthScaleEstimator::readRefinementOptions"
+            "(bool reRead, bool mandatory)"
+        )
+            << " Options are incorrectly specified." << nl
+            << " ratioMin: " << ratioMin_ << nl
+            << " ratioMax: " << ratioMax_ << nl
+            << " growthFactor: " << growthFactor_ << nl
+            << abort(FatalError);
+    }
+
+    if (parentDict.found("minLengthScale") || mandatory)
+    {
+        minLengthScale_ = readScalar(parentDict.lookup("minLengthScale"));
+    }
+
+    if (parentDict.found("maxLengthScale") || mandatory)
+    {
+        maxLengthScale_ = readScalar(parentDict.lookup("maxLengthScale"));
+    }
+
+    // Sanity check: Are min/max length scales correctly specified?
+    if (minLengthScale_ > maxLengthScale_)
+    {
+        FatalErrorIn
+        (
+            "void lengthScaleEstimator::readRefinementOptions"
+            "(bool reRead, bool mandatory)"
+        )
+            << " Length-scales are incorrectly specified." << nl
+            << " minLengthScale: " << minLengthScale_ << nl
+            << " maxLengthScale: " << maxLengthScale_ << nl
+            << abort(FatalError);
+    }
 
     if (reRead)
     {
@@ -530,43 +577,31 @@ void lengthScaleEstimator::readRefinementOptions
             Info << "\tOld growthFactor: " << oldGrowthFactor << nl
                  << "\tNew growthFactor: " << growthFactor_ << endl;
         }
+
+        if (mag(oldMinScale - minLengthScale_) > SMALL)
+        {
+            Info << "\tOld minLengthScale: " << oldMinScale << nl
+                 << "\tNew minLengthScale: " << minLengthScale_ << endl;
+        }
+
+        if (mag(oldMaxScale - maxLengthScale_) > SMALL)
+        {
+            Info << "\tOld maxLengthScale: " << oldMaxScale << nl
+                 << "\tNew maxLengthScale: " << maxLengthScale_ << endl;
+        }
     }
 
-    if (parentDict_.found("maxLengthScale") || mandatory)
+    if (parentDict.found("fixedLengthScalePatches") || mandatory)
     {
-        maxLengthScale_ = readScalar(parentDict_.lookup("maxLengthScale"));
-    }
-
-    if (parentDict_.found("minLengthScale") || mandatory)
-    {
-        minLengthScale_ = readScalar(parentDict_.lookup("minLengthScale"));
-    }
-
-    // Sanity check: Are length scales correctly specified?
-    if (minLengthScale_ > maxLengthScale_)
-    {
-        FatalErrorIn
-        (
-            "void lengthScaleEstimator::readRefinementOptions"
-            "(bool reRead, bool mandatory)"
-        )
-            << " Length-scales are incorrectly specified." << nl
-            << " minLengthScale: " << minLengthScale_ << nl
-            << " maxLengthScale: " << maxLengthScale_ << nl
-            << abort(FatalError);
-    }
-
-    if (parentDict_.found("fixedLengthScalePatches") || mandatory)
-    {
-        fixedPatches_ = parentDict_.subDict("fixedLengthScalePatches");
+        fixedPatches_ = parentDict.subDict("fixedLengthScalePatches");
 
         // Ensure that patches are legitimate.
         checkPatches(fixedPatches_.toc());
     }
 
-    if (parentDict_.found("freeLengthScalePatches") || mandatory)
+    if (parentDict.found("freeLengthScalePatches") || mandatory)
     {
-        freePatches_ = parentDict_.subDict("freeLengthScalePatches");
+        freePatches_ = parentDict.subDict("freeLengthScalePatches");
 
         // Ensure that patches are legitimate.
         checkPatches(freePatches_.toc());
@@ -579,38 +614,31 @@ void lengthScaleEstimator::readRefinementOptions
 
             forAll(fixedPatchList, wordI)
             {
-                forAll(freePatchList, wordJ)
+                if (findIndex(freePatchList, fixedPatchList[wordI]) > -1)
                 {
-                    if (fixedPatchList[wordI] == freePatchList[wordJ])
-                    {
-                        FatalErrorIn
-                        (
-                            "void lengthScaleEstimator::readRefinementOptions"
-                            "(bool reRead, bool mandatory)"
-                        )
-                            << " Conflicting fixed/free patches." << nl
-                            << " Fixed patch: " << fixedPatchList[wordI] << nl
-                            << " Free patch: " << freePatchList[wordJ] << nl
-                            << abort(FatalError);
-                    }
+                    FatalErrorIn
+                    (
+                        "void lengthScaleEstimator::readRefinementOptions"
+                        "(bool reRead, bool mandatory)"
+                    )
+                        << " Conflicting fixed/free patches." << nl
+                        << " Patch: " << fixedPatchList[wordI] << nl
+                        << abort(FatalError);
                 }
             }
         }
     }
 
-    // Read growthFactor from dictionary
-    growthFactor_ = readScalar(parentDict_.lookup("growthFactor"));
-
-    if (parentDict_.found("curvaturePatches") || mandatory)
+    if (parentDict.found("curvaturePatches") || mandatory)
     {
-        curvaturePatches_ = parentDict_.subDict("curvaturePatches");
+        curvaturePatches_ = parentDict.subDict("curvaturePatches");
 
         // Ensure that patches are legitimate.
         checkPatches(curvaturePatches_.toc());
 
         curvatureDeviation_ =
         (
-            readScalar(parentDict_.lookup("curvatureDeviation"))
+            readScalar(parentDict.lookup("curvatureDeviation"))
         );
 
         if (curvatureDeviation_ > 1.0 || curvatureDeviation_ < 0.0)
@@ -625,22 +653,22 @@ void lengthScaleEstimator::readRefinementOptions
         }
     }
 
-    if (parentDict_.found("proximityPatches") || mandatory)
+    if (parentDict.found("proximityPatches") || mandatory)
     {
         proximityPatches_ =
         (
-            parentDict_.subDict("proximityPatches")
+            parentDict.subDict("proximityPatches")
         );
 
         // Ensure that patches are legitimate.
         checkPatches(proximityPatches_.toc());
 
         // Check if a threshold for slicing has been specified.
-        if (parentDict_.found("sliceThreshold") || mandatory)
+        if (parentDict.found("sliceThreshold") || mandatory)
         {
             sliceThreshold_ =
             (
-                readScalar(parentDict_.lookup("sliceThreshold"))
+                readScalar(parentDict.lookup("sliceThreshold"))
             );
 
             // Cap the threshold value
@@ -649,11 +677,11 @@ void lengthScaleEstimator::readRefinementOptions
     }
 
     // Check if edge-refinement is to be avoided on any patches
-    if (parentDict_.found("noModificationPatches") || mandatory)
+    if (parentDict.found("noModificationPatches") || mandatory)
     {
         wordList noModPatches =
         (
-            parentDict_.subDict("noModificationPatches").toc()
+            parentDict.subDict("noModificationPatches").toc()
         );
 
         // Ensure that patches are legitimate.

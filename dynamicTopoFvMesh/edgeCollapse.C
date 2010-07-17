@@ -2053,15 +2053,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     FixedList<label, 2> nBoundCurves(0), checkPoints(-1);
     const FixedList<bool,2> edgeBoundary = checkEdgeBoundary(eIndex);
 
-    // Configure the new point-position
-    point newPoint = vector::zero;
-    point oldPoint = vector::zero;
-
-    // Decide which point to remove
+    // Decide on collapseCase
     label collapseCase = -1;
-    label collapsePoint = -1, replacePoint = -1;
-    label removeEdgeIndex = -1, removeFaceIndex = -1;
-    label replaceEdgeIndex = -1, replaceFaceIndex = -1;
 
     if (edgeBoundary[0] && !edgeBoundary[1])
     {
@@ -2128,6 +2121,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         collapseCase = overRideCase;
     }
 
+    // Configure the new point-position
+    point newPoint = vector::zero;
+    point oldPoint = vector::zero;
+
+    label collapsePoint = -1, replacePoint = -1;
+
     switch (collapseCase)
     {
         case 1:
@@ -2135,12 +2134,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Collapse to the first node
             replacePoint = edges_[eIndex][0];
             collapsePoint = edges_[eIndex][1];
-            replaceEdgeIndex = 0;
-            replaceFaceIndex = 1;
-            removeEdgeIndex = 2;
-            removeFaceIndex = 3;
-            newPoint = points_[edges_[eIndex][0]];
-            oldPoint = oldPoints_[edges_[eIndex][0]];
+
+            newPoint = points_[replacePoint];
+            oldPoint = oldPoints_[replacePoint];
+
             checkPoints[0] = collapsePoint;
 
             break;
@@ -2150,12 +2147,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Collapse to the second node
             replacePoint = edges_[eIndex][1];
             collapsePoint = edges_[eIndex][0];
-            removeEdgeIndex = 0;
-            removeFaceIndex = 1;
-            replaceEdgeIndex = 2;
-            replaceFaceIndex = 3;
-            newPoint = points_[edges_[eIndex][1]];
-            oldPoint = oldPoints_[edges_[eIndex][1]];
+
+            newPoint = points_[replacePoint];
+            oldPoint = oldPoints_[replacePoint];
+
             checkPoints[0] = collapsePoint;
 
             break;
@@ -2163,21 +2158,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         case 3:
 
             // Collapse to the mid-point
-            // Uses connectivity of the second case.
             replacePoint = edges_[eIndex][1];
             collapsePoint = edges_[eIndex][0];
-            removeEdgeIndex = 0;
-            removeFaceIndex = 1;
-            replaceEdgeIndex = 2;
-            replaceFaceIndex = 3;
-            newPoint = 0.5 *
-            (
-                points_[edges_[eIndex][0]]
-              + points_[edges_[eIndex][1]]
-            );
-            oldPoint = oldPoints_[edges_[eIndex][1]];
-            checkPoints[0] = collapsePoint;
-            checkPoints[1] = replacePoint;
+
+            newPoint = 0.5 * (points_[replacePoint] + points_[collapsePoint]);
+            oldPoint = oldPoints_[replacePoint];
+
+            checkPoints[0] = replacePoint;
+            checkPoints[1] = collapsePoint;
 
             break;
 
@@ -2203,9 +2191,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Loop through edges and check for feasibility of collapse
+    // Also, keep track of resulting cell quality,
+    // if collapse is indeed feasible
+    scalar collapseQuality(GREAT);
     labelHashSet cellsChecked;
 
-    // Add all hull cells as 'checked'
+    // Add all hull cells as 'checked',
+    // and therefore, feasible
     forAll(cellHull, cellI)
     {
         if (cellHull[cellI] == -1)
@@ -2216,11 +2208,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         cellsChecked.insert(cellHull[cellI]);
     }
 
-    // Keep track of resulting cell quality,
-    // if collapse is indeed feasible
-    scalar collapseQuality = GREAT;
-
-    // Check collapsibility of cells around edges with the re-configured point
+    // Check collapsibility of cells around edges
+    // with the re-configured point
     forAll(checkPoints, pointI)
     {
         if (checkPoints[pointI] == -1)
@@ -2250,7 +2239,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         (
                             newPoint,
                             oldPoint,
-                            collapsePoint,
+                            checkPoints[pointI],
                             own,
                             cellsChecked,
                             collapseQuality,
@@ -2273,7 +2262,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         (
                             newPoint,
                             oldPoint,
-                            collapsePoint,
+                            checkPoints[pointI],
                             nei,
                             cellsChecked,
                             collapseQuality,
@@ -2312,6 +2301,44 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     if (whichEdgePatch(eIndex) > -1)
     {
         nCollapses_[1]++;
+    }
+
+    // Define indices on the hull for removal / replacement
+    label removeEdgeIndex = -1, replaceEdgeIndex = -1;
+    label removeFaceIndex = -1, replaceFaceIndex = -1;
+
+    if (replacePoint == edges_[eIndex][0])
+    {
+        replaceEdgeIndex = 0;
+        replaceFaceIndex = 1;
+        removeEdgeIndex = 2;
+        removeFaceIndex = 3;
+    }
+    else
+    if (replacePoint == edges_[eIndex][1])
+    {
+        removeEdgeIndex = 0;
+        removeFaceIndex = 1;
+        replaceEdgeIndex = 2;
+        replaceFaceIndex = 3;
+    }
+    else
+    {
+        // Don't think this will ever happen.
+        FatalErrorIn
+        (
+            "\n"
+            "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+            "(\n"
+            "    const label eIndex,\n"
+            "    label overRideCase,\n"
+            "    bool checkOnly,\n"
+            "    bool forceOp\n"
+            ")\n"
+        )
+            << "Edge: " << eIndex << ": " << edges_[eIndex]
+            << ". Couldn't decide on removal / replacement indices."
+            << abort(FatalError);
     }
 
     if (debug > 1)
@@ -3109,55 +3136,34 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Remove the collapse point
     removePoint(collapsePoint);
 
-    // Write out VTK files after change
-    if (debug > 3)
-    {
-        // Since cellsChecked is no longer used,
-        // we'll use it for post-processing.
-        forAll(cellHull, indexI)
-        {
-            if (cellsChecked.found(cellHull[indexI]))
-            {
-                cellsChecked.erase(cellHull[indexI]);
-            }
-        }
-
-        labelList vtkCells = cellsChecked.toc();
-
-        writeVTK
-        (
-            Foam::name(eIndex)
-          + '(' + Foam::name(edges_[eIndex][0])
-          + ',' + Foam::name(edges_[eIndex][1]) + ')'
-          + "_Collapse_1",
-            vtkCells
-        );
-    }
-
     // Remove the edge
     removeEdge(eIndex);
 
+    // For cell-mapping, exclude all hull-cells
+    forAll(cellHull, indexI)
+    {
+        if (cellsChecked.found(cellHull[indexI]))
+        {
+            cellsChecked.erase(cellHull[indexI]);
+        }
+    }
+
+    // Fill-in candidate mapping information
+    labelList mC(cellHull);
+    labelList mapCells = cellsChecked.toc();
+
     // Now that all old / new cells possess correct connectivity,
     // compute mapping information.
-    forAllConstIter(labelHashSet, cellsChecked, cIter)
+    forAll(mapCells, cellI)
     {
-        // Avoid hull cells
-        if (findIndex(cellHull, cIter.key()) > -1)
-        {
-            continue;
-        }
-
         labelList parents;
         scalarField weights;
         vectorField centres;
 
-        // Fill-in candidate mapping information
-        labelList mC(cellsChecked.toc());
-
         // Obtain weighting factors for this cell.
         computeCellWeights
         (
-            cIter.key(),
+            mapCells[cellI],
             mC,
             parents,
             weights,
@@ -3167,14 +3173,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // Set the mapping for this cell
         setCellMapping
         (
-            cIter.key(),
+            mapCells[cellI],
             parents,
             weights,
             centres
         );
 
         // Update cellParents information
-        cellParents_.set(cIter.key(), parents);
+        cellParents_.set(mapCells[cellI], parents);
     }
 
     // Set face mapping information for modified faces
@@ -3252,6 +3258,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Update faceParents information
             faceParents_.set(fIter.key(), parents);
         }
+    }
+
+    // Write out VTK files after change
+    if (debug > 3)
+    {
+        writeVTK
+        (
+            Foam::name(eIndex)
+          + '(' + Foam::name(edges_[eIndex][0])
+          + ',' + Foam::name(edges_[eIndex][1]) + ')'
+          + "_Collapse_1",
+            mapCells
+        );
     }
 
     // Set the flag

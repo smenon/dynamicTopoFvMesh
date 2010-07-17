@@ -63,9 +63,6 @@ class lengthScaleEstimator
         //- Const reference to polyMesh
         const polyMesh& mesh_;
 
-        //- Const reference to parent dictionary
-        const dictionary& parentDict_;
-
         //- Edge bisection/collapse criteria
         scalar ratioMin_;
         scalar ratioMax_;
@@ -155,8 +152,7 @@ public:
         //- Construct from polyMesh and dictionary
         explicit lengthScaleEstimator
         (
-            const polyMesh& mesh,
-            const dictionary& parentDict
+            const polyMesh& mesh
         );
 
     // Destructor
@@ -168,6 +164,7 @@ public:
         //- Read edge refinement options from the dictionary
         void readRefinementOptions
         (
+            const dictionary& parentDict,
             bool reRead = false,
             bool mandatory = false
         );
@@ -186,7 +183,7 @@ public:
         inline scalar ratioMax() const;
         inline scalar growthFactor() const;
 
-        //- Limit length scale
+        //- Limit length scale for surface-edges
         inline void limitScale(scalar& scale) const;
 
         //- Check if a particular patch is free-floating

@@ -4245,6 +4245,9 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
 // Read optional dictionary parameters
 void dynamicTopoFvMesh::readOptionalParameters()
 {
+    // Read from disk
+    dict_.readIfModified();
+
     // Enable/disable run-time debug level
     if (dict_.found("debug") || mandatory_)
     {
@@ -4538,20 +4541,19 @@ void dynamicTopoFvMesh::loadLengthScaleEstimator()
         }
         else
         {
-            const dictionary& meshDict = dict_.subDict("dynamicTopoFvMesh");
-
             lengthEstimator_.set
             (
-                new lengthScaleEstimator
-                (
-                    *this,
-                    meshDict.subDict("refinementOptions")
-                )
+                new lengthScaleEstimator(*this)
             );
         }
 
         // Read options
-        lengthEstimator().readRefinementOptions(false, mandatory_);
+        lengthEstimator().readRefinementOptions
+        (
+            dict_.subDict("dynamicTopoFvMesh").subDict("refinementOptions"),
+            false,
+            mandatory_
+        );
 
         // Set coupled patch options, if available
         if (dict_.found("coupledPatches") || mandatory_)
@@ -6493,17 +6495,18 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 //  - Return true if topology changes have occurred
 bool dynamicTopoFvMesh::update()
 {
-    // Re-read options if they have been modified at run-time
-    if (dict_.readIfModified())
-    {
-        // Re-read optional parameters
-        readOptionalParameters();
+    // Re-read options, in case they have been modified at run-time
+    readOptionalParameters();
 
-        // Read edge refinement options
-        if (edgeRefinement_)
-        {
-            lengthEstimator().readRefinementOptions(true, mandatory_);
-        }
+    // Read edge refinement options
+    if (edgeRefinement_)
+    {
+        lengthEstimator().readRefinementOptions
+        (
+            dict_.subDict("dynamicTopoFvMesh").subDict("refinementOptions"),
+            true,
+            mandatory_
+        );
     }
 
     // Set old point positions

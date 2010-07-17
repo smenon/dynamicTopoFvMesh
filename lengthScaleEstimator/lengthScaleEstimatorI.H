@@ -50,11 +50,12 @@ inline scalar lengthScaleEstimator::growthFactor() const
 }
 
 
-//- Limit length scale
+//- Limit length scale for surface-edges
 inline void lengthScaleEstimator::limitScale(scalar& scale) const
 {
-    scale = Foam::max(scale, minLengthScale_);
-    scale = Foam::min(scale, maxLengthScale_);
+    // Need to account for multiplication by ratioMin / ratioMax as well
+    scale = Foam::max(scale, minLengthScale_ / ratioMin_);
+    scale = Foam::min(scale, maxLengthScale_ / ratioMax_);
 }
 
 
