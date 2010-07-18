@@ -28,6 +28,7 @@ License
 #include "objectMap.H"
 #include "resizableList.H"
 #include "multiThreader.H"
+#include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -121,10 +122,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Find the prism faces for cell[0].
     oldCells[0] = cells_[c0];
 
-    findPrismFaces
+    meshOps::findPrismFaces
     (
         fIndex,
         c0,
+        faces_,
+        cells_,
+        neighbour_,
         c0BdyFace,
         c0BdyIndex,
         c0IntFace,
@@ -193,8 +197,21 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     // Find the common-edge between the triangular boundary faces
     // and the face under consideration.
-    findCommonEdge(c0BdyIndex[0], fIndex, commonEdgeIndex[0]);
-    findCommonEdge(c0BdyIndex[1], fIndex, commonEdgeIndex[1]);
+    meshOps::findCommonEdge
+    (
+        c0BdyIndex[0],
+        fIndex,
+        faceEdges_,
+        commonEdgeIndex[0]
+    );
+
+    meshOps::findCommonEdge
+    (
+        c0BdyIndex[1],
+        fIndex,
+        faceEdges_,
+        commonEdgeIndex[1]
+    );
 
     commonEdges[0] = edges_[commonEdgeIndex[0]];
     commonEdges[1] = edges_[commonEdgeIndex[1]];
@@ -595,10 +612,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     faceEdges_.append(tmpQFEdges);
 
     // Find the common edge between quad/quad faces...
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         c0IntIndex[0],
         c0IntIndex[1],
+        faceEdges_,
         otherEdgeIndex[2]
     );
 
@@ -676,10 +694,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     );
 
     // Find the common edge between the quad/tri faces...
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         c0BdyIndex[0],
         replaceFace,
+        faceEdges_,
         cornerEdgeIndex[0]
     );
 
@@ -714,10 +733,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     );
 
     // Find the common edge between the quad/tri faces...
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         c0BdyIndex[1],
         retainFace,
+        faceEdges_,
         cornerEdgeIndex[1]
     );
 
@@ -921,10 +941,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         oldCells[1] = cells_[c1];
 
         // Find the prism faces for cell[1].
-        findPrismFaces
+        meshOps::findPrismFaces
         (
             fIndex,
             c1,
+            faces_,
+            cells_,
+            neighbour_,
             c1BdyFace,
             c1BdyIndex,
             c1IntFace,
@@ -1046,18 +1069,43 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Find the isolated point on both boundary faces of cell[1]
         if
         (
-            findCommonEdge(c1BdyIndex[0], c0BdyIndex[0], commonEdgeIndex[2])
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[0],
+                c0BdyIndex[0],
+                faceEdges_,
+                commonEdgeIndex[2]
+            )
         )
         {
-            findCommonEdge(c1BdyIndex[1], c0BdyIndex[1], commonEdgeIndex[3]);
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[1],
+                c0BdyIndex[1],
+                faceEdges_,
+                commonEdgeIndex[3]
+            );
 
             commonFaceIndex[2] = c1BdyIndex[0];
             commonFaceIndex[3] = c1BdyIndex[1];
         }
         else
         {
-            findCommonEdge(c1BdyIndex[0], c0BdyIndex[1], commonEdgeIndex[3]);
-            findCommonEdge(c1BdyIndex[1], c0BdyIndex[0], commonEdgeIndex[2]);
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[0],
+                c0BdyIndex[1],
+                faceEdges_,
+                commonEdgeIndex[3]
+            );
+
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[1],
+                c0BdyIndex[0],
+                faceEdges_,
+                commonEdgeIndex[2]
+            );
 
             commonFaceIndex[2] = c1BdyIndex[1];
             commonFaceIndex[3] = c1BdyIndex[0];
@@ -1140,10 +1188,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         map.addFace(newFaceIndex[4]);
 
         // Find the common edge between quad/quad faces...
-        findCommonEdge
+        meshOps::findCommonEdge
         (
             c1IntIndex[0],
             c1IntIndex[1],
+            faceEdges_,
             otherEdgeIndex[3]
         );
 
@@ -1271,10 +1320,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         // Find the common edge between the quad/tri faces...
-        findCommonEdge
+        meshOps::findCommonEdge
         (
             commonFaceIndex[2],
             retainFace,
+            faceEdges_,
             cornerEdgeIndex[2]
         );
 
@@ -1309,10 +1359,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         // Find the common edge between the quad/tri faces...
-        findCommonEdge
+        meshOps::findCommonEdge
         (
             commonFaceIndex[3],
             replaceFace,
+            faceEdges_,
             cornerEdgeIndex[3]
         );
 
@@ -5033,6 +5084,229 @@ const changeMap dynamicTopoFvMesh::trisectFace
     // Return the changeMap
     return map;
 }
+
+
+// Utility method to compute the quality of a vertex hull
+// around an edge after bisection.
+scalar dynamicTopoFvMesh::computeBisectionQuality
+(
+    const label eIndex
+) const
+{
+    scalar minQuality = GREAT, minVolume = GREAT;
+    scalar cQuality = 0.0, oldVolume = 0.0;
+
+    // Obtain a reference to this edge and corresponding edgePoints
+    const edge& edgeToCheck = edges_[eIndex];
+    const labelList& hullVertices = edgePoints_[eIndex];
+
+    // Obtain point references
+    const point& a = points_[edgeToCheck[0]];
+    const point& c = points_[edgeToCheck[1]];
+
+    const point& aOld = oldPoints_[edgeToCheck[0]];
+    const point& cOld = oldPoints_[edgeToCheck[1]];
+
+    // Compute the mid-point of the edge
+    point midPoint = 0.5*(a + c);
+    point oldPoint = 0.5*(aOld + cOld);
+
+    if (whichEdgePatch(eIndex) < 0)
+    {
+        // Internal edge.
+        forAll(hullVertices, indexI)
+        {
+            label prevIndex = hullVertices.rcIndex(indexI);
+
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[prevIndex]];
+            const point& d = points_[hullVertices[indexI]];
+
+            const point& bOld = oldPoints_[hullVertices[prevIndex]];
+            const point& dOld = oldPoints_[hullVertices[indexI]];
+
+            // Compute the quality of the upper half.
+            cQuality = tetMetric_(a, b, midPoint, d);
+
+            // Compute old volume of the upper half.
+            oldVolume = tetPointRef(aOld, bOld, oldPoint, dOld).mag();
+
+            // Check if the volume / quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+            minVolume = Foam::min(oldVolume, minVolume);
+
+            // Compute the quality of the lower half.
+            cQuality = tetMetric_(midPoint, b, c, d);
+
+            // Compute old volume of the lower half.
+            oldVolume = tetPointRef(oldPoint, bOld, cOld, dOld).mag();
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+            minVolume = Foam::min(oldVolume, minVolume);
+        }
+    }
+    else
+    {
+        // Boundary edge.
+        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
+        {
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[indexI-1]];
+            const point& d = points_[hullVertices[indexI]];
+
+            const point& bOld = oldPoints_[hullVertices[indexI-1]];
+            const point& dOld = oldPoints_[hullVertices[indexI]];
+
+            // Compute the quality of the upper half.
+            cQuality = tetMetric_(a, b, midPoint, d);
+
+            // Compute old volume of the upper half.
+            oldVolume = tetPointRef(aOld, bOld, oldPoint, dOld).mag();
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+            minVolume = Foam::min(oldVolume, minVolume);
+
+            // Compute the quality of the lower half.
+            cQuality = tetMetric_(midPoint, b, c, d);
+
+            // Compute old volume of the lower half.
+            oldVolume = tetPointRef(oldPoint, bOld, cOld, dOld).mag();
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+            minVolume = Foam::min(oldVolume, minVolume);
+        }
+    }
+
+    // Ensure that the mesh is valid
+    if (minQuality < sliverThreshold_)
+    {
+        if (debug > 3 && minQuality < 0.0)
+        {
+            // Write out cells for post processing.
+            labelHashSet iCells;
+
+            const labelList& eFaces = edgeFaces_[eIndex];
+
+            forAll(eFaces, faceI)
+            {
+                if (!iCells.found(owner_[eFaces[faceI]]))
+                {
+                    iCells.insert(owner_[eFaces[faceI]]);
+                }
+
+                if (!iCells.found(neighbour_[eFaces[faceI]]))
+                {
+                    iCells.insert(neighbour_[eFaces[faceI]]);
+                }
+            }
+
+            writeVTK(Foam::name(eIndex) + "_iCells", iCells.toc());
+        }
+
+        if (debug > 2)
+        {
+            InfoIn
+            (
+                "scalar dynamicTopoFvMesh::computeBisectionQuality"
+                "(const label eIndex) const"
+            )
+                << "Bisecting edge will fall below the "
+                << "sliver threshold of: " << sliverThreshold_ << nl
+                << "Edge: " << eIndex << ": " << edgeToCheck << nl
+                << "EdgePoints: " << hullVertices << nl
+                << "Minimum Quality: " << minQuality << nl
+                << "Mid point: " << midPoint
+                << endl;
+        }
+    }
+
+    // If a negative old-volume was encountered,
+    // return an invalid quality.
+    if (minVolume < 0.0)
+    {
+        return minVolume;
+    }
+
+    return minQuality;
+}
+
+
+// Utility method to compute the quality of cells
+// around a face after trisection.
+scalar dynamicTopoFvMesh::computeTrisectionQuality
+(
+    const label fIndex
+) const
+{
+    scalar minQuality = GREAT;
+    scalar cQuality = 0.0;
+
+    point midPoint = meshOps::faceCentre(faces_[fIndex], points_);
+
+    FixedList<label,2> apexPoint(-1);
+
+    // Find the apex point
+    apexPoint[0] =
+    (
+        meshOps::tetApexPoint
+        (
+            owner_[fIndex],
+            fIndex,
+            faces_,
+            cells_
+        )
+    );
+
+    const face& faceToCheck = faces_[fIndex];
+
+    forAll(faceToCheck, pointI)
+    {
+        // Pick vertices off the list
+        const point& b = points_[faceToCheck[pointI]];
+        const point& c = points_[apexPoint[0]];
+        const point& d = points_[faceToCheck[faceToCheck.fcIndex(pointI)]];
+
+        // Compute the quality of the upper half.
+        cQuality = tetMetric_(midPoint, b, c, d);
+
+        // Check if the quality is worse
+        minQuality = Foam::min(cQuality, minQuality);
+    }
+
+    if (whichPatch(fIndex) == -1)
+    {
+        apexPoint[1] =
+        (
+            meshOps::tetApexPoint
+            (
+                neighbour_[fIndex],
+                fIndex,
+                faces_,
+                cells_
+            )
+        );
+
+        forAll(faceToCheck, pointI)
+        {
+            // Pick vertices off the list
+            const point& b = points_[faceToCheck[pointI]];
+            const point& c = points_[apexPoint[1]];
+            const point& d = points_[faceToCheck[faceToCheck.rcIndex(pointI)]];
+
+            // Compute the quality of the upper half.
+            cQuality = tetMetric_(midPoint, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+        }
+    }
+
+    return minQuality;
+}
+
 
 // Slice the mesh at a particular location
 void dynamicTopoFvMesh::sliceMesh

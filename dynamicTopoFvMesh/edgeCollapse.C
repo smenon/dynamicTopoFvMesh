@@ -26,6 +26,7 @@ License
 
 #include "objectMap.H"
 #include "multiThreader.H"
+#include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -506,10 +507,13 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
 
     // Find the prism-faces
-    findPrismFaces
+    meshOps::findPrismFaces
     (
         fIndex,
         c0,
+        faces_,
+        cells_,
+        neighbour_,
         c0BdyFace,
         c0BdyIndex,
         c0IntFace,
@@ -518,10 +522,13 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     if (c1 != -1)
     {
-        findPrismFaces
+        meshOps::findPrismFaces
         (
             fIndex,
             c1,
+            faces_,
+            cells_,
+            neighbour_,
             c1BdyFace,
             c1BdyIndex,
             c1IntFace,
@@ -689,24 +696,92 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Find common edges between quad / tri faces...
-        findCommonEdge(c0BdyIndex[0], faceToKeep[0], edgeToKeep[0]);
-        findCommonEdge(c0BdyIndex[1], faceToKeep[0], edgeToKeep[1]);
-        findCommonEdge(c0BdyIndex[0], faceToThrow[0], edgeToThrow[0]);
-        findCommonEdge(c0BdyIndex[1], faceToThrow[0], edgeToThrow[1]);
+        meshOps::findCommonEdge
+        (
+            c0BdyIndex[0],
+            faceToKeep[0],
+            faceEdges_,
+            edgeToKeep[0]
+        );
+
+        meshOps::findCommonEdge
+        (
+            c0BdyIndex[1],
+            faceToKeep[0],
+            faceEdges_,
+            edgeToKeep[1]
+        );
+
+        meshOps::findCommonEdge
+        (
+            c0BdyIndex[0],
+            faceToThrow[0],
+            faceEdges_,
+            edgeToThrow[0]
+        );
+
+        meshOps::findCommonEdge
+        (
+            c0BdyIndex[1],
+            faceToThrow[0],
+            faceEdges_,
+            edgeToThrow[1]
+        );
 
         // Size down edgeFaces for the ends.
-        findCommonEdge(faceToThrow[0], faceToKeep[0], ends[0]);
+        meshOps::findCommonEdge
+        (
+            faceToThrow[0],
+            faceToKeep[0],
+            faceEdges_,
+            ends[0]
+        );
+
         meshOps::sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
 
         if (c1 != -1)
         {
-            findCommonEdge(c1BdyIndex[0], faceToKeep[1], edgeToKeep[2]);
-            findCommonEdge(c1BdyIndex[1], faceToKeep[1], edgeToKeep[3]);
-            findCommonEdge(c1BdyIndex[0], faceToThrow[1], edgeToThrow[2]);
-            findCommonEdge(c1BdyIndex[1], faceToThrow[1], edgeToThrow[3]);
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[0],
+                faceToKeep[1],
+                faceEdges_,
+                edgeToKeep[2]
+            );
+
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[1],
+                faceToKeep[1],
+                faceEdges_,
+                edgeToKeep[3]
+            );
+
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[0],
+                faceToThrow[1],
+                faceEdges_,
+                edgeToThrow[2]
+            );
+
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[1],
+                faceToThrow[1],
+                faceEdges_,
+                edgeToThrow[3]
+            );
 
             // Size down edgeFaces for the ends.
-            findCommonEdge(faceToThrow[1], faceToKeep[1], ends[1]);
+            meshOps::findCommonEdge
+            (
+                faceToThrow[1],
+                faceToKeep[1],
+                faceEdges_,
+                ends[1]
+            );
+
             meshOps::sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
         }
 
@@ -1006,24 +1081,92 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Find common edges between quad / tri faces...
-        findCommonEdge(c0BdyIndex[0], faceToKeep[0], edgeToKeep[0]);
-        findCommonEdge(c0BdyIndex[1], faceToKeep[0], edgeToKeep[1]);
-        findCommonEdge(c0BdyIndex[0], faceToThrow[0], edgeToThrow[0]);
-        findCommonEdge(c0BdyIndex[1], faceToThrow[0], edgeToThrow[1]);
+        meshOps::findCommonEdge
+        (
+            c0BdyIndex[0],
+            faceToKeep[0],
+            faceEdges_,
+            edgeToKeep[0]
+        );
+
+        meshOps::findCommonEdge
+        (
+            c0BdyIndex[1],
+            faceToKeep[0],
+            faceEdges_,
+            edgeToKeep[1]
+        );
+
+        meshOps::findCommonEdge
+        (
+            c0BdyIndex[0],
+            faceToThrow[0],
+            faceEdges_,
+            edgeToThrow[0]
+        );
+
+        meshOps::findCommonEdge
+        (
+            c0BdyIndex[1],
+            faceToThrow[0],
+            faceEdges_,
+            edgeToThrow[1]
+        );
 
         // Size down edgeFaces for the ends.
-        findCommonEdge(faceToThrow[0], faceToKeep[0], ends[0]);
+        meshOps::findCommonEdge
+        (
+            faceToThrow[0],
+            faceToKeep[0],
+            faceEdges_,
+            ends[0]
+        );
+
         meshOps::sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
 
         if (c1 != -1)
         {
-            findCommonEdge(c1BdyIndex[0], faceToKeep[1], edgeToKeep[2]);
-            findCommonEdge(c1BdyIndex[1], faceToKeep[1], edgeToKeep[3]);
-            findCommonEdge(c1BdyIndex[0], faceToThrow[1], edgeToThrow[2]);
-            findCommonEdge(c1BdyIndex[1], faceToThrow[1], edgeToThrow[3]);
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[0],
+                faceToKeep[1],
+                faceEdges_,
+                edgeToKeep[2]
+            );
+
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[1],
+                faceToKeep[1],
+                faceEdges_,
+                edgeToKeep[3]
+            );
+
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[0],
+                faceToThrow[1],
+                faceEdges_,
+                edgeToThrow[2]
+            );
+
+            meshOps::findCommonEdge
+            (
+                c1BdyIndex[1],
+                faceToThrow[1],
+                faceEdges_,
+                edgeToThrow[3]
+            );
 
             // Size down edgeFaces for the ends.
-            findCommonEdge(faceToThrow[1], faceToKeep[1], ends[1]);
+            meshOps::findCommonEdge
+            (
+                faceToThrow[1],
+                faceToKeep[1],
+                faceEdges_,
+                ends[1]
+            );
+
             meshOps::sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
         }
 

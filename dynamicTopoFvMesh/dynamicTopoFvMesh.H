@@ -71,6 +71,7 @@ namespace Foam
 // Class forward declarations
 class motionSolver;
 class topoMapper;
+class coupledPatchInfo;
 class lengthScaleEstimator;
 
 /*---------------------------------------------------------------------------*\
@@ -231,73 +232,6 @@ class dynamicTopoFvMesh
         // Entity mutexes used for synchronization
         // in multi-threaded reOrdering
         FixedList<Mutex, 4> entityMutex_;
-
-        // Private sub-class for coupled patches (local and processor)
-        class coupledPatchInfo
-        {
-            // Reference to the parent mesh
-            const dynamicTopoFvMesh& mesh_;
-
-            // Auto pointer to a subMesh
-            autoPtr<dynamicTopoFvMesh> subMesh_;
-
-            // Flag to determine whether maps have been built.
-            bool builtMaps_;
-
-            // For locally coupled patches,
-            // specify a master / slave index
-            coupleMap patchMap_;
-
-            // Zone IDs for patches associated with faceZones
-            label masterFaceZone_;
-            label slaveFaceZone_;
-
-            //- Disallow default bitwise assignment
-            void operator=(const coupledPatchInfo&);
-
-        public:
-
-            // Constructor
-            coupledPatchInfo
-            (
-                const dynamicTopoFvMesh& mesh,
-                const coupleMap& cMap,
-                const label mfzIndex = -1,
-                const label sfzIndex = -1
-            );
-
-            coupledPatchInfo
-            (
-                const dynamicTopoFvMesh& mesh,
-                const bool isLocal,
-                const bool isSend,
-                const label mPatch,
-                const label sPatch,
-                const label mfzIndex = -1,
-                const label sfzIndex = -1
-            );
-
-            //- Access
-
-                // Set a new subMesh
-                void setMesh(label index, dynamicTopoFvMesh* mesh);
-
-                // Return a reference to the subMesh
-                dynamicTopoFvMesh& subMesh();
-
-                // Have maps been built?
-                bool builtMaps() const;
-
-                // Change the flag
-                void setBuiltMaps();
-
-                // Return the coupleMap
-                const coupleMap& patchMap() const;
-
-                // Return the master / slave face zone IDs
-                label masterFaceZone() const;
-                label slaveFaceZone() const;
-        };
 
         // Local coupled patch information
         PtrList<coupledPatchInfo> patchCoupling_;
@@ -582,26 +516,6 @@ class dynamicTopoFvMesh
         // Remove sliver cells
         void removeSlivers();
 
-        // Method to find the interior/boundary faces
-        // for an input quad-face and adjacent triangle-prism cell.
-        void findPrismFaces
-        (
-            const label fIndex,
-            const label cIndex,
-            FixedList<face,2>& bdyf,
-            FixedList<label,2>& bidx,
-            FixedList<face,2>& intf,
-            FixedList<label,2>& iidx
-        ) const;
-
-        // Method to find the common-edge between two faces.
-        bool findCommonEdge
-        (
-            const label first,
-            const label second,
-            label& common
-        ) const;
-
         // Insert the specified cell to the mesh
         label insertCell
         (
@@ -736,7 +650,7 @@ class dynamicTopoFvMesh
         inline void setFlip(const label fIndex);
 
         // Utility method to compute the minimum quality of a vertex hull
-        inline scalar computeMinQuality(const label eIndex) const;
+        scalar computeMinQuality(const label eIndex) const;
 
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.
@@ -1006,46 +920,24 @@ class dynamicTopoFvMesh
         // and exchange across processors.
         void exchangeLengthBuffers();
 
-        // Parallel send
-        void pWrite(const label toID, const label& data) const;
-
-        // Parallel send (for fixed lists)
-        template <class Type, label Size>
-        void pWrite(const label toID, const FixedList<Type,Size>& data) const;
-
-        // Parallel send (for lists)
-        template <class Type>
-        void pWrite(const label toID, const UList<Type>& data) const;
-
-        // Parallel receive
-        void pRead(const label fromID, label& data) const;
-
-        // Parallel receive (for fixed lists)
-        template <class Type, label Size>
-        void pRead(const label fromID, FixedList<Type,Size>& data) const;
-
-        // Parallel receive (for lists)
-        template <class Type>
-        void pRead(const label fromID, UList<Type>& data) const;
-
         // Method to determine whether the master entity is locally coupled
-        inline bool locallyCoupledEntity
+        bool locallyCoupledEntity
         (
             const label index,
             bool checkSlaves = false
         ) const;
 
         // Method to determine the locally coupled patch index
-        inline label locallyCoupledEdgePatch
+        label locallyCoupledEdgePatch
         (
             const label eIndex
         ) const;
 
         // Method to determine whether the master entity is on a processor
-        inline bool processorCoupledEntity(const label index) const;
+        bool processorCoupledEntity(const label index) const;
 
         // Obtain the maximum coupled patch index
-        inline label getMaxCouplingIndex() const;
+        label getMaxCouplingIndex() const;
 
         // Read optional dictionary parameters
         void readOptionalParameters();
@@ -1064,10 +956,10 @@ class dynamicTopoFvMesh
 
         // Build a list of entities that need to be avoided
         // by regular topo-changes.
-        inline void buildEntitiesToAvoid();
+        void buildEntitiesToAvoid();
 
         // Check whether the specified edge is a coupled master edge.
-        inline bool isCoupledMaster(const label eIndex) const;
+        bool isCoupledMaster(const label eIndex) const;
 
         // Set coupled modification
         inline void setCoupledModification() const;
@@ -1093,9 +985,6 @@ class dynamicTopoFvMesh
 
         // Build coupled maps for coupled processor patches
         void buildProcessorCoupledMaps();
-
-        // Wait for buffer transfer completion.
-        void waitForBuffers() const;
 
         // Write out proc IDs for post-processing
         void writeProcIDs() const;

@@ -85,6 +85,30 @@ namespace meshOps
         const UList<point>& points
     );
 
+    // Method to find the common-edge between two faces.
+    inline bool findCommonEdge
+    (
+        const label first,
+        const label second,
+        const UList<labelList>& faceEdges,
+        label& common
+    );
+
+    // Method to find the interior/boundary faces
+    // for an input quad-face and adjacent triangle-prism cell.
+    inline void findPrismFaces
+    (
+        const label fIndex,
+        const label cIndex,
+        const UList<face>& faces,
+        const UList<cell>& cells,
+        const UList<label>& neighbour,
+        FixedList<face,2>& bdyf,
+        FixedList<label,2>& bidx,
+        FixedList<face,2>& intf,
+        FixedList<label,2>& iidx
+    );
+
     // Utility method to find the isolated point
     // given two triangular faces.
     inline label findIsolatedPoint
@@ -264,6 +288,55 @@ namespace meshOps
         const pointField& points,
         const scalar magSqrTol
     );
+
+    // Parallel send
+    void pWrite
+    (
+        const label toID,
+        const label& data
+    );
+
+    // Parallel send (for fixed lists)
+    template <class Type, label Size>
+    void pWrite
+    (
+        const label toID,
+        const FixedList<Type,Size>& data
+    );
+
+    // Parallel send (for lists)
+    template <class Type>
+    void pWrite
+    (
+        const label toID,
+        const UList<Type>& data
+    );
+
+    // Parallel receive
+    void pRead
+    (
+        const label fromID,
+        label& data
+    );
+
+    // Parallel receive (for fixed lists)
+    template <class Type, label Size>
+    void pRead
+    (
+        const label fromID,
+        FixedList<Type,Size>& data
+    );
+
+    // Parallel receive (for lists)
+    template <class Type>
+    void pRead
+    (
+        const label fromID,
+        UList<Type>& data
+    );
+
+    // Wait for buffer transfer completion.
+    void waitForBuffers();
 
 } // End namespace meshOps
 

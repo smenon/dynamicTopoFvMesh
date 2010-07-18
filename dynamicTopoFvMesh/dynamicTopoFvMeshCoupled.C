@@ -39,6 +39,7 @@ Author
 
 #include "triFace.H"
 #include "globalMeshData.H"
+#include "coupledPatchInfo.H"
 
 namespace Foam
 {
@@ -104,12 +105,12 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                     if (proc != Pstream::myProcNo())
                     {
                         // Send number of entities first.
-                        pWrite(proc, spAddr.size());
+                        meshOps::pWrite(proc, spAddr.size());
 
                         // Send the buffer.
                         if (spAddr.size())
                         {
-                            pWrite(proc, spAddr);
+                            meshOps::pWrite(proc, spAddr);
                         }
                     }
                 }
@@ -122,7 +123,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                         label procInfoSize = -1;
 
                         // How many entities am I going to be receiving?
-                        pRead(proc, procInfoSize);
+                        meshOps::pRead(proc, procInfoSize);
 
                         if (procInfoSize)
                         {
@@ -130,7 +131,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                             spBuffer[proc].setSize(procInfoSize, -1);
 
                             // Schedule for receipt.
-                            pRead(proc, spBuffer[proc]);
+                            meshOps::pRead(proc, spBuffer[proc]);
                         }
                     }
                 }
@@ -167,7 +168,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             if (gData.nGlobalPoints())
             {
                 // Wait for all transfers to complete.
-                waitForBuffers();
+                meshOps::waitForBuffers();
 
                 // Now loop through all processor addressing, and check if
                 // any labels coincide with my global shared points.
@@ -646,7 +647,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         const coupleMap& scMap = sendMesh.patchMap();
 
         // Send my sub-mesh to the neighbour.
-        pWrite(proc, scMap.nEntities());
+        meshOps::pWrite(proc, scMap.nEntities());
 
         if (debug > 3)
         {
@@ -656,14 +657,14 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         }
 
         // Send the pointBuffer
-        pWrite(proc, scMap.pointBuffer());
+        meshOps::pWrite(proc, scMap.pointBuffer());
 
         // Send connectivity (points, edges, faces, cells, etc)
         forAll(scMap.entityBuffer(), bufferI)
         {
             if (scMap.entityBuffer(bufferI).size())
             {
-                pWrite(proc, scMap.entityBuffer(bufferI));
+                meshOps::pWrite(proc, scMap.entityBuffer(bufferI));
             }
         }
 
@@ -673,7 +674,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         const coupleMap& rcMap = recvMesh.patchMap();
 
         // First read entity sizes.
-        pRead(proc, rcMap.nEntities());
+        meshOps::pRead(proc, rcMap.nEntities());
 
         if (debug > 3)
         {
@@ -686,14 +687,14 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         rcMap.allocateBuffers();
 
         // Receive the pointBuffer
-        pRead(proc, rcMap.pointBuffer());
+        meshOps::pRead(proc, rcMap.pointBuffer());
 
         // Receive connectivity (points, edges, faces, cells, etc)
         forAll(rcMap.entityBuffer(), bufferI)
         {
             if (rcMap.entityBuffer(bufferI).size())
             {
-                pRead(proc, rcMap.entityBuffer(bufferI));
+                meshOps::pRead(proc, rcMap.entityBuffer(bufferI));
             }
         }
     }
@@ -1430,7 +1431,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
     }
 
     // Wait for all transfers to complete.
-    waitForBuffers();
+    meshOps::waitForBuffers();
 
     // Put un-matched faces in a list.
     labelHashSet unMatchedFaces;
@@ -1842,7 +1843,7 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
                 sendLength[cIter.key()] = lengthScale_[cIter()];
             }
 
-            pWrite(scMap.masterIndex(), sendLength);
+            meshOps::pWrite(scMap.masterIndex(), sendLength);
 
             if (debug > 4)
             {
@@ -1869,7 +1870,7 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
             );
 
             // Schedule for receipt
-            pRead(rcMap.slaveIndex(), recvLength);
+            meshOps::pRead(rcMap.slaveIndex(), recvLength);
 
             if (debug > 4)
             {
@@ -1884,126 +1885,307 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 }
 
 
-// Wait for buffer transfer completion.
-void dynamicTopoFvMesh::waitForBuffers() const
+// Method to determine whether the master face is locally coupled
+bool dynamicTopoFvMesh::locallyCoupledEntity
+(
+    const label index,
+    bool checkSlaves
+) const
 {
-    if (Pstream::parRun())
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Bail out if no patchCoupling is present
+    if (!patchCoupling_.size())
     {
-        OPstream::waitRequests();
-        IPstream::waitRequests();
+        return false;
+    }
+
+    if (twoDMesh_)
+    {
+        label patch = whichPatch(index);
+
+        if (patch == -1)
+        {
+            return false;
+        }
+
+        // Processor checks receive priority.
+        if (isA<processorPolyPatch>(boundary[patch]))
+        {
+            return false;
+        }
+
+        // Check coupled master patches.
+        if (patchCoupling_(patch))
+        {
+            return true;
+        }
+        else
+        if (checkSlaves)
+        {
+            // Check on slave patches as well.
+            forAll(patchCoupling_, pI)
+            {
+                if (patchCoupling_(pI))
+                {
+                    const coupleMap& cMap = patchCoupling_[pI].patchMap();
+
+                    if (cMap.slaveIndex() == patch)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        const labelList& eFaces = edgeFaces_[index];
+
+        // Search for boundary faces, and determine boundary type.
+        forAll(eFaces, faceI)
+        {
+            if (neighbour_[eFaces[faceI]] == -1)
+            {
+                label patch = whichPatch(eFaces[faceI]);
+
+                // Processor checks receive priority.
+                if (isA<processorPolyPatch>(boundary[patch]))
+                {
+                    return false;
+                }
+
+                // Check coupled master patches.
+                if (patchCoupling_(patch))
+                {
+                    return true;
+                }
+
+                if (checkSlaves)
+                {
+                    // Check on slave patches as well.
+                    forAll(patchCoupling_, pI)
+                    {
+                        if (patchCoupling_(pI))
+                        {
+                            const coupleMap& cMap =
+                            (
+                                patchCoupling_[pI].patchMap()
+                            );
+
+                            if (cMap.slaveIndex() == patch)
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Could not find any faces on locally coupled patches.
+    return false;
+}
+
+
+// Method to determine the locally coupled patch index
+label dynamicTopoFvMesh::locallyCoupledEdgePatch
+(
+    const label eIndex
+) const
+{
+    const labelList& eFaces = edgeFaces_[eIndex];
+
+    // Search for boundary faces, and determine boundary type.
+    forAll(eFaces, faceI)
+    {
+        if (neighbour_[eFaces[faceI]] == -1)
+        {
+            label patch = whichPatch(eFaces[faceI]);
+
+            // Check coupled master patches.
+            if (patchCoupling_(patch))
+            {
+                return patch;
+            }
+
+            // Check on slave patches as well.
+            forAll(patchCoupling_, pI)
+            {
+                if (patchCoupling_(pI))
+                {
+                    const coupleMap& cMap = patchCoupling_[pI].patchMap();
+
+                    if (cMap.slaveIndex() == patch)
+                    {
+                        return patch;
+                    }
+                }
+            }
+        }
+    }
+
+    // Could not find any faces on locally coupled patches.
+    FatalErrorIn
+    (
+        "label dynamicTopoFvMesh::locallyCoupledEdgePatch"
+        "(const label cIndex) const"
+    )
+        << "Edge: " << eIndex << ":: " << edges_[eIndex]
+        << " does not lie on any coupled patches."
+        << abort(FatalError);
+
+    return -1;
+}
+
+
+// Method to determine whether the master entity is on a processor
+bool dynamicTopoFvMesh::processorCoupledEntity
+(
+    const label index
+) const
+{
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    label patch = -2;
+
+    if (twoDMesh_)
+    {
+        patch = whichPatch(index);
+
+        if (patch == -1)
+        {
+            return false;
+        }
+
+        if (isA<processorPolyPatch>(boundary[patch]))
+        {
+            return true;
+        }
+    }
+    else
+    {
+        const labelList& eFaces = edgeFaces_[index];
+
+        // Search for boundary faces, and determine boundary type.
+        forAll(eFaces, faceI)
+        {
+            if (neighbour_[eFaces[faceI]] == -1)
+            {
+                label patch = whichPatch(eFaces[faceI]);
+
+                if (isA<processorPolyPatch>(boundary[patch]))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Could not find any faces on processor patches.
+    return false;
+}
+
+
+// Obtain the maximum coupled patch index
+label dynamicTopoFvMesh::getMaxCouplingIndex() const
+{
+    // Allocate a size for coupled patches
+    label index = -1;
+
+    forAll(patchCoupling_, patchI)
+    {
+        if (patchCoupling_(patchI))
+        {
+            index = index > patchI ? index : patchI;
+        }
+    }
+
+    return index;
+}
+
+
+// Build a list of entities that need to be avoided
+// by regular topo-changes.
+void dynamicTopoFvMesh::buildEntitiesToAvoid()
+{
+    entitiesToAvoid_.clear();
+
+    // Build a set of entities to avoid during regular modifications,
+    // and build a master stack for coupled modifications.
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Determine locally coupled slave patches.
+    labelHashSet localSlavePatches;
+
+    forAll(patchCoupling_, patchI)
+    {
+        if (patchCoupling_(patchI))
+        {
+            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+            localSlavePatches.insert(cMap.slaveIndex());
+        }
+    }
+
+    // Loop through boundary faces and check whether
+    // they belong to master/slave coupled patches.
+    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+    {
+        // Add only valid faces
+        if (faces_[faceI].empty())
+        {
+            continue;
+        }
+
+        label pIndex = whichPatch(faceI);
+
+        if (pIndex == -1)
+        {
+            continue;
+        }
+
+        // Check if this is a coupled face.
+        if
+        (
+            patchCoupling_(pIndex) ||
+            localSlavePatches.found(pIndex) ||
+            isA<processorPolyPatch>(boundary[pIndex])
+        )
+        {
+            if (twoDMesh_)
+            {
+                // Avoid this face during regular modification.
+                entitiesToAvoid_.insert(faceI, empty());
+            }
+            else
+            {
+                const labelList& fEdges = faceEdges_[faceI];
+
+                forAll(fEdges, edgeI)
+                {
+                    // Avoid this edge during regular modification.
+                    entitiesToAvoid_.insert(fEdges[edgeI], empty());
+                }
+            }
+        }
     }
 }
 
 
-// Parallel blocking send
-void dynamicTopoFvMesh::pWrite
+// Check whether the specified edge is a coupled master edge.
+bool dynamicTopoFvMesh::isCoupledMaster
 (
-    const label toID,
-    const label& data
+    const label eIndex
 ) const
 {
-    OPstream::write
-    (
-        Pstream::blocking,
-        toID,
-        reinterpret_cast<const char*>
-        (
-            &data
-        ),
-        sizeof(label)
-    );
-}
+    if (!coupledModification_)
+    {
+        return true;
+    }
 
-
-// Parallel blocking receive
-void dynamicTopoFvMesh::pRead
-(
-    const label fromID,
-    label& data
-) const
-{
-    IPstream::read
-    (
-        Pstream::blocking,
-        fromID,
-        reinterpret_cast<char*>
-        (
-            &data
-        ),
-        sizeof(label)
-    );
-}
-
-
-// Parallel non-blocking send for fixed lists
-template <class Type, label Size>
-void dynamicTopoFvMesh::pWrite
-(
-    const label toID,
-    const FixedList<Type, Size>& data
-) const
-{
-    OPstream::write
-    (
-        Pstream::blocking,
-        toID,
-        reinterpret_cast<const char*>(&data[0]),
-        Size*sizeof(Type)
-    );
-}
-
-
-// Parallel non-blocking receive for fixed lists
-template <class Type, label Size>
-void dynamicTopoFvMesh::pRead
-(
-    const label fromID,
-    FixedList<Type, Size>& data
-) const
-{
-    IPstream::read
-    (
-        Pstream::blocking,
-        fromID,
-        reinterpret_cast<char*>(data.begin()),
-        Size*sizeof(Type)
-    );
-}
-
-
-// Parallel non-blocking send for lists
-template <class Type>
-void dynamicTopoFvMesh::pWrite
-(
-    const label toID,
-    const UList<Type>& data
-) const
-{
-    OPstream::write
-    (
-        Pstream::nonBlocking,
-        toID,
-        reinterpret_cast<const char*>(&data[0]),
-        data.size()*sizeof(Type)
-    );
-}
-
-
-// Parallel non-blocking receive for lists
-template <class Type>
-void dynamicTopoFvMesh::pRead
-(
-    const label fromID,
-    UList<Type>& data
-) const
-{
-    IPstream::read
-    (
-        Pstream::nonBlocking,
-        fromID,
-        reinterpret_cast<char*>(&data[0]),
-        data.size()*sizeof(Type)
-    );
+    return locallyCoupledEntity(eIndex);
 }
 
 

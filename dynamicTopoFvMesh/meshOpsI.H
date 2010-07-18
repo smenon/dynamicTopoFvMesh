@@ -98,6 +98,98 @@ inline vector faceNormal
 }
 
 
+// Utility method to find the common edge between two faces.
+inline bool findCommonEdge
+(
+    const label first,
+    const label second,
+    const UList<labelList>& faceEdges,
+    label& common
+)
+{
+    bool found = false;
+
+    const labelList& fEi = faceEdges[first];
+    const labelList& fEj = faceEdges[second];
+
+    forAll(fEi, edgeI)
+    {
+        forAll(fEj, edgeJ)
+        {
+            if (fEi[edgeI] == fEj[edgeJ])
+            {
+                common = fEi[edgeI];
+
+                found = true;
+                break;
+            }
+        }
+
+        if (found)
+        {
+            break;
+        }
+    }
+
+    return found;
+}
+
+
+// Utility method to find the interior (quad) / boundary (tri) faces
+// for an input quad-face and adjacent triangle-prism cell.
+inline void findPrismFaces
+(
+    const label fIndex,
+    const label cIndex,
+    const UList<face>& faces,
+    const UList<cell>& cells,
+    const UList<label>& neighbour,
+    FixedList<face,2>& bdyf,
+    FixedList<label,2>& bidx,
+    FixedList<face,2>& intf,
+    FixedList<label,2>& iidx
+)
+{
+    label indexO = 0, indexI = 0;
+
+    const cell& c = cells[cIndex];
+
+    forAll(c, i)
+    {
+        label faceIndex = c[i];
+
+        // Don't count the face under consideration
+        if (faceIndex != fIndex)
+        {
+            const face& fi = faces[faceIndex];
+
+            if (neighbour[faceIndex] == -1)
+            {
+                if (fi.size() == 3)
+                {
+                    // Triangular face on the boundary
+                    bidx[indexO] = faceIndex;
+                    bdyf[indexO++] = fi;
+                }
+                else
+                {
+                    // This seems to be a non-triangular face on the boundary
+                    // Consider this as "interior" and move on
+                    iidx[indexI] = faceIndex;
+                    intf[indexI++] = fi;
+                }
+            }
+            else
+            {
+                // Face on the interior
+                iidx[indexI] = faceIndex;
+                intf[indexI++] = fi;
+            }
+        }
+    }
+}
+
+
 // Utility method to find the isolated point given two triangular faces.
 //  - Returns the point on checkFace that does not belong to baseFace.
 inline label findIsolatedPoint

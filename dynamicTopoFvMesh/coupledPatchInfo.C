@@ -24,6 +24,7 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
 
 namespace Foam
@@ -32,7 +33,7 @@ namespace Foam
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Constructor for coupledPatchInfo
-dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
+coupledPatchInfo::coupledPatchInfo
 (
     const dynamicTopoFvMesh& mesh,
     const coupleMap& cMap,
@@ -47,7 +48,8 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
     slaveFaceZone_(sfzIndex)
 {}
 
-dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
+
+coupledPatchInfo::coupledPatchInfo
 (
     const dynamicTopoFvMesh& mesh,
     const bool isLocal,
@@ -85,9 +87,10 @@ dynamicTopoFvMesh::coupledPatchInfo::coupledPatchInfo
     slaveFaceZone_(sfzIndex)
 {}
 
+
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void dynamicTopoFvMesh::coupledPatchInfo::setMesh
+void coupledPatchInfo::setMesh
 (
     label index,
     dynamicTopoFvMesh* mesh
@@ -99,14 +102,15 @@ void dynamicTopoFvMesh::coupledPatchInfo::setMesh
     subMesh_().meshSubDir = "proc_" + Foam::name(index);
 }
 
-dynamicTopoFvMesh& dynamicTopoFvMesh::coupledPatchInfo::subMesh()
+
+dynamicTopoFvMesh& coupledPatchInfo::subMesh()
 {
     if (!subMesh_.valid())
     {
         FatalErrorIn
         (
             "dynamicTopoFvMesh& "
-            "dynamicTopoFvMesh::coupledPatchInfo::subMesh()"
+            "coupledPatchInfo::subMesh()"
         )
             << " Sub-mesh pointer has not been set."
             << abort(FatalError);
@@ -115,34 +119,40 @@ dynamicTopoFvMesh& dynamicTopoFvMesh::coupledPatchInfo::subMesh()
     return subMesh_();
 }
 
-bool dynamicTopoFvMesh::coupledPatchInfo::builtMaps() const
+
+bool coupledPatchInfo::builtMaps() const
 {
     return builtMaps_;
 }
 
-void dynamicTopoFvMesh::coupledPatchInfo::setBuiltMaps()
+
+void coupledPatchInfo::setBuiltMaps()
 {
     builtMaps_ = true;
 }
 
-const coupleMap& dynamicTopoFvMesh::coupledPatchInfo::patchMap() const
+
+const coupleMap& coupledPatchInfo::patchMap() const
 {
     return patchMap_;
 }
 
-label dynamicTopoFvMesh::coupledPatchInfo::masterFaceZone() const
+
+label coupledPatchInfo::masterFaceZone() const
 {
     return masterFaceZone_;
 }
 
-label dynamicTopoFvMesh::coupledPatchInfo::slaveFaceZone() const
+
+label coupledPatchInfo::slaveFaceZone() const
 {
     return slaveFaceZone_;
 }
 
+
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void dynamicTopoFvMesh::coupledPatchInfo::operator=
+void coupledPatchInfo::operator=
 (
     const coupledPatchInfo& rhs
 )
@@ -152,7 +162,7 @@ void dynamicTopoFvMesh::coupledPatchInfo::operator=
     {
         FatalErrorIn
         (
-            "void dynamicTopoFvMesh::"
+            "void "
             "coupledPatchInfo::operator="
             "(const Foam::coupledPatchInfo&)"
         )

@@ -40,6 +40,7 @@ Author
 #include "IOmanip.H"
 #include "volFields.H"
 #include "tetPointRef.H"
+#include "coupledPatchInfo.H"
 
 namespace Foam
 {

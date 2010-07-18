@@ -37,6 +37,7 @@ Author
 
 #include "meshOps.H"
 #include "ListOps.H"
+#include "Pstream.H"
 #include "triPointRef.H"
 #include "tetPointRef.H"
 #include "labelHashSet.H"
@@ -828,6 +829,130 @@ bool checkPointNearness
     // No errors detected.
     return false;
 }
+
+
+// Parallel blocking send
+void pWrite
+(
+    const label toID,
+    const label& data
+)
+{
+    OPstream::write
+    (
+        Pstream::blocking,
+        toID,
+        reinterpret_cast<const char*>
+        (
+            &data
+        ),
+        sizeof(label)
+    );
+}
+
+
+// Parallel blocking receive
+void pRead
+(
+    const label fromID,
+    label& data
+)
+{
+    IPstream::read
+    (
+        Pstream::blocking,
+        fromID,
+        reinterpret_cast<char*>
+        (
+            &data
+        ),
+        sizeof(label)
+    );
+}
+
+
+// Parallel non-blocking send for fixed lists
+template <class Type, label Size>
+void pWrite
+(
+    const label toID,
+    const FixedList<Type, Size>& data
+)
+{
+    OPstream::write
+    (
+        Pstream::blocking,
+        toID,
+        reinterpret_cast<const char*>(&data[0]),
+        Size*sizeof(Type)
+    );
+}
+
+
+// Parallel non-blocking receive for fixed lists
+template <class Type, label Size>
+void pRead
+(
+    const label fromID,
+    FixedList<Type, Size>& data
+)
+{
+    IPstream::read
+    (
+        Pstream::blocking,
+        fromID,
+        reinterpret_cast<char*>(data.begin()),
+        Size*sizeof(Type)
+    );
+}
+
+
+// Parallel non-blocking send for lists
+template <class Type>
+void pWrite
+(
+    const label toID,
+    const UList<Type>& data
+)
+{
+    OPstream::write
+    (
+        Pstream::nonBlocking,
+        toID,
+        reinterpret_cast<const char*>(&data[0]),
+        data.size()*sizeof(Type)
+    );
+}
+
+
+// Parallel non-blocking receive for lists
+template <class Type>
+void pRead
+(
+    const label fromID,
+    UList<Type>& data
+)
+{
+    IPstream::read
+    (
+        Pstream::nonBlocking,
+        fromID,
+        reinterpret_cast<char*>(&data[0]),
+        data.size()*sizeof(Type)
+    );
+}
+
+
+// Wait for buffer transfer completion.
+void waitForBuffers()
+{
+    if (Pstream::parRun())
+    {
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+    }
+}
+
 
 } // End namespace meshOps
 

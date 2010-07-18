@@ -51,6 +51,7 @@ Author
 #include "topoMapper.H"
 #include "SortableList.H"
 #include "StaticHashTable.H"
+#include "coupledPatchInfo.H"
 #include "lengthScaleEstimator.H"
 
 namespace Foam
@@ -336,94 +337,6 @@ dynamicTopoFvMesh::~dynamicTopoFvMesh()
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-// Utility method to find the interior (quad) / boundary (tri) faces
-// for an input quad-face and adjacent triangle-prism cell.
-void dynamicTopoFvMesh::findPrismFaces
-(
-    const label fIndex,
-    const label cIndex,
-    FixedList<face,2>& bdyf,
-    FixedList<label,2>& bidx,
-    FixedList<face,2>& intf,
-    FixedList<label,2>& iidx
-) const
-{
-    label indexO = 0, indexI = 0;
-
-    const cell& c = cells_[cIndex];
-
-    forAll(c, i)
-    {
-        label faceIndex = c[i];
-
-        // Don't count the face under consideration
-        if (faceIndex != fIndex)
-        {
-            const face& fi = faces_[faceIndex];
-
-            if (neighbour_[faceIndex] == -1)
-            {
-                if (fi.size() == 3)
-                {
-                    // Triangular face on the boundary
-                    bidx[indexO] = faceIndex;
-                    bdyf[indexO++] = fi;
-                }
-                else
-                {
-                    // This seems to be a non-triangular face on the boundary
-                    // Consider this as "interior" and move on
-                    iidx[indexI] = faceIndex;
-                    intf[indexI++] = fi;
-                }
-            }
-            else
-            {
-                // Face on the interior
-                iidx[indexI] = faceIndex;
-                intf[indexI++] = fi;
-            }
-        }
-    }
-}
-
-
-// Utility method to find the common edge between two faces.
-bool dynamicTopoFvMesh::findCommonEdge
-(
-    const label first,
-    const label second,
-    label& common
-) const
-{
-    bool found = false;
-
-    const labelList& fEi = faceEdges_[first];
-    const labelList& fEj = faceEdges_[second];
-
-    forAll(fEi, edgeI)
-    {
-        forAll(fEj, edgeJ)
-        {
-            if (fEi[edgeI] == fEj[edgeJ])
-            {
-                common = fEi[edgeI];
-
-                found = true;
-                break;
-            }
-        }
-
-        if (found)
-        {
-            break;
-        }
-    }
-
-    return found;
-}
-
 
 // Obtain map weighting factors for a face
 void dynamicTopoFvMesh::computeFaceWeights
@@ -2650,7 +2563,12 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromPoints_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            meshOps::removeIndex(indexI, facesFromPoints_);
+            meshOps::removeIndex
+            (
+                indexI,
+                facesFromPoints_
+            );
+
             break;
         }
     }
@@ -2660,7 +2578,12 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromEdges_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            meshOps::removeIndex(indexI, facesFromEdges_);
+            meshOps::removeIndex
+            (
+                indexI,
+                facesFromEdges_
+            );
+
             break;
         }
     }
@@ -2670,7 +2593,12 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromFaces_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            meshOps::removeIndex(indexI, facesFromFaces_);
+            meshOps::removeIndex
+            (
+                indexI,
+                facesFromFaces_
+            );
+
             break;
         }
     }
@@ -3572,7 +3500,11 @@ scalar dynamicTopoFvMesh::testProximity
         // Calculate a test step-size
         testStep =
         (
-            meshOps::edgeLength(edges_[getTriBoundaryEdge(index)], points_)
+            meshOps::edgeLength
+            (
+                edges_[getTriBoundaryEdge(index)],
+                points_
+            )
         );
     }
     else
@@ -3589,12 +3521,26 @@ scalar dynamicTopoFvMesh::testProximity
             if (neighbour_[eFaces[faceI]] == -1)
             {
                 // Obtain the normal.
-                gNormal += meshOps::faceNormal(faces_[eFaces[faceI]], points_);
+                gNormal +=
+                (
+                    meshOps::faceNormal
+                    (
+                        faces_[eFaces[faceI]],
+                        points_
+                    )
+                );
             }
         }
 
         // Calculate a test step-size
-        testStep = meshOps::edgeLength(edges_[index], points_);
+        testStep =
+        (
+            meshOps::edgeLength
+            (
+                edges_[index],
+                points_
+            )
+        );
     }
 
     // Normalize
@@ -3741,7 +3687,7 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
         exchangeLengthBuffers();
 
         // Wait for transfers before continuing.
-        waitForBuffers();
+        meshOps::waitForBuffers();
     }
 }
 
@@ -4211,74 +4157,6 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 }
 
 
-// Method for the swapping of an edge in 3D
-//  - To be used mainly for testing purposes only.
-//  - Use swap3DEdges on the entire mesh for efficiency.
-void dynamicTopoFvMesh::swapEdge
-(
-    const label eIndex,
-    bool forceOp
-)
-{
-    // Dynamic programming variables
-    labelList m;
-    PtrList<scalarListList> Q;
-    PtrList<labelListList> K, triangulations;
-
-    // Allocate dynamic programming tables
-    initTables(m, Q, K, triangulations);
-
-    // Compute the minimum quality of cells around this edge
-    scalar minQuality = computeMinQuality(eIndex);
-
-    // Check if this edge is on a bounding curve
-    if (checkBoundingCurve(eIndex))
-    {
-        FatalErrorIn
-        (
-            "void dynamicTopoFvMesh::swapEdge"
-            "(const label eIndex, bool forceOp)"
-        )
-            << nl << " Cannot swap edges on bounding curves. "
-            << abort(FatalError);
-    }
-
-    // Fill the dynamic programming tables
-    if (fillTables(eIndex, minQuality, m, Q, K, triangulations))
-    {
-        // Check if edge-swapping is required.
-        scalar newQuality = Q[0][0][m[0]-1];
-
-        if (newQuality > minQuality)
-        {
-            // Remove this edge according to the swap sequence
-            removeEdgeFlips(eIndex, minQuality, K, triangulations);
-        }
-        else
-        if (forceOp)
-        {
-            if (newQuality < 0.0)
-            {
-                FatalErrorIn
-                (
-                    "void dynamicTopoFvMesh::swapEdge"
-                    "(const label eIndex, bool forceOp)"
-                )
-                    << " Forcing swap on edge: " << eIndex
-                    << ":: " << edges_[eIndex]
-                    << " will yield an invalid cell quality: "
-                    << newQuality << " Old Quality: " << minQuality
-                    << abort(FatalError);
-            }
-            else
-            {
-                removeEdgeFlips(eIndex, minQuality, K, triangulations);
-            }
-        }
-    }
-}
-
-
 // 3D Edge-swapping engine
 void dynamicTopoFvMesh::swap3DEdges
 (
@@ -4412,228 +4290,6 @@ void dynamicTopoFvMesh::edgeRefinementEngine
 }
 
 
-// Utility method to compute the quality of a vertex hull
-// around an edge after bisection.
-scalar dynamicTopoFvMesh::computeBisectionQuality
-(
-    const label eIndex
-) const
-{
-    scalar minQuality = GREAT, minVolume = GREAT;
-    scalar cQuality = 0.0, oldVolume = 0.0;
-
-    // Obtain a reference to this edge and corresponding edgePoints
-    const edge& edgeToCheck = edges_[eIndex];
-    const labelList& hullVertices = edgePoints_[eIndex];
-
-    // Obtain point references
-    const point& a = points_[edgeToCheck[0]];
-    const point& c = points_[edgeToCheck[1]];
-
-    const point& aOld = oldPoints_[edgeToCheck[0]];
-    const point& cOld = oldPoints_[edgeToCheck[1]];
-
-    // Compute the mid-point of the edge
-    point midPoint = 0.5*(a + c);
-    point oldPoint = 0.5*(aOld + cOld);
-
-    if (whichEdgePatch(eIndex) < 0)
-    {
-        // Internal edge.
-        forAll(hullVertices, indexI)
-        {
-            label prevIndex = hullVertices.rcIndex(indexI);
-
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[prevIndex]];
-            const point& d = points_[hullVertices[indexI]];
-
-            const point& bOld = oldPoints_[hullVertices[prevIndex]];
-            const point& dOld = oldPoints_[hullVertices[indexI]];
-
-            // Compute the quality of the upper half.
-            cQuality = tetMetric_(a, b, midPoint, d);
-
-            // Compute old volume of the upper half.
-            oldVolume = tetPointRef(aOld, bOld, oldPoint, dOld).mag();
-
-            // Check if the volume / quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-            minVolume = Foam::min(oldVolume, minVolume);
-
-            // Compute the quality of the lower half.
-            cQuality = tetMetric_(midPoint, b, c, d);
-
-            // Compute old volume of the lower half.
-            oldVolume = tetPointRef(oldPoint, bOld, cOld, dOld).mag();
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-            minVolume = Foam::min(oldVolume, minVolume);
-        }
-    }
-    else
-    {
-        // Boundary edge.
-        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
-        {
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[indexI-1]];
-            const point& d = points_[hullVertices[indexI]];
-
-            const point& bOld = oldPoints_[hullVertices[indexI-1]];
-            const point& dOld = oldPoints_[hullVertices[indexI]];
-
-            // Compute the quality of the upper half.
-            cQuality = tetMetric_(a, b, midPoint, d);
-
-            // Compute old volume of the upper half.
-            oldVolume = tetPointRef(aOld, bOld, oldPoint, dOld).mag();
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-            minVolume = Foam::min(oldVolume, minVolume);
-
-            // Compute the quality of the lower half.
-            cQuality = tetMetric_(midPoint, b, c, d);
-
-            // Compute old volume of the lower half.
-            oldVolume = tetPointRef(oldPoint, bOld, cOld, dOld).mag();
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-            minVolume = Foam::min(oldVolume, minVolume);
-        }
-    }
-
-    // Ensure that the mesh is valid
-    if (minQuality < sliverThreshold_)
-    {
-        if (debug > 3 && minQuality < 0.0)
-        {
-            // Write out cells for post processing.
-            labelHashSet iCells;
-
-            const labelList& eFaces = edgeFaces_[eIndex];
-
-            forAll(eFaces, faceI)
-            {
-                if (!iCells.found(owner_[eFaces[faceI]]))
-                {
-                    iCells.insert(owner_[eFaces[faceI]]);
-                }
-
-                if (!iCells.found(neighbour_[eFaces[faceI]]))
-                {
-                    iCells.insert(neighbour_[eFaces[faceI]]);
-                }
-            }
-
-            writeVTK(Foam::name(eIndex) + "_iCells", iCells.toc());
-        }
-
-        if (debug > 2)
-        {
-            InfoIn
-            (
-                "scalar dynamicTopoFvMesh::computeBisectionQuality"
-                "(const label eIndex) const"
-            )
-                << "Bisecting edge will fall below the "
-                << "sliver threshold of: " << sliverThreshold_ << nl
-                << "Edge: " << eIndex << ": " << edgeToCheck << nl
-                << "EdgePoints: " << hullVertices << nl
-                << "Minimum Quality: " << minQuality << nl
-                << "Mid point: " << midPoint
-                << endl;
-        }
-    }
-
-    // If a negative old-volume was encountered,
-    // return an invalid quality.
-    if (minVolume < 0.0)
-    {
-        return minVolume;
-    }
-
-    return minQuality;
-}
-
-
-// Utility method to compute the quality of cells
-// around a face after trisection.
-scalar dynamicTopoFvMesh::computeTrisectionQuality
-(
-    const label fIndex
-) const
-{
-    scalar minQuality = GREAT;
-    scalar cQuality = 0.0;
-
-    point midPoint = meshOps::faceCentre(faces_[fIndex], points_);
-
-    FixedList<label,2> apexPoint(-1);
-
-    // Find the apex point
-    apexPoint[0] =
-    (
-        meshOps::tetApexPoint
-        (
-            owner_[fIndex],
-            fIndex,
-            faces_,
-            cells_
-        )
-    );
-
-    const face& faceToCheck = faces_[fIndex];
-
-    forAll(faceToCheck, pointI)
-    {
-        // Pick vertices off the list
-        const point& b = points_[faceToCheck[pointI]];
-        const point& c = points_[apexPoint[0]];
-        const point& d = points_[faceToCheck[faceToCheck.fcIndex(pointI)]];
-
-        // Compute the quality of the upper half.
-        cQuality = tetMetric_(midPoint, b, c, d);
-
-        // Check if the quality is worse
-        minQuality = Foam::min(cQuality, minQuality);
-    }
-
-    if (whichPatch(fIndex) == -1)
-    {
-        apexPoint[1] =
-        (
-            meshOps::tetApexPoint
-            (
-                neighbour_[fIndex],
-                fIndex,
-                faces_,
-                cells_
-            )
-        );
-
-        forAll(faceToCheck, pointI)
-        {
-            // Pick vertices off the list
-            const point& b = points_[faceToCheck[pointI]];
-            const point& c = points_[apexPoint[1]];
-            const point& d = points_[faceToCheck[faceToCheck.rcIndex(pointI)]];
-
-            // Compute the quality of the upper half.
-            cQuality = tetMetric_(midPoint, b, c, d);
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-        }
-    }
-
-    return minQuality;
-}
-
-
 // Check if the boundary face is adjacent to a sliver-cell,
 // and remove it by a two-step bisection/collapse operation.
 void dynamicTopoFvMesh::remove2DSliver
@@ -4698,10 +4354,13 @@ void dynamicTopoFvMesh::remove2DSliver
             FixedList<label,2> c0BdyIndex, c0IntIndex;
             FixedList<face,2>  c0BdyFace,  c0IntFace;
 
-            findPrismFaces
+            meshOps::findPrismFaces
             (
                 fIndex,
                 fOwner,
+                faces_,
+                cells_,
+                neighbour_,
                 c0BdyFace,
                 c0BdyIndex,
                 c0IntFace,

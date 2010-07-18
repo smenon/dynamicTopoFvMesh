@@ -8,9 +8,9 @@ $(ePatches)/ePatch/newEPatch.C
 
 meshOps.C
 changeMap.C
+coupledPatchInfo.C
 
 dynamicTopoFvMesh.C
-coupledPatchInfo.C
 dynamicTopoFvMeshReOrder.C
 dynamicTopoFvMeshCheck.C
 dynamicTopoFvMeshCoupled.C

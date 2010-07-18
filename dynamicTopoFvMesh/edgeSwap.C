@@ -28,6 +28,7 @@ License
 #include "objectMap.H"
 #include "triPointRef.H"
 #include "multiThreader.H"
+#include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -335,20 +336,26 @@ void dynamicTopoFvMesh::swapQuadFace
     }
 
     // Find the interior/boundary faces.
-    findPrismFaces
+    meshOps::findPrismFaces
     (
         fIndex,
         c0,
+        faces_,
+        cells_,
+        neighbour_,
         c0BdyFace,
         c0BdyIndex,
         c0IntFace,
         c0IntIndex
     );
 
-    findPrismFaces
+    meshOps::findPrismFaces
     (
         fIndex,
         c1,
+        faces_,
+        cells_,
+        neighbour_,
         c1BdyFace,
         c1BdyIndex,
         c1IntFace,
@@ -470,46 +477,52 @@ void dynamicTopoFvMesh::swapQuadFace
     }
 
     // Find two common edges between quad/quad faces
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         c0IntIndex[0],
         c0IntIndex[1],
+        faceEdges_,
         otherEdgeIndex[2]
     );
 
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         c1IntIndex[0],
         c1IntIndex[1],
+        faceEdges_,
         otherEdgeIndex[3]
     );
 
     // Find four common edges between quad/tri faces
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         commonFaceIndex[1],
         commonIntFaceIndex[1],
+        faceEdges_,
         cornerEdgeIndex[0]
     );
 
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         commonFaceIndex[3],
         commonIntFaceIndex[1],
+        faceEdges_,
         cornerEdgeIndex[1]
     );
 
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         commonFaceIndex[0],
         commonIntFaceIndex[2],
+        faceEdges_,
         cornerEdgeIndex[2]
     );
 
-    findCommonEdge
+    meshOps::findCommonEdge
     (
         commonFaceIndex[2],
         commonIntFaceIndex[2],
+        faceEdges_,
         cornerEdgeIndex[3]
     );
 
@@ -856,6 +869,74 @@ void dynamicTopoFvMesh::swapQuadFace
 
     // Increment the counter
     nSwaps_[0]++;
+}
+
+
+// Method for the swapping of an edge in 3D
+//  - To be used mainly for testing purposes only.
+//  - Use swap3DEdges on the entire mesh for efficiency.
+void dynamicTopoFvMesh::swapEdge
+(
+    const label eIndex,
+    bool forceOp
+)
+{
+    // Dynamic programming variables
+    labelList m;
+    PtrList<scalarListList> Q;
+    PtrList<labelListList> K, triangulations;
+
+    // Allocate dynamic programming tables
+    initTables(m, Q, K, triangulations);
+
+    // Compute the minimum quality of cells around this edge
+    scalar minQuality = computeMinQuality(eIndex);
+
+    // Check if this edge is on a bounding curve
+    if (checkBoundingCurve(eIndex))
+    {
+        FatalErrorIn
+        (
+            "void dynamicTopoFvMesh::swapEdge"
+            "(const label eIndex, bool forceOp)"
+        )
+            << nl << " Cannot swap edges on bounding curves. "
+            << abort(FatalError);
+    }
+
+    // Fill the dynamic programming tables
+    if (fillTables(eIndex, minQuality, m, Q, K, triangulations))
+    {
+        // Check if edge-swapping is required.
+        scalar newQuality = Q[0][0][m[0]-1];
+
+        if (newQuality > minQuality)
+        {
+            // Remove this edge according to the swap sequence
+            removeEdgeFlips(eIndex, minQuality, K, triangulations);
+        }
+        else
+        if (forceOp)
+        {
+            if (newQuality < 0.0)
+            {
+                FatalErrorIn
+                (
+                    "void dynamicTopoFvMesh::swapEdge"
+                    "(const label eIndex, bool forceOp)"
+                )
+                    << " Forcing swap on edge: " << eIndex
+                    << ":: " << edges_[eIndex]
+                    << " will yield an invalid cell quality: "
+                    << newQuality << " Old Quality: " << minQuality
+                    << abort(FatalError);
+            }
+            else
+            {
+                removeEdgeFlips(eIndex, minQuality, K, triangulations);
+            }
+        }
+    }
 }
 
 
@@ -1733,6 +1814,179 @@ bool dynamicTopoFvMesh::boundaryTriangulation
 
     // This isn't a boundary triangulation
     return false;
+}
+
+
+// Utility method to compute the minimum quality of a vertex hull
+scalar dynamicTopoFvMesh::computeMinQuality
+(
+    const label eIndex
+) const
+{
+    scalar minQuality = GREAT;
+    scalar cQuality = 0.0;
+
+    // Obtain a reference to this edge and corresponding edgePoints
+    const edge& edgeToCheck = edges_[eIndex];
+    const labelList& hullVertices = edgePoints_[eIndex];
+
+    // Obtain point references
+    const point& a = points_[edgeToCheck[0]];
+    const point& c = points_[edgeToCheck[1]];
+
+    if (whichEdgePatch(eIndex) < 0)
+    {
+        // Internal edge.
+        forAll(hullVertices, indexI)
+        {
+            label prevIndex = hullVertices.rcIndex(indexI);
+
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[prevIndex]];
+            const point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = tetMetric_(a, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+        }
+    }
+    else
+    {
+        // Boundary edge.
+        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
+        {
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[indexI-1]];
+            const point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = tetMetric_(a, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+        }
+    }
+
+    if (coupledModification_)
+    {
+        if (locallyCoupledEntity(eIndex))
+        {
+            // Compute the minimum quality of the slave edge as well.
+            label sIndex = -1;
+
+            // Determine the slave index.
+            forAll(patchCoupling_, patchI)
+            {
+                if (patchCoupling_(patchI))
+                {
+                    const label edgeEnum  = coupleMap::EDGE;
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            if (sIndex == -1)
+            {
+                FatalErrorIn
+                (
+                    "scalar dynamicTopoFvMesh::computeMinQuality"
+                    "(const label eIndex) const"
+                )
+                    << nl << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Edge: " << eIndex << nl
+                    << abort(FatalError);
+            }
+
+            // Temporarily turn off coupledModification
+            unsetCoupledModification();
+
+            scalar slaveQuality = computeMinQuality(sIndex);
+
+            minQuality = Foam::min(slaveQuality, minQuality);
+
+            // Turn it back on.
+            setCoupledModification();
+        }
+        else
+        if (processorCoupledEntity(eIndex))
+        {
+            // Compute the minimum quality across patchSubMeshes.
+
+        }
+    }
+
+    // Ensure that the mesh is valid
+    if (minQuality < 0.0)
+    {
+        // if (debug > 3)
+        {
+            // Write out faces and cells for post processing.
+            labelHashSet iFaces, iCells, bFaces;
+
+            const labelList& eFaces = edgeFaces_[eIndex];
+
+            forAll(eFaces, faceI)
+            {
+                iFaces.insert(eFaces[faceI]);
+
+                if (!iCells.found(owner_[eFaces[faceI]]))
+                {
+                    iCells.insert(owner_[eFaces[faceI]]);
+                }
+
+                if (!iCells.found(neighbour_[eFaces[faceI]]))
+                {
+                    iCells.insert(neighbour_[eFaces[faceI]]);
+                }
+            }
+
+            writeVTK(Foam::name(eIndex) + "_iCells", iCells.toc());
+            writeVTK(Foam::name(eIndex) + "_iFaces", iFaces.toc(), 2);
+
+            // Write out the boundary patches (for post-processing reference)
+            for
+            (
+                label faceI = nOldInternalFaces_;
+                faceI < faces_.size();
+                faceI++
+            )
+            {
+                if (faces_[faceI].empty())
+                {
+                    continue;
+                }
+
+                label pIndex = whichPatch(faceI);
+
+                if (pIndex != -1)
+                {
+                    bFaces.insert(faceI);
+                }
+            }
+
+            writeVTK(Foam::name(eIndex) + "_bFaces", bFaces.toc(), 2);
+        }
+
+        FatalErrorIn
+        (
+            "scalar dynamicTopoFvMesh::computeMinQuality"
+            "(const label eIndex) const"
+        )
+            << "Encountered negative cell-quality!" << nl
+            << "Edge: " << eIndex << ": " << edgeToCheck << nl
+            << "EdgePoints: " << hullVertices << nl
+            << "Minimum Quality: " << minQuality
+            << abort(FatalError);
+    }
+
+    return minQuality;
 }
 
 
