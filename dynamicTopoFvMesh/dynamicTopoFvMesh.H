@@ -55,6 +55,7 @@ SourceFiles
 #include "threadHandler.H"
 #include "eMesh.H"
 #include "stack.H"
+#include "meshOps.H"
 #include "coupleMap.H"
 #include "changeMap.H"
 #include "tetMetric.H"
@@ -343,94 +344,6 @@ class dynamicTopoFvMesh
         //- Quality metric for tetrahedra in 3D
         tetMetric::tetMetricReturnType tetMetric_;
 
-        // Return the magnitude of an edge
-        inline scalar edgeLength
-        (
-            const edge& edgeToCheck,
-            const UList<point>& points
-        ) const;
-
-        // Compute the centre for a given face
-        inline vector faceCentre
-        (
-            const face& faceToCheck,
-            const UList<point>& points
-        ) const;
-
-        // Compute the normal for a given face
-        inline vector faceNormal
-        (
-            const face& faceToCheck,
-            const UList<point>& points
-        ) const;
-
-        // Given a face and cell index, find the apex point for a tet cell.
-        inline label tetApexPoint
-        (
-            const label cIndex,
-            const label fIndex
-        ) const;
-
-        // Given a cell index, find the centroid / volume of a cell.
-        inline void cellCentreAndVolume
-        (
-            const label cIndex,
-            const UList<point>& points,
-            const UList<face>& faces,
-            const UList<cell>& cells,
-            const UList<label>& owner,
-            vector& centre,
-            scalar& volume
-        ) const;
-
-        // Utility member function for separating axis tests
-        inline label whichSide
-        (
-            const labelList& cellPoints,
-            const UList<point>& points,
-            const point& dir,
-            const point& p
-        ) const;
-
-        // Determine whether a two line segments intersect
-        inline bool segmentSegmentIntersection
-        (
-            const edge& fromSegment,
-            const edge& toSegment,
-            const UList<point>& points,
-            point& intPoint
-        ) const;
-
-        // Determine whether a segment intersects a face
-        inline bool segmentFaceIntersection
-        (
-            const edge& edgeToCheck,
-            const face& faceToCheck,
-            const UList<point>& points,
-            vector& intersectionPoint
-        ) const;
-
-        // Determine whether the particular point lies
-        // inside the given face
-        inline bool pointInFace
-        (
-            const face& faceToCheck,
-            const UList<point>& points,
-            const point& checkPoint
-        ) const;
-
-        // Determine whether the particular point lies
-        // inside the given cell
-        inline bool pointInCell
-        (
-            const label cIndex,
-            const cell& cellToCheck,
-            const UList<face>& faces,
-            const UList<label>& owner,
-            const UList<point>& points,
-            const point& checkPoint
-        ) const;
-
         // Obtain map weighting factors for a face
         void computeFaceWeights
         (
@@ -472,30 +385,6 @@ class dynamicTopoFvMesh
             const label newCellIndex,
             const label oldCellIndex,
             vectorField& intPoints
-        ) const;
-
-        // Compute the area / centre of a polygon
-        // formed by a convex set of points.
-        void convexSetArea
-        (
-            const label newFaceIndex,
-            const label oldFaceIndex,
-            const vectorField& cvxSet,
-            scalar& fArea,
-            vector& fCentre,
-            bool output = false
-        ) const;
-
-        // Compute the volume / centre of a polyhedron
-        // formed by a convex set of points.
-        void convexSetVolume
-        (
-            const label newCellIndex,
-            const label oldCellIndex,
-            const vectorField& cvxSet,
-            scalar& cVolume,
-            vector& cCentre,
-            bool output = false
         ) const;
 
         // Obtain a list of possible parent faces from the old mesh
@@ -660,16 +549,6 @@ class dynamicTopoFvMesh
         // Slice the mesh at a particular location
         void sliceMesh(const labelPair& pointPair);
 
-        // Dijkstra's algorithm for the shortest path problem
-        bool Dijkstra
-        (
-            const Map<point>& points,
-            const Map<edge>& edges,
-            const label startPoint,
-            const label endPoint,
-            Map<label>& pi
-        ) const;
-
         // Utility method to check for invalid face-collapse.
         bool checkCollapse
         (
@@ -691,13 +570,6 @@ class dynamicTopoFvMesh
             labelHashSet& cellsChecked,
             scalar& collapseQuality,
             bool forceOp = false
-        ) const;
-
-        // Utility method to check for concurrent points.
-        bool checkPointNearness
-        (
-            const pointField& points,
-            const scalar magSqrTol
         ) const;
 
         // Check if the boundary face is adjacent to a sliver-cell,
@@ -728,51 +600,6 @@ class dynamicTopoFvMesh
             const label first,
             const label second,
             label& common
-        ) const;
-
-        // Method to find the isolated point on a triangular face
-        // that doesn't lie on the specified edge
-        inline void findIsolatedPoint
-        (
-            const face& f,
-            const edge& e,
-            label& ptIndex,
-            label& nextPtIndex
-        ) const;
-
-        // Utility method to find the isolated point
-        // given two triangular faces.
-        inline label findIsolatedPoint
-        (
-            const face& baseFace,
-            const face& checkFace
-        ) const;
-
-        // Method to replace a label in a given list
-        inline void replaceLabel
-        (
-            const label original,
-            const label replacement,
-            labelList& list
-        ) const;
-
-        // Method to insert labels in a face, so that
-        // right-handedness is preserved.
-        inline void insertPointLabels
-        (
-            const vector& refNorm,
-            const vectorField& points,
-            const labelHashSet& pLabels,
-            face& modFace
-        ) const;
-
-        // Method to insert a label between two labels in a list
-        inline void insertLabel
-        (
-            const label newLabel,
-            const label labelA,
-            const label labelB,
-            labelList& list
         ) const;
 
         // Insert the specified cell to the mesh
@@ -876,30 +703,6 @@ class dynamicTopoFvMesh
         (
             const label pIndex
         );
-
-        // Utility method to size-up the list to include an item
-        template <class Type>
-        inline void sizeUpList
-        (
-            const Type item,
-            List<Type>& list
-        ) const;
-
-        // Utility method to size-down the list to remove an item
-        template <class Type>
-        inline void sizeDownList
-        (
-            const Type item,
-            List<Type>& list
-        ) const;
-
-        // Remove an item at a particular index in the list
-        template <class Type>
-        inline void removeIndex
-        (
-            const label index,
-            List<Type>& list
-        ) const;
 
         // Utility method to build a hull of cells connected to the edge [2D]
         void constructPrismHull

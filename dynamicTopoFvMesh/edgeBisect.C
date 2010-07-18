@@ -310,7 +310,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Find the isolated point on both boundary faces of cell[0]
-    findIsolatedPoint
+    meshOps::findIsolatedPoint
     (
         c0BdyFace[0],
         commonEdges[0],
@@ -318,7 +318,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         nextToOtherPoint[0]
     );
 
-    findIsolatedPoint
+    meshOps::findIsolatedPoint
     (
         c0BdyFace[1],
         commonEdges[1],
@@ -435,7 +435,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Modify the two existing triangle boundary faces
 
     // Zeroth boundary face - Owner = c[0] & Neighbour [-1] (unchanged)
-    replaceLabel
+    meshOps::replaceLabel
     (
         otherEdgePoint[0],
         newPointIndex[0],
@@ -443,7 +443,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     );
 
     // First boundary face - Owner = newCell[0], Neighbour = -1
-    replaceLabel
+    meshOps::replaceLabel
     (
         otherEdgePoint[1],
         newPointIndex[1],
@@ -455,7 +455,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     faces_[c0BdyIndex[1]] = c0BdyFace[1];
 
     owner_[c0BdyIndex[1]] = newCellIndex[0];
-    replaceLabel(c0BdyIndex[1], -1, oldCells[0]);
+    meshOps::replaceLabel(c0BdyIndex[1], -1, oldCells[0]);
 
     // Detect edges other than commonEdges
     const labelList& fEdges = faceEdges_[fIndex];
@@ -487,14 +487,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Modify point-labels on the quad face under consideration
-    replaceLabel
+    meshOps::replaceLabel
     (
         otherEdgePoint[0],
         newPointIndex[0],
         faces_[fIndex]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         nextToOtherPoint[1],
         newPointIndex[1],
@@ -529,7 +529,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     {
         if (e1[edgeI] == otherEdgeIndex[1])
         {
-            replaceLabel(c0IntIndex[0], -1, oldCells[0]);
+            meshOps::replaceLabel(c0IntIndex[0], -1, oldCells[0]);
             replaceFace = c0IntIndex[0];
             retainFace = c0IntIndex[1];
             found = true; break;
@@ -539,7 +539,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     if (!found)
     {
         // The edge was not found before
-        replaceLabel(c0IntIndex[1], -1, oldCells[0]);
+        meshOps::replaceLabel(c0IntIndex[1], -1, oldCells[0]);
         replaceFace = c0IntIndex[1];
         retainFace = c0IntIndex[0];
     }
@@ -603,14 +603,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     );
 
     // ... and size-up edgeFaces for the edge
-    sizeUpList
+    meshOps::sizeUpList
     (
         newFaceIndex[0],
         edgeFaces_[otherEdgeIndex[2]]
     );
 
-    replaceLabel(-1, newFaceIndex[0], newCells[0]);
-    replaceLabel(-1, newFaceIndex[0], oldCells[0]);
+    meshOps::replaceLabel(-1, newFaceIndex[0], newCells[0]);
+    meshOps::replaceLabel(-1, newFaceIndex[0], oldCells[0]);
 
     // remove2DSliver requires this face index for removal
     map.addFace(newFaceIndex[0]);
@@ -634,7 +634,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Add a faceEdges entry as well
     faceEdges_.append(tmpTFEdges);
 
-    replaceLabel(-1, newFaceIndex[1], newCells[0]);
+    meshOps::replaceLabel(-1, newFaceIndex[1], newCells[0]);
 
     // Third boundary face; Owner = c[0] & Neighbour = [-1]
     tmpTriFace[0] = otherPointIndex[1];
@@ -655,7 +655,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Add a faceEdges entry as well
     faceEdges_.append(tmpTFEdges);
 
-    replaceLabel(-1, newFaceIndex[2], oldCells[0]);
+    meshOps::replaceLabel(-1, newFaceIndex[2], oldCells[0]);
 
     // Create / modify edges...
     labelList tmpTriEdgeFaces(3, -1);
@@ -684,14 +684,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     );
 
     // ...and correct faceEdges / edgeFaces
-    replaceLabel
+    meshOps::replaceLabel
     (
         cornerEdgeIndex[0],
         newEdgeIndex[1],
         faceEdges_[c0BdyIndex[0]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         c0BdyIndex[0],
         newFaceIndex[1],
@@ -722,14 +722,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     );
 
     // ...and correct faceEdges / edgeFaces
-    replaceLabel
+    meshOps::replaceLabel
     (
         cornerEdgeIndex[1],
         newEdgeIndex[2],
         faceEdges_[c0BdyIndex[1]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         c0BdyIndex[1],
         newFaceIndex[2],
@@ -763,14 +763,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         faceEdges_.append(tmpQFEdges);
 
         // Correct edgeFaces for otherEdgeIndex[1]
-        replaceLabel
+        meshOps::replaceLabel
         (
             fIndex,
             newFaceIndex[3],
             edgeFaces_[otherEdgeIndex[1]]
         );
 
-        replaceLabel(-1, newFaceIndex[3], newCells[0]);
+        meshOps::replaceLabel(-1, newFaceIndex[3], newCells[0]);
 
         labelList tmpBiEdgeFaces(2, -1);
 
@@ -790,7 +790,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         // Replace an edge on the bisected face
-        replaceLabel
+        meshOps::replaceLabel
         (
             otherEdgeIndex[1],
             newEdgeIndex[0],
@@ -853,14 +853,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpQFEdges[3] = newEdgeIndex[4];
         faceEdges_[newFaceIndex[3]] = tmpQFEdges;
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             commonEdgeIndex[1],
             newEdgeIndex[4],
             faceEdges_[c0BdyIndex[1]]
         );
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             c0BdyIndex[1],
             newFaceIndex[2],
@@ -967,7 +967,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         {
             if (e2[edgeI] == otherEdgeIndex[1])
             {
-                replaceLabel(c1IntIndex[0], -1, oldCells[1]);
+                meshOps::replaceLabel(c1IntIndex[0], -1, oldCells[1]);
                 replaceFace = c1IntIndex[0];
                 retainFace = c1IntIndex[1];
                 found = true; break;
@@ -977,7 +977,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         if (!found)
         {
             // The edge was not found before
-            replaceLabel(c1IntIndex[1], -1, oldCells[1]);
+            meshOps::replaceLabel(c1IntIndex[1], -1, oldCells[1]);
             replaceFace = c1IntIndex[1];
             retainFace = c1IntIndex[0];
         }
@@ -1031,15 +1031,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         faceEdges_.append(tmpQFEdges);
 
         // Correct edgeFaces for otherEdgeIndex[1]
-        replaceLabel
+        meshOps::replaceLabel
         (
             fIndex,
             newFaceIndex[3],
             edgeFaces_[otherEdgeIndex[1]]
         );
 
-        replaceLabel(-1, newFaceIndex[3], newCells[0]);
-        replaceLabel(-1, newFaceIndex[3], newCells[1]);
+        meshOps::replaceLabel(-1, newFaceIndex[3], newCells[0]);
+        meshOps::replaceLabel(-1, newFaceIndex[3], newCells[1]);
         newCells[1][1] = newFaceIndex[3];
 
         // Check for common edges among the two boundary faces
@@ -1074,7 +1074,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                  << endl;
         }
 
-        findIsolatedPoint
+        meshOps::findIsolatedPoint
         (
             faces_[commonFaceIndex[2]],
             commonEdges[2],
@@ -1082,7 +1082,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             nextToOtherPoint[2]
         );
 
-        findIsolatedPoint
+        meshOps::findIsolatedPoint
         (
             faces_[commonFaceIndex[3]],
             commonEdges[3],
@@ -1097,7 +1097,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Modify the two existing triangle boundary faces
 
         // Zeroth boundary face - Owner = newCell[1], Neighbour = -1
-        replaceLabel
+        meshOps::replaceLabel
         (
             otherEdgePoint[2],
             newPointIndex[0],
@@ -1105,11 +1105,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         owner_[commonFaceIndex[2]] = newCellIndex[1];
-        replaceLabel(commonFaceIndex[2], -1, oldCells[1]);
+        meshOps::replaceLabel(commonFaceIndex[2], -1, oldCells[1]);
         newCells[1][2] = commonFaceIndex[2];
 
         // First boundary face - Owner = c[1] & Neighbour [-1] (unchanged)
-        replaceLabel
+        meshOps::replaceLabel
         (
             otherEdgePoint[3],
             newPointIndex[1],
@@ -1148,14 +1148,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         // ... and size-up edgeFaces for the edge
-        sizeUpList
+        meshOps::sizeUpList
         (
             newFaceIndex[4],
             edgeFaces_[otherEdgeIndex[3]]
         );
 
-        replaceLabel(-1, newFaceIndex[4], newCells[1]);
-        replaceLabel(-1, newFaceIndex[4], oldCells[1]);
+        meshOps::replaceLabel(-1, newFaceIndex[4], newCells[1]);
+        meshOps::replaceLabel(-1, newFaceIndex[4], oldCells[1]);
 
         // Second boundary face; Owner = cell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[2];
@@ -1176,7 +1176,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Add a faceEdges entry as well
         faceEdges_.append(tmpTFEdges);
 
-        replaceLabel(-1, newFaceIndex[5], oldCells[1]);
+        meshOps::replaceLabel(-1, newFaceIndex[5], oldCells[1]);
 
         // Third boundary face; Owner = newCell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[3];
@@ -1197,7 +1197,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Add a faceEdges entry as well
         faceEdges_.append(tmpTFEdges);
 
-        replaceLabel(-1, newFaceIndex[6], newCells[1]);
+        meshOps::replaceLabel(-1, newFaceIndex[6], newCells[1]);
 
         // Create / modify edges...
         labelList tmpQuadEdgeFaces(4, -1);
@@ -1219,7 +1219,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         // Replace an edge on the bisected face
-        replaceLabel
+        meshOps::replaceLabel
         (
             otherEdgeIndex[1],
             newEdgeIndex[0],
@@ -1279,14 +1279,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         // ...and correct faceEdges / edgeFaces
-        replaceLabel
+        meshOps::replaceLabel
         (
             cornerEdgeIndex[2],
             newEdgeIndex[5],
             faceEdges_[commonFaceIndex[2]]
         );
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             commonFaceIndex[2],
             newFaceIndex[5],
@@ -1317,14 +1317,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         // ...and correct faceEdges / edgeFaces
-        replaceLabel
+        meshOps::replaceLabel
         (
             cornerEdgeIndex[3],
             newEdgeIndex[6],
             faceEdges_[commonFaceIndex[3]]
         );
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             commonFaceIndex[3],
             newFaceIndex[6],
@@ -1379,28 +1379,28 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         tmpTFEdges[2] = newEdgeIndex[6];
         faceEdges_[newFaceIndex[6]] = tmpTFEdges;
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             commonEdgeIndex[1],
             newEdgeIndex[4],
             faceEdges_[c0BdyIndex[1]]
         );
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             c0BdyIndex[1],
             newFaceIndex[2],
             edgeFaces_[commonEdgeIndex[1]]
         );
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             commonEdgeIndex[2],
             newEdgeIndex[3],
             faceEdges_[commonFaceIndex[2]]
         );
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             commonFaceIndex[2],
             newFaceIndex[5],
@@ -2088,8 +2088,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     // Remove the existing edge from the pointEdges list
     // of the modified point, and add it to the new point
-    sizeDownList(eIndex, pointEdges_[edges_[eIndex][1]]);
-    sizeUpList(eIndex, pointEdges_[newPointIndex]);
+    meshOps::sizeDownList(eIndex, pointEdges_[edges_[eIndex][1]]);
+    meshOps::sizeUpList(eIndex, pointEdges_[newPointIndex]);
 
     // Modify the existing edge
     edges_[eIndex][1] = newPointIndex;
@@ -2109,7 +2109,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     forAll(vertexHull, indexI)
     {
         // Modify the existing face
-        replaceLabel
+        meshOps::replaceLabel
         (
             edges_[newEdgeIndex][1],
             newPointIndex,
@@ -2117,7 +2117,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         );
 
         // Modify edgePoints for the edge
-        replaceLabel
+        meshOps::replaceLabel
         (
             edges_[newEdgeIndex][1],
             newPointIndex,
@@ -2197,14 +2197,14 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             // Modify the edge on the ring.
             // Add the new interior face to edgeFaces.
-            sizeUpList
+            meshOps::sizeUpList
             (
                 addedIntFaceIndices[indexI],
                 edgeFaces_[edgeHull[indexI]]
             );
 
             // Insert the new point to edgePoints for the ring edge
-            insertLabel
+            meshOps::insertLabel
             (
                 newPointIndex,
                 edges_[eIndex][0],
@@ -2216,7 +2216,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             faceEdges_[addedIntFaceIndices[indexI]][0] = edgeHull[indexI];
 
             // Replace face labels
-            replaceLabel
+            meshOps::replaceLabel
             (
                 replaceFace,
                 addedIntFaceIndices[indexI],
@@ -2286,7 +2286,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 tmpFaceEdges[2] = ringEntities[2][indexI];
 
                 // Modify faceEdges for the hull face
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     ringEntities[2][indexI],
                     addedEdgeIndices[indexI],
@@ -2294,7 +2294,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 );
 
                 // Modify edgeFaces for the edge connected to newEdge[1]
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faceHull[indexI],
                     addedFaceIndices[indexI],
@@ -2302,7 +2302,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 );
 
                 // Modify edgePoints for the edge connected to newEdge[1]
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     edges_[eIndex][0],
                     newPointIndex,
@@ -2387,7 +2387,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 tmpFaceEdges[2] = ringEntities[2][indexI];
 
                 // Modify faceEdges for the hull face
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     ringEntities[2][indexI],
                     addedEdgeIndices[indexI],
@@ -2395,7 +2395,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 );
 
                 // Modify edgeFaces for the edge connected to newEdge[1]
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faceHull[indexI],
                     addedFaceIndices[indexI],
@@ -2403,7 +2403,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 );
 
                 // Modify edgePoints for the edge connected to newEdge[1]
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     edges_[eIndex][0],
                     newPointIndex,
@@ -2491,7 +2491,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 tmpFaceEdges[2] = ringEntities[2][0];
 
                 // Modify faceEdges for the hull face
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     ringEntities[2][0],
                     addedEdgeIndices[0],
@@ -2499,7 +2499,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 );
 
                 // Modify edgeFaces for the edge connected to newEdge[1]
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faceHull[0],
                     addedFaceIndices[0],
@@ -2507,7 +2507,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 );
 
                 // Modify edgePoints for the edge connected to newEdge[1]
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     edges_[eIndex][0],
                     newPointIndex,
@@ -2589,7 +2589,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             tmpFaceEdges[2] = ringEntities[2][indexI];
 
             // Modify faceEdges for the hull face
-            replaceLabel
+            meshOps::replaceLabel
             (
                 ringEntities[2][indexI],
                 addedEdgeIndices[indexI],
@@ -2597,7 +2597,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             );
 
             // Modify edgeFaces for the edge connected to newEdge[1]
-            replaceLabel
+            meshOps::replaceLabel
             (
                 faceHull[indexI],
                 addedFaceIndices[indexI],
@@ -2605,7 +2605,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             );
 
             // Modify edgePoints for the edge connected to newEdge[1]
-            replaceLabel
+            meshOps::replaceLabel
             (
                 edges_[eIndex][0],
                 newPointIndex,
@@ -3517,7 +3517,16 @@ const changeMap dynamicTopoFvMesh::trisectFace
     }
 
     // Find the apex point for this cell
-    apexPoint[0] = tetApexPoint(owner_[fIndex], fIndex);
+    apexPoint[0] =
+    (
+        meshOps::tetApexPoint
+        (
+            owner_[fIndex],
+            fIndex,
+            faces_,
+            cells_
+        )
+    );
 
     // Insert three new internal faces
 
@@ -3874,7 +3883,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
             // Check against the specified edges.
             if (edgeToCheck == check[0])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][1],
@@ -3882,13 +3891,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[0], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[0], edgeFaces_[eIter.key()]);
                 newFaceEdges[0][nE[0]++] = eIter.key();
             }
 
             if (edgeToCheck == check[1])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][0],
@@ -3896,13 +3905,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[1], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[1], edgeFaces_[eIter.key()]);
                 newFaceEdges[1][nE[1]++] = eIter.key();
             }
 
             if (edgeToCheck == check[2])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][0],
@@ -3910,20 +3919,20 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[2], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[2], edgeFaces_[eIter.key()]);
                 newFaceEdges[2][nE[2]++] = eIter.key();
             }
 
             if (edgeToCheck == check[3])
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faces_[fIndex][1],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[3],
@@ -3935,14 +3944,14 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             if (edgeToCheck == check[4])
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faces_[fIndex][2],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[4],
@@ -3954,14 +3963,14 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             if (edgeToCheck == check[5])
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faces_[fIndex][0],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[5],
@@ -4330,7 +4339,16 @@ const changeMap dynamicTopoFvMesh::trisectFace
         }
 
         // Find the apex point for this cell
-        apexPoint[1] = tetApexPoint(neighbour_[fIndex], fIndex);
+        apexPoint[1] =
+        (
+            meshOps::tetApexPoint
+            (
+                neighbour_[fIndex],
+                fIndex,
+                faces_,
+                cells_
+            )
+        );
 
         // Add six new interior faces.
 
@@ -4709,7 +4727,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
             // Check against the specified edges.
             if (edgeToCheck == check[0])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][1],
@@ -4717,13 +4735,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[0], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[0], edgeFaces_[eIter.key()]);
                 newFaceEdges[0][nE[0]++] = eIter.key();
             }
 
             if (edgeToCheck == check[1])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][0],
@@ -4731,13 +4749,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[1], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[1], edgeFaces_[eIter.key()]);
                 newFaceEdges[1][nE[1]++] = eIter.key();
             }
 
             if (edgeToCheck == check[2])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][0],
@@ -4745,20 +4763,20 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[2], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[2], edgeFaces_[eIter.key()]);
                 newFaceEdges[2][nE[2]++] = eIter.key();
             }
 
             if (edgeToCheck == check[3])
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faces_[fIndex][1],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[3],
@@ -4770,14 +4788,14 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             if (edgeToCheck == check[4])
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faces_[fIndex][2],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[4],
@@ -4789,14 +4807,14 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             if (edgeToCheck == check[5])
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faces_[fIndex][0],
                     newPointIndex,
                     edgePoints_[eIter.key()]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[5],
@@ -4808,7 +4826,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             if (edgeToCheck == check[6])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][1],
@@ -4816,13 +4834,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[6], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[6], edgeFaces_[eIter.key()]);
                 newFaceEdges[6][nE[6]++] = eIter.key();
             }
 
             if (edgeToCheck == check[7])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][0],
@@ -4830,13 +4848,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[7], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[7], edgeFaces_[eIter.key()]);
                 newFaceEdges[7][nE[7]++] = eIter.key();
             }
 
             if (edgeToCheck == check[8])
             {
-                insertLabel
+                meshOps::insertLabel
                 (
                     newPointIndex,
                     faces_[fIndex][0],
@@ -4844,7 +4862,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     edgePoints_[eIter.key()]
                 );
 
-                sizeUpList(newFaceIndex[8], edgeFaces_[eIter.key()]);
+                meshOps::sizeUpList(newFaceIndex[8], edgeFaces_[eIter.key()]);
                 newFaceEdges[8][nE[8]++] = eIter.key();
             }
         }
@@ -5039,8 +5057,8 @@ void dynamicTopoFvMesh::sliceMesh
         (
             0.5 *
             (
-                faceCentre(faces_[pointPair.first()], points_)
-              + faceCentre(faces_[pointPair.second()], points_)
+                meshOps::faceCentre(faces_[pointPair.first()], points_)
+              + meshOps::faceCentre(faces_[pointPair.second()], points_)
             )
         );
 
@@ -5049,8 +5067,8 @@ void dynamicTopoFvMesh::sliceMesh
         (
             mag
             (
-                faceCentre(faces_[pointPair.first()], points_)
-              - faceCentre(faces_[pointPair.second()], points_)
+                meshOps::faceCentre(faces_[pointPair.first()], points_)
+              - meshOps::faceCentre(faces_[pointPair.second()], points_)
             )
         );
 
@@ -5111,7 +5129,7 @@ void dynamicTopoFvMesh::sliceMesh
         // Assign plane point / normal
         p = gCentre;
 
-        vector gNorm = faceNormal(faces_[pointPair.first()], points_);
+        vector gNorm = meshOps::faceNormal(faces_[pointPair.first()], points_);
 
         gNorm /= (mag(gNorm) + VSMALL);
 
@@ -5172,7 +5190,11 @@ void dynamicTopoFvMesh::sliceMesh
                             surfFaces.insert
                             (
                                 eFaces[faceI],
-                                faceNormal(faces_[eFaces[faceI]], points_)
+                                meshOps::faceNormal
+                                (
+                                    faces_[eFaces[faceI]],
+                                    points_
+                                )
                             );
                         }
                     }
@@ -5198,7 +5220,7 @@ void dynamicTopoFvMesh::sliceMesh
 
         bool foundPath =
         (
-            Dijkstra
+            meshOps::Dijkstra
             (
                 checkPoints,
                 checkEdges,
@@ -5277,7 +5299,7 @@ void dynamicTopoFvMesh::sliceMesh
                 scalar v = 0.0;
                 vector x = vector::zero;
 
-                cellCentreAndVolume
+                meshOps::cellCentreAndVolume
                 (
                     cellI,
                     points_,
@@ -5375,7 +5397,7 @@ void dynamicTopoFvMesh::sliceMesh
             continue;
         }
 
-        vector fCentre = faceCentre(faces_[faceI], points_);
+        vector fCentre = meshOps::faceCentre(faces_[faceI], points_);
 
         FixedList<label, 2> cellsToCheck(-1);
         cellsToCheck[0] = owner_[faceI];
@@ -5393,7 +5415,7 @@ void dynamicTopoFvMesh::sliceMesh
             {
                 if (!checkCells.found(cellsToCheck[cellI]))
                 {
-                    cellCentreAndVolume
+                    meshOps::cellCentreAndVolume
                     (
                         cellsToCheck[cellI],
                         points_,
@@ -5452,7 +5474,7 @@ void dynamicTopoFvMesh::sliceMesh
                         scalar volume = 0.0;
                         vector centre = vector::zero;
 
-                        cellCentreAndVolume
+                        meshOps::cellCentreAndVolume
                         (
                             own,
                             points_,
@@ -5480,7 +5502,7 @@ void dynamicTopoFvMesh::sliceMesh
                         scalar volume = 0.0;
                         vector centre = vector::zero;
 
-                        cellCentreAndVolume
+                        meshOps::cellCentreAndVolume
                         (
                             nei,
                             points_,
@@ -5527,7 +5549,7 @@ void dynamicTopoFvMesh::sliceMesh
                             scalar volume = 0.0;
                             vector centre = vector::zero;
 
-                            cellCentreAndVolume
+                            meshOps::cellCentreAndVolume
                             (
                                 own,
                                 points_,
@@ -5555,7 +5577,7 @@ void dynamicTopoFvMesh::sliceMesh
                             scalar volume = 0.0;
                             vector centre = vector::zero;
 
-                            cellCentreAndVolume
+                            meshOps::cellCentreAndVolume
                             (
                                 nei,
                                 points_,
@@ -5601,178 +5623,6 @@ void dynamicTopoFvMesh::sliceMesh
     lengthEstimator().appendBox(bBox);
 }
 
-
-// Given a set of points and edges, find the shortest path
-// between the start and end point, using Dijkstra's algorithm.
-//  - Takes a Map of points and edges that use those points.
-//  - Edge weights are currently edge-lengths, but can easily be adapted.
-//  - Returns true if the endPoint was found by the algorithm.
-//  - The Map 'pi' returns a preceding point for every point in 'points'.
-//
-//  Algorithm is inspired by:
-//    Renaud Waldura
-//    Dijkstra's Shortest Path Algorithm in Java
-//    http://renaud.waldura.com/
-bool dynamicTopoFvMesh::Dijkstra
-(
-    const Map<point>& points,
-    const Map<edge>& edges,
-    const label startPoint,
-    const label endPoint,
-    Map<label>& pi
-) const
-{
-    bool foundEndPoint = false;
-
-    // Set of unvisited (Q) / visited (S) points and distances (d)
-    labelHashSet Q, S;
-    Map<scalar> d;
-
-    // Initialize distances to large values
-    forAllConstIter(Map<point>, points, pIter)
-    {
-        d.insert(pIter.key(), GREAT);
-    }
-
-    // Invert edges to make a local pointEdges list
-    Map<labelList> localPointEdges;
-
-    forAllConstIter(Map<edge>, edges, eIter)
-    {
-        const edge& edgeToCheck = eIter();
-
-        forAll(edgeToCheck, pointI)
-        {
-            if (!localPointEdges.found(edgeToCheck[pointI]))
-            {
-                localPointEdges.insert(edgeToCheck[pointI], labelList(0));
-            }
-
-            sizeUpList(eIter.key(), localPointEdges[edgeToCheck[pointI]]);
-        }
-    }
-
-    // Mark the startPoint as having the smallest distance
-    d[startPoint] = 0.0;
-
-    // Add the startPoint to the list of unvisited points
-    Q.insert(startPoint);
-
-    while (Q.size())
-    {
-        // Step 1: Find the node with the smallest distance from the start.
-        labelHashSet::iterator smallest = Q.begin();
-
-        for
-        (
-            labelHashSet::iterator iter = ++Q.begin();
-            iter != Q.end();
-            iter++
-        )
-        {
-            if (d[iter.key()] < d[smallest.key()])
-            {
-                smallest = iter;
-            }
-        }
-
-        label pointIndex = smallest.key();
-        scalar smallestDistance = d[pointIndex];
-
-        // Move to the visited points list
-        S.insert(pointIndex);
-        Q.erase(pointIndex);
-
-        // Step 2: Build a list of points adjacent to pointIndex
-        //         but not in the visited list
-        DynamicList<label> adjacentPoints(10);
-
-        const labelList& pEdges = localPointEdges[pointIndex];
-
-        forAll(pEdges, edgeI)
-        {
-            const edge& edgeToCheck = edges[pEdges[edgeI]];
-
-            label otherPoint = edgeToCheck.otherVertex(pointIndex);
-
-            if (!S.found(otherPoint))
-            {
-                adjacentPoints.append(otherPoint);
-            }
-        }
-
-        // Step 3: Perform distance-based checks for adjacent points
-        forAll(adjacentPoints, pointI)
-        {
-            label adjPoint = adjacentPoints[pointI];
-
-            scalar distance =
-            (
-                mag(points[adjPoint] - points[pointIndex])
-              + smallestDistance
-            );
-
-            // Check if the end-point has been touched.
-            if (adjPoint == endPoint)
-            {
-                foundEndPoint = true;
-            }
-
-            if (distance < d[adjPoint])
-            {
-                // Update to the shorter distance
-                d[adjPoint] = distance;
-
-                // Update the predecessor
-                if (pi.found(adjPoint))
-                {
-                    pi[adjPoint] = pointIndex;
-                }
-                else
-                {
-                    pi.insert(adjPoint, pointIndex);
-                }
-
-                // Add to the list of unvisited points
-                Q.insert(adjPoint);
-            }
-        }
-    }
-
-    // Write out the path
-    // if (debug > 3)
-    {
-        if (foundEndPoint)
-        {
-            DynamicList<label> pathNodes(50);
-
-            label currentPoint = endPoint;
-
-            while (currentPoint != startPoint)
-            {
-                pathNodes.append(currentPoint);
-
-                currentPoint = pi[currentPoint];
-            }
-
-            pathNodes.append(startPoint);
-
-            pathNodes.shrink();
-
-            writeVTK
-            (
-                "DijkstraPath_"
-              + Foam::name(startPoint)
-              + '_'
-              + Foam::name(endPoint),
-                pathNodes,
-                0
-            );
-        }
-    }
-
-    return foundEndPoint;
-}
 
 // Split a set of internal faces into boundary faces
 //   - Add boundary faces and edges to the patch specified by 'patchIndex'
@@ -5870,14 +5720,14 @@ void dynamicTopoFvMesh::splitInternalFaces
             forAllIter(labelHashSet, edgesToRemove, hsIter)
             {
                 // Add the edge to the mirror point list
-                sizeUpList
+                meshOps::sizeUpList
                 (
                     hsIter.key(),
                     pointEdges_[pIter()]
                 );
 
                 // Remove the edge from the original point list
-                sizeDownList
+                meshOps::sizeDownList
                 (
                     hsIter.key(),
                     pointEdges_[pIter.key()]
@@ -6017,7 +5867,7 @@ void dynamicTopoFvMesh::splitInternalFaces
             faceEdges_.append(newFaceEdges);
 
             // Replace face labels on cells
-            replaceLabel
+            meshOps::replaceLabel
             (
                 internalFaces[faceI],
                 newFaceIndex[indexI],
@@ -6138,7 +5988,7 @@ void dynamicTopoFvMesh::splitInternalFaces
             // so call it using array-lookup.
             forAllIter(labelHashSet, facesToRemove, hsIter)
             {
-                sizeDownList(hsIter.key(), edgeFaces_[eIter()]);
+                meshOps::sizeDownList(hsIter.key(), edgeFaces_[eIter()]);
             }
         }
     }

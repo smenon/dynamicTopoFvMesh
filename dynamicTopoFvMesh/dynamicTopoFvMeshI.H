@@ -22,9 +22,19 @@ License
     along with OpenFOAM; if not, write to the Free Software Foundation,
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+Class
+    dynamicTopoFvMesh
+
+Description
+    An implementation of dynamic changes to mesh-topology
+
+Author
+    Sandeep Menon
+    University of Massachusetts Amherst
+    All rights reserved
+
 \*---------------------------------------------------------------------------*/
 
-#include "triPointRef.H"
 #include "tetPointRef.H"
 #include "processorPolyPatch.H"
 #include "lengthScaleEstimator.H"
@@ -97,428 +107,6 @@ dynamicTopoFvMesh::threader() const
 inline bool dynamicTopoFvMesh::edgeRefinement() const
 {
     return edgeRefinement_;
-}
-
-
-// Return the magnitude of an edge
-inline scalar dynamicTopoFvMesh::edgeLength
-(
-    const edge& edgeToCheck,
-    const UList<point>& points
-) const
-{
-    return mag(points[edgeToCheck.end()] - points[edgeToCheck.start()]);
-}
-
-
-// Compute the centroid for a given face
-inline vector dynamicTopoFvMesh::faceCentre
-(
-    const face& faceToCheck,
-    const UList<point>& points
-) const
-{
-    face localFace(faceToCheck.size());
-    pointField localPoints(faceToCheck.size(), vector::zero);
-
-    // Fill in local points
-    forAll(localPoints, pointI)
-    {
-        localFace[pointI] = pointI;
-        localPoints[pointI] = points[faceToCheck[pointI]];
-    }
-
-    return localFace.centre(localPoints);
-}
-
-
-// Compute the normal for a given face
-inline vector dynamicTopoFvMesh::faceNormal
-(
-    const face& faceToCheck,
-    const UList<point>& points
-) const
-{
-    face localFace(faceToCheck.size());
-    pointField localPoints(faceToCheck.size(), vector::zero);
-
-    // Fill in local points
-    forAll(localPoints, pointI)
-    {
-        localFace[pointI] = pointI;
-        localPoints[pointI] = points[faceToCheck[pointI]];
-    }
-
-    return localFace.normal(localPoints);
-}
-
-
-// Given a face and cell index, find the apex point for a tet cell.
-inline label dynamicTopoFvMesh::tetApexPoint
-(
-    const label cIndex,
-    const label fIndex
-) const
-{
-    label apexPoint = -1;
-    bool foundApex = false;
-
-    const cell& cellToCheck = cells_[cIndex];
-    const face& baseFace = faces_[fIndex];
-
-    forAll(cellToCheck, faceI)
-    {
-        const face& faceToCheck = faces_[cellToCheck[faceI]];
-
-        apexPoint = findIsolatedPoint(baseFace, faceToCheck);
-
-        if (foundApex > -1)
-        {
-            foundApex = true;
-            break;
-        }
-    }
-
-    if (!foundApex)
-    {
-        Info << "fIndex: " << fIndex << ":: " << faces_[fIndex] << endl;
-        Info << "cIndex: " << cIndex << ":: " << cellToCheck << endl;
-
-        forAll(cellToCheck, faceI)
-        {
-            Info << '\t' << cellToCheck[faceI] << ":: "
-                 << faces_[cellToCheck[faceI]] << endl;
-        }
-
-        FatalErrorIn
-        (
-            "inline label dynamicTopoFvMesh::tetApexPoint"
-            "(const label cIndex, const label fIndex) const"
-        )
-            << "Could not find an apex point in cell: " << cIndex
-            << " given face: " << fIndex
-            << abort(FatalError);
-    }
-
-    return apexPoint;
-}
-
-
-// Given a cell index, find the centroid / volume of a cell.
-inline void dynamicTopoFvMesh::cellCentreAndVolume
-(
-    const label cIndex,
-    const UList<point>& points,
-    const UList<face>& faces,
-    const UList<cell>& cells,
-    const UList<label>& owner,
-    vector& centre,
-    scalar& volume
-) const
-{
-    // Reset inputs
-    volume = 0.0;
-    centre = vector::zero;
-
-    const cell& cellToCheck = cells[cIndex];
-
-    // Average face-centres to get an estimate centroid
-    vector cEst = vector::zero;
-
-    forAll(cellToCheck, faceI)
-    {
-        cEst += faceCentre(faces[cellToCheck[faceI]], points);
-    }
-
-    cEst /= cellToCheck.size();
-
-    forAll(cellToCheck, faceI)
-    {
-        vector fArea = faceNormal(faces[cellToCheck[faceI]], points);
-        vector fCentre = faceCentre(faces[cellToCheck[faceI]], points);
-
-        if (owner[cellToCheck[faceI]] != cIndex)
-        {
-            fArea *= -1.0;
-        }
-
-        // Calculate 3*face-pyramid volume
-        scalar pyr3Vol = fArea & (fCentre - cEst);
-
-        // Calculate face-pyramid centre
-        vector pc = (3.0/4.0)*fCentre + (1.0/4.0)*cEst;
-
-        // Accumulate volume-weighted face-pyramid centre
-        centre += pyr3Vol*pc;
-
-        // Accumulate face-pyramid volume
-        volume += pyr3Vol;
-    }
-
-    centre /= volume + VSMALL;
-    volume *= (1.0/3.0);
-}
-
-
-// Utility member function for separating axis tests
-inline label dynamicTopoFvMesh::whichSide
-(
-    const labelList& cellPoints,
-    const UList<point>& points,
-    const point& dir,
-    const point& p
-) const
-{
-    label nP = 0, nN = 0;
-
-    forAll(cellPoints, pointI)
-    {
-        scalar t = (dir & (points[cellPoints[pointI]] - p));
-
-        if (t > 0.0)
-        {
-            nP++;
-        }
-        else
-        if (t < 0.0)
-        {
-            nN++;
-        }
-
-        if (nP && nN)
-        {
-            return 0;
-        }
-    }
-
-    return (nP ? 1 : -1);
-}
-
-
-// Determine whether a two line segments intersect
-inline bool dynamicTopoFvMesh::segmentSegmentIntersection
-(
-    const edge& fromSegment,
-    const edge& toSegment,
-    const UList<point>& points,
-    point& intPoint
-) const
-{
-    if (fromSegment.commonVertex(toSegment) > -1)
-    {
-        // Edges share a common vertex. We won't deal
-        // with that situation here.
-        return false;
-    }
-
-    // Deal with edge-bisection cases
-    forAll(toSegment, pointI)
-    {
-        label pIndex = toSegment[pointI];
-
-        if (pIndex >= nOldPoints_)
-        {
-            forAll(pointsFromPoints_, indexI)
-            {
-                if (pointsFromPoints_[indexI].index() == pIndex)
-                {
-                    const labelList& mObj =
-                    (
-                        pointsFromPoints_[indexI].masterObjects()
-                    );
-
-                    // Check if the old edge contains all master points
-                    bool allMaster = true;
-
-                    forAll(mObj, pointJ)
-                    {
-                        if (findIndex(fromSegment, mObj[pointJ]) == -1)
-                        {
-                            allMaster = false;
-                            break;
-                        }
-                    }
-
-                    if (allMaster)
-                    {
-                        return false;
-                    }
-                }
-            }
-        }
-    }
-
-    vector u = points[fromSegment.end()] - points[fromSegment.start()];
-    vector v = points[toSegment.end()] - points[toSegment.start()];
-
-    vector p = points[fromSegment.start()];
-    vector q = points[toSegment.start()];
-
-    vector w = (p - q);
-
-    // Get parameters
-    scalar a = (u & u), b = (u & v), c = (v & v), d = (u & w), e = (v & w);
-
-    // Parallel / collinear check
-    scalar denom = (a * c) - (b * b);
-
-    scalar tolerance = (1e-6 * Foam::min(mag(u), mag(v)));
-
-    if (mag(denom) < tolerance)
-    {
-        return false;
-    }
-
-    scalar s = ((b * e) - (c * d))/(denom);
-    scalar t = ((a * e) - (b * d))/(denom);
-
-    // Out-of-bounds check
-    if (s < 0.0 || t < 0.0 || s > 1.0 || t > 1.0)
-    {
-        return false;
-    }
-
-    // Proximity check
-    scalar dist = mag( w + (s * u) - (t * v) );
-
-    if (dist > tolerance)
-    {
-        return false;
-    }
-
-    // Calculate the intersection point
-    intPoint = points[fromSegment.start()] + (s * u);
-
-    return true;
-}
-
-
-// Determine whether a segment intersects a face
-inline bool dynamicTopoFvMesh::segmentFaceIntersection
-(
-    const edge& edgeToCheck,
-    const face& faceToCheck,
-    const UList<point>& points,
-    vector& intersectionPoint
-) const
-{
-    // Specify unit face-normals
-    vector n = faceNormal(faceToCheck, points);
-    n /= mag(n) + VSMALL;
-
-    point p1 = points[edgeToCheck[0]];
-    point p2 = points[edgeToCheck[1]];
-    point p3 = points[faceToCheck[0]];
-
-    // Compute uValue
-    scalar numerator = n & (p3 - p1);
-    scalar denominator = n & (p2 - p1);
-
-    // Check if the edge is parallel to the face
-    scalar tolerance = (1e-4 * mag(p2 - p1));
-
-    if (mag(denominator) < tolerance)
-    {
-        return false;
-    }
-
-    scalar u = (numerator / denominator);
-
-    // Check for intersection along line.
-    if ((u > tolerance) && (u < (1.0 - tolerance)))
-    {
-        // Compute point of intersection
-        intersectionPoint = p1 + u*(p2 - p1);
-
-        // Also make sure that intPoint lies within the face
-        if (pointInFace(faceToCheck, points, intersectionPoint))
-        {
-            return true;
-        }
-    }
-
-    // Failed to fall within edge-bounds, or within face
-    return false;
-}
-
-
-// Determine whether the particular point lies
-// inside the given face
-inline bool dynamicTopoFvMesh::pointInFace
-(
-    const face& faceToCheck,
-    const UList<point>& points,
-    const point& checkPoint
-) const
-{
-    vector nf = faceNormal(faceToCheck, points);
-    nf /= mag(nf) + VSMALL;
-
-    forAll(faceToCheck, pI)
-    {
-        label nI = faceToCheck.fcIndex(pI);
-
-        // Identify vectors
-        vector tn =
-        (
-            triPointRef
-            (
-                points[faceToCheck[pI]],
-                points[faceToCheck[nI]],
-                checkPoint
-            ).normal()
-        );
-
-        scalar area = (tn & nf);
-
-        if (area < 0.0)
-        {
-            return false;
-        }
-    }
-
-    // Passed test with all edges
-    return true;
-}
-
-
-// Determine whether the particular point lies
-// inside the given cell
-inline bool dynamicTopoFvMesh::pointInCell
-(
-    const label cIndex,
-    const cell& cellToCheck,
-    const UList<face>& faces,
-    const UList<label>& owner,
-    const UList<point>& points,
-    const point& checkPoint
-) const
-{
-    vector xf(vector::zero), nf(vector::zero);
-
-    forAll(cellToCheck, faceI)
-    {
-        xf = faceCentre(faces[cellToCheck[faceI]], points);
-        nf = faceNormal(faces[cellToCheck[faceI]], points);
-
-        if (((xf - checkPoint) & nf) > 0.0)
-        {
-            if (owner[cellToCheck[faceI]] != cIndex)
-            {
-                return false;
-            }
-        }
-        else
-        {
-            if (owner[cellToCheck[faceI]] == cIndex)
-            {
-                return false;
-            }
-        }
-    }
-
-    // Passed test with all faces
-    return true;
 }
 
 
@@ -798,7 +386,10 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                 if (neighbour_[eFaces[faceI]] == -1)
                 {
                     // Obtain the normal.
-                    fNorm[count] = faceNormal(faces_[eFaces[faceI]], points_);
+                    fNorm[count] =
+                    (
+                        meshOps::faceNormal(faces_[eFaces[faceI]], points_)
+                    );
 
                     // Normalize it.
                     fNorm[count] /= mag(fNorm[count]);
@@ -813,7 +404,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
             if (mag(deviation) < refDeviation)
             {
                 // Get the edge-length.
-                scalar length = edgeLength(edges_[eIndex], points_);
+                scalar length = meshOps::edgeLength(edges_[eIndex], points_);
 
                 if (debug > 3 && self() == 0)
                 {
@@ -857,7 +448,14 @@ inline bool dynamicTopoFvMesh::checkBisection
     if (twoDMesh_)
     {
         // Measure the boundary edge-length of the face in question
-        length = edgeLength(edges_[getTriBoundaryEdge(index)], points_);
+        length =
+        (
+            meshOps::edgeLength
+            (
+                edges_[getTriBoundaryEdge(index)],
+                points_
+            )
+        );
 
         // Determine the length-scale at this face
         scale = faceLengthScale(index);
@@ -865,7 +463,14 @@ inline bool dynamicTopoFvMesh::checkBisection
     else
     {
         // Measure the edge-length
-        length = edgeLength(edges_[index], points_);
+        length =
+        (
+            meshOps::edgeLength
+            (
+                edges_[index],
+                points_
+            )
+        );
 
         // Determine the length-scale at this point in the mesh
         scale = edgeLengthScale(index);
@@ -893,7 +498,14 @@ inline bool dynamicTopoFvMesh::checkCollapse
     if (twoDMesh_)
     {
         // Measure the boundary edge-length of the face in question
-        length = edgeLength(edges_[getTriBoundaryEdge(index)], points_);
+        length =
+        (
+            meshOps::edgeLength
+            (
+                edges_[getTriBoundaryEdge(index)],
+                points_
+            )
+        );
 
         // Determine the length-scale at this face
         scale = faceLengthScale(index);
@@ -901,7 +513,14 @@ inline bool dynamicTopoFvMesh::checkCollapse
     else
     {
         // Measure the edge-length
-        length = edgeLength(edges_[index], points_);
+        length =
+        (
+            meshOps::edgeLength
+            (
+                edges_[index],
+                points_
+            )
+        );
 
         // Determine the length-scale at this point in the mesh
         scale = edgeLengthScale(index);
@@ -1291,302 +910,6 @@ inline label dynamicTopoFvMesh::whichEdgePatch
     }
 
     return -2;
-}
-
-
-// Utility method to find the isolated point given two triangular faces.
-//  - Returns the point on checkFace that does not belong to baseFace.
-inline label dynamicTopoFvMesh::findIsolatedPoint
-(
-    const face& baseFace,
-    const face& checkFace
-) const
-{
-    // Get the fourth point
-    forAll(checkFace, pointI)
-    {
-        if
-        (
-            checkFace[pointI] != baseFace[0] &&
-            checkFace[pointI] != baseFace[1] &&
-            checkFace[pointI] != baseFace[2]
-        )
-        {
-            return checkFace[pointI];
-        }
-    }
-
-    return -1;
-}
-
-
-// Utility method to find the isolated point on a triangular face
-// that doesn't lie on the specified edge. Also returns the point next to it.
-inline void dynamicTopoFvMesh::findIsolatedPoint
-(
-    const face& f,
-    const edge& e,
-    label& ptIndex,
-    label& nextPtIndex
-) const
-{
-    // Check the first point
-    if ( f[0] != e.start() && f[0] != e.end() )
-    {
-        ptIndex = f[0];
-        nextPtIndex = f[1];
-        return;
-    }
-
-    // Check the second point
-    if ( f[1] != e.start() && f[1] != e.end() )
-    {
-        ptIndex = f[1];
-        nextPtIndex = f[2];
-        return;
-    }
-
-    // Check the third point
-    if ( f[2] != e.start() && f[2] != e.end() )
-    {
-        ptIndex = f[2];
-        nextPtIndex = f[0];
-        return;
-    }
-
-    // This bit should never happen.
-    FatalErrorIn
-    (
-        "inline void dynamicTopoFvMesh::findIsolatedPoint"
-        "(const face&, const edge&, label&, label&) const"
-    )
-        << "Cannot find isolated point in face " << f << endl
-        << " Using edge: " << e
-        << abort(FatalError);
-}
-
-
-// Utility method to replace a label in a given list
-inline void dynamicTopoFvMesh::replaceLabel
-(
-     const label original,
-     const label replacement,
-     labelList& list
-) const
-{
-    bool found = false;
-
-    forAll(list, indexI)
-    {
-        if (list[indexI] == original)
-        {
-            list[indexI] = replacement;
-            found = true;
-            break;
-        }
-    }
-
-    if (!found)
-    {
-        FatalErrorIn
-        (
-            "inline void label dynamicTopoFvMesh::replaceLabel"
-            "(const label, const label, labelList&) const"
-        )   << nl << "Cannot find " << original
-            << " in list: " << list << nl
-            << " Label: " << replacement
-            << " was not used in replacement."
-            << abort(FatalError);
-    }
-}
-
-
-// Method to insert labels in a face, so that
-// right-handedness is preserved.
-inline void dynamicTopoFvMesh::insertPointLabels
-(
-    const vector& refNorm,
-    const vectorField& points,
-    const labelHashSet& pLabels,
-    face& modFace
-) const
-{
-    // Need to configure a new face.
-    face newFace(modFace);
-
-    forAllConstIter(labelHashSet, pLabels, pIter)
-    {
-        forAll(newFace, pI)
-        {
-            label nI = newFace.fcIndex(pI);
-
-            // Compute the normal.
-            vector newNorm =
-            (
-                triPointRef
-                (
-                    points[newFace[pI]],
-                    points[pIter.key()],
-                    points[newFace[nI]]
-                ).normal()
-            );
-
-            if ((refNorm & newNorm) > 0.0)
-            {
-                // Insert the point.
-                insertLabel
-                (
-                    pIter.key(),
-                    newFace[pI],
-                    newFace[nI],
-                    newFace
-                );
-
-                break;
-            }
-        }
-    }
-
-    // Take over storage
-    modFace.transfer(newFace);
-}
-
-
-// Method to insert a label between two labels in a list
-// Assumes that all labels are unique.
-inline void dynamicTopoFvMesh::insertLabel
-(
-    const label newLabel,
-    const label labelA,
-    const label labelB,
-    labelList& list
-) const
-{
-    // Create a new list
-    bool found = false;
-    label origSize = list.size();
-    labelList newList(origSize + 1);
-
-    label index = 0, nextI = -1;
-
-    // Start a linear search
-    forAll(list, itemI)
-    {
-        newList[index++] = list[itemI];
-
-        nextI = list.fcIndex(itemI);
-
-        if
-        (
-            (
-                (list[itemI] == labelA && list[nextI] == labelB) ||
-                (list[itemI] == labelB && list[nextI] == labelA)
-            ) &&
-           !found
-        )
-        {
-            found = true;
-            newList[index++] = newLabel;
-        }
-    }
-
-    if (!found)
-    {
-        FatalErrorIn
-        (
-            "inline void dynamicTopoFvMesh::insertLabel"
-            "(const label, const label,    const label, labelList&) const"
-        )   << nl << "Cannot insert " << newLabel
-            << " in list: " << list << nl
-            << " Labels: "
-            << labelA << " and " << labelB
-            << " were not found in sequence."
-            << abort(FatalError);
-    }
-
-    // Transfer the list
-    list.transfer(newList);
-}
-
-
-// Utility method to size-up the list to include an item
-template <class Type>
-inline void dynamicTopoFvMesh::sizeUpList
-(
-    const Type item,
-    List<Type>& list
-) const
-{
-    // Create a new list
-    List<Type> newList(list.size() + 1);
-
-    // Copy individual items
-    forAll(list, itemI)
-    {
-        newList[itemI] = list[itemI];
-    }
-
-    // Set the last element and overwrite
-    newList[list.size()] = item;
-    list.transfer(newList);
-}
-
-
-// Utility method to size-down the list to remove an item
-template <class Type>
-inline void dynamicTopoFvMesh::sizeDownList
-(
-    const Type item,
-    List<Type>& list
-) const
-{
-    label index = -1;
-
-    if ((index = findIndex(list, item)) > -1)
-    {
-        removeIndex(index, list);
-    }
-    else
-    {
-        FatalErrorIn
-        (
-            "inline void dynamicTopoFvMesh::sizeDownList"
-            "(const Type item, List<Type>& list) const"
-        )
-            << nl << "Item: " << item
-            << " was not found in list. " << nl
-            << " List: " << nl << list
-            << abort(FatalError);
-    }
-}
-
-
-// Remove an item at a particular index in the list
-template <class Type>
-inline void dynamicTopoFvMesh::removeIndex
-(
-    const label index,
-    List<Type>& list
-) const
-{
-    // Create a new list
-    List<Type> newList(list.size() - 1);
-
-    // Copy individual items
-    label n = 0;
-
-    forAll(list, itemI)
-    {
-        if (itemI == index)
-        {
-            continue;
-        }
-
-        newList[n++] = list[itemI];
-    }
-
-    // Overwrite
-    list.transfer(newList);
 }
 
 

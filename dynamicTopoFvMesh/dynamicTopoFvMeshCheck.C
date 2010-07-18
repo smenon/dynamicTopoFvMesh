@@ -119,7 +119,10 @@ bool dynamicTopoFvMesh::meshQuality
             const face& checkFace = faces_[cfIndex];
 
             // Get the fourth point
-            label apexPoint = findIsolatedPoint(baseFace, checkFace);
+            label apexPoint =
+            (
+                meshOps::findIsolatedPoint(baseFace, checkFace)
+            );
 
             // Compute cell quality
             if (owner_[bfIndex] == cellI)
@@ -288,7 +291,10 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
         if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
         {
             // Obtain the normal.
-            fNorm[count] = faceNormal(faces_[edgeFaces[faceI]], points_);
+            fNorm[count] =
+            (
+                meshOps::faceNormal(faces_[edgeFaces[faceI]], points_)
+            );
 
             // Normalize it.
             fNorm[count] /= mag(fNorm[count]);
@@ -759,7 +765,10 @@ void dynamicTopoFvMesh::writeVTK
                 cpList[nCells].setSize(4);
 
                 // Get the fourth point
-                label apexPoint = findIsolatedPoint(baseFace, checkFace);
+                label apexPoint =
+                (
+                    meshOps::findIsolatedPoint(baseFace, checkFace)
+                );
 
                 // Something's wrong with connectivity.
                 if (apexPoint == -1)
@@ -1673,7 +1682,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
             {
                 const face& faceToCheck = faces_[edgeFaces[faceI]];
 
-                findIsolatedPoint
+                meshOps::findIsolatedPoint
                 (
                     faceToCheck,
                     edgeToCheck,
@@ -1934,8 +1943,8 @@ bool dynamicTopoFvMesh::checkCollapse
         }
 
         // Compute the area and check if it's zero/negative
-        scalar origArea = mag(faceNormal(triFace, points_));
-        scalar newArea = mag(faceNormal(tmpTriFace, points_));
+        scalar origArea = mag(meshOps::faceNormal(triFace, points_));
+        scalar newArea = mag(meshOps::faceNormal(tmpTriFace, points_));
 
         if
         (
@@ -2143,49 +2152,6 @@ bool dynamicTopoFvMesh::checkCollapse
     // Update input quality
     collapseQuality = Foam::min(collapseQuality, cQuality);
 
-    return false;
-}
-
-
-// Utility method to check for concurrent points.
-bool dynamicTopoFvMesh::checkPointNearness
-(
-    const pointField& points,
-    const scalar magSqrTol
-) const
-{
-    forAll(points, pI)
-    {
-        forAll(points, pJ)
-        {
-            if (pI == pJ)
-            {
-                continue;
-            }
-
-            scalar magSqrDist = magSqr(points[pI] - points[pJ]);
-
-            if (magSqrDist < magSqrTol)
-            {
-                SeriousErrorIn
-                (
-                    "void dynamicTopoFvMesh::checkPointNearness"
-                    "(const pointField&, const scalar) const"
-                )
-                    << " Found concurrent points: " << nl
-                    << " pI: " << pI << " pJ: " << pJ << nl
-                    << " point: " << points[pI] << nl
-                    << " Points: " << points << nl
-                    << " distance: " << magSqrDist << nl
-                    << " tolerance: " << magSqrTol
-                    << endl;
-
-                return true;
-            }
-        }
-    }
-
-    // No errors detected.
     return false;
 }
 

@@ -644,8 +644,19 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         forAll(firstEdgeFaces,faceI)
         {
             // Replace point indices on faces.
-            replaceLabel(cv0, cv2, faces_[firstEdgeFaces[faceI]]);
-            replaceLabel(cv1, cv3, faces_[firstEdgeFaces[faceI]]);
+            meshOps::replaceLabel
+            (
+                cv0,
+                cv2,
+                faces_[firstEdgeFaces[faceI]]
+            );
+
+            meshOps::replaceLabel
+            (
+                cv1,
+                cv3,
+                faces_[firstEdgeFaces[faceI]]
+            );
 
             // Determine the quad-face in cell[0] & cell[1]
             // that belongs to firstEdgeFaces
@@ -685,7 +696,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         // Size down edgeFaces for the ends.
         findCommonEdge(faceToThrow[0], faceToKeep[0], ends[0]);
-        sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
+        meshOps::sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
 
         if (c1 != -1)
         {
@@ -696,7 +707,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             // Size down edgeFaces for the ends.
             findCommonEdge(faceToThrow[1], faceToKeep[1], ends[1]);
-            sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
+            meshOps::sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
         }
 
         // Correct edgeFaces for triangular faces...
@@ -759,18 +770,22 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             {
                 // Couldn't find a retained face.
                 // This must be a boundary edge, so size-down instead.
-                sizeDownList(origTriFace, edgeFaces_[edgeToKeep[indexI]]);
+                meshOps::sizeDownList
+                (
+                    origTriFace,
+                    edgeFaces_[edgeToKeep[indexI]]
+                );
             }
             else
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     origTriFace,
                     retTriFace,
                     edgeFaces_[edgeToKeep[indexI]]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     edgeToThrow[indexI],
                     edgeToKeep[indexI],
@@ -782,7 +797,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Correct faceEdges / edgeFaces for quad-faces...
         forAll(firstEdgeFaces,faceI)
         {
-            replaceLabel
+            meshOps::replaceLabel
             (
                 checkEdgeIndex[1],
                 checkEdgeIndex[2],
@@ -823,7 +838,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 (firstEdgeFaces[faceI] != fIndex)
             )
             {
-                sizeUpList
+                meshOps::sizeUpList
                 (
                     firstEdgeFaces[faceI],
                     edgeFaces_[checkEdgeIndex[2]]
@@ -832,7 +847,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Remove the current face from the replacement edge
-        sizeDownList(fIndex, edgeFaces_[checkEdgeIndex[2]]);
+        meshOps::sizeDownList(fIndex, edgeFaces_[checkEdgeIndex[2]]);
 
         // Replace point labels on all triangular boundary faces.
         forAll(firstCells,cellI)
@@ -957,8 +972,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         forAll(secondEdgeFaces,faceI)
         {
             // Replace point indices on faces.
-            replaceLabel(cv2, cv0, faces_[secondEdgeFaces[faceI]]);
-            replaceLabel(cv3, cv1, faces_[secondEdgeFaces[faceI]]);
+            meshOps::replaceLabel(cv2, cv0, faces_[secondEdgeFaces[faceI]]);
+            meshOps::replaceLabel(cv3, cv1, faces_[secondEdgeFaces[faceI]]);
 
             // Determine the quad-face(s) in cell[0] & cell[1]
             // that belongs to secondEdgeFaces
@@ -998,7 +1013,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         // Size down edgeFaces for the ends.
         findCommonEdge(faceToThrow[0], faceToKeep[0], ends[0]);
-        sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
+        meshOps::sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
 
         if (c1 != -1)
         {
@@ -1009,7 +1024,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             // Size down edgeFaces for the ends.
             findCommonEdge(faceToThrow[1], faceToKeep[1], ends[1]);
-            sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
+            meshOps::sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
         }
 
         // Correct edgeFaces for triangular faces...
@@ -1072,18 +1087,22 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             {
                 // Couldn't find a retained face.
                 // This must be a boundary edge, so size-down instead.
-                sizeDownList(origTriFace, edgeFaces_[edgeToKeep[indexI]]);
+                meshOps::sizeDownList
+                (
+                    origTriFace,
+                    edgeFaces_[edgeToKeep[indexI]]
+                );
             }
             else
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     origTriFace,
                     retTriFace,
                     edgeFaces_[edgeToKeep[indexI]]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     edgeToThrow[indexI],
                     edgeToKeep[indexI],
@@ -1095,7 +1114,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Correct faceEdges / edgeFaces for quad-faces...
         forAll(secondEdgeFaces,faceI)
         {
-            replaceLabel
+            meshOps::replaceLabel
             (
                 checkEdgeIndex[2],
                 checkEdgeIndex[1],
@@ -1136,7 +1155,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 (secondEdgeFaces[faceI] != fIndex)
             )
             {
-                sizeUpList
+                meshOps::sizeUpList
                 (
                     secondEdgeFaces[faceI],
                     edgeFaces_[checkEdgeIndex[1]]
@@ -1145,7 +1164,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Remove the current face from the replacement edge
-        sizeDownList(fIndex, edgeFaces_[checkEdgeIndex[1]]);
+        meshOps::sizeDownList(fIndex, edgeFaces_[checkEdgeIndex[1]]);
 
         // Replace point labels on all triangular boundary faces.
         forAll(secondCells, cellI)
@@ -1535,7 +1554,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // all on the boundary anyway.
         faceEdges_.append(newFaceEdges);
 
-        replaceLabel
+        meshOps::replaceLabel
         (
             faceToKeep[0],
             newFaceIndex,
@@ -1545,7 +1564,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Correct edgeFaces with the new face label.
         forAll(newFaceEdges, edgeI)
         {
-            replaceLabel
+            meshOps::replaceLabel
             (
                 faceToKeep[0],
                 newFaceIndex,
@@ -1572,7 +1591,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     if (cellCheck[0] != -1)
     {
-        replaceLabel(faceToThrow[0], faceToKeep[0], cells_[cellCheck[0]]);
+        meshOps::replaceLabel
+        (
+            faceToThrow[0],
+            faceToKeep[0],
+            cells_[cellCheck[0]]
+        );
     }
 
     // Remove the cell
@@ -1605,20 +1629,23 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             // This face is being converted from interior to boundary. Remove
             // from the interior list and add as a boundary face to the end.
-            label newFaceIndex = insertFace
-                                 (
-                                     whichPatch(faceToThrow[1]),
-                                     newFace,
-                                     newOwn,
-                                     -1
-                                 );
+            label newFaceIndex =
+            (
+                insertFace
+                (
+                    whichPatch(faceToThrow[1]),
+                    newFace,
+                    newOwn,
+                    -1
+                )
+            );
 
             // Add a faceEdges entry as well.
             // Edges don't have to change, since they're
             // all on the boundary anyway.
             faceEdges_.append(newFaceEdges);
 
-            replaceLabel
+            meshOps::replaceLabel
             (
                 faceToKeep[1],
                 newFaceIndex,
@@ -1628,7 +1655,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             // Correct edgeFaces with the new face label.
             forAll(newFaceEdges, edgeI)
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faceToKeep[1],
                     newFaceIndex,
@@ -1653,7 +1680,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (cellCheck[1] != -1)
         {
-            replaceLabel(faceToThrow[1], faceToKeep[1], cells_[cellCheck[1]]);
+            meshOps::replaceLabel
+            (
+                faceToThrow[1],
+                faceToKeep[1],
+                cells_[cellCheck[1]]
+            );
         }
 
         // Remove the cell
@@ -2495,7 +2527,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 ) == -1
             )
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     collapsePoint,
                     replacePoint,
@@ -2507,7 +2539,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         forAll(rmvEdgeFaces, faceI)
         {
             // Replace edge labels for faces
-            replaceLabel
+            meshOps::replaceLabel
             (
                 edgeToRemove,
                 replaceEdge,
@@ -2537,7 +2569,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Hull faces should be removed for the replacement edge
             if (rmvEdgeFaces[faceI] == faceHull[indexI])
             {
-                sizeDownList
+                meshOps::sizeDownList
                 (
                     faceHull[indexI],
                     edgeFaces_[replaceEdge]
@@ -2567,7 +2599,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // removal, but do not belong to the hull.
             if (!found)
             {
-                sizeUpList
+                meshOps::sizeUpList
                 (
                     rmvEdgeFaces[faceI],
                     edgeFaces_[replaceEdge]
@@ -2581,14 +2613,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
 
         // Size down edgeFaces for the ring edges
-        sizeDownList
+        meshOps::sizeDownList
         (
             faceToRemove,
             edgeFaces_[edgeHull[indexI]]
         );
 
         // Size down edgePoints for the ring edges
-        sizeDownList
+        meshOps::sizeDownList
         (
             collapsePoint,
             edgePoints_[edgeHull[indexI]]
@@ -2687,7 +2719,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             // connected faces.
                             forAll(newEF, faceI)
                             {
-                                replaceLabel
+                                meshOps::replaceLabel
                                 (
                                     newFE[edgeI],
                                     newEdgeIndex,
@@ -2714,7 +2746,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                     forAll(newFEdges, edgeI)
                     {
-                        replaceLabel
+                        meshOps::replaceLabel
                         (
                             replaceFace,
                             newFaceIndex,
@@ -2726,7 +2758,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     removeFace(replaceFace);
 
                     // Replace label for the new owner
-                    replaceLabel
+                    meshOps::replaceLabel
                     (
                         replaceFace,
                         newFaceIndex,
@@ -2775,7 +2807,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         else
                         {
                             // Size-down edgeFaces
-                            sizeDownList
+                            meshOps::sizeDownList
                             (
                                 replaceFace,
                                 edgeFaces_[rmFE[edgeI]]
@@ -2866,7 +2898,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         // connected faces.
                         forAll(newEF, faceI)
                         {
-                            replaceLabel
+                            meshOps::replaceLabel
                             (
                                 newFE[edgeI],
                                 newEdgeIndex,
@@ -2893,7 +2925,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 forAll(newFEdges, edgeI)
                 {
-                    replaceLabel
+                    meshOps::replaceLabel
                     (
                         replaceFace,
                         newFaceIndex,
@@ -2905,7 +2937,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 removeFace(replaceFace);
 
                 // Replace label for the new owner
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     replaceFace,
                     newFaceIndex,
@@ -2925,7 +2957,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Update the cell
             if (neighbour_[faceToRemove] != -1)
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     faceToRemove,
                     replaceFace,
@@ -2959,7 +2991,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
 
             // Update the cell
-            replaceLabel
+            meshOps::replaceLabel
             (
                 faceToRemove,
                 replaceFace,
@@ -3014,7 +3046,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             {
                 edges_[edgeIndex][0] = replacePoint;
 
-                sizeUpList
+                meshOps::sizeUpList
                 (
                     edgeIndex,
                     pointEdges_[replacePoint]
@@ -3025,7 +3057,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             {
                 edges_[edgeIndex][1] = replacePoint;
 
-                sizeUpList
+                meshOps::sizeUpList
                 (
                     edgeIndex,
                     pointEdges_[replacePoint]
@@ -3097,7 +3129,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     }
 
                     // Modify edgePoints for this edge
-                    replaceLabel
+                    meshOps::replaceLabel
                     (
                         collapsePoint,
                         replacePoint,
@@ -3435,7 +3467,7 @@ void dynamicTopoFvMesh::mergeBoundaryFaces
         const labelList& faceEdges = faceEdges_[retainedFace];
 
         // Replace cell with the new face label
-        replaceLabel
+        meshOps::replaceLabel
         (
             removedFace,
             retainedFace,
@@ -3691,7 +3723,7 @@ const changeMap dynamicTopoFvMesh::removeCells
         map.addFace(fIter());
 
         // Replace cell with the new face label
-        replaceLabel
+        meshOps::replaceLabel
         (
             fIter.key(),
             fIter(),
@@ -3742,14 +3774,14 @@ const changeMap dynamicTopoFvMesh::removeCells
         {
             if (edgesToConvert.found(fEdges[edgeI]))
             {
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     fIter.key(),
                     fIter(),
                     edgeFaces_[edgesToConvert[fEdges[edgeI]]]
                 );
 
-                replaceLabel
+                meshOps::replaceLabel
                 (
                     fEdges[edgeI],
                     edgesToConvert[fEdges[edgeI]],
@@ -3770,7 +3802,7 @@ const changeMap dynamicTopoFvMesh::removeCells
         {
             if (facesToRemove.found(eFaces[faceI]))
             {
-                sizeDownList
+                meshOps::sizeDownList
                 (
                     eFaces[faceI],
                     edgeFaces_[eIter()]

@@ -446,8 +446,8 @@ void dynamicTopoFvMesh::computeFaceWeights
     bool output = false;
 
     // Fetch the area / centre of the cell
-    scalar fArea = mag(faceNormal(faces_[fIndex], oldPoints_));
-    vector fCentre = faceCentre(faces_[fIndex], oldPoints_);
+    scalar fArea = mag(meshOps::faceNormal(faces_[fIndex], oldPoints_));
+    vector fCentre = meshOps::faceCentre(faces_[fIndex], oldPoints_);
 
     while (nAttempts < 10)
     {
@@ -530,12 +530,25 @@ void dynamicTopoFvMesh::computeFaceWeights
                     {
                         parents[nIntersects] = candidates[indexI];
 
+                        // We need a reference normal. Use the new face.
+                        vector refNorm =
+                        (
+                            meshOps::faceNormal
+                            (
+                                faces_[fIndex],
+                                oldPoints_
+                            )
+                        );
+
+                        refNorm /= mag(refNorm) + VSMALL;
+
                         // Compute weights
-                        convexSetArea
+                        meshOps::convexSetArea
                         (
                             fIndex,
                             parents[nIntersects],
                             tP,
+                            refNorm,
                             weights[nIntersects],
                             centres[nIntersects],
                             output
@@ -567,7 +580,7 @@ void dynamicTopoFvMesh::computeFaceWeights
     }
 
     // Test weights for consistency
-    if (mag(1.0 - sum(weights/fArea)) > 1e-10)
+    if (mag(1.0 - sum(weights/fArea)) > 1e-12)
     {
         // Inconsistent weights. Check whether any edges
         // lie on bounding curves. These faces can have
@@ -682,7 +695,7 @@ void dynamicTopoFvMesh::computeCellWeights
     scalar cellVolume = 0.0;
     vector cellCentre = vector::zero;
 
-    cellCentreAndVolume
+    meshOps::cellCentreAndVolume
     (
         cIndex,
         oldPoints_,
@@ -772,7 +785,7 @@ void dynamicTopoFvMesh::computeCellWeights
                         parents[nIntersects] = candidates[indexI];
 
                         // Compute weights
-                        convexSetVolume
+                        meshOps::convexSetVolume
                         (
                             cIndex,
                             parents[nIntersects],
@@ -808,7 +821,7 @@ void dynamicTopoFvMesh::computeCellWeights
     }
 
     // Test weights for consistency
-    if (mag(1.0 - sum(weights/cellVolume)) > 1e-10)
+    if (mag(1.0 - sum(weights/cellVolume)) > 1e-12)
     {
         // Inconsistent weights. Check whether any edges
         // lie on boundary patches. These cells can have
@@ -963,7 +976,7 @@ bool dynamicTopoFvMesh::testCellIntersection
     {
         const label fIndex = fromCell[faceI];
 
-        dir = faceNormal(fromFaces[fIndex], oldPoints_);
+        dir = meshOps::faceNormal(fromFaces[fIndex], oldPoints_);
 
         // Reverse normal if necessary
         if (fromOwner[fIndex] != oldCellIndex)
@@ -973,7 +986,7 @@ bool dynamicTopoFvMesh::testCellIntersection
 
         if
         (
-            whichSide
+            meshOps::whichSide
             (
                 toCellPoints,
                 oldPoints_,
@@ -991,7 +1004,7 @@ bool dynamicTopoFvMesh::testCellIntersection
     {
         const label fIndex = toCell[faceI];
 
-        dir = faceNormal(faces_[fIndex], oldPoints_);
+        dir = meshOps::faceNormal(faces_[fIndex], oldPoints_);
 
         // Reverse normal if necessary
         if (owner_[fIndex] != newCellIndex)
@@ -1001,7 +1014,7 @@ bool dynamicTopoFvMesh::testCellIntersection
 
         if
         (
-            whichSide
+            meshOps::whichSide
             (
                 fromCellPoints,
                 oldPoints_,
@@ -1037,7 +1050,7 @@ bool dynamicTopoFvMesh::testCellIntersection
 
             label firstSide =
             (
-                whichSide
+                meshOps::whichSide
                 (
                     fromCellPoints,
                     oldPoints_,
@@ -1053,7 +1066,7 @@ bool dynamicTopoFvMesh::testCellIntersection
 
             label secondSide =
             (
-                whichSide
+                meshOps::whichSide
                 (
                     toCellPoints,
                     oldPoints_,
@@ -1094,8 +1107,8 @@ bool dynamicTopoFvMesh::faceIntersection
     const face& toFace = faces_[newFaceIndex];
 
     // Obtain face centre and projection normal
-    vector xf = faceCentre(toFace, oldPoints_);
-    vector nf = faceNormal(toFace, oldPoints_);
+    vector xf = meshOps::faceCentre(toFace, oldPoints_);
+    vector nf = meshOps::faceNormal(toFace, oldPoints_);
 
     nf /= mag(nf) + VSMALL;
 
@@ -1191,7 +1204,7 @@ bool dynamicTopoFvMesh::faceIntersection
 
         if (debug)
         {
-            if (checkPointNearness(tP, 1e-20))
+            if (meshOps::checkPointNearness(tP, 1e-20))
             {
                 writeVTK(Foam::name(newFaceIndex),newFaceIndex,2,false,true);
                 writeVTK(Foam::name(oldFaceIndex),oldFaceIndex,2,true,true);
@@ -1222,7 +1235,7 @@ bool dynamicTopoFvMesh::faceIntersection
 
         const point& checkPoint = projections[pointI];
 
-        if (pointInFace(toFace, oldPoints_, checkPoint))
+        if (meshOps::pointInFace(toFace, oldPoints_, checkPoint))
         {
             intersections.set(++nInts, checkPoint);
         }
@@ -1241,7 +1254,7 @@ bool dynamicTopoFvMesh::faceIntersection
 
         const point& checkPoint = oldPoints_[toFace[pointI]];
 
-        if (pointInFace(ifFace, projections, checkPoint))
+        if (meshOps::pointInFace(ifFace, projections, checkPoint))
         {
             intersections.set(++nInts, checkPoint);
         }
@@ -1318,7 +1331,7 @@ bool dynamicTopoFvMesh::faceIntersection
     // Check for concurrent points.
     if (debug)
     {
-        if (checkPointNearness(tP, 1e-20))
+        if (meshOps::checkPointNearness(tP, 1e-20))
         {
             writeVTK(Foam::name(newFaceIndex),newFaceIndex,2,false,true);
             writeVTK(Foam::name(oldFaceIndex),oldFaceIndex,2,true,true);
@@ -1444,7 +1457,7 @@ bool dynamicTopoFvMesh::cellIntersection
 
         if (debug)
         {
-            if (checkPointNearness(tP, 1e-20))
+            if (meshOps::checkPointNearness(tP, 1e-20))
             {
                 writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
                 writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
@@ -1477,7 +1490,7 @@ bool dynamicTopoFvMesh::cellIntersection
 
         if
         (
-            pointInCell
+            meshOps::pointInCell
             (
                 newCellIndex,
                 toCell,
@@ -1505,7 +1518,7 @@ bool dynamicTopoFvMesh::cellIntersection
 
         if
         (
-            pointInCell
+            meshOps::pointInCell
             (
                 oldCellIndex,
                 fromCell,
@@ -1533,11 +1546,69 @@ bool dynamicTopoFvMesh::cellIntersection
         {
             const edge& toEdge = toCellEdges[edgeJ];
 
+            if (fromEdge.commonVertex(toEdge) > -1)
+            {
+                // Edges share a common vertex. We won't deal
+                // with that situation here.
+                continue;
+            }
+
+            // Deal with edge-bisection cases
+            bool foundBisectionPoint = false;
+
+            forAll(toEdge, pointI)
+            {
+                label pIndex = toEdge[pointI];
+
+                if (pIndex >= nOldPoints_)
+                {
+                    forAll(pointsFromPoints_, indexI)
+                    {
+                        if (pointsFromPoints_[indexI].index() == pIndex)
+                        {
+                            const labelList& mObj =
+                            (
+                                pointsFromPoints_[indexI].masterObjects()
+                            );
+
+                            // Check if the old edge
+                            // contains all master points
+                            bool allMaster = true;
+
+                            forAll(mObj, pointJ)
+                            {
+                                if (findIndex(fromEdge, mObj[pointJ]) == -1)
+                                {
+                                    allMaster = false;
+                                    break;
+                                }
+                            }
+
+                            if (allMaster)
+                            {
+                                foundBisectionPoint = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (foundBisectionPoint)
+                {
+                    break;
+                }
+            }
+
+            if (foundBisectionPoint)
+            {
+                continue;
+            }
+
             foundIntersection = false;
 
             foundIntersection =
             (
-                segmentSegmentIntersection
+                meshOps::segmentSegmentIntersection
                 (
                     fromEdge,
                     toEdge,
@@ -1661,7 +1732,7 @@ bool dynamicTopoFvMesh::cellIntersection
 
             foundIntersection =
             (
-                segmentFaceIntersection
+                meshOps::segmentFaceIntersection
                 (
                     edgeToCheck,
                     faceToCheck,
@@ -1763,7 +1834,7 @@ bool dynamicTopoFvMesh::cellIntersection
 
             foundIntersection =
             (
-                segmentFaceIntersection
+                meshOps::segmentFaceIntersection
                 (
                     edgeToCheck,
                     faceToCheck,
@@ -1793,7 +1864,7 @@ bool dynamicTopoFvMesh::cellIntersection
     // Check for concurrent points.
     if (debug)
     {
-        if (checkPointNearness(tP, 1e-20))
+        if (meshOps::checkPointNearness(tP, 1e-20))
         {
             writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
             writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
@@ -1818,576 +1889,6 @@ bool dynamicTopoFvMesh::cellIntersection
 
     // Does not intersect
     return false;
-}
-
-
-// Compute the area / centre of a polygon
-// formed by a convex set of points.
-void dynamicTopoFvMesh::convexSetArea
-(
-    const label newFaceIndex,
-    const label oldFaceIndex,
-    const vectorField& cvxSet,
-    scalar& fArea,
-    vector& fCentre,
-    bool output
-) const
-{
-    // Reset inputs
-    fArea = 0.0;
-    fCentre = vector::zero;
-
-    // Try the trivial case for a triangle.
-    if (cvxSet.size() == 3)
-    {
-        triPointRef tpr(cvxSet[0], cvxSet[1], cvxSet[2]);
-
-        fArea = tpr.mag();
-        fCentre = tpr.centre();
-
-        return;
-    }
-
-    // We need a reference normal. Use the new face.
-    vector refNorm = faceNormal(faces_[newFaceIndex], oldPoints_);
-    refNorm /= mag(refNorm) + VSMALL;
-
-    // Track edges
-    label nEdges = 0;
-    edgeList testEdges(0);
-
-    // Loop through all points, and build edges with every
-    // other point in the set
-    forAll(cvxSet, i)
-    {
-        forAll(cvxSet, j)
-        {
-            // Skip duplicates.
-            if (j == i)
-            {
-                continue;
-            }
-
-            // Define the edge
-            edge tmpEdge(i, j);
-
-            // If this is an existing edge, skip it.
-            bool foundExisting = false;
-
-            forAll(testEdges, edgeI)
-            {
-                if (testEdges[edgeI] == tmpEdge)
-                {
-                    foundExisting = true;
-                    break;
-                }
-            }
-
-            if (foundExisting)
-            {
-                continue;
-            }
-
-            // Specify a tolerance for collinearity
-            scalar tolerance = 1e-14;
-
-            // Compute the normal to this edge
-            vector n = (tmpEdge.vec(cvxSet) ^ refNorm);
-
-            n /= mag(n) + VSMALL;
-
-            label curEdgeSign = 0;
-            bool foundInternalEdge = false;
-
-            // Quick-reject test:
-            //   Check all other points in the set,
-            //   and decide if all points lie on one side.
-            forAll(cvxSet, k)
-            {
-                // Skip duplicates.
-                if (tmpEdge[0] == k || tmpEdge[1] == k)
-                {
-                    continue;
-                }
-
-                vector rfVec = (cvxSet[k] - cvxSet[i]);
-                scalar dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
-
-                // Skip nearly collinear points.
-                if (mag(dotProd) < tolerance)
-                {
-                    continue;
-                }
-
-                // Obtain the sign of this point.
-                label eSign = Foam::sign(dotProd);
-
-                // Update the current sign if necessary.
-                if (curEdgeSign == 0)
-                {
-                    curEdgeSign = eSign;
-                }
-                else
-                if (curEdgeSign != eSign)
-                {
-                    // Interior edge. Bail out.
-                    foundInternalEdge = true;
-                    break;
-                }
-            }
-
-            if (foundInternalEdge)
-            {
-                continue;
-            }
-
-            // Looks like we found an edge on the boundary.
-            // Check its sign to ensure that it points outward.
-            if (curEdgeSign == 1)
-            {
-                n *= -1.0;
-                tmpEdge = tmpEdge.reverseEdge();
-            }
-
-            // Add to the list of edges.
-            testEdges.setSize(++nEdges, tmpEdge);
-        }
-    }
-
-    // Sanity check - do points match edges?
-    if (testEdges.size() != cvxSet.size())
-    {
-        FatalErrorIn
-        (
-            "\n"
-            "void dynamicTopoFvMesh::convexSetArea\n"
-            "(\n"
-            "    const label newFaceIndex,\n"
-            "    const label oldFaceIndex,\n"
-            "    const vectorField& cvxSet,\n"
-            "    scalar& fArea,\n"
-            "    vector& fCentre,\n"
-            "    bool output\n"
-            ") const"
-        )
-            << " Points do not match edges. " << nl
-            << " nPoints: " << cvxSet.size() << nl
-            << " nEdges: " << testEdges.size() << nl
-            << " Edge list: " << testEdges
-            << abort(FatalError);
-    }
-
-    // Find an approximate face-centroid
-    scalar sumA = 0.0;
-    vector sumAc = vector::zero;
-    vector xC = average(cvxSet);
-
-    forAll(testEdges, edgeI)
-    {
-        const edge& e = testEdges[edgeI];
-
-        vector c = cvxSet[e[0]] + cvxSet[e[1]] + xC;
-        scalar a = mag(e.vec(cvxSet) ^ (xC - cvxSet[e[0]]));
-
-        sumA += a;
-        sumAc += a*c;
-    }
-
-    fCentre = (1.0/3.0)*sumAc/(sumA + VSMALL);
-    fArea = 0.5*sumA;
-
-    if (output)
-    {
-        Info << " newFaceIndex: " << newFaceIndex
-             << " oldFaceIndex: " << oldFaceIndex << nl
-             << " Edges: " << testEdges << nl
-             << " Area: " << fArea << nl
-             << " Centre: " << fCentre << nl
-             << endl;
-    }
-}
-
-
-// Compute the volume / centre of a polyhedron
-// formed by a convex set of points.
-void dynamicTopoFvMesh::convexSetVolume
-(
-    const label newCellIndex,
-    const label oldCellIndex,
-    const vectorField& cvxSet,
-    scalar& cVolume,
-    vector& cCentre,
-    bool output
-) const
-{
-    // Reset inputs
-    cVolume = 0.0;
-    cCentre = vector::zero;
-
-    // Try the trivial case for a tetrahedron.
-    // No checking for orientation here.
-    if (cvxSet.size() == 4)
-    {
-        cCentre = average(cvxSet);
-
-        cVolume =
-        (
-            mag
-            (
-                tetPointRef
-                (
-                    cvxSet[0],
-                    cvxSet[1],
-                    cvxSet[2],
-                    cvxSet[3]
-                ).mag()
-            )
-        );
-
-        return;
-    }
-
-    // Track faces
-    face tmpFace(3);
-    label nFaces = 0;
-    faceList testFaces(0);
-    labelHashSet uniquePts;
-
-    // Loop through all points, and build faces with every
-    // other point in the set
-    forAll(cvxSet, i)
-    {
-        forAll(cvxSet, j)
-        {
-            // Skip duplicates.
-            if (j == i)
-            {
-                continue;
-            }
-
-            forAll(cvxSet, k)
-            {
-                // Skip duplicates.
-                if (k == i || k == j)
-                {
-                    continue;
-                }
-
-                // Configure the face.
-                tmpFace[0] = i;
-                tmpFace[1] = j;
-                tmpFace[2] = k;
-
-                // Quick-reject test:
-                //   If this is a subset of an existing face, skip it.
-                bool foundSubSet = false;
-
-                forAll(testFaces, faceI)
-                {
-                    const face& checkFace = testFaces[faceI];
-
-                    if (checkFace.size() >= tmpFace.size())
-                    {
-                        bool foundUniquePoint = false;
-
-                        forAll(tmpFace, pI)
-                        {
-                            if (findIndex(checkFace, tmpFace[pI]) == -1)
-                            {
-                                foundUniquePoint = true;
-                                break;
-                            }
-                        }
-
-                        if (!foundUniquePoint)
-                        {
-                            foundSubSet = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (foundSubSet)
-                {
-                    continue;
-                }
-
-                // Specify a tolerance for planarity
-                scalar tolerance = 1e-14;
-
-                // Compute the normal to this face
-                vector n = tmpFace.normal(cvxSet);
-
-                n /= mag(n) + VSMALL;
-
-                label curFaceSign = 0;
-                bool foundInternalFace = false;
-
-                // Quick-reject test:
-                //   Check all other points in the set,
-                //   and decide if all points lie on one side.
-                forAll(cvxSet, l)
-                {
-                    // Skip duplicates.
-                    if (tmpFace[0] == l || tmpFace[1] == l || tmpFace[2] == l)
-                    {
-                        continue;
-                    }
-
-                    vector rfVec = (cvxSet[l] - cvxSet[i]);
-                    scalar dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
-
-                    // Skip nearly co-planar points.
-                    if (mag(dotProd) < tolerance)
-                    {
-                        continue;
-                    }
-
-                    // Obtain the sign of this point.
-                    label fSign = Foam::sign(dotProd);
-
-                    // Update the current sign if necessary.
-                    if (curFaceSign == 0)
-                    {
-                        curFaceSign = fSign;
-                    }
-                    else
-                    if (curFaceSign != fSign)
-                    {
-                        // Interior face. Bail out.
-                        foundInternalFace = true;
-                        break;
-                    }
-                }
-
-                if (foundInternalFace)
-                {
-                    continue;
-                }
-
-                // Looks like we found a face on the boundary.
-                // Check its sign to ensure that it points outward.
-                if (curFaceSign == 1)
-                {
-                    n *= -1.0;
-                    tmpFace = tmpFace.reverseFace();
-                }
-
-                // Ensure that the face wasn't checked in.
-                bool alreadyCheckedIn = false;
-
-                forAll(testFaces, faceI)
-                {
-                    // Fetch a non-const reference, since this face
-                    // might be modified in this loop.
-                    face& checkFace = testFaces[faceI];
-
-                    label nCommon = 0;
-
-                    uniquePts.clear();
-
-                    forAll(tmpFace, pI)
-                    {
-                        if (findIndex(checkFace, tmpFace[pI]) > -1)
-                        {
-                            nCommon++;
-                        }
-                        else
-                        {
-                            uniquePts.insert(tmpFace[pI]);
-                        }
-                    }
-
-                    if (nCommon >= 2)
-                    {
-                        if (checkFace.size() >= tmpFace.size())
-                        {
-                            // Check for unique points
-                            if (uniquePts.size() > 0)
-                            {
-                                // Compute the existing normal
-                                vector eNorm = checkFace.normal(cvxSet);
-
-                                scalar dotProd =
-                                (
-                                    n & (eNorm/(mag(eNorm) + VSMALL))
-                                );
-
-                                if
-                                (
-                                    (mag(1.0 - dotProd) < tolerance) &&
-                                    (dotProd > 0.0)
-                                )
-                                {
-                                    // Add all unique points to checkFace
-                                    insertPointLabels
-                                    (
-                                        n,
-                                        cvxSet,
-                                        uniquePts,
-                                        checkFace
-                                    );
-
-                                    alreadyCheckedIn = true;
-                                    break;
-                                }
-                            }
-                            else
-                            {
-                                // Subset face
-                                alreadyCheckedIn = true;
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            // checkFace is a subset. Replace it.
-                            checkFace = tmpFace;
-
-                            alreadyCheckedIn = true;
-                            break;
-                        }
-                    }
-                }
-
-                // Add this face to the list of faces.
-                if (!alreadyCheckedIn)
-                {
-                    testFaces.setSize(++nFaces, tmpFace);
-                }
-
-                // Reset the face size.
-                tmpFace.setSize(3, -1);
-            }
-        }
-    }
-
-    // Account for planarity test failure.
-    //  - Check for subsets.
-    forAll(testFaces, faceI)
-    {
-        // Fetch a non-const reference, since this face
-        // might be modified in this loop.
-        face& checkFace = testFaces[faceI];
-
-        // Account for deleted testFaces
-        if (checkFace.empty())
-        {
-            continue;
-        }
-
-        // Compute the normal to this face
-        vector n = checkFace.normal(cvxSet);
-
-        forAll(testFaces, faceJ)
-        {
-            if (faceI == faceJ)
-            {
-                continue;
-            }
-
-            // Fetch a non-const reference, since this face
-            // might be modified in this loop.
-            face& testFace = testFaces[faceJ];
-
-            if (checkFace.size() >= testFace.size())
-            {
-                label nCommon = 0;
-
-                uniquePts.clear();
-
-                forAll(testFace, pI)
-                {
-                    if (findIndex(checkFace, testFace[pI]) > -1)
-                    {
-                        nCommon++;
-                    }
-                    else
-                    {
-                        uniquePts.insert(testFace[pI]);
-                    }
-                }
-
-                if (nCommon >= 3)
-                {
-                    // Delete the test face
-                    testFace.clear();
-
-                    // Add all unique points to checkFace
-                    // Failed the tolerance test before,
-                    // so don't check for it now
-                    if (uniquePts.size())
-                    {
-                        insertPointLabels
-                        (
-                            n,
-                            cvxSet,
-                            uniquePts,
-                            checkFace
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    // Find an approximate cell-centroid
-    vector xC = average(cvxSet);
-
-    // Calculate volume from all accumulated faces.
-    forAll(testFaces, faceI)
-    {
-        const face& checkFace = testFaces[faceI];
-
-        if (checkFace.empty())
-        {
-            continue;
-        }
-
-        vector xF = checkFace.centre(cvxSet);
-        vector Sf = checkFace.normal(cvxSet);
-
-        // Calculate 3*face-pyramid volume
-        scalar pyr3Vol = Sf & (xF - xC);
-
-        // Calculate face-pyramid centre
-        vector pc = (3.0/4.0)*xF + (1.0/4.0)*xC;
-
-        // Accumulate volume-weighted face-pyramid centre
-        cCentre += pyr3Vol*pc;
-
-        // Accumulate face-pyramid volume
-        cVolume += pyr3Vol;
-    }
-
-    cCentre /= cVolume + VSMALL;
-    cVolume *= (1.0/3.0);
-
-    if (output)
-    {
-        // Write out faces as a standalone patch
-        fileName dirName(time().path()/"VTK"/time().timeName());
-        mkDir(dirName);
-
-        PrimitivePatch<face, List, pointField>::writeVTK
-        (
-            dirName/fileName
-            (
-                "int_"
-              + Foam::name(newCellIndex) + '_'
-              + Foam::name(oldCellIndex)
-            ),
-            testFaces,
-            cvxSet
-        );
-
-        Info << " newCellIndex: " << newCellIndex
-             << " oldCellIndex: " << oldCellIndex << nl
-             << " Faces: " << testFaces << nl
-             << " Volume: " << cVolume << nl
-             << " Centre: " << cCentre << nl
-             << endl;
-    }
 }
 
 
@@ -2697,7 +2198,7 @@ void dynamicTopoFvMesh::setCellMapping
 
     if (index == -1)
     {
-        sizeUpList(objectMap(cIndex, mapCells), cellsFromCells_);
+        meshOps::sizeUpList(objectMap(cIndex, mapCells), cellsFromCells_);
     }
     else
     {
@@ -2795,7 +2296,7 @@ void dynamicTopoFvMesh::setFaceMapping
 
     if (index == -1)
     {
-        sizeUpList(objectMap(fIndex, mapFaces), facesFromFaces_);
+        meshOps::sizeUpList(objectMap(fIndex, mapFaces), facesFromFaces_);
     }
     else
     {
@@ -2893,7 +2394,7 @@ void dynamicTopoFvMesh::removeCell
         if (cellsFromPoints_[indexI].index() == cIndex)
         {
             // Remove entry from the list
-            removeIndex(indexI, cellsFromPoints_);
+            meshOps::removeIndex(indexI, cellsFromPoints_);
             break;
         }
     }
@@ -2903,7 +2404,7 @@ void dynamicTopoFvMesh::removeCell
         if (cellsFromEdges_[indexI].index() == cIndex)
         {
             // Remove entry from the list
-            removeIndex(indexI, cellsFromEdges_);
+            meshOps::removeIndex(indexI, cellsFromEdges_);
             break;
         }
     }
@@ -2913,7 +2414,7 @@ void dynamicTopoFvMesh::removeCell
         if (cellsFromFaces_[indexI].index() == cIndex)
         {
             // Remove entry from the list
-            removeIndex(indexI, cellsFromFaces_);
+            meshOps::removeIndex(indexI, cellsFromFaces_);
             break;
         }
     }
@@ -2923,7 +2424,7 @@ void dynamicTopoFvMesh::removeCell
         if (cellsFromCells_[indexI].index() == cIndex)
         {
             // Remove entry from the list
-            removeIndex(indexI, cellsFromCells_);
+            meshOps::removeIndex(indexI, cellsFromCells_);
             break;
         }
     }
@@ -3149,7 +2650,7 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromPoints_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            removeIndex(indexI, facesFromPoints_);
+            meshOps::removeIndex(indexI, facesFromPoints_);
             break;
         }
     }
@@ -3159,7 +2660,7 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromEdges_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            removeIndex(indexI, facesFromEdges_);
+            meshOps::removeIndex(indexI, facesFromEdges_);
             break;
         }
     }
@@ -3169,7 +2670,7 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromFaces_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            removeIndex(indexI, facesFromFaces_);
+            meshOps::removeIndex(indexI, facesFromFaces_);
             break;
         }
     }
@@ -3278,8 +2779,8 @@ label dynamicTopoFvMesh::insertEdge
     // Size-up the pointEdges list
     if (!twoDMesh_)
     {
-        sizeUpList(newEdgeIndex, pointEdges_[newEdge[0]]);
-        sizeUpList(newEdgeIndex, pointEdges_[newEdge[1]]);
+        meshOps::sizeUpList(newEdgeIndex, pointEdges_[newEdge[0]]);
+        meshOps::sizeUpList(newEdgeIndex, pointEdges_[newEdge[1]]);
     }
 
     // Increment the total edge count
@@ -3310,12 +2811,12 @@ void dynamicTopoFvMesh::removeEdge
         // Size-down the pointEdges list
         if (pointEdges_[edges_[eIndex][0]].size())
         {
-            sizeDownList(eIndex, pointEdges_[edges_[eIndex][0]]);
+            meshOps::sizeDownList(eIndex, pointEdges_[edges_[eIndex][0]]);
         }
 
         if (pointEdges_[edges_[eIndex][1]].size())
         {
-            sizeDownList(eIndex, pointEdges_[edges_[eIndex][1]]);
+            meshOps::sizeDownList(eIndex, pointEdges_[edges_[eIndex][1]]);
         }
 
         // Remove from the stack as well
@@ -3415,7 +2916,7 @@ label dynamicTopoFvMesh::insertPoint
     }
 
     // Make a pointsFromPoints entry
-    sizeUpList
+    meshOps::sizeUpList
     (
         objectMap(newPointIndex, mapPoints),
         pointsFromPoints_
@@ -3508,7 +3009,7 @@ void dynamicTopoFvMesh::removePoint
         if (pointsFromPoints_[indexI].index() == pIndex)
         {
             // Remove entry from the list
-            removeIndex(indexI, pointsFromPoints_);
+            meshOps::removeIndex(indexI, pointsFromPoints_);
             break;
         }
     }
@@ -3632,7 +3133,7 @@ void dynamicTopoFvMesh::constructHull
 
         // Find the isolated point on this face,
         // and compare it with hullVertices
-        findIsolatedPoint
+        meshOps::findIsolatedPoint
         (
             faceToCheck,
             edgeToCheck,
@@ -3824,7 +3325,7 @@ void dynamicTopoFvMesh::buildEdgePoints
         {
             if (whichPatch(eFaces[faceI]) > -1)
             {
-                findIsolatedPoint
+                meshOps::findIsolatedPoint
                 (
                     faces_[eFaces[faceI]],
                     edgeToCheck,
@@ -3844,7 +3345,7 @@ void dynamicTopoFvMesh::buildEdgePoints
     // Shuffle vertices to appear in CCW order
     forAll(ePoints, indexI)
     {
-        findIsolatedPoint
+        meshOps::findIsolatedPoint
         (
             faces_[faceIndex],
             edgeToCheck,
@@ -4063,13 +3564,16 @@ scalar dynamicTopoFvMesh::testProximity
     if (twoDMesh_)
     {
         // Obtain the face-normal.
-        gNormal = faceNormal(faces_[index], points_);
+        gNormal = meshOps::faceNormal(faces_[index], points_);
 
         // Obtain the face centre.
-        gCentre = faceCentre(faces_[index], points_);
+        gCentre = meshOps::faceCentre(faces_[index], points_);
 
         // Calculate a test step-size
-        testStep = edgeLength(edges_[getTriBoundaryEdge(index)], points_);
+        testStep =
+        (
+            meshOps::edgeLength(edges_[getTriBoundaryEdge(index)], points_)
+        );
     }
     else
     {
@@ -4085,12 +3589,12 @@ scalar dynamicTopoFvMesh::testProximity
             if (neighbour_[eFaces[faceI]] == -1)
             {
                 // Obtain the normal.
-                gNormal += faceNormal(faces_[eFaces[faceI]], points_);
+                gNormal += meshOps::faceNormal(faces_[eFaces[faceI]], points_);
             }
         }
 
         // Calculate a test step-size
-        testStep = edgeLength(edges_[index], points_);
+        testStep = meshOps::edgeLength(edges_[index], points_);
     }
 
     // Normalize
@@ -5066,12 +4570,21 @@ scalar dynamicTopoFvMesh::computeTrisectionQuality
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;
 
-    point midPoint = faceCentre(faces_[fIndex], points_);
+    point midPoint = meshOps::faceCentre(faces_[fIndex], points_);
 
     FixedList<label,2> apexPoint(-1);
 
     // Find the apex point
-    apexPoint[0] = tetApexPoint(owner_[fIndex], fIndex);
+    apexPoint[0] =
+    (
+        meshOps::tetApexPoint
+        (
+            owner_[fIndex],
+            fIndex,
+            faces_,
+            cells_
+        )
+    );
 
     const face& faceToCheck = faces_[fIndex];
 
@@ -5091,7 +4604,16 @@ scalar dynamicTopoFvMesh::computeTrisectionQuality
 
     if (whichPatch(fIndex) == -1)
     {
-        apexPoint[1] = tetApexPoint(neighbour_[fIndex], fIndex);
+        apexPoint[1] =
+        (
+            meshOps::tetApexPoint
+            (
+                neighbour_[fIndex],
+                fIndex,
+                faces_,
+                cells_
+            )
+        );
 
         forAll(faceToCheck, pointI)
         {
@@ -5134,10 +4656,10 @@ void dynamicTopoFvMesh::remove2DSliver
     label triFace = getTriBoundaryFace(fIndex);
 
     // Measure the boundary edge-length of the face in question
-    scalar length = edgeLength(edges_[triEdge], points_);
+    scalar length = meshOps::edgeLength(edges_[triEdge], points_);
 
     // Determine the boundary triangular face area
-    scalar area = mag(faceNormal(faces_[triFace], points_));
+    scalar area = mag(meshOps::faceNormal(faces_[triFace], points_));
 
     // This cell has to be removed...
     if (mag(area) < (0.2*length*length))
@@ -5163,7 +4685,7 @@ void dynamicTopoFvMesh::remove2DSliver
 
             const edge& edgeToCheck = edges_[triEdge];
 
-            findIsolatedPoint
+            meshOps::findIsolatedPoint
             (
                 faces_[triFace],
                 edgeToCheck,
@@ -5375,7 +4897,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         }
 
         // Obtain the unit normal.
-        vector testNormal = faceNormal(testFace, points_);
+        vector testNormal = meshOps::faceNormal(testFace, points_);
 
         testNormal /= (mag(testNormal) + VSMALL);
 
@@ -5397,7 +4919,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     }
 
     // Obtain the face-normal.
-    vector refArea = faceNormal(tFace, points_);
+    vector refArea = meshOps::faceNormal(tFace, points_);
 
     // Normalize it.
     vector n = refArea/mag(refArea);

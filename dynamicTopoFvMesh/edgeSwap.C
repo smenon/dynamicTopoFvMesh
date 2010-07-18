@@ -357,7 +357,7 @@ void dynamicTopoFvMesh::swapQuadFace
 
     // Find the points that don't lie on shared edges
     // and the points next to them (for orientation)
-    findIsolatedPoint
+    meshOps::findIsolatedPoint
     (
         commonFaces[1],
         commonEdges[0],
@@ -365,7 +365,7 @@ void dynamicTopoFvMesh::swapQuadFace
         nextToOtherPoint[1]
     );
 
-    findIsolatedPoint
+    meshOps::findIsolatedPoint
     (
         commonFaces[0],
         commonEdges[0],
@@ -373,7 +373,7 @@ void dynamicTopoFvMesh::swapQuadFace
         nextToOtherPoint[0]
     );
 
-    findIsolatedPoint
+    meshOps::findIsolatedPoint
     (
         commonFaces[2],
         commonEdges[1],
@@ -381,7 +381,7 @@ void dynamicTopoFvMesh::swapQuadFace
         nextToOtherPoint[2]
     );
 
-    findIsolatedPoint
+    meshOps::findIsolatedPoint
     (
         commonFaces[3],
         commonEdges[1],
@@ -528,26 +528,26 @@ void dynamicTopoFvMesh::swapQuadFace
     label c0count=0, c1count=0;
 
     // Size down edgeFaces for the original face
-    sizeDownList
+    meshOps::sizeDownList
     (
         fIndex,
         edgeFaces_[otherEdgeIndex[0]]
     );
 
-    sizeDownList
+    meshOps::sizeDownList
     (
         fIndex,
         edgeFaces_[otherEdgeIndex[1]]
     );
 
     // Size up edgeFaces for the face after flipping
-    sizeUpList
+    meshOps::sizeUpList
     (
         fIndex,
         edgeFaces_[otherEdgeIndex[2]]
     );
 
-    sizeUpList
+    meshOps::sizeUpList
     (
         fIndex,
         edgeFaces_[otherEdgeIndex[3]]
@@ -555,56 +555,56 @@ void dynamicTopoFvMesh::swapQuadFace
 
     // Replace edgeFaces and faceEdges for the
     // four (out of 8 total) corner edges of this hull.
-    replaceLabel
+    meshOps::replaceLabel
     (
         cornerEdgeIndex[0],
         cornerEdgeIndex[2],
         faceEdges_[commonFaceIndex[1]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         commonFaceIndex[1],
         commonFaceIndex[0],
         edgeFaces_[cornerEdgeIndex[0]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         cornerEdgeIndex[1],
         cornerEdgeIndex[3],
         faceEdges_[commonFaceIndex[3]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         commonFaceIndex[3],
         commonFaceIndex[2],
         edgeFaces_[cornerEdgeIndex[1]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         cornerEdgeIndex[2],
         cornerEdgeIndex[0],
         faceEdges_[commonFaceIndex[0]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         commonFaceIndex[0],
         commonFaceIndex[1],
         edgeFaces_[cornerEdgeIndex[2]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         cornerEdgeIndex[3],
         cornerEdgeIndex[1],
         faceEdges_[commonFaceIndex[2]]
     );
 
-    replaceLabel
+    meshOps::replaceLabel
     (
         commonFaceIndex[2],
         commonFaceIndex[3],
@@ -1581,7 +1581,7 @@ label dynamicTopoFvMesh::identify32Swap
 
         bool intersects =
         (
-            segmentFaceIntersection
+            meshOps::segmentFaceIntersection
             (
                 edgeToCheck,
                 triFace,
@@ -1645,7 +1645,7 @@ label dynamicTopoFvMesh::identify32Swap
         triFace[2] = hullVertices[triangulations[2][i]];
 
         // Compute edge to face-centre distance.
-        dist[i] = mag(eCentre - faceCentre(triFace, points_));
+        dist[i] = mag(eCentre - meshOps::faceCentre(triFace, points_));
     }
 
     while (!foundTriangulation)
@@ -2078,13 +2078,13 @@ const changeMap dynamicTopoFvMesh::swap23
                     {
                         newFaceEdges[0][nE0++] = faceEdges_[faceIndex][edgeI];
 
-                        sizeUpList
+                        meshOps::sizeUpList
                         (
                             newFaceIndex[0],
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
-                        insertLabel
+                        meshOps::insertLabel
                         (
                             otherVertices[1],
                             edgeToCheck[0],
@@ -2097,13 +2097,13 @@ const changeMap dynamicTopoFvMesh::swap23
                     {
                         newFaceEdges[0][nE0++] = faceEdges_[faceIndex][edgeI];
 
-                        sizeUpList
+                        meshOps::sizeUpList
                         (
                             newFaceIndex[0],
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
-                        insertLabel
+                        meshOps::insertLabel
                         (
                             otherVertices[0],
                             edgeToCheck[0],
@@ -2116,13 +2116,13 @@ const changeMap dynamicTopoFvMesh::swap23
                     {
                         newFaceEdges[1][nE1++] = faceEdges_[faceIndex][edgeI];
 
-                        sizeUpList
+                        meshOps::sizeUpList
                         (
                             newFaceIndex[1],
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
-                        insertLabel
+                        meshOps::insertLabel
                         (
                             otherVertices[1],
                             vertexForRemoval,
@@ -2135,13 +2135,13 @@ const changeMap dynamicTopoFvMesh::swap23
                     {
                         newFaceEdges[1][nE1++] = faceEdges_[faceIndex][edgeI];
 
-                        sizeUpList
+                        meshOps::sizeUpList
                         (
                             newFaceIndex[1],
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
-                        insertLabel
+                        meshOps::insertLabel
                         (
                             otherVertices[0],
                             vertexForRemoval,
@@ -2191,13 +2191,13 @@ const changeMap dynamicTopoFvMesh::swap23
                     {
                         newFaceEdges[2][nE2++] = fEdges[edgeI];
 
-                        sizeUpList
+                        meshOps::sizeUpList
                         (
                             newFaceIndex[2],
                             edgeFaces_[fEdges[edgeI]]
                         );
 
-                        insertLabel
+                        meshOps::insertLabel
                         (
                             otherVertices[1],
                             vertexForRemoval,
@@ -2210,13 +2210,13 @@ const changeMap dynamicTopoFvMesh::swap23
                     {
                         newFaceEdges[2][nE2++] = fEdges[edgeI];
 
-                        sizeUpList
+                        meshOps::sizeUpList
                         (
                             newFaceIndex[2],
                             edgeFaces_[fEdges[edgeI]]
                         );
 
-                        insertLabel
+                        meshOps::insertLabel
                         (
                             otherVertices[0],
                             vertexForRemoval,
@@ -2277,14 +2277,14 @@ const changeMap dynamicTopoFvMesh::swap23
     {
         label edgeIndex = faceEdges_[faceForRemoval][edgeI];
 
-        sizeDownList
+        meshOps::sizeDownList
         (
             faceForRemoval,
             edgeFaces_[edgeIndex]
         );
 
         // Find the isolated point and remove it
-        findIsolatedPoint
+        meshOps::findIsolatedPoint
         (
             faces_[faceForRemoval],
             edges_[edgeIndex],
@@ -2292,7 +2292,7 @@ const changeMap dynamicTopoFvMesh::swap23
             nextPoint
         );
 
-        sizeDownList
+        meshOps::sizeDownList
         (
             otherPoint,
             edgePoints_[edgeIndex]
@@ -2625,7 +2625,7 @@ const changeMap dynamicTopoFvMesh::swap32
                 // Record this face-index for mapping.
                 oldBdyFaceIndex[nBf++] = facesForRemoval[faceI];
 
-                findIsolatedPoint
+                meshOps::findIsolatedPoint
                 (
                     faces_[facesForRemoval[faceI]],
                     edgeToCheck,
@@ -2730,7 +2730,7 @@ const changeMap dynamicTopoFvMesh::swap32
 
         // Find the point other than the new edge
         // on the new triangular face
-        findIsolatedPoint
+        meshOps::findIsolatedPoint
         (
             newTriFace,
             newEdge,
@@ -2767,11 +2767,20 @@ const changeMap dynamicTopoFvMesh::swap32
         // Update edgeFaces and edgePoints with the two new faces
         forAll(bdyEdges[0], edgeI)
         {
-            sizeUpList(newBdyFaceIndex[0], edgeFaces_[bdyEdges[0][edgeI]]);
-            sizeUpList(newBdyFaceIndex[1], edgeFaces_[bdyEdges[1][edgeI]]);
+            meshOps::sizeUpList
+            (
+                newBdyFaceIndex[0],
+                edgeFaces_[bdyEdges[0][edgeI]]
+            );
+
+            meshOps::sizeUpList
+            (
+                newBdyFaceIndex[1],
+                edgeFaces_[bdyEdges[1][edgeI]]
+            );
 
             // Replace the edgePoints label, and preserve position on the list
-            findIsolatedPoint
+            meshOps::findIsolatedPoint
             (
                 newBdyTriFace[0],
                 edges_[bdyEdges[0][edgeI]],
@@ -2779,7 +2788,7 @@ const changeMap dynamicTopoFvMesh::swap32
                 nextPoint
             );
 
-            replaceLabel
+            meshOps::replaceLabel
             (
                 edgeToCheck[1],
                 otherPoint,
@@ -2787,10 +2796,14 @@ const changeMap dynamicTopoFvMesh::swap32
             );
 
             // Size up edgePoints again, so that it is sized down later
-            sizeUpList(edgeToCheck[1], edgePoints_[bdyEdges[0][edgeI]]);
+            meshOps::sizeUpList
+            (
+                edgeToCheck[1],
+                edgePoints_[bdyEdges[0][edgeI]]
+            );
 
             // Replace the edgePoints label, and preserve position on the list
-            findIsolatedPoint
+            meshOps::findIsolatedPoint
             (
                 newBdyTriFace[1],
                 edges_[bdyEdges[1][edgeI]],
@@ -2798,7 +2811,7 @@ const changeMap dynamicTopoFvMesh::swap32
                 nextPoint
             );
 
-            replaceLabel
+            meshOps::replaceLabel
             (
                 edgeToCheck[0],
                 otherPoint,
@@ -2806,7 +2819,11 @@ const changeMap dynamicTopoFvMesh::swap32
             );
 
             // Size up edgePoints again, so that it is sized down later
-            sizeUpList(edgeToCheck[0], edgePoints_[bdyEdges[1][edgeI]]);
+            meshOps::sizeUpList
+            (
+                edgeToCheck[0],
+                edgePoints_[bdyEdges[1][edgeI]]
+            );
         }
 
         // Add faceEdges for the two new boundary faces
@@ -2890,14 +2907,14 @@ const changeMap dynamicTopoFvMesh::swap32
                             faceEdges_[faceIndex][edgeI]
                         );
 
-                        sizeUpList
+                        meshOps::sizeUpList
                         (
                             newFaceIndex,
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
 
                         // Find the isolated point and insert it
-                        findIsolatedPoint
+                        meshOps::findIsolatedPoint
                         (
                             newTriFace,
                             edges_[faceEdges_[faceIndex][edgeI]],
@@ -2905,7 +2922,7 @@ const changeMap dynamicTopoFvMesh::swap32
                             nextPoint
                         );
 
-                        insertLabel
+                        meshOps::insertLabel
                         (
                             otherPoint,
                             edgeToCheck[0],
@@ -2961,14 +2978,14 @@ const changeMap dynamicTopoFvMesh::swap32
 
             if (edgeIndex != eIndex)
             {
-                sizeDownList
+                meshOps::sizeDownList
                 (
                     facesForRemoval[faceI],
                     edgeFaces_[edgeIndex]
                 );
 
                 // Find the isolated point and remove it
-                findIsolatedPoint
+                meshOps::findIsolatedPoint
                 (
                     faces_[facesForRemoval[faceI]],
                     edges_[edgeIndex],
@@ -2976,7 +2993,7 @@ const changeMap dynamicTopoFvMesh::swap32
                     nextPoint
                 );
 
-                sizeDownList
+                meshOps::sizeDownList
                 (
                     otherPoint,
                     edgePoints_[edgeIndex]
