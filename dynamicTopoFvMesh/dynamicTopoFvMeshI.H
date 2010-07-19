@@ -35,6 +35,8 @@ Author
 
 \*---------------------------------------------------------------------------*/
 
+#include "stack.H"
+#include "meshOps.H"
 #include "tetPointRef.H"
 #include "processorPolyPatch.H"
 #include "lengthScaleEstimator.H"

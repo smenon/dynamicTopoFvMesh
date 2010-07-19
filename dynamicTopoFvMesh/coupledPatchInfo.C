@@ -24,6 +24,7 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "Time.H"
 #include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
 

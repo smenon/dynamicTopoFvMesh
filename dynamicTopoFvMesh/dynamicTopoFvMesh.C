@@ -38,8 +38,12 @@ Author
 #include "dynamicTopoFvMesh.H"
 #include "addToRunTimeSelectionTable.H"
 
+#include "stack.H"
+#include "eMesh.H"
 #include "IOmanip.H"
 #include "triFace.H"
+#include "meshOps.H"
+#include "changeMap.H"
 #include "clockTime.H"
 #include "mapPolyMesh.H"
 #include "volFields.H"
@@ -95,10 +99,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     bandWidthReduction_(false),
     coupledModification_(false),
     interval_(1),
+    eMeshPtr_(NULL),
     mapper_(NULL),
     motionSolver_(NULL),
     lengthEstimator_(NULL),
-    eMeshPtr_(NULL),
     oldPoints_(polyMesh::points()),
     points_(polyMesh::points()),
     faces_(polyMesh::faces()),
@@ -221,10 +225,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     bandWidthReduction_(mesh.bandWidthReduction_),
     coupledModification_(false),
     interval_(1),
+    eMeshPtr_(NULL),
     mapper_(NULL),
     motionSolver_(NULL),
     lengthEstimator_(NULL),
-    eMeshPtr_(NULL),
     oldPoints_(points),
     points_(points),
     faces_(faces),
@@ -4415,7 +4419,7 @@ void dynamicTopoFvMesh::remove2DSliver
 
             if (proj[0] > 0.0 && proj[1] < 0.0)
             {
-                changeMap map = bisectQuadFace(firstFace);
+                changeMap map = bisectQuadFace(firstFace, changeMap());
 
                 // Loop through added faces, and collapse
                 // the appropriate one
@@ -4439,7 +4443,7 @@ void dynamicTopoFvMesh::remove2DSliver
 
             if (proj[0] < 0.0 && proj[1] > 0.0)
             {
-                changeMap map = bisectQuadFace(secondFace);
+                changeMap map = bisectQuadFace(secondFace, changeMap());
 
                 // Loop through added faces, and collapse
                 // the appropriate one
@@ -4463,7 +4467,7 @@ void dynamicTopoFvMesh::remove2DSliver
 
             if (proj[0] > 0.0 && proj[1] > 0.0)
             {
-                changeMap map = bisectQuadFace(fIndex);
+                changeMap map = bisectQuadFace(fIndex, changeMap());
 
                 // Loop through added faces, and collapse
                 // the appropriate one

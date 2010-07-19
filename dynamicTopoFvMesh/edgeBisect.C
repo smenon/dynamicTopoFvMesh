@@ -26,6 +26,7 @@ License
 
 #include "triFace.H"
 #include "objectMap.H"
+#include "changeMap.H"
 #include "resizableList.H"
 #include "multiThreader.H"
 #include "coupledPatchInfo.H"
@@ -45,8 +46,8 @@ namespace Foam
 const changeMap dynamicTopoFvMesh::bisectQuadFace
 (
     const label fIndex,
-    bool checkOnly,
-    const changeMap& masterMap
+    const changeMap& masterMap,
+    bool checkOnly
 )
 {
     // Quad-face bisection performs the following operations:
@@ -90,8 +91,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
             "(\n"
             "    const label fIndex,\n"
-            "    bool checkOnly,\n"
-            "    const changeMap& masterMap\n"
+            "    const changeMap& masterMap,\n"
+            "    bool checkOnly\n"
             ")"
         )
             << nl << " Invalid index: " << fIndex
@@ -262,8 +263,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                     "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
                     "(\n"
                     "    const label fIndex,\n"
-                    "    bool checkOnly,\n"
-                    "    const changeMap& masterMap\n"
+                    "    const changeMap& masterMap,\n"
+                    "    bool checkOnly\n"
                     ")"
                 )
                     << "Coupled maps were improperly specified." << nl
@@ -276,12 +277,28 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             unsetCoupledModification();
 
             // First check the slave for bisection feasibility.
-            slaveMap = bisectQuadFace(sIndex, true);
+            slaveMap =
+            (
+                bisectQuadFace
+                (
+                    sIndex,
+                    changeMap(),
+                    true
+                )
+            );
 
             if (slaveMap.type() == 1)
             {
                 // Can the master be bisected as well?
-                changeMap masterMap = bisectQuadFace(fIndex, true);
+                changeMap masterMap =
+                (
+                    bisectQuadFace
+                    (
+                        fIndex,
+                        changeMap(),
+                        true
+                    )
+                );
 
                 // Master couldn't perform bisection
                 if (masterMap.type() != 1)
@@ -297,7 +314,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 masterMap.addPoint(commonEdges[1].start());
 
                 // Bisect the slave edge
-                slaveMap = bisectQuadFace(sIndex, false, masterMap);
+                slaveMap = bisectQuadFace(sIndex, masterMap, false);
             }
             else
             {
@@ -1733,8 +1750,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                         "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
                         "(\n"
                         "    const label fIndex,\n"
-                        "    bool checkOnly,\n"
-                        "    const changeMap& masterMap\n"
+                        "    const changeMap& masterMap,\n"
+                        "    bool checkOnly\n"
                         ")"
                     )
                         << "Failed to build coupled maps."
@@ -1814,7 +1831,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // For 2D meshes, perform face-bisection
     if (twoDMesh_)
     {
-        return bisectQuadFace(eIndex, checkOnly);
+        return bisectQuadFace(eIndex, changeMap(), checkOnly);
     }
 
     // Figure out which thread this is...

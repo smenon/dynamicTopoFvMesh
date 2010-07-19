@@ -34,7 +34,7 @@ Author
     All rights reserved
 
 SourceFiles
-    changeMap.C
+    changeMapI.H
 
 \*---------------------------------------------------------------------------*/
 
@@ -81,63 +81,78 @@ class changeMap
 public:
 
     // Constructor
-    changeMap();
+    changeMap()
+    :
+        type_(-1),
+        firstEdge_(-1),
+        secondEdge_(-1),
+        apexPoint_(-1),
+        opposingFace_(-1),
+        addedPoints_(0),
+        addedEdges_(0),
+        addedFaces_(0),
+        addedCells_(0)
+    {}
 
     //- Access
 
         // Type
-        label& type();
+        inline label& type();
 
         // For sliver-type cells, opposite edges
         // are identified for removal.
-        label& firstEdge();
-        label& secondEdge();
+        inline label& firstEdge();
+        inline label& secondEdge();
 
         // For cap-type cells, the face requiring splitting
         // is identified for removal.
-        label& apexPoint();
-        label& opposingFace();
+        inline label& apexPoint();
+        inline label& opposingFace();
 
         // Added entities
-        void addPoint
+        inline void addPoint
         (
             const label pIndex,
             const label master = -1
         );
 
-        void addEdge
+        inline void addEdge
         (
             const label eIndex,
             const label master = -1
         );
 
-        void addFace
+        inline void addFace
         (
             const label fIndex,
             const label master = -1
         );
 
-        void addCell
+        inline void addCell
         (
             const label cIndex,
             const label master = -1
         );
 
         // Return the list of added entities
-        const List<FixedList<label,2> >& addedPointList() const;
-        const List<FixedList<label,2> >& addedEdgeList() const;
-        const List<FixedList<label,2> >& addedFaceList() const;
-        const List<FixedList<label,2> >& addedCellList() const;
+        inline const List<FixedList<label,2> >& addedPointList() const;
+        inline const List<FixedList<label,2> >& addedEdgeList() const;
+        inline const List<FixedList<label,2> >& addedFaceList() const;
+        inline const List<FixedList<label,2> >& addedCellList() const;
 
     //- Operators
 
-        void operator=(const changeMap& rhs);
+        inline void operator=(const changeMap& rhs);
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "changeMapI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

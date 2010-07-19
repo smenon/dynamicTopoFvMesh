@@ -7,7 +7,6 @@ $(ePatches)/ePatch/ePatch.C
 $(ePatches)/ePatch/newEPatch.C
 
 meshOps.C
-changeMap.C
 coupledPatchInfo.C
 
 dynamicTopoFvMesh.C

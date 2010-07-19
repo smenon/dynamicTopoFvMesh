@@ -26,6 +26,7 @@ License
 
 #include "triFace.H"
 #include "objectMap.H"
+#include "changeMap.H"
 #include "triPointRef.H"
 #include "multiThreader.H"
 #include "coupledPatchInfo.H"

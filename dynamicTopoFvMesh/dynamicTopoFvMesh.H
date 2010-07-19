@@ -42,24 +42,16 @@ SourceFiles
     edgeBisect.C
     edgeCollapse.C
     edgeSwap.C
-    coupledPatchInfo.C
 
 \*---------------------------------------------------------------------------*/
 
 #ifndef dynamicTopoFvMesh_H
 #define dynamicTopoFvMesh_H
 
-#include "Time.H"
-#include "resizableList.H"
-#include "multiThreader.H"
-#include "threadHandler.H"
-#include "eMesh.H"
-#include "stack.H"
-#include "meshOps.H"
-#include "coupleMap.H"
-#include "changeMap.H"
+#include "Switch.H"
 #include "tetMetric.H"
-#include "objectMap.H"
+#include "resizableList.H"
+#include "threadHandler.H"
 #include "dynamicFvMesh.H"
 #include "StaticHashTable.H"
 
@@ -69,8 +61,12 @@ namespace Foam
 {
 
 // Class forward declarations
-class motionSolver;
+class eMesh;
+class stack;
+class changeMap;
+class objectMap;
 class topoMapper;
+class motionSolver;
 class coupledPatchInfo;
 class lengthScaleEstimator;
 
@@ -115,6 +111,9 @@ class dynamicTopoFvMesh
         //- Specify the re-meshing interval
         label interval_;
 
+        //- Edge-mesh
+        autoPtr<eMesh> eMeshPtr_;
+
         //- Field mapper
         autoPtr<topoMapper> mapper_;
 
@@ -123,9 +122,6 @@ class dynamicTopoFvMesh
 
         //- Length scale estimator
         autoPtr<lengthScaleEstimator> lengthEstimator_;
-
-        //- Edge-mesh to store up-to-date connectivity information
-        autoPtr<eMesh> eMeshPtr_;
 
         //- Lists that dynamically resize during topo-changes
         resizableList<point> oldPoints_, points_;
@@ -432,8 +428,8 @@ class dynamicTopoFvMesh
         bisectQuadFace
         (
             const label fIndex,
-            bool checkOnly = false,
-            const changeMap& masterMap = changeMap()
+            const changeMap& masterMap,
+            bool checkOnly = false
         );
 
         // Method for the collapse of a quad-face in 2D
