@@ -35,6 +35,9 @@ Author
 
 SourceFiles
     conservativeMeshToMesh.C
+    conservativeMeshToMeshAddressing.C
+    conservativeMeshToMeshInterpolate.C
+    conservativeMeshToMeshWriteVTK.C
 
 \*---------------------------------------------------------------------------*/
 
@@ -200,6 +203,22 @@ class conservativeMeshToMesh
             labelList& list
         ) const;
 
+        //- Interpolate internal field values (conservative)
+        template<class Type>
+        void interpolateInternalFieldConserve
+        (
+            Field<Type>& toF,
+            const GeometricField<Type, fvPatchField, volMesh>& fromVf
+        ) const;
+
+        //- Interpolate internal field values (inverse-distance)
+        template<class Type>
+        void interpolateInternalFieldInvDist
+        (
+            Field<Type>& toF,
+            const GeometricField<Type, fvPatchField, volMesh>& fromVf
+        ) const;
+
     // Private debugging routines
 
         void writeVTK
@@ -246,6 +265,13 @@ public:
 
     // Declare name of the class and its debug switch
     ClassName("conservativeMeshToMesh");
+
+    //- Enumeration specifying mapping type
+    enum method
+    {
+        CONSERVATIVE,
+        INVERSE_DISTANCE
+    };
 
     // Constructors
 
@@ -306,12 +332,20 @@ public:
 
     // Member Functions
 
-        //- Interpolate internal field values
         template<class Type>
         void interpolateInternalField
         (
-            Field<Type>& toF,
-            const GeometricField<Type, fvPatchField, volMesh>& fromVf
+            Field<Type>&,
+            const GeometricField<Type, fvPatchField, volMesh>&,
+            const label method
+        ) const;
+
+        template<class Type>
+        void interpolateInternalField
+        (
+            Field<Type>&,
+            const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
+            const label method
         ) const;
 
         //- Interpolate volume field
@@ -319,27 +353,31 @@ public:
         void interpolate
         (
             GeometricField<Type, fvPatchField, volMesh>&,
-            const GeometricField<Type, fvPatchField, volMesh>&
+            const GeometricField<Type, fvPatchField, volMesh>&,
+            const label method
         ) const;
 
         template<class Type>
         void interpolate
         (
             GeometricField<Type, fvPatchField, volMesh>&,
-            const tmp<GeometricField<Type, fvPatchField, volMesh> >&
+            const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
+            const label method
         ) const;
 
         //- Interpolate volume field
         template<class Type>
         tmp<GeometricField<Type, fvPatchField, volMesh> > interpolate
         (
-            const GeometricField<Type, fvPatchField, volMesh>&
+            const GeometricField<Type, fvPatchField, volMesh>&,
+            const label method
         ) const;
 
         template<class Type>
         tmp<GeometricField<Type, fvPatchField, volMesh> > interpolate
         (
-            const tmp<GeometricField<Type, fvPatchField, volMesh> >&
+            const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
+            const label method
         ) const;
 };
 

@@ -3,6 +3,7 @@
     argList::validArgs.append("source dir");
 
     argList::validOptions.insert("sourceTime", "scalar");
+    argList::validOptions.insert("method", "label");
     argList::validOptions.insert("nThreads", "label");
     argList::validOptions.insert("forceRecalc", "");
     argList::validOptions.insert("writeAddr", "");
@@ -29,6 +30,13 @@
     if (args.options().found("nThreads"))
     {
         nThreads = readLabel(IStringStream(args.options()["nThreads"])());
+    }
+
+    label method = 0;
+
+    if (args.options().found("method"))
+    {
+        method = readLabel(IStringStream(args.options()["method"])());
     }
 
     bool forceRecalc = false;

@@ -71,7 +71,8 @@ template<class Type>
 void MapConservativeVolFields
 (
     const IOobjectList& objects,
-    const conservativeMeshToMesh& meshToMeshInterp
+    const conservativeMeshToMesh& meshToMeshInterp,
+    const label method
 )
 {
     const fvMesh& meshSource = meshToMeshInterp.fromMesh();
@@ -122,7 +123,8 @@ void MapConservativeVolFields
             meshToMeshInterp.interpolate
             (
                 fieldTarget,
-                fieldSource
+                fieldSource,
+                method
             );
 
             // Write field
@@ -136,10 +138,7 @@ void MapConservativeVolFields
             GeometricField<Type, fvPatchField, volMesh> fieldTarget
             (
                 fieldTargetIOobject,
-                meshToMeshInterp.interpolate
-                (
-                    fieldSource
-                )
+                meshToMeshInterp.interpolate(fieldSource, method)
             );
 
             // Write field
@@ -153,6 +152,7 @@ void mapConservativeMesh
 (
     const fvMesh& meshSource,
     const fvMesh& meshTarget,
+    const label method,
     const label nThreads,
     const bool forceRecalc,
     const bool writeAddr
@@ -178,8 +178,8 @@ void mapConservativeMesh
 
         // Map volFields
         // ~~~~~~~~~~~~~
-        MapConservativeVolFields<scalar>(objects, meshToMeshInterp);
-        MapConservativeVolFields<vector>(objects, meshToMeshInterp);
+        MapConservativeVolFields<scalar>(objects, meshToMeshInterp, method);
+        MapConservativeVolFields<vector>(objects, meshToMeshInterp, method);
     }
 }
 
@@ -224,10 +224,35 @@ int main(int argc, char *argv[])
     Info<< "Source mesh size: " << meshSource.nCells() << tab
         << "Target mesh size: " << meshTarget.nCells() << nl << endl;
 
+    switch (method)
+    {
+        case conservativeMeshToMesh::CONSERVATIVE:
+        {
+            Info << "Using method: CONSERVATIVE" << endl;
+
+            break;
+        }
+
+        case conservativeMeshToMesh::INVERSE_DISTANCE:
+        {
+            Info << "Using method: INVERSE_DISTANCE" << endl;
+
+            break;
+        }
+
+        default:
+        {
+            FatalErrorIn("mapConservativeFields")
+                << "unknown interpolation scheme " << method
+                << exit(FatalError);
+        }
+    }
+
     mapConservativeMesh
     (
         meshSource,
         meshTarget,
+        method,
         nThreads,
         forceRecalc,
         writeAddr
