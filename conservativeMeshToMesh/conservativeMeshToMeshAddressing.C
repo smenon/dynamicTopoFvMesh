@@ -32,6 +32,7 @@ Description
 
 #include "conservativeMeshToMesh.H"
 #include "IOmanip.H"
+#include "ListOps.H"
 #include "SortableList.H"
 #include "StaticHashTable.H"
 
@@ -95,6 +96,147 @@ void conservativeMeshToMesh::calcAddressingAndWeights
     counter_ += ((cellStart + cellSize) - oldStart);
 
     ctrMutex_.unlock();
+}
+
+
+// Invert addressing from source to target
+bool conservativeMeshToMesh::invertAddressing()
+{
+    // Read in addressing arrays from the source mesh
+    IOList<labelList> srcAddressing
+    (
+        IOobject
+        (
+            "addressing",
+            fromMesh().time().timeName(),
+            fromMesh(),
+            IOobject::MUST_READ,
+            IOobject::NO_WRITE
+        )
+    );
+
+    // Check for compatibility
+    bool compatible = true;
+    label targetCells = toMesh().nCells();
+    labelList nCellsPerCell(targetCells, 0);
+
+    forAll(srcAddressing, cellI)
+    {
+        const labelList& srcAddr = srcAddressing[cellI];
+
+        label maxIndex = findMax(srcAddr);
+
+        if (srcAddressing[cellI][maxIndex] >= targetCells)
+        {
+            Info << " Addressing is not compatible. " << endl;
+
+            compatible = false;
+            break;
+        }
+
+        forAll(srcAddr, j)
+        {
+            nCellsPerCell[srcAddr[j]]++;
+        }
+    }
+
+    if (!compatible)
+    {
+        addressing_.clear();
+        addressing_.setSize(targetCells);
+
+        return false;
+    }
+
+    // Read weights
+    IOList<scalarField> srcWeights
+    (
+        IOobject
+        (
+            "weights",
+            fromMesh().time().timeName(),
+            fromMesh(),
+            IOobject::MUST_READ,
+            IOobject::NO_WRITE
+        )
+    );
+
+    // Read centres
+    IOList<vectorField> srcCentres
+    (
+        IOobject
+        (
+            "centres",
+            fromMesh().time().timeName(),
+            fromMesh(),
+            IOobject::MUST_READ,
+            IOobject::NO_WRITE
+        )
+    );
+
+    // Set sizes
+    forAll(nCellsPerCell, cellI)
+    {
+        addressing_[cellI].setSize(nCellsPerCell[cellI]);
+        weights_[cellI].setSize(nCellsPerCell[cellI]);
+        centres_[cellI].setSize(nCellsPerCell[cellI]);
+    }
+
+    nCellsPerCell = 0;
+
+    // Invert addressing
+    forAll(srcAddressing, cellI)
+    {
+        const labelList& srcAddr = srcAddressing[cellI];
+        const scalarField& srcWt = srcWeights[cellI];
+        const vectorField& srcCt = srcCentres[cellI];
+
+        forAll(srcAddr, j)
+        {
+            label cellJ = srcAddr[j];
+
+            addressing_[cellJ][nCellsPerCell[cellJ]] = cellI;
+            weights_[cellJ][nCellsPerCell[cellJ]] = srcWt[j];
+            centres_[cellJ][nCellsPerCell[cellJ]] = srcCt[j];
+
+            nCellsPerCell[cellJ]++;
+        }
+    }
+
+    // Check weights for consistency
+    const scalarField& V = toMesh().cellVolumes();
+
+    forAll(V, cellI)
+    {
+        if (mag(V[cellI] - sum(weights_[cellI])) > 1e-16)
+        {
+            Info << " Weights are not compatible. " << nl
+                 << " Cell: " << cellI << nl
+                 << " Volume: " << V[cellI] << nl
+                 << " Sum(weights): " << sum(weights_[cellI]) << nl
+                 << " Error: " << mag(V[cellI] - sum(weights_[cellI]))
+                 << endl;
+
+            compatible = false;
+            break;
+        }
+    }
+
+    if (!compatible)
+    {
+        addressing_.clear();
+        weights_.clear();
+        centres_.clear();
+
+        addressing_.setSize(targetCells);
+        weights_.setSize(targetCells);
+        centres_.setSize(targetCells);
+
+        return false;
+    }
+
+    // Return a successful inversion
+    return true;
 }
 
 

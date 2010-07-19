@@ -1372,6 +1372,7 @@ bool dynamicTopoFvMesh::cellIntersection
             tP[nInts++] = pI();
         }
 
+        /*
         if (debug)
         {
             if (meshOps::checkPointNearness(tP, 1e-20))
@@ -1390,6 +1391,7 @@ bool dynamicTopoFvMesh::cellIntersection
                 );
             }
         }
+        */
 
         return true;
     }
@@ -1778,7 +1780,7 @@ bool dynamicTopoFvMesh::cellIntersection
         tP[nInts++] = pI();
     }
 
-    // Check for concurrent points.
+    /*
     if (debug)
     {
         if (meshOps::checkPointNearness(tP, 1e-20))
@@ -1797,6 +1799,7 @@ bool dynamicTopoFvMesh::cellIntersection
             );
         }
     }
+    */
 
     // Found a convex set of points.
     if (nInts >= 4)

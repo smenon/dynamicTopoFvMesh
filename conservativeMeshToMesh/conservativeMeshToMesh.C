@@ -128,6 +128,29 @@ conservativeMeshToMesh::conservativeMeshToMesh
         Info << " Calculating addressing." << endl;
     }
 
+    // Check if the source mesh has a calculated addressing
+    // If yes, try and invert that.
+    IOobject srcHeader
+    (
+        "addressing",
+        meshFrom.time().timeName(),
+        meshFrom,
+        IOobject::READ_IF_PRESENT,
+        IOobject::NO_WRITE
+    );
+
+    if (srcHeader.headerOk() && !addressing_.headerOk())
+    {
+        Info << " Found addressing in source directory."
+             << " Checking for compatibility." << endl;
+
+        if (invertAddressing())
+        {
+            Info << " Inversion successful. " << endl;
+            return;
+        }
+    }
+
     // Track calculation time
     clockTime calcTimer;
 

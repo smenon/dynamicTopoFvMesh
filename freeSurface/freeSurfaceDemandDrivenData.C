@@ -224,7 +224,6 @@ void freeSurface::makeControlPoints() const
             << abort(FatalError);
     }
 
-    /*
     IOobject controlPointsHeader
     (
         "controlPoints",
@@ -253,7 +252,6 @@ void freeSurface::makeControlPoints() const
         );
     }
     else
-    */
     {
         controlPointsPtr_ =
         (
@@ -271,7 +269,7 @@ void freeSurface::makeControlPoints() const
             )
         );
 
-        //initializeControlPointsPosition();
+        initializeControlPointsPosition();
     }
 }
 

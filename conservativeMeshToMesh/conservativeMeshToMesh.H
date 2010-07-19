@@ -87,6 +87,9 @@ class conservativeMeshToMesh
             const label cellSize
         );
 
+        // Invert addressing from source to target
+        bool invertAddressing();
+
         // Compute cell weighting factors for a particular cell
         void computeCellWeights
         (

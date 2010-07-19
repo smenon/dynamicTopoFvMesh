@@ -1133,7 +1133,10 @@ bool Foam::freeSurface::restorePosition()
     aMesh().movePoints(mesh().points());
     moveFvSubMeshes();
 
-    reInitializeControlPointsPosition();
+    if (meshChanged)
+    {
+        //reInitializeControlPointsPosition();
+    }
 
     return meshChanged;
 }
