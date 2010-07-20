@@ -498,72 +498,123 @@ void convexSetVolume
 
     // Account for planarity test failure.
     //  - Check for subsets.
-    forAll(testFaces, faceI)
+    //  - Loop until no more merges are made.
+    bool changed;
+
+    do
     {
-        // Fetch a non-const reference, since this face
-        // might be modified in this loop.
-        face& checkFace = testFaces[faceI];
+        // Reset flag
+        changed = false;
 
-        // Account for deleted testFaces
-        if (checkFace.empty())
+        forAll(testFaces, faceI)
         {
-            continue;
-        }
+            // Fetch a non-const reference, since this face
+            // might be modified in this loop.
+            face& checkFace = testFaces[faceI];
 
-        // Compute the normal to this face
-        vector n = checkFace.normal(cvxSet);
-
-        forAll(testFaces, faceJ)
-        {
-            if (faceI == faceJ)
+            // Account for deleted testFaces
+            if (checkFace.empty())
             {
                 continue;
             }
 
-            // Fetch a non-const reference, since this face
-            // might be modified in this loop.
-            face& testFace = testFaces[faceJ];
+            // Compute the normal to this face
+            vector n = checkFace.normal(cvxSet);
 
-            if (checkFace.size() >= testFace.size())
+            forAll(testFaces, faceJ)
             {
-                label nCommon = 0;
-
-                uniquePts.clear();
-
-                forAll(testFace, pI)
+                if (faceI == faceJ)
                 {
-                    if (findIndex(checkFace, testFace[pI]) > -1)
-                    {
-                        nCommon++;
-                    }
-                    else
-                    {
-                        uniquePts.insert(testFace[pI]);
-                    }
+                    continue;
                 }
 
-                if (nCommon >= 3)
-                {
-                    // Delete the test face
-                    testFace.clear();
+                // Fetch a non-const reference, since this face
+                // might be modified in this loop.
+                face& testFace = testFaces[faceJ];
 
-                    // Add all unique points to checkFace
-                    // Failed the tolerance test before,
-                    // so don't check for it now
-                    if (uniquePts.size())
+                label nCommon = 0;
+                uniquePts.clear();
+
+                if (checkFace.size() >= testFace.size())
+                {
+                    forAll(testFace, pI)
                     {
-                        meshOps::insertPointLabels
-                        (
-                            n,
-                            cvxSet,
-                            uniquePts,
-                            checkFace
-                        );
+                        if (findIndex(checkFace, testFace[pI]) > -1)
+                        {
+                            nCommon++;
+                        }
+                        else
+                        {
+                            uniquePts.insert(testFace[pI]);
+                        }
+                    }
+
+                    if (nCommon >= 3)
+                    {
+                        // Delete the test face
+                        testFace.clear();
+
+                        // Add all unique points to checkFace
+                        // Failed the tolerance test before,
+                        // so don't check for it now
+                        if (uniquePts.size())
+                        {
+                            meshOps::insertPointLabels
+                            (
+                                n,
+                                cvxSet,
+                                uniquePts,
+                                checkFace
+                            );
+                        }
+
+                        // Note that changes were made
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    // Check if this is a subset
+                    forAll(checkFace, pI)
+                    {
+                        if (findIndex(testFace, checkFace[pI]) > -1)
+                        {
+                            nCommon++;
+                        }
+                        else
+                        {
+                            uniquePts.insert(checkFace[pI]);
+                        }
+                    }
+
+                    if (nCommon >= 3)
+                    {
+                        // This is a subset. Delete it.
+                        checkFace.clear();
+
+                        // Add all unique points to checkFace
+                        // Failed the tolerance test before,
+                        // so don't check for it now
+                        if (uniquePts.size())
+                        {
+                            insertPointLabels
+                            (
+                                n,
+                                cvxSet,
+                                uniquePts,
+                                testFace
+                            );
+                        }
+
+                        // Note that changes were made
+                        changed = true;
+
+                        break;
                     }
                 }
             }
         }
-    }
+    } while (changed);
 
     // Find an approximate cell-centroid
     vector xC = average(cvxSet);
