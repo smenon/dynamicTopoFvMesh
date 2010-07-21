@@ -785,6 +785,12 @@ void lengthScaleEstimator::calculateLengthScale
 
     forAll(boundary,patchI)
     {
+        // Skip floating length-scale patches
+        if (isFreePatch(patchI))
+        {
+            continue;
+        }
+
         const polyPatch& bdyPatch = boundary[patchI];
 
         label pStart = bdyPatch.start();

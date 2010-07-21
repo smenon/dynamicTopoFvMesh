@@ -457,9 +457,7 @@ inline bool segmentSegmentIntersection
     // Parallel / collinear check
     scalar denom = (a * c) - (b * b);
 
-    scalar tolerance = (1e-6 * Foam::min(mag(u), mag(v)));
-
-    if (mag(denom) < tolerance)
+    if (mag(denom) < VSMALL)
     {
         return false;
     }
@@ -475,6 +473,8 @@ inline bool segmentSegmentIntersection
 
     // Proximity check
     scalar dist = mag( w + (s * u) - (t * v) );
+
+    scalar tolerance = (1e-6 * Foam::min(mag(u), mag(v)));
 
     if (dist > tolerance)
     {
@@ -510,14 +510,14 @@ inline bool segmentFaceIntersection
     scalar denominator = n & (p2 - p1);
 
     // Check if the edge is parallel to the face
-    scalar tolerance = (1e-4 * mag(p2 - p1));
-
-    if (mag(denominator) < tolerance)
+    if (mag(denominator) < VSMALL)
     {
         return false;
     }
 
     scalar u = (numerator / denominator);
+
+    scalar tolerance = (1e-4 * mag(p2 - p1));
 
     // Check for intersection along line.
     if ((u > tolerance) && (u < (1.0 - tolerance)))
@@ -586,7 +586,8 @@ inline bool pointInCell
     const UList<face>& faces,
     const UList<label>& owner,
     const UList<point>& points,
-    const point& checkPoint
+    const point& checkPoint,
+    const scalar& tolerance
 )
 {
     vector xf(vector::zero), nf(vector::zero);
@@ -596,7 +597,9 @@ inline bool pointInCell
         xf = meshOps::faceCentre(faces[cellToCheck[faceI]], points);
         nf = meshOps::faceNormal(faces[cellToCheck[faceI]], points);
 
-        if (((xf - checkPoint) & nf) > 0.0)
+        vector faceToPoint = (xf - checkPoint);
+
+        if ((faceToPoint & nf) > (tolerance * magSqr(faceToPoint)))
         {
             if (owner[cellToCheck[faceI]] != cIndex)
             {

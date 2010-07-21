@@ -193,7 +193,8 @@ namespace meshOps
         const UList<face>& faces,
         const UList<label>& owner,
         const UList<point>& points,
-        const point& checkPoint
+        const point& checkPoint,
+        const scalar& tolerance
     );
 
     // Compute the area / centre of a polygon

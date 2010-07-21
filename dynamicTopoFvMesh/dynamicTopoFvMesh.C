@@ -366,7 +366,7 @@ void dynamicTopoFvMesh::computeFaceWeights
     scalar fArea = mag(meshOps::faceNormal(faces_[fIndex], oldPoints_));
     vector fCentre = meshOps::faceCentre(faces_[fIndex], oldPoints_);
 
-    while (nAttempts < 10)
+    while (nAttempts < 5)
     {
         // Obtain candidate parents for this face
         candidates =
@@ -546,7 +546,7 @@ void dynamicTopoFvMesh::computeFaceWeights
 
         FatalErrorIn
         (
-            "\n"
+            "\n\n"
             "void dynamicTopoFvMesh::computeFaceWeights\n"
             "(\n"
             "    const label fIndex,\n"
@@ -554,7 +554,7 @@ void dynamicTopoFvMesh::computeFaceWeights
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
             "    vectorField& centres\n"
-            ") const"
+            ") const\n"
         )
             << "Encountered non-conservative weighting factors." << nl
             << " Face: " << fIndex << nl
@@ -623,7 +623,7 @@ void dynamicTopoFvMesh::computeCellWeights
         cellVolume
     );
 
-    while (nAttempts < 10)
+    while (nAttempts < 5)
     {
         // Obtain candidate parents for this cell
         candidates =
@@ -745,17 +745,24 @@ void dynamicTopoFvMesh::computeCellWeights
         // relaxed weights to account for mild convexity.
         const cell& cellToCheck = cells_[cIndex];
 
-        forAll(cellToCheck, faceI)
+        if (twoDMesh_)
         {
-            const labelList& fEdges = faceEdges_[cellToCheck[faceI]];
 
-            forAll(fEdges, edgeI)
+        }
+        else
+        {
+            forAll(cellToCheck, faceI)
             {
-                if (whichEdgePatch(fEdges[edgeI]) > -1)
+                const labelList& fEdges = faceEdges_[cellToCheck[faceI]];
+
+                forAll(fEdges, edgeI)
                 {
-                    // Normalize by sum of weights
-                    weights /= sum(weights);
-                    return;
+                    if (whichEdgePatch(fEdges[edgeI]) > -1)
+                    {
+                        // Normalize by sum of weights
+                        weights /= sum(weights);
+                        return;
+                    }
                 }
             }
         }
@@ -788,7 +795,7 @@ void dynamicTopoFvMesh::computeCellWeights
 
         FatalErrorIn
         (
-            "\n"
+            "\n\n"
             "void dynamicTopoFvMesh::computeCellWeights\n"
             "(\n"
             "    const label cIndex,\n"
@@ -796,7 +803,7 @@ void dynamicTopoFvMesh::computeCellWeights
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
             "    vectorField& centres\n"
-            ") const"
+            ") const\n"
         )
             << "Encountered non-conservative weighting factors." << nl
             << " Cell: " << cIndex << nl
@@ -1396,59 +1403,148 @@ bool dynamicTopoFvMesh::cellIntersection
         return true;
     }
 
-    // Check whether any old points are within
-    // the new cell. Count these as 'intersections'.
-    forAll(fromCellPoints, pointI)
+    if (twoDMesh_)
     {
-        if (commonPoints.found(fromCellPoints[pointI]))
+        // Check if edge mid-points are clearly within the cell.
+        // If so, add edge points as 'intersections'.
+        forAll(fromCellEdges, edgeI)
         {
-            continue;
+            const edge& edgeToCheck = fromCellEdges[edgeI];
+
+            if
+            (
+                commonPoints.found(edgeToCheck.start()) &&
+                commonPoints.found(edgeToCheck.end())
+            )
+            {
+                continue;
+            }
+
+            vector checkPoint =
+            (
+                0.5 *
+                (
+                    oldPoints_[edgeToCheck.start()] +
+                    oldPoints_[edgeToCheck.end()]
+                )
+            );
+
+            if
+            (
+                meshOps::pointInCell
+                (
+                    newCellIndex,
+                    toCell,
+                    faces_,
+                    owner_,
+                    oldPoints_,
+                    checkPoint,
+                    1e-3
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
         }
 
-        const point& checkPoint = oldPoints_[fromCellPoints[pointI]];
-
-        if
-        (
-            meshOps::pointInCell
-            (
-                newCellIndex,
-                toCell,
-                faces_,
-                owner_,
-                oldPoints_,
-                checkPoint
-            )
-        )
+        forAll(toCellEdges, edgeI)
         {
-            intersections.set(++nInts, checkPoint);
+            const edge& edgeToCheck = toCellEdges[edgeI];
+
+            if
+            (
+                commonPoints.found(edgeToCheck.start()) &&
+                commonPoints.found(edgeToCheck.end())
+            )
+            {
+                continue;
+            }
+
+            vector checkPoint =
+            (
+                0.5 *
+                (
+                    oldPoints_[edgeToCheck.start()] +
+                    oldPoints_[edgeToCheck.end()]
+                )
+            );
+
+            if
+            (
+                meshOps::pointInCell
+                (
+                    oldCellIndex,
+                    fromCell,
+                    polyMesh::faces(),
+                    polyMesh::faceOwner(),
+                    oldPoints_,
+                    checkPoint,
+                    1e-3
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
         }
     }
-
-    // Check whether any new points are within
-    // the old cell. Count these as 'intersections'.
-    forAll(toCellPoints, pointI)
+    else
     {
-        if (commonPoints.found(toCellPoints[pointI]))
+        // Check whether any old points are within
+        // the new cell. Count these as 'intersections'.
+        forAll(fromCellPoints, pointI)
         {
-            continue;
+            if (commonPoints.found(fromCellPoints[pointI]))
+            {
+                continue;
+            }
+
+            const point& checkPoint = oldPoints_[fromCellPoints[pointI]];
+
+            if
+            (
+                meshOps::pointInCell
+                (
+                    newCellIndex,
+                    toCell,
+                    faces_,
+                    owner_,
+                    oldPoints_,
+                    checkPoint,
+                    0.0
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
         }
 
-        const point& checkPoint = oldPoints_[toCellPoints[pointI]];
-
-        if
-        (
-            meshOps::pointInCell
-            (
-                oldCellIndex,
-                fromCell,
-                polyMesh::faces(),
-                polyMesh::faceOwner(),
-                oldPoints_,
-                checkPoint
-            )
-        )
+        // Check whether any new points are within
+        // the old cell. Count these as 'intersections'.
+        forAll(toCellPoints, pointI)
         {
-            intersections.set(++nInts, checkPoint);
+            if (commonPoints.found(toCellPoints[pointI]))
+            {
+                continue;
+            }
+
+            const point& checkPoint = oldPoints_[toCellPoints[pointI]];
+
+            if
+            (
+                meshOps::pointInCell
+                (
+                    oldCellIndex,
+                    fromCell,
+                    polyMesh::faces(),
+                    polyMesh::faceOwner(),
+                    oldPoints_,
+                    checkPoint,
+                    0.0
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
         }
     }
 
@@ -1556,6 +1652,29 @@ bool dynamicTopoFvMesh::cellIntersection
                 edgeIntersections = true;
             }
         }
+    }
+
+    // If this is a 2D mesh, we're done.
+    if (twoDMesh_)
+    {
+        // Does not intersect.
+        if (nInts < 6)
+        {
+            return false;
+        }
+
+        // Copy intersections
+        tP.setSize(nInts, vector::zero);
+
+        nInts = 0;
+
+        forAllConstIter(Map<vector>, intersections, pI)
+        {
+            tP[nInts++] = pI();
+        }
+
+        // Found a convex set of points
+        return true;
     }
 
     if (edgeIntersections && debug > 1)
@@ -1770,6 +1889,12 @@ bool dynamicTopoFvMesh::cellIntersection
         }
     }
 
+    if (nInts < 4)
+    {
+        // Does not intersect.
+        return false;
+    }
+
     // Copy intersections
     tP.setSize(nInts, vector::zero);
 
@@ -1802,13 +1927,7 @@ bool dynamicTopoFvMesh::cellIntersection
     */
 
     // Found a convex set of points.
-    if (nInts >= 4)
-    {
-        return true;
-    }
-
-    // Does not intersect
-    return false;
+    return true;
 }
 
 
@@ -2202,14 +2321,19 @@ void dynamicTopoFvMesh::setFaceMapping
             "    const vectorField& mapCentres\n"
             ")"
         )
-            << nl << " Incompatible mapping: " << nl
+            << nl << " Incompatible mapping. " << nl
+            << "  Possible reasons: " << nl
+            << "    1. Either sizes are incompatible; " << nl
+            << "    2. No mapping specified for a boundary face; " << nl
+            << "    3. Mapping specified for an internal face, " << nl
+            << "       when none was expected." << nl << nl
             << " Face: " << fIndex << nl
             << " Patch: " << patch << nl
             << " Owner: " << owner_[fIndex] << nl
             << " Neighbour: " << neighbour_[fIndex] << nl
             << " mapFaces: " << mapFaces << nl
             << " mapWeights: " << mapWeights << nl
-            << " mapCentres: " << mapCentres
+            << " mapCentres: " << mapCentres << nl
             << abort(FatalError);
     }
 

@@ -85,7 +85,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         FatalErrorIn
         (
             "\n"
-            "const changeMap dynamicTopoFvMesh::collapseQuadFace\n"
+            "const changeMap "
+            "dynamicTopoFvMesh::collapseQuadFace\n"
             "(\n"
             "    const label fIndex,\n"
             "    label overRideCase,\n"
@@ -177,7 +178,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 FatalErrorIn
                 (
                     "\n"
-                    "const changeMap dynamicTopoFvMesh::collapseQuadFace\n"
+                    "const changeMap "
+                    "dynamicTopoFvMesh::collapseQuadFace\n"
                     "(\n"
                     "    const label fIndex,\n"
                     "    label overRideCase,\n"
@@ -242,8 +244,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                             FatalErrorIn
                             (
                                 "\n"
-                                "const changeMap dynamicTopoFvMesh"
-                                "::collapseQuadFace\n"
+                                "const changeMap "
+                                "dynamicTopoFvMesh::collapseQuadFace\n"
                                 "(\n"
                                 "    const label fIndex,\n"
                                 "    label overRideCase,\n"
@@ -282,8 +284,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                             FatalErrorIn
                             (
                                 "\n"
-                                "const changeMap dynamicTopoFvMesh"
-                                "::collapseQuadFace\n"
+                                "const changeMap "
+                                "dynamicTopoFvMesh::collapseQuadFace\n"
                                 "(\n"
                                 "    const label fIndex,\n"
                                 "    label overRideCase,\n"
@@ -564,8 +566,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 WarningIn
                 (
                     "\n"
-                    "const changeMap dynamicTopoFvMesh"
-                    "::collapseQuadFace\n"
+                    "const changeMap "
+                    "dynamicTopoFvMesh::collapseQuadFace\n"
                     "(\n"
                     "    const label fIndex,\n"
                     "    label overRideCase,\n"
@@ -573,7 +575,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     ")\n"
                 )   << "Collapsing an internal face that "
                     << "lies on two boundary patches. "
-                    << "Face: " << fIndex << ": " << faces_[fIndex] << endl;
+                    << "Face: " << fIndex << ": " << faces_[fIndex]
+                    << endl;
             }
 
             // Bail out for now. If proximity based refinement is
@@ -738,7 +741,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             ends[0]
         );
 
-        meshOps::sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
+        meshOps::sizeDownList
+        (
+            faceToThrow[0],
+            edgeFaces_[ends[0]]
+        );
 
         if (c1 != -1)
         {
@@ -783,7 +790,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 ends[1]
             );
 
-            meshOps::sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
+            meshOps::sizeDownList
+            (
+                faceToThrow[1],
+                edgeFaces_[ends[1]]
+            );
         }
 
         // Correct edgeFaces for triangular faces...
@@ -923,7 +934,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Remove the current face from the replacement edge
-        meshOps::sizeDownList(fIndex, edgeFaces_[checkEdgeIndex[2]]);
+        meshOps::sizeDownList
+        (
+            fIndex,
+            edgeFaces_[checkEdgeIndex[2]]
+        );
 
         // Replace point labels on all triangular boundary faces.
         forAll(firstCells,cellI)
@@ -1123,7 +1138,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             ends[0]
         );
 
-        meshOps::sizeDownList(faceToThrow[0], edgeFaces_[ends[0]]);
+        meshOps::sizeDownList
+        (
+            faceToThrow[0],
+            edgeFaces_[ends[0]]
+        );
 
         if (c1 != -1)
         {
@@ -1168,7 +1187,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 ends[1]
             );
 
-            meshOps::sizeDownList(faceToThrow[1], edgeFaces_[ends[1]]);
+            meshOps::sizeDownList
+            (
+                faceToThrow[1],
+                edgeFaces_[ends[1]]
+            );
         }
 
         // Correct edgeFaces for triangular faces...
@@ -1308,7 +1331,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Remove the current face from the replacement edge
-        meshOps::sizeDownList(fIndex, edgeFaces_[checkEdgeIndex[1]]);
+        meshOps::sizeDownList
+        (
+            fIndex,
+            edgeFaces_[checkEdgeIndex[1]]
+        );
 
         // Replace point labels on all triangular boundary faces.
         forAll(secondCells, cellI)
@@ -1685,13 +1712,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         // This face is being converted from interior to boundary. Remove
         // from the interior list and add as a boundary face to the end.
-        label newFaceIndex = insertFace
-                             (
-                                 whichPatch(faceToThrow[0]),
-                                 newFace,
-                                 newOwn,
-                                 -1
-                             );
+        label newFaceIndex =
+        (
+            insertFace
+            (
+                whichPatch(faceToThrow[0]),
+                newFace,
+                newOwn,
+                -1
+            )
+        );
 
         // Add a faceEdges entry as well.
         // Edges don't have to change, since they're

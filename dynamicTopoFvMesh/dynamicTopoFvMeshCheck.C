@@ -109,7 +109,52 @@ bool dynamicTopoFvMesh::meshQuality
 
         if (twoDMesh_)
         {
+            // Get a triangular boundary face
+            forAll(cellToCheck, faceI)
+            {
+                const face& faceToCheck = faces_[cellToCheck[faceI]];
 
+                if (faceToCheck.size() == 3)
+                {
+                    vector Xf =
+                    (
+                        meshOps::faceCentre(faceToCheck, points_)
+                    );
+
+                    vector Sf =
+                    (
+                        meshOps::faceNormal(faceToCheck, points_)
+                    );
+
+                    // Assume centre-plane passes through origin
+                    scalar area = mag(Sf) * Foam::sign(Sf & Xf);
+
+                    scalar maxSqrLength = 0.0;
+
+                    forAll(faceToCheck, pointI)
+                    {
+                        label nextLabel = faceToCheck.nextLabel(pointI);
+
+                        maxSqrLength =
+                        (
+                            Foam::max
+                            (
+                                maxSqrLength,
+                                magSqr
+                                (
+                                    points_[nextLabel]
+                                  - points_[faceToCheck[pointI]]
+                                )
+                            )
+                        );
+                    }
+
+                    // Compute the triangle aspect-ratio
+                    cQuality = 2.3094 * (area / (maxSqrLength + VSMALL));
+
+                    break;
+                }
+            }
         }
         else
         {
@@ -1250,6 +1295,9 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         }
     }
 
+    label allFaces = faces_.size();
+    labelList nCellsPerFace(allFaces, 0);
+
     forAll(cells_, cellI)
     {
         const cell& curCell = cells_[cellI];
@@ -1293,6 +1341,79 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                      << nl << "Cell-Face connectivity is inconsistent."
                      << endl;
             }
+
+            // Count cells per face
+            nCellsPerFace[curCell[faceI]]++;
+        }
+    }
+
+    Info << "Done." << endl;
+
+    Info << "Checking face-cell connectivity...";
+
+    forAll(nCellsPerFace, faceI)
+    {
+        if (nCellsPerFace[faceI] == 0)
+        {
+            // This might be a deleted face
+            if (faceI < nOldFaces_)
+            {
+                if (reverseFaceMap_[faceI] == -1)
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                if (deletedFaces_.found(faceI))
+                {
+                    continue;
+                }
+            }
+
+            // Looks like this is really an unused face.
+            Pout << "Face " << faceI
+                 << " :: " << faces_[faceI]
+                 << " is unused. "
+                 << endl;
+
+            nFailedChecks++;
+
+            ConnectivityWarning()
+                 << nl << "Cell-Face connectivity is inconsistent."
+                 << endl;
+        }
+        else
+        if (nCellsPerFace[faceI] != 2 && whichPatch(faceI) == -1)
+        {
+            // Internal face is not shared by exactly two cells
+            Pout << "Internal Face " << faceI
+                 << " :: " << faces_[faceI]
+                 << " is multiply connected." << nl
+                 << " nCellsPerFace: " << nCellsPerFace[faceI]
+                 << endl;
+
+            nFailedChecks++;
+
+            ConnectivityWarning()
+                 << nl << "Cell-Face connectivity is inconsistent."
+                 << endl;
+        }
+        else
+        if (nCellsPerFace[faceI] != 1 && whichPatch(faceI) > -1)
+        {
+            // Boundary face is not shared by exactly one cell
+            Pout << "Boundary Face " << faceI
+                 << " :: " << faces_[faceI]
+                 << " is multiply connected." << nl
+                 << " nCellsPerFace: " << nCellsPerFace[faceI]
+                 << endl;
+
+            nFailedChecks++;
+
+            ConnectivityWarning()
+                 << nl << "Cell-Face connectivity is inconsistent."
+                 << endl;
         }
     }
 

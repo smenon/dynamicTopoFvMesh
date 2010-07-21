@@ -1573,10 +1573,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Update the cell list.
         cells_[c1] = oldCells[1];
         cells_[newCellIndex[1]] = newCells[1];
-
-        // Fill-in mapping information
-        labelList mC1(1, c1);
-        //setCellMapping(newCellIndex[1], mC1, scalarField(1, 1.0));
     }
 
     // Update the cell list.
@@ -1584,26 +1580,70 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     cells_[newCellIndex[0]] = newCells[0];
 
     // Fill-in mapping information
-    labelList mC0(1, c0);
-    //setCellMapping(newCellIndex[0], mC0, scalarField(1, 1.0));
+    FixedList<label, 4> mapCells(-1);
+
+    mapCells[0] = c0;
+    mapCells[1] = newCellIndex[0];
+
+    if (c1 != -1)
+    {
+        mapCells[2] = c1;
+        mapCells[3] = newCellIndex[1];
+    }
+
+    labelList mC(1, c0);
+
+    forAll(mapCells, cellI)
+    {
+        if (mapCells[cellI] == -1)
+        {
+            continue;
+        }
+
+        labelList parents;
+        scalarField weights;
+        vectorField centres;
+
+        // Obtain weighting factors for this cell.
+        computeCellWeights
+        (
+            mapCells[cellI],
+            mC,
+            parents,
+            weights,
+            centres
+        );
+
+        // Set the mapping for this cell
+        setCellMapping
+        (
+            mapCells[cellI],
+            parents,
+            weights,
+            centres
+        );
+
+        // Update cellParents information
+        cellParents_.set(mapCells[cellI], parents);
+    }
 
     // Set fill-in mapping information for the modified face.
-    setFaceMapping(fIndex);
+    //setFaceMapping(fIndex);
 
     // Default mapping for internal faces
-    setFaceMapping(newFaceIndex[0]);
+    //setFaceMapping(newFaceIndex[0]);
 
     // Wedge / empty faces get zero flux.
     // setFaceMapping(newFaceIndex[1]);
     // setFaceMapping(newFaceIndex[2]);
 
     // Set fill-in mapping information for the new face
-    setFaceMapping(newFaceIndex[3]);
+    //setFaceMapping(newFaceIndex[3]);
 
     if (c1 != -1)
     {
         // Default mapping for internal faces
-        setFaceMapping(newFaceIndex[4]);
+        //setFaceMapping(newFaceIndex[4]);
 
         // Wedge / empty faces get zero flux.
         // setFaceMapping(newFaceIndex[5]);

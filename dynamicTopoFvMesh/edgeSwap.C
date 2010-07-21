@@ -843,8 +843,34 @@ void dynamicTopoFvMesh::swapQuadFace
     labelList mC(2, -1);
     mC[0] = c0; mC[1] = c1;
 
-    //setCellMapping(c0, mC, scalarField(2, 0.5));
-    //setCellMapping(c1, mC, scalarField(2, 0.5));
+    forAll(mC, cellI)
+    {
+        labelList parents;
+        scalarField weights;
+        vectorField centres;
+
+        // Obtain weighting factors for this cell.
+        computeCellWeights
+        (
+            mC[cellI],
+            mC,
+            parents,
+            weights,
+            centres
+        );
+
+        // Set the mapping for this cell
+        setCellMapping
+        (
+            mC[cellI],
+            parents,
+            weights,
+            centres
+        );
+
+        // Update cellParents information
+        cellParents_.set(mC[cellI], parents);
+    }
 
     // Interpolate new fluxes for the flipped face.
     setFaceMapping(fIndex);
