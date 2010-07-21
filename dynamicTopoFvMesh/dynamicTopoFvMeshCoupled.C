@@ -1177,8 +1177,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 {
                     FatalErrorIn
                     (
-                        "void dynamicTopoFvMesh::"
-                        "buildLocalCoupledMaps()"
+                        "void dynamicTopoFvMesh::buildLocalCoupledMaps()"
                     )
                         << " Failed to match point: " << mP[indexI]
                         << ": " << points_[mP[indexI]]
@@ -1196,9 +1195,6 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         const Map<label>& pMap = cMap.entityMap(coupleMap::POINT);
         const Map<label>& eMap = cMap.entityMap(coupleMap::EDGE);
         const Map<label>& fMap = cMap.entityMap(coupleMap::FACE);
-
-        // Set up a comparison face.
-        face cFace(4);
 
         // Now that all points are matched,
         // perform topological matching for higher entities.
@@ -1232,14 +1228,17 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                 const face& mFace = faces_[mfIndex];
 
-                // Configure the face for comparison.
-                forAll(mFace, pointI)
-                {
-                    cFace[pointI] = pMap[mFace[pointI]];
-                }
-
                 if (twoDMesh_)
                 {
+                    // Set up a comparison face.
+                    face cFace(4);
+
+                    // Configure the face for comparison.
+                    forAll(mFace, pointI)
+                    {
+                        cFace[pointI] = pMap[mFace[pointI]];
+                    }
+
                     bool matched = false;
 
                     forAll(spFaces, faceJ)
@@ -1276,17 +1275,25 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     {
                         FatalErrorIn
                         (
-                            "void dynamicTopoFvMesh::"
-                            "buildLocalCoupledMaps()"
+                            "void dynamicTopoFvMesh::buildLocalCoupledMaps()"
                         )
                             << " Failed to match face: "
-                            << mfIndex << ": " << mFace
+                            << mfIndex << ": " << mFace << nl
+                            << " Comparison face: " << cFace
                             << abort(FatalError);
                     }
                 }
                 else
                 {
                     label slaveFaceIndex = -1;
+
+                    // Set up a comparison face.
+                    triFace cFace
+                    (
+                        pMap[mFace[0]],
+                        pMap[mFace[1]],
+                        pMap[mFace[2]]
+                    );
 
                     forAll(spFaces, faceJ)
                     {
@@ -1295,7 +1302,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                         const face& sFace = faces_[sfIndex];
 
-                        if (triFace::compare(triFace(cFace), triFace(sFace)))
+                        if (triFace::compare(cFace, triFace(sFace)))
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave
@@ -1322,11 +1329,11 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     {
                         FatalErrorIn
                         (
-                            "void dynamicTopoFvMesh::"
-                            "buildLocalCoupledMaps()"
+                            "void dynamicTopoFvMesh::buildLocalCoupledMaps()"
                         )
                             << " Failed to match face: "
-                            << mfIndex << ": " << mFace
+                            << mfIndex << ": " << mFace << nl
+                            << " Comparison face: " << cFace
                             << abort(FatalError);
                     }
 

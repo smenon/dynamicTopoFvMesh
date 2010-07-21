@@ -497,7 +497,7 @@ void dynamicTopoFvMesh::computeFaceWeights
     }
 
     // Test weights for consistency
-    if (mag(1.0 - sum(weights/fArea)) > 1e-12)
+    if (mag(1.0 - sum(weights/fArea)) > 1e-10)
     {
         // Inconsistent weights. Check whether any edges
         // lie on bounding curves. These faces can have
@@ -738,7 +738,7 @@ void dynamicTopoFvMesh::computeCellWeights
     }
 
     // Test weights for consistency
-    if (mag(1.0 - sum(weights/cellVolume)) > 1e-12)
+    if (mag(1.0 - sum(weights/cellVolume)) > 1e-10)
     {
         // Inconsistent weights. Check whether any edges
         // lie on boundary patches. These cells can have
@@ -1821,8 +1821,6 @@ labelList dynamicTopoFvMesh::faceParents
     const labelList& oldCandidates
 ) const
 {
-    labelStaticHashSet masterFaces;
-
     const face& faceToCheck = faces_[fIndex];
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -1837,6 +1835,7 @@ labelList dynamicTopoFvMesh::faceParents
             "labelList dynamicTopoFvMesh::faceParents\n"
             "(\n"
             "    const label fIndex,\n"
+            "    const vector& fCentre,\n"
             "    const scalar searchFactor,\n"
             "    const labelList& oldCandidates\n"
             ") const"
@@ -1846,6 +1845,26 @@ labelList dynamicTopoFvMesh::faceParents
             << " oldCandidates: " << oldCandidates
             << abort(FatalError);
     }
+
+    // Determine the bounds of the new face
+    scalar maxDist = 0.0;
+    vector maxDistPos = vector::zero;
+
+    forAll(faceToCheck, pointI)
+    {
+        scalar dist = magSqr(oldPoints_[faceToCheck[pointI]] - fCentre);
+
+        if (dist > maxDist)
+        {
+            maxDist = dist;
+            maxDistPos = oldPoints_[faceToCheck[pointI]];
+        }
+    }
+
+    // Define a search radius
+    vector bMax = searchFactor * (maxDistPos - fCentre);
+
+    StaticHashTable<empty, label, Hash<label> > masterFaces;
 
     // Fetch old patch start
     label patchStart = boundary[patchIndex].start();
@@ -1891,10 +1910,17 @@ labelList dynamicTopoFvMesh::faceParents
     }
 
     // Fetch connectivity from the old mesh.
+    const vectorField& faceCentres = boundary[patchIndex].faceCentres();
     const labelListList& oldFaceFaces = boundary[patchIndex].faceFaces();
 
-    for (label attempt = 0; attempt < 10; attempt++)
+    label nAttempts = 0;
+    bool changed;
+
+    do
     {
+        // Reset flag
+        changed = false;
+
         // Fetch the initial set of candidates
         labelList initList = masterFaces.toc();
 
@@ -1905,56 +1931,34 @@ labelList dynamicTopoFvMesh::faceParents
 
             forAll(ff, faceI)
             {
-                masterFaces.insert(ff[faceI], empty());
+                vector xC = (faceCentres[ff[faceI]] - fCentre);
+
+                if ((xC & xC) < (bMax & bMax))
+                {
+                    if (!masterFaces.found(ff[faceI]))
+                    {
+                        masterFaces.insert(ff[faceI], empty());
+                        changed = true;
+                    }
+                }
             }
         }
-    }
 
-    // Fetch the list of face points
-    pointField facePoints(faceToCheck.size());
+        nAttempts++;
 
-    forAll(facePoints, pointI)
-    {
-        facePoints[pointI] = oldPoints_[faceToCheck[pointI]];
-    }
-
-    // Prepare an axis-aligned bounding box around the face,
-    // and add faces according to face-centre positions.
-    boundBox faceBox(facePoints, false);
-
-    // Define a search radius
-    vector bMax = searchFactor * (faceBox.max() - fCentre);
-
-    const vectorField& faceCentres = boundary[patchIndex].faceCentres();
-
-    label nEntries = 0;
-    labelList finalFaces(masterFaces.size(), -1);
-
-    forAllConstIter(labelStaticHashSet, masterFaces, fIter)
-    {
-        vector xC = (faceCentres[fIter.key()] - fCentre);
-
-        if ((xC & xC) < (bMax & bMax))
-        {
-            // Store global indices in finalFaces
-            finalFaces[nEntries++] = (fIter.key() + patchStart);
-        }
-    }
-
-    // Shrink to actual size
-    finalFaces.setSize(nEntries);
+    } while (changed);
 
     if (debug > 3)
     {
         Info << " Face: " << fIndex
              << " No. of parent candidates: "
-             << nEntries
+             << masterFaces.size()
              << " searchFactor: "
              << searchFactor
              << endl;
     }
 
-    return finalFaces;
+    return masterFaces.toc();
 }
 
 
@@ -1967,7 +1971,32 @@ labelList dynamicTopoFvMesh::cellParents
     const labelList& oldCandidates
 ) const
 {
-    labelStaticHashSet masterCells;
+    // Fetch the new cell, and determine its bounds.
+    const cell& newCell = cells_[cIndex];
+
+    scalar maxDist = 0.0;
+    vector maxDistPos = vector::zero;
+
+    forAll(newCell, faceI)
+    {
+        const face& faceToCheck = faces_[newCell[faceI]];
+
+        forAll(faceToCheck, pointI)
+        {
+            scalar dist = magSqr(oldPoints_[faceToCheck[pointI]] - cCentre);
+
+            if (dist > maxDist)
+            {
+                maxDist = dist;
+                maxDistPos = oldPoints_[faceToCheck[pointI]];
+            }
+        }
+    }
+
+    // Define a search radius
+    vector bMax = searchFactor * (maxDistPos - cCentre);
+
+    StaticHashTable<empty, label, Hash<label> > masterCells;
 
     // Insert the old candidates first
     forAll(oldCandidates, cellI)
@@ -1994,10 +2023,17 @@ labelList dynamicTopoFvMesh::cellParents
     }
 
     // Fetch connectivity from the old mesh.
+    const vectorField& cellCentres = polyMesh::cellCentres();
     const labelListList& oldCellCells = polyMesh::cellCells();
 
-    for (label attempt = 0; attempt < 10; attempt++)
+    label nAttempts = 0;
+    bool changed;
+
+    do
     {
+        // Reset flag
+        changed = false;
+
         // Fetch the initial set of candidates
         labelList initList = masterCells.toc();
 
@@ -2008,59 +2044,34 @@ labelList dynamicTopoFvMesh::cellParents
 
             forAll(cc, cellI)
             {
-                masterCells.insert(cc[cellI], empty());
+                vector xC = (cellCentres[cc[cellI]] - cCentre);
+
+                if ((xC & xC) < (bMax & bMax))
+                {
+                    if (!masterCells.found(cc[cellI]))
+                    {
+                        masterCells.insert(cc[cellI], empty());
+                        changed = true;
+                    }
+                }
             }
         }
-    }
 
-    // Fetch the new cell, and determine its bounds.
-    const cell& newCell = cells_[cIndex];
+        nAttempts++;
 
-    labelList pLabels = newCell.labels(faces_);
-
-    pointField cellPoints(pLabels.size());
-
-    forAll(cellPoints, pointI)
-    {
-        cellPoints[pointI] = oldPoints_[pLabels[pointI]];
-    }
-
-    // Prepare an axis-aligned bounding box around the cell,
-    // and add cells according to cell-centre positions.
-    boundBox cellBox(cellPoints, false);
-
-    // Define a search radius
-    vector bMax = searchFactor * (cellBox.max() - cCentre);
-
-    const vectorField& cellCentres = polyMesh::cellCentres();
-
-    label nEntries = 0;
-    labelList finalCells(masterCells.size(), -1);
-
-    forAllConstIter(labelStaticHashSet, masterCells, cIter)
-    {
-        vector xC = (cellCentres[cIter.key()] - cCentre);
-
-        if ((xC & xC) < (bMax & bMax))
-        {
-            finalCells[nEntries++] = cIter.key();
-        }
-    }
-
-    // Shrink to actual size
-    finalCells.setSize(nEntries);
+    } while (changed);
 
     if (debug > 3)
     {
         Info << " Cell: " << cIndex
              << " No. of parent candidates: "
-             << nEntries
+             << masterCells.size()
              << " searchFactor: "
              << searchFactor
              << endl;
     }
 
-    return finalCells;
+    return masterCells.toc();
 }
 
 

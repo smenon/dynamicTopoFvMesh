@@ -232,10 +232,8 @@ class dynamicTopoFvMesh
         // Local coupled patch information
         PtrList<coupledPatchInfo> patchCoupling_;
 
-        typedef StaticHashTable<empty, label, Hash<label> > labelStaticHashSet;
-
         // Coupled entities to avoid during normal modification
-        labelStaticHashSet entitiesToAvoid_;
+        StaticHashTable<empty, label, Hash<label> > entitiesToAvoid_;
 
         // List of processors that this sub-domain talks to
         labelList procIndices_;

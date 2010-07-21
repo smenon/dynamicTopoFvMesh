@@ -465,6 +465,34 @@ labelList conservativeMeshToMesh::cellParents
     const label oldCandidate
 ) const
 {
+    // Fetch the new cell, and determine its bounds.
+    const pointField& toPoints = toMesh().points();
+    const cell& toCell = toMesh().cells()[newCellIndex];
+    const vectorField& cellCentres = fromMesh().cellCentres();
+
+    scalar maxDist = 0.0;
+    vector maxDistPos = vector::zero;
+    vector cCentre = toMesh().cellCentres()[newCellIndex];
+
+    forAll(toCell, faceI)
+    {
+        const face& faceToCheck = toMesh().faces()[toCell[faceI]];
+
+        forAll(faceToCheck, pointI)
+        {
+            scalar dist = magSqr(toPoints[faceToCheck[pointI]] - cCentre);
+
+            if (dist > maxDist)
+            {
+                maxDist = dist;
+                maxDistPos = toPoints[faceToCheck[pointI]];
+            }
+        }
+    }
+
+    // Define a search radius
+    vector bMax = searchFactor * (maxDistPos - cCentre);
+
     typedef StaticHashTable<empty, label, Hash<label> > labelStaticHashSet;
 
     labelStaticHashSet masterCells;
@@ -475,8 +503,14 @@ labelList conservativeMeshToMesh::cellParents
     // Insert the old candidate first
     masterCells.insert(oldCandidate, empty());
 
-    for (label attempt = 0; attempt < 10; attempt++)
+    label nAttempts = 0;
+    bool changed;
+
+    do
     {
+        // Reset flag
+        changed = false;
+
         // Fetch the initial set of candidates
         labelList initList = masterCells.toc();
 
@@ -487,52 +521,34 @@ labelList conservativeMeshToMesh::cellParents
 
             forAll(cc, cellI)
             {
-                masterCells.insert(cc[cellI], empty());
+                vector xC = (cellCentres[cc[cellI]] - cCentre);
+
+                if ((xC & xC) < (bMax & bMax))
+                {
+                    if (!masterCells.found(cc[cellI]))
+                    {
+                        masterCells.insert(cc[cellI], empty());
+                        changed = true;
+                    }
+                }
             }
         }
-    }
 
-    // Fetch the new cell, and determine its bounds.
-    const cell& toCell = toMesh().cells()[newCellIndex];
+        nAttempts++;
 
-    // Prepare an axis-aligned bounding box around the cell,
-    // and add cells according to cell-centre positions.
-    boundBox cellBox(toCell.points(toMesh().faces(), toMesh().points()), false);
-
-    // Define a search radius
-    vector bC = cellBox.midpoint();
-    vector bMax = searchFactor * (cellBox.max() - bC);
-
-    const vectorField& cellCentres = fromMesh().cellCentres();
-
-    label nEntries = 0;
-    labelList finalCells(masterCells.size(), -1);
-
-    // Count the number of entries
-    forAllConstIter(labelStaticHashSet, masterCells, cIter)
-    {
-        vector xC = (cellCentres[cIter.key()] - bC);
-
-        if ((xC & xC) < (bMax & bMax))
-        {
-            finalCells[nEntries++] = cIter.key();
-        }
-    }
-
-    // Shrink to actual size
-    finalCells.setSize(nEntries);
+    } while (changed);
 
     if (debug)
     {
         Info << " Cell: " << newCellIndex
              << " No. of parent candidates: "
-             << nEntries
+             << masterCells.size()
              << " searchFactor: "
              << searchFactor
              << endl;
     }
 
-    return finalCells;
+    return masterCells.toc();
 }
 
 
