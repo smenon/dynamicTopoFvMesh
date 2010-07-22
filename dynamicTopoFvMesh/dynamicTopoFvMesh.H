@@ -53,7 +53,6 @@ SourceFiles
 #include "resizableList.H"
 #include "threadHandler.H"
 #include "dynamicFvMesh.H"
-#include "StaticHashTable.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -232,9 +231,6 @@ class dynamicTopoFvMesh
         // Local coupled patch information
         PtrList<coupledPatchInfo> patchCoupling_;
 
-        // Coupled entities to avoid during normal modification
-        StaticHashTable<empty, label, Hash<label> > entitiesToAvoid_;
-
         // List of processors that this sub-domain talks to
         labelList procIndices_;
 
@@ -404,7 +400,7 @@ class dynamicTopoFvMesh
         inline label self() const;
 
         // Initialize stacks
-        inline void initStacks();
+        inline void initStacks(const labelHashSet& entities);
 
         // Initialize the coupled stack
         inline void initCoupledStack();
@@ -755,9 +751,6 @@ class dynamicTopoFvMesh
             const labelList& hullCells
         );
 
-        // Write out mesh bandwidth
-        void printBandwidth() const;
-
         // Reorder points after a topology change
         void reOrderPoints
         (
@@ -863,20 +856,6 @@ class dynamicTopoFvMesh
             const bool useOldPoints = false
         ) const;
 
-        // Actual routine to write out the VTK file
-        void writeVTK
-        (
-            const word& name,
-            const label nPoints,
-            const label nCells,
-            const label nTotalCells,
-            const pointField& points,
-            const labelListList& cpList = labelListList(0),
-            const label primitiveType = 3,
-            const Map<label>& reversePointMap = Map<label>(),
-            const Map<label>& reverseCellMap = Map<label>()
-        ) const;
-
         // Check the state of local connectivity lists
         void checkConnectivity(const label maxErrors = 0) const;
 
@@ -934,7 +913,7 @@ class dynamicTopoFvMesh
 
         // Build a list of entities that need to be avoided
         // by regular topo-changes.
-        void buildEntitiesToAvoid();
+        void buildEntitiesToAvoid(labelHashSet& entities);
 
         // Check whether the specified edge is a coupled master edge.
         bool isCoupledMaster(const label eIndex) const;
@@ -946,7 +925,7 @@ class dynamicTopoFvMesh
         inline void unsetCoupledModification() const;
 
         // Handle topology changes for coupled patches
-        void handleCoupledPatches();
+        void handleCoupledPatches(labelHashSet& entities);
 
         // Build patch sub-meshes for processor patches
         void buildProcessorPatchMeshes();

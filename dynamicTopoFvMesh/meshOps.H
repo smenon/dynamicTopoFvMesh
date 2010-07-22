@@ -57,6 +57,8 @@ SourceFiles
 namespace Foam
 {
 
+class polyMesh;
+
 /*---------------------------------------------------------------------------*\
                         Namespace meshOps Declaration
 \*---------------------------------------------------------------------------*/
@@ -371,6 +373,21 @@ namespace meshOps
 
     // Wait for buffer transfer completion.
     void waitForBuffers();
+
+    // Actual routine to write out the VTK file
+    void writeVTK
+    (
+        const polyMesh& mesh,
+        const word& name,
+        const label nPoints,
+        const label nCells,
+        const label nTotalCells,
+        const pointField& points,
+        const labelListList& cpList = labelListList(0),
+        const label primitiveType = 3,
+        const Map<label>& reversePointMap = Map<label>(),
+        const Map<label>& reverseCellMap = Map<label>()
+    );
 
 } // End namespace meshOps
 

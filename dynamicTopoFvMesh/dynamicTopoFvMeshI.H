@@ -569,7 +569,10 @@ inline label dynamicTopoFvMesh::self() const
 
 
 // Initialize edge-stacks
-inline void dynamicTopoFvMesh::initStacks()
+inline void dynamicTopoFvMesh::initStacks
+(
+    const labelHashSet& entities
+)
 {
     forAll(entityStack_, stackI)
     {
@@ -599,7 +602,7 @@ inline void dynamicTopoFvMesh::initStacks()
             // For coupled meshes, avoid certain faces.
             if (patchCoupling_.size() || procIndices_.size())
             {
-                if (entitiesToAvoid_.found(faceI))
+                if (entities.found(faceI))
                 {
                     continue;
                 }
@@ -620,7 +623,7 @@ inline void dynamicTopoFvMesh::initStacks()
             // For coupled meshes, avoid certain edges.
             if (patchCoupling_.size() || procIndices_.size())
             {
-                if (entitiesToAvoid_.found(edgeI))
+                if (entities.found(edgeI))
                 {
                     continue;
                 }

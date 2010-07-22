@@ -35,10 +35,13 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
+#include "Time.H"
 #include "meshOps.H"
 #include "ListOps.H"
 #include "Pstream.H"
 #include "triFace.H"
+#include "IOmanip.H"
+#include "polyMesh.H"
 #include "triPointRef.H"
 #include "tetPointRef.H"
 #include "labelHashSet.H"
@@ -1271,6 +1274,170 @@ void waitForBuffers()
     {
         OPstream::waitRequests();
         IPstream::waitRequests();
+    }
+}
+
+
+// Actual routine to write out the VTK file
+void writeVTK
+(
+    const polyMesh& mesh,
+    const word& name,
+    const label nPoints,
+    const label nCells,
+    const label nTotalCells,
+    const pointField& points,
+    const labelListList& cpList,
+    const label primitiveType,
+    const Map<label>& reversePointMap,
+    const Map<label>& reverseCellMap
+)
+{
+    // Make the directory
+    fileName dirName(mesh.time().path()/"VTK"/mesh.time().timeName());
+
+    mkDir(dirName);
+
+    // Open stream for output
+    OFstream file(dirName/name+".vtk");
+
+    // Write out the header
+    file << "# vtk DataFile Version 2.0" << nl
+         << name << ".vtk" << nl
+         << "ASCII" << nl
+         << "DATASET UNSTRUCTURED_GRID" << nl
+         << "POINTS " << nPoints << " double" << nl;
+
+    for (label i = 0; i < nPoints; i++)
+    {
+        file << setprecision(10)
+             << points[i].x() << ' '
+             << points[i].y() << ' '
+             << points[i].z() << ' '
+             << nl;
+    }
+
+    file << "CELLS " << nCells << " " << nTotalCells + nCells << endl;
+
+    if (cpList.size())
+    {
+        forAll(cpList, i)
+        {
+            if (cpList[i].size())
+            {
+                file << cpList[i].size() << ' ';
+
+                forAll(cpList[i], j)
+                {
+                    file << cpList[i][j] << ' ';
+                }
+
+                file << nl;
+            }
+        }
+    }
+    else
+    {
+        // List of points
+        for (label i = 0; i < nPoints; i++)
+        {
+            file << 1 << ' ' << i << nl;
+        }
+    }
+
+    file << "CELL_TYPES " << nCells << endl;
+
+    if (cpList.size())
+    {
+        forAll(cpList, i)
+        {
+            if (cpList[i].size() == 1)
+            {
+                // Vertex
+                file << "1" << nl;
+            }
+
+            if (cpList[i].size() == 2)
+            {
+                // Edge
+                file << "3" << nl;
+            }
+
+            if (cpList[i].size() == 3)
+            {
+                // Triangle face
+                file << "5" << nl;
+            }
+
+            if
+            (
+                (cpList[i].size() == 4) &&
+                (primitiveType == 2)
+            )
+            {
+                // Quad face
+                file << "9" << nl;
+            }
+
+            if
+            (
+                (cpList[i].size() == 4) &&
+                (primitiveType == 3)
+            )
+            {
+                // Tetrahedron
+                file << "10" << nl;
+            }
+
+            if (cpList[i].size() == 6)
+            {
+                // Wedge
+                file << "13" << nl;
+            }
+        }
+    }
+    else
+    {
+        // List of points
+        for (label i = 0; i < nPoints; i++)
+        {
+            // Vertex
+            file << '1' << nl;
+        }
+    }
+
+    // Write out indices for visualization.
+    if (reverseCellMap.size())
+    {
+        file << "CELL_DATA " << nCells << endl;
+
+        file << "FIELD CellFields 1" << endl;
+
+        file << "CellIds 1 " << nCells << " int" << endl;
+
+        for (label i = 0; i < nCells; i++)
+        {
+            file << reverseCellMap[i] << ' ';
+        }
+
+        file << endl;
+    }
+
+    // Write out indices for visualization.
+    if (reversePointMap.size())
+    {
+        file << "POINT_DATA " << nPoints << endl;
+
+        file << "FIELD PointFields 1" << endl;
+
+        file << "PointIds 1 " << nPoints << " int" << endl;
+
+        for (label i = 0; i < nPoints; i++)
+        {
+            file << reversePointMap[i] << ' ';
+        }
+
+        file << endl;
     }
 }
 

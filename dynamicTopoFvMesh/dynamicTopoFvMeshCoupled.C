@@ -513,7 +513,10 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 
 
 // Handle topology changes for coupled patches
-void dynamicTopoFvMesh::handleCoupledPatches()
+void dynamicTopoFvMesh::handleCoupledPatches
+(
+    labelHashSet& entities
+)
 {
     if (!patchCoupling_.size() && procIndices_.empty())
     {
@@ -581,7 +584,7 @@ void dynamicTopoFvMesh::handleCoupledPatches()
 
     // Build a list of entities that need to be avoided
     // by regular topo-changes.
-    buildEntitiesToAvoid();
+    buildEntitiesToAvoid(entities);
 
     // Reset coupled modifications.
     unsetCoupledModification();
@@ -2115,9 +2118,9 @@ label dynamicTopoFvMesh::getMaxCouplingIndex() const
 
 // Build a list of entities that need to be avoided
 // by regular topo-changes.
-void dynamicTopoFvMesh::buildEntitiesToAvoid()
+void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
 {
-    entitiesToAvoid_.clear();
+    entities.clear();
 
     // Build a set of entities to avoid during regular modifications,
     // and build a master stack for coupled modifications.
@@ -2164,7 +2167,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid()
             if (twoDMesh_)
             {
                 // Avoid this face during regular modification.
-                entitiesToAvoid_.insert(faceI, empty());
+                entities.set(faceI, empty());
             }
             else
             {
@@ -2173,7 +2176,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid()
                 forAll(fEdges, edgeI)
                 {
                     // Avoid this edge during regular modification.
-                    entitiesToAvoid_.insert(fEdges[edgeI], empty());
+                    entities.set(fEdges[edgeI], empty());
                 }
             }
         }

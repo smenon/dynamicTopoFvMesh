@@ -1132,8 +1132,10 @@ bool dynamicTopoFvMesh::faceIntersection
             {
                 writeVTK(Foam::name(newFaceIndex),newFaceIndex,2,false,true);
                 writeVTK(Foam::name(oldFaceIndex),oldFaceIndex,2,true,true);
-                writeVTK
+
+                meshOps::writeVTK
                 (
+                    (*this),
                     "ccSet_"
                   + Foam::name(newFaceIndex)
                   + '<' + Foam::name(oldFaceIndex) + '>',
@@ -1259,8 +1261,10 @@ bool dynamicTopoFvMesh::faceIntersection
         {
             writeVTK(Foam::name(newFaceIndex),newFaceIndex,2,false,true);
             writeVTK(Foam::name(oldFaceIndex),oldFaceIndex,2,true,true);
-            writeVTK
+
+            meshOps::writeVTK
             (
+                (*this),
                 "ccSet_"
               + Foam::name(newFaceIndex)
               + '<' + Foam::name(oldFaceIndex) + '>',
@@ -5071,8 +5075,11 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     // Remove sliver cells first.
     removeSlivers();
 
+    // Coupled entities to avoid during normal modification
+    labelHashSet entities;
+
     // Handle coupled patches.
-    handleCoupledPatches();
+    handleCoupledPatches(entities);
 
     // Set the thread scheduling sequence
     labelList topoSequence(threader_->getNumThreads());
@@ -5086,7 +5093,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     if (edgeRefinement_)
     {
         // Initialize stacks
-        initStacks();
+        initStacks(entities);
 
         if (threader_->multiThreaded())
         {
@@ -5127,7 +5134,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     }
 
     // Re-Initialize stacks
-    initStacks();
+    initStacks(entities);
 
     if (threader_->multiThreaded())
     {
