@@ -3089,279 +3089,6 @@ void dynamicTopoFvMesh::removePoint
 }
 
 
-// Utility method to build a hull of cells connected to the edge [2D]
-void dynamicTopoFvMesh::constructPrismHull
-(
-    const label eIndex,
-    labelHashSet& hullTriFaces,
-    labelHashSet& hullCells
-) const
-{
-    // Obtain references
-    const labelList& eFaces = edgeFaces_[eIndex];
-
-    // Loop through edgeFaces and add cells
-    forAll(eFaces, faceI)
-    {
-        label c0 = owner_[eFaces[faceI]];
-        label c1 = neighbour_[eFaces[faceI]];
-
-        if
-        (
-            !hullCells.found(c0)
-        )
-        {
-            // Add this cell
-            hullCells.insert(c0);
-
-            // Find associated triFaces and add them too
-            const cell& cellToCheck = cells_[c0];
-
-            forAll(cellToCheck, faceJ)
-            {
-                const face& faceToCheck = faces_[cellToCheck[faceJ]];
-
-                if
-                (
-                    (faceToCheck.size() == 3)
-                 && !(hullTriFaces.found(cellToCheck[faceJ]))
-                )
-                {
-                    hullTriFaces.insert(cellToCheck[faceJ]);
-                }
-            }
-        }
-
-        if
-        (
-            !hullCells.found(c1) &&
-            (c1 != -1)
-        )
-        {
-            // Add this cell
-            hullCells.insert(c1);
-
-            // Find associated triFaces and add them too
-            const cell& cellToCheck = cells_[c1];
-
-            forAll(cellToCheck, faceJ)
-            {
-                const face& faceToCheck = faces_[cellToCheck[faceJ]];
-
-                if
-                (
-                    (faceToCheck.size() == 3) &&
-                   !(hullTriFaces.found(cellToCheck[faceJ]))
-                )
-                {
-                    hullTriFaces.insert(cellToCheck[faceJ]);
-                }
-            }
-        }
-    }
-}
-
-
-// Utility method to build a hull of cells (and faces) around an edge.
-void dynamicTopoFvMesh::constructHull
-(
-    const label eIndex,
-    labelList& hullEdges,
-    labelList& hullFaces,
-    labelList& hullCells,
-    labelListList& ringEntities
-) const
-{
-    // [1] hullEdges is an ordered list of edge-labels around eIndex,
-    //     but not connected to it.
-    //      - Ordering is in the same manner as edgePoints.
-    // [2] hullFaces is an ordered list of face-labels connected to eIndex.
-    //      - Ordering is in the same manner as edgePoints.
-    // [3] hullCells is an ordered list of cell-labels connected to eIndex.
-    //      - For boundary hulls, the last cell label is -1
-    // [4] ringEntities are edges and faces connected to eIndex[0] and eIndex[1]
-    //      - ringEntities[0]: edges connected to eIndex[0]
-    //      - ringEntities[1]: faces connected to eIndex[0]
-    //      - ringEntities[2]: edges connected to eIndex[1]
-    //      - ringEntities[3]: faces connected to eIndex[1]
-
-    bool found;
-    label otherPoint = -1, nextPoint = -1;
-
-    // Obtain a reference to this edge, and its edgeFaces
-    const edge& edgeToCheck = edges_[eIndex];
-    const labelList& eFaces = edgeFaces_[eIndex];
-    const labelList& hullVertices = edgePoints_[eIndex];
-
-    // Temporary tri-face for comparison
-    face oFace(3);
-
-    // Loop through all faces of this edge and add them to hullFaces
-    forAll(eFaces, faceI)
-    {
-        const face& faceToCheck = faces_[eFaces[faceI]];
-
-        // Find the isolated point on this face,
-        // and compare it with hullVertices
-        meshOps::findIsolatedPoint
-        (
-            faceToCheck,
-            edgeToCheck,
-            otherPoint,
-            nextPoint
-        );
-
-        found = false;
-
-        forAll(hullVertices, indexI)
-        {
-            if (hullVertices[indexI] == otherPoint)
-            {
-                // Fill in the position of this face on the hull
-                hullFaces[indexI] = eFaces[faceI];
-
-                // Obtain edges connected to top and bottom
-                // vertices of edgeToCheck
-                const labelList& fEdges = faceEdges_[hullFaces[indexI]];
-
-                forAll(fEdges, edgeI)
-                {
-                    if
-                    (
-                        edges_[fEdges[edgeI]]
-                     == edge(edgeToCheck[0], otherPoint)
-                    )
-                    {
-                        ringEntities[0][indexI] = fEdges[edgeI];
-                    }
-
-                    if
-                    (
-                        edges_[fEdges[edgeI]]
-                     == edge(edgeToCheck[1], otherPoint)
-                    )
-                    {
-                        ringEntities[2][indexI] = fEdges[edgeI];
-                    }
-                }
-
-                // Depending on the orientation of this face,
-                // fill in hull cell indices as well
-                if (nextPoint == edgeToCheck[0])
-                {
-                    hullCells[indexI] = owner_[eFaces[faceI]];
-                }
-                else
-                if (nextPoint == edgeToCheck[1])
-                {
-                    hullCells[indexI] = neighbour_[eFaces[faceI]];
-                }
-                else
-                {
-                    // Something's terribly wrong
-                    FatalErrorIn
-                    (
-                        "\n"
-                        "void dynamicTopoFvMesh::constructHull\n"
-                        "(\n"
-                        "    const label eIndex,\n"
-                        "    labelList& hullEdges,\n"
-                        "    labelList& hullFaces,\n"
-                        "    labelList& hullCells,\n"
-                        "    labelListList& ringEntities\n"
-                        ") const"
-                    )
-                        << nl << " Failed to construct hull. "
-                        << nl << " Possibly not a tetrahedral mesh. "
-                        << abort(FatalError);
-                }
-
-                if (hullCells[indexI] != -1)
-                {
-                    label nextI = hullVertices.fcIndex(indexI);
-                    label nextHullPoint = hullVertices[nextI];
-                    const cell& currCell = cells_[hullCells[indexI]];
-
-                    // Look for the ring-faces
-                    forAll(currCell, faceI)
-                    {
-                        const face& cFace = faces_[currCell[faceI]];
-
-                        // Build a comparison face
-                        oFace[0] = edgeToCheck[0];
-                        oFace[1] = otherPoint;
-                        oFace[2] = nextHullPoint;
-
-                        // Check if this face contains edgeToCheck[0]
-                        if (triFace::compare(triFace(cFace), triFace(oFace)))
-                        {
-                            ringEntities[1][indexI] = currCell[faceI];
-                        }
-
-                        // Build a comparison face
-                        oFace[0] = edgeToCheck[1];
-                        oFace[1] = nextHullPoint;
-                        oFace[2] = otherPoint;
-
-                        // Check if this face contains edgeToCheck[1]
-                        if (triFace::compare(triFace(cFace), triFace(oFace)))
-                        {
-                            ringEntities[3][indexI] = currCell[faceI];
-                        }
-                    }
-
-                    // Scan one the faces for the ring-edge
-                    const labelList& rFaceEdges =
-                    (
-                        faceEdges_[ringEntities[1][indexI]]
-                    );
-
-                    forAll(rFaceEdges, edgeI)
-                    {
-                        if
-                        (
-                            edges_[rFaceEdges[edgeI]]
-                         == edge(otherPoint,nextHullPoint)
-                        )
-                        {
-                            hullEdges[indexI] = rFaceEdges[edgeI];
-                            break;
-                        }
-                    }
-                }
-
-                // Done with this index. Break out.
-                found = true; break;
-            }
-        }
-
-        // Throw an error if the point wasn't found
-        if (!found)
-        {
-            // Something's terribly wrong
-            FatalErrorIn
-            (
-                "\n"
-                "void dynamicTopoFvMesh::constructHull\n"
-                "(\n"
-                "    const label eIndex,\n"
-                "    labelList& hullEdges,\n"
-                "    labelList& hullFaces,\n"
-                "    labelList& hullCells,\n"
-                "    labelListList& ringEntities\n"
-                ") const"
-            )
-                << " Failed to construct hull. " << nl
-                << " edgeFaces connectivity is inconsistent. " << nl
-                << " Edge: " << eIndex << ":: " << edgeToCheck << nl
-                << " edgeFaces: " << eFaces << nl
-                << " edgePoints: " << hullVertices
-                << abort(FatalError);
-        }
-    }
-}
-
-
 // Utility method to build edgePoints for an edge [3D].
 // Assumes that edgeFaces information is consistent.
 void dynamicTopoFvMesh::buildEdgePoints
@@ -5457,7 +5184,9 @@ void dynamicTopoFvMesh::threadedTopoModifier()
 
 
 // Reset the mesh and generate mapping information
-void dynamicTopoFvMesh::resetMesh()
+//  - Return true if topology changes were made.
+//  - Return false otherwise (motion only)
+bool dynamicTopoFvMesh::resetMesh()
 {
     // Reduce across processors.
     reduce(topoChangeFlag_, orOp<bool>());
@@ -5749,6 +5478,12 @@ void dynamicTopoFvMesh::resetMesh()
         {
             checkMesh(true);
         }
+
+        // Reset statistics
+        nModifications_ = 0;
+        nBisections_ = 0;
+        nCollapses_ = 0;
+        nSwaps_ = 0;
     }
     else
     {
@@ -5765,6 +5500,16 @@ void dynamicTopoFvMesh::resetMesh()
 
     // Dump procIDs to disk, if requested.
     writeProcIDs();
+
+    // Reset and return flag
+    if (topoChangeFlag_)
+    {
+        topoChangeFlag_ = false;
+        return true;
+    }
+
+    // No changes were made.
+    return false;
 }
 
 
@@ -5841,13 +5586,6 @@ bool dynamicTopoFvMesh::update()
         points_ = motionSolver_->newPoints()();
     }
 
-    // Reset statistics
-    topoChangeFlag_ = false;
-    nModifications_ = 0;
-    nBisections_ = 0;
-    nCollapses_ = 0;
-    nSwaps_ = 0;
-
     // Obtain mesh stats before topo-changes
     bool noSlivers = meshQuality(true);
 
@@ -5892,9 +5630,7 @@ bool dynamicTopoFvMesh::update()
     meshQuality(true);
 
     // Apply all topology changes (if any) and reset mesh.
-    resetMesh();
-
-    return topoChangeFlag_;
+    return resetMesh();
 }
 
 

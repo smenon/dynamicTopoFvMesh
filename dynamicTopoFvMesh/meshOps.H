@@ -109,6 +109,39 @@ namespace meshOps
         FixedList<label,2>& iidx
     );
 
+    // Utility method to build a hull of cells
+    // connected to the edge (for 2D simplical meshes)
+    void constructPrismHull
+    (
+        const label eIndex,
+        const UList<face>& faces,
+        const UList<cell>& cells,
+        const UList<label>& owner,
+        const UList<label>& neighbour,
+        const UList<labelList>& edgeFaces,
+        labelList& hullTriFaces,
+        labelList& hullCells
+    );
+
+    // Utility method to build a hull of cells (and faces)
+    // around an edge (for 3D simplical meshes)
+    void constructHull
+    (
+        const label eIndex,
+        const UList<face>& faces,
+        const UList<edge>& edges,
+        const UList<cell>& cells,
+        const UList<label>& owner,
+        const UList<label>& neighbour,
+        const UList<labelList>& faceEdges,
+        const UList<labelList>& edgeFaces,
+        const UList<labelList>& edgePoints,
+        labelList& hullEdges,
+        labelList& hullFaces,
+        labelList& hullCells,
+        labelListList& ringEntities
+    );
+
     // Utility method to find the isolated point
     // given two triangular faces.
     inline label findIsolatedPoint

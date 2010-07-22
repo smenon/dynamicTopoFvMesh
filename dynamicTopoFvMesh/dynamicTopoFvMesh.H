@@ -483,8 +483,10 @@ class dynamicTopoFvMesh
             const labelList& triFaces,
             const FixedList<label,2>& c0BdyIndex,
             const FixedList<label,2>& c1BdyIndex,
-            const FixedList<label,2>& original,
-            const FixedList<label,2>& replacement,
+            const FixedList<label,2>& pointIndex,
+            const FixedList<point,2>& newPoint,
+            const FixedList<point,2>& oldPoint,
+            scalar& collapseQuality,
             const bool checkNeighbour
         ) const;
 
@@ -611,24 +613,6 @@ class dynamicTopoFvMesh
         (
             const label pIndex
         );
-
-        // Utility method to build a hull of cells connected to the edge [2D]
-        void constructPrismHull
-        (
-            const label eIndex,
-            labelHashSet& hullTriFaces,
-            labelHashSet& hullCells
-        ) const;
-
-        // Utility method to build a hull of cells around an edge [3D]
-        void constructHull
-        (
-            const label eIndex,
-            labelList& hullEdges,
-            labelList& hullFaces,
-            labelList& hullCells,
-            labelListList& ringEntities
-        ) const;
 
         // Utility method to build edgePoints for an edge [3D]
         void buildEdgePoints
@@ -857,7 +841,7 @@ class dynamicTopoFvMesh
         );
 
         // Reset the mesh and generate mapping information
-        void resetMesh();
+        bool resetMesh();
 
         // Output an entity as a VTK file
         void writeVTK

@@ -2103,9 +2103,17 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     labelListList ringEntities(4, labelList(m, -1));
 
     // Construct a hull around this edge
-    constructHull
+    meshOps::constructHull
     (
         eIndex,
+        faces_,
+        edges_,
+        cells_,
+        owner_,
+        neighbour_,
+        faceEdges_,
+        edgeFaces_,
+        edgePoints_,
         edgeHull,
         faceHull,
         cellHull,

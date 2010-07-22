@@ -39,6 +39,7 @@ Author
 
 #include "IOmanip.H"
 #include "volFields.H"
+#include "triPointRef.H"
 #include "tetPointRef.H"
 #include "coupledPatchInfo.H"
 
@@ -53,40 +54,6 @@ bool dynamicTopoFvMesh::meshQuality
     bool outputOption
 )
 {
-    Switch dumpMeshQuality(false);
-
-    if
-    (
-        dict_.subDict("dynamicTopoFvMesh").found("dumpMeshQuality") ||
-        mandatory_
-    )
-    {
-        dumpMeshQuality =
-        (
-            dict_.subDict("dynamicTopoFvMesh").lookup("dumpMeshQuality")
-        );
-    }
-
-    volScalarField *mqPtr(NULL);
-
-    if (dumpMeshQuality && time().outputTime())
-    {
-        mqPtr = new volScalarField
-        (
-            IOobject
-            (
-                "meshQuality",
-                time().timeName(),
-                *this,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            *this,
-            dimensionedScalar("scalar", dimless, 0)
-        );
-    }
-
     // Compute statistics on the fly
     label nCells = 0, minCell = -1;
     scalar maxQuality = -GREAT;
@@ -116,41 +83,18 @@ bool dynamicTopoFvMesh::meshQuality
 
                 if (faceToCheck.size() == 3)
                 {
-                    vector Xf =
+                    triPointRef tpr
                     (
-                        meshOps::faceCentre(faceToCheck, points_)
-                    );
-
-                    vector Sf =
-                    (
-                        meshOps::faceNormal(faceToCheck, points_)
+                        points_[faceToCheck[0]],
+                        points_[faceToCheck[1]],
+                        points_[faceToCheck[2]]
                     );
 
                     // Assume centre-plane passes through origin
-                    scalar area = mag(Sf) * Foam::sign(Sf & Xf);
-
-                    scalar maxSqrLength = 0.0;
-
-                    forAll(faceToCheck, pointI)
-                    {
-                        label nextLabel = faceToCheck.nextLabel(pointI);
-
-                        maxSqrLength =
-                        (
-                            Foam::max
-                            (
-                                maxSqrLength,
-                                magSqr
-                                (
-                                    points_[nextLabel]
-                                  - points_[faceToCheck[pointI]]
-                                )
-                            )
-                        );
-                    }
-
-                    // Compute the triangle aspect-ratio
-                    cQuality = 2.3094 * (area / (maxSqrLength + VSMALL));
+                    cQuality =
+                    (
+                        tpr.quality() * Foam::sign(tpr.normal() & tpr.centre())
+                    );
 
                     break;
                 }
@@ -197,11 +141,6 @@ bool dynamicTopoFvMesh::meshQuality
                     )
                 );
             }
-        }
-
-        if (dumpMeshQuality && time().outputTime())
-        {
-            mqPtr->internalField()[cellI] = cQuality;
         }
 
         // Update statistics
@@ -259,11 +198,6 @@ bool dynamicTopoFvMesh::meshQuality
         Info << " Mean: " << meanQuality/nCells << endl;
         Info << " Cells: " << nCells << endl;
         Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
-    }
-
-    if (dumpMeshQuality && time().outputTime())
-    {
-        mqPtr->write();
     }
 
     return sliversAbsent;
@@ -1293,6 +1227,39 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         {
             nPointFaces[curFace[pointI]]++;
         }
+
+        // Ensure that cells on either side of this face
+        // share just one face.
+        if (neighbour_[faceI] > -1)
+        {
+            const cell& ownCell = cells_[owner_[faceI]];
+            const cell& neiCell = cells_[neighbour_[faceI]];
+
+            label nCommon = 0;
+
+            forAll(ownCell, fi)
+            {
+                if (findIndex(neiCell, ownCell[fi]) > -1)
+                {
+                    nCommon++;
+                }
+            }
+
+            if (nCommon != 1)
+            {
+                Pout << "Cells: " << nl
+                     << '\t' << owner_[faceI] << ":: " << ownCell << nl
+                     << '\t' << neighbour_[faceI] << " :: " << neiCell << nl
+                     << " share multiple faces. "
+                     << endl;
+
+                nFailedChecks++;
+
+                ConnectivityWarning()
+                     << nl << "Cell-Face connectivity is inconsistent."
+                     << endl;
+            }
+        }
     }
 
     label allFaces = faces_.size();
@@ -2010,19 +1977,26 @@ void dynamicTopoFvMesh::writeProcIDs() const
 }
 
 
-// Utility method to check for invalid face-collapse.
-// Returns 'true' if the collapse in NOT feasible.
+// Utility method to check whether the cell given by 'cellIndex' will yield
+// a valid cell when 'pointIndex' is moved to 'newPoint'.
+//  - The routine performs metric-based checks.
+//  - Returns 'true' if the collapse in NOT feasible, and
+//    makes entries in cellsChecked to avoid repetitive checks.
 bool dynamicTopoFvMesh::checkCollapse
 (
     const labelList& triFaces,
     const FixedList<label,2>& c0BdyIndex,
     const FixedList<label,2>& c1BdyIndex,
-    const FixedList<label,2>& original,
-    const FixedList<label,2>& replacement,
+    const FixedList<label,2>& pointIndex,
+    const FixedList<point,2>& newPoint,
+    const FixedList<point,2>& oldPoint,
+    scalar& collapseQuality,
     const bool checkNeighbour
 ) const
 {
-    face tmpTriFace(3);
+    // Reset input
+    collapseQuality = GREAT;
+    scalar minArea = GREAT;
 
     forAll(triFaces, indexI)
     {
@@ -2047,36 +2021,82 @@ bool dynamicTopoFvMesh::checkCollapse
             }
         }
 
-        const face &triFace = faces_[triFaces[indexI]];
+        const face& checkFace = faces_[triFaces[indexI]];
 
-        forAll(triFace, pointI)
+        // Configure a triangle face
+        FixedList<point, 3> tFNew(vector::zero);
+        FixedList<point, 3> tFOld(vector::zero);
+
+        // Make necessary replacements
+        forAll(checkFace, pointI)
         {
-            tmpTriFace[pointI] = triFace[pointI];
+            tFNew[pointI] = points_[checkFace[pointI]];
+            tFOld[pointI] = oldPoints_[checkFace[pointI]];
 
-            if (triFace[pointI] == original[0])
+            if (checkFace[pointI] == pointIndex[0])
             {
-                tmpTriFace[pointI] = replacement[0];
+                tFNew[pointI] = newPoint[0];
+                tFOld[pointI] = oldPoint[0];
             }
 
-            if (triFace[pointI] == original[1])
+            if (checkFace[pointI] == pointIndex[1])
             {
-                tmpTriFace[pointI] = replacement[1];
+                tFNew[pointI] = newPoint[1];
+                tFOld[pointI] = oldPoint[1];
             }
         }
 
-        // Compute the area and check if it's zero/negative
-        scalar origArea = mag(meshOps::faceNormal(triFace, points_));
-        scalar newArea = mag(meshOps::faceNormal(tmpTriFace, points_));
+        // Configure triangles
+        triPointRef tprNew(tFNew[0], tFNew[1], tFNew[2]);
+        triPointRef tprOld(tFOld[0], tFOld[1], tFOld[2]);
 
-        if
+        // Compute the quality.
+        // Assume centre-plane passes through origin
+        scalar tQuality =
         (
-            (Foam::sign(origArea) != Foam::sign(newArea))
-         || (mag(newArea) < (1e-3*origArea))
-        )
-        {
-            // Inverted and/or degenerate.
-            return true;
-        }
+            tprNew.quality() *
+            (
+                Foam::sign
+                (
+                    tprNew.normal() &
+                    tprNew.centre()
+                )
+            )
+        );
+
+        scalar oldArea =
+        (
+            mag(tprOld.normal()) *
+            (
+                Foam::sign
+                (
+                    tprOld.normal() &
+                    tprOld.centre()
+                )
+            )
+        );
+
+        // Update statistics
+        minArea = Foam::min(minArea, oldArea);
+        collapseQuality = Foam::min(collapseQuality, tQuality);
+    }
+
+    // Final quality check
+    if (collapseQuality < sliverThreshold_)
+    {
+        return true;
+    }
+
+    // Negative quality is a no-no
+    if (collapseQuality < 0.0)
+    {
+        return true;
+    }
+
+    // Negative old-area is also a no-no
+    if (minArea < 0.0)
+    {
+        return true;
     }
 
     // No problems, so a collapse is feasible.
@@ -2085,9 +2105,10 @@ bool dynamicTopoFvMesh::checkCollapse
 
 
 // Utility method to check whether the cell given by 'cellIndex' will yield
-// a valid cell when 'pointIndex' is moved to 'newPoint'. The routine performs
-// metric-based checks. Returns 'true' if the collapse in NOT feasible, and
-// makes entries in cellsChecked to avoid repetitive checks.
+// a valid cell when 'pointIndex' is moved to 'newPoint'.
+//  - The routine performs metric-based checks.
+//  - Returns 'true' if the collapse in NOT feasible, and
+//    makes entries in cellsChecked to avoid repetitive checks.
 bool dynamicTopoFvMesh::checkCollapse
 (
     const point& newPoint,
@@ -2122,7 +2143,7 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         cQuality =
         (
-            (*tetMetric_)
+            tetMetric_
             (
                 points_[faceToCheck[2]],
                 points_[faceToCheck[1]],
@@ -2146,7 +2167,7 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         cQuality =
         (
-            (*tetMetric_)
+            tetMetric_
             (
                 points_[faceToCheck[0]],
                 points_[faceToCheck[1]],

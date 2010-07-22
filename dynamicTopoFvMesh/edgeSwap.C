@@ -1238,9 +1238,17 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     labelListList ringEntities(4, labelList(m, -1));
 
     // Construct the hull
-    constructHull
+    meshOps::constructHull
     (
         eIndex,
+        faces_,
+        edges_,
+        cells_,
+        owner_,
+        neighbour_,
+        faceEdges_,
+        edgeFaces_,
+        edgePoints_,
         hullEdges,
         hullFaces,
         hullCells,
@@ -1619,11 +1627,11 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     // Finally remove the edge
     removeEdge(eIndex);
 
-    // Set the flag
-    topoChangeFlag_ = true;
-
     // Increment the counter
     nSwaps_[0]++;
+
+    // Set the flag
+    topoChangeFlag_ = true;
 
     // Return a successful operation.
     return map;

@@ -38,6 +38,7 @@ Author
 #include "meshOps.H"
 #include "ListOps.H"
 #include "Pstream.H"
+#include "triFace.H"
 #include "triPointRef.H"
 #include "tetPointRef.H"
 #include "labelHashSet.H"
@@ -47,6 +48,275 @@ namespace Foam
 
 namespace meshOps
 {
+
+// Utility method to build a hull of cells
+// connected to the edge (for 2D simplical meshes)
+void constructPrismHull
+(
+    const label eIndex,
+    const UList<face>& faces,
+    const UList<cell>& cells,
+    const UList<label>& owner,
+    const UList<label>& neighbour,
+    const UList<labelList>& edgeFaces,
+    labelList& hullTriFaces,
+    labelList& hullCells
+)
+{
+    labelHashSet cellSet, triFaceSet;
+
+    // Obtain references
+    const labelList& eFaces = edgeFaces[eIndex];
+
+    // Loop through edgeFaces and add cells
+    forAll(eFaces, faceI)
+    {
+        label c0 = owner[eFaces[faceI]];
+        label c1 = neighbour[eFaces[faceI]];
+
+        if (!cellSet.found(c0))
+        {
+            // Add this cell
+            cellSet.insert(c0);
+
+            // Find associated triFaces and add them too
+            const cell& cC = cells[c0];
+
+            forAll(cC, faceJ)
+            {
+                const face& cF = faces[cC[faceJ]];
+
+                if ((cF.size() == 3) && !(triFaceSet.found(cC[faceJ])))
+                {
+                    triFaceSet.insert(cC[faceJ]);
+                }
+            }
+        }
+
+        if (!cellSet.found(c1) && (c1 != -1))
+        {
+            // Add this cell
+            cellSet.insert(c1);
+
+            // Find associated triFaces and add them too
+            const cell& cC = cells[c1];
+
+            forAll(cC, faceJ)
+            {
+                const face& cF = faces[cC[faceJ]];
+
+                if ((cF.size() == 3) && !(triFaceSet.found(cC[faceJ])))
+                {
+                    triFaceSet.insert(cC[faceJ]);
+                }
+            }
+        }
+    }
+
+    // Obtain lists from hashSets
+    hullCells = cellSet.toc();
+    hullTriFaces = triFaceSet.toc();
+}
+
+
+// Utility method to build a hull of cells (and faces)
+// around an edge (for 3D simplical meshes)
+void constructHull
+(
+    const label eIndex,
+    const UList<face>& faces,
+    const UList<edge>& edges,
+    const UList<cell>& cells,
+    const UList<label>& owner,
+    const UList<label>& neighbour,
+    const UList<labelList>& faceEdges,
+    const UList<labelList>& edgeFaces,
+    const UList<labelList>& edgePoints,
+    labelList& hullEdges,
+    labelList& hullFaces,
+    labelList& hullCells,
+    labelListList& ringEntities
+)
+{
+    // [1] hullEdges is an ordered list of edge-labels around eIndex,
+    //     but not connected to it.
+    //      - Ordering is in the same manner as edgePoints.
+    // [2] hullFaces is an ordered list of face-labels connected to eIndex.
+    //      - Ordering is in the same manner as edgePoints.
+    // [3] hullCells is an ordered list of cell-labels connected to eIndex.
+    //      - For boundary hulls, the last cell label is -1
+    // [4] ringEntities are edges and faces connected to eIndex[0] and eIndex[1]
+    //      - ringEntities[0]: edges connected to eIndex[0]
+    //      - ringEntities[1]: faces connected to eIndex[0]
+    //      - ringEntities[2]: edges connected to eIndex[1]
+    //      - ringEntities[3]: faces connected to eIndex[1]
+
+    bool found;
+    label otherPoint = -1, nextPoint = -1;
+
+    // Obtain a reference to this edge, and its edgeFaces
+    const edge& edgeToCheck = edges[eIndex];
+    const labelList& eFaces = edgeFaces[eIndex];
+    const labelList& hullVertices = edgePoints[eIndex];
+
+    // Loop through all faces of this edge and add them to hullFaces
+    forAll(eFaces, faceI)
+    {
+        const face& faceToCheck = faces[eFaces[faceI]];
+
+        // Find the isolated point on this face,
+        // and compare it with hullVertices
+        meshOps::findIsolatedPoint
+        (
+            faceToCheck,
+            edgeToCheck,
+            otherPoint,
+            nextPoint
+        );
+
+        found = false;
+
+        forAll(hullVertices, indexI)
+        {
+            if (hullVertices[indexI] == otherPoint)
+            {
+                // Fill in the position of this face on the hull
+                hullFaces[indexI] = eFaces[faceI];
+
+                // Obtain edges connected to top and bottom
+                // vertices of edgeToCheck
+                const labelList& fEdges = faceEdges[hullFaces[indexI]];
+
+                forAll(fEdges, edgeI)
+                {
+                    if
+                    (
+                        edges[fEdges[edgeI]]
+                     == edge(edgeToCheck[0], otherPoint)
+                    )
+                    {
+                        ringEntities[0][indexI] = fEdges[edgeI];
+                    }
+
+                    if
+                    (
+                        edges[fEdges[edgeI]]
+                     == edge(edgeToCheck[1], otherPoint)
+                    )
+                    {
+                        ringEntities[2][indexI] = fEdges[edgeI];
+                    }
+                }
+
+                // Depending on the orientation of this face,
+                // fill in hull cell indices as well
+                if (nextPoint == edgeToCheck[0])
+                {
+                    hullCells[indexI] = owner[eFaces[faceI]];
+                }
+                else
+                if (nextPoint == edgeToCheck[1])
+                {
+                    hullCells[indexI] = neighbour[eFaces[faceI]];
+                }
+                else
+                {
+                    // Something's terribly wrong
+                    FatalErrorIn("void meshOps::constructHull()")
+                        << nl << " Failed to construct hull. "
+                        << nl << " Possibly not a tetrahedral mesh. "
+                        << abort(FatalError);
+                }
+
+                if (hullCells[indexI] != -1)
+                {
+                    label nextI = hullVertices.fcIndex(indexI);
+                    label nextHullPoint = hullVertices[nextI];
+                    const cell& currCell = cells[hullCells[indexI]];
+
+                    // Look for the ring-faces
+                    forAll(currCell, faceI)
+                    {
+                        const face& cFace = faces[currCell[faceI]];
+
+                        // Check if this face contains edgeToCheck[0]
+                        if
+                        (
+                            triFace::compare
+                            (
+                                triFace(cFace),
+                                triFace
+                                (
+                                    edgeToCheck[0],
+                                    otherPoint,
+                                    nextHullPoint
+                                )
+                            )
+                        )
+                        {
+                            ringEntities[1][indexI] = currCell[faceI];
+                        }
+
+                        // Check if this face contains edgeToCheck[1]
+                        if
+                        (
+                            triFace::compare
+                            (
+                                triFace(cFace),
+                                triFace
+                                (
+                                    edgeToCheck[1],
+                                    nextHullPoint,
+                                    otherPoint
+                                )
+                            )
+                        )
+                        {
+                            ringEntities[3][indexI] = currCell[faceI];
+                        }
+                    }
+
+                    // Scan one the faces for the ring-edge
+                    const labelList& rFaceEdges =
+                    (
+                        faceEdges[ringEntities[1][indexI]]
+                    );
+
+                    forAll(rFaceEdges, edgeI)
+                    {
+                        if
+                        (
+                            edges[rFaceEdges[edgeI]]
+                         == edge(otherPoint,nextHullPoint)
+                        )
+                        {
+                            hullEdges[indexI] = rFaceEdges[edgeI];
+                            break;
+                        }
+                    }
+                }
+
+                // Done with this index. Break out.
+                found = true;
+                break;
+            }
+        }
+
+        // Throw an error if the point wasn't found
+        if (!found)
+        {
+            // Something's terribly wrong
+            FatalErrorIn("void meshOps::constructHull()")
+                << " Failed to construct hull. " << nl
+                << " edgeFaces connectivity is inconsistent. " << nl
+                << " Edge: " << eIndex << ":: " << edgeToCheck << nl
+                << " edgeFaces: " << eFaces << nl
+                << " edgePoints: " << hullVertices
+                << abort(FatalError);
+        }
+    }
+}
+
 
 // Compute the area / centre of a polygon
 // formed by a convex set of points.
@@ -184,7 +454,7 @@ void convexSetArea
         FatalErrorIn
         (
             "\n"
-            "void convexSetArea\n"
+            "void meshOps::convexSetArea\n"
             "(\n"
             "    const label newFaceIndex,\n"
             "    const label oldFaceIndex,\n"

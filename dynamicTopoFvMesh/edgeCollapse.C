@@ -98,7 +98,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Local variables
-    FixedList<bool,2> edgeBoundary(false);
     FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
     FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
     FixedList<edge,4> checkEdge(edge(-1,-1));
@@ -345,166 +344,33 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
     }
 
-    // Determine if either edge belongs to a boundary
-    edgeBoundary[0] = (whichEdgePatch(checkEdgeIndex[1]) > -1);
-    edgeBoundary[1] = (whichEdgePatch(checkEdgeIndex[2]) > -1);
-
-    if (debug > 1)
-    {
-        const labelList& fE = faceEdges_[fIndex];
-
-        Info << nl << nl
-             << "Face: " << fIndex << ": " << faces_[fIndex] << nl
-             << "faceEdges: " << fE
-             << " is to be collapsed. " << endl;
-
-        label epIndex = whichPatch(fIndex);
-
-        Info << "Patch: ";
-
-        if (epIndex == -1)
-        {
-            Info << "Internal" << endl;
-        }
-        else
-        {
-            Info << boundaryMesh()[epIndex].name() << endl;
-        }
-
-        if (debug > 2)
-        {
-            forAll(fE, edgeI)
-            {
-                const labelList& eF = edgeFaces_[fE[edgeI]];
-
-                Info << '\t' << fE[edgeI]
-                     << ": " << edges_[fE[edgeI]]
-                     << " eF: " << eF
-                     << endl;
-            }
-        }
-    }
-
     // Build a hull of cells and tri-faces that are connected to each edge
-    labelHashSet firstHullCells, secondHullCells;
-    labelHashSet firstHullTriFaces, secondHullTriFaces;
+    FixedList<labelList, 2> hullCells;
+    FixedList<labelList, 2> hullTriFaces;
 
-    constructPrismHull
+    meshOps::constructPrismHull
     (
         checkEdgeIndex[1],
-        firstHullTriFaces,
-        firstHullCells
+        faces_,
+        cells_,
+        owner_,
+        neighbour_,
+        edgeFaces_,
+        hullTriFaces[0],
+        hullCells[0]
     );
 
-    constructPrismHull
+    meshOps::constructPrismHull
     (
         checkEdgeIndex[2],
-        secondHullTriFaces,
-        secondHullCells
+        faces_,
+        cells_,
+        owner_,
+        neighbour_,
+        edgeFaces_,
+        hullTriFaces[1],
+        hullCells[1]
     );
-
-    // Obtain lists from hashSets
-    labelList firstCells = firstHullCells.toc();
-    labelList secondCells = secondHullCells.toc();
-    labelList firstTriFaces = firstHullTriFaces.toc();
-    labelList secondTriFaces = secondHullTriFaces.toc();
-
-    if (debug > 2)
-    {
-        Info << endl;
-        Info << "-------------------------" << endl;
-        Info << "Hulls before modification" << endl;
-        Info << "-------------------------" << endl;
-
-        Info << nl << "Cells belonging to first Edge Hull: "
-             << firstCells << endl;
-
-        forAll(firstCells,cellI)
-        {
-            const cell& firstCurCell = cells_[firstCells[cellI]];
-
-            Info << "Cell: " << firstCells[cellI]
-                 << ": " << firstCurCell << endl;
-
-            forAll(firstCurCell,faceI)
-            {
-                Info << firstCurCell[faceI]
-                     << ": " << faces_[firstCurCell[faceI]] << endl;
-            }
-        }
-
-        const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
-
-        Info << nl << "First Edge Face Hull: " << firstEdgeFaces << endl;
-
-        forAll(firstEdgeFaces,indexI)
-        {
-            Info << firstEdgeFaces[indexI]
-                 << ": " << faces_[firstEdgeFaces[indexI]] << endl;
-        }
-
-        Info << nl << "Cells belonging to second Edge Hull: "
-             << secondCells << endl;
-
-        forAll(secondCells, cellI)
-        {
-            const cell& secondCurCell = cells_[secondCells[cellI]];
-
-            Info << "Cell: " << secondCells[cellI]
-                 << ": " << secondCurCell << endl;
-
-            forAll(secondCurCell, faceI)
-            {
-                Info << secondCurCell[faceI]
-                     << ": " << faces_[secondCurCell[faceI]] << endl;
-            }
-        }
-
-        const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
-
-        Info << nl << "Second Edge Face Hull: " << secondEdgeFaces << endl;
-
-        forAll(secondEdgeFaces, indexI)
-        {
-            Info << secondEdgeFaces[indexI]
-                 << ": " << faces_[secondEdgeFaces[indexI]] << endl;
-        }
-
-        // Write out VTK files prior to change
-        if (debug > 3)
-        {
-            labelHashSet vtkCells;
-
-            forAll(firstCells, cellI)
-            {
-                if (!vtkCells.found(firstCells[cellI]))
-                {
-                    vtkCells.insert(firstCells[cellI]);
-                }
-            }
-
-            forAll(secondCells, cellI)
-            {
-                if (!vtkCells.found(secondCells[cellI]))
-                {
-                    vtkCells.insert(secondCells[cellI]);
-                }
-            }
-
-            writeVTK
-            (
-                Foam::name(fIndex)
-              + "_Collapse_0",
-                vtkCells.toc()
-            );
-        }
-    }
-
-    // Determine the common vertices for the first and second edges
-    label cv0 = checkEdge[1].commonVertex(checkEdge[0]);
-    label cv1 = checkEdge[1].commonVertex(checkEdge[3]);
-    label cv2 = checkEdge[2].commonVertex(checkEdge[0]);
-    label cv3 = checkEdge[2].commonVertex(checkEdge[3]);
 
     // Determine the neighbouring cells
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
@@ -539,14 +405,15 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         );
     }
 
-    // Lists for feasibility checks
-    label collapseCase = -1;
-    FixedList<bool, 2> nBoundCurves(false);
-    FixedList<label,2> original(-1), replacement(-1), ends(-1);
-    FixedList<label,2> faceToKeep(-1), faceToThrow(-1);
-    FixedList<label,4> edgeToKeep(-1), edgeToThrow(-1);
+    // Determine if either edge belongs to a boundary
+    FixedList<bool, 2> nBoundCurves(false), edgeBoundary(false);
 
-    // Set the collapseCase
+    edgeBoundary[0] = (whichEdgePatch(checkEdgeIndex[1]) > -1);
+    edgeBoundary[1] = (whichEdgePatch(checkEdgeIndex[2]) > -1);
+
+    // Decide on collapseCase
+    label collapseCase = -1;
+
     if (edgeBoundary[0] && !edgeBoundary[1])
     {
         collapseCase = 1;
@@ -565,7 +432,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             {
                 WarningIn
                 (
-                    "\n"
+                    "\n\n"
                     "const changeMap "
                     "dynamicTopoFvMesh::collapseQuadFace\n"
                     "(\n"
@@ -612,6 +479,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             return map;
         }
     }
+    else
+    {
+        // Looks like this is an interior face.
+        // Collapse case [3] by default
+        collapseCase = 3;
+    }
 
     // Perform an override if requested.
     if (overRideCase != -1)
@@ -619,21 +492,149 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         collapseCase = overRideCase;
     }
 
-    if (collapseCase == 2)
+    // Configure the new point-positions
+    FixedList<bool, 2> check(false);
+    FixedList<FixedList<label, 2>, 2> checkPoints(-1);
+    FixedList<point, 2> newPoint(vector::zero);
+    FixedList<point, 2> oldPoint(vector::zero);
+
+    // Determine the common vertices for the first and second edges
+    label cv0 = checkEdge[1].commonVertex(checkEdge[0]);
+    label cv1 = checkEdge[1].commonVertex(checkEdge[3]);
+    label cv2 = checkEdge[2].commonVertex(checkEdge[0]);
+    label cv3 = checkEdge[2].commonVertex(checkEdge[3]);
+
+    // Replacement check points
+    FixedList<label,2> original(-1), replacement(-1);
+
+    switch (collapseCase)
     {
-        original[0] = cv0; original[1] = cv1;
-        replacement[0] = cv2; replacement[1] = cv3;
+        case 1:
+        {
+            // Collapse to the first node
+            original[0] = cv2; original[1] = cv3;
+            replacement[0] = cv0; replacement[1] = cv1;
+
+            newPoint[0] = points_[replacement[0]];
+            newPoint[1] = points_[replacement[1]];
+
+            oldPoint[0] = oldPoints_[replacement[0]];
+            oldPoint[1] = oldPoints_[replacement[1]];
+
+            // Define check-points
+            check[1] = true;
+            checkPoints[1][0] = original[0];
+            checkPoints[1][1] = original[1];
+
+            break;
+        }
+
+        case 2:
+        {
+            // Collapse to the second node
+            original[0] = cv0; original[1] = cv1;
+            replacement[0] = cv2; replacement[1] = cv3;
+
+            newPoint[0] = points_[replacement[0]];
+            newPoint[1] = points_[replacement[1]];
+
+            oldPoint[0] = oldPoints_[replacement[0]];
+            oldPoint[1] = oldPoints_[replacement[1]];
+
+            // Define check-points
+            check[0] = true;
+            checkPoints[0][0] = original[0];
+            checkPoints[0][1] = original[1];
+
+            break;
+        }
+
+        case 3:
+        {
+            // Collapse to the mid-point
+            original[0] = cv0; original[1] = cv1;
+            replacement[0] = cv2; replacement[1] = cv3;
+
+            newPoint[0] =
+            (
+                0.5 *
+                (
+                    points_[original[0]]
+                  + points_[replacement[0]]
+                )
+            );
+
+            newPoint[1] =
+            (
+                0.5 *
+                (
+                    points_[original[1]]
+                  + points_[replacement[1]]
+                )
+            );
+
+            oldPoint[0] = oldPoints_[replacement[0]];
+            oldPoint[1] = oldPoints_[replacement[1]];
+
+            // Define check-points
+            check[0] = true;
+            checkPoints[0][0] = original[0];
+            checkPoints[0][1] = original[1];
+
+            check[1] = true;
+            checkPoints[1][0] = replacement[0];
+            checkPoints[1][1] = replacement[1];
+
+            break;
+        }
+
+        default:
+        {
+            // Don't think this will ever happen.
+            FatalErrorIn
+            (
+                "\n\n"
+                "const changeMap "
+                "dynamicTopoFvMesh::collapseQuadFace\n"
+                "(\n"
+                "    const label fIndex,\n"
+                "    label overRideCase,\n"
+                "    bool checkOnly\n"
+                ")\n"
+            )
+                << "Edge: " << fIndex << ": " << faces_[fIndex]
+                << ". Couldn't decide on collapseCase."
+                << abort(FatalError);
+
+            break;
+        }
+    }
+
+    // Keep track of resulting cell quality,
+    // if collapse is indeed feasible
+    scalar collapseQuality(GREAT);
+
+    // Check collapsibility of cells around edges
+    // with the re-configured point
+    forAll(check, indexI)
+    {
+        if (!check[indexI])
+        {
+            continue;
+        }
 
         // Check whether the collapse is possible.
         if
         (
             checkCollapse
             (
-                firstTriFaces,
+                hullTriFaces[indexI],
                 c0BdyIndex,
                 c1BdyIndex,
-                original,
-                replacement,
+                checkPoints[indexI],
+                newPoint,
+                oldPoint,
+                collapseQuality,
                 (c1 != -1)
             )
         )
@@ -641,14 +642,152 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             map.type() = 0;
             return map;
         }
+    }
 
-        // Are we only performing checks?
-        if (checkOnly)
+    // Are we only performing checks?
+    if (checkOnly)
+    {
+        map.type() = collapseCase;
+
+        if (debug > 2)
         {
-            map.type() = collapseCase;
-            return map;
+            Info << "Face: " << fIndex
+                 << ":: " << faces_[fIndex] << nl
+                 << " collapseCase determined to be: "
+                 << collapseCase << nl
+                 << " Resulting quality: "
+                 << collapseQuality
+                 << endl;
         }
 
+        return map;
+    }
+
+    if (debug > 1)
+    {
+        const labelList& fE = faceEdges_[fIndex];
+
+        Info << nl << nl
+             << "Face: " << fIndex << ": " << faces_[fIndex] << nl
+             << "faceEdges: " << fE
+             << " is to be collapsed. " << endl;
+
+        label epIndex = whichPatch(fIndex);
+
+        Info << "Patch: ";
+
+        if (epIndex == -1)
+        {
+            Info << "Internal" << endl;
+        }
+        else
+        {
+            Info << boundaryMesh()[epIndex].name() << endl;
+        }
+
+        if (debug > 2)
+        {
+            Info << endl;
+            Info << "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+            Info << "Hulls before modification" << endl;
+            Info << "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+
+            Info << nl << "Cells belonging to first Edge Hull: "
+                 << hullCells[0] << endl;
+
+            forAll(hullCells[0],cellI)
+            {
+                const cell& firstCurCell = cells_[hullCells[0][cellI]];
+
+                Info << "Cell: " << hullCells[0][cellI]
+                     << ": " << firstCurCell << endl;
+
+                forAll(firstCurCell,faceI)
+                {
+                    Info << firstCurCell[faceI]
+                         << ": " << faces_[firstCurCell[faceI]] << endl;
+                }
+            }
+
+            const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
+
+            Info << nl << "First Edge Face Hull: "
+                 << firstEdgeFaces << endl;
+
+            forAll(firstEdgeFaces,indexI)
+            {
+                Info << firstEdgeFaces[indexI]
+                     << ": " << faces_[firstEdgeFaces[indexI]] << endl;
+            }
+
+            Info << nl << "Cells belonging to second Edge Hull: "
+                 << hullCells[1] << endl;
+
+            forAll(hullCells[1], cellI)
+            {
+                const cell& secondCurCell = cells_[hullCells[1][cellI]];
+
+                Info << "Cell: " << hullCells[1][cellI]
+                     << ": " << secondCurCell << endl;
+
+                forAll(secondCurCell, faceI)
+                {
+                    Info << secondCurCell[faceI]
+                         << ": " << faces_[secondCurCell[faceI]] << endl;
+                }
+            }
+
+            const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
+
+            Info << nl << "Second Edge Face Hull: "
+                 << secondEdgeFaces << endl;
+
+            forAll(secondEdgeFaces, indexI)
+            {
+                Info << secondEdgeFaces[indexI]
+                     << ": " << faces_[secondEdgeFaces[indexI]] << endl;
+            }
+
+            // Write out VTK files prior to change
+            if (debug > 3)
+            {
+                labelHashSet vtkCells;
+
+                forAll(hullCells[0], cellI)
+                {
+                    if (!vtkCells.found(hullCells[0][cellI]))
+                    {
+                        vtkCells.insert(hullCells[0][cellI]);
+                    }
+                }
+
+                forAll(hullCells[1], cellI)
+                {
+                    if (!vtkCells.found(hullCells[1][cellI]))
+                    {
+                        vtkCells.insert(hullCells[1][cellI]);
+                    }
+                }
+
+                writeVTK
+                (
+                    Foam::name(fIndex)
+                  + "_Collapse_0",
+                    vtkCells.toc()
+                );
+            }
+        }
+    }
+
+    // Edges / Quad-faces to throw or keep during collapse
+    FixedList<label,2> ends(-1);
+    FixedList<label,2> faceToKeep(-1), faceToThrow(-1);
+    FixedList<label,4> edgeToKeep(-1), edgeToThrow(-1);
+
+    // Case 2 & 3 use identical connectivity,
+    // but different point locations
+    if (collapseCase == 2 || collapseCase == 3)
+    {
         const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
         // Collapse to the second node...
@@ -941,9 +1080,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         );
 
         // Replace point labels on all triangular boundary faces.
-        forAll(firstCells,cellI)
+        forAll(hullCells[0],cellI)
         {
-            const cell& cellToCheck = cells_[firstCells[cellI]];
+            const cell& cellToCheck = cells_[hullCells[0][cellI]];
 
             forAll(cellToCheck,faceI)
             {
@@ -1029,37 +1168,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
     else
     {
-        original[0] = cv2; original[1] = cv3;
-        replacement[0] = cv0; replacement[1] = cv1;
-
-        // Check whether the collapse is possible.
-        if
-        (
-            checkCollapse
-            (
-                secondTriFaces,
-                c0BdyIndex,
-                c1BdyIndex,
-                original,
-                replacement,
-                (c1 != -1)
-            )
-        )
-        {
-            map.type() = 0;
-            return map;
-        }
-
-        // Are we only performing checks?
-        if (checkOnly)
-        {
-            map.type() = collapseCase;
-            return map;
-        }
-
         const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
-        // Collapse to the first node by default...
+        // Collapse to the first node
         forAll(secondEdgeFaces,faceI)
         {
             // Replace point indices on faces.
@@ -1338,9 +1449,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         );
 
         // Replace point labels on all triangular boundary faces.
-        forAll(secondCells, cellI)
+        forAll(hullCells[1], cellI)
         {
-            const cell& cellToCheck = cells_[secondCells[cellI]];
+            const cell& cellToCheck = cells_[hullCells[1][cellI]];
 
             forAll(cellToCheck, faceI)
             {
@@ -1428,18 +1539,18 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     if (debug > 2)
     {
         Info << endl;
-        Info << "------------------------" << endl;
+        Info << "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
         Info << "Hulls after modification" << endl;
-        Info << "------------------------" << endl;
+        Info << "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 
         Info << nl << "Cells belonging to first Edge Hull: "
-             << firstCells << endl;
+             << hullCells[0] << endl;
 
-        forAll(firstCells, cellI)
+        forAll(hullCells[0], cellI)
         {
-            const cell& firstCurCell = cells_[firstCells[cellI]];
+            const cell& firstCurCell = cells_[hullCells[0][cellI]];
 
-            Info << "Cell: " << firstCells[cellI]
+            Info << "Cell: " << hullCells[0][cellI]
                  << ": " << firstCurCell << endl;
 
             forAll(firstCurCell, faceI)
@@ -1460,13 +1571,13 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         Info << nl << "Cells belonging to second Edge Hull: "
-             << secondCells << endl;
+             << hullCells[1] << endl;
 
-        forAll(secondCells, cellI)
+        forAll(hullCells[1], cellI)
         {
-            const cell& secondCurCell = cells_[secondCells[cellI]];
+            const cell& secondCurCell = cells_[hullCells[1][cellI]];
 
-            Info << "Cell: " << secondCells[cellI]
+            Info << "Cell: " << hullCells[1][cellI]
                  << ": " << secondCurCell << endl;
 
             forAll(secondCurCell, faceI)
@@ -1866,6 +1977,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         removeCell(c1);
     }
 
+    // Move to the new point
+    points_[replacement[0]] = newPoint[0];
+    points_[replacement[1]] = newPoint[1];
+
     // Finally remove the face
     removeFace(fIndex);
 
@@ -1874,29 +1989,29 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     {
         labelHashSet vtkCells;
 
-        forAll(firstCells, cellI)
+        forAll(hullCells[0], cellI)
         {
-            if (firstCells[cellI] == c0 || firstCells[cellI] == c1)
+            if (hullCells[0][cellI] == c0 || hullCells[0][cellI] == c1)
             {
                 continue;
             }
 
-            if (!vtkCells.found(firstCells[cellI]))
+            if (!vtkCells.found(hullCells[0][cellI]))
             {
-                vtkCells.insert(firstCells[cellI]);
+                vtkCells.insert(hullCells[0][cellI]);
             }
         }
 
-        forAll(secondCells, cellI)
+        forAll(hullCells[1], cellI)
         {
-            if (secondCells[cellI] == c0 || secondCells[cellI] == c1)
+            if (hullCells[1][cellI] == c0 || hullCells[1][cellI] == c1)
             {
                 continue;
             }
 
-            if (!vtkCells.found(secondCells[cellI]))
+            if (!vtkCells.found(hullCells[1][cellI]))
             {
-                vtkCells.insert(secondCells[cellI]);
+                vtkCells.insert(hullCells[1][cellI]);
             }
         }
 
@@ -2246,9 +2361,17 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     labelListList ringEntities(4, labelList(m, -1));
 
     // Construct a hull around this edge
-    constructHull
+    meshOps::constructHull
     (
         eIndex,
+        faces_,
+        edges_,
+        cells_,
+        owner_,
+        neighbour_,
+        faceEdges_,
+        edgeFaces_,
+        edgePoints_,
         edgeHull,
         faceHull,
         cellHull,
@@ -2336,7 +2459,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     switch (collapseCase)
     {
         case 1:
-
+        {
             // Collapse to the first node
             replacePoint = edges_[eIndex][0];
             collapsePoint = edges_[eIndex][1];
@@ -2347,9 +2470,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             checkPoints[0] = collapsePoint;
 
             break;
+        }
 
         case 2:
-
+        {
             // Collapse to the second node
             replacePoint = edges_[eIndex][1];
             collapsePoint = edges_[eIndex][0];
@@ -2360,9 +2484,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             checkPoints[0] = collapsePoint;
 
             break;
+        }
 
         case 3:
-
+        {
             // Collapse to the mid-point
             replacePoint = edges_[eIndex][1];
             collapsePoint = edges_[eIndex][0];
@@ -2374,9 +2499,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             checkPoints[1] = collapsePoint;
 
             break;
+        }
 
         default:
-
+        {
             // Don't think this will ever happen.
             FatalErrorIn
             (
@@ -2394,6 +2520,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << abort(FatalError);
 
             break;
+        }
     }
 
     // Loop through edges and check for feasibility of collapse
