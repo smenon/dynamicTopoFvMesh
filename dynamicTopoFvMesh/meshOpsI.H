@@ -434,6 +434,44 @@ inline label whichSide
 }
 
 
+// Determine whether a point lies on a segment
+inline bool pointSegmentIntersection
+(
+    const edge& segment,
+    const UList<point>& points,
+    const point& checkPoint
+)
+{
+    vector u = points[segment.end()] - points[segment.start()];
+    vector v = checkPoint - points[segment.start()];
+
+    scalar magU = mag(u) + VSMALL;
+    scalar magV = mag(v) + VSMALL;
+
+    scalar tolerance = (1e-8 * Foam::min(magU, magV));
+
+    // Compare dot-products
+    if ( 1.0 - ((u/magU) & (v/magV)) > tolerance )
+    {
+        return false;
+    }
+
+    // Compute uValue
+    scalar uValue = (u & v) / ((u & u) + VSMALL);
+
+    // Does point fall-off ends?
+    // Note: Does not check if end-points coincide
+    //       with checkPoint, so be careful here.
+    if (uValue < 0.0 || uValue > 1.0)
+    {
+        return false;
+    }
+
+    // Intersects segment
+    return true;
+}
+
+
 // Determine whether a two line segments intersect
 inline bool segmentSegmentIntersection
 (

@@ -603,7 +603,8 @@ void dynamicTopoFvMesh::computeCellWeights
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
     // Maintain a list of candidates and intersection points
-    labelList candidates;
+    boolList oldIntersects, intersects;
+    labelList oldCandidates, candidates;
 
     // Output option for the convex set algorithm
     bool output = false;
@@ -625,6 +626,9 @@ void dynamicTopoFvMesh::computeCellWeights
 
     while (nAttempts < 5)
     {
+        // Reset counter first
+        nIntersects = 0;
+
         // Obtain candidate parents for this cell
         candidates =
         (
@@ -638,7 +642,7 @@ void dynamicTopoFvMesh::computeCellWeights
         );
 
         // Set sizes
-        boolList intersects(candidates.size(), false);
+        intersects.setSize(candidates.size(), false);
 
         // Test for intersections
         forAll(candidates, indexI)
@@ -664,6 +668,7 @@ void dynamicTopoFvMesh::computeCellWeights
             {
                 Info << " Cell: " << cIndex << nl
                      << " nCandidates: " << candidates.size() << nl
+                     << " nOldCandidates: " << oldCandidates.size() << nl
                      << " nIntersects: " << nIntersects
                      << endl;
 
@@ -679,27 +684,29 @@ void dynamicTopoFvMesh::computeCellWeights
             // Reset counter
             nIntersects = 0;
 
-            forAll(intersects, indexI)
+            // Loop through old candidates
+            // to minimize intersection calculations
+            forAll(oldIntersects, indexI)
             {
-                if (intersects[indexI])
+                if (oldIntersects[indexI])
                 {
                     // Compute actual intersections
                     vectorField tP(0);
 
-                    intersects[indexI] =
+                    oldIntersects[indexI] =
                     (
                         cellIntersection
                         (
                             cIndex,
-                            candidates[indexI],
+                            oldCandidates[indexI],
                             tP
                         )
                     );
 
                     // Skip false positives
-                    if (intersects[indexI])
+                    if (oldIntersects[indexI])
                     {
-                        parents[nIntersects] = candidates[indexI];
+                        parents[nIntersects] = oldCandidates[indexI];
 
                         // Compute weights
                         meshOps::convexSetVolume
@@ -728,9 +735,10 @@ void dynamicTopoFvMesh::computeCellWeights
         {
             nAttempts++;
 
-            // Copy / reset parameters
+            // Copy parameters
+            oldIntersects = intersects;
+            oldCandidates = candidates;
             nOldIntersects = nIntersects;
-            nIntersects = 0;
 
             // Expand the search radius and try again.
             searchFactor *= 1.4;
@@ -769,18 +777,18 @@ void dynamicTopoFvMesh::computeCellWeights
 
         // Write out for post-processing
         label uIdx = 0;
-        labelList unMatched(candidates.size() - parents.size(), -1);
+        labelList unMatched(oldCandidates.size() - parents.size(), -1);
 
-        forAll(candidates, cI)
+        forAll(oldCandidates, cI)
         {
-            if (findIndex(parents, candidates[cI]) == -1)
+            if (findIndex(parents, oldCandidates[cI]) == -1)
             {
-                unMatched[uIdx++] = candidates[cI];
+                unMatched[uIdx++] = oldCandidates[cI];
             }
         }
 
         writeVTK("nCell_" + Foam::name(cIndex), cIndex, 3, false, true);
-        writeVTK("oCell_" + Foam::name(cIndex), candidates, 3, true, true);
+        writeVTK("oCell_" + Foam::name(cIndex), oldCandidates, 3, true, true);
         writeVTK("mCell_" + Foam::name(cIndex), parents, 3, true, true);
         writeVTK("uCell_" + Foam::name(cIndex), unMatched, 3, true, true);
 
@@ -791,6 +799,49 @@ void dynamicTopoFvMesh::computeCellWeights
                  << setprecision(16)
                  << weights[indexI]
                  << endl;
+        }
+
+        // Write out intersection points
+        forAll(oldCandidates, indexI)
+        {
+            vectorField tP(0);
+
+            cellIntersection
+            (
+                cIndex,
+                oldCandidates[indexI],
+                tP
+            );
+
+            if (tP.size() >= 4)
+            {
+                // Write out intersection points to VTK
+                meshOps::writeVTK
+                (
+                    (*this),
+                    "cvxSet_"
+                  + Foam::name(cIndex)
+                  + '<' + Foam::name(oldCandidates[indexI]) + '>',
+                    tP.size(),
+                    tP.size(),
+                    tP.size(),
+                    tP
+                );
+
+                // Write out convex set info to screen
+                scalar dummyVolume = 0.0;
+                vector dummyCentre = vector::zero;
+
+                meshOps::convexSetVolume
+                (
+                    cIndex,
+                    oldCandidates[indexI],
+                    tP,
+                    dummyVolume,
+                    dummyCentre,
+                    true
+                );
+            }
         }
 
         FatalErrorIn
@@ -809,6 +860,9 @@ void dynamicTopoFvMesh::computeCellWeights
             << " Cell: " << cIndex << nl
             << " mapCandidates: " << mapCandidates << nl
             << " nCandidates: " << candidates.size() << nl
+            << " nOldCandidates: " << oldCandidates.size() << nl
+            << " nIntersects: " << nIntersects << nl
+            << " nOldIntersects: " << nOldIntersects << nl
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
             << setprecision(16)
@@ -1383,28 +1437,105 @@ bool dynamicTopoFvMesh::cellIntersection
             tP[nInts++] = pI();
         }
 
-        /*
-        if (debug)
+        if (debug > 3)
         {
-            if (meshOps::checkPointNearness(tP, 1e-20))
-            {
-                writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
-                writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
-                writeVTK
-                (
-                    "ccSet_"
-                  + Foam::name(newCellIndex)
-                  + '<' + Foam::name(oldCellIndex) + '>',
-                    tP.size(),
-                    tP.size(),
-                    tP.size(),
-                    tP
-                );
-            }
+            meshOps::writeVTK
+            (
+                (*this),
+                "ccSet_"
+              + Foam::name(newCellIndex)
+              + '<' + Foam::name(oldCellIndex) + '>',
+                tP.size(),
+                tP.size(),
+                tP.size(),
+                tP
+            );
         }
-        */
 
         return true;
+    }
+
+    // Check for point-segment intersections
+    bool pointIntersections = false;
+
+    forAll(fromCellPoints, pointI)
+    {
+        if (commonPoints.found(fromCellPoints[pointI]))
+        {
+            continue;
+        }
+
+        const point& checkPoint = oldPoints_[fromCellPoints[pointI]];
+
+        forAll(toCellEdges, edgeI)
+        {
+            const edge& edgeToCheck = toCellEdges[edgeI];
+
+            if
+            (
+                meshOps::pointSegmentIntersection
+                (
+                    edgeToCheck,
+                    oldPoints_,
+                    checkPoint
+                )
+            )
+            {
+                commonPoints.insert
+                (
+                    fromCellPoints[pointI],
+                    labelList(edgeToCheck)
+                );
+
+                intersections.set(++nInts, checkPoint);
+
+                pointIntersections = true;
+            }
+        }
+    }
+
+    forAll(toCellPoints, pointI)
+    {
+        if (commonPoints.found(toCellPoints[pointI]))
+        {
+            continue;
+        }
+
+        const point& checkPoint = oldPoints_[toCellPoints[pointI]];
+
+        forAll(fromCellEdges, edgeI)
+        {
+            const edge& edgeToCheck = fromCellEdges[edgeI];
+
+            if
+            (
+                meshOps::pointSegmentIntersection
+                (
+                    edgeToCheck,
+                    oldPoints_,
+                    checkPoint
+                )
+            )
+            {
+                commonPoints.insert
+                (
+                    toCellPoints[pointI],
+                    labelList(edgeToCheck)
+                );
+
+                intersections.set(++nInts, checkPoint);
+
+                pointIntersections = true;
+            }
+        }
+    }
+
+    if (pointIntersections && debug > 3)
+    {
+        Info << "Point Intersections exist: " << nl
+             << " newCellIndex: " << newCellIndex
+             << " oldCellIndex: " << oldCellIndex
+             << endl;
     }
 
     if (twoDMesh_)
@@ -1443,11 +1574,12 @@ bool dynamicTopoFvMesh::cellIntersection
                     owner_,
                     oldPoints_,
                     checkPoint,
-                    1e-3
+                    0.0
                 )
             )
             {
-                intersections.set(++nInts, checkPoint);
+                intersections.set(++nInts, oldPoints_[edgeToCheck.start()]);
+                intersections.set(++nInts, oldPoints_[edgeToCheck.end()]);
             }
         }
 
@@ -1483,11 +1615,12 @@ bool dynamicTopoFvMesh::cellIntersection
                     polyMesh::faceOwner(),
                     oldPoints_,
                     checkPoint,
-                    1e-3
+                    0.0
                 )
             )
             {
-                intersections.set(++nInts, checkPoint);
+                intersections.set(++nInts, oldPoints_[edgeToCheck.start()]);
+                intersections.set(++nInts, oldPoints_[edgeToCheck.end()]);
             }
         }
     }
@@ -1559,44 +1692,48 @@ bool dynamicTopoFvMesh::cellIntersection
 
     forAll(fromCellEdges, edgeI)
     {
-        const edge& fromEdge = fromCellEdges[edgeI];
-
         forAll(toCellEdges, edgeJ)
         {
-            const edge& toEdge = toCellEdges[edgeJ];
+            // Form an edge-pair
+            Pair<edge> edgePair(fromCellEdges[edgeI], toCellEdges[edgeJ]);
 
-            if (fromEdge.commonVertex(toEdge) > -1)
+            if (edgePair.first().commonVertex(edgePair.second()) > -1)
             {
-                // Edges share a common vertex. We won't deal
-                // with that situation here.
                 continue;
             }
 
-            // Deal with edge-bisection cases
-            bool foundBisectionPoint = false;
+            // Deal with edge-bisection / point-on-edge cases
+            bool foundPointOnEdge = false;
 
-            forAll(toEdge, pointI)
+            forAll(edgePair, indexI)
             {
-                label pIndex = toEdge[pointI];
+                const edge thisEdge = edgePair[indexI];
 
-                if (pIndex >= nOldPoints_)
+                const edge otherEdge =
+                (
+                    (thisEdge == edgePair.first()) ?
+                    edgePair.second() : edgePair.first()
+                );
+
+                forAll(otherEdge, pointI)
                 {
-                    forAll(pointsFromPoints_, indexI)
-                    {
-                        if (pointsFromPoints_[indexI].index() == pIndex)
-                        {
-                            const labelList& mObj =
-                            (
-                                pointsFromPoints_[indexI].masterObjects()
-                            );
+                    label pIndex = otherEdge[pointI];
 
+                    if (commonPoints.found(pIndex))
+                    {
+                        // Fetch masterObjects
+                        const labelList& mObj = commonPoints[pIndex];
+
+                        // Skip shared-points.
+                        if (mObj.size())
+                        {
                             // Check if the old edge
                             // contains all master points
                             bool allMaster = true;
 
                             forAll(mObj, pointJ)
                             {
-                                if (findIndex(fromEdge, mObj[pointJ]) == -1)
+                                if (findIndex(thisEdge, mObj[pointJ]) == -1)
                                 {
                                     allMaster = false;
                                     break;
@@ -1605,20 +1742,24 @@ bool dynamicTopoFvMesh::cellIntersection
 
                             if (allMaster)
                             {
-                                foundBisectionPoint = true;
-                                break;
+                                foundPointOnEdge = true;
                             }
                         }
                     }
+
+                    if (foundPointOnEdge)
+                    {
+                        break;
+                    }
                 }
 
-                if (foundBisectionPoint)
+                if (foundPointOnEdge)
                 {
                     break;
                 }
             }
 
-            if (foundBisectionPoint)
+            if (foundPointOnEdge)
             {
                 continue;
             }
@@ -1629,8 +1770,8 @@ bool dynamicTopoFvMesh::cellIntersection
             (
                 meshOps::segmentSegmentIntersection
                 (
-                    fromEdge,
-                    toEdge,
+                    edgePair.first(),
+                    edgePair.second(),
                     oldPoints_,
                     intPoint
                 )
@@ -1641,13 +1782,13 @@ bool dynamicTopoFvMesh::cellIntersection
                 FeToTe.setSize
                 (
                     FeToTe.size() + 1,
-                    Pair<edge>(fromEdge, toEdge)
+                    edgePair
                 );
 
                 TeToFe.setSize
                 (
                     TeToFe.size() + 1,
-                    Pair<edge>(toEdge, fromEdge)
+                    edgePair.reversePair()
                 );
 
                 intersections.set(++nInts, intPoint);
@@ -1699,7 +1840,7 @@ bool dynamicTopoFvMesh::cellIntersection
         {
             const face& faceToCheck = faces_[toCell[faceI]];
 
-            // Avoid edge-edge intersections, if any.
+            // Avoid point-edge / edge-edge intersections, if any.
             if (edgeIntersections)
             {
                 // Is edgeToCheck in the list?
@@ -1801,7 +1942,7 @@ bool dynamicTopoFvMesh::cellIntersection
         {
             const face& faceToCheck = polyMesh::faces()[fromCell[faceI]];
 
-            // Avoid edge-edge intersections, if any.
+            // Avoid point-edge / edge-edge intersections, if any.
             if (edgeIntersections)
             {
                 // Is edgeToCheck in the list?
@@ -1909,26 +2050,20 @@ bool dynamicTopoFvMesh::cellIntersection
         tP[nInts++] = pI();
     }
 
-    /*
-    if (debug)
+    if (debug > 3)
     {
-        if (meshOps::checkPointNearness(tP, 1e-20))
-        {
-            writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
-            writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
-            writeVTK
-            (
-                "ccSet_"
-              + Foam::name(newCellIndex)
-              + '<' + Foam::name(oldCellIndex) + '>',
-                tP.size(),
-                tP.size(),
-                tP.size(),
-                tP
-            );
-        }
+        meshOps::writeVTK
+        (
+            (*this),
+            "ccSet_"
+          + Foam::name(newCellIndex)
+          + '<' + Foam::name(oldCellIndex) + '>',
+            tP.size(),
+            tP.size(),
+            tP.size(),
+            tP
+        );
     }
-    */
 
     // Found a convex set of points.
     return true;
@@ -4741,6 +4876,12 @@ const changeMap dynamicTopoFvMesh::identifySliverType
 void dynamicTopoFvMesh::removeSlivers()
 {
     if (!edgeRefinement_)
+    {
+        return;
+    }
+
+    // Temporary: don't handle 2D slivers right now.
+    if (twoDMesh_)
     {
         return;
     }

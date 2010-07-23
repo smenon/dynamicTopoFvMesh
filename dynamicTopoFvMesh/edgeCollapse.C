@@ -473,6 +473,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             collapseCase = 2;
         }
         else
+        if (!nBoundCurves[0] && !nBoundCurves[1])
+        {
+            // No bounding curves. Collapse to mid-point.
+            collapseCase = 3;
+        }
+        else
         {
             // Two bounding curves? This might cause pinching.
             // Bail out for now.
@@ -2021,6 +2027,52 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
           + "_Collapse_1",
             vtkCells.toc()
         );
+    }
+
+    // Fill-in candidate mapping information
+    labelList mC(2, -1);
+    mC[0] = c0, mC[1] = c1;
+
+    // Now that all old / new cells possess correct connectivity,
+    // compute mapping information.
+    forAll(hullCells, indexI)
+    {
+        forAll(hullCells[indexI], cellI)
+        {
+            label mcIndex = hullCells[indexI][cellI];
+
+            // Skip collapsed cells
+            if (mcIndex == c0 || mcIndex == c1)
+            {
+                continue;
+            }
+
+            labelList parents;
+            scalarField weights;
+            vectorField centres;
+
+            // Obtain weighting factors for this cell.
+            computeCellWeights
+            (
+                mcIndex,
+                mC,
+                parents,
+                weights,
+                centres
+            );
+
+            // Set the mapping for this cell
+            setCellMapping
+            (
+                mcIndex,
+                parents,
+                weights,
+                centres
+            );
+
+            // Update cellParents information
+            cellParents_.set(mcIndex, parents);
+        }
     }
 
     // Set the flag

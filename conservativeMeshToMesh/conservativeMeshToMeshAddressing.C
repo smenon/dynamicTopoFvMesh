@@ -255,10 +255,14 @@ void conservativeMeshToMesh::computeCellWeights
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
     // Maintain a list of candidates and intersection points
-    labelList candidates;
+    boolList oldIntersects, intersects;
+    labelList oldCandidates, candidates;
 
     while (nAttempts < 10)
     {
+        // Reset counter first
+        nIntersects = 0;
+
         // Obtain candidate parents for this cell
         candidates =
         (
@@ -271,7 +275,7 @@ void conservativeMeshToMesh::computeCellWeights
         );
 
         // Set sizes
-        boolList intersects(candidates.size(), false);
+        intersects.setSize(candidates.size(), false);
 
         // Test for intersections
         forAll(candidates, indexI)
@@ -291,7 +295,7 @@ void conservativeMeshToMesh::computeCellWeights
             }
         }
 
-        if (nIntersects == nOldIntersects)
+        if ((nIntersects == nOldIntersects) && (nIntersects != 0))
         {
             if (debug)
             {
@@ -308,42 +312,42 @@ void conservativeMeshToMesh::computeCellWeights
             // Reset counter
             nIntersects = 0;
 
-            forAll(intersects, indexI)
+            // Loop through old candidates
+            // to minimize intersection calculations
+            forAll(oldIntersects, indexI)
             {
-                if (intersects[indexI])
+                if (oldIntersects[indexI])
                 {
                     // Compute actual intersections
                     vectorField tP(0);
 
-                    intersects[indexI] =
+                    oldIntersects[indexI] =
                     (
                         cellIntersection
                         (
                             newCellIndex,
-                            candidates[indexI],
+                            oldCandidates[indexI],
                             tP
                         )
                     );
 
                     // Skip false positives
-                    if (tP.size() < 4)
+                    if (oldIntersects[indexI])
                     {
-                        continue;
+                        parents[nIntersects] = oldCandidates[indexI];
+
+                        // Compute weights
+                        convexSetVolume
+                        (
+                            newCellIndex,
+                            parents[nIntersects],
+                            tP,
+                            weights[nIntersects],
+                            centres[nIntersects]
+                        );
+
+                        nIntersects++;
                     }
-
-                    parents[nIntersects] = candidates[indexI];
-
-                    // Compute weights
-                    convexSetVolume
-                    (
-                        newCellIndex,
-                        parents[nIntersects],
-                        tP,
-                        weights[nIntersects],
-                        centres[nIntersects]
-                    );
-
-                    nIntersects++;
                 }
             }
 
@@ -359,8 +363,9 @@ void conservativeMeshToMesh::computeCellWeights
             nAttempts++;
 
             // Copy / reset parameters
+            oldIntersects = intersects;
+            oldCandidates = candidates;
             nOldIntersects = nIntersects;
-            nIntersects = 0;
 
             // Expand the search radius and try again.
             searchFactor *= 1.6;
@@ -375,36 +380,36 @@ void conservativeMeshToMesh::computeCellWeights
     {
         // Write out for post-processing
         label uIdx = 0, cellI = newCellIndex;
-        labelList unMatch(candidates.size() - parents.size(), -1);
+        labelList unMatch(oldCandidates.size() - parents.size(), -1);
 
-        forAll(candidates, cI)
+        forAll(oldCandidates, cI)
         {
-            if (findIndex(parents, candidates[cI]) == -1)
+            if (findIndex(parents, oldCandidates[cI]) == -1)
             {
-                unMatch[uIdx++] = candidates[cI];
+                unMatch[uIdx++] = oldCandidates[cI];
             }
         }
 
         writeVTK("nCell_" + Foam::name(cellI), toMesh(), cellI, 3);
-        writeVTK("oCell_" + Foam::name(cellI), fromMesh(), candidates, 3);
+        writeVTK("oCell_" + Foam::name(cellI), fromMesh(), oldCandidates, 3);
         writeVTK("mCell_" + Foam::name(cellI), fromMesh(), parents, 3);
         writeVTK("uCell_" + Foam::name(cellI), fromMesh(), unMatch, 3);
 
         // Write out intersection points
-        forAll(candidates, indexI)
+        forAll(oldCandidates, indexI)
         {
             vectorField tP(0);
 
             cellIntersection
             (
                 newCellIndex,
-                candidates[indexI],
+                oldCandidates[indexI],
                 tP
             );
 
             if (tP.size() >= 4)
             {
-                writeVTK(cellI, candidates[indexI], tP);
+                writeVTK(cellI, oldCandidates[indexI], tP);
 
                 // Write out to screen
                 scalar dummyWeight = 0.0;
@@ -413,7 +418,7 @@ void conservativeMeshToMesh::computeCellWeights
                 convexSetVolume
                 (
                     cellI,
-                    candidates[indexI],
+                    oldCandidates[indexI],
                     tP,
                     dummyWeight,
                     dummyCentre,
@@ -444,6 +449,9 @@ void conservativeMeshToMesh::computeCellWeights
             << " Cell: " << newCellIndex << nl
             << " Candidate parent: " << oldCandidate << nl
             << " nCandidates: " << candidates.size() << nl
+            << " nOldCandidates: " << oldCandidates.size() << nl
+            << " nIntersects: " << nIntersects << nl
+            << " nOldIntersects: " << nOldIntersects << nl
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
             << setprecision(16)

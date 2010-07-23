@@ -192,6 +192,14 @@ namespace meshOps
         const point& p
     );
 
+    // Determine whether a point lies on a segment
+    inline bool pointSegmentIntersection
+    (
+        const edge& segment,
+        const UList<point>& points,
+        const point& checkPoint
+    );
+
     // Determine whether a two line segments intersect
     inline bool segmentSegmentIntersection
     (
