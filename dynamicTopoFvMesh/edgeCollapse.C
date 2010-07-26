@@ -3647,8 +3647,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
     }
 
-    // Fill-in candidate mapping information
-    labelList mC(cellHull);
     labelList mapCells = cellsChecked.toc();
 
     // Write out VTK files after change
@@ -3671,6 +3669,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         labelList parents;
         scalarField weights;
         vectorField centres;
+
+        // Fill-in candidate mapping information
+        labelList mC(1, mapCells[cellI]);
 
         // Obtain weighting factors for this cell.
         computeCellWeights

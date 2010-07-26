@@ -954,6 +954,29 @@ void dynamicTopoFvMesh::writeVTK
 }
 
 
+// Return the status report interval
+scalar dynamicTopoFvMesh::reportInterval() const
+{
+    // Default to 3 seconds
+    scalar interval = 3.0;
+
+    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
+    if (meshSubDict.found("reportInterval") || mandatory_)
+    {
+        interval = readScalar(meshSubDict.lookup("reportInterval"));
+
+        // Prevent reports if necessary
+        if (interval < VSMALL)
+        {
+            interval = GREAT;
+        }
+    }
+
+    return interval;
+}
+
+
 // Check the state of connectivity lists
 void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 {

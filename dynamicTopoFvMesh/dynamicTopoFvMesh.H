@@ -315,6 +315,7 @@ class dynamicTopoFvMesh
         labelList faceParents
         (
             const label fIndex,
+            const vector& fNormal,
             const vector& fCentre,
             const scalar searchFactor,
             const labelList& oldCandidates
@@ -855,6 +856,9 @@ class dynamicTopoFvMesh
             const bool useOldConnectivity = false,
             const bool useOldPoints = false
         ) const;
+
+        // Return the status report interval
+        scalar reportInterval() const;
 
         // Check the state of local connectivity lists
         void checkConnectivity(const label maxErrors = 0) const;

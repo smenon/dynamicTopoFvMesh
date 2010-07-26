@@ -555,7 +555,7 @@ inline bool segmentFaceIntersection
 
     scalar u = (numerator / denominator);
 
-    scalar tolerance = (1e-4 * mag(p2 - p1));
+    scalar tolerance = (1e-6 * mag(p2 - p1));
 
     // Check for intersection along line.
     if ((u > tolerance) && (u < (1.0 - tolerance)))

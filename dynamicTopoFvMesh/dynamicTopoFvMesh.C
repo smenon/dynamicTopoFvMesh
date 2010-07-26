@@ -357,6 +357,9 @@ void dynamicTopoFvMesh::computeFaceWeights
     weights.clear();
     centres.clear();
 
+    // Determine which patch this is...
+    label patchIndex = whichPatch(fIndex);
+
     scalar searchFactor = 1.0;
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
@@ -368,17 +371,16 @@ void dynamicTopoFvMesh::computeFaceWeights
     bool output = false;
 
     // Fetch the area / centre of the cell
-    scalar fArea =
+    vector fNormal =
     (
-        mag
+        meshOps::faceNormal
         (
-            meshOps::faceNormal
-            (
-                faces_[fIndex],
-                oldPoints_
-            )
+            faces_[fIndex],
+            oldPoints_
         )
     );
+
+    scalar fArea = mag(fNormal);
 
     vector fCentre =
     (
@@ -400,6 +402,7 @@ void dynamicTopoFvMesh::computeFaceWeights
             faceParents
             (
                 fIndex,
+                fNormal,
                 fCentre,
                 searchFactor,
                 mapCandidates
@@ -586,7 +589,8 @@ void dynamicTopoFvMesh::computeFaceWeights
             ") const\n"
         )
             << "Encountered non-conservative weighting factors." << nl
-            << " Face: " << fIndex << nl
+            << " Face: " << fIndex << ":: " << faces_[fIndex] << nl
+            << " Patch: " << boundaryMesh()[patchIndex].name() << nl
             << " mapCandidates: " << mapCandidates << nl
             << " nCandidates: " << candidates.size() << nl
             << " nOldCandidates: " << oldCandidates.size() << nl
@@ -1317,12 +1321,12 @@ bool dynamicTopoFvMesh::faceIntersection
             scalar denOld = n & (p2 - p1);
 
             // Check if the edges are parallel
-            scalar tolerance = (1e-4 * mag(p2 - p1));
-
-            if (mag(denOld) < tolerance)
+            if (mag(denOld) < VSMALL)
             {
                 continue;
             }
+
+            scalar tolerance = (1e-6 * mag(p2 - p1));
 
             scalar u = (numOld / denOld);
             vector checkPoint = p1 + u*(p2 - p1);
@@ -1878,6 +1882,15 @@ bool dynamicTopoFvMesh::cellIntersection
     {
         const edge& edgeToCheck = fromCellEdges[edgeI];
 
+        if
+        (
+            commonPoints.found(edgeToCheck.start()) &&
+            commonPoints.found(edgeToCheck.end())
+        )
+        {
+            continue;
+        }
+
         forAll(toCell, faceI)
         {
             const face& faceToCheck = faces_[toCell[faceI]];
@@ -1979,6 +1992,15 @@ bool dynamicTopoFvMesh::cellIntersection
     forAll(toCellEdges, edgeI)
     {
         const edge& edgeToCheck = toCellEdges[edgeI];
+
+        if
+        (
+            commonPoints.found(edgeToCheck.start()) &&
+            commonPoints.found(edgeToCheck.end())
+        )
+        {
+            continue;
+        }
 
         forAll(fromCell, faceI)
         {
@@ -2116,6 +2138,7 @@ bool dynamicTopoFvMesh::cellIntersection
 labelList dynamicTopoFvMesh::faceParents
 (
     const label fIndex,
+    const vector& fNormal,
     const vector& fCentre,
     const scalar searchFactor,
     const labelList& oldCandidates
@@ -2209,7 +2232,8 @@ labelList dynamicTopoFvMesh::faceParents
         }
     }
 
-    // Fetch connectivity from the old mesh.
+    // Fetch geometry / connectivity from the old mesh.
+    const vectorField& faceNormals = boundary[patchIndex].faceAreas();
     const vectorField& faceCentres = boundary[patchIndex].faceCentres();
     const labelListList& oldFaceFaces = boundary[patchIndex].faceFaces();
 
@@ -2231,9 +2255,10 @@ labelList dynamicTopoFvMesh::faceParents
 
             forAll(ff, faceI)
             {
+                scalar dP = (faceNormals[ff[faceI]] & fNormal);
                 vector xC = (faceCentres[ff[faceI]] - fCentre);
 
-                if ((xC & xC) < (bMax & bMax))
+                if (((xC & xC) < (bMax & bMax)) && (dP > 0.0))
                 {
                     if (!masterFaces.found(ff[faceI]))
                     {
@@ -2258,7 +2283,15 @@ labelList dynamicTopoFvMesh::faceParents
              << endl;
     }
 
-    return masterFaces.toc();
+    // Now renumber all masterFaces back to global indices
+    labelList finalList = masterFaces.toc();
+
+    forAll(finalList, faceI)
+    {
+        finalList[faceI] += patchStart;
+    }
+
+    return finalList;
 }
 
 
@@ -4176,9 +4209,40 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     // Figure out which thread this is...
     label tIndex = mesh.self();
 
+    // Set the timer
+    clockTime sTimer;
+    bool reported = false;
+    label count = 0, totalCount = mesh.Stack(tIndex).size();
+    scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
+
+    oIndex = ::floor(sTimer.elapsedTime() / interval);
+
     // Pick items off the stack
     while (!mesh.Stack(tIndex).empty())
     {
+        count++;
+
+        // Update the index, if its changed
+        nIndex = ::floor(sTimer.elapsedTime() / interval);
+
+        if ((nIndex - oIndex) > VSMALL)
+        {
+            oIndex = nIndex;
+
+            // Report progress
+            if (thread->master())
+            {
+                Info << "\r  Swap Progress: "
+                     << 100.0 * (double(count) / (totalCount + VSMALL))
+                     << "% : Entities processed: " << count
+                     << " out of " << totalCount << " total."
+                     << "             "
+                     << flush;
+
+                reported = true;
+            }
+        }
+
         // Retrieve the index for this face
         label fIndex = mesh.Stack(tIndex).pop();
 
@@ -4203,6 +4267,16 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     if (thread->slave())
     {
         thread->sendSignal(meshHandler::STOP);
+    }
+
+    if (reported)
+    {
+        Info << "\r  Swap Progress: "
+             << 100.0 * (double(count) / (totalCount + VSMALL))
+             << "% : Entities processed: " << count
+             << " out of " << totalCount << " total."
+             << "             "
+             << endl;
     }
 }
 
@@ -4234,9 +4308,40 @@ void dynamicTopoFvMesh::swap3DEdges
     // Allocate dynamic programming tables
     mesh.initTables(m, Q, K, triangulations);
 
+    // Set the timer
+    clockTime sTimer;
+    bool reported = false;
+    label count = 0, totalCount = mesh.Stack(tIndex).size();
+    scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
+
+    oIndex = ::floor(sTimer.elapsedTime() / interval);
+
     // Pick edges off the stack
     while (!mesh.Stack(tIndex).empty())
     {
+        count++;
+
+        // Update the index, if its changed
+        nIndex = ::floor(sTimer.elapsedTime() / interval);
+
+        if ((nIndex - oIndex) > VSMALL)
+        {
+            oIndex = nIndex;
+
+            // Report progress
+            if (thread->master())
+            {
+                Info << "\r  Swap Progress: "
+                     << 100.0 * (double(count) / (totalCount + VSMALL))
+                     << "% : Entities processed: " << count
+                     << " out of " << totalCount << " total."
+                     << "             "
+                     << flush;
+
+                reported = true;
+            }
+        }
+
         // Retrieve an edge from the stack
         label eIndex = mesh.Stack(tIndex).pop();
 
@@ -4273,6 +4378,16 @@ void dynamicTopoFvMesh::swap3DEdges
     {
         thread->sendSignal(meshHandler::STOP);
     }
+
+    if (reported)
+    {
+        Info << "\r  Swap Progress: "
+             << 100.0 * (double(count) / (totalCount + VSMALL))
+             << "% : Entities processed: " << count
+             << " out of " << totalCount << " total."
+             << "             "
+             << endl;
+    }
 }
 
 
@@ -4299,8 +4414,39 @@ void dynamicTopoFvMesh::edgeRefinementEngine
     // Figure out which thread this is...
     label tIndex = mesh.self();
 
+    // Set the timer
+    clockTime sTimer;
+    bool reported = false;
+    label count = 0, totalCount = mesh.Stack(tIndex).size();
+    scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
+
+    oIndex = ::floor(sTimer.elapsedTime() / interval);
+
     while (!mesh.Stack(tIndex).empty())
     {
+        count++;
+
+        // Update the index, if its changed
+        nIndex = ::floor(sTimer.elapsedTime() / interval);
+
+        if ((nIndex - oIndex) > VSMALL)
+        {
+            oIndex = nIndex;
+
+            // Report progress
+            if (thread->master())
+            {
+                Info << "\r  Refinement Progress: "
+                     << 100.0 * (double(count) / (totalCount + VSMALL))
+                     << "% : Entities processed: " << count
+                     << " out of " << totalCount << " total."
+                     << "             "
+                     << flush;
+
+                reported = true;
+            }
+        }
+
         // Retrieve an entity from the stack
         label eIndex = mesh.Stack(tIndex).pop();
 
@@ -4336,6 +4482,16 @@ void dynamicTopoFvMesh::edgeRefinementEngine
     if (thread->slave())
     {
         thread->sendSignal(meshHandler::STOP);
+    }
+
+    if (reported)
+    {
+        Info << "\r  Refinement Progress: "
+             << 100.0 * (double(count) / (totalCount + VSMALL))
+             << "% : Entities processed: " << count
+             << " out of " << totalCount << " total."
+             << "             "
+             << endl;
     }
 }
 
@@ -5806,7 +5962,8 @@ bool dynamicTopoFvMesh::update()
     // Invoke the threaded topoModifier
     threadedTopoModifier();
 
-    Info << " Topo modifier time: " << topologyTimer.elapsedTime() << endl;
+    Info << nl << " Topo modifier time: "
+         << topologyTimer.elapsedTime() << endl;
 
     // Write out statistics
     Info << " Bisections :: Interior: " << nBisections_[0]
