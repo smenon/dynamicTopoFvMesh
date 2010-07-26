@@ -352,22 +352,48 @@ void dynamicTopoFvMesh::computeFaceWeights
     vectorField& centres
 ) const
 {
-    scalar searchFactor = 1.0;
+    // Clear inputs
+    parents.clear();
+    weights.clear();
+    centres.clear();
 
+    scalar searchFactor = 1.0;
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
     // Maintain a list of candidates and intersection points
-    labelList candidates;
+    boolList oldIntersects, intersects;
+    labelList oldCandidates, candidates;
 
     // Output option for the convex set algorithm
     bool output = false;
 
     // Fetch the area / centre of the cell
-    scalar fArea = mag(meshOps::faceNormal(faces_[fIndex], oldPoints_));
-    vector fCentre = meshOps::faceCentre(faces_[fIndex], oldPoints_);
+    scalar fArea =
+    (
+        mag
+        (
+            meshOps::faceNormal
+            (
+                faces_[fIndex],
+                oldPoints_
+            )
+        )
+    );
+
+    vector fCentre =
+    (
+        meshOps::faceCentre
+        (
+            faces_[fIndex],
+            oldPoints_
+        )
+    );
 
     while (nAttempts < 5)
     {
+        // Reset counter first
+        nIntersects = 0;
+
         // Obtain candidate parents for this face
         candidates =
         (
@@ -381,12 +407,13 @@ void dynamicTopoFvMesh::computeFaceWeights
         );
 
         // Set sizes
-        boolList intersects(candidates.size(), false);
+        intersects.setSize(candidates.size());
 
         // Test for intersections
         forAll(candidates, indexI)
         {
             vectorField tP;
+            intersects[indexI] = false;
 
             intersects[indexI] =
             (
@@ -410,6 +437,7 @@ void dynamicTopoFvMesh::computeFaceWeights
             {
                 Info << " Face: " << fIndex << nl
                      << " nCandidates: " << candidates.size() << nl
+                     << " nOldCandidates: " << oldCandidates.size() << nl
                      << " nIntersects: " << nIntersects
                      << endl;
 
@@ -425,27 +453,27 @@ void dynamicTopoFvMesh::computeFaceWeights
             // Reset counter
             nIntersects = 0;
 
-            forAll(intersects, indexI)
+            // Compute actual intersections
+            forAll(oldIntersects, indexI)
             {
-                if (intersects[indexI])
+                if (oldIntersects[indexI])
                 {
-                    // Compute actual intersections
-                    vectorField tP;
+                    vectorField tP(0);
 
-                    intersects[indexI] =
+                    oldIntersects[indexI] =
                     (
                         faceIntersection
                         (
                             fIndex,
-                            candidates[indexI],
+                            oldCandidates[indexI],
                             tP
                         )
                     );
 
                     // Skip false positives
-                    if (intersects[indexI])
+                    if (oldIntersects[indexI])
                     {
-                        parents[nIntersects] = candidates[indexI];
+                        parents[nIntersects] = oldCandidates[indexI];
 
                         // We need a reference normal. Use the new face.
                         vector refNorm =
@@ -488,8 +516,9 @@ void dynamicTopoFvMesh::computeFaceWeights
             nAttempts++;
 
             // Copy / reset parameters
+            oldIntersects = intersects;
+            oldCandidates = candidates;
             nOldIntersects = nIntersects;
-            nIntersects = 0;
 
             // Expand the search radius and try again.
             searchFactor *= 1.6;
@@ -520,18 +549,18 @@ void dynamicTopoFvMesh::computeFaceWeights
 
         // Write out for post-processing
         label uIdx = 0;
-        labelList unMatched(candidates.size() - parents.size(), -1);
+        labelList unMatched(oldCandidates.size() - parents.size(), -1);
 
-        forAll(candidates, cI)
+        forAll(oldCandidates, cI)
         {
-            if (findIndex(parents, candidates[cI]) == -1)
+            if (findIndex(parents, oldCandidates[cI]) == -1)
             {
-                unMatched[uIdx++] = candidates[cI];
+                unMatched[uIdx++] = oldCandidates[cI];
             }
         }
 
         writeVTK("nFace_" + Foam::name(fIndex), fIndex, 2, false, true);
-        writeVTK("oFace_" + Foam::name(fIndex), candidates, 2, true, true);
+        writeVTK("oFace_" + Foam::name(fIndex), oldCandidates, 2, true, true);
         writeVTK("mFace_" + Foam::name(fIndex), parents, 2, true, true);
         writeVTK("uFace_" + Foam::name(fIndex), unMatched, 2, true, true);
 
@@ -560,8 +589,15 @@ void dynamicTopoFvMesh::computeFaceWeights
             << " Face: " << fIndex << nl
             << " mapCandidates: " << mapCandidates << nl
             << " nCandidates: " << candidates.size() << nl
+            << " nOldCandidates: " << oldCandidates.size() << nl
+            << " nIntersects: " << nIntersects << nl
+            << " nOldIntersects: " << nOldIntersects << nl
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
+            << " nFaces: " << nFaces_ << nl
+            << " nOldFaces: " << nOldFaces_ << nl
+            << " nInternalFaces: " << nInternalFaces_ << nl
+            << " nOldInternalFaces: " << nOldInternalFaces_ << nl
             << setprecision(16)
             << " Face area: " << fArea << nl
             << " Sum(Weights): " << sum(weights) << nl
@@ -598,8 +634,12 @@ void dynamicTopoFvMesh::computeCellWeights
     vectorField& centres
 ) const
 {
-    scalar searchFactor = 1.0;
+    // Clear inputs
+    parents.clear();
+    weights.clear();
+    centres.clear();
 
+    scalar searchFactor = 1.0;
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
 
     // Maintain a list of candidates and intersection points
@@ -641,12 +681,14 @@ void dynamicTopoFvMesh::computeCellWeights
             )
         );
 
-        // Set sizes
-        intersects.setSize(candidates.size(), false);
+        // Set sizes and reset
+        intersects.setSize(candidates.size());
 
         // Test for intersections
         forAll(candidates, indexI)
         {
+            intersects[indexI] = false;
+
             intersects[indexI] =
             (
                 testCellIntersection
@@ -684,13 +726,11 @@ void dynamicTopoFvMesh::computeCellWeights
             // Reset counter
             nIntersects = 0;
 
-            // Loop through old candidates
-            // to minimize intersection calculations
+            // Compute actual intersections
             forAll(oldIntersects, indexI)
             {
                 if (oldIntersects[indexI])
                 {
-                    // Compute actual intersections
                     vectorField tP(0);
 
                     oldIntersects[indexI] =
@@ -865,6 +905,8 @@ void dynamicTopoFvMesh::computeCellWeights
             << " nOldIntersects: " << nOldIntersects << nl
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
+            << " nCells: " << nCells_ << nl
+            << " nOldCells: " << nOldCells_ << nl
             << setprecision(16)
             << " Cell volume: " << cellVolume << nl
             << " Sum(Weights): " << sum(weights) << nl

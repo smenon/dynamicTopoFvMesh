@@ -97,9 +97,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             << abort(FatalError);
     }
 
-    // Local variables
-    FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
-    FixedList<face,2>  c0BdyFace,  c0IntFace,  c1BdyFace,  c1IntFace;
+    // Define the edges on the face to be collapsed
     FixedList<edge,4> checkEdge(edge(-1,-1));
     FixedList<label,4> checkEdgeIndex(-1);
 
@@ -224,11 +222,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 // Set the overRideCase for this edge
                 changeMap masterMap;
 
-                // Perform a geometric comparison.
+                // Perform a topological comparison.
                 switch (slaveMap.type())
                 {
                     case 1:
-
+                    {
                         if (mEdge[0] == sEdge[0])
                         {
                             overRideCase = 1;
@@ -266,9 +264,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         }
 
                         break;
+                    }
 
                     case 2:
-
+                    {
                         if (mEdge[1] == sEdge[1])
                         {
                             overRideCase = 2;
@@ -306,6 +305,14 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         }
 
                         break;
+                    }
+
+                    case 3:
+                    {
+                        overRideCase = 3;
+
+                        break;
+                    }
                 }
 
                 // Can the overRideCase be used for this edge?
@@ -374,6 +381,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     // Determine the neighbouring cells
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
+
+    // Define variables for the prism-face calculation
+    FixedList<face,2> c0BdyFace, c0IntFace, c1BdyFace, c1IntFace;
+    FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
 
     // Find the prism-faces
     meshOps::findPrismFaces
@@ -790,6 +801,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     FixedList<label,2> faceToKeep(-1), faceToThrow(-1);
     FixedList<label,4> edgeToKeep(-1), edgeToThrow(-1);
 
+    // Maintain a list of modified faces for mapping
+    labelHashSet modifiedFaces;
+
     // Case 2 & 3 use identical connectivity,
     // but different point locations
     if (collapseCase == 2 || collapseCase == 3)
@@ -813,6 +827,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 cv3,
                 faces_[firstEdgeFaces[faceI]]
             );
+
+            // Add an entry for mapping
+            modifiedFaces.set(firstEdgeFaces[faceI], empty());
 
             // Determine the quad-face in cell[0] & cell[1]
             // that belongs to firstEdgeFaces
@@ -1180,8 +1197,22 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         forAll(secondEdgeFaces,faceI)
         {
             // Replace point indices on faces.
-            meshOps::replaceLabel(cv2, cv0, faces_[secondEdgeFaces[faceI]]);
-            meshOps::replaceLabel(cv3, cv1, faces_[secondEdgeFaces[faceI]]);
+            meshOps::replaceLabel
+            (
+                cv2,
+                cv0,
+                faces_[secondEdgeFaces[faceI]]
+            );
+
+            meshOps::replaceLabel
+            (
+                cv3,
+                cv1,
+                faces_[secondEdgeFaces[faceI]]
+            );
+
+            // Add an entry for mapping
+            modifiedFaces.set(secondEdgeFaces[faceI], empty());
 
             // Determine the quad-face(s) in cell[0] & cell[1]
             // that belongs to secondEdgeFaces
@@ -1840,6 +1871,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             )
         );
 
+        // Add an entry for mapping
+        modifiedFaces.set(newFaceIndex, empty());
+
         // Add a faceEdges entry as well.
         // Edges don't have to change, since they're
         // all on the boundary anyway.
@@ -1930,6 +1964,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     -1
                 )
             );
+
+            // Add an entry for mapping
+            modifiedFaces.set(newFaceIndex, empty());
 
             // Add a faceEdges entry as well.
             // Edges don't have to change, since they're
@@ -2072,6 +2109,83 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             // Update cellParents information
             cellParents_.set(mcIndex, parents);
+        }
+    }
+
+    // Set face mapping information for modified faces
+    forAllConstIter(labelHashSet, modifiedFaces, fIter)
+    {
+        // Exclude deleted faces
+        if (faces_[fIter.key()].empty())
+        {
+            continue;
+        }
+
+        // Decide between default / weighted mapping
+        // based on boundary information
+        label fPatch = whichPatch(fIter.key());
+
+        if (fPatch == -1)
+        {
+            setFaceMapping(fIter.key());
+        }
+        else
+        {
+            // Fill-in candidate mapping information
+            labelList parents;
+            scalarField weights;
+            vectorField centres;
+
+            labelList faceCandidates;
+
+            const labelList& fEdges = faceEdges_[fIter.key()];
+
+            forAll(fEdges, edgeI)
+            {
+                if (whichEdgePatch(fEdges[edgeI]) == fPatch)
+                {
+                    // Loop through associated edgeFaces
+                    const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+                    forAll(eFaces, faceI)
+                    {
+                        if
+                        (
+                            (eFaces[faceI] != fIter.key()) &&
+                            (whichPatch(eFaces[faceI]) == fPatch)
+                        )
+                        {
+                            faceCandidates.setSize
+                            (
+                                faceCandidates.size() + 1,
+                                eFaces[faceI]
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Obtain weighting factors for this face.
+            computeFaceWeights
+            (
+                fIter.key(),
+                faceCandidates,
+                parents,
+                weights,
+                centres
+            );
+
+            // Set the mapping for this face
+            setFaceMapping
+            (
+                fIter.key(),
+                parents,
+                weights,
+                centres
+            );
+
+            // Update faceParents information
+            faceParents_.set(fIter.key(), parents);
         }
     }
 
@@ -3537,6 +3651,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     labelList mC(cellHull);
     labelList mapCells = cellsChecked.toc();
 
+    // Write out VTK files after change
+    if (debug > 3)
+    {
+        writeVTK
+        (
+            Foam::name(eIndex)
+          + '(' + Foam::name(edges_[eIndex][0])
+          + ',' + Foam::name(edges_[eIndex][1]) + ')'
+          + "_Collapse_1",
+            mapCells
+        );
+    }
+
     // Now that all old / new cells possess correct connectivity,
     // compute mapping information.
     forAll(mapCells, cellI)
@@ -3643,19 +3770,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Update faceParents information
             faceParents_.set(fIter.key(), parents);
         }
-    }
-
-    // Write out VTK files after change
-    if (debug > 3)
-    {
-        writeVTK
-        (
-            Foam::name(eIndex)
-          + '(' + Foam::name(edges_[eIndex][0])
-          + ',' + Foam::name(edges_[eIndex][1]) + ')'
-          + "_Collapse_1",
-            mapCells
-        );
     }
 
     // Set the flag

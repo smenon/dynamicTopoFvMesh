@@ -489,7 +489,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     faces_[c0BdyIndex[1]] = c0BdyFace[1];
 
     owner_[c0BdyIndex[1]] = newCellIndex[0];
-    meshOps::replaceLabel(c0BdyIndex[1], -1, oldCells[0]);
+
+    meshOps::replaceLabel
+    (
+        c0BdyIndex[1],
+        -1,
+        oldCells[0]
+    );
 
     // Detect edges other than commonEdges
     const labelList& fEdges = faceEdges_[fIndex];
@@ -563,17 +569,30 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     {
         if (e1[edgeI] == otherEdgeIndex[1])
         {
-            meshOps::replaceLabel(c0IntIndex[0], -1, oldCells[0]);
+            meshOps::replaceLabel
+            (
+                c0IntIndex[0],
+                -1,
+                oldCells[0]
+            );
+
             replaceFace = c0IntIndex[0];
             retainFace = c0IntIndex[1];
-            found = true; break;
+            found = true;
+            break;
         }
     }
 
     if (!found)
     {
         // The edge was not found before
-        meshOps::replaceLabel(c0IntIndex[1], -1, oldCells[0]);
+        meshOps::replaceLabel
+        (
+            c0IntIndex[1],
+            -1,
+            oldCells[0]
+        );
+
         replaceFace = c0IntIndex[1];
         retainFace = c0IntIndex[0];
     }
@@ -644,8 +663,19 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         edgeFaces_[otherEdgeIndex[2]]
     );
 
-    meshOps::replaceLabel(-1, newFaceIndex[0], newCells[0]);
-    meshOps::replaceLabel(-1, newFaceIndex[0], oldCells[0]);
+    meshOps::replaceLabel
+    (
+        -1,
+        newFaceIndex[0],
+        newCells[0]
+    );
+
+    meshOps::replaceLabel
+    (
+        -1,
+        newFaceIndex[0],
+        oldCells[0]
+    );
 
     // remove2DSliver requires this face index for removal
     map.addFace(newFaceIndex[0]);
@@ -669,7 +699,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Add a faceEdges entry as well
     faceEdges_.append(tmpTFEdges);
 
-    meshOps::replaceLabel(-1, newFaceIndex[1], newCells[0]);
+    meshOps::replaceLabel
+    (
+        -1,
+        newFaceIndex[1],
+        newCells[0]
+    );
 
     // Third boundary face; Owner = c[0] & Neighbour = [-1]
     tmpTriFace[0] = otherPointIndex[1];
@@ -690,7 +725,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Add a faceEdges entry as well
     faceEdges_.append(tmpTFEdges);
 
-    meshOps::replaceLabel(-1, newFaceIndex[2], oldCells[0]);
+    meshOps::replaceLabel
+    (
+        -1,
+        newFaceIndex[2],
+        oldCells[0]
+    );
 
     // Create / modify edges...
     labelList tmpTriEdgeFaces(3, -1);
@@ -807,7 +847,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             edgeFaces_[otherEdgeIndex[1]]
         );
 
-        meshOps::replaceLabel(-1, newFaceIndex[3], newCells[0]);
+        meshOps::replaceLabel
+        (
+            -1,
+            newFaceIndex[3],
+            newCells[0]
+        );
 
         labelList tmpBiEdgeFaces(2, -1);
 
@@ -1007,17 +1052,30 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         {
             if (e2[edgeI] == otherEdgeIndex[1])
             {
-                meshOps::replaceLabel(c1IntIndex[0], -1, oldCells[1]);
+                meshOps::replaceLabel
+                (
+                    c1IntIndex[0],
+                    -1,
+                    oldCells[1]
+                );
+
                 replaceFace = c1IntIndex[0];
                 retainFace = c1IntIndex[1];
-                found = true; break;
+                found = true;
+                break;
             }
         }
 
         if (!found)
         {
             // The edge was not found before
-            meshOps::replaceLabel(c1IntIndex[1], -1, oldCells[1]);
+            meshOps::replaceLabel
+            (
+                c1IntIndex[1],
+                -1,
+                oldCells[1]
+            );
+
             replaceFace = c1IntIndex[1];
             retainFace = c1IntIndex[0];
         }
@@ -1078,8 +1136,20 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             edgeFaces_[otherEdgeIndex[1]]
         );
 
-        meshOps::replaceLabel(-1, newFaceIndex[3], newCells[0]);
-        meshOps::replaceLabel(-1, newFaceIndex[3], newCells[1]);
+        meshOps::replaceLabel
+        (
+            -1,
+            newFaceIndex[3],
+            newCells[0]
+        );
+
+        meshOps::replaceLabel
+        (
+            -1,
+            newFaceIndex[3],
+            newCells[1]
+        );
+
         newCells[1][1] = newFaceIndex[3];
 
         // Check for common edges among the two boundary faces
@@ -1170,7 +1240,14 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         );
 
         owner_[commonFaceIndex[2]] = newCellIndex[1];
-        meshOps::replaceLabel(commonFaceIndex[2], -1, oldCells[1]);
+
+        meshOps::replaceLabel
+        (
+            commonFaceIndex[2],
+            -1,
+            oldCells[1]
+        );
+
         newCells[1][2] = commonFaceIndex[2];
 
         // First boundary face - Owner = c[1] & Neighbour [-1] (unchanged)
@@ -1220,8 +1297,19 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             edgeFaces_[otherEdgeIndex[3]]
         );
 
-        meshOps::replaceLabel(-1, newFaceIndex[4], newCells[1]);
-        meshOps::replaceLabel(-1, newFaceIndex[4], oldCells[1]);
+        meshOps::replaceLabel
+        (
+            -1,
+            newFaceIndex[4],
+            newCells[1]
+        );
+
+        meshOps::replaceLabel
+        (
+            -1,
+            newFaceIndex[4],
+            oldCells[1]
+        );
 
         // Second boundary face; Owner = cell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[2];
@@ -1242,7 +1330,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Add a faceEdges entry as well
         faceEdges_.append(tmpTFEdges);
 
-        meshOps::replaceLabel(-1, newFaceIndex[5], oldCells[1]);
+        meshOps::replaceLabel
+        (
+            -1,
+            newFaceIndex[5],
+            oldCells[1]
+        );
 
         // Third boundary face; Owner = newCell[1] & Neighbour [-1]
         tmpTriFace[0] = otherPointIndex[3];
@@ -1263,7 +1356,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Add a faceEdges entry as well
         faceEdges_.append(tmpTFEdges);
 
-        meshOps::replaceLabel(-1, newFaceIndex[6], newCells[1]);
+        meshOps::replaceLabel
+        (
+            -1,
+            newFaceIndex[6],
+            newCells[1]
+        );
 
         // Create / modify edges...
         labelList tmpQuadEdgeFaces(4, -1);
@@ -1579,77 +1677,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     cells_[c0] = oldCells[0];
     cells_[newCellIndex[0]] = newCells[0];
 
-    // Fill-in mapping information
-    FixedList<label, 4> mapCells(-1);
-
-    mapCells[0] = c0;
-    mapCells[1] = newCellIndex[0];
-
-    if (c1 != -1)
-    {
-        mapCells[2] = c1;
-        mapCells[3] = newCellIndex[1];
-    }
-
-    labelList mC(1, c0);
-
-    forAll(mapCells, cellI)
-    {
-        if (mapCells[cellI] == -1)
-        {
-            continue;
-        }
-
-        labelList parents;
-        scalarField weights;
-        vectorField centres;
-
-        // Obtain weighting factors for this cell.
-        computeCellWeights
-        (
-            mapCells[cellI],
-            mC,
-            parents,
-            weights,
-            centres
-        );
-
-        // Set the mapping for this cell
-        setCellMapping
-        (
-            mapCells[cellI],
-            parents,
-            weights,
-            centres
-        );
-
-        // Update cellParents information
-        cellParents_.set(mapCells[cellI], parents);
-    }
-
-    // Set fill-in mapping information for the modified face.
-    //setFaceMapping(fIndex);
-
-    // Default mapping for internal faces
-    //setFaceMapping(newFaceIndex[0]);
-
-    // Wedge / empty faces get zero flux.
-    // setFaceMapping(newFaceIndex[1]);
-    // setFaceMapping(newFaceIndex[2]);
-
-    // Set fill-in mapping information for the new face
-    //setFaceMapping(newFaceIndex[3]);
-
-    if (c1 != -1)
-    {
-        // Default mapping for internal faces
-        //setFaceMapping(newFaceIndex[4]);
-
-        // Wedge / empty faces get zero flux.
-        // setFaceMapping(newFaceIndex[5]);
-        // setFaceMapping(newFaceIndex[6]);
-    }
-
     // Modify point labels for common edges
     if (edges_[commonEdgeIndex[0]].start() == otherEdgePoint[0])
     {
@@ -1823,6 +1850,77 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
           + "_Bisect_1",
             cellHull
         );
+    }
+
+    // Fill-in mapping information
+    FixedList<label, 4> mapCells(-1);
+
+    mapCells[0] = c0;
+    mapCells[1] = newCellIndex[0];
+
+    if (c1 != -1)
+    {
+        mapCells[2] = c1;
+        mapCells[3] = newCellIndex[1];
+    }
+
+    labelList mC(1, c0);
+
+    forAll(mapCells, cellI)
+    {
+        if (mapCells[cellI] == -1)
+        {
+            continue;
+        }
+
+        labelList parents;
+        scalarField weights;
+        vectorField centres;
+
+        // Obtain weighting factors for this cell.
+        computeCellWeights
+        (
+            mapCells[cellI],
+            mC,
+            parents,
+            weights,
+            centres
+        );
+
+        // Set the mapping for this cell
+        setCellMapping
+        (
+            mapCells[cellI],
+            parents,
+            weights,
+            centres
+        );
+
+        // Update cellParents information
+        cellParents_.set(mapCells[cellI], parents);
+    }
+
+    // Set fill-in mapping information for the modified face.
+    setFaceMapping(fIndex);
+
+    // Default mapping for internal faces
+    setFaceMapping(newFaceIndex[0]);
+
+    // Wedge / empty faces get zero flux.
+    // setFaceMapping(newFaceIndex[1]);
+    // setFaceMapping(newFaceIndex[2]);
+
+    // Set fill-in mapping information for the new face
+    setFaceMapping(newFaceIndex[3]);
+
+    if (c1 != -1)
+    {
+        // Default mapping for internal faces
+        setFaceMapping(newFaceIndex[4]);
+
+        // Wedge / empty faces get zero flux.
+        // setFaceMapping(newFaceIndex[5]);
+        // setFaceMapping(newFaceIndex[6]);
     }
 
     // Set the flag
