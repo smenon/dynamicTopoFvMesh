@@ -168,6 +168,44 @@ inline label dynamicTopoFvMesh::getEdgeIndex
 }
 
 
+// Given any quad face, pick out a boundary edge that
+// contains a triangular face. For 2D simplical meshes only.
+inline label dynamicTopoFvMesh::getTriBoundaryEdge
+(
+    const label fIndex
+) const
+{
+    const labelList& fEdges = faceEdges_[fIndex];
+
+    forAll(fEdges, edgeI)
+    {
+        // Obtain edgeFaces for this edge
+        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+        forAll(eFaces, faceI)
+        {
+            if (faces_[eFaces[faceI]].size() == 3)
+            {
+                // Found a triangular face. Return this edge.
+                return fEdges[edgeI];
+            }
+        }
+    }
+
+    // This bit should never happen.
+    FatalErrorIn
+    (
+        "inline label dynamicTopoFvMesh::getTriBoundaryEdge"
+        "(const label fIndex) const"
+    )
+        << "Cannot find a triangular face bordering face: "
+        << fIndex << " :: " << faces_[fIndex]
+        << abort(FatalError);
+
+    return -1;
+}
+
+
 // Return length-scale at an face-location in the mesh [2D]
 inline scalar dynamicTopoFvMesh::faceLengthScale
 (

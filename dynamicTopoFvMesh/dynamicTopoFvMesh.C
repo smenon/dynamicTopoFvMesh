@@ -799,7 +799,27 @@ void dynamicTopoFvMesh::computeCellWeights
 
         if (twoDMesh_)
         {
+            forAll(parents, cellI)
+            {
+                const cell& pCell = polyMesh::cells()[parents[cellI]];
 
+                forAll(pCell, faceI)
+                {
+                    const face& pFace = polyMesh::faces()[pCell[faceI]];
+
+                    if (pFace.size() == 3)
+                    {
+                        continue;
+                    }
+
+                    if (boundaryMesh().whichPatch(pCell[faceI]) > -1)
+                    {
+                        // Found a boundary quad-face
+                        weights /= sum(weights);
+                        return;
+                    }
+                }
+            }
         }
         else
         {
@@ -3896,82 +3916,6 @@ void dynamicTopoFvMesh::readOptionalParameters()
 }
 
 
-// Given a boundary quad face, return a boundary triangular face.
-// For 2D simplical meshes only.
-label dynamicTopoFvMesh::getTriBoundaryFace
-(
-    const label fIndex
-) const
-{
-    const labelList& fEdges = faceEdges_[fIndex];
-
-    forAll(fEdges, edgeI)
-    {
-        // Obtain edgeFaces for this edge
-        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
-
-        forAll(eFaces, faceI)
-        {
-            if (faces_[eFaces[faceI]].size() == 3)
-            {
-                // Found a triangular face. Return this face.
-                return eFaces[faceI];
-            }
-        }
-    }
-
-    // This bit should never happen.
-    FatalErrorIn
-    (
-        "label dynamicTopoFvMesh::getTriBoundaryFace"
-        "(const label fIndex) const"
-    )
-        << "Cannot find a triangular face bordering face: "
-        << fIndex << " :: " << faces_[fIndex]
-        << abort(FatalError);
-
-    return -1;
-}
-
-
-// Given a boundary quad face, pick out a boundary edge that
-// contains a triangular face. For 2D simplical meshes only.
-label dynamicTopoFvMesh::getTriBoundaryEdge
-(
-    const label fIndex
-) const
-{
-    const labelList& fEdges = faceEdges_[fIndex];
-
-    forAll(fEdges, edgeI)
-    {
-        // Obtain edgeFaces for this edge
-        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
-
-        forAll(eFaces, faceI)
-        {
-            if (faces_[eFaces[faceI]].size() == 3)
-            {
-                // Found a triangular face. Return this edge.
-                return fEdges[edgeI];
-            }
-        }
-    }
-
-    // This bit should never happen.
-    FatalErrorIn
-    (
-        "label dynamicTopoFvMesh::getTriBoundaryEdge"
-        "(const label fIndex) const"
-    )
-        << "Cannot find a triangular face bordering face: "
-        << fIndex << " :: " << faces_[fIndex]
-        << abort(FatalError);
-
-    return -1;
-}
-
-
 // Initialize edge related connectivity lists
 void dynamicTopoFvMesh::initEdges()
 {
@@ -4496,206 +4440,249 @@ void dynamicTopoFvMesh::edgeRefinementEngine
 }
 
 
-// Check if the boundary face is adjacent to a sliver-cell,
-// and remove it by a two-step bisection/collapse operation.
-void dynamicTopoFvMesh::remove2DSliver
-(
-    const label fIndex
-)
+// Remove 2D sliver cells from the mesh
+void dynamicTopoFvMesh::remove2DSlivers()
 {
-    if (!edgeRefinement_)
+    // If coupled patches exist, set the flag
+    if (patchCoupling_.size() || procIndices_.size())
     {
-        return;
+        setCoupledModification();
     }
 
-    // Only boundary faces are considered.
-    if (whichPatch(fIndex) == -1)
+    // Sort by sliver-quality.
+    labelList cIndices(thresholdSlivers_.toc());
+    SortableList<scalar> values(cIndices.size());
+
+    // Fill-in values to sort by...
+    forAll(cIndices, indexI)
     {
-        return;
+        values[indexI] = thresholdSlivers_[cIndices[indexI]];
     }
 
-    label triEdge = getTriBoundaryEdge(fIndex);
-    label triFace = getTriBoundaryFace(fIndex);
+    // Explicitly sort by quality value.
+    values.sort();
 
-    // Measure the boundary edge-length of the face in question
-    scalar length = meshOps::edgeLength(edges_[triEdge], points_);
+    const labelList& indices = values.indices();
 
-    // Determine the boundary triangular face area
-    scalar area = mag(meshOps::faceNormal(faces_[triFace], points_));
-
-    // This cell has to be removed...
-    if (mag(area) < (0.2*length*length))
+    if (debug)
     {
-        if (self() == 0)
+        if (thresholdSlivers_.size())
         {
+            Info << "Sliver list: " << endl;
+
+            forAll(indices, indexI)
+            {
+                label cIndex = cIndices[indices[indexI]];
+
+                Info << " Cell: " << cIndex
+                     << " Quality: " << thresholdSlivers_[cIndex]
+                     << endl;
+            }
+
             if (debug > 1)
             {
-                InfoIn
-                (
-                    "void dynamicTopoFvMesh::remove2DSliver"
-                    "(const label fIndex)"
-                )
-                    << nl
-                    << " Considering face: " << fIndex
-                    << ":: " << faces_[fIndex]
-                    << " for sliver removal."
-                    << endl;
+                writeVTK("sliverCells", cIndices, 3);
             }
+        }
+    }
 
-            // Find the isolated point.
-            label ptIndex = -1, nextPtIndex = -1;
+    forAll(indices, indexI)
+    {
+        // Fetch the cell
+        label cIndex = cIndices[indices[indexI]];
+        const cell& cellToCheck = cells_[cIndex];
 
-            const edge& edgeToCheck = edges_[triEdge];
+        // Find an appropriate quad-face
+        label fIndex = -1;
 
-            meshOps::findIsolatedPoint
-            (
-                faces_[triFace],
-                edgeToCheck,
-                ptIndex,
-                nextPtIndex
-            );
-
-            // Find the prism faces
-            label fOwner = owner_[fIndex];
-            FixedList<label,2> c0BdyIndex, c0IntIndex;
-            FixedList<face,2>  c0BdyFace,  c0IntFace;
-
-            meshOps::findPrismFaces
-            (
-                fIndex,
-                fOwner,
-                faces_,
-                cells_,
-                neighbour_,
-                c0BdyFace,
-                c0BdyIndex,
-                c0IntFace,
-                c0IntIndex
-            );
-
-            // Determine the interior faces connected to each edge-point.
-            label firstFace = -1, secondFace = -1;
-
-            if (c0IntFace[0].which(edgeToCheck[0]) > -1)
+        forAll(cellToCheck, faceI)
+        {
+            if (faces_[cellToCheck[faceI]].size() == 4)
             {
-                firstFace  = c0IntIndex[0];
-                secondFace = c0IntIndex[1];
+                fIndex = cellToCheck[faceI];
+                break;
             }
-            else
-            {
-                firstFace  = c0IntIndex[1];
-                secondFace = c0IntIndex[0];
-            }
+        }
 
-            point ec =
-            (
-                0.5 * (points_[edgeToCheck[0]] + points_[edgeToCheck[1]])
-            );
+        // Find the prism faces
+        FixedList<label,2> cBdyIndex(-1), cIntIndex(-1);
+        FixedList<face,2> cBdyFace, cIntFace;
 
-            FixedList<vector, 2> p(vector::zero), q(vector::zero);
-            FixedList<scalar, 2> proj(0.0);
+        meshOps::findPrismFaces
+        (
+            fIndex,
+            cIndex,
+            faces_,
+            cells_,
+            neighbour_,
+            cBdyFace,
+            cBdyIndex,
+            cIntFace,
+            cIntIndex
+        );
 
-            // Find the projection on the edge.
-            forAll(edgeToCheck, pointI)
-            {
-                p[pointI] = (points_[ptIndex] - points_[edgeToCheck[pointI]]);
-                q[pointI] = (ec - points_[edgeToCheck[pointI]]);
+        if (debug > 1)
+        {
+            InfoIn("void dynamicTopoFvMesh::remove2DSlivers()")
+                << nl
+                << " Considering cell: " << cIndex
+                << ":: " << cells_[cIndex]
+                << " for sliver removal."
+                << " Using face: " << fIndex
+                << ":: " << faces_[fIndex]
+                << endl;
+        }
 
-                q[pointI] /= (mag(q[pointI]) + VSMALL);
+        label triFace = cBdyIndex[0], triEdge = -1;
 
-                proj[pointI] = (p[pointI] & q[pointI]);
-            }
+        // Find the common-edge between quad-tri faces
+        meshOps::findCommonEdge
+        (
+            fIndex,
+            triFace,
+            faceEdges_,
+            triEdge
+        );
 
-            // Take action based on the magnitude of the projection.
-            if (mag(proj[0]) < VSMALL)
-            {
-                collapseQuadFace(firstFace);
-                return;
-            }
+        // Find the isolated point.
+        label ptIndex = -1, nextPtIndex = -1;
 
-            if (mag(proj[1]) < VSMALL)
-            {
-                collapseQuadFace(secondFace);
-                return;
-            }
+        const edge& edgeToCheck = edges_[triEdge];
 
-            if (proj[0] > 0.0 && proj[1] < 0.0)
-            {
-                changeMap map = bisectQuadFace(firstFace, changeMap());
+        meshOps::findIsolatedPoint
+        (
+            faces_[triFace],
+            edgeToCheck,
+            ptIndex,
+            nextPtIndex
+        );
 
-                // Loop through added faces, and collapse
-                // the appropriate one
-                const List<FixedList<label,2> >& aF = map.addedFaceList();
+        // Determine the interior faces connected to each edge-point.
+        label firstFace = -1, secondFace = -1;
 
-                forAll(aF, faceI)
-                {
-                    if
-                    (
-                        (owner_[aF[faceI][0]] == fOwner) &&
-                        (aF[faceI][0] != firstFace)
-                    )
-                    {
-                        collapseQuadFace(aF[faceI][0]);
-                        break;
-                    }
-                }
-
-                return;
-            }
-
-            if (proj[0] < 0.0 && proj[1] > 0.0)
-            {
-                changeMap map = bisectQuadFace(secondFace, changeMap());
-
-                // Loop through added faces, and collapse
-                // the appropriate one
-                const List<FixedList<label,2> >& aF = map.addedFaceList();
-
-                forAll(aF, faceI)
-                {
-                    if
-                    (
-                        (owner_[aF[faceI][0]] == fOwner) &&
-                        (aF[faceI][0] != secondFace)
-                    )
-                    {
-                        collapseQuadFace(aF[faceI][0]);
-                        break;
-                    }
-                }
-
-                return;
-            }
-
-            if (proj[0] > 0.0 && proj[1] > 0.0)
-            {
-                changeMap map = bisectQuadFace(fIndex, changeMap());
-
-                // Loop through added faces, and collapse
-                // the appropriate one
-                const List<FixedList<label,2> >& aF = map.addedFaceList();
-
-                forAll(aF, faceI)
-                {
-                    if
-                    (
-                        (owner_[aF[faceI][0]] == fOwner) &&
-                        (aF[faceI][0] != fIndex)
-                    )
-                    {
-                        collapseQuadFace(aF[faceI][0]);
-                        break;
-                    }
-                }
-
-                return;
-            }
+        if (cIntFace[0].which(edgeToCheck[0]) > -1)
+        {
+            firstFace  = cIntIndex[0];
+            secondFace = cIntIndex[1];
         }
         else
         {
-            // Push this on to the master stack
-            Stack(0).push(fIndex);
+            firstFace  = cIntIndex[1];
+            secondFace = cIntIndex[0];
         }
+
+        point ec =
+        (
+            0.5 * (points_[edgeToCheck[0]] + points_[edgeToCheck[1]])
+        );
+
+        FixedList<vector, 2> p(vector::zero), q(vector::zero);
+        FixedList<scalar, 2> proj(0.0);
+
+        // Find the projection on the edge.
+        forAll(edgeToCheck, pointI)
+        {
+            p[pointI] = (points_[ptIndex] - points_[edgeToCheck[pointI]]);
+            q[pointI] = (ec - points_[edgeToCheck[pointI]]);
+
+            q[pointI] /= (mag(q[pointI]) + VSMALL);
+
+            proj[pointI] = (p[pointI] & q[pointI]);
+        }
+
+        // Take action based on the magnitude of the projection.
+        if (mag(proj[0]) < VSMALL)
+        {
+            collapseQuadFace(firstFace);
+            return;
+        }
+
+        if (mag(proj[1]) < VSMALL)
+        {
+            collapseQuadFace(secondFace);
+            return;
+        }
+
+        if (proj[0] > 0.0 && proj[1] < 0.0)
+        {
+            changeMap map = bisectQuadFace(firstFace, changeMap());
+
+            // Loop through added faces, and collapse
+            // the appropriate one
+            const List<FixedList<label,2> >& aF = map.addedFaceList();
+
+            forAll(aF, faceI)
+            {
+                if
+                (
+                    (owner_[aF[faceI][0]] == cIndex) &&
+                    (aF[faceI][0] != firstFace)
+                )
+                {
+                    collapseQuadFace(aF[faceI][0]);
+                    break;
+                }
+            }
+
+            return;
+        }
+
+        if (proj[0] < 0.0 && proj[1] > 0.0)
+        {
+            changeMap map = bisectQuadFace(secondFace, changeMap());
+
+            // Loop through added faces, and collapse
+            // the appropriate one
+            const List<FixedList<label,2> >& aF = map.addedFaceList();
+
+            forAll(aF, faceI)
+            {
+                if
+                (
+                    (owner_[aF[faceI][0]] == cIndex) &&
+                    (aF[faceI][0] != secondFace)
+                )
+                {
+                    collapseQuadFace(aF[faceI][0]);
+                    break;
+                }
+            }
+
+            return;
+        }
+
+        if (proj[0] > 0.0 && proj[1] > 0.0)
+        {
+            changeMap map = bisectQuadFace(fIndex, changeMap());
+
+            // Loop through added faces, and collapse
+            // the appropriate one
+            const List<FixedList<label,2> >& aF = map.addedFaceList();
+
+            forAll(aF, faceI)
+            {
+                if
+                (
+                    (owner_[aF[faceI][0]] == cIndex) &&
+                    (aF[faceI][0] != fIndex)
+                )
+                {
+                    collapseQuadFace(aF[faceI][0]);
+                    break;
+                }
+            }
+
+            return;
+        }
+    }
+
+    // Clear out the list
+    thresholdSlivers_.clear();
+
+    // If coupled patches exist, reset the flag
+    if (patchCoupling_.size() || procIndices_.size())
+    {
+        unsetCoupledModification();
     }
 }
 
@@ -5078,12 +5065,6 @@ void dynamicTopoFvMesh::removeSlivers()
         return;
     }
 
-    // Temporary: don't handle 2D slivers right now.
-    if (twoDMesh_)
-    {
-        return;
-    }
-
     // Check if a removeSlivers entry was found in the dictionary
     if (dict_.subDict("dynamicTopoFvMesh").found("removeSlivers"))
     {
@@ -5096,6 +5077,13 @@ void dynamicTopoFvMesh::removeSlivers()
         {
             return;
         }
+    }
+
+    // Invoke the 2D sliver removal routine
+    if (twoDMesh_)
+    {
+        remove2DSlivers();
+        return;
     }
 
     // If coupled patches exist, set the flag

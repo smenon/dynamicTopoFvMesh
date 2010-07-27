@@ -1901,26 +1901,91 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Set fill-in mapping information for the modified face.
-    setFaceMapping(fIndex);
-
-    // Default mapping for internal faces
-    setFaceMapping(newFaceIndex[0]);
-
-    // Wedge / empty faces get zero flux.
-    // setFaceMapping(newFaceIndex[1]);
-    // setFaceMapping(newFaceIndex[2]);
-
-    // Set fill-in mapping information for the new face
-    setFaceMapping(newFaceIndex[3]);
-
-    if (c1 != -1)
+    if (c1 == -1)
     {
-        // Default mapping for internal faces
-        setFaceMapping(newFaceIndex[4]);
+        labelList parents;
+        scalarField weights;
+        vectorField centres;
 
-        // Wedge / empty faces get zero flux.
-        // setFaceMapping(newFaceIndex[5]);
-        // setFaceMapping(newFaceIndex[6]);
+        // Obtain weighting factors for this face.
+        computeFaceWeights
+        (
+            fIndex,
+            labelList(1, fIndex),
+            parents,
+            weights,
+            centres
+        );
+
+        // Set the mapping for this face
+        setFaceMapping
+        (
+            fIndex,
+            parents,
+            weights,
+            centres
+        );
+
+        // Update faceParents information
+        faceParents_.set(fIndex, parents);
+    }
+    else
+    {
+        // Internal face. Default mapping.
+        setFaceMapping(fIndex);
+    }
+
+    forAll(newFaceIndex, faceI)
+    {
+        if (newFaceIndex[faceI] == -1)
+        {
+            continue;
+        }
+
+        // Check for boundary faces
+        if (neighbour_[newFaceIndex[faceI]] == -1)
+        {
+            if (faces_[newFaceIndex[faceI]].size() == 3)
+            {
+                // Wedge / empty faces get zero flux.
+                // setFaceMapping(newFaceIndex[1]);
+                // setFaceMapping(newFaceIndex[2]);
+            }
+            else
+            {
+                // Boundary quad-face. Compute mapping.
+                labelList parents;
+                scalarField weights;
+                vectorField centres;
+
+                // Obtain weighting factors for this face.
+                computeFaceWeights
+                (
+                    newFaceIndex[faceI],
+                    labelList(1, fIndex),
+                    parents,
+                    weights,
+                    centres
+                );
+
+                // Set the mapping for this face
+                setFaceMapping
+                (
+                    newFaceIndex[faceI],
+                    parents,
+                    weights,
+                    centres
+                );
+
+                // Update faceParents information
+                faceParents_.set(newFaceIndex[faceI], parents);
+            }
+        }
+        else
+        {
+            // Internal quad-faces get default mapping.
+            setFaceMapping(newFaceIndex[faceI]);
+        }
     }
 
     // Set the flag

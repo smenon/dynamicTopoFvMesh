@@ -363,12 +363,9 @@ class dynamicTopoFvMesh
         // Return the edge index for a provided edge
         inline label getEdgeIndex(const edge& edgeToCheck) const;
 
-        // Given a boundary quad face, return a boundary triangular face.
-        label getTriBoundaryFace(const label fIndex) const;
-
         // Given a boundary face, pick out a boundary edge that
         // contains a triangular face.
-        label getTriBoundaryEdge(const label fIndex) const;
+        inline label getTriBoundaryEdge(const label fIndex) const;
 
         // Return length-scale at an face-location in the mesh [2D]
         inline scalar faceLengthScale(const label fIndex) const;
@@ -433,7 +430,8 @@ class dynamicTopoFvMesh
         (
             const label fIndex,
             label overRideCase = -1,
-            bool checkOnly = false
+            bool checkOnly = false,
+            bool forceOp = false
         );
 
         // Method for the swapping of an edge in 3D
@@ -484,7 +482,8 @@ class dynamicTopoFvMesh
             const FixedList<point,2>& newPoint,
             const FixedList<point,2>& oldPoint,
             scalar& collapseQuality,
-            const bool checkNeighbour
+            const bool checkNeighbour,
+            bool forceOp = false
         ) const;
 
         // Utility method to check for invalid edge-collapse.
@@ -499,9 +498,8 @@ class dynamicTopoFvMesh
             bool forceOp = false
         ) const;
 
-        // Check if the boundary face is adjacent to a sliver-cell,
-        // and remove it by a two-step bisection/collapse operation.
-        void remove2DSliver(const label fIndex);
+        // Remove 2D sliver cells from the mesh
+        void remove2DSlivers();
 
         // Indentify the sliver type in 3D
         const changeMap identifySliverType(const label cIndex) const;

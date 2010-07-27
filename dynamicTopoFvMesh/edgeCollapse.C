@@ -52,7 +52,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 (
     const label fIndex,
     label overRideCase,
-    bool checkOnly
+    bool checkOnly,
+    bool forceOp
 )
 {
     // Figure out which thread this is...
@@ -652,7 +653,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 newPoint,
                 oldPoint,
                 collapseQuality,
-                (c1 != -1)
+                (c1 != -1),
+                forceOp
             )
         )
         {

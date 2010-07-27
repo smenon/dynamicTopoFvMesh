@@ -1824,7 +1824,8 @@ bool dynamicTopoFvMesh::checkCollapse
     const FixedList<point,2>& newPoint,
     const FixedList<point,2>& oldPoint,
     scalar& collapseQuality,
-    const bool checkNeighbour
+    const bool checkNeighbour,
+    bool forceOp
 ) const
 {
     // Reset input
@@ -1915,7 +1916,7 @@ bool dynamicTopoFvMesh::checkCollapse
     }
 
     // Final quality check
-    if (collapseQuality < sliverThreshold_)
+    if (collapseQuality < sliverThreshold_ && !forceOp)
     {
         return true;
     }
