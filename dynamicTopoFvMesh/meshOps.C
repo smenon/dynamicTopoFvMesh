@@ -46,6 +46,8 @@ Author
 #include "tetPointRef.H"
 #include "labelHashSet.H"
 
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
 namespace Foam
 {
 

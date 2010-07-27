@@ -644,7 +644,8 @@ void dynamicTopoFvMesh::computeCellWeights
     centres.clear();
 
     scalar searchFactor = 1.0;
-    label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
+    label nOldIntersects = -1, nIntersects = 0;
+    label nAttempts = 0, nInnerAttempts = 0;
 
     // Maintain a list of candidates and intersection points
     boolList oldIntersects, intersects;
@@ -727,44 +728,64 @@ void dynamicTopoFvMesh::computeCellWeights
             weights.setSize(nIntersects, 0.0);
             centres.setSize(nIntersects, vector::zero);
 
-            // Reset counter
-            nIntersects = 0;
-
             // Compute actual intersections
-            forAll(oldIntersects, indexI)
+            while (nInnerAttempts < 5)
             {
-                if (oldIntersects[indexI])
+                // Reset counter
+                nIntersects = 0;
+                scalar sumVols = 0.0;
+
+                forAll(oldIntersects, indexI)
                 {
-                    vectorField tP(0);
-
-                    oldIntersects[indexI] =
-                    (
-                        cellIntersection
-                        (
-                            cIndex,
-                            oldCandidates[indexI],
-                            tP
-                        )
-                    );
-
-                    // Skip false positives
                     if (oldIntersects[indexI])
                     {
-                        parents[nIntersects] = oldCandidates[indexI];
+                        vectorField tP(0);
 
-                        // Compute weights
-                        meshOps::convexSetVolume
+                        bool realIntersect =
                         (
-                            cIndex,
-                            parents[nIntersects],
-                            tP,
-                            weights[nIntersects],
-                            centres[nIntersects],
-                            output
+                            cellIntersection
+                            (
+                                cIndex,
+                                oldCandidates[indexI],
+                                tP
+                            )
                         );
 
-                        nIntersects++;
+                        // Skip false positives
+                        if (realIntersect)
+                        {
+                            parents[nIntersects] = oldCandidates[indexI];
+
+                            // Compute weights
+                            meshOps::convexSetVolume
+                            (
+                                cIndex,
+                                parents[nIntersects],
+                                tP,
+                                weights[nIntersects],
+                                centres[nIntersects],
+                                output
+                            );
+
+                            // Accumulate volume
+                            sumVols += weights[nIntersects];
+
+                            nIntersects++;
+                        }
                     }
+                }
+
+                // Check for consistency
+                if (mag(1.0 - (sumVols/cellVolume)) > 1e-10)
+                {
+                    // Reduce geometric tolerance, and try again.
+                    meshOps::matchTol_ *= 0.1;
+                    nInnerAttempts++;
+                }
+                else
+                {
+                    // Attained sufficient accuracy
+                    break;
                 }
             }
 
@@ -795,6 +816,8 @@ void dynamicTopoFvMesh::computeCellWeights
         // Inconsistent weights. Check whether any edges
         // lie on boundary patches. These cells can have
         // relaxed weights to account for mild convexity.
+        bool normWeights = false;
+
         const cell& cellToCheck = cells_[cIndex];
 
         if (twoDMesh_)
@@ -814,10 +837,14 @@ void dynamicTopoFvMesh::computeCellWeights
 
                     if (boundaryMesh().whichPatch(pCell[faceI]) > -1)
                     {
-                        // Found a boundary quad-face
-                        weights /= sum(weights);
-                        return;
+                        normWeights = true;
+                        break;
                     }
+                }
+
+                if (normWeights)
+                {
+                    break;
                 }
             }
         }
@@ -831,12 +858,30 @@ void dynamicTopoFvMesh::computeCellWeights
                 {
                     if (whichEdgePatch(fEdges[edgeI]) > -1)
                     {
-                        // Normalize by sum of weights
-                        weights /= sum(weights);
-                        return;
+                        normWeights = true;
+                        break;
                     }
                 }
+
+                if (normWeights)
+                {
+                    break;
+                }
             }
+        }
+
+        if (normWeights)
+        {
+            // Normalize by sum of weights
+            weights /= sum(weights);
+
+            // Reset match tolerance, if necessary
+            if (nInnerAttempts)
+            {
+                meshOps::matchTol_ *= Foam::pow(10, nInnerAttempts);
+            }
+
+            return;
         }
 
         // Write out for post-processing
@@ -950,6 +995,26 @@ void dynamicTopoFvMesh::computeCellWeights
              << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
              << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
              << endl;
+    }
+
+    // Check if tolerances were adjusted.
+    if (nInnerAttempts)
+    {
+        InfoIn
+        (
+            "\n\n"
+            "void dynamicTopoFvMesh::computeCellWeights\n"
+            "(\n"
+            "    const label cIndex,\n"
+            "    const labelList& mapCandidates,\n"
+            "    labelList& parents,\n"
+            "    scalarField& weights,\n"
+            "    vectorField& centres\n"
+            ") const\n"
+        )
+            << " meshOps::matchTol_ was reduced to: "
+            << meshOps::matchTol_ << nl
+            << endl;
     }
 
     // Return normalized weights

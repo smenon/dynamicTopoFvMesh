@@ -65,6 +65,10 @@ class polyMesh;
 
 namespace meshOps
 {
+    static Foam::scalar matchTol_
+    (
+        Foam::debug::tolerances("meshOpsMatchTol", 1e-6)
+    );
 
     // Return the magnitude of an edge, using UList
     inline scalar edgeLength

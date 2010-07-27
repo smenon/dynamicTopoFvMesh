@@ -448,7 +448,7 @@ inline bool pointSegmentIntersection
     scalar magU = mag(u) + VSMALL;
     scalar magV = mag(v) + VSMALL;
 
-    scalar tolerance = (1e-8 * Foam::min(magU, magV));
+    scalar tolerance = (meshOps::matchTol_ * magU);
 
     // Compare dot-products
     if ( 1.0 - ((u/magU) & (v/magV)) > tolerance )
@@ -512,7 +512,7 @@ inline bool segmentSegmentIntersection
     // Proximity check
     scalar dist = mag( w + (s * u) - (t * v) );
 
-    scalar tolerance = (1e-6 * Foam::min(mag(u), mag(v)));
+    scalar tolerance = (meshOps::matchTol_ * Foam::min(mag(u), mag(v)));
 
     if (dist > tolerance)
     {
@@ -555,7 +555,7 @@ inline bool segmentFaceIntersection
 
     scalar u = (numerator / denominator);
 
-    scalar tolerance = (1e-6 * mag(p2 - p1));
+    scalar tolerance = (meshOps::matchTol_ * mag(p2 - p1));
 
     // Check for intersection along line.
     if ((u > tolerance) && (u < (1.0 - tolerance)))

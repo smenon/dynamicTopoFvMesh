@@ -176,11 +176,16 @@ bool dynamicTopoFvMesh::testDelaunay
 
 
 // Method for the swapping of a quad-face in 2D
-void dynamicTopoFvMesh::swapQuadFace
+// - Returns a changeMap with a type specifying:
+//     1: Swap sequence was successful
+//    -1: Swap sequence failed
+const changeMap dynamicTopoFvMesh::swapQuadFace
 (
     const label fIndex
 )
 {
+    changeMap map;
+
     face f;
     bool found = false;
     label commonIndex = -1;
@@ -297,45 +302,6 @@ void dynamicTopoFvMesh::swapQuadFace
         }
     }
 
-    if (debug > 1)
-    {
-        Info << nl << nl << "Face: " << fIndex
-             << " needs to be flipped. " << endl;
-
-        Info << "Cell[0]: " << c0 << ": " << cells_[c0] << endl;
-        Info << "Cell[1]: " << c1 << ": " << cells_[c1] << endl;
-
-        if (debug > 2)
-        {
-            Info << "Common Faces: Set 1: "
-                 << commonFaceIndex[0] << ": " << commonFaces[0] << ", "
-                 << commonFaceIndex[1] << ": " << commonFaces[1] << endl;
-
-            Info << "Common Faces: Set 2: "
-                 << commonFaceIndex[2] << ": " << commonFaces[2] << ", "
-                 << commonFaceIndex[3] << ": " << commonFaces[3] << endl;
-
-            Info << "Old face: " << faces_[fIndex] << endl;
-            Info << "Old faceEdges: " << faceEdges_[fIndex] << endl;
-        }
-
-        // Write out VTK files before change
-        if (debug > 3)
-        {
-            labelList cellHull(2, -1);
-
-            cellHull[0] = c0;
-            cellHull[1] = c1;
-
-            writeVTK
-            (
-                Foam::name(fIndex)
-              + "_Swap_0",
-                cellHull
-            );
-        }
-    }
-
     // Find the interior/boundary faces.
     meshOps::findPrismFaces
     (
@@ -396,6 +362,47 @@ void dynamicTopoFvMesh::swapQuadFace
         otherPointIndex[3],
         nextToOtherPoint[3]
     );
+
+    // Ensure that the configuration will be valid
+    // using old point-positions. A simple area-based
+    // calculation should suffice.
+    FixedList<face, 2> triFaceOldPoints(face(3));
+
+    triFaceOldPoints[0][0] = otherPointIndex[0];
+    triFaceOldPoints[0][1] = nextToOtherPoint[0];
+    triFaceOldPoints[0][2] = otherPointIndex[1];
+
+    triFaceOldPoints[1][0] = otherPointIndex[1];
+    triFaceOldPoints[1][1] = nextToOtherPoint[1];
+    triFaceOldPoints[1][2] = otherPointIndex[0];
+
+    forAll(triFaceOldPoints, faceI)
+    {
+        // Assume that centre-plane passes through the origin.
+        vector xf =
+        (
+            meshOps::faceCentre
+            (
+                triFaceOldPoints[faceI],
+                oldPoints_
+            )
+        );
+
+        vector nf =
+        (
+            meshOps::faceNormal
+            (
+                triFaceOldPoints[faceI],
+                oldPoints_
+            )
+        );
+
+        if ((xf & nf) < 0.0)
+        {
+            // This will yield an inverted cell. Bail out.
+            return map;
+        }
+    }
 
     // Find the other two edges on the face being flipped
     forAll(fEdges, edgeI)
@@ -526,6 +533,46 @@ void dynamicTopoFvMesh::swapQuadFace
         faceEdges_,
         cornerEdgeIndex[3]
     );
+
+    // Perform a few debug calls before modifications
+    if (debug > 1)
+    {
+        Info << nl << nl << "Face: " << fIndex
+             << " needs to be flipped. " << endl;
+
+        Info << "Cell[0]: " << c0 << ": " << cells_[c0] << endl;
+        Info << "Cell[1]: " << c1 << ": " << cells_[c1] << endl;
+
+        if (debug > 2)
+        {
+            Info << "Common Faces: Set 1: "
+                 << commonFaceIndex[0] << ": " << commonFaces[0] << ", "
+                 << commonFaceIndex[1] << ": " << commonFaces[1] << endl;
+
+            Info << "Common Faces: Set 2: "
+                 << commonFaceIndex[2] << ": " << commonFaces[2] << ", "
+                 << commonFaceIndex[3] << ": " << commonFaces[3] << endl;
+
+            Info << "Old face: " << faces_[fIndex] << endl;
+            Info << "Old faceEdges: " << faceEdges_[fIndex] << endl;
+        }
+
+        // Write out VTK files before change
+        if (debug > 3)
+        {
+            labelList cellHull(2, -1);
+
+            cellHull[0] = c0;
+            cellHull[1] = c1;
+
+            writeVTK
+            (
+                Foam::name(fIndex)
+              + "_Swap_0",
+                cellHull
+            );
+        }
+    }
 
     // Modify the five faces belonging to this hull
     face newFace = faces_[fIndex];
@@ -896,6 +943,11 @@ void dynamicTopoFvMesh::swapQuadFace
 
     // Increment the counter
     nSwaps_[0]++;
+
+    // Return a successful operation.
+    map.type() = 1;
+
+    return map;
 }
 
 

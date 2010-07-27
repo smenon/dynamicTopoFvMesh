@@ -410,7 +410,8 @@ class dynamicTopoFvMesh
         inline label whichEdgePatch(const label index) const;
 
         // Method for the swapping of a quad-face in 2D
-        void swapQuadFace
+        const changeMap
+        swapQuadFace
         (
             const label fIndex
         );
