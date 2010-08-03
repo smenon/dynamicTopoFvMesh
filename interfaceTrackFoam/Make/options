@@ -9,7 +9,6 @@ EXE_INC = \
     -I$(LIB_SRC)/tetDecompositionMotionSolver/lnInclude \
     -I$(LIB_SRC)/tetDecompositionFiniteElement/lnInclude \
     -I$(LIB_SRC)/transportModels/viscoelastic/lnInclude \
-    $(WM_DECOMP_INC) \
 
 EXE_LIBS = \
     -L$(FOAM_USER_LIBBIN) \
@@ -20,5 +19,4 @@ EXE_LIBS = \
     -lfiniteVolume \
     -lfiniteArea \
     -ldynamicMesh \
-    -lviscoelasticTransportModels \
-    $(WM_DECOMP_LIBS)
+    -lviscoelasticTransportModels

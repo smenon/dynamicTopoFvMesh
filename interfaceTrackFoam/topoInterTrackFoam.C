@@ -48,12 +48,12 @@ int main(int argc, char *argv[])
 
     freeSurface interface(mesh, U, p, phi);
 
-    Info<< "Reading field rUA if present\n" << endl;
-    volScalarField rUA
+    Info<< "Reading field rAU if present\n" << endl;
+    volScalarField rAU
     (
         IOobject
         (
-            "rUA",
+            "rAU",
             runTime.timeName(),
             mesh,
             IOobject::READ_IF_PRESENT,
@@ -106,13 +106,13 @@ int main(int argc, char *argv[])
 
             solve(UEqn == -fvc::grad(p));
 
-            rUA = 1.0/UEqn.A();
+            rAU = 1.0/UEqn.A();
 
             // --- PISO loop
 
             for (int corr=0; corr<nCorr; corr++)
             {
-                U = rUA*UEqn.H();
+                U = rAU*UEqn.H();
 
                 phi = (fvc::interpolate(U) & mesh.Sf());
 
@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
                 {
                     fvScalarMatrix pEqn
                     (
-                        fvm::laplacian(rUA, p) == fvc::div(phi)
+                        fvm::laplacian(rAU, p) == fvc::div(phi)
                     );
 
                     pEqn.setReference(pRefCell, pRefValue);
@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
 
 #               include "continuityErrs.H"
 
-                U -= rUA*fvc::grad(p);
+                U -= rAU*fvc::grad(p);
                 U.correctBoundaryConditions();
             }
 

@@ -146,6 +146,9 @@ public:
 
     // Member Functions
 
+        //- Return the polyPatch size
+        label patchSize() const;
+
         //- Return size
         virtual label size() const;
 

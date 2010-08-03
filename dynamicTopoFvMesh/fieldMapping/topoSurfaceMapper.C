@@ -86,21 +86,7 @@ void topoSurfaceMapper::calcInsertedFaceLabels() const
         // Only pick internal faces
         if (fffI.index() < nIntFaces)
         {
-            if (fffI.masterObjects().empty())
-            {
-                insertedFaces[nInsertedFaces++] = fffI.index();
-            }
-            else
-            {
-                FatalErrorIn
-                (
-                    "void topoSurfaceMapper::calcInsertedFaceLabels() const"
-                )   << " Mapping for inserted internal faces is not allowed."
-                    << nl << " Face: " << fffI.index()
-                    << nl << " nInternalFaces: " << nIntFaces
-                    << nl << " masterObjects: " << fffI.masterObjects()
-                    << abort(FatalError);
-            }
+            insertedFaces[nInsertedFaces++] = fffI.index();
         }
     }
 

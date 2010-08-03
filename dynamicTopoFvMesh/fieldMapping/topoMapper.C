@@ -274,22 +274,20 @@ void topoMapper::storeCentres()
         patchCentresPtr_.clear();
     }
 
-    const volVectorField& meshCentres = mesh_.C();
-
     // Set the cell-centres pointer.
-    cellCentresPtr_ = new vectorField(meshCentres.internalField());
+    cellCentresPtr_ = new vectorField(mesh_.cellCentres());
 
-    // Set patch-centres
-    patchCentresPtr_.setSize(mesh_.boundary().size());
+    // Set patch-centres.
+    patchCentresPtr_.setSize(mesh_.boundaryMesh().size());
 
-    forAll(meshCentres.boundaryField(), patchI)
+    forAll(mesh_.boundaryMesh(), patchI)
     {
         patchCentresPtr_.set
         (
             patchI,
             new vectorField
             (
-                meshCentres.boundaryField()[patchI]
+                mesh_.boundaryMesh()[patchI].faceCentres()
             )
         );
     }
@@ -441,8 +439,14 @@ void topoMapper::correctFluxes() const
 {
     const fvMesh& mesh = mesh_;
 
+    // Define names for fields in the registry
+    word phiName("phi");
+    word UName("U");
+    word pName("p");
+    word rAUName("rAU");
+
     // Check if a flux field exists in the registry
-    if (mesh.foundObject<surfaceScalarField>("phi"))
+    if (mesh.foundObject<surfaceScalarField>(phiName))
     {
         // Interpolate velocity for inserted faces
         const labelList& insertedFaces = surfaceMap_->insertedObjectLabels();
@@ -452,14 +456,16 @@ void topoMapper::correctFluxes() const
         (
             const_cast<surfaceScalarField&>
             (
-                mesh.lookupObject<surfaceScalarField>("phi")
+                mesh.lookupObject<surfaceScalarField>(phiName)
             )
         );
 
-        const volVectorField& U = mesh.lookupObject<volVectorField>("U");
+        const volVectorField& U = mesh.lookupObject<volVectorField>(UName);
 
         // Interpolate mapped velocity to faces
         surfaceScalarField phiU = fvc::interpolate(U) & mesh.Sf();
+
+        phiU.rename("phiU");
 
         forAll(insertedFaces, faceI)
         {
@@ -468,8 +474,8 @@ void topoMapper::correctFluxes() const
 
         // Fetch relevant fields for flux correction
         const Time& runTime = mesh.time();
-        const volScalarField& p = mesh.lookupObject<volScalarField>("p");
-        const volScalarField& rUA = mesh.lookupObject<volScalarField>("rUA");
+        const volScalarField& p = mesh.lookupObject<volScalarField>(pName);
+        const volScalarField& rUA = mesh.lookupObject<volScalarField>(rAUName);
 
         // Read PISO options
         dictionary piso = mesh.solutionDict().subDict("PISO");

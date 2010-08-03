@@ -1232,30 +1232,7 @@ bool dynamicTopoFvMesh::faceIntersection
     Map<labelList> commonPoints;
     vectorField projections(fromFace.size(), vector::zero);
 
-    forAll(fromFace, pointI)
-    {
-        label pIndex = findIndex(toFace, fromFace[pointI]);
-
-        vector r = oldPoints_[fromFace[pointI]];
-
-        if (pIndex == -1)
-        {
-            // Project this point on to the toFace plane.
-            projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
-
-            projPoints.insert(fromFace[pointI], pointI);
-        }
-        else
-        {
-            commonPoints.insert(toFace[pIndex], labelList(0));
-
-            projections[pointI] = r;
-
-            intersections.set(++nInts, r);
-        }
-    }
-
-    // Add all new points as well, if they resulted
+    // Add all new points, if they resulted
     // from bisections of old face edges.
     forAll(toFace, pointI)
     {
@@ -1295,6 +1272,29 @@ bool dynamicTopoFvMesh::faceIntersection
 
                 intersections.set(++nInts, oldPoints_[toFace[pointI]]);
             }
+        }
+    }
+
+    forAll(fromFace, pointI)
+    {
+        label pIndex = findIndex(toFace, fromFace[pointI]);
+
+        vector r = oldPoints_[fromFace[pointI]];
+
+        if (pIndex == -1)
+        {
+            // Project this point on to the toFace plane.
+            projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
+
+            projPoints.insert(fromFace[pointI], pointI);
+        }
+        else
+        {
+            commonPoints.insert(toFace[pIndex], labelList(0));
+
+            projections[pointI] = r;
+
+            intersections.set(++nInts, r);
         }
     }
 
@@ -2648,9 +2648,41 @@ void dynamicTopoFvMesh::setFaceMapping
         }
     }
 
+    // For internal faces, set dummy maps / weights,
+    // and bail out
+    if (patch == -1)
+    {
+        if (index == -1)
+        {
+            meshOps::sizeUpList
+            (
+                objectMap
+                (
+                    fIndex,
+                    labelList(1, 0)
+                ),
+                facesFromFaces_
+            );
+        }
+        else
+        {
+            facesFromFaces_[index].masterObjects() = labelList(1, 0);
+        }
+
+        return;
+    }
+
     if (index == -1)
     {
-        meshOps::sizeUpList(objectMap(fIndex, mapFaces), facesFromFaces_);
+        meshOps::sizeUpList
+        (
+            objectMap
+            (
+                fIndex,
+                mapFaces
+            ),
+            facesFromFaces_
+        );
     }
     else
     {
@@ -5894,6 +5926,9 @@ bool dynamicTopoFvMesh::resetMesh()
         }
     }
 
+    // Obtain mesh stats after topo-changes
+    meshQuality(true);
+
     // Dump length-scale to disk, if requested.
     calculateLengthScale(true);
 
@@ -6025,9 +6060,6 @@ bool dynamicTopoFvMesh::update()
          << ", Surface: " << nCollapses_[1] << endl;
     Info << " Swaps      :: Interior: " << nSwaps_[0]
          << ", Surface: " << nSwaps_[1] << endl;
-
-    // Obtain mesh stats after topo-changes
-    meshQuality(true);
 
     // Apply all topology changes (if any) and reset mesh.
     return resetMesh();

@@ -255,6 +255,10 @@ void dynamicTopoFvMesh::reOrderPoints
     points_.clear();
     oldPoints_.clear();
 
+    // Set values
+    points_ = points;
+    oldPoints_ = preMotionPoints;
+
     if (debug)
     {
         Info << "Done." << endl;

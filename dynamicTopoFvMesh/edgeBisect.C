@@ -1945,41 +1945,110 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Check for boundary faces
         if (neighbour_[newFaceIndex[faceI]] == -1)
         {
-            if (faces_[newFaceIndex[faceI]].size() == 3)
+            // Boundary face. Compute mapping.
+            labelList parents;
+            scalarField weights;
+            vectorField centres;
+
+            labelList mC;
+
+            if (faces_[newFaceIndex[faceI]].size() == 4)
             {
-                // Wedge / empty faces get zero flux.
-                // setFaceMapping(newFaceIndex[1]);
-                // setFaceMapping(newFaceIndex[2]);
+                // Quad-face on boundary
+                mC.setSize(1, fIndex);
             }
             else
+            if (faces_[newFaceIndex[faceI]].size() == 3)
             {
-                // Boundary quad-face. Compute mapping.
-                labelList parents;
-                scalarField weights;
-                vectorField centres;
+                label triFacePatch = whichPatch(newFaceIndex[faceI]);
 
-                // Obtain weighting factors for this face.
-                computeFaceWeights
+                // Fetch face-normals
+                vector tfNorm =
                 (
-                    newFaceIndex[faceI],
-                    labelList(1, fIndex),
-                    parents,
-                    weights,
-                    centres
+                    meshOps::faceNormal
+                    (
+                        faces_[newFaceIndex[faceI]],
+                        oldPoints_
+                    )
                 );
 
-                // Set the mapping for this face
-                setFaceMapping
+                vector f0Norm =
                 (
-                    newFaceIndex[faceI],
-                    parents,
-                    weights,
-                    centres
+                    meshOps::faceNormal
+                    (
+                        faces_[c0BdyIndex[0]],
+                        oldPoints_
+                    )
                 );
 
-                // Update faceParents information
-                faceParents_.set(newFaceIndex[faceI], parents);
+                vector f1Norm =
+                (
+                    meshOps::faceNormal
+                    (
+                        faces_[c0BdyIndex[1]],
+                        oldPoints_
+                    )
+                );
+
+                // Tri-face on boundary. Perform normal checks
+                // also, because of empty patches.
+                if
+                (
+                    (whichPatch(c0BdyIndex[0]) == triFacePatch) &&
+                    ((tfNorm & f0Norm) > 0.0)
+                )
+                {
+                    mC.setSize(1, c0BdyIndex[0]);
+                }
+                else
+                if
+                (
+                    (whichPatch(c0BdyIndex[1]) == triFacePatch) &&
+                    ((tfNorm & f1Norm) > 0.0)
+                )
+                {
+                    mC.setSize(1, c0BdyIndex[1]);
+                }
+                else
+                {
+                    FatalErrorIn
+                    (
+                        "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
+                        "(\n"
+                        "    const label fIndex,\n"
+                        "    const changeMap& masterMap,\n"
+                        "    bool checkOnly\n"
+                        ")"
+                    )
+                        << " Unable to find patch for face: "
+                        << newFaceIndex[faceI] << ":: "
+                        << faces_[newFaceIndex[faceI]] << nl
+                        << " Patch: " << triFacePatch << nl
+                        << abort(FatalError);
+                }
             }
+
+            // Obtain weighting factors for this face.
+            computeFaceWeights
+            (
+                newFaceIndex[faceI],
+                mC,
+                parents,
+                weights,
+                centres
+            );
+
+            // Set the mapping for this face
+            setFaceMapping
+            (
+                newFaceIndex[faceI],
+                parents,
+                weights,
+                centres
+            );
+
+            // Update faceParents information
+            faceParents_.set(newFaceIndex[faceI], parents);
         }
         else
         {

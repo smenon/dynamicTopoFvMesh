@@ -471,9 +471,12 @@ void convexSetArea
             ") const"
         )
             << " Points do not match edges. " << nl
+            << " newFaceIndex: " << newFaceIndex
+            << " oldFaceIndex: " << oldFaceIndex
             << " nPoints: " << cvxSet.size() << nl
             << " nEdges: " << testEdges.size() << nl
-            << " Edge list: " << testEdges
+            << " Edge list: " << testEdges << nl
+            << " Set: " << cvxSet << nl
             << abort(FatalError);
     }
 
