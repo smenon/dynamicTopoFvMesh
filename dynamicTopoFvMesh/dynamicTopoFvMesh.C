@@ -1506,9 +1506,14 @@ bool dynamicTopoFvMesh::cellIntersection
 
         if (pIndex > -1)
         {
-            commonPoints.insert(toCellPoints[pIndex], labelList(0));
+            // If this point was modified by a collapse
+            // to an edge mid-point, it can't be a common point.
+            if (!modPoints_.found(toCellPoints[pIndex]))
+            {
+                commonPoints.insert(toCellPoints[pIndex], labelList(0));
 
-            intersections.set(++nInts, oldPoints_[toCellPoints[pIndex]]);
+                intersections.set(++nInts, oldPoints_[toCellPoints[pIndex]]);
+            }
         }
     }
 
@@ -1704,8 +1709,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     faces_,
                     owner_,
                     oldPoints_,
-                    checkPoint,
-                    0.0
+                    checkPoint
                 )
             )
             {
@@ -1745,8 +1749,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     polyMesh::faces(),
                     polyMesh::faceOwner(),
                     oldPoints_,
-                    checkPoint,
-                    0.0
+                    checkPoint
                 )
             )
             {
@@ -1777,8 +1780,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     faces_,
                     owner_,
                     oldPoints_,
-                    checkPoint,
-                    0.0
+                    checkPoint
                 )
             )
             {
@@ -1806,8 +1808,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     polyMesh::faces(),
                     polyMesh::faceOwner(),
                     oldPoints_,
-                    checkPoint,
-                    0.0
+                    checkPoint
                 )
             )
             {
@@ -5878,8 +5879,9 @@ bool dynamicTopoFvMesh::resetMesh()
         deletedFaces_.clear();
         deletedCells_.clear();
 
-        // Clear flipFaces
+        // Clear flipFaces / modPoints
         flipFaces_.clear();
+        modPoints_.clear();
 
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_, -7);

@@ -84,18 +84,20 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Sanity check: Is the index legitimate?
-    if (fIndex < 0 || fIndex >= nFaces_)
+    if (fIndex < 0)
     {
         FatalErrorIn
         (
+            "\n"
             "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
             "(\n"
             "    const label fIndex,\n"
             "    const changeMap& masterMap,\n"
             "    bool checkOnly\n"
-            ")"
+            ")\n"
         )
-            << nl << " Invalid index: " << fIndex
+            << " Invalid index: " << fIndex << nl
+            << " nFaces: " << nFaces_
             << abort(FatalError);
     }
 
@@ -260,12 +262,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             {
                 FatalErrorIn
                 (
+                    "\n"
                     "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
                     "(\n"
                     "    const label fIndex,\n"
                     "    const changeMap& masterMap,\n"
                     "    bool checkOnly\n"
-                    ")"
+                    ")\n"
                 )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
@@ -1814,12 +1817,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 {
                     FatalErrorIn
                     (
+                        "\n"
                         "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
                         "(\n"
                         "    const label fIndex,\n"
                         "    const changeMap& masterMap,\n"
                         "    bool checkOnly\n"
-                        ")"
+                        ")\n"
                     )
                         << "Failed to build coupled maps."
                         << abort(FatalError);
@@ -2013,12 +2017,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 {
                     FatalErrorIn
                     (
+                        "\n"
                         "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
                         "(\n"
                         "    const label fIndex,\n"
                         "    const changeMap& masterMap,\n"
                         "    bool checkOnly\n"
-                        ")"
+                        ")\n"
                     )
                         << " Unable to find patch for face: "
                         << newFaceIndex[faceI] << ":: "
@@ -2145,6 +2150,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             ")\n"
         )
             << " Invalid index: " << eIndex
+            << " nEdges: " << nEdges_
             << abort(FatalError);
     }
 

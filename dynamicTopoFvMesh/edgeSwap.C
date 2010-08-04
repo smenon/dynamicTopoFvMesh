@@ -1207,7 +1207,7 @@ bool dynamicTopoFvMesh::fillTables
             {
                 FatalErrorIn
                 (
-                    "\n\n"
+                    "\n"
                     "bool dynamicTopoFvMesh::fillTables\n"
                     "(\n"
                     "    const label eIndex,\n"
@@ -1364,7 +1364,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
         FatalErrorIn
         (
-            "\n\n"
+            "\n"
             "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
             "(\n"
             "    const label eIndex,\n"
@@ -1430,7 +1430,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             {
                 FatalErrorIn
                 (
-                    "\n\n"
+                    "\n"
                     "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                     "(\n"
                     "    const label eIndex,\n"
@@ -1534,7 +1534,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             // Should have performed at least one swap
             FatalErrorIn
             (
-                "\n\n"
+                "\n"
                 "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                 "(\n"
                 "    const label eIndex,\n"
@@ -1660,7 +1660,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
                 FatalErrorIn
                 (
-                    "\n\n"
+                    "\n"
                     "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
                     "(\n"
                     "    const label eIndex,\n"
@@ -1777,7 +1777,7 @@ label dynamicTopoFvMesh::identify32Swap
 
         InfoIn
         (
-            "\n\n"
+            "\n"
             "label dynamicTopoFvMesh::identify32Swap\n"
             "(\n"
             "    const label eIndex,\n"
@@ -2164,7 +2164,7 @@ const changeMap dynamicTopoFvMesh::swap23
     {
         FatalErrorIn
         (
-            "\n\n"
+            "\n"
             "const changeMap dynamicTopoFvMesh::swap23\n"
             "(\n"
             "    const label isolatedVertex,\n"

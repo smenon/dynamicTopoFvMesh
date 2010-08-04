@@ -624,8 +624,7 @@ inline bool pointInCell
     const UList<face>& faces,
     const UList<label>& owner,
     const UList<point>& points,
-    const point& checkPoint,
-    const scalar& tolerance
+    const point& checkPoint
 )
 {
     vector xf(vector::zero), nf(vector::zero);
@@ -637,7 +636,7 @@ inline bool pointInCell
 
         vector faceToPoint = (xf - checkPoint);
 
-        if ((faceToPoint & nf) > (tolerance * magSqr(faceToPoint)))
+        if ((faceToPoint & nf) > 0.0)
         {
             if (owner[cellToCheck[faceI]] != cIndex)
             {

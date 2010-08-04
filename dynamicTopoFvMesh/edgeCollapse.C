@@ -444,7 +444,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             {
                 WarningIn
                 (
-                    "\n\n"
+                    "\n"
                     "const changeMap "
                     "dynamicTopoFvMesh::collapseQuadFace\n"
                     "(\n"
@@ -591,8 +591,23 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 )
             );
 
-            oldPoint[0] = oldPoints_[replacement[0]];
-            oldPoint[1] = oldPoints_[replacement[1]];
+            oldPoint[0] =
+            (
+                0.5 *
+                (
+                    oldPoints_[original[0]]
+                  + oldPoints_[replacement[0]]
+                )
+            );
+
+            oldPoint[1] =
+            (
+                0.5 *
+                (
+                    oldPoints_[original[1]]
+                  + oldPoints_[replacement[1]]
+                )
+            );
 
             // Define check-points
             check[0] = true;
@@ -611,7 +626,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             // Don't think this will ever happen.
             FatalErrorIn
             (
-                "\n\n"
+                "\n"
                 "const changeMap "
                 "dynamicTopoFvMesh::collapseQuadFace\n"
                 "(\n"
@@ -2022,7 +2037,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         removeCell(c1);
     }
 
-    // Move to the new point
+    // Move old / new points
+    oldPoints_[replacement[0]] = oldPoint[0];
+    oldPoints_[replacement[1]] = oldPoint[1];
+
     points_[replacement[0]] = newPoint[0];
     points_[replacement[1]] = newPoint[1];
 
@@ -2066,6 +2084,14 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
           + "_Collapse_1",
             vtkCells.toc()
         );
+    }
+
+    // Specify that an old point-position
+    // has been modified, if necessary
+    if (collapseCase == 3)
+    {
+        modPoints_.set(replacement[0], empty());
+        modPoints_.set(replacement[1], empty());
     }
 
     // Fill-in candidate mapping information
@@ -2660,8 +2686,23 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             replacePoint = edges_[eIndex][1];
             collapsePoint = edges_[eIndex][0];
 
-            newPoint = 0.5 * (points_[replacePoint] + points_[collapsePoint]);
-            oldPoint = oldPoints_[replacePoint];
+            newPoint =
+            (
+                0.5 *
+                (
+                    points_[replacePoint]
+                  + points_[collapsePoint]
+                )
+            );
+
+            oldPoint =
+            (
+                0.5 *
+                (
+                    oldPoints_[replacePoint]
+                  + oldPoints_[collapsePoint]
+                )
+            );
 
             checkPoints[0] = replacePoint;
             checkPoints[1] = collapsePoint;
@@ -3631,7 +3672,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         buildEdgePoints(ringEntities[replaceEdgeIndex][edgeI]);
     }
 
-    // Move to the new point
+    // Move old / new points
+    oldPoints_[replacePoint] = oldPoint;
     points_[replacePoint] = newPoint;
 
     // Remove the collapse point
@@ -3662,6 +3704,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
           + "_Collapse_1",
             mapCells
         );
+    }
+
+    // Specify that an old point-position
+    // has been modified, if necessary
+    if (collapseCase == 3)
+    {
+        modPoints_.set(replacePoint, empty());
     }
 
     // Now that all old / new cells possess correct connectivity,
