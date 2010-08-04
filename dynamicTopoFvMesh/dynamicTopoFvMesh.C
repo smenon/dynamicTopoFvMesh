@@ -1080,12 +1080,21 @@ bool dynamicTopoFvMesh::testCellIntersection
     const edgeList toCellEdges = toCell.edges(faces_);
     const labelList toCellPoints = toCell.labels(faces_);
 
+    // Check for common points
+    forAll(fromCellPoints, pointI)
+    {
+        if (findIndex(toCellPoints, fromCellPoints[pointI]) > -1)
+        {
+            return true;
+        }
+    }
+
     // Test faces of oldCell for separation
     forAll(fromCell, faceI)
     {
         const label fIndex = fromCell[faceI];
 
-        dir = meshOps::faceNormal(fromFaces[fIndex], oldPoints_);
+        dir = meshOps::faceNormal(fromFaces[fIndex], polyMesh::points());
 
         // Reverse normal if necessary
         if (fromOwner[fIndex] != oldCellIndex)
@@ -1100,7 +1109,7 @@ bool dynamicTopoFvMesh::testCellIntersection
                 toCellPoints,
                 oldPoints_,
                 dir,
-                oldPoints_[fromFaces[fIndex][0]]
+                polyMesh::points()[fromFaces[fIndex][0]]
             ) > 0
         )
         {
@@ -1126,7 +1135,7 @@ bool dynamicTopoFvMesh::testCellIntersection
             meshOps::whichSide
             (
                 fromCellPoints,
-                oldPoints_,
+                polyMesh::points(),
                 dir,
                 oldPoints_[faces_[fIndex][0]]
             ) > 0
@@ -1143,7 +1152,8 @@ bool dynamicTopoFvMesh::testCellIntersection
 
         vector fromVec =
         (
-            oldPoints_[fromEdge[1]] - oldPoints_[fromEdge[0]]
+            polyMesh::points()[fromEdge[1]]
+          - polyMesh::points()[fromEdge[0]]
         );
 
         forAll(toCellEdges, edgeJ)
@@ -1162,7 +1172,7 @@ bool dynamicTopoFvMesh::testCellIntersection
                 meshOps::whichSide
                 (
                     fromCellPoints,
-                    oldPoints_,
+                    polyMesh::points(),
                     dir,
                     oldPoints_[fromEdge[0]]
                 )
@@ -1180,7 +1190,7 @@ bool dynamicTopoFvMesh::testCellIntersection
                     toCellPoints,
                     oldPoints_,
                     dir,
-                    oldPoints_[fromEdge[0]]
+                    polyMesh::points()[fromEdge[0]]
                 )
             );
 
@@ -1279,7 +1289,7 @@ bool dynamicTopoFvMesh::faceIntersection
     {
         label pIndex = findIndex(toFace, fromFace[pointI]);
 
-        vector r = oldPoints_[fromFace[pointI]];
+        vector r = polyMesh::points()[fromFace[pointI]];
 
         if (pIndex == -1)
         {
@@ -1290,11 +1300,23 @@ bool dynamicTopoFvMesh::faceIntersection
         }
         else
         {
-            commonPoints.insert(toFace[pIndex], labelList(0));
+            // If this point was modified by a collapse
+            // to an edge mid-point, it can't be a common point.
+            if (modPoints_.found(toFace[pIndex]))
+            {
+                // Project this point on to the toFace plane.
+                projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
 
-            projections[pointI] = r;
+                projPoints.insert(fromFace[pointI], pointI);
+            }
+            else
+            {
+                commonPoints.insert(toFace[pIndex], labelList(0));
 
-            intersections.set(++nInts, r);
+                projections[pointI] = r;
+
+                intersections.set(++nInts, r);
+            }
         }
     }
 
@@ -1411,7 +1433,7 @@ bool dynamicTopoFvMesh::faceIntersection
                 continue;
             }
 
-            scalar tolerance = (1e-6 * mag(p2 - p1));
+            scalar tolerance = (meshOps::matchTol_ * mag(p2 - p1));
 
             scalar u = (numOld / denOld);
             vector checkPoint = p1 + u*(p2 - p1);
@@ -1601,7 +1623,7 @@ bool dynamicTopoFvMesh::cellIntersection
             continue;
         }
 
-        const point& checkPoint = oldPoints_[fromCellPoints[pointI]];
+        const point& checkPoint = polyMesh::points()[fromCellPoints[pointI]];
 
         forAll(toCellEdges, edgeI)
         {
@@ -1648,7 +1670,7 @@ bool dynamicTopoFvMesh::cellIntersection
                 meshOps::pointSegmentIntersection
                 (
                     edgeToCheck,
-                    oldPoints_,
+                    polyMesh::points(),
                     checkPoint
                 )
             )
@@ -1695,8 +1717,8 @@ bool dynamicTopoFvMesh::cellIntersection
             (
                 0.5 *
                 (
-                    oldPoints_[edgeToCheck.start()] +
-                    oldPoints_[edgeToCheck.end()]
+                    polyMesh::points()[edgeToCheck.start()] +
+                    polyMesh::points()[edgeToCheck.end()]
                 )
             );
 
@@ -1748,7 +1770,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     fromCell,
                     polyMesh::faces(),
                     polyMesh::faceOwner(),
-                    oldPoints_,
+                    polyMesh::points(),
                     checkPoint
                 )
             )
@@ -1769,7 +1791,7 @@ bool dynamicTopoFvMesh::cellIntersection
                 continue;
             }
 
-            const point& checkPoint = oldPoints_[fromCellPoints[pointI]];
+            const point& checkPoint = polyMesh::points()[fromCellPoints[pointI]];
 
             if
             (
@@ -1807,7 +1829,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     fromCell,
                     polyMesh::faces(),
                     polyMesh::faceOwner(),
-                    oldPoints_,
+                    polyMesh::points(),
                     checkPoint
                 )
             )
@@ -1904,6 +1926,7 @@ bool dynamicTopoFvMesh::cellIntersection
                 (
                     edgePair.first(),
                     edgePair.second(),
+                    polyMesh::points(),
                     oldPoints_,
                     intPoint
                 )
@@ -2060,6 +2083,7 @@ bool dynamicTopoFvMesh::cellIntersection
                 (
                     edgeToCheck,
                     faceToCheck,
+                    polyMesh::points(),
                     oldPoints_,
                     intPoint
                 )
@@ -2172,6 +2196,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     edgeToCheck,
                     faceToCheck,
                     oldPoints_,
+                    polyMesh::points(),
                     intPoint
                 )
             );

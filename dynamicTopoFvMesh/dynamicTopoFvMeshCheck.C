@@ -912,7 +912,18 @@ void dynamicTopoFvMesh::writeVTK
                 // Point was not found, so add it
                 if (useOldPoints)
                 {
-                    points[nPoints] = oldPoints_[cpList[nCells][pointI]];
+                    if (useOldConnectivity)
+                    {
+                        // Use points from polyMesh
+                        points[nPoints] =
+                        (
+                            polyMesh::points()[cpList[nCells][pointI]]
+                        );
+                    }
+                    else
+                    {
+                        points[nPoints] = oldPoints_[cpList[nCells][pointI]];
+                    }
                 }
                 else
                 {

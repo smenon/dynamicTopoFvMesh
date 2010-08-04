@@ -575,7 +575,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             newPoint[0] =
             (
-                0.5 *
+                0.45 *
                 (
                     points_[original[0]]
                   + points_[replacement[0]]
@@ -584,7 +584,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             newPoint[1] =
             (
-                0.5 *
+                0.45 *
                 (
                     points_[original[1]]
                   + points_[replacement[1]]
@@ -593,7 +593,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             oldPoint[0] =
             (
-                0.5 *
+                0.45 *
                 (
                     oldPoints_[original[0]]
                   + oldPoints_[replacement[0]]
@@ -602,7 +602,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             oldPoint[1] =
             (
-                0.5 *
+                0.45 *
                 (
                     oldPoints_[original[1]]
                   + oldPoints_[replacement[1]]
@@ -2688,7 +2688,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             newPoint =
             (
-                0.5 *
+                0.45 *
                 (
                     points_[replacePoint]
                   + points_[collapsePoint]
@@ -2697,7 +2697,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             oldPoint =
             (
-                0.5 *
+                0.45 *
                 (
                     oldPoints_[replacePoint]
                   + oldPoints_[collapsePoint]

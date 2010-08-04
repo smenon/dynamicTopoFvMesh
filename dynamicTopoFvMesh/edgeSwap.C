@@ -1754,6 +1754,7 @@ label dynamicTopoFvMesh::identify32Swap
                 edgeToCheck,
                 triFace,
                 points_,
+                points_,
                 intPt
             )
         );

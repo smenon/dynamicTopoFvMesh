@@ -209,7 +209,8 @@ namespace meshOps
     (
         const edge& fromSegment,
         const edge& toSegment,
-        const UList<point>& points,
+        const UList<point>& fromPoints,
+        const UList<point>& toPoints,
         point& intPoint
     );
 
@@ -218,7 +219,8 @@ namespace meshOps
     (
         const edge& edgeToCheck,
         const face& faceToCheck,
-        const UList<point>& points,
+        const UList<point>& edgePoints,
+        const UList<point>& facePoints,
         vector& intersectionPoint
     );
 

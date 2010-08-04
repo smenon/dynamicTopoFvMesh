@@ -477,15 +477,16 @@ inline bool segmentSegmentIntersection
 (
     const edge& fromSegment,
     const edge& toSegment,
-    const UList<point>& points,
+    const UList<point>& fromPoints,
+    const UList<point>& toPoints,
     point& intPoint
 )
 {
-    vector u = points[fromSegment.end()] - points[fromSegment.start()];
-    vector v = points[toSegment.end()] - points[toSegment.start()];
+    vector u = fromPoints[fromSegment.end()] - fromPoints[fromSegment.start()];
+    vector v = toPoints[toSegment.end()] - toPoints[toSegment.start()];
 
-    vector p = points[fromSegment.start()];
-    vector q = points[toSegment.start()];
+    vector p = fromPoints[fromSegment.start()];
+    vector q = toPoints[toSegment.start()];
 
     vector w = (p - q);
 
@@ -520,7 +521,7 @@ inline bool segmentSegmentIntersection
     }
 
     // Calculate the intersection point
-    intPoint = points[fromSegment.start()] + (s * u);
+    intPoint = fromPoints[fromSegment.start()] + (s * u);
 
     return true;
 }
@@ -531,17 +532,18 @@ inline bool segmentFaceIntersection
 (
     const edge& edgeToCheck,
     const face& faceToCheck,
-    const UList<point>& points,
+    const UList<point>& edgePoints,
+    const UList<point>& facePoints,
     vector& intersectionPoint
 )
 {
     // Specify unit face-normals
-    vector n = meshOps::faceNormal(faceToCheck, points);
+    vector n = meshOps::faceNormal(faceToCheck, facePoints);
     n /= mag(n) + VSMALL;
 
-    point p1 = points[edgeToCheck[0]];
-    point p2 = points[edgeToCheck[1]];
-    point p3 = points[faceToCheck[0]];
+    point p1 = edgePoints[edgeToCheck[0]];
+    point p2 = edgePoints[edgeToCheck[1]];
+    point p3 = facePoints[faceToCheck[0]];
 
     // Compute uValue
     scalar numerator = n & (p3 - p1);
@@ -564,7 +566,7 @@ inline bool segmentFaceIntersection
         intersectionPoint = p1 + u*(p2 - p1);
 
         // Also make sure that intPoint lies within the face
-        if (pointInFace(faceToCheck, points, intersectionPoint))
+        if (pointInFace(faceToCheck, facePoints, intersectionPoint))
         {
             return true;
         }
