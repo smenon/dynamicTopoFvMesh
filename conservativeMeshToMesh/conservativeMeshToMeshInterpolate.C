@@ -38,7 +38,8 @@ template<class Type>
 void conservativeMeshToMesh::interpolateInternalFieldConserve
 (
     Field<Type>& toF,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf
+    const GeometricField<Type, fvPatchField, volMesh>& fromVf,
+    const scalar gradWt
 ) const
 {
     if (fromVf.mesh() != fromMesh())
@@ -109,7 +110,7 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
                 w[cellj] *
                 (
                     fromVf[addr[cellj]]
-                  + (gVf()[addr[cellj]] & (x[cellj] - xCo))
+                  + (gradWt * (gVf()[addr[cellj]] & (x[cellj] - xCo)))
                 )
             );
         }
@@ -226,6 +227,18 @@ void conservativeMeshToMesh::interpolateInternalField
             (
                 toF,
                 fromVf
+            );
+
+            break;
+        }
+
+        case CONSERVATIVE_FIRST_ORDER:
+        {
+            interpolateInternalFieldConserve
+            (
+                toF,
+                fromVf,
+                0.0
             );
 
             break;

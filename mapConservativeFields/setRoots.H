@@ -7,6 +7,7 @@
     argList::validOptions.insert("nThreads", "label");
     argList::validOptions.insert("forceRecalc", "");
     argList::validOptions.insert("writeAddr", "");
+    argList::validOptions.insert("testOnly", "");
 
     argList args(argc, argv);
 
@@ -51,4 +52,11 @@
     if (args.options().found("writeAddr"))
     {
         writeAddr = true;
+    }
+
+    bool testOnly = false;
+
+    if (args.options().found("testOnly"))
+    {
+        testOnly = true;
     }

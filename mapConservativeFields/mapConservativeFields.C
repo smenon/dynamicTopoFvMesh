@@ -148,6 +148,187 @@ void MapConservativeVolFields
 }
 
 
+// Test routine to determine interpolation error
+void testMappingError
+(
+    const fvMesh& meshSource,
+    const fvMesh& meshTarget,
+    const label method,
+    const label nThreads,
+    const bool forceRecalc,
+    const bool writeAddr
+)
+{
+    // Create the interpolation scheme
+    conservativeMeshToMesh meshToMeshInterp
+    (
+        meshSource,
+        meshTarget,
+        nThreads,
+        forceRecalc,
+        writeAddr
+    );
+
+    const volVectorField& xC = meshSource.C();
+
+    volScalarField fieldSource
+    (
+        IOobject
+        (
+            "alpha",
+            meshSource.time().timeName(),
+            meshSource,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        xC & vector(2,3,1)
+    );
+
+    scalar pi = mathematicalConstant::pi;
+
+    // Test sinusoidal field
+    forAll(fieldSource, cellI)
+    {
+        const vector x = xC[cellI];
+
+        fieldSource[cellI] =
+        (
+            1.0
+          + Foam::sin(2.0*pi*x.x())
+          * Foam::sin(2.0*pi*x.y())
+          * Foam::sin(2.0*pi*x.z())
+        );
+    }
+
+    forAll(fieldSource.boundaryField(), patchI)
+    {
+        forAll(fieldSource.boundaryField()[patchI], faceI)
+        {
+            const vector x = xC.boundaryField()[patchI][faceI];
+
+            fieldSource.boundaryField()[patchI][faceI] =
+            (
+                1.0
+              + Foam::sin(2.0*pi*x.x())
+              * Foam::sin(2.0*pi*x.y())
+              * Foam::sin(2.0*pi*x.z())
+            );
+        }
+    }
+
+    volScalarField fieldTarget
+    (
+        IOobject
+        (
+            "alpha",
+            meshTarget.time().timeName(),
+            meshTarget,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        meshTarget.C() & vector(0,0,0)
+    );
+
+    // Interpolate field
+    meshToMeshInterp.interpolate
+    (
+        fieldTarget,
+        fieldSource,
+        method
+    );
+
+    // Compute the interpolation error.
+    {
+        // Compute error
+        volScalarField iError
+        (
+            IOobject
+            (
+                "iError",
+                meshTarget.time().timeName(),
+                meshTarget,
+                IOobject::NO_READ,
+                IOobject::AUTO_WRITE
+            ),
+            meshTarget,
+            fieldTarget.dimensions()
+        );
+
+        const volScalarField& sF = refCast<volScalarField>(fieldSource);
+        const volScalarField& tF = refCast<volScalarField>(fieldTarget);
+
+        const vectorField& sCentres = fieldSource.mesh().cellCentres();
+        const vectorField& tCentres = fieldTarget.mesh().cellCentres();
+
+        scalar sError = 0.0, tError = 0.0;
+        scalar smError = 0.0, tmError = 0.0;
+
+        const scalarField& isF = sF.internalField();
+        const scalarField& itF = tF.internalField();
+
+        forAll(isF, cellI)
+        {
+            const vector xC = sCentres[cellI];
+
+            //scalar sExact = 2.0*xC.x() + 3.0*xC.y() + xC.z();
+
+            scalar sExact =
+            (
+                1.0
+              + Foam::sin(2.0*pi*xC.x())
+              * Foam::sin(2.0*pi*xC.y())
+              * Foam::sin(2.0*pi*xC.z())
+            );
+
+            sError += magSqr(isF[cellI] - sExact);
+            smError = Foam::max(smError, mag(isF[cellI] - sExact));
+        }
+
+        forAll(itF, cellI)
+        {
+            const vector xC = tCentres[cellI];
+
+            //scalar tExact = 2.0*xC.x() + 3.0*xC.y() + xC.z();
+
+            scalar tExact =
+            (
+                1.0
+              + Foam::sin(2.0*pi*xC.x())
+              * Foam::sin(2.0*pi*xC.y())
+              * Foam::sin(2.0*pi*xC.z())
+            );
+
+            tError += magSqr(itF[cellI] - tExact);
+            tmError = Foam::max(tmError, mag(itF[cellI] - tExact));
+
+            iError.internalField()[cellI] = mag(itF[cellI] - tExact);
+        }
+
+        // Compute mesh dx
+        scalar sdx = Foam::cbrt(1.0 / isF.size());
+        scalar tdx = Foam::cbrt(1.0 / itF.size());
+
+        Info << " ~~~~~~~~~~~~~~~~~ " << nl
+             << "      Source       " << nl
+             << " ~~~~~~~~~~~~~~~~~ " << nl
+             << " L2 error: " << Foam::sqrt(sError/isF.size()) << nl
+             << " Linf error: " << smError << nl
+             << " dx: " << sdx << nl
+             << " dx2: " << sqr(sdx) << nl
+             << endl;
+
+        Info << " ~~~~~~~~~~~~~~~~~ " << nl
+             << "      Target       " << nl
+             << " ~~~~~~~~~~~~~~~~~ " << nl
+             << " L2 error: " << Foam::sqrt(tError/itF.size()) << nl
+             << " Linf error: " << tmError << nl
+             << " dx: " << tdx << nl
+             << " dx2: " << sqr(tdx) << nl
+             << endl;
+    }
+}
+
+
 void mapConservativeMesh
 (
     const fvMesh& meshSource,
@@ -240,6 +421,13 @@ int main(int argc, char *argv[])
             break;
         }
 
+        case conservativeMeshToMesh::CONSERVATIVE_FIRST_ORDER:
+        {
+            Info << "Using method: CONSERVATIVE_FIRST_ORDER" << endl;
+
+            break;
+        }
+
         default:
         {
             FatalErrorIn("mapConservativeFields")
@@ -248,15 +436,30 @@ int main(int argc, char *argv[])
         }
     }
 
-    mapConservativeMesh
-    (
-        meshSource,
-        meshTarget,
-        method,
-        nThreads,
-        forceRecalc,
-        writeAddr
-    );
+    if (testOnly)
+    {
+        testMappingError
+        (
+            meshSource,
+            meshTarget,
+            method,
+            nThreads,
+            forceRecalc,
+            writeAddr
+        );
+    }
+    else
+    {
+        mapConservativeMesh
+        (
+            meshSource,
+            meshTarget,
+            method,
+            nThreads,
+            forceRecalc,
+            writeAddr
+        );
+    }
 
     Info<< "\nEnd\n" << endl;
 

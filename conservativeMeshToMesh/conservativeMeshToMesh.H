@@ -208,7 +208,8 @@ class conservativeMeshToMesh
         void interpolateInternalFieldConserve
         (
             Field<Type>& toF,
-            const GeometricField<Type, fvPatchField, volMesh>& fromVf
+            const GeometricField<Type, fvPatchField, volMesh>& fromVf,
+            const scalar gradWt = 1.0
         ) const;
 
         //- Interpolate internal field values (inverse-distance)
@@ -270,7 +271,8 @@ public:
     enum method
     {
         CONSERVATIVE,
-        INVERSE_DISTANCE
+        INVERSE_DISTANCE,
+        CONSERVATIVE_FIRST_ORDER
     };
 
     // Constructors
