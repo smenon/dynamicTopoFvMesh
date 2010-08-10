@@ -262,7 +262,7 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
     }
 
     // Check if two boundary faces lie on different face-patches
-    FixedList<vector, 2> fNorm;
+    FixedList<vector, 2> fNorm(vector::zero);
     label fPatch, firstPatch = -1, secondPatch = -1, count = 0;
     const labelList& edgeFaces = edgeFaces_[eIndex];
 
@@ -277,7 +277,7 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
             );
 
             // Normalize it.
-            fNorm[count] /= mag(fNorm[count]);
+            fNorm[count] /= mag(fNorm[count]) + VSMALL;
 
             count++;
 
@@ -295,8 +295,8 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
 
     scalar deviation = (fNorm[0] & fNorm[1]);
 
-    // Check if the curvature is too high
-    if (mag(deviation) < lengthEstimator().curvatureDeviation())
+    // Check if the swap-curvature is too high
+    if (mag(deviation) < swapDeviation_)
     {
         return true;
     }

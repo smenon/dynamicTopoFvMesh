@@ -139,6 +139,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     sliverThreshold_(0.1),
     slicePairs_(0),
     maxTetsPerEdge_(-1),
+    swapDeviation_(0.0),
     allowTableResize_(false)
 {
     // For backward compatibility, check the size of owner/neighbour
@@ -265,6 +266,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     sliverThreshold_(mesh.sliverThreshold_),
     slicePairs_(0),
     maxTetsPerEdge_(mesh.maxTetsPerEdge_),
+    swapDeviation_(mesh.swapDeviation_),
     allowTableResize_(mesh.allowTableResize_),
     tetMetric_(mesh.tetMetric_)
 {
@@ -391,7 +393,7 @@ void dynamicTopoFvMesh::computeFaceWeights
         )
     );
 
-    while (nAttempts < 5)
+    while (nAttempts < 10)
     {
         // Reset counter first
         nIntersects = 0;
@@ -669,7 +671,7 @@ void dynamicTopoFvMesh::computeCellWeights
         cellVolume
     );
 
-    while (nAttempts < 5)
+    while (nAttempts < 10)
     {
         // Reset counter first
         nIntersects = 0;
@@ -870,7 +872,7 @@ void dynamicTopoFvMesh::computeCellWeights
             }
         }
 
-        if (normWeights)
+        if (normWeights && (sum(weights) > VSMALL))
         {
             // Normalize by sum of weights
             weights /= sum(weights);
@@ -974,6 +976,7 @@ void dynamicTopoFvMesh::computeCellWeights
             << " nOldIntersects: " << nOldIntersects << nl
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
+            << " nInnerAttempts: " << nInnerAttempts << nl
             << " nCells: " << nCells_ << nl
             << " nOldCells: " << nOldCells_ << nl
             << setprecision(16)
@@ -1080,15 +1083,6 @@ bool dynamicTopoFvMesh::testCellIntersection
     const edgeList toCellEdges = toCell.edges(faces_);
     const labelList toCellPoints = toCell.labels(faces_);
 
-    // Check for common points
-    forAll(fromCellPoints, pointI)
-    {
-        if (findIndex(toCellPoints, fromCellPoints[pointI]) > -1)
-        {
-            return true;
-        }
-    }
-
     // Test faces of oldCell for separation
     forAll(fromCell, faceI)
     {
@@ -1174,7 +1168,7 @@ bool dynamicTopoFvMesh::testCellIntersection
                     fromCellPoints,
                     polyMesh::points(),
                     dir,
-                    oldPoints_[fromEdge[0]]
+                    polyMesh::points()[fromEdge[0]]
                 )
             );
 
@@ -3985,6 +3979,18 @@ void dynamicTopoFvMesh::readOptionalParameters()
     if (meshSubDict.found("maxModifications") || mandatory_)
     {
         maxModifications_ = readLabel(meshSubDict.lookup("maxModifications"));
+    }
+
+    if (meshSubDict.found("swapDeviation") || mandatory_)
+    {
+        swapDeviation_ = readScalar(meshSubDict.lookup("swapDeviation"));
+
+        if (swapDeviation_ > 1.0 || swapDeviation_ < 0.0)
+        {
+            FatalErrorIn("void dynamicTopoFvMesh::readOptionalParameters()")
+                << " Swap deviation out of range [0..1]"
+                << abort(FatalError);
+        }
     }
 
     // For tetrahedral meshes...

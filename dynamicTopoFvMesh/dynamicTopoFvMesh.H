@@ -211,6 +211,7 @@ class dynamicTopoFvMesh
 
         //- 3D Mesh Flipping data
         label maxTetsPerEdge_;
+        scalar swapDeviation_;
         Switch allowTableResize_;
         labelList noSwapPatchIDs_;
 
