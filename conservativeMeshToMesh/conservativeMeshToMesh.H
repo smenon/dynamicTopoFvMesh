@@ -79,9 +79,6 @@ class conservativeMeshToMesh
         //- Progress counter
         label counter_;
 
-        //- Geometric match tolerance
-        mutable scalar matchTol_;
-
         //- 2D / 3D mesh characterstics
         bool twoDMesh_;
 
@@ -138,6 +135,7 @@ class conservativeMeshToMesh
         (
             const label newCellIndex,
             const label oldCellIndex,
+            const scalar matchTol,
             vectorField& intPoints
         ) const;
 
@@ -162,7 +160,8 @@ class conservativeMeshToMesh
         (
             const edge& segment,
             const pointField& points,
-            const point& checkPoint
+            const point& checkPoint,
+            const scalar matchTol
         ) const;
 
         // Determine whether a two line segments intersect
@@ -170,6 +169,7 @@ class conservativeMeshToMesh
         (
             const edge& fromSegment,
             const edge& toSegment,
+            const scalar matchTol,
             point& intPoint
         ) const;
 
@@ -180,6 +180,7 @@ class conservativeMeshToMesh
             const FixedList<vector,2>& segment,
             const edge& segmentIndices,
             const label faceIndex,
+            const scalar matchTol,
             point& intPoint,
             const bool useFromMesh
         ) const;

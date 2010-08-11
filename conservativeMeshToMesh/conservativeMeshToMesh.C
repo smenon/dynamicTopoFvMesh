@@ -104,7 +104,6 @@ conservativeMeshToMesh::conservativeMeshToMesh
         meshTo.nCells()
     ),
     counter_(0),
-    matchTol_(1e-6),
     twoDMesh_(false)
 {
     if (addressing_.headerOk() && weights_.headerOk() && centres_.headerOk())
@@ -260,7 +259,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
         // Track progress of threads
         while (true)
         {
-            sleep(3);
+            sleep(0.5);
 
             ctrMutex_.lock();
 

@@ -64,7 +64,7 @@ void conservativeMeshToMesh::calcAddressingAndWeights
     clockTime sTimer;
     bool reported = false;
     label count = 0, oldStart = cellStart;
-    scalar interval = 2.0, oIndex = 0.0, nIndex = 0.0;
+    scalar interval = 0.5, oIndex = 0.0, nIndex = 0.0;
 
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
@@ -291,6 +291,9 @@ void conservativeMeshToMesh::computeCellWeights
     vectorField& centres
 ) const
 {
+    //- Geometric match tolerance
+    scalar matchTol = 0.1;
+
     scalar searchFactor = 1.5;
 
     label nOldIntersects = -1, nIntersects = 0;
@@ -358,7 +361,6 @@ void conservativeMeshToMesh::computeCellWeights
 
             // Compute actual intersections
             nInnerAttempts = 0;
-            bool attainedAccuracy = false;
 
             while (nInnerAttempts < 10)
             {
@@ -380,6 +382,7 @@ void conservativeMeshToMesh::computeCellWeights
                             (
                                 newCellIndex,
                                 oldCandidates[indexI],
+                                matchTol,
                                 tP
                             )
                         );
@@ -411,13 +414,12 @@ void conservativeMeshToMesh::computeCellWeights
                 if (mag(1.0 - (sumVols/newCellVolume)) > 1e-10)
                 {
                     // Reduce geometric tolerance, and try again.
-                    matchTol_ *= 0.1;
+                    matchTol *= 0.1;
                     nInnerAttempts++;
                 }
                 else
                 {
                     // Attained sufficient accuracy
-                    attainedAccuracy = true;
                     break;
                 }
             }
@@ -427,10 +429,7 @@ void conservativeMeshToMesh::computeCellWeights
             weights.setSize(nIntersects);
             centres.setSize(nIntersects);
 
-            if (attainedAccuracy)
-            {
-                break;
-            }
+            break;
         }
         else
         {
@@ -475,6 +474,7 @@ void conservativeMeshToMesh::computeCellWeights
             (
                 newCellIndex,
                 oldCandidates[indexI],
+                matchTol,
                 tP
             );
 
@@ -493,7 +493,7 @@ void conservativeMeshToMesh::computeCellWeights
                     tP,
                     dummyWeight,
                     dummyCentre,
-                    true
+                    false
                 );
             }
         }
@@ -534,6 +534,7 @@ void conservativeMeshToMesh::computeCellWeights
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
             << " nInnerAttempts: " << nInnerAttempts << nl
+            << " matchTol: " << matchTol << nl
             << setprecision(16)
             << " New cell volume: " << newCellVolume << nl
             << " Sum(Weights): " << sum(weights) << nl
@@ -543,10 +544,10 @@ void conservativeMeshToMesh::computeCellWeights
             << abort(FatalError);
     }
 
+    /*
     // Check if tolerances were adjusted.
     if (nInnerAttempts)
     {
-        /*
         InfoIn
         (
             "\n\n"
@@ -562,11 +563,11 @@ void conservativeMeshToMesh::computeCellWeights
             << " matchTol_ was reduced to: "
             << matchTol_ << nl
             << endl;
-        */
 
         // Reset match tolerance, if necessary
         matchTol_ *= Foam::pow(10, nInnerAttempts);
     }
+    */
 }
 
 
@@ -850,6 +851,7 @@ bool conservativeMeshToMesh::cellIntersection
 (
     const label newCellIndex,
     const label oldCellIndex,
+    const scalar matchTol,
     vectorField& tP
 ) const
 {
@@ -883,19 +885,19 @@ bool conservativeMeshToMesh::cellIntersection
 
     forAll(fromCellEdges, edgeI)
     {
-        scalar edgeMag = magSqr(fromEdges[fromCellEdges[edgeI]].vec(fromPoints));
+        scalar edgeMag = mag(fromEdges[fromCellEdges[edgeI]].vec(fromPoints));
 
         minEdgeMag = Foam::min(edgeMag, minEdgeMag);
     }
 
     forAll(toCellEdges, edgeI)
     {
-        scalar edgeMag = magSqr(toEdges[toCellEdges[edgeI]].vec(toPoints));
+        scalar edgeMag = mag(toEdges[toCellEdges[edgeI]].vec(toPoints));
 
         minEdgeMag = Foam::min(edgeMag, minEdgeMag);
     }
 
-    scalar pointMergeTol = matchTol_ * minEdgeMag;
+    scalar pointMergeTol = matchTol * minEdgeMag;
 
     // Check if any points are coincident.
     Map<labelList> FtoT, TtoF;
@@ -906,7 +908,7 @@ bool conservativeMeshToMesh::cellIntersection
         {
             if
             (
-                magSqr
+                mag
                 (
                     fromPoints[fromCellPoints[pointI]]
                   - toPoints[toCellPoints[pointJ]]
@@ -968,7 +970,8 @@ bool conservativeMeshToMesh::cellIntersection
                 (
                     edgeToCheck,
                     toPoints,
-                    checkPoint
+                    checkPoint,
+                    matchTol
                 )
             )
             {
@@ -1000,7 +1003,8 @@ bool conservativeMeshToMesh::cellIntersection
                 (
                     edgeToCheck,
                     fromPoints,
-                    checkPoint
+                    checkPoint,
+                    matchTol
                 )
             )
             {
@@ -1184,6 +1188,7 @@ bool conservativeMeshToMesh::cellIntersection
                 (
                     fromEdge,
                     toEdge,
+                    matchTol,
                     intPoint
                 )
             );
@@ -1304,6 +1309,7 @@ bool conservativeMeshToMesh::cellIntersection
                     segment,
                     edgeToCheck,
                     toCell[faceI],
+                    matchTol,
                     intPoint,
                     false
                 )
@@ -1388,6 +1394,7 @@ bool conservativeMeshToMesh::cellIntersection
                     segment,
                     edgeToCheck,
                     fromCell[faceI],
+                    matchTol,
                     intPoint,
                     true
                 )
@@ -1397,25 +1404,6 @@ bool conservativeMeshToMesh::cellIntersection
             {
                 // Add to the list.
                 intersections.set(++nInts, intPoint);
-            }
-        }
-    }
-
-    // Merge degenerate points
-    forAllConstIter(Map<vector>, intersections, pI)
-    {
-        forAllIter(Map<vector>, intersections, pJ)
-        {
-            if (pI.key() == pJ.key())
-            {
-                continue;
-            }
-
-            if (magSqr(pI() - pJ()) < pointMergeTol)
-            {
-                intersections.erase(pJ);
-
-                nInts--;
             }
         }
     }
@@ -1530,7 +1518,8 @@ inline bool conservativeMeshToMesh::pointSegmentIntersection
 (
     const edge& segment,
     const pointField& points,
-    const point& checkPoint
+    const point& checkPoint,
+    const scalar matchTol
 ) const
 {
     vector u = points[segment.end()] - points[segment.start()];
@@ -1539,7 +1528,7 @@ inline bool conservativeMeshToMesh::pointSegmentIntersection
     scalar magU = mag(u) + VSMALL;
     scalar magV = mag(v) + VSMALL;
 
-    scalar tolerance = (matchTol_ * magU);
+    scalar tolerance = (matchTol * magU);
 
     // Compare dot-products
     if ( 1.0 - ((u/magU) & (v/magV)) > tolerance )
@@ -1568,6 +1557,7 @@ bool conservativeMeshToMesh::segmentSegmentIntersection
 (
     const edge& fromSegment,
     const edge& toSegment,
+    const scalar matchTol,
     point& intPoint
 ) const
 {
@@ -1602,7 +1592,7 @@ bool conservativeMeshToMesh::segmentSegmentIntersection
     // Proximity check
     scalar dist = mag( w + (s * u) - (t * v) );
 
-    scalar tolerance = (matchTol_ * Foam::min(mag(u), mag(v)));
+    scalar tolerance = (matchTol * Foam::min(mag(u), mag(v)));
 
     if (dist > tolerance)
     {
@@ -1623,6 +1613,7 @@ bool conservativeMeshToMesh::segmentFaceIntersection
     const FixedList<vector,2>& segment,
     const edge& segmentIndices,
     const label faceIndex,
+    const scalar matchTol,
     point& intPoint,
     const bool useFromMesh
 ) const
@@ -1655,7 +1646,7 @@ bool conservativeMeshToMesh::segmentFaceIntersection
 
     scalar u = (numerator / denominator);
 
-    scalar tolerance = (matchTol_ * mag(segment[1] - segment[0]));
+    scalar tolerance = (matchTol * mag(segment[1] - segment[0]));
 
     // Check for intersection along line.
     if ((u > tolerance) && (u < (1.0 - tolerance)))
