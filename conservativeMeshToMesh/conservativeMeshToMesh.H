@@ -79,6 +79,12 @@ class conservativeMeshToMesh
         //- Progress counter
         label counter_;
 
+        //- Geometric match tolerance
+        mutable scalar matchTol_;
+
+        //- 2D / 3D mesh characterstics
+        bool twoDMesh_;
+
         //- Typedef for convenience
         typedef threadHandler<conservativeMeshToMesh> handler;
 
@@ -87,7 +93,8 @@ class conservativeMeshToMesh
         void calcAddressingAndWeights
         (
             const label cellStart,
-            const label cellSize
+            const label cellSize,
+            bool report = false
         );
 
         // Invert addressing from source to target
@@ -134,6 +141,13 @@ class conservativeMeshToMesh
             vectorField& intPoints
         ) const;
 
+        // Find all indices in edge
+        bool findInEdge
+        (
+            const labelList& cList,
+            const edge& edgeToCheck
+        ) const;
+
         // Determine whether the particular point lies
         // inside the given cell
         bool pointInCell
@@ -141,6 +155,14 @@ class conservativeMeshToMesh
             const label cellIndex,
             const point& checkPoint,
             const bool useFromMesh
+        ) const;
+
+        // Determine whether a point lies on a segment
+        bool pointSegmentIntersection
+        (
+            const edge& segment,
+            const pointField& points,
+            const point& checkPoint
         ) const;
 
         // Determine whether a two line segments intersect

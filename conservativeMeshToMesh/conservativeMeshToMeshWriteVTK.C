@@ -226,6 +226,93 @@ void conservativeMeshToMesh::writeVTK
 
                 nTotalCells += 4;
             }
+            else
+            if (tCell.size() == 5)
+            {
+                // Point-ordering for wedge cells
+                label firstTriFace = -1;
+
+                // Size the list
+                cpList[nCells].setSize(6);
+
+                // Figure out triangle faces
+                forAll(tCell, faceI)
+                {
+                    const face& cFace = mesh.faces()[tCell[faceI]];
+
+                    if (cFace.size() == 3)
+                    {
+                        if (firstTriFace == -1)
+                        {
+                            firstTriFace = tCell[faceI];
+
+                            // Right-handedness is assumed here.
+                            // Tri-faces are always on the boundary.
+                            cpList[nCells][0] = cFace[0];
+                            cpList[nCells][1] = cFace[1];
+                            cpList[nCells][2] = cFace[2];
+                        }
+                        else
+                        {
+                            // Detect the three other points.
+                            forAll(tCell, faceJ)
+                            {
+                                const face& nFace = mesh.faces()[tCell[faceJ]];
+
+                                if (nFace.size() == 4)
+                                {
+                                    // Search for vertices on cFace
+                                    // in this face.
+                                    forAll(cFace, I)
+                                    {
+                                        label i = nFace.which(cFace[I]);
+
+                                        if (i != -1)
+                                        {
+                                            label p = nFace.prevLabel(i);
+                                            label n = nFace.nextLabel(i);
+
+                                            if (p == cpList[nCells][0])
+                                            {
+                                                cpList[nCells][3] = cFace[I];
+                                            }
+
+                                            if (p == cpList[nCells][1])
+                                            {
+                                                cpList[nCells][4] = cFace[I];
+                                            }
+
+                                            if (p == cpList[nCells][2])
+                                            {
+                                                cpList[nCells][5] = cFace[I];
+                                            }
+
+                                            if (n == cpList[nCells][0])
+                                            {
+                                                cpList[nCells][3] = cFace[I];
+                                            }
+
+                                            if (n == cpList[nCells][1])
+                                            {
+                                                cpList[nCells][4] = cFace[I];
+                                            }
+
+                                            if (n == cpList[nCells][2])
+                                            {
+                                                cpList[nCells][5] = cFace[I];
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            break;
+                        }
+                    }
+                }
+
+                nTotalCells += 6;
+            }
         }
 
         // Renumber to local ordering

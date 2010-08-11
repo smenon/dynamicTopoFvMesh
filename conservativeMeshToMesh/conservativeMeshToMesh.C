@@ -103,7 +103,9 @@ conservativeMeshToMesh::conservativeMeshToMesh
         ),
         meshTo.nCells()
     ),
-    counter_(0)
+    counter_(0),
+    matchTol_(1e-6),
+    twoDMesh_(false)
 {
     if (addressing_.headerOk() && weights_.headerOk() && centres_.headerOk())
     {
@@ -127,6 +129,13 @@ conservativeMeshToMesh::conservativeMeshToMesh
     {
         Info << " Calculating addressing." << endl;
     }
+
+    // Set mesh characteristics
+    twoDMesh_ =
+    (
+        (meshFrom.nGeometricD() == 2 && meshTo.nGeometricD() == 2)
+      ? true : false
+    );
 
     // Check if the source mesh has a calculated addressing
     // If yes, try and invert that.
@@ -156,7 +165,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
     if (nThreads == 1)
     {
-        calcAddressingAndWeights(0, meshTo.nCells());
+        calcAddressingAndWeights(0, meshTo.nCells(), true);
     }
     else
     {
@@ -255,11 +264,12 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
             ctrMutex_.lock();
 
-            Info << " Progress: "
-                 << 100.0 * (double(counter_) / toMesh().nCells()) << "% : "
-                 << " Cells processed: " << counter_
-                 << " out of " << toMesh().nCells()
-                 << endl;
+            Info << "\r Progress: "
+                 << 100.0 * (double(counter_) / toMesh().nCells())
+                 << "% :  Cells processed: " << counter_
+                 << " out of " << toMesh().nCells() << " total."
+                 << "             "
+                 << flush;
 
             ctrMutex_.unlock();
 
@@ -276,7 +286,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
         }
     }
 
-    Info << " Calculation time: " << calcTimer.elapsedTime() << endl;
+    Info << nl << " Calculation time: " << calcTimer.elapsedTime() << endl;
 
     if (writeAddressing)
     {
