@@ -35,11 +35,75 @@ namespace Foam
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
+void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
+(
+    Field<Type>& toF,
+    const GeometricField<Type, fvPatchField, volMesh>& fromVf
+) const
+{
+    if (fromVf.mesh() != fromMesh())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "void conservativeMeshToMesh::"
+            "interpolateInternalFieldConserveFirstOrder\n"
+            "(\n"
+            "    Field<Type>& toF,\n"
+            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf\n"
+            ") const\n"
+        )   << "the argument field does not correspond to the right mesh. "
+            << "Field size: " << fromVf.size()
+            << " mesh size: " << fromMesh().nCells()
+            << exit(FatalError);
+    }
+
+    if (toF.size() != toMesh().nCells())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "void conservativeMeshToMesh::"
+            "interpolateInternalFieldConserveFirstOrder\n"
+            "(\n"
+            "    Field<Type>& toF,\n"
+            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf\n"
+            ") const\n"
+        )   << "the argument field does not correspond to the right mesh. "
+            << "Field size: " << toF.size()
+            << " mesh size: " << toMesh().nCells()
+            << exit(FatalError);
+    }
+
+    // Fetch geometry
+    const scalarField& toCellVols = toMesh().cellVolumes();
+
+    forAll (toF, celli)
+    {
+        // Initialize to zero
+        toF[celli] = pTraits<Type>::zero;
+
+        // Fetch addressing and weights for this cell
+        const labelList& addr = addressing_[celli];
+        const scalarField& w = weights_[celli];
+
+        // Accumulate volume-weighted interpolate
+        forAll(addr, cellj)
+        {
+            toF[celli] += (w[cellj] * fromVf[addr[cellj]]);
+        }
+
+        // Divide by current volume
+        toF[celli] /= toCellVols[celli];
+    }
+}
+
+
+template<class Type>
 void conservativeMeshToMesh::interpolateInternalFieldConserve
 (
     Field<Type>& toF,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf,
-    const scalar gradWt
+    const GeometricField<Type, fvPatchField, volMesh>& fromVf
 ) const
 {
     if (fromVf.mesh() != fromMesh())
@@ -110,7 +174,7 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
                 w[cellj] *
                 (
                     fromVf[addr[cellj]]
-                  + (gradWt * (gVf()[addr[cellj]] & (x[cellj] - xCo)))
+                  + (gVf()[addr[cellj]] & (x[cellj] - xCo))
                 )
             );
         }
@@ -234,11 +298,10 @@ void conservativeMeshToMesh::interpolateInternalField
 
         case CONSERVATIVE_FIRST_ORDER:
         {
-            interpolateInternalFieldConserve
+            interpolateInternalFieldConserveFirstOrder
             (
                 toF,
-                fromVf,
-                0.0
+                fromVf
             );
 
             break;

@@ -1019,20 +1019,40 @@ bool conservativeMeshToMesh::cellIntersection
 
     if (twoDMesh_)
     {
+        // Assume XY plane here
+        vector planeNormal = vector(0,0,1);
+
         // Check if edge mid-points are clearly within the cell.
         // If so, add edge points as 'intersections'.
         forAll(fromCellEdges, edgeI)
         {
             const edge& edgeToCheck = fromEdges[fromCellEdges[edgeI]];
 
-            if (FtoT.found(edgeToCheck.start()) && FtoT.found(edgeToCheck.end()))
+            if
+            (
+                FtoT.found(edgeToCheck.start()) &&
+                FtoT.found(edgeToCheck.end())
+            )
+            {
+                continue;
+            }
+
+            vector edgeVec = edgeToCheck.vec(fromPoints);
+
+            edgeVec /= mag(edgeVec) + VSMALL;
+
+            if (mag(edgeVec & planeNormal) < 0.5)
             {
                 continue;
             }
 
             vector checkPoint =
             (
-                0.5 * (fromPoints[edgeToCheck.start()] + fromPoints[edgeToCheck.end()])
+                0.5 *
+                (
+                    fromPoints[edgeToCheck.start()] +
+                    fromPoints[edgeToCheck.end()]
+                )
             );
 
             if
@@ -1054,14 +1074,31 @@ bool conservativeMeshToMesh::cellIntersection
         {
             const edge& edgeToCheck = toEdges[toCellEdges[edgeI]];
 
-            if (TtoF.found(edgeToCheck.start()) && TtoF.found(edgeToCheck.end()))
+            if
+            (
+                TtoF.found(edgeToCheck.start()) &&
+                TtoF.found(edgeToCheck.end())
+            )
+            {
+                continue;
+            }
+
+            vector edgeVec = edgeToCheck.vec(toPoints);
+
+            edgeVec /= mag(edgeVec) + VSMALL;
+
+            if (mag(edgeVec & planeNormal) < 0.5)
             {
                 continue;
             }
 
             vector checkPoint =
             (
-                0.5 * (toPoints[edgeToCheck.start()] + toPoints[edgeToCheck.end()])
+                0.5 *
+                (
+                    toPoints[edgeToCheck.start()] +
+                    toPoints[edgeToCheck.end()]
+                )
             );
 
             if

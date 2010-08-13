@@ -226,13 +226,20 @@ class conservativeMeshToMesh
             labelList& list
         ) const;
 
+        //- Interpolate internal field values (conservative first-order)
+        template<class Type>
+        void interpolateInternalFieldConserveFirstOrder
+        (
+            Field<Type>& toF,
+            const GeometricField<Type, fvPatchField, volMesh>& fromVf
+        ) const;
+
         //- Interpolate internal field values (conservative)
         template<class Type>
         void interpolateInternalFieldConserve
         (
             Field<Type>& toF,
-            const GeometricField<Type, fvPatchField, volMesh>& fromVf,
-            const scalar gradWt = 1.0
+            const GeometricField<Type, fvPatchField, volMesh>& fromVf
         ) const;
 
         //- Interpolate internal field values (inverse-distance)
