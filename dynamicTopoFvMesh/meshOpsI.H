@@ -505,6 +505,8 @@ inline bool segmentSegmentIntersection
     scalar t = ((a * e) - (b * d))/(denom);
 
     // Out-of-bounds check
+    // Note: Does not check if end-points coincide,
+    //       so be careful here.
     if (s < 0.0 || t < 0.0 || s > 1.0 || t > 1.0)
     {
         return false;

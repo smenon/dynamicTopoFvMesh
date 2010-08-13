@@ -81,7 +81,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Sanity check: Is the index legitimate?
-    if (fIndex < 0 || fIndex >= nFaces_)
+    if (fIndex < 0)
     {
         FatalErrorIn
         (
@@ -573,9 +573,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             original[0] = cv0; original[1] = cv1;
             replacement[0] = cv2; replacement[1] = cv3;
 
+            // Define new point-positions
             newPoint[0] =
             (
-                0.45 *
+                0.5 *
                 (
                     points_[original[0]]
                   + points_[replacement[0]]
@@ -584,29 +585,84 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             newPoint[1] =
             (
-                0.45 *
+                0.5 *
                 (
                     points_[original[1]]
                   + points_[replacement[1]]
                 )
             );
 
+            // Specify off-centering
+            scalar offCentre = (c1 == -1) ? 0.0 : 1.0;
+
+            FixedList<vector,2> te(vector::zero), xf(vector::zero);
+            FixedList<vector,2> ne(vector::zero), nf(vector::zero);
+
+            // Compute tangent-to-edge
+            te[0] = (oldPoints_[replacement[0]] - oldPoints_[original[0]]);
+            te[1] = (oldPoints_[replacement[1]] - oldPoints_[original[1]]);
+
+            // Compute face position / normal
+            if (c0BdyFace[0].which(original[0]) > -1)
+            {
+                xf[0] = meshOps::faceCentre(c0BdyFace[0], oldPoints_);
+                nf[0] = meshOps::faceNormal(c0BdyFace[0], oldPoints_);
+
+                xf[1] = meshOps::faceCentre(c0BdyFace[1], oldPoints_);
+                nf[1] = meshOps::faceNormal(c0BdyFace[1], oldPoints_);
+            }
+            else
+            if (c0BdyFace[1].which(original[0]) > -1)
+            {
+                xf[0] = meshOps::faceCentre(c0BdyFace[1], oldPoints_);
+                nf[0] = meshOps::faceNormal(c0BdyFace[1], oldPoints_);
+
+                xf[1] = meshOps::faceCentre(c0BdyFace[0], oldPoints_);
+                nf[1] = meshOps::faceNormal(c0BdyFace[0], oldPoints_);
+            }
+            else
+            {
+                FatalErrorIn
+                (
+                    "\n"
+                    "const changeMap "
+                    "dynamicTopoFvMesh::collapseQuadFace\n"
+                    "(\n"
+                    "    const label fIndex,\n"
+                    "    label overRideCase,\n"
+                    "    bool checkOnly\n"
+                    ")\n"
+                )   << "Could not find point in face."
+                    << endl;
+            }
+
+            // Compute edge-normals
+            ne[0] = (te[0] ^ nf[0]);
+            ne[1] = (te[1] ^ nf[1]);
+
+            ne[0] /= mag(ne[0]) + VSMALL;
+            ne[1] /= mag(ne[1]) + VSMALL;
+
+            // Reverse the vector, if necessary
+            if ((ne[0] & ne[1]) < 0.0)
+            {
+                ne[1] *= -1.0;
+            }
+
+            // Define modified old point-positions,
+            // with off-centering, if necessary
             oldPoint[0] =
             (
-                0.45 *
-                (
-                    oldPoints_[original[0]]
-                  + oldPoints_[replacement[0]]
-                )
+                oldPoints_[original[0]]
+              + (0.5 * te[0])
+              + (((0.05 * mag(te[0])) * ne[0]) * offCentre)
             );
 
             oldPoint[1] =
             (
-                0.45 *
-                (
-                    oldPoints_[original[1]]
-                  + oldPoints_[replacement[1]]
-                )
+                oldPoints_[original[1]]
+              + (0.5 * te[1])
+              + (((0.05 * mag(te[1])) * ne[1]) * offCentre)
             );
 
             // Define check-points

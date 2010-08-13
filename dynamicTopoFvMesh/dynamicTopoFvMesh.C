@@ -977,6 +977,7 @@ void dynamicTopoFvMesh::computeCellWeights
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
             << " nInnerAttempts: " << nInnerAttempts << nl
+            << " matchTolerance: " << meshOps::matchTol_ << nl
             << " nCells: " << nCells_ << nl
             << " nOldCells: " << nOldCells_ << nl
             << setprecision(16)
@@ -1499,6 +1500,9 @@ bool dynamicTopoFvMesh::cellIntersection
     // Reset inputs
     tP.clear();
 
+    // Assume XY plane here for 2D meshes
+    vector planeNormal = vector(0,0,1);
+
     // Fetch references for each mesh
     const cell& fromCell = polyMesh::cells()[oldCellIndex];
     const edgeList fromCellEdges = fromCell.edges(polyMesh::faces());
@@ -1707,6 +1711,19 @@ bool dynamicTopoFvMesh::cellIntersection
                 continue;
             }
 
+            vector edgeVec =
+            (
+                polyMesh::points()[edgeToCheck.start()] -
+                polyMesh::points()[edgeToCheck.end()]
+            );
+
+            edgeVec /= mag(edgeVec) + VSMALL;
+
+            if (mag(edgeVec & planeNormal) < 0.5)
+            {
+                continue;
+            }
+
             vector checkPoint =
             (
                 0.5 *
@@ -1729,8 +1746,17 @@ bool dynamicTopoFvMesh::cellIntersection
                 )
             )
             {
-                intersections.set(++nInts, oldPoints_[edgeToCheck.start()]);
-                intersections.set(++nInts, oldPoints_[edgeToCheck.end()]);
+                intersections.set
+                (
+                    ++nInts,
+                    polyMesh::points()[edgeToCheck.start()]
+                );
+
+                intersections.set
+                (
+                    ++nInts,
+                    polyMesh::points()[edgeToCheck.end()]
+                );
             }
         }
 
@@ -1743,6 +1769,19 @@ bool dynamicTopoFvMesh::cellIntersection
                 commonPoints.found(edgeToCheck.start()) &&
                 commonPoints.found(edgeToCheck.end())
             )
+            {
+                continue;
+            }
+
+            vector edgeVec =
+            (
+                oldPoints_[edgeToCheck.start()] -
+                oldPoints_[edgeToCheck.end()]
+            );
+
+            edgeVec /= mag(edgeVec) + VSMALL;
+
+            if (mag(edgeVec & planeNormal) < 0.5)
             {
                 continue;
             }
@@ -1769,8 +1808,17 @@ bool dynamicTopoFvMesh::cellIntersection
                 )
             )
             {
-                intersections.set(++nInts, oldPoints_[edgeToCheck.start()]);
-                intersections.set(++nInts, oldPoints_[edgeToCheck.end()]);
+                intersections.set
+                (
+                    ++nInts,
+                    oldPoints_[edgeToCheck.start()]
+                );
+
+                intersections.set
+                (
+                    ++nInts,
+                    oldPoints_[edgeToCheck.end()]
+                );
             }
         }
     }
@@ -1785,7 +1833,10 @@ bool dynamicTopoFvMesh::cellIntersection
                 continue;
             }
 
-            const point& checkPoint = polyMesh::points()[fromCellPoints[pointI]];
+            const point& checkPoint =
+            (
+                polyMesh::points()[fromCellPoints[pointI]]
+            );
 
             if
             (
@@ -1813,7 +1864,10 @@ bool dynamicTopoFvMesh::cellIntersection
                 continue;
             }
 
-            const point& checkPoint = oldPoints_[toCellPoints[pointI]];
+            const point& checkPoint =
+            (
+                oldPoints_[toCellPoints[pointI]]
+            );
 
             if
             (
@@ -1838,14 +1892,100 @@ bool dynamicTopoFvMesh::cellIntersection
     // Loop through edges from each cell, and check whether they intersect.
     List<Pair<edge> > FeToTe, TeToFe;
 
+    // Define edge-vectors in 2D
+    vector fromVec(vector::zero), toVec(vector::zero);
+
     forAll(fromCellEdges, edgeI)
     {
+        // For 2D meshes, only select edges on wedge/empty planes
+        if (twoDMesh_)
+        {
+            fromVec =
+            (
+                polyMesh::points()[fromCellEdges[edgeI].start()] -
+                polyMesh::points()[fromCellEdges[edgeI].end()]
+            );
+
+            fromVec /= mag(fromVec) + VSMALL;
+
+            if (mag(fromVec & planeNormal) > 0.5)
+            {
+                continue;
+            }
+        }
+
         forAll(toCellEdges, edgeJ)
         {
+            // For 2D meshes, only select edges on wedge/empty planes
+            if (twoDMesh_)
+            {
+                toVec =
+                (
+                    oldPoints_[toCellEdges[edgeJ].start()] -
+                    oldPoints_[toCellEdges[edgeJ].end()]
+                );
+
+                toVec /= mag(toVec) + VSMALL;
+
+                if (mag(toVec & planeNormal) > 0.5)
+                {
+                    continue;
+                }
+            }
+
             // Form an edge-pair
             Pair<edge> edgePair(fromCellEdges[edgeI], toCellEdges[edgeJ]);
 
-            if (edgePair.first().commonVertex(edgePair.second()) > -1)
+            bool disableCheck = false;
+
+            // Check edges topologically
+            if (edgePair.first() == edgePair.second())
+            {
+                const edge& checkEdge = edgePair.first();
+
+                // Check if points were modified by a collapse.
+                // If both were modified, continue with check.
+                if
+                (
+                    !modPoints_.found(checkEdge.start()) &&
+                    !modPoints_.found(checkEdge.end())
+                )
+                {
+                    disableCheck = true;
+                }
+
+                if
+                (
+                    commonPoints.found(checkEdge.start()) ||
+                    commonPoints.found(checkEdge.end())
+                )
+                {
+                    disableCheck = true;
+                }
+            }
+            else
+            {
+                // Check for common vertices
+                label cV = edgePair.first().commonVertex(edgePair.second());
+
+                if (cV > -1)
+                {
+                    // If this point was modified by a collapse
+                    // to an edge mid-point, it can't be a common point.
+                    // So, allow the check to continue.
+                    if (!modPoints_.found(cV))
+                    {
+                        disableCheck = true;
+                    }
+
+                    if (commonPoints.found(cV))
+                    {
+                        disableCheck = true;
+                    }
+                }
+            }
+
+            if (disableCheck)
             {
                 continue;
             }

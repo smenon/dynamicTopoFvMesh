@@ -76,6 +76,9 @@ bool dynamicTopoFvMesh::meshQuality
 
         if (twoDMesh_)
         {
+            // Assume XY plane here
+            vector n = vector(0,0,1);
+
             // Get a triangular boundary face
             forAll(cellToCheck, faceI)
             {
@@ -93,7 +96,14 @@ bool dynamicTopoFvMesh::meshQuality
                     // Assume centre-plane passes through origin
                     cQuality =
                     (
-                        tpr.quality() * Foam::sign(tpr.normal() & tpr.centre())
+                        tpr.quality() *
+                        (
+                            Foam::sign
+                            (
+                                tpr.normal() &
+                                ((tpr.centre() & n) * n)
+                            )
+                        )
                     );
 
                     break;
@@ -1895,6 +1905,9 @@ bool dynamicTopoFvMesh::checkCollapse
         triPointRef tprNew(tFNew[0], tFNew[1], tFNew[2]);
         triPointRef tprOld(tFOld[0], tFOld[1], tFOld[2]);
 
+        // Assume XY plane here
+        vector n = vector(0,0,1);
+
         // Compute the quality.
         // Assume centre-plane passes through origin
         scalar tQuality =
@@ -1904,7 +1917,7 @@ bool dynamicTopoFvMesh::checkCollapse
                 Foam::sign
                 (
                     tprNew.normal() &
-                    tprNew.centre()
+                    ((tprNew.centre() & n) * n)
                 )
             )
         );
@@ -1916,7 +1929,7 @@ bool dynamicTopoFvMesh::checkCollapse
                 Foam::sign
                 (
                     tprOld.normal() &
-                    tprOld.centre()
+                    ((tprOld.centre() & n) * n)
                 )
             )
         );

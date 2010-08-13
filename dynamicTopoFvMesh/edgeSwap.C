@@ -376,6 +376,9 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
     triFaceOldPoints[1][1] = nextToOtherPoint[1];
     triFaceOldPoints[1][2] = otherPointIndex[0];
 
+    // Assume XY plane here
+    vector n = vector(0,0,1);
+
     forAll(triFaceOldPoints, faceI)
     {
         // Assume that centre-plane passes through the origin.
@@ -397,7 +400,7 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
             )
         );
 
-        if ((xf & nf) < 0.0)
+        if ((((xf & n) * n) & nf) < 0.0)
         {
             // This will yield an inverted cell. Bail out.
             return map;
