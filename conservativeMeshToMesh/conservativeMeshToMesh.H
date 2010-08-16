@@ -212,7 +212,7 @@ class conservativeMeshToMesh
         (
             const vector& refNorm,
             const vectorField& points,
-            const labelHashSet& pLabels,
+            const DynamicList<label>& pLabels,
             face& modFace
         ) const;
 
@@ -232,6 +232,26 @@ class conservativeMeshToMesh
         (
             Field<Type>& toF,
             const GeometricField<Type, fvPatchField, volMesh>& fromVf
+        ) const;
+
+        //- Interpolate internal field values (conservative)
+        //  with supplied gradient
+        template<class Type>
+        void interpolateInternalFieldConserve
+        (
+            Field<Type>& toF,
+            const GeometricField
+            <
+                Type,
+                fvPatchField,
+                volMesh
+            >& fromVf,
+            const GeometricField
+            <
+                typename outerProduct<vector, Type>::type,
+                fvPatchField,
+                volMesh
+            >& fromgVf
         ) const;
 
         //- Interpolate internal field values (conservative)
@@ -377,6 +397,21 @@ public:
         (
             Field<Type>&,
             const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
+            const label method
+        ) const;
+
+        //- Interpolate volume field with a supplied gradient
+        template<class Type>
+        void interpolate
+        (
+            GeometricField<Type, fvPatchField, volMesh>&,
+            const GeometricField<Type, fvPatchField, volMesh>&,
+            const GeometricField
+            <
+                typename outerProduct<vector, Type>::type,
+                fvPatchField,
+                volMesh
+            >&,
             const label method
         ) const;
 

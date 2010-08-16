@@ -294,7 +294,7 @@ void conservativeMeshToMesh::computeCellWeights
     //- Geometric match tolerance
     scalar matchTol = 0.1;
 
-    scalar searchFactor = 1.5;
+    scalar searchFactor = 2.0;
 
     label nOldIntersects = -1, nIntersects = 0;
     label nAttempts = 0, nInnerAttempts = 0;
@@ -411,7 +411,7 @@ void conservativeMeshToMesh::computeCellWeights
                 }
 
                 // Check for consistency
-                if (mag(1.0 - (sumVols/newCellVolume)) > 1e-10)
+                if (mag(newCellVolume - sumVols) > 1e-17)
                 {
                     // Reduce geometric tolerance, and try again.
                     matchTol *= 0.1;
@@ -446,7 +446,7 @@ void conservativeMeshToMesh::computeCellWeights
     }
 
     // Test weights for consistency
-    if (mag(1.0 - sum(weights/newCellVolume)) > 1e-10)
+    if (mag(newCellVolume - sum(weights)) > 1e-17)
     {
         // Write out for post-processing
         label uIdx = 0, cellI = newCellIndex;
@@ -1819,7 +1819,7 @@ void conservativeMeshToMesh::convexSetVolume
     face tmpFace(3);
     label nFaces = 0;
     faceList testFaces(0);
-    labelHashSet uniquePts;
+    DynamicList<label> uniquePts(10);
 
     // Loop through all points, and build faces with every
     // other point in the set
@@ -1962,7 +1962,7 @@ void conservativeMeshToMesh::convexSetVolume
                         }
                         else
                         {
-                            uniquePts.insert(tmpFace[pI]);
+                            uniquePts.append(tmpFace[pI]);
                         }
                     }
 
@@ -2079,7 +2079,7 @@ void conservativeMeshToMesh::convexSetVolume
                         }
                         else
                         {
-                            uniquePts.insert(testFace[pI]);
+                            uniquePts.append(testFace[pI]);
                         }
                     }
 
@@ -2117,7 +2117,7 @@ void conservativeMeshToMesh::convexSetVolume
                         }
                         else
                         {
-                            uniquePts.insert(checkFace[pI]);
+                            uniquePts.append(checkFace[pI]);
                         }
                     }
 
@@ -2200,14 +2200,14 @@ void conservativeMeshToMesh::insertPointLabels
 (
     const vector& refNorm,
     const vectorField& points,
-    const labelHashSet& pLabels,
+    const DynamicList<label>& pLabels,
     face& modFace
 ) const
 {
     // Need to configure a new face.
     face newFace(modFace);
 
-    forAllConstIter(labelHashSet, pLabels, pIter)
+    forAll(pLabels, pointI)
     {
         forAll(newFace, pI)
         {
@@ -2219,7 +2219,7 @@ void conservativeMeshToMesh::insertPointLabels
                 triPointRef
                 (
                     points[newFace[pI]],
-                    points[pIter.key()],
+                    points[pLabels[pointI]],
                     points[newFace[nI]]
                 ).normal()
             );
@@ -2229,7 +2229,7 @@ void conservativeMeshToMesh::insertPointLabels
                 // Insert the point.
                 insertLabel
                 (
-                    pIter.key(),
+                    pLabels[pointI],
                     newFace[pI],
                     newFace[nI],
                     newFace

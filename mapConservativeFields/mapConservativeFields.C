@@ -47,7 +47,8 @@ enum testType
 {
     LINEAR,
     SINUSOID_2D,
-    SINUSOID_3D
+    SINUSOID_3D,
+    COSINE_HILL_2D
 };
 
 int getTimeIndex
@@ -156,18 +157,140 @@ void MapConservativeVolFields
 }
 
 
-// Initialise a scalar field for testing
-tmp<volScalarField> initTestField
+// Initialise boundary fields for testing
+void initBoundaryFields
 (
     const fvMesh& mesh,
     const testType type,
-    bool populate
+    autoPtr<volScalarField>& tField
 )
 {
     // Fetch cell-centres
     const volVectorField& xC = mesh.C();
 
-    tmp<volScalarField> tField
+    // Fetch references
+    volScalarField& field = tField();
+
+    vector hC(0,0,0);
+    scalar L = 0.5 * Foam::sqrt(2.0);
+    scalar pi = mathematicalConstant::pi;
+
+    switch (type)
+    {
+        case LINEAR:
+        {
+            forAll(field.boundaryField(), patchI)
+            {
+                forAll(field.boundaryField()[patchI], faceI)
+                {
+                    const vector x = xC.boundaryField()[patchI][faceI];
+
+                    field.boundaryField()[patchI][faceI] =
+                    (
+                        2.0*x.x() + 3.0*x.y() + x.z()
+                    );
+                }
+            }
+
+            break;
+        }
+
+        case SINUSOID_2D:
+        {
+            forAll(field.boundaryField(), patchI)
+            {
+                forAll(field.boundaryField()[patchI], faceI)
+                {
+                    const vector x = xC.boundaryField()[patchI][faceI];
+
+                    field.boundaryField()[patchI][faceI] =
+                    (
+                        1.0
+                      + Foam::sin(2.0*pi*x.x())
+                      * Foam::sin(2.0*pi*x.y())
+                    );
+                }
+            }
+
+            break;
+        }
+
+        case SINUSOID_3D:
+        {
+            forAll(field.boundaryField(), patchI)
+            {
+                forAll(field.boundaryField()[patchI], faceI)
+                {
+                    const vector x = xC.boundaryField()[patchI][faceI];
+
+                    field.boundaryField()[patchI][faceI] =
+                    (
+                        1.0
+                      + Foam::sin(2.0*pi*x.x())
+                      * Foam::sin(2.0*pi*x.y())
+                      * Foam::sin(2.0*pi*x.z())
+                    );
+                }
+            }
+
+            break;
+        }
+
+        case COSINE_HILL_2D:
+        {
+            forAll(field.boundaryField(), patchI)
+            {
+                forAll(field.boundaryField()[patchI], faceI)
+                {
+                    scalar r = mag(xC.boundaryField()[patchI][faceI] - hC);
+
+                    field.boundaryField()[patchI][faceI] =
+                    (
+                        2.0 + Foam::cos(pi*r/L)
+                    );
+                }
+            }
+
+            break;
+        }
+
+        default:
+        {
+            FatalErrorIn
+            (
+                "\n\n"
+                "tmp<volScalarField> initBoundaryFields\n"
+                "(\n"
+                "    const fvMesh& mesh,\n"
+                "    const testType type,\n"
+                "    autoPtr<volScalarField>& tField\n"
+                ")\n"
+            )
+                << "Unknown enumerant for initialisation."
+                << abort(FatalError);
+        }
+    }
+}
+
+
+// Initialise a scalar field for testing
+void initTestField
+(
+    const fvMesh& mesh,
+    const testType type,
+    autoPtr<volScalarField>& tField,
+    autoPtr<volVectorField>& tgField,
+    bool populate
+)
+{
+    // Clear existing pointers
+    tField.clear();
+    tgField.clear();
+
+    // Fetch cell-centres
+    const volVectorField& xC = mesh.C();
+
+    tField.set
     (
         new volScalarField
         (
@@ -179,14 +302,38 @@ tmp<volScalarField> initTestField
                 IOobject::NO_READ,
                 IOobject::NO_WRITE
             ),
-            xC & vector::zero
+            mesh,
+            dimensioned<scalar>("alpha", dimless, 0.0),
+            "fixedValue"
         )
     );
 
-    volScalarField& field = tField();
+    tgField.set
+    (
+        new volVectorField
+        (
+            IOobject
+            (
+                "grad(alpha)",
+                mesh.time().timeName(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            mesh,
+            dimensioned<vector>("grad(alpha)", dimless, vector::zero),
+            "zeroGradient"
+        )
+    );
 
     if (populate)
     {
+        // Fetch references
+        volScalarField& field = tField();
+        volVectorField& gfield = tgField();
+
+        vector hC(0,0,0);
+        scalar L = 0.5 * Foam::sqrt(2.0);
         scalar pi = mathematicalConstant::pi;
 
         switch (type)
@@ -198,27 +345,8 @@ tmp<volScalarField> initTestField
                 {
                     const vector x = xC[cellI];
 
-                    field[cellI] =
-                    (
-                        Foam::sin(2.0*x.x())
-                      * Foam::sin(3.0*x.y())
-                      * Foam::sin(1.0*x.z())
-                    );
-                }
-
-                forAll(field.boundaryField(), patchI)
-                {
-                    forAll(field.boundaryField()[patchI], faceI)
-                    {
-                        const vector x = xC.boundaryField()[patchI][faceI];
-
-                        field.boundaryField()[patchI][faceI] =
-                        (
-                            Foam::sin(2.0*x.x())
-                          * Foam::sin(3.0*x.y())
-                          * Foam::sin(1.0*x.z())
-                        );
-                    }
+                    field[cellI] = 2.0*x.x() + 3.0*x.y() + x.z();
+                    gfield[cellI] = vector(2.0, 3.0, 1.0);
                 }
 
                 break;
@@ -237,21 +365,16 @@ tmp<volScalarField> initTestField
                       + Foam::sin(2.0*pi*x.x())
                       * Foam::sin(2.0*pi*x.y())
                     );
-                }
 
-                forAll(field.boundaryField(), patchI)
-                {
-                    forAll(field.boundaryField()[patchI], faceI)
-                    {
-                        const vector x = xC.boundaryField()[patchI][faceI];
-
-                        field.boundaryField()[patchI][faceI] =
+                    gfield[cellI] = 2.0 * pi *
+                    (
+                        vector
                         (
-                            1.0
-                          + Foam::sin(2.0*pi*x.x())
-                          * Foam::sin(2.0*pi*x.y())
-                        );
-                    }
+                            Foam::cos(2.0*pi*x.x()) * Foam::sin(2.0*pi*x.y()),
+                            Foam::sin(2.0*pi*x.x()) * Foam::cos(2.0*pi*x.y()),
+                            0.0
+                        )
+                    );
                 }
 
                 break;
@@ -271,22 +394,48 @@ tmp<volScalarField> initTestField
                       * Foam::sin(2.0*pi*x.y())
                       * Foam::sin(2.0*pi*x.z())
                     );
+
+                    gfield[cellI] = 2.0 * pi *
+                    (
+                        vector
+                        (
+                            Foam::cos(2.0*pi*x.x())
+                          * Foam::sin(2.0*pi*x.y())
+                          * Foam::sin(2.0*pi*x.z()),
+
+                            Foam::sin(2.0*pi*x.x())
+                          * Foam::cos(2.0*pi*x.y())
+                          * Foam::sin(2.0*pi*x.z()),
+
+                            Foam::sin(2.0*pi*x.x())
+                          * Foam::sin(2.0*pi*x.y())
+                          * Foam::cos(2.0*pi*x.z())
+                        )
+                    );
                 }
 
-                forAll(field.boundaryField(), patchI)
-                {
-                    forAll(field.boundaryField()[patchI], faceI)
-                    {
-                        const vector x = xC.boundaryField()[patchI][faceI];
+                break;
+            }
 
-                        field.boundaryField()[patchI][faceI] =
+            case COSINE_HILL_2D:
+            {
+                forAll(field, cellI)
+                {
+                    const vector x = xC[cellI];
+
+                    scalar r = mag(x - hC);
+
+                    field[cellI] = 2.0 + Foam::cos(pi*r/L);
+
+                    gfield[cellI] = (pi/(r*L)) *
+                    (
+                        vector
                         (
-                            1.0
-                          + Foam::sin(2.0*pi*x.x())
-                          * Foam::sin(2.0*pi*x.y())
-                          * Foam::sin(2.0*pi*x.z())
-                        );
-                    }
+                            - Foam::sin(pi*r/L) * x.x(),
+                            - Foam::sin(pi*r/L) * x.y(),
+                            - Foam::sin(pi*r/L) * x.z()
+                        )
+                    );
                 }
 
                 break;
@@ -308,10 +457,10 @@ tmp<volScalarField> initTestField
                     << abort(FatalError);
             }
         }
-    }
 
-    // Return initialized field
-    return tField;
+        // Populate the boundary-fields
+        initBoundaryFields(mesh, type, tField);
+    }
 }
 
 
@@ -346,6 +495,8 @@ void computeError
     const scalarField& isF = fieldSource.internalField();
     const scalarField& itF = fieldTarget.internalField();
 
+    vector hC(0,0,0);
+    scalar L = 0.5 * Foam::sqrt(2.0);
     scalar pi = mathematicalConstant::pi, sExact = 0.0, tExact = 0.0;
 
     forAll(isF, cellI)
@@ -382,6 +533,15 @@ void computeError
                   * Foam::sin(2.0*pi*xC.y())
                   * Foam::sin(2.0*pi*xC.z())
                 );
+
+                break;
+            }
+
+            case COSINE_HILL_2D:
+            {
+                scalar r = mag(xC - hC);
+
+                sExact = 2.0 + Foam::cos(pi*r/L);
 
                 break;
             }
@@ -428,6 +588,15 @@ void computeError
 
                 break;
             }
+
+            case COSINE_HILL_2D:
+            {
+                scalar r = mag(xC - hC);
+
+                tExact = 2.0 + Foam::cos(pi*r/L);
+
+                break;
+            }
         }
 
         tError += magSqr(itF[cellI] - tExact);
@@ -463,6 +632,8 @@ void computeError
 // Test routine to determine interpolation error
 void testCyclicRemap
 (
+    const label nCycles,
+    const testType type,
     const fvMesh& meshSource,
     const fvMesh& meshTarget,
     const label method,
@@ -471,6 +642,32 @@ void testCyclicRemap
     const bool writeAddr
 )
 {
+    // Initialize and populate fields
+    autoPtr<volScalarField> fieldSource, fieldTarget;
+    autoPtr<volVectorField> gfieldSource, gfieldTarget;
+
+    initTestField
+    (
+        meshSource,
+        type,
+        fieldSource,
+        gfieldSource,
+        true
+    );
+
+    // Write out source field
+    fieldSource().write();
+    gfieldSource().write();
+
+    initTestField
+    (
+        meshTarget,
+        type,
+        fieldTarget,
+        gfieldTarget,
+        true
+    );
+
     // Create the interpolation scheme
     conservativeMeshToMesh meshSourceToTarget
     (
@@ -490,12 +687,66 @@ void testCyclicRemap
         forceRecalc,
         writeAddr
     );
+
+    Info << " Remapping for " << nCycles << " cycles...";
+
+    // Perform initial map
+    meshSourceToTarget.interpolate
+    (
+        fieldTarget(),
+        fieldSource(),
+        gfieldSource(),
+        method
+    );
+
+    // Populate the boundary-fields
+    initBoundaryFields(meshTarget, type, fieldTarget);
+    initBoundaryFields(meshSource, type, fieldSource);
+
+    // Now perform cyclic map
+    for (label i = 1; i < nCycles; i++)
+    {
+        // Map back to source
+        meshTargetToSource.interpolate
+        (
+            fieldSource(),
+            fieldTarget(),
+            gfieldTarget(),
+            method
+        );
+
+        // Populate the boundary-fields
+        initBoundaryFields(meshTarget, type, fieldTarget);
+        initBoundaryFields(meshSource, type, fieldSource);
+
+        // Map to target
+        meshSourceToTarget.interpolate
+        (
+            fieldTarget(),
+            fieldSource(),
+            gfieldSource(),
+            method
+        );
+
+        // Populate the boundary-fields
+        initBoundaryFields(meshTarget, type, fieldTarget);
+        initBoundaryFields(meshSource, type, fieldSource);
+    }
+
+    // Write out final field
+    fieldTarget().write();
+
+    // Compute interpolation error
+    computeError(fieldSource, fieldTarget, type);
+
+    Info << " Done." << endl;
 }
 
 
 // Test routine to determine interpolation error
 void testMappingError
 (
+    const testType type,
     const fvMesh& meshSource,
     const fvMesh& meshTarget,
     const label method,
@@ -504,6 +755,28 @@ void testMappingError
     const bool writeAddr
 )
 {
+    // Initialize and populate fields
+    autoPtr<volScalarField> fieldSource, fieldTarget;
+    autoPtr<volVectorField> gfieldSource, gfieldTarget;
+
+    initTestField
+    (
+        meshSource,
+        type,
+        fieldSource,
+        gfieldSource,
+        true
+    );
+
+    initTestField
+    (
+        meshTarget,
+        type,
+        fieldTarget,
+        gfieldTarget,
+        false
+    );
+
     // Create the interpolation scheme
     conservativeMeshToMesh meshToMeshInterp
     (
@@ -514,20 +787,17 @@ void testMappingError
         writeAddr
     );
 
-    // Initialize and populate fields
-    volScalarField& fieldSource = initTestField(meshSource, LINEAR, true)();
-    volScalarField& fieldTarget = initTestField(meshTarget, LINEAR, false)();
-
     // Interpolate field
     meshToMeshInterp.interpolate
     (
-        fieldTarget,
-        fieldSource,
+        fieldTarget(),
+        fieldSource(),
+        gfieldSource(),
         method
     );
 
     // Compute interpolation error
-    computeError(fieldSource, fieldTarget, LINEAR);
+    computeError(fieldSource, fieldTarget, type);
 }
 
 
@@ -676,6 +946,19 @@ int main(int argc, char *argv[])
     {
         testMappingError
         (
+            LINEAR,
+            meshSource,
+            meshTarget,
+            method,
+            nThreads,
+            forceRecalc,
+            writeAddr
+        );
+
+        testCyclicRemap
+        (
+            250,
+            COSINE_HILL_2D,
             meshSource,
             meshTarget,
             method,
