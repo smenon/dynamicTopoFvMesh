@@ -655,6 +655,9 @@ void testCyclicRemap
         true
     );
 
+    // Compute integral of source field
+    scalar intSource = gSum(meshSource.V() * fieldSource->internalField());
+
     // Write out source field
     fieldSource().write();
     gfieldSource().write();
@@ -688,7 +691,7 @@ void testCyclicRemap
         writeAddr
     );
 
-    Info << " Remapping for " << nCycles << " cycles...";
+    Info << " Remapping for " << nCycles << " cycles..." << endl;
 
     // Perform initial map
     meshSourceToTarget.interpolate
@@ -740,6 +743,15 @@ void testCyclicRemap
     computeError(fieldSource, fieldTarget, type);
 
     Info << " Done." << endl;
+
+    Info << "Integral source (before): " << intSource << endl;
+
+    scalar intSourceAfter = gSum(meshSource.V() * fieldSource->internalField());
+    scalar intTarget = gSum(meshTarget.V() * fieldTarget->internalField());
+
+    Info << "Integral source (after): " << intSourceAfter << endl;
+    Info << "Integral target: " << intTarget << endl;
+    Info << "mag(intError): " << mag(intSource - intTarget) << endl;
 }
 
 
@@ -881,6 +893,7 @@ int main(int argc, char *argv[])
 #   include "setTimeIndex.H"
 
     runTimeSource.setTime(sourceTimes[sourceTimeIndex], sourceTimeIndex);
+    runTimeTarget.setTime(sourceTimes[sourceTimeIndex], sourceTimeIndex);
 
     Info<< "\nSource time: " << runTimeSource.value()
         << "\nTarget time: " << runTimeTarget.value()

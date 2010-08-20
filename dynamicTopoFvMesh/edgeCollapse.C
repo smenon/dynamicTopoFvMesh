@@ -2144,7 +2144,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     // Specify that an old point-position
     // has been modified, if necessary
-    if (collapseCase == 3)
+    if (collapseCase == 3 && c1 > -1)
     {
         modPoints_.set(replacement[0], empty());
         modPoints_.set(replacement[1], empty());

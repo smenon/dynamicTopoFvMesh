@@ -293,8 +293,35 @@ void conservativeMeshToMesh::computeCellWeights
 {
     //- Geometric match tolerance
     scalar matchTol = 0.1;
-
     scalar searchFactor = 2.0;
+
+    label mapCandidate = -1;
+
+    if (oldCandidate < 0)
+    {
+        // Loop through all cells, and find minimum
+        scalar minDist = GREAT;
+        label minCell = -1;
+
+        const vectorField& oldCentres = fromMesh().cellCentres();
+        const vector newCentre = toMesh().cellCentres()[newCellIndex];
+
+        forAll(oldCentres, cellI)
+        {
+            if (magSqr(newCentre - oldCentres[cellI]) < minDist)
+            {
+                minDist = magSqr(newCentre - oldCentres[cellI]);
+                minCell = cellI;
+            }
+        }
+
+        // Reassign old candidate
+        mapCandidate = minCell;
+    }
+    else
+    {
+        mapCandidate = oldCandidate;
+    }
 
     label nOldIntersects = -1, nIntersects = 0;
     label nAttempts = 0, nInnerAttempts = 0;
@@ -318,7 +345,7 @@ void conservativeMeshToMesh::computeCellWeights
             (
                 newCellIndex,
                 searchFactor,
-                oldCandidate
+                mapCandidate
             )
         );
 
@@ -517,8 +544,8 @@ void conservativeMeshToMesh::computeCellWeights
             "\n\n"
             "void conservativeMeshToMesh::computeCellWeights\n"
             "(\n"
-            "    const label cIndex,\n"
-            "    const labelList& mapCandidate,\n"
+            "    const label newCellIndex,\n"
+            "    const labelList& oldCandidate,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
             "    vectorField& centres\n"
@@ -526,7 +553,7 @@ void conservativeMeshToMesh::computeCellWeights
         )
             << "Encountered non-conservative weighting factors." << nl
             << " Cell: " << newCellIndex << nl
-            << " Candidate parent: " << oldCandidate << nl
+            << " Candidate parent: " << mapCandidate << nl
             << " nCandidates: " << candidates.size() << nl
             << " nOldCandidates: " << oldCandidates.size() << nl
             << " nIntersects: " << nIntersects << nl

@@ -24,9 +24,11 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "octree.H"
 #include "clockTime.H"
 #include "multiThreader.H"
 #include "threadHandler.H"
+#include "octreeDataFace.H"
 #include "conservativeMeshToMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -104,7 +106,8 @@ conservativeMeshToMesh::conservativeMeshToMesh
         meshTo.nCells()
     ),
     counter_(0),
-    twoDMesh_(false)
+    twoDMesh_(false),
+    boundaryAddressing_(meshTo.boundaryMesh().size())
 {
     if (addressing_.headerOk() && weights_.headerOk() && centres_.headerOk())
     {
@@ -294,6 +297,85 @@ conservativeMeshToMesh::conservativeMeshToMesh
         addressing_.write();
         weights_.write();
         centres_.write();
+    }
+
+    forAll (meshTo.boundaryMesh(), patchi)
+    {
+        const polyPatch& toPatch = meshTo.boundaryMesh()[patchi];
+
+        label patchID = meshFrom.boundaryMesh().findPatchID(toPatch.name());
+
+        if (patchID == -1)
+        {
+            FatalErrorIn
+            (
+                "\n\n"
+                "void conservativeMeshToMesh::conservativeMeshToMesh()\n"
+            )   << " Could not find " << toPatch.name()
+                << " in the source mesh."
+                << exit(FatalError);
+        }
+
+        const polyPatch& fromPatch = meshFrom.boundaryMesh()[patchID];
+
+        if (fromPatch.size() == 0)
+        {
+            WarningIn("meshToMesh::calcAddressing()")
+                << "Source patch " << fromPatch.name()
+                << " has no faces. Not performing mapping for it."
+                << endl;
+            boundaryAddressing_[patchi] = -1;
+        }
+        else
+        {
+            treeBoundBox wallBb(fromPatch.localPoints());
+
+            scalar typDim =
+            (
+                wallBb.avgDim()/(2.0*sqrt(scalar(fromPatch.size())))
+            );
+
+            treeBoundBox shiftedBb
+            (
+                wallBb.min(),
+                wallBb.max() + vector(typDim, typDim, typDim)
+            );
+
+            // Wrap data for octree into container
+            octreeDataFace shapes(fromPatch);
+
+            octree<octreeDataFace> oc
+            (
+                shiftedBb,  // overall search domain
+                shapes,     // all information needed to do checks on cells
+                1,          // min levels
+                20.0,       // maximum ratio of cubes v.s. cells
+                2.0
+            );
+
+            const vectorField::subField centresToBoundary =
+            (
+                toPatch.faceCentres()
+            );
+
+            boundaryAddressing_[patchi].setSize(toPatch.size());
+
+            scalar tightestDist;
+            treeBoundBox tightest;
+
+            forAll(toPatch, toi)
+            {
+                tightest = wallBb;                 // starting search bb
+                tightestDist = Foam::GREAT;        // starting max distance
+
+                boundaryAddressing_[patchi][toi] = oc.findNearest
+                (
+                    centresToBoundary[toi],
+                    tightest,
+                    tightestDist
+                );
+            }
+        }
     }
 }
 

@@ -483,7 +483,7 @@ conservativeMeshToMesh::interpolate
                 fromVf.boundaryField()[patchI],
                 toMesh().boundary()[patchI],
                 DimensionedField<Type, volMesh>::null(),
-                conservativePatchFieldInterpolator()
+                patchFieldInterpolator(boundaryAddressing_[patchI])
             )
         );
     }

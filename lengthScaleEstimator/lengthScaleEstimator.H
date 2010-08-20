@@ -107,6 +107,12 @@ class lengthScaleEstimator
         //  are to be avoided
         labelList noModPatchIDs_;
 
+        //- Field-based refinement
+        word field_;
+        scalar fieldLength_;
+        scalar lowerRefineLevel_;
+        scalar upperRefineLevel_;
+
     // Private Member Functions
 
         // Check for legitimacy of patches

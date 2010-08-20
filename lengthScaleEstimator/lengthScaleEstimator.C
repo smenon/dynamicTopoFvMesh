@@ -35,6 +35,7 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
+#include "volFields.H"
 #include "lengthScaleEstimator.H"
 #include "processorPolyPatch.H"
 
@@ -64,7 +65,11 @@ lengthScaleEstimator::lengthScaleEstimator
     proximityBins_(0),
     sliceThreshold_(VSMALL),
     sliceHoldOff_(0),
-    sliceBoxes_(0)
+    sliceBoxes_(0),
+    field_("none"),
+    fieldLength_(0.0),
+    lowerRefineLevel_(0.001),
+    upperRefineLevel_(0.999)
 {}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -701,6 +706,18 @@ void lengthScaleEstimator::readRefinementOptions
             );
         }
     }
+
+    // Check if refinement is to be performed based on a field-value
+    if (parentDict.found("fieldRefinement") || mandatory)
+    {
+        field_ = word(parentDict.lookup("fieldRefinement"));
+
+        // Lookup a specified length-scale
+        fieldLength_ = readScalar(parentDict.lookup("fieldLengthScale"));
+
+        lowerRefineLevel_ = readScalar(parentDict.lookup("lowerRefineLevel"));
+        upperRefineLevel_ = readScalar(parentDict.lookup("upperRefineLevel"));
+    }
 }
 
 
@@ -764,7 +781,7 @@ void lengthScaleEstimator::calculateLengthScale
         FatalErrorIn
         (
             "void lengthScaleEstimator::calculateLengthScale"
-            "(List<scalar>& lengthScale)"
+            "(UList<scalar>& lengthScale)"
         )
             << " Field is incorrectly sized." << nl
             << " Field size: " << lengthScale.size()
@@ -814,6 +831,49 @@ void lengthScaleEstimator::calculateLengthScale
             levelCells.insert(ownCell);
 
             visitedCells++;
+        }
+    }
+
+    // If a field has been specified, use that.
+    if (field_ != "none")
+    {
+        const volScalarField& vFld =
+        (
+            mesh_.objectRegistry::lookupObject<volScalarField>(field_)
+        );
+
+        const labelList& own = mesh_.faceOwner();
+        const labelList& nei = mesh_.faceNeighbour();
+
+        forAll(nei, faceI)
+        {
+            label ownCell = own[faceI], neiCell = nei[faceI];
+
+            scalar fAvg = 0.5 * (vFld[ownCell] + vFld[neiCell]);
+
+            if ((fAvg > lowerRefineLevel_) && (fAvg < upperRefineLevel_))
+            {
+                // Set the scale for cells on either side
+                if (!cellLevels[ownCell])
+                {
+                    cellLevels[ownCell] = level;
+                    lengthScale[ownCell] = fieldLength_;
+
+                    levelCells.insert(ownCell);
+
+                    visitedCells++;
+                }
+
+                if (!cellLevels[neiCell])
+                {
+                    cellLevels[neiCell] = level;
+                    lengthScale[neiCell] = fieldLength_;
+
+                    levelCells.insert(neiCell);
+
+                    visitedCells++;
+                }
+            }
         }
     }
 
@@ -921,7 +981,7 @@ void lengthScaleEstimator::calculateLengthScale
         FatalErrorIn
         (
             "void lengthScaleEstimator::calculateLengthScale"
-            "(List<scalar>& lengthScale)"
+            "(UList<scalar>& lengthScale)"
         )
             << " Algorithm did not visit every cell in the mesh."
             << " Something's messed up." << nl

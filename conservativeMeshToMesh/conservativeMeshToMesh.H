@@ -85,6 +85,9 @@ class conservativeMeshToMesh
         //- Typedef for convenience
         typedef threadHandler<conservativeMeshToMesh> handler;
 
+        //- Boundary addressing
+        labelListList boundaryAddressing_;
+
     // Private Member Functions
 
         void calcAddressingAndWeights
@@ -342,44 +345,6 @@ public:
     // Destructor
 
         ~conservativeMeshToMesh();
-
-
-    //- Patch-field interpolation class
-    class conservativePatchFieldInterpolator
-    :
-        public fvPatchFieldMapper
-    {
-
-    public:
-
-        // Constructors
-
-            //- Construct given addressing
-            conservativePatchFieldInterpolator()
-            {}
-
-        // Destructor
-
-            virtual ~conservativePatchFieldInterpolator()
-            {}
-
-        // Member Functions
-
-            virtual label size() const
-            {
-                return 0;
-            }
-
-            virtual label sizeBeforeMapping() const
-            {
-                return 0;
-            }
-
-            virtual bool direct() const
-            {
-                return false;
-            }
-    };
 
 
     // Member Functions
