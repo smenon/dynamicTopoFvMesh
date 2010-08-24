@@ -1758,6 +1758,7 @@ label dynamicTopoFvMesh::identify32Swap
                 triFace,
                 points_,
                 points_,
+                1e-6,
                 intPt
             )
         );

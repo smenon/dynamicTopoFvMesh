@@ -448,10 +448,8 @@ inline bool pointSegmentIntersection
     scalar magU = mag(u) + VSMALL;
     scalar magV = mag(v) + VSMALL;
 
-    scalar tolerance = (meshOps::matchTol_ * magU);
-
     // Compare dot-products
-    if ( 1.0 - ((u/magU) & (v/magV)) > tolerance )
+    if (1.0 - ((u/magU) & (v/magV)) > VSMALL)
     {
         return false;
     }
@@ -479,6 +477,7 @@ inline bool segmentSegmentIntersection
     const edge& toSegment,
     const UList<point>& fromPoints,
     const UList<point>& toPoints,
+    const scalar matchTol,
     point& intPoint
 )
 {
@@ -501,8 +500,8 @@ inline bool segmentSegmentIntersection
         return false;
     }
 
-    scalar s = ((b * e) - (c * d))/(denom);
-    scalar t = ((a * e) - (b * d))/(denom);
+    scalar s = ((b * e) - (c * d))/denom;
+    scalar t = ((a * e) - (b * d))/denom;
 
     // Out-of-bounds check
     // Note: Does not check if end-points coincide,
@@ -515,7 +514,7 @@ inline bool segmentSegmentIntersection
     // Proximity check
     scalar dist = mag( w + (s * u) - (t * v) );
 
-    scalar tolerance = (meshOps::matchTol_ * Foam::min(mag(u), mag(v)));
+    scalar tolerance = (matchTol * Foam::min(mag(u), mag(v)));
 
     if (dist > tolerance)
     {
@@ -536,6 +535,7 @@ inline bool segmentFaceIntersection
     const face& faceToCheck,
     const UList<point>& edgePoints,
     const UList<point>& facePoints,
+    const scalar matchTol,
     vector& intersectionPoint
 )
 {
@@ -559,7 +559,7 @@ inline bool segmentFaceIntersection
 
     scalar u = (numerator / denominator);
 
-    scalar tolerance = (meshOps::matchTol_ * mag(p2 - p1));
+    scalar tolerance = (matchTol * mag(p2 - p1));
 
     // Check for intersection along line.
     if ((u > tolerance) && (u < (1.0 - tolerance)))

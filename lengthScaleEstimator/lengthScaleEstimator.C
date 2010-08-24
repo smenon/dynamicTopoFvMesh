@@ -69,7 +69,9 @@ lengthScaleEstimator::lengthScaleEstimator
     field_("none"),
     fieldLength_(0.0),
     lowerRefineLevel_(0.001),
-    upperRefineLevel_(0.999)
+    upperRefineLevel_(0.999),
+    meanScale_(-1.0),
+    maxRefineLevel_(labelMax)
 {}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -529,7 +531,7 @@ void lengthScaleEstimator::readRefinementOptions
         FatalErrorIn
         (
             "void lengthScaleEstimator::readRefinementOptions"
-            "(bool reRead, bool mandatory)"
+            "(const dictionary&, bool, bool)"
         )
             << " Options are incorrectly specified." << nl
             << " ratioMin: " << ratioMin_ << nl
@@ -554,7 +556,7 @@ void lengthScaleEstimator::readRefinementOptions
         FatalErrorIn
         (
             "void lengthScaleEstimator::readRefinementOptions"
-            "(bool reRead, bool mandatory)"
+            "(const dictionary&, bool, bool)"
         )
             << " Length-scales are incorrectly specified." << nl
             << " minLengthScale: " << minLengthScale_ << nl
@@ -717,6 +719,32 @@ void lengthScaleEstimator::readRefinementOptions
 
         lowerRefineLevel_ = readScalar(parentDict.lookup("lowerRefineLevel"));
         upperRefineLevel_ = readScalar(parentDict.lookup("upperRefineLevel"));
+
+        // Sanity check: Are refinement levels correctly specified?
+        if (lowerRefineLevel_ > upperRefineLevel_)
+        {
+            FatalErrorIn
+            (
+                "void lengthScaleEstimator::readRefinementOptions"
+                "(const dictionary&, bool, bool)"
+            )
+                << " Refinement levels are incorrectly specified." << nl
+                << " lowerRefineLevel: " << lowerRefineLevel_ << nl
+                << " upperRefineLevel: " << upperRefineLevel_ << nl
+                << abort(FatalError);
+        }
+    }
+
+    // Check if a max refinement level has been specified
+    if (parentDict.found("maxRefineLevel") || mandatory)
+    {
+        maxRefineLevel_ = readLabel(parentDict.lookup("maxRefineLevel"));
+    }
+
+    // Update switch for mean-scale
+    if (parentDict.found("meanScale") || mandatory)
+    {
+        meanScale_ = readScalar(parentDict.lookup("meanScale"));
     }
 }
 
@@ -927,9 +955,19 @@ void lengthScaleEstimator::calculateLengthScale
                     sumLength /= nTouchedNgb;
 
                     // Scale the length and assign to this cell
-                    scalar sLength = sumLength*growthFactor_;
+                    if (level < maxRefineLevel_)
+                    {
+                        sumLength *= growthFactor_;
+                    }
+                    else
+                    if (meanScale_ > 0.0)
+                    {
+                        // If a mean scale has been specified,
+                        // override the value
+                        sumLength = meanScale_;
+                    }
 
-                    lengthScale[cList[indexI]] = sLength;
+                    lengthScale[cList[indexI]] = sumLength;
 
                     levelCells.insert(cList[indexI]);
 

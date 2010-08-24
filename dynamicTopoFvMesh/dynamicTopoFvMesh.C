@@ -131,6 +131,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nInternalFaces_(primitiveMesh::nInternalFaces()),
     nOldInternalEdges_(0),
     nInternalEdges_(0),
+    skipMapping_(false),
     nModifications_(0),
     maxModifications_(-1),
     nBisections_(0),
@@ -258,6 +259,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nInternalFaces_(primitiveMesh::nInternalFaces()),
     nOldInternalEdges_(nInternalEdges),
     nInternalEdges_(nInternalEdges),
+    skipMapping_(false),
     nModifications_(0),
     maxModifications_(mesh.maxModifications_),
     nBisections_(0),
@@ -364,6 +366,7 @@ void dynamicTopoFvMesh::computeFaceWeights
 
     scalar searchFactor = 1.0;
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
+    scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-6);
 
     // Maintain a list of candidates and intersection points
     boolList oldIntersects, intersects;
@@ -411,6 +414,20 @@ void dynamicTopoFvMesh::computeFaceWeights
             )
         );
 
+        // For empty patches, skip calculations
+        if (patchIndex > -1)
+        {
+            if (boundaryMesh()[patchIndex].type() == "empty")
+            {
+                // Set sizes
+                parents.setSize(1, candidates[0]);
+                weights.setSize(1, fArea);
+                centres.setSize(1, vector::zero);
+
+                break;
+            }
+        }
+
         // Set sizes
         intersects.setSize(candidates.size());
 
@@ -426,6 +443,7 @@ void dynamicTopoFvMesh::computeFaceWeights
                 (
                     fIndex,
                     candidates[indexI],
+                    matchTol,
                     tP
                 )
             );
@@ -471,6 +489,7 @@ void dynamicTopoFvMesh::computeFaceWeights
                         (
                             fIndex,
                             oldCandidates[indexI],
+                            matchTol,
                             tP
                         )
                     );
@@ -645,9 +664,10 @@ void dynamicTopoFvMesh::computeCellWeights
     weights.clear();
     centres.clear();
 
+    label nAttempts = 0;
     scalar searchFactor = 1.0;
-    label nOldIntersects = -1, nIntersects = 0;
-    label nAttempts = 0, nInnerAttempts = 0;
+    label nOldIntersects = -1, nIntersects = 0, realIntersects = 0;
+    scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-6);
 
     // Maintain a list of candidates and intersection points
     boolList oldIntersects, intersects;
@@ -711,6 +731,9 @@ void dynamicTopoFvMesh::computeCellWeights
             }
         }
 
+        label nInnerAttempts = 0;
+        bool attainedAccuracy = false;
+
         if ((nIntersects == nOldIntersects) && (nIntersects != 0))
         {
             if (debug > 3)
@@ -734,7 +757,7 @@ void dynamicTopoFvMesh::computeCellWeights
             while (nInnerAttempts < 5)
             {
                 // Reset counter
-                nIntersects = 0;
+                realIntersects = 0;
                 scalar sumVols = 0.0;
 
                 forAll(oldIntersects, indexI)
@@ -749,6 +772,7 @@ void dynamicTopoFvMesh::computeCellWeights
                             (
                                 cIndex,
                                 oldCandidates[indexI],
+                                matchTol,
                                 tP
                             )
                         );
@@ -756,50 +780,71 @@ void dynamicTopoFvMesh::computeCellWeights
                         // Skip false positives
                         if (realIntersect)
                         {
-                            parents[nIntersects] = oldCandidates[indexI];
+                            parents[realIntersects] = oldCandidates[indexI];
 
                             // Compute weights
                             meshOps::convexSetVolume
                             (
                                 cIndex,
-                                parents[nIntersects],
+                                parents[realIntersects],
                                 tP,
-                                weights[nIntersects],
-                                centres[nIntersects],
+                                weights[realIntersects],
+                                centres[realIntersects],
                                 output
                             );
 
                             // Accumulate volume
-                            sumVols += weights[nIntersects];
+                            sumVols += weights[realIntersects];
 
-                            nIntersects++;
+                            realIntersects++;
                         }
                     }
                 }
 
+                scalar mismatch = (1.0 - (sumVols/cellVolume));
+
                 // Check for consistency
-                if (mag(1.0 - (sumVols/cellVolume)) > 1e-10)
+                if (mag(mismatch) > 1e-10)
                 {
-                    // Reduce geometric tolerance, and try again.
-                    meshOps::matchTol_ *= 0.1;
-                    nInnerAttempts++;
+                    if (mismatch < 0.0)
+                    {
+                        // Reduce geometric tolerance, and try again.
+                        matchTol *= 0.1;
+                        nInnerAttempts++;
+                    }
+                    else
+                    {
+                        // Expand search radius
+                        break;
+                    }
                 }
                 else
                 {
                     // Attained sufficient accuracy
+                    attainedAccuracy = true;
                     break;
                 }
             }
+        }
 
-            // Shorten to actual sizes
-            parents.setSize(nIntersects);
-            weights.setSize(nIntersects);
-            centres.setSize(nIntersects);
+        // Shorten to actual sizes
+        parents.setSize(realIntersects);
+        weights.setSize(realIntersects);
+        centres.setSize(realIntersects);
 
+        if (attainedAccuracy)
+        {
             break;
         }
         else
         {
+            // Reset match tolerance, if necessary
+            if (nInnerAttempts)
+            {
+                matchTol *= Foam::pow(10, nInnerAttempts);
+                nInnerAttempts = 0;
+            }
+
             nAttempts++;
 
             // Copy parameters
@@ -877,12 +922,6 @@ void dynamicTopoFvMesh::computeCellWeights
             // Normalize by sum of weights
             weights /= sum(weights);
 
-            // Reset match tolerance, if necessary
-            if (nInnerAttempts)
-            {
-                meshOps::matchTol_ *= Foam::pow(10, nInnerAttempts);
-            }
-
             return;
         }
 
@@ -921,6 +960,7 @@ void dynamicTopoFvMesh::computeCellWeights
             (
                 cIndex,
                 oldCandidates[indexI],
+                matchTol,
                 tP
             );
 
@@ -974,10 +1014,10 @@ void dynamicTopoFvMesh::computeCellWeights
             << " nOldCandidates: " << oldCandidates.size() << nl
             << " nIntersects: " << nIntersects << nl
             << " nOldIntersects: " << nOldIntersects << nl
+            << " nRealIntersects: " << realIntersects << nl
             << " nParents: " << parents.size() << nl
             << " nAttempts: " << nAttempts << nl
-            << " nInnerAttempts: " << nInnerAttempts << nl
-            << " matchTolerance: " << meshOps::matchTol_ << nl
+            << " matchTolerance: " << matchTol << nl
             << " nCells: " << nCells_ << nl
             << " nOldCells: " << nOldCells_ << nl
             << setprecision(16)
@@ -999,26 +1039,6 @@ void dynamicTopoFvMesh::computeCellWeights
              << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
              << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
              << endl;
-    }
-
-    // Check if tolerances were adjusted.
-    if (nInnerAttempts)
-    {
-        InfoIn
-        (
-            "\n\n"
-            "void dynamicTopoFvMesh::computeCellWeights\n"
-            "(\n"
-            "    const label cIndex,\n"
-            "    const labelList& mapCandidates,\n"
-            "    labelList& parents,\n"
-            "    scalarField& weights,\n"
-            "    vectorField& centres\n"
-            ") const\n"
-        )
-            << " meshOps::matchTol_ was reduced to: "
-            << meshOps::matchTol_ << nl
-            << endl;
     }
 
     // Return normalized weights
@@ -1210,6 +1230,7 @@ bool dynamicTopoFvMesh::faceIntersection
 (
     const label newFaceIndex,
     const label oldFaceIndex,
+    const scalar matchTol,
     vectorField& tP
 ) const
 {
@@ -1401,7 +1422,9 @@ bool dynamicTopoFvMesh::faceIntersection
             edge fromEdge = fromFace.faceEdge(pointJ);
 
             // Avoid common points
-            if (toEdge.commonVertex(fromEdge) > -1)
+            label cv = toEdge.commonVertex(fromEdge);
+
+            if (cv > -1 && !modPoints_.found(cv))
             {
                 continue;
             }
@@ -1428,7 +1451,7 @@ bool dynamicTopoFvMesh::faceIntersection
                 continue;
             }
 
-            scalar tolerance = (meshOps::matchTol_ * mag(p2 - p1));
+            scalar tolerance = (matchTol * mag(p2 - p1));
 
             scalar u = (numOld / denOld);
             vector checkPoint = p1 + u*(p2 - p1);
@@ -1494,6 +1517,7 @@ bool dynamicTopoFvMesh::cellIntersection
 (
     const label newCellIndex,
     const label oldCellIndex,
+    const scalar matchTol,
     vectorField& tP
 ) const
 {
@@ -2062,6 +2086,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     edgePair.second(),
                     polyMesh::points(),
                     oldPoints_,
+                    matchTol,
                     intPoint
                 )
             );
@@ -2219,6 +2244,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     faceToCheck,
                     polyMesh::points(),
                     oldPoints_,
+                    matchTol,
                     intPoint
                 )
             );
@@ -2331,6 +2357,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     faceToCheck,
                     oldPoints_,
                     polyMesh::points(),
+                    matchTol,
                     intPoint
                 )
             );
@@ -4095,13 +4122,10 @@ void dynamicTopoFvMesh::readOptionalParameters()
         interval_ = 1;
     }
 
-    if (meshSubDict.found("bandWidthReduction") || mandatory_)
+    // Update bandwidth reduction switch
+    if (meshSubDict.found("bandwidthReduction") || mandatory_)
     {
-        bandWidthReduction_ = meshSubDict.lookup("bandWidthReduction");
-    }
-    else
-    {
-        bandWidthReduction_ = false;
+        bandWidthReduction_.readIfPresent("bandwidthReduction", meshSubDict);
     }
 
     if (meshSubDict.found("sliverThreshold") || mandatory_)
@@ -4131,6 +4155,12 @@ void dynamicTopoFvMesh::readOptionalParameters()
                 << " Swap deviation out of range [0..1]"
                 << abort(FatalError);
         }
+    }
+
+    // Optionally skip mapping for remeshing-only / pre-processing
+    if (meshSubDict.found("skipMapping") || mandatory_)
+    {
+        skipMapping_.readIfPresent("skipMapping", meshSubDict);
     }
 
     // For tetrahedral meshes...
@@ -5983,19 +6013,8 @@ bool dynamicTopoFvMesh::resetMesh()
         // Update the underlying mesh, and map all related fields
         updateMesh(mpm);
 
-        // If this is the first time-step,
-        // perform a dummy movePoints to force V0 creation
-        if (time().timeIndex() == 1)
-        {
-            if (debug > 2)
-            {
-                InfoIn("void dynamicTopoFvMesh::resetMesh()")
-                    << " Setting preMotionPoints for first move."
-                    << nl << endl;
-            }
-
-            movePoints(mpm.preMotionPoints());
-        }
+        // Perform a dummy movePoints to force V0 creation, if necessary
+        movePoints(mpm.preMotionPoints());
 
         // Reset old-volumes
         resetMotion();

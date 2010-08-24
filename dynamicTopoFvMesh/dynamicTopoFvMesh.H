@@ -169,6 +169,7 @@ class dynamicTopoFvMesh
         Map<label> addedCellZones_;
 
         // Information for field-mapping
+        Switch skipMapping_;
         Map<labelList> faceParents_;
         Map<scalarField> faceWeights_;
         Map<vectorField> faceCentres_;
@@ -302,6 +303,7 @@ class dynamicTopoFvMesh
         (
             const label newFaceIndex,
             const label oldFaceIndex,
+            const scalar matchTol,
             vectorField& intPoints
         ) const;
 
@@ -310,6 +312,7 @@ class dynamicTopoFvMesh
         (
             const label newCellIndex,
             const label oldCellIndex,
+            const scalar matchTol,
             vectorField& intPoints
         ) const;
 

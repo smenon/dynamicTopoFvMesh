@@ -65,11 +65,6 @@ class polyMesh;
 
 namespace meshOps
 {
-    static Foam::scalar matchTol_
-    (
-        Foam::debug::tolerances("meshOpsMatchTol", 1e-6)
-    );
-
     // Return the magnitude of an edge, using UList
     inline scalar edgeLength
     (
@@ -201,7 +196,8 @@ namespace meshOps
     (
         const edge& segment,
         const UList<point>& points,
-        const point& checkPoint
+        const point& checkPoint,
+        const scalar matchTol
     );
 
     // Determine whether a two line segments intersect
@@ -211,6 +207,7 @@ namespace meshOps
         const edge& toSegment,
         const UList<point>& fromPoints,
         const UList<point>& toPoints,
+        const scalar matchTol,
         point& intPoint
     );
 
@@ -221,6 +218,7 @@ namespace meshOps
         const face& faceToCheck,
         const UList<point>& edgePoints,
         const UList<point>& facePoints,
+        const scalar matchTol,
         vector& intersectionPoint
     );
 

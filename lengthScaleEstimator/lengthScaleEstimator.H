@@ -113,6 +113,10 @@ class lengthScaleEstimator
         scalar lowerRefineLevel_;
         scalar upperRefineLevel_;
 
+        //- Specify limits for refinement criteria
+        scalar meanScale_;
+        label maxRefineLevel_;
+
     // Private Member Functions
 
         // Check for legitimacy of patches
