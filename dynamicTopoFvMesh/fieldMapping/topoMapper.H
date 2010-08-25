@@ -84,12 +84,12 @@ class topoMapper
         mutable PtrList<vectorField> patchCentresPtr_;
 
         //- Intersection volume weights
-        Map<scalarField> faceWeights_;
-        Map<scalarField> cellWeights_;
+        List<scalarField> faceWeights_;
+        List<scalarField> cellWeights_;
 
         //- Intersection centre weights
-        Map<vectorField> faceCentres_;
-        Map<vectorField> cellCentres_;
+        List<vectorField> faceCentres_;
+        List<vectorField> cellCentres_;
 
     // Private Member Functions
 
@@ -144,28 +144,28 @@ public:
         //- Set face weighting information
         void setFaceWeights
         (
-            Map<scalarField>& weights,
-            Map<vectorField>& centres
+            List<scalarField>& weights,
+            List<vectorField>& centres
         );
 
         //- Set cell weighting information
         void setCellWeights
         (
-            Map<scalarField>& weights,
-            Map<vectorField>& centres
+            List<scalarField>& weights,
+            List<vectorField>& centres
         );
 
         //- Fetch face weights
-        const Map<scalarField>& faceWeights() const;
+        const List<scalarField>& faceWeights() const;
 
         //- Fetch cell weights
-        const Map<scalarField>& cellWeights() const;
+        const List<scalarField>& cellWeights() const;
 
         //- Fetch face centres
-        const Map<vectorField>& faceCentres() const;
+        const List<vectorField>& faceCentres() const;
 
         //- Fetch cell centres
-        const Map<vectorField>& cellCentres() const;
+        const List<vectorField>& cellCentres() const;
 
         //- Store gradients prior to mesh reset
         void storeGradients();

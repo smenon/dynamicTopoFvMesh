@@ -39,6 +39,7 @@ SourceFiles
     dynamicTopoFvMeshCheck.C
     dynamicTopoFvMeshCoupled.C
     dynamicTopoFvMeshReOrder.C
+    dynamicTopoFvMeshMapping.C
     edgeBisect.C
     edgeCollapse.C
     edgeSwap.C
@@ -171,11 +172,11 @@ class dynamicTopoFvMesh
         // Information for field-mapping
         Switch skipMapping_;
         Map<labelList> faceParents_;
-        Map<scalarField> faceWeights_;
-        Map<vectorField> faceCentres_;
+        List<scalarField> faceWeights_;
+        List<vectorField> faceCentres_;
         Map<labelList> cellParents_;
-        Map<scalarField> cellWeights_;
-        Map<vectorField> cellCentres_;
+        List<scalarField> cellWeights_;
+        List<vectorField> cellCentres_;
 
         // Information for mapPolyMesh
         List<objectMap> pointsFromPoints_;
@@ -270,6 +271,18 @@ class dynamicTopoFvMesh
 
         //- Quality metric for tetrahedra in 3D
         tetMetric::tetMetricReturnType tetMetric_;
+
+        // Compute mapping weights for modified entities
+        void computeMapping
+        (
+            const label faceStart,
+            const label faceSize,
+            const label cellStart,
+            const label cellSize
+        );
+
+        // Static equivalent for multiThreading
+        static void computeMappingThread(void *argument);
 
         // Obtain map weighting factors for a face
         void computeFaceWeights
@@ -526,17 +539,14 @@ class dynamicTopoFvMesh
         (
             const label cIndex,
             const labelList& mapCells,
-            const scalarField& mapWeights,
-            const vectorField& mapCentres
+            bool addEntry = true
         );
 
         // Set fill-in mapping information for a particular face
         void setFaceMapping
         (
             const label fIndex,
-            const labelList& mapFaces = labelList(0),
-            const scalarField& mapWeights = scalarField(0),
-            const vectorField& mapCentres = vectorField(0)
+            const labelList& mapFaces = labelList(0)
         );
 
         // Remove the specified cells from the mesh

@@ -90,6 +90,9 @@ class topoPatchMapper
         //- Inserted faces
         mutable labelList* insertedFaceLabelsPtr_;
 
+        //- Inserted face index map
+        mutable labelList* insertedFaceIndexMapPtr_;
+
         //- Inserted face addressing
         mutable labelListList* insertedFaceAddressingPtr_;
 
@@ -172,6 +175,9 @@ public:
 
         //- Return list of inserted faces
         virtual const labelList& insertedObjectLabels() const;
+
+        //- Return addressing map for inserted faces
+        const labelList& insertedObjectMap() const;
 
         //- Return addressing for inserted faces
         const labelListList& insertedFaceAddressing() const;

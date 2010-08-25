@@ -1877,61 +1877,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             continue;
         }
 
-        labelList parents;
-        scalarField weights;
-        vectorField centres;
-
-        // Obtain weighting factors for this cell.
-        computeCellWeights
-        (
-            mapCells[cellI],
-            mC,
-            parents,
-            weights,
-            centres
-        );
-
         // Set the mapping for this cell
-        setCellMapping
-        (
-            mapCells[cellI],
-            parents,
-            weights,
-            centres
-        );
-
-        // Update cellParents information
-        cellParents_.set(mapCells[cellI], parents);
+        setCellMapping(mapCells[cellI], mC);
     }
 
     // Set fill-in mapping information for the modified face.
     if (c1 == -1)
     {
-        labelList parents;
-        scalarField weights;
-        vectorField centres;
-
-        // Obtain weighting factors for this face.
-        computeFaceWeights
-        (
-            fIndex,
-            labelList(1, fIndex),
-            parents,
-            weights,
-            centres
-        );
-
         // Set the mapping for this face
-        setFaceMapping
-        (
-            fIndex,
-            parents,
-            weights,
-            centres
-        );
-
-        // Update faceParents information
-        faceParents_.set(fIndex, parents);
+        setFaceMapping(fIndex, labelList(1, fIndex));
     }
     else
     {
@@ -1950,10 +1904,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         if (neighbour_[newFaceIndex[faceI]] == -1)
         {
             // Boundary face. Compute mapping.
-            labelList parents;
-            scalarField weights;
-            vectorField centres;
-
             labelList mC;
 
             if (faces_[newFaceIndex[faceI]].size() == 4)
@@ -2033,27 +1983,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 }
             }
 
-            // Obtain weighting factors for this face.
-            computeFaceWeights
-            (
-                newFaceIndex[faceI],
-                mC,
-                parents,
-                weights,
-                centres
-            );
-
             // Set the mapping for this face
-            setFaceMapping
-            (
-                newFaceIndex[faceI],
-                parents,
-                weights,
-                centres
-            );
-
-            // Update faceParents information
-            faceParents_.set(newFaceIndex[faceI], parents);
+            setFaceMapping(newFaceIndex[faceI], mC);
         }
         else
         {
@@ -2997,31 +2928,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
         forAll(cmIndex, cmI)
         {
-            labelList parents;
-            scalarField weights;
-            vectorField centres;
-
-            // Obtain weighting factors for this cell.
-            computeCellWeights
-            (
-                cmIndex[cmI],
-                mC,
-                parents,
-                weights,
-                centres
-            );
-
             // Set the mapping for this cell
-            setCellMapping
-            (
-                cmIndex[cmI],
-                parents,
-                weights,
-                centres
-            );
-
-            // Update cellParents information
-            cellParents_.set(cmIndex[cmI], parents);
+            setCellMapping(cmIndex[cmI], mC);
         }
     }
 
@@ -3055,31 +2963,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             forAll(fmIndex, fmI)
             {
-                labelList parents;
-                scalarField weights;
-                vectorField centres;
-
-                // Obtain weighting factors for this face.
-                computeFaceWeights
-                (
-                    fmIndex[fmI],
-                    mF,
-                    parents,
-                    weights,
-                    centres
-                );
-
                 // Set the mapping for this face
-                setFaceMapping
-                (
-                    fmIndex[fmI],
-                    parents,
-                    weights,
-                    centres
-                );
-
-                // Update faceParents information
-                faceParents_.set(fmIndex[fmI], parents);
+                setFaceMapping(fmIndex[fmI], mF);
             }
         }
     }
@@ -5259,7 +5144,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
 
-                //setCellMapping(newCellIndex[i], mC, scalarField(1, 1.0));
+                setCellMapping(newCellIndex[i], mC);
             }
         }
         else
@@ -5269,7 +5154,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 // Update the cell list with newly configured cells.
                 cells_[newCellIndex[i]] = newTetCell[i];
 
-                //setCellMapping(newCellIndex[i], mC, scalarField(1, 1.0));
+                setCellMapping(newCellIndex[i], mC);
             }
         }
 

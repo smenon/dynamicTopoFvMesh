@@ -265,6 +265,7 @@ void dynamicTopoFvMesh::reOrderPoints
     }
 }
 
+
 // Static equivalent for multi-threading
 void dynamicTopoFvMesh::reOrderPointsThread
 (
@@ -301,6 +302,7 @@ void dynamicTopoFvMesh::reOrderPointsThread
     // Reorder the points
     mesh.reOrderPoints(points, preMotionPoints, pointZoneMap, true);
 }
+
 
 // Reorder edges after a topology change
 void dynamicTopoFvMesh::reOrderEdges
@@ -651,6 +653,7 @@ void dynamicTopoFvMesh::reOrderEdges
     }
 }
 
+
 // Static equivalent for multi-threading
 void dynamicTopoFvMesh::reOrderEdgesThread
 (
@@ -690,6 +693,7 @@ void dynamicTopoFvMesh::reOrderEdgesThread
     // Signal the calling thread
     thread->sendSignal(meshHandler::STOP);
 }
+
 
 // Reorder faces in upper-triangular order after a topology change
 void dynamicTopoFvMesh::reOrderFaces
@@ -1083,34 +1087,6 @@ void dynamicTopoFvMesh::reOrderFaces
 
     flipFaces_.transfer(flipFaces);
 
-    // Renumber all faceWeights and faceCentres
-    Map<scalarField> faceWeights;
-    Map<vectorField> faceCentres;
-
-    Map<scalarField>::const_iterator fwIter = faceWeights_.begin();
-    Map<vectorField>::const_iterator fcIter = faceCentres_.begin();
-
-    while (fwIter != faceWeights_.end())
-    {
-        if (fwIter.key() < nOldFaces_)
-        {
-            faceWeights.insert(reverseFaceMap_[fwIter.key()], fwIter());
-            faceCentres.insert(reverseFaceMap_[fcIter.key()], fcIter());
-        }
-        else
-        {
-            faceWeights.insert(addedFaceRenumbering_[fwIter.key()], fwIter());
-            faceCentres.insert(addedFaceRenumbering_[fcIter.key()], fcIter());
-        }
-
-        // Increment iterators
-        fwIter++;
-        fcIter++;
-    }
-
-    faceWeights_.transfer(faceWeights);
-    faceCentres_.transfer(faceCentres);
-
     // Renumber all cells with updated face information
     forAll(cells_, cellI)
     {
@@ -1271,6 +1247,7 @@ void dynamicTopoFvMesh::reOrderFaces
     }
 }
 
+
 // Static equivalent for multi-threading
 void dynamicTopoFvMesh::reOrderFacesThread
 (
@@ -1325,6 +1302,7 @@ void dynamicTopoFvMesh::reOrderFacesThread
         true
     );
 }
+
 
 // Reorder & renumber cells with bandwidth reduction after a topology change
 void dynamicTopoFvMesh::reOrderCells
@@ -1597,34 +1575,6 @@ void dynamicTopoFvMesh::reOrderCells
         }
     }
 
-    // Renumber all cellWeights and cellCentres
-    Map<scalarField> cellWeights;
-    Map<vectorField> cellCentres;
-
-    Map<scalarField>::const_iterator cwIter = cellWeights_.begin();
-    Map<vectorField>::const_iterator ccIter = cellCentres_.begin();
-
-    while (cwIter != cellWeights_.end())
-    {
-        if (cwIter.key() < nOldCells_)
-        {
-            cellWeights.insert(reverseCellMap_[cwIter.key()], cwIter());
-            cellCentres.insert(reverseCellMap_[ccIter.key()], ccIter());
-        }
-        else
-        {
-            cellWeights.insert(addedCellRenumbering_[cwIter.key()], cwIter());
-            cellCentres.insert(addedCellRenumbering_[ccIter.key()], ccIter());
-        }
-
-        // Increment iterators
-        cwIter++;
-        ccIter++;
-    }
-
-    cellWeights_.transfer(cellWeights);
-    cellCentres_.transfer(cellCentres);
-
     // Prepare the cellZoneMap
     cellZoneMesh& cellZones = polyMesh::cellZones();
 
@@ -1698,6 +1648,7 @@ void dynamicTopoFvMesh::reOrderCells
     }
 }
 
+
 // Static equivalent for multi-threading
 void dynamicTopoFvMesh::reOrderCellsThread
 (
@@ -1724,6 +1675,7 @@ void dynamicTopoFvMesh::reOrderCellsThread
     // Reorder the cells
     mesh.reOrderCells(cellZoneMap, true);
 }
+
 
 // Reorder the faces in upper-triangular order, and generate mapping information
 void dynamicTopoFvMesh::reOrderMesh
@@ -1816,6 +1768,7 @@ void dynamicTopoFvMesh::reOrderMesh
         reOrderEdges(edges, edgeFaces, faceEdges);
     }
 }
+
 
 // Invoke reOrdering with multiple threads
 void dynamicTopoFvMesh::threadedMeshReOrdering

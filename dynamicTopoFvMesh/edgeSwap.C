@@ -895,31 +895,8 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
     forAll(mC, cellI)
     {
-        labelList parents;
-        scalarField weights;
-        vectorField centres;
-
-        // Obtain weighting factors for this cell.
-        computeCellWeights
-        (
-            mC[cellI],
-            mC,
-            parents,
-            weights,
-            centres
-        );
-
         // Set the mapping for this cell
-        setCellMapping
-        (
-            mC[cellI],
-            parents,
-            weights,
-            centres
-        );
-
-        // Update cellParents information
-        cellParents_.set(mC[cellI], parents);
+        setCellMapping(mC[cellI], mC);
     }
 
     // Interpolate new fluxes for the flipped face.
@@ -2666,43 +2643,15 @@ const changeMap dynamicTopoFvMesh::swap23
     {
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
 
-        // Skip mapping for the intermediate cell.
         if (cellI == 2)
         {
-            continue;
+            // Skip mapping for the intermediate cell.
+            setCellMapping(newCellIndex[cellI], mC, false);
         }
-
-        labelList parents;
-        scalarField weights;
-        vectorField centres;
-
-        // Obtain weighting factors for this cell.
-        computeCellWeights
-        (
-            newCellIndex[cellI],
-            mC,
-            parents,
-            weights,
-            centres
-        );
-
-        // Set the mapping for this cell
-        setCellMapping
-        (
-            newCellIndex[cellI],
-            parents,
-            weights,
-            centres
-        );
-
-        // Update cellParents information
-        cellParents_.set(newCellIndex[cellI], parents);
-
-        // Set mapping parents for the intermediate cell.
-        // The following 3-2 swap may need this information.
-        if (cellI == 1)
+        else
         {
-            cellParents_.set(newCellIndex[2], parents);
+            // Set the mapping for this cell
+            setCellMapping(newCellIndex[cellI], mC);
         }
     }
 
@@ -3361,10 +3310,6 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
 
-        labelList parents;
-        scalarField weights;
-        vectorField centres;
-
         // Fill-in candidate mapping information
         labelList mC(cellRemovalList.size(), -1);
 
@@ -3373,27 +3318,8 @@ const changeMap dynamicTopoFvMesh::swap32
             mC[indexI] = cellRemovalList[indexI];
         }
 
-        // Obtain weighting factors for this cell.
-        computeCellWeights
-        (
-            newCellIndex[cellI],
-            mC,
-            parents,
-            weights,
-            centres
-        );
-
         // Set the mapping for this cell
-        setCellMapping
-        (
-            newCellIndex[cellI],
-            parents,
-            weights,
-            centres
-        );
-
-        // Update cellParents information
-        cellParents_.set(newCellIndex[cellI], parents);
+        setCellMapping(newCellIndex[cellI], mC);
     }
 
     // Set fill-in mapping for two new boundary faces
@@ -3401,31 +3327,8 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         forAll(newBdyFaceIndex, i)
         {
-            labelList parents;
-            scalarField weights;
-            vectorField centres;
-
-            // Obtain weighting factors for this face.
-            computeFaceWeights
-            (
-                newBdyFaceIndex[i],
-                oldBdyFaceIndex,
-                parents,
-                weights,
-                centres
-            );
-
             // Set the mapping for this face
-            setFaceMapping
-            (
-                newBdyFaceIndex[i],
-                parents,
-                weights,
-                centres
-            );
-
-            // Update faceParents information
-            faceParents_.set(newBdyFaceIndex[i], parents);
+            setFaceMapping(newBdyFaceIndex[i], oldBdyFaceIndex);
         }
     }
 

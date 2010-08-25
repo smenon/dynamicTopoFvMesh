@@ -52,6 +52,7 @@ void topoPatchMapper::clearOut()
     deleteDemandDrivenData(interpolationAddrPtr_);
     deleteDemandDrivenData(weightsPtr_);
     deleteDemandDrivenData(insertedFaceLabelsPtr_);
+    deleteDemandDrivenData(insertedFaceIndexMapPtr_);
     deleteDemandDrivenData(insertedFaceAddressingPtr_);
     deleteDemandDrivenData(areasPtr_);
     deleteDemandDrivenData(centresPtr_);
@@ -80,6 +81,9 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
 
     insertedFaceLabelsPtr_ = new labelList(patchSize(), -1);
     labelList& insertedFaces = *insertedFaceLabelsPtr_;
+
+    insertedFaceIndexMapPtr_ = new labelList(patchSize(), -1);
+    labelList& insertedFacesMap = *insertedFaceIndexMapPtr_;
 
     insertedFaceAddressingPtr_ = new labelListList(patchSize(), labelList(0));
     labelListList& insertedAddressing = *insertedFaceAddressingPtr_;
@@ -118,6 +122,9 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
                 // Make an entry for the inserted label,
                 // and renumber addressing to patch.
                 insertedFaces[nInsertedFaces] = fffI.index() - pStart;
+
+                // Add a mapping entry for facesFromFaces indices
+                insertedFacesMap[nInsertedFaces] = objectI;
 
                 // Make an entry for addressing
                 labelList& addr = insertedAddressing[nInsertedFaces];
@@ -161,6 +168,7 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
 
     // Shorten inserted faces to actual size
     insertedFaces.setSize(nInsertedFaces);
+    insertedFacesMap.setSize(nInsertedFaces);
     insertedAddressing.setSize(nInsertedFaces);
 }
 
@@ -384,28 +392,21 @@ void topoPatchMapper::calcIntersectionWeightsAndCentres() const
     centresPtr_ = new List<vectorField>(patchSize(), vectorField(0));
     List<vectorField>& x = *centresPtr_;
 
-    // Fetch current patch start
-    label pStart = patch_.patch().start();
-
     // Obtain stored face-centres
     const vectorField& faceCentres = tMapper_.patchCentres(patch_.index());
 
     // Fetch maps
-    const Map<vectorField>& mapFaceCentres = tMapper_.faceCentres();
-    const Map<scalarField>& mapFaceWeights = tMapper_.faceWeights();
+    const List<vectorField>& mapFaceCentres = tMapper_.faceCentres();
+    const List<scalarField>& mapFaceWeights = tMapper_.faceWeights();
 
     // Fill in maps first
     const labelList& insertedFaces = insertedObjectLabels();
+    const labelList& insertedFacesMap = insertedObjectMap();
 
     forAll(insertedFaces, faceI)
     {
-        // Fetch the local / global indices
-        label lIndex = insertedFaces[faceI];
-        label gIndex = lIndex + pStart;
-
-        // Fill-in the array
-        a[lIndex] = mapFaceWeights[gIndex];
-        x[lIndex] = mapFaceCentres[gIndex];
+        a[insertedFaces[faceI]] = mapFaceWeights[insertedFacesMap[faceI]];
+        x[insertedFaces[faceI]] = mapFaceCentres[insertedFacesMap[faceI]];
     }
 
     // Now do mapped faces
@@ -499,6 +500,7 @@ topoPatchMapper::topoPatchMapper
     interpolationAddrPtr_(NULL),
     weightsPtr_(NULL),
     insertedFaceLabelsPtr_(NULL),
+    insertedFaceIndexMapPtr_(NULL),
     insertedFaceAddressingPtr_(NULL),
     areasPtr_(NULL),
     centresPtr_(NULL)
@@ -638,6 +640,18 @@ const labelList& topoPatchMapper::insertedObjectLabels() const
     }
 
     return *insertedFaceLabelsPtr_;
+}
+
+
+//- Return addressing map for inserted faces
+const labelList& topoPatchMapper::insertedObjectMap() const
+{
+    if (!insertedFaceIndexMapPtr_)
+    {
+        calcInsertedFaceAddressing();
+    }
+
+    return *insertedFaceIndexMapPtr_;
 }
 
 

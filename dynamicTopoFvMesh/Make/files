@@ -13,6 +13,7 @@ dynamicTopoFvMesh.C
 dynamicTopoFvMeshReOrder.C
 dynamicTopoFvMeshCheck.C
 dynamicTopoFvMeshCoupled.C
+dynamicTopoFvMeshMapping.C
 edgeSwap.C
 edgeCollapse.C
 edgeBisect.C

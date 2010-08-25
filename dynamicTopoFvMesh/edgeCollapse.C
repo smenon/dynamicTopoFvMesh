@@ -2168,31 +2168,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 continue;
             }
 
-            labelList parents;
-            scalarField weights;
-            vectorField centres;
-
-            // Obtain weighting factors for this cell.
-            computeCellWeights
-            (
-                mcIndex,
-                mC,
-                parents,
-                weights,
-                centres
-            );
-
             // Set the mapping for this cell
-            setCellMapping
-            (
-                mcIndex,
-                parents,
-                weights,
-                centres
-            );
-
-            // Update cellParents information
-            cellParents_.set(mcIndex, parents);
+            setCellMapping(mcIndex, mC);
         }
     }
 
@@ -2216,10 +2193,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         else
         {
             // Fill-in candidate mapping information
-            labelList parents;
-            scalarField weights;
-            vectorField centres;
-
             labelList faceCandidates;
 
             const labelList& fEdges = faceEdges_[fIter.key()];
@@ -2249,27 +2222,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 }
             }
 
-            // Obtain weighting factors for this face.
-            computeFaceWeights
-            (
-                fIter.key(),
-                faceCandidates,
-                parents,
-                weights,
-                centres
-            );
-
             // Set the mapping for this face
-            setFaceMapping
-            (
-                fIter.key(),
-                parents,
-                weights,
-                centres
-            );
-
-            // Update faceParents information
-            faceParents_.set(fIter.key(), parents);
+            setFaceMapping(fIter.key(), faceCandidates);
         }
     }
 
@@ -3773,34 +3727,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // compute mapping information.
     forAll(mapCells, cellI)
     {
-        labelList parents;
-        scalarField weights;
-        vectorField centres;
-
         // Fill-in candidate mapping information
         labelList mC(1, mapCells[cellI]);
 
-        // Obtain weighting factors for this cell.
-        computeCellWeights
-        (
-            mapCells[cellI],
-            mC,
-            parents,
-            weights,
-            centres
-        );
-
         // Set the mapping for this cell
-        setCellMapping
-        (
-            mapCells[cellI],
-            parents,
-            weights,
-            centres
-        );
-
-        // Update cellParents information
-        cellParents_.set(mapCells[cellI], parents);
+        setCellMapping(mapCells[cellI], mC);
     }
 
     // Set face mapping information for modified faces
@@ -3823,10 +3754,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         else
         {
             // Fill-in candidate mapping information
-            labelList parents;
-            scalarField weights;
-            vectorField centres;
-
             labelList faceCandidates;
 
             const labelList& fEdges = faceEdges_[fIter.key()];
@@ -3856,27 +3783,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
             }
 
-            // Obtain weighting factors for this face.
-            computeFaceWeights
-            (
-                fIter.key(),
-                faceCandidates,
-                parents,
-                weights,
-                centres
-            );
-
             // Set the mapping for this face
-            setFaceMapping
-            (
-                fIter.key(),
-                parents,
-                weights,
-                centres
-            );
-
-            // Update faceParents information
-            faceParents_.set(fIter.key(), parents);
+            setFaceMapping(fIter.key(), faceCandidates);
         }
     }
 

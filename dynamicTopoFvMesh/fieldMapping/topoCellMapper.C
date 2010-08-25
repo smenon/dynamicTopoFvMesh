@@ -238,21 +238,15 @@ void topoCellMapper::calcIntersectionWeightsAndCentres() const
     const vectorField& cellCentres = tMapper_.internalCentres();
 
     // Fetch maps
-    const Map<vectorField>& mapCellCentres = tMapper_.cellCentres();
-    const Map<scalarField>& mapCellWeights = tMapper_.cellWeights();
+    const List<objectMap>& cfc = mpm_.cellsFromCellsMap();
+    const List<vectorField>& mapCellCentres = tMapper_.cellCentres();
+    const List<scalarField>& mapCellWeights = tMapper_.cellWeights();
 
     // Fill in maps first
-    Map<scalarField>::const_iterator cwIter = mapCellWeights.begin();
-    Map<vectorField>::const_iterator ccIter = mapCellCentres.begin();
-
-    while (cwIter != mapCellWeights.end())
+    forAll(cfc, indexI)
     {
-        x[ccIter.key()] = ccIter();
-        v[cwIter.key()] = cwIter();
-
-        // Increment iterators
-        cwIter++;
-        ccIter++;
+        x[cfc[indexI].index()] = mapCellCentres[indexI];
+        v[cfc[indexI].index()] = mapCellWeights[indexI];
     }
 
     // Now do mapped cells

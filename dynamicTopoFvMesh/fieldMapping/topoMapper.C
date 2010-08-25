@@ -198,8 +198,8 @@ void topoMapper::setMapper(const mapPolyMesh& mpm)
 //- Set face weighting information
 void topoMapper::setFaceWeights
 (
-    Map<scalarField>& weights,
-    Map<vectorField>& centres
+    List<scalarField>& weights,
+    List<vectorField>& centres
 )
 {
     faceWeights_.transfer(weights);
@@ -210,8 +210,8 @@ void topoMapper::setFaceWeights
 //- Set cell weighting information
 void topoMapper::setCellWeights
 (
-    Map<scalarField>& weights,
-    Map<vectorField>& centres
+    List<scalarField>& weights,
+    List<vectorField>& centres
 )
 {
     cellWeights_.transfer(weights);
@@ -220,28 +220,28 @@ void topoMapper::setCellWeights
 
 
 //- Fetch face weights
-const Map<scalarField>& topoMapper::faceWeights() const
+const List<scalarField>& topoMapper::faceWeights() const
 {
     return faceWeights_;
 }
 
 
 //- Fetch cell weights
-const Map<scalarField>& topoMapper::cellWeights() const
+const List<scalarField>& topoMapper::cellWeights() const
 {
     return cellWeights_;
 }
 
 
 //- Fetch face centres
-const Map<vectorField>& topoMapper::faceCentres() const
+const List<vectorField>& topoMapper::faceCentres() const
 {
     return faceCentres_;
 }
 
 
 //- Fetch cell centres
-const Map<vectorField>& topoMapper::cellCentres() const
+const List<vectorField>& topoMapper::cellCentres() const
 {
     return cellCentres_;
 }
