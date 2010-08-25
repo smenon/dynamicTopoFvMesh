@@ -110,6 +110,11 @@ void MapConservativeVolFields
             meshSource
         );
 
+        // Compute integral of source field
+        Type intSource = gSum(meshSource.V() * fieldSource.internalField());
+
+        Info << "Integral source: " << intSource << endl;
+
         IOobject fieldTargetIOobject
         (
             fieldIter()->name(),
@@ -118,6 +123,8 @@ void MapConservativeVolFields
             IOobject::MUST_READ,
             IOobject::AUTO_WRITE
         );
+
+        Type intTarget = pTraits<Type>::zero;
 
         if (fieldTargetIOobject.headerOk())
         {
@@ -136,6 +143,11 @@ void MapConservativeVolFields
                 method
             );
 
+            intTarget =
+            (
+                gSum(meshTarget.V() * fieldTarget.internalField())
+            );
+
             // Write field
             fieldTarget.write();
         }
@@ -150,9 +162,17 @@ void MapConservativeVolFields
                 meshToMeshInterp.interpolate(fieldSource, method)
             );
 
+            intTarget =
+            (
+                gSum(meshTarget.V() * fieldTarget.internalField())
+            );
+
             // Write field
             fieldTarget.write();
         }
+
+        Info << "Integral target: " << intTarget << endl;
+        Info << "mag(intError): " << mag(intSource - intTarget) << endl;
     }
 }
 

@@ -924,7 +924,7 @@ bool conservativeMeshToMesh::cellIntersection
         minEdgeMag = Foam::min(edgeMag, minEdgeMag);
     }
 
-    scalar pointMergeTol = matchTol * minEdgeMag;
+    scalar pointMergeTol = magSqr(matchTol) * minEdgeMag;
 
     // Check if any points are coincident.
     Map<labelList> FtoT, TtoF;
@@ -1592,10 +1592,10 @@ inline bool conservativeMeshToMesh::pointSegmentIntersection
     scalar magU = mag(u) + VSMALL;
     scalar magV = mag(v) + VSMALL;
 
-    scalar tolerance = (matchTol * magU);
+    //scalar tolerance = (matchTol * magU);
 
     // Compare dot-products
-    if ( 1.0 - ((u/magU) & (v/magV)) > tolerance )
+    if ( 1.0 - ((u/magU) & (v/magV)) > VSMALL )
     {
         return false;
     }
@@ -1644,8 +1644,8 @@ bool conservativeMeshToMesh::segmentSegmentIntersection
         return false;
     }
 
-    scalar s = ((b * e) - (c * d))/(denom);
-    scalar t = ((a * e) - (b * d))/(denom);
+    scalar s = ((b * e) - (c * d))/denom;
+    scalar t = ((a * e) - (b * d))/denom;
 
     // Out-of-bounds check
     if (s < 0.0 || t < 0.0 || s > 1.0 || t > 1.0)
