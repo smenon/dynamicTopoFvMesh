@@ -3164,30 +3164,10 @@ void dynamicTopoFvMesh::threadedTopoModifier()
         // Initialize stacks
         initStacks(entities);
 
+        // Execute threads
         if (threader_->multiThreaded())
         {
-            // Lock slave threads
-            lockThreads(topoSequence, handlerPtr_);
-
-            // Submit jobs to the work queue
-            forAll(topoSequence, i)
-            {
-                threader_->addToWorkQueue
-                (
-                    &edgeRefinementEngine,
-                    &(handlerPtr_[topoSequence[i]])
-                );
-
-                // Wait for a signal from this thread
-                // before moving on.
-                handlerPtr_[topoSequence[i]].waitForSignal
-                (
-                    meshHandler::START
-                );
-            }
-
-            // Synchronize threads
-            synchronizeThreads(topoSequence, handlerPtr_);
+            executeThreads(topoSequence, handlerPtr_, &edgeRefinementEngine);
         }
 
         // Set the master thread to implement modifications
@@ -3205,41 +3185,17 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     // Re-Initialize stacks
     initStacks(entities);
 
+    // Execute threads
     if (threader_->multiThreaded())
     {
-        // Lock slave threads
-        lockThreads(topoSequence, handlerPtr_);
-
-        // Submit jobs to the work queue
-        forAll(topoSequence, i)
+        if (twoDMesh_)
         {
-            if (twoDMesh_)
-            {
-                threader_->addToWorkQueue
-                (
-                    &swap2DEdges,
-                    &(handlerPtr_[topoSequence[i]])
-                );
-            }
-            else
-            {
-                threader_->addToWorkQueue
-                (
-                    &swap3DEdges,
-                    &(handlerPtr_[topoSequence[i]])
-                );
-            }
-
-            // Wait for a signal from this thread
-            // before moving on.
-            handlerPtr_[topoSequence[i]].waitForSignal
-            (
-                meshHandler::START
-            );
+            executeThreads(topoSequence, handlerPtr_, &swap2DEdges);
         }
-
-        // Synchronize threads
-        synchronizeThreads(topoSequence, handlerPtr_);
+        else
+        {
+            executeThreads(topoSequence, handlerPtr_, &swap3DEdges);
+        }
     }
 
     // Set the master thread to implement modifications
@@ -3270,32 +3226,33 @@ bool dynamicTopoFvMesh::resetMesh()
     if (topoChangeFlag_)
     {
         // Set sizes for mapping
-        faceWeights_.setSize(facesFromFaces_.size());
-        faceCentres_.setSize(facesFromFaces_.size());
-        cellWeights_.setSize(cellsFromCells_.size());
-        cellCentres_.setSize(cellsFromCells_.size());
+        faceWeights_.setSize(facesFromFaces_.size(), scalarField(0));
+        faceCentres_.setSize(facesFromFaces_.size(), vectorField(0));
+        cellWeights_.setSize(cellsFromCells_.size(), scalarField(0));
+        cellCentres_.setSize(cellsFromCells_.size(), vectorField(0));
+
+        // Fetch the match tolerance for mapping
+        scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-6);
+
+        clockTime mappingTimer;
 
         // Compute mapping weights for modified entities
         if (threader_->multiThreaded())
         {
-            computeMapping
-            (
-                0,
-                facesFromFaces_.size(),
-                0,
-                cellsFromCells_.size()
-            );
+            threadedMapping(matchTol);
         }
         else
         {
             computeMapping
             (
-                0,
-                facesFromFaces_.size(),
-                0,
-                cellsFromCells_.size()
+                matchTol,
+                0, facesFromFaces_.size(),
+                0, cellsFromCells_.size()
             );
         }
+
+        // Print out stats
+        Info << " Mapping time: " << mappingTimer.elapsedTime() << endl;
 
         // Obtain references to zones, if any
         pointZoneMesh& pointZones = polyMesh::pointZones();
@@ -3344,7 +3301,7 @@ bool dynamicTopoFvMesh::resetMesh()
             cellZoneMap
         );
 
-        // Print out topo-stats
+        // Print out stats
         Info << " Reordering time: " << reOrderingTimer.elapsedTime() << endl;
 
         // Obtain the patch-point maps before resetting the mesh

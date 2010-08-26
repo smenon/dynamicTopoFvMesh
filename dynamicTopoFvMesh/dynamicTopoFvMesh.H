@@ -275,6 +275,7 @@ class dynamicTopoFvMesh
         // Compute mapping weights for modified entities
         void computeMapping
         (
+            const scalar matchTol,
             const label faceStart,
             const label faceSize,
             const label cellStart,
@@ -284,11 +285,15 @@ class dynamicTopoFvMesh
         // Static equivalent for multiThreading
         static void computeMappingThread(void *argument);
 
+        // Routine to invoke threaded mapping
+        void threadedMapping(scalar matchTol);
+
         // Obtain map weighting factors for a face
         void computeFaceWeights
         (
             const label fIndex,
             const labelList& mapCandidates,
+            const scalar mTol,
             labelList& parents,
             scalarField& weights,
             vectorField& centres
@@ -299,6 +304,7 @@ class dynamicTopoFvMesh
         (
             const label cIndex,
             const labelList& mapCandidates,
+            const scalar mTol,
             labelList& parents,
             scalarField& weights,
             vectorField& centres

@@ -50,16 +50,13 @@ namespace Foam
 // Compute mapping weights for modified entities
 void dynamicTopoFvMesh::computeMapping
 (
+    const scalar matchTol,
     const label faceStart,
     const label faceSize,
     const label cellStart,
     const label cellSize
 )
 {
-    labelList parents;
-    scalarField weights;
-    vectorField centres;
-
     // Compute cell mapping
     for (label cellI = cellStart; cellI < (cellStart + cellSize); cellI++)
     {
@@ -70,15 +67,11 @@ void dynamicTopoFvMesh::computeMapping
         (
             cIndex,
             cellParents_[cIndex],
-            parents,
-            weights,
-            centres
+            matchTol,
+            cellsFromCells_[cellI].masterObjects(),
+            cellWeights_[cellI],
+            cellCentres_[cellI]
         );
-
-        // Set the mapping for this cell
-        cellsFromCells_[cellI].masterObjects().transfer(parents);
-        cellWeights_[cellI].transfer(weights);
-        cellCentres_[cellI].transfer(centres);
     }
 
     // Compute face mapping
@@ -97,15 +90,11 @@ void dynamicTopoFvMesh::computeMapping
         (
             fIndex,
             faceParents_[fIndex],
-            parents,
-            weights,
-            centres
+            matchTol,
+            facesFromFaces_[faceI].masterObjects(),
+            faceWeights_[faceI],
+            faceCentres_[faceI]
         );
-
-        // Set the mapping for this face
-        facesFromFaces_[faceI].masterObjects().transfer(parents);
-        faceWeights_[faceI].transfer(weights);
-        faceCentres_[faceI].transfer(centres);
     }
 }
 
@@ -124,18 +113,18 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
     dynamicTopoFvMesh& mesh = thread->reference();
 
     // Recast the pointers for the argument
-    label& faceStart = *(static_cast<label*>(thread->operator()(0)));
-    label& faceSize  = *(static_cast<label*>(thread->operator()(1)));
-    label& cellStart = *(static_cast<label*>(thread->operator()(2)));
-    label& cellSize  = *(static_cast<label*>(thread->operator()(3)));
+    scalar& matchTol = *(static_cast<scalar*>(thread->operator()(0)));
+    label& faceStart = *(static_cast<label*>(thread->operator()(1)));
+    label& faceSize  = *(static_cast<label*>(thread->operator()(2)));
+    label& cellStart = *(static_cast<label*>(thread->operator()(3)));
+    label& cellSize  = *(static_cast<label*>(thread->operator()(4)));
 
     // Now calculate addressing
     mesh.computeMapping
     (
-        faceStart,
-        faceSize,
-        cellStart,
-        cellSize
+        matchTol,
+        faceStart, faceSize,
+        cellStart, cellSize
     );
 
     if (thread->slave())
@@ -145,27 +134,128 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
 }
 
 
+// Routine to invoke threaded mapping
+void dynamicTopoFvMesh::threadedMapping(scalar matchTol)
+{
+    label nThreads = threader_->getNumThreads();
+
+    // Set one handler per thread
+    PtrList<meshHandler> hdl(nThreads);
+
+    forAll(hdl, i)
+    {
+        hdl.set(i, new meshHandler(*this, threader()));
+    }
+
+    // Simple load-balancing scheme
+    FixedList<label, 2> index(-1);
+    FixedList<labelList, 2> tStarts(labelList(nThreads, 0));
+    FixedList<labelList, 2> tSizes(labelList(nThreads, 0));
+
+    index[0] = facesFromFaces_.size();
+    index[1] = cellsFromCells_.size();
+
+    if (debug > 2)
+    {
+        Info << " Mapping Faces: " << index[0] << endl;
+        Info << " Mapping Cells: " << index[1] << endl;
+    }
+
+    forAll(index, indexI)
+    {
+        label j = 0, total = 0;
+
+        while (index[indexI]--)
+        {
+            tSizes[indexI][(j = tSizes[indexI].fcIndex(j))]++;
+        }
+
+        for (label i = 1; i < tStarts[indexI].size(); i++)
+        {
+            tStarts[indexI][i] = tSizes[indexI][i-1] + total;
+
+            total += tSizes[indexI][i-1];
+        }
+
+        if (debug > 2)
+        {
+            Info << " Load starts: " << tStarts[indexI] << endl;
+            Info << " Load sizes: " << tSizes[indexI] << endl;
+        }
+    }
+
+    // Set the argument list for each thread
+    forAll(hdl, i)
+    {
+        // Size up the argument list
+        hdl[i].setSize(5);
+
+        // Set match tolerance
+        hdl[i].set(0, &matchTol);
+
+        // Set the start/size indices
+        hdl[i].set(1, &(tStarts[0][0]));
+        hdl[i].set(2, &(tSizes[0][1]));
+        hdl[i].set(3, &(tStarts[1][0]));
+        hdl[i].set(4, &(tSizes[1][1]));
+    }
+
+    // Prior to multi-threaded operation,
+    // force calculation of demand-driven data.
+    polyMesh::cells();
+    primitiveMesh::cellCells();
+    primitiveMesh::faceAreas();
+    primitiveMesh::cellCentres();
+    primitiveMesh::faceCentres();
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    forAll(boundary, patchI)
+    {
+        boundary[patchI].faceFaces();
+    }
+
+    // Execute threads in linear sequence
+    executeThreads(identity(nThreads), hdl, &computeMappingThread);
+}
+
+
 // Obtain map weighting factors for a face
 void dynamicTopoFvMesh::computeFaceWeights
 (
     const label fIndex,
     const labelList& mapCandidates,
-    labelList& parents,
-    scalarField& weights,
-    vectorField& centres
+    const scalar mTol,
+    labelList& Parents,
+    scalarField& Weights,
+    vectorField& Centres
 ) const
 {
-    // Clear inputs
-    parents.clear();
-    weights.clear();
-    centres.clear();
+    if (Parents.size() || Weights.size() || Centres.size())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "void dynamicTopoFvMesh::computeFaceWeights\n"
+            "(\n"
+            "    const label fIndex,\n"
+            "    const labelList& mapCandidates,\n"
+            "    labelList& parents,\n"
+            "    scalarField& weights,\n"
+            "    vectorField& centres\n"
+            ") const\n"
+        )
+            << " Addressing has already been calculated." << nl
+            << " Face: " << fIndex << nl
+            << " mapCandidates: " << mapCandidates << nl
+            << abort(FatalError);
+    }
 
     // Determine which patch this is...
     label patchIndex = whichPatch(fIndex);
 
-    scalar searchFactor = 1.0;
+    scalar searchFactor = 1.0, matchTol = mTol;
     label nOldIntersects = -1, nIntersects = 0, nAttempts = 0;
-    scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-6);
 
     // Maintain a list of candidates and intersection points
     boolList oldIntersects, intersects;
@@ -194,6 +284,11 @@ void dynamicTopoFvMesh::computeFaceWeights
             oldPoints_
         )
     );
+
+    // Local variables
+    labelList parents;
+    scalarField weights;
+    vectorField centres;
 
     while (nAttempts < 10)
     {
@@ -351,6 +446,8 @@ void dynamicTopoFvMesh::computeFaceWeights
     // Test weights for consistency
     if (mag(1.0 - sum(weights/fArea)) > 1e-10)
     {
+        bool inconsistent = true;
+
         // Inconsistent weights. Check whether any edges
         // lie on bounding curves. These faces can have
         // relaxed weights to account for addressing into
@@ -363,72 +460,75 @@ void dynamicTopoFvMesh::computeFaceWeights
             {
                 if (checkBoundingCurve(fEdges[edgeI]))
                 {
-                    // Normalize by sum of weights
-                    weights /= sum(weights);
-                    return;
+                    // Normalize by sum of weights instead
+                    fArea = sum(weights);
+                    inconsistent = false;
                 }
             }
         }
 
-        // Write out for post-processing
-        label uIdx = 0;
-        labelList unMatched(oldCandidates.size() - parents.size(), -1);
-
-        forAll(oldCandidates, cI)
+        if (inconsistent)
         {
-            if (findIndex(parents, oldCandidates[cI]) == -1)
+            // Write out for post-processing
+            label uIdx = 0;
+            labelList unMatched(oldCandidates.size() - parents.size(), -1);
+
+            forAll(oldCandidates, cI)
             {
-                unMatched[uIdx++] = oldCandidates[cI];
+                if (findIndex(parents, oldCandidates[cI]) == -1)
+                {
+                    unMatched[uIdx++] = oldCandidates[cI];
+                }
             }
+
+            writeVTK("nFace_" + Foam::name(fIndex), fIndex, 2, false, true);
+            writeVTK("oFace_" + Foam::name(fIndex), oldCandidates, 2, true, true);
+            writeVTK("mFace_" + Foam::name(fIndex), parents, 2, true, true);
+            writeVTK("uFace_" + Foam::name(fIndex), unMatched, 2, true, true);
+
+            // Write out weights
+            forAll(parents, indexI)
+            {
+                Info << parents[indexI] << ": "
+                     << setprecision(16)
+                     << weights[indexI]
+                     << endl;
+            }
+
+            FatalErrorIn
+            (
+                "\n\n"
+                "void dynamicTopoFvMesh::computeFaceWeights\n"
+                "(\n"
+                "    const label fIndex,\n"
+                "    const labelList& mapCandidates,\n"
+                "    labelList& parents,\n"
+                "    scalarField& weights,\n"
+                "    vectorField& centres\n"
+                ") const\n"
+            )
+                << "Encountered non-conservative weighting factors." << nl
+                << " Face: " << fIndex << ":: " << faces_[fIndex] << nl
+                << " Patch: " << boundaryMesh()[patchIndex].name() << nl
+                << " mapCandidates: " << mapCandidates << nl
+                << " nCandidates: " << candidates.size() << nl
+                << " nOldCandidates: " << oldCandidates.size() << nl
+                << " nIntersects: " << nIntersects << nl
+                << " nOldIntersects: " << nOldIntersects << nl
+                << " nParents: " << parents.size() << nl
+                << " nAttempts: " << nAttempts << nl
+                << " nFaces: " << nFaces_ << nl
+                << " nOldFaces: " << nOldFaces_ << nl
+                << " nInternalFaces: " << nInternalFaces_ << nl
+                << " nOldInternalFaces: " << nOldInternalFaces_ << nl
+                << setprecision(16)
+                << " Face area: " << fArea << nl
+                << " Sum(Weights): " << sum(weights) << nl
+                << " Error: " << (fArea - sum(weights)) << nl
+                << " Norm Sum(Weights): " << sum(weights/fArea) << nl
+                << " Norm Error: " << mag(1.0 - sum(weights/fArea))
+                << abort(FatalError);
         }
-
-        writeVTK("nFace_" + Foam::name(fIndex), fIndex, 2, false, true);
-        writeVTK("oFace_" + Foam::name(fIndex), oldCandidates, 2, true, true);
-        writeVTK("mFace_" + Foam::name(fIndex), parents, 2, true, true);
-        writeVTK("uFace_" + Foam::name(fIndex), unMatched, 2, true, true);
-
-        // Write out weights
-        forAll(parents, indexI)
-        {
-            Info << parents[indexI] << ": "
-                 << setprecision(16)
-                 << weights[indexI]
-                 << endl;
-        }
-
-        FatalErrorIn
-        (
-            "\n\n"
-            "void dynamicTopoFvMesh::computeFaceWeights\n"
-            "(\n"
-            "    const label fIndex,\n"
-            "    const labelList& mapCandidates,\n"
-            "    labelList& parents,\n"
-            "    scalarField& weights,\n"
-            "    vectorField& centres\n"
-            ") const\n"
-        )
-            << "Encountered non-conservative weighting factors." << nl
-            << " Face: " << fIndex << ":: " << faces_[fIndex] << nl
-            << " Patch: " << boundaryMesh()[patchIndex].name() << nl
-            << " mapCandidates: " << mapCandidates << nl
-            << " nCandidates: " << candidates.size() << nl
-            << " nOldCandidates: " << oldCandidates.size() << nl
-            << " nIntersects: " << nIntersects << nl
-            << " nOldIntersects: " << nOldIntersects << nl
-            << " nParents: " << parents.size() << nl
-            << " nAttempts: " << nAttempts << nl
-            << " nFaces: " << nFaces_ << nl
-            << " nOldFaces: " << nOldFaces_ << nl
-            << " nInternalFaces: " << nInternalFaces_ << nl
-            << " nOldInternalFaces: " << nOldInternalFaces_ << nl
-            << setprecision(16)
-            << " Face area: " << fArea << nl
-            << " Sum(Weights): " << sum(weights) << nl
-            << " Error: " << (fArea - sum(weights)) << nl
-            << " Norm Sum(Weights): " << sum(weights/fArea) << nl
-            << " Norm Error: " << mag(1.0 - sum(weights/fArea))
-            << abort(FatalError);
     }
     else
     if (debug > 2)
@@ -445,6 +545,19 @@ void dynamicTopoFvMesh::computeFaceWeights
 
     // Return normalized weights
     weights /= fArea;
+
+    // Set inputs
+    Parents.setSize(parents.size(), -1);
+    Weights.setSize(weights.size(), 0.0);
+    Centres.setSize(centres.size(), vector::zero);
+
+    // Copy fields
+    forAll(Parents, indexI)
+    {
+        Parents[indexI] = parents[indexI];
+        Weights[indexI] = weights[indexI];
+        Centres[indexI] = centres[indexI];
+    }
 }
 
 
@@ -453,20 +566,35 @@ void dynamicTopoFvMesh::computeCellWeights
 (
     const label cIndex,
     const labelList& mapCandidates,
-    labelList& parents,
-    scalarField& weights,
-    vectorField& centres
+    const scalar mTol,
+    labelList& Parents,
+    scalarField& Weights,
+    vectorField& Centres
 ) const
 {
-    // Clear inputs
-    parents.clear();
-    weights.clear();
-    centres.clear();
+    if (Parents.size() || Weights.size() || Centres.size())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "void dynamicTopoFvMesh::computeCellWeights\n"
+            "(\n"
+            "    const label cIndex,\n"
+            "    const labelList& mapCandidates,\n"
+            "    labelList& parents,\n"
+            "    scalarField& weights,\n"
+            "    vectorField& centres\n"
+            ") const\n"
+        )
+            << " Addressing has already been calculated." << nl
+            << " Cell: " << cIndex << nl
+            << " mapCandidates: " << mapCandidates << nl
+            << abort(FatalError);
+    }
 
     label nAttempts = 0;
-    scalar searchFactor = 1.0;
+    scalar searchFactor = 1.0, matchTol = mTol;
     label nOldIntersects = -1, nIntersects = 0, realIntersects = 0;
-    scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-6);
 
     // Maintain a list of candidates and intersection points
     boolList oldIntersects, intersects;
@@ -489,6 +617,11 @@ void dynamicTopoFvMesh::computeCellWeights
         cellCentre,
         cellVolume
     );
+
+    // Local variables
+    labelList parents;
+    scalarField weights;
+    vectorField centres;
 
     while (nAttempts < 10)
     {
@@ -662,7 +795,7 @@ void dynamicTopoFvMesh::computeCellWeights
         // Inconsistent weights. Check whether any edges
         // lie on boundary patches. These cells can have
         // relaxed weights to account for mild convexity.
-        bool normWeights = false;
+        bool inconsistent = true;
 
         const cell& cellToCheck = cells_[cIndex];
 
@@ -683,12 +816,12 @@ void dynamicTopoFvMesh::computeCellWeights
 
                     if (boundaryMesh().whichPatch(pCell[faceI]) > -1)
                     {
-                        normWeights = true;
+                        inconsistent = false;
                         break;
                     }
                 }
 
-                if (normWeights)
+                if (!inconsistent)
                 {
                     break;
                 }
@@ -704,128 +837,128 @@ void dynamicTopoFvMesh::computeCellWeights
                 {
                     if (whichEdgePatch(fEdges[edgeI]) > -1)
                     {
-                        normWeights = true;
+                        inconsistent = false;
                         break;
                     }
                 }
 
-                if (normWeights)
+                if (!inconsistent)
                 {
                     break;
                 }
             }
         }
 
-        if (normWeights && (sum(weights) > VSMALL))
+        if (!inconsistent && (sum(weights) > VSMALL))
         {
-            // Normalize by sum of weights
-            weights /= sum(weights);
-
-            return;
+            // Normalize by sum of weights instead
+            cellVolume = sum(weights);
         }
-
-        // Write out for post-processing
-        label uIdx = 0;
-        labelList unMatched(oldCandidates.size() - parents.size(), -1);
-
-        forAll(oldCandidates, cI)
+        else
         {
-            if (findIndex(parents, oldCandidates[cI]) == -1)
+            // Write out for post-processing
+            label uIdx = 0;
+            labelList unMatched(oldCandidates.size() - parents.size(), -1);
+
+            forAll(oldCandidates, cI)
             {
-                unMatched[uIdx++] = oldCandidates[cI];
+                if (findIndex(parents, oldCandidates[cI]) == -1)
+                {
+                    unMatched[uIdx++] = oldCandidates[cI];
+                }
             }
-        }
 
-        writeVTK("nCell_" + Foam::name(cIndex), cIndex, 3, false, true);
-        writeVTK("oCell_" + Foam::name(cIndex), oldCandidates, 3, true, true);
-        writeVTK("mCell_" + Foam::name(cIndex), parents, 3, true, true);
-        writeVTK("uCell_" + Foam::name(cIndex), unMatched, 3, true, true);
+            writeVTK("nCell_" + Foam::name(cIndex), cIndex, 3, false, true);
+            writeVTK("oCell_" + Foam::name(cIndex), oldCandidates, 3, true, true);
+            writeVTK("mCell_" + Foam::name(cIndex), parents, 3, true, true);
+            writeVTK("uCell_" + Foam::name(cIndex), unMatched, 3, true, true);
 
-        // Write out weights
-        forAll(parents, indexI)
-        {
-            Info << parents[indexI] << ": "
-                 << setprecision(16)
-                 << weights[indexI]
-                 << endl;
-        }
-
-        // Write out intersection points
-        forAll(oldCandidates, indexI)
-        {
-            vectorField tP(0);
-
-            cellIntersection
-            (
-                cIndex,
-                oldCandidates[indexI],
-                matchTol,
-                tP
-            );
-
-            if (tP.size() >= 4)
+            // Write out weights
+            forAll(parents, indexI)
             {
-                // Write out intersection points to VTK
-                meshOps::writeVTK
-                (
-                    (*this),
-                    "cvxSet_"
-                  + Foam::name(cIndex)
-                  + '<' + Foam::name(oldCandidates[indexI]) + '>',
-                    tP.size(),
-                    tP.size(),
-                    tP.size(),
-                    tP
-                );
+                Info << parents[indexI] << ": "
+                     << setprecision(16)
+                     << weights[indexI]
+                     << endl;
+            }
 
-                // Write out convex set info to screen
-                scalar dummyVolume = 0.0;
-                vector dummyCentre = vector::zero;
+            // Write out intersection points
+            forAll(oldCandidates, indexI)
+            {
+                vectorField tP(0);
 
-                meshOps::convexSetVolume
+                cellIntersection
                 (
                     cIndex,
                     oldCandidates[indexI],
-                    tP,
-                    dummyVolume,
-                    dummyCentre,
-                    true
+                    matchTol,
+                    tP
                 );
-            }
-        }
 
-        FatalErrorIn
-        (
-            "\n\n"
-            "void dynamicTopoFvMesh::computeCellWeights\n"
-            "(\n"
-            "    const label cIndex,\n"
-            "    const labelList& mapCandidates,\n"
-            "    labelList& parents,\n"
-            "    scalarField& weights,\n"
-            "    vectorField& centres\n"
-            ") const\n"
-        )
-            << "Encountered non-conservative weighting factors." << nl
-            << " Cell: " << cIndex << nl
-            << " mapCandidates: " << mapCandidates << nl
-            << " nCandidates: " << candidates.size() << nl
-            << " nOldCandidates: " << oldCandidates.size() << nl
-            << " nIntersects: " << nIntersects << nl
-            << " nOldIntersects: " << nOldIntersects << nl
-            << " nRealIntersects: " << realIntersects << nl
-            << " nParents: " << parents.size() << nl
-            << " nAttempts: " << nAttempts << nl
-            << " matchTolerance: " << matchTol << nl
-            << " nCells: " << nCells_ << nl
-            << " nOldCells: " << nOldCells_ << nl
-            << setprecision(16)
-            << " Cell volume: " << cellVolume << nl
-            << " Sum(Weights): " << sum(weights) << nl
-            << " Error: " << (cellVolume - sum(weights)) << nl
-            << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
-            << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
-            << abort(FatalError);
+                if (tP.size() >= 4)
+                {
+                    // Write out intersection points to VTK
+                    meshOps::writeVTK
+                    (
+                        (*this),
+                        "cvxSet_"
+                      + Foam::name(cIndex)
+                      + '<' + Foam::name(oldCandidates[indexI]) + '>',
+                        tP.size(),
+                        tP.size(),
+                        tP.size(),
+                        tP
+                    );
+
+                    // Write out convex set info to screen
+                    scalar dummyVolume = 0.0;
+                    vector dummyCentre = vector::zero;
+
+                    meshOps::convexSetVolume
+                    (
+                        cIndex,
+                        oldCandidates[indexI],
+                        tP,
+                        dummyVolume,
+                        dummyCentre,
+                        true
+                    );
+                }
+            }
+
+            FatalErrorIn
+            (
+                "\n\n"
+                "void dynamicTopoFvMesh::computeCellWeights\n"
+                "(\n"
+                "    const label cIndex,\n"
+                "    const labelList& mapCandidates,\n"
+                "    labelList& parents,\n"
+                "    scalarField& weights,\n"
+                "    vectorField& centres\n"
+                ") const\n"
+            )
+                << "Encountered non-conservative weighting factors." << nl
+                << " Cell: " << cIndex << nl
+                << " mapCandidates: " << mapCandidates << nl
+                << " nCandidates: " << candidates.size() << nl
+                << " nOldCandidates: " << oldCandidates.size() << nl
+                << " nIntersects: " << nIntersects << nl
+                << " nOldIntersects: " << nOldIntersects << nl
+                << " nRealIntersects: " << realIntersects << nl
+                << " nParents: " << parents.size() << nl
+                << " nAttempts: " << nAttempts << nl
+                << " matchTolerance: " << matchTol << nl
+                << " nCells: " << nCells_ << nl
+                << " nOldCells: " << nOldCells_ << nl
+                << setprecision(16)
+                << " Cell volume: " << cellVolume << nl
+                << " Sum(Weights): " << sum(weights) << nl
+                << " Error: " << (cellVolume - sum(weights)) << nl
+                << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
+                << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
+                << abort(FatalError);
+        }
     }
     else
     if (debug > 2)
@@ -842,6 +975,19 @@ void dynamicTopoFvMesh::computeCellWeights
 
     // Return normalized weights
     weights /= cellVolume;
+
+    // Set inputs
+    Parents.setSize(parents.size(), -1);
+    Weights.setSize(weights.size(), 0.0);
+    Centres.setSize(centres.size(), vector::zero);
+
+    // Copy fields
+    forAll(Parents, indexI)
+    {
+        Parents[indexI] = parents[indexI];
+        Weights[indexI] = weights[indexI];
+        Centres[indexI] = centres[indexI];
+    }
 }
 
 
@@ -2467,11 +2613,15 @@ void dynamicTopoFvMesh::setCellMapping
 
         if (index == -1)
         {
-            meshOps::sizeUpList(objectMap(cIndex, mapCells), cellsFromCells_);
+            meshOps::sizeUpList
+            (
+                objectMap(cIndex, labelList(0)),
+                cellsFromCells_
+            );
         }
         else
         {
-            cellsFromCells_[index].masterObjects() = mapCells;
+            cellsFromCells_[index].masterObjects() = labelList(0);
         }
     }
 
@@ -2574,45 +2724,23 @@ void dynamicTopoFvMesh::setFaceMapping
         }
     }
 
-    // For internal faces, set dummy maps / weights,
-    // and bail out
-    if (patch == -1)
-    {
-        if (index == -1)
-        {
-            meshOps::sizeUpList
-            (
-                objectMap
-                (
-                    fIndex,
-                    labelList(1, 0)
-                ),
-                facesFromFaces_
-            );
-        }
-        else
-        {
-            facesFromFaces_[index].masterObjects() = labelList(1, 0);
-        }
-
-        return;
-    }
-
     if (index == -1)
     {
         meshOps::sizeUpList
         (
-            objectMap
-            (
-                fIndex,
-                mapFaces
-            ),
+            objectMap(fIndex, labelList(0)),
             facesFromFaces_
         );
     }
     else
     {
-        facesFromFaces_[index].masterObjects() = mapFaces;
+        facesFromFaces_[index].masterObjects() = labelList(0);
+    }
+
+    // For internal faces, set dummy maps / weights, and bail out
+    if (patch == -1)
+    {
+        return;
     }
 
     // Update face-parents information
