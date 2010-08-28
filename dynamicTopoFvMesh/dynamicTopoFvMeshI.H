@@ -595,7 +595,7 @@ inline label dynamicTopoFvMesh::self() const
     {
         for (label i = 1; i <= threader_->getNumThreads(); i++)
         {
-            if (pthread_equal(handlerPtr_[i].ID(), pthread_self()))
+            if (handlerPtr_[i].self())
             {
                 return i;
             }
