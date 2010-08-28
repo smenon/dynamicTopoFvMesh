@@ -182,15 +182,6 @@ namespace meshOps
         scalar& volume
     );
 
-    // Utility member function for separating axis tests
-    inline label whichSide
-    (
-        const labelList& cellPoints,
-        const UList<point>& points,
-        const point& dir,
-        const point& p
-    );
-
     // Determine whether a point lies on a segment
     inline bool pointSegmentIntersection
     (

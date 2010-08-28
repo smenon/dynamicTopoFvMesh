@@ -399,41 +399,6 @@ inline void cellCentreAndVolume
 }
 
 
-// Utility member function for separating axis tests
-inline label whichSide
-(
-    const labelList& cellPoints,
-    const UList<point>& points,
-    const point& dir,
-    const point& p
-)
-{
-    label nP = 0, nN = 0;
-
-    forAll(cellPoints, pointI)
-    {
-        scalar t = (dir & (points[cellPoints[pointI]] - p));
-
-        if (t > 0.0)
-        {
-            nP++;
-        }
-        else
-        if (t < 0.0)
-        {
-            nN++;
-        }
-
-        if (nP && nN)
-        {
-            return 0;
-        }
-    }
-
-    return (nP ? 1 : -1);
-}
-
-
 // Determine whether a point lies on a segment
 inline bool pointSegmentIntersection
 (

@@ -289,32 +289,27 @@ class dynamicTopoFvMesh
         void threadedMapping(scalar matchTol);
 
         // Obtain map weighting factors for a face
-        void computeFaceWeights
+        bool computeFaceWeights
         (
             const label fIndex,
             const labelList& mapCandidates,
             const scalar mTol,
+            label& precisionAttempts,
             labelList& parents,
             scalarField& weights,
             vectorField& centres
         ) const;
 
         // Obtain map weighting factors for a cell
-        void computeCellWeights
+        bool computeCellWeights
         (
             const label cIndex,
             const labelList& mapCandidates,
             const scalar mTol,
+            label& precisionAttempts,
             labelList& parents,
             scalarField& weights,
             vectorField& centres
-        ) const;
-
-        // Test for intersection between cells in old/new meshes
-        bool testCellIntersection
-        (
-            const label newCellIndex,
-            const label oldCellIndex
         ) const;
 
         // Return the intersection points between faces in old/new meshes
@@ -333,25 +328,6 @@ class dynamicTopoFvMesh
             const label oldCellIndex,
             const scalar matchTol,
             vectorField& intPoints
-        ) const;
-
-        // Obtain a list of possible parent faces from the old mesh
-        labelList faceParents
-        (
-            const label fIndex,
-            const vector& fNormal,
-            const vector& fCentre,
-            const scalar searchFactor,
-            const labelList& oldCandidates
-        ) const;
-
-        // Obtain a list of possible parent cells from the old mesh
-        labelList cellParents
-        (
-            const label cIndex,
-            const vector& cCentre,
-            const scalar searchFactor,
-            const labelList& oldCandidates
         ) const;
 
         // Initialize mesh edges and related connectivity lists
