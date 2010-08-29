@@ -105,13 +105,6 @@ dynamicTopoFvMesh::threader() const
 }
 
 
-// Does the mesh perform edge refinement?
-inline bool dynamicTopoFvMesh::edgeRefinement() const
-{
-    return edgeRefinement_;
-}
-
-
 // Return a reference to the entity mutexes.
 // The index 'entity' ranges from 0 to 3 for point/edge/face/cell.
 inline const Mutex& dynamicTopoFvMesh::entityMutex
@@ -870,6 +863,69 @@ inline label dynamicTopoFvMesh::whichEdgePatch
     }
 
     return -2;
+}
+
+
+// Report topo-modification status
+inline label dynamicTopoFvMesh::status(const label type) const
+{
+    switch (type)
+    {
+        case 0:
+        {
+            // Return total modifications
+            return nModifications_;
+        }
+
+        case 1:
+        {
+            // Return total swaps
+            return nSwaps_[0];
+        }
+
+        case 2:
+        {
+            // Return surface swaps
+            return nSwaps_[1];
+        }
+
+        case 3:
+        {
+            // Return total bisections
+            return nBisections_[0];
+        }
+
+        case 4:
+        {
+            // Return total collapses
+            return nCollapses_[0];
+        }
+
+        case 5:
+        {
+            // Return surface bisections
+            return nBisections_[1];
+        }
+
+        case 6:
+        {
+            // Return surface collapses
+            return nCollapses_[1];
+        }
+
+        default:
+        {
+            FatalErrorIn
+            (
+                "inline label dynamicTopoFvMesh::status"
+                "(const label type) const"
+            )
+                << " Unknown type: " << type << nl
+                << abort(FatalError);
+        }
+    }
+
+    return 0;
 }
 
 

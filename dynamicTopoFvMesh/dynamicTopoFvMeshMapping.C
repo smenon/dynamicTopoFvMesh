@@ -63,17 +63,29 @@ void dynamicTopoFvMesh::computeMapping
         label precisionAttempts = 0;
         label cIndex = cellsFromCells_[cellI].index();
 
-        // Obtain weighting factors for this cell.
-        computeCellWeights
-        (
-            cIndex,
-            cellParents_[cIndex],
-            matchTol,
-            precisionAttempts,
-            cellsFromCells_[cellI].masterObjects(),
-            cellWeights_[cellI],
-            cellCentres_[cellI]
-        );
+        if (skipMapping_)
+        {
+            // Set empty mapping parameters
+            const labelList& mo = cellParents_[cIndex];
+
+            cellsFromCells_[cellI].masterObjects() = mo;
+            cellWeights_[cellI].setSize(mo.size(), (1.0/(mo.size() + VSMALL)));
+            cellCentres_[cellI].setSize(mo.size(), vector::zero);
+        }
+        else
+        {
+            // Obtain weighting factors for this cell.
+            computeCellWeights
+            (
+                cIndex,
+                cellParents_[cIndex],
+                matchTol,
+                precisionAttempts,
+                cellsFromCells_[cellI].masterObjects(),
+                cellWeights_[cellI],
+                cellCentres_[cellI]
+            );
+        }
     }
 
     // Compute face mapping
@@ -89,16 +101,28 @@ void dynamicTopoFvMesh::computeMapping
         }
 
         // Obtain weighting factors for this face.
-        computeFaceWeights
-        (
-            fIndex,
-            faceParents_[fIndex],
-            matchTol,
-            precisionAttempts,
-            facesFromFaces_[faceI].masterObjects(),
-            faceWeights_[faceI],
-            faceCentres_[faceI]
-        );
+        if (skipMapping_)
+        {
+            // Set empty mapping parameters
+            const labelList& mo = faceParents_[fIndex];
+
+            facesFromFaces_[faceI].masterObjects() = mo;
+            faceWeights_[faceI].setSize(mo.size(), (1.0/(mo.size() + VSMALL)));
+            faceCentres_[faceI].setSize(mo.size(), vector::zero);
+        }
+        else
+        {
+            computeFaceWeights
+            (
+                fIndex,
+                faceParents_[fIndex],
+                matchTol,
+                precisionAttempts,
+                facesFromFaces_[faceI].masterObjects(),
+                faceWeights_[faceI],
+                faceCentres_[faceI]
+            );
+        }
     }
 }
 
@@ -142,6 +166,25 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
 void dynamicTopoFvMesh::threadedMapping(scalar matchTol)
 {
     label nThreads = threader_->getNumThreads();
+
+    // If mapping is being skipped, issue a warning.
+    if (skipMapping_)
+    {
+        Info << " *** Mapping is being skipped *** " << endl;
+    }
+
+    // Check if single-threaded
+    if (nThreads == 1)
+    {
+        computeMapping
+        (
+            matchTol,
+            0, facesFromFaces_.size(),
+            0, cellsFromCells_.size()
+        );
+
+        return;
+    }
 
     // Set one handler per thread
     PtrList<meshHandler> hdl(nThreads);

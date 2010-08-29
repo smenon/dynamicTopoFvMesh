@@ -409,6 +409,9 @@ class dynamicTopoFvMesh
         // Method to determine the boundary patch index for a given edge
         inline label whichEdgePatch(const label index) const;
 
+        // Report topo-modification status
+        inline label status(const label type) const;
+
         // Method for the swapping of a quad-face in 2D
         const changeMap
         swapQuadFace
@@ -898,9 +901,6 @@ class dynamicTopoFvMesh
 
         // Read optional dictionary parameters
         void readOptionalParameters();
-
-        // Does the mesh perform edge refinement?
-        inline bool edgeRefinement() const;
 
         // Identify coupled patches.
         bool identifyCoupledPatches();

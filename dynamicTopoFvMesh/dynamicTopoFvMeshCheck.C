@@ -202,12 +202,13 @@ bool dynamicTopoFvMesh::meshQuality
                 << endl;
         }
 
+        Info << endl;
         Info << " ~~~ Mesh Quality Statistics ~~~ " << endl;
         Info << " Min: " << minQuality << endl;
         Info << " Max: " << maxQuality << endl;
         Info << " Mean: " << meanQuality/nCells << endl;
         Info << " Cells: " << nCells << endl;
-        Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << endl;
+        Info << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << nl << endl;
     }
 
     return sliversAbsent;

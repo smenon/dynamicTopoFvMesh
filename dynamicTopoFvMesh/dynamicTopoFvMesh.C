@@ -1897,8 +1897,9 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     // Set the timer
     clockTime sTimer;
+
     bool reported = false;
-    label count = 0, totalCount = mesh.Stack(tIndex).size();
+    label stackSize = mesh.Stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
     oIndex = ::floor(sTimer.elapsedTime() / interval);
@@ -1906,22 +1907,27 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     // Pick items off the stack
     while (!mesh.Stack(tIndex).empty())
     {
-        count++;
-
-        // Update the index, if its changed
-        nIndex = ::floor(sTimer.elapsedTime() / interval);
-
-        if ((nIndex - oIndex) > VSMALL)
+        // Report progress
+        if (thread->master())
         {
-            oIndex = nIndex;
+            // Update the index, if its changed
+            nIndex = ::floor(sTimer.elapsedTime() / interval);
 
-            // Report progress
-            if (thread->master())
+            if ((nIndex - oIndex) > VSMALL)
             {
-                Info << "\r  Swap Progress: "
-                     << 100.0 * (double(count) / (totalCount + VSMALL))
-                     << "% : Entities processed: " << count
-                     << " out of " << totalCount << " total."
+                oIndex = nIndex;
+
+                scalar percent =
+                (
+                    100.0 -
+                    (
+                        (100.0 * mesh.Stack(tIndex).size())
+                      / (stackSize + VSMALL)
+                    )
+                );
+
+                Info << "\r  Swap Progress: " << percent << "% :"
+                     << "  Total: " << mesh.status(1)
                      << "             "
                      << flush;
 
@@ -1957,10 +1963,8 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     if (reported)
     {
-        Info << "\r  Swap Progress: "
-             << 100.0 * (double(count) / (totalCount + VSMALL))
-             << "% : Entities processed: " << count
-             << " out of " << totalCount << " total."
+        Info << "\r  Swap Progress: 100% :"
+             << "  Total: " << mesh.status(1)
              << "             "
              << endl;
     }
@@ -1996,8 +2000,9 @@ void dynamicTopoFvMesh::swap3DEdges
 
     // Set the timer
     clockTime sTimer;
+
     bool reported = false;
-    label count = 0, totalCount = mesh.Stack(tIndex).size();
+    label stackSize = mesh.Stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
     oIndex = ::floor(sTimer.elapsedTime() / interval);
@@ -2005,22 +2010,28 @@ void dynamicTopoFvMesh::swap3DEdges
     // Pick edges off the stack
     while (!mesh.Stack(tIndex).empty())
     {
-        count++;
-
-        // Update the index, if its changed
-        nIndex = ::floor(sTimer.elapsedTime() / interval);
-
-        if ((nIndex - oIndex) > VSMALL)
+        // Report progress
+        if (thread->master())
         {
-            oIndex = nIndex;
+            // Update the index, if its changed
+            nIndex = ::floor(sTimer.elapsedTime() / interval);
 
-            // Report progress
-            if (thread->master())
+            if ((nIndex - oIndex) > VSMALL)
             {
-                Info << "\r  Swap Progress: "
-                     << 100.0 * (double(count) / (totalCount + VSMALL))
-                     << "% : Entities processed: " << count
-                     << " out of " << totalCount << " total."
+                oIndex = nIndex;
+
+                scalar percent =
+                (
+                    100.0 -
+                    (
+                        (100.0 * mesh.Stack(tIndex).size())
+                      / (stackSize + VSMALL)
+                    )
+                );
+
+                Info << "\r  Swap Progress: " << percent << "% :"
+                     << "  Surface: " << mesh.status(2)
+                     << ", Total: " << mesh.status(1)
                      << "             "
                      << flush;
 
@@ -2067,10 +2078,9 @@ void dynamicTopoFvMesh::swap3DEdges
 
     if (reported)
     {
-        Info << "\r  Swap Progress: "
-             << 100.0 * (double(count) / (totalCount + VSMALL))
-             << "% : Entities processed: " << count
-             << " out of " << totalCount << " total."
+        Info << "\r  Swap Progress: 100% :"
+             << "  Surface: " << mesh.status(2)
+             << ", Total: " << mesh.status(1)
              << "             "
              << endl;
     }
@@ -2102,30 +2112,38 @@ void dynamicTopoFvMesh::edgeRefinementEngine
 
     // Set the timer
     clockTime sTimer;
+
     bool reported = false;
-    label count = 0, totalCount = mesh.Stack(tIndex).size();
+    label stackSize = mesh.Stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
     while (!mesh.Stack(tIndex).empty())
     {
-        count++;
-
         // Update the index, if its changed
-        nIndex = ::floor(sTimer.elapsedTime() / interval);
-
-        if ((nIndex - oIndex) > VSMALL)
+        // Report progress
+        if (thread->master())
         {
-            oIndex = nIndex;
+            nIndex = ::floor(sTimer.elapsedTime() / interval);
 
-            // Report progress
-            if (thread->master())
+            if ((nIndex - oIndex) > VSMALL)
             {
-                Info << "\r  Refinement Progress: "
-                     << 100.0 * (double(count) / (totalCount + VSMALL))
-                     << "% : Entities processed: " << count
-                     << " out of " << totalCount << " total."
+                oIndex = nIndex;
+
+                scalar percent =
+                (
+                    100.0 -
+                    (
+                        (100.0 * mesh.Stack(tIndex).size())
+                      / (stackSize + VSMALL)
+                    )
+                );
+
+                Info << "\r  Refinement Progress: " << percent << "% :"
+                     << "  Bisections: " << mesh.status(3)
+                     << ", Collapses: " << mesh.status(4)
+                     << ", Total: " << mesh.status(0)
                      << "             "
                      << flush;
 
@@ -2172,10 +2190,10 @@ void dynamicTopoFvMesh::edgeRefinementEngine
 
     if (reported)
     {
-        Info << "\r  Refinement Progress: "
-             << 100.0 * (double(count) / (totalCount + VSMALL))
-             << "% : Entities processed: " << count
-             << " out of " << totalCount << " total."
+        Info << "\r  Refinement Progress: 100% :"
+             << "  Bisections: " << mesh.status(3)
+             << ", Collapses: " << mesh.status(4)
+             << ", Total: " << mesh.status(0)
              << "             "
              << endl;
     }
@@ -3237,22 +3255,11 @@ bool dynamicTopoFvMesh::resetMesh()
         clockTime mappingTimer;
 
         // Compute mapping weights for modified entities
-        if (threader_->multiThreaded())
-        {
-            threadedMapping(matchTol);
-        }
-        else
-        {
-            computeMapping
-            (
-                matchTol,
-                0, facesFromFaces_.size(),
-                0, cellsFromCells_.size()
-            );
-        }
+        threadedMapping(matchTol);
 
         // Print out stats
-        Info << " Mapping time: " << mappingTimer.elapsedTime() << endl;
+        Info << " Mapping time: " << mappingTimer.elapsedTime()
+             << " s" << endl;
 
         // Obtain references to zones, if any
         pointZoneMesh& pointZones = polyMesh::pointZones();
@@ -3302,7 +3309,8 @@ bool dynamicTopoFvMesh::resetMesh()
         );
 
         // Print out stats
-        Info << " Reordering time: " << reOrderingTimer.elapsedTime() << endl;
+        Info << " Reordering time: " << reOrderingTimer.elapsedTime()
+             << " s" << endl;
 
         // Obtain the patch-point maps before resetting the mesh
         List<Map<label> > oldPatchPointMaps(numPatches_);
@@ -3671,15 +3679,16 @@ bool dynamicTopoFvMesh::update()
     threadedTopoModifier();
 
     Info << nl << " Topo modifier time: "
-         << topologyTimer.elapsedTime() << endl;
+         << topologyTimer.elapsedTime()
+         << " s" << endl;
 
     // Write out statistics
-    Info << " Bisections :: Interior: " << nBisections_[0]
-         << ", Surface: " << nBisections_[1] << endl;
-    Info << " Collapses  :: Interior: " << nCollapses_[0]
-         << ", Surface: " << nCollapses_[1] << endl;
-    Info << " Swaps      :: Interior: " << nSwaps_[0]
-         << ", Surface: " << nSwaps_[1] << endl;
+    Info << " Bisections :: Total: " << status(3)
+         << ", Surface: " << status(5) << endl;
+    Info << " Collapses  :: Total: " << status(4)
+         << ", Surface: " << status(6) << endl;
+    Info << " Swaps      :: Total: " << status(1)
+         << ", Surface: " << status(2) << endl;
 
     // Apply all topology changes (if any) and reset mesh.
     return resetMesh();
