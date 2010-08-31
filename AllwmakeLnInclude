@@ -5,6 +5,7 @@ wmakeLnInclude coupleMap
 wmakeLnInclude lengthScaleEstimator
 wmakeLnInclude conservativeMeshToMesh
 wmakeLnInclude freeSurface
+wmakeLnInclude enginePointPatchFields
 wmakeLnInclude mesquiteSmoother
 wmakeLnInclude dynamicTopoFvMesh
 wmakeLnInclude interfaceTrackFoam
