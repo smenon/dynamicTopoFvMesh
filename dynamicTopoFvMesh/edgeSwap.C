@@ -2144,6 +2144,10 @@ const changeMap dynamicTopoFvMesh::swap23
     // Check if this is an internal face
     if (cellsForRemoval[1] == -1)
     {
+        // Write out for post-processing
+        writeVTK("Edge23_" + Foam::name(eIndex), eIndex, 1);
+        writeVTK("Cells23_" + Foam::name(eIndex), hullCells, 3);
+
         FatalErrorIn
         (
             "\n"

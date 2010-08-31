@@ -900,7 +900,7 @@ class dynamicTopoFvMesh
         label getMaxCouplingIndex() const;
 
         // Read optional dictionary parameters
-        void readOptionalParameters();
+        void readOptionalParameters(bool reRead = false);
 
         // Identify coupled patches.
         bool identifyCoupledPatches();

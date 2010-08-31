@@ -442,8 +442,6 @@ void topoMapper::correctFluxes() const
     // Define names for fields in the registry
     word phiName("phi");
     word UName("U");
-    word pName("p");
-    word rAUName("rAU");
 
     // Check if a flux field exists in the registry
     if (mesh.foundObject<surfaceScalarField>(phiName))
@@ -471,27 +469,6 @@ void topoMapper::correctFluxes() const
         {
             phi[insertedFaces[faceI]] = phiU[insertedFaces[faceI]];
         }
-
-        // Fetch relevant fields for flux correction
-        const Time& runTime = mesh.time();
-        const volScalarField& p = mesh.lookupObject<volScalarField>(pName);
-        const volScalarField& rUA = mesh.lookupObject<volScalarField>(rAUName);
-
-        // Read PISO options
-        dictionary piso = mesh.solutionDict().subDict("PISO");
-
-        int nNonOrthCorr = 0;
-        if (piso.found("nNonOrthogonalCorrectors"))
-        {
-            nNonOrthCorr = readInt(piso.lookup("nNonOrthogonalCorrectors"));
-        }
-
-        label pRefCell = 0;
-        scalar pRefValue = 0.0;
-        setRefCell(p, piso, pRefCell, pRefValue);
-
-        // Correct fluxes
-#       include "correctPhi.H"
     }
 }
 

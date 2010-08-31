@@ -503,7 +503,7 @@ void lengthScaleEstimator::readLengthScaleInfo
 // Read edge refinement options from the dictionary
 void lengthScaleEstimator::readRefinementOptions
 (
-    const dictionary& parentDict,
+    const dictionary& refineDict,
     bool reRead,
     bool mandatory
 )
@@ -515,9 +515,9 @@ void lengthScaleEstimator::readRefinementOptions
     scalar oldMinScale = minLengthScale_;
     scalar oldMaxScale = maxLengthScale_;
 
-    ratioMax_ = readScalar(parentDict.lookup("bisectionRatio"));
-    ratioMin_ = readScalar(parentDict.lookup("collapseRatio"));
-    growthFactor_ = readScalar(parentDict.lookup("growthFactor"));
+    ratioMax_ = readScalar(refineDict.lookup("bisectionRatio"));
+    ratioMin_ = readScalar(refineDict.lookup("collapseRatio"));
+    growthFactor_ = readScalar(refineDict.lookup("growthFactor"));
 
     // Sanity check: Are ratios and growth-factor correctly specified?
     if
@@ -540,14 +540,14 @@ void lengthScaleEstimator::readRefinementOptions
             << abort(FatalError);
     }
 
-    if (parentDict.found("minLengthScale") || mandatory)
+    if (refineDict.found("minLengthScale") || mandatory)
     {
-        minLengthScale_ = readScalar(parentDict.lookup("minLengthScale"));
+        minLengthScale_ = readScalar(refineDict.lookup("minLengthScale"));
     }
 
-    if (parentDict.found("maxLengthScale") || mandatory)
+    if (refineDict.found("maxLengthScale") || mandatory)
     {
-        maxLengthScale_ = readScalar(parentDict.lookup("maxLengthScale"));
+        maxLengthScale_ = readScalar(refineDict.lookup("maxLengthScale"));
     }
 
     // Sanity check: Are min/max length scales correctly specified?
@@ -598,17 +598,17 @@ void lengthScaleEstimator::readRefinementOptions
         }
     }
 
-    if (parentDict.found("fixedLengthScalePatches") || mandatory)
+    if (refineDict.found("fixedLengthScalePatches") || mandatory)
     {
-        fixedPatches_ = parentDict.subDict("fixedLengthScalePatches");
+        fixedPatches_ = refineDict.subDict("fixedLengthScalePatches");
 
         // Ensure that patches are legitimate.
         checkPatches(fixedPatches_.toc());
     }
 
-    if (parentDict.found("freeLengthScalePatches") || mandatory)
+    if (refineDict.found("freeLengthScalePatches") || mandatory)
     {
-        freePatches_ = parentDict.subDict("freeLengthScalePatches");
+        freePatches_ = refineDict.subDict("freeLengthScalePatches");
 
         // Ensure that patches are legitimate.
         checkPatches(freePatches_.toc());
@@ -626,7 +626,7 @@ void lengthScaleEstimator::readRefinementOptions
                     FatalErrorIn
                     (
                         "void lengthScaleEstimator::readRefinementOptions"
-                        "(bool reRead, bool mandatory)"
+                        "(const dictionary&, bool, bool)"
                     )
                         << " Conflicting fixed/free patches." << nl
                         << " Patch: " << fixedPatchList[wordI] << nl
@@ -636,16 +636,16 @@ void lengthScaleEstimator::readRefinementOptions
         }
     }
 
-    if (parentDict.found("curvaturePatches") || mandatory)
+    if (refineDict.found("curvaturePatches") || mandatory)
     {
-        curvaturePatches_ = parentDict.subDict("curvaturePatches");
+        curvaturePatches_ = refineDict.subDict("curvaturePatches");
 
         // Ensure that patches are legitimate.
         checkPatches(curvaturePatches_.toc());
 
         curvatureDeviation_ =
         (
-            readScalar(parentDict.lookup("curvatureDeviation"))
+            readScalar(refineDict.lookup("curvatureDeviation"))
         );
 
         if (curvatureDeviation_ > 1.0 || curvatureDeviation_ < 0.0)
@@ -653,29 +653,29 @@ void lengthScaleEstimator::readRefinementOptions
             FatalErrorIn
             (
                 "void lengthScaleEstimator::readRefinementOptions"
-                "(bool reRead, bool mandatory)"
+                "(const dictionary&, bool, bool)"
             )
                 << " Curvature deviation out of range [0..1]"
                 << abort(FatalError);
         }
     }
 
-    if (parentDict.found("proximityPatches") || mandatory)
+    if (refineDict.found("proximityPatches") || mandatory)
     {
         proximityPatches_ =
         (
-            parentDict.subDict("proximityPatches")
+            refineDict.subDict("proximityPatches")
         );
 
         // Ensure that patches are legitimate.
         checkPatches(proximityPatches_.toc());
 
         // Check if a threshold for slicing has been specified.
-        if (parentDict.found("sliceThreshold") || mandatory)
+        if (refineDict.found("sliceThreshold") || mandatory)
         {
             sliceThreshold_ =
             (
-                readScalar(parentDict.lookup("sliceThreshold"))
+                readScalar(refineDict.lookup("sliceThreshold"))
             );
 
             // Cap the threshold value
@@ -684,11 +684,11 @@ void lengthScaleEstimator::readRefinementOptions
     }
 
     // Check if edge-refinement is to be avoided on any patches
-    if (parentDict.found("noModificationPatches") || mandatory)
+    if (refineDict.found("noModificationPatches") || mandatory)
     {
         wordList noModPatches =
         (
-            parentDict.subDict("noModificationPatches").toc()
+            refineDict.subDict("noModificationPatches").toc()
         );
 
         // Ensure that patches are legitimate.
@@ -710,15 +710,15 @@ void lengthScaleEstimator::readRefinementOptions
     }
 
     // Check if refinement is to be performed based on a field-value
-    if (parentDict.found("fieldRefinement") || mandatory)
+    if (refineDict.found("fieldRefinement") || mandatory)
     {
-        field_ = word(parentDict.lookup("fieldRefinement"));
+        field_ = word(refineDict.lookup("fieldRefinement"));
 
         // Lookup a specified length-scale
-        fieldLength_ = readScalar(parentDict.lookup("fieldLengthScale"));
+        fieldLength_ = readScalar(refineDict.lookup("fieldLengthScale"));
 
-        lowerRefineLevel_ = readScalar(parentDict.lookup("lowerRefineLevel"));
-        upperRefineLevel_ = readScalar(parentDict.lookup("upperRefineLevel"));
+        lowerRefineLevel_ = readScalar(refineDict.lookup("lowerRefineLevel"));
+        upperRefineLevel_ = readScalar(refineDict.lookup("upperRefineLevel"));
 
         // Sanity check: Are refinement levels correctly specified?
         if (lowerRefineLevel_ > upperRefineLevel_)
@@ -736,15 +736,15 @@ void lengthScaleEstimator::readRefinementOptions
     }
 
     // Check if a max refinement level has been specified
-    if (parentDict.found("maxRefineLevel") || mandatory)
+    if (refineDict.found("maxRefineLevel") || mandatory)
     {
-        maxRefineLevel_ = readLabel(parentDict.lookup("maxRefineLevel"));
+        maxRefineLevel_ = readLabel(refineDict.lookup("maxRefineLevel"));
     }
 
     // Update switch for mean-scale
-    if (parentDict.found("meanScale") || mandatory)
+    if (refineDict.found("meanScale") || mandatory)
     {
-        meanScale_ = readScalar(parentDict.lookup("meanScale"));
+        meanScale_ = readScalar(refineDict.lookup("meanScale"));
     }
 }
 

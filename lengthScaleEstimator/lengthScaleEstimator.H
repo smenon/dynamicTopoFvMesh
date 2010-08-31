@@ -174,7 +174,7 @@ public:
         //- Read edge refinement options from the dictionary
         void readRefinementOptions
         (
-            const dictionary& parentDict,
+            const dictionary& refineDict,
             bool reRead = false,
             bool mandatory = false
         );

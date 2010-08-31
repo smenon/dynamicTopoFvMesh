@@ -1523,7 +1523,7 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
 
 
 // Read optional dictionary parameters
-void dynamicTopoFvMesh::readOptionalParameters()
+void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
 {
     // Read from disk
     dict_.readIfModified();
@@ -1549,16 +1549,21 @@ void dynamicTopoFvMesh::readOptionalParameters()
 
     const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
 
+    // Re-read edge-refinement options, if necessary
+    if (edgeRefinement_ && reRead)
+    {
+        lengthEstimator().readRefinementOptions
+        (
+            meshSubDict.subDict("refinementOptions"),
+            true,
+            mandatory_
+        );
+    }
+
+    // Read re-mesh interval
     if (meshSubDict.found("interval") || mandatory_)
     {
-        interval_ =
-        (
-            readLabel
-            (
-                dict_.subDict
-                ("dynamicTopoFvMesh").lookup("interval")
-            )
-        );
+        interval_ = readLabel(meshSubDict.lookup("interval"));
     }
     else
     {
@@ -1571,6 +1576,7 @@ void dynamicTopoFvMesh::readOptionalParameters()
         bandWidthReduction_.readIfPresent("bandwidthReduction", meshSubDict);
     }
 
+    // Update threshold for sliver cells
     if (meshSubDict.found("sliverThreshold") || mandatory_)
     {
         sliverThreshold_ = readScalar(meshSubDict.lookup("sliverThreshold"));
@@ -1583,11 +1589,13 @@ void dynamicTopoFvMesh::readOptionalParameters()
         }
     }
 
+    // Update limit for max number of bisections / collapses
     if (meshSubDict.found("maxModifications") || mandatory_)
     {
         maxModifications_ = readLabel(meshSubDict.lookup("maxModifications"));
     }
 
+    // Update limit for swap on curved surfaces
     if (meshSubDict.found("swapDeviation") || mandatory_)
     {
         swapDeviation_ = readScalar(meshSubDict.lookup("swapDeviation"));
@@ -3538,6 +3546,14 @@ bool dynamicTopoFvMesh::resetMesh()
             checkMesh(true);
         }
 
+        // Write out statistics
+        Info << " Bisections :: Total: " << status(3)
+             << ", Surface: " << status(5) << endl;
+        Info << " Collapses  :: Total: " << status(4)
+             << ", Surface: " << status(6) << endl;
+        Info << " Swaps      :: Total: " << status(1)
+             << ", Surface: " << status(2) << endl;
+
         // Reset statistics
         nModifications_ = 0;
         nBisections_ = 0;
@@ -3626,18 +3642,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
 bool dynamicTopoFvMesh::update()
 {
     // Re-read options, in case they have been modified at run-time
-    readOptionalParameters();
-
-    // Read edge refinement options
-    if (edgeRefinement_)
-    {
-        lengthEstimator().readRefinementOptions
-        (
-            dict_.subDict("dynamicTopoFvMesh").subDict("refinementOptions"),
-            true,
-            mandatory_
-        );
-    }
+    readOptionalParameters(true);
 
     // Set old point positions
     oldPoints_ = polyMesh::points();
@@ -3656,39 +3661,21 @@ bool dynamicTopoFvMesh::update()
     // Handy while using only mesh-motion.
     if (interval_ < 0 || ((time().timeIndex() % interval_ != 0) && noSlivers))
     {
-        // Move mesh to new positions
-        if (motionSolver_.valid())
-        {
-            movePoints(motionSolver_->curPoints());
-        }
-
-        // Dump procIDs to disk, if requested.
-        writeProcIDs();
-
-        // Motion only.
-        return false;
+        return resetMesh();
     }
 
     // Calculate the edge length-scale for the mesh
     calculateLengthScale();
 
     // Track mesh topology modification time
-    clockTime topologyTimer;
+    clockTime topoTimer;
 
     // Invoke the threaded topoModifier
     threadedTopoModifier();
 
-    Info << nl << " Topo modifier time: "
-         << topologyTimer.elapsedTime()
-         << " s" << endl;
-
-    // Write out statistics
-    Info << " Bisections :: Total: " << status(3)
-         << ", Surface: " << status(5) << endl;
-    Info << " Collapses  :: Total: " << status(4)
-         << ", Surface: " << status(6) << endl;
-    Info << " Swaps      :: Total: " << status(1)
-         << ", Surface: " << status(2) << endl;
+    Info << " Topo modifier time: "
+         << topoTimer.elapsedTime() << " s"
+         << endl;
 
     // Apply all topology changes (if any) and reset mesh.
     return resetMesh();

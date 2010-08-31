@@ -1,5 +1,4 @@
 EXE_INC = \
-    -I../include \
     -I../coupleMap/lnInclude \
     -I../lengthScaleEstimator/lnInclude \
     -I$(LIB_SRC)/meshTools/lnInclude \
