@@ -45,17 +45,6 @@ namespace Foam
 namespace meshOps
 {
 
-// Return the magnitude of an edge, using UList
-inline scalar edgeLength
-(
-    const edge& edgeToCheck,
-    const UList<point>& points
-)
-{
-    return mag(points[edgeToCheck.end()] - points[edgeToCheck.start()]);
-}
-
-
 // Compute the centroid for a given face, using UList
 inline vector faceCentre
 (
@@ -402,13 +391,12 @@ inline void cellCentreAndVolume
 // Determine whether a point lies on a segment
 inline bool pointSegmentIntersection
 (
-    const edge& segment,
-    const UList<point>& points,
+    const linePointRef& segment,
     const point& checkPoint
 )
 {
-    vector u = points[segment.end()] - points[segment.start()];
-    vector v = checkPoint - points[segment.start()];
+    vector u = segment.vec();
+    vector v = checkPoint - segment.start();
 
     scalar magU = mag(u) + VSMALL;
     scalar magV = mag(v) + VSMALL;
@@ -438,19 +426,17 @@ inline bool pointSegmentIntersection
 // Determine whether a two line segments intersect
 inline bool segmentSegmentIntersection
 (
-    const edge& fromSegment,
-    const edge& toSegment,
-    const UList<point>& fromPoints,
-    const UList<point>& toPoints,
+    const linePointRef& fromSegment,
+    const linePointRef& toSegment,
     const scalar matchTol,
     point& intPoint
 )
 {
-    vector u = fromPoints[fromSegment.end()] - fromPoints[fromSegment.start()];
-    vector v = toPoints[toSegment.end()] - toPoints[toSegment.start()];
+    vector u = fromSegment.vec();
+    vector v = toSegment.vec();
 
-    vector p = fromPoints[fromSegment.start()];
-    vector q = toPoints[toSegment.start()];
+    const vector& p = fromSegment.start();
+    const vector& q = toSegment.start();
 
     vector w = (p - q);
 
@@ -487,30 +473,28 @@ inline bool segmentSegmentIntersection
     }
 
     // Calculate the intersection point
-    intPoint = fromPoints[fromSegment.start()] + (s * u);
+    intPoint = fromSegment.start() + (s * u);
 
     return true;
 }
 
 
-// Determine whether a segment intersects a face
-inline bool segmentFaceIntersection
+// Determine whether a segment intersects a triangular face
+inline bool segmentTriFaceIntersection
 (
-    const edge& edgeToCheck,
-    const face& faceToCheck,
-    const UList<point>& edgePoints,
-    const UList<point>& facePoints,
+    const triPointRef& faceToCheck,
+    const linePointRef& edgeToCheck,
     const scalar matchTol,
     vector& intersectionPoint
 )
 {
     // Specify unit face-normals
-    vector n = meshOps::faceNormal(faceToCheck, facePoints);
+    vector n = faceToCheck.normal();
     n /= mag(n) + VSMALL;
 
-    point p1 = edgePoints[edgeToCheck[0]];
-    point p2 = edgePoints[edgeToCheck[1]];
-    point p3 = facePoints[faceToCheck[0]];
+    const point& p1 = edgeToCheck.start();
+    const point& p2 = edgeToCheck.end();
+    const point& p3 = faceToCheck.a();
 
     // Compute uValue
     scalar numerator = n & (p3 - p1);
@@ -524,7 +508,7 @@ inline bool segmentFaceIntersection
 
     scalar u = (numerator / denominator);
 
-    scalar tolerance = (matchTol * mag(p2 - p1));
+    scalar tolerance = (matchTol * edgeToCheck.mag());
 
     // Check for intersection along line.
     if ((u > tolerance) && (u < (1.0 - tolerance)))
@@ -533,7 +517,7 @@ inline bool segmentFaceIntersection
         intersectionPoint = p1 + u*(p2 - p1);
 
         // Also make sure that intPoint lies within the face
-        if (pointInFace(faceToCheck, facePoints, intersectionPoint))
+        if (pointInTriFace(faceToCheck, intersectionPoint))
         {
             return true;
         }
@@ -545,38 +529,58 @@ inline bool segmentFaceIntersection
 
 
 // Determine whether the particular point lies
-// inside the given face
-inline bool pointInFace
+// inside the given triangular face
+inline bool pointInTriFace
 (
-    const face& faceToCheck,
-    const UList<point>& points,
+    const triPointRef& faceToCheck,
     const point& checkPoint
 )
 {
-    vector nf = meshOps::faceNormal(faceToCheck, points);
-    nf /= mag(nf) + VSMALL;
+    vector nf = faceToCheck.normal();
 
-    forAll(faceToCheck, pI)
-    {
-        label nI = faceToCheck.fcIndex(pI);
-
-        // Identify vectors
-        vector tn =
+    vector t0 =
+    (
+        triPointRef
         (
-            triPointRef
-            (
-                points[faceToCheck[pI]],
-                points[faceToCheck[nI]],
-                checkPoint
-            ).normal()
-        );
+            faceToCheck.a(),
+            faceToCheck.b(),
+            checkPoint
+        ).normal()
+    );
 
-        scalar area = (tn & nf);
+    if ((t0 & nf) < 0.0)
+    {
+        return false;
+    }
 
-        if (area < 0.0)
-        {
-            return false;
-        }
+    vector t1 =
+    (
+        triPointRef
+        (
+            faceToCheck.b(),
+            faceToCheck.c(),
+            checkPoint
+        ).normal()
+    );
+
+    if ((t1 & nf) < 0.0)
+    {
+        return false;
+    }
+
+    vector t2 =
+    (
+        triPointRef
+        (
+            faceToCheck.c(),
+            faceToCheck.a(),
+            checkPoint
+        ).normal()
+    );
+
+    if ((t2 & nf) < 0.0)
+    {
+        return false;
     }
 
     // Passed test with all edges

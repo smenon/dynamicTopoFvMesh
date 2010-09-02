@@ -28,6 +28,7 @@ License
 #include "objectMap.H"
 #include "changeMap.H"
 #include "triPointRef.H"
+#include "linePointRef.H"
 #include "multiThreader.H"
 #include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
@@ -1712,29 +1713,28 @@ label dynamicTopoFvMesh::identify32Swap
     const edge& edgeToCheck = edges_[eIndex];
 
     // Obtain intersection point.
-    FixedList<vector, 2> segment(vector::zero);
+    linePointRef segment
+    (
+        points_[edgeToCheck.start()],
+        points_[edgeToCheck.end()]
+    );
 
-    segment[0] = points_[edgeToCheck[0]];
-    segment[1] = points_[edgeToCheck[1]];
-
-    // Configure a face with triangulation
-    face triFace(3);
     vector intPt = vector::zero;
 
+    // Configure a face with triangulation
     for (label i = 0; i < (m-2); i++)
     {
-        triFace[0] = hullVertices[triangulations[0][i]];
-        triFace[1] = hullVertices[triangulations[1][i]];
-        triFace[2] = hullVertices[triangulations[2][i]];
-
         bool intersects =
         (
-            meshOps::segmentFaceIntersection
+            meshOps::segmentTriFaceIntersection
             (
-                edgeToCheck,
-                triFace,
-                points_,
-                points_,
+                triPointRef
+                (
+                    points_[hullVertices[triangulations[0][i]]],
+                    points_[hullVertices[triangulations[1][i]]],
+                    points_[hullVertices[triangulations[2][i]]]
+                ),
+                segment,
                 1e-6,
                 intPt
             )
@@ -1770,8 +1770,8 @@ label dynamicTopoFvMesh::identify32Swap
             << "Could not determine 3-2 swap triangulation." << nl
             << "Edge: " << edgeToCheck << nl
             << "Edge Points: "
-            << points_[edgeToCheck[0]] << ","
-            << points_[edgeToCheck[1]] << nl
+            << segment.start() << ","
+            << segment.end() << nl
             << endl;
     }
 
@@ -1781,7 +1781,7 @@ label dynamicTopoFvMesh::identify32Swap
     //  - If so, declare the nearest triangulation instead.
     //  - Internal edges also occasionally encounter
     //    precision issues. Use the same approach.
-    vector eCentre = 0.5 * (segment[0] + segment[1]);
+    vector eCentre = segment.centre();
 
     scalarField dist(m-2, 0.0);
 
@@ -1790,12 +1790,20 @@ label dynamicTopoFvMesh::identify32Swap
 
     for (label i = 0; i < (m-2); i++)
     {
-        triFace[0] = hullVertices[triangulations[0][i]];
-        triFace[1] = hullVertices[triangulations[1][i]];
-        triFace[2] = hullVertices[triangulations[2][i]];
-
         // Compute edge to face-centre distance.
-        dist[i] = mag(eCentre - meshOps::faceCentre(triFace, points_));
+        dist[i] =
+        (
+            mag
+            (
+                eCentre
+              - triPointRef
+                (
+                    points_[hullVertices[triangulations[0][i]]],
+                    points_[hullVertices[triangulations[1][i]]],
+                    points_[hullVertices[triangulations[2][i]]]
+                ).centre()
+            )
+        );
     }
 
     while (!foundTriangulation)

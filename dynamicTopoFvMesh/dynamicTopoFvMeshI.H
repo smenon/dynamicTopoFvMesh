@@ -38,6 +38,7 @@ Author
 #include "stack.H"
 #include "meshOps.H"
 #include "tetPointRef.H"
+#include "linePointRef.H"
 #include "processorPolyPatch.H"
 #include "lengthScaleEstimator.H"
 
@@ -436,8 +437,18 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
 
             if (mag(deviation) < refDeviation)
             {
+                // Fetch the edge
+                const edge& edgeToCheck = edges_[eIndex];
+
                 // Get the edge-length.
-                scalar length = meshOps::edgeLength(edges_[eIndex], points_);
+                scalar length =
+                (
+                    linePointRef
+                    (
+                        points_[edgeToCheck.start()],
+                        points_[edgeToCheck.end()]
+                    ).mag()
+                );
 
                 if (debug > 3 && self() == 0)
                 {
@@ -480,14 +491,17 @@ inline bool dynamicTopoFvMesh::checkBisection
 
     if (twoDMesh_)
     {
+        // Fetch the edge
+        const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
+
         // Measure the boundary edge-length of the face in question
         length =
         (
-            meshOps::edgeLength
+            linePointRef
             (
-                edges_[getTriBoundaryEdge(index)],
-                points_
-            )
+                points_[edgeToCheck.start()],
+                points_[edgeToCheck.end()]
+            ).mag()
         );
 
         // Determine the length-scale at this face
@@ -495,14 +509,17 @@ inline bool dynamicTopoFvMesh::checkBisection
     }
     else
     {
+        // Fetch the edge
+        const edge& edgeToCheck = edges_[index];
+
         // Measure the edge-length
         length =
         (
-            meshOps::edgeLength
+            linePointRef
             (
-                edges_[index],
-                points_
-            )
+                points_[edgeToCheck.start()],
+                points_[edgeToCheck.end()]
+            ).mag()
         );
 
         // Determine the length-scale at this point in the mesh
@@ -530,14 +547,17 @@ inline bool dynamicTopoFvMesh::checkCollapse
 
     if (twoDMesh_)
     {
+        // Fetch the edge
+        const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
+
         // Measure the boundary edge-length of the face in question
         length =
         (
-            meshOps::edgeLength
+            linePointRef
             (
-                edges_[getTriBoundaryEdge(index)],
-                points_
-            )
+                points_[edgeToCheck.start()],
+                points_[edgeToCheck.end()]
+            ).mag()
         );
 
         // Determine the length-scale at this face
@@ -545,14 +565,17 @@ inline bool dynamicTopoFvMesh::checkCollapse
     }
     else
     {
+        // Fetch the edge
+        const edge& edgeToCheck = edges_[index];
+
         // Measure the edge-length
         length =
         (
-            meshOps::edgeLength
+            linePointRef
             (
-                edges_[index],
-                points_
-            )
+                points_[edgeToCheck.start()],
+                points_[edgeToCheck.end()]
+            ).mag()
         );
 
         // Determine the length-scale at this point in the mesh

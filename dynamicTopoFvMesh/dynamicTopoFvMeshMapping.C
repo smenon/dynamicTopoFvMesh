@@ -936,7 +936,7 @@ bool dynamicTopoFvMesh::computeCellWeights
             cellVolume = sum(weights);
         }
         else
-        if (precisionAttempts < 10 && parents.size())
+        if (precisionAttempts < 10)
         {
             // Could be a precision problem.
             // Recurse until consistency is obtained.
@@ -992,6 +992,7 @@ bool dynamicTopoFvMesh::computeCellWeights
             << " Cell: " << cIndex << nl
             << " mapCandidates: " << mapCandidates << nl
             << " nParents: " << parents.size() << nl
+            << " nIntersects: " << nIntersects << nl
             << " nAttempts: " << nAttempts << nl
             << " precisionAttempts: " << precisionAttempts << nl
             << " matchTolerance: " << matchTol << nl
@@ -1173,100 +1174,163 @@ bool dynamicTopoFvMesh::faceIntersection
         return true;
     }
 
-    // Check whether any old projections are within
-    // the new face. Count these as 'intersections'.
-    forAll(fromFace, pointI)
+    if (fromFace.size() == 3 && toFace.size() == 3)
     {
-        if (commonPoints.found(fromFace[pointI]))
+        // Perform tests specific to triangular faces
+
+        // Check whether any old projections are within
+        // the new face. Count these as 'intersections'.
+        forAll(fromFace, pointI)
         {
-            continue;
-        }
-
-        const point& checkPoint = projections[pointI];
-
-        if (meshOps::pointInFace(toFace, oldPoints_, checkPoint))
-        {
-            intersections.set(++nInts, checkPoint);
-        }
-    }
-
-    // Check whether and new points are within
-    // projected old faces. Count these as 'intersections'.
-    face ifFace(identity(fromFace.size()));
-
-    forAll(toFace, pointI)
-    {
-        if (commonPoints.found(toFace[pointI]))
-        {
-            continue;
-        }
-
-        const point& checkPoint = oldPoints_[toFace[pointI]];
-
-        if (meshOps::pointInFace(ifFace, projections, checkPoint))
-        {
-            intersections.set(++nInts, checkPoint);
-        }
-    }
-
-    // Loop through all new edges, and find possible intersections
-    // with (projections of) old face edges,
-    forAll(toFace, pointI)
-    {
-        edge toEdge = toFace.faceEdge(pointI);
-        label nextLabel = toFace.nextLabel(pointI);
-
-        forAll(fromFace, pointJ)
-        {
-            label nextJ = fromFace.fcIndex(pointJ);
-            edge fromEdge = fromFace.faceEdge(pointJ);
-
-            // Avoid common points
-            label cv = toEdge.commonVertex(fromEdge);
-
-            if (cv > -1 && !modPoints_.found(cv))
+            if (commonPoints.found(fromFace[pointI]))
             {
                 continue;
             }
 
-            // Also check for bisection points
+            const point& checkPoint = projections[pointI];
 
-            point p1 = projections[pointJ];
-            point p2 = projections[nextJ];
-            point p3 = oldPoints_[toFace[pointI]];
-            point p4 = oldPoints_[nextLabel];
-
-            // Compute edge normal and tangent-to-edge
-            vector te = (p4 - p3);
-            vector n = (nf ^ te);
-            n /= mag(n) + VSMALL;
-
-            // Compute uValues
-            scalar numOld = n & (p3 - p1);
-            scalar denOld = n & (p2 - p1);
-
-            // Check if the edges are parallel
-            if (mag(denOld) < VSMALL)
-            {
-                continue;
-            }
-
-            scalar tolerance = (matchTol * mag(p2 - p1));
-
-            scalar u = (numOld / denOld);
-            vector checkPoint = p1 + u*(p2 - p1);
-            scalar v = (te & (checkPoint - p3)) / (te & te);
-
-            // Check for intersection along lines.
             if
             (
-                ((u > tolerance) && (u < (1.0 - tolerance))) &&
-                ((v > tolerance) && (v < (1.0 - tolerance)))
+                meshOps::pointInTriFace
+                (
+                    triPointRef
+                    (
+                        oldPoints_[toFace[0]],
+                        oldPoints_[toFace[1]],
+                        oldPoints_[toFace[2]]
+                    ),
+                    checkPoint
+                )
             )
             {
                 intersections.set(++nInts, checkPoint);
             }
         }
+
+        // Check whether and new points are within
+        // projected old faces. Count these as 'intersections'.
+        forAll(toFace, pointI)
+        {
+            if (commonPoints.found(toFace[pointI]))
+            {
+                continue;
+            }
+
+            const point& checkPoint = oldPoints_[toFace[pointI]];
+
+            if
+            (
+                meshOps::pointInTriFace
+                (
+                    triPointRef
+                    (
+                        projections[0],
+                        projections[1],
+                        projections[2]
+                    ),
+                    checkPoint
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
+        }
+
+        // Loop through all new edges, and find possible intersections
+        // with (projections of) old face edges,
+        forAll(toFace, pointI)
+        {
+            edge toEdge = toFace.faceEdge(pointI);
+            label nextLabel = toFace.nextLabel(pointI);
+
+            forAll(fromFace, pointJ)
+            {
+                label nextJ = fromFace.fcIndex(pointJ);
+                edge fromEdge = fromFace.faceEdge(pointJ);
+
+                // Avoid common points
+                label cv = toEdge.commonVertex(fromEdge);
+
+                if (cv > -1 && !modPoints_.found(cv))
+                {
+                    continue;
+                }
+
+                // Also check for bisection points
+
+                point p1 = projections[pointJ];
+                point p2 = projections[nextJ];
+                point p3 = oldPoints_[toFace[pointI]];
+                point p4 = oldPoints_[nextLabel];
+
+                // Compute edge normal and tangent-to-edge
+                vector te = (p4 - p3);
+                vector n = (nf ^ te);
+                n /= mag(n) + VSMALL;
+
+                // Compute uValues
+                scalar numOld = n & (p3 - p1);
+                scalar denOld = n & (p2 - p1);
+
+                // Check if the edges are parallel
+                if (mag(denOld) < VSMALL)
+                {
+                    continue;
+                }
+
+                scalar tolerance = (matchTol * mag(p2 - p1));
+
+                scalar u = (numOld / denOld);
+                vector checkPoint = p1 + u*(p2 - p1);
+                scalar v = (te & (checkPoint - p3)) / (te & te);
+
+                // Check for intersection along lines.
+                if
+                (
+                    ((u > tolerance) && (u < (1.0 - tolerance))) &&
+                    ((v > tolerance) && (v < (1.0 - tolerance)))
+                )
+                {
+                    intersections.set(++nInts, checkPoint);
+                }
+            }
+        }
+    }
+    else
+    if (fromFace.size() == 4 && toFace.size() == 4)
+    {
+        // Perform tests specific to quad faces
+        notImplemented
+        (
+            "\n\n"
+            "bool dynamicTopoFvMesh::faceIntersection\n"
+            "(\n"
+            "    const label newFaceIndex,\n"
+            "    const label oldFaceIndex,\n"
+            "    const scalar matchTol,\n"
+            "    vectorField& tP\n"
+            ") const\n"
+        );
+    }
+    else
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "bool dynamicTopoFvMesh::faceIntersection\n"
+            "(\n"
+            "    const label newFaceIndex,\n"
+            "    const label oldFaceIndex,\n"
+            "    const scalar matchTol,\n"
+            "    vectorField& tP\n"
+            ") const\n"
+        )
+            << " Invalid face pair: " << nl
+            << " Old face: "
+            << oldFaceIndex << "::" << fromFace << nl
+            << " New face: "
+            << newFaceIndex << "::" << toFace << nl
+            << abort(FatalError);
     }
 
     // Copy intersections
@@ -1455,8 +1519,11 @@ bool dynamicTopoFvMesh::cellIntersection
             (
                 meshOps::pointSegmentIntersection
                 (
-                    edgeToCheck,
-                    oldPoints_,
+                    linePointRef
+                    (
+                        oldPoints_[edgeToCheck.start()],
+                        oldPoints_[edgeToCheck.end()]
+                    ),
                     checkPoint
                 )
             )
@@ -1491,8 +1558,11 @@ bool dynamicTopoFvMesh::cellIntersection
             (
                 meshOps::pointSegmentIntersection
                 (
-                    edgeToCheck,
-                    polyMesh::points(),
+                    linePointRef
+                    (
+                        polyMesh::points()[edgeToCheck.start()],
+                        polyMesh::points()[edgeToCheck.end()]
+                    ),
                     checkPoint
                 )
             )
@@ -1882,10 +1952,16 @@ bool dynamicTopoFvMesh::cellIntersection
             (
                 meshOps::segmentSegmentIntersection
                 (
-                    edgePair.first(),
-                    edgePair.second(),
-                    polyMesh::points(),
-                    oldPoints_,
+                    linePointRef
+                    (
+                        polyMesh::points()[edgePair.first().start()],
+                        polyMesh::points()[edgePair.first().end()]
+                    ),
+                    linePointRef
+                    (
+                        oldPoints_[edgePair.second().start()],
+                        oldPoints_[edgePair.second().end()]
+                    ),
                     matchTol,
                     intPoint
                 )
@@ -2038,12 +2114,19 @@ bool dynamicTopoFvMesh::cellIntersection
 
             foundIntersection =
             (
-                meshOps::segmentFaceIntersection
+                meshOps::segmentTriFaceIntersection
                 (
-                    edgeToCheck,
-                    faceToCheck,
-                    polyMesh::points(),
-                    oldPoints_,
+                    triPointRef
+                    (
+                        oldPoints_[faceToCheck[0]],
+                        oldPoints_[faceToCheck[1]],
+                        oldPoints_[faceToCheck[2]]
+                    ),
+                    linePointRef
+                    (
+                        polyMesh::points()[edgeToCheck.start()],
+                        polyMesh::points()[edgeToCheck.end()]
+                    ),
                     matchTol,
                     intPoint
                 )
@@ -2151,12 +2234,19 @@ bool dynamicTopoFvMesh::cellIntersection
 
             foundIntersection =
             (
-                meshOps::segmentFaceIntersection
+                meshOps::segmentTriFaceIntersection
                 (
-                    edgeToCheck,
-                    faceToCheck,
-                    oldPoints_,
-                    polyMesh::points(),
+                    triPointRef
+                    (
+                        polyMesh::points()[faceToCheck[0]],
+                        polyMesh::points()[faceToCheck[1]],
+                        polyMesh::points()[faceToCheck[2]]
+                    ),
+                    linePointRef
+                    (
+                        oldPoints_[edgeToCheck.start()],
+                        oldPoints_[edgeToCheck.end()]
+                    ),
                     matchTol,
                     intPoint
                 )

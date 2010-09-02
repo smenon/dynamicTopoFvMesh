@@ -1327,23 +1327,32 @@ scalar dynamicTopoFvMesh::testProximity
         // Obtain the face centre.
         gCentre = meshOps::faceCentre(faces_[index], points_);
 
+        // Fetch the edge
+        const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
+
         // Calculate a test step-size
         testStep =
         (
-            meshOps::edgeLength
+            linePointRef
             (
-                edges_[getTriBoundaryEdge(index)],
-                points_
-            )
+                points_[edgeToCheck.start()],
+                points_[edgeToCheck.end()]
+            ).mag()
         );
     }
     else
     {
-        const edge& thisEdge = edges_[index];
+        const edge& edgeToCheck = edges_[index];
         const labelList& eFaces = edgeFaces_[index];
 
+        linePointRef lpr
+        (
+            points_[edgeToCheck.start()],
+            points_[edgeToCheck.end()]
+        );
+
         // Obtain the edge centre.
-        gCentre = 0.5 * (points_[thisEdge[0]] + points_[thisEdge[1]]);
+        gCentre = lpr.centre();
 
         // Obtain the edge-normal
         forAll(eFaces, faceI)
@@ -1363,14 +1372,7 @@ scalar dynamicTopoFvMesh::testProximity
         }
 
         // Calculate a test step-size
-        testStep =
-        (
-            meshOps::edgeLength
-            (
-                edges_[index],
-                points_
-            )
-        );
+        testStep = lpr.mag();
     }
 
     // Normalize

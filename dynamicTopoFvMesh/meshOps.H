@@ -50,7 +50,9 @@ SourceFiles
 #include "edgeList.H"
 #include "faceList.H"
 #include "vectorField.H"
+#include "triPointRef.H"
 #include "labelHashSet.H"
+#include "linePointRef.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -65,13 +67,6 @@ class polyMesh;
 
 namespace meshOps
 {
-    // Return the magnitude of an edge, using UList
-    inline scalar edgeLength
-    (
-        const edge& edgeToCheck,
-        const UList<point>& points
-    );
-
     // Compute the centre for a given face, using UList
     inline vector faceCentre
     (
@@ -185,40 +180,33 @@ namespace meshOps
     // Determine whether a point lies on a segment
     inline bool pointSegmentIntersection
     (
-        const edge& segment,
-        const UList<point>& points,
-        const point& checkPoint,
-        const scalar matchTol
+        const linePointRef& segment,
+        const point& checkPoint
     );
 
     // Determine whether a two line segments intersect
     inline bool segmentSegmentIntersection
     (
-        const edge& fromSegment,
-        const edge& toSegment,
-        const UList<point>& fromPoints,
-        const UList<point>& toPoints,
+        const linePointRef& fromSegment,
+        const linePointRef& toSegment,
         const scalar matchTol,
         point& intPoint
     );
 
-    // Determine whether a segment intersects a face
-    inline bool segmentFaceIntersection
+    // Determine whether a segment intersects a triangular face
+    inline bool segmentTriFaceIntersection
     (
-        const edge& edgeToCheck,
-        const face& faceToCheck,
-        const UList<point>& edgePoints,
-        const UList<point>& facePoints,
+        const triPointRef& faceToCheck,
+        const linePointRef& edgeToCheck,
         const scalar matchTol,
         vector& intersectionPoint
     );
 
     // Determine whether the particular point lies
-    // inside the given face
-    inline bool pointInFace
+    // inside the given triangular face
+    inline bool pointInTriFace
     (
-        const face& faceToCheck,
-        const UList<point>& points,
+        const triPointRef& faceToCheck,
         const point& checkPoint
     );
 
