@@ -5162,15 +5162,23 @@ const changeMap dynamicTopoFvMesh::trisectFace
     }
 
     // Set default mapping for interior faces.
-    for (label i = 0; i < 6; i++)
+    for (label i = 0; i < 3; i++)
     {
         setFaceMapping(newFaceIndex[i]);
     }
 
-    if (cellsForRemoval[1] != -1)
+    if (cellsForRemoval[1] == -1)
+    {
+        // Set mapping for boundary faces.
+        for (label i = 3; i < 6; i++)
+        {
+            setFaceMapping(newFaceIndex[i], labelList(1, fIndex));
+        }
+    }
+    else
     {
         // Set default mapping for interior faces.
-        for (label i = 6; i < 9; i++)
+        for (label i = 3; i < 9; i++)
         {
             setFaceMapping(newFaceIndex[i]);
         }

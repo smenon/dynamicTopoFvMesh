@@ -42,6 +42,8 @@ SourceFiles
 #ifndef topoMapper_H
 #define topoMapper_H
 
+#include "fluxCorrector.H"
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -64,6 +66,9 @@ class topoMapper
         //- Reference to fvMesh
         const fvMesh& mesh_;
 
+        //- Reference to the options dictionary
+        const dictionary& dict_;
+
         //- Cell mapper
         autoPtr<topoCellMapper> cellMap_;
 
@@ -72,6 +77,9 @@ class topoMapper
 
         //- Boundary mapper
         autoPtr<topoBoundaryMeshMapper> boundaryMap_;
+
+        //- Flux corrector
+        autoPtr<fluxCorrector> fluxCorrector_;
 
     // Demand-driven private data
 
@@ -115,13 +123,15 @@ public:
 
     // Constructors
 
-        //- Construct from dynamicTopoFvMesh
-        topoMapper(const fvMesh& mesh)
+        //- Construct from mesh and dictionary
+        topoMapper(const fvMesh& mesh, const dictionary& dict)
         :
             mesh_(mesh),
+            dict_(dict),
             cellMap_(NULL),
             surfaceMap_(NULL),
             boundaryMap_(NULL),
+            fluxCorrector_(fluxCorrector::New(mesh, dict)),
             cellCentresPtr_(NULL),
             patchCentresPtr_(mesh.boundary().size())
         {}
@@ -198,6 +208,9 @@ public:
 
         //- Return boundary mapper
         const topoBoundaryMeshMapper& boundaryMap() const;
+
+        //- Return flux-corrector
+        const fluxCorrector& surfaceFluxCorrector() const;
 
         //- Clear out member data
         void clear();

@@ -35,10 +35,11 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
-#include "fvCFD.H"
-#include "leastSquaresGrad.H"
+#include "fvc.H"
 #include "topoMapper.H"
+#include "fluxCorrector.H"
 #include "topoCellMapper.H"
+#include "leastSquaresGrad.H"
 #include "topoSurfaceMapper.H"
 #include "topoBoundaryMeshMapper.H"
 
@@ -434,41 +435,19 @@ void topoMapper::conservativeMapSurfaceFields() const
 }
 
 
-//- Correct fluxes after topology change
+//- Correct fluxes after topology changes, if required
 void topoMapper::correctFluxes() const
 {
-    const fvMesh& mesh = mesh_;
-
-    // Define names for fields in the registry
-    word phiName("phi");
-    word UName("U");
-
-    // Check if a flux field exists in the registry
-    if (mesh.foundObject<surfaceScalarField>(phiName))
+    if (surfaceFluxCorrector().required())
     {
-        // Interpolate velocity for inserted faces
-        const labelList& insertedFaces = surfaceMap_->insertedObjectLabels();
-
-        // Lookup fields from the registry
-        surfaceScalarField& phi =
+        // Supply a list of inserted faces for interpolation
+        surfaceFluxCorrector().interpolateFluxes
         (
-            const_cast<surfaceScalarField&>
-            (
-                mesh.lookupObject<surfaceScalarField>(phiName)
-            )
+            surfaceMap().insertedObjectLabels()
         );
 
-        const volVectorField& U = mesh.lookupObject<volVectorField>(UName);
-
-        // Interpolate mapped velocity to faces
-        surfaceScalarField phiU = fvc::interpolate(U) & mesh.Sf();
-
-        phiU.rename("phiU");
-
-        forAll(insertedFaces, faceI)
-        {
-            phi[insertedFaces[faceI]] = phiU[insertedFaces[faceI]];
-        }
+        // Update fluxes
+        surfaceFluxCorrector().updateFluxes();
     }
 }
 
@@ -518,6 +497,22 @@ const topoBoundaryMeshMapper& topoMapper::boundaryMap() const
     }
 
     return boundaryMap_();
+}
+
+
+//- Return flux-corrector
+const fluxCorrector& topoMapper::surfaceFluxCorrector() const
+{
+    if (!fluxCorrector_.valid())
+    {
+        FatalErrorIn
+        (
+            "const fluxCorrector& topoMapper::surfaceFluxCorrector()"
+        ) << nl << " fluxCorrector has not been set. "
+          << abort(FatalError);
+    }
+
+    return fluxCorrector_();
 }
 
 

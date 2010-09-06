@@ -1750,7 +1750,7 @@ void dynamicTopoFvMesh::loadFieldMapper()
     }
     else
     {
-        mapper_.set(new topoMapper(*this));
+        mapper_.set(new topoMapper(*this, dict_));
     }
 }
 

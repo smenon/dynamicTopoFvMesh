@@ -543,7 +543,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
             fArea = sum(weights);
         }
         else
-        if (precisionAttempts < 10 && parents.size())
+        if (precisionAttempts < 10)
         {
             // Could be a precision problem.
             // Recurse until consistency is obtained.
