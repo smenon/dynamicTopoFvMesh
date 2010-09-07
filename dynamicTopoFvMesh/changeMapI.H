@@ -35,6 +35,13 @@ inline label& changeMap::type()
     return type_;
 }
 
+
+inline label changeMap::type() const
+{
+    return type_;
+}
+
+
 // For sliver-type cells, opposite edges
 // are identified for removal.
 inline label& changeMap::firstEdge()
@@ -42,10 +49,12 @@ inline label& changeMap::firstEdge()
     return firstEdge_;
 }
 
+
 inline label& changeMap::secondEdge()
 {
     return secondEdge_;
 }
+
 
 // For cap-type cells, the face requiring splitting
 // is identified for removal.
@@ -54,10 +63,12 @@ inline label& changeMap::apexPoint()
     return apexPoint_;
 }
 
+
 inline label& changeMap::opposingFace()
 {
     return opposingFace_;
 }
+
 
 // Added entities
 inline void changeMap::addPoint
@@ -74,6 +85,7 @@ inline void changeMap::addPoint
     addedPoints_[curSize][1] = master;
 }
 
+
 inline void changeMap::addEdge
 (
     const label eIndex,
@@ -87,6 +99,7 @@ inline void changeMap::addEdge
     addedEdges_[curSize][0] = eIndex;
     addedEdges_[curSize][1] = master;
 }
+
 
 inline void changeMap::addFace
 (
@@ -102,6 +115,7 @@ inline void changeMap::addFace
     addedFaces_[curSize][1] = master;
 }
 
+
 inline void changeMap::addCell
 (
     const label cIndex,
@@ -116,12 +130,14 @@ inline void changeMap::addCell
     addedCells_[curSize][1] = master;
 }
 
+
 // Return an added point
 inline const List<FixedList<label,2> >&
 changeMap::addedPointList() const
 {
     return addedPoints_;
 }
+
 
 // Return the list of added entities
 inline const List<FixedList<label,2> >&
@@ -130,17 +146,20 @@ changeMap::addedEdgeList() const
     return addedEdges_;
 }
 
+
 inline const List<FixedList<label,2> >&
 changeMap::addedFaceList() const
 {
     return addedFaces_;
 }
 
+
 inline const List<FixedList<label,2> >&
 changeMap::addedCellList() const
 {
     return addedCells_;
 }
+
 
 inline void changeMap::operator=(const changeMap& rhs)
 {

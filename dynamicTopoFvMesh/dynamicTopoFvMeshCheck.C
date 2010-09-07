@@ -1357,7 +1357,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
     }
 
     label nInternalEdges = 0;
-    labelList patchInfo(numPatches_, 0);
+    labelList patchInfo(boundaryMesh().size(), 0);
 
     forAll(edgeFaces_, edgeI)
     {

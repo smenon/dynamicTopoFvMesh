@@ -35,8 +35,8 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
+#include "fluxCorrector.H"
 #include "dlLibraryTable.H"
-#include "runTimeSelectionTables.H"
 
 namespace Foam
 {
@@ -122,21 +122,9 @@ const dictionary& fluxCorrector::dict() const
 //- Is flux-correction required?
 bool fluxCorrector::required() const
 {
-    // Perform a check, just in case
-    if (fvMesh::debug)
-    {
-        if
-        (
-            mesh().foundObject<surfaceScalarField>("phi") ||
-            mesh().foundObject<volVectorField>("U")
-        )
-        {
-            WarningIn("fluxCorrector::required()")
-                << "Found relevant fields in registry, "
-                << "but fluxes are not being corrected."
-                << endl;
-        }
-    }
+    // Support for cases which do not involve a flow-solver.
+    // Notify the user, just in case.
+    Info << " ~~~ No flux correction ~~~ " << endl;
 
     return false;
 }

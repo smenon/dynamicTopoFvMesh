@@ -67,7 +67,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     if
     (
-        (nModifications_ > maxModifications_) &&
+        (statistics_[0] > maxModifications_) &&
         (maxModifications_ > -1)
     )
     {
@@ -1997,16 +1997,16 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nBisections_[0]++;
+    statistics_[3]++;
 
     // Increment surface-counter
     if (c1 == -1)
     {
-        nBisections_[1]++;
+        statistics_[5]++;
     }
 
     // Increment the number of modifications
-    nModifications_++;
+    statistics_[0]++;
 
     // Specify that the operation was successful
     map.type() = 1;
@@ -2051,7 +2051,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     if
     (
-        (nModifications_ > maxModifications_) &&
+        (statistics_[0] > maxModifications_) &&
         (maxModifications_ > -1)
     )
     {
@@ -2250,7 +2250,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Update number of surface bisections, if necessary.
     if (whichEdgePatch(eIndex) > -1)
     {
-        nBisections_[1]++;
+        statistics_[5]++;
     }
 
     // Hull variables
@@ -3425,10 +3425,10 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nBisections_[0]++;
+    statistics_[3]++;
 
     // Increment the number of modifications
-    nModifications_++;
+    statistics_[0]++;
 
     // Specify that the operation was successful
     map.type() = 1;
@@ -3468,7 +3468,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
     if
     (
-        (nModifications_ > maxModifications_) &&
+        (statistics_[0] > maxModifications_) &&
         (maxModifications_ > -1)
     )
     {
@@ -3658,7 +3658,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     // Update number of surface bisections, if necessary.
     if (whichPatch(fIndex) > -1)
     {
-        nBisections_[1]++;
+        statistics_[5]++;
     }
 
     // Hull variables
@@ -5269,10 +5269,10 @@ const changeMap dynamicTopoFvMesh::trisectFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nBisections_[0]++;
+    statistics_[3]++;
 
     // Increment the number of modifications
-    nModifications_++;
+    statistics_[0]++;
 
     // Specify that the operation was successful
     map.type() = 1;

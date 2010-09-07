@@ -98,6 +98,7 @@ public:
 
         // Type
         inline label& type();
+        inline label type() const;
 
         // For sliver-type cells, opposite edges
         // are identified for removal.

@@ -603,7 +603,7 @@ inline stack& dynamicTopoFvMesh::Stack
 }
 
 
-// Return the integer threadID for a given pthread
+// Return the integer ID for a given thread
 // Return zero for single-threaded operation
 inline label dynamicTopoFvMesh::self() const
 {
@@ -798,7 +798,7 @@ inline label dynamicTopoFvMesh::whichPatch
         return -1;
     }
 
-    for(label i=0; i<numPatches_; i++)
+    for (label i = 0; i < boundaryMesh().size(); i++)
     {
         if
         (
@@ -849,7 +849,7 @@ inline label dynamicTopoFvMesh::whichEdgePatch
         return -1;
     }
 
-    for(label i = 0; i<numPatches_; i++)
+    for (label i = 0; i < boundaryMesh().size(); i++)
     {
         if
         (
@@ -890,62 +890,30 @@ inline label dynamicTopoFvMesh::whichEdgePatch
 
 
 // Report topo-modification status
+//  - Enumerants are as follows
+//    [0] nModifications
+//    [1] Total swaps (internal and surface)
+//    [2] Surface swaps
+//    [3] Total bisections
+//    [4] Total collapses
+//    [5] Surface bisections
+//    [6] Surface collapses
+//    [7] Slivers removed
 inline label dynamicTopoFvMesh::status(const label type) const
 {
-    switch (type)
+    if (type < statistics_.size())
     {
-        case 0:
-        {
-            // Return total modifications
-            return nModifications_;
-        }
-
-        case 1:
-        {
-            // Return total swaps
-            return nSwaps_[0];
-        }
-
-        case 2:
-        {
-            // Return surface swaps
-            return nSwaps_[1];
-        }
-
-        case 3:
-        {
-            // Return total bisections
-            return nBisections_[0];
-        }
-
-        case 4:
-        {
-            // Return total collapses
-            return nCollapses_[0];
-        }
-
-        case 5:
-        {
-            // Return surface bisections
-            return nBisections_[1];
-        }
-
-        case 6:
-        {
-            // Return surface collapses
-            return nCollapses_[1];
-        }
-
-        default:
-        {
-            FatalErrorIn
-            (
-                "inline label dynamicTopoFvMesh::status"
-                "(const label type) const"
-            )
-                << " Unknown type: " << type << nl
-                << abort(FatalError);
-        }
+        return statistics_[type];
+    }
+    else
+    {
+        FatalErrorIn
+        (
+            "inline label dynamicTopoFvMesh::status"
+            "(const label type) const"
+        )
+            << " Unknown type: " << type << nl
+            << abort(FatalError);
     }
 
     return 0;

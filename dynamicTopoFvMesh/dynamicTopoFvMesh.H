@@ -80,9 +80,6 @@ class dynamicTopoFvMesh
 {
     // Private data
 
-        //- Number of boundary-patches
-        label numPatches_;
-
         //- Topology change flag
         bool topoChangeFlag_;
 
@@ -199,10 +196,8 @@ class dynamicTopoFvMesh
         labelHashSet modPoints_;
 
         //- Run-time statistics
-        label nModifications_, maxModifications_;
-        FixedList<label, 2> nBisections_;
-        FixedList<label, 2> nCollapses_;
-        FixedList<label, 2> nSwaps_;
+        label maxModifications_;
+        FixedList<label, 8> statistics_;
 
         //- Sliver exudation
         scalar sliverThreshold_;
@@ -394,7 +389,7 @@ class dynamicTopoFvMesh
         // Return the entity stack for a particular thread
         inline stack& Stack(const label threadID);
 
-        // Return the integer threadID for a given pthread
+        // Return the integer ID for a given thread
         inline label self() const;
 
         // Initialize stacks
@@ -505,7 +500,7 @@ class dynamicTopoFvMesh
         // Remove 2D sliver cells from the mesh
         void remove2DSlivers();
 
-        // Indentify the sliver type in 3D
+        // Identify the sliver type in 3D
         const changeMap identifySliverType(const label cIndex) const;
 
         // Remove sliver cells

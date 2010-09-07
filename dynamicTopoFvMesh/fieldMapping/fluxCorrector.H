@@ -41,6 +41,7 @@ SourceFiles
 #ifndef fluxCorrector_H
 #define fluxCorrector_H
 
+#include "fvMesh.H"
 #include "runTimeSelectionTables.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -49,8 +50,6 @@ namespace Foam
 {
 
 // Forward class declarations
-class fvMesh;
-class dictionary;
 
 /*---------------------------------------------------------------------------*\
                          Class fluxCorrector Declaration

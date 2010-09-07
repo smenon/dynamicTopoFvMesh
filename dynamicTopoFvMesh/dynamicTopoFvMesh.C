@@ -69,7 +69,6 @@ addToRunTimeSelectionTable(dynamicFvMesh, dynamicTopoFvMesh, IOobject);
 dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 :
     dynamicFvMesh(io),
-    numPatches_(polyMesh::boundaryMesh().size()),
     topoChangeFlag_(false),
     isSubMesh_(false),
     dict_
@@ -105,16 +104,16 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     owner_(polyMesh::faceOwner()),
     neighbour_(polyMesh::faceNeighbour()),
     cells_(primitiveMesh::cells()),
-    oldPatchSizes_(numPatches_,0),
-    patchSizes_(numPatches_,0),
-    oldPatchStarts_(numPatches_,-1),
-    patchStarts_(numPatches_,-1),
-    oldEdgePatchSizes_(numPatches_,0),
-    edgePatchSizes_(numPatches_,0),
-    oldEdgePatchStarts_(numPatches_,-1),
-    edgePatchStarts_(numPatches_,-1),
-    oldPatchNMeshPoints_(numPatches_,-1),
-    patchNMeshPoints_(numPatches_,-1),
+    oldPatchSizes_(boundaryMesh().size(),0),
+    patchSizes_(boundaryMesh().size(),0),
+    oldPatchStarts_(boundaryMesh().size(),-1),
+    patchStarts_(boundaryMesh().size(),-1),
+    oldEdgePatchSizes_(boundaryMesh().size(),0),
+    edgePatchSizes_(boundaryMesh().size(),0),
+    oldEdgePatchStarts_(boundaryMesh().size(),-1),
+    edgePatchStarts_(boundaryMesh().size(),-1),
+    oldPatchNMeshPoints_(boundaryMesh().size(),-1),
+    patchNMeshPoints_(boundaryMesh().size(),-1),
     nOldPoints_(primitiveMesh::nPoints()),
     nPoints_(primitiveMesh::nPoints()),
     nOldEdges_(0),
@@ -128,11 +127,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nOldInternalEdges_(0),
     nInternalEdges_(0),
     skipMapping_(false),
-    nModifications_(0),
     maxModifications_(-1),
-    nBisections_(0),
-    nCollapses_(0),
-    nSwaps_(0),
+    statistics_(0),
     sliverThreshold_(0.1),
     slicePairs_(0),
     maxTetsPerEdge_(-1),
@@ -161,7 +157,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     readOptionalParameters();
 
     // Initialize patch-size information
-    for (label i = 0; i < numPatches_; i++)
+    for (label i = 0; i < boundaryMesh().size(); i++)
     {
         patchNMeshPoints_[i] = boundary[i].meshPoints().size();
         oldPatchSizes_[i] = patchSizes_[i]  = boundary[i].size();
@@ -213,7 +209,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
 )
 :
     dynamicFvMesh(io, points, faces, owner, neighbour, false),
-    numPatches_(1),
     topoChangeFlag_(false),
     isSubMesh_(true),
     dict_(mesh.dict_),
@@ -233,16 +228,16 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     cells_(cells),
     edges_(edges),
     faceEdges_(faceEdges),
-    oldPatchSizes_(numPatches_,0),
-    patchSizes_(numPatches_,0),
-    oldPatchStarts_(numPatches_,-1),
-    patchStarts_(numPatches_,-1),
-    oldEdgePatchSizes_(numPatches_,0),
-    edgePatchSizes_(numPatches_,0),
-    oldEdgePatchStarts_(numPatches_,-1),
-    edgePatchStarts_(numPatches_,-1),
-    oldPatchNMeshPoints_(numPatches_,-1),
-    patchNMeshPoints_(numPatches_,-1),
+    oldPatchSizes_(1, 0),
+    patchSizes_(1, 0),
+    oldPatchStarts_(1, -1),
+    patchStarts_(1, -1),
+    oldEdgePatchSizes_(1, 0),
+    edgePatchSizes_(1, 0),
+    oldEdgePatchStarts_(1, -1),
+    edgePatchStarts_(1, -1),
+    oldPatchNMeshPoints_(1, -1),
+    patchNMeshPoints_(1, -1),
     nOldPoints_(points.size()),
     nPoints_(points.size()),
     nOldEdges_(edges.size()),
@@ -256,11 +251,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nOldInternalEdges_(nInternalEdges),
     nInternalEdges_(nInternalEdges),
     skipMapping_(false),
-    nModifications_(0),
     maxModifications_(mesh.maxModifications_),
-    nBisections_(0),
-    nCollapses_(0),
-    nSwaps_(0),
+    statistics_(0),
     sliverThreshold_(mesh.sliverThreshold_),
     slicePairs_(0),
     maxTetsPerEdge_(mesh.maxTetsPerEdge_),
@@ -509,7 +501,7 @@ label dynamicTopoFvMesh::insertFace
         // Modify patch information for this boundary face
         patchSizes_[patch]++;
 
-        for(label i=patch+1; i<numPatches_; i++)
+        for (label i = (patch + 1); i < boundaryMesh().size(); i++)
         {
             patchStarts_[i]++;
         }
@@ -520,7 +512,7 @@ label dynamicTopoFvMesh::insertFace
         // and subsequent patch-starts
         nInternalFaces_++;
 
-        for(label i=0; i<numPatches_; i++)
+        for (label i = 0; i < boundaryMesh().size(); i++)
         {
             patchStarts_[i]++;
         }
@@ -599,7 +591,7 @@ void dynamicTopoFvMesh::removeFace
         // Modify patch information for this boundary face
         patchSizes_[patch]--;
 
-        for(label i = (patch + 1); i < numPatches_; i++)
+        for (label i = (patch + 1); i < boundaryMesh().size(); i++)
         {
             patchStarts_[i]--;
         }
@@ -791,7 +783,7 @@ label dynamicTopoFvMesh::insertEdge
         // Modify patch information for this boundary edge
         edgePatchSizes_[patch]++;
 
-        for (label i = patch + 1; i < numPatches_; i++)
+        for (label i = (patch + 1); i < boundaryMesh().size(); i++)
         {
             edgePatchStarts_[i]++;
         }
@@ -801,7 +793,7 @@ label dynamicTopoFvMesh::insertEdge
         // Increment the number of internal edges, and subsequent patch-starts
         nInternalEdges_++;
 
-        for (label i = 0; i < numPatches_; i++)
+        for (label i = 0; i < boundaryMesh().size(); i++)
         {
             edgePatchStarts_[i]++;
         }
@@ -880,7 +872,7 @@ void dynamicTopoFvMesh::removeEdge
         // Modify patch information for this boundary edge
         edgePatchSizes_[patch]--;
 
-        for(label i = (patch + 1); i < numPatches_; i++)
+        for (label i = (patch + 1); i < boundaryMesh().size(); i++)
         {
             edgePatchStarts_[i]--;
         }
@@ -2260,6 +2252,13 @@ void dynamicTopoFvMesh::remove2DSlivers()
     {
         // Fetch the cell
         label cIndex = cIndices[indices[indexI]];
+
+        // Ensure that this cell actually exists.
+        if (cells_[cIndex].empty())
+        {
+            continue;
+        }
+
         const cell& cellToCheck = cells_[cIndex];
 
         // Find an appropriate quad-face
@@ -2343,7 +2342,11 @@ void dynamicTopoFvMesh::remove2DSlivers()
 
         point ec =
         (
-            0.5 * (points_[edgeToCheck[0]] + points_[edgeToCheck[1]])
+            linePointRef
+            (
+                points_[edgeToCheck[0]],
+                points_[edgeToCheck[1]]
+            ).centre()
         );
 
         FixedList<vector, 2> p(vector::zero), q(vector::zero);
@@ -2363,14 +2366,22 @@ void dynamicTopoFvMesh::remove2DSlivers()
         // Take action based on the magnitude of the projection.
         if (mag(proj[0]) < VSMALL)
         {
-            collapseQuadFace(firstFace);
-            return;
+            if (collapseQuadFace(firstFace).type() > 0)
+            {
+                statistics_[7]++;
+            }
+
+            continue;
         }
 
         if (mag(proj[1]) < VSMALL)
         {
-            collapseQuadFace(secondFace);
-            return;
+            if (collapseQuadFace(secondFace).type() > 0)
+            {
+                statistics_[7]++;
+            }
+
+            continue;
         }
 
         if (proj[0] > 0.0 && proj[1] < 0.0)
@@ -2389,12 +2400,16 @@ void dynamicTopoFvMesh::remove2DSlivers()
                     (aF[faceI][0] != firstFace)
                 )
                 {
-                    collapseQuadFace(aF[faceI][0]);
+                    if (collapseQuadFace(aF[faceI][0]).type() > 0)
+                    {
+                        statistics_[7]++;
+                    }
+
                     break;
                 }
             }
 
-            return;
+            continue;
         }
 
         if (proj[0] < 0.0 && proj[1] > 0.0)
@@ -2413,12 +2428,16 @@ void dynamicTopoFvMesh::remove2DSlivers()
                     (aF[faceI][0] != secondFace)
                 )
                 {
-                    collapseQuadFace(aF[faceI][0]);
+                    if (collapseQuadFace(aF[faceI][0]).type() > 0)
+                    {
+                        statistics_[7]++;
+                    }
+
                     break;
                 }
             }
 
-            return;
+            continue;
         }
 
         if (proj[0] > 0.0 && proj[1] > 0.0)
@@ -2437,12 +2456,16 @@ void dynamicTopoFvMesh::remove2DSlivers()
                     (aF[faceI][0] != fIndex)
                 )
                 {
-                    collapseQuadFace(aF[faceI][0]);
+                    if (collapseQuadFace(aF[faceI][0]).type() > 0)
+                    {
+                        statistics_[7]++;
+                    }
+
                     break;
                 }
             }
 
-            return;
+            continue;
         }
     }
 
@@ -2457,7 +2480,7 @@ void dynamicTopoFvMesh::remove2DSlivers()
 }
 
 
-// Indentify the sliver type in 3D
+// Identify the sliver type in 3D
 const changeMap dynamicTopoFvMesh::identifySliverType
 (
     const label cIndex
@@ -2947,9 +2970,18 @@ void dynamicTopoFvMesh::removeSlivers()
                 << endl;
         }
 
+        bool success = false;
+
         // Take action based on the type of sliver.
         switch (map.type())
         {
+            case -1:
+            {
+                // Sliver cell was removed by a prior operation.
+                // Nothing needs to be done.
+                break;
+            }
+
             case 1:
             {
                 // Sliver cell.
@@ -2993,13 +3025,19 @@ void dynamicTopoFvMesh::removeSlivers()
                     if (thisEdge == edgeToCheck)
                     {
                         // Collapse this edge.
-                        collapseEdge
+                        if
                         (
-                            firstMapEdges[edgeI][0],
-                            -1,
-                            false,
-                            true
-                        );
+                            collapseEdge
+                            (
+                                firstMapEdges[edgeI][0],
+                                -1,
+                                false,
+                                true
+                            ).type() > 0
+                        )
+                        {
+                            success = true;
+                        }
 
                         foundCollapseEdge = true;
                         break;
@@ -3019,13 +3057,19 @@ void dynamicTopoFvMesh::removeSlivers()
                         if (thisEdge == edgeToCheck)
                         {
                             // Collapse this edge.
-                            collapseEdge
+                            if
                             (
-                                secondMapEdges[edgeI][0],
-                                -1,
-                                false,
-                                true
-                            );
+                                collapseEdge
+                                (
+                                    secondMapEdges[edgeI][0],
+                                    -1,
+                                    false,
+                                    true
+                                ).type() > 0
+                            )
+                            {
+                                success = true;
+                            }
 
                             break;
                         }
@@ -3067,13 +3111,19 @@ void dynamicTopoFvMesh::removeSlivers()
                     if (thisEdge == edgeToCheck)
                     {
                         // Collapse this edge.
-                        collapseEdge
+                        if
                         (
-                            faceMapEdges[edgeI][0],
-                            -1,
-                            false,
-                            true
-                        );
+                            collapseEdge
+                            (
+                                faceMapEdges[edgeI][0],
+                                -1,
+                                false,
+                                true
+                            ).type() > 0
+                        )
+                        {
+                            success = true;
+                        }
 
                         break;
                     }
@@ -3114,13 +3164,19 @@ void dynamicTopoFvMesh::removeSlivers()
                     if (thisEdge == edgeToCheck)
                     {
                         // Collapse this edge.
-                        collapseEdge
+                        if
                         (
-                            firstMapEdges[edgeI][0],
-                            -1,
-                            false,
-                            true
-                        );
+                            collapseEdge
+                            (
+                                firstMapEdges[edgeI][0],
+                                -1,
+                                false,
+                                true
+                            ).type() > 0
+                        )
+                        {
+                            success = true;
+                        }
 
                         break;
                     }
@@ -3134,13 +3190,19 @@ void dynamicTopoFvMesh::removeSlivers()
                 // Wedge cell.
 
                 // Collapse the first edge.
-                collapseEdge
+                if
                 (
-                    map.firstEdge(),
-                    -1,
-                    false,
-                    true
-                );
+                    collapseEdge
+                    (
+                        map.firstEdge(),
+                        -1,
+                        false,
+                        true
+                    ).type() > 0
+                )
+                {
+                    success = true;
+                }
 
                 break;
             }
@@ -3152,6 +3214,12 @@ void dynamicTopoFvMesh::removeSlivers()
                     << cIndex
                     << endl;
             }
+        }
+
+        // Increment the count for successful sliver removal
+        if (success)
+        {
+            statistics_[7]++;
         }
     }
 
@@ -3323,7 +3391,7 @@ bool dynamicTopoFvMesh::resetMesh()
              << " s" << endl;
 
         // Obtain the patch-point maps before resetting the mesh
-        List<Map<label> > oldPatchPointMaps(numPatches_);
+        List<Map<label> > oldPatchPointMaps(boundaryMesh().size());
 
         forAll(oldPatchPointMaps, patchI)
         {
@@ -3360,9 +3428,9 @@ bool dynamicTopoFvMesh::resetMesh()
         );
 
         // Generate mapping for points on boundary patches
-        labelListList patchPointMap(numPatches_);
+        labelListList patchPointMap(boundaryMesh().size());
 
-        for (label i = 0; i < numPatches_; i++)
+        for (label i = 0; i < boundaryMesh().size(); i++)
         {
             // Obtain new patch mesh points after reset.
             const labelList& meshPointLabels = boundaryMesh()[i].meshPoints();
@@ -3533,7 +3601,7 @@ bool dynamicTopoFvMesh::resetMesh()
         nOldInternalFaces_ = nInternalFaces_;
         nOldInternalEdges_ = nInternalEdges_;
 
-        for (label i = 0; i < numPatches_; i++)
+        for (label i = 0; i < boundaryMesh().size(); i++)
         {
             oldPatchSizes_[i] = patchSizes_[i];
             oldPatchStarts_[i] = patchStarts_[i];
@@ -3556,11 +3624,13 @@ bool dynamicTopoFvMesh::resetMesh()
         Info << " Swaps      :: Total: " << status(1)
              << ", Surface: " << status(2) << endl;
 
+        if (status(7))
+        {
+            Info << " Slivers removed: " << status(7) << endl;
+        }
+
         // Reset statistics
-        nModifications_ = 0;
-        nBisections_ = 0;
-        nCollapses_ = 0;
-        nSwaps_ = 0;
+        statistics_ = 0;
     }
     else
     {

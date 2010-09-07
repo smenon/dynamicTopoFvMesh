@@ -64,7 +64,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     if
     (
-        (nModifications_ > maxModifications_)
+        (statistics_[0] > maxModifications_)
      && (maxModifications_ > -1)
     )
     {
@@ -2003,7 +2003,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     if (c1 == -1)
     {
         // Increment the surface-collapse counter
-        nCollapses_[1]++;
+        statistics_[6]++;
     }
     else
     {
@@ -2231,10 +2231,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nCollapses_[0]++;
+    statistics_[4]++;
 
     // Increment the number of modifications
-    nModifications_++;
+    statistics_[0]++;
 
     // Return a succesful collapse
     map.type() = collapseCase;
@@ -2293,7 +2293,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     if
     (
-        (nModifications_ > maxModifications_)
+        (statistics_[0] > maxModifications_)
      && (maxModifications_ > -1)
     )
     {
@@ -2852,7 +2852,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Update number of surface collapses, if necessary.
     if (whichEdgePatch(eIndex) > -1)
     {
-        nCollapses_[1]++;
+        statistics_[6]++;
     }
 
     // Define indices on the hull for removal / replacement
@@ -3792,10 +3792,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     topoChangeFlag_ = true;
 
     // Increment the counter
-    nCollapses_[0]++;
+    statistics_[4]++;
 
     // Increment the number of modifications
-    nModifications_++;
+    statistics_[0]++;
 
     // Return a succesful collapse
     map.type() = collapseCase;
