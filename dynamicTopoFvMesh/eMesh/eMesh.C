@@ -69,11 +69,51 @@ void eMesh::clearAddressing() const
 }
 
 
-void eMesh::clearOut() const
+// Helper function to isolate points on triangular faces
+label eMesh::findIsolatedPoint(const face& f, const edge& e) const
 {
-    clearGeom();
-    clearAddressing();
+    // Check the first point
+    if ( f[0] != e.start() && f[0] != e.end() )
+    {
+        return f[0];
+    }
+
+    // Check the second point
+    if ( f[1] != e.start() && f[1] != e.end() )
+    {
+        return f[1];
+    }
+
+    // Check the third point
+    if ( f[2] != e.start() && f[2] != e.end() )
+    {
+        return f[2];
+    }
+
+    return -1;
 }
+
+
+//- Helper function to determine the orientation of a triangular face
+label eMesh::edgeDirection(const face& f, const edge& e) const
+{
+    if
+    (
+        (f[0] == e.start() && f[1] == e.end())
+     || (f[1] == e.start() && f[2] == e.end())
+     || (f[2] == e.start() && f[0] == e.end())
+    )
+    {
+        // Return counter-clockwise
+        return 1;
+    }
+    else
+    {
+        // Return clockwise
+        return -1;
+    }
+}
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -227,57 +267,68 @@ void eMesh::resetPrimitives
     labelListList& edgeFaces,
     const labelList& patchSizes,
     const labelList& patchStarts,
-    const bool reUse
+    const bool reUse,
+    const bool storePrimitives
 )
 {
     // Clear out geometry and addressing
     clearOut();
 
-    // Initialize pointers
-    fePtr_ =
-    (
-        new labelListIOList
+    // Initialize pointers for storage
+    if (storePrimitives)
+    {
+        fePtr_ =
         (
-            IOobject
+            new labelListIOList
             (
-                "faceEdges",
-                mesh_.facesInstance(),
-                meshSubDir,
-                mesh_,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
+                IOobject
+                (
+                    "faceEdges",
+                    mesh_.facesInstance(),
+                    meshSubDir,
+                    mesh_,
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE
+                )
             )
-        )
-    );
+        );
 
-    efPtr_ =
-    (
-        new labelListIOList
+        efPtr_ =
         (
-            IOobject
+            new labelListIOList
             (
-                "edgeFaces",
-                mesh_.facesInstance(),
-                meshSubDir,
-                mesh_,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
+                IOobject
+                (
+                    "edgeFaces",
+                    mesh_.facesInstance(),
+                    meshSubDir,
+                    mesh_,
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE
+                )
             )
-        )
-    );
+        );
+
+        if (reUse)
+        {
+            fePtr_->transfer(faceEdges);
+            efPtr_->transfer(edgeFaces);
+        }
+        else
+        {
+            fePtr_->operator=(faceEdges);
+            efPtr_->operator=(edgeFaces);
+        }
+    }
 
     // Take over primitive data
     if (reUse)
     {
         edges_.transfer(edges);
-        fePtr_->transfer(faceEdges);
-        efPtr_->transfer(edgeFaces);
     }
     else
     {
         edges_ = edges;
-        fePtr_->operator=(faceEdges);
-        efPtr_->operator=(edgeFaces);
     }
 
     // Reset patch sizes and starts
@@ -302,6 +353,15 @@ void eMesh::resetPrimitives
 }
 
 
+//- Clear demand-driven data
+void eMesh::clearOut() const
+{
+    clearGeom();
+    clearAddressing();
+}
+
+
+//- Set the instance for mesh files
 void eMesh::setInstance(const fileName& inst)
 {
     if (debug)
@@ -327,52 +387,6 @@ void eMesh::setInstance(const fileName& inst)
 
     boundary_.writeOpt() = IOobject::AUTO_WRITE;
     boundary_.instance() = inst;
-}
-
-
-// Helper function to isolate points on triangular faces
-label eMesh::findIsolatedPoint(const face& f, const edge& e) const
-{
-    // Check the first point
-    if ( f[0] != e.start() && f[0] != e.end() )
-    {
-        return f[0];
-    }
-
-    // Check the second point
-    if ( f[1] != e.start() && f[1] != e.end() )
-    {
-        return f[1];
-    }
-
-    // Check the third point
-    if ( f[2] != e.start() && f[2] != e.end() )
-    {
-        return f[2];
-    }
-
-    return -1;
-}
-
-
-//- Helper function to determine the orientation of a triangular face
-label eMesh::edgeDirection(const face& f, const edge& e) const
-{
-    if
-    (
-        (f[0] == e.start() && f[1] == e.end())
-     || (f[1] == e.start() && f[2] == e.end())
-     || (f[2] == e.start() && f[0] == e.end())
-    )
-    {
-        // Return counter-clockwise
-        return 1;
-    }
-    else
-    {
-        // Return clockwise
-        return -1;
-    }
 }
 
 

@@ -1832,6 +1832,150 @@ void dynamicTopoFvMesh::writeProcIDs() const
 }
 
 
+// Utility method to check the quality
+// of a triangular face after bisection.
+//  - Returns 'true' if the bisection in NOT feasible.
+bool dynamicTopoFvMesh::checkBisection
+(
+    const label fIndex,
+    const label bFaceIndex,
+    bool forceOp
+) const
+{
+    scalar bisectionQuality = GREAT, minArea = GREAT;
+
+    label commonEdge = -1;
+
+    // Find the common edge index
+    meshOps::findCommonEdge
+    (
+        bFaceIndex,
+        fIndex,
+        faceEdges_,
+        commonEdge
+    );
+
+    // Fetch the edge
+    const edge& checkEdge = edges_[commonEdge];
+    const face& checkFace = faces_[bFaceIndex];
+
+    // Compute old / new mid-points
+    point mpOld =
+    (
+        linePointRef
+        (
+            oldPoints_[checkEdge.start()],
+            oldPoints_[checkEdge.end()]
+        ).centre()
+    );
+
+    point mpNew =
+    (
+        linePointRef
+        (
+            points_[checkEdge.start()],
+            points_[checkEdge.end()]
+        ).centre()
+    );
+
+    // Find the isolated point on the face
+    label iPoint = -1, nPoint = -1;
+
+    meshOps::findIsolatedPoint
+    (
+        checkFace,
+        checkEdge,
+        iPoint,
+        nPoint
+    );
+
+    // Find the other point
+    label oPoint =
+    (
+        (nPoint == checkEdge.start()) ?
+        checkEdge.end() : checkEdge.start()
+    );
+
+    // Configure old / new triangle faces
+    FixedList<FixedList<point, 3>, 2> tfNew, tfOld;
+
+    tfNew[0][0] = mpNew;
+    tfNew[0][1] = points_[iPoint];
+    tfNew[0][2] = points_[nPoint];
+
+    tfOld[0][0] = mpOld;
+    tfOld[0][1] = oldPoints_[iPoint];
+    tfOld[0][2] = oldPoints_[nPoint];
+
+    tfNew[1][0] = points_[oPoint];
+    tfNew[1][1] = points_[iPoint];
+    tfNew[1][2] = mpNew;
+
+    tfOld[1][0] = oldPoints_[oPoint];
+    tfOld[1][1] = oldPoints_[iPoint];
+    tfOld[1][2] = mpOld;
+
+    // Assume XY plane here
+    vector n = vector(0,0,1);
+
+    forAll(tfNew, fI)
+    {
+        // Configure triangles
+        triPointRef tprNew(tfNew[fI][0], tfNew[fI][1], tfNew[fI][2]);
+        triPointRef tprOld(tfOld[fI][0], tfOld[fI][1], tfOld[fI][2]);
+
+        scalar tQuality =
+        (
+            tprNew.quality() *
+            (
+                Foam::sign
+                (
+                    tprNew.normal() &
+                    ((tprNew.centre() & n) * n)
+                )
+            )
+        );
+
+        scalar oldArea =
+        (
+            mag(tprOld.normal()) *
+            (
+                Foam::sign
+                (
+                    tprOld.normal() &
+                    ((tprOld.centre() & n) * n)
+                )
+            )
+        );
+
+        // Update statistics
+        minArea = Foam::min(minArea, oldArea);
+        bisectionQuality = Foam::min(bisectionQuality, tQuality);
+    }
+
+    // Final quality check
+    if (bisectionQuality < sliverThreshold_ && !forceOp)
+    {
+        return true;
+    }
+
+    // Negative quality is a no-no
+    if (bisectionQuality < 0.0)
+    {
+        return true;
+    }
+
+    // Negative old-area is also a no-no
+    if (minArea < 0.0)
+    {
+        return true;
+    }
+
+    // No problems, so a bisection is feasible.
+    return false;
+}
+
+
 // Utility method to check whether the cell given by 'cellIndex' will yield
 // a valid cell when 'pointIndex' is moved to 'newPoint'.
 //  - The routine performs metric-based checks.

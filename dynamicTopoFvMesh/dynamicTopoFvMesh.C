@@ -1689,6 +1689,9 @@ void dynamicTopoFvMesh::initEdges()
         edgePoints_ = eMeshPtr_->edgePoints();
     }
 
+    // Clear out unwanted eMesh connectivity
+    eMeshPtr_->clearOut();
+
     // Read coupled patch information from dictionary.
     readCoupledPatches();
 }
@@ -3321,6 +3324,19 @@ bool dynamicTopoFvMesh::resetMesh()
 
     if (topoChangeFlag_)
     {
+        // Write out statistics
+        Info << " Bisections :: Total: " << status(3)
+             << ", Surface: " << status(5) << endl;
+        Info << " Collapses  :: Total: " << status(4)
+             << ", Surface: " << status(6) << endl;
+        Info << " Swaps      :: Total: " << status(1)
+             << ", Surface: " << status(2) << endl;
+
+        if (status(7))
+        {
+            Info << " Slivers    :: " << status(7) << endl;
+        }
+
         // Set sizes for mapping
         faceWeights_.setSize(facesFromFaces_.size(), scalarField(0));
         faceCentres_.setSize(facesFromFaces_.size(), vectorField(0));
@@ -3417,6 +3433,22 @@ bool dynamicTopoFvMesh::resetMesh()
             patchStarts_
         );
 
+        // Check the dictionary to determine whether
+        // edge-connectivity is to be stored on disk.
+        // This usually benefits restart-time for large
+        // cases, at the expense of disk-space.
+        const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
+        bool storePrimitives = false;
+
+        if (meshSubDict.found("storeEdgePrimitives") || mandatory_)
+        {
+            storePrimitives =
+            (
+                readBool(meshSubDict.lookup("storeEdgePrimitives"))
+            );
+        }
+
         // Reset the edge mesh
         eMeshPtr_->resetPrimitives
         (
@@ -3424,7 +3456,9 @@ bool dynamicTopoFvMesh::resetMesh()
             faceEdges,
             edgeFaces,
             edgePatchSizes_,
-            edgePatchStarts_
+            edgePatchStarts_,
+            true,
+            (time().outputTime() && storePrimitives)
         );
 
         // Generate mapping for points on boundary patches
@@ -3614,19 +3648,6 @@ bool dynamicTopoFvMesh::resetMesh()
         if (debug > 2)
         {
             checkMesh(true);
-        }
-
-        // Write out statistics
-        Info << " Bisections :: Total: " << status(3)
-             << ", Surface: " << status(5) << endl;
-        Info << " Collapses  :: Total: " << status(4)
-             << ", Surface: " << status(6) << endl;
-        Info << " Swaps      :: Total: " << status(1)
-             << ", Surface: " << status(2) << endl;
-
-        if (status(7))
-        {
-            Info << " Slivers removed: " << status(7) << endl;
         }
 
         // Reset statistics

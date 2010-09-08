@@ -78,12 +78,7 @@ int main(int argc, char *argv[])
 
         interface.updateDisplacementDirections();
 
-        bool meshChanged = interface.restorePosition();
-
-        if (meshChanged)
-        {
-#           include "correctPhi.H"
-        }
+        interface.restorePosition();
 
 #       include "volContinuity.H"
 

@@ -97,6 +97,9 @@ void dynamicTopoFvMesh::computeMapping
         // Skip mapping for internal faces.
         if (whichPatch(fIndex) == -1)
         {
+            // Set dummy masters, so that the conventional
+            // faceMapper doesn't incur a seg-fault.
+            facesFromFaces_[faceI].masterObjects() = labelList(1, 0);
             continue;
         }
 
@@ -325,7 +328,10 @@ bool dynamicTopoFvMesh::computeFaceWeights
     // Fetch old patch start
     label patchStart = boundary[patchIndex].start();
 
-    StaticHashTable<empty, label, Hash<label> > checkedFaces;
+    StaticHashTable<empty, label, Hash<label> > checkedFaces, skippedFaces;
+
+    // VectorField of intersection points
+    vectorField tP(0);
 
     // Fetch connectivity from the old mesh.
     const labelListList& oldFaceFaces = boundary[patchIndex].faceFaces();
@@ -341,92 +347,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
 
         if (nAttempts == 0)
         {
-            // Test all candidates, and pick one.
-            forAll(mapCandidates, fI)
-            {
-                vectorField tP(0);
-
-                bool intersect =
-                (
-                    faceIntersection
-                    (
-                        fIndex,
-                        mapCandidates[fI],
-                        matchTol,
-                        tP
-                    )
-                );
-
-                if (intersect)
-                {
-                    // Add a neighbouring face, so that this
-                    // face will be checked in the following loop.
-                    meshOps::sizeUpList
-                    (
-                        oldFaceFaces[mapCandidates[fI] - patchStart][0],
-                        checkList
-                    );
-
-                    break;
-                }
-            }
-
-            // Need to setup a rescue mechanism.
-            if (checkList.empty())
-            {
-                labelHashSet rescue;
-
-                forAll(mapCandidates, fI)
-                {
-                    rescue.insert(mapCandidates[fI] - patchStart);
-                }
-
-                for (label level = 0; level < 5; level++)
-                {
-                    labelList initList = rescue.toc();
-
-                    forAll(initList, fI)
-                    {
-                        const labelList& ff = oldFaceFaces[initList[fI]];
-
-                        forAll(ff, faceI)
-                        {
-                            rescue.set(ff[faceI], empty());
-                        }
-                    }
-                }
-
-                labelList finalList = rescue.toc();
-
-                forAll(finalList, fI)
-                {
-                    vectorField tP(0);
-
-                    bool intersect =
-                    (
-                        faceIntersection
-                        (
-                            fIndex,
-                            finalList[fI] + patchStart,
-                            matchTol,
-                            tP
-                        )
-                    );
-
-                    if (intersect)
-                    {
-                        // Add a neighbouring face, so that this
-                        // face will be checked in the following loop.
-                        meshOps::sizeUpList
-                        (
-                            oldFaceFaces[finalList[fI]][0],
-                            checkList
-                        );
-
-                        break;
-                    }
-                }
-            }
+            checkList = mapCandidates;
         }
         else
         {
@@ -435,24 +356,38 @@ bool dynamicTopoFvMesh::computeFaceWeights
 
         forAll(checkList, indexI)
         {
-            const labelList& ff = oldFaceFaces[checkList[indexI]];
+            labelList checkFaces;
 
-            forAll(ff, faceI)
+            if (nAttempts == 0)
             {
-                // Skip if this is already on the list
-                if (checkedFaces.found(ff[faceI]))
+                checkFaces = labelList(1, checkList[indexI] - patchStart);
+            }
+            else
+            {
+                checkFaces = oldFaceFaces[checkList[indexI]];
+            }
+
+            forAll(checkFaces, faceI)
+            {
+                label checkFace = checkFaces[faceI];
+
+                // Skip if this is already
+                // on the checked / skipped list
+                if
+                (
+                    (checkedFaces.found(checkFace)) ||
+                    (skippedFaces.found(checkFace))
+                )
                 {
                     continue;
                 }
-
-                vectorField tP(0);
 
                 bool intersect =
                 (
                     faceIntersection
                     (
                         fIndex,
-                        ff[faceI] + patchStart,
+                        checkFace + patchStart,
                         matchTol,
                         tP
                     )
@@ -479,7 +414,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
                     meshOps::convexSetArea
                     (
                         fIndex,
-                        ff[faceI] + patchStart,
+                        checkFace + patchStart,
                         tP,
                         refNorm,
                         cvxArea,
@@ -488,7 +423,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
                     );
 
                     // Size-up lists
-                    meshOps::sizeUpList(ff[faceI] + patchStart, parents);
+                    meshOps::sizeUpList(checkFace + patchStart, parents);
                     meshOps::sizeUpList(cvxArea, weights);
                     meshOps::sizeUpList(cvxCentre, centres);
 
@@ -496,18 +431,116 @@ bool dynamicTopoFvMesh::computeFaceWeights
                     sumAreas += cvxArea;
                     nIntersects++;
 
-                    checkedFaces.insert(ff[faceI], empty());
+                    checkedFaces.insert(checkFace, empty());
 
                     changed = true;
                 }
+                else
+                {
+                    // Add to the skipped list
+                    skippedFaces.insert(checkFace, empty());
+                }
+            }
+        }
+
+        if (nAttempts == 0 && !changed)
+        {
+            // Need to setup a rescue mechanism.
+            StaticHashTable<empty, label, Hash<label> > rescue;
+
+            forAll(mapCandidates, cI)
+            {
+                rescue.insert(mapCandidates[cI] - patchStart, empty());
+            }
+
+            for (label level = 0; level < 10; level++)
+            {
+                labelList initList = rescue.toc();
+
+                forAll(initList, fI)
+                {
+                    const labelList& ff = oldFaceFaces[initList[fI]];
+
+                    forAll(ff, faceI)
+                    {
+                        rescue.insert(ff[faceI], empty());
+                    }
+                }
+            }
+
+            labelList finalList = rescue.toc();
+
+            forAll(finalList, faceI)
+            {
+                label checkFace = finalList[faceI];
+
+                bool intersect =
+                (
+                    faceIntersection
+                    (
+                        fIndex,
+                        checkFace + patchStart,
+                        matchTol,
+                        tP
+                    )
+                );
+
+                if (intersect)
+                {
+                    scalar cvxArea = 0.0;
+                    vector cvxCentre = vector::zero;
+
+                    // We need a reference normal. Use the new face.
+                    vector refNorm =
+                    (
+                        meshOps::faceNormal
+                        (
+                            faces_[fIndex],
+                            oldPoints_
+                        )
+                    );
+
+                    refNorm /= mag(refNorm) + VSMALL;
+
+                    // Compute weights
+                    meshOps::convexSetArea
+                    (
+                        fIndex,
+                        checkFace + patchStart,
+                        tP,
+                        refNorm,
+                        cvxArea,
+                        cvxCentre,
+                        output
+                    );
+
+                    // Size-up lists
+                    meshOps::sizeUpList(checkFace + patchStart, parents);
+                    meshOps::sizeUpList(cvxArea, weights);
+                    meshOps::sizeUpList(cvxCentre, centres);
+
+                    // Accumulate area
+                    sumAreas += cvxArea;
+                    nIntersects++;
+
+                    checkedFaces.insert(checkFace, empty());
+
+                    changed = true;
+                    break;
+                }
+            }
+
+            if (!changed)
+            {
+                // No point in continuing further...
+                break;
             }
         }
 
         nAttempts++;
 
-        // Break out if we're taking too long,
-        // or no intersections were found.
-        if (nAttempts > 10 || !nIntersects)
+        // Break out if we're taking too long
+        if (nAttempts > 20)
         {
             break;
         }
@@ -577,9 +610,18 @@ bool dynamicTopoFvMesh::computeFaceWeights
     if (!consistent)
     {
         // Write out for post-processing
+        labelList uFaces = skippedFaces.toc();
+
+        // Renumber to global indices
+        forAll(uFaces, faceI)
+        {
+            uFaces[faceI] += patchStart;
+        }
+
         writeVTK("nFace_" + Foam::name(fIndex), fIndex, 2, false, true);
         writeVTK("oFace_" + Foam::name(fIndex), mapCandidates, 2, true, true);
         writeVTK("mFace_" + Foam::name(fIndex), parents, 2, true, true);
+        writeVTK("mFace_" + Foam::name(fIndex), uFaces, 2, true, true);
 
         FatalErrorIn
         (
@@ -691,7 +733,11 @@ bool dynamicTopoFvMesh::computeCellWeights
         cellVolume
     );
 
-    StaticHashTable<empty, label, Hash<label> > checkedCells;
+    // Maintain a check-list
+    StaticHashTable<empty, label, Hash<label> > checkedCells, skippedCells;
+
+    // VectorField of intersection points
+    vectorField tP(0);
 
     // Fetch connectivity from the old mesh.
     const labelListList& oldCellCells = polyMesh::cellCells();
@@ -707,92 +753,7 @@ bool dynamicTopoFvMesh::computeCellWeights
 
         if (nAttempts == 0)
         {
-            // Test all candidates, and pick one.
-            forAll(mapCandidates, cI)
-            {
-                vectorField tP(0);
-
-                bool intersect =
-                (
-                    cellIntersection
-                    (
-                        cIndex,
-                        mapCandidates[cI],
-                        matchTol,
-                        tP
-                    )
-                );
-
-                if (intersect)
-                {
-                    // Add a neighbouring cell, so that this
-                    // cell will be checked in the following loop.
-                    meshOps::sizeUpList
-                    (
-                        oldCellCells[mapCandidates[cI]][0],
-                        checkList
-                    );
-
-                    break;
-                }
-            }
-
-            // Need to setup a rescue mechanism.
-            if (checkList.empty())
-            {
-                labelHashSet rescue;
-
-                forAll(mapCandidates, cI)
-                {
-                    rescue.insert(mapCandidates[cI]);
-                }
-
-                for (label level = 0; level < 5; level++)
-                {
-                    labelList initList = rescue.toc();
-
-                    forAll(initList, cI)
-                    {
-                        const labelList& cc = oldCellCells[initList[cI]];
-
-                        forAll(cc, cellI)
-                        {
-                            rescue.set(cc[cellI], empty());
-                        }
-                    }
-                }
-
-                labelList finalList = rescue.toc();
-
-                forAll(finalList, cI)
-                {
-                    vectorField tP(0);
-
-                    bool intersect =
-                    (
-                        cellIntersection
-                        (
-                            cIndex,
-                            finalList[cI],
-                            matchTol,
-                            tP
-                        )
-                    );
-
-                    if (intersect)
-                    {
-                        // Add a neighbouring cell, so that this
-                        // cell will be checked in the following loop.
-                        meshOps::sizeUpList
-                        (
-                            oldCellCells[finalList[cI]][0],
-                            checkList
-                        );
-
-                        break;
-                    }
-                }
-            }
+            checkList = mapCandidates;
         }
         else
         {
@@ -801,24 +762,38 @@ bool dynamicTopoFvMesh::computeCellWeights
 
         forAll(checkList, indexI)
         {
-            const labelList& cc = oldCellCells[checkList[indexI]];
+            labelList checkCells;
 
-            forAll(cc, cellI)
+            if (nAttempts == 0)
             {
-                // Skip if this is already on the list
-                if (checkedCells.found(cc[cellI]))
+                checkCells = labelList(1, checkList[indexI]);
+            }
+            else
+            {
+                checkCells = oldCellCells[checkList[indexI]];
+            }
+
+            forAll(checkCells, cellI)
+            {
+                label checkCell = checkCells[cellI];
+
+                // Skip if this is already
+                // on the checked / skipped list
+                if
+                (
+                    (checkedCells.found(checkCell)) ||
+                    (skippedCells.found(checkCell))
+                )
                 {
                     continue;
                 }
-
-                vectorField tP(0);
 
                 bool intersect =
                 (
                     cellIntersection
                     (
                         cIndex,
-                        cc[cellI],
+                        checkCell,
                         matchTol,
                         tP
                     )
@@ -833,7 +808,7 @@ bool dynamicTopoFvMesh::computeCellWeights
                     meshOps::convexSetVolume
                     (
                         cIndex,
-                        cc[cellI],
+                        checkCell,
                         tP,
                         cvxVolume,
                         cvxCentre,
@@ -841,7 +816,7 @@ bool dynamicTopoFvMesh::computeCellWeights
                     );
 
                     // Size-up lists
-                    meshOps::sizeUpList(cc[cellI], parents);
+                    meshOps::sizeUpList(checkCell, parents);
                     meshOps::sizeUpList(cvxVolume, weights);
                     meshOps::sizeUpList(cvxCentre, centres);
 
@@ -849,18 +824,104 @@ bool dynamicTopoFvMesh::computeCellWeights
                     sumVols += cvxVolume;
                     nIntersects++;
 
-                    checkedCells.insert(cc[cellI], empty());
+                    checkedCells.insert(checkCell, empty());
 
                     changed = true;
                 }
+                else
+                {
+                    // Add to the skipped list
+                    skippedCells.insert(checkCell, empty());
+                }
+            }
+        }
+
+        if (nAttempts == 0 && !changed)
+        {
+            // Need to setup a rescue mechanism.
+            StaticHashTable<empty, label, Hash<label> > rescue;
+
+            forAll(mapCandidates, cI)
+            {
+                rescue.insert(mapCandidates[cI], empty());
+            }
+
+            // Agglomerate a larger set of cells
+            for (label level = 0; level < 10; level++)
+            {
+                labelList initList = rescue.toc();
+
+                forAll(initList, cI)
+                {
+                    const labelList& cc = oldCellCells[initList[cI]];
+
+                    forAll(cc, cellI)
+                    {
+                        rescue.insert(cc[cellI], empty());
+                    }
+                }
+            }
+
+            labelList finalList = rescue.toc();
+
+            forAll(finalList, cellI)
+            {
+                label checkCell = finalList[cellI];
+
+                bool intersect =
+                (
+                    cellIntersection
+                    (
+                        cIndex,
+                        checkCell,
+                        matchTol,
+                        tP
+                    )
+                );
+
+                if (intersect)
+                {
+                    scalar cvxVolume = 0.0;
+                    vector cvxCentre = vector::zero;
+
+                    // Compute weights
+                    meshOps::convexSetVolume
+                    (
+                        cIndex,
+                        checkCell,
+                        tP,
+                        cvxVolume,
+                        cvxCentre,
+                        output
+                    );
+
+                    // Size-up lists
+                    meshOps::sizeUpList(checkCell, parents);
+                    meshOps::sizeUpList(cvxVolume, weights);
+                    meshOps::sizeUpList(cvxCentre, centres);
+
+                    // Accumulate volume
+                    sumVols += cvxVolume;
+                    nIntersects++;
+
+                    checkedCells.insert(checkCell, empty());
+
+                    changed = true;
+                    break;
+                }
+            }
+
+            if (!changed)
+            {
+                // No point in continuing further...
+                break;
             }
         }
 
         nAttempts++;
 
-        // Break out if we're taking too long,
-        // or no intersections were found.
-        if (nAttempts > 10 || !nIntersects)
+        // Break out if we're taking too long
+        if (nAttempts > 20)
         {
             break;
         }
@@ -970,9 +1031,12 @@ bool dynamicTopoFvMesh::computeCellWeights
     if (!consistent)
     {
         // Write out for post-processing
+        labelList uCells = skippedCells.toc();
+
         writeVTK("nCell_" + Foam::name(cIndex), cIndex, 3, false, true);
         writeVTK("oCell_" + Foam::name(cIndex), mapCandidates, 3, true, true);
         writeVTK("mCell_" + Foam::name(cIndex), parents, 3, true, true);
+        writeVTK("uCell_" + Foam::name(cIndex), uCells, 3, true, true);
 
         FatalErrorIn
         (

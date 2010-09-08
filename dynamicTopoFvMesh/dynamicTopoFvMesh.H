@@ -420,7 +420,8 @@ class dynamicTopoFvMesh
         (
             const label fIndex,
             const changeMap& masterMap,
-            bool checkOnly = false
+            bool checkOnly = false,
+            bool forceOp = false
         );
 
         // Method for the collapse of a quad-face in 2D
@@ -470,6 +471,14 @@ class dynamicTopoFvMesh
 
         // Slice the mesh at a particular location
         void sliceMesh(const labelPair& pointPair);
+
+        // Utility method to check for invalid face-bisection.
+        bool checkBisection
+        (
+            const label fIndex,
+            const label bFaceIndex,
+            bool forceOp = false
+        ) const;
 
         // Utility method to check for invalid face-collapse.
         bool checkCollapse

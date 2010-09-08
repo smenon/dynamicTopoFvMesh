@@ -43,11 +43,13 @@ namespace Foam
 // - Returns a changeMap with a type specifying:
 //     1: Bisection was successful
 //    -1: Bisection failed since max number of topo-changes was reached.
+//    -2: Bisection failed since resulting quality would be unacceptable.
 const changeMap dynamicTopoFvMesh::bisectQuadFace
 (
     const label fIndex,
     const changeMap& masterMap,
-    bool checkOnly
+    bool checkOnly,
+    bool forceOp
 )
 {
     // Quad-face bisection performs the following operations:
@@ -137,6 +139,37 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         c0IntFace,
         c0IntIndex
     );
+
+    // Check for resulting quality
+    if (checkBisection(fIndex, c0BdyIndex[0], forceOp))
+    {
+        map.type() = -2;
+        return map;
+    }
+
+    if (c1 != -1)
+    {
+        // Find the prism faces for cell[1].
+        meshOps::findPrismFaces
+        (
+            fIndex,
+            c1,
+            faces_,
+            cells_,
+            neighbour_,
+            c1BdyFace,
+            c1BdyIndex,
+            c1IntFace,
+            c1IntIndex
+        );
+
+        // Check for resulting quality
+        if (checkBisection(fIndex, c1BdyIndex[0], forceOp))
+        {
+            map.type() = -2;
+            return map;
+        }
+    }
 
     if (debug > 1)
     {
@@ -1004,20 +1037,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     else
     {
         oldCells[1] = cells_[c1];
-
-        // Find the prism faces for cell[1].
-        meshOps::findPrismFaces
-        (
-            fIndex,
-            c1,
-            faces_,
-            cells_,
-            neighbour_,
-            c1BdyFace,
-            c1BdyIndex,
-            c1IntFace,
-            c1IntIndex
-        );
 
         newCellIndex[1] = insertCell(newCells[1], lengthScale_[c1]);
 
@@ -2019,7 +2038,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 // - Returns a changeMap with a type specifying:
 //     1: Bisection was successful
 //    -1: Bisection failed since max number of topo-changes was reached.
-//    -2: Bisection failed since resulting quality would be really bad.
+//    -2: Bisection failed since resulting quality would be unacceptable.
 // - AddedPoints contain the index of the newly added point.
 const changeMap dynamicTopoFvMesh::bisectEdge
 (
@@ -5282,8 +5301,8 @@ const changeMap dynamicTopoFvMesh::trisectFace
 }
 
 
-// Utility method to compute the quality of a vertex hull
-// around an edge after bisection.
+// Utility method to compute the quality of a
+// vertex hull around an edge after bisection.
 scalar dynamicTopoFvMesh::computeBisectionQuality
 (
     const label eIndex

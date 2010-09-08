@@ -129,9 +129,6 @@ class eMesh
             //- Clear addressing
             void clearAddressing() const;
 
-            //- Clear demand-driven data
-            void clearOut() const;
-
 public:
 
     // Public typedefs
@@ -221,8 +218,12 @@ public:
             labelListList& edgeFaces,
             const labelList& patchSizes,
             const labelList& patchStarts,
-            const bool reUse = true
+            const bool reUse,
+            const bool storePrimitives
         );
+
+        //- Clear demand-driven data
+        void clearOut() const;
 
         //- Set the instance for mesh files
         void setInstance(const fileName& inst);
