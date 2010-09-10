@@ -4134,7 +4134,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         }
 
         // Loop through cellEdges, and perform appropriate actions.
-        forAllIter(labelHashSet::iterator, cellEdges, eIter)
+        forAllIter(labelHashSet, cellEdges, eIter)
         {
             const edge& edgeToCheck = edges_[eIter.key()];
 
@@ -4978,7 +4978,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         }
 
         // Loop through cellEdges, and perform appropriate actions.
-        forAllIter(labelHashSet::iterator, cellEdges, eIter)
+        forAllIter(labelHashSet, cellEdges, eIter)
         {
             const edge& edgeToCheck = edges_[eIter.key()];
 

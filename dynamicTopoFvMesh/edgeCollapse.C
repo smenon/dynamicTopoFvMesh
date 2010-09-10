@@ -3879,7 +3879,7 @@ void dynamicTopoFvMesh::mergeBoundaryFaces
             // Check if this point was mapped for another point.
             bool foundPoint = false;
 
-            forAllIter(Map<label>::iterator, mapPoints, pIter)
+            forAllIter(Map<label>, mapPoints, pIter)
             {
                 if (pIter() == minIndex)
                 {

@@ -893,7 +893,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     //   this is a reverse of the traditional definition.
     for (label stage = 0; stage < 2; stage++)
     {
-        forAllIter(Map<label>::iterator, rFaceMap, fIter)
+        forAllIter(Map<label>, rFaceMap, fIter)
         {
             const labelList& fEdges = faceEdges_[fIter.key()];
 
@@ -947,7 +947,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     }
 
     // Set additional points in the pointMap
-    forAllIter(Map<label>::iterator, rEdgeMap, eIter)
+    forAllIter(Map<label>, rEdgeMap, eIter)
     {
         const edge& thisEdge = edges_[eIter.key()];
 
@@ -978,7 +978,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     pointField& pBuffer = cMap.pointBuffer();
 
-    forAllIter(Map<label>::iterator, pointMap, pIter)
+    forAllIter(Map<label>, pointMap, pIter)
     {
         pBuffer[pIter.key()] = points_[pIter()];
     }
@@ -988,7 +988,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     label index = 0;
 
-    forAllIter(Map<label>::iterator, edgeMap, eIter)
+    forAllIter(Map<label>, edgeMap, eIter)
     {
         edge& edgeToCheck = edges_[eIter()];
 
@@ -1000,7 +1000,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     label faceIndex = 0;
 
-    forAllIter(Map<label>::iterator, faceMap, fIter)
+    forAllIter(Map<label>, faceMap, fIter)
     {
         // Find the actual patchID for this face.
         label pIndex = whichPatch(fIter());
@@ -1026,7 +1026,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     labelList& fBuffer  = cMap.entityBuffer(coupleMap::FACE);
     labelList& feBuffer = cMap.entityBuffer(coupleMap::FACE_EDGE);
 
-    forAllIter(Map<label>::iterator, faceMap, fIter)
+    forAllIter(Map<label>, faceMap, fIter)
     {
         if (rCellMap.found(owner_[fIter()]))
         {
@@ -1050,7 +1050,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     index = 0;
     labelList& cBuffer  = cMap.entityBuffer(coupleMap::CELL);
 
-    forAllIter(Map<label>::iterator, cellMap, cIter)
+    forAllIter(Map<label>, cellMap, cIter)
     {
         const cell& cellToCheck = cells_[cIter()];
 
