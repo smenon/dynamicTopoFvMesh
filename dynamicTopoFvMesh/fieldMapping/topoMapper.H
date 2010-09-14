@@ -84,11 +84,13 @@ class topoMapper
     // Demand-driven private data
 
         // Stored gradients for mapping
-        HashTable<autoPtr<volVectorField> > sGrads_;
-        HashTable<autoPtr<volTensorField> > vGrads_;
+        mutable HashTable<autoPtr<volVectorField> > sGrads_;
+        mutable HashTable<autoPtr<volTensorField> > vGrads_;
 
-        //- Face / cell centre information
+        //- Geometric information on the old mesh
+        mutable scalarField* cellVolumesPtr_;
         mutable vectorField* cellCentresPtr_;
+        mutable PtrList<scalarField> patchAreasPtr_;
         mutable PtrList<vectorField> patchCentresPtr_;
 
         //- Intersection volume weights
@@ -113,11 +115,17 @@ class topoMapper
         void storeGradients
         (
             HashTable<autoPtr<gradType> >& gradTable
-        );
+        ) const;
 
         //- Fetch the gradient field
         template <class Type>
         const Type& gradient(const word& name) const;
+
+        //- Store gradients prior to mesh reset
+        void storeGradients() const;
+
+        //- Set geometric information
+        void storeGeometry() const;
 
 public:
 
@@ -132,7 +140,9 @@ public:
             surfaceMap_(NULL),
             boundaryMap_(NULL),
             fluxCorrector_(fluxCorrector::New(mesh, dict)),
+            cellVolumesPtr_(NULL),
             cellCentresPtr_(NULL),
+            patchAreasPtr_(mesh.boundary().size()),
             patchCentresPtr_(mesh.boundary().size())
         {}
 
@@ -177,14 +187,17 @@ public:
         //- Fetch cell centres
         const List<vectorField>& cellCentres() const;
 
-        //- Store gradients prior to mesh reset
-        void storeGradients();
+        //- Store mesh information for the mapping stage
+        void storeMeshInformation() const;
 
-        //- Set face/cell centre information
-        void storeCentres();
+        //- Return stored cell volume information
+        const scalarField& cellVolumes() const;
 
         //- Return stored cell centre information
         const vectorField& internalCentres() const;
+
+        //- Return stored patch area information
+        const scalarField& patchAreas(const label i) const;
 
         //- Return stored patch centre information
         const vectorField& patchCentres(const label i) const;

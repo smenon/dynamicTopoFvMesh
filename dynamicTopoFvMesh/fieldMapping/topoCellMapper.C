@@ -462,6 +462,7 @@ const labelList& topoCellMapper::insertedObjectLabels() const
 template <class Type, class gradType>
 void topoCellMapper::mapInternalField
 (
+    const word& fieldName,
     const Field<gradType>& gF,
     Field<Type>& iF
 ) const
@@ -473,10 +474,12 @@ void topoCellMapper::mapInternalField
             "\n\n"
             "void topoCellMapper::mapInternalField<Type>\n"
             "(\n"
+            "    const word& fieldName,\n"
             "    const Field<gradType>& gF,\n"
             "    Field<Type>& iF\n"
             ") const\n"
         )  << "Incompatible size before mapping." << nl
+           << " Field: " << fieldName << nl
            << " Field size: " << iF.size() << nl
            << " Gradient Field size: " << gF.size() << nl
            << " map size: " << sizeBeforeMapping() << nl
@@ -490,6 +493,9 @@ void topoCellMapper::mapInternalField
 
     // Fetch geometry
     const vectorField& centres = tMapper_.internalCentres();
+
+    // Compute the integral of the source field
+    Type intSource = sum(iF * tMapper_.cellVolumes());
 
     // Copy the original field
     Field<Type> fieldCpy(iF);
@@ -522,6 +528,20 @@ void topoCellMapper::mapInternalField
                 )
             );
         }
+    }
+
+    // Compute the integral of the target field
+    Type intTarget = sum(iF * mesh_.cellVolumes());
+
+    if (polyMesh::debug)
+    {
+        // Compare the global integral
+        Info << nl << " Field : " << fieldName
+             << " integral errors : "
+             << " source : " << mag(intSource)
+             << " target : " << mag(intTarget)
+             << " norm : " << (mag(intTarget - intSource) / mag(intSource))
+             << endl;
     }
 }
 

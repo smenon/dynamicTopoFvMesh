@@ -167,6 +167,7 @@ public:
         template <class Type, class gradType>
         void mapInternalField
         (
+            const word& fieldName,
             const Field<gradType>& gF,
             Field<Type>& iF
         ) const;

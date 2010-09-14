@@ -323,7 +323,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
         )
     );
 
-    scalar fArea = mag(fNormal);
+    scalar faceArea = mag(fNormal);
 
     // Fetch old patch start
     label patchStart = boundary[patchIndex].start();
@@ -551,7 +551,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
     bool consistent = false;
 
     // Test weights for consistency
-    if (mag(1.0 - sum(weights/fArea)) > 1e-10)
+    if (mag(1.0 - sum(weights/faceArea)) > 1e-10)
     {
         // Inconsistent weights. Check whether any edges
         // lie on bounding curves. These faces can have
@@ -573,10 +573,10 @@ bool dynamicTopoFvMesh::computeFaceWeights
         if (consistent)
         {
             // Normalize by sum of weights instead
-            fArea = sum(weights);
+            faceArea = sum(weights);
         }
         else
-        if (precisionAttempts < 10)
+        if (precisionAttempts < 12)
         {
             // Could be a precision problem.
             // Recurse until consistency is obtained.
@@ -623,6 +623,12 @@ bool dynamicTopoFvMesh::computeFaceWeights
         writeVTK("mFace_" + Foam::name(fIndex), parents, 2, true, true);
         writeVTK("mFace_" + Foam::name(fIndex), uFaces, 2, true, true);
 
+        // Write out intersections for post-processing
+        forAll(parents, faceI)
+        {
+            faceIntersection(fIndex, parents[faceI], matchTol, tP, true);
+        }
+
         FatalErrorIn
         (
             "\n\n"
@@ -650,11 +656,13 @@ bool dynamicTopoFvMesh::computeFaceWeights
             << " nInternalFaces: " << nInternalFaces_ << nl
             << " nOldInternalFaces: " << nOldInternalFaces_ << nl
             << setprecision(16)
-            << " Face area: " << fArea << nl
+            << " Face area: " << faceArea << nl
             << " Sum(Weights): " << sum(weights) << nl
-            << " Error: " << (fArea - sum(weights)) << nl
-            << " Norm Sum(Weights): " << sum(weights/fArea) << nl
-            << " Norm Error: " << mag(1.0 - sum(weights/fArea))
+            << " Error: " << (faceArea - sum(weights)) << nl
+            << " Norm Sum(Weights): " << sum(weights/faceArea) << nl
+            << " Norm Error: " << mag(1.0 - sum(weights/faceArea)) << nl
+            << " Parents: " << parents << nl
+            << " Weights: " << (weights/faceArea)
             << abort(FatalError);
     }
 
@@ -662,16 +670,16 @@ bool dynamicTopoFvMesh::computeFaceWeights
     {
         Info << " Face: " << fIndex << nl
              << setprecision(16)
-             << " Face area: " << fArea << nl
+             << " Face area: " << faceArea << nl
              << " Sum(Weights): " << sum(weights) << nl
-             << " Error: " << (fArea - sum(weights)) << nl
-             << " Norm Sum(Weights): " << sum(weights/fArea) << nl
-             << " Norm Error: " << mag(1.0 - sum(weights/fArea))
+             << " Error: " << (faceArea - sum(weights)) << nl
+             << " Norm Sum(Weights): " << sum(weights/faceArea) << nl
+             << " Norm Error: " << mag(1.0 - sum(weights/faceArea))
              << endl;
     }
 
     // Return normalized weights
-    weights /= fArea;
+    weights /= faceArea;
 
     return consistent;
 }
@@ -997,7 +1005,7 @@ bool dynamicTopoFvMesh::computeCellWeights
             cellVolume = sum(weights);
         }
         else
-        if (precisionAttempts < 10)
+        if (precisionAttempts < 12)
         {
             // Could be a precision problem.
             // Recurse until consistency is obtained.
@@ -1038,6 +1046,12 @@ bool dynamicTopoFvMesh::computeCellWeights
         writeVTK("mCell_" + Foam::name(cIndex), parents, 3, true, true);
         writeVTK("uCell_" + Foam::name(cIndex), uCells, 3, true, true);
 
+        // Write out intersections for post-processing
+        forAll(parents, cellI)
+        {
+            cellIntersection(cIndex, parents[cellI], matchTol, tP, true);
+        }
+
         FatalErrorIn
         (
             "\n\n"
@@ -1067,7 +1081,9 @@ bool dynamicTopoFvMesh::computeCellWeights
             << " Sum(Weights): " << sum(weights) << nl
             << " Error: " << (cellVolume - sum(weights)) << nl
             << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
-            << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
+            << " Norm Error: " << mag(1.0 - sum(weights/cellVolume)) << nl
+            << " Parents: " << parents << nl
+            << " Weights: " << (weights/cellVolume)
             << abort(FatalError);
     }
 
@@ -1096,7 +1112,8 @@ bool dynamicTopoFvMesh::faceIntersection
     const label newFaceIndex,
     const label oldFaceIndex,
     const scalar matchTol,
-    vectorField& tP
+    vectorField& tP,
+    bool output
 ) const
 {
     // Reset inputs
@@ -1214,25 +1231,25 @@ bool dynamicTopoFvMesh::faceIntersection
             tP[nInts++] = pI();
         }
 
-        if (debug)
+        if (debug > 3 || output)
         {
             if (meshOps::checkPointNearness(tP, 1e-20))
             {
                 writeVTK(Foam::name(newFaceIndex),newFaceIndex,2,false,true);
                 writeVTK(Foam::name(oldFaceIndex),oldFaceIndex,2,true,true);
-
-                meshOps::writeVTK
-                (
-                    (*this),
-                    "ccSet_"
-                  + Foam::name(newFaceIndex)
-                  + '<' + Foam::name(oldFaceIndex) + '>',
-                    tP.size(),
-                    tP.size(),
-                    tP.size(),
-                    tP
-                );
             }
+
+            meshOps::writeVTK
+            (
+                (*this),
+                "ccSet_"
+              + Foam::name(newFaceIndex)
+              + '<' + Foam::name(oldFaceIndex) + '>',
+                tP.size(),
+                tP.size(),
+                tP.size(),
+                tP
+            );
         }
 
         return true;
@@ -1408,25 +1425,25 @@ bool dynamicTopoFvMesh::faceIntersection
     }
 
     // Check for concurrent points.
-    if (debug)
+    if (debug > 3 || output)
     {
         if (meshOps::checkPointNearness(tP, 1e-20))
         {
             writeVTK(Foam::name(newFaceIndex),newFaceIndex,2,false,true);
             writeVTK(Foam::name(oldFaceIndex),oldFaceIndex,2,true,true);
-
-            meshOps::writeVTK
-            (
-                (*this),
-                "ccSet_"
-              + Foam::name(newFaceIndex)
-              + '<' + Foam::name(oldFaceIndex) + '>',
-                tP.size(),
-                tP.size(),
-                tP.size(),
-                tP
-            );
         }
+
+        meshOps::writeVTK
+        (
+            (*this),
+            "ccSet_"
+          + Foam::name(newFaceIndex)
+          + '<' + Foam::name(oldFaceIndex) + '>',
+            tP.size(),
+            tP.size(),
+            tP.size(),
+            tP
+        );
     }
 
     // Found a convex set of points.
@@ -1446,7 +1463,8 @@ bool dynamicTopoFvMesh::cellIntersection
     const label newCellIndex,
     const label oldCellIndex,
     const scalar matchTol,
-    vectorField& tP
+    vectorField& tP,
+    bool output
 ) const
 {
     // Reset inputs
@@ -1545,7 +1563,7 @@ bool dynamicTopoFvMesh::cellIntersection
             tP[nInts++] = pI();
         }
 
-        if (debug > 3)
+        if (debug > 3 || output)
         {
             meshOps::writeVTK
             (
@@ -2072,6 +2090,21 @@ bool dynamicTopoFvMesh::cellIntersection
             tP[nInts++] = pI();
         }
 
+        if (debug > 3 || output)
+        {
+            meshOps::writeVTK
+            (
+                (*this),
+                "ccSet_"
+              + Foam::name(newCellIndex)
+              + '<' + Foam::name(oldCellIndex) + '>',
+                tP.size(),
+                tP.size(),
+                tP.size(),
+                tP
+            );
+        }
+
         // Found a convex set of points
         return true;
     }
@@ -2340,7 +2373,7 @@ bool dynamicTopoFvMesh::cellIntersection
         tP[nInts++] = pI();
     }
 
-    if (debug > 3)
+    if (debug > 3 || output)
     {
         meshOps::writeVTK
         (

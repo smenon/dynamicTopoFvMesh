@@ -3344,7 +3344,7 @@ bool dynamicTopoFvMesh::resetMesh()
         cellCentres_.setSize(cellsFromCells_.size(), vectorField(0));
 
         // Fetch the match tolerance for mapping
-        scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-6);
+        scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-4);
 
         clockTime mappingTimer;
 
@@ -3416,10 +3416,8 @@ bool dynamicTopoFvMesh::resetMesh()
 
         topoMapper& fieldMapper = mapper_();
 
-        // Set face/cell centres and gradient information
-        // for the mapping stage, prior to mesh reset
-        fieldMapper.storeCentres();
-        fieldMapper.storeGradients();
+        // Set information for the mapping stage, prior to mesh reset
+        fieldMapper.storeMeshInformation();
 
         // Reset the mesh with pre-motion points
         polyMesh::resetPrimitives
@@ -3668,9 +3666,6 @@ bool dynamicTopoFvMesh::resetMesh()
 
     // Dump length-scale to disk, if requested.
     calculateLengthScale(true);
-
-    // Dump procIDs to disk, if requested.
-    writeProcIDs();
 
     // Reset and return flag
     if (topoChangeFlag_)

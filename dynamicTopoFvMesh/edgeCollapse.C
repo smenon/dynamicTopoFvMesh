@@ -2698,7 +2698,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             newPoint =
             (
-                0.45 *
+                0.5 *
                 (
                     points_[replacePoint]
                   + points_[collapsePoint]
@@ -2707,7 +2707,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             oldPoint =
             (
-                0.45 *
+                0.5 *
                 (
                     oldPoints_[replacePoint]
                   + oldPoints_[collapsePoint]

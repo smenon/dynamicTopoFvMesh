@@ -184,7 +184,11 @@ public:
 
         //- Map the patch field
         template <class Type>
-        void mapPatchField(Field<Type>& pF) const;
+        void mapPatchField
+        (
+            const word& fieldName,
+            Field<Type>& pF
+        ) const;
 };
 
 

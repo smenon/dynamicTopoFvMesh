@@ -295,6 +295,7 @@ const labelHashSet& topoSurfaceMapper::flipFaceFlux() const
 template <class Type>
 void topoSurfaceMapper::mapInternalField
 (
+    const word& fieldName,
     Field<Type>& iF
 ) const
 {
@@ -308,6 +309,7 @@ void topoSurfaceMapper::mapInternalField
             "    Field<Type>& iF\n"
             ") const\n"
         )  << "Incompatible size before mapping." << nl
+           << " Field: " << fieldName << nl
            << " Field size: " << iF.size() << nl
            << " map size: " << sizeBeforeMapping() << nl
            << abort(FatalError);
@@ -335,6 +337,7 @@ void topoSurfaceMapper::mapInternalField
                 "    Field<Type>& iF\n"
                 ") const\n"
             )  << "Cannot flip boundary face fluxes." << nl
+               << " Field: " << fieldName << nl
                << " Field size: " << iF.size() << nl
                << " Face flip index: " << flipFaces[i] << nl
                << abort(FatalError);

@@ -153,7 +153,11 @@ public:
 
         //- Map the internal field
         template <class Type>
-        void mapInternalField(Field<Type>& iF) const;
+        void mapInternalField
+        (
+            const word& fieldName,
+            Field<Type>& iF
+        ) const;
 };
 
 

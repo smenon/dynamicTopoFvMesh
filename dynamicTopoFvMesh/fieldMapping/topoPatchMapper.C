@@ -669,7 +669,11 @@ const labelListList& topoPatchMapper::insertedFaceAddressing() const
 
 //- Map the patch field
 template <class Type>
-void topoPatchMapper::mapPatchField(Field<Type>& pF) const
+void topoPatchMapper::mapPatchField
+(
+    const word& fieldName,
+    Field<Type>& pF
+) const
 {
     // To invoke inverse-distance weighting, use this:
     // pF.autoMap(*this);
@@ -681,9 +685,29 @@ void topoPatchMapper::mapPatchField(Field<Type>& pF) const
     }
     else
     {
+        if (pF.size() != sizeBeforeMapping())
+        {
+            FatalErrorIn
+            (
+                "\n\n"
+                "void topoCellMapper::mapPatchField<Type>\n"
+                "(\n"
+                "    const word& fieldName,\n"
+                "    Field<Type>& iF\n"
+                ") const\n"
+            )  << "Incompatible size before mapping." << nl
+               << " Field: " << fieldName << nl
+               << " Field size: " << pF.size() << nl
+               << " map size: " << sizeBeforeMapping() << nl
+               << abort(FatalError);
+        }
+
         // Fetch addressing
         const labelListList& pAddressing = addressing();
         const List<scalarField>& wF = intersectionWeights();
+
+        // Compute the integral of the source field
+        Type intSource = sum(pF * tMapper_.patchAreas(patch_.index()));
 
         // Copy the original field
         Field<Type> fieldCpy(pF);
@@ -706,6 +730,23 @@ void topoPatchMapper::mapPatchField(Field<Type>& pF) const
                     wF[faceI][faceJ] * fieldCpy[addr[faceJ]]
                 );
             }
+        }
+
+        // Compute the integral of the target field
+        const polyPatch& ppI = mpm_.mesh().boundaryMesh()[patch_.index()];
+
+        Type intTarget = sum(pF * mag(ppI.faceAreas()));
+
+        if (polyMesh::debug)
+        {
+            // Compare the global integral
+            Info << " Field : " << fieldName
+                 << " Patch : " << ppI.name()
+                 << " integral errors : "
+                 << " source : " << mag(intSource)
+                 << " target : " << mag(intTarget)
+                 << " norm : " << (mag(intTarget - intSource) / mag(intSource))
+                 << endl;
         }
     }
 }

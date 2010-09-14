@@ -1315,7 +1315,7 @@ void writeVTK
 
     for (label i = 0; i < nPoints; i++)
     {
-        file << setprecision(10)
+        file << setprecision(15)
              << points[i].x() << ' '
              << points[i].y() << ' '
              << points[i].z() << ' '

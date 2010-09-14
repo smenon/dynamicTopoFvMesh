@@ -1790,48 +1790,6 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 }
 
 
-// Write out proc IDs for post-processing
-void dynamicTopoFvMesh::writeProcIDs() const
-{
-    if (Pstream::parRun())
-    {
-        Switch writeProcIDs(false);
-
-        if
-        (
-            dict_.subDict("dynamicTopoFvMesh").found("writeProcIDs") ||
-            mandatory_
-        )
-        {
-            writeProcIDs =
-            (
-                dict_.subDict("dynamicTopoFvMesh").lookup("writeProcIDs")
-            );
-        }
-
-        if (time().outputTime() && writeProcIDs)
-        {
-            volScalarField procID
-            (
-                IOobject
-                (
-                    "procID",
-                    time().timeName(),
-                    *this,
-                    IOobject::NO_READ,
-                    IOobject::NO_WRITE,
-                    false
-                ),
-                *this,
-                dimensionedScalar("scalar", dimless, Pstream::myProcNo())
-            );
-
-            procID.write();
-        }
-    }
-}
-
-
 // Utility method to check the quality
 // of a triangular face after bisection.
 //  - Returns 'true' if the bisection in NOT feasible.

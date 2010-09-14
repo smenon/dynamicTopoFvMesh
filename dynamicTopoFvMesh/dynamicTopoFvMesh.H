@@ -313,7 +313,8 @@ class dynamicTopoFvMesh
             const label newFaceIndex,
             const label oldFaceIndex,
             const scalar matchTol,
-            vectorField& intPoints
+            vectorField& intPoints,
+            bool output = false
         ) const;
 
         // Return the intersection points between cells in old/new meshes
@@ -322,7 +323,8 @@ class dynamicTopoFvMesh
             const label newCellIndex,
             const label oldCellIndex,
             const scalar matchTol,
-            vectorField& intPoints
+            vectorField& intPoints,
+            bool output = false
         ) const;
 
         // Initialize mesh edges and related connectivity lists
@@ -946,9 +948,6 @@ class dynamicTopoFvMesh
 
         // Build coupled maps for coupled processor patches
         void buildProcessorCoupledMaps();
-
-        // Write out proc IDs for post-processing
-        void writeProcIDs() const;
 
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);
