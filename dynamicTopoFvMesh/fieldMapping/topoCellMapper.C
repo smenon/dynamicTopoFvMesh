@@ -536,11 +536,12 @@ void topoCellMapper::mapInternalField
     if (polyMesh::debug)
     {
         // Compare the global integral
-        Info << nl << " Field : " << fieldName
+        Info << " Field : " << fieldName
              << " integral errors : "
              << " source : " << mag(intSource)
              << " target : " << mag(intTarget)
-             << " norm : " << (mag(intTarget - intSource) / mag(intSource))
+             << " norm : "
+             << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
              << endl;
     }
 }

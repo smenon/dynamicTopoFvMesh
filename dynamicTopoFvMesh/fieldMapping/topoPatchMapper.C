@@ -745,7 +745,8 @@ void topoPatchMapper::mapPatchField
                  << " integral errors : "
                  << " source : " << mag(intSource)
                  << " target : " << mag(intTarget)
-                 << " norm : " << (mag(intTarget - intSource) / mag(intSource))
+                 << " norm : "
+                 << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
                  << endl;
         }
     }

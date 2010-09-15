@@ -62,10 +62,10 @@ class eMesh
         const polyMesh& mesh_;
 
         //- Ordered edge-list
-        edgeIOList edges_;
+        mutable edgeIOList edges_;
 
         //- Boundary mesh
-        eBoundaryMesh boundary_;
+        mutable eBoundaryMesh boundary_;
 
         // Primitive size data
 

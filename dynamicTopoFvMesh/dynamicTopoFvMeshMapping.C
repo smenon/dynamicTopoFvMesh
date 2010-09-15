@@ -621,7 +621,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
         writeVTK("nFace_" + Foam::name(fIndex), fIndex, 2, false, true);
         writeVTK("oFace_" + Foam::name(fIndex), mapCandidates, 2, true, true);
         writeVTK("mFace_" + Foam::name(fIndex), parents, 2, true, true);
-        writeVTK("mFace_" + Foam::name(fIndex), uFaces, 2, true, true);
+        writeVTK("uFace_" + Foam::name(fIndex), uFaces, 2, true, true);
 
         // Write out intersections for post-processing
         forAll(parents, faceI)
@@ -678,8 +678,17 @@ bool dynamicTopoFvMesh::computeFaceWeights
              << endl;
     }
 
-    // Return normalized weights
-    weights /= faceArea;
+    // Return normalized weights,
+    // but only if we're at the top
+    // of the recursion stack,
+    if (precisionAttempts)
+    {
+        precisionAttempts--;
+    }
+    else
+    {
+        weights /= faceArea;
+    }
 
     return consistent;
 }
@@ -1099,8 +1108,17 @@ bool dynamicTopoFvMesh::computeCellWeights
              << endl;
     }
 
-    // Return normalized weights
-    weights /= cellVolume;
+    // Return normalized weights,
+    // but only if we're at the top
+    // of the recursion stack,
+    if (precisionAttempts)
+    {
+        precisionAttempts--;
+    }
+    else
+    {
+        weights /= cellVolume;
+    }
 
     return consistent;
 }
@@ -1140,8 +1158,44 @@ bool dynamicTopoFvMesh::faceIntersection
     Map<labelList> commonPoints;
     vectorField projections(fromFace.size(), vector::zero);
 
-    // Add all new points, if they resulted
-    // from bisections of old face edges.
+    forAll(fromFace, pointI)
+    {
+        label fromPoint = fromFace[pointI];
+        label pIndex = findIndex(toFace, fromPoint);
+
+        vector r = polyMesh::points()[fromPoint];
+
+        if (pIndex == -1)
+        {
+            // Project this point on to the toFace plane.
+            projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
+
+            projPoints.insert(fromPoint, pointI);
+        }
+        else
+        {
+            // If this point was modified by a collapse
+            // to an edge mid-point, it can't be a common point.
+            if (modPoints_.found(toFace[pIndex]))
+            {
+                // Project this point on to the toFace plane.
+                projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
+
+                projPoints.insert(fromPoint, pointI);
+            }
+            else
+            {
+                commonPoints.insert(toFace[pIndex], labelList(0));
+
+                projections[pointI] = r;
+
+                intersections.set(++nInts, r);
+            }
+        }
+    }
+
+    // Add points if they resulted from
+    // bisections of old face edges.
     forAll(toFace, pointI)
     {
         label pIndex = toFace[pointI];
@@ -1183,41 +1237,6 @@ bool dynamicTopoFvMesh::faceIntersection
         }
     }
 
-    forAll(fromFace, pointI)
-    {
-        label pIndex = findIndex(toFace, fromFace[pointI]);
-
-        vector r = polyMesh::points()[fromFace[pointI]];
-
-        if (pIndex == -1)
-        {
-            // Project this point on to the toFace plane.
-            projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
-
-            projPoints.insert(fromFace[pointI], pointI);
-        }
-        else
-        {
-            // If this point was modified by a collapse
-            // to an edge mid-point, it can't be a common point.
-            if (modPoints_.found(toFace[pIndex]))
-            {
-                // Project this point on to the toFace plane.
-                projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
-
-                projPoints.insert(fromFace[pointI], pointI);
-            }
-            else
-            {
-                commonPoints.insert(toFace[pIndex], labelList(0));
-
-                projections[pointI] = r;
-
-                intersections.set(++nInts, r);
-            }
-        }
-    }
-
     // If all points are common, this is identical to the old face.
     if (nInts == fromFace.size())
     {
@@ -1255,6 +1274,102 @@ bool dynamicTopoFvMesh::faceIntersection
         return true;
     }
 
+    // Check for point-segment intersections
+    bool pointIntersections = false;
+
+    forAll(fromFace, pointI)
+    {
+        label fromPoint = fromFace[pointI];
+
+        if (commonPoints.found(fromPoint))
+        {
+            continue;
+        }
+
+        const point& checkPoint = projections[pointI];
+
+        // Loop through all new edges, and find possible intersections
+        // with (projections of) old face points,
+        forAll(toFace, pointJ)
+        {
+            edge toEdge = toFace.faceEdge(pointJ);
+
+            if
+            (
+                meshOps::pointSegmentIntersection
+                (
+                    linePointRef
+                    (
+                        oldPoints_[toEdge.start()],
+                        oldPoints_[toEdge.end()]
+                    ),
+                    checkPoint
+                )
+            )
+            {
+                commonPoints.insert
+                (
+                    fromPoint,
+                    labelList(toEdge)
+                );
+
+                intersections.set(++nInts, checkPoint);
+
+                pointIntersections = true;
+            }
+        }
+    }
+
+    forAll(toFace, pointI)
+    {
+        label toPoint = toFace[pointI];
+
+        if (commonPoints.found(toPoint))
+        {
+            continue;
+        }
+
+        const point& checkPoint = oldPoints_[toPoint];
+
+        forAll(fromFace, pointJ)
+        {
+            label nextJ = fromFace.fcIndex(pointJ);
+            edge fromEdge = fromFace.faceEdge(pointJ);
+
+            if
+            (
+                meshOps::pointSegmentIntersection
+                (
+                    linePointRef
+                    (
+                        projections[pointJ],
+                        projections[nextJ]
+                    ),
+                    checkPoint
+                )
+            )
+            {
+                commonPoints.insert
+                (
+                    toPoint,
+                    labelList(fromEdge)
+                );
+
+                intersections.set(++nInts, checkPoint);
+
+                pointIntersections = true;
+            }
+        }
+    }
+
+    if (pointIntersections && debug > 3)
+    {
+        Info << "Point Intersections exist: " << nl
+             << " newFaceIndex: " << newFaceIndex
+             << " oldFaceIndex: " << oldFaceIndex
+             << endl;
+    }
+
     if (fromFace.size() == 3 && toFace.size() == 3)
     {
         // Perform tests specific to triangular faces
@@ -1263,9 +1378,18 @@ bool dynamicTopoFvMesh::faceIntersection
         // the new face. Count these as 'intersections'.
         forAll(fromFace, pointI)
         {
-            if (commonPoints.found(fromFace[pointI]))
+            label fromPoint = fromFace[pointI];
+
+            if (commonPoints.found(fromPoint))
             {
-                continue;
+                // Only skip for shared-points.
+                // If the point-position was modified
+                // due to a collapse, then this point
+                // could be inside the new face.
+                if (commonPoints[fromPoint].empty())
+                {
+                    continue;
+                }
             }
 
             const point& checkPoint = projections[pointI];
@@ -1292,12 +1416,14 @@ bool dynamicTopoFvMesh::faceIntersection
         // projected old faces. Count these as 'intersections'.
         forAll(toFace, pointI)
         {
-            if (commonPoints.found(toFace[pointI]))
+            label toPoint = toFace[pointI];
+
+            if (commonPoints.found(toPoint))
             {
                 continue;
             }
 
-            const point& checkPoint = oldPoints_[toFace[pointI]];
+            const point& checkPoint = oldPoints_[toPoint];
 
             if
             (
@@ -1329,15 +1455,124 @@ bool dynamicTopoFvMesh::faceIntersection
                 label nextJ = fromFace.fcIndex(pointJ);
                 edge fromEdge = fromFace.faceEdge(pointJ);
 
-                // Avoid common points
-                label cv = toEdge.commonVertex(fromEdge);
+                // Form an edge-pair
+                Pair<edge> edgePair(fromEdge, toEdge);
 
-                if (cv > -1 && !modPoints_.found(cv))
+                bool disableCheck = false;
+
+                // Check edges topologically
+                if (edgePair.first() == edgePair.second())
+                {
+                    const edge& checkEdge = edgePair.first();
+
+                    // Check if points were modified by a collapse.
+                    // If both were modified, continue with check.
+                    if
+                    (
+                        !modPoints_.found(checkEdge.start()) &&
+                        !modPoints_.found(checkEdge.end())
+                    )
+                    {
+                        disableCheck = true;
+                    }
+
+                    if
+                    (
+                        commonPoints.found(checkEdge.start()) ||
+                        commonPoints.found(checkEdge.end())
+                    )
+                    {
+                        disableCheck = true;
+                    }
+                }
+                else
+                {
+                    // Check for common vertices
+                    label cV = edgePair.first().commonVertex(edgePair.second());
+
+                    if (cV > -1)
+                    {
+                        // If this point was modified by a collapse
+                        // to an edge mid-point, it can't be a common point.
+                        // So, allow the check to continue.
+                        if (!modPoints_.found(cV))
+                        {
+                            disableCheck = true;
+                        }
+
+                        if (commonPoints.found(cV))
+                        {
+                            disableCheck = true;
+                        }
+                    }
+                }
+
+                if (disableCheck)
                 {
                     continue;
                 }
 
-                // Also check for bisection points
+                // Also check for bisection / point-on-edge cases
+                bool foundPointOnEdge = false;
+
+                forAll(edgePair, indexI)
+                {
+                    const edge thisEdge = edgePair[indexI];
+
+                    const edge otherEdge =
+                    (
+                        (thisEdge == edgePair.first()) ?
+                        edgePair.second() : edgePair.first()
+                    );
+
+                    forAll(otherEdge, pointI)
+                    {
+                        label pIndex = otherEdge[pointI];
+
+                        if (commonPoints.found(pIndex))
+                        {
+                            // Fetch masterObjects
+                            const labelList& mObj = commonPoints[pIndex];
+
+                            // Skip shared-points.
+                            if (mObj.size())
+                            {
+                                // Check if the old edge
+                                // contains all master points
+                                bool allMaster = true;
+
+                                forAll(mObj, pointJ)
+                                {
+                                    if (findIndex(thisEdge, mObj[pointJ]) == -1)
+                                    {
+                                        allMaster = false;
+                                        break;
+                                    }
+                                }
+
+                                if (allMaster)
+                                {
+                                    foundPointOnEdge = true;
+                                }
+                            }
+                        }
+
+                        if (foundPointOnEdge)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (foundPointOnEdge)
+                    {
+                        break;
+                    }
+                }
+
+                if (foundPointOnEdge)
+                {
+                    continue;
+                }
 
                 point p1 = projections[pointJ];
                 point p2 = projections[nextJ];
@@ -1492,7 +1727,8 @@ bool dynamicTopoFvMesh::cellIntersection
 
     forAll(fromCellPoints, pointI)
     {
-        label pIndex = findIndex(toCellPoints, fromCellPoints[pointI]);
+        label fromPoint = fromCellPoints[pointI];
+        label pIndex = findIndex(toCellPoints, fromPoint);
 
         if (pIndex > -1)
         {
@@ -1507,8 +1743,8 @@ bool dynamicTopoFvMesh::cellIntersection
         }
     }
 
-    // Add all new points as well, if they resulted
-    // from bisections of old cell edges.
+    // Add points if they resulted from
+    // bisections of old cell edges.
     forAll(toCellPoints, pointI)
     {
         label pIndex = toCellPoints[pointI];
@@ -1565,6 +1801,12 @@ bool dynamicTopoFvMesh::cellIntersection
 
         if (debug > 3 || output)
         {
+            if (meshOps::checkPointNearness(tP, 1e-20))
+            {
+                writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
+                writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
+            }
+
             meshOps::writeVTK
             (
                 (*this),
@@ -1586,12 +1828,14 @@ bool dynamicTopoFvMesh::cellIntersection
 
     forAll(fromCellPoints, pointI)
     {
-        if (commonPoints.found(fromCellPoints[pointI]))
+        label fromPoint = fromCellPoints[pointI];
+
+        if (commonPoints.found(fromPoint))
         {
             continue;
         }
 
-        const point& checkPoint = polyMesh::points()[fromCellPoints[pointI]];
+        const point& checkPoint = polyMesh::points()[fromPoint];
 
         forAll(toCellEdges, edgeI)
         {
@@ -1612,7 +1856,7 @@ bool dynamicTopoFvMesh::cellIntersection
             {
                 commonPoints.insert
                 (
-                    fromCellPoints[pointI],
+                    fromPoint,
                     labelList(edgeToCheck)
                 );
 
@@ -1625,12 +1869,14 @@ bool dynamicTopoFvMesh::cellIntersection
 
     forAll(toCellPoints, pointI)
     {
-        if (commonPoints.found(toCellPoints[pointI]))
+        label toPoint = toCellPoints[pointI];
+
+        if (commonPoints.found(toPoint))
         {
             continue;
         }
 
-        const point& checkPoint = oldPoints_[toCellPoints[pointI]];
+        const point& checkPoint = oldPoints_[toPoint];
 
         forAll(fromCellEdges, edgeI)
         {
@@ -1651,7 +1897,7 @@ bool dynamicTopoFvMesh::cellIntersection
             {
                 commonPoints.insert
                 (
-                    toCellPoints[pointI],
+                    toPoint,
                     labelList(edgeToCheck)
                 );
 
@@ -1804,15 +2050,21 @@ bool dynamicTopoFvMesh::cellIntersection
         // the new cell. Count these as 'intersections'.
         forAll(fromCellPoints, pointI)
         {
-            if (commonPoints.found(fromCellPoints[pointI]))
+            label fromPoint = fromCellPoints[pointI];
+
+            if (commonPoints.found(fromPoint))
             {
-                continue;
+                // Only skip for shared-points.
+                // If the point-position was modified
+                // due to a collapse, then this point
+                // could be inside the new cell.
+                if (commonPoints[fromPoint].empty())
+                {
+                    continue;
+                }
             }
 
-            const point& checkPoint =
-            (
-                polyMesh::points()[fromCellPoints[pointI]]
-            );
+            const point& checkPoint = polyMesh::points()[fromPoint];
 
             if
             (
@@ -1835,15 +2087,14 @@ bool dynamicTopoFvMesh::cellIntersection
         // the old cell. Count these as 'intersections'.
         forAll(toCellPoints, pointI)
         {
-            if (commonPoints.found(toCellPoints[pointI]))
+            label toPoint = toCellPoints[pointI];
+
+            if (commonPoints.found(toPoint))
             {
                 continue;
             }
 
-            const point& checkPoint =
-            (
-                oldPoints_[toCellPoints[pointI]]
-            );
+            const point& checkPoint = oldPoints_[toPoint];
 
             if
             (
@@ -2092,6 +2343,12 @@ bool dynamicTopoFvMesh::cellIntersection
 
         if (debug > 3 || output)
         {
+            if (meshOps::checkPointNearness(tP, 1e-20))
+            {
+                writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
+                writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
+            }
+
             meshOps::writeVTK
             (
                 (*this),
@@ -2375,6 +2632,12 @@ bool dynamicTopoFvMesh::cellIntersection
 
     if (debug > 3 || output)
     {
+        if (meshOps::checkPointNearness(tP, 1e-20))
+        {
+            writeVTK(Foam::name(newCellIndex),newCellIndex,3,false,true);
+            writeVTK(Foam::name(oldCellIndex),oldCellIndex,3,true,true);
+        }
+
         meshOps::writeVTK
         (
             (*this),

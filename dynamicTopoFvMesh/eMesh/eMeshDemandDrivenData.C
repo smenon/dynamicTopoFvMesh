@@ -70,9 +70,10 @@ void eMesh::calcOrderedEdgeList()
     const labelListList& fEdges = mesh_.faceEdges();
 
     // Edge-patches are the same as faces
-    for(label i = mesh_.nInternalFaces(); i < mesh_.nFaces(); i++)
+    for (label i = mesh_.nInternalFaces(); i < mesh_.nFaces(); i++)
     {
         const labelList& fEdge = fEdges[i];
+
         forAll(fEdge, edgeI)
         {
             edgePatch[fEdge[edgeI]] = mesh_.boundaryMesh().whichPatch(i);
@@ -94,6 +95,7 @@ void eMesh::calcOrderedEdgeList()
 
     // Calculate patch-starts
     label startCount = nInternalEdges_;
+
     forAll(edgePatchStarts, patchI)
     {
         edgePatchStarts[patchI] = startCount;
@@ -102,6 +104,7 @@ void eMesh::calcOrderedEdgeList()
 
     // Now renumber boundary edges
     labelList patchCount(edgePatchStarts);
+
     forAll(edgePatch, edgeI)
     {
         if (edgePatch[edgeI] > -1)
@@ -184,7 +187,7 @@ void eMesh::calcEdgePoints() const
     const faceList& faces = mesh_.faces();
     const labelListList& eFaces = this->edgeFaces();
 
-    for(label eIndex=0; eIndex < nEdges_; eIndex++)
+    for (label eIndex=0; eIndex < nEdges_; eIndex++)
     {
         const edge& e = edges_[eIndex];
         const labelList& eFace = eFaces[eIndex];
@@ -215,7 +218,7 @@ void eMesh::calcEdgePoints() const
         }
 
         // Shuffle vertices to appear in CCW order
-        for(label j=0; j < eFace.size(); j++)
+        for (label j=0; j < eFace.size(); j++)
         {
             const face& f = faces[faceIndex];
 

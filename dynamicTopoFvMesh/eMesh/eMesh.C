@@ -62,6 +62,8 @@ void eMesh::clearAddressing() const
             << "Clearing addressing" << endl;
     }
 
+    edges_.clear();
+
     deleteDemandDrivenData(pePtr_);
     deleteDemandDrivenData(epPtr_);
     deleteDemandDrivenData(fePtr_);
@@ -153,8 +155,8 @@ eMesh::eMesh(const polyMesh& pMesh, const word& subDir)
 {
     if (debug)
     {
-        Info << "eMesh::eMesh(...) : "
-             << "Creating eMesh from IOobject"
+        Info << "eMesh::eMesh(const polyMesh&, const word&) : "
+             << "Creating eMesh from polyMesh"
              << endl;
     }
 
@@ -311,24 +313,16 @@ void eMesh::resetPrimitives
 
         if (reUse)
         {
+            edges_.transfer(edges);
             fePtr_->transfer(faceEdges);
             efPtr_->transfer(edgeFaces);
         }
         else
         {
+            edges_ = edges;
             fePtr_->operator=(faceEdges);
             efPtr_->operator=(edgeFaces);
         }
-    }
-
-    // Take over primitive data
-    if (reUse)
-    {
-        edges_.transfer(edges);
-    }
-    else
-    {
-        edges_ = edges;
     }
 
     // Reset patch sizes and starts
@@ -345,7 +339,7 @@ void eMesh::resetPrimitives
     }
 
     // Reset size information
-    nEdges_ = edges_.size();
+    nEdges_ = edges.size();
     nInternalEdges_ = boundary_[0].start();
 
     // Set mesh files as changed
@@ -370,8 +364,11 @@ void eMesh::setInstance(const fileName& inst)
             << "Resetting file instance to " << inst << endl;
     }
 
-    edges_.writeOpt() = IOobject::AUTO_WRITE;
-    edges_.instance() = inst;
+    if (edges_.size())
+    {
+        edges_.writeOpt() = IOobject::AUTO_WRITE;
+        edges_.instance() = inst;
+    }
 
     if (efPtr_)
     {
@@ -385,8 +382,13 @@ void eMesh::setInstance(const fileName& inst)
         fePtr_->instance() = inst;
     }
 
-    boundary_.writeOpt() = IOobject::AUTO_WRITE;
-    boundary_.instance() = inst;
+    // Write out boundary information only
+    // if all others are being written out
+    if (edges_.size() && efPtr_ && fePtr_)
+    {
+        boundary_.writeOpt() = IOobject::AUTO_WRITE;
+        boundary_.instance() = inst;
+    }
 }
 
 
@@ -436,7 +438,10 @@ const labelListList& eMesh::edgeFaces() const
 
 bool eMesh::write() const
 {
-    edges_.write();
+    if (edges_.size())
+    {
+        edges_.write();
+    }
 
     if (efPtr_)
     {
@@ -448,7 +453,10 @@ bool eMesh::write() const
         fePtr_->write();
     }
 
-    boundary_.write();
+    if (edges_.size() && efPtr_ && fePtr_)
+    {
+        boundary_.write();
+    }
 
     return false;
 }
