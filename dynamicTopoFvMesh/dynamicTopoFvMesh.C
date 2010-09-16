@@ -126,7 +126,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nInternalFaces_(primitiveMesh::nInternalFaces()),
     nOldInternalEdges_(0),
     nInternalEdges_(0),
-    skipMapping_(false),
     maxModifications_(-1),
     statistics_(0),
     sliverThreshold_(0.1),
@@ -250,7 +249,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nInternalFaces_(primitiveMesh::nInternalFaces()),
     nOldInternalEdges_(nInternalEdges),
     nInternalEdges_(nInternalEdges),
-    skipMapping_(false),
     maxModifications_(mesh.maxModifications_),
     statistics_(0),
     sliverThreshold_(mesh.sliverThreshold_),
@@ -1600,12 +1598,6 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
                 << " Swap deviation out of range [0..1]"
                 << abort(FatalError);
         }
-    }
-
-    // Optionally skip mapping for remeshing-only / pre-processing
-    if (meshSubDict.found("skipMapping") || mandatory_)
-    {
-        skipMapping_.readIfPresent("skipMapping", meshSubDict);
     }
 
     // For tetrahedral meshes...
@@ -3346,10 +3338,21 @@ bool dynamicTopoFvMesh::resetMesh()
         // Fetch the match tolerance for mapping
         scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-4);
 
+        // Determine if mapping is to be skipped
+        // Optionally skip mapping for remeshing-only / pre-processing
+        const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
+        bool skipMapping = false;
+
+        if (meshSubDict.found("skipMapping") || mandatory_)
+        {
+            skipMapping = readBool(meshSubDict.lookup("skipMapping"));
+        }
+
         clockTime mappingTimer;
 
         // Compute mapping weights for modified entities
-        threadedMapping(matchTol);
+        threadedMapping(matchTol, skipMapping);
 
         // Print out stats
         Info << " Mapping time: " << mappingTimer.elapsedTime()
@@ -3435,8 +3438,6 @@ bool dynamicTopoFvMesh::resetMesh()
         // edge-connectivity is to be stored on disk.
         // This usually benefits restart-time for large
         // cases, at the expense of disk-space.
-        const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
-
         bool storePrimitives = false;
 
         if (meshSubDict.found("storeEdgePrimitives") || mandatory_)

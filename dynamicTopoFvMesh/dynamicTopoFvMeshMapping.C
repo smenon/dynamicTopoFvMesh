@@ -39,6 +39,7 @@ Author
 
 #include "meshOps.H"
 #include "IOmanip.H"
+#include "triFace.H"
 #include "objectMap.H"
 #include "StaticHashTable.H"
 
@@ -51,6 +52,7 @@ namespace Foam
 void dynamicTopoFvMesh::computeMapping
 (
     const scalar matchTol,
+    const bool skipMapping,
     const label faceStart,
     const label faceSize,
     const label cellStart,
@@ -63,7 +65,7 @@ void dynamicTopoFvMesh::computeMapping
         label precisionAttempts = 0;
         label cIndex = cellsFromCells_[cellI].index();
 
-        if (skipMapping_)
+        if (skipMapping)
         {
             // Set empty mapping parameters
             const labelList& mo = cellParents_[cIndex];
@@ -104,7 +106,7 @@ void dynamicTopoFvMesh::computeMapping
         }
 
         // Obtain weighting factors for this face.
-        if (skipMapping_)
+        if (skipMapping)
         {
             // Set empty mapping parameters
             const labelList& mo = faceParents_[fIndex];
@@ -144,16 +146,18 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
     dynamicTopoFvMesh& mesh = thread->reference();
 
     // Recast the pointers for the argument
-    scalar& matchTol = *(static_cast<scalar*>(thread->operator()(0)));
-    label& faceStart = *(static_cast<label*>(thread->operator()(1)));
-    label& faceSize  = *(static_cast<label*>(thread->operator()(2)));
-    label& cellStart = *(static_cast<label*>(thread->operator()(3)));
-    label& cellSize  = *(static_cast<label*>(thread->operator()(4)));
+    scalar& matchTol  = *(static_cast<scalar*>(thread->operator()(0)));
+    bool& skipMapping = *(static_cast<bool*>(thread->operator()(1)));
+    label& faceStart  = *(static_cast<label*>(thread->operator()(2)));
+    label& faceSize   = *(static_cast<label*>(thread->operator()(3)));
+    label& cellStart  = *(static_cast<label*>(thread->operator()(4)));
+    label& cellSize   = *(static_cast<label*>(thread->operator()(5)));
 
     // Now calculate addressing
     mesh.computeMapping
     (
         matchTol,
+        skipMapping,
         faceStart, faceSize,
         cellStart, cellSize
     );
@@ -166,12 +170,16 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
 
 
 // Routine to invoke threaded mapping
-void dynamicTopoFvMesh::threadedMapping(scalar matchTol)
+void dynamicTopoFvMesh::threadedMapping
+(
+    scalar matchTol,
+    bool skipMapping
+)
 {
     label nThreads = threader_->getNumThreads();
 
     // If mapping is being skipped, issue a warning.
-    if (skipMapping_)
+    if (skipMapping)
     {
         Info << " *** Mapping is being skipped *** " << endl;
     }
@@ -182,6 +190,7 @@ void dynamicTopoFvMesh::threadedMapping(scalar matchTol)
         computeMapping
         (
             matchTol,
+            skipMapping,
             0, facesFromFaces_.size(),
             0, cellsFromCells_.size()
         );
@@ -238,16 +247,19 @@ void dynamicTopoFvMesh::threadedMapping(scalar matchTol)
     forAll(hdl, i)
     {
         // Size up the argument list
-        hdl[i].setSize(5);
+        hdl[i].setSize(6);
 
         // Set match tolerance
         hdl[i].set(0, &matchTol);
 
+        // Set the skipMapping flag
+        hdl[i].set(1, &skipMapping);
+
         // Set the start/size indices
-        hdl[i].set(1, &(tStarts[0][i]));
-        hdl[i].set(2, &(tSizes[0][i]));
-        hdl[i].set(3, &(tStarts[1][i]));
-        hdl[i].set(4, &(tSizes[1][i]));
+        hdl[i].set(2, &(tStarts[0][i]));
+        hdl[i].set(3, &(tSizes[0][i]));
+        hdl[i].set(4, &(tStarts[1][i]));
+        hdl[i].set(5, &(tSizes[1][i]));
     }
 
     // Prior to multi-threaded operation,
@@ -550,8 +562,10 @@ bool dynamicTopoFvMesh::computeFaceWeights
     // Test weights for consistency
     bool consistent = false;
 
+    scalar consistency = mag(1.0 - sum(weights/faceArea));
+
     // Test weights for consistency
-    if (mag(1.0 - sum(weights/faceArea)) > 1e-10)
+    if (consistency > 1e-10)
     {
         // Inconsistent weights. Check whether any edges
         // lie on bounding curves. These faces can have
@@ -660,7 +674,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
             << " Sum(Weights): " << sum(weights) << nl
             << " Error: " << (faceArea - sum(weights)) << nl
             << " Norm Sum(Weights): " << sum(weights/faceArea) << nl
-            << " Norm Error: " << mag(1.0 - sum(weights/faceArea)) << nl
+            << " Norm Error: " << consistency << nl
             << " Parents: " << parents << nl
             << " Weights: " << (weights/faceArea)
             << abort(FatalError);
@@ -674,7 +688,7 @@ bool dynamicTopoFvMesh::computeFaceWeights
              << " Sum(Weights): " << sum(weights) << nl
              << " Error: " << (faceArea - sum(weights)) << nl
              << " Norm Sum(Weights): " << sum(weights/faceArea) << nl
-             << " Norm Error: " << mag(1.0 - sum(weights/faceArea))
+             << " Norm Error: " << consistency
              << endl;
     }
 
@@ -948,7 +962,9 @@ bool dynamicTopoFvMesh::computeCellWeights
     // Test weights for consistency
     bool consistent = false;
 
-    if (mag(1.0 - sum(weights/cellVolume)) > 1e-10)
+    scalar consistency = mag(1.0 - sum(weights/cellVolume));
+
+    if (consistency > 1e-10)
     {
         // Inconsistent weights. Check whether any edges
         // lie on boundary patches. These cells can have
@@ -1090,7 +1106,7 @@ bool dynamicTopoFvMesh::computeCellWeights
             << " Sum(Weights): " << sum(weights) << nl
             << " Error: " << (cellVolume - sum(weights)) << nl
             << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
-            << " Norm Error: " << mag(1.0 - sum(weights/cellVolume)) << nl
+            << " Norm Error: " << consistency << nl
             << " Parents: " << parents << nl
             << " Weights: " << (weights/cellVolume)
             << abort(FatalError);
@@ -1104,7 +1120,7 @@ bool dynamicTopoFvMesh::computeCellWeights
              << " Sum(Weights): " << sum(weights) << nl
              << " Error: " << (cellVolume - sum(weights)) << nl
              << " Norm Sum(Weights): " << sum(weights/cellVolume) << nl
-             << " Norm Error: " << mag(1.0 - sum(weights/cellVolume))
+             << " Norm Error: " << consistency
              << endl;
     }
 
@@ -1303,7 +1319,8 @@ bool dynamicTopoFvMesh::faceIntersection
                         oldPoints_[toEdge.start()],
                         oldPoints_[toEdge.end()]
                     ),
-                    checkPoint
+                    checkPoint,
+                    matchTol
                 )
             )
             {
@@ -1345,7 +1362,18 @@ bool dynamicTopoFvMesh::faceIntersection
                         projections[pointJ],
                         projections[nextJ]
                     ),
-                    checkPoint
+                    checkPoint,
+                    matchTol
+                )
+             || meshOps::pointSegmentIntersection
+                (
+                    linePointRef
+                    (
+                        polyMesh::points()[fromEdge.start()],
+                        polyMesh::points()[fromEdge.end()]
+                    ),
+                    checkPoint,
+                    matchTol
                 )
             )
             {
@@ -1476,13 +1504,21 @@ bool dynamicTopoFvMesh::faceIntersection
                         disableCheck = true;
                     }
 
-                    if
-                    (
-                        commonPoints.found(checkEdge.start()) ||
-                        commonPoints.found(checkEdge.end())
-                    )
+                    // Skip shared points
+                    if (commonPoints.found(checkEdge.start()))
                     {
-                        disableCheck = true;
+                        if (commonPoints[checkEdge.start()].empty())
+                        {
+                            disableCheck = true;
+                        }
+                    }
+
+                    if (commonPoints.found(checkEdge.end()))
+                    {
+                        if (commonPoints[checkEdge.end()].empty())
+                        {
+                            disableCheck = true;
+                        }
                     }
                 }
                 else
@@ -1500,9 +1536,13 @@ bool dynamicTopoFvMesh::faceIntersection
                             disableCheck = true;
                         }
 
+                        // Skip shared points
                         if (commonPoints.found(cV))
                         {
-                            disableCheck = true;
+                            if (commonPoints[cV].empty())
+                            {
+                                disableCheck = true;
+                            }
                         }
                     }
                 }
@@ -1839,7 +1879,7 @@ bool dynamicTopoFvMesh::cellIntersection
 
         forAll(toCellEdges, edgeI)
         {
-            const edge& edgeToCheck = toCellEdges[edgeI];
+            const edge edgeToCheck = toCellEdges[edgeI];
 
             if
             (
@@ -1850,7 +1890,8 @@ bool dynamicTopoFvMesh::cellIntersection
                         oldPoints_[edgeToCheck.start()],
                         oldPoints_[edgeToCheck.end()]
                     ),
-                    checkPoint
+                    checkPoint,
+                    matchTol
                 )
             )
             {
@@ -1880,7 +1921,7 @@ bool dynamicTopoFvMesh::cellIntersection
 
         forAll(fromCellEdges, edgeI)
         {
-            const edge& edgeToCheck = fromCellEdges[edgeI];
+            const edge edgeToCheck = fromCellEdges[edgeI];
 
             if
             (
@@ -1891,7 +1932,8 @@ bool dynamicTopoFvMesh::cellIntersection
                         polyMesh::points()[edgeToCheck.start()],
                         polyMesh::points()[edgeToCheck.end()]
                     ),
-                    checkPoint
+                    checkPoint,
+                    matchTol
                 )
             )
             {
@@ -1922,7 +1964,7 @@ bool dynamicTopoFvMesh::cellIntersection
         // If so, add edge points as 'intersections'.
         forAll(fromCellEdges, edgeI)
         {
-            const edge& edgeToCheck = fromCellEdges[edgeI];
+            const edge edgeToCheck = fromCellEdges[edgeI];
 
             if
             (
@@ -1984,7 +2026,7 @@ bool dynamicTopoFvMesh::cellIntersection
 
         forAll(toCellEdges, edgeI)
         {
-            const edge& edgeToCheck = toCellEdges[edgeI];
+            const edge edgeToCheck = toCellEdges[edgeI];
 
             if
             (
@@ -2181,13 +2223,21 @@ bool dynamicTopoFvMesh::cellIntersection
                     disableCheck = true;
                 }
 
-                if
-                (
-                    commonPoints.found(checkEdge.start()) ||
-                    commonPoints.found(checkEdge.end())
-                )
+                // Skip shared points
+                if (commonPoints.found(checkEdge.start()))
                 {
-                    disableCheck = true;
+                    if (commonPoints[checkEdge.start()].empty())
+                    {
+                        disableCheck = true;
+                    }
+                }
+
+                if (commonPoints.found(checkEdge.end()))
+                {
+                    if (commonPoints[checkEdge.end()].empty())
+                    {
+                        disableCheck = true;
+                    }
                 }
             }
             else
@@ -2205,9 +2255,13 @@ bool dynamicTopoFvMesh::cellIntersection
                         disableCheck = true;
                     }
 
+                    // Skip shared points
                     if (commonPoints.found(cV))
                     {
-                        disableCheck = true;
+                        if (commonPoints[cV].empty())
+                        {
+                            disableCheck = true;
+                        }
                     }
                 }
             }
@@ -2378,7 +2432,7 @@ bool dynamicTopoFvMesh::cellIntersection
     // intersections with faces of the new cell.
     forAll(fromCellEdges, edgeI)
     {
-        const edge& edgeToCheck = fromCellEdges[edgeI];
+        const edge edgeToCheck(fromCellEdges[edgeI]);
 
         if
         (
@@ -2386,12 +2440,20 @@ bool dynamicTopoFvMesh::cellIntersection
             commonPoints.found(edgeToCheck.end())
         )
         {
-            continue;
+            // Are both points only shared?
+            if
+            (
+                commonPoints[edgeToCheck.start()].empty() &&
+                commonPoints[edgeToCheck.end()].empty()
+            )
+            {
+                continue;
+            }
         }
 
         forAll(toCell, faceI)
         {
-            const face& faceToCheck = faces_[toCell[faceI]];
+            const triFace faceToCheck(faces_[toCell[faceI]]);
 
             // Avoid point-edge / edge-edge intersections, if any.
             if (edgeIntersections)
@@ -2432,21 +2494,30 @@ bool dynamicTopoFvMesh::cellIntersection
 
             forAllConstIter(Map<labelList>, commonPoints, pIter)
             {
-                if (faceToCheck.which(pIter.key()) > -1)
+                if (findIndex(faceToCheck, pIter.key()) > -1)
                 {
-                    // Avoid common points, since this implies that
+                    // Avoid shared points, since this implies that
                     // the edge intersects at a face point
-                    if
-                    (
-                        (edgeToCheck[0] == pIter.key()) ||
-                        (edgeToCheck[1] == pIter.key())
-                    )
+                    if (edgeToCheck[0] == pIter.key())
                     {
-                        foundCommon = true;
-                        break;
+                        if (pIter().empty())
+                        {
+                            foundCommon = true;
+                            break;
+                        }
                     }
 
-                    // Also check for bisection points
+                    if (edgeToCheck[1] == pIter.key())
+                    {
+                        if (pIter().empty())
+                        {
+                            foundCommon = true;
+                            break;
+                        }
+                    }
+
+                    // Also check for bisection points.
+                    // This accounts for successive bisections.
                     if
                     (
                         (findIndex(pIter(), edgeToCheck[0]) > -1) &&
@@ -2498,7 +2569,7 @@ bool dynamicTopoFvMesh::cellIntersection
     // intersections with faces of the old cell.
     forAll(toCellEdges, edgeI)
     {
-        const edge& edgeToCheck = toCellEdges[edgeI];
+        const edge edgeToCheck(toCellEdges[edgeI]);
 
         if
         (
@@ -2506,12 +2577,20 @@ bool dynamicTopoFvMesh::cellIntersection
             commonPoints.found(edgeToCheck.end())
         )
         {
-            continue;
+            // Are both points only shared?
+            if
+            (
+                commonPoints[edgeToCheck.start()].empty() &&
+                commonPoints[edgeToCheck.end()].empty()
+            )
+            {
+                continue;
+            }
         }
 
         forAll(fromCell, faceI)
         {
-            const face& faceToCheck = polyMesh::faces()[fromCell[faceI]];
+            const triFace faceToCheck(polyMesh::faces()[fromCell[faceI]]);
 
             // Avoid point-edge / edge-edge intersections, if any.
             if (edgeIntersections)
@@ -2552,18 +2631,26 @@ bool dynamicTopoFvMesh::cellIntersection
 
             forAllConstIter(Map<labelList>, commonPoints, pIter)
             {
-                // Avoid common points, since this implies that
-                // the edge intersects at a face point
-                if (faceToCheck.which(pIter.key()) > -1)
+                if (findIndex(faceToCheck, pIter.key()) > -1)
                 {
-                    if
-                    (
-                        (edgeToCheck[0] == pIter.key()) ||
-                        (edgeToCheck[1] == pIter.key())
-                    )
+                    // Avoid shared points, since this implies that
+                    // the edge intersects at a face point
+                    if (edgeToCheck[0] == pIter.key())
                     {
-                        foundCommon = true;
-                        break;
+                        if (pIter().empty())
+                        {
+                            foundCommon = true;
+                            break;
+                        }
+                    }
+
+                    if (edgeToCheck[1] == pIter.key())
+                    {
+                        if (pIter().empty())
+                        {
+                            foundCommon = true;
+                            break;
+                        }
                     }
 
                     // Also check for bisection points
@@ -2572,6 +2659,36 @@ bool dynamicTopoFvMesh::cellIntersection
                         (findIndex(pIter(), edgeToCheck[0]) > -1) &&
                         (findIndex(pIter(), edgeToCheck[1]) > -1)
                     )
+                    {
+                        foundCommon = true;
+                        break;
+                    }
+
+                    // Check for point-on-edge cases
+                    bool foundPointOnEdge = false;
+
+                    if (pIter().size())
+                    {
+                        bool allMaster = true;
+
+                        const labelList& mObj = pIter();
+
+                        forAll(mObj, pointJ)
+                        {
+                            if (findIndex(faceToCheck, mObj[pointJ]) == -1)
+                            {
+                                allMaster = false;
+                                break;
+                            }
+                        }
+
+                        if (allMaster)
+                        {
+                            foundPointOnEdge = true;
+                        }
+                    }
+
+                    if (foundPointOnEdge)
                     {
                         foundCommon = true;
                         break;

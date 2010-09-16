@@ -167,7 +167,6 @@ class dynamicTopoFvMesh
         Map<label> addedCellZones_;
 
         // Information for field-mapping
-        Switch skipMapping_;
         Map<labelList> faceParents_;
         List<scalarField> faceWeights_;
         List<vectorField> faceCentres_;
@@ -271,6 +270,7 @@ class dynamicTopoFvMesh
         void computeMapping
         (
             const scalar matchTol,
+            const bool skipMapping,
             const label faceStart,
             const label faceSize,
             const label cellStart,
@@ -281,7 +281,7 @@ class dynamicTopoFvMesh
         static void computeMappingThread(void *argument);
 
         // Routine to invoke threaded mapping
-        void threadedMapping(scalar matchTol);
+        void threadedMapping(scalar matchTol, bool skipMapping);
 
         // Obtain map weighting factors for a face
         bool computeFaceWeights

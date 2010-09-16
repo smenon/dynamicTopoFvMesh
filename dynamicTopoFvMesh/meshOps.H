@@ -181,7 +181,8 @@ namespace meshOps
     inline bool pointSegmentIntersection
     (
         const linePointRef& segment,
-        const point& checkPoint
+        const point& checkPoint,
+        const scalar matchTol
     );
 
     // Determine whether a two line segments intersect

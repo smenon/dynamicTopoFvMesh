@@ -392,7 +392,8 @@ inline void cellCentreAndVolume
 inline bool pointSegmentIntersection
 (
     const linePointRef& segment,
-    const point& checkPoint
+    const point& checkPoint,
+    const scalar matchTol
 )
 {
     vector u = segment.vec();
@@ -402,7 +403,10 @@ inline bool pointSegmentIntersection
     scalar magV = mag(v) + VSMALL;
 
     // Compare dot-products
-    if (1.0 - ((u/magU) & (v/magV)) > VSMALL)
+    scalar collinearity = mag(1.0 - ((u/magU) & (v/magV)));
+    scalar tolerance = (matchTol * magU);
+
+    if (collinearity > tolerance)
     {
         return false;
     }

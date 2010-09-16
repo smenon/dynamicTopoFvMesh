@@ -456,7 +456,7 @@ void convexSetArea
     // Sanity check - do points match edges?
     if (testEdges.size() != cvxSet.size())
     {
-        FatalErrorIn
+        WarningIn
         (
             "\n"
             "void meshOps::convexSetArea\n"
@@ -477,7 +477,7 @@ void convexSetArea
             << " nEdges: " << testEdges.size() << nl
             << " Edge list: " << testEdges << nl
             << " Set: " << cvxSet << nl
-            << abort(FatalError);
+            << endl;
     }
 
     // Find an approximate face-centroid
