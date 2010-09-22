@@ -283,24 +283,14 @@ class dynamicTopoFvMesh
         // Routine to invoke threaded mapping
         void threadedMapping(scalar matchTol, bool skipMapping);
 
-        // Obtain map weighting factors for a face
-        bool computeFaceWeights
+        // Obtain map weighting factors
+        bool computeWeights
         (
-            const label fIndex,
+            const label index,
             const labelList& mapCandidates,
+            const labelListList& oldNeighbourList,
             const scalar mTol,
-            label& precisionAttempts,
-            labelList& parents,
-            scalarField& weights,
-            vectorField& centres
-        ) const;
-
-        // Obtain map weighting factors for a cell
-        bool computeCellWeights
-        (
-            const label cIndex,
-            const labelList& mapCandidates,
-            const scalar mTol,
+            const label pType,
             label& precisionAttempts,
             labelList& parents,
             scalarField& weights,
