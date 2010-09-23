@@ -383,22 +383,20 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
     forAll(triFaceOldPoints, faceI)
     {
         // Assume that centre-plane passes through the origin.
-        vector xf =
+        vector xf, nf;
+
+        meshOps::faceCentre
         (
-            meshOps::faceCentre
-            (
-                triFaceOldPoints[faceI],
-                oldPoints_
-            )
+            triFaceOldPoints[faceI],
+            oldPoints_,
+            xf
         );
 
-        vector nf =
+        meshOps::faceNormal
         (
-            meshOps::faceNormal
-            (
-                triFaceOldPoints[faceI],
-                oldPoints_
-            )
+            triFaceOldPoints[faceI],
+            oldPoints_,
+            nf
         );
 
         if ((((xf & n) * n) & nf) < 0.0)

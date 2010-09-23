@@ -68,17 +68,21 @@ class polyMesh;
 namespace meshOps
 {
     // Compute the centre for a given face, using UList
-    inline vector faceCentre
+    template <class scal, class scal2>
+    inline void faceCentre
     (
         const face& faceToCheck,
-        const UList<point>& points
+        const UList<Vector<scal2> >& points,
+        Vector<scal>& centre
     );
 
     // Compute the normal for a given face, using UList
-    inline vector faceNormal
+    template <class scal, class scal2>
+    inline void faceNormal
     (
         const face& faceToCheck,
-        const UList<point>& points
+        const UList<Vector<scal2> >& points,
+        Vector<scal>& normal
     );
 
     // Method to find the common-edge between two faces.
@@ -166,53 +170,59 @@ namespace meshOps
     );
 
     // Given a cell index, find the centroid / volume of a cell.
+    template <class scal, class scal2>
     inline void cellCentreAndVolume
     (
         const label cIndex,
-        const UList<point>& points,
+        const UList<Vector<scal2> >& points,
         const UList<face>& faces,
         const UList<cell>& cells,
         const UList<label>& owner,
-        vector& centre,
-        scalar& volume
+        Vector<scal>& centre,
+        scal& volume
     );
 
     // Determine whether a point lies on a segment
+    template <class scal>
     inline bool pointSegmentIntersection
     (
         const linePointRef& segment,
-        const point& checkPoint,
-        const scalar matchTol
+        const point& cP,
+        const scal& matchTol
     );
 
     // Determine whether a two line segments intersect
+    template <class scal>
     inline bool segmentSegmentIntersection
     (
         const linePointRef& fromSegment,
         const linePointRef& toSegment,
-        const scalar matchTol,
-        point& intPoint
+        const scal& matchTol,
+        Vector<scal>& intPoint
     );
 
     // Determine whether a segment intersects a triangular face
+    template <class scal>
     inline bool segmentTriFaceIntersection
     (
         const triPointRef& faceToCheck,
         const linePointRef& edgeToCheck,
-        const scalar matchTol,
-        vector& intersectionPoint
+        const scal& matchTol,
+        Vector<scal>& intPoint
     );
 
     // Determine whether the particular point lies
     // inside the given triangular face
+    template <class scal>
     inline bool pointInTriFace
     (
-        const triPointRef& faceToCheck,
-        const point& checkPoint
+        const triangle<Vector<scal>, const Vector<scal>&>& faceToCheck,
+        const Vector<scal>& checkPoint
     );
 
     // Determine whether the particular point lies
     // inside the given cell
+    template <class scal>
     inline bool pointInCell
     (
         const label cIndex,
@@ -220,31 +230,34 @@ namespace meshOps
         const UList<face>& faces,
         const UList<label>& owner,
         const UList<point>& points,
-        const point& checkPoint
+        const scal& matchTol,
+        const point& cP
     );
 
     // Compute the area / centre of a polygon
     // formed by a convex set of points.
+    template <class scal>
     void convexSetArea
     (
         const label newFaceIndex,
         const label oldFaceIndex,
-        const vectorField& cvxSet,
-        const vector& refNorm,
-        scalar& fArea,
-        vector& fCentre,
+        const Field<Vector<scal> >& cvxSet,
+        const Vector<scal>& refNorm,
+        scal& fArea,
+        Vector<scal>& fCentre,
         bool output = false
     );
 
     // Compute the volume / centre of a polyhedron
     // formed by a convex set of points.
+    template <class scal>
     void convexSetVolume
     (
         const label newCellIndex,
         const label oldCellIndex,
-        const vectorField& cvxSet,
-        scalar& cVolume,
-        vector& cCentre,
+        const Field<Vector<scal> >& cvxSet,
+        scal& cVolume,
+        Vector<scal>& cCentre,
         bool output = false
     );
 

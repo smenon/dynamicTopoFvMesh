@@ -46,44 +46,120 @@ namespace meshOps
 {
 
 // Compute the centroid for a given face, using UList
-inline vector faceCentre
+template <class scal, class scal2>
+inline void faceCentre
 (
     const face& faceToCheck,
-    const UList<point>& points
+    const UList<Vector<scal2> >& points,
+    Vector<scal>& centre
 )
 {
-    face localFace(faceToCheck.size());
-    pointField localPoints(faceToCheck.size(), vector::zero);
+    Vector<scal> a, b, c;
 
-    // Fill in local points
-    forAll(localPoints, pointI)
+    // If the face is a triangle, do a direct calculation
+    // to avoid round-off error-related problems
+    if (faceToCheck.size() == 3)
     {
-        localFace[pointI] = pointI;
-        localPoints[pointI] = points[faceToCheck[pointI]];
+        a = points[faceToCheck[0]];
+        b = points[faceToCheck[1]];
+        c = points[faceToCheck[2]];
+
+        centre = (pTraits<scal>::one / scal(3.0)) * (a + b + c);
+
+        return;
     }
 
-    return localFace.centre(localPoints);
+    // Reset to zero
+    centre = Vector<scal>::zero;
+    label nPoints = faceToCheck.size();
+
+    register label pI;
+
+    // Store the centre point in c
+    for (pI = 0; pI < nPoints; pI++)
+    {
+        c += points[faceToCheck[pI]];
+    }
+
+    c /= nPoints;
+
+    scal ta = pTraits<scal>::zero;
+    scal sumA = pTraits<scal>::zero;
+    Vector<scal> ttc = Vector<scal>::zero;
+    Vector<scal> sumAc = Vector<scal>::zero;
+
+    for (pI = 0; pI < nPoints; pI++)
+    {
+        a = points[faceToCheck[pI]];
+        b = points[faceToCheck[(pI + 1) % nPoints]];
+
+        // Calculate 3*triangle centre
+        ttc = (a + b + c);
+
+        // Calculate 2*triangle area
+        ta = mag((a - c)^(b - c));
+
+        sumA += ta;
+        sumAc += ta*ttc;
+    }
+
+    if (sumA > VSMALL)
+    {
+        centre = (sumAc/(3.0 * sumA));
+    }
+    else
+    {
+        centre = c;
+    }
 }
 
 
 // Compute the normal for a given face, using UList
-inline vector faceNormal
+template <class scal, class scal2>
+inline void faceNormal
 (
     const face& faceToCheck,
-    const UList<point>& points
+    const UList<Vector<scal2> >& points,
+    Vector<scal>& normal
 )
 {
-    face localFace(faceToCheck.size());
-    pointField localPoints(faceToCheck.size(), vector::zero);
+    Vector<scal> a, b, c;
 
-    // Fill in local points
-    forAll(localPoints, pointI)
+    // If the face is a triangle, do a direct calculation
+    // to avoid round-off error-related problems
+    if (faceToCheck.size() == 3)
     {
-        localFace[pointI] = pointI;
-        localPoints[pointI] = points[faceToCheck[pointI]];
+        a = points[faceToCheck[0]];
+        b = points[faceToCheck[1]];
+        c = points[faceToCheck[2]];
+
+        normal = 0.5 * ((b - a)^(c - a));
+
+        return;
     }
 
-    return localFace.normal(localPoints);
+    // Reset to zero
+    normal = Vector<scal>::zero;
+    label nPoints = faceToCheck.size();
+
+    register label pI;
+
+    // Store the centre point in c
+    for (pI = 0; pI < nPoints; pI++)
+    {
+        c += points[faceToCheck[pI]];
+    }
+
+    c /= nPoints;
+
+    for (pI = 0; pI < nPoints; pI++)
+    {
+        // Define this point
+        a = points[faceToCheck[pI]];
+        b = points[faceToCheck[(pI + 1) % nPoints]];
+
+        normal += (0.5 * ((b - a)^(c - a)));
+    }
 }
 
 
@@ -311,70 +387,81 @@ inline label tetApexPoint
 
 
 // Given a cell index, find the centroid / volume of a cell.
+template <class scal, class scal2>
 inline void cellCentreAndVolume
 (
     const label cIndex,
-    const UList<point>& points,
+    const UList<Vector<scal2> >& points,
     const UList<face>& faces,
     const UList<cell>& cells,
     const UList<label>& owner,
-    vector& centre,
-    scalar& volume
+    Vector<scal>& centre,
+    scal& volume
 )
 {
     // Reset inputs
-    volume = 0.0;
-    centre = vector::zero;
+    volume = pTraits<scal>::zero;
+    centre = Vector<scal>::zero;
 
     const cell& cellToCheck = cells[cIndex];
 
     // Average face-centres to get an estimate centroid
-    vector cEst = vector::zero;
+    Vector<scal> cEst(Vector<scal>::zero);
+    Vector<scal> fCentre(Vector<scal>::zero);
+    Vector<scal> fArea(Vector<scal>::zero);
+
+    scal oneThird = (pTraits<scal>::one / scal(3.0));
+    scal oneFourth = (pTraits<scal>::one / scal(4.0));
+    scal threeFourths = (scal(3.0) / scal(4.0));
 
     forAll(cellToCheck, faceI)
     {
-        cEst +=
+        meshOps::faceCentre
         (
-            meshOps::faceCentre
-            (
-                faces[cellToCheck[faceI]],
-                points
-            )
+            faces[cellToCheck[faceI]],
+            points,
+            fCentre
         );
+
+        cEst += fCentre;
     }
 
-    cEst /= cellToCheck.size();
+    cEst /= scal(cellToCheck.size());
 
     forAll(cellToCheck, faceI)
     {
-        vector fArea =
+        const face& checkFace = faces[cellToCheck[faceI]];
+
+        if (checkFace.empty())
+        {
+            continue;
+        }
+
+        meshOps::faceNormal
         (
-            meshOps::faceNormal
-            (
-                faces[cellToCheck[faceI]],
-                points
-            )
+            faces[cellToCheck[faceI]],
+            points,
+            fArea
         );
 
-        vector fCentre =
+        meshOps::faceCentre
         (
-            meshOps::faceCentre
-            (
-                faces[cellToCheck[faceI]],
-                points
-            )
+            faces[cellToCheck[faceI]],
+            points,
+            fCentre
         );
 
+        // Flip if necessary
         if (owner[cellToCheck[faceI]] != cIndex)
         {
             fArea *= -1.0;
         }
 
         // Calculate 3*face-pyramid volume
-        scalar pyr3Vol = fArea & (fCentre - cEst);
+        scal pyr3Vol = fArea & (fCentre - cEst);
 
         // Calculate face-pyramid centre
-        vector pc = (3.0/4.0)*fCentre + (1.0/4.0)*cEst;
+        Vector<scal> pc = (threeFourths*fCentre) + (oneFourth*cEst);
 
         // Accumulate volume-weighted face-pyramid centre
         centre += pyr3Vol*pc;
@@ -384,27 +471,37 @@ inline void cellCentreAndVolume
     }
 
     centre /= volume + VSMALL;
-    volume *= (1.0/3.0);
+    volume *= oneThird;
 }
 
 
 // Determine whether a point lies on a segment
+template <class scal>
 inline bool pointSegmentIntersection
 (
     const linePointRef& segment,
-    const point& checkPoint,
-    const scalar matchTol
+    const point& cP,
+    const scal& matchTol
 )
 {
-    vector u = segment.vec();
-    vector v = checkPoint - segment.start();
+    // Fetch references
+    const point& sS = segment.start();
+    const point& sE = segment.end();
 
-    scalar magU = mag(u) + VSMALL;
-    scalar magV = mag(v) + VSMALL;
+    // Define custom vectors
+    Vector<scal> u = (Vector<scal>(sE) - Vector<scal>(sS));
+    Vector<scal> v = (Vector<scal>(cP) - Vector<scal>(sS));
+
+    scal magU = mag(u);
+    scal magV = mag(v);
+
+    // Stabilise around zero
+    magU = (magU < VSMALL) ? (magU + VSMALL) : magU;
+    magV = (magV < VSMALL) ? (magV + VSMALL) : magV;
 
     // Compare dot-products
-    scalar collinearity = mag(1.0 - ((u/magU) & (v/magV)));
-    scalar tolerance = (matchTol * magU);
+    scal collinearity = mag(pTraits<scal>::one - ((u/magU) & (v/magV)));
+    scal tolerance = (matchTol * magU);
 
     if (collinearity > tolerance)
     {
@@ -412,12 +509,12 @@ inline bool pointSegmentIntersection
     }
 
     // Compute uValue
-    scalar uValue = (u & v) / ((u & u) + VSMALL);
+    scal uValue = (u & v) / ((u & u) + VSMALL);
 
     // Does point fall-off ends?
     // Note: Does not check if end-points coincide
     //       with checkPoint, so be careful here.
-    if (uValue < 0.0 || uValue > 1.0)
+    if (uValue < pTraits<scal>::zero || uValue > pTraits<scal>::one)
     {
         return false;
     }
@@ -428,48 +525,59 @@ inline bool pointSegmentIntersection
 
 
 // Determine whether a two line segments intersect
+template <class scal>
 inline bool segmentSegmentIntersection
 (
     const linePointRef& fromSegment,
     const linePointRef& toSegment,
-    const scalar matchTol,
-    point& intPoint
+    const scal& matchTol,
+    Vector<scal>& intPoint
 )
 {
-    vector u = fromSegment.vec();
-    vector v = toSegment.vec();
+    // Fetch references
+    const point& fS = fromSegment.start(), fE = fromSegment.end();
+    const point& tS = toSegment.start(), tE = toSegment.end();
 
-    const vector& p = fromSegment.start();
-    const vector& q = toSegment.start();
+    // Define custom vectors
+    Vector<scal> u = (Vector<scal>(fE) - Vector<scal>(fS));
+    Vector<scal> v = (Vector<scal>(tE) - Vector<scal>(tS));
 
-    vector w = (p - q);
+    Vector<scal> p = Vector<scal>(fS);
+    Vector<scal> q = Vector<scal>(tS);
+
+    Vector<scal> w = (p - q);
 
     // Get parameters
-    scalar a = (u & u), b = (u & v), c = (v & v), d = (u & w), e = (v & w);
+    scal a = (u & u), b = (u & v), c = (v & v), d = (u & w), e = (v & w);
 
     // Parallel / collinear check
-    scalar denom = (a * c) - (b * b);
+    scal denom = (a * c) - (b * b);
 
     if (mag(denom) < VSMALL)
     {
         return false;
     }
 
-    scalar s = ((b * e) - (c * d))/denom;
-    scalar t = ((a * e) - (b * d))/denom;
+    scal s = ((b * e) - (c * d))/denom;
+    scal t = ((a * e) - (b * d))/denom;
 
     // Out-of-bounds check
     // Note: Does not check if end-points coincide,
     //       so be careful here.
-    if (s < 0.0 || t < 0.0 || s > 1.0 || t > 1.0)
+    if
+    (
+        s < pTraits<scal>::zero ||
+        t < pTraits<scal>::zero ||
+        s > pTraits<scal>::one ||
+        t > pTraits<scal>::one
+    )
     {
         return false;
     }
 
     // Proximity check
-    scalar dist = mag( w + (s * u) - (t * v) );
-
-    scalar tolerance = (matchTol * Foam::min(mag(u), mag(v)));
+    scal dist = mag( w + (s * u) - (t * v) );
+    scal tolerance = (scal(matchTol) * Foam::min(mag(u), mag(v)));
 
     if (dist > tolerance)
     {
@@ -477,32 +585,37 @@ inline bool segmentSegmentIntersection
     }
 
     // Calculate the intersection point
-    intPoint = fromSegment.start() + (s * u);
+    intPoint = p + (s * u);
 
     return true;
 }
 
 
 // Determine whether a segment intersects a triangular face
+template <class scal>
 inline bool segmentTriFaceIntersection
 (
     const triPointRef& faceToCheck,
     const linePointRef& edgeToCheck,
-    const scalar matchTol,
-    vector& intersectionPoint
+    const scal& matchTol,
+    Vector<scal>& intPoint
 )
 {
-    // Specify unit face-normals
-    vector n = faceToCheck.normal();
+    // Define custom vectors
+    const Vector<scal> p1(edgeToCheck.start());
+    const Vector<scal> p2(edgeToCheck.end());
+
+    const Vector<scal> pfA(faceToCheck.a());
+    const Vector<scal> pfB(faceToCheck.b());
+    const Vector<scal> pfC(faceToCheck.c());
+
+    // Define custom face-normal
+    Vector<scal> n(0.5 * ((pfB - pfA)^(pfC - pfA)));
     n /= mag(n) + VSMALL;
 
-    const point& p1 = edgeToCheck.start();
-    const point& p2 = edgeToCheck.end();
-    const point& p3 = faceToCheck.a();
-
     // Compute uValue
-    scalar numerator = n & (p3 - p1);
-    scalar denominator = n & (p2 - p1);
+    scal numerator = n & (pfA - p1);
+    scal denominator = n & (p2 - p1);
 
     // Check if the edge is parallel to the face
     if (mag(denominator) < VSMALL)
@@ -510,18 +623,24 @@ inline bool segmentTriFaceIntersection
         return false;
     }
 
-    scalar u = (numerator / denominator);
-
-    scalar tolerance = (matchTol * edgeToCheck.mag());
+    scal u = (numerator / denominator);
+    scal tolerance = (scal(matchTol) * mag(p2 - p1));
 
     // Check for intersection along line.
-    if ((u > tolerance) && (u < (1.0 - tolerance)))
+    if ((u > tolerance) && (u < (pTraits<scal>::one - tolerance)))
     {
         // Compute point of intersection
-        intersectionPoint = p1 + u*(p2 - p1);
+        intPoint = p1 + u*(p2 - p1);
 
         // Also make sure that intPoint lies within the face
-        if (pointInTriFace(faceToCheck, intersectionPoint))
+        if
+        (
+            pointInTriFace
+            (
+                triangle<Vector<scal>, const Vector<scal>&>(pfA, pfB, pfC),
+                intPoint
+            )
+        )
         {
             return true;
         }
@@ -534,55 +653,32 @@ inline bool segmentTriFaceIntersection
 
 // Determine whether the particular point lies
 // inside the given triangular face
+template <class scal>
 inline bool pointInTriFace
 (
-    const triPointRef& faceToCheck,
-    const point& checkPoint
+    const triangle<Vector<scal>, const Vector<scal>&>& faceToCheck,
+    const Vector<scal>& cP
 )
 {
-    vector nf = faceToCheck.normal();
+    // Fetch references
+    const Vector<scal>& a = faceToCheck.a();
+    const Vector<scal>& b = faceToCheck.b();
+    const Vector<scal>& c = faceToCheck.c();
 
-    vector t0 =
-    (
-        triPointRef
-        (
-            faceToCheck.a(),
-            faceToCheck.b(),
-            checkPoint
-        ).normal()
-    );
+    // Compute the normal
+    Vector<scal> nf = (0.5 * ((b - a)^(c - a)));
 
-    if ((t0 & nf) < 0.0)
+    if ( ((0.5 * ((b - a)^(cP - a))) & nf) < pTraits<scal>::zero)
     {
         return false;
     }
 
-    vector t1 =
-    (
-        triPointRef
-        (
-            faceToCheck.b(),
-            faceToCheck.c(),
-            checkPoint
-        ).normal()
-    );
-
-    if ((t1 & nf) < 0.0)
+    if ( ((0.5 * ((c - b)^(cP - b))) & nf) < pTraits<scal>::zero)
     {
         return false;
     }
 
-    vector t2 =
-    (
-        triPointRef
-        (
-            faceToCheck.c(),
-            faceToCheck.a(),
-            checkPoint
-        ).normal()
-    );
-
-    if ((t2 & nf) < 0.0)
+    if ( ((0.5 * ((a - c)^(cP - c))) & nf) < pTraits<scal>::zero)
     {
         return false;
     }
@@ -594,6 +690,7 @@ inline bool pointInTriFace
 
 // Determine whether the particular point lies
 // inside the given cell
+template <class scal>
 inline bool pointInCell
 (
     const label cIndex,
@@ -601,19 +698,20 @@ inline bool pointInCell
     const UList<face>& faces,
     const UList<label>& owner,
     const UList<point>& points,
-    const point& checkPoint
+    const scal& matchTol,
+    const point& cP
 )
 {
-    vector xf(vector::zero), nf(vector::zero);
+    Vector<scal> xf, nf;
 
     forAll(cellToCheck, faceI)
     {
-        xf = meshOps::faceCentre(faces[cellToCheck[faceI]], points);
-        nf = meshOps::faceNormal(faces[cellToCheck[faceI]], points);
+        meshOps::faceCentre(faces[cellToCheck[faceI]], points, xf);
+        meshOps::faceNormal(faces[cellToCheck[faceI]], points, nf);
 
-        vector faceToPoint = (xf - checkPoint);
+        Vector<scal> faceToPoint(xf - Vector<scal>(cP));
 
-        if ((faceToPoint & nf) > 0.0)
+        if ((faceToPoint & nf) > matchTol)
         {
             if (owner[cellToCheck[faceI]] != cIndex)
             {

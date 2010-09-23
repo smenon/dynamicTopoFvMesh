@@ -35,6 +35,7 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
+#include "IOmanip.H"
 #include "topoMapper.H"
 #include "mapPolyMesh.H"
 #include "topoCellMapper.H"
@@ -535,13 +536,17 @@ void topoCellMapper::mapInternalField
 
     if (polyMesh::debug)
     {
+        int oldP = Info().precision();
+
         // Compare the global integral
         Info << " Field : " << fieldName
              << " integral errors : "
+             << setprecision(15)
              << " source : " << mag(intSource)
              << " target : " << mag(intTarget)
              << " norm : "
              << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
+             << setprecision(oldP)
              << endl;
     }
 }

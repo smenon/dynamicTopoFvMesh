@@ -282,9 +282,11 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
         if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
         {
             // Obtain the normal.
-            fNorm[count] =
+            meshOps::faceNormal
             (
-                meshOps::faceNormal(faces_[edgeFaces[faceI]], points_)
+                faces_[edgeFaces[faceI]],
+                points_,
+                fNorm[count]
             );
 
             // Normalize it.

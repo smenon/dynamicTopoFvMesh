@@ -325,28 +325,40 @@ void constructHull
 
 // Compute the area / centre of a polygon
 // formed by a convex set of points.
+template <class scal>
 void convexSetArea
 (
     const label newFaceIndex,
     const label oldFaceIndex,
-    const vectorField& cvxSet,
-    const vector& refNorm,
-    scalar& fArea,
-    vector& fCentre,
+    const Field<Vector<scal> >& cvxSet,
+    const Vector<scal>& refNorm,
+    scal& fArea,
+    Vector<scal>& fCentre,
     bool output
 )
 {
     // Reset inputs
-    fArea = 0.0;
-    fCentre = vector::zero;
+    fArea = pTraits<scal>::zero;
+    fCentre = Vector<scal>::zero;
 
     // Try the trivial case for a triangle.
     if (cvxSet.size() == 3)
     {
-        triPointRef tpr(cvxSet[0], cvxSet[1], cvxSet[2]);
+        const Vector<scal>& a = cvxSet[0];
+        const Vector<scal>& b = cvxSet[1];
+        const Vector<scal>& c = cvxSet[2];
 
-        fArea = tpr.mag();
-        fCentre = tpr.centre();
+        fArea = ( scal(0.5) * ((b - a)^(c - a)) );
+        fCentre = (pTraits<scal>::one / scal(3.0)) * (a + b + c);
+
+        if (output)
+        {
+            Info << " newFaceIndex: " << newFaceIndex
+                 << " oldFaceIndex: " << oldFaceIndex << nl
+                 << " Area: " << fArea << nl
+                 << " Centre: " << fCentre << nl
+                 << endl;
+        }
 
         return;
     }
@@ -388,11 +400,12 @@ void convexSetArea
             }
 
             // Specify a tolerance for collinearity
-            scalar tolerance = 1e-14;
+            scal tolerance(1e-14);
 
             // Compute the normal to this edge
-            vector n = (tmpEdge.vec(cvxSet) ^ refNorm);
+            Vector<scal> n;
 
+            n = ((cvxSet[tmpEdge.end()] - cvxSet[tmpEdge.start()]) ^ refNorm);
             n /= mag(n) + VSMALL;
 
             label curEdgeSign = 0;
@@ -409,8 +422,8 @@ void convexSetArea
                     continue;
                 }
 
-                vector rfVec = (cvxSet[k] - cvxSet[i]);
-                scalar dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
+                Vector<scal> rfVec = (cvxSet[k] - cvxSet[i]);
+                scal dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
 
                 // Skip nearly collinear points.
                 if (mag(dotProd) < tolerance)
@@ -481,16 +494,16 @@ void convexSetArea
     }
 
     // Find an approximate face-centroid
-    scalar sumA = 0.0;
-    vector sumAc = vector::zero;
-    vector xC = average(cvxSet);
+    scal sumA = 0.0;
+    Vector<scal> sumAc = vector::zero;
+    Vector<scal> xC = average(cvxSet);
 
     forAll(testEdges, edgeI)
     {
         const edge& e = testEdges[edgeI];
 
-        vector c = cvxSet[e[0]] + cvxSet[e[1]] + xC;
-        scalar a = mag(e.vec(cvxSet) ^ (xC - cvxSet[e[0]]));
+        Vector<scal> c = cvxSet[e[0]] + cvxSet[e[1]] + xC;
+        scal a = mag(e.vec(cvxSet) ^ (xC - cvxSet[e[0]]));
 
         sumA += a;
         sumAc += a*c;
@@ -513,37 +526,40 @@ void convexSetArea
 
 // Compute the volume / centre of a polyhedron
 // formed by a convex set of points.
+template <class scal>
 void convexSetVolume
 (
     const label newCellIndex,
     const label oldCellIndex,
-    const vectorField& cvxSet,
-    scalar& cVolume,
-    vector& cCentre,
+    const Field<Vector<scal> >& cvxSet,
+    scal& cVolume,
+    Vector<scal>& cCentre,
     bool output
 )
 {
     // Reset inputs
-    cVolume = 0.0;
-    cCentre = vector::zero;
+    cVolume = pTraits<scal>::zero;
+    cCentre = Vector<scal>::zero;
 
     // Try the trivial case for a tetrahedron.
     // No checking for orientation here.
     if (cvxSet.size() == 4)
     {
-        cCentre = average(cvxSet);
+        const Vector<scal>& a = cvxSet[0];
+        const Vector<scal>& b = cvxSet[1];
+        const Vector<scal>& c = cvxSet[2];
+        const Vector<scal>& d = cvxSet[3];
+
+        cCentre = ( scal(0.25) * (a + b + c + d) );
 
         cVolume =
         (
             mag
             (
-                tetPointRef
+                (pTraits<scal>::one / scal(6.0)) *
                 (
-                    cvxSet[0],
-                    cvxSet[1],
-                    cvxSet[2],
-                    cvxSet[3]
-                ).mag()
+                    ((b - a) ^ (c - a)) & (d - a)
+                )
             )
         );
 
@@ -625,11 +641,12 @@ void convexSetVolume
                 }
 
                 // Specify a tolerance for planarity
-                scalar tolerance = 1e-14;
+                scal tolerance(1e-14);
 
                 // Compute the normal to this face
-                vector n = tmpFace.normal(cvxSet);
+                Vector<scal> n;
 
+                meshOps::faceNormal(tmpFace, cvxSet, n);
                 n /= mag(n) + VSMALL;
 
                 label curFaceSign = 0;
@@ -646,8 +663,8 @@ void convexSetVolume
                         continue;
                     }
 
-                    vector rfVec = (cvxSet[l] - cvxSet[i]);
-                    scalar dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
+                    Vector<scal> rfVec = (cvxSet[l] - cvxSet[i]);
+                    scal dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
 
                     // Skip nearly co-planar points.
                     if (mag(dotProd) < tolerance)
@@ -718,9 +735,11 @@ void convexSetVolume
                             if (uniquePts.size() > 0)
                             {
                                 // Compute the existing normal
-                                vector eNorm = checkFace.normal(cvxSet);
+                                Vector<scal> eNorm;
 
-                                scalar dotProd =
+                                meshOps::faceNormal(checkFace, cvxSet, eNorm);
+
+                                scal dotProd =
                                 (
                                     n & (eNorm/(mag(eNorm) + VSMALL))
                                 );
@@ -797,7 +816,8 @@ void convexSetVolume
             }
 
             // Compute the normal to this face
-            vector n = checkFace.normal(cvxSet);
+            Vector<scal> n;
+            meshOps::faceNormal(checkFace, cvxSet, n);
 
             forAll(testFaces, faceJ)
             {
@@ -892,39 +912,24 @@ void convexSetVolume
                 }
             }
         }
+
     } while (changed);
 
-    // Find an approximate cell-centroid
-    vector xC = average(cvxSet);
+    // Prepare temporary connectivity
+    // for volume / centre computation.
+    labelList owner(testFaces.size(), 0);
+    cellList cells(1, identity(testFaces.size()));
 
-    // Calculate volume from all accumulated faces.
-    forAll(testFaces, faceI)
-    {
-        const face& checkFace = testFaces[faceI];
-
-        if (checkFace.empty())
-        {
-            continue;
-        }
-
-        vector xF = checkFace.centre(cvxSet);
-        vector Sf = checkFace.normal(cvxSet);
-
-        // Calculate 3*face-pyramid volume
-        scalar pyr3Vol = Sf & (xF - xC);
-
-        // Calculate face-pyramid centre
-        vector pc = (3.0/4.0)*xF + (1.0/4.0)*xC;
-
-        // Accumulate volume-weighted face-pyramid centre
-        cCentre += pyr3Vol*pc;
-
-        // Accumulate face-pyramid volume
-        cVolume += pyr3Vol;
-    }
-
-    cCentre /= cVolume + VSMALL;
-    cVolume *= (1.0/3.0);
+    cellCentreAndVolume
+    (
+        0,
+        cvxSet,
+        testFaces,
+        cells,
+        owner,
+        cCentre,
+        cVolume
+    );
 
     if (output)
     {

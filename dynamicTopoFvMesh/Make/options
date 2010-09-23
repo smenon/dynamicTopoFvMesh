@@ -12,4 +12,6 @@ LIB_LIBS = \
     -lfiniteVolume \
     -L$(FOAM_USER_LIBBIN) \
     -lcoupleMap \
-    -llengthScaleEstimator
+    -llengthScaleEstimator \
+    -lmpfr \
+    -lgmp

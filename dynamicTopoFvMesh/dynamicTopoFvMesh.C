@@ -1312,10 +1312,10 @@ scalar dynamicTopoFvMesh::testProximity
     if (twoDMesh_)
     {
         // Obtain the face-normal.
-        gNormal = meshOps::faceNormal(faces_[index], points_);
+        meshOps::faceNormal(faces_[index], points_, gNormal);
 
         // Obtain the face centre.
-        gCentre = meshOps::faceCentre(faces_[index], points_);
+        meshOps::faceCentre(faces_[index], points_, gCentre);
 
         // Fetch the edge
         const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
@@ -1350,14 +1350,16 @@ scalar dynamicTopoFvMesh::testProximity
             if (neighbour_[eFaces[faceI]] == -1)
             {
                 // Obtain the normal.
-                gNormal +=
+                vector gTmp;
+
+                meshOps::faceNormal
                 (
-                    meshOps::faceNormal
-                    (
-                        faces_[eFaces[faceI]],
-                        points_
-                    )
+                    faces_[eFaces[faceI]],
+                    points_,
+                    gTmp
                 );
+
+                gNormal += gTmp;
             }
         }
 
@@ -2537,7 +2539,8 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         }
 
         // Obtain the unit normal.
-        vector testNormal = meshOps::faceNormal(testFace, points_);
+        vector testNormal;
+        meshOps::faceNormal(testFace, points_, testNormal);
 
         testNormal /= (mag(testNormal) + VSMALL);
 
@@ -2559,7 +2562,8 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     }
 
     // Obtain the face-normal.
-    vector refArea = meshOps::faceNormal(tFace, points_);
+    vector refArea;
+    meshOps::faceNormal(tFace, points_, refArea);
 
     // Normalize it.
     vector n = refArea/mag(refArea);

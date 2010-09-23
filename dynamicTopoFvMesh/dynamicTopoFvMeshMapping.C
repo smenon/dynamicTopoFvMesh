@@ -338,7 +338,7 @@ bool dynamicTopoFvMesh::computeWeights
     {
         case 2:
         {
-            refNorm = meshOps::faceNormal(faces_[index], oldPoints_);
+            meshOps::faceNormal(faces_[index], oldPoints_, refNorm);
             normFactor = mag(refNorm);
 
             // Normalize for later use
@@ -916,8 +916,10 @@ bool dynamicTopoFvMesh::faceIntersection
     const face& toFace = faces_[newFaceIndex];
 
     // Obtain face centre and projection normal
-    vector xf = meshOps::faceCentre(toFace, oldPoints_);
-    vector nf = meshOps::faceNormal(toFace, oldPoints_);
+    vector xf, nf;
+
+    meshOps::faceCentre(toFace, oldPoints_, xf);
+    meshOps::faceNormal(toFace, oldPoints_, nf);
 
     nf /= mag(nf) + VSMALL;
 
@@ -1764,6 +1766,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     faces_,
                     owner_,
                     oldPoints_,
+                    0.0,
                     checkPoint
                 )
             )
@@ -1826,6 +1829,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     polyMesh::faces(),
                     polyMesh::faceOwner(),
                     polyMesh::points(),
+                    0.0,
                     checkPoint
                 )
             )
@@ -1875,6 +1879,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     faces_,
                     owner_,
                     oldPoints_,
+                    0.0,
                     checkPoint
                 )
             )
@@ -1905,6 +1910,7 @@ bool dynamicTopoFvMesh::cellIntersection
                     polyMesh::faces(),
                     polyMesh::faceOwner(),
                     polyMesh::points(),
+                    0.0,
                     checkPoint
                 )
             )

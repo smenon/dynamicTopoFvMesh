@@ -1936,31 +1936,27 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 label triFacePatch = whichPatch(newFaceIndex[faceI]);
 
                 // Fetch face-normals
-                vector tfNorm =
+                vector tfNorm, f0Norm, f1Norm;
+
+                meshOps::faceNormal
                 (
-                    meshOps::faceNormal
-                    (
-                        faces_[newFaceIndex[faceI]],
-                        oldPoints_
-                    )
+                    faces_[newFaceIndex[faceI]],
+                    oldPoints_,
+                    tfNorm
                 );
 
-                vector f0Norm =
+                meshOps::faceNormal
                 (
-                    meshOps::faceNormal
-                    (
-                        faces_[c0BdyIndex[0]],
-                        oldPoints_
-                    )
+                    faces_[c0BdyIndex[0]],
+                    oldPoints_,
+                    f0Norm
                 );
 
-                vector f1Norm =
+                meshOps::faceNormal
                 (
-                    meshOps::faceNormal
-                    (
-                        faces_[c0BdyIndex[1]],
-                        oldPoints_
-                    )
+                    faces_[c0BdyIndex[1]],
+                    oldPoints_,
+                    f1Norm
                 );
 
                 // Tri-face on boundary. Perform normal checks
@@ -5459,7 +5455,10 @@ scalar dynamicTopoFvMesh::computeTrisectionQuality
     scalar minQuality = GREAT;
     scalar cQuality = 0.0;
 
-    point midPoint = meshOps::faceCentre(faces_[fIndex], points_);
+    point midPoint;
+
+    // Fetch the midPoint
+    meshOps::faceCentre(faces_[fIndex], points_, midPoint);
 
     FixedList<label,2> apexPoint(-1);
 
@@ -5539,29 +5538,15 @@ void dynamicTopoFvMesh::sliceMesh
     label patchIndex = -1;
     scalar dx = 0.0;
     vector gCentre = vector::zero;
+    FixedList<vector, 2> fC(vector::zero);
 
     if (twoDMesh_)
     {
-        gCentre =
-        (
-            0.5 *
-            (
-                meshOps::faceCentre(faces_[pointPair.first()], points_)
-              + meshOps::faceCentre(faces_[pointPair.second()], points_)
-            )
-        );
-
-        // Specify a search distance
-        dx =
-        (
-            mag
-            (
-                meshOps::faceCentre(faces_[pointPair.first()], points_)
-              - meshOps::faceCentre(faces_[pointPair.second()], points_)
-            )
-        );
-
         patchIndex = whichPatch(pointPair.first());
+
+        // Fetch face centres
+        meshOps::faceCentre(faces_[pointPair.first()], points_, fC[0]);
+        meshOps::faceCentre(faces_[pointPair.second()], points_, fC[1]);
     }
     else
     {
@@ -5576,15 +5561,17 @@ void dynamicTopoFvMesh::sliceMesh
             }
         }
 
-        // Specify the centre.
-        gCentre =
-        (
-            0.5 * (points_[pointPair.first()] + points_[pointPair.second()])
-        );
-
-        // Specify a search distance
-        dx = mag(points_[pointPair.first()] - points_[pointPair.second()]);
+        fC[0] = points_[pointPair.first()];
+        fC[1] = points_[pointPair.second()];
     }
+
+    linePointRef lpr(fC[0], fC[1]);
+
+    // Specify the centre.
+    gCentre = lpr.centre();
+
+    // Specify a search distance
+    dx = lpr.mag();
 
     // Is this edge in the vicinity of a previous slice-point?
     if (lengthEstimator().checkOldSlices(gCentre))
@@ -5618,7 +5605,8 @@ void dynamicTopoFvMesh::sliceMesh
         // Assign plane point / normal
         p = gCentre;
 
-        vector gNorm = meshOps::faceNormal(faces_[pointPair.first()], points_);
+        vector gNorm;
+        meshOps::faceNormal(faces_[pointPair.first()], points_, gNorm);
 
         gNorm /= (mag(gNorm) + VSMALL);
 
@@ -5676,15 +5664,16 @@ void dynamicTopoFvMesh::sliceMesh
                             (!surfFaces.found(eFaces[faceI]))
                         )
                         {
-                            surfFaces.insert
+                            vector surfNorm;
+
+                            meshOps::faceNormal
                             (
-                                eFaces[faceI],
-                                meshOps::faceNormal
-                                (
-                                    faces_[eFaces[faceI]],
-                                    points_
-                                )
+                                faces_[eFaces[faceI]],
+                                points_,
+                                surfNorm
                             );
+
+                            surfFaces.insert(eFaces[faceI], surfNorm);
                         }
                     }
                 }
@@ -5886,7 +5875,8 @@ void dynamicTopoFvMesh::sliceMesh
             continue;
         }
 
-        vector fCentre = meshOps::faceCentre(faces_[faceI], points_);
+        vector fCentre;
+        meshOps::faceCentre(faces_[faceI], points_, fCentre);
 
         FixedList<label, 2> cellsToCheck(-1);
         cellsToCheck[0] = owner_[faceI];
