@@ -68,6 +68,7 @@ class objectMap;
 class topoMapper;
 class motionSolver;
 class coupledPatchInfo;
+class convexSetAlgorithm;
 class lengthScaleEstimator;
 
 /*---------------------------------------------------------------------------*\
@@ -290,31 +291,11 @@ class dynamicTopoFvMesh
             const labelList& mapCandidates,
             const labelListList& oldNeighbourList,
             const scalar mTol,
-            const label pType,
+            const convexSetAlgorithm& algorithm,
             label& precisionAttempts,
             labelList& parents,
             scalarField& weights,
             vectorField& centres
-        ) const;
-
-        // Return the intersection points between faces in old/new meshes
-        bool faceIntersection
-        (
-            const label newFaceIndex,
-            const label oldFaceIndex,
-            const scalar matchTol,
-            vectorField& intPoints,
-            bool output = false
-        ) const;
-
-        // Return the intersection points between cells in old/new meshes
-        bool cellIntersection
-        (
-            const label newCellIndex,
-            const label oldCellIndex,
-            const scalar matchTol,
-            vectorField& intPoints,
-            bool output = false
         ) const;
 
         // Initialize mesh edges and related connectivity lists

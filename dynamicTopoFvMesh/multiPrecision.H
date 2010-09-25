@@ -43,9 +43,7 @@ SourceFiles
 #define multiPrecision_H
 
 #include <mpfr.h>
-#include "scalar.H"
-#include "Vector.H"
-#include "Tensor.H"
+#include "fieldTypes.H"
 
 namespace Foam
 {
@@ -197,90 +195,14 @@ public:
 };
 
 
-/*---------------------------------------------------------------------------*\
-                     Class multiPrecisionVector Declaration
-\*---------------------------------------------------------------------------*/
-
-template <class T>
-class multiPrecisionVector
-:
-    public Vector<T>
-{
-
-public:
-
-    //- Constructors
-
-        // Construct null
-        multiPrecisionVector()
-        :
-            Vector<T>()
-        {}
-
-        // Construct as copy
-        multiPrecisionVector(const multiPrecisionVector<T>& v)
-        :
-            Vector<T>()
-        {
-            this->v_[0] = v[0];
-            this->v_[1] = v[1];
-            this->v_[2] = v[2];
-        }
-
-        //- Construct given three components
-        multiPrecisionVector
-        (
-            const scalar& vx,
-            const scalar& vy,
-            const scalar& vz
-        )
-        :
-            Vector<T>()
-        {
-            this->v_[0] = vx;
-            this->v_[1] = vy;
-            this->v_[2] = vz;
-        }
-
-        // Construct from convectional vector
-        multiPrecisionVector(const vector& v)
-        :
-            Vector<T>()
-        {
-            this->v_[0] = T(v[0]);
-            this->v_[1] = T(v[1]);
-            this->v_[2] = T(v[2]);
-        }
-
-    //- Operator overloads
-
-        // Assignment
-        inline multiPrecisionVector& operator=(const vector& v)
-        {
-            this->v_[0] = T(v[0]);
-            this->v_[1] = T(v[1]);
-            this->v_[2] = T(v[2]);
-
-            return *this;
-        }
-
-        inline multiPrecisionVector& operator=
-        (
-            const multiPrecisionVector<T>& v
-        )
-        {
-            this->v_[0] = v[0];
-            this->v_[1] = v[1];
-            this->v_[2] = v[2];
-
-            return *this;
-        }
-};
-
-
 // Typedefs
 typedef multiPrecisionScalar<64, MPFR_RNDN> mpScalar;
-typedef multiPrecisionVector<mpScalar> mpVector;
+
+typedef Vector<mpScalar> mpVector;
+typedef Tensor<mpScalar> mpTensor;
+typedef SymmTensor<mpScalar> mpSymmTensor;
+typedef SphericalTensor<mpScalar> mpSphericalTensor;
+
 
 } // End namespace Foam
 

@@ -323,626 +323,6 @@ void constructHull
 }
 
 
-// Compute the area / centre of a polygon
-// formed by a convex set of points.
-template <class scal>
-void convexSetArea
-(
-    const label newFaceIndex,
-    const label oldFaceIndex,
-    const Field<Vector<scal> >& cvxSet,
-    const Vector<scal>& refNorm,
-    scal& fArea,
-    Vector<scal>& fCentre,
-    bool output
-)
-{
-    // Reset inputs
-    fArea = pTraits<scal>::zero;
-    fCentre = Vector<scal>::zero;
-
-    // Try the trivial case for a triangle.
-    if (cvxSet.size() == 3)
-    {
-        const Vector<scal>& a = cvxSet[0];
-        const Vector<scal>& b = cvxSet[1];
-        const Vector<scal>& c = cvxSet[2];
-
-        fArea = ( scal(0.5) * ((b - a)^(c - a)) );
-        fCentre = (pTraits<scal>::one / scal(3.0)) * (a + b + c);
-
-        if (output)
-        {
-            Info << " newFaceIndex: " << newFaceIndex
-                 << " oldFaceIndex: " << oldFaceIndex << nl
-                 << " Area: " << fArea << nl
-                 << " Centre: " << fCentre << nl
-                 << endl;
-        }
-
-        return;
-    }
-
-    // Track edges
-    label nEdges = 0;
-    edgeList testEdges(0);
-
-    // Loop through all points, and build edges with every
-    // other point in the set
-    forAll(cvxSet, i)
-    {
-        forAll(cvxSet, j)
-        {
-            // Skip duplicates.
-            if (j == i)
-            {
-                continue;
-            }
-
-            // Define the edge
-            edge tmpEdge(i, j);
-
-            // If this is an existing edge, skip it.
-            bool foundExisting = false;
-
-            forAll(testEdges, edgeI)
-            {
-                if (testEdges[edgeI] == tmpEdge)
-                {
-                    foundExisting = true;
-                    break;
-                }
-            }
-
-            if (foundExisting)
-            {
-                continue;
-            }
-
-            // Specify a tolerance for collinearity
-            scal tolerance(1e-14);
-
-            // Compute the normal to this edge
-            Vector<scal> n;
-
-            n = ((cvxSet[tmpEdge.end()] - cvxSet[tmpEdge.start()]) ^ refNorm);
-            n /= mag(n) + VSMALL;
-
-            label curEdgeSign = 0;
-            bool foundInternalEdge = false;
-
-            // Quick-reject test:
-            //   Check all other points in the set,
-            //   and decide if all points lie on one side.
-            forAll(cvxSet, k)
-            {
-                // Skip duplicates.
-                if (tmpEdge[0] == k || tmpEdge[1] == k)
-                {
-                    continue;
-                }
-
-                Vector<scal> rfVec = (cvxSet[k] - cvxSet[i]);
-                scal dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
-
-                // Skip nearly collinear points.
-                if (mag(dotProd) < tolerance)
-                {
-                    continue;
-                }
-
-                // Obtain the sign of this point.
-                label eSign = Foam::sign(dotProd);
-
-                // Update the current sign if necessary.
-                if (curEdgeSign == 0)
-                {
-                    curEdgeSign = eSign;
-                }
-                else
-                if (curEdgeSign != eSign)
-                {
-                    // Interior edge. Bail out.
-                    foundInternalEdge = true;
-                    break;
-                }
-            }
-
-            if (foundInternalEdge)
-            {
-                continue;
-            }
-
-            // Looks like we found an edge on the boundary.
-            // Check its sign to ensure that it points outward.
-            if (curEdgeSign == 1)
-            {
-                n *= -1.0;
-                tmpEdge = tmpEdge.reverseEdge();
-            }
-
-            // Add to the list of edges.
-            testEdges.setSize(++nEdges, tmpEdge);
-        }
-    }
-
-    // Sanity check - do points match edges?
-    if (testEdges.size() != cvxSet.size())
-    {
-        WarningIn
-        (
-            "\n"
-            "void meshOps::convexSetArea\n"
-            "(\n"
-            "    const label newFaceIndex,\n"
-            "    const label oldFaceIndex,\n"
-            "    const vectorField& cvxSet,\n"
-            "    const vector& refNorm,\n"
-            "    scalar& fArea,\n"
-            "    vector& fCentre,\n"
-            "    bool output\n"
-            ") const"
-        )
-            << " Points do not match edges. " << nl
-            << " newFaceIndex: " << newFaceIndex
-            << " oldFaceIndex: " << oldFaceIndex
-            << " nPoints: " << cvxSet.size() << nl
-            << " nEdges: " << testEdges.size() << nl
-            << " Edge list: " << testEdges << nl
-            << " Set: " << cvxSet << nl
-            << endl;
-    }
-
-    // Find an approximate face-centroid
-    scal sumA = 0.0;
-    Vector<scal> sumAc = vector::zero;
-    Vector<scal> xC = average(cvxSet);
-
-    forAll(testEdges, edgeI)
-    {
-        const edge& e = testEdges[edgeI];
-
-        Vector<scal> c = cvxSet[e[0]] + cvxSet[e[1]] + xC;
-        scal a = mag(e.vec(cvxSet) ^ (xC - cvxSet[e[0]]));
-
-        sumA += a;
-        sumAc += a*c;
-    }
-
-    fCentre = (1.0/3.0)*sumAc/(sumA + VSMALL);
-    fArea = 0.5*sumA;
-
-    if (output)
-    {
-        Info << " newFaceIndex: " << newFaceIndex
-             << " oldFaceIndex: " << oldFaceIndex << nl
-             << " Edges: " << testEdges << nl
-             << " Area: " << fArea << nl
-             << " Centre: " << fCentre << nl
-             << endl;
-    }
-}
-
-
-// Compute the volume / centre of a polyhedron
-// formed by a convex set of points.
-template <class scal>
-void convexSetVolume
-(
-    const label newCellIndex,
-    const label oldCellIndex,
-    const Field<Vector<scal> >& cvxSet,
-    scal& cVolume,
-    Vector<scal>& cCentre,
-    bool output
-)
-{
-    // Reset inputs
-    cVolume = pTraits<scal>::zero;
-    cCentre = Vector<scal>::zero;
-
-    // Try the trivial case for a tetrahedron.
-    // No checking for orientation here.
-    if (cvxSet.size() == 4)
-    {
-        const Vector<scal>& a = cvxSet[0];
-        const Vector<scal>& b = cvxSet[1];
-        const Vector<scal>& c = cvxSet[2];
-        const Vector<scal>& d = cvxSet[3];
-
-        cCentre = ( scal(0.25) * (a + b + c + d) );
-
-        cVolume =
-        (
-            mag
-            (
-                (pTraits<scal>::one / scal(6.0)) *
-                (
-                    ((b - a) ^ (c - a)) & (d - a)
-                )
-            )
-        );
-
-        if (output)
-        {
-            Info << " newCellIndex: " << newCellIndex
-                 << " oldCellIndex: " << oldCellIndex << nl
-                 << " Volume: " << cVolume << nl
-                 << " Centre: " << cCentre << nl
-                 << endl;
-        }
-
-        return;
-    }
-
-    // Track faces
-    face tmpFace(3);
-    label nFaces = 0;
-    faceList testFaces(0);
-    labelHashSet uniquePts;
-
-    // Loop through all points, and build faces with every
-    // other point in the set
-    forAll(cvxSet, i)
-    {
-        forAll(cvxSet, j)
-        {
-            // Skip duplicates.
-            if (j == i)
-            {
-                continue;
-            }
-
-            forAll(cvxSet, k)
-            {
-                // Skip duplicates.
-                if (k == i || k == j)
-                {
-                    continue;
-                }
-
-                // Configure the face.
-                tmpFace[0] = i;
-                tmpFace[1] = j;
-                tmpFace[2] = k;
-
-                // Quick-reject test:
-                //   If this is a subset of an existing face, skip it.
-                bool foundSubSet = false;
-
-                forAll(testFaces, faceI)
-                {
-                    const face& checkFace = testFaces[faceI];
-
-                    if (checkFace.size() >= tmpFace.size())
-                    {
-                        bool foundUniquePoint = false;
-
-                        forAll(tmpFace, pI)
-                        {
-                            if (findIndex(checkFace, tmpFace[pI]) == -1)
-                            {
-                                foundUniquePoint = true;
-                                break;
-                            }
-                        }
-
-                        if (!foundUniquePoint)
-                        {
-                            foundSubSet = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (foundSubSet)
-                {
-                    continue;
-                }
-
-                // Specify a tolerance for planarity
-                scal tolerance(1e-14);
-
-                // Compute the normal to this face
-                Vector<scal> n;
-
-                meshOps::faceNormal(tmpFace, cvxSet, n);
-                n /= mag(n) + VSMALL;
-
-                label curFaceSign = 0;
-                bool foundInternalFace = false;
-
-                // Quick-reject test:
-                //   Check all other points in the set,
-                //   and decide if all points lie on one side.
-                forAll(cvxSet, l)
-                {
-                    // Skip duplicates.
-                    if (tmpFace[0] == l || tmpFace[1] == l || tmpFace[2] == l)
-                    {
-                        continue;
-                    }
-
-                    Vector<scal> rfVec = (cvxSet[l] - cvxSet[i]);
-                    scal dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
-
-                    // Skip nearly co-planar points.
-                    if (mag(dotProd) < tolerance)
-                    {
-                        continue;
-                    }
-
-                    // Obtain the sign of this point.
-                    label fSign = Foam::sign(dotProd);
-
-                    // Update the current sign if necessary.
-                    if (curFaceSign == 0)
-                    {
-                        curFaceSign = fSign;
-                    }
-                    else
-                    if (curFaceSign != fSign)
-                    {
-                        // Interior face. Bail out.
-                        foundInternalFace = true;
-                        break;
-                    }
-                }
-
-                if (foundInternalFace)
-                {
-                    continue;
-                }
-
-                // Looks like we found a face on the boundary.
-                // Check its sign to ensure that it points outward.
-                if (curFaceSign == 1)
-                {
-                    n *= -1.0;
-                    tmpFace = tmpFace.reverseFace();
-                }
-
-                // Ensure that the face wasn't checked in.
-                bool alreadyCheckedIn = false;
-
-                forAll(testFaces, faceI)
-                {
-                    // Fetch a non-const reference, since this face
-                    // might be modified in this loop.
-                    face& checkFace = testFaces[faceI];
-
-                    label nCommon = 0;
-
-                    uniquePts.clear();
-
-                    forAll(tmpFace, pI)
-                    {
-                        if (findIndex(checkFace, tmpFace[pI]) > -1)
-                        {
-                            nCommon++;
-                        }
-                        else
-                        {
-                            uniquePts.insert(tmpFace[pI]);
-                        }
-                    }
-
-                    if (nCommon >= 2)
-                    {
-                        if (checkFace.size() >= tmpFace.size())
-                        {
-                            // Check for unique points
-                            if (uniquePts.size() > 0)
-                            {
-                                // Compute the existing normal
-                                Vector<scal> eNorm;
-
-                                meshOps::faceNormal(checkFace, cvxSet, eNorm);
-
-                                scal dotProd =
-                                (
-                                    n & (eNorm/(mag(eNorm) + VSMALL))
-                                );
-
-                                if
-                                (
-                                    (mag(1.0 - dotProd) < tolerance) &&
-                                    (dotProd > 0.0)
-                                )
-                                {
-                                    // Add all unique points to checkFace
-                                    meshOps::insertPointLabels
-                                    (
-                                        n,
-                                        cvxSet,
-                                        uniquePts,
-                                        checkFace
-                                    );
-
-                                    alreadyCheckedIn = true;
-                                    break;
-                                }
-                            }
-                            else
-                            {
-                                // Subset face
-                                alreadyCheckedIn = true;
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            // checkFace is a subset. Replace it.
-                            checkFace = tmpFace;
-
-                            alreadyCheckedIn = true;
-                            break;
-                        }
-                    }
-                }
-
-                // Add this face to the list of faces.
-                if (!alreadyCheckedIn)
-                {
-                    testFaces.setSize(++nFaces, tmpFace);
-                }
-
-                // Reset the face size.
-                tmpFace.setSize(3, -1);
-            }
-        }
-    }
-
-    // Account for planarity test failure.
-    //  - Check for subsets.
-    //  - Loop until no more merges are made.
-    bool changed;
-
-    do
-    {
-        // Reset flag
-        changed = false;
-
-        forAll(testFaces, faceI)
-        {
-            // Fetch a non-const reference, since this face
-            // might be modified in this loop.
-            face& checkFace = testFaces[faceI];
-
-            // Account for deleted testFaces
-            if (checkFace.empty())
-            {
-                continue;
-            }
-
-            // Compute the normal to this face
-            Vector<scal> n;
-            meshOps::faceNormal(checkFace, cvxSet, n);
-
-            forAll(testFaces, faceJ)
-            {
-                if (faceI == faceJ)
-                {
-                    continue;
-                }
-
-                // Fetch a non-const reference, since this face
-                // might be modified in this loop.
-                face& testFace = testFaces[faceJ];
-
-                label nCommon = 0;
-                uniquePts.clear();
-
-                if (checkFace.size() >= testFace.size())
-                {
-                    forAll(testFace, pI)
-                    {
-                        if (findIndex(checkFace, testFace[pI]) > -1)
-                        {
-                            nCommon++;
-                        }
-                        else
-                        {
-                            uniquePts.insert(testFace[pI]);
-                        }
-                    }
-
-                    if (nCommon >= 3)
-                    {
-                        // Delete the test face
-                        testFace.clear();
-
-                        // Add all unique points to checkFace
-                        // Failed the tolerance test before,
-                        // so don't check for it now
-                        if (uniquePts.size())
-                        {
-                            meshOps::insertPointLabels
-                            (
-                                n,
-                                cvxSet,
-                                uniquePts,
-                                checkFace
-                            );
-                        }
-
-                        // Note that changes were made
-                        changed = true;
-                    }
-                }
-                else
-                {
-                    // Check if this is a subset
-                    forAll(checkFace, pI)
-                    {
-                        if (findIndex(testFace, checkFace[pI]) > -1)
-                        {
-                            nCommon++;
-                        }
-                        else
-                        {
-                            uniquePts.insert(checkFace[pI]);
-                        }
-                    }
-
-                    if (nCommon >= 3)
-                    {
-                        // This is a subset. Delete it.
-                        checkFace.clear();
-
-                        // Add all unique points to checkFace
-                        // Failed the tolerance test before,
-                        // so don't check for it now
-                        if (uniquePts.size())
-                        {
-                            insertPointLabels
-                            (
-                                n,
-                                cvxSet,
-                                uniquePts,
-                                testFace
-                            );
-                        }
-
-                        // Note that changes were made
-                        changed = true;
-
-                        break;
-                    }
-                }
-            }
-        }
-
-    } while (changed);
-
-    // Prepare temporary connectivity
-    // for volume / centre computation.
-    labelList owner(testFaces.size(), 0);
-    cellList cells(1, identity(testFaces.size()));
-
-    cellCentreAndVolume
-    (
-        0,
-        cvxSet,
-        testFaces,
-        cells,
-        owner,
-        cCentre,
-        cVolume
-    );
-
-    if (output)
-    {
-        Info << " newCellIndex: " << newCellIndex
-             << " oldCellIndex: " << oldCellIndex << nl
-             << " Faces: " << testFaces << nl
-             << " Volume: " << cVolume << nl
-             << " Centre: " << cCentre << nl
-             << endl;
-    }
-}
-
-
 // Given a set of points and edges, find the shortest path
 // between the start and end point, using Dijkstra's algorithm.
 //  - Takes a Map of points and edges that use those points.
@@ -1123,10 +503,11 @@ bool Dijkstra
 
 
 // Utility method to check for concurrent points.
+template <class T>
 bool checkPointNearness
 (
-    const pointField& points,
-    const scalar magSqrTol
+    const Field<Vector<T> >& points,
+    const T& magSqrTol
 )
 {
     forAll(points, pI)
@@ -1138,14 +519,14 @@ bool checkPointNearness
                 continue;
             }
 
-            scalar magSqrDist = magSqr(points[pI] - points[pJ]);
+            T magSqrDist = magSqr(points[pI] - points[pJ]);
 
             if (magSqrDist < magSqrTol)
             {
                 SeriousErrorIn
                 (
                     "void meshOps::checkPointNearness"
-                    "(const pointField&, const scalar)"
+                    "(const Field<vector<T> >&, const T&)"
                 )
                     << " Found concurrent points: " << nl
                     << " pI: " << pI << " pJ: " << pJ << nl
@@ -1289,6 +670,7 @@ void waitForBuffers()
 
 
 // Actual routine to write out the VTK file
+template <class T>
 void writeVTK
 (
     const polyMesh& mesh,
@@ -1296,7 +678,7 @@ void writeVTK
     const label nPoints,
     const label nCells,
     const label nTotalCells,
-    const pointField& points,
+    const Field<Vector<T> >& points,
     const labelListList& cpList,
     const label primitiveType,
     const Map<label>& reversePointMap,
@@ -1453,6 +835,2372 @@ void writeVTK
 
 
 } // End namespace meshOps
+
+
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+// Construct from components
+convexSetAlgorithm::convexSetAlgorithm
+(
+    const polyMesh& mesh,
+    const UList<point>& newPoints,
+    const UList<cell>& newCells,
+    const UList<face>& newFaces,
+    const UList<label>& newOwner,
+    const UList<label>& newNeighbour,
+    const List<objectMap>& pointsFromPoints,
+    const labelHashSet& modPoints
+)
+:
+    twoDMesh_(mesh.nGeometricD() == 2),
+    nOldPoints_(mesh.nPoints()),
+    mesh_(mesh),
+    newPoints_(newPoints),
+    newCells_(newCells),
+    newFaces_(newFaces),
+    newOwner_(newOwner),
+    newNeighbour_(newNeighbour),
+    pointsFromPoints_(pointsFromPoints),
+    modPoints_(modPoints),
+    highPrecision_(false),
+    refNorm_(vector::zero),
+    normFactor_(0.0),
+    mpRefNorm_(mpVector::zero),
+    mpNormFactor_(0.0)
+{}
+
+
+faceSetAlgorithm::faceSetAlgorithm
+(
+    const polyMesh& mesh,
+    const UList<point>& newPoints,
+    const UList<cell>& newCells,
+    const UList<face>& newFaces,
+    const UList<label>& newOwner,
+    const UList<label>& newNeighbour,
+    const List<objectMap>& pointsFromPoints,
+    const labelHashSet& modPoints
+)
+:
+    convexSetAlgorithm
+    (
+        mesh,
+        newPoints,
+        newCells,
+        newFaces,
+        newOwner,
+        newNeighbour,
+        pointsFromPoints,
+        modPoints
+    )
+{}
+
+
+cellSetAlgorithm::cellSetAlgorithm
+(
+    const polyMesh& mesh,
+    const UList<point>& newPoints,
+    const UList<cell>& newCells,
+    const UList<face>& newFaces,
+    const UList<label>& newOwner,
+    const UList<label>& newNeighbour,
+    const List<objectMap>& pointsFromPoints,
+    const labelHashSet& modPoints
+)
+:
+    convexSetAlgorithm
+    (
+        mesh,
+        newPoints,
+        newCells,
+        newFaces,
+        newOwner,
+        newNeighbour,
+        pointsFromPoints,
+        modPoints
+    )
+{}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template <class T>
+bool faceSetAlgorithm::faceIntersection
+(
+    const label newIndex,
+    const label oldIndex,
+    const T& matchTol,
+    Field<Vector<T> >& intPoints,
+    bool output
+) const
+{
+    // Reset inputs
+    intPoints.clear();
+
+    // Fetch face references for each mesh
+    const face& newFace = this->newFaces_[newIndex];
+    const face& oldFace = this->mesh_.faces()[oldIndex];
+
+    // Alias references
+    const UList<point>& newPoints = this->newPoints_;
+    const UList<point>& oldPoints = this->mesh_.points();
+
+    const labelHashSet& modPoints = this->modPoints_;
+    const List<objectMap>& pfp = this->pointsFromPoints_;
+
+    // Obtain face centre and projection normal
+    Vector<T> xf, nf;
+
+    meshOps::faceCentre(newFace, newPoints, xf);
+    meshOps::faceNormal(newFace, newPoints, nf);
+
+    nf /= mag(nf) + VSMALL;
+
+    // Track all possible intersections from here on.
+    label nInts = 0;
+    Map<Vector<T> > intersections;
+    Vector<T> intPoint = Vector<T>::zero;
+
+    // Topologically check for common points,
+    // and project uniques ones on to the face plane
+    Map<label> projPoints;
+    Map<labelList> commonPoints;
+    Field<Vector<T> > projections(oldFace.size(), Vector<T>::zero);
+
+    forAll(oldFace, pointI)
+    {
+        label oldPoint = oldFace[pointI];
+        label pIndex = findIndex(newFace, oldPoint);
+
+        Vector<T> r = convert<Vector<T>, T>(oldPoints[oldPoint]);
+
+        if (pIndex == -1)
+        {
+            // Project this point on to the newFace plane.
+            projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
+
+            projPoints.insert(oldPoint, pointI);
+        }
+        else
+        {
+            // If this point was modified by a collapse
+            // to an edge mid-point, it can't be a common point.
+            if (modPoints.found(newFace[pIndex]))
+            {
+                // Project this point on to the newFace plane.
+                projections[pointI] = xf + ((r - xf) - ((r - xf) & nf)*nf);
+
+                projPoints.insert(oldPoint, pointI);
+            }
+            else
+            {
+                commonPoints.insert(newFace[pIndex], labelList(0));
+
+                projections[pointI] = r;
+
+                intersections.set(++nInts, r);
+            }
+        }
+    }
+
+    // Add points if they resulted from
+    // bisections of old face edges.
+    forAll(newFace, pointI)
+    {
+        label pIndex = newFace[pointI];
+
+        if (pIndex >= nOldPoints_)
+        {
+            // Check pointsFromPoints info
+            label index = -1;
+
+            forAll(pfp, indexI)
+            {
+                if (pfp[indexI].index() == pIndex)
+                {
+                    index = indexI;
+                    break;
+                }
+            }
+
+            const labelList& mObj = pfp[index].masterObjects();
+
+            // Check if the old face contains all master points
+            bool allMaster = true;
+
+            forAll(mObj, pointJ)
+            {
+                if (findIndex(oldFace, mObj[pointJ]) == -1)
+                {
+                    allMaster = false;
+                    break;
+                }
+            }
+
+            if (allMaster)
+            {
+                commonPoints.insert(newFace[pointI], mObj);
+
+                intersections.set
+                (
+                    ++nInts,
+                    convert<Vector<T>, T>(newPoints[newFace[pointI]])
+                );
+            }
+        }
+    }
+
+    // If all points are common, this is identical to the old face.
+    if (nInts == oldFace.size())
+    {
+        // Copy intersections
+        intPoints.setSize(nInts, Vector<T>::zero);
+
+        nInts = 0;
+
+        forAllConstIter(typename Map<Vector<T> >, intersections, pI)
+        {
+            intPoints[nInts++] = pI();
+        }
+
+        if (output)
+        {
+            // Check for point nearness
+            meshOps::checkPointNearness(intPoints, T(1e-20));
+
+            meshOps::writeVTK
+            (
+                this->mesh_,
+                "ccSet_" + Foam::name(newIndex)
+              + '<' + Foam::name(oldIndex) + '>',
+                intPoints.size(),
+                intPoints.size(),
+                intPoints.size(),
+                intPoints
+            );
+        }
+
+        return true;
+    }
+
+    // Check for point-segment intersections
+    bool pointIntersections = false;
+
+    forAll(oldFace, pointI)
+    {
+        label oldPoint = oldFace[pointI];
+
+        if (commonPoints.found(oldPoint))
+        {
+            continue;
+        }
+
+        const Vector<T>& checkPoint = projections[pointI];
+
+        // Loop through all new edges, and find possible intersections
+        // with (projections of) old face points,
+        forAll(newFace, pointJ)
+        {
+            edge newEdge = newFace.faceEdge(pointJ);
+
+            if
+            (
+                meshOps::pointSegmentIntersection
+                (
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(newPoints[newEdge.start()]),
+                        convert<Vector<T>, T>(newPoints[newEdge.end()])
+                    ),
+                    checkPoint,
+                    matchTol
+                )
+            )
+            {
+                commonPoints.insert
+                (
+                    oldPoint,
+                    labelList(newEdge)
+                );
+
+                intersections.set(++nInts, checkPoint);
+
+                pointIntersections = true;
+            }
+        }
+    }
+
+    forAll(newFace, pointI)
+    {
+        label newPoint = newFace[pointI];
+
+        if (commonPoints.found(newPoint))
+        {
+            continue;
+        }
+
+        const Vector<T> checkPoint = convert<Vector<T>, T>
+        (
+            newPoints[newPoint]
+        );
+
+        forAll(oldFace, pointJ)
+        {
+            label nextJ = oldFace.fcIndex(pointJ);
+            edge oldEdge = oldFace.faceEdge(pointJ);
+
+            if
+            (
+                meshOps::pointSegmentIntersection
+                (
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        projections[pointJ],
+                        projections[nextJ]
+                    ),
+                    checkPoint,
+                    matchTol
+                )
+             || meshOps::pointSegmentIntersection
+                (
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(oldPoints[oldEdge.start()]),
+                        convert<Vector<T>, T>(oldPoints[oldEdge.end()])
+                    ),
+                    checkPoint,
+                    matchTol
+                )
+            )
+            {
+                commonPoints.insert
+                (
+                    newPoint,
+                    labelList(oldEdge)
+                );
+
+                intersections.set(++nInts, checkPoint);
+
+                pointIntersections = true;
+            }
+        }
+    }
+
+    if (pointIntersections && output)
+    {
+        Info << "Point Intersections exist: " << nl
+             << " newFaceIndex: " << newIndex
+             << " oldFaceIndex: " << oldIndex
+             << endl;
+    }
+
+    if (oldFace.size() == 3 && newFace.size() == 3)
+    {
+        // Perform tests specific to triangular faces
+
+        // Check whether any old projections are within
+        // the new face. Count these as 'intersections'.
+        forAll(oldFace, pointI)
+        {
+            label oldPoint = oldFace[pointI];
+
+            if (commonPoints.found(oldPoint))
+            {
+                // Only skip for shared-points.
+                // If the point-position was modified
+                // due to a collapse, then this point
+                // could be inside the new face.
+                if (commonPoints[oldPoint].empty())
+                {
+                    continue;
+                }
+            }
+
+            const Vector<T>& checkPoint = projections[pointI];
+
+            if
+            (
+                meshOps::pointInTriFace
+                (
+                    triangle<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(newPoints[newFace[0]]),
+                        convert<Vector<T>, T>(newPoints[newFace[1]]),
+                        convert<Vector<T>, T>(newPoints[newFace[2]])
+                    ),
+                    checkPoint
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
+        }
+
+        // Check whether and new points are within
+        // projected old faces. Count these as 'intersections'.
+        forAll(newFace, pointI)
+        {
+            label newPoint = newFace[pointI];
+
+            if (commonPoints.found(newPoint))
+            {
+                continue;
+            }
+
+            const Vector<T> checkPoint = convert<Vector<T>, T>
+            (
+                newPoints[newPoint]
+            );
+
+            if
+            (
+                meshOps::pointInTriFace
+                (
+                    triangle<Vector<T>, const Vector<T>&>
+                    (
+                        projections[0],
+                        projections[1],
+                        projections[2]
+                    ),
+                    checkPoint
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
+        }
+
+        // Loop through all new edges, and find possible intersections
+        // with (projections of) old face edges,
+        forAll(newFace, pointI)
+        {
+            edge newEdge = newFace.faceEdge(pointI);
+            label nextLabel = newFace.nextLabel(pointI);
+
+            forAll(oldFace, pointJ)
+            {
+                label nextJ = oldFace.fcIndex(pointJ);
+                edge oldEdge = oldFace.faceEdge(pointJ);
+
+                // Form an edge-pair
+                Pair<edge> edgePair(oldEdge, newEdge);
+
+                bool disableCheck = false;
+
+                // Check edges topologically
+                if (edgePair.first() == edgePair.second())
+                {
+                    const edge& checkEdge = edgePair.first();
+
+                    // Check if points were modified by a collapse.
+                    // If both were modified, continue with check.
+                    if
+                    (
+                        !modPoints.found(checkEdge.start()) &&
+                        !modPoints.found(checkEdge.end())
+                    )
+                    {
+                        disableCheck = true;
+                    }
+
+                    // Skip shared points
+                    if (commonPoints.found(checkEdge.start()))
+                    {
+                        if (commonPoints[checkEdge.start()].empty())
+                        {
+                            disableCheck = true;
+                        }
+                    }
+
+                    if (commonPoints.found(checkEdge.end()))
+                    {
+                        if (commonPoints[checkEdge.end()].empty())
+                        {
+                            disableCheck = true;
+                        }
+                    }
+                }
+                else
+                {
+                    // Check for common vertices
+                    label cV = edgePair.first().commonVertex(edgePair.second());
+
+                    if (cV > -1)
+                    {
+                        // If this point was modified by a collapse
+                        // to an edge mid-point, it can't be a common point.
+                        // So, allow the check to continue.
+                        if (!modPoints.found(cV))
+                        {
+                            disableCheck = true;
+                        }
+
+                        // Skip shared points
+                        if (commonPoints.found(cV))
+                        {
+                            if (commonPoints[cV].empty())
+                            {
+                                disableCheck = true;
+                            }
+                        }
+                    }
+                }
+
+                if (disableCheck)
+                {
+                    continue;
+                }
+
+                // Also check for bisection / point-on-edge cases
+                bool foundPointOnEdge = false;
+
+                forAll(edgePair, indexI)
+                {
+                    const edge thisEdge = edgePair[indexI];
+
+                    const edge otherEdge =
+                    (
+                        (thisEdge == edgePair.first()) ?
+                        edgePair.second() : edgePair.first()
+                    );
+
+                    forAll(otherEdge, pointI)
+                    {
+                        label pIndex = otherEdge[pointI];
+
+                        if (commonPoints.found(pIndex))
+                        {
+                            // Fetch masterObjects
+                            const labelList& mObj = commonPoints[pIndex];
+
+                            // Skip shared-points.
+                            if (mObj.size())
+                            {
+                                // Check if the old edge
+                                // contains all master points
+                                bool allMaster = true;
+
+                                forAll(mObj, pointJ)
+                                {
+                                    if (findIndex(thisEdge, mObj[pointJ]) == -1)
+                                    {
+                                        allMaster = false;
+                                        break;
+                                    }
+                                }
+
+                                if (allMaster)
+                                {
+                                    foundPointOnEdge = true;
+                                }
+                            }
+                        }
+
+                        if (foundPointOnEdge)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (foundPointOnEdge)
+                    {
+                        break;
+                    }
+                }
+
+                if (foundPointOnEdge)
+                {
+                    continue;
+                }
+
+                bool foundIntersection = false;
+
+                foundIntersection =
+                (
+                    meshOps::segmentSegmentIntersection
+                    (
+                        line<Vector<T>, const Vector<T>&>
+                        (
+                            projections[pointJ],
+                            projections[nextJ]
+                        ),
+                        line<Vector<T>, const Vector<T>&>
+                        (
+                            convert<Vector<T>, T>(newPoints[newFace[pointI]]),
+                            convert<Vector<T>, T>(newPoints[nextLabel])
+                        ),
+                        matchTol,
+                        intPoint
+                    )
+                );
+
+                if (foundIntersection)
+                {
+                    intersections.set(++nInts, intPoint);
+                }
+            }
+        }
+    }
+    else
+    if (oldFace.size() == 4 && newFace.size() == 4)
+    {
+        // Perform tests specific to quad faces
+        notImplemented
+        (
+            "\n\n"
+            "bool faceSetAlgorithm::faceIntersection\n"
+            "(\n"
+            "    const label,\n"
+            "    const label,\n"
+            "    const T&,\n"
+            "    Field<Vector<T> >&\n"
+            ") const\n"
+        );
+    }
+    else
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "bool faceSetAlgorithm::faceIntersection\n"
+            "(\n"
+            "    const label,\n"
+            "    const label,\n"
+            "    const T&,\n"
+            "    Field<Vector<T> >&\n"
+            ") const\n"
+        )
+            << " Invalid face pair: " << nl
+            << " Old face: " << oldIndex << "::" << oldFace << nl
+            << " New face: " << newIndex << "::" << newFace << nl
+            << abort(FatalError);
+    }
+
+    // Copy intersections
+    intPoints.setSize(nInts, Vector<T>::zero);
+
+    nInts = 0;
+
+    forAllConstIter(typename Map<Vector<T> >, intersections, pI)
+    {
+        intPoints[nInts++] = pI();
+    }
+
+    // Check for concurrent points.
+    if (output)
+    {
+        meshOps::checkPointNearness(intPoints, T(1e-20));
+
+        meshOps::writeVTK
+        (
+            this->mesh_,
+            "ccSet_" + Foam::name(newIndex)
+          + '<' + Foam::name(oldIndex) + '>',
+            intPoints.size(),
+            intPoints.size(),
+            intPoints.size(),
+            intPoints
+        );
+    }
+
+    // Found a convex set of points.
+    if (nInts >= 3)
+    {
+        return true;
+    }
+
+    // Does not intersect
+    return false;
+}
+
+
+// Compute the area / centre of a polygon
+// formed by a convex set of points.
+template <class T>
+void faceSetAlgorithm::convexSetArea
+(
+    const label newFaceIndex,
+    const label oldFaceIndex,
+    const Field<Vector<T> >& cvxSet,
+    const Vector<T>& refNorm,
+    T& fArea,
+    Vector<T>& fCentre,
+    bool output
+)
+{
+    // Reset inputs
+    fArea = pTraits<T>::zero;
+    fCentre = Vector<T>::zero;
+
+    // Try the trivial case for a triangle.
+    if (cvxSet.size() == 3)
+    {
+        const Vector<T>& a = cvxSet[0];
+        const Vector<T>& b = cvxSet[1];
+        const Vector<T>& c = cvxSet[2];
+
+        fArea = ( T(0.5) * ((b - a)^(c - a)) );
+        fCentre = (pTraits<T>::one / T(3.0)) * (a + b + c);
+
+        if (output)
+        {
+            Info << " newFaceIndex: " << newFaceIndex
+                 << " oldFaceIndex: " << oldFaceIndex << nl
+                 << " Area: " << fArea << nl
+                 << " Centre: " << fCentre << nl
+                 << endl;
+        }
+
+        return;
+    }
+
+    // Track edges
+    label nEdges = 0;
+    edgeList testEdges(0);
+
+    // Loop through all points, and build edges with every
+    // other point in the set
+    forAll(cvxSet, i)
+    {
+        forAll(cvxSet, j)
+        {
+            // Skip duplicates.
+            if (j == i)
+            {
+                continue;
+            }
+
+            // Define the edge
+            edge tmpEdge(i, j);
+
+            // If this is an existing edge, skip it.
+            bool foundExisting = false;
+
+            forAll(testEdges, edgeI)
+            {
+                if (testEdges[edgeI] == tmpEdge)
+                {
+                    foundExisting = true;
+                    break;
+                }
+            }
+
+            if (foundExisting)
+            {
+                continue;
+            }
+
+            // Specify a tolerance for collinearity
+            T tolerance(1e-14);
+
+            // Compute the normal to this edge
+            Vector<T> n;
+
+            n = ((cvxSet[tmpEdge.end()] - cvxSet[tmpEdge.start()]) ^ refNorm);
+            n /= mag(n) + VSMALL;
+
+            label curEdgeSign = 0;
+            bool foundInternalEdge = false;
+
+            // Quick-reject test:
+            //   Check all other points in the set,
+            //   and decide if all points lie on one side.
+            forAll(cvxSet, k)
+            {
+                // Skip duplicates.
+                if (tmpEdge[0] == k || tmpEdge[1] == k)
+                {
+                    continue;
+                }
+
+                Vector<T> rfVec = (cvxSet[k] - cvxSet[i]);
+                T dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
+
+                // Skip nearly collinear points.
+                if (mag(dotProd) < tolerance)
+                {
+                    continue;
+                }
+
+                // Obtain the sign of this point.
+                label eSign = Foam::sign(dotProd);
+
+                // Update the current sign if necessary.
+                if (curEdgeSign == 0)
+                {
+                    curEdgeSign = eSign;
+                }
+                else
+                if (curEdgeSign != eSign)
+                {
+                    // Interior edge. Bail out.
+                    foundInternalEdge = true;
+                    break;
+                }
+            }
+
+            if (foundInternalEdge)
+            {
+                continue;
+            }
+
+            // Looks like we found an edge on the boundary.
+            // Check its sign to ensure that it points outward.
+            if (curEdgeSign == 1)
+            {
+                n *= -1.0;
+                tmpEdge = tmpEdge.reverseEdge();
+            }
+
+            // Add to the list of edges.
+            testEdges.setSize(++nEdges, tmpEdge);
+        }
+    }
+
+    // Sanity check - do points match edges?
+    if (testEdges.size() != cvxSet.size())
+    {
+        WarningIn
+        (
+            "\n"
+            "void meshOps::convexSetArea\n"
+            "(\n"
+            "    const label newFaceIndex,\n"
+            "    const label oldFaceIndex,\n"
+            "    const vectorField& cvxSet,\n"
+            "    const vector& refNorm,\n"
+            "    scalar& fArea,\n"
+            "    vector& fCentre,\n"
+            "    bool output\n"
+            ") const"
+        )
+            << " Points do not match edges. " << nl
+            << " newFaceIndex: " << newFaceIndex
+            << " oldFaceIndex: " << oldFaceIndex
+            << " nPoints: " << cvxSet.size() << nl
+            << " nEdges: " << testEdges.size() << nl
+            << " Edge list: " << testEdges << nl
+            << " Set: " << cvxSet << nl
+            << endl;
+    }
+
+    // Find an approximate face-centroid
+    T sumA = 0.0;
+    Vector<T> sumAc = vector::zero;
+    Vector<T> xC = average(cvxSet);
+
+    forAll(testEdges, edgeI)
+    {
+        const edge& e = testEdges[edgeI];
+
+        Vector<T> c = cvxSet[e[0]] + cvxSet[e[1]] + xC;
+        T a = mag(e.vec(cvxSet) ^ (xC - cvxSet[e[0]]));
+
+        sumA += a;
+        sumAc += a*c;
+    }
+
+    fCentre = (1.0/3.0)*sumAc/(sumA + VSMALL);
+    fArea = 0.5*sumA;
+
+    if (output)
+    {
+        Info << " newFaceIndex: " << newFaceIndex
+             << " oldFaceIndex: " << oldFaceIndex << nl
+             << " Edges: " << testEdges << nl
+             << " Area: " << fArea << nl
+             << " Centre: " << fCentre << nl
+             << endl;
+    }
+}
+
+
+template <class T>
+bool cellSetAlgorithm::cellIntersection
+(
+    const label newIndex,
+    const label oldIndex,
+    const T& matchTol,
+    Field<Vector<T> >& intPoints,
+    bool output
+) const
+{
+    // Reset inputs
+    intPoints.clear();
+
+    // Assume XY plane here for 2D meshes
+    Vector<T> planeNormal = convert<Vector<T>, T>(vector(0,0,1));
+
+    // Fetch references for each mesh
+    const cell& oldCell = this->mesh_.cells()[oldIndex];
+    const UList<face>& oldFaces = this->mesh_.faces();
+    const UList<label>& oldOwner = this->mesh_.faceOwner();
+    const edgeList oldCellEdges = oldCell.edges(oldFaces);
+    const labelList oldCellPoints = oldCell.labels(oldFaces);
+
+    const cell& newCell = this->newCells_[newIndex];
+    const UList<face>& newFaces = this->newFaces_;
+    const UList<label>& newOwner = this->newOwner_;
+    const edgeList newCellEdges = newCell.edges(this->newFaces_);
+    const labelList newCellPoints = newCell.labels(this->newFaces_);
+
+    // Alias references
+    const UList<point>& newPoints = this->newPoints_;
+    const UList<point>& oldPoints = this->mesh_.points();
+
+    const labelHashSet& modPoints = this->modPoints_;
+    const List<objectMap>& pfp = this->pointsFromPoints_;
+
+    // Track all possible intersections from here on.
+    label nInts = 0;
+    Map<Vector<T> > intersections;
+    Vector<T> intPoint = Vector<T>::zero;
+
+    // Topologically check for common points
+    Map<labelList> commonPoints;
+
+    forAll(oldCellPoints, pointI)
+    {
+        label oldPoint = oldCellPoints[pointI];
+        label pIndex = findIndex(newCellPoints, oldPoint);
+
+        if (pIndex > -1)
+        {
+            // If this point was modified by a collapse
+            // to an edge mid-point, it can't be a common point.
+            if (!modPoints.found(newCellPoints[pIndex]))
+            {
+                commonPoints.insert(newCellPoints[pIndex], labelList(0));
+
+                intersections.set
+                (
+                    ++nInts,
+                    convert<Vector<T>, T>
+                    (
+                        oldPoints[newCellPoints[pIndex]]
+                    )
+                );
+            }
+        }
+    }
+
+    // Add points if they resulted from
+    // bisections of old cell edges.
+    forAll(newCellPoints, pointI)
+    {
+        label pIndex = newCellPoints[pointI];
+
+        if (pIndex >= nOldPoints_)
+        {
+            // Check pointsFromPoints info
+            label index = -1;
+
+            forAll(pfp, indexI)
+            {
+                if (pfp[indexI].index() == pIndex)
+                {
+                    index = indexI;
+                    break;
+                }
+            }
+
+            const labelList& mObj = pfp[index].masterObjects();
+
+            // Check if the old cell contains all master points
+            bool allMaster = true;
+
+            forAll(mObj, pointJ)
+            {
+                if (findIndex(oldCellPoints, mObj[pointJ]) == -1)
+                {
+                    allMaster = false;
+                    break;
+                }
+            }
+
+            if (allMaster)
+            {
+                commonPoints.insert(newCellPoints[pointI], mObj);
+
+                intersections.set
+                (
+                    ++nInts,
+                    convert<Vector<T>, T>
+                    (
+                        newPoints[newCellPoints[pointI]]
+                    )
+                );
+            }
+        }
+    }
+
+    // If all points are common, this is identical to the old cell.
+    if (nInts == oldCellPoints.size())
+    {
+        // Copy intersections
+        intPoints.setSize(nInts, Vector<T>::zero);
+
+        nInts = 0;
+
+        forAllConstIter(typename Map<Vector<T> >, intersections, pI)
+        {
+            intPoints[nInts++] = pI();
+        }
+
+        if (output)
+        {
+            meshOps::checkPointNearness(intPoints, T(1e-20));
+
+            meshOps::writeVTK
+            (
+                this->mesh_,
+                "ccSet_" + Foam::name(newIndex)
+              + '<' + Foam::name(oldIndex) + '>',
+                intPoints.size(),
+                intPoints.size(),
+                intPoints.size(),
+                intPoints
+            );
+        }
+
+        return true;
+    }
+
+    // Check for point-segment intersections
+    bool pointIntersections = false;
+
+    forAll(oldCellPoints, pointI)
+    {
+        label oldPoint = oldCellPoints[pointI];
+
+        if (commonPoints.found(oldPoint))
+        {
+            continue;
+        }
+
+        const Vector<T> checkPoint = convert<Vector<T>, T>
+        (
+            oldPoints[oldPoint]
+        );
+
+        forAll(newCellEdges, edgeI)
+        {
+            const edge edgeToCheck = newCellEdges[edgeI];
+
+            if
+            (
+                meshOps::pointSegmentIntersection
+                (
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(newPoints[edgeToCheck.start()]),
+                        convert<Vector<T>, T>(newPoints[edgeToCheck.end()])
+                    ),
+                    checkPoint,
+                    matchTol
+                )
+            )
+            {
+                commonPoints.insert
+                (
+                    oldPoint,
+                    labelList(edgeToCheck)
+                );
+
+                intersections.set(++nInts, checkPoint);
+
+                pointIntersections = true;
+            }
+        }
+    }
+
+    forAll(newCellPoints, pointI)
+    {
+        label newPoint = newCellPoints[pointI];
+
+        if (commonPoints.found(newPoint))
+        {
+            continue;
+        }
+
+        const Vector<T> checkPoint = convert<Vector<T>, T>
+        (
+            newPoints[newPoint]
+        );
+
+        forAll(oldCellEdges, edgeI)
+        {
+            const edge edgeToCheck = oldCellEdges[edgeI];
+
+            if
+            (
+                meshOps::pointSegmentIntersection
+                (
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(oldPoints[edgeToCheck.start()]),
+                        convert<Vector<T>, T>(oldPoints[edgeToCheck.end()])
+                    ),
+                    checkPoint,
+                    matchTol
+                )
+            )
+            {
+                commonPoints.insert
+                (
+                    newPoint,
+                    labelList(edgeToCheck)
+                );
+
+                intersections.set(++nInts, checkPoint);
+
+                pointIntersections = true;
+            }
+        }
+    }
+
+    if (pointIntersections && output)
+    {
+        Info << "Point Intersections exist: " << nl
+             << " newCellIndex: " << newIndex
+             << " oldCellIndex: " << oldIndex
+             << endl;
+    }
+
+    if (twoDMesh_)
+    {
+        // Check if edge mid-points are clearly within the cell.
+        // If so, add edge points as 'intersections'.
+        forAll(oldCellEdges, edgeI)
+        {
+            const edge edgeToCheck = oldCellEdges[edgeI];
+
+            if
+            (
+                commonPoints.found(edgeToCheck.start()) &&
+                commonPoints.found(edgeToCheck.end())
+            )
+            {
+                continue;
+            }
+
+            Vector<T> oldS = convert<Vector<T>, T>
+            (
+                oldPoints[edgeToCheck.start()]
+            );
+
+            Vector<T> oldE = convert<Vector<T>, T>
+            (
+                oldPoints[edgeToCheck.end()]
+            );
+
+            Vector<T> edgeVec = (oldS - oldE);
+            edgeVec /= mag(edgeVec) + VSMALL;
+
+            if (mag(edgeVec & planeNormal) < 0.5)
+            {
+                continue;
+            }
+
+            Vector<T> checkPoint = (0.5 * (oldS + oldE));
+
+            if
+            (
+                meshOps::pointInCell
+                (
+                    newIndex,
+                    newCell,
+                    newFaces,
+                    newOwner,
+                    newPoints,
+                    T(0.0),
+                    checkPoint
+                )
+            )
+            {
+                intersections.set(++nInts, oldS);
+                intersections.set(++nInts, oldE);
+            }
+        }
+
+        forAll(newCellEdges, edgeI)
+        {
+            const edge edgeToCheck = newCellEdges[edgeI];
+
+            if
+            (
+                commonPoints.found(edgeToCheck.start()) &&
+                commonPoints.found(edgeToCheck.end())
+            )
+            {
+                continue;
+            }
+
+            Vector<T> newS = convert<Vector<T>, T>
+            (
+                newPoints[edgeToCheck.start()]
+            );
+
+            Vector<T> newE = convert<Vector<T>, T>
+            (
+                newPoints[edgeToCheck.end()]
+            );
+
+            Vector<T> edgeVec = (newS - newE);
+            edgeVec /= mag(edgeVec) + VSMALL;
+
+            if (mag(edgeVec & planeNormal) < 0.5)
+            {
+                continue;
+            }
+
+            Vector<T> checkPoint = (0.5 * (newS + newE));
+
+            if
+            (
+                meshOps::pointInCell
+                (
+                    oldIndex,
+                    oldCell,
+                    oldFaces,
+                    oldOwner,
+                    oldPoints,
+                    T(0.0),
+                    checkPoint
+                )
+            )
+            {
+                intersections.set(++nInts, newS);
+                intersections.set(++nInts, newE);
+            }
+        }
+    }
+    else
+    {
+        // Check whether any old points are within
+        // the new cell. Count these as 'intersections'.
+        forAll(oldCellPoints, pointI)
+        {
+            label oldPoint = oldCellPoints[pointI];
+
+            if (commonPoints.found(oldPoint))
+            {
+                // Only skip for shared-points.
+                // If the point-position was modified
+                // due to a collapse, then this point
+                // could be inside the new cell.
+                if (commonPoints[oldPoint].empty())
+                {
+                    continue;
+                }
+            }
+
+            const Vector<T> checkPoint = convert<Vector<T>, T>
+            (
+                oldPoints[oldPoint]
+            );
+
+            if
+            (
+                meshOps::pointInCell
+                (
+                    newIndex,
+                    newCell,
+                    newFaces,
+                    newOwner,
+                    newPoints,
+                    T(0.0),
+                    checkPoint
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
+        }
+
+        // Check whether any new points are within
+        // the old cell. Count these as 'intersections'.
+        forAll(newCellPoints, pointI)
+        {
+            label newPoint = newCellPoints[pointI];
+
+            if (commonPoints.found(newPoint))
+            {
+                continue;
+            }
+
+            const Vector<T> checkPoint = convert<Vector<T>, T>
+            (
+                newPoints[newPoint]
+            );
+
+            if
+            (
+                meshOps::pointInCell
+                (
+                    oldIndex,
+                    oldCell,
+                    oldFaces,
+                    oldOwner,
+                    oldPoints,
+                    T(0.0),
+                    checkPoint
+                )
+            )
+            {
+                intersections.set(++nInts, checkPoint);
+            }
+        }
+    }
+
+    bool foundIntersection = false, edgeIntersections = false;
+
+    // Loop through edges from each cell, and check whether they intersect.
+    List<Pair<edge> > OeToNe, NeToFe;
+
+    // Define edge-vectors in 2D
+    Vector<T> oldVec(Vector<T>::zero), newVec(Vector<T>::zero);
+
+    forAll(oldCellEdges, edgeI)
+    {
+        // For 2D meshes, only select edges on wedge/empty planes
+        if (twoDMesh_)
+        {
+            oldVec =
+            (
+                convert<Vector<T>, T>
+                (
+                    oldPoints[oldCellEdges[edgeI].start()]
+                )
+              - convert<Vector<T>, T>
+                (
+                    oldPoints[oldCellEdges[edgeI].end()]
+                )
+            );
+
+            oldVec /= mag(oldVec) + VSMALL;
+
+            if (mag(oldVec & planeNormal) > 0.5)
+            {
+                continue;
+            }
+        }
+
+        forAll(newCellEdges, edgeJ)
+        {
+            // For 2D meshes, only select edges on wedge/empty planes
+            if (twoDMesh_)
+            {
+                newVec =
+                (
+                    convert<Vector<T>, T>
+                    (
+                        newPoints[newCellEdges[edgeJ].start()]
+                    )
+                  - convert<Vector<T>, T>
+                    (
+                        newPoints[newCellEdges[edgeJ].end()]
+                    )
+                );
+
+                newVec /= mag(newVec) + VSMALL;
+
+                if (mag(newVec & planeNormal) > 0.5)
+                {
+                    continue;
+                }
+            }
+
+            // Form an edge-pair
+            Pair<edge> edgePair(oldCellEdges[edgeI], newCellEdges[edgeJ]);
+
+            bool disableCheck = false;
+
+            // Check edges topologically
+            if (edgePair.first() == edgePair.second())
+            {
+                const edge& checkEdge = edgePair.first();
+
+                // Check if points were modified by a collapse.
+                // If both were modified, continue with check.
+                if
+                (
+                    !modPoints.found(checkEdge.start()) &&
+                    !modPoints.found(checkEdge.end())
+                )
+                {
+                    disableCheck = true;
+                }
+
+                // Skip shared points
+                if (commonPoints.found(checkEdge.start()))
+                {
+                    if (commonPoints[checkEdge.start()].empty())
+                    {
+                        disableCheck = true;
+                    }
+                }
+
+                if (commonPoints.found(checkEdge.end()))
+                {
+                    if (commonPoints[checkEdge.end()].empty())
+                    {
+                        disableCheck = true;
+                    }
+                }
+            }
+            else
+            {
+                // Check for common vertices
+                label cV = edgePair.first().commonVertex(edgePair.second());
+
+                if (cV > -1)
+                {
+                    // If this point was modified by a collapse
+                    // to an edge mid-point, it can't be a common point.
+                    // So, allow the check to continue.
+                    if (!modPoints.found(cV))
+                    {
+                        disableCheck = true;
+                    }
+
+                    // Skip shared points
+                    if (commonPoints.found(cV))
+                    {
+                        if (commonPoints[cV].empty())
+                        {
+                            disableCheck = true;
+                        }
+                    }
+                }
+            }
+
+            if (disableCheck)
+            {
+                continue;
+            }
+
+            // Deal with edge-bisection / point-on-edge cases
+            bool foundPointOnEdge = false;
+
+            forAll(edgePair, indexI)
+            {
+                const edge thisEdge = edgePair[indexI];
+
+                const edge otherEdge =
+                (
+                    (thisEdge == edgePair.first()) ?
+                    edgePair.second() : edgePair.first()
+                );
+
+                forAll(otherEdge, pointI)
+                {
+                    label pIndex = otherEdge[pointI];
+
+                    if (commonPoints.found(pIndex))
+                    {
+                        // Fetch masterObjects
+                        const labelList& mObj = commonPoints[pIndex];
+
+                        // Skip shared-points.
+                        if (mObj.size())
+                        {
+                            // Check if the old edge
+                            // contains all master points
+                            bool allMaster = true;
+
+                            forAll(mObj, pointJ)
+                            {
+                                if (findIndex(thisEdge, mObj[pointJ]) == -1)
+                                {
+                                    allMaster = false;
+                                    break;
+                                }
+                            }
+
+                            if (allMaster)
+                            {
+                                foundPointOnEdge = true;
+                            }
+                        }
+                    }
+
+                    if (foundPointOnEdge)
+                    {
+                        break;
+                    }
+                }
+
+                if (foundPointOnEdge)
+                {
+                    break;
+                }
+            }
+
+            if (foundPointOnEdge)
+            {
+                continue;
+            }
+
+            foundIntersection = false;
+
+            foundIntersection =
+            (
+                meshOps::segmentSegmentIntersection
+                (
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>
+                        (
+                            oldPoints[edgePair.first().start()]
+                        ),
+                        convert<Vector<T>, T>
+                        (
+                            oldPoints[edgePair.first().end()]
+                        )
+                    ),
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>
+                        (
+                            newPoints[edgePair.second().start()]
+                        ),
+                        convert<Vector<T>, T>
+                        (
+                            newPoints[edgePair.second().end()]
+                        )
+                    ),
+                    matchTol,
+                    intPoint
+                )
+            );
+
+            if (foundIntersection)
+            {
+                OeToNe.setSize
+                (
+                    OeToNe.size() + 1,
+                    edgePair
+                );
+
+                NeToFe.setSize
+                (
+                    NeToFe.size() + 1,
+                    edgePair.reversePair()
+                );
+
+                intersections.set(++nInts, intPoint);
+
+                // Note for later that edge-intersections exist.
+                edgeIntersections = true;
+            }
+        }
+    }
+
+    // If this is a 2D mesh, we're done.
+    if (twoDMesh_)
+    {
+        // Does not intersect.
+        if (nInts < 6)
+        {
+            return false;
+        }
+
+        // Copy intersections
+        intPoints.setSize(nInts, Vector<T>::zero);
+
+        nInts = 0;
+
+        forAllConstIter(typename Map<Vector<T> >, intersections, pI)
+        {
+            intPoints[nInts++] = pI();
+        }
+
+        if (output)
+        {
+            meshOps::checkPointNearness(intPoints, T(1e-20));
+
+            meshOps::writeVTK
+            (
+                this->mesh_,
+                "ccSet_" + Foam::name(newIndex)
+              + '<' + Foam::name(oldIndex) + '>',
+                intPoints.size(),
+                intPoints.size(),
+                intPoints.size(),
+                intPoints
+            );
+        }
+
+        // Found a convex set of points
+        return true;
+    }
+
+    if (edgeIntersections && output)
+    {
+        Info << "Edge Intersections exist: " << nl
+             << " newCellIndex: " << newIndex
+             << " oldCellIndex: " << oldIndex
+             << endl;
+    }
+
+    // Loop through all old edges, and find possible
+    // intersections with faces of the new cell.
+    forAll(oldCellEdges, edgeI)
+    {
+        const edge edgeToCheck(oldCellEdges[edgeI]);
+
+        if
+        (
+            commonPoints.found(edgeToCheck.start()) &&
+            commonPoints.found(edgeToCheck.end())
+        )
+        {
+            // Are both points only shared?
+            if
+            (
+                commonPoints[edgeToCheck.start()].empty() &&
+                commonPoints[edgeToCheck.end()].empty()
+            )
+            {
+                continue;
+            }
+        }
+
+        forAll(newCell, faceI)
+        {
+            const triFace faceToCheck(newFaces[newCell[faceI]]);
+
+            // Avoid point-edge / edge-edge intersections, if any.
+            if (edgeIntersections)
+            {
+                // Is edgeToCheck in the list?
+                bool foundEdge = false;
+                const edgeList fEdges = faceToCheck.edges();
+
+                forAll(OeToNe, indexI)
+                {
+                    if (OeToNe[indexI].first() == edgeToCheck)
+                    {
+                        // Check whether the intersecting edge
+                        // exists on this face.
+                        forAll(fEdges, edgeJ)
+                        {
+                            if (fEdges[edgeJ] == OeToNe[indexI].second())
+                            {
+                                foundEdge = true;
+                                break;
+                            }
+                        }
+
+                        if (foundEdge)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (foundEdge)
+                {
+                    continue;
+                }
+            }
+
+            bool foundCommon = false;
+
+            forAllConstIter(Map<labelList>, commonPoints, pIter)
+            {
+                if (findIndex(faceToCheck, pIter.key()) > -1)
+                {
+                    // Avoid shared points, since this implies that
+                    // the edge intersects at a face point
+                    if (edgeToCheck[0] == pIter.key())
+                    {
+                        if (pIter().empty())
+                        {
+                            foundCommon = true;
+                            break;
+                        }
+                    }
+
+                    if (edgeToCheck[1] == pIter.key())
+                    {
+                        if (pIter().empty())
+                        {
+                            foundCommon = true;
+                            break;
+                        }
+                    }
+
+                    // Also check for bisection points.
+                    // This accounts for successive bisections.
+                    if
+                    (
+                        (findIndex(pIter(), edgeToCheck[0]) > -1) &&
+                        (findIndex(pIter(), edgeToCheck[1]) > -1)
+                    )
+                    {
+                        foundCommon = true;
+                        break;
+                    }
+                }
+            }
+
+            if (foundCommon)
+            {
+                continue;
+            }
+
+            foundIntersection = false;
+
+            foundIntersection =
+            (
+                meshOps::segmentTriFaceIntersection
+                (
+                    triangle<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(newPoints[faceToCheck[0]]),
+                        convert<Vector<T>, T>(newPoints[faceToCheck[1]]),
+                        convert<Vector<T>, T>(newPoints[faceToCheck[2]])
+                    ),
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(oldPoints[edgeToCheck.start()]),
+                        convert<Vector<T>, T>(oldPoints[edgeToCheck.end()])
+                    ),
+                    matchTol,
+                    intPoint
+                )
+            );
+
+            if (foundIntersection)
+            {
+                // Add to the list.
+                intersections.set(++nInts, intPoint);
+            }
+        }
+    }
+
+    // Loop through all new edges, and find possible
+    // intersections with faces of the old cell.
+    forAll(newCellEdges, edgeI)
+    {
+        const edge edgeToCheck(newCellEdges[edgeI]);
+
+        if
+        (
+            commonPoints.found(edgeToCheck.start()) &&
+            commonPoints.found(edgeToCheck.end())
+        )
+        {
+            // Are both points only shared?
+            if
+            (
+                commonPoints[edgeToCheck.start()].empty() &&
+                commonPoints[edgeToCheck.end()].empty()
+            )
+            {
+                continue;
+            }
+        }
+
+        forAll(oldCell, faceI)
+        {
+            const triFace faceToCheck(oldFaces[oldCell[faceI]]);
+
+            // Avoid point-edge / edge-edge intersections, if any.
+            if (edgeIntersections)
+            {
+                // Is edgeToCheck in the list?
+                bool foundEdge = false;
+                const edgeList fEdges = faceToCheck.edges();
+
+                forAll(NeToFe, indexI)
+                {
+                    if (NeToFe[indexI].first() == edgeToCheck)
+                    {
+                        // Check whether the intersecting edge
+                        // exists on this face.
+                        forAll(fEdges, edgeJ)
+                        {
+                            if (fEdges[edgeJ] == NeToFe[indexI].second())
+                            {
+                                foundEdge = true;
+                                break;
+                            }
+                        }
+
+                        if (foundEdge)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (foundEdge)
+                {
+                    continue;
+                }
+            }
+
+            bool foundCommon = false;
+
+            forAllConstIter(Map<labelList>, commonPoints, pIter)
+            {
+                if (findIndex(faceToCheck, pIter.key()) > -1)
+                {
+                    // Avoid shared points, since this implies that
+                    // the edge intersects at a face point
+                    if (edgeToCheck[0] == pIter.key())
+                    {
+                        if (pIter().empty())
+                        {
+                            foundCommon = true;
+                            break;
+                        }
+                    }
+
+                    if (edgeToCheck[1] == pIter.key())
+                    {
+                        if (pIter().empty())
+                        {
+                            foundCommon = true;
+                            break;
+                        }
+                    }
+
+                    // Also check for bisection points
+                    if
+                    (
+                        (findIndex(pIter(), edgeToCheck[0]) > -1) &&
+                        (findIndex(pIter(), edgeToCheck[1]) > -1)
+                    )
+                    {
+                        foundCommon = true;
+                        break;
+                    }
+
+                    // Check for point-on-edge cases
+                    bool foundPointOnEdge = false;
+
+                    if (pIter().size())
+                    {
+                        bool allMaster = true;
+
+                        const labelList& mObj = pIter();
+
+                        forAll(mObj, pointJ)
+                        {
+                            if (findIndex(faceToCheck, mObj[pointJ]) == -1)
+                            {
+                                allMaster = false;
+                                break;
+                            }
+                        }
+
+                        if (allMaster)
+                        {
+                            foundPointOnEdge = true;
+                        }
+                    }
+
+                    if (foundPointOnEdge)
+                    {
+                        foundCommon = true;
+                        break;
+                    }
+                }
+            }
+
+            if (foundCommon)
+            {
+                continue;
+            }
+
+            foundIntersection = false;
+
+            foundIntersection =
+            (
+                meshOps::segmentTriFaceIntersection
+                (
+                    triangle<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(oldPoints[faceToCheck[0]]),
+                        convert<Vector<T>, T>(oldPoints[faceToCheck[1]]),
+                        convert<Vector<T>, T>(oldPoints[faceToCheck[2]])
+                    ),
+                    line<Vector<T>, const Vector<T>&>
+                    (
+                        convert<Vector<T>, T>(newPoints[edgeToCheck.start()]),
+                        convert<Vector<T>, T>(newPoints[edgeToCheck.end()])
+                    ),
+                    matchTol,
+                    intPoint
+                )
+            );
+
+            if (foundIntersection)
+            {
+                // Add to the list.
+                intersections.set(++nInts, intPoint);
+            }
+        }
+    }
+
+    if (nInts < 4)
+    {
+        // Does not intersect.
+        return false;
+    }
+
+    // Copy intersections
+    intPoints.setSize(nInts, Vector<T>::zero);
+
+    nInts = 0;
+
+    forAllConstIter(typename Map<Vector<T> >, intersections, pI)
+    {
+        intPoints[nInts++] = pI();
+    }
+
+    if (output)
+    {
+        meshOps::checkPointNearness(intPoints, T(1e-20));
+
+        meshOps::writeVTK
+        (
+            this->mesh_,
+            "ccSet_" + Foam::name(newIndex)
+          + '<' + Foam::name(oldIndex) + '>',
+            intPoints.size(),
+            intPoints.size(),
+            intPoints.size(),
+            intPoints
+        );
+    }
+
+    // Found a convex set of points.
+    return true;
+}
+
+
+// Compute the volume / centre of a polyhedron
+// formed by a convex set of points.
+template <class T>
+void cellSetAlgorithm::convexSetVolume
+(
+    const label newCellIndex,
+    const label oldCellIndex,
+    const Field<Vector<T> >& cvxSet,
+    T& cVolume,
+    Vector<T>& cCentre,
+    bool output
+)
+{
+    // Reset inputs
+    cVolume = pTraits<T>::zero;
+    cCentre = Vector<T>::zero;
+
+    // Try the trivial case for a tetrahedron.
+    // No checking for orientation here.
+    if (cvxSet.size() == 4)
+    {
+        const Vector<T>& a = cvxSet[0];
+        const Vector<T>& b = cvxSet[1];
+        const Vector<T>& c = cvxSet[2];
+        const Vector<T>& d = cvxSet[3];
+
+        cCentre = ( T(0.25) * (a + b + c + d) );
+
+        cVolume =
+        (
+            mag
+            (
+                (pTraits<T>::one / T(6.0)) *
+                (
+                    ((b - a) ^ (c - a)) & (d - a)
+                )
+            )
+        );
+
+        if (output)
+        {
+            Info << " newCellIndex: " << newCellIndex
+                 << " oldCellIndex: " << oldCellIndex << nl
+                 << " Volume: " << cVolume << nl
+                 << " Centre: " << cCentre << nl
+                 << endl;
+        }
+
+        return;
+    }
+
+    // Track faces
+    face tmpFace(3);
+    label nFaces = 0;
+    faceList testFaces(0);
+    labelHashSet uniquePts;
+
+    // Loop through all points, and build faces with every
+    // other point in the set
+    forAll(cvxSet, i)
+    {
+        forAll(cvxSet, j)
+        {
+            // Skip duplicates.
+            if (j == i)
+            {
+                continue;
+            }
+
+            forAll(cvxSet, k)
+            {
+                // Skip duplicates.
+                if (k == i || k == j)
+                {
+                    continue;
+                }
+
+                // Configure the face.
+                tmpFace[0] = i;
+                tmpFace[1] = j;
+                tmpFace[2] = k;
+
+                // Quick-reject test:
+                //   If this is a subset of an existing face, skip it.
+                bool foundSubSet = false;
+
+                forAll(testFaces, faceI)
+                {
+                    const face& checkFace = testFaces[faceI];
+
+                    if (checkFace.size() >= tmpFace.size())
+                    {
+                        bool foundUniquePoint = false;
+
+                        forAll(tmpFace, pI)
+                        {
+                            if (findIndex(checkFace, tmpFace[pI]) == -1)
+                            {
+                                foundUniquePoint = true;
+                                break;
+                            }
+                        }
+
+                        if (!foundUniquePoint)
+                        {
+                            foundSubSet = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundSubSet)
+                {
+                    continue;
+                }
+
+                // Specify a tolerance for planarity
+                T tolerance(1e-14);
+
+                // Compute the normal to this face
+                Vector<T> n;
+
+                meshOps::faceNormal(tmpFace, cvxSet, n);
+                n /= mag(n) + VSMALL;
+
+                label curFaceSign = 0;
+                bool foundInternalFace = false;
+
+                // Quick-reject test:
+                //   Check all other points in the set,
+                //   and decide if all points lie on one side.
+                forAll(cvxSet, l)
+                {
+                    // Skip duplicates.
+                    if (tmpFace[0] == l || tmpFace[1] == l || tmpFace[2] == l)
+                    {
+                        continue;
+                    }
+
+                    Vector<T> rfVec = (cvxSet[l] - cvxSet[i]);
+                    T dotProd = (rfVec/(mag(rfVec) + VSMALL)) & n;
+
+                    // Skip nearly co-planar points.
+                    if (mag(dotProd) < tolerance)
+                    {
+                        continue;
+                    }
+
+                    // Obtain the sign of this point.
+                    label fSign = Foam::sign(dotProd);
+
+                    // Update the current sign if necessary.
+                    if (curFaceSign == 0)
+                    {
+                        curFaceSign = fSign;
+                    }
+                    else
+                    if (curFaceSign != fSign)
+                    {
+                        // Interior face. Bail out.
+                        foundInternalFace = true;
+                        break;
+                    }
+                }
+
+                if (foundInternalFace)
+                {
+                    continue;
+                }
+
+                // Looks like we found a face on the boundary.
+                // Check its sign to ensure that it points outward.
+                if (curFaceSign == 1)
+                {
+                    n *= -1.0;
+                    tmpFace = tmpFace.reverseFace();
+                }
+
+                // Ensure that the face wasn't checked in.
+                bool alreadyCheckedIn = false;
+
+                forAll(testFaces, faceI)
+                {
+                    // Fetch a non-const reference, since this face
+                    // might be modified in this loop.
+                    face& checkFace = testFaces[faceI];
+
+                    label nCommon = 0;
+
+                    uniquePts.clear();
+
+                    forAll(tmpFace, pI)
+                    {
+                        if (findIndex(checkFace, tmpFace[pI]) > -1)
+                        {
+                            nCommon++;
+                        }
+                        else
+                        {
+                            uniquePts.insert(tmpFace[pI]);
+                        }
+                    }
+
+                    if (nCommon >= 2)
+                    {
+                        if (checkFace.size() >= tmpFace.size())
+                        {
+                            // Check for unique points
+                            if (uniquePts.size() > 0)
+                            {
+                                // Compute the existing normal
+                                Vector<T> eNorm;
+
+                                meshOps::faceNormal(checkFace, cvxSet, eNorm);
+
+                                T dotProd =
+                                (
+                                    n & (eNorm/(mag(eNorm) + VSMALL))
+                                );
+
+                                if
+                                (
+                                    (mag(1.0 - dotProd) < tolerance) &&
+                                    (dotProd > 0.0)
+                                )
+                                {
+                                    // Add all unique points to checkFace
+                                    meshOps::insertPointLabels
+                                    (
+                                        n,
+                                        cvxSet,
+                                        uniquePts,
+                                        checkFace
+                                    );
+
+                                    alreadyCheckedIn = true;
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                // Subset face
+                                alreadyCheckedIn = true;
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            // checkFace is a subset. Replace it.
+                            checkFace = tmpFace;
+
+                            alreadyCheckedIn = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Add this face to the list of faces.
+                if (!alreadyCheckedIn)
+                {
+                    testFaces.setSize(++nFaces, tmpFace);
+                }
+
+                // Reset the face size.
+                tmpFace.setSize(3, -1);
+            }
+        }
+    }
+
+    // Account for planarity test failure.
+    //  - Check for subsets.
+    //  - Loop until no more merges are made.
+    bool changed;
+
+    do
+    {
+        // Reset flag
+        changed = false;
+
+        forAll(testFaces, faceI)
+        {
+            // Fetch a non-const reference, since this face
+            // might be modified in this loop.
+            face& checkFace = testFaces[faceI];
+
+            // Account for deleted testFaces
+            if (checkFace.empty())
+            {
+                continue;
+            }
+
+            // Compute the normal to this face
+            Vector<T> n;
+            meshOps::faceNormal(checkFace, cvxSet, n);
+
+            forAll(testFaces, faceJ)
+            {
+                if (faceI == faceJ)
+                {
+                    continue;
+                }
+
+                // Fetch a non-const reference, since this face
+                // might be modified in this loop.
+                face& testFace = testFaces[faceJ];
+
+                label nCommon = 0;
+                uniquePts.clear();
+
+                if (checkFace.size() >= testFace.size())
+                {
+                    forAll(testFace, pI)
+                    {
+                        if (findIndex(checkFace, testFace[pI]) > -1)
+                        {
+                            nCommon++;
+                        }
+                        else
+                        {
+                            uniquePts.insert(testFace[pI]);
+                        }
+                    }
+
+                    if (nCommon >= 3)
+                    {
+                        // Delete the test face
+                        testFace.clear();
+
+                        // Add all unique points to checkFace
+                        // Failed the tolerance test before,
+                        // so don't check for it now
+                        if (uniquePts.size())
+                        {
+                            meshOps::insertPointLabels
+                            (
+                                n,
+                                cvxSet,
+                                uniquePts,
+                                checkFace
+                            );
+                        }
+
+                        // Note that changes were made
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    // Check if this is a subset
+                    forAll(checkFace, pI)
+                    {
+                        if (findIndex(testFace, checkFace[pI]) > -1)
+                        {
+                            nCommon++;
+                        }
+                        else
+                        {
+                            uniquePts.insert(checkFace[pI]);
+                        }
+                    }
+
+                    if (nCommon >= 3)
+                    {
+                        // This is a subset. Delete it.
+                        checkFace.clear();
+
+                        // Add all unique points to checkFace
+                        // Failed the tolerance test before,
+                        // so don't check for it now
+                        if (uniquePts.size())
+                        {
+                            insertPointLabels
+                            (
+                                n,
+                                cvxSet,
+                                uniquePts,
+                                testFace
+                            );
+                        }
+
+                        // Note that changes were made
+                        changed = true;
+
+                        break;
+                    }
+                }
+            }
+        }
+
+    } while (changed);
+
+    // Prepare temporary connectivity
+    // for volume / centre computation.
+    labelList owner(testFaces.size(), 0);
+    cellList cells(1, identity(testFaces.size()));
+
+    cellCentreAndVolume
+    (
+        0,
+        cvxSet,
+        testFaces,
+        cells,
+        owner,
+        cCentre,
+        cVolume
+    );
+
+    if (output)
+    {
+        Info << " newCellIndex: " << newCellIndex
+             << " oldCellIndex: " << oldCellIndex << nl
+             << " Faces: " << testFaces << nl
+             << " Volume: " << cVolume << nl
+             << " Centre: " << cCentre << nl
+             << endl;
+    }
+}
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

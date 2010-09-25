@@ -378,6 +378,19 @@ Istream& operator>>
     return is;
 }
 
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+
+template<class Form1, class Cmpt1, class Form2, class Cmpt2, int nCmpt>
+inline const VectorSpace<Form1, Cmpt1, nCmpt>
+convert(const VectorSpace<Form2, Cmpt2, nCmpt>& vs)
+{
+    VectorSpace<Form1, Cmpt1, nCmpt> tv;
+
+    VectorSpaceOps<nCmpt,0>::eqOp(tv, vs, eqOp<Cmpt1>());
+
+    return tv;
+}
+
 
 // * * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * //
 
