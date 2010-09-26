@@ -1526,7 +1526,7 @@ void faceSetAlgorithm::convexSetArea
     T& fArea,
     Vector<T>& fCentre,
     bool output
-)
+) const
 {
     // Reset inputs
     fArea = pTraits<T>::zero;
@@ -1539,7 +1539,7 @@ void faceSetAlgorithm::convexSetArea
         const Vector<T>& b = cvxSet[1];
         const Vector<T>& c = cvxSet[2];
 
-        fArea = ( T(0.5) * ((b - a)^(c - a)) );
+        fArea = mag(0.5 * ((b - a)^(c - a)));
         fCentre = (pTraits<T>::one / T(3.0)) * (a + b + c);
 
         if (output)
@@ -1686,7 +1686,7 @@ void faceSetAlgorithm::convexSetArea
 
     // Find an approximate face-centroid
     T sumA = 0.0;
-    Vector<T> sumAc = vector::zero;
+    Vector<T> sumAc = Vector<T>::zero;
     Vector<T> xC = average(cvxSet);
 
     forAll(testEdges, edgeI)
@@ -1694,7 +1694,7 @@ void faceSetAlgorithm::convexSetArea
         const edge& e = testEdges[edgeI];
 
         Vector<T> c = cvxSet[e[0]] + cvxSet[e[1]] + xC;
-        T a = mag(e.vec(cvxSet) ^ (xC - cvxSet[e[0]]));
+        T a = mag((cvxSet[e[1]] - cvxSet[e[0]]) ^ (xC - cvxSet[e[0]]));
 
         sumA += a;
         sumAc += a*c;
@@ -2795,7 +2795,7 @@ void cellSetAlgorithm::convexSetVolume
     T& cVolume,
     Vector<T>& cCentre,
     bool output
-)
+) const
 {
     // Reset inputs
     cVolume = pTraits<T>::zero;
@@ -3155,7 +3155,7 @@ void cellSetAlgorithm::convexSetVolume
                         // so don't check for it now
                         if (uniquePts.size())
                         {
-                            insertPointLabels
+                            meshOps::insertPointLabels
                             (
                                 n,
                                 cvxSet,
@@ -3178,9 +3178,9 @@ void cellSetAlgorithm::convexSetVolume
     // Prepare temporary connectivity
     // for volume / centre computation.
     labelList owner(testFaces.size(), 0);
-    cellList cells(1, identity(testFaces.size()));
+    cellList cells(1, cell(identity(testFaces.size())));
 
-    cellCentreAndVolume
+    meshOps::cellCentreAndVolume
     (
         0,
         cvxSet,

@@ -375,9 +375,6 @@ bool dynamicTopoFvMesh::computeWeights
     // Maintain a check-list
     StaticHashTable<empty, label, Hash<label> > checked, skipped;
 
-    // VectorField of intersection points
-    vectorField tP(0);
-
     // Loop and add intersections until nothing changes
     do
     {
@@ -431,9 +428,6 @@ bool dynamicTopoFvMesh::computeWeights
                         index,
                         checkEntity + offset,
                         matchTol,
-                        parents,
-                        weights,
-                        centres,
                         false
                     )
                 );
@@ -492,9 +486,6 @@ bool dynamicTopoFvMesh::computeWeights
                         index,
                         checkEntity + offset,
                         matchTol,
-                        parents,
-                        weights,
-                        centres,
                         false
                     )
                 );
@@ -528,9 +519,8 @@ bool dynamicTopoFvMesh::computeWeights
     } while (changed);
 
     // Test weights for consistency
-    bool consistent = algorithm.consistent();
-
-    //scalar consistency = algorithm.consistency();
+    bool consistent = algorithm.consistent(1e-16);
+    bool normByWeights = false;
 
     if (!consistent)
     {
@@ -640,23 +630,20 @@ bool dynamicTopoFvMesh::computeWeights
                         index,
                         parents[indexI],
                         matchTol,
-                        parents,
-                        weights,
-                        centres,
                         true
                     );
                 }
             }
 
             // Normalize by sum of weights instead
-            //normFactor = sum(weights);
+            normByWeights = true;
         }
         else
         if (precisionAttempts < 12)
         {
             // Could be a precision problem.
             // Recurse until consistency is obtained.
-            matchTol *= 0.1;
+            //matchTol *= 0.1;
 
             parents.clear();
             weights.clear();
@@ -680,9 +667,6 @@ bool dynamicTopoFvMesh::computeWeights
                     centres
                 )
             );
-
-            // Toggle higher precision
-            algorithm.unsetHighPrecision();
         }
     }
 
@@ -699,6 +683,9 @@ bool dynamicTopoFvMesh::computeWeights
 
         label pT = algorithm.dimension();
 
+        // Populate lists
+        algorithm.populateLists(parents, centres, weights);
+
         writeVTK("nE_" + Foam::name(index), index, pT, false, true);
         writeVTK("oE_" + Foam::name(index), mapCandidates, pT, true, true);
         writeVTK("mE_" + Foam::name(index), parents, pT, true, true);
@@ -712,9 +699,6 @@ bool dynamicTopoFvMesh::computeWeights
                 index,
                 parents[indexI],
                 matchTol,
-                parents,
-                weights,
-                centres,
                 true
             );
         }
@@ -745,26 +729,12 @@ bool dynamicTopoFvMesh::computeWeights
             << " precisionAttempts: " << precisionAttempts << nl
             << " matchTolerance: " << matchTol << nl
             << setprecision(16)
-            //<< " Magnitude: " << normFactor << nl
-            << " Sum(Weights): " << sum(weights) << nl
-            //<< " Error: " << (normFactor - sum(weights)) << nl
-            //<< " Norm Sum(Weights): " << sum(weights/normFactor) << nl
-            //<< " Norm Error: " << consistency << nl
+            << " Magnitude: " << algorithm.normFactor() << nl
+            << " Norm Sum(Weights): " << sum(weights) << nl
+            << " Norm Error: " << (1.0 - sum(weights)) << nl
             << " Parents: " << parents << nl
-            //<< " Weights: " << (weights/normFactor)
+            << " Weights: " << weights
             << abort(FatalError);
-    }
-
-    if (debug > 2)
-    {
-        Info << " Index: " << index << nl
-             << setprecision(16)
-             //<< " Magnitude: " << normFactor << nl
-             //<< " Sum(Weights): " << sum(weights) << nl
-             //<< " Error: " << (normFactor - sum(weights)) << nl
-             //<< " Norm Sum(Weights): " << sum(weights/normFactor) << nl
-             //<< " Norm Error: " << consistency
-             << endl;
     }
 
     // Return normalized weights,
@@ -776,7 +746,28 @@ bool dynamicTopoFvMesh::computeWeights
     }
     else
     {
-        //weights /= normFactor;
+        // Normalize weights
+        algorithm.normalize(normByWeights);
+
+        // Revert precision, if necessary
+        if (algorithm.highPrecision())
+        {
+            algorithm.unsetHighPrecision();
+        }
+
+        // Populate lists
+        algorithm.populateLists(parents, centres, weights);
+
+        //if (debug > 2)
+        {
+            Info << " Index: " << index << nl
+                 << setprecision(16)
+                 << " Magnitude: " << algorithm.normFactor() << nl
+                 << " Norm Error: " << mag(1.0 - sum(weights)) << nl
+                 << " Sum(Weights): " << sum(weights) << nl
+                 << " Weights: " << weights << nl
+                 << endl;
+        }
     }
 
     return consistent;

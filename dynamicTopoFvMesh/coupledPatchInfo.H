@@ -74,12 +74,12 @@ class coupledPatchInfo
     label slaveFaceZone_;
 
     //- Disallow default bitwise assignment
-    void operator=(const coupledPatchInfo&);
+    inline void operator=(const coupledPatchInfo&);
 
 public:
 
     // Constructor
-    coupledPatchInfo
+    inline coupledPatchInfo
     (
         const dynamicTopoFvMesh& mesh,
         const coupleMap& cMap,
@@ -87,7 +87,7 @@ public:
         const label sfzIndex = -1
     );
 
-    coupledPatchInfo
+    inline coupledPatchInfo
     (
         const dynamicTopoFvMesh& mesh,
         const bool isLocal,
@@ -101,26 +101,32 @@ public:
     //- Access
 
         // Set a new subMesh
-        void setMesh(label index, dynamicTopoFvMesh* mesh);
+        inline void setMesh(label index, dynamicTopoFvMesh* mesh);
 
         // Return a reference to the subMesh
-        dynamicTopoFvMesh& subMesh();
+        inline dynamicTopoFvMesh& subMesh();
 
         // Have maps been built?
-        bool builtMaps() const;
+        inline bool builtMaps() const;
 
         // Change the flag
-        void setBuiltMaps();
+        inline void setBuiltMaps();
 
         // Return the coupleMap
-        const coupleMap& patchMap() const;
+        inline const coupleMap& patchMap() const;
 
         // Return the master / slave face zone IDs
-        label masterFaceZone() const;
-        label slaveFaceZone() const;
+        inline label masterFaceZone() const;
+        inline label slaveFaceZone() const;
 };
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifdef NoRepository
+#include "coupledPatchInfo.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

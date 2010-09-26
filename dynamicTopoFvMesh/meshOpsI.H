@@ -56,7 +56,10 @@ inline void faceCentre
     Vector<T2>& centre
 )
 {
-    Vector<T2> a, b, c;
+    // Reset to zero
+    centre = Vector<T2>::zero;
+
+    Vector<T2> a(Vector<T2>::zero), b(Vector<T2>::zero), c(Vector<T2>::zero);
 
     // If the face is a triangle, do a direct calculation
     // to avoid round-off error-related problems
@@ -71,8 +74,6 @@ inline void faceCentre
         return;
     }
 
-    // Reset to zero
-    centre = Vector<T2>::zero;
     label nPoints = faceToCheck.size();
 
     register label pI;
@@ -125,7 +126,10 @@ inline void faceNormal
     Vector<T2>& normal
 )
 {
-    Vector<T2> a, b, c;
+    // Reset to zero
+    normal = Vector<T2>::zero;
+
+    Vector<T2> a(Vector<T2>::zero), b(Vector<T2>::zero), c(Vector<T2>::zero);
 
     // If the face is a triangle, do a direct calculation
     // to avoid round-off error-related problems
@@ -140,8 +144,6 @@ inline void faceNormal
         return;
     }
 
-    // Reset to zero
-    normal = Vector<T2>::zero;
     label nPoints = faceToCheck.size();
 
     register label pI;
@@ -749,7 +751,7 @@ inline void insertPointLabels
             const Vector<T>& c = points[newFace[nI]];
 
             // Compute the normal.
-            vector newNorm = (0.5 * ((b - a)^(c - a)));
+            Vector<T> newNorm = (0.5 * ((b - a)^(c - a)));
 
             if ((refNorm & newNorm) > pTraits<T>::zero)
             {
@@ -950,8 +952,192 @@ inline void removeIndex
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+inline bool convexSetAlgorithm::consistent(const scalar tolerance) const
+{
+    if
+    (
+        (weights_.size() && mpWeights_.size()) ||
+        (weights_.empty() && mpWeights_.empty())
+    )
+    {
+        FatalErrorIn
+        (
+            "inline bool convexSetAlgorithm::consistent"
+            "(const scalar tolerance) const"
+        )
+            << " Incompatible lists found: " << nl
+            << "  magnitudes (low-precision): " << weights_ << nl
+            << "  magnitudes (high-precision): " << mpWeights_ << nl
+            << abort(FatalError);
+    }
+
+    if (weights_.size())
+    {
+        scalar normError = mag(1.0 - (sum(weights_)/normFactor_));
+
+        if (normError < tolerance)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    if (mpWeights_.size())
+    {
+        mpScalar normError =
+        (
+            mag(pTraits<mpScalar>::one - (sum(mpWeights_)/mpNormFactor_))
+        );
+
+        if (normError < tolerance)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+
+// Return the normFactor
+inline scalar convexSetAlgorithm::normFactor() const
+{
+    if (highPrecision())
+    {
+        return mpNormFactor_;
+    }
+    else
+    {
+        return normFactor_;
+    }
+
+    return 0.0;
+}
+
+
+// Normalize stored weights
+inline void convexSetAlgorithm::normalize(bool normSum) const
+{
+    if
+    (
+        (weights_.size() && mpWeights_.size()) ||
+        (weights_.empty() && mpWeights_.empty())
+    )
+    {
+        FatalErrorIn
+        (
+            "inline void convexSetAlgorithm::normalize"
+            "(bool normSum) const"
+        )
+            << " Incompatible lists found: " << nl
+            << "  magnitudes (low-precision): " << weights_ << nl
+            << "  magnitudes (high-precision): " << mpWeights_ << nl
+            << abort(FatalError);
+    }
+
+    if (normSum)
+    {
+        if (weights_.size())
+        {
+            weights_ /= sum(weights_);
+        }
+
+        if (mpWeights_.size())
+        {
+            mpWeights_ /= sum(mpWeights_);
+        }
+    }
+    else
+    {
+        if (weights_.size())
+        {
+            weights_ /= normFactor_;
+        }
+
+        if (mpWeights_.size())
+        {
+            mpWeights_ /= mpNormFactor_;
+        }
+    }
+}
+
+
+// Extract weights and centres to lists
+inline void convexSetAlgorithm::populateLists
+(
+    labelList& parents,
+    vectorField& centres,
+    scalarField& weights
+) const
+{
+    // Clear inputs
+    parents.clear();
+    centres.clear();
+    weights.clear();
+
+    if
+    (
+        (weights_.size() && mpWeights_.size()) ||
+        (weights_.empty() && mpWeights_.empty())
+    )
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "inline bool convexSetAlgorithm::populateLists\n"
+            "(\n"
+            "    labelList& parents,\n"
+            "    vectorField& centres,\n"
+            "    scalarField& weights\n"
+            ") const\n"
+        )
+            << " Incompatible lists found: " << nl
+            << "  weights (low-precision): " << weights_ << nl
+            << "  weights (high-precision): " << mpWeights_ << nl
+            << abort(FatalError);
+    }
+
+    if (weights_.size())
+    {
+        parents = parents_;
+        centres = centres_;
+        weights = weights_;
+    }
+
+    if (mpWeights_.size())
+    {
+        parents = parents_;
+
+        centres.setSize(parents.size());
+        weights.setSize(parents.size());
+
+        forAll(parents, i)
+        {
+            centres[i] = convert<vector, scalar>(mpCentres_[i]);
+            weights[i] = mpWeights_[i];
+        }
+    }
+}
+
+
 inline void faceSetAlgorithm::computeNormFactor(const label index) const
 {
+    // Clear existing fields
+    parents_.clear();
+
+    centres_.clear();
+    weights_.clear();
+
+    mpCentres_.clear();
+    mpWeights_.clear();
+
     if (highPrecision())
     {
         meshOps::faceNormal(newFaces_[index], newPoints_, mpRefNorm_);
@@ -973,15 +1159,12 @@ inline void faceSetAlgorithm::computeNormFactor(const label index) const
 }
 
 
-// Intersections
+// Compute intersections
 inline bool faceSetAlgorithm::computeInsersection
 (
     const label newIndex,
     const label oldIndex,
     const scalar& matchTol,
-    labelList& parents,
-    scalarField& weights,
-    vectorField& centres,
     bool output
 ) const
 {
@@ -1007,7 +1190,27 @@ inline bool faceSetAlgorithm::computeInsersection
 
         if (intersects)
         {
+            mpScalar area;
+            mpVector centre;
 
+            convexSetArea
+            (
+                newIndex,
+                oldIndex,
+                mpIntPoints,
+                mpRefNorm_,
+                area,
+                centre,
+                output
+            );
+
+            // Size-up the internal lists
+            if (!output)
+            {
+                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList(area, mpWeights_);
+                meshOps::sizeUpList(centre, mpCentres_);
+            }
         }
     }
     else
@@ -1029,7 +1232,27 @@ inline bool faceSetAlgorithm::computeInsersection
 
         if (intersects)
         {
+            scalar area;
+            vector centre;
 
+            convexSetArea
+            (
+                newIndex,
+                oldIndex,
+                intPoints,
+                refNorm_,
+                area,
+                centre,
+                output
+            );
+
+            // Size-up the internal lists
+            if (!output)
+            {
+                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList(area, weights_);
+                meshOps::sizeUpList(centre, centres_);
+            }
         }
     }
 
@@ -1039,6 +1262,15 @@ inline bool faceSetAlgorithm::computeInsersection
 
 inline void cellSetAlgorithm::computeNormFactor(const label index) const
 {
+    // Clear existing fields
+    parents_.clear();
+
+    centres_.clear();
+    weights_.clear();
+
+    mpCentres_.clear();
+    mpWeights_.clear();
+
     if (highPrecision())
     {
         meshOps::cellCentreAndVolume
@@ -1054,8 +1286,6 @@ inline void cellSetAlgorithm::computeNormFactor(const label index) const
     }
     else
     {
-        vector dummyCentre;
-
         meshOps::cellCentreAndVolume
         (
             index,
@@ -1075,9 +1305,6 @@ inline bool cellSetAlgorithm::computeInsersection
     const label newIndex,
     const label oldIndex,
     const scalar& matchTol,
-    labelList& parents,
-    scalarField& weights,
-    vectorField& centres,
     bool output
 ) const
 {
@@ -1103,7 +1330,26 @@ inline bool cellSetAlgorithm::computeInsersection
 
         if (intersects)
         {
+            mpScalar volume;
+            mpVector centre;
 
+            convexSetVolume
+            (
+                newIndex,
+                oldIndex,
+                mpIntPoints,
+                volume,
+                centre,
+                output
+            );
+
+            // Size-up the internal lists
+            if (!output)
+            {
+                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList(volume, mpWeights_);
+                meshOps::sizeUpList(centre, mpCentres_);
+            }
         }
     }
     else
@@ -1125,7 +1371,26 @@ inline bool cellSetAlgorithm::computeInsersection
 
         if (intersects)
         {
+            scalar volume;
+            vector centre;
 
+            convexSetVolume
+            (
+                newIndex,
+                oldIndex,
+                intPoints,
+                volume,
+                centre,
+                output
+            );
+
+            // Size-up the internal lists
+            if (!output)
+            {
+                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList(volume, weights_);
+                meshOps::sizeUpList(centre, centres_);
+            }
         }
     }
 

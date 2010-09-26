@@ -43,27 +43,6 @@ Author
 namespace Foam
 {
 
-template<unsigned P, mpfr_rnd_t R>
-const char*
-const pTraits<multiPrecisionScalar<P,R> >::typeName = "multiPrecisionScalar";
-
-template<unsigned P, mpfr_rnd_t R>
-const multiPrecisionScalar<P,R>
-pTraits<multiPrecisionScalar<P,R> >::zero = multiPrecisionScalar<P,R>("0.0");
-
-template<unsigned P, mpfr_rnd_t R>
-const multiPrecisionScalar<P,R>
-pTraits<multiPrecisionScalar<P,R> >::one = multiPrecisionScalar<P,R>("1.0");
-
-template<unsigned P, mpfr_rnd_t R>
-const char* pTraits<multiPrecisionScalar<P,R> >::componentNames[] = { "x" };
-
-template<unsigned P, mpfr_rnd_t R>
-pTraits<multiPrecisionScalar<P,R> >::pTraits(Istream& is)
-{
-    is >> p_;
-}
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct null
@@ -75,6 +54,10 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar()
 
     // Set to zero and rounding mode
     mpfr_set_d(v_, 0.0, R);
+
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
 }
 
 
@@ -90,6 +73,10 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar
 
     // Set to value and rounding mode
     mpfr_set(v_, v.v_, R);
+
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
 }
 
 
@@ -105,6 +92,10 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar
 
     // Set to value and rounding mode
     mpfr_set_d(v_, v, R);
+
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
 }
 
 
@@ -121,6 +112,10 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar
 
     // Set to value and rounding mode
     mpfr_set_str(v_, s, base, R);
+
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
 }
 
 
@@ -131,6 +126,10 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar(Istream& is)
     multiPrecisionScalar<P,R>()
 {
     is >> *this;
+
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
 }
 
 
@@ -140,6 +139,10 @@ template<unsigned P, mpfr_rnd_t R>
 inline multiPrecisionScalar<P,R>::~multiPrecisionScalar()
 {
     mpfr_clear(v_);
+
+#   ifdef FULLDEBUG
+    dv_ = 0.0;
+#   endif
 }
 
 
@@ -152,6 +155,10 @@ inline const multiPrecisionScalar<P,R> multiPrecisionScalar<P,R>::mag() const
 
     mpfr_abs(result.v_, result.v_, R);
 
+#   ifdef FULLDEBUG
+    result.dv_ = result.operator scalar();
+#   endif
+
     return result;
 }
 
@@ -163,6 +170,10 @@ inline const multiPrecisionScalar<P,R> multiPrecisionScalar<P,R>::sqr() const
 
     mpfr_sqr(result.v_, result.v_, R);
 
+#   ifdef FULLDEBUG
+    result.dv_ = result.operator scalar();
+#   endif
+
     return result;
 }
 
@@ -173,6 +184,10 @@ inline const multiPrecisionScalar<P,R> multiPrecisionScalar<P,R>::sqrt() const
     multiPrecisionScalar<P,R> result(*this);
 
     mpfr_sqrt(result.v_, result.v_, R);
+
+#   ifdef FULLDEBUG
+    result.dv_ = result.operator scalar();
+#   endif
 
     return result;
 }
@@ -187,6 +202,10 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator=
 )
 {
     mpfr_set_d(v_, v, R);
+
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
 
     return *this;
 }
@@ -211,6 +230,10 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator=
 
     mpfr_set(v_, v.v_, R);
 
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
+
     return *this;
 }
 
@@ -222,6 +245,10 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator+=
 )
 {
     mpfr_add(v_, v_, v.v_, R);
+
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
 
     return *this;
 }
@@ -235,6 +262,10 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator-=
 {
     mpfr_sub(v_, v_, v.v_, R);
 
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
+
     return *this;
 }
 
@@ -247,6 +278,10 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator*=
 {
     mpfr_mul(v_, v_, v.v_, R);
 
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
+
     return *this;
 }
 
@@ -258,6 +293,10 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator/=
 )
 {
     mpfr_div(v_, v_, v.v_, R);
+
+#   ifdef FULLDEBUG
+    dv_ = this->operator scalar();
+#   endif
 
     return *this;
 }

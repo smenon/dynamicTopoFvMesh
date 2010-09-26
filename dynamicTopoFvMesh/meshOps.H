@@ -409,13 +409,20 @@ protected:
         //- Switch for higher precision
         mutable bool highPrecision_;
 
-        //- Low-precision normFactor
+        //- Entity parents
+        mutable labelList parents_;
+
+        //- Low-precision fields
         mutable vector refNorm_;
         mutable scalar normFactor_;
+        mutable vectorField centres_;
+        mutable scalarField weights_;
 
-        //- High-precision normFactor
+        //- High-precision fields
         mutable mpVector mpRefNorm_;
         mutable mpScalar mpNormFactor_;
+        mutable Field<mpVector> mpCentres_;
+        mutable Field<mpScalar> mpWeights_;
 
 public:
 
@@ -445,7 +452,21 @@ public:
         virtual label dimension() const = 0;
 
         // Return true if accumulated weights are consistent
-        virtual bool consistent() const = 0;
+        virtual bool consistent(const scalar tolerance) const;
+
+        // Return the normFactor
+        virtual scalar normFactor() const;
+
+        // Normalize stored weights
+        virtual void normalize(bool normSum) const;
+
+        // Extract weights and centres to lists
+        virtual void populateLists
+        (
+            labelList& parents,
+            vectorField& centres,
+            scalarField& weights
+        ) const;
 
         // Return the highPrecision switch
         bool highPrecision() const
@@ -467,15 +488,12 @@ public:
         // Compute normFactor
         virtual void computeNormFactor(const label index) const = 0;
 
-        // Intersections
+        // Compute intersections
         virtual bool computeInsersection
         (
             const label newIndex,
             const label oldIndex,
             const scalar& matchTol,
-            labelList& parents,
-            scalarField& weights,
-            vectorField& centres,
             bool output
         ) const = 0;
 };
@@ -510,7 +528,7 @@ class faceSetAlgorithm
             T& fArea,
             Vector<T>& fCentre,
             bool output
-        );
+        ) const;
 
         //- Intersection member function
         //  Templated for precision
@@ -553,21 +571,15 @@ public:
             return 2;
         }
 
-        // Return true if accumulated weights are consistent
-        virtual bool consistent() const;
-
         // Compute normFactor
         virtual void computeNormFactor(const label index) const;
 
-        // Intersections
+        // Compute intersections
         virtual bool computeInsersection
         (
             const label newIndex,
             const label oldIndex,
             const scalar& matchTol,
-            labelList& parents,
-            scalarField& weights,
-            vectorField& centres,
             bool output
         ) const;
 };
@@ -601,7 +613,7 @@ class cellSetAlgorithm
             T& cVolume,
             Vector<T>& cCentre,
             bool output
-        );
+        ) const;
 
         //- Intersection member function
         //  Templated for precision
@@ -644,21 +656,15 @@ public:
             return 3;
         }
 
-        // Return true if accumulated weights are consistent
-        virtual bool consistent() const;
-
         // Compute normFactor
         virtual void computeNormFactor(const label index) const;
 
-        // Intersections
+        // Compute intersections
         virtual bool computeInsersection
         (
             const label newIndex,
             const label oldIndex,
             const scalar& matchTol,
-            labelList& parents,
-            scalarField& weights,
-            vectorField& centres,
             bool output
         ) const;
 };

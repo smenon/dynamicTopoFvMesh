@@ -36,6 +36,7 @@ Author
 
 SourceFiles
     multiPrecisionI.H
+    multiPrecision.C
 
 \*---------------------------------------------------------------------------*/
 
@@ -66,6 +67,12 @@ class multiPrecisionScalar
 {
     //- Multi-precision float type
     mpfr_t v_;
+
+#   ifdef FULLDEBUG
+    //- Convert to conventional scalar,
+    //  useful for debugging
+    scalar dv_;
+#   endif
 
 public:
 
@@ -202,7 +209,6 @@ typedef Vector<mpScalar> mpVector;
 typedef Tensor<mpScalar> mpTensor;
 typedef SymmTensor<mpScalar> mpSymmTensor;
 typedef SphericalTensor<mpScalar> mpSphericalTensor;
-
 
 } // End namespace Foam
 
