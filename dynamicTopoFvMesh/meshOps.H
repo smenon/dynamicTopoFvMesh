@@ -356,7 +356,6 @@ namespace meshOps
     void waitForBuffers();
 
     // Actual routine to write out the VTK file
-    template <class T>
     void writeVTK
     (
         const polyMesh& mesh,
@@ -364,7 +363,7 @@ namespace meshOps
         const label nPoints,
         const label nCells,
         const label nTotalCells,
-        const Field<Vector<T> >& points,
+        const vectorField& points,
         const labelListList& cpList = labelListList(0),
         const label primitiveType = 3,
         const Map<label>& reversePointMap = Map<label>(),
@@ -404,7 +403,7 @@ protected:
         const List<objectMap>& pointsFromPoints_;
 
         //- Reference to modified-points information
-        const labelHashSet& modPoints_;
+        const Map<labelList>& modPoints_;
 
         //- Switch for higher precision
         mutable bool highPrecision_;
@@ -438,7 +437,7 @@ public:
             const UList<label>& newOwner,
             const UList<label>& newNeighbour,
             const List<objectMap>& pointsFromPoints,
-            const labelHashSet& modPoints
+            const Map<labelList>& modPoints
         );
 
     //- Destructor
@@ -555,7 +554,7 @@ public:
             const UList<label>& newOwner,
             const UList<label>& newNeighbour,
             const List<objectMap>& pointsFromPoints,
-            const labelHashSet& modPoints
+            const Map<labelList>& modPoints
         );
 
     //- Destructor
@@ -640,7 +639,7 @@ public:
             const UList<label>& newOwner,
             const UList<label>& newNeighbour,
             const List<objectMap>& pointsFromPoints,
-            const labelHashSet& modPoints
+            const Map<labelList>& modPoints
         );
 
     //- Destructor

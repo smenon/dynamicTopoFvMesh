@@ -670,7 +670,6 @@ void waitForBuffers()
 
 
 // Actual routine to write out the VTK file
-template <class T>
 void writeVTK
 (
     const polyMesh& mesh,
@@ -678,7 +677,7 @@ void writeVTK
     const label nPoints,
     const label nCells,
     const label nTotalCells,
-    const Field<Vector<T> >& points,
+    const vectorField& points,
     const labelListList& cpList,
     const label primitiveType,
     const Map<label>& reversePointMap,
@@ -849,7 +848,7 @@ convexSetAlgorithm::convexSetAlgorithm
     const UList<label>& newOwner,
     const UList<label>& newNeighbour,
     const List<objectMap>& pointsFromPoints,
-    const labelHashSet& modPoints
+    const Map<labelList>& modPoints
 )
 :
     twoDMesh_(mesh.nGeometricD() == 2),
@@ -879,7 +878,7 @@ faceSetAlgorithm::faceSetAlgorithm
     const UList<label>& newOwner,
     const UList<label>& newNeighbour,
     const List<objectMap>& pointsFromPoints,
-    const labelHashSet& modPoints
+    const Map<labelList>& modPoints
 )
 :
     convexSetAlgorithm
@@ -905,7 +904,7 @@ cellSetAlgorithm::cellSetAlgorithm
     const UList<label>& newOwner,
     const UList<label>& newNeighbour,
     const List<objectMap>& pointsFromPoints,
-    const labelHashSet& modPoints
+    const Map<labelList>& modPoints
 )
 :
     convexSetAlgorithm
@@ -945,7 +944,7 @@ bool faceSetAlgorithm::faceIntersection
     const UList<point>& newPoints = this->newPoints_;
     const UList<point>& oldPoints = this->mesh_.points();
 
-    const labelHashSet& modPoints = this->modPoints_;
+    const Map<labelList>& modPoints = this->modPoints_;
     const List<objectMap>& pfp = this->pointsFromPoints_;
 
     // Obtain face centre and projection normal
@@ -972,7 +971,7 @@ bool faceSetAlgorithm::faceIntersection
         label oldPoint = oldFace[pointI];
         label pIndex = findIndex(newFace, oldPoint);
 
-        Vector<T> r = convert<Vector<T>, T>(oldPoints[oldPoint]);
+        Vector<T> r = convert<T>(oldPoints[oldPoint]);
 
         if (pIndex == -1)
         {
@@ -1044,7 +1043,7 @@ bool faceSetAlgorithm::faceIntersection
                 intersections.set
                 (
                     ++nInts,
-                    convert<Vector<T>, T>(newPoints[newFace[pointI]])
+                    convert<T>(newPoints[newFace[pointI]])
                 );
             }
         }
@@ -1076,7 +1075,7 @@ bool faceSetAlgorithm::faceIntersection
                 intPoints.size(),
                 intPoints.size(),
                 intPoints.size(),
-                intPoints
+                convert<scalar>(intPoints)
             );
         }
 
@@ -1109,8 +1108,8 @@ bool faceSetAlgorithm::faceIntersection
                 (
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(newPoints[newEdge.start()]),
-                        convert<Vector<T>, T>(newPoints[newEdge.end()])
+                        convert<T>(newPoints[newEdge.start()]),
+                        convert<T>(newPoints[newEdge.end()])
                     ),
                     checkPoint,
                     matchTol
@@ -1139,10 +1138,7 @@ bool faceSetAlgorithm::faceIntersection
             continue;
         }
 
-        const Vector<T> checkPoint = convert<Vector<T>, T>
-        (
-            newPoints[newPoint]
-        );
+        const Vector<T> checkPoint = convert<T>(newPoints[newPoint]);
 
         forAll(oldFace, pointJ)
         {
@@ -1165,8 +1161,8 @@ bool faceSetAlgorithm::faceIntersection
                 (
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(oldPoints[oldEdge.start()]),
-                        convert<Vector<T>, T>(oldPoints[oldEdge.end()])
+                        convert<T>(oldPoints[oldEdge.start()]),
+                        convert<T>(oldPoints[oldEdge.end()])
                     ),
                     checkPoint,
                     matchTol
@@ -1224,9 +1220,9 @@ bool faceSetAlgorithm::faceIntersection
                 (
                     triangle<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(newPoints[newFace[0]]),
-                        convert<Vector<T>, T>(newPoints[newFace[1]]),
-                        convert<Vector<T>, T>(newPoints[newFace[2]])
+                        convert<T>(newPoints[newFace[0]]),
+                        convert<T>(newPoints[newFace[1]]),
+                        convert<T>(newPoints[newFace[2]])
                     ),
                     checkPoint
                 )
@@ -1247,10 +1243,7 @@ bool faceSetAlgorithm::faceIntersection
                 continue;
             }
 
-            const Vector<T> checkPoint = convert<Vector<T>, T>
-            (
-                newPoints[newPoint]
-            );
+            const Vector<T> checkPoint = convert<T>(newPoints[newPoint]);
 
             if
             (
@@ -1426,8 +1419,8 @@ bool faceSetAlgorithm::faceIntersection
                         ),
                         line<Vector<T>, const Vector<T>&>
                         (
-                            convert<Vector<T>, T>(newPoints[newFace[pointI]]),
-                            convert<Vector<T>, T>(newPoints[nextLabel])
+                            convert<T>(newPoints[newFace[pointI]]),
+                            convert<T>(newPoints[nextLabel])
                         ),
                         matchTol,
                         intPoint
@@ -1499,7 +1492,7 @@ bool faceSetAlgorithm::faceIntersection
             intPoints.size(),
             intPoints.size(),
             intPoints.size(),
-            intPoints
+            convert<scalar>(intPoints)
         );
     }
 
@@ -1729,7 +1722,7 @@ bool cellSetAlgorithm::cellIntersection
     intPoints.clear();
 
     // Assume XY plane here for 2D meshes
-    Vector<T> planeNormal = convert<Vector<T>, T>(vector(0,0,1));
+    Vector<T> planeNormal = convert<T>(vector(0,0,1));
 
     // Fetch references for each mesh
     const cell& oldCell = this->mesh_.cells()[oldIndex];
@@ -1748,7 +1741,7 @@ bool cellSetAlgorithm::cellIntersection
     const UList<point>& newPoints = this->newPoints_;
     const UList<point>& oldPoints = this->mesh_.points();
 
-    const labelHashSet& modPoints = this->modPoints_;
+    const Map<labelList>& modPoints = this->modPoints_;
     const List<objectMap>& pfp = this->pointsFromPoints_;
 
     // Track all possible intersections from here on.
@@ -1775,10 +1768,7 @@ bool cellSetAlgorithm::cellIntersection
                 intersections.set
                 (
                     ++nInts,
-                    convert<Vector<T>, T>
-                    (
-                        oldPoints[newCellPoints[pIndex]]
-                    )
+                    convert<T>(oldPoints[newCellPoints[pIndex]])
                 );
             }
         }
@@ -1825,10 +1815,7 @@ bool cellSetAlgorithm::cellIntersection
                 intersections.set
                 (
                     ++nInts,
-                    convert<Vector<T>, T>
-                    (
-                        newPoints[newCellPoints[pointI]]
-                    )
+                    convert<T>(newPoints[newCellPoints[pointI]])
                 );
             }
         }
@@ -1859,7 +1846,7 @@ bool cellSetAlgorithm::cellIntersection
                 intPoints.size(),
                 intPoints.size(),
                 intPoints.size(),
-                intPoints
+                convert<scalar>(intPoints)
             );
         }
 
@@ -1878,10 +1865,7 @@ bool cellSetAlgorithm::cellIntersection
             continue;
         }
 
-        const Vector<T> checkPoint = convert<Vector<T>, T>
-        (
-            oldPoints[oldPoint]
-        );
+        const Vector<T> checkPoint = convert<T>(oldPoints[oldPoint]);
 
         forAll(newCellEdges, edgeI)
         {
@@ -1893,8 +1877,8 @@ bool cellSetAlgorithm::cellIntersection
                 (
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(newPoints[edgeToCheck.start()]),
-                        convert<Vector<T>, T>(newPoints[edgeToCheck.end()])
+                        convert<T>(newPoints[edgeToCheck.start()]),
+                        convert<T>(newPoints[edgeToCheck.end()])
                     ),
                     checkPoint,
                     matchTol
@@ -1923,10 +1907,47 @@ bool cellSetAlgorithm::cellIntersection
             continue;
         }
 
-        const Vector<T> checkPoint = convert<Vector<T>, T>
-        (
-            newPoints[newPoint]
-        );
+        // Check if this point was modified during a collapse.
+        // We might be able to avoid a calculation if it is.
+        if (modPoints.found(newPoint))
+        {
+            // Fetch the two points that it originated from
+            const labelList& mP = modPoints[newPoint];
+
+            bool foundPoint = false;
+
+            forAll(oldCellEdges, edgeI)
+            {
+                const edge edgeToCheck = oldCellEdges[edgeI];
+
+                if (edgeToCheck == edge(mP[0], mP[1]))
+                {
+                    commonPoints.insert
+                    (
+                        newPoint,
+                        labelList(edgeToCheck)
+                    );
+
+                    intersections.set
+                    (
+                        ++nInts,
+                        convert<T>(newPoints[newPoint])
+                    );
+
+                    foundPoint = true;
+                    pointIntersections = true;
+
+                    break;
+                }
+            }
+
+            if (foundPoint)
+            {
+                continue;
+            }
+        }
+
+        const Vector<T> checkPoint = convert<T>(newPoints[newPoint]);
 
         forAll(oldCellEdges, edgeI)
         {
@@ -1938,8 +1959,8 @@ bool cellSetAlgorithm::cellIntersection
                 (
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(oldPoints[edgeToCheck.start()]),
-                        convert<Vector<T>, T>(oldPoints[edgeToCheck.end()])
+                        convert<T>(oldPoints[edgeToCheck.start()]),
+                        convert<T>(oldPoints[edgeToCheck.end()])
                     ),
                     checkPoint,
                     matchTol
@@ -1984,15 +2005,8 @@ bool cellSetAlgorithm::cellIntersection
                 continue;
             }
 
-            Vector<T> oldS = convert<Vector<T>, T>
-            (
-                oldPoints[edgeToCheck.start()]
-            );
-
-            Vector<T> oldE = convert<Vector<T>, T>
-            (
-                oldPoints[edgeToCheck.end()]
-            );
+            Vector<T> oldS = convert<T>(oldPoints[edgeToCheck.start()]);
+            Vector<T> oldE = convert<T>(oldPoints[edgeToCheck.end()]);
 
             Vector<T> edgeVec = (oldS - oldE);
             edgeVec /= mag(edgeVec) + VSMALL;
@@ -2036,15 +2050,8 @@ bool cellSetAlgorithm::cellIntersection
                 continue;
             }
 
-            Vector<T> newS = convert<Vector<T>, T>
-            (
-                newPoints[edgeToCheck.start()]
-            );
-
-            Vector<T> newE = convert<Vector<T>, T>
-            (
-                newPoints[edgeToCheck.end()]
-            );
+            Vector<T> newS = convert<T>(newPoints[edgeToCheck.start()]);
+            Vector<T> newE = convert<T>(newPoints[edgeToCheck.end()]);
 
             Vector<T> edgeVec = (newS - newE);
             edgeVec /= mag(edgeVec) + VSMALL;
@@ -2095,10 +2102,7 @@ bool cellSetAlgorithm::cellIntersection
                 }
             }
 
-            const Vector<T> checkPoint = convert<Vector<T>, T>
-            (
-                oldPoints[oldPoint]
-            );
+            const Vector<T> checkPoint = convert<T>(oldPoints[oldPoint]);
 
             if
             (
@@ -2129,10 +2133,7 @@ bool cellSetAlgorithm::cellIntersection
                 continue;
             }
 
-            const Vector<T> checkPoint = convert<Vector<T>, T>
-            (
-                newPoints[newPoint]
-            );
+            const Vector<T> checkPoint = convert<T>(newPoints[newPoint]);
 
             if
             (
@@ -2156,7 +2157,7 @@ bool cellSetAlgorithm::cellIntersection
     bool foundIntersection = false, edgeIntersections = false;
 
     // Loop through edges from each cell, and check whether they intersect.
-    List<Pair<edge> > OeToNe, NeToFe;
+    List<Pair<edge> > OeToNe, NeToOe;
 
     // Define edge-vectors in 2D
     Vector<T> oldVec(Vector<T>::zero), newVec(Vector<T>::zero);
@@ -2168,14 +2169,8 @@ bool cellSetAlgorithm::cellIntersection
         {
             oldVec =
             (
-                convert<Vector<T>, T>
-                (
-                    oldPoints[oldCellEdges[edgeI].start()]
-                )
-              - convert<Vector<T>, T>
-                (
-                    oldPoints[oldCellEdges[edgeI].end()]
-                )
+                convert<T>(oldPoints[oldCellEdges[edgeI].start()])
+              - convert<T>(oldPoints[oldCellEdges[edgeI].end()])
             );
 
             oldVec /= mag(oldVec) + VSMALL;
@@ -2193,14 +2188,8 @@ bool cellSetAlgorithm::cellIntersection
             {
                 newVec =
                 (
-                    convert<Vector<T>, T>
-                    (
-                        newPoints[newCellEdges[edgeJ].start()]
-                    )
-                  - convert<Vector<T>, T>
-                    (
-                        newPoints[newCellEdges[edgeJ].end()]
-                    )
+                    convert<T>(newPoints[newCellEdges[edgeJ].start()])
+                  - convert<T>(newPoints[newCellEdges[edgeJ].end()])
                 );
 
                 newVec /= mag(newVec) + VSMALL;
@@ -2350,25 +2339,13 @@ bool cellSetAlgorithm::cellIntersection
                 (
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>
-                        (
-                            oldPoints[edgePair.first().start()]
-                        ),
-                        convert<Vector<T>, T>
-                        (
-                            oldPoints[edgePair.first().end()]
-                        )
+                        convert<T>(oldPoints[edgePair.first().start()]),
+                        convert<T>(oldPoints[edgePair.first().end()])
                     ),
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>
-                        (
-                            newPoints[edgePair.second().start()]
-                        ),
-                        convert<Vector<T>, T>
-                        (
-                            newPoints[edgePair.second().end()]
-                        )
+                        convert<T>(newPoints[edgePair.second().start()]),
+                        convert<T>(newPoints[edgePair.second().end()])
                     ),
                     matchTol,
                     intPoint
@@ -2383,9 +2360,9 @@ bool cellSetAlgorithm::cellIntersection
                     edgePair
                 );
 
-                NeToFe.setSize
+                NeToOe.setSize
                 (
-                    NeToFe.size() + 1,
+                    NeToOe.size() + 1,
                     edgePair.reversePair()
                 );
 
@@ -2428,7 +2405,7 @@ bool cellSetAlgorithm::cellIntersection
                 intPoints.size(),
                 intPoints.size(),
                 intPoints.size(),
-                intPoints
+                convert<scalar>(intPoints)
             );
         }
 
@@ -2559,14 +2536,14 @@ bool cellSetAlgorithm::cellIntersection
                 (
                     triangle<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(newPoints[faceToCheck[0]]),
-                        convert<Vector<T>, T>(newPoints[faceToCheck[1]]),
-                        convert<Vector<T>, T>(newPoints[faceToCheck[2]])
+                        convert<T>(newPoints[faceToCheck[0]]),
+                        convert<T>(newPoints[faceToCheck[1]]),
+                        convert<T>(newPoints[faceToCheck[2]])
                     ),
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(oldPoints[edgeToCheck.start()]),
-                        convert<Vector<T>, T>(oldPoints[edgeToCheck.end()])
+                        convert<T>(oldPoints[edgeToCheck.start()]),
+                        convert<T>(oldPoints[edgeToCheck.end()])
                     ),
                     matchTol,
                     intPoint
@@ -2615,15 +2592,15 @@ bool cellSetAlgorithm::cellIntersection
                 bool foundEdge = false;
                 const edgeList fEdges = faceToCheck.edges();
 
-                forAll(NeToFe, indexI)
+                forAll(NeToOe, indexI)
                 {
-                    if (NeToFe[indexI].first() == edgeToCheck)
+                    if (NeToOe[indexI].first() == edgeToCheck)
                     {
                         // Check whether the intersecting edge
                         // exists on this face.
                         forAll(fEdges, edgeJ)
                         {
-                            if (fEdges[edgeJ] == NeToFe[indexI].second())
+                            if (fEdges[edgeJ] == NeToOe[indexI].second())
                             {
                                 foundEdge = true;
                                 break;
@@ -2725,14 +2702,14 @@ bool cellSetAlgorithm::cellIntersection
                 (
                     triangle<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(oldPoints[faceToCheck[0]]),
-                        convert<Vector<T>, T>(oldPoints[faceToCheck[1]]),
-                        convert<Vector<T>, T>(oldPoints[faceToCheck[2]])
+                        convert<T>(oldPoints[faceToCheck[0]]),
+                        convert<T>(oldPoints[faceToCheck[1]]),
+                        convert<T>(oldPoints[faceToCheck[2]])
                     ),
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<Vector<T>, T>(newPoints[edgeToCheck.start()]),
-                        convert<Vector<T>, T>(newPoints[edgeToCheck.end()])
+                        convert<T>(newPoints[edgeToCheck.start()]),
+                        convert<T>(newPoints[edgeToCheck.end()])
                     ),
                     matchTol,
                     intPoint
@@ -2775,7 +2752,7 @@ bool cellSetAlgorithm::cellIntersection
             intPoints.size(),
             intPoints.size(),
             intPoints.size(),
-            intPoints
+            convert<scalar>(intPoints)
         );
     }
 

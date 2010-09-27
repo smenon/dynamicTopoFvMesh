@@ -193,7 +193,7 @@ class dynamicTopoFvMesh
 
         //- List of flipped faces / modified old-points
         labelHashSet flipFaces_;
-        labelHashSet modPoints_;
+        Map<labelList> modPoints_;
 
         //- Run-time statistics
         label maxModifications_;

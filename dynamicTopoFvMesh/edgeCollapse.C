@@ -2146,8 +2146,17 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     // has been modified, if necessary
     if (collapseCase == 3 && c1 > -1)
     {
-        modPoints_.set(replacement[0], empty());
-        modPoints_.set(replacement[1], empty());
+        labelList mP(2, -1);
+
+        mP[0] = original[0];
+        mP[1] = replacement[0];
+
+        modPoints_.set(replacement[0], mP);
+
+        mP[0] = original[1];
+        mP[1] = replacement[1];
+
+        modPoints_.set(replacement[1], mP);
     }
 
     // Fill-in candidate mapping information
@@ -3720,7 +3729,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // has been modified, if necessary
     if (collapseCase == 3)
     {
-        modPoints_.set(replacePoint, empty());
+        labelList mP(2, -1);
+
+        mP[0] = collapsePoint;
+        mP[1] = replacePoint;
+
+        modPoints_.set(replacePoint, mP);
     }
 
     // Now that all old / new cells possess correct connectivity,

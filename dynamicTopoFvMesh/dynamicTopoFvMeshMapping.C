@@ -354,8 +354,8 @@ bool dynamicTopoFvMesh::computeWeights
     }
 
     bool changed;
-    label nAttempts = 0, nIntersects = 0;
     scalar matchTol = mTol;
+    label nAttempts = 0, nIntersects = 0;
 
     // Figure out the patch offset
     label offset = -1;
@@ -365,6 +365,7 @@ bool dynamicTopoFvMesh::computeWeights
         offset = boundaryMesh()[whichPatch(index)].start();
     }
     else
+    if (algorithm.dimension() == 3)
     {
         offset = 0;
     }
@@ -519,15 +520,15 @@ bool dynamicTopoFvMesh::computeWeights
     } while (changed);
 
     // Test weights for consistency
-    bool consistent = algorithm.consistent(1e-16);
+    bool consistent = algorithm.consistent(1e-15);
     bool normByWeights = false;
 
     if (!consistent)
     {
-        if (weights.size())
+        // Inconsistent weights.
+        switch (algorithm.dimension())
         {
-            // Inconsistent weights.
-            if (algorithm.dimension() == 2)
+            case 2:
             {
                 // Check whether any edges lie on bounding curves.
                 // These faces can have relaxed weights to account
@@ -542,9 +543,11 @@ bool dynamicTopoFvMesh::computeWeights
                         consistent = true;
                     }
                 }
+
+                break;
             }
-            else
-            if (algorithm.dimension() == 3)
+
+            case 3:
             {
                 // Check whether any edges lie on boundary patches.
                 // These cells can have relaxed weights to account
@@ -600,6 +603,8 @@ bool dynamicTopoFvMesh::computeWeights
                         }
                     }
                 }
+
+                break;
             }
         }
 
@@ -639,15 +644,10 @@ bool dynamicTopoFvMesh::computeWeights
             normByWeights = true;
         }
         else
-        if (precisionAttempts < 12)
+        if (precisionAttempts == 0)
         {
             // Could be a precision problem.
             // Recurse until consistency is obtained.
-            //matchTol *= 0.1;
-
-            parents.clear();
-            weights.clear();
-            centres.clear();
 
             // Toggle higher precision
             algorithm.setHighPrecision();
@@ -682,6 +682,9 @@ bool dynamicTopoFvMesh::computeWeights
         }
 
         label pT = algorithm.dimension();
+
+        // Normalize weights
+        algorithm.normalize(normByWeights);
 
         // Populate lists
         algorithm.populateLists(parents, centres, weights);
@@ -731,7 +734,7 @@ bool dynamicTopoFvMesh::computeWeights
             << setprecision(16)
             << " Magnitude: " << algorithm.normFactor() << nl
             << " Norm Sum(Weights): " << sum(weights) << nl
-            << " Norm Error: " << (1.0 - sum(weights)) << nl
+            << " Norm Error: " << mag(1.0 - sum(weights)) << nl
             << " Parents: " << parents << nl
             << " Weights: " << weights
             << abort(FatalError);
@@ -758,8 +761,28 @@ bool dynamicTopoFvMesh::computeWeights
         // Populate lists
         algorithm.populateLists(parents, centres, weights);
 
-        //if (debug > 2)
+        if (debug > 2)
         {
+            if (debug > 3)
+            {
+                label pT = algorithm.dimension();
+
+                writeVTK("nE_" + Foam::name(index), index, pT, false, true);
+                writeVTK("mE_" + Foam::name(index), parents, pT, true, true);
+
+                // Write out intersections for post-processing
+                forAll(parents, indexI)
+                {
+                    algorithm.computeInsersection
+                    (
+                        index,
+                        parents[indexI],
+                        matchTol,
+                        true
+                    );
+                }
+            }
+
             Info << " Index: " << index << nl
                  << setprecision(16)
                  << " Magnitude: " << algorithm.normFactor() << nl

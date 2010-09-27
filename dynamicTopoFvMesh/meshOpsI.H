@@ -65,11 +65,11 @@ inline void faceCentre
     // to avoid round-off error-related problems
     if (faceToCheck.size() == 3)
     {
-        a = convert<Vector<T2>, T2>(points[faceToCheck[0]]);
-        b = convert<Vector<T2>, T2>(points[faceToCheck[1]]);
-        c = convert<Vector<T2>, T2>(points[faceToCheck[2]]);
+        a = convert<T2>(points[faceToCheck[0]]);
+        b = convert<T2>(points[faceToCheck[1]]);
+        c = convert<T2>(points[faceToCheck[2]]);
 
-        centre = ((1.0/3.0) * (a + b + c));
+        centre = ((pTraits<T2>::one / T2(3.0)) * (a + b + c));
 
         return;
     }
@@ -81,7 +81,7 @@ inline void faceCentre
     // Store the centre point in c
     for (pI = 0; pI < nPoints; pI++)
     {
-        c += convert<Vector<T2>, T2>(points[faceToCheck[pI]]);
+        c += convert<T2>(points[faceToCheck[pI]]);
     }
 
     c /= nPoints;
@@ -93,8 +93,8 @@ inline void faceCentre
 
     for (pI = 0; pI < nPoints; pI++)
     {
-        a = convert<Vector<T2>, T2>(points[faceToCheck[pI]]);
-        b = convert<Vector<T2>, T2>(points[faceToCheck[(pI + 1) % nPoints]]);
+        a = convert<T2>(points[faceToCheck[pI]]);
+        b = convert<T2>(points[faceToCheck[(pI + 1) % nPoints]]);
 
         // Calculate 3*triangle centre
         ttc = (a + b + c);
@@ -108,7 +108,7 @@ inline void faceCentre
 
     if (sumA > VSMALL)
     {
-        centre = (sumAc/(3.0 * sumA));
+        centre = (sumAc/(T2(3.0) * sumA));
     }
     else
     {
@@ -135,11 +135,11 @@ inline void faceNormal
     // to avoid round-off error-related problems
     if (faceToCheck.size() == 3)
     {
-        a = convert<Vector<T2>, T2>(points[faceToCheck[0]]);
-        b = convert<Vector<T2>, T2>(points[faceToCheck[1]]);
-        c = convert<Vector<T2>, T2>(points[faceToCheck[2]]);
+        a = convert<T2>(points[faceToCheck[0]]);
+        b = convert<T2>(points[faceToCheck[1]]);
+        c = convert<T2>(points[faceToCheck[2]]);
 
-        normal = (0.5 * ((b - a)^(c - a)));
+        normal = (T2(0.5) * ((b - a)^(c - a)));
 
         return;
     }
@@ -151,17 +151,17 @@ inline void faceNormal
     // Store the centre point in c
     for (pI = 0; pI < nPoints; pI++)
     {
-        c += convert<Vector<T2>, T2>(points[faceToCheck[pI]]);
+        c += convert<T2>(points[faceToCheck[pI]]);
     }
 
     c /= nPoints;
 
     for (pI = 0; pI < nPoints; pI++)
     {
-        a = convert<Vector<T2>, T2>(points[faceToCheck[pI]]);
-        b = convert<Vector<T2>, T2>(points[faceToCheck[(pI + 1) % nPoints]]);
+        a = convert<T2>(points[faceToCheck[pI]]);
+        b = convert<T2>(points[faceToCheck[(pI + 1) % nPoints]]);
 
-        normal += (0.5 * ((b - a)^(c - a)));
+        normal += (T2(0.5) * ((b - a)^(c - a)));
     }
 }
 
@@ -419,9 +419,16 @@ inline void cellCentreAndVolume
 
     forAll(cellToCheck, faceI)
     {
+        const face& checkFace = faces[cellToCheck[faceI]];
+
+        if (checkFace.empty())
+        {
+            continue;
+        }
+
         meshOps::faceCentre
         (
-            faces[cellToCheck[faceI]],
+            checkFace,
             points,
             fCentre
         );
@@ -611,7 +618,7 @@ inline bool segmentTriFaceIntersection
     const Vector<T>& c = faceToCheck.c();
 
     // Define custom face-normal
-    Vector<T> n = (0.5 * ((b - a)^(c - a)));
+    Vector<T> n = (T(0.5) * ((b - a)^(c - a)));
     n /= mag(n) + VSMALL;
 
     // Compute uValue
@@ -660,19 +667,19 @@ inline bool pointInTriFace
     const Vector<T>& c = faceToCheck.c();
 
     // Compute the normal
-    Vector<T> nf = (0.5 * ((b - a)^(c - a)));
+    Vector<T> nf = (T(0.5) * ((b - a)^(c - a)));
 
-    if ( ((0.5 * ((b - a)^(cP - a))) & nf) < pTraits<T>::zero)
+    if ( ((T(0.5) * ((b - a)^(cP - a))) & nf) < pTraits<T>::zero)
     {
         return false;
     }
 
-    if ( ((0.5 * ((c - b)^(cP - b))) & nf) < pTraits<T>::zero)
+    if ( ((T(0.5) * ((c - b)^(cP - b))) & nf) < pTraits<T>::zero)
     {
         return false;
     }
 
-    if ( ((0.5 * ((a - c)^(cP - c))) & nf) < pTraits<T>::zero)
+    if ( ((T(0.5) * ((a - c)^(cP - c))) & nf) < pTraits<T>::zero)
     {
         return false;
     }
@@ -751,7 +758,7 @@ inline void insertPointLabels
             const Vector<T>& c = points[newFace[nI]];
 
             // Compute the normal.
-            Vector<T> newNorm = (0.5 * ((b - a)^(c - a)));
+            Vector<T> newNorm = (T(0.5) * ((b - a)^(c - a)));
 
             if ((refNorm & newNorm) > pTraits<T>::zero)
             {
@@ -987,10 +994,14 @@ inline bool convexSetAlgorithm::consistent(const scalar tolerance) const
 
     if (mpWeights_.size())
     {
-        mpScalar normError =
-        (
-            mag(pTraits<mpScalar>::one - (sum(mpWeights_)/mpNormFactor_))
-        );
+        mpScalar sumNormWeights(0.0);
+
+        forAll(mpWeights_, indexI)
+        {
+            sumNormWeights += (mpWeights_[indexI]/mpNormFactor_);
+        }
+
+        mpScalar normError = mag(pTraits<mpScalar>::one - sumNormWeights);
 
         if (normError < tolerance)
         {
@@ -1051,7 +1062,12 @@ inline void convexSetAlgorithm::normalize(bool normSum) const
 
         if (mpWeights_.size())
         {
-            mpWeights_ /= sum(mpWeights_);
+            mpScalar sumWeights = sum(mpWeights_);
+
+            forAll(mpWeights_, indexI)
+            {
+                mpWeights_[indexI] /= sumWeights;
+            }
         }
     }
     else
@@ -1063,7 +1079,10 @@ inline void convexSetAlgorithm::normalize(bool normSum) const
 
         if (mpWeights_.size())
         {
-            mpWeights_ /= mpNormFactor_;
+            forAll(mpWeights_, indexI)
+            {
+                mpWeights_[indexI] /= mpNormFactor_;
+            }
         }
     }
 }
@@ -1120,7 +1139,7 @@ inline void convexSetAlgorithm::populateLists
 
         forAll(parents, i)
         {
-            centres[i] = convert<vector, scalar>(mpCentres_[i]);
+            centres[i] = convert<scalar>(mpCentres_[i]);
             weights[i] = mpWeights_[i];
         }
     }
