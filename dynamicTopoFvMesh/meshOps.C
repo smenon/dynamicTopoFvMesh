@@ -669,6 +669,295 @@ void waitForBuffers()
 }
 
 
+// Select a list of elements from connectivity,
+// and output to a VTK format
+void writeVTK
+(
+    const polyMesh& mesh,
+    const word& name,
+    const labelList& cList,
+    const label primitiveType,
+    const UList<point>& meshPoints,
+    const UList<edge>& edges,
+    const UList<face>& faces,
+    const UList<cell>& cells,
+    const UList<label>& owner
+)
+{
+    label nTotalCells = 0;
+    label nPoints = 0, nCells = 0;
+
+    // Estimate a size for points and cellPoints
+    pointField points(6*cList.size());
+
+    // Connectivity lists
+    labelListList cpList(cList.size());
+
+    // Create a map for local points
+    Map<label> pointMap, reversePointMap, reverseCellMap;
+
+    forAll(cList, cellI)
+    {
+        if (cList[cellI] < 0)
+        {
+            continue;
+        }
+
+        // Are we looking at points?
+        if (primitiveType == 0)
+        {
+            // Size the list
+            cpList[nCells].setSize(1);
+
+            cpList[nCells] = cList[cellI];
+
+            nTotalCells++;
+        }
+
+        // Are we looking at edges?
+        if (primitiveType == 1)
+        {
+            // Size the list
+            cpList[nCells].setSize(2);
+
+            const edge& tEdge = edges[cList[cellI]];
+
+            cpList[nCells][0] = tEdge[0];
+            cpList[nCells][1] = tEdge[1];
+
+            nTotalCells += 2;
+        }
+
+        // Are we looking at faces?
+        if (primitiveType == 2)
+        {
+            const face& tFace = faces[cList[cellI]];
+
+            if (tFace.size() == 3)
+            {
+                // Size the list
+                cpList[nCells].setSize(3);
+
+                // Write out in order
+                cpList[nCells][0] = tFace[0];
+                cpList[nCells][1] = tFace[1];
+                cpList[nCells][2] = tFace[2];
+
+                nTotalCells += 3;
+            }
+            else
+            if (tFace.size() == 4)
+            {
+                // Size the list
+                cpList[nCells].setSize(4);
+
+                // Write out in order
+                cpList[nCells][0] = tFace[0];
+                cpList[nCells][1] = tFace[1];
+                cpList[nCells][2] = tFace[2];
+                cpList[nCells][3] = tFace[3];
+
+                nTotalCells += 4;
+            }
+        }
+
+        // Are we looking at cells?
+        if (primitiveType == 3)
+        {
+            const cell& tCell = cells[cList[cellI]];
+
+            if (tCell.size() == 4)
+            {
+                // Point-ordering for tetrahedra
+                const face& baseFace = faces[tCell[0]];
+                const face& checkFace = faces[tCell[1]];
+
+                // Size the list
+                cpList[nCells].setSize(4);
+
+                // Get the fourth point
+                label apexPoint =
+                (
+                    meshOps::findIsolatedPoint(baseFace, checkFace)
+                );
+
+                // Something's wrong with connectivity.
+                if (apexPoint == -1)
+                {
+                    FatalErrorIn
+                    (
+                        "void writeVTK\n"
+                        "(\n"
+                        "    const polyMesh& mesh,\n"
+                        "    const word& name,\n"
+                        "    const labelList& cList,\n"
+                        "    const label primitiveType,\n"
+                        "    const UList<point>& points,\n"
+                        "    const UList<edge>& edges,\n"
+                        "    const UList<face>& faces,\n"
+                        "    const UList<cell>& cells,\n"
+                        "    const UList<label>& owner\n"
+                        ") const\n"
+                    )
+                        << "Cell: " << cList[cellI]
+                        << ":: " << tCell
+                        << " has inconsistent connectivity."
+                        << abort(FatalError);
+                }
+
+                // Write-out in order
+                label ownCell = owner[tCell[0]];
+
+                if (ownCell == cList[cellI])
+                {
+                    cpList[nCells][0] = baseFace[2];
+                    cpList[nCells][1] = baseFace[1];
+                    cpList[nCells][2] = baseFace[0];
+                    cpList[nCells][3] = apexPoint;
+                }
+                else
+                {
+                    cpList[nCells][0] = baseFace[0];
+                    cpList[nCells][1] = baseFace[1];
+                    cpList[nCells][2] = baseFace[2];
+                    cpList[nCells][3] = apexPoint;
+                }
+
+                nTotalCells += 4;
+            }
+            else
+            if (tCell.size() == 5)
+            {
+                // Point-ordering for wedge cells
+                label firstTriFace = -1;
+
+                // Size the list
+                cpList[nCells].setSize(6);
+
+                // Figure out triangle faces
+                forAll(tCell, faceI)
+                {
+                    const face& cFace = faces[tCell[faceI]];
+
+                    if (cFace.size() == 3)
+                    {
+                        if (firstTriFace == -1)
+                        {
+                            firstTriFace = tCell[faceI];
+
+                            // Right-handedness is assumed here.
+                            // Tri-faces are always on the boundary.
+                            cpList[nCells][0] = cFace[0];
+                            cpList[nCells][1] = cFace[1];
+                            cpList[nCells][2] = cFace[2];
+                        }
+                        else
+                        {
+                            // Detect the three other points.
+                            forAll(tCell, faceJ)
+                            {
+                                const face& nFace = faces[tCell[faceJ]];
+
+                                if (nFace.size() == 4)
+                                {
+                                    // Search for vertices on cFace
+                                    // in this face.
+                                    forAll(cFace, I)
+                                    {
+                                        label i = nFace.which(cFace[I]);
+
+                                        if (i != -1)
+                                        {
+                                            label p = nFace.prevLabel(i);
+                                            label n = nFace.nextLabel(i);
+
+                                            if (p == cpList[nCells][0])
+                                            {
+                                                cpList[nCells][3] = cFace[I];
+                                            }
+
+                                            if (p == cpList[nCells][1])
+                                            {
+                                                cpList[nCells][4] = cFace[I];
+                                            }
+
+                                            if (p == cpList[nCells][2])
+                                            {
+                                                cpList[nCells][5] = cFace[I];
+                                            }
+
+                                            if (n == cpList[nCells][0])
+                                            {
+                                                cpList[nCells][3] = cFace[I];
+                                            }
+
+                                            if (n == cpList[nCells][1])
+                                            {
+                                                cpList[nCells][4] = cFace[I];
+                                            }
+
+                                            if (n == cpList[nCells][2])
+                                            {
+                                                cpList[nCells][5] = cFace[I];
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            break;
+                        }
+                    }
+                }
+
+                nTotalCells += 6;
+            }
+        }
+
+        // Renumber to local ordering
+        forAll(cpList[nCells], pointI)
+        {
+            // Check if this point was added to the map
+            if (!pointMap.found(cpList[nCells][pointI]))
+            {
+                // Point was not found, so add it
+                points[nPoints] = meshPoints[cpList[nCells][pointI]];
+
+                // Update the map
+                pointMap.insert(cpList[nCells][pointI], nPoints);
+                reversePointMap.insert(nPoints, cpList[nCells][pointI]);
+
+                // Increment the number of points
+                nPoints++;
+            }
+
+            // Renumber it.
+            cpList[nCells][pointI] = pointMap[cpList[nCells][pointI]];
+        }
+
+        // Update the cell map.
+        reverseCellMap.insert(nCells, cList[cellI]);
+
+        nCells++;
+    }
+
+    // Finally write it out
+    meshOps::writeVTK
+    (
+        mesh,
+        name,
+        nPoints,
+        nCells,
+        nTotalCells,
+        points,
+        cpList,
+        primitiveType,
+        reversePointMap,
+        reverseCellMap
+    );
+}
+
+
 // Actual routine to write out the VTK file
 void writeVTK
 (
@@ -843,8 +1132,9 @@ convexSetAlgorithm::convexSetAlgorithm
 (
     const polyMesh& mesh,
     const UList<point>& newPoints,
-    const UList<cell>& newCells,
+    const UList<edge>& newEdges,
     const UList<face>& newFaces,
+    const UList<cell>& newCells,
     const UList<label>& newOwner,
     const UList<label>& newNeighbour,
     const List<objectMap>& pointsFromPoints,
@@ -855,8 +1145,9 @@ convexSetAlgorithm::convexSetAlgorithm
     nOldPoints_(mesh.nPoints()),
     mesh_(mesh),
     newPoints_(newPoints),
-    newCells_(newCells),
+    newEdges_(newEdges),
     newFaces_(newFaces),
+    newCells_(newCells),
     newOwner_(newOwner),
     newNeighbour_(newNeighbour),
     pointsFromPoints_(pointsFromPoints),
@@ -869,8 +1160,9 @@ faceSetAlgorithm::faceSetAlgorithm
 (
     const polyMesh& mesh,
     const UList<point>& newPoints,
-    const UList<cell>& newCells,
+    const UList<edge>& newEdges,
     const UList<face>& newFaces,
+    const UList<cell>& newCells,
     const UList<label>& newOwner,
     const UList<label>& newNeighbour,
     const List<objectMap>& pointsFromPoints,
@@ -881,8 +1173,9 @@ faceSetAlgorithm::faceSetAlgorithm
     (
         mesh,
         newPoints,
-        newCells,
+        newEdges,
         newFaces,
+        newCells,
         newOwner,
         newNeighbour,
         pointsFromPoints,
@@ -895,8 +1188,9 @@ cellSetAlgorithm::cellSetAlgorithm
 (
     const polyMesh& mesh,
     const UList<point>& newPoints,
-    const UList<cell>& newCells,
+    const UList<edge>& newEdges,
     const UList<face>& newFaces,
+    const UList<cell>& newCells,
     const UList<label>& newOwner,
     const UList<label>& newNeighbour,
     const List<objectMap>& pointsFromPoints,
@@ -907,8 +1201,9 @@ cellSetAlgorithm::cellSetAlgorithm
     (
         mesh,
         newPoints,
-        newCells,
+        newEdges,
         newFaces,
+        newCells,
         newOwner,
         newNeighbour,
         pointsFromPoints,
@@ -918,6 +1213,69 @@ cellSetAlgorithm::cellSetAlgorithm
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+// Output an entity as a VTK file
+void convexSetAlgorithm::writeVTK
+(
+    const word& name,
+    const label entity,
+    const label primitiveType,
+    const bool useOldConnectivity
+) const
+{
+    writeVTK
+    (
+        name,
+        labelList(1, entity),
+        primitiveType,
+        useOldConnectivity
+    );
+}
+
+
+// Output a list of entities as a VTK file
+void convexSetAlgorithm::writeVTK
+(
+    const word& name,
+    const labelList& cList,
+    const label primitiveType,
+    const bool useOldConnectivity
+) const
+{
+    if (useOldConnectivity)
+    {
+        const polyMesh& mesh = this->mesh_;
+
+        meshOps::writeVTK
+        (
+            mesh,
+            name,
+            cList,
+            primitiveType,
+            mesh.points(),
+            mesh.edges(),
+            mesh.faces(),
+            mesh.cells(),
+            mesh.faceOwner()
+        );
+    }
+    else
+    {
+        meshOps::writeVTK
+        (
+            this->mesh_,
+            name,
+            cList,
+            primitiveType,
+            newPoints_,
+            newEdges_,
+            newFaces_,
+            newCells_,
+            newOwner_
+        );
+    }
+}
+
 
 template <class T>
 bool faceSetAlgorithm::faceIntersection
@@ -3224,6 +3582,47 @@ void cellSetAlgorithm::convexSetVolume
         cCentre,
         cVolume
     );
+
+    // Check faces for consistency
+    label nValidFaces = 0;
+
+    forAll(testFaces, faceI)
+    {
+        if (testFaces[faceI].size())
+        {
+            nValidFaces++;
+        }
+    }
+
+    if (nValidFaces <= 3)
+    {
+        meshOps::checkPointNearness(cvxSet, T(1e-20));
+
+        // Write out cells
+        writeVTK("newCell_" + Foam::name(newCellIndex), newCellIndex, 3, false);
+        writeVTK("oldCell_" + Foam::name(oldCellIndex),oldCellIndex, 3, true);
+
+        meshOps::writeVTK
+        (
+            this->mesh_,
+            "tfSet_" + Foam::name(newCellIndex)
+          + '<' + Foam::name(oldCellIndex) + '>',
+            cvxSet.size(),
+            cvxSet.size(),
+            cvxSet.size(),
+            convert<scalar>(cvxSet)
+        );
+
+        FatalErrorIn("void cellSetAlgorithm::convexSetVolume() const")
+            << " Incorrect number of valid faces." << nl
+            << " newCellIndex: " << newCellIndex << nl
+            << " oldCellIndex: " << oldCellIndex << nl
+            << "   nFaces: " << nValidFaces << nl
+            << "   Volume: " << cVolume << nl
+            << "   testFaces: " << nl << testFaces << nl
+            << "   Point set: " << nl << cvxSet << nl
+            << abort(FatalError);
+    }
 
     if (output)
     {

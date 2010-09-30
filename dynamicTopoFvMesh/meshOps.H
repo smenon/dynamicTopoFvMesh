@@ -355,6 +355,21 @@ namespace meshOps
     // Wait for buffer transfer completion.
     void waitForBuffers();
 
+    // Select a list of elements from connectivity,
+    // and output to a VTK format
+    void writeVTK
+    (
+        const polyMesh& mesh,
+        const word& name,
+        const labelList& cList,
+        const label primitiveType,
+        const UList<point>& meshPoints,
+        const UList<edge>& edges,
+        const UList<face>& faces,
+        const UList<cell>& cells,
+        const UList<label>& owner
+    );
+
     // Actual routine to write out the VTK file
     void writeVTK
     (
@@ -394,8 +409,9 @@ protected:
         //- References to new-level connectivity
         //  [After topo-changes, at old point-positions]
         const UList<point>& newPoints_;
-        const UList<cell>& newCells_;
+        const UList<edge>& newEdges_;
         const UList<face>& newFaces_;
+        const UList<cell>& newCells_;
         const UList<label>& newOwner_;
         const UList<label>& newNeighbour_;
 
@@ -423,6 +439,26 @@ protected:
         mutable Field<mpVector> mpCentres_;
         mutable Field<mpScalar> mpWeights_;
 
+    //- Output connectivity to VTK
+
+        // Output an entity as a VTK file
+        void writeVTK
+        (
+            const word& name,
+            const label entity,
+            const label primitiveType = 3,
+            const bool useOldConnectivity = false
+        ) const;
+
+        // Output a list of entities as a VTK file
+        void writeVTK
+        (
+            const word& name,
+            const labelList& cList,
+            const label primitiveType = 3,
+            const bool useOldConnectivity = false
+        ) const;
+
 public:
 
     //- Constructor
@@ -432,8 +468,9 @@ public:
         (
             const polyMesh& mesh,
             const UList<point>& newPoints,
-            const UList<cell>& newCells,
+            const UList<edge>& newEdges,
             const UList<face>& newFaces,
+            const UList<cell>& newCells,
             const UList<label>& newOwner,
             const UList<label>& newNeighbour,
             const List<objectMap>& pointsFromPoints,
@@ -549,8 +586,9 @@ public:
         (
             const polyMesh& mesh,
             const UList<point>& newPoints,
-            const UList<cell>& newCells,
+            const UList<edge>& newEdges,
             const UList<face>& newFaces,
+            const UList<cell>& newCells,
             const UList<label>& newOwner,
             const UList<label>& newNeighbour,
             const List<objectMap>& pointsFromPoints,
@@ -634,8 +672,9 @@ public:
         (
             const polyMesh& mesh,
             const UList<point>& newPoints,
-            const UList<cell>& newCells,
+            const UList<edge>& newEdges,
             const UList<face>& newFaces,
+            const UList<cell>& newCells,
             const UList<label>& newOwner,
             const UList<label>& newNeighbour,
             const List<objectMap>& pointsFromPoints,

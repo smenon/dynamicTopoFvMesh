@@ -619,362 +619,55 @@ void dynamicTopoFvMesh::writeVTK
     const bool useOldPoints
 ) const
 {
-    label nTotalCells = 0;
-    label nPoints = 0, nCells = 0;
-
-    // Estimate a size for points and cellPoints
-    pointField points(6*cList.size());
-
-    // Connectivity lists
-    labelListList cpList(cList.size());
-
-    // Create a map for local points
-    Map<label> pointMap, reversePointMap, reverseCellMap;
-
-    forAll(cList, cellI)
+    if (useOldPoints)
     {
-        if (cList[cellI] < 0)
+        if (useOldConnectivity)
         {
-            continue;
+            // Use points from polyMesh
+            meshOps::writeVTK
+            (
+                (*this),
+                name,
+                cList,
+                primitiveType,
+                polyMesh::points(),
+                polyMesh::edges(),
+                polyMesh::faces(),
+                polyMesh::cells(),
+                polyMesh::faceOwner()
+            );
         }
-
-        // Are we looking at points?
-        if (primitiveType == 0)
+        else
         {
-            // Size the list
-            cpList[nCells].setSize(1);
-
-            cpList[nCells] = cList[cellI];
-
-            nTotalCells++;
+            meshOps::writeVTK
+            (
+                (*this),
+                name,
+                cList,
+                primitiveType,
+                oldPoints_,
+                edges_,
+                faces_,
+                cells_,
+                owner_
+            );
         }
-
-        // Are we looking at edges?
-        if (primitiveType == 1)
-        {
-            // Size the list
-            cpList[nCells].setSize(2);
-
-            // Can't use old connectivity for edges,
-            // because the convention differs from FOAM.
-            if (useOldConnectivity)
-            {
-                FatalErrorIn
-                (
-                    "void dynamicTopoFvMesh::writeVTK\n"
-                    "(\n"
-                    "    const word& name,\n"
-                    "    const labelList& cList,\n"
-                    "    const label primitiveType,\n"
-                    "    const bool useOldConnectivity,\n"
-                    "    const bool useOldPoints\n"
-                    ") const\n"
-                )
-                    << "Cannot use old connectivity for edges."
-                    << abort(FatalError);
-            }
-
-            const edge& tEdge = edges_[cList[cellI]];
-
-            cpList[nCells][0] = tEdge[0];
-            cpList[nCells][1] = tEdge[1];
-
-            nTotalCells += 2;
-        }
-
-        // Are we looking at faces?
-        if (primitiveType == 2)
-        {
-            face tFace;
-
-            if (useOldConnectivity)
-            {
-                tFace = polyMesh::faces()[cList[cellI]];
-            }
-            else
-            {
-                tFace = faces_[cList[cellI]];
-            }
-
-            if (tFace.size() == 3)
-            {
-                // Size the list
-                cpList[nCells].setSize(3);
-
-                // Write out in order
-                cpList[nCells][0] = tFace[0];
-                cpList[nCells][1] = tFace[1];
-                cpList[nCells][2] = tFace[2];
-
-                nTotalCells += 3;
-            }
-            else
-            if (tFace.size() == 4)
-            {
-                // Size the list
-                cpList[nCells].setSize(4);
-
-                // Write out in order
-                cpList[nCells][0] = tFace[0];
-                cpList[nCells][1] = tFace[1];
-                cpList[nCells][2] = tFace[2];
-                cpList[nCells][3] = tFace[3];
-
-                nTotalCells += 4;
-            }
-        }
-
-        // Are we looking at cells?
-        if (primitiveType == 3)
-        {
-            cell tCell;
-
-            if (useOldConnectivity)
-            {
-                tCell = polyMesh::cells()[cList[cellI]];
-            }
-            else
-            {
-                tCell = cells_[cList[cellI]];
-            }
-
-            if (tCell.size() == 4)
-            {
-                // Point-ordering for tetrahedra
-                face baseFace, checkFace;
-
-                if (useOldConnectivity)
-                {
-                    baseFace = polyMesh::faces()[tCell[0]];
-                    checkFace = polyMesh::faces()[tCell[1]];
-                }
-                else
-                {
-                    baseFace = faces_[tCell[0]];
-                    checkFace = faces_[tCell[1]];
-                }
-
-                // Size the list
-                cpList[nCells].setSize(4);
-
-                // Get the fourth point
-                label apexPoint =
-                (
-                    meshOps::findIsolatedPoint(baseFace, checkFace)
-                );
-
-                // Something's wrong with connectivity.
-                if (apexPoint == -1)
-                {
-                    FatalErrorIn
-                    (
-                        "void dynamicTopoFvMesh::writeVTK\n"
-                        "(\n"
-                        "    const word& name,\n"
-                        "    const labelList& cList,\n"
-                        "    const label primitiveType,\n"
-                        "    const bool useOldConnectivity,\n"
-                        "    const bool useOldPoints\n"
-                        ") const\n"
-                    )
-                        << "Cell: " << cList[cellI]
-                        << ":: " << tCell
-                        << " has inconsistent connectivity."
-                        << abort(FatalError);
-                }
-
-                // Write-out in order
-                label ownCell = -1;
-
-                if (useOldConnectivity)
-                {
-                    ownCell = polyMesh::faceOwner()[tCell[0]];
-                }
-                else
-                {
-                    ownCell = owner_[tCell[0]];
-                }
-
-                if (ownCell == cList[cellI])
-                {
-                    cpList[nCells][0] = baseFace[2];
-                    cpList[nCells][1] = baseFace[1];
-                    cpList[nCells][2] = baseFace[0];
-                    cpList[nCells][3] = apexPoint;
-                }
-                else
-                {
-                    cpList[nCells][0] = baseFace[0];
-                    cpList[nCells][1] = baseFace[1];
-                    cpList[nCells][2] = baseFace[2];
-                    cpList[nCells][3] = apexPoint;
-                }
-
-                nTotalCells += 4;
-            }
-            else
-            if (tCell.size() == 5)
-            {
-                // Point-ordering for wedge cells
-                face cFace, nFace;
-                label firstTriFace = -1;
-
-                // Size the list
-                cpList[nCells].setSize(6);
-
-                // Figure out triangle faces
-                forAll(tCell, faceI)
-                {
-                    if (useOldConnectivity)
-                    {
-                        cFace = polyMesh::faces()[tCell[faceI]];
-                    }
-                    else
-                    {
-                        cFace = faces_[tCell[faceI]];
-                    }
-
-                    if (cFace.size() == 3)
-                    {
-                        if (firstTriFace == -1)
-                        {
-                            firstTriFace = tCell[faceI];
-
-                            // Right-handedness is assumed here.
-                            // Tri-faces are always on the boundary.
-                            cpList[nCells][0] = cFace[0];
-                            cpList[nCells][1] = cFace[1];
-                            cpList[nCells][2] = cFace[2];
-                        }
-                        else
-                        {
-                            // Detect the three other points.
-                            forAll(tCell, faceJ)
-                            {
-                                if (useOldConnectivity)
-                                {
-                                    nFace = polyMesh::faces()[tCell[faceJ]];
-                                }
-                                else
-                                {
-                                    nFace = faces_[tCell[faceJ]];
-                                }
-
-                                if (nFace.size() == 4)
-                                {
-                                    // Search for vertices on cFace
-                                    // in this face.
-                                    forAll(cFace, I)
-                                    {
-                                        label i = nFace.which(cFace[I]);
-
-                                        if (i != -1)
-                                        {
-                                            label p = nFace.prevLabel(i);
-                                            label n = nFace.nextLabel(i);
-
-                                            if (p == cpList[nCells][0])
-                                            {
-                                                cpList[nCells][3] = cFace[I];
-                                            }
-
-                                            if (p == cpList[nCells][1])
-                                            {
-                                                cpList[nCells][4] = cFace[I];
-                                            }
-
-                                            if (p == cpList[nCells][2])
-                                            {
-                                                cpList[nCells][5] = cFace[I];
-                                            }
-
-                                            if (n == cpList[nCells][0])
-                                            {
-                                                cpList[nCells][3] = cFace[I];
-                                            }
-
-                                            if (n == cpList[nCells][1])
-                                            {
-                                                cpList[nCells][4] = cFace[I];
-                                            }
-
-                                            if (n == cpList[nCells][2])
-                                            {
-                                                cpList[nCells][5] = cFace[I];
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            break;
-                        }
-                    }
-                }
-
-                nTotalCells += 6;
-            }
-        }
-
-        // Renumber to local ordering
-        forAll(cpList[nCells], pointI)
-        {
-            // Check if this point was added to the map
-            if (!pointMap.found(cpList[nCells][pointI]))
-            {
-                // Point was not found, so add it
-                if (useOldPoints)
-                {
-                    if (useOldConnectivity)
-                    {
-                        // Use points from polyMesh
-                        points[nPoints] =
-                        (
-                            polyMesh::points()[cpList[nCells][pointI]]
-                        );
-                    }
-                    else
-                    {
-                        points[nPoints] = oldPoints_[cpList[nCells][pointI]];
-                    }
-                }
-                else
-                {
-                    points[nPoints] = points_[cpList[nCells][pointI]];
-                }
-
-                // Update the map
-                pointMap.insert(cpList[nCells][pointI], nPoints);
-                reversePointMap.insert(nPoints, cpList[nCells][pointI]);
-
-                // Increment the number of points
-                nPoints++;
-            }
-
-            // Renumber it.
-            cpList[nCells][pointI] = pointMap[cpList[nCells][pointI]];
-        }
-
-        // Update the cell map.
-        reverseCellMap.insert(nCells, cList[cellI]);
-
-        nCells++;
     }
-
-    // Finally write it out
-    meshOps::writeVTK
-    (
-        *this,
-        name,
-        nPoints,
-        nCells,
-        nTotalCells,
-        points,
-        cpList,
-        primitiveType,
-        reversePointMap,
-        reverseCellMap
-    );
+    else
+    {
+        meshOps::writeVTK
+        (
+            (*this),
+            name,
+            cList,
+            primitiveType,
+            points_,
+            edges_,
+            faces_,
+            cells_,
+            owner_
+        );
+    }
 }
 
 

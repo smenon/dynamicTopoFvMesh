@@ -64,8 +64,9 @@ void dynamicTopoFvMesh::computeMapping
     (
         (*this),
         oldPoints_,
-        cells_,
+        edges_,
         faces_,
+        cells_,
         owner_,
         neighbour_,
         pointsFromPoints_,
@@ -110,8 +111,9 @@ void dynamicTopoFvMesh::computeMapping
     (
         (*this),
         oldPoints_,
-        cells_,
+        edges_,
         faces_,
+        cells_,
         owner_,
         neighbour_,
         pointsFromPoints_,
