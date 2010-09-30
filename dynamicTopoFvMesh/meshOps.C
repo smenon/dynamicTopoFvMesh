@@ -861,11 +861,7 @@ convexSetAlgorithm::convexSetAlgorithm
     newNeighbour_(newNeighbour),
     pointsFromPoints_(pointsFromPoints),
     modPoints_(modPoints),
-    highPrecision_(false),
-    refNorm_(vector::zero),
-    normFactor_(0.0),
-    mpRefNorm_(mpVector::zero),
-    mpNormFactor_(0.0)
+    highPrecision_(false)
 {}
 
 
@@ -1138,6 +1134,46 @@ bool faceSetAlgorithm::faceIntersection
             continue;
         }
 
+        // Check if this point was modified during a collapse.
+        // We might be able to avoid a calculation if it is.
+        if (modPoints.found(newPoint))
+        {
+            // Fetch the two points that it originated from
+            const labelList& mP = modPoints[newPoint];
+
+            bool foundPoint = false;
+
+            forAll(oldFace, pointJ)
+            {
+                const edge edgeToCheck = oldFace.faceEdge(pointJ);
+
+                if (edgeToCheck == edge(mP[0], mP[1]))
+                {
+                    commonPoints.insert
+                    (
+                        newPoint,
+                        labelList(edgeToCheck)
+                    );
+
+                    intersections.set
+                    (
+                        ++nInts,
+                        convert<T>(newPoints[newPoint])
+                    );
+
+                    foundPoint = true;
+                    pointIntersections = true;
+
+                    break;
+                }
+            }
+
+            if (foundPoint)
+            {
+                continue;
+            }
+        }
+
         const Vector<T> checkPoint = convert<T>(newPoints[newPoint]);
 
         forAll(oldFace, pointJ)
@@ -1153,16 +1189,6 @@ bool faceSetAlgorithm::faceIntersection
                     (
                         projections[pointJ],
                         projections[nextJ]
-                    ),
-                    checkPoint,
-                    matchTol
-                )
-             || meshOps::pointSegmentIntersection
-                (
-                    line<Vector<T>, const Vector<T>&>
-                    (
-                        convert<T>(oldPoints[oldEdge.start()]),
-                        convert<T>(oldPoints[oldEdge.end()])
                     ),
                     checkPoint,
                     matchTol
@@ -1209,6 +1235,29 @@ bool faceSetAlgorithm::faceIntersection
                 if (commonPoints[oldPoint].empty())
                 {
                     continue;
+                }
+                else
+                {
+                    // Fetch master objects
+                    const labelList& mObj = commonPoints[oldPoint];
+
+                    // Check if the new face
+                    // contains all master points
+                    bool allMaster = true;
+
+                    forAll(mObj, pointJ)
+                    {
+                        if (findIndex(newFace, mObj[pointJ]) == -1)
+                        {
+                            allMaster = false;
+                            break;
+                        }
+                    }
+
+                    if (allMaster)
+                    {
+                        continue;
+                    }
                 }
             }
 
@@ -1748,6 +1797,7 @@ bool cellSetAlgorithm::cellIntersection
     label nInts = 0;
     Map<Vector<T> > intersections;
     Vector<T> intPoint = Vector<T>::zero;
+    Vector<T> checkPoint = Vector<T>::zero;
 
     // Topologically check for common points
     Map<labelList> commonPoints;
@@ -1865,7 +1915,7 @@ bool cellSetAlgorithm::cellIntersection
             continue;
         }
 
-        const Vector<T> checkPoint = convert<T>(oldPoints[oldPoint]);
+        checkPoint = convert<T>(oldPoints[oldPoint]);
 
         forAll(newCellEdges, edgeI)
         {
@@ -1947,7 +1997,7 @@ bool cellSetAlgorithm::cellIntersection
             }
         }
 
-        const Vector<T> checkPoint = convert<T>(newPoints[newPoint]);
+        checkPoint = convert<T>(newPoints[newPoint]);
 
         forAll(oldCellEdges, edgeI)
         {
@@ -2016,7 +2066,7 @@ bool cellSetAlgorithm::cellIntersection
                 continue;
             }
 
-            Vector<T> checkPoint = (0.5 * (oldS + oldE));
+            checkPoint = (0.5 * (oldS + oldE));
 
             if
             (
@@ -2061,7 +2111,7 @@ bool cellSetAlgorithm::cellIntersection
                 continue;
             }
 
-            Vector<T> checkPoint = (0.5 * (newS + newE));
+            checkPoint = (0.5 * (newS + newE));
 
             if
             (
@@ -2102,7 +2152,7 @@ bool cellSetAlgorithm::cellIntersection
                 }
             }
 
-            const Vector<T> checkPoint = convert<T>(oldPoints[oldPoint]);
+            checkPoint = convert<T>(oldPoints[oldPoint]);
 
             if
             (
@@ -2133,7 +2183,7 @@ bool cellSetAlgorithm::cellIntersection
                 continue;
             }
 
-            const Vector<T> checkPoint = convert<T>(newPoints[newPoint]);
+            checkPoint = convert<T>(newPoints[newPoint]);
 
             if
             (
@@ -2660,7 +2710,14 @@ bool cellSetAlgorithm::cellIntersection
                     // Check for point-on-edge cases
                     bool foundPointOnEdge = false;
 
-                    if (pIter().size())
+                    if
+                    (
+                        pIter().size() &&
+                        (
+                            (edgeToCheck[0] == pIter.key()) ||
+                            (edgeToCheck[1] == pIter.key())
+                        )
+                    )
                     {
                         bool allMaster = true;
 

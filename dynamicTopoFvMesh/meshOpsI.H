@@ -59,7 +59,10 @@ inline void faceCentre
     // Reset to zero
     centre = Vector<T2>::zero;
 
-    Vector<T2> a(Vector<T2>::zero), b(Vector<T2>::zero), c(Vector<T2>::zero);
+    const T2 three(3.0);
+    Vector<T2> a(Vector<T2>::zero);
+    Vector<T2> b(Vector<T2>::zero);
+    Vector<T2> c(Vector<T2>::zero);
 
     // If the face is a triangle, do a direct calculation
     // to avoid round-off error-related problems
@@ -69,7 +72,7 @@ inline void faceCentre
         b = convert<T2>(points[faceToCheck[1]]);
         c = convert<T2>(points[faceToCheck[2]]);
 
-        centre = ((pTraits<T2>::one / T2(3.0)) * (a + b + c));
+        centre = ((pTraits<T2>::one / three) * (a + b + c));
 
         return;
     }
@@ -108,7 +111,7 @@ inline void faceCentre
 
     if (sumA > VSMALL)
     {
-        centre = (sumAc/(T2(3.0) * sumA));
+        centre = (sumAc/(three * sumA));
     }
     else
     {
@@ -129,7 +132,10 @@ inline void faceNormal
     // Reset to zero
     normal = Vector<T2>::zero;
 
-    Vector<T2> a(Vector<T2>::zero), b(Vector<T2>::zero), c(Vector<T2>::zero);
+    const T2 pointFive(0.5);
+    Vector<T2> a(Vector<T2>::zero);
+    Vector<T2> b(Vector<T2>::zero);
+    Vector<T2> c(Vector<T2>::zero);
 
     // If the face is a triangle, do a direct calculation
     // to avoid round-off error-related problems
@@ -139,7 +145,7 @@ inline void faceNormal
         b = convert<T2>(points[faceToCheck[1]]);
         c = convert<T2>(points[faceToCheck[2]]);
 
-        normal = (T2(0.5) * ((b - a)^(c - a)));
+        normal = (pointFive * ((b - a)^(c - a)));
 
         return;
     }
@@ -161,7 +167,7 @@ inline void faceNormal
         a = convert<T2>(points[faceToCheck[pI]]);
         b = convert<T2>(points[faceToCheck[(pI + 1) % nPoints]]);
 
-        normal += (T2(0.5) * ((b - a)^(c - a)));
+        normal += (pointFive * ((b - a)^(c - a)));
     }
 }
 
@@ -413,9 +419,10 @@ inline void cellCentreAndVolume
     Vector<T2> fCentre(Vector<T2>::zero);
     Vector<T2> fArea(Vector<T2>::zero);
 
-    const T2 oneThird = (pTraits<T2>::one / T2(3.0));
-    const T2 oneFourth = (pTraits<T2>::one / T2(4.0));
-    const T2 threeFourths = (T2(3.0) / T2(4.0));
+    const T2 three(3.0), four(4.0);
+    const T2 oneThird = (pTraits<T2>::one / three);
+    const T2 oneFourth = (pTraits<T2>::one / four);
+    const T2 threeFourths = (three / four);
 
     forAll(cellToCheck, faceI)
     {
@@ -666,20 +673,22 @@ inline bool pointInTriFace
     const Vector<T>& b = faceToCheck.b();
     const Vector<T>& c = faceToCheck.c();
 
+    const T pointFive(0.5);
+
     // Compute the normal
-    Vector<T> nf = (T(0.5) * ((b - a)^(c - a)));
+    Vector<T> nf = (pointFive * ((b - a)^(c - a)));
 
-    if ( ((T(0.5) * ((b - a)^(cP - a))) & nf) < pTraits<T>::zero)
+    if ( ((pointFive * ((b - a)^(cP - a))) & nf) < pTraits<T>::zero)
     {
         return false;
     }
 
-    if ( ((T(0.5) * ((c - b)^(cP - b))) & nf) < pTraits<T>::zero)
+    if ( ((pointFive * ((c - b)^(cP - b))) & nf) < pTraits<T>::zero)
     {
         return false;
     }
 
-    if ( ((T(0.5) * ((a - c)^(cP - c))) & nf) < pTraits<T>::zero)
+    if ( ((pointFive * ((a - c)^(cP - c))) & nf) < pTraits<T>::zero)
     {
         return false;
     }
@@ -747,6 +756,8 @@ inline void insertPointLabels
     // Need to configure a new face.
     face newFace(modFace);
 
+    const T pointFive(0.5);
+
     forAllConstIter(labelHashSet, pLabels, pIter)
     {
         forAll(newFace, pI)
@@ -758,7 +769,7 @@ inline void insertPointLabels
             const Vector<T>& c = points[newFace[nI]];
 
             // Compute the normal.
-            Vector<T> newNorm = (T(0.5) * ((b - a)^(c - a)));
+            Vector<T> newNorm = (pointFive * ((b - a)^(c - a)));
 
             if ((refNorm & newNorm) > pTraits<T>::zero)
             {
@@ -994,14 +1005,14 @@ inline bool convexSetAlgorithm::consistent(const scalar tolerance) const
 
     if (mpWeights_.size())
     {
-        mpScalar sumNormWeights(0.0);
+        scalar sumNormWeights = 0.0;
 
         forAll(mpWeights_, indexI)
         {
             sumNormWeights += (mpWeights_[indexI]/mpNormFactor_);
         }
 
-        mpScalar normError = mag(pTraits<mpScalar>::one - sumNormWeights);
+        scalar normError = mag(1.0 - sumNormWeights);
 
         if (normError < tolerance)
         {

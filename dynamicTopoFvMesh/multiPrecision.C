@@ -70,10 +70,26 @@ template<>
 const char* mpVector::componentNames[] = {"x", "y", "z"};
 
 template<>
-const mpVector mpVector::zero("0.0", "0.0", "0.0");
+const mpVector mpVector::zero =
+(
+   mpVector
+   (
+       pTraits<mpScalar>::zero,
+       pTraits<mpScalar>::zero,
+       pTraits<mpScalar>::zero
+   )
+);
 
 template<>
-const mpVector mpVector::one("1.0", "1.0", "1.0");
+const mpVector mpVector::one =
+(
+   mpVector
+   (
+       pTraits<mpScalar>::one,
+       pTraits<mpScalar>::one,
+       pTraits<mpScalar>::one
+   )
+);
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

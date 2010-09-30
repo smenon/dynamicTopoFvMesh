@@ -54,10 +54,10 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar()
     mpfr_init2(v_, P);
 
     // Set to zero and rounding mode
-    mpfr_set_d(v_, 0.0, R);
+    mpfr_set_zero(v_, 0);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 }
 
@@ -76,7 +76,7 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar
     mpfr_set(v_, v.v_, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 }
 
@@ -91,11 +91,16 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar
     // Initialize with precision
     mpfr_init2(v_, P);
 
-    // Set to value and rounding mode
-    mpfr_set_d(v_, v, R);
+    // Convert to a string intermediate
+    std::ostringstream oss;
+    oss.precision(16);
+    oss << v;
+
+    // Set string representation
+    mpfr_set_str(v_, oss.str().c_str(), 10, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 }
 
@@ -115,7 +120,7 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar
     mpfr_set_str(v_, s, base, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 }
 
@@ -129,7 +134,7 @@ inline multiPrecisionScalar<P,R>::multiPrecisionScalar(Istream& is)
     is >> *this;
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 }
 
@@ -142,7 +147,7 @@ inline multiPrecisionScalar<P,R>::~multiPrecisionScalar()
     mpfr_clear(v_);
 
 #   ifdef FULLDEBUG
-    dv_ = 0.0;
+    dv_ = word("0.0");
 #   endif
 }
 
@@ -157,7 +162,7 @@ inline const multiPrecisionScalar<P,R> multiPrecisionScalar<P,R>::mag() const
     mpfr_abs(result.v_, result.v_, R);
 
 #   ifdef FULLDEBUG
-    result.dv_ = result.operator scalar();
+    result.dv_ = result.convertToWord(16);
 #   endif
 
     return result;
@@ -172,7 +177,7 @@ inline const multiPrecisionScalar<P,R> multiPrecisionScalar<P,R>::sqr() const
     mpfr_sqr(result.v_, result.v_, R);
 
 #   ifdef FULLDEBUG
-    result.dv_ = result.operator scalar();
+    result.dv_ = result.convertToWord(16);
 #   endif
 
     return result;
@@ -187,7 +192,7 @@ inline const multiPrecisionScalar<P,R> multiPrecisionScalar<P,R>::sqrt() const
     mpfr_sqrt(result.v_, result.v_, R);
 
 #   ifdef FULLDEBUG
-    result.dv_ = result.operator scalar();
+    result.dv_ = result.convertToWord(16);
 #   endif
 
     return result;
@@ -202,10 +207,16 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator=
     const scalar& v
 )
 {
-    mpfr_set_d(v_, v, R);
+    // Convert to a string intermediate
+    std::ostringstream oss;
+    oss.precision(16);
+    oss << v;
+
+    // Set string representation
+    mpfr_set_str(v_, oss.str().c_str(), 10, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 
     return *this;
@@ -232,7 +243,7 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator=
     mpfr_set(v_, v.v_, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 
     return *this;
@@ -248,7 +259,7 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator+=
     mpfr_add(v_, v_, v.v_, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 
     return *this;
@@ -264,7 +275,7 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator-=
     mpfr_sub(v_, v_, v.v_, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 
     return *this;
@@ -280,7 +291,7 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator*=
     mpfr_mul(v_, v_, v.v_, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 
     return *this;
@@ -296,7 +307,7 @@ inline multiPrecisionScalar<P,R>& multiPrecisionScalar<P,R>::operator/=
     mpfr_div(v_, v_, v.v_, R);
 
 #   ifdef FULLDEBUG
-    dv_ = this->operator scalar();
+    dv_ = this->convertToWord(16);
 #   endif
 
     return *this;
@@ -351,13 +362,202 @@ inline multiPrecisionScalar<P,R>::operator scalar() const
 
 
 template<unsigned P, mpfr_rnd_t R>
+inline const word multiPrecisionScalar<P,R>::convertToWord
+(
+    const size_t n,
+    const int base
+) const
+{
+    string out;
+    size_t slen, nslen;
+    char *s = NULL, *ns = NULL;
+
+//    // Check for infinity
+//    if (mpfr_inf_p(v_) != 0)
+//    {
+//        if (mpfr_sgn(v_) > 0)
+//        {
+//            return "+@Inf@";
+//        }
+//        else
+//        {
+//            return "-@Inf@";
+//        }
+//    }
+//
+//    // Check for zero
+//    if (mpfr_zero_p(v_) != 0)
+//    {
+//        return "0";
+//    }
+//
+//    // Check for NaN
+//    if (mpfr_nan_p(v_) != 0)
+//    {
+//        return "@NaN@";
+//    }
+
+    // Fetch the string
+    mp_exp_t exp;
+
+    s = mpfr_get_str(NULL, &exp, base, 0, v_, R);
+    ns = mpfr_get_str(NULL, &exp, base, n, v_, R);
+
+    if (s != NULL)
+    {
+        slen = strlen(s);
+        nslen = strlen(ns);
+
+        if (nslen <= slen)
+        {
+            mpfr_free_str(s);
+
+            s = ns;
+            slen = nslen;
+        }
+        else
+        {
+            mpfr_free_str(ns);
+        }
+
+        if (exp > 0 && static_cast<size_t>(exp) < slen)
+        {
+            if (s[0] == '-')
+            {
+                // Remove zeros starting from right end
+                char* ptr = s + slen - 1;
+
+                while (*ptr == '0' && ptr > (s + exp))
+                {
+                    ptr--;
+                }
+
+                if (ptr == (s + exp))
+                {
+                    out = string(s, exp + 1);
+                }
+                else
+                {
+                    out =
+                    (
+                        string(s, exp + 1)
+                      + '.'
+                      + string(s + exp + 1, ptr - (s + exp + 1) + 1)
+                    );
+                }
+            }
+            else
+            {
+                // Remove zeros starting from right end
+                char* ptr = s + slen - 1;
+
+                while (*ptr == '0' && ptr > (s + exp - 1))
+                {
+                    ptr--;
+                }
+
+                if (ptr == (s + exp - 1))
+                {
+                    out = string(s, exp);
+                }
+                else
+                {
+                    out =
+                    (
+                        string(s, exp)
+                      + '.'
+                      + string(s + exp, ptr - (s + exp) + 1)
+                    );
+                }
+            }
+        }
+        else
+        {
+            if (s[0] == '-')
+            {
+                // Remove zeros starting from right end
+                char* ptr = s + slen - 1;
+
+                while (*ptr == '0' && ptr > (s + 1))
+                {
+                    ptr--;
+                }
+
+                if (ptr == (s + 1))
+                {
+                    out = string(s, 2);
+                }
+                else
+                {
+                    out =
+                    (
+                        string(s, 2)
+                      + '.'
+                      + string(s + 2, ptr - (s + 2) + 1)
+                    );
+                }
+            }
+            else
+            {
+                // Remove zeros starting from right end
+                char* ptr = s + slen - 1;
+
+                while (*ptr=='0' && ptr>s)
+                {
+                    ptr--;
+                }
+
+                if (ptr == s)
+                {
+                    out = string(s,1);
+                }
+                else
+                {
+                    out =
+                    (
+                        string(s, 1)
+                      + '.'
+                      + string(s + 1, ptr - (s + 1) + 1)
+                    );
+                }
+            }
+
+            // Make final string
+            if (--exp)
+            {
+                std::ostringstream oss;
+                oss << exp << std::dec;
+
+                if (exp > 0)
+                {
+                    out += "e+" + oss.str();
+                }
+                else
+                {
+                    out += "e" + oss.str();
+                }
+            }
+        }
+
+        mpfr_free_str(s);
+
+        return word(out);
+    }
+    else
+    {
+        return "Conversion error!";
+    }
+}
+
+
+template<unsigned P, mpfr_rnd_t R>
 Ostream& operator<<
 (
     Ostream& os,
     const multiPrecisionScalar<P,R>& v
 )
 {
-    os << v.operator scalar();
+    os << v.convertToWord(os.precision());
 
     os.check
     (

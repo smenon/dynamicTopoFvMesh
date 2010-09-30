@@ -520,7 +520,7 @@ bool dynamicTopoFvMesh::computeWeights
     } while (changed);
 
     // Test weights for consistency
-    bool consistent = algorithm.consistent(1e-15);
+    bool consistent = algorithm.consistent(1e-13);
     bool normByWeights = false;
 
     if (!consistent)
@@ -623,6 +623,9 @@ bool dynamicTopoFvMesh::computeWeights
 
                 label pT = algorithm.dimension();
 
+                // Populate lists
+                algorithm.populateLists(parents, centres, weights);
+
                 writeVTK("n_" + Foam::name(index), index, pT, false, true);
                 writeVTK("m_" + Foam::name(index), parents, pT, true, true);
                 writeVTK("u_" + Foam::name(index), uList, pT, true, true);
@@ -644,10 +647,11 @@ bool dynamicTopoFvMesh::computeWeights
             normByWeights = true;
         }
         else
-        if (precisionAttempts == 0)
+        if (precisionAttempts < 2)
         {
             // Could be a precision problem.
             // Recurse until consistency is obtained.
+            matchTol *= 0.1;
 
             // Toggle higher precision
             algorithm.setHighPrecision();

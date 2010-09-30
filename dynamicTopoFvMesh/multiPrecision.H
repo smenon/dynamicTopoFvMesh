@@ -44,6 +44,7 @@ SourceFiles
 #define multiPrecision_H
 
 #include <mpfr.h>
+#include "word.H"
 #include "fieldTypes.H"
 
 namespace Foam
@@ -69,9 +70,8 @@ class multiPrecisionScalar
     mpfr_t v_;
 
 #   ifdef FULLDEBUG
-    //- Convert to conventional scalar,
-    //  useful for debugging
-    scalar dv_;
+    //- Convert to word, useful for debugging
+    word dv_;
 #   endif
 
 public:
@@ -142,6 +142,13 @@ public:
         inline bool operator<(const multiPrecisionScalar<P,R>& v);
         inline bool operator>(const scalar& v);
         inline bool operator<(const scalar& v);
+
+        // Convert to string
+        inline const word convertToWord
+        (
+            const size_t n,
+            const int base = 10
+        ) const;
 
         // Type-casts
         inline operator scalar() const;
