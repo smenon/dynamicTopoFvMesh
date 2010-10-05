@@ -167,7 +167,7 @@ public:
 
     // Destructor
 
-        ~lengthScaleEstimator();
+        virtual ~lengthScaleEstimator();
 
     // Member Functions
 

@@ -8,4 +8,4 @@ patchCorrectedSnGrad/patchCorrectedSnGrads.C
 freeSurfaceDemandDrivenData.C
 freeSurface.C
 
-LIB = $(FOAM_USER_LIBBIN)/libfreeSurface
+LIB = $(FOAM_LIBBIN)/libfreeSurface

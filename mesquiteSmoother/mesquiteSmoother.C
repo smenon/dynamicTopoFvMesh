@@ -209,7 +209,7 @@ void mesquiteSmoother::readOptions()
         // Check if volume correction is enabled
         if (found("volumeCorrection"))
         {
-            volumeCorrection_ = lookup("volumeCorrection");
+            volumeCorrection_ = readBool(lookup("volumeCorrection"));
         }
 
         // Check if volume correction tolerance is specified
@@ -2462,6 +2462,8 @@ void mesquiteSmoother::correctInvalidCells()
         return;
     }
 
+#if USE_LBFGS
+
     Switch useBFGS(false);
 
     if (found("useBFGS"))
@@ -2703,6 +2705,8 @@ void mesquiteSmoother::correctInvalidCells()
             }
         }
     }
+
+#   endif
 
     bool valid = false;
     scalar lambda = 2.0, valFraction = 0.75;
@@ -3086,7 +3090,7 @@ bool mesquiteSmoother::checkValidity
     return foundInvalid;
 }
 
-
+#if USE_LBFGS
 // Static function for callback
 lbfgsfloatval_t mesquiteSmoother::_evaluate
 (
@@ -3165,7 +3169,7 @@ lbfgsfloatval_t mesquiteSmoother::evaluate
 
     return fx;
 }
-
+#endif
 
 // Write a particular point out for post-processing
 void mesquiteSmoother::writePoint

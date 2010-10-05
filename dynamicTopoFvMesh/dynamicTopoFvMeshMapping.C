@@ -41,7 +41,6 @@ Author
 #include "IOmanip.H"
 #include "triFace.H"
 #include "objectMap.H"
-#include "StaticHashTable.H"
 
 namespace Foam
 {
@@ -376,7 +375,7 @@ bool dynamicTopoFvMesh::computeWeights
     algorithm.computeNormFactor(index);
 
     // Maintain a check-list
-    StaticHashTable<empty, label, Hash<label> > checked, skipped;
+    labelHashSet checked, skipped;
 
     // Loop and add intersections until nothing changes
     do
@@ -439,14 +438,20 @@ bool dynamicTopoFvMesh::computeWeights
                 {
                     nIntersects++;
 
-                    checked.insert(checkEntity, empty());
+                    if (!checked.found(checkEntity))
+                    {
+                        checked.insert(checkEntity);
+                    }
 
                     changed = true;
                 }
                 else
                 {
                     // Add to the skipped list
-                    skipped.insert(checkEntity, empty());
+                    if (!skipped.found(checkEntity))
+                    {
+                        skipped.insert(checkEntity);
+                    }
                 }
             }
         }
@@ -454,11 +459,14 @@ bool dynamicTopoFvMesh::computeWeights
         if (nAttempts == 0 && !changed)
         {
             // Need to setup a rescue mechanism.
-            StaticHashTable<empty, label, Hash<label> > rescue;
+            labelHashSet rescue;
 
             forAll(mapCandidates, cI)
             {
-                rescue.insert(mapCandidates[cI] - offset, empty());
+                if (!rescue.found(mapCandidates[cI] - offset))
+                {
+                    rescue.insert(mapCandidates[cI] - offset);
+                }
             }
 
             for (label level = 0; level < 10; level++)
@@ -471,7 +479,10 @@ bool dynamicTopoFvMesh::computeWeights
 
                     forAll(ff, entityI)
                     {
-                        rescue.insert(ff[entityI], empty());
+                        if (!rescue.found(ff[entityI]))
+                        {
+                            rescue.insert(ff[entityI]);
+                        }
                     }
                 }
             }
@@ -497,7 +508,10 @@ bool dynamicTopoFvMesh::computeWeights
                 {
                     nIntersects++;
 
-                    checked.insert(checkEntity, empty());
+                    if (!checked.found(checkEntity))
+                    {
+                        checked.insert(checkEntity);
+                    }
 
                     changed = true;
                     break;

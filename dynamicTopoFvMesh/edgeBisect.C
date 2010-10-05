@@ -5838,7 +5838,10 @@ void dynamicTopoFvMesh::sliceMesh
 
                 forAll(thisFace, pointI)
                 {
-                    pPoints.set(thisFace[pointI], empty());
+                    if (!pPoints.found(thisFace[pointI]))
+                    {
+                        pPoints.insert(thisFace[pointI]);
+                    }
                 }
             }
 

@@ -902,7 +902,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             );
 
             // Add an entry for mapping
-            modifiedFaces.set(firstEdgeFaces[faceI], empty());
+            if (!modifiedFaces.found(firstEdgeFaces[faceI]))
+            {
+                modifiedFaces.insert(firstEdgeFaces[faceI]);
+            }
 
             // Determine the quad-face in cell[0] & cell[1]
             // that belongs to firstEdgeFaces
@@ -1285,7 +1288,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             );
 
             // Add an entry for mapping
-            modifiedFaces.set(secondEdgeFaces[faceI], empty());
+            if (!modifiedFaces.found(secondEdgeFaces[faceI]))
+            {
+                modifiedFaces.insert(secondEdgeFaces[faceI]);
+            }
 
             // Determine the quad-face(s) in cell[0] & cell[1]
             // that belongs to secondEdgeFaces
@@ -1945,7 +1951,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         );
 
         // Add an entry for mapping
-        modifiedFaces.set(newFaceIndex, empty());
+        if (!modifiedFaces.found(newFaceIndex))
+        {
+            modifiedFaces.insert(newFaceIndex);
+        }
 
         // Add a faceEdges entry as well.
         // Edges don't have to change, since they're
@@ -2039,7 +2048,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             );
 
             // Add an entry for mapping
-            modifiedFaces.set(newFaceIndex, empty());
+            if (!modifiedFaces.found(newFaceIndex))
+            {
+                modifiedFaces.insert(newFaceIndex);
+            }
 
             // Add a faceEdges entry as well.
             // Edges don't have to change, since they're
@@ -3092,7 +3104,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 faces_[rmvEdgeFaces[faceI]][replaceIndex] = replacePoint;
 
                 // Add an entry for mapping
-                modifiedFaces.set(rmvEdgeFaces[faceI], empty());
+                if (!modifiedFaces.found(rmvEdgeFaces[faceI]))
+                {
+                    modifiedFaces.insert(rmvEdgeFaces[faceI]);
+                }
             }
 
             // Hull faces should be removed for the replacement edge
@@ -3199,7 +3214,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     );
 
                     // Set this face aside for mapping
-                    modifiedFaces.set(newFaceIndex, empty());
+                    if (!modifiedFaces.found(newFaceIndex))
+                    {
+                        modifiedFaces.insert(newFaceIndex);
+                    }
 
                     // Ensure that all edges of this face are
                     // on the boundary.
@@ -3378,7 +3396,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 );
 
                 // Set this face aside for mapping
-                modifiedFaces.set(newFaceIndex, empty());
+                if (!modifiedFaces.found(newFaceIndex))
+                {
+                    modifiedFaces.insert(newFaceIndex);
+                }
 
                 // Ensure that all edges of this face are
                 // on the boundary.
@@ -3633,7 +3654,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     faces_[eFaces[faceI]][replaceIndex] = replacePoint;
 
                     // Set this face aside for mapping
-                    modifiedFaces.set(eFaces[faceI], empty());
+                    if (!modifiedFaces.found(eFaces[faceI]))
+                    {
+                        modifiedFaces.insert(eFaces[faceI]);
+                    }
 
                     // Look for an edge on this face that doesn't
                     // contain collapsePoint or replacePoint.
@@ -4014,7 +4038,10 @@ const changeMap dynamicTopoFvMesh::removeCells
 
             if (nei == -1)
             {
-                facesToRemove.set(cellToCheck[faceI], empty());
+                if (!facesToRemove.found(cellToCheck[faceI]))
+                {
+                    facesToRemove.insert(cellToCheck[faceI]);
+                }
             }
             else
             if
@@ -4023,7 +4050,10 @@ const changeMap dynamicTopoFvMesh::removeCells
                 (findIndex(cList, nei) != -1)
             )
             {
-                facesToRemove.set(cellToCheck[faceI], empty());
+                if (!facesToRemove.found(cellToCheck[faceI]))
+                {
+                    facesToRemove.insert(cellToCheck[faceI]);
+                }
             }
             else
             {
@@ -4088,7 +4118,10 @@ const changeMap dynamicTopoFvMesh::removeCells
 
         if (allRemove)
         {
-            edgesToRemove.set(eIter.key(), empty());
+            if (!edgesToRemove.found(eIter.key()))
+            {
+                edgesToRemove.insert(eIter.key());
+            }
         }
     }
 
@@ -4122,7 +4155,10 @@ const changeMap dynamicTopoFvMesh::removeCells
 
                 if (allRemove)
                 {
-                    pointsToRemove.set(edgeToCheck[pointI], empty());
+                    if (!pointsToRemove.found(edgeToCheck[pointI]))
+                    {
+                        pointsToRemove.insert(edgeToCheck[pointI]);
+                    }
                 }
             }
         }

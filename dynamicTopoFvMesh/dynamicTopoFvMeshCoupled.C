@@ -826,7 +826,10 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                     if (commonCells.found(own))
                     {
                         // Add locally common cells at the end.
-                        localCommonCells.set(own, empty());
+                        if (!localCommonCells.found(own))
+                        {
+                            localCommonCells.insert(own);
+                        }
                     }
                     else
                     {
@@ -844,7 +847,10 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                     if (commonCells.found(nei))
                     {
                         // Add locally common cells at the end.
-                        localCommonCells.set(nei, empty());
+                        if (!localCommonCells.found(nei))
+                        {
+                            localCommonCells.insert(nei);
+                        }
                     }
                     else
                     {
@@ -2167,7 +2173,10 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
             if (twoDMesh_)
             {
                 // Avoid this face during regular modification.
-                entities.set(faceI, empty());
+                if (!entities.found(faceI))
+                {
+                    entities.insert(faceI);
+                }
             }
             else
             {
@@ -2176,7 +2185,10 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
                 forAll(fEdges, edgeI)
                 {
                     // Avoid this edge during regular modification.
-                    entities.set(fEdges[edgeI], empty());
+                    if (!entities.found(fEdges[edgeI]))
+                    {
+                        entities.insert(fEdges[edgeI]);
+                    }
                 }
             }
         }

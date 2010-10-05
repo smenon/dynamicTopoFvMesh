@@ -1459,7 +1459,7 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
 
     if (meshDict.found("dumpLengthScale") || mandatory_)
     {
-        dumpLengthScale = meshDict.lookup("dumpLengthScale");
+        dumpLengthScale = readBool(meshDict.lookup("dumpLengthScale"));
     }
 
     autoPtr<volScalarField> lsfPtr(NULL);

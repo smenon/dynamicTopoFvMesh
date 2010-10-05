@@ -45,7 +45,12 @@ SourceFiles
 #include "pointIOField.H"
 #include "labelHashSet.H"
 
+// Use the MPFR library, if necessary
+#define USE_LBFGS 0
+
+#if USE_LBFGS
 #include "lbfgs.h"
+#endif
 
 // Have gcc ignore certain warnings while including mesquite headers
 #pragma GCC diagnostic ignored "-Wold-style-cast"
@@ -270,6 +275,8 @@ protected:
     // Prepare point-normals with updated point positions
     void preparePointNormals();
 
+#   if USE_LBFGS
+
     // Class used in callback
     class optInfo
     {
@@ -341,6 +348,8 @@ protected:
         const lbfgsfloatval_t *x,
         lbfgsfloatval_t *g
     ) const;
+
+#   endif
 
     // Utility method to check validity of cells connected to a point.
     bool checkValidity

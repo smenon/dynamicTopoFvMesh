@@ -44,6 +44,35 @@ Author
 namespace Foam
 {
 
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+
+template<class T1, class T2>
+inline const Vector<T1> convert(const Vector<T2>& v)
+{
+    Vector<T1> tv;
+
+    tv.x() = v.x();
+    tv.y() = v.y();
+    tv.z() = v.z();
+
+    return tv;
+}
+
+
+template<class T1, class T2>
+inline const Field<Vector<T1> > convert(const Field<Vector<T2> >& f)
+{
+    Field<Vector<T1> > tf(f.size());
+
+    forAll(tf, indexI)
+    {
+        tf[indexI] = convert<T1>(f[indexI]);
+    }
+
+    return tf;
+}
+
+
 namespace meshOps
 {
 
@@ -418,6 +447,7 @@ inline void cellCentreAndVolume
     Vector<T2> cEst(Vector<T2>::zero);
     Vector<T2> fCentre(Vector<T2>::zero);
     Vector<T2> fArea(Vector<T2>::zero);
+    Vector<T2> sumClosed(Vector<T2>::zero), sumMagClosed(Vector<T2>::zero);
 
     const T2 three(3.0), four(4.0);
     const T2 oneThird = (pTraits<T2>::one / three);
@@ -456,14 +486,14 @@ inline void cellCentreAndVolume
 
         meshOps::faceNormal
         (
-            faces[cellToCheck[faceI]],
+            checkFace,
             points,
             fArea
         );
 
         meshOps::faceCentre
         (
-            faces[cellToCheck[faceI]],
+            checkFace,
             points,
             fCentre
         );
@@ -485,6 +515,50 @@ inline void cellCentreAndVolume
 
         // Accumulate face-pyramid volume
         volume += pyr3Vol;
+
+        // Accumulate areas
+        sumClosed += fArea;
+        sumMagClosed += cmptMag(fArea);
+    }
+
+    // Check the sum across components
+    T2 closed = pTraits<T2>::zero;
+
+    for (direction cmpt = 0; cmpt < vector::nComponents; cmpt++)
+    {
+        closed =
+        (
+            mag(sumClosed[cmpt]) / (sumMagClosed[cmpt] + VSMALL)
+        );
+
+        if (closed > 1e-06)
+        {
+            if (faces.size() < 10)
+            {
+                Info << " Points: " << points << nl
+                     << " Faces: " << faces << nl
+                     << " Cells: " << cells << nl
+                     << " Owner: " << owner << endl;
+            }
+
+            FatalErrorIn
+            (
+                "\n\n"
+                "void meshOps::cellCentreAndVolume\n"
+                "(\n"
+                "   const label cIndex,\n"
+                "   const UList<Vector<T1> >& points,\n"
+                "   const UList<face>& faces,\n"
+                "   const UList<cell>& cells,\n"
+                "   const UList<label>& owner,\n"
+                "   Vector<T2>& centre,\n"
+                "   T2& volume\n"
+                ")\n"
+            )  << "Open cell detected." << nl
+               << " Cell: " << cIndex << nl
+               << " Openness: " << closed << nl
+               << abort(FatalError);
+        }
     }
 
     centre /= volume + VSMALL;
@@ -972,23 +1046,6 @@ inline void removeIndex
 
 inline bool convexSetAlgorithm::consistent(const scalar tolerance) const
 {
-    if
-    (
-        (weights_.size() && mpWeights_.size()) ||
-        (weights_.empty() && mpWeights_.empty())
-    )
-    {
-        FatalErrorIn
-        (
-            "inline bool convexSetAlgorithm::consistent"
-            "(const scalar tolerance) const"
-        )
-            << " Incompatible lists found: " << nl
-            << "  magnitudes (low-precision): " << weights_ << nl
-            << "  magnitudes (high-precision): " << mpWeights_ << nl
-            << abort(FatalError);
-    }
-
     if (weights_.size())
     {
         scalar normError = mag(1.0 - (sum(weights_)/normFactor_));
@@ -1003,6 +1060,7 @@ inline bool convexSetAlgorithm::consistent(const scalar tolerance) const
         }
     }
 
+#   if USE_MPFR
     if (mpWeights_.size())
     {
         scalar sumNormWeights = 0.0;
@@ -1023,6 +1081,7 @@ inline bool convexSetAlgorithm::consistent(const scalar tolerance) const
             return false;
         }
     }
+#   endif
 
     return false;
 }
@@ -1031,11 +1090,13 @@ inline bool convexSetAlgorithm::consistent(const scalar tolerance) const
 // Return the normFactor
 inline scalar convexSetAlgorithm::normFactor() const
 {
+#   if USE_MPFR
     if (highPrecision())
     {
         return mpNormFactor_;
     }
     else
+#   endif
     {
         return normFactor_;
     }
@@ -1047,30 +1108,24 @@ inline scalar convexSetAlgorithm::normFactor() const
 // Normalize stored weights
 inline void convexSetAlgorithm::normalize(bool normSum) const
 {
-    if
-    (
-        (weights_.size() && mpWeights_.size()) ||
-        (weights_.empty() && mpWeights_.empty())
-    )
-    {
-        FatalErrorIn
-        (
-            "inline void convexSetAlgorithm::normalize"
-            "(bool normSum) const"
-        )
-            << " Incompatible lists found: " << nl
-            << "  magnitudes (low-precision): " << weights_ << nl
-            << "  magnitudes (high-precision): " << mpWeights_ << nl
-            << abort(FatalError);
-    }
-
     if (normSum)
     {
         if (weights_.size())
         {
             weights_ /= sum(weights_);
         }
+    }
+    else
+    {
+        if (weights_.size())
+        {
+            weights_ /= normFactor_;
+        }
+    }
 
+#   if USE_MPFR
+    if (normSum)
+    {
         if (mpWeights_.size())
         {
             mpScalar sumWeights = sum(mpWeights_);
@@ -1083,11 +1138,6 @@ inline void convexSetAlgorithm::normalize(bool normSum) const
     }
     else
     {
-        if (weights_.size())
-        {
-            weights_ /= normFactor_;
-        }
-
         if (mpWeights_.size())
         {
             forAll(mpWeights_, indexI)
@@ -1096,6 +1146,7 @@ inline void convexSetAlgorithm::normalize(bool normSum) const
             }
         }
     }
+#   endif
 }
 
 
@@ -1112,28 +1163,6 @@ inline void convexSetAlgorithm::populateLists
     centres.clear();
     weights.clear();
 
-    if
-    (
-        (weights_.size() && mpWeights_.size()) ||
-        (weights_.empty() && mpWeights_.empty())
-    )
-    {
-        FatalErrorIn
-        (
-            "\n\n"
-            "inline bool convexSetAlgorithm::populateLists\n"
-            "(\n"
-            "    labelList& parents,\n"
-            "    vectorField& centres,\n"
-            "    scalarField& weights\n"
-            ") const\n"
-        )
-            << " Incompatible lists found: " << nl
-            << "  weights (low-precision): " << weights_ << nl
-            << "  weights (high-precision): " << mpWeights_ << nl
-            << abort(FatalError);
-    }
-
     if (weights_.size())
     {
         parents = parents_;
@@ -1141,6 +1170,7 @@ inline void convexSetAlgorithm::populateLists
         weights = weights_;
     }
 
+#   if USE_MPFR
     if (mpWeights_.size())
     {
         parents = parents_;
@@ -1154,6 +1184,7 @@ inline void convexSetAlgorithm::populateLists
             weights[i] = mpWeights_[i];
         }
     }
+#   endif
 }
 
 
@@ -1165,11 +1196,12 @@ inline void faceSetAlgorithm::computeNormFactor(const label index) const
     centres_.clear();
     weights_.clear();
 
-    mpCentres_.clear();
-    mpWeights_.clear();
-
+#   if USE_MPFR
     if (highPrecision())
     {
+        mpCentres_.clear();
+        mpWeights_.clear();
+
         meshOps::faceNormal(newFaces_[index], newPoints_, mpRefNorm_);
 
         mpNormFactor_ = mag(mpRefNorm_);
@@ -1178,6 +1210,7 @@ inline void faceSetAlgorithm::computeNormFactor(const label index) const
         mpRefNorm_ /= mpNormFactor_ + VSMALL;
     }
     else
+#   endif
     {
         meshOps::faceNormal(newFaces_[index], newPoints_, refNorm_);
 
@@ -1200,6 +1233,7 @@ inline bool faceSetAlgorithm::computeInsersection
 {
     bool intersects = false;
 
+#   if USE_MPFR
     if (convexSetAlgorithm::highPrecision())
     {
         Field<mpVector> mpIntPoints;
@@ -1244,6 +1278,7 @@ inline bool faceSetAlgorithm::computeInsersection
         }
     }
     else
+#   endif
     {
         vectorField intPoints;
 
@@ -1298,11 +1333,12 @@ inline void cellSetAlgorithm::computeNormFactor(const label index) const
     centres_.clear();
     weights_.clear();
 
-    mpCentres_.clear();
-    mpWeights_.clear();
-
+#   if USE_MPFR
     if (highPrecision())
     {
+        mpCentres_.clear();
+        mpWeights_.clear();
+
         meshOps::cellCentreAndVolume
         (
             index,
@@ -1315,6 +1351,7 @@ inline void cellSetAlgorithm::computeNormFactor(const label index) const
         );
     }
     else
+#   endif
     {
         meshOps::cellCentreAndVolume
         (
@@ -1340,6 +1377,7 @@ inline bool cellSetAlgorithm::computeInsersection
 {
     bool intersects = false;
 
+#   if USE_MPFR
     if (convexSetAlgorithm::highPrecision())
     {
         Field<mpVector> mpIntPoints;
@@ -1383,6 +1421,7 @@ inline bool cellSetAlgorithm::computeInsersection
         }
     }
     else
+#   endif
     {
         vectorField intPoints;
 

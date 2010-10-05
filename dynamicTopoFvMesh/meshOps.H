@@ -54,7 +54,13 @@ SourceFiles
 #include "objectMap.H"
 #include "vectorField.H"
 #include "labelHashSet.H"
+
+// Use the MPFR library, if necessary
+#define USE_MPFR 0
+
+#if USE_MPFR
 #include "multiPrecision.H"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -433,11 +439,15 @@ protected:
         mutable vectorField centres_;
         mutable scalarField weights_;
 
+#       if USE_MPFR
+
         //- High-precision fields
         mutable mpVector mpRefNorm_;
         mutable mpScalar mpNormFactor_;
         mutable Field<mpVector> mpCentres_;
         mutable Field<mpScalar> mpWeights_;
+
+#       endif
 
     //- Output connectivity to VTK
 

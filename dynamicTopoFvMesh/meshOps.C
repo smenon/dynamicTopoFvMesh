@@ -3064,39 +3064,31 @@ bool cellSetAlgorithm::cellIntersection
                         foundCommon = true;
                         break;
                     }
+                }
 
-                    // Check for point-on-edge cases
-                    bool foundPointOnEdge = false;
-
-                    if
+                if
+                (
+                    pIter().size() &&
                     (
-                        pIter().size() &&
-                        (
-                            (edgeToCheck[0] == pIter.key()) ||
-                            (edgeToCheck[1] == pIter.key())
-                        )
+                        (edgeToCheck[0] == pIter.key()) ||
+                        (edgeToCheck[1] == pIter.key())
                     )
+                )
+                {
+                    bool allMaster = true;
+
+                    const labelList& mObj = pIter();
+
+                    forAll(mObj, pointJ)
                     {
-                        bool allMaster = true;
-
-                        const labelList& mObj = pIter();
-
-                        forAll(mObj, pointJ)
+                        if (findIndex(faceToCheck, mObj[pointJ]) == -1)
                         {
-                            if (findIndex(faceToCheck, mObj[pointJ]) == -1)
-                            {
-                                allMaster = false;
-                                break;
-                            }
-                        }
-
-                        if (allMaster)
-                        {
-                            foundPointOnEdge = true;
+                            allMaster = false;
+                            break;
                         }
                     }
 
-                    if (foundPointOnEdge)
+                    if (allMaster)
                     {
                         foundCommon = true;
                         break;
@@ -3615,8 +3607,8 @@ void cellSetAlgorithm::convexSetVolume
 
         FatalErrorIn("void cellSetAlgorithm::convexSetVolume() const")
             << " Incorrect number of valid faces." << nl
-            << " newCellIndex: " << newCellIndex << nl
-            << " oldCellIndex: " << oldCellIndex << nl
+            << "   newCellIndex: " << newCellIndex << nl
+            << "   oldCellIndex: " << oldCellIndex << nl
             << "   nFaces: " << nValidFaces << nl
             << "   Volume: " << cVolume << nl
             << "   testFaces: " << nl << testFaces << nl
