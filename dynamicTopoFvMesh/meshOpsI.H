@@ -447,7 +447,6 @@ inline void cellCentreAndVolume
     Vector<T2> cEst(Vector<T2>::zero);
     Vector<T2> fCentre(Vector<T2>::zero);
     Vector<T2> fArea(Vector<T2>::zero);
-    Vector<T2> sumClosed(Vector<T2>::zero), sumMagClosed(Vector<T2>::zero);
 
     const T2 three(3.0), four(4.0);
     const T2 oneThird = (pTraits<T2>::one / three);
@@ -515,50 +514,6 @@ inline void cellCentreAndVolume
 
         // Accumulate face-pyramid volume
         volume += pyr3Vol;
-
-        // Accumulate areas
-        sumClosed += fArea;
-        sumMagClosed += cmptMag(fArea);
-    }
-
-    // Check the sum across components
-    T2 closed = pTraits<T2>::zero;
-
-    for (direction cmpt = 0; cmpt < vector::nComponents; cmpt++)
-    {
-        closed =
-        (
-            mag(sumClosed[cmpt]) / (sumMagClosed[cmpt] + VSMALL)
-        );
-
-        if (closed > 1e-06)
-        {
-            if (faces.size() < 10)
-            {
-                Info << " Points: " << points << nl
-                     << " Faces: " << faces << nl
-                     << " Cells: " << cells << nl
-                     << " Owner: " << owner << endl;
-            }
-
-            FatalErrorIn
-            (
-                "\n\n"
-                "void meshOps::cellCentreAndVolume\n"
-                "(\n"
-                "   const label cIndex,\n"
-                "   const UList<Vector<T1> >& points,\n"
-                "   const UList<face>& faces,\n"
-                "   const UList<cell>& cells,\n"
-                "   const UList<label>& owner,\n"
-                "   Vector<T2>& centre,\n"
-                "   T2& volume\n"
-                ")\n"
-            )  << "Open cell detected." << nl
-               << " Cell: " << cIndex << nl
-               << " Openness: " << closed << nl
-               << abort(FatalError);
-        }
     }
 
     centre /= volume + VSMALL;
@@ -1417,6 +1372,37 @@ inline bool cellSetAlgorithm::computeInsersection
                 meshOps::sizeUpList(oldIndex, parents_);
                 meshOps::sizeUpList(volume, mpWeights_);
                 meshOps::sizeUpList(centre, mpCentres_);
+            }
+        }
+    }
+    else
+#   endif
+#   ifdef USE_CGAL
+    if (convexSetAlgorithm::highPrecision())
+    {
+        scalar volume;
+        vector centre;
+
+        intersects =
+        (
+            cellIntersection_CGAL
+            (
+                newIndex,
+                oldIndex,
+                volume,
+                centre,
+                output
+            )
+        );
+
+        if (intersects)
+        {
+            // Size-up the internal lists
+            if (!output)
+            {
+                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList(volume, weights_);
+                meshOps::sizeUpList(centre, centres_);
             }
         }
     }

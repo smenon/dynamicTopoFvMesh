@@ -62,6 +62,9 @@ SourceFiles
 #include "multiPrecision.H"
 #endif
 
+// Use the CGAL library, if necessary
+#define USE_CGAL 1
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -673,6 +676,17 @@ class cellSetAlgorithm
             Field<Vector<T> >& intPoints,
             bool output
         ) const;
+
+#       ifdef USE_CGAL
+        bool cellIntersection_CGAL
+        (
+            const label newIndex,
+            const label oldIndex,
+            scalar& cVolume,
+            vector& cCentre,
+            bool output
+        ) const;
+#       endif
 
 public:
 

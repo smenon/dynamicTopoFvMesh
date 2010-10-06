@@ -46,6 +46,17 @@ Author
 #include "tetPointRef.H"
 #include "labelHashSet.H"
 
+#if USE_CGAL
+#include <CGAL/Gmpz.h>
+#include <CGAL/Homogeneous.h>
+#include <CGAL/Polyhedron_3.h>
+#include <CGAL/Simple_cartesian.h>
+#include <CGAL/Nef_polyhedron_3.h>
+#include <CGAL/IO/Polyhedron_iostream.h>
+#include <CGAL/IO/Nef_polyhedron_iostream_3.h>
+#include <CGAL/Exact_predicates_exact_constructions_kernel.h>
+#endif
+
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 namespace Foam
@@ -3167,6 +3178,161 @@ bool cellSetAlgorithm::cellIntersection
     return true;
 }
 
+#ifdef USE_CGAL
+bool cellSetAlgorithm::cellIntersection_CGAL
+(
+    const label newIndex,
+    const label oldIndex,
+    scalar& cVolume,
+    vector& cCentre,
+    bool output
+) const
+{
+    // Fetch references for each mesh
+    const cell& oldCell = this->mesh_.cells()[oldIndex];
+    const labelList oldCellPoints = oldCell.labels(this->mesh_.faces());
+
+    const cell& newCell = this->newCells_[newIndex];
+    const labelList newCellPoints = newCell.labels(this->newFaces_);
+
+    // Alias references
+    const UList<point>& newPoints = this->newPoints_;
+    const UList<point>& oldPoints = this->mesh_.points();
+
+    // Define typedefs for convenience
+    typedef CGAL::Exact_predicates_exact_constructions_kernel Kernel;
+
+    // Create two Polyhedron_3 objects
+    CGAL::Polyhedron_3<Kernel> Po, Pn;
+
+    // If both cells are tets, generate them.
+    if (oldCell.size() == 4 && newCell.size() == 4)
+    {
+        // Fetch point-positions
+        const point& Oa = oldPoints[oldCellPoints[0]];
+        const point& Ob = oldPoints[oldCellPoints[1]];
+        const point& Oc = oldPoints[oldCellPoints[2]];
+        const point& Od = oldPoints[oldCellPoints[3]];
+
+        Po.make_tetrahedron
+        (
+            Kernel::Point_3(Oa.x(), Oa.y(), Oa.z()),
+            Kernel::Point_3(Ob.x(), Ob.y(), Ob.z()),
+            Kernel::Point_3(Oc.x(), Oc.y(), Oc.z()),
+            Kernel::Point_3(Od.x(), Od.y(), Od.z())
+        );
+
+        // Fetch point-positions
+        const point& Na = newPoints[newCellPoints[0]];
+        const point& Nb = newPoints[newCellPoints[1]];
+        const point& Nc = newPoints[newCellPoints[2]];
+        const point& Nd = newPoints[newCellPoints[3]];
+
+        Pn.make_tetrahedron
+        (
+            Kernel::Point_3(Na.x(), Na.y(), Na.z()),
+            Kernel::Point_3(Nb.x(), Nb.y(), Nb.z()),
+            Kernel::Point_3(Nc.x(), Nc.y(), Nc.z()),
+            Kernel::Point_3(Nd.x(), Nd.y(), Nd.z())
+        );
+    }
+
+    // Create Nef_Polyhedron equivalents
+    CGAL::Nef_polyhedron_3<Kernel> nPo(Po), nPn(Pn);
+
+    // Compute the intersection
+    nPo *= nPn;
+
+    if (nPo.is_simple())
+    {
+        // Convert back to polyhedron
+        nPo.convert_to_polyhedron(Po);
+
+        label nFaces = Po.size_of_facets();
+        label nPoints = Po.size_of_vertices();
+
+        if (nPoints >= 4 && nFaces >= 4)
+        {
+            // Prepare temporary connectivity
+            // for volume / centre computation.
+            labelList owner(nFaces, 0);
+            faceList polyFaces(nFaces);
+            vectorField cvxSet(nPoints, vector::zero);
+            cellList cells(1, cell(identity(nFaces)));
+
+            CGAL::Polyhedron_3<Kernel>::Vertex_iterator v;
+
+            nPoints = 0;
+
+            for (v = Po.vertices_begin(); v != Po.vertices_end(); ++v)
+            {
+                cvxSet[nPoints].x() = to_double(v->point().x());
+                cvxSet[nPoints].y() = to_double(v->point().y());
+                cvxSet[nPoints].z() = to_double(v->point().z());
+
+                nPoints++;
+            }
+
+            CGAL::Polyhedron_3<Kernel>::Facet_iterator f;
+            CGAL::Polyhedron_3<Kernel>::Halfedge_around_facet_circulator hfc;
+
+            nFaces = 0;
+
+            for (f = Po.facets_begin(); f != Po.facets_end(); ++f)
+            {
+                hfc = f->facet_begin();
+
+                label j = 0;
+                face& pF = polyFaces[nFaces];
+
+                // Size the face
+                pF.setSize(CGAL::circulator_size(hfc));
+
+                do
+                {
+                    pF[j++] =
+                    (
+                        std::distance
+                        (
+                            Po.vertices_begin(),
+                            hfc->vertex()
+                        )
+                    );
+
+                } while (++hfc != f->facet_begin());
+
+                nFaces++;
+            }
+
+            meshOps::cellCentreAndVolume
+            (
+                0,
+                cvxSet,
+                polyFaces,
+                cells,
+                owner,
+                cCentre,
+                cVolume
+            );
+
+            if (output)
+            {
+                std::cout << "   newIndex: " << newIndex << nl
+                          << "   oldIndex: " << oldIndex << nl
+                          << "   Volume: " << cVolume << nl
+                          << "   Polyhedron info: " << nl
+                          << Po << std::endl;
+            }
+
+            // Found an intersection
+            return true;
+        }
+    }
+
+    // Failed to find an intersection
+    return false;
+}
+#endif
 
 // Compute the volume / centre of a polyhedron
 // formed by a convex set of points.
