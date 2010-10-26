@@ -425,8 +425,112 @@ inline label tetApexPoint
 
 
 // Given a cell index, find the centroid / volume of a cell.
+//  - If checking is enabled, return whether the cell is closed
+inline bool cellCentreAndVolume
+(
+    const label cIndex,
+    const vectorField& points,
+    const UList<face>& faces,
+    const UList<cell>& cells,
+    const UList<label>& owner,
+    vector& centre,
+    scalar& volume,
+    bool checkClosed
+)
+{
+    // Reset inputs
+    volume = 0.0;
+    centre = vector::zero;
+
+    const cell& cellToCheck = cells[cIndex];
+
+    // Average face-centres to get an estimate centroid
+    vector cEst(vector::zero), fCentre(vector::zero), fArea(vector::zero);
+    vector sumClosed(vector::zero), sumMagClosed(vector::zero);
+
+    forAll(cellToCheck, faceI)
+    {
+        const face& checkFace = faces[cellToCheck[faceI]];
+
+        if (checkFace.empty())
+        {
+            continue;
+        }
+
+        cEst += checkFace.centre(points);
+    }
+
+    cEst /= cellToCheck.size();
+
+    forAll(cellToCheck, faceI)
+    {
+        const face& checkFace = faces[cellToCheck[faceI]];
+
+        if (checkFace.empty())
+        {
+            continue;
+        }
+
+        fArea = checkFace.normal(points);
+        fCentre = checkFace.centre(points);
+
+        // Flip if necessary
+        if (owner[cellToCheck[faceI]] != cIndex)
+        {
+            fArea *= -1.0;
+        }
+
+        // Calculate 3*face-pyramid volume
+        scalar pyr3Vol = fArea & (fCentre - cEst);
+
+        // Calculate face-pyramid centre
+        vector pc = ((3.0 / 4.0) * fCentre) + ((1.0 / 4.0) * cEst);
+
+        // Accumulate volume-weighted face-pyramid centre
+        centre += pyr3Vol*pc;
+
+        // Accumulate face-pyramid volume
+        volume += pyr3Vol;
+
+        // Accumulate areas, if necessary
+        if (checkClosed)
+        {
+            sumClosed += fArea;
+            sumMagClosed += cmptMag(fArea);
+        }
+    }
+
+    centre /= volume + VSMALL;
+    volume *= (1.0 / 3.0);
+
+    if (checkClosed)
+    {
+        // Check the sum across components
+        scalar closed = 0.0;
+
+        for (direction cmpt = 0; cmpt < vector::nComponents; cmpt++)
+        {
+            closed =
+            (
+                mag(sumClosed[cmpt]) / (sumMagClosed[cmpt] + VSMALL)
+            );
+
+            if (closed > 1e-06)
+            {
+                // Volume is invalid
+                return false;
+            }
+        }
+    }
+
+    // Volume is valid
+    return true;
+}
+
+
+// Given a cell index, find the centroid / volume of a cell.
 template <class T1, class T2>
-inline void cellCentreAndVolume
+inline bool cellCentreAndVolumeT
 (
     const label cIndex,
     const UList<Vector<T1> >& points,
@@ -434,7 +538,8 @@ inline void cellCentreAndVolume
     const UList<cell>& cells,
     const UList<label>& owner,
     Vector<T2>& centre,
-    T2& volume
+    T2& volume,
+    bool checkClosed = false
 )
 {
     // Reset inputs
@@ -518,6 +623,9 @@ inline void cellCentreAndVolume
 
     centre /= volume + VSMALL;
     volume *= oneThird;
+
+    // Volume is valid
+    return true;
 }
 
 
@@ -677,7 +785,7 @@ inline bool segmentTriFaceIntersection
         intPoint = p1 + u*(p2 - p1);
 
         // Also make sure that intPoint lies within the face
-        if (pointInTriFace(faceToCheck, intPoint))
+        if (pointInTriFace(faceToCheck, intPoint, matchTol, false))
         {
             return true;
         }
@@ -694,7 +802,9 @@ template <class T>
 inline bool pointInTriFace
 (
     const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
-    const Vector<T>& cP
+    const Vector<T>& cP,
+    const T& matchTol,
+    bool testCoplanarity
 )
 {
     // Copy inputs
@@ -720,6 +830,20 @@ inline bool pointInTriFace
     if ( ((pointFive * ((a - c)^(cP - c))) & nf) < pTraits<T>::zero)
     {
         return false;
+    }
+
+    if (testCoplanarity)
+    {
+        Vector<T> ftp(a - cP);
+
+        // Normalize vectors
+        nf /= mag(nf) + VSMALL;
+        ftp /= mag(ftp) + VSMALL;
+
+        if (mag(ftp & nf) > matchTol)
+        {
+            return false;
+        }
     }
 
     // Passed test with all edges
@@ -886,19 +1010,13 @@ inline void replaceLabel
      labelList& list
 )
 {
-    bool found = false;
+    label index = -1;
 
-    forAll(list, indexI)
+    if ((index = findIndex(list, original)) > -1)
     {
-        if (list[indexI] == original)
-        {
-            list[indexI] = replacement;
-            found = true;
-            break;
-        }
+        list[index] = replacement;
     }
-
-    if (!found)
+    else
     {
         FatalErrorIn
         (
@@ -917,22 +1035,11 @@ inline void replaceLabel
 template <class Type>
 inline void sizeUpList
 (
-    const Type item,
+    const Type& item,
     List<Type>& list
 )
 {
-    // Create a new list
-    List<Type> newList(list.size() + 1);
-
-    // Copy individual items
-    forAll(list, itemI)
-    {
-        newList[itemI] = list[itemI];
-    }
-
-    // Set the last element and overwrite
-    newList[list.size()] = item;
-    list.transfer(newList);
+    list.setSize(list.size() + 1, item);
 }
 
 
@@ -940,7 +1047,7 @@ inline void sizeUpList
 template <class Type>
 inline void sizeDownList
 (
-    const Type item,
+    const Type& item,
     List<Type>& list
 )
 {
@@ -955,7 +1062,7 @@ inline void sizeDownList
         FatalErrorIn
         (
             "inline void meshOps::sizeDownList"
-            "(const Type item, List<Type>& list)"
+            "(const Type& item, List<Type>& list)"
         )
             << nl << "Item: " << item
             << " was not found in list. " << nl
@@ -996,464 +1103,6 @@ inline void removeIndex
 
 } // End namespace meshOps
 
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-inline bool convexSetAlgorithm::consistent(const scalar tolerance) const
-{
-    if (weights_.size())
-    {
-        scalar normError = mag(1.0 - (sum(weights_)/normFactor_));
-
-        if (normError < tolerance)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-#   if USE_MPFR
-    if (mpWeights_.size())
-    {
-        scalar sumNormWeights = 0.0;
-
-        forAll(mpWeights_, indexI)
-        {
-            sumNormWeights += (mpWeights_[indexI]/mpNormFactor_);
-        }
-
-        scalar normError = mag(1.0 - sumNormWeights);
-
-        if (normError < tolerance)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-#   endif
-
-    return false;
-}
-
-
-// Return the normFactor
-inline scalar convexSetAlgorithm::normFactor() const
-{
-#   if USE_MPFR
-    if (highPrecision())
-    {
-        return mpNormFactor_;
-    }
-    else
-#   endif
-    {
-        return normFactor_;
-    }
-
-    return 0.0;
-}
-
-
-// Normalize stored weights
-inline void convexSetAlgorithm::normalize(bool normSum) const
-{
-    if (normSum)
-    {
-        if (weights_.size())
-        {
-            weights_ /= sum(weights_);
-        }
-    }
-    else
-    {
-        if (weights_.size())
-        {
-            weights_ /= normFactor_;
-        }
-    }
-
-#   if USE_MPFR
-    if (normSum)
-    {
-        if (mpWeights_.size())
-        {
-            mpScalar sumWeights = sum(mpWeights_);
-
-            forAll(mpWeights_, indexI)
-            {
-                mpWeights_[indexI] /= sumWeights;
-            }
-        }
-    }
-    else
-    {
-        if (mpWeights_.size())
-        {
-            forAll(mpWeights_, indexI)
-            {
-                mpWeights_[indexI] /= mpNormFactor_;
-            }
-        }
-    }
-#   endif
-}
-
-
-// Extract weights and centres to lists
-inline void convexSetAlgorithm::populateLists
-(
-    labelList& parents,
-    vectorField& centres,
-    scalarField& weights
-) const
-{
-    // Clear inputs
-    parents.clear();
-    centres.clear();
-    weights.clear();
-
-    if (weights_.size())
-    {
-        parents = parents_;
-        centres = centres_;
-        weights = weights_;
-    }
-
-#   if USE_MPFR
-    if (mpWeights_.size())
-    {
-        parents = parents_;
-
-        centres.setSize(parents.size());
-        weights.setSize(parents.size());
-
-        forAll(parents, i)
-        {
-            centres[i] = convert<scalar>(mpCentres_[i]);
-            weights[i] = mpWeights_[i];
-        }
-    }
-#   endif
-}
-
-
-inline void faceSetAlgorithm::computeNormFactor(const label index) const
-{
-    // Clear existing fields
-    parents_.clear();
-
-    centres_.clear();
-    weights_.clear();
-
-#   if USE_MPFR
-    if (highPrecision())
-    {
-        mpCentres_.clear();
-        mpWeights_.clear();
-
-        meshOps::faceNormal(newFaces_[index], newPoints_, mpRefNorm_);
-
-        mpNormFactor_ = mag(mpRefNorm_);
-
-        // Normalize for later use
-        mpRefNorm_ /= mpNormFactor_ + VSMALL;
-    }
-    else
-#   endif
-    {
-        meshOps::faceNormal(newFaces_[index], newPoints_, refNorm_);
-
-        normFactor_ = mag(refNorm_);
-
-        // Normalize for later use
-        refNorm_ /= normFactor_ + VSMALL;
-    }
-}
-
-
-// Compute intersections
-inline bool faceSetAlgorithm::computeInsersection
-(
-    const label newIndex,
-    const label oldIndex,
-    const scalar& matchTol,
-    bool output
-) const
-{
-    bool intersects = false;
-
-#   if USE_MPFR
-    if (convexSetAlgorithm::highPrecision())
-    {
-        Field<mpVector> mpIntPoints;
-        const mpScalar mpMatchTol(matchTol);
-
-        // Invoke the high-precision variant
-        intersects =
-        (
-            faceIntersection
-            (
-                newIndex,
-                oldIndex,
-                mpMatchTol,
-                mpIntPoints,
-                output
-            )
-        );
-
-        if (intersects)
-        {
-            mpScalar area;
-            mpVector centre;
-
-            convexSetArea
-            (
-                newIndex,
-                oldIndex,
-                mpIntPoints,
-                mpRefNorm_,
-                area,
-                centre,
-                output
-            );
-
-            // Size-up the internal lists
-            if (!output)
-            {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(area, mpWeights_);
-                meshOps::sizeUpList(centre, mpCentres_);
-            }
-        }
-    }
-    else
-#   endif
-    {
-        vectorField intPoints;
-
-        // Invoke the conventional variant
-        intersects =
-        (
-            faceIntersection
-            (
-                newIndex,
-                oldIndex,
-                matchTol,
-                intPoints,
-                output
-            )
-        );
-
-        if (intersects)
-        {
-            scalar area;
-            vector centre;
-
-            convexSetArea
-            (
-                newIndex,
-                oldIndex,
-                intPoints,
-                refNorm_,
-                area,
-                centre,
-                output
-            );
-
-            // Size-up the internal lists
-            if (!output)
-            {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(area, weights_);
-                meshOps::sizeUpList(centre, centres_);
-            }
-        }
-    }
-
-    return intersects;
-}
-
-
-inline void cellSetAlgorithm::computeNormFactor(const label index) const
-{
-    // Clear existing fields
-    parents_.clear();
-
-    centres_.clear();
-    weights_.clear();
-
-#   if USE_MPFR
-    if (highPrecision())
-    {
-        mpCentres_.clear();
-        mpWeights_.clear();
-
-        meshOps::cellCentreAndVolume
-        (
-            index,
-            newPoints_,
-            newFaces_,
-            newCells_,
-            newOwner_,
-            mpRefNorm_,
-            mpNormFactor_
-        );
-    }
-    else
-#   endif
-    {
-        meshOps::cellCentreAndVolume
-        (
-            index,
-            newPoints_,
-            newFaces_,
-            newCells_,
-            newOwner_,
-            refNorm_,
-            normFactor_
-        );
-    }
-}
-
-
-inline bool cellSetAlgorithm::computeInsersection
-(
-    const label newIndex,
-    const label oldIndex,
-    const scalar& matchTol,
-    bool output
-) const
-{
-    bool intersects = false;
-
-#   if USE_MPFR
-    if (convexSetAlgorithm::highPrecision())
-    {
-        Field<mpVector> mpIntPoints;
-        const mpScalar mpMatchTol(matchTol);
-
-        // Invoke the high-precision variant
-        intersects =
-        (
-            cellIntersection
-            (
-                newIndex,
-                oldIndex,
-                mpMatchTol,
-                mpIntPoints,
-                output
-            )
-        );
-
-        if (intersects)
-        {
-            mpScalar volume;
-            mpVector centre;
-
-            convexSetVolume
-            (
-                newIndex,
-                oldIndex,
-                mpIntPoints,
-                volume,
-                centre,
-                output
-            );
-
-            // Size-up the internal lists
-            if (!output)
-            {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(volume, mpWeights_);
-                meshOps::sizeUpList(centre, mpCentres_);
-            }
-        }
-    }
-    else
-#   endif
-#   ifdef USE_CGAL
-    if (convexSetAlgorithm::highPrecision())
-    {
-        scalar volume;
-        vector centre;
-
-        intersects =
-        (
-            cellIntersection_CGAL
-            (
-                newIndex,
-                oldIndex,
-                volume,
-                centre,
-                output
-            )
-        );
-
-        if (intersects)
-        {
-            // Size-up the internal lists
-            if (!output)
-            {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(volume, weights_);
-                meshOps::sizeUpList(centre, centres_);
-            }
-        }
-    }
-    else
-#   endif
-    {
-        vectorField intPoints;
-
-        // Invoke the conventional variant
-        intersects =
-        (
-            cellIntersection
-            (
-                newIndex,
-                oldIndex,
-                matchTol,
-                intPoints,
-                output
-            )
-        );
-
-        if (intersects)
-        {
-            scalar volume;
-            vector centre;
-
-            convexSetVolume
-            (
-                newIndex,
-                oldIndex,
-                intPoints,
-                volume,
-                centre,
-                output
-            );
-
-            // Size-up the internal lists
-            if (!output)
-            {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(volume, weights_);
-                meshOps::sizeUpList(centre, centres_);
-            }
-        }
-    }
-
-    return intersects;
-}
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
 

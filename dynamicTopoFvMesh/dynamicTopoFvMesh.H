@@ -52,6 +52,7 @@ SourceFiles
 #include "Switch.H"
 #include "tetMetric.H"
 #include "resizableList.H"
+#include "DynamicField.H"
 #include "threadHandler.H"
 #include "dynamicFvMesh.H"
 
@@ -62,7 +63,7 @@ namespace Foam
 
 // Class forward declarations
 class eMesh;
-class stack;
+class Stack;
 class changeMap;
 class objectMap;
 class topoMapper;
@@ -122,7 +123,20 @@ class dynamicTopoFvMesh
         autoPtr<lengthScaleEstimator> lengthEstimator_;
 
         //- Lists that dynamically resize during topo-changes
-        resizableList<point> oldPoints_, points_;
+        //   - Since resizes happen infrequently,
+        //     scale up by 10% to save memory.
+        //   - Current C++ standard doesn't
+        //     support template typedefs,
+        //     so this is a work-around
+        template <class T>
+        class resizable
+        {
+        public:
+            typedef DynamicList<T, 0, 11, 10> ListType;
+            typedef DynamicField<T, 0, 11, 10> FieldType;
+        };
+
+        resizable<point>::FieldType oldPoints_, points_;
         resizableList<face> faces_;
         resizableList<label> owner_, neighbour_;
         resizableList<cell> cells_;
@@ -213,7 +227,7 @@ class dynamicTopoFvMesh
         labelList noSwapPatchIDs_;
 
         //- Stack-list of entities to be checked for topo-changes.
-        List<stack> entityStack_;
+        List<Stack> entityStack_;
 
         //- Support for multithreading
         autoPtr<IOmultiThreader> threader_;
@@ -360,7 +374,7 @@ class dynamicTopoFvMesh
         static void edgeRefinementEngine(void *argument);
 
         // Return the entity stack for a particular thread
-        inline stack& Stack(const label threadID);
+        inline Stack& stack(const label threadID);
 
         // Return the integer ID for a given thread
         inline label self() const;

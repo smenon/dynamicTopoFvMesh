@@ -3,10 +3,10 @@ set -x
 
 wmakeLnInclude coupleMap
 wmakeLnInclude lengthScaleEstimator
-wmakeLnInclude conservativeMeshToMesh
+#wmakeLnInclude conservativeMeshToMesh
 wmakeLnInclude freeSurface
 wmakeLnInclude enginePointPatchFields
-wmakeLnInclude mesquiteSmoother
+wmakeLnInclude mesquiteMotionSolver
 wmakeLnInclude dynamicTopoFvMesh
 wmakeLnInclude interfaceTrackFoam
-wmakeLnInclude mapConservativeFields
+#wmakeLnInclude mapConservativeFields

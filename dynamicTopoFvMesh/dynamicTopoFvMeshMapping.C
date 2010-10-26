@@ -41,6 +41,8 @@ Author
 #include "IOmanip.H"
 #include "triFace.H"
 #include "objectMap.H"
+#include "faceSetAlgorithm.H"
+#include "cellSetAlgorithm.H"
 
 namespace Foam
 {
@@ -72,6 +74,9 @@ void dynamicTopoFvMesh::computeMapping
         modPoints_
     );
 
+    scalar maxError = 0.0;
+    label nInconsistencies = 0;
+
     // Compute cell mapping
     for (label cellI = cellStart; cellI < (cellStart + cellSize); cellI++)
     {
@@ -90,18 +95,31 @@ void dynamicTopoFvMesh::computeMapping
         else
         {
             // Obtain weighting factors for this cell.
-            computeWeights
+            bool consistent =
             (
-                cIndex,
-                cellParents_[cIndex],
-                polyMesh::cellCells(),
-                matchTol,
-                cellAlgorithm,
-                precisionAttempts,
-                cellsFromCells_[cellI].masterObjects(),
-                cellWeights_[cellI],
-                cellCentres_[cellI]
+                computeWeights
+                (
+                    cIndex,
+                    cellParents_[cIndex],
+                    polyMesh::cellCells(),
+                    matchTol,
+                    cellAlgorithm,
+                    precisionAttempts,
+                    cellsFromCells_[cellI].masterObjects(),
+                    cellWeights_[cellI],
+                    cellCentres_[cellI]
+                )
             );
+
+            if (!consistent)
+            {
+                maxError =
+                (
+                    Foam::max(maxError, mag(1.0 - sum(cellWeights_[cellI])))
+                );
+
+                nInconsistencies++;
+            }
         }
     }
 
@@ -147,19 +165,39 @@ void dynamicTopoFvMesh::computeMapping
         else
         {
             // Obtain weighting factors for this face.
-            computeWeights
+            bool consistent =
             (
-                fIndex,
-                faceParents_[fIndex],
-                boundaryMesh()[patchIndex].faceFaces(),
-                matchTol,
-                faceAlgorithm,
-                precisionAttempts,
-                facesFromFaces_[faceI].masterObjects(),
-                faceWeights_[faceI],
-                faceCentres_[faceI]
+                computeWeights
+                (
+                    fIndex,
+                    faceParents_[fIndex],
+                    boundaryMesh()[patchIndex].faceFaces(),
+                    matchTol,
+                    faceAlgorithm,
+                    precisionAttempts,
+                    facesFromFaces_[faceI].masterObjects(),
+                    faceWeights_[faceI],
+                    faceCentres_[faceI]
+                )
             );
+
+            if (!consistent)
+            {
+                maxError =
+                (
+                    Foam::max(maxError, mag(1.0 - sum(faceWeights_[faceI])))
+                );
+
+                nInconsistencies++;
+            }
         }
+    }
+
+    if (nInconsistencies)
+    {
+        Info << " Mapping inconsistencies: " << nInconsistencies
+             << " max error: " << maxError
+             << endl;
     }
 }
 
@@ -330,13 +368,13 @@ bool dynamicTopoFvMesh::computeWeights
         FatalErrorIn
         (
             "\n\n"
-            "void dynamicTopoFvMesh::computeWeights\n"
+            "bool dynamicTopoFvMesh::computeWeights\n"
             "(\n"
             "    const label index,\n"
             "    const labelList& mapCandidates,\n"
             "    const labelListList& oldNeighbourList,\n"
             "    const scalar mTol,\n"
-            "    const convexSetAlgorithm<T>& algorithm,\n"
+            "    const convexSetAlgorithm& algorithm,\n"
             "    label& precisionAttempts,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
@@ -663,14 +701,17 @@ bool dynamicTopoFvMesh::computeWeights
             normByWeights = true;
         }
         else
-        if (precisionAttempts < 2)
+        if (precisionAttempts < 12)
         {
             // Could be a precision problem.
             // Recurse until consistency is obtained.
             matchTol *= 0.1;
 
-            // Toggle higher precision
-            algorithm.setHighPrecision();
+            // Toggle higher precision, if necessary
+            if (precisionAttempts > 11)
+            {
+                algorithm.setHighPrecision();
+            }
 
             consistent =
             (
@@ -688,76 +729,6 @@ bool dynamicTopoFvMesh::computeWeights
                 )
             );
         }
-    }
-
-    if (!consistent)
-    {
-        // Write out for post-processing
-        labelList uList = skipped.toc();
-
-        // Renumber to global indices (for faces)
-        forAll(uList, entityI)
-        {
-            uList[entityI] += offset;
-        }
-
-        label pT = algorithm.dimension();
-
-        // Normalize weights
-        algorithm.normalize(normByWeights);
-
-        // Populate lists
-        algorithm.populateLists(parents, centres, weights);
-
-        writeVTK("nE_" + Foam::name(index), index, pT, false, true);
-        writeVTK("oE_" + Foam::name(index), mapCandidates, pT, true, true);
-        writeVTK("mE_" + Foam::name(index), parents, pT, true, true);
-        writeVTK("uE_" + Foam::name(index), uList, pT, true, true);
-
-        // Write out intersections for post-processing
-        forAll(parents, indexI)
-        {
-            algorithm.computeInsersection
-            (
-                index,
-                parents[indexI],
-                matchTol,
-                true
-            );
-        }
-
-        FatalErrorIn
-        (
-            "\n\n"
-            "void dynamicTopoFvMesh::computeWeights\n"
-            "(\n"
-            "    const label index,\n"
-            "    const labelList& mapCandidates,\n"
-            "    const labelListList& oldNeighbourList,\n"
-            "    const scalar mTol,\n"
-            "    const convexSetAlgorithm<T>& algorithm,\n"
-            "    label& precisionAttempts,\n"
-            "    labelList& parents,\n"
-            "    scalarField& weights,\n"
-            "    vectorField& centres\n"
-            ") const\n"
-        )
-            << "Encountered non-conservative weighting factors." << nl
-            << " Index: " << index << nl
-            << " Type: "
-            << (algorithm.dimension() == 2 ? "Face" : "Cell") << nl
-            << " mapCandidates: " << mapCandidates << nl
-            << " nParents: " << parents.size() << nl
-            << " nAttempts: " << nAttempts << nl
-            << " precisionAttempts: " << precisionAttempts << nl
-            << " matchTolerance: " << matchTol << nl
-            << setprecision(16)
-            << " Magnitude: " << algorithm.normFactor() << nl
-            << " Norm Sum(Weights): " << sum(weights) << nl
-            << " Norm Error: " << mag(1.0 - sum(weights)) << nl
-            << " Parents: " << parents << nl
-            << " Weights: " << weights
-            << abort(FatalError);
     }
 
     // Return normalized weights,
@@ -780,36 +751,58 @@ bool dynamicTopoFvMesh::computeWeights
 
         // Populate lists
         algorithm.populateLists(parents, centres, weights);
+    }
 
-        if (debug > 2)
+    if (debug && (precisionAttempts == 0))
+    {
+        label pT = algorithm.dimension();
+
+        if (!consistent)
         {
-            if (debug > 3)
+            Info<< "*** Inconsistent weights ***" << endl;
+
+            // Write out for post-processing
+            labelList uList = skipped.toc();
+
+            // Renumber to global indices (for faces)
+            forAll(uList, entityI)
             {
-                label pT = algorithm.dimension();
-
-                writeVTK("nE_" + Foam::name(index), index, pT, false, true);
-                writeVTK("mE_" + Foam::name(index), parents, pT, true, true);
-
-                // Write out intersections for post-processing
-                forAll(parents, indexI)
-                {
-                    algorithm.computeInsersection
-                    (
-                        index,
-                        parents[indexI],
-                        matchTol,
-                        true
-                    );
-                }
+                uList[entityI] += offset;
             }
 
-            Info << " Index: " << index << nl
-                 << setprecision(16)
-                 << " Magnitude: " << algorithm.normFactor() << nl
-                 << " Norm Error: " << mag(1.0 - sum(weights)) << nl
-                 << " Sum(Weights): " << sum(weights) << nl
-                 << " Weights: " << weights << nl
-                 << endl;
+            // Write out intersections for post-processing
+            forAll(parents, indexI)
+            {
+                algorithm.computeInsersection
+                (
+                    index,
+                    parents[indexI],
+                    matchTol,
+                    true
+                );
+            }
+
+            writeVTK("uE_" + Foam::name(index), uList, pT, true, true);
+            writeVTK("oE_" + Foam::name(index), mapCandidates, pT, true, true);
+        }
+
+        if (debug > 2 || !consistent)
+        {
+            writeVTK("nE_" + Foam::name(index), index, pT, false, true);
+            writeVTK("mE_" + Foam::name(index), parents, pT, true, true);
+
+            Info<< nl
+                << " Index: " << index << nl
+                << " Type: " << (pT == 2 ? "Face" : "Cell") << nl
+                << " mapCandidates: " << mapCandidates << nl
+                << " nParents: " << parents.size() << nl
+                << " nAttempts: " << nAttempts << nl
+                << setprecision(15)
+                << " Norm Sum(Weights): " << sum(weights) << nl
+                << " Norm Error: " << mag(1.0 - sum(weights)) << nl
+                << " Parents: " << parents << nl
+                << " Weights: " << weights
+                << endl;
         }
     }
 

@@ -23,10 +23,10 @@ fi
 
 wmake libso coupleMap
 wmake libso lengthScaleEstimator
-wmake libso conservativeMeshToMesh
+#wmake libso conservativeMeshToMesh
 wmake libso freeSurface
 wmake libso enginePointPatchFields
-wmake libso mesquiteSmoother
+wmake libso mesquiteMotionSolver
 wmake libso dynamicTopoFvMesh
 wmake interfaceTrackFoam
-wmake mapConservativeFields
+#wmake mapConservativeFields

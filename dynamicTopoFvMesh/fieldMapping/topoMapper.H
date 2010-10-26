@@ -69,19 +69,19 @@ class topoMapper
         //- Reference to the options dictionary
         const dictionary& dict_;
 
+    // Demand-driven private data
+
         //- Cell mapper
-        autoPtr<topoCellMapper> cellMap_;
+        mutable autoPtr<topoCellMapper> cellMap_;
 
         //- Surface mapper
-        autoPtr<topoSurfaceMapper> surfaceMap_;
+        mutable autoPtr<topoSurfaceMapper> surfaceMap_;
 
         //- Boundary mapper
-        autoPtr<topoBoundaryMeshMapper> boundaryMap_;
+        mutable autoPtr<topoBoundaryMeshMapper> boundaryMap_;
 
         //- Flux corrector
-        autoPtr<fluxCorrector> fluxCorrector_;
-
-    // Demand-driven private data
+        mutable autoPtr<fluxCorrector> fluxCorrector_;
 
         // Stored gradients for mapping
         mutable HashTable<autoPtr<volVectorField> > sGrads_;
@@ -94,12 +94,12 @@ class topoMapper
         mutable PtrList<vectorField> patchCentresPtr_;
 
         //- Intersection volume weights
-        List<scalarField> faceWeights_;
-        List<scalarField> cellWeights_;
+        mutable List<scalarField> faceWeights_;
+        mutable List<scalarField> cellWeights_;
 
         //- Intersection centre weights
-        List<vectorField> faceCentres_;
-        List<vectorField> cellCentres_;
+        mutable List<vectorField> faceCentres_;
+        mutable List<vectorField> cellCentres_;
 
     // Private Member Functions
 
@@ -159,21 +159,21 @@ public:
         const objectRegistry& db() const;
 
         //- Set mapping information
-        void setMapper(const mapPolyMesh& mpm);
+        void setMapper(const mapPolyMesh& mpm) const;
 
         //- Set face weighting information
         void setFaceWeights
         (
             List<scalarField>& weights,
             List<vectorField>& centres
-        );
+        ) const;
 
         //- Set cell weighting information
         void setCellWeights
         (
             List<scalarField>& weights,
             List<vectorField>& centres
-        );
+        ) const;
 
         //- Fetch face weights
         const List<scalarField>& faceWeights() const;

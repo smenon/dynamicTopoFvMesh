@@ -18,4 +18,8 @@ edgeSwap.C
 edgeCollapse.C
 edgeBisect.C
 
+convexSetAlgorithm/convexSetAlgorithm.C
+convexSetAlgorithm/faceSetAlgorithm.C
+convexSetAlgorithm/cellSetAlgorithm.C
+
 LIB = $(FOAM_USER_LIBBIN)/libdynamicTopoFvMesh

@@ -1,3 +1,0 @@
-mesquiteSmoother.C
-
-LIB = $(FOAM_USER_LIBBIN)/libmesquiteSmoother

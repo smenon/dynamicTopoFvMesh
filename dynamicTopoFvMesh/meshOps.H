@@ -51,19 +51,11 @@ SourceFiles
 #include "edgeList.H"
 #include "faceList.H"
 #include "triangle.H"
-#include "objectMap.H"
 #include "vectorField.H"
 #include "labelHashSet.H"
 
-// Use the MPFR library, if necessary
-#define USE_MPFR 0
-
-#if USE_MPFR
-#include "multiPrecision.H"
-#endif
-
 // Use the CGAL library, if necessary
-#define USE_CGAL 1
+//#define USE_CGAL 0
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -181,8 +173,21 @@ namespace meshOps
     );
 
     // Given a cell index, find the centroid / volume of a cell.
+    inline bool cellCentreAndVolume
+    (
+        const label cIndex,
+        const vectorField& points,
+        const UList<face>& faces,
+        const UList<cell>& cells,
+        const UList<label>& owner,
+        vector& centre,
+        scalar& volume,
+        bool checkClosed = false
+    );
+
+    // Given a cell index, find the centroid / volume of a cell.
     template <class T1, class T2>
-    inline void cellCentreAndVolume
+    inline bool cellCentreAndVolumeT
     (
         const label cIndex,
         const UList<Vector<T1> >& points,
@@ -190,7 +195,8 @@ namespace meshOps
         const UList<cell>& cells,
         const UList<label>& owner,
         Vector<T2>& centre,
-        T2& volume
+        T2& volume,
+        bool checkClosed = false
     );
 
     // Determine whether a point lies on a segment
@@ -228,7 +234,9 @@ namespace meshOps
     inline bool pointInTriFace
     (
         const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
-        const Vector<T>& checkPoint
+        const Vector<T>& checkPoint,
+        const T& matchTol,
+        bool testCoplanarity
     );
 
     // Determine whether the particular point lies
@@ -287,7 +295,7 @@ namespace meshOps
     template <class Type>
     inline void sizeUpList
     (
-        const Type item,
+        const Type& item,
         List<Type>& list
     );
 
@@ -295,7 +303,7 @@ namespace meshOps
     template <class Type>
     inline void sizeDownList
     (
-        const Type item,
+        const Type& item,
         List<Type>& list
     );
 
@@ -395,342 +403,6 @@ namespace meshOps
     );
 
 } // End namespace meshOps
-
-
-/*---------------------------------------------------------------------------*\
-                    Class convexSetAlgorithm Declaration
-\*---------------------------------------------------------------------------*/
-
-class convexSetAlgorithm
-{
-
-protected:
-
-    // Protected data
-
-        const bool twoDMesh_;
-        const label nOldPoints_;
-
-        //- References to old-level connectivity
-        //  [Before topo-changes, at old point-positions]
-        const polyMesh& mesh_;
-
-        //- References to new-level connectivity
-        //  [After topo-changes, at old point-positions]
-        const UList<point>& newPoints_;
-        const UList<edge>& newEdges_;
-        const UList<face>& newFaces_;
-        const UList<cell>& newCells_;
-        const UList<label>& newOwner_;
-        const UList<label>& newNeighbour_;
-
-        //- Reference to pointsFromPoints information
-        const List<objectMap>& pointsFromPoints_;
-
-        //- Reference to modified-points information
-        const Map<labelList>& modPoints_;
-
-        //- Switch for higher precision
-        mutable bool highPrecision_;
-
-        //- Entity parents
-        mutable labelList parents_;
-
-        //- Low-precision fields
-        mutable vector refNorm_;
-        mutable scalar normFactor_;
-        mutable vectorField centres_;
-        mutable scalarField weights_;
-
-#       if USE_MPFR
-
-        //- High-precision fields
-        mutable mpVector mpRefNorm_;
-        mutable mpScalar mpNormFactor_;
-        mutable Field<mpVector> mpCentres_;
-        mutable Field<mpScalar> mpWeights_;
-
-#       endif
-
-    //- Output connectivity to VTK
-
-        // Output an entity as a VTK file
-        void writeVTK
-        (
-            const word& name,
-            const label entity,
-            const label primitiveType = 3,
-            const bool useOldConnectivity = false
-        ) const;
-
-        // Output a list of entities as a VTK file
-        void writeVTK
-        (
-            const word& name,
-            const labelList& cList,
-            const label primitiveType = 3,
-            const bool useOldConnectivity = false
-        ) const;
-
-public:
-
-    //- Constructor
-
-        // Construct from components
-        convexSetAlgorithm
-        (
-            const polyMesh& mesh,
-            const UList<point>& newPoints,
-            const UList<edge>& newEdges,
-            const UList<face>& newFaces,
-            const UList<cell>& newCells,
-            const UList<label>& newOwner,
-            const UList<label>& newNeighbour,
-            const List<objectMap>& pointsFromPoints,
-            const Map<labelList>& modPoints
-        );
-
-    //- Destructor
-
-        virtual ~convexSetAlgorithm()
-        {}
-
-    //- Member functions
-
-        // Dimensions of the algorithm
-        virtual label dimension() const = 0;
-
-        // Return true if accumulated weights are consistent
-        virtual bool consistent(const scalar tolerance) const;
-
-        // Return the normFactor
-        virtual scalar normFactor() const;
-
-        // Normalize stored weights
-        virtual void normalize(bool normSum) const;
-
-        // Extract weights and centres to lists
-        virtual void populateLists
-        (
-            labelList& parents,
-            vectorField& centres,
-            scalarField& weights
-        ) const;
-
-        // Return the highPrecision switch
-        bool highPrecision() const
-        {
-            return highPrecision_;
-        }
-
-        // Set / Reset higher precision mode
-        void setHighPrecision() const
-        {
-            highPrecision_ = true;
-        }
-
-        void unsetHighPrecision() const
-        {
-            highPrecision_ = false;
-        }
-
-        // Compute normFactor
-        virtual void computeNormFactor(const label index) const = 0;
-
-        // Compute intersections
-        virtual bool computeInsersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            const scalar& matchTol,
-            bool output
-        ) const = 0;
-};
-
-
-/*---------------------------------------------------------------------------*\
-                     Class faceSetAlgorithm Declaration
-\*---------------------------------------------------------------------------*/
-
-class faceSetAlgorithm
-:
-    public convexSetAlgorithm
-{
-
-    // Private Member Functions
-
-        //- Disallow default bitwise copy construct
-        faceSetAlgorithm(const faceSetAlgorithm&);
-
-        //- Disallow default bitwise assignment
-        void operator=(const faceSetAlgorithm&);
-
-        // Compute the area / centre of a polygon
-        // formed by a convex set of points.
-        template <class T>
-        void convexSetArea
-        (
-            const label newIndex,
-            const label oldIndex,
-            const Field<Vector<T> >& cvxSet,
-            const Vector<T>& refNorm,
-            T& fArea,
-            Vector<T>& fCentre,
-            bool output
-        ) const;
-
-        //- Intersection member function
-        //  Templated for precision
-        template <class T>
-        bool faceIntersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            const T& matchTol,
-            Field<Vector<T> >& intPoints,
-            bool output
-        ) const;
-
-public:
-
-    //- Constructor
-
-        faceSetAlgorithm
-        (
-            const polyMesh& mesh,
-            const UList<point>& newPoints,
-            const UList<edge>& newEdges,
-            const UList<face>& newFaces,
-            const UList<cell>& newCells,
-            const UList<label>& newOwner,
-            const UList<label>& newNeighbour,
-            const List<objectMap>& pointsFromPoints,
-            const Map<labelList>& modPoints
-        );
-
-    //- Destructor
-
-        virtual ~faceSetAlgorithm()
-        {}
-
-    //- Virtual member functions
-
-        // Dimensions of the algorithm
-        virtual label dimension() const
-        {
-            return 2;
-        }
-
-        // Compute normFactor
-        virtual void computeNormFactor(const label index) const;
-
-        // Compute intersections
-        virtual bool computeInsersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            const scalar& matchTol,
-            bool output
-        ) const;
-};
-
-
-/*---------------------------------------------------------------------------*\
-                     Class cellSetAlgorithm Declaration
-\*---------------------------------------------------------------------------*/
-
-class cellSetAlgorithm
-:
-    public convexSetAlgorithm
-{
-
-    // Private Member Functions
-
-        //- Disallow default bitwise copy construct
-        cellSetAlgorithm(const cellSetAlgorithm&);
-
-        //- Disallow default bitwise assignment
-        void operator=(const cellSetAlgorithm&);
-
-        // Compute the volume / centre of a polyhedron
-        // formed by a convex set of points.
-        template <class T>
-        void convexSetVolume
-        (
-            const label newCellIndex,
-            const label oldCellIndex,
-            const Field<Vector<T> >& cvxSet,
-            T& cVolume,
-            Vector<T>& cCentre,
-            bool output
-        ) const;
-
-        //- Intersection member function
-        //  Templated for precision
-        template <class T>
-        bool cellIntersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            const T& matchTol,
-            Field<Vector<T> >& intPoints,
-            bool output
-        ) const;
-
-#       ifdef USE_CGAL
-        bool cellIntersection_CGAL
-        (
-            const label newIndex,
-            const label oldIndex,
-            scalar& cVolume,
-            vector& cCentre,
-            bool output
-        ) const;
-#       endif
-
-public:
-
-    //- Constructor
-
-        cellSetAlgorithm
-        (
-            const polyMesh& mesh,
-            const UList<point>& newPoints,
-            const UList<edge>& newEdges,
-            const UList<face>& newFaces,
-            const UList<cell>& newCells,
-            const UList<label>& newOwner,
-            const UList<label>& newNeighbour,
-            const List<objectMap>& pointsFromPoints,
-            const Map<labelList>& modPoints
-        );
-
-    //- Destructor
-
-        virtual ~cellSetAlgorithm()
-        {}
-
-    //- Virtual member functions
-
-        // Dimensions of the algorithm
-        virtual label dimension() const
-        {
-            return 3;
-        }
-
-        // Compute normFactor
-        virtual void computeNormFactor(const label index) const;
-
-        // Compute intersections
-        virtual bool computeInsersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            const scalar& matchTol,
-            bool output
-        ) const;
-};
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

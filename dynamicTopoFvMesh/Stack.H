@@ -23,10 +23,10 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    stack
+    Stack
 
 Description
-    A thread-safe stack implementation based on resizableList
+    Thread-safe stack implementation using an internal DynamicList
 
 Author
     Sandeep Menon
@@ -34,14 +34,15 @@ Author
     All rights reserved
 
 SourceFiles
-    stackI.H
+    StackI.H
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef stack_H
-#define stack_H
+#ifndef Stack_H
+#define Stack_H
 
-#include "resizableList.H"
+#include "label.H"
+#include "DynamicList.H"
 #include "multiThreader.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -50,21 +51,23 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                           Class stack Declaration
+                           Class Stack Declaration
 \*---------------------------------------------------------------------------*/
 
-class stack
+class Stack
 {
     // Private data
-    resizableList<label> stack_;
 
-    // Mutex for multi-threading
-    Mutex stackMutex_;
+        //- Internal list
+        DynamicList<label> stack_;
+
+        //- Mutex for multi-threading
+        Mutex stackMutex_;
 
 public:
 
     // Constructor
-    stack(){}
+    Stack(){}
 
     // Member functions for access to the stack
 
@@ -92,9 +95,6 @@ public:
         //- Print out the stack
         inline void print();
 
-        //- Return if a certain index was found in the stack
-        inline label findIndex(const label index);
-
         //- Access the stack as a list
         inline label operator[](const label index);
 };
@@ -106,7 +106,7 @@ public:
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-#include "stackI.H"
+#include "StackI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

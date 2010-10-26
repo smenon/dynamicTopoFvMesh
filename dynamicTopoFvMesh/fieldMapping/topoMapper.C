@@ -240,7 +240,7 @@ const objectRegistry& topoMapper::db() const
 
 
 //- Set mapping information
-void topoMapper::setMapper(const mapPolyMesh& mpm)
+void topoMapper::setMapper(const mapPolyMesh& mpm) const
 {
     if
     (
@@ -251,7 +251,7 @@ void topoMapper::setMapper(const mapPolyMesh& mpm)
     {
         FatalErrorIn
         (
-            "void topoMapper::setMapper()"
+            "void topoMapper::setMapper() const"
         ) << nl << " Mapper has already been set. "
           << abort(FatalError);
     }
@@ -268,7 +268,7 @@ void topoMapper::setFaceWeights
 (
     List<scalarField>& weights,
     List<vectorField>& centres
-)
+) const
 {
     faceWeights_.transfer(weights);
     faceCentres_.transfer(centres);
@@ -280,7 +280,7 @@ void topoMapper::setCellWeights
 (
     List<scalarField>& weights,
     List<vectorField>& centres
-)
+) const
 {
     cellWeights_.transfer(weights);
     cellCentres_.transfer(centres);

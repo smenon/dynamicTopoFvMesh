@@ -24,7 +24,7 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "mesquiteSmoother.H"
+#include "mesquiteMotionSolver.H"
 #include "Random.H"
 #include "IOmanip.H"
 #include "globalMeshData.H"
@@ -41,17 +41,17 @@ License
 
 namespace Foam
 {
-    defineTypeNameAndDebug(mesquiteSmoother, 0);
+    defineTypeNameAndDebug(mesquiteMotionSolver, 0);
     addToRunTimeSelectionTable
     (
         motionSolver,
-        mesquiteSmoother,
+        mesquiteMotionSolver,
         dictionary
     );
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-mesquiteSmoother::mesquiteSmoother
+mesquiteMotionSolver::mesquiteMotionSolver
 (
     const polyMesh& mesh
 )
@@ -96,7 +96,7 @@ mesquiteSmoother::mesquiteSmoother
 }
 
 
-mesquiteSmoother::mesquiteSmoother
+mesquiteMotionSolver::mesquiteMotionSolver
 (
     const polyMesh& mesh,
     Istream& msData
@@ -143,14 +143,14 @@ mesquiteSmoother::mesquiteSmoother
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-mesquiteSmoother::~mesquiteSmoother()
+mesquiteMotionSolver::~mesquiteMotionSolver()
 {
     clearOut();
 }
 
 
 // Clear out addressing
-void mesquiteSmoother::clearOut()
+void mesquiteMotionSolver::clearOut()
 {
     // Delete memory pointers
     delete [] vtxCoords_;
@@ -166,10 +166,13 @@ void mesquiteSmoother::clearOut()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Read options from the dictionary
-void mesquiteSmoother::readOptions()
+void mesquiteMotionSolver::readOptions()
 {
+    // Fetch the sub-dictionary
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
     // Check if any slip patches are specified
-    if (found("slipPatches") || twoDMesh_)
+    if (optionsDict.found("slipPatches") || twoDMesh_)
     {
         labelHashSet slipPatchIDs;
 
@@ -185,7 +188,7 @@ void mesquiteSmoother::readOptions()
         }
         else
         {
-            wordList slipPatches = subDict("slipPatches").toc();
+            wordList slipPatches = optionsDict.subDict("slipPatches").toc();
 
             forAll(slipPatches, wordI)
             {
@@ -201,51 +204,60 @@ void mesquiteSmoother::readOptions()
         }
 
         // Check if a tolerance has been specified
-        if (found("tolerance"))
+        if (optionsDict.found("tolerance"))
         {
-            tolerance_ = readScalar(lookup("tolerance"));
+            tolerance_ = readScalar(optionsDict.lookup("tolerance"));
         }
 
         // Check if volume correction is enabled
-        if (found("volumeCorrection"))
+        if (optionsDict.found("volumeCorrection"))
         {
-            volumeCorrection_ = readBool(lookup("volumeCorrection"));
+            volumeCorrection_ =
+            (
+                readBool(optionsDict.lookup("volumeCorrection"))
+            );
         }
 
         // Check if volume correction tolerance is specified
-        if (found("volCorrTolerance"))
+        if (optionsDict.found("volCorrTolerance"))
         {
-            volCorrTolerance_ = readScalar(lookup("volCorrTolerance"));
+            volCorrTolerance_ =
+            (
+                readScalar(optionsDict.lookup("volCorrTolerance"))
+            );
         }
 
         // Check if volume correction maxIter is specified
-        if (found("volCorrMaxIter"))
+        if (optionsDict.found("volCorrMaxIter"))
         {
-            volCorrMaxIter_ = readLabel(lookup("volCorrMaxIter"));
+            volCorrMaxIter_ = readLabel(optionsDict.lookup("volCorrMaxIter"));
         }
 
         // Check if multiple sweeps have been requested
-        if (found("nSweeps"))
+        if (optionsDict.found("nSweeps"))
         {
-            nSweeps_ = readLabel(lookup("nSweeps"));
+            nSweeps_ = readLabel(optionsDict.lookup("nSweeps"));
         }
 
         // Check if a surface smoothing interval has been specified
-        if (found("surfInterval"))
+        if (optionsDict.found("surfInterval"))
         {
-            surfInterval_ = readLabel(lookup("surfInterval"));
+            surfInterval_ = readLabel(optionsDict.lookup("surfInterval"));
         }
 
         // Check if a relaxation factor is specified
-        if (found("relaxationFactor"))
+        if (optionsDict.found("relaxationFactor"))
         {
-            relax_ = readScalar(lookup("relaxationFactor"));
+            relax_ = readScalar(optionsDict.lookup("relaxationFactor"));
         }
 
         // Check if coupled patches exist.
-        if (found("coupledPatches"))
+        if (optionsDict.found("coupledPatches"))
         {
-            const dictionary& coupledPatches = subDict("coupledPatches");
+            const dictionary& coupledPatches =
+            (
+                optionsDict.subDict("coupledPatches")
+            );
 
             const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
@@ -284,10 +296,7 @@ void mesquiteSmoother::readOptions()
                 }
                 else
                 {
-                    FatalErrorIn
-                    (
-                        "mesquiteSmoother::readOptions()"
-                    )
+                    FatalErrorIn("void mesquiteMotionSolver::readOptions()")
                         << " Coupled patches are wrongly specified." << nl
                         << " Master: " << mPatch << ":" << masterPatch << nl
                         << " Slave: " << sPatch << ":" << slavePatch << nl
@@ -355,18 +364,13 @@ void mesquiteSmoother::readOptions()
     );
 
     // Read the optimization metric
-    qMetric_ = word(lookup("optMetric"));
+    qMetric_ = word(optionsDict.lookup("optMetric"));
 
     if (!qMetricTable_.found(qMetric_))
     {
-        FatalErrorIn
-        (
-            "mesquiteSmoother::readOptions()"
-        )
-            << "Unrecognized quality metric: "
-            << qMetric_ << nl
-            << "Available metrics are: " << nl
-            << qMetricTable_.toc()
+        FatalErrorIn("void mesquiteMotionSolver::readOptions()")
+            << "Unrecognized quality metric: " << qMetric_ << nl
+            << "Available metrics are: " << nl << qMetricTable_.toc()
             << abort(FatalError);
     }
     else
@@ -390,18 +394,13 @@ void mesquiteSmoother::readOptions()
     ofTable.insert("PatchPowerMeanP", 10);
 
     // Read the objective function
-    word ofType(lookup("objFunction"));
+    word ofType(optionsDict.lookup("objFunction"));
 
     if (!ofTable.found(ofType))
     {
-        FatalErrorIn
-        (
-            "mesquiteSmoother::readOptions()"
-        )
-            << "Unrecognized objective function: "
-            << ofType << nl
-            << "Available types are: " << nl
-            << ofTable.toc()
+        FatalErrorIn("void mesquiteMotionSolver::readOptions()")
+            << "Unrecognized objective function: " << ofType << nl
+            << "Available types are: " << nl << ofTable.toc()
             << abort(FatalError);
     }
     else
@@ -421,16 +420,13 @@ void mesquiteSmoother::readOptions()
         numTries = 2;
 
         // Lookup both objective functions
-        types[0] = ofTable[word(lookup("firstFunction"))];
-        types[1] = ofTable[word(lookup("secondFunction"))];
+        types[0] = ofTable[word(optionsDict.lookup("firstFunction"))];
+        types[1] = ofTable[word(optionsDict.lookup("secondFunction"))];
 
         // Ensure that we're not making a composite of composites
         if (types[0] < 4 || types[1] < 4)
         {
-            FatalErrorIn
-            (
-                "mesquiteSmoother::readOptions()"
-            )
+            FatalErrorIn("void mesquiteMotionSolver::readOptions()")
                 << "Cannot make a composite of composite functions."
                 << abort(FatalError);
         }
@@ -442,18 +438,15 @@ void mesquiteSmoother::readOptions()
         numTries = 1;
 
         // Lookup the objective function to scale
-        types[0] = ofTable[word(lookup("scaleFunction"))];
+        types[0] = ofTable[word(optionsDict.lookup("scaleFunction"))];
 
         // Lookup the scale value
-        scale = readScalar(lookup("scale"));
+        scale = readScalar(optionsDict.lookup("scale"));
 
         // Ensure that we're not making a composite of composites
         if (types[0] < 4)
         {
-            FatalErrorIn
-            (
-                "mesquiteSmoother::readOptions()"
-            )
+            FatalErrorIn("void mesquiteMotionSolver::readOptions()")
                 << "Cannot make a composite of composite functions."
                 << abort(FatalError);
         }
@@ -469,9 +462,9 @@ void mesquiteSmoother::readOptions()
     // Hold two additional pointers for composite functions
     List<autoPtr<Mesquite::ObjectiveFunction> > composite(numTries);
 
-    for(label i = 0; i < numTries; i++)
+    for (label i = 0; i < numTries; i++)
     {
-        switch(types[i])
+        switch (types[i])
         {
             case 4:
             {
@@ -489,7 +482,7 @@ void mesquiteSmoother::readOptions()
             case 5:
             {
                 // Lookup the P value
-                label pValue = readLabel(lookup("pValue"));
+                label pValue = readLabel(optionsDict.lookup("pValue"));
 
                 composite[i].set
                 (
@@ -521,7 +514,7 @@ void mesquiteSmoother::readOptions()
             case 7:
             {
                 // Lookup the Power value
-                scalar power = readScalar(lookup("power"));
+                scalar power = readScalar(optionsDict.lookup("power"));
 
                 // Sum of each quality metric value raised to a power,
                 // divided by the total number of quality metric values.
@@ -566,7 +559,7 @@ void mesquiteSmoother::readOptions()
             case 10:
             {
                 // Lookup the Power value
-                scalar power = readScalar(lookup("power"));
+                scalar power = readScalar(optionsDict.lookup("power"));
 
                 // p-mean^p of p-mean^p of metric values
                 composite[i].set
@@ -583,10 +576,7 @@ void mesquiteSmoother::readOptions()
 
             default:
             {
-                FatalErrorIn
-                (
-                    "mesquiteSmoother::readOptions()"
-                )
+                FatalErrorIn("void mesquiteMotionSolver::readOptions()")
                     << "Illegal function requested."
                     << abort(FatalError);
 
@@ -682,18 +672,13 @@ void mesquiteSmoother::readOptions()
     oaTable.insert("TrustRegion", 8);
 
     // Read the optimization algorithm
-    word oaType(lookup("optAlgorithm"));
+    word oaType(optionsDict.lookup("optAlgorithm"));
 
     if (!oaTable.found(oaType))
     {
-        FatalErrorIn
-        (
-            "mesquiteSmoother::readOptions()"
-        )
-            << "Unrecognized optimization algorithm: "
-            << oaType << nl
-            << "Available types are: " << nl
-            << oaTable.toc()
+        FatalErrorIn("void mesquiteMotionSolver::readOptions()")
+            << "Unrecognized optimization algorithm: " << oaType << nl
+            << "Available types are: " << nl << oaTable.toc()
             << abort(FatalError);
     }
     else
@@ -707,22 +692,21 @@ void mesquiteSmoother::readOptions()
     switch(oaSelection)
     {
         case 0:
-            optAlgorithm_.set
-            (
-                new Mesquite::ConjugateGradient(&objFunction_())
-            );
+        {
+            optAlgorithm_.set(new Mesquite::ConjugateGradient(&objFunction_()));
 
             break;
+        }
 
         case 1:
-            optAlgorithm_.set
-            (
-                new Mesquite::FeasibleNewton(&objFunction_())
-            );
+        {
+            optAlgorithm_.set(new Mesquite::FeasibleNewton(&objFunction_()));
 
             break;
+        }
 
         case 2:
+        {
             // NonSmoothDescent optimizes on a quality metric only
             optAlgorithm_.set
             (
@@ -736,66 +720,65 @@ void mesquiteSmoother::readOptions()
             );
 
             break;
+        }
 
         case 3:
-            optAlgorithm_.set
-            (
-                new Mesquite::QuasiNewton(&objFunction_())
-            );
+        {
+            optAlgorithm_.set(new Mesquite::QuasiNewton(&objFunction_()));
 
             break;
+        }
 
         case 4:
+        {
             // Not really a smoother; just randomizes positions
-            optAlgorithm_.set
-            (
-                new Mesquite::Randomize()
-            );
+            optAlgorithm_.set(new Mesquite::Randomize());
 
             break;
+        }
 
         case 5:
-            optAlgorithm_.set
-            (
-                new Mesquite::LaplacianSmoother(&objFunction_())
-            );
+        {
+            optAlgorithm_.set(new Mesquite::LaplacianSmoother(&objFunction_()));
 
             break;
+        }
 
         case 6:
+        {
             optAlgorithm_.set
             (
                 new Mesquite::SmartLaplacianSmoother(&objFunction_())
             );
 
             break;
+        }
 
         case 7:
-            optAlgorithm_.set
-            (
-                new Mesquite::SteepestDescent(&objFunction_())
-            );
+        {
+            optAlgorithm_.set(new Mesquite::SteepestDescent(&objFunction_()));
 
             break;
+        }
 
         case 8:
-            optAlgorithm_.set
-            (
-                new Mesquite::TrustRegion(&objFunction_())
-            );
+        {
+            optAlgorithm_.set(new Mesquite::TrustRegion(&objFunction_()));
 
             break;
+        }
     }
 
     // Read termination criteria, if it exists.
-    if (found("tcInner"))
+    if (optionsDict.found("tcInner"))
     {
-        const dictionary& innerDict = subDict("tcInner");
+        const dictionary& innerDict = optionsDict.subDict("tcInner");
 
         label nSetOptions = 0;
         HashSet<word> options;
 
         options.insert("absGradL2");
+
         if (innerDict.found("absGradL2"))
         {
             tcInner_.add_absolute_gradient_L2_norm
@@ -807,6 +790,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("absGradInf");
+
         if (innerDict.found("absGradInf"))
         {
             tcInner_.add_absolute_gradient_inf_norm
@@ -818,6 +802,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("relGradL2");
+
         if (innerDict.found("relGradL2"))
         {
             tcInner_.add_relative_gradient_L2_norm
@@ -829,6 +814,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("relGradInf");
+
         if (innerDict.found("relGradInf"))
         {
             tcInner_.add_relative_gradient_inf_norm
@@ -840,6 +826,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("absQualImprovement");
+
         if (innerDict.found("absQualImprovement"))
         {
             tcInner_.add_absolute_quality_improvement
@@ -851,6 +838,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("relQualImprovement");
+
         if (innerDict.found("relQualImprovement"))
         {
             tcInner_.add_relative_quality_improvement
@@ -862,6 +850,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("absVertexMovement");
+
         if (innerDict.found("absVertexMovement"))
         {
             tcInner_.add_absolute_vertex_movement
@@ -873,6 +862,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("relVertexMovement");
+
         if (innerDict.found("relVertexMovement"))
         {
             tcInner_.add_relative_vertex_movement
@@ -884,6 +874,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("absSuccessiveImprovement");
+
         if (innerDict.found("absSuccessiveImprovement"))
         {
             tcInner_.add_absolute_successive_improvement
@@ -895,6 +886,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("relSuccessiveImprovement");
+
         if (innerDict.found("relSuccessiveImprovement"))
         {
             tcInner_.add_relative_successive_improvement
@@ -906,6 +898,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("iterationLimit");
+
         if (innerDict.found("iterationLimit"))
         {
             tcInner_.add_iteration_limit
@@ -917,6 +910,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("cpuTime");
+
         if (innerDict.found("cpuTime"))
         {
             tcInner_.add_cpu_time
@@ -929,10 +923,7 @@ void mesquiteSmoother::readOptions()
 
         if (innerDict.size() == 0 || nSetOptions == 0)
         {
-            FatalErrorIn
-            (
-                "mesquiteSmoother::readOptions()"
-            )
+            FatalErrorIn("void mesquiteMotionSolver::readOptions()")
                 << "Empty tcInner dictionary: " << nl
                 << "Available types are: " << nl
                 << options.toc()
@@ -948,14 +939,15 @@ void mesquiteSmoother::readOptions()
         tcInner_.add_absolute_gradient_inf_norm(1e-4);
     }
 
-    if (found("tcOuter"))
+    if (optionsDict.found("tcOuter"))
     {
-        const dictionary& outerDict = subDict("tcOuter");
+        const dictionary& outerDict = optionsDict.subDict("tcOuter");
 
         label nSetOptions = 0;
         HashSet<word> options;
 
         options.insert("iterationLimit");
+
         if (outerDict.found("iterationLimit"))
         {
             tcOuter_.add_iteration_limit
@@ -967,6 +959,7 @@ void mesquiteSmoother::readOptions()
         }
 
         options.insert("cpuTime");
+
         if (outerDict.found("cpuTime"))
         {
             tcOuter_.add_cpu_time
@@ -979,10 +972,7 @@ void mesquiteSmoother::readOptions()
 
         if (outerDict.size() == 0 || nSetOptions == 0)
         {
-            FatalErrorIn
-            (
-                "mesquiteSmoother::readOptions()"
-            )
+            FatalErrorIn("void mesquiteMotionSolver::readOptions()")
                 << "Empty tcOuter dictionary: " << nl
                 << "Available types are: " << nl
                 << options.toc()
@@ -1001,7 +991,7 @@ void mesquiteSmoother::readOptions()
 
 
 // Initialize connectivity arrays for Mesquite
-void mesquiteSmoother::initArrays()
+void mesquiteMotionSolver::initArrays()
 {
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
@@ -1145,7 +1135,7 @@ void mesquiteSmoother::initArrays()
 
 
 // Private member function to construct parallel connectivity data
-void mesquiteSmoother::initParallelConnectivity()
+void mesquiteMotionSolver::initParallelConnectivity()
 {
     Map<label> nPrc;
     label pIndex = nPoints_, cIndex = (4*nCells_);
@@ -1494,57 +1484,6 @@ void mesquiteSmoother::initParallelConnectivity()
         }
     }
 
-    // Write out points for post processing, if necessary.
-    if (debug)
-    {
-        forAllConstIter(Map<Map<label> >, auxSurfPointMap_, procIter)
-        {
-            const Map<label>& procMap = procIter();
-
-            label i = 0;
-            pointField sProcPoints(procMap.size(), vector::zero);
-
-            forAllConstIter(Map<label>, procMap, pIter)
-            {
-                label fIndex = pIter();
-
-                label pIndex = -1;
-                label local = -1;
-
-                // Find the patch index
-                forAll(pIDs_, patchI)
-                {
-                    if
-                    (
-                        fIndex >= offsets_[patchI]
-                     && fIndex < offsets_[patchI + 1]
-                    )
-                    {
-                        pIndex = pIDs_[patchI];
-                        local = (fIndex - offsets_[patchI]);
-                        break;
-                    }
-                }
-
-                sProcPoints[i++] = boundary[pIndex].localPoints()[local];
-            }
-
-            // Write out points
-            writeVTK
-            (
-                word
-                (
-                    "sProcPoints_"
-                  + Foam::name(Pstream::myProcNo())
-                  + '_'
-                  + Foam::name(procIter.key())
-                ),
-                sProcPoints,
-                labelListList(0)
-            );
-        }
-    }
-
     // Prepare edgeMarkers
     forAll(pIDs_, patchI)
     {
@@ -1572,7 +1511,7 @@ void mesquiteSmoother::initParallelConnectivity()
 
 
 // Copy auxiliary points to/from buffers
-void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
+void mesquiteMotionSolver::copyAuxiliaryPoints(bool copyBack)
 {
     if (!Pstream::parRun())
     {
@@ -1741,7 +1680,7 @@ void mesquiteSmoother::copyAuxiliaryPoints(bool copyBack)
 
 
 // Sparse matrix-vector multiply [3D]
-void mesquiteSmoother::A
+void mesquiteMotionSolver::A
 (
     const vectorField& p,
     vectorField& w
@@ -1789,7 +1728,7 @@ void mesquiteSmoother::A
 
 
 // Transfer buffers after divergence compute.
-void mesquiteSmoother::transferBuffers
+void mesquiteMotionSolver::transferBuffers
 (
     vectorField& field
 )
@@ -1895,7 +1834,7 @@ void mesquiteSmoother::transferBuffers
 
 
 // Apply boundary conditions
-void mesquiteSmoother::applyBCs
+void mesquiteMotionSolver::applyBCs
 (
     vectorField& field
 )
@@ -1937,7 +1876,7 @@ void mesquiteSmoother::applyBCs
 
 
 // Vector dot-product
-scalar mesquiteSmoother::dot
+scalar mesquiteMotionSolver::dot
 (
     const vectorField& f1,
     const vectorField& f2
@@ -1957,7 +1896,7 @@ scalar mesquiteSmoother::dot
 }
 
 
-scalar mesquiteSmoother::normFactor
+scalar mesquiteMotionSolver::normFactor
 (
     const vectorField& x,
     const vectorField& b,
@@ -1977,7 +1916,7 @@ scalar mesquiteSmoother::normFactor
 
 
 // Component-wise sumMag
-scalar mesquiteSmoother::cmptSumMag
+scalar mesquiteMotionSolver::cmptSumMag
 (
     const vectorField& field
 )
@@ -1998,7 +1937,7 @@ scalar mesquiteSmoother::cmptSumMag
 
 
 // CG solver
-label mesquiteSmoother::CG
+label mesquiteMotionSolver::CG
 (
     const vectorField& b,
     vectorField& p,
@@ -2061,15 +2000,18 @@ label mesquiteSmoother::CG
 
 
 // Apply fixed-value boundary conditions, if any.
-void mesquiteSmoother::applyFixedValuePatches()
+void mesquiteMotionSolver::applyFixedValuePatches()
 {
+    // Fetch the sub-dictionary
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
     // Check the dictionary for entries corresponding to constant
     // fixed-displacement BCs. This is done because a 'motionU'
     // field is not used to specify such BC types.
-    if (found("fixedValuePatches"))
+    if (optionsDict.found("fixedValuePatches"))
     {
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-        const dictionary& fvpDict = subDict("fixedValuePatches");
+        const dictionary& fvpDict = optionsDict.subDict("fixedValuePatches");
 
         // Extract a list of patch names.
         wordList fixPatches = fvpDict.toc();
@@ -2102,7 +2044,10 @@ void mesquiteSmoother::applyFixedValuePatches()
 
             if (patchI == -1)
             {
-                FatalErrorIn("void mesquiteSmoother::applyFixedValuePatches()")
+                FatalErrorIn
+                (
+                    "void mesquiteMotionSolver::applyFixedValuePatches()"
+                )
                     << "Cannot find patch: " << fixPatches[wordI]
                     << abort(FatalError);
             }
@@ -2170,7 +2115,7 @@ void mesquiteSmoother::applyFixedValuePatches()
 
 
 // Private member function to perform Laplacian surface smoothing
-void mesquiteSmoother::smoothSurfaces()
+void mesquiteMotionSolver::smoothSurfaces()
 {
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
@@ -2268,7 +2213,7 @@ void mesquiteSmoother::smoothSurfaces()
 
                 if (!foundMap)
                 {
-                    FatalErrorIn("mesquiteSmoother::smoothSurfaces()")
+                    FatalErrorIn("void mesquiteMotionSolver::smoothSurfaces()")
                         << "Could not find coupling map: " << nl
                         << "Master: " << patchI.key() << nl
                         << "Slave: " << patchI()
@@ -2280,66 +2225,10 @@ void mesquiteSmoother::smoothSurfaces()
 }
 
 
-// Find the volume of a tetrahedron.
-// The function assumes points (a-b-c)
-// are in counter-clockwise fashion when viewed from d.
-inline scalar mesquiteSmoother::tetVolume
-(
-    const label cIndex,
-    const pointField& pField
-)
-{
-    const cell& cellToCheck = mesh().cells()[cIndex];
-
-    const face& currFace = mesh().faces()[cellToCheck[0]];
-    const face& nextFace = mesh().faces()[cellToCheck[1]];
-
-    // Get the fourth point and compute cell volume
-    forAll(nextFace, pointI)
-    {
-        if
-        (
-            nextFace[pointI] != currFace[0] &&
-            nextFace[pointI] != currFace[1] &&
-            nextFace[pointI] != currFace[2]
-        )
-        {
-            // Compute cell-volume
-            if (mesh().faceOwner()[cellToCheck[0]] == cIndex)
-            {
-                const point& a = pField[currFace[2]];
-                const point& b = pField[currFace[1]];
-                const point& c = pField[currFace[0]];
-                const point& d = pField[nextFace[pointI]];
-
-                return ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
-            }
-            else
-            {
-                const point& a = pField[currFace[0]];
-                const point& b = pField[currFace[1]];
-                const point& c = pField[currFace[2]];
-                const point& d = pField[nextFace[pointI]];
-
-                return ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
-            }
-        }
-    }
-
-    // Something's wrong with connectivity.
-    FatalErrorIn("mesquiteSmoother::tetVolume()")
-        << "Cell: " << cIndex
-        << " has inconsistent connectivity."
-        << abort(FatalError);
-
-    return 0.0;
-}
-
-
 // Find the quality of a tetrahedron.
 // The function assumes points (a-b-c)
 // are in counter-clockwise fashion when viewed from d.
-inline scalar mesquiteSmoother::tetQuality
+inline scalar mesquiteMotionSolver::tetQuality
 (
     const label cIndex,
     const pointField& pField
@@ -2403,7 +2292,7 @@ inline scalar mesquiteSmoother::tetQuality
     }
 
     // Something's wrong with connectivity.
-    FatalErrorIn("mesquiteSmoother::tetQuality()")
+    FatalErrorIn("inline scalar mesquiteMotionSolver::tetQuality()")
         << "Cell: " << cIndex
         << " has inconsistent connectivity."
         << abort(FatalError);
@@ -2414,8 +2303,11 @@ inline scalar mesquiteSmoother::tetQuality
 
 // Private member function to check for invalid
 // cells and correct if necessary.
-void mesquiteSmoother::correctInvalidCells()
+void mesquiteMotionSolver::correctInvalidCells()
 {
+    // Fetch the sub-dictionary
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
     // Loop through pointCells for all boundary points
     // and compute cell volume.
     const labelListList& pointCells = mesh().pointCells();
@@ -2424,9 +2316,9 @@ void mesquiteSmoother::correctInvalidCells()
     // Check if a minimum quality was specified.
     scalar thresh = 0.45;
 
-    if (found("sliverThreshold"))
+    if (optionsDict.found("sliverThreshold"))
     {
-        thresh = readScalar(lookup("sliverThreshold"));
+        thresh = readScalar(optionsDict.lookup("sliverThreshold"));
     }
 
     // Obtain point-positions after smoothing
@@ -2444,7 +2336,6 @@ void mesquiteSmoother::correctInvalidCells()
 
             forAll(pCells, cellI)
             {
-                // if (tetVolume(pCells[cellI], refPoints_) < 0.0)
                 if (tetQuality(pCells[cellI], refPoints_) < thresh)
                 {
                     // Add this cell to the list
@@ -2461,252 +2352,6 @@ void mesquiteSmoother::correctInvalidCells()
     {
         return;
     }
-
-#if USE_LBFGS
-
-    Switch useBFGS(false);
-
-    if (found("useBFGS"))
-    {
-        useBFGS = lookup("useBFGS");
-    }
-
-    if (useBFGS)
-    {
-        InfoIn("mesquiteSmoother::correctInvalidCells()")
-            << "Found " << invCells.size() << " invalid cells. "
-            << "Attempting to correct..." << flush;
-
-        // Looks like some inverted cells are present.
-        // Check for free-vertices connected to invalid cells.
-        const labelListList& cellPoints = mesh().cellPoints();
-        const labelListList& pointFaces = mesh().pointFaces();
-
-        labelHashSet freePoints;
-
-        forAll(invCells, cellI)
-        {
-            const labelList& cPoints = cellPoints[invCells[cellI]];
-
-            forAll(cPoints, pointI)
-            {
-                const labelList& pFaces = pointFaces[cPoints[pointI]];
-
-                bool boundaryPoint = false;
-
-                forAll(pFaces, faceI)
-                {
-                    if (!mesh().isInternalFace(pFaces[faceI]))
-                    {
-                        boundaryPoint = true;
-                        break;
-                    }
-                }
-
-                if (!boundaryPoint && !freePoints.found(cPoints[pointI]))
-                {
-                    freePoints.insert(cPoints[pointI]);
-                }
-            }
-        }
-
-        // Obtain mesh connectivity
-        const faceList& meshFaces = mesh().faces();
-        const cellList& meshCells = mesh().cells();
-        const labelList& owner = mesh().faceOwner();
-
-        // For each point, build a local hull for optimization
-        labelList freePointList = freePoints.toc();
-        labelListList jPoints(freePointList.size(), labelList(0));
-
-        forAll(freePointList, pointI)
-        {
-            const labelList& pCells = pointCells[freePointList[pointI]];
-
-            // First size the list. Assume tet-mesh.
-            jPoints[pointI].setSize(3*pCells.size());
-
-            label i = 0;
-
-            forAll(pCells, cellI)
-            {
-                const cell& curCell = meshCells[pCells[cellI]];
-
-                // Find a face which doesn't contain pIndex.
-                forAll(curCell, faceI)
-                {
-                    const face& thisFace = meshFaces[curCell[faceI]];
-
-                    if (thisFace.which(freePointList[pointI]) == -1)
-                    {
-                        if (owner[curCell[faceI]] == pCells[cellI])
-                        {
-                            jPoints[pointI][i++] = thisFace[0];
-                            jPoints[pointI][i++] = thisFace[1];
-                            jPoints[pointI][i++] = thisFace[2];
-                        }
-                        else
-                        {
-                            jPoints[pointI][i++] = thisFace[2];
-                            jPoints[pointI][i++] = thisFace[1];
-                            jPoints[pointI][i++] = thisFace[0];
-                        }
-
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (debug)
-        {
-            forAll(freePointList, pointI)
-            {
-                writePoint(freePointList[pointI], jPoints[pointI]);
-            }
-        }
-
-        // Loop through various points, and check for a negative
-        // Jacobian value. If an inverted cell exists, proceed
-        // with the LBFGS algorithm.
-        int N = 3;
-        scalar beta = 0.0;
-        lbfgsfloatval_t fx;
-        lbfgsfloatval_t *m_x = lbfgs_malloc(N);
-
-        forAll(freePointList, pointI)
-        {
-            const vector& x = refPoints_[freePointList[pointI]];
-
-            bool foundInvalid = checkValidity(x, jPoints[pointI], beta);
-
-            if (foundInvalid)
-            {
-                // Prepare the node-position
-                m_x[0] = x.x();
-                m_x[1] = x.y();
-                m_x[2] = x.z();
-
-                if (debug)
-                {
-                    Info << "x0: "
-                         << m_x[0] << " "
-                         << m_x[1] << " "
-                         << m_x[2] << " "
-                         << endl;
-                }
-
-                // Prepare data
-                optInfo data
-                (
-                    (*this),
-                    beta,
-                    jPoints[pointI],
-                    refPoints_
-                );
-
-                // Call the lbfgs algorithm
-                lbfgs
-                (
-                    N,
-                    m_x,
-                    &fx,
-                    _evaluate,
-                    NULL,
-                    reinterpret_cast<void *>(&data),
-                    NULL
-                );
-
-                if (debug)
-                {
-                    Info << "xNew: "
-                         << m_x[0] << " "
-                         << m_x[1] << " "
-                         << m_x[2] << " "
-                         << endl;
-                }
-
-                foundInvalid = checkValidity
-                (
-                    vector(m_x[0],m_x[1],m_x[2]),
-                    jPoints[pointI],
-                    beta
-                );
-
-                // Update position only if untangling was successful
-                if (!foundInvalid)
-                {
-                    refPoints_[freePointList[pointI]] =
-                    (
-                        vector(m_x[0],m_x[1],m_x[2])
-                    );
-                }
-            }
-        }
-
-        // Free allocated memory
-        lbfgs_free(m_x);
-
-        // Perform a final check to ensure everything went okay.
-        bool foundInvalid = false;
-
-        forAll(freePointList, pointI)
-        {
-            const vector& x = refPoints_[freePointList[pointI]];
-
-            foundInvalid = checkValidity(x, jPoints[pointI], beta);
-
-            if (foundInvalid)
-            {
-                break;
-            }
-        }
-
-        if (foundInvalid)
-        {
-            WarningIn
-            (
-                "mesquiteSmoother::correctInvalidCells()"
-            )
-                << " Failed to untangle mesh."
-                << endl;
-
-            Info << "Relaxing points to untangle mesh." << endl;
-        }
-        else
-        {
-            Info << "Success." << endl;
-
-            return;
-        }
-
-        // Clear out the invalid cell list, and obtain a new list
-        invCells.clear();
-
-        forAll(pIDs_, patchI)
-        {
-            const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
-
-            forAll(meshPts, pointI)
-            {
-                const labelList& pCells = pointCells[meshPts[pointI]];
-
-                forAll(pCells, cellI)
-                {
-                    if (tetVolume(pCells[cellI], refPoints_) < 0.0)
-                    {
-                        // Add this cell to the list
-                        if (findIndex(invCells, pCells[cellI]) == -1)
-                        {
-                            invCells.append(pCells[cellI]);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-#   endif
 
     bool valid = false;
     scalar lambda = 2.0, valFraction = 0.75;
@@ -2730,11 +2375,9 @@ void mesquiteSmoother::correctInvalidCells()
         forAll(invCells, cellI)
         {
             // Compute the original value
-            // scalar origVal = tetVolume(invCells[cellI], origPoints_);
             scalar origVal = tetQuality(invCells[cellI], origPoints_);
 
             // Compute the new value
-            // scalar newVal = tetVolume(invCells[cellI], refPoints_);
             scalar newVal = tetQuality(invCells[cellI], refPoints_);
 
             if (newVal < (valFraction*origVal))
@@ -2756,7 +2399,7 @@ void mesquiteSmoother::correctInvalidCells()
         {
             Info << endl;
 
-            WarningIn("mesquiteSmoother::correctInvalidCells()")
+            WarningIn("void mesquiteMotionSolver::correctInvalidCells()")
                 << " Failed to obtain a valid mesh." << nl
                 << " Reverting to original point positions."
                 << endl;
@@ -2769,161 +2412,24 @@ void mesquiteSmoother::correctInvalidCells()
 }
 
 
-//  Member function to adjust domain volume back to pre-smoothing value
-//  +/- some tolerance. Uses the bisection method to identify an
-//  approriate magnitude to displace all surface nodes (along point normals)
-//  by some value to correct for volume loss/gain.
-void mesquiteSmoother::correctGlobalVolume()
-{
-    if (!volumeCorrection_)
-    {
-        return;
-    }
-
-    const cellList& allCells = mesh().cells();
-
-    // Obtain point-positions after smoothing
-    pointField oldField = refPoints_;
-
-    scalar lengthScale = mag(mesh().bounds().max());
-    label iterations = 0;
-    scalar magPlus, magMinus;
-
-    // One of the initial bracket guesses will always be zero
-    scalar magVal = 0;
-    scalar domainVolume = 0;
-
-    forAll(allCells, cellI)
-    {
-        domainVolume += tetVolume(cellI, refPoints_);
-    }
-
-    scalar error = (domainVolume - oldVolume_);
-
-    // Check which way the error is going and
-    // adjust left and right brackets accordingly
-    if (error > 0.0)
-    {
-        magMinus = -1.0*lengthScale;
-        magPlus = 0;
-    }
-    else
-    {
-        magPlus = lengthScale;
-        magMinus = 0;
-    }
-
-    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
-
-    while (iterations < volCorrMaxIter_)
-    {
-        // Reset previously calculated volume
-        domainVolume = 0;
-
-        forAll(allCells, cellI)
-        {
-            domainVolume += tetVolume(cellI, refPoints_);
-        }
-
-        error = (domainVolume - oldVolume_);
-
-        // Move one bracket side based on sign
-        // of error of last iteration
-        if (error > 0.0)
-        {
-            magPlus = magVal;
-        }
-        else
-        {
-            magMinus = magVal;
-        }
-
-        // Bring points back to old location just after smoothing
-        refPoints_ = oldField;
-
-        if (mag(error) < volCorrTolerance_)
-        {
-            // Final update of refPoints with optimal magnitude
-            forAll(pIDs_, patchI)
-            {
-                const labelList& meshPts =
-                (
-                    boundary[pIDs_[patchI]].meshPoints()
-                );
-
-                forAll(meshPts,pointI)
-                {
-                    refPoints_[meshPts[pointI]] +=
-                    (
-                        magVal*pNormals_[patchI][pointI]
-                    );
-                }
-            }
-
-            domainVolume = 0;
-
-            forAll(allCells,cellI)
-            {
-                domainVolume += tetVolume(cellI, refPoints_);
-            }
-
-            if (debug)
-            {
-                Info << nl
-                     << "    Volume Correction Iterations: "
-                     << iterations << endl;
-                Info << "    Final Volume Error: "
-                     << error << endl;
-                Info << "    Magnitude of correction vector: "
-                     << magVal << endl;
-            }
-
-            return;
-        }
-
-        // Bisection of updated guesses
-        magVal = 0.5*(magPlus + magMinus);
-
-        // Update refPoints
-        forAll(pIDs_, patchI)
-        {
-            const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
-
-            forAll(meshPts,pointI)
-            {
-                // Move all surface points in the
-                // point normal direction by magVal
-                refPoints_[meshPts[pointI]] +=
-                (
-                    magVal*pNormals_[patchI][pointI]
-                );
-            }
-        }
-
-        iterations++;
-    }
-
-    // Output if loop doesn't exit by meeting error tolerance.
-    WarningIn
-    (
-        "mesquiteSmoother::correctGlobalVolume()"
-    )   << "Maximum volume correction iterations reached. "
-        << endl;
-}
-
-
 // Enforce cylindrical constraints for slip-patches
-void mesquiteSmoother::enforceCylindricalConstraints()
+void mesquiteMotionSolver::enforceCylindricalConstraints()
 {
     if (!surfaceSmoothing_)
     {
         return;
     }
 
+    // Fetch the sub-dictionary
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
     // Check for sub-dictionary entry
-    if (found("cylindricalConstraints"))
+    if (optionsDict.found("cylindricalConstraints"))
     {
-        const dictionary& constraintDict = subDict("cylindricalConstraints");
+        const dictionary& constraintDict =
+        (
+            optionsDict.subDict("cylindricalConstraints")
+        );
 
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
@@ -2938,7 +2444,7 @@ void mesquiteSmoother::enforceCylindricalConstraints()
             {
                 FatalErrorIn
                 (
-                    "mesquiteSmoother::enforceCylindricalConstraints()"
+                    "void mesquiteMotionSolver::enforceCylindricalConstraints()"
                 )
                     << " Cannot find patch: " << cstrPatches[wordI]
                     << abort(FatalError);
@@ -2975,7 +2481,8 @@ void mesquiteSmoother::enforceCylindricalConstraints()
                     {
                         WarningIn
                         (
-                            "mesquiteSmoother::enforceCylindricalConstraints()"
+                            "void mesquiteMotionSolver::"
+                            "enforceCylindricalConstraints()"
                         )
                             << " Constraint violation: " << viol << endl;
                     }
@@ -3035,7 +2542,8 @@ void mesquiteSmoother::enforceCylindricalConstraints()
                 {
                     FatalErrorIn
                     (
-                        "mesquiteSmoother::enforceCylindricalConstraints()"
+                        "void mesquiteMotionSolver::"
+                        "enforceCylindricalConstraints()"
                     )
                         << "Could not find coupling map: " << nl
                         << "Master: " << pID << nl
@@ -3049,7 +2557,7 @@ void mesquiteSmoother::enforceCylindricalConstraints()
 
 
 // Utility method to check validity of cells connected to a point.
-bool mesquiteSmoother::checkValidity
+bool mesquiteMotionSolver::checkValidity
 (
     const vector& x,
     const labelList& jList,
@@ -3090,235 +2598,9 @@ bool mesquiteSmoother::checkValidity
     return foundInvalid;
 }
 
-#if USE_LBFGS
-// Static function for callback
-lbfgsfloatval_t mesquiteSmoother::_evaluate
-(
-    void *instance,
-    const lbfgsfloatval_t *x,
-    lbfgsfloatval_t *g,
-    const int n,
-    const lbfgsfloatval_t step
-)
-{
-    // Recast the argument
-    optInfo *data =
-    (
-        reinterpret_cast<optInfo*>(instance)
-    );
-
-    // Evaluate the function first
-    lbfgsfloatval_t fnVal =
-    (
-        data->motionSolver().evaluate
-        (
-            data->orderedPoints(),
-            data->referencePoints(),
-            data->beta(),
-            x,
-            g
-        )
-    );
-
-    return fnVal;
-}
-
-
-// Actual function evaulation routine
-lbfgsfloatval_t mesquiteSmoother::evaluate
-(
-    const labelList& jList,
-    const pointField& refPoints,
-    const scalar beta,
-    const lbfgsfloatval_t *x,
-    lbfgsfloatval_t *g
-) const
-{
-    // Initialize the function and gradient
-    lbfgsfloatval_t fx = 0.0;
-    vector fxGrad = vector::zero;
-
-    for (label i = 0; i < jList.size(); i += 3)
-    {
-        const point& xm0 = refPoints_[jList[i+0]];
-        const point& xm1 = refPoints_[jList[i+1]];
-        const point& xm2 = refPoints_[jList[i+2]];
-
-        // Prepare the Jacobian.
-        tensor J
-        (
-            xm0.x() - x[0], xm1.x() - x[0], xm2.x() - x[0],
-            xm0.y() - x[1], xm1.y() - x[1], xm2.y() - x[1],
-            xm0.z() - x[2], xm1.z() - x[2], xm2.z() - x[2]
-        );
-
-        // Obtain the determinant...
-        scalar alpha = det(J);
-        scalar amb = (alpha - beta);
-        scalar u = (mag(amb) - amb);
-
-        // Compute the element metric and accumulate.
-        fx = fx + (u*u);
-
-        // Accumulate the gradient as well.
-        fxGrad += ((((-2*u*u*alpha) / mag(amb))*inv(J).T()) & vector::one);
-    }
-
-    // Negate the gradient
-    g[0] = -fxGrad.x(); g[1] = -fxGrad.y(); g[2] = -fxGrad.z();
-
-    return fx;
-}
-#endif
-
-// Write a particular point out for post-processing
-void mesquiteSmoother::writePoint
-(
-    const label pointIndex,
-    const labelList& jList
-)
-{
-    // Locally order cell-points and write them out.
-    Map<label> pointMap;
-
-    label nPoints = 0, nCells = 0;
-    labelListList cpList(jList.size() / 3, labelList(4, -1));
-    pointField points(jList.size(), vector::zero);
-
-    // Zeroth point is the point under consideration
-    points[nPoints++] = refPoints_[pointIndex];
-
-    for (label i = 0; i < jList.size(); i += 3)
-    {
-        label pointJ = 0;
-
-        if (!pointMap.found(jList[i+0]))
-        {
-            points[nPoints] = refPoints_[jList[i+0]];
-            pointMap.insert(jList[i+0], nPoints);
-            nPoints++;
-        }
-
-        cpList[nCells][pointJ++] = pointMap[jList[i+0]];
-
-        if (!pointMap.found(jList[i+1]))
-        {
-            points[nPoints] = refPoints_[jList[i+1]];
-            pointMap.insert(jList[i+1], nPoints);
-            nPoints++;
-        }
-
-        cpList[nCells][pointJ++] = pointMap[jList[i+1]];
-
-        if (!pointMap.found(jList[i+2]))
-        {
-            points[nPoints] = refPoints_[jList[i+2]];
-            pointMap.insert(jList[i+2], nPoints);
-            nPoints++;
-        }
-
-        cpList[nCells][pointJ++] = pointMap[jList[i+2]];
-
-        // The last point is the point under consideration
-        cpList[nCells][pointJ++] = 0;
-
-        nCells++;
-    }
-
-    // Correct the number of points
-    points.setSize(nPoints);
-
-    writeVTK
-    (
-        "pointCells_"
-      + Foam::name(mesh().time().timeIndex()) + '_'
-      + Foam::name(pointIndex),
-        points,
-        cpList
-    );
-}
-
-
-// Output a list of points / cells as a VTK file.
-//  - CellPoints are required to be ordered.
-void mesquiteSmoother::writeVTK
-(
-    const word& name,
-    const pointField& points,
-    const labelListList& cellPoints
-)
-{
-    // Make the directory
-    // fileName dirName(mesh.time().path()/"VTK"/mesh.time().timeName());
-    fileName dirName(mesh().time().path()/"VTK");
-
-    mkDir(dirName);
-
-    // Open stream for output
-    OFstream file(dirName/name+".vtk");
-
-    // Write out the header
-    file << "# vtk DataFile Version 2.0" << nl
-         << name << ".vtk" << nl
-         << "ASCII" << nl
-         << "DATASET UNSTRUCTURED_GRID" << nl
-         << "POINTS " << points.size() << " double" << nl;
-
-    forAll(points, i)
-    {
-        file << setprecision(10)
-             << points[i].x() << ' '
-             << points[i].y() << ' '
-             << points[i].z() << ' '
-             << nl;
-    }
-
-    if (cellPoints.size())
-    {
-        file << "CELLS " << cellPoints.size()
-             << " " << (4*cellPoints.size()) + cellPoints.size()
-             << endl;
-
-        forAll(cellPoints, cellI)
-        {
-            file << 4 << ' '
-                 << cellPoints[cellI][0] << ' '
-                 << cellPoints[cellI][1] << ' '
-                 << cellPoints[cellI][2] << ' '
-                 << cellPoints[cellI][3] << ' '
-                 << nl;
-        }
-
-        file << "CELL_TYPES " << cellPoints.size() << endl;
-
-        forAll(cellPoints, cellI)
-        {
-            // Tetrahedron
-            file << "10" << nl;
-        }
-    }
-    else
-    {
-        file << "CELLS " << points.size() << " " << 2*points.size() << endl;
-
-        forAll(points, i)
-        {
-            file << 1 << ' ' << i << ' ' << nl;
-        }
-
-        file << "CELL_TYPES " << points.size() << endl;
-
-        forAll(points, i)
-        {
-            // Vertex
-            file << "1" << nl;
-        }
-    }
-}
-
 
 // Prepare point-normals with updated point positions
-void mesquiteSmoother::preparePointNormals()
+void mesquiteMotionSolver::preparePointNormals()
 {
     // Search the registry for all mapping objects.
     HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
@@ -3423,8 +2705,7 @@ void mesquiteSmoother::preparePointNormals()
 
 
 //- Return point location obtained from the current motion field
-tmp<pointField>
-mesquiteSmoother::curPoints() const
+tmp<pointField> mesquiteMotionSolver::curPoints() const
 {
     tmp<pointField> tcurPoints(refPoints_);
 
@@ -3435,7 +2716,7 @@ mesquiteSmoother::curPoints() const
 
 
 //- Solve for new mesh points
-void mesquiteSmoother::solve()
+void mesquiteMotionSolver::solve()
 {
     // Apply fixed-value motion BC's, if any.
     applyFixedValuePatches();
@@ -3457,9 +2738,6 @@ void mesquiteSmoother::solve()
 
         // Check for invalid cells and correct if necessary.
         correctInvalidCells();
-
-        // Correct for volume change due to smoothing
-        correctGlobalVolume();
 
         // Enforce constraints, if necessary
         enforceCylindricalConstraints();
@@ -3539,7 +2817,7 @@ void mesquiteSmoother::solve()
 
 
 //- Update on topology change
-void mesquiteSmoother::updateMesh(const mapPolyMesh& mpm)
+void mesquiteMotionSolver::updateMesh(const mapPolyMesh& mpm)
 {
     motionSolver::updateMesh(mpm);
 

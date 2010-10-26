@@ -4,13 +4,13 @@ set -x
 # Clean out existing object files
 wclean coupleMap
 wclean lengthScaleEstimator
-wclean conservativeMeshToMesh
-wclean mesquiteSmoother
+#wclean conservativeMeshToMesh
+wclean mesquiteMotionSolver
 wclean freeSurface
 wclean enginePointPatchFields
 wclean dynamicTopoFvMesh
 wclean interfaceTrackFoam
-wclean mapConservativeFields
+#wclean mapConservativeFields
 
 # Wipe out all lnInclude directories and re-link
 wcleanLnIncludeAll

@@ -39,6 +39,7 @@ Author
 #include "addToRunTimeSelectionTable.H"
 
 #include "eMesh.H"
+#include "Stack.H"
 #include "triFace.H"
 #include "changeMap.H"
 #include "clockTime.H"
@@ -134,7 +135,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     swapDeviation_(0.0),
     allowTableResize_(false)
 {
-    // For backward compatibility, check the size of owner/neighbour
+    // Check the size of owner/neighbour
     if (owner_.size() != neighbour_.size())
     {
         // Size up to number of faces
@@ -207,7 +208,15 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     const cellList& cells
 )
 :
-    dynamicFvMesh(io, points, faces, owner, neighbour, false),
+    dynamicFvMesh
+    (
+        io,
+        points,
+        faces,
+        owner,
+        neighbour,
+        false
+    ),
     topoChangeFlag_(false),
     isSubMesh_(true),
     dict_(mesh.dict_),
@@ -259,8 +268,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     tetMetric_(mesh.tetMetric_)
 {
     // Initialize owner and neighbour
-    owner_.setSize(faces.size(), -1);
-    neighbour_.setSize(faces.size(), -1);
+    owner_.setSize(faces_.size(), -1);
+    neighbour_.setSize(faces_.size(), -1);
 
     // Set owner and neighbour from polyMesh
     const labelList& own = polyMesh::faceOwner();
@@ -616,7 +625,7 @@ void dynamicTopoFvMesh::removeFace
         // Remove from the stack as well
         forAll(entityStack_, stackI)
         {
-            Stack(stackI).remove(fIndex);
+            stack(stackI).remove(fIndex);
         }
     }
 
@@ -843,7 +852,7 @@ void dynamicTopoFvMesh::removeEdge
         // Remove from the stack as well
         forAll(entityStack_, stackI)
         {
-            Stack(stackI).remove(eIndex);
+            stack(stackI).remove(eIndex);
         }
 
         // Update coupled face maps, if necessary.
@@ -1312,10 +1321,10 @@ scalar dynamicTopoFvMesh::testProximity
     if (twoDMesh_)
     {
         // Obtain the face-normal.
-        meshOps::faceNormal(faces_[index], points_, gNormal);
+        gNormal = faces_[index].normal(points_);
 
         // Obtain the face centre.
-        meshOps::faceCentre(faces_[index], points_, gCentre);
+        gCentre = faces_[index].centre(points_);
 
         // Fetch the edge
         const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
@@ -1350,16 +1359,7 @@ scalar dynamicTopoFvMesh::testProximity
             if (neighbour_[eFaces[faceI]] == -1)
             {
                 // Obtain the normal.
-                vector gTmp;
-
-                meshOps::faceNormal
-                (
-                    faces_[eFaces[faceI]],
-                    points_,
-                    gTmp
-                );
-
-                gNormal += gTmp;
+                gNormal += faces_[eFaces[faceI]].normal(points_);
             }
         }
 
@@ -1522,10 +1522,12 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
     // Read from disk
     dict_.readIfModified();
 
+    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
     // Enable/disable run-time debug level
-    if (dict_.found("debug") || mandatory_)
+    if (meshSubDict.found("debug") || mandatory_)
     {
-        debug = readLabel(dict_.lookup("debug"));
+        debug = readLabel(meshSubDict.lookup("debug"));
     }
     else
     {
@@ -1540,8 +1542,6 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
         fvMesh::debug = true;
         polyMesh::debug = true;
     }
-
-    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
 
     // Re-read edge-refinement options, if necessary
     if (edgeRefinement_ && reRead)
@@ -1898,13 +1898,13 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     clockTime sTimer;
 
     bool reported = false;
-    label stackSize = mesh.Stack(tIndex).size();
+    label stackSize = mesh.stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
     // Pick items off the stack
-    while (!mesh.Stack(tIndex).empty())
+    while (!mesh.stack(tIndex).empty())
     {
         // Report progress
         if (thread->master())
@@ -1920,14 +1920,14 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
                 (
                     100.0 -
                     (
-                        (100.0 * mesh.Stack(tIndex).size())
+                        (100.0 * mesh.stack(tIndex).size())
                       / (stackSize + VSMALL)
                     )
                 );
 
-                Info << "\r  Swap Progress: " << percent << "% :"
+                Info << "  Swap Progress: " << percent << "% :"
                      << "  Total: " << mesh.status(1)
-                     << "             "
+                     << "             \r"
                      << flush;
 
                 reported = true;
@@ -1935,7 +1935,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
         }
 
         // Retrieve the index for this face
-        label fIndex = mesh.Stack(tIndex).pop();
+        label fIndex = mesh.stack(tIndex).pop();
 
         // Perform a Delaunay test and check if a flip is necesary.
         bool failed = mesh.testDelaunay(fIndex);
@@ -1950,7 +1950,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
             else
             {
                 // Push this on to the master stack
-                mesh.Stack(0).push(fIndex);
+                mesh.stack(0).push(fIndex);
             }
         }
     }
@@ -1962,9 +1962,9 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
 
     if (reported)
     {
-        Info << "\r  Swap Progress: 100% :"
+        Info << "  Swap Progress: 100% :"
              << "  Total: " << mesh.status(1)
-             << "             "
+             << "             \r"
              << endl;
     }
 }
@@ -2001,13 +2001,13 @@ void dynamicTopoFvMesh::swap3DEdges
     clockTime sTimer;
 
     bool reported = false;
-    label stackSize = mesh.Stack(tIndex).size();
+    label stackSize = mesh.stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
     // Pick edges off the stack
-    while (!mesh.Stack(tIndex).empty())
+    while (!mesh.stack(tIndex).empty())
     {
         // Report progress
         if (thread->master())
@@ -2023,15 +2023,15 @@ void dynamicTopoFvMesh::swap3DEdges
                 (
                     100.0 -
                     (
-                        (100.0 * mesh.Stack(tIndex).size())
+                        (100.0 * mesh.stack(tIndex).size())
                       / (stackSize + VSMALL)
                     )
                 );
 
-                Info << "\r  Swap Progress: " << percent << "% :"
+                Info << "  Swap Progress: " << percent << "% :"
                      << "  Surface: " << mesh.status(2)
                      << ", Total: " << mesh.status(1)
-                     << "             "
+                     << "             \r"
                      << flush;
 
                 reported = true;
@@ -2039,7 +2039,7 @@ void dynamicTopoFvMesh::swap3DEdges
         }
 
         // Retrieve an edge from the stack
-        label eIndex = mesh.Stack(tIndex).pop();
+        label eIndex = mesh.stack(tIndex).pop();
 
         // Compute the minimum quality of cells around this edge
         scalar minQuality = mesh.computeMinQuality(eIndex);
@@ -2064,7 +2064,7 @@ void dynamicTopoFvMesh::swap3DEdges
                 else
                 {
                     // Push this on to the master stack
-                    mesh.Stack(0).push(eIndex);
+                    mesh.stack(0).push(eIndex);
                 }
             }
         }
@@ -2077,10 +2077,10 @@ void dynamicTopoFvMesh::swap3DEdges
 
     if (reported)
     {
-        Info << "\r  Swap Progress: 100% :"
+        Info << "  Swap Progress: 100% :"
              << "  Surface: " << mesh.status(2)
              << ", Total: " << mesh.status(1)
-             << "             "
+             << "             \r"
              << endl;
     }
 }
@@ -2113,12 +2113,12 @@ void dynamicTopoFvMesh::edgeRefinementEngine
     clockTime sTimer;
 
     bool reported = false;
-    label stackSize = mesh.Stack(tIndex).size();
+    label stackSize = mesh.stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
-    while (!mesh.Stack(tIndex).empty())
+    while (!mesh.stack(tIndex).empty())
     {
         // Update the index, if its changed
         // Report progress
@@ -2134,16 +2134,16 @@ void dynamicTopoFvMesh::edgeRefinementEngine
                 (
                     100.0 -
                     (
-                        (100.0 * mesh.Stack(tIndex).size())
+                        (100.0 * mesh.stack(tIndex).size())
                       / (stackSize + VSMALL)
                     )
                 );
 
-                Info << "\r  Refinement Progress: " << percent << "% :"
+                Info << "  Refinement Progress: " << percent << "% :"
                      << "  Bisections: " << mesh.status(3)
                      << ", Collapses: " << mesh.status(4)
                      << ", Total: " << mesh.status(0)
-                     << "             "
+                     << "             \r"
                      << flush;
 
                 reported = true;
@@ -2151,7 +2151,7 @@ void dynamicTopoFvMesh::edgeRefinementEngine
         }
 
         // Retrieve an entity from the stack
-        label eIndex = mesh.Stack(tIndex).pop();
+        label eIndex = mesh.stack(tIndex).pop();
 
         if (mesh.checkBisection(eIndex))
         {
@@ -2163,7 +2163,7 @@ void dynamicTopoFvMesh::edgeRefinementEngine
             else
             {
                 // Push this on to the master stack
-                mesh.Stack(0).push(eIndex);
+                mesh.stack(0).push(eIndex);
             }
         }
         else
@@ -2177,7 +2177,7 @@ void dynamicTopoFvMesh::edgeRefinementEngine
             else
             {
                 // Push this on to the master stack
-                mesh.Stack(0).push(eIndex);
+                mesh.stack(0).push(eIndex);
             }
         }
     }
@@ -2189,11 +2189,11 @@ void dynamicTopoFvMesh::edgeRefinementEngine
 
     if (reported)
     {
-        Info << "\r  Refinement Progress: 100% :"
+        Info << "  Refinement Progress: 100% :"
              << "  Bisections: " << mesh.status(3)
              << ", Collapses: " << mesh.status(4)
              << ", Total: " << mesh.status(0)
-             << "             "
+             << "             \r"
              << endl;
     }
 }
@@ -2539,8 +2539,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         }
 
         // Obtain the unit normal.
-        vector testNormal;
-        meshOps::faceNormal(testFace, points_, testNormal);
+        vector testNormal = testFace.normal(points_);
 
         testNormal /= (mag(testNormal) + VSMALL);
 
@@ -2562,8 +2561,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     }
 
     // Obtain the face-normal.
-    vector refArea;
-    meshOps::faceNormal(tFace, points_, refArea);
+    vector refArea = tFace.normal(points_);
 
     // Normalize it.
     vector n = refArea/mag(refArea);
@@ -3426,6 +3424,20 @@ bool dynamicTopoFvMesh::resetMesh()
         // Set information for the mapping stage, prior to mesh reset
         fieldMapper.storeMeshInformation();
 
+        // Set weighting information.
+        // This takes over the weight data.
+        fieldMapper.setFaceWeights
+        (
+            faceWeights_,
+            faceCentres_
+        );
+
+        fieldMapper.setCellWeights
+        (
+            cellWeights_,
+            cellCentres_
+        );
+
         // Reset the mesh with pre-motion points
         polyMesh::resetPrimitives
         (
@@ -3694,15 +3706,10 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
              << endl;
     }
 
-    topoMapper& fieldMapper = mapper_();
+    const topoMapper& fieldMapper = mapper_();
 
     // Set the mapPolyMesh object in the mapper
     fieldMapper.setMapper(meshMap);
-
-    // Set weighting information.
-    // This takes over the weight data.
-    fieldMapper.setFaceWeights(faceWeights_, faceCentres_);
-    fieldMapper.setCellWeights(cellWeights_, cellCentres_);
 
     // Conservatively map scalar/vector volFields
     fieldMapper.conservativeMapVolFields<scalar>();

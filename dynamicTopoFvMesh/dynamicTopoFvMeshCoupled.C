@@ -1874,19 +1874,18 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
         if (rcMap.masterIndex() == Pstream::myProcNo())
         {
             // Schedule receipt from neighbour
-            resizableList<scalar>& recvLength =
-            (
-                recvMesh.subMesh().lengthScale_
-            );
-
-            recvLength.setSize
+            recvMesh.subMesh().lengthScale_.setSize
             (
                 rcMap.nEntities(coupleMap::CELL),
                 0.0
             );
 
             // Schedule for receipt
-            meshOps::pRead(rcMap.slaveIndex(), recvLength);
+            meshOps::pRead
+            (
+                rcMap.slaveIndex(),
+                recvMesh.subMesh().lengthScale_
+            );
 
             if (debug > 4)
             {

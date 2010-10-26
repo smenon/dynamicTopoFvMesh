@@ -35,7 +35,7 @@ Author
 
 \*---------------------------------------------------------------------------*/
 
-#include "stack.H"
+#include "Stack.H"
 #include "meshOps.H"
 #include "tetPointRef.H"
 #include "linePointRef.H"
@@ -420,12 +420,7 @@ inline scalar dynamicTopoFvMesh::edgeLengthScale
                 if (neighbour_[eFaces[faceI]] == -1)
                 {
                     // Obtain the normal.
-                    meshOps::faceNormal
-                    (
-                        faces_[eFaces[faceI]],
-                        points_,
-                        fNorm[count]
-                    );
+                    fNorm[count] = faces_[eFaces[faceI]].normal(points_);
 
                     // Normalize it.
                     fNorm[count] /= mag(fNorm[count]);
@@ -596,7 +591,7 @@ inline bool dynamicTopoFvMesh::checkCollapse
 
 
 // Return the entity stack
-inline stack& dynamicTopoFvMesh::Stack
+inline Stack& dynamicTopoFvMesh::stack
 (
     const label threadID
 )
@@ -666,7 +661,7 @@ inline void dynamicTopoFvMesh::initStacks
 
             if (faces_[faceI].size() == 4)
             {
-                Stack(tID[tIndex]).insert(faceI);
+                stack(tID[tIndex]).insert(faceI);
 
                 tIndex = tID.fcIndex(tIndex);
             }
@@ -687,7 +682,7 @@ inline void dynamicTopoFvMesh::initStacks
 
             if (edgeFaces_[edgeI].size())
             {
-                Stack(tID[tIndex]).insert(edgeI);
+                stack(tID[tIndex]).insert(edgeI);
 
                 tIndex = tID.fcIndex(tIndex);
             }
@@ -700,7 +695,7 @@ inline void dynamicTopoFvMesh::initStacks
 inline void dynamicTopoFvMesh::initCoupledStack()
 {
     // Clear existing lists/stacks.
-    Stack(0).clear();
+    stack(0).clear();
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -727,7 +722,7 @@ inline void dynamicTopoFvMesh::initCoupledStack()
             // Add this to the coupled modification stack.
             if (twoDMesh_)
             {
-                Stack(0).push(faceI);
+                stack(0).push(faceI);
             }
             else
             {
@@ -736,7 +731,7 @@ inline void dynamicTopoFvMesh::initCoupledStack()
                 forAll(mfEdges, edgeI)
                 {
                     // Add this to the coupled modification stack.
-                    Stack(0).push(mfEdges[edgeI]);
+                    stack(0).push(mfEdges[edgeI]);
                 }
             }
         }
@@ -757,7 +752,7 @@ inline void dynamicTopoFvMesh::initCoupledStack()
                 // Add this to the coupled modification stack.
                 if (twoDMesh_)
                 {
-                    Stack(0).push(faceI);
+                    stack(0).push(faceI);
                 }
                 else
                 {
@@ -765,7 +760,7 @@ inline void dynamicTopoFvMesh::initCoupledStack()
 
                     forAll(mfEdges, edgeI)
                     {
-                        Stack(0).push(mfEdges[edgeI]);
+                        stack(0).push(mfEdges[edgeI]);
                     }
                 }
             }

@@ -24,10 +24,10 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "Stack.H"
 #include "triFace.H"
 #include "objectMap.H"
 #include "changeMap.H"
-#include "resizableList.H"
 #include "multiThreader.H"
 #include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
@@ -74,7 +74,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     )
     {
         // Reached the max allowable topo-changes.
-        Stack(tIndex).clear();
+        stack(tIndex).clear();
 
         return map;
     }
@@ -1938,26 +1938,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 // Fetch face-normals
                 vector tfNorm, f0Norm, f1Norm;
 
-                meshOps::faceNormal
-                (
-                    faces_[newFaceIndex[faceI]],
-                    oldPoints_,
-                    tfNorm
-                );
-
-                meshOps::faceNormal
-                (
-                    faces_[c0BdyIndex[0]],
-                    oldPoints_,
-                    f0Norm
-                );
-
-                meshOps::faceNormal
-                (
-                    faces_[c0BdyIndex[1]],
-                    oldPoints_,
-                    f1Norm
-                );
+                tfNorm = faces_[newFaceIndex[faceI]].normal(oldPoints_);
+                f0Norm = faces_[c0BdyIndex[0]].normal(oldPoints_);
+                f1Norm = faces_[c0BdyIndex[1]].normal(oldPoints_);
 
                 // Tri-face on boundary. Perform normal checks
                 // also, because of empty patches.
@@ -2071,7 +2054,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     )
     {
         // Reached the max allowable topo-changes.
-        Stack(tIndex).clear();
+        stack(tIndex).clear();
 
         return map;
     }
@@ -3488,7 +3471,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
     )
     {
         // Reached the max allowable topo-changes.
-        Stack(tIndex).clear();
+        stack(tIndex).clear();
 
         return map;
     }
@@ -5458,7 +5441,7 @@ scalar dynamicTopoFvMesh::computeTrisectionQuality
     point midPoint;
 
     // Fetch the midPoint
-    meshOps::faceCentre(faces_[fIndex], points_, midPoint);
+    midPoint = faces_[fIndex].centre(points_);
 
     FixedList<label,2> apexPoint(-1);
 
@@ -5545,8 +5528,8 @@ void dynamicTopoFvMesh::sliceMesh
         patchIndex = whichPatch(pointPair.first());
 
         // Fetch face centres
-        meshOps::faceCentre(faces_[pointPair.first()], points_, fC[0]);
-        meshOps::faceCentre(faces_[pointPair.second()], points_, fC[1]);
+        fC[0] = faces_[pointPair.first()].centre(points_);
+        fC[1] = faces_[pointPair.second()].centre(points_);
     }
     else
     {
@@ -5605,8 +5588,7 @@ void dynamicTopoFvMesh::sliceMesh
         // Assign plane point / normal
         p = gCentre;
 
-        vector gNorm;
-        meshOps::faceNormal(faces_[pointPair.first()], points_, gNorm);
+        vector gNorm = faces_[pointPair.first()].normal(points_);
 
         gNorm /= (mag(gNorm) + VSMALL);
 
@@ -5664,13 +5646,9 @@ void dynamicTopoFvMesh::sliceMesh
                             (!surfFaces.found(eFaces[faceI]))
                         )
                         {
-                            vector surfNorm;
-
-                            meshOps::faceNormal
+                            vector surfNorm =
                             (
-                                faces_[eFaces[faceI]],
-                                points_,
-                                surfNorm
+                                faces_[eFaces[faceI]].normal(points_)
                             );
 
                             surfFaces.insert(eFaces[faceI], surfNorm);
@@ -5878,8 +5856,7 @@ void dynamicTopoFvMesh::sliceMesh
             continue;
         }
 
-        vector fCentre;
-        meshOps::faceCentre(faces_[faceI], points_, fCentre);
+        vector fCentre = faces_[faceI].centre(points_);
 
         FixedList<label, 2> cellsToCheck(-1);
         cellsToCheck[0] = owner_[faceI];
