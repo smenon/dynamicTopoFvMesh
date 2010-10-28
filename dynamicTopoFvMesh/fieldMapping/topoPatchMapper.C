@@ -708,7 +708,13 @@ void topoPatchMapper::mapPatchField
         const List<scalarField>& wF = intersectionWeights();
 
         // Compute the integral of the source field
-        Type intSource = sum(pF * tMapper_.patchAreas(patch_.index()));
+        Type intSource = pTraits<Type>::zero;
+        Type intTarget = pTraits<Type>::zero;
+
+        if (pF.size())
+        {
+            intSource = sum(pF * tMapper_.patchAreas(patch_.index()));
+        }
 
         // Copy the original field
         Field<Type> fieldCpy(pF);
@@ -736,7 +742,10 @@ void topoPatchMapper::mapPatchField
         // Compute the integral of the target field
         const polyPatch& ppI = mpm_.mesh().boundaryMesh()[patch_.index()];
 
-        Type intTarget = sum(pF * mag(ppI.faceAreas()));
+        if (pF.size())
+        {
+            intTarget = sum(pF * mag(ppI.faceAreas()));
+        }
 
         if (polyMesh::debug)
         {
