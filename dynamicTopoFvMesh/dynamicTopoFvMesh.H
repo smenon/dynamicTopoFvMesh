@@ -101,6 +101,9 @@ class dynamicTopoFvMesh
         //- Edge refinement switch
         Switch edgeRefinement_;
 
+        //- Load motion solver
+        Switch loadMotionSolver_;
+
         //- Switch for cell-bandwidth reduction
         Switch bandWidthReduction_;
 
@@ -953,8 +956,11 @@ public:
 
     // Member Functions
 
+        //- Update mesh corresponding to the given map
+        virtual void updateMesh(const mapPolyMesh& mpm);
+
         // Map all fields in time using a customized mapper
-        virtual void mapFields(const mapPolyMesh& meshMap);
+        virtual void mapFields(const mapPolyMesh& mpm);
 
         // Update the mesh for motion / topology changes
         // Return true if topology changes have occurred

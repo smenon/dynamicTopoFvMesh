@@ -43,6 +43,7 @@ SourceFiles
 #include "Switch.H"
 #include "edgeList.H"
 #include "pointIOField.H"
+#include "MeshObject.H"
 #include "HashSet.H"
 
 // Have gcc ignore certain warnings while including mesquite headers
@@ -64,7 +65,8 @@ class polyMesh;
 
 class mesquiteMotionSolver
 :
-    public motionSolver
+    public motionSolver,
+    public MeshObject<polyMesh, mesquiteMotionSolver>
 {
 
     // Private data
@@ -253,6 +255,9 @@ class mesquiteMotionSolver
         // Clear out addressing
         void clearOut();
 
+        // Update on topology change
+        void update(const mapPolyMesh&);
+
 public:
 
     //- Runtime type information
@@ -285,8 +290,14 @@ public:
         //- Solve for motion
         virtual void solve();
 
+        //- Move points
+        virtual bool movePoints() const;
+
         //- Update topology
         virtual void updateMesh(const mapPolyMesh&);
+
+        //- Update topology (using meshObjectBase)
+        virtual bool updateMesh(const mapPolyMesh&) const;
 };
 
 

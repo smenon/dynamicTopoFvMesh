@@ -92,6 +92,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     (
         dict_.subDict("dynamicTopoFvMesh").lookup("edgeRefinement")
     ),
+    loadMotionSolver_(true),
     bandWidthReduction_(false),
     coupledModification_(false),
     interval_(1),
@@ -223,6 +224,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     mandatory_(mesh.mandatory_),
     twoDMesh_(mesh.twoDMesh_),
     edgeRefinement_(mesh.edgeRefinement_),
+    loadMotionSolver_(mesh.loadMotionSolver_),
     bandWidthReduction_(mesh.bandWidthReduction_),
     coupledModification_(false),
     interval_(1),
@@ -1564,6 +1566,12 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
         interval_ = 1;
     }
 
+    // Check if an external mesh-motion solver is used
+    if (meshSubDict.found("loadMotionSolver") || mandatory_)
+    {
+        loadMotionSolver_.readIfPresent("loadMotionSolver", meshSubDict);
+    }
+
     // Update bandwidth reduction switch
     if (meshSubDict.found("bandwidthReduction") || mandatory_)
     {
@@ -1719,7 +1727,7 @@ void dynamicTopoFvMesh::loadMotionSolver()
           << abort(FatalError);
     }
     else
-    if (dict_.found("solver"))
+    if (dict_.found("solver") && loadMotionSolver_)
     {
         motionSolver_ = motionSolver::New(*this);
     }
@@ -3438,11 +3446,11 @@ bool dynamicTopoFvMesh::resetMesh()
             cellCentres_
         );
 
-        // Reset the mesh with pre-motion points
+        // Reset the mesh
         polyMesh::resetPrimitives
         (
             nFaces_,
-            preMotionPoints,
+            points,
             faces,
             owner,
             neighbour,
@@ -3576,12 +3584,15 @@ bool dynamicTopoFvMesh::resetMesh()
         // Update the underlying mesh, and map all related fields
         updateMesh(mpm);
 
-        // Perform a dummy movePoints to force V0 creation, if necessary
-        movePoints(mpm.preMotionPoints());
+        if (mpm.hasMotionPoints())
+        {
+            // Perform a dummy movePoints to force V0 creation
+            movePoints(mpm.preMotionPoints());
 
-        // Reset old-volumes
-        resetMotion();
-        setV0();
+            // Reset old-volumes
+            resetMotion();
+            setV0();
+        }
 
         // Correct volume fluxes on the old mesh
         fieldMapper.correctFluxes();
@@ -3589,9 +3600,12 @@ bool dynamicTopoFvMesh::resetMesh()
         // Clear mapper after use
         fieldMapper.clear();
 
-        // Now move mesh to new points and
-        // compute correct mesh-fluxes.
-        movePoints(points);
+        if (mpm.hasMotionPoints())
+        {
+            // Now move mesh to new points and
+            // compute correct mesh-fluxes.
+            movePoints(points);
+        }
 
         // Update the mesh-motion solver
         if (motionSolver_.valid())
@@ -3696,8 +3710,31 @@ bool dynamicTopoFvMesh::resetMesh()
 }
 
 
+// Update mesh corresponding to the given map
+void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
+{
+    // Delete oldPoints in polyMesh
+    polyMesh::resetMotion();
+
+    // Update polyMesh.
+    polyMesh::updateMesh(mpm);
+
+    // Clear out surface-interpolation
+    surfaceInterpolation::movePoints();
+
+    // Clear-out fvMesh geometry and addressing
+    fvMesh::clearOut();
+
+    // Update topology for all registered classes
+    meshObjectBase::allUpdateTopology<fvMesh>(*this, mpm);
+
+    // Map all fields
+    mapFields(mpm);
+}
+
+
 // Map all fields in time using a customized mapper
-void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
+void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm)
 {
     if (debug)
     {
@@ -3709,7 +3746,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& meshMap)
     const topoMapper& fieldMapper = mapper_();
 
     // Set the mapPolyMesh object in the mapper
-    fieldMapper.setMapper(meshMap);
+    fieldMapper.setMapper(mpm);
 
     // Conservatively map scalar/vector volFields
     fieldMapper.conservativeMapVolFields<scalar>();
@@ -3751,6 +3788,11 @@ bool dynamicTopoFvMesh::update()
     if (motionSolver_.valid())
     {
         points_ = motionSolver_->newPoints()();
+    }
+    else
+    {
+        // Set point positions from mesh
+        points_ = polyMesh::points();
     }
 
     // Obtain mesh stats before topo-changes

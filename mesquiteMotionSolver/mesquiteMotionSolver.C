@@ -57,6 +57,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
 )
 :
     motionSolver(mesh),
+    MeshObject<polyMesh, mesquiteMotionSolver>(mesh),
     Mesh_(mesh),
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     nPoints_(mesh.nPoints()),
@@ -103,6 +104,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
 )
 :
     motionSolver(mesh),
+    MeshObject<polyMesh, mesquiteMotionSolver>(mesh),
     Mesh_(mesh),
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     nPoints_(mesh.nPoints()),
@@ -2816,8 +2818,31 @@ void mesquiteMotionSolver::solve()
 }
 
 
-//- Update on topology change
+//- Move points
+bool mesquiteMotionSolver::movePoints() const
+{
+    return true;
+}
+
+
+//- Update topology
 void mesquiteMotionSolver::updateMesh(const mapPolyMesh& mpm)
+{
+    update(mpm);
+}
+
+
+//- Update topology (using meshObjectBase)
+bool mesquiteMotionSolver::updateMesh(const mapPolyMesh& mpm) const
+{
+    const_cast<mesquiteMotionSolver*>(this)->update(mpm);
+
+    return true;
+}
+
+
+//- Update on topology change
+void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
 {
     motionSolver::updateMesh(mpm);
 
