@@ -199,7 +199,7 @@ void topoPatchMapper::calcAddressing() const
 
         // Shift to local patch indices.
         // Also, check mapping for hits into other patches / internal faces.
-        forAll (addr, faceI)
+        forAll(addr, faceI)
         {
             if
             (
@@ -387,11 +387,11 @@ void topoPatchMapper::calcIntersectionWeightsAndCentres() const
     const labelListList& addr = addressing();
 
     // Allocate memory
-    areasPtr_ = new List<scalarField>(patchSize(), scalarField(0));
-    List<scalarField>& a = *areasPtr_;
+    areasPtr_ = new List<scalarList>(patchSize(), scalarList(0));
+    List<scalarList>& a = *areasPtr_;
 
-    centresPtr_ = new List<vectorField>(patchSize(), vectorField(0));
-    List<vectorField>& x = *centresPtr_;
+    centresPtr_ = new List<vectorList>(patchSize(), vectorList(0));
+    List<vectorList>& x = *centresPtr_;
 
     // Obtain stored face-centres
     const vectorField& faceCentres = tMapper_.patchCentres(patch_.index());
@@ -418,8 +418,8 @@ void topoPatchMapper::calcIntersectionWeightsAndCentres() const
         // Check if this is indeed a mapped face
         if (mo.size() == 1 && x[faceI].empty() && a[faceI].empty())
         {
-            x[faceI] = vectorField(1, faceCentres[mo[0]]);
-            a[faceI] = scalarField(1, 1.0);
+            x[faceI] = vectorList(1, faceCentres[mo[0]]);
+            a[faceI] = scalarList(1, 1.0);
         }
     }
 
@@ -441,13 +441,13 @@ void topoPatchMapper::calcIntersectionWeightsAndCentres() const
 }
 
 
-const List<scalarField>& topoPatchMapper::intersectionWeights() const
+const List<scalarList>& topoPatchMapper::intersectionWeights() const
 {
     if (direct())
     {
         FatalErrorIn
         (
-            "const List<scalarField>& "
+            "const List<scalarList>& "
             "topoPatchMapper::intersectionWeights() const"
         )   << "Requested interpolative weights for a direct mapper."
             << abort(FatalError);
@@ -462,13 +462,13 @@ const List<scalarField>& topoPatchMapper::intersectionWeights() const
 }
 
 
-const List<vectorField>& topoPatchMapper::intersectionCentres() const
+const List<vectorList>& topoPatchMapper::intersectionCentres() const
 {
     if (direct())
     {
         FatalErrorIn
         (
-            "const List<vectorField>& "
+            "const List<vectorList>& "
             "topoPatchMapper::intersectionCentres() const"
         )   << "Requested interpolative weights for a direct mapper."
             << abort(FatalError);
@@ -497,6 +497,7 @@ topoPatchMapper::topoPatchMapper
     mpm_(mpm),
     tMapper_(mapper),
     direct_(false),
+    conservative_(false),
     directAddrPtr_(NULL),
     interpolationAddrPtr_(NULL),
     weightsPtr_(NULL),
@@ -616,6 +617,16 @@ const scalarListList& topoPatchMapper::weights() const
             << abort(FatalError);
     }
 
+    if (conservative_)
+    {
+        if (!areasPtr_ && !centresPtr_)
+        {
+            calcIntersectionWeightsAndCentres();
+        }
+
+        return *areasPtr_;
+    }
+
     if (!weightsPtr_)
     {
         calcInverseDistanceWeights();
@@ -676,93 +687,44 @@ void topoPatchMapper::mapPatchField
     Field<Type>& pF
 ) const
 {
-    // To invoke inverse-distance weighting, use this:
-    // pF.autoMap(*this);
+    // Specify that mapping is conservative
+    conservative_ = true;
 
-    // Check for possibility of direct mapping
-    if (direct())
+    // Compute the integral of the source field
+    Type intSource = pTraits<Type>::zero;
+    Type intTarget = pTraits<Type>::zero;
+
+    if (pF.size())
     {
-        pF.autoMap(*this);
+        intSource = sum(pF * tMapper_.patchAreas(patch_.index()));
     }
-    else
+
+    // Map patchField onto itself
+    pF.autoMap(*this);
+
+    // Compute the integral of the target field
+    const polyPatch& ppI = mpm_.mesh().boundaryMesh()[patch_.index()];
+
+    if (pF.size())
     {
-        if (pF.size() != sizeBeforeMapping())
-        {
-            FatalErrorIn
-            (
-                "\n\n"
-                "void topoCellMapper::mapPatchField<Type>\n"
-                "(\n"
-                "    const word& fieldName,\n"
-                "    Field<Type>& iF\n"
-                ") const\n"
-            )  << "Incompatible size before mapping." << nl
-               << " Field: " << fieldName << nl
-               << " Field size: " << pF.size() << nl
-               << " map size: " << sizeBeforeMapping() << nl
-               << abort(FatalError);
-        }
+        intTarget = sum(pF * mag(ppI.faceAreas()));
+    }
 
-        // Fetch addressing
-        const labelListList& pAddressing = addressing();
-        const List<scalarField>& wF = intersectionWeights();
+    if (polyMesh::debug)
+    {
+        int oldP = Info().precision();
 
-        // Compute the integral of the source field
-        Type intSource = pTraits<Type>::zero;
-        Type intTarget = pTraits<Type>::zero;
-
-        if (pF.size())
-        {
-            intSource = sum(pF * tMapper_.patchAreas(patch_.index()));
-        }
-
-        // Copy the original field
-        Field<Type> fieldCpy(pF);
-
-        // Resize to current dimensions
-        pF.setSize(size());
-
-        // Map the patch field
-        forAll(pF, faceI)
-        {
-            const labelList& addr = pAddressing[faceI];
-
-            pF[faceI] = pTraits<Type>::zero;
-
-            // Accumulate area-weighted interpolate
-            forAll(addr, faceJ)
-            {
-                pF[faceI] +=
-                (
-                    wF[faceI][faceJ] * fieldCpy[addr[faceJ]]
-                );
-            }
-        }
-
-        // Compute the integral of the target field
-        const polyPatch& ppI = mpm_.mesh().boundaryMesh()[patch_.index()];
-
-        if (pF.size())
-        {
-            intTarget = sum(pF * mag(ppI.faceAreas()));
-        }
-
-        if (polyMesh::debug)
-        {
-            int oldP = Info().precision();
-
-            // Compare the global integral
-            Info << " Field : " << fieldName
-                 << " Patch : " << ppI.name()
-                 << " integral errors : "
-                 << setprecision(15)
-                 << " source : " << mag(intSource)
-                 << " target : " << mag(intTarget)
-                 << " norm : "
-                 << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
-                 << setprecision(oldP)
-                 << endl;
-        }
+        // Compare the global integral
+        Info << " Field : " << fieldName
+             << " Patch : " << ppI.name()
+             << " integral errors : "
+             << setprecision(6)
+             << " source : " << mag(intSource)
+             << " target : " << mag(intTarget)
+             << " norm : "
+             << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
+             << setprecision(oldP)
+             << endl;
     }
 }
 

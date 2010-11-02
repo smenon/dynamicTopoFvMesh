@@ -80,7 +80,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
             polyMesh::time().constant(),
             (*this),
             IOobject::MUST_READ,
-            IOobject::NO_WRITE
+            IOobject::NO_WRITE,
+            false
         )
     ),
     mandatory_
@@ -3719,14 +3720,11 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
     // Update polyMesh.
     polyMesh::updateMesh(mpm);
 
-    // Clear out surface-interpolation
-    surfaceInterpolation::movePoints();
-
     // Clear-out fvMesh geometry and addressing
     fvMesh::clearOut();
 
     // Update topology for all registered classes
-    meshObjectBase::allUpdateTopology<fvMesh>(*this, mpm);
+    meshObjectBase::allUpdateTopology<polyMesh>(*this, mpm);
 
     // Map all fields
     mapFields(mpm);

@@ -261,7 +261,7 @@ class mesquiteMotionSolver
 public:
 
     //- Runtime type information
-    ClassName("mesquiteMotionSolver");
+    TypeName("mesquiteMotionSolver");
 
 
     // Constructors

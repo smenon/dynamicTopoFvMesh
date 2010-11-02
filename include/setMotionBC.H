@@ -82,7 +82,12 @@ void setMotionBC
         );
     }
 
-    if (solverType == "mesquiteSmoother" || solverType == "springMotionSolver")
+    if
+    (
+        solverType == "mesquiteSmoother"
+     || solverType == "mesquiteMotionSolver"
+     || solverType == "springMotionSolver"
+    )
     {
         // Boundary motion specified for the springMotionSolver
         pointField& refPoints = const_cast<pointField&>
@@ -217,7 +222,12 @@ void setMotionBC
         }
     }
 
-    if (solverType == "mesquiteSmoother" || solverType == "springMotionSolver")
+    if
+    (
+        solverType == "mesquiteSmoother"
+     || solverType == "mesquiteMotionSolver"
+     || solverType == "springMotionSolver"
+    )
     {
         // Boundary motion specified for the springMotionSolver
         pointField& refPoints = const_cast<pointField&>

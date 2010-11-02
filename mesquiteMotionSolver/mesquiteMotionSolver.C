@@ -2844,6 +2844,11 @@ bool mesquiteMotionSolver::updateMesh(const mapPolyMesh& mpm) const
 //- Update on topology change
 void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
 {
+    if (debug)
+    {
+        Info << "Clearing out mesquiteMotionSolver for topo-changes" << endl;
+    }
+
     motionSolver::updateMesh(mpm);
 
     if (surfaceSmoothing_)
