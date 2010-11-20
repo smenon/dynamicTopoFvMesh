@@ -37,6 +37,7 @@ Author
 
 #include "Time.H"
 #include "triFace.H"
+#include "changeMap.H"
 #include "globalMeshData.H"
 #include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
@@ -638,6 +639,25 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 }
 
 
+// Insert the specified cell to the mesh,
+// given existing coupled patch information
+const changeMap dynamicTopoFvMesh::insertCell
+(
+    const label cIndex,
+    const coupledPatchInfo& cInfo
+)
+{
+    // Prepare the changeMaps
+    changeMap map;
+
+    // Specify that the operation was successful
+    map.type() = 1;
+
+    // Return the changeMap
+    return map;
+}
+
+
 // Handle topology changes for coupled patches
 void dynamicTopoFvMesh::handleCoupledPatches
 (
@@ -698,7 +718,10 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
     if (twoDMesh_)
     {
-        // Cannot swap on surfaces in 2D, so don't bother.
+        // Re-Initialize the stack
+        initCoupledStack();
+
+        swap2DEdges(&(handlerPtr_[0]));
     }
     else
     {
@@ -744,6 +767,92 @@ void dynamicTopoFvMesh::handleCoupledPatches
                         << abort(FatalError);
                 }
             }
+        }
+    }
+
+    // Schedule transfer of topology operations across processors
+    forAll(procIndices_, pI)
+    {
+        label proc = procIndices_[pI];
+
+        coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
+        coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+
+        if (proc < Pstream::myProcNo())
+        {
+            const coupleMap& cMap = sendMesh.patchMap();
+
+            // How many entities am I receiving..
+            label nEntities = -1;
+
+            meshOps::pRead(proc, nEntities);
+
+            if (debug > 3)
+            {
+                Pout << " Op tranfer:"
+                     << " Receiving from [" << proc << "]:: nEntities: "
+                     << nEntities << endl;
+            }
+
+            if (nEntities)
+            {
+                // Size up the receipt buffers
+                labelList& indices = cMap.entityIndices();
+                labelList& operations = cMap.entityOperations();
+
+                indices.setSize(nEntities);
+                operations.setSize(nEntities);
+
+                // Schedule indices and operations for receipt
+                meshOps::pRead(proc, indices);
+                meshOps::pRead(proc, operations);
+            }
+        }
+        else
+        {
+            const coupleMap& cMap = recvMesh.patchMap();
+
+            label nEntities = cMap.entityIndices().size();
+
+            if (debug > 3)
+            {
+                Pout << " Op tranfer:"
+                     << " Sending to [" << proc << "]:: nEntities: "
+                     << nEntities << endl;
+            }
+
+            if (nEntities)
+            {
+                // Schedule transfer to processor
+                const labelList& indices = cMap.entityIndices();
+                const labelList& operations = cMap.entityOperations();
+
+                meshOps::pWrite(proc, indices);
+                meshOps::pWrite(proc, operations);
+            }
+        }
+
+        // We won't wait for transfers to complete for the moment,
+        // and will deal with operations once the internal mesh
+        // has been dealt with.
+    }
+}
+
+
+// Synchronize topology operations across processors
+void dynamicTopoFvMesh::synchronizeCoupledPatches()
+{
+    // Wait for all transfers to complete.
+    meshOps::waitForBuffers();
+
+    forAll(procIndices_, pI)
+    {
+        label proc = procIndices_[pI];
+        //coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
+
+        if (proc < Pstream::myProcNo())
+        {
+            // const coupleMap& cMap = sendMesh.patchMap();
         }
     }
 }
@@ -2213,6 +2322,45 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
         procScale += lengthScale_[owner_[index]];
 
         // Next, check the slave processor
+        bool foundSlave = false;
+
+        forAll(procIndices_, pI)
+        {
+            // Fetch non-const reference to subMeshes
+            const label faceEnum = coupleMap::FACE;
+            const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+            const coupleMap& cMap = recvMesh.patchMap();
+
+            label sIndex = -1;
+
+            if ((sIndex = cMap.findSlaveIndex(faceEnum, index)) > -1)
+            {
+                procScale +=
+                (
+                    recvMesh.subMesh().lengthScale_
+                    [
+                        recvMesh.subMesh().owner_[sIndex]
+                    ]
+                );
+
+                foundSlave = true;
+                break;
+            }
+        }
+
+        // Should have found at least one slave
+        if (!foundSlave)
+        {
+            FatalErrorIn
+            (
+                "scalar dynamicTopoFvMesh::processorLengthScale"
+                "(const label index) const"
+            )
+                << "Processor lengthScale lookup failed: " << nl
+                << " Master face: " << index
+                << " :: " << faces_[index] << nl
+                << abort(FatalError);
+        }
 
         // Average the scale
         procScale *= 0.5;
@@ -2241,6 +2389,8 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
         }
 
         // Next check slaves
+        bool foundSlave = false;
+
         forAll(procIndices_, pI)
         {
             const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
@@ -2255,6 +2405,8 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                 (
                     recvMesh.subMesh().edgeFaces_[sIndex]
                 );
+
+                foundSlave = true;
 
                 forAll(peFaces, faceI)
                 {
@@ -2271,6 +2423,20 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                     }
                 }
             }
+        }
+
+        // Should have found at least one slave
+        if (!foundSlave)
+        {
+            FatalErrorIn
+            (
+                "scalar dynamicTopoFvMesh::processorLengthScale"
+                "(const label index) const"
+            )
+                << "Processor lengthScale lookup failed: " << nl
+                << " Master edge: " << index
+                << " :: " << edges_[index] << nl
+                << abort(FatalError);
         }
 
         procScale /= (2.0 * nC);
@@ -2583,6 +2749,64 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
                     }
                 }
             }
+        }
+    }
+
+    // Loop through entities contained in patchSubMeshes
+    forAll(procIndices_, pI)
+    {
+        const coupleMap& cMap = sendPatchMeshes_[pI].patchMap();
+        const Map<label> rFaceMap = cMap.reverseEntityMap(coupleMap::FACE);
+
+        if (cMap.slaveIndex() == Pstream::myProcNo())
+        {
+            forAllConstIter(Map<label>, rFaceMap, fIter)
+            {
+                if (twoDMesh_)
+                {
+                    // Avoid this face during regular modification.
+                    if
+                    (
+                        faces_[fIter.key()].size() == 4 &&
+                        !entities.found(fIter.key())
+                    )
+                    {
+                        entities.insert(fIter.key());
+                    }
+                }
+                else
+                {
+                    const labelList& fEdges = faceEdges_[fIter.key()];
+
+                    forAll(fEdges, edgeI)
+                    {
+                        // Avoid this edge during regular modification.
+                        if (!entities.found(fEdges[edgeI]))
+                        {
+                            entities.insert(fEdges[edgeI]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (debug > 3)
+    {
+        Pout << nl << "nEntitiesToAvoid: " << entities.size() << endl;
+
+        if (debug > 4)
+        {
+            // Write out entities
+            label elemType = twoDMesh_ ? 2 : 1;
+
+            writeVTK
+            (
+                "entitiesToAvoid_"
+              + Foam::name(Pstream::myProcNo()),
+                entities.toc(),
+                elemType
+            );
         }
     }
 }

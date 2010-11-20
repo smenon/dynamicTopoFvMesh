@@ -41,7 +41,7 @@ SourceFiles
 #ifndef changeMap_H
 #define changeMap_H
 
-#include "Tuple2.H"
+#include "objectMap.H"
 #include "labelList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -85,10 +85,10 @@ class changeMap
     label opposingFace_;
 
     // Entities that were added during the operation.
-    List<Tuple2<label, labelList> > addedPoints_;
-    List<Tuple2<label, labelList> > addedEdges_;
-    List<Tuple2<label, labelList> > addedFaces_;
-    List<Tuple2<label, labelList> > addedCells_;
+    List<objectMap> addedPoints_;
+    List<objectMap> addedEdges_;
+    List<objectMap> addedFaces_;
+    List<objectMap> addedCells_;
 
 public:
 
@@ -158,10 +158,10 @@ public:
         );
 
         // Return the list of added entities
-        inline const List<Tuple2<label, labelList> >& addedPointList() const;
-        inline const List<Tuple2<label, labelList> >& addedEdgeList() const;
-        inline const List<Tuple2<label, labelList> >& addedFaceList() const;
-        inline const List<Tuple2<label, labelList> >& addedCellList() const;
+        inline const List<objectMap>& addedPointList() const;
+        inline const List<objectMap>& addedEdgeList() const;
+        inline const List<objectMap>& addedFaceList() const;
+        inline const List<objectMap>& addedCellList() const;
 
     //- Operators
 

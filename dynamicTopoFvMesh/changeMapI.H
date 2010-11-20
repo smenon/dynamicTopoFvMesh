@@ -118,8 +118,8 @@ inline void changeMap::addPoint
 
     addedPoints_.setSize(curSize + 1);
 
-    addedPoints_[curSize].first() = pIndex;
-    addedPoints_[curSize].second() = master;
+    addedPoints_[curSize].index() = pIndex;
+    addedPoints_[curSize].masterObjects() = master;
 }
 
 
@@ -133,8 +133,8 @@ inline void changeMap::addEdge
 
     addedEdges_.setSize(curSize + 1);
 
-    addedEdges_[curSize].first() = eIndex;
-    addedEdges_[curSize].second() = master;
+    addedEdges_[curSize].index() = eIndex;
+    addedEdges_[curSize].masterObjects() = master;
 }
 
 
@@ -148,8 +148,8 @@ inline void changeMap::addFace
 
     addedFaces_.setSize(curSize + 1);
 
-    addedFaces_[curSize].first() = fIndex;
-    addedFaces_[curSize].second() = master;
+    addedFaces_[curSize].index() = fIndex;
+    addedFaces_[curSize].masterObjects() = master;
 }
 
 
@@ -163,13 +163,13 @@ inline void changeMap::addCell
 
     addedCells_.setSize(curSize + 1);
 
-    addedCells_[curSize].first() = cIndex;
-    addedCells_[curSize].second() = master;
+    addedCells_[curSize].index() = cIndex;
+    addedCells_[curSize].masterObjects() = master;
 }
 
 
 // Return an added point
-inline const List<Tuple2<label, labelList> >&
+inline const List<objectMap>&
 changeMap::addedPointList() const
 {
     return addedPoints_;
@@ -177,21 +177,21 @@ changeMap::addedPointList() const
 
 
 // Return the list of added entities
-inline const List<Tuple2<label, labelList> >&
+inline const List<objectMap>&
 changeMap::addedEdgeList() const
 {
     return addedEdges_;
 }
 
 
-inline const List<Tuple2<label, labelList> >&
+inline const List<objectMap>&
 changeMap::addedFaceList() const
 {
     return addedFaces_;
 }
 
 
-inline const List<Tuple2<label, labelList> >&
+inline const List<objectMap>&
 changeMap::addedCellList() const
 {
     return addedCells_;
@@ -216,32 +216,48 @@ inline void changeMap::operator=(const changeMap& rhs)
 
     forAll(addedPoints_, indexI)
     {
-        addedPoints_[indexI].first() = rhs.addedPoints_[indexI].first();
-        addedPoints_[indexI].second() = rhs.addedPoints_[indexI].second();
+        addedPoints_[indexI].index() = rhs.addedPoints_[indexI].index();
+
+        addedPoints_[indexI].masterObjects() =
+        (
+            rhs.addedPoints_[indexI].masterObjects()
+        );
     }
 
     addedEdges_.setSize(rhs.addedEdges_.size());
 
     forAll(addedEdges_, indexI)
     {
-        addedEdges_[indexI].first() = rhs.addedEdges_[indexI].first();
-        addedEdges_[indexI].second() = rhs.addedEdges_[indexI].second();
+        addedEdges_[indexI].index() = rhs.addedEdges_[indexI].index();
+
+        addedEdges_[indexI].masterObjects() =
+        (
+            rhs.addedEdges_[indexI].masterObjects()
+        );
     }
 
     addedFaces_.setSize(rhs.addedFaces_.size());
 
     forAll(addedFaces_, indexI)
     {
-        addedFaces_[indexI].first() = rhs.addedFaces_[indexI].first();
-        addedFaces_[indexI].second() = rhs.addedFaces_[indexI].second();
+        addedFaces_[indexI].index() = rhs.addedFaces_[indexI].index();
+
+        addedFaces_[indexI].masterObjects() =
+        (
+            rhs.addedFaces_[indexI].masterObjects()
+        );
     }
 
     addedCells_.setSize(rhs.addedCells_.size());
 
     forAll(addedCells_, indexI)
     {
-        addedCells_[indexI].first() = rhs.addedCells_[indexI].first();
-        addedCells_[indexI].second() = rhs.addedCells_[indexI].second();
+        addedCells_[indexI].index() = rhs.addedCells_[indexI].index();
+
+        addedCells_[indexI].masterObjects() =
+        (
+            rhs.addedCells_[indexI].masterObjects()
+        );
     }
 }
 

@@ -698,7 +698,8 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             const labelList& hullVertices,
-            const labelListList& triangulations
+            const labelListList& triangulations,
+            bool output = false
         ) const;
 
         // Check old-volumes for the configuration.
@@ -919,8 +920,20 @@ class dynamicTopoFvMesh
         // Unset coupled modification
         void unsetCoupledModification() const;
 
+        // Insert the specified cell to the mesh,
+        // given existing coupled patch information
+        const changeMap
+        insertCell
+        (
+            const label cIndex,
+            const coupledPatchInfo& cInfo
+        );
+
         // Handle topology changes for coupled patches
         void handleCoupledPatches(labelHashSet& entities);
+
+        // Synchronize topology operations across processors
+        void synchronizeCoupledPatches();
 
         // Build patch sub-meshes for processor patches
         void buildProcessorPatchMeshes();

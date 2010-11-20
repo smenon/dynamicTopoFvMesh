@@ -1578,40 +1578,33 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         // Create a mapping entry for the new edge.
         const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
 
-        if (locallyCoupledEntity(map.addedEdgeList()[0].first()))
+        if (locallyCoupledEntity(map.addedEdgeList()[0].index()))
         {
             cMap.mapSlave
             (
                 coupleMap::EDGE,
-                map.addedEdgeList()[0].first(),
-                slaveMap.addedEdgeList()[0].first()
+                map.addedEdgeList()[0].index(),
+                slaveMap.addedEdgeList()[0].index()
             );
 
             cMap.mapMaster
             (
                 coupleMap::EDGE,
-                slaveMap.addedEdgeList()[0].first(),
-                map.addedEdgeList()[0].first()
+                slaveMap.addedEdgeList()[0].index(),
+                map.addedEdgeList()[0].index()
             );
         }
 
         // Add a mapping entry for two new faces as well.
         face cF(3);
 
-        const List<Tuple2<label, labelList> >& amfList =
-        (
-            map.addedFaceList()
-        );
-
-        const List<Tuple2<label, labelList> >& asfList =
-        (
-            slaveMap.addedFaceList()
-        );
+        const List<objectMap>& amfList = map.addedFaceList();
+        const List<objectMap>& asfList = slaveMap.addedFaceList();
 
         forAll(amfList, mfI)
         {
             // Configure a face for comparison.
-            const face& mF = faces_[amfList[mfI].first()];
+            const face& mF = faces_[amfList[mfI].index()];
 
             forAll(mF, pointI)
             {
@@ -1622,22 +1615,22 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             forAll(asfList, sfI)
             {
-                const face& sF = faces_[asfList[sfI].first()];
+                const face& sF = faces_[asfList[sfI].index()];
 
                 if (triFace::compare(triFace(cF), triFace(sF)))
                 {
                     cMap.mapSlave
                     (
                         coupleMap::FACE,
-                        amfList[mfI].first(),
-                        asfList[sfI].first()
+                        amfList[mfI].index(),
+                        asfList[sfI].index()
                     );
 
                     cMap.mapMaster
                     (
                         coupleMap::FACE,
-                        asfList[sfI].first(),
-                        amfList[mfI].first()
+                        asfList[sfI].index(),
+                        amfList[mfI].index()
                     );
 
                     matched = true;
@@ -1656,15 +1649,15 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
                 forAll(amfList, mfI)
                 {
-                    Info << amfList[mfI].first() << ": "
-                         << faces_[amfList[mfI].first()]
+                    Info << amfList[mfI].index() << ": "
+                         << faces_[amfList[mfI].index()]
                          << endl;
                 }
 
                 forAll(asfList, sfI)
                 {
-                    Info << asfList[sfI].first() << ": "
-                         << faces_[asfList[sfI].first()]
+                    Info << asfList[sfI].index() << ": "
+                         << faces_[asfList[sfI].index()]
                          << endl;
                 }
 
@@ -1735,7 +1728,8 @@ label dynamicTopoFvMesh::identify32Swap
 (
     const label eIndex,
     const labelList& hullVertices,
-    const labelListList& triangulations
+    const labelListList& triangulations,
+    bool output
 ) const
 {
     label m = hullVertices.size();
@@ -1775,7 +1769,7 @@ label dynamicTopoFvMesh::identify32Swap
         }
     }
 
-    if (debug > 1)
+    if (debug > 1 || output)
     {
         Info << nl << nl << "Hull Vertices: " << endl;
 
@@ -1855,7 +1849,7 @@ label dynamicTopoFvMesh::identify32Swap
         }
     }
 
-    if (debug > 1)
+    if (debug > 1 || output)
     {
         Info << " All distances :" << dist << nl
              << " Triangulation index: " << mT
@@ -2201,8 +2195,16 @@ const changeMap dynamicTopoFvMesh::swap23
     if (cellsForRemoval[1] == -1)
     {
         // Write out for post-processing
+        Info << " isolatedVertex: " << isolatedVertex << endl;
+        Info << " triangulations: " << triangulations << endl;
+        Info << " numTriangulations: " << numTriangulations << endl;
+        Info << " triangulationIndex: " << triangulationIndex << endl;
+
         writeVTK("Edge23_" + Foam::name(eIndex), eIndex, 1);
         writeVTK("Cells23_" + Foam::name(eIndex), hullCells, 3);
+
+        // Write out identify32Swap output for diagnostics
+        identify32Swap(eIndex, hullVertices, triangulations, true);
 
         FatalErrorIn
         (

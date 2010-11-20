@@ -446,6 +446,17 @@ void coupleMap::mapMaster
 }
 
 
+void coupleMap::pushOperation
+(
+    const label index,
+    const label opType
+) const
+{
+    entityIndices_.setSize(entityIndices_.size() + 1, index);
+    entityOperations_.setSize(entityOperations_.size() + 1, opType);
+}
+
+
 void coupleMap::transferMaps
 (
     const label eType,
@@ -476,6 +487,9 @@ void coupleMap::clearBuffers() const
     {
         entityBuffer_[bufferI].clear();
     }
+
+    entityIndices_.clear();
+    entityOperations_.clear();
 }
 
 

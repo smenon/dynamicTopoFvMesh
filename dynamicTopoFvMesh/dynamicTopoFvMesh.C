@@ -2465,17 +2465,17 @@ void dynamicTopoFvMesh::remove2DSlivers()
 
             // Loop through added faces, and collapse
             // the appropriate one
-            const List<Tuple2<label, labelList> >& aF = map.addedFaceList();
+            const List<objectMap>& aF = map.addedFaceList();
 
             forAll(aF, faceI)
             {
                 if
                 (
-                    (owner_[aF[faceI].first()] == cIndex) &&
-                    (aF[faceI].first() != firstFace)
+                    (owner_[aF[faceI].index()] == cIndex) &&
+                    (aF[faceI].index() != firstFace)
                 )
                 {
-                    if (collapseQuadFace(aF[faceI].first()).type() > 0)
+                    if (collapseQuadFace(aF[faceI].index()).type() > 0)
                     {
                         statistics_[7]++;
                     }
@@ -2493,17 +2493,17 @@ void dynamicTopoFvMesh::remove2DSlivers()
 
             // Loop through added faces, and collapse
             // the appropriate one
-            const List<Tuple2<label, labelList> >& aF = map.addedFaceList();
+            const List<objectMap>& aF = map.addedFaceList();
 
             forAll(aF, faceI)
             {
                 if
                 (
-                    (owner_[aF[faceI].first()] == cIndex) &&
-                    (aF[faceI].first() != secondFace)
+                    (owner_[aF[faceI].index()] == cIndex) &&
+                    (aF[faceI].index() != secondFace)
                 )
                 {
-                    if (collapseQuadFace(aF[faceI].first()).type() > 0)
+                    if (collapseQuadFace(aF[faceI].index()).type() > 0)
                     {
                         statistics_[7]++;
                     }
@@ -2521,17 +2521,17 @@ void dynamicTopoFvMesh::remove2DSlivers()
 
             // Loop through added faces, and collapse
             // the appropriate one
-            const List<Tuple2<label, labelList> >& aF = map.addedFaceList();
+            const List<objectMap>& aF = map.addedFaceList();
 
             forAll(aF, faceI)
             {
                 if
                 (
-                    (owner_[aF[faceI].first()] == cIndex) &&
-                    (aF[faceI].first() != fIndex)
+                    (owner_[aF[faceI].index()] == cIndex) &&
+                    (aF[faceI].index() != fIndex)
                 )
                 {
-                    if (collapseQuadFace(aF[faceI].first()).type() > 0)
+                    if (collapseQuadFace(aF[faceI].index()).type() > 0)
                     {
                         statistics_[7]++;
                     }
@@ -3073,18 +3073,18 @@ void dynamicTopoFvMesh::removeSlivers()
                 // through recently added edges and compare.
                 edge edgeToCheck
                 (
-                    firstMap.addedPointList()[0].first(),
-                    secondMap.addedPointList()[0].first()
+                    firstMap.addedPointList()[0].index(),
+                    secondMap.addedPointList()[0].index()
                 );
 
                 bool foundCollapseEdge = false;
 
-                const List<Tuple2<label, labelList> >& firstMapEdges =
+                const List<objectMap>& firstMapEdges =
                 (
                     firstMap.addedEdgeList()
                 );
 
-                const List<Tuple2<label, labelList> >& secondMapEdges =
+                const List<objectMap>& secondMapEdges =
                 (
                     secondMap.addedEdgeList()
                 );
@@ -3094,7 +3094,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 {
                     const edge& thisEdge =
                     (
-                        edges_[firstMapEdges[edgeI].first()]
+                        edges_[firstMapEdges[edgeI].index()]
                     );
 
                     if (thisEdge == edgeToCheck)
@@ -3104,7 +3104,7 @@ void dynamicTopoFvMesh::removeSlivers()
                         (
                             collapseEdge
                             (
-                                firstMapEdges[edgeI].first(),
+                                firstMapEdges[edgeI].index(),
                                 -1,
                                 false,
                                 true
@@ -3126,7 +3126,7 @@ void dynamicTopoFvMesh::removeSlivers()
                     {
                         const edge& thisEdge =
                         (
-                            edges_[secondMapEdges[edgeI].first()]
+                            edges_[secondMapEdges[edgeI].index()]
                         );
 
                         if (thisEdge == edgeToCheck)
@@ -3136,7 +3136,7 @@ void dynamicTopoFvMesh::removeSlivers()
                             (
                                 collapseEdge
                                 (
-                                    secondMapEdges[edgeI].first(),
+                                    secondMapEdges[edgeI].index(),
                                     -1,
                                     false,
                                     true
@@ -3171,17 +3171,17 @@ void dynamicTopoFvMesh::removeSlivers()
                 edge edgeToCheck
                 (
                     map.apexPoint(),
-                    faceMap.addedPointList()[0].first()
+                    faceMap.addedPointList()[0].index()
                 );
 
-                const List<Tuple2<label, labelList> >& faceMapEdges =
+                const List<objectMap>& faceMapEdges =
                 (
                     faceMap.addedEdgeList()
                 );
 
                 forAll(faceMapEdges, edgeI)
                 {
-                    const edge& thisEdge = edges_[faceMapEdges[edgeI].first()];
+                    const edge& thisEdge = edges_[faceMapEdges[edgeI].index()];
 
                     if (thisEdge == edgeToCheck)
                     {
@@ -3190,7 +3190,7 @@ void dynamicTopoFvMesh::removeSlivers()
                         (
                             collapseEdge
                             (
-                                faceMapEdges[edgeI].first(),
+                                faceMapEdges[edgeI].index(),
                                 -1,
                                 false,
                                 true
@@ -3223,10 +3223,10 @@ void dynamicTopoFvMesh::removeSlivers()
                 edge edgeToCheck
                 (
                     map.apexPoint(),
-                    firstMap.addedPointList()[0].first()
+                    firstMap.addedPointList()[0].index()
                 );
 
-                const List<Tuple2<label, labelList> >& firstMapEdges =
+                const List<objectMap>& firstMapEdges =
                 (
                     firstMap.addedEdgeList()
                 );
@@ -3234,7 +3234,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 // Loop through the first list.
                 forAll(firstMapEdges, edgeI)
                 {
-                    const edge& thisEdge = edges_[firstMapEdges[edgeI].first()];
+                    const edge& thisEdge = edges_[firstMapEdges[edgeI].index()];
 
                     if (thisEdge == edgeToCheck)
                     {
@@ -3243,7 +3243,7 @@ void dynamicTopoFvMesh::removeSlivers()
                         (
                             collapseEdge
                             (
-                                firstMapEdges[edgeI].first(),
+                                firstMapEdges[edgeI].index(),
                                 -1,
                                 false,
                                 true
@@ -3630,6 +3630,9 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     {
         Info << nl << "Edge Swapping complete." << endl;
     }
+
+    // Synchronize coupled patches
+    synchronizeCoupledPatches();
 }
 
 

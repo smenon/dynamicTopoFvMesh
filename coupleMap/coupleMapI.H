@@ -253,6 +253,18 @@ inline labelList& coupleMap::entityBuffer(const label eType) const
 }
 
 
+inline labelList& coupleMap::entityIndices() const
+{
+    return entityIndices_;
+}
+
+
+inline labelList& coupleMap::entityOperations() const
+{
+    return entityOperations_;
+}
+
+
 } // End namespace Foam
 
 // ************************************************************************* //

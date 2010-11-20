@@ -89,6 +89,12 @@ class coupleMap
     // Entity Buffers (as specified by the entityType enumerant)
     mutable FixedList<labelList,7> entityBuffer_;
 
+    // List of entity indices with topological operations
+    mutable labelList entityIndices_;
+
+    // List of operations performed on entities
+    mutable labelList entityOperations_;
+
     //- Demand-driven connectivity data.
         mutable label nInternalFaces_;
         mutable labelList* ownerPtr_;
@@ -129,6 +135,14 @@ public:
         FACE_EDGE = 4,
         PATCH_ID = 5,
         NFE_BUFFER = 6
+    };
+
+    enum operationType
+    {
+        BISECTION = 0,
+        COLLAPSE_FIRST = 1,
+        COLLAPSE_SECOND = 2,
+        COLLAPSE_MIDPOINT = 3
     };
 
     //- Runtime type information
@@ -255,6 +269,15 @@ public:
 
         inline FixedList<labelList,7>& entityBuffer() const;
         inline labelList& entityBuffer(const label eType) const;
+
+        inline labelList& entityIndices() const;
+        inline labelList& entityOperations() const;
+
+        void pushOperation
+        (
+            const label index,
+            const label opType
+        ) const;
 
         //- Demand-driven data
         label nInternalFaces() const;

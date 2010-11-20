@@ -786,22 +786,6 @@ bool faceSetAlgorithm::faceIntersection
         }
     }
     else
-    if (oldFace.size() == 4 && newFace.size() == 4)
-    {
-        // Perform tests specific to quad faces
-        notImplemented
-        (
-            "\n\n"
-            "bool faceSetAlgorithm::faceIntersection\n"
-            "(\n"
-            "    const label,\n"
-            "    const label,\n"
-            "    const T&,\n"
-            "    Field<Vector<T> >&\n"
-            ") const\n"
-        );
-    }
-    else
     {
         FatalErrorIn
         (
