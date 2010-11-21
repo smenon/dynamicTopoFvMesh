@@ -46,74 +46,163 @@ bool dynamicTopoFvMesh::testDelaunay
     const label fIndex
 ) const
 {
-    bool failed = false, procCouple = false;
-    label eIndex = -1, pIndex = -1, fLabel = -1;
-    FixedList<bool,2> foundTriFace(false);
-    FixedList<FixedList<label,3>,2> triFaces(FixedList<label,3>(-1));
+    bool failed = false, procCoupled = false;
+    label eIndex = -1, pointIndex = -1, fLabel = -1;
+    label sIndex = -1, pIndex = -1;
+    FixedList<triFace, 2> triFaces;
+    FixedList<bool, 2> foundTriFace(false);
 
     // Boundary faces are discarded.
     if (whichPatch(fIndex) > -1)
     {
-        procCouple = processorCoupledEntity(fIndex);
+        procCoupled = processorCoupledEntity(fIndex);
 
-        if (!procCouple)
+        if (!procCoupled)
         {
             return failed;
         }
     }
 
-    if (procCouple)
-    {
-        // Detect faces across processor boundaries.
+    const labelList& fEdges = faceEdges_[fIndex];
 
-    }
-    else
+    forAll(fEdges, edgeI)
     {
-        const labelList& fEdges = faceEdges_[fIndex];
-
-        forAll(fEdges, edgeI)
+        // Break out if both triangular faces are found
+        if (foundTriFace[0] && foundTriFace[1])
         {
-            // Break out if both triangular faces are found
-            if (foundTriFace[0] && foundTriFace[1])
+            break;
+        }
+
+        // Obtain edgeFaces for this edge
+        const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
+
+        forAll(eFaces, faceI)
+        {
+            const face& thisFace = faces_[eFaces[faceI]];
+
+            if (thisFace.size() == 3)
             {
-                break;
-            }
-
-            // Obtain edgeFaces for this edge
-            const labelList& eFaces = edgeFaces_[fEdges[edgeI]];
-
-            forAll(eFaces, faceI)
-            {
-                const face& thisFace = faces_[eFaces[faceI]];
-
-                if (thisFace.size() == 3)
+                if (foundTriFace[0])
                 {
-                    if (foundTriFace[0])
-                    {
-                        // Update the second face.
-                        triFaces[1][0] = thisFace[0];
-                        triFaces[1][1] = thisFace[1];
-                        triFaces[1][2] = thisFace[2];
+                    // Update the second face.
+                    triFaces[1][0] = thisFace[0];
+                    triFaces[1][1] = thisFace[1];
+                    triFaces[1][2] = thisFace[2];
 
+                    foundTriFace[1] = true;
+                }
+                else
+                {
+                    // Update the first face.
+                    triFaces[0][0] = thisFace[0];
+                    triFaces[0][1] = thisFace[1];
+                    triFaces[0][2] = thisFace[2];
+
+                    foundTriFace[0] = true;
+                    fLabel = eFaces[faceI];
+
+                    // Take this edge
+                    eIndex = fEdges[edgeI];
+
+                    if (procCoupled)
+                    {
+                        // Stop searching for processor boundary cases
                         foundTriFace[1] = true;
-
-                        // Take this edge
-                        eIndex = fEdges[edgeI];
-                    }
-                    else
-                    {
-                        // Update the first face.
-                        triFaces[0][0] = thisFace[0];
-                        triFaces[0][1] = thisFace[1];
-                        triFaces[0][2] = thisFace[2];
-
-                        foundTriFace[0] = true;
-
-                        fLabel = eFaces[faceI];
                     }
                 }
             }
         }
+    }
+
+    const edge& checkEdge = edges_[eIndex];
+
+    // Configure the comparison edge
+    edge cEdge(-1, -1);
+
+    if (procCoupled)
+    {
+        const label faceEnum = coupleMap::FACE;
+        const label pointEnum = coupleMap::POINT;
+
+        // Check slaves
+        bool foundEdge = false;
+
+        forAll(procIndices_, pI)
+        {
+            // Fetch non-const reference to subMeshes
+            const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+
+            const coupleMap& cMap = recvMesh.patchMap();
+            const dynamicTopoFvMesh& sMesh = recvMesh.subMesh();
+
+            if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+            {
+                // Find equivalent points on the slave
+                cEdge[0] = cMap.findSlaveIndex(pointEnum, checkEdge[0]);
+                cEdge[1] = cMap.findSlaveIndex(pointEnum, checkEdge[1]);
+
+                // Find a triangular face containing cEdge
+                const labelList& sfE = sMesh.faceEdges_[sIndex];
+
+                forAll(sfE, edgeI)
+                {
+                    // Obtain edgeFaces for this edge
+                    const labelList& seF = sMesh.edgeFaces_[sfE[edgeI]];
+
+                    forAll(seF, faceI)
+                    {
+                        const face& tF = sMesh.faces_[seF[faceI]];
+
+                        if (tF.size() == 3)
+                        {
+                            if
+                            (
+                                (findIndex(tF, cEdge[0]) > -1) &&
+                                (findIndex(tF, cEdge[1]) > -1)
+                            )
+                            {
+                                triFaces[1][0] = tF[0];
+                                triFaces[1][1] = tF[1];
+                                triFaces[1][2] = tF[2];
+
+                                foundEdge = true;
+
+                                break;
+                            }
+                        }
+                    }
+
+                    if (foundEdge)
+                    {
+                        break;
+                    }
+                }
+
+                // Store patch index for later
+                pIndex = pI;
+
+                break;
+            }
+        }
+
+        if (sIndex == -1 || !foundEdge)
+        {
+            FatalErrorIn
+            (
+                "bool dynamicTopoFvMesh::testDelaunay"
+                "(const label fIndex) const"
+            )
+                << "Coupled maps were improperly specified." << nl
+                << " Slave index not found for: " << nl
+                << " Face: " << fIndex << nl
+                << " cEdge: " << cEdge << nl
+                << abort(FatalError);
+        }
+    }
+    else
+    {
+        // Non-coupled case
+        cEdge = checkEdge;
     }
 
     // Obtain point references for the first face
@@ -131,42 +220,40 @@ bool dynamicTopoFvMesh::testDelaunay
         ).circumCentre()
     );
 
-    point otherPoint = vector::zero;
-    scalar rSquared = (a - cCentre)&(a - cCentre);
+    scalar rSquared = (a - cCentre) & (a - cCentre);
 
     // Find the isolated point on the second face
-    if (procCouple)
-    {
-        // Find the other point across the processor boundary.
+    point otherPoint = vector::zero;
 
+    // Check the first point
+    if (triFaces[1][0] != cEdge[0] && triFaces[1][0] != cEdge[1])
+    {
+        pointIndex = triFaces[1][0];
+    }
+
+    // Check the second point
+    if (triFaces[1][1] != cEdge[0] && triFaces[1][1] != cEdge[1])
+    {
+        pointIndex = triFaces[1][1];
+    }
+
+    // Check the third point
+    if (triFaces[1][2] != cEdge[0] && triFaces[1][2] != cEdge[1])
+    {
+        pointIndex = triFaces[1][2];
+    }
+
+    if (procCoupled)
+    {
+        otherPoint = recvPatchMeshes_[pIndex].subMesh().points_[pointIndex];
     }
     else
     {
-        const edge& e = edges_[eIndex];
-
-        // Check the first point
-        if (triFaces[1][0] != e.start() && triFaces[1][0] != e.end())
-        {
-            pIndex = triFaces[1][0];
-        }
-
-        // Check the second point
-        if (triFaces[1][1] != e.start() && triFaces[1][1] != e.end())
-        {
-            pIndex = triFaces[1][1];
-        }
-
-        // Check the third point
-        if (triFaces[1][2] != e.start() && triFaces[1][2] != e.end())
-        {
-            pIndex = triFaces[1][2];
-        }
-
-        // ...and determine whether it lies in this circle
-        otherPoint = points_[pIndex];
+        otherPoint = points_[pointIndex];
     }
 
-    if (((otherPoint - cCentre)&(otherPoint - cCentre)) < rSquared)
+    // ...and determine whether it lies in this circle
+    if (((otherPoint - cCentre) & (otherPoint - cCentre)) < rSquared)
     {
         // Failed the test.
         failed = true;
