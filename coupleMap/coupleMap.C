@@ -322,6 +322,12 @@ pointField& coupleMap::pointBuffer() const
 }
 
 
+pointField& coupleMap::oldPointBuffer() const
+{
+    return oldPointBuffer_;
+}
+
+
 labelList& coupleMap::subMeshPoints() const
 {
     return subMeshPoints_;
@@ -341,7 +347,11 @@ void coupleMap::allocateBuffers() const
         }
     }
 
+    // Size up point buffers
     pointBuffer().setSize(nEntities(coupleMap::POINT));
+    oldPointBuffer().setSize(nEntities(coupleMap::POINT));
+
+    // Size up connectivity buffers
     entityBuffer(coupleMap::POINT).setSize(nEntities(coupleMap::SHARED_POINT));
     entityBuffer(coupleMap::EDGE).setSize(2*nEntities(coupleMap::EDGE));
     entityBuffer(coupleMap::PATCH_ID).setSize(nEntities(coupleMap::FACE));
@@ -482,6 +492,7 @@ void coupleMap::clearMaps() const
 void coupleMap::clearBuffers() const
 {
     pointBuffer_.clear();
+    oldPointBuffer_.clear();
 
     forAll(entityBuffer_, bufferI)
     {

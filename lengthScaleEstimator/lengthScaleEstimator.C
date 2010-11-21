@@ -514,7 +514,6 @@ void lengthScaleEstimator::readLengthScaleInfo
                         sumLength +=
                         (
                             fixedLengthScale(cellCheck[faceI], pF, true)
-                          * growthFactor_
                         );
 
                         nTouchedNgb++;

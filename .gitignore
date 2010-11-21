@@ -1,0 +1,8 @@
+# Ignore eclipse .cproject and .project files
+.project
+.cproject
+
+# Ignore build files
+*.dep
+linux*
+lnInclude

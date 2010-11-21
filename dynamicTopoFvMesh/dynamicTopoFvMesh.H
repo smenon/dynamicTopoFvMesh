@@ -266,6 +266,7 @@ class dynamicTopoFvMesh
             const dynamicTopoFvMesh& mesh,
             const IOobject& io,
             const pointField& points,
+            const pointField& oldPoints,
             const label nInternalEdges,
             const edgeList& edges,
             const faceList& faces,
@@ -920,13 +921,13 @@ class dynamicTopoFvMesh
         // Unset coupled modification
         void unsetCoupledModification() const;
 
-        // Insert the specified cell to the mesh,
+        // Insert the specified cells to the mesh,
         // given existing coupled patch information
         const changeMap
-        insertCell
+        insertCells
         (
-            const label cIndex,
-            const coupledPatchInfo& cInfo
+            const labelList& cList,
+            coupledPatchInfo& cInfo
         );
 
         // Handle topology changes for coupled patches
@@ -942,7 +943,7 @@ class dynamicTopoFvMesh
         void buildProcessorPatchMesh
         (
             coupledPatchInfo& subMesh,
-            labelHashSet& commonCells
+            Map<labelList>& commonCells
         );
 
         // Build coupled maps for locally coupled patches

@@ -639,16 +639,111 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 }
 
 
-// Insert the specified cell to the mesh,
+// Insert the specified cells to the mesh,
 // given existing coupled patch information
-const changeMap dynamicTopoFvMesh::insertCell
+// - Returns a changeMap with a type specifying:
+//     1: Insertion was successful
+//    -1: Insertion failed
+const changeMap dynamicTopoFvMesh::insertCells
 (
-    const label cIndex,
-    const coupledPatchInfo& cInfo
+    const labelList& cList,
+    coupledPatchInfo& cInfo
 )
 {
     // Prepare the changeMaps
     changeMap map;
+
+    // Fetch the patchMap
+    const label faceEnum = coupleMap::FACE;
+    const coupleMap& cMap = cInfo.patchMap();
+    dynamicTopoFvMesh& sMesh = cInfo.subMesh();
+
+    Map<label> masterFacesToConvert, masterFacesToInsert;
+    Map<label> slaveFacesToConvert, slaveFacesToRemove;
+
+    // First loop through cell faces and accumulate
+    // a set of faces to be removed / converted.
+    forAll(cList, cellI)
+    {
+        label cIndex = cList[cellI];
+
+        const cell& checkCell = sMesh.cells_[cIndex];
+
+        forAll(checkCell, fI)
+        {
+            // Check whether a face mapping exists for this face
+            label mIndex = -1, fIndex = checkCell[fI];
+
+            if ((mIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
+            {
+                if (!masterFacesToConvert.found(mIndex))
+                {
+                    masterFacesToConvert.insert(mIndex, -1);
+                }
+            }
+            else
+            {
+                if (!masterFacesToInsert.found(fIndex))
+                {
+                    masterFacesToInsert.insert(fIndex, -1);
+                }
+            }
+
+            if (!slaveFacesToRemove.found(fIndex))
+            {
+                slaveFacesToRemove.insert(fIndex, -1);
+            }
+        }
+    }
+
+    if (debug > 3)
+    {
+        Pout << nl << " Inserting cells: " << cList << endl;
+
+        if (debug > 4)
+        {
+            writeVTK
+            (
+                "masterFacesToConvert"
+              + Foam::name(Pstream::myProcNo())
+              + '_' + Foam::name(cList[0]),
+                masterFacesToConvert.toc(),
+                2
+            );
+
+            sMesh.writeVTK
+            (
+                "insertCells_"
+              + Foam::name(Pstream::myProcNo())
+              + '_' + Foam::name(cList[0]),
+                cList
+            );
+
+            sMesh.writeVTK
+            (
+                "masterFacesToInsert"
+              + Foam::name(Pstream::myProcNo())
+              + '_' + Foam::name(cList[0]),
+                masterFacesToInsert.toc(),
+                2
+            );
+
+            sMesh.writeVTK
+            (
+                "slaveFacesToRemove"
+              + Foam::name(Pstream::myProcNo())
+              + '_' + Foam::name(cList[0]),
+                slaveFacesToRemove.toc(),
+                2
+            );
+        }
+    }
+
+    // Remove the specified cells from the subMesh,
+    // and add exposed internal faces to the defaultPatch [0]
+    //changeMap sMeshMap = sMesh.removeCells(cList, 0);
+
+    // Now map modified boundary faces
 
     // Specify that the operation was successful
     map.type() = 1;
@@ -867,7 +962,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
     }
 
     // Maintain a list of cells common to multiple processors.
-    labelHashSet commonCells;
+    Map<labelList> commonCells;
 
     forAll(procIndices_, pI)
     {
@@ -894,8 +989,9 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
                  << endl;
         }
 
-        // Send the pointBuffer
+        // Send the pointBuffers
         meshOps::pWrite(proc, scMap.pointBuffer());
+        meshOps::pWrite(proc, scMap.oldPointBuffer());
 
         // Send connectivity (points, edges, faces, cells, etc)
         forAll(scMap.entityBuffer(), bufferI)
@@ -924,8 +1020,9 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         // Size the buffers.
         rcMap.allocateBuffers();
 
-        // Receive the pointBuffer
+        // Receive the pointBuffers
         meshOps::pRead(proc, rcMap.pointBuffer());
+        meshOps::pRead(proc, rcMap.oldPointBuffer());
 
         // Receive connectivity (points, edges, faces, cells, etc)
         forAll(rcMap.entityBuffer(), bufferI)
@@ -948,7 +1045,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 void dynamicTopoFvMesh::buildProcessorPatchMesh
 (
     coupledPatchInfo& subMesh,
-    labelHashSet& commonCells
+    Map<labelList>& commonCells
 )
 {
     label nP = 0, nE = 0, nF = 0, nC = 0;
@@ -1058,6 +1155,15 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                         {
                             localCommonCells.insert(cellI);
                         }
+
+                        // Check if thr processor exists on the list
+                        // and if not, add it.
+                        labelList& procList = commonCells[cellI];
+
+                        if (findIndex(procList, proc) == -1)
+                        {
+                            meshOps::sizeUpList(proc, procList);
+                        }
                     }
                     else
                     {
@@ -1065,7 +1171,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                         rCellMap.insert(cellI, nC);
                         nC++;
 
-                        commonCells.insert(cellI);
+                        commonCells.insert(cellI, labelList(1, proc));
                     }
 
                     break;
@@ -1102,6 +1208,15 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                             {
                                 localCommonCells.insert(own);
                             }
+
+                            // Check if thr processor exists on the list
+                            // and if not, add it.
+                            labelList& procList = commonCells[own];
+
+                            if (findIndex(procList, proc) == -1)
+                            {
+                                meshOps::sizeUpList(proc, procList);
+                            }
                         }
                         else
                         {
@@ -1109,7 +1224,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                             rCellMap.insert(own, nC);
                             nC++;
 
-                            commonCells.insert(own);
+                            commonCells.insert(own, labelList(1, proc));
                         }
                     }
 
@@ -1123,6 +1238,15 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                             {
                                 localCommonCells.insert(nei);
                             }
+
+                            // Check if thr processor exists on the list
+                            // and if not, add it.
+                            labelList& procList = commonCells[nei];
+
+                            if (findIndex(procList, proc) == -1)
+                            {
+                                meshOps::sizeUpList(proc, procList);
+                            }
                         }
                         else
                         {
@@ -1130,7 +1254,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                             rCellMap.insert(nei, nC);
                             nC++;
 
-                            commonCells.insert(nei);
+                            commonCells.insert(nei, labelList(1, proc));
                         }
                     }
                 }
@@ -1320,10 +1444,12 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     cMap.allocateBuffers();
 
     pointField& pBuffer = cMap.pointBuffer();
+    pointField& opBuffer = cMap.oldPointBuffer();
 
     forAllConstIter(Map<label>, pointMap, pIter)
     {
         pBuffer[pIter.key()] = points_[pIter()];
+        opBuffer[pIter.key()] = oldPoints_[pIter()];
     }
 
     // Edge buffer size: 2 points for every edge
@@ -1832,6 +1958,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                     time()
                 ),
                 cMap.pointBuffer(),
+                cMap.oldPointBuffer(),
                 cMap.nEntities(coupleMap::INTERNAL_EDGE),
                 cMap.edges(),
                 cMap.faces(),

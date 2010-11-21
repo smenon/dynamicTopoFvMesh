@@ -289,6 +289,102 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
     FixedList<bool,2> foundTriFace0(false), foundTriFace1(false);
     FixedList<face,2> triFaces0(face(3)), triFaces1(face(3));
 
+    if (coupledModification_)
+    {
+        // When swapping across processors, we need to add the
+        // prism-cell from (as well as delete on) the patchSubMesh
+        const label faceEnum = coupleMap::FACE;
+
+        label sIndex = -1;
+
+        forAll(procIndices_, pI)
+        {
+            // Fetch non-const reference to subMeshes
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+            const coupleMap& cMap = recvMesh.patchMap();
+
+            if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+            {
+                if (debug > 3)
+                {
+                    Pout << "Checking slave face: " << sIndex
+                         << " on proc: " << procIndices_[pI]
+                         << " for master face: " << fIndex
+                         << endl;
+                }
+
+                // Check if a lower-ranked processor is
+                // handling this edge
+                if (procIndices_[pI] < Pstream::myProcNo())
+                {
+                    if (debug > 3)
+                    {
+                        Pout << "Face: " << fIndex
+                             << " is handled by proc: "
+                             << procIndices_[pI]
+                             << ", so bailing out."
+                             << endl;
+                    }
+
+                    return map;
+                }
+
+                // Now add the neighbour cell on
+                // the slave processor to this mesh,
+                // and update maps
+                label cIndex = recvMesh.subMesh().owner_[sIndex];
+
+                changeMap cellMap =
+                (
+                    insertCells
+                    (
+                        labelList(1, cIndex),
+                        recvMesh
+                    )
+                );
+
+                if (cellMap.type() != 1)
+                {
+                    if (debug > 3)
+                    {
+                        Pout << " Insertion of cell: " << cIndex
+                             << " for slave face: " << sIndex
+                             << " on proc: " << procIndices_[pI]
+                             << " for master face: " << fIndex
+                             << " failed. Bailing out."
+                             << endl;
+                    }
+
+                    return map;
+                }
+
+                break;
+            }
+        }
+
+        if (sIndex == -1)
+        {
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::swapQuadFace"
+                "(const label fIndex)"
+            )
+                << "Coupled maps were improperly specified." << nl
+                << " Slave index not found for: " << nl
+                << " Face: " << fIndex << nl
+                << abort(FatalError);
+        }
+
+        if (debug > 1)
+        {
+            Pout << nl << " >> Swapping using slave face: " << sIndex
+                 << " for master face: " << fIndex << endl;
+        }
+
+        // Temporarily return failed operation
+        return map;
+    }
+
     // Get the two cells on either side...
     label c0 = owner_[fIndex];
     label c1 = neighbour_[fIndex];

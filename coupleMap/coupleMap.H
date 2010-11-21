@@ -74,6 +74,7 @@ class coupleMap
     mutable label slaveIndex_;
 
     mutable pointField pointBuffer_;
+    mutable pointField oldPointBuffer_;
 
     // List of points that are required
     // during patch sub-mesh creation
@@ -218,6 +219,7 @@ public:
         inline bool isRecv() const;
 
         pointField& pointBuffer() const;
+        pointField& oldPointBuffer() const;
 
         labelList& subMeshPoints() const;
 
