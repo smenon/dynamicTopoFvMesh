@@ -2261,6 +2261,10 @@ void dynamicTopoFvMesh::edgeRefinementEngine
         }
     }
 
+    bool r = false;
+    reduce(r, andOp<bool>());
+    Pstream::exit(0);
+
     if (thread->slave())
     {
         thread->sendSignal(meshHandler::STOP);

@@ -63,7 +63,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     label tIndex = self();
 
     // Prepare the changeMaps
-    changeMap map, slaveMap;
+    changeMap map;
+    List<changeMap> slaveMaps;
+    bool collapsingSlave = false;
 
     if
     (
@@ -158,27 +160,29 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     // master edge, collapse its slaves first.
     if (coupledModification_)
     {
-        bool local = false;
-        const coupleMap* cMapPtr = NULL;
-        label sIndex = -1, pIndex = -1;
+        bool localCouple = false, procCouple = false;
 
         const label faceEnum = coupleMap::FACE;
         const label pointEnum = coupleMap::POINT;
 
-        // Is this a locally coupled edge?
-        if (locallyCoupledEntity(fIndex))
+        // Is this a locally coupled edge (either master or slave)?
+        if (locallyCoupledEntity(fIndex, true))
         {
-            local = true;
+            localCouple = true;
+            procCouple = false;
         }
         else
         if (processorCoupledEntity(fIndex))
         {
-            local = false;
+            procCouple = true;
+            localCouple = false;
         }
 
-        if (local)
+        if (localCouple && !procCouple)
         {
             // Determine the slave index.
+            label sIndex = -1, pIndex = -1;
+
             forAll(patchCoupling_, patchI)
             {
                 if (patchCoupling_(patchI))
@@ -187,16 +191,67 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                     if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
                     {
-                        // Fetch address
-                        cMapPtr = &cMap;
                         pIndex = patchI;
+
+                        break;
+                    }
+
+                    // The following bit happens only during the sliver
+                    // exudation process, since slave edges are
+                    // usually not added to the coupled edge-stack.
+                    if ((sIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
+                    {
+                        pIndex = patchI;
+
+                        // Notice that we are collapsing a slave edge first.
+                        collapsingSlave = true;
 
                         break;
                     }
                 }
             }
+
+            if (sIndex == -1)
+            {
+                FatalErrorIn
+                (
+                    "\n"
+                    "const changeMap "
+                    "dynamicTopoFvMesh::collapseQuadFace\n"
+                    "(\n"
+                    "    const label fIndex,\n"
+                    "    label overRideCase,\n"
+                    "    bool checkOnly,\n"
+                    "    bool forceOp\n"
+                    ")\n"
+                )
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Face: " << fIndex << ": " << faces_[fIndex] << nl
+                    << abort(FatalError);
+            }
+            else
+            {
+                // If we've found the slave, size up the list
+                meshOps::sizeUpList
+                (
+                    changeMap(),
+                    slaveMaps
+                );
+
+                // Save index and patch for posterity
+                slaveMaps[0].index() = sIndex;
+                slaveMaps[0].patchIndex() = pIndex;
+            }
+
+            if (debug > 1)
+            {
+                Pout << nl << " >> Collapsing slave face: " << sIndex
+                     << " for master face: " << fIndex << endl;
+            }
         }
         else
+        if (procCouple && !localCouple)
         {
             // Check slaves
             forAll(procIndices_, pI)
@@ -205,18 +260,52 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
                 const coupleMap& cMap = recvMesh.patchMap();
 
+                label sIndex = -1;
+
                 if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
                 {
-                    // Fetch address
-                    cMapPtr = &cMap;
-                    pIndex = pI;
+                    if (debug > 3)
+                    {
+                        Pout << "Checking slave face: " << sIndex
+                             << " on proc: " << procIndices_[pI]
+                             << " for master face: " << fIndex
+                             << endl;
+                    }
+
+                    // Check if a lower-ranked processor is
+                    // handling this edge
+                    if (procIndices_[pI] < Pstream::myProcNo())
+                    {
+                        if (debug > 3)
+                        {
+                            Pout << "Face: " << fIndex
+                                 << " is handled by proc: "
+                                 << procIndices_[pI]
+                                 << ", so bailing out."
+                                 << endl;
+                        }
+
+                        return map;
+                    }
+
+                    label curIndex = slaveMaps.size();
+
+                    // Size up the list
+                    meshOps::sizeUpList
+                    (
+                        changeMap(),
+                        slaveMaps
+                    );
+
+                    // Save index and patch for posterity
+                    slaveMaps[curIndex].index() = sIndex;
+                    slaveMaps[curIndex].patchIndex() = pI;
 
                     break;
                 }
             }
         }
-
-        if (sIndex == -1)
+        else
         {
             FatalErrorIn
             (
@@ -231,32 +320,35 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 ")\n"
             )
                 << "Coupled maps were improperly specified." << nl
-                << " Slave index not found for: " << nl
-                << " Face: " << fIndex << nl
+                << " localCouple: " << localCouple << nl
+                << " procCouple: " << procCouple << nl
+                << " Face: " << fIndex << ": " << faces_[fIndex] << nl
                 << abort(FatalError);
         }
 
-        if (debug > 1)
-        {
-            Pout << nl << " >> Collapsing slave face: " << sIndex
-                 << " for master face: " << fIndex << endl;
-        }
+        // Alias for convenience...
+        changeMap& slaveMap = slaveMaps[0];
 
-        // Alias for convenience
-        const coupleMap& cMap = *cMapPtr;
+        label sIndex = slaveMap.index();
+        label pI = slaveMap.patchIndex();
+        const coupleMap* cMapPtr = NULL;
 
-        // Temporarily turn off coupledModification.
-        // This only affects locally coupled modifications.
+        // Temporarily turn off coupledModification
         unsetCoupledModification();
 
-        if (local)
+        if (localCouple)
         {
+            cMapPtr = &(patchCoupling_[pI].patchMap());
+
             // First check the slave for collapse feasibility.
-            slaveMap = collapseQuadFace(sIndex, -1, true);
+            slaveMap = collapseQuadFace(sIndex, -1, true, forceOp);
         }
         else
+        if (procCouple)
         {
-            coupledPatchInfo& recvMesh = recvPatchMeshes_[pIndex];
+            cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
 
             // First check the slave for collapse feasibility.
             slaveMap =
@@ -271,187 +363,220 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             );
         }
 
-        if (slaveMap.type() > 0)
+        // Turn it back on.
+        setCoupledModification();
+
+        if (slaveMap.type() <= 0)
         {
-            // Obtain the pointMap
-            Map<label>& pointMap = cMap.entityMap(pointEnum);
-            FixedList<edge, 2> mEdge(edge(-1, -1)), sEdge(edge(-1, -1));
+            // Slave couldn't perform collapse.
+            map.type() = -2;
+
+            return map;
+        }
+
+        // Save index and patch for posterity
+        slaveMap.index() = sIndex;
+        slaveMap.patchIndex() = pI;
+
+        // Alias for convenience..
+        const coupleMap& cMap = *cMapPtr;
+
+        // Define an overRide case for the master...
+        // Obtain the pointMap
+        FixedList<edge, 2> mEdge(edge(-1, -1)), sEdge(edge(-1, -1));
+
+        if (collapsingSlave)
+        {
+            const Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
+
+            mEdge[0][0] = rPointMap[checkEdge[1].start()];
+            mEdge[0][1] = rPointMap[checkEdge[1].end()];
+
+            mEdge[1][0] = rPointMap[checkEdge[2].start()];
+            mEdge[1][1] = rPointMap[checkEdge[2].end()];
+        }
+        else
+        {
+            const Map<label>& pointMap = cMap.entityMap(pointEnum);
 
             mEdge[0][0] = pointMap[checkEdge[1].start()];
             mEdge[0][1] = pointMap[checkEdge[1].end()];
 
             mEdge[1][0] = pointMap[checkEdge[2].start()];
             mEdge[1][1] = pointMap[checkEdge[2].end()];
+        }
 
+        if (localCouple)
+        {
             sEdge[0] = edges_[slaveMap.firstEdge()];
             sEdge[1] = edges_[slaveMap.secondEdge()];
-
-            // Set the overRideCase for this edge
-            changeMap masterMap;
-
-            // Perform a topological comparison.
-            switch (slaveMap.type())
-            {
-                case 1:
-                {
-                    if (mEdge[0] == sEdge[0])
-                    {
-                        overRideCase = 1;
-                    }
-                    else
-                    if (mEdge[1] == sEdge[0])
-                    {
-                        overRideCase = 2;
-                    }
-                    else
-                    {
-                        FatalErrorIn
-                        (
-                            "\n"
-                            "const changeMap "
-                            "dynamicTopoFvMesh::collapseQuadFace\n"
-                            "(\n"
-                            "    const label fIndex,\n"
-                            "    label overRideCase,\n"
-                            "    bool checkOnly,\n"
-                            "    bool forceOp\n"
-                            ")\n"
-                        )
-                            << "Coupled collapse failed." << nl
-                            << "Masters: " << nl
-                            << checkEdgeIndex[1] << ": "
-                            << checkEdge[1] << nl
-                            << checkEdgeIndex[2] << ": "
-                            << checkEdge[2] << nl
-                            << "Slaves: " << nl
-                            << slaveMap.firstEdge() << ": "
-                            << sEdge[0] << nl
-                            << slaveMap.secondEdge() << ": "
-                            << sEdge[1] << nl
-                            << abort(FatalError);
-                    }
-
-                    break;
-                }
-
-                case 2:
-                {
-                    if (mEdge[1] == sEdge[1])
-                    {
-                        overRideCase = 2;
-                    }
-                    else
-                    if (mEdge[0] == sEdge[1])
-                    {
-                        overRideCase = 1;
-                    }
-                    else
-                    {
-                        FatalErrorIn
-                        (
-                            "\n"
-                            "const changeMap "
-                            "dynamicTopoFvMesh::collapseQuadFace\n"
-                            "(\n"
-                            "    const label fIndex,\n"
-                            "    label overRideCase,\n"
-                            "    bool checkOnly,\n"
-                            "    bool forceOp\n"
-                            ")\n"
-                        )
-                            << "Coupled collapse failed." << nl
-                            << "Masters: " << nl
-                            << checkEdgeIndex[1] << ": "
-                            << checkEdge[1] << nl
-                            << checkEdgeIndex[2] << ": "
-                            << checkEdge[2] << nl
-                            << "Slaves: " << nl
-                            << slaveMap.firstEdge() << ": "
-                            << sEdge[0] << nl
-                            << slaveMap.secondEdge() << ": "
-                            << sEdge[1] << nl
-                            << abort(FatalError);
-                    }
-
-                    break;
-                }
-
-                case 3:
-                {
-                    overRideCase = 3;
-
-                    break;
-                }
-            }
-
-            // Can the overRideCase be used for this edge?
-            masterMap = collapseQuadFace(fIndex, overRideCase, true);
-
-            // Master couldn't perform collapse.
-            if (masterMap.type() <= 0)
-            {
-                // Turn coupledModification back on before bailing out.
-                // This only affects locally coupled modifications.
-                setCoupledModification();
-
-                return masterMap;
-            }
-
-            if (local)
-            {
-                // Collapse the local slave.
-                slaveMap = collapseQuadFace(sIndex);
-            }
-            else
-            {
-                coupledPatchInfo& recvMesh = recvPatchMeshes_[pIndex];
-
-                // Collapse the slave edge
-                slaveMap = recvMesh.subMesh().collapseQuadFace(sIndex);
-            }
-
-            // The final operation has to succeed.
-            if (slaveMap.type() <= 0)
-            {
-                FatalErrorIn
-                (
-                    "\n"
-                    "const changeMap "
-                    "dynamicTopoFvMesh::collapseQuadFace\n"
-                    "(\n"
-                    "    const label fIndex,\n"
-                    "    label overRideCase,\n"
-                    "    bool checkOnly,\n"
-                    "    bool forceOp\n"
-                    ")\n"
-                )
-                    << "Coupled topo-change for slave failed."
-                    << " Master face: " << fIndex << nl
-                    << " Slave face: " << sIndex << nl
-                    << " Patch index: " << pIndex << nl
-                    << " Type: " << slaveMap.type() << nl
-                    << abort(FatalError);
-            }
-
-            // Save index and patch for posterity
-            slaveMap.index() = sIndex;
-            slaveMap.patchIndex() = pIndex;
         }
         else
         {
-            // Slave couldn't perform collapse.
-            // Turn coupledModification back on.
-            // This only affects locally coupled modifications.
-            setCoupledModification();
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
 
-            map.type() = 0;
+            sEdge[0] = recvMesh.subMesh().edges_[slaveMap.firstEdge()];
+            sEdge[1] = recvMesh.subMesh().edges_[slaveMap.secondEdge()];
+        }
 
-            return map;
+        // Set the overRideCase for this edge
+        changeMap masterMap;
+
+        // Perform a topological comparison.
+        switch (slaveMap.type())
+        {
+            case 1:
+            {
+                if (mEdge[0] == sEdge[0])
+                {
+                    overRideCase = 1;
+                }
+                else
+                if (mEdge[1] == sEdge[0])
+                {
+                    overRideCase = 2;
+                }
+                else
+                {
+                    FatalErrorIn
+                    (
+                        "\n"
+                        "const changeMap "
+                        "dynamicTopoFvMesh::collapseQuadFace\n"
+                        "(\n"
+                        "    const label fIndex,\n"
+                        "    label overRideCase,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
+                        ")\n"
+                    )
+                        << "Coupled collapse failed." << nl
+                        << "Masters: " << nl
+                        << checkEdgeIndex[1] << ": "
+                        << checkEdge[1] << nl
+                        << checkEdgeIndex[2] << ": "
+                        << checkEdge[2] << nl
+                        << "Slaves: " << nl
+                        << slaveMap.firstEdge() << ": "
+                        << sEdge[0] << nl
+                        << slaveMap.secondEdge() << ": "
+                        << sEdge[1] << nl
+                        << abort(FatalError);
+                }
+
+                break;
+            }
+
+            case 2:
+            {
+                if (mEdge[1] == sEdge[1])
+                {
+                    overRideCase = 2;
+                }
+                else
+                if (mEdge[0] == sEdge[1])
+                {
+                    overRideCase = 1;
+                }
+                else
+                {
+                    FatalErrorIn
+                    (
+                        "\n"
+                        "const changeMap "
+                        "dynamicTopoFvMesh::collapseQuadFace\n"
+                        "(\n"
+                        "    const label fIndex,\n"
+                        "    label overRideCase,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
+                        ")\n"
+                    )
+                        << "Coupled collapse failed." << nl
+                        << "Masters: " << nl
+                        << checkEdgeIndex[1] << ": "
+                        << checkEdge[1] << nl
+                        << checkEdgeIndex[2] << ": "
+                        << checkEdge[2] << nl
+                        << "Slaves: " << nl
+                        << slaveMap.firstEdge() << ": "
+                        << sEdge[0] << nl
+                        << slaveMap.secondEdge() << ": "
+                        << sEdge[1] << nl
+                        << abort(FatalError);
+                }
+
+                break;
+            }
+
+            case 3:
+            {
+                overRideCase = 3;
+
+                break;
+            }
+        }
+
+        // Temporarily turn off coupledModification
+        unsetCoupledModification();
+
+        // Can the overRideCase be used for this edge?
+        masterMap = collapseQuadFace(fIndex, overRideCase, true);
+
+        // Turn coupledModification back on.
+        setCoupledModification();
+
+        // Master couldn't perform collapse.
+        if (masterMap.type() <= 0)
+        {
+            return masterMap;
+        }
+
+        // Temporarily turn off coupledModification
+        unsetCoupledModification();
+
+        if (localCouple)
+        {
+            // Collapse the local slave.
+            slaveMap = collapseQuadFace(sIndex);
+        }
+        else
+        {
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+
+            // Collapse the slave edge
+            slaveMap = recvMesh.subMesh().collapseQuadFace(sIndex);
         }
 
         // Turn coupledModification back on.
-        // This only affects locally coupled modifications.
         setCoupledModification();
+
+        // The final operation has to succeed.
+        if (slaveMap.type() <= 0)
+        {
+            FatalErrorIn
+            (
+                "\n"
+                "const changeMap "
+                "dynamicTopoFvMesh::collapseQuadFace\n"
+                "(\n"
+                "    const label fIndex,\n"
+                "    label overRideCase,\n"
+                "    bool checkOnly,\n"
+                "    bool forceOp\n"
+                ")\n"
+            )
+                << "Coupled topo-change for slave failed."
+                << " Master face: " << fIndex << nl
+                << " Slave face: " << sIndex << nl
+                << " Patch index: " << pI << nl
+                << " Type: " << slaveMap.type() << nl
+                << abort(FatalError);
+        }
+
+        // Save index and patch for posterity
+        slaveMap.index() = sIndex;
+        slaveMap.patchIndex() = pI;
     }
 
     // Build a hull of cells and tri-faces that are connected to each edge
@@ -1331,25 +1456,32 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (coupledModification_)
         {
-            bool local = false;
+            // Alias for convenience...
+            const changeMap& slaveMap = slaveMaps[0];
+
+            bool localCouple = false, procCouple = false;
+
             const coupleMap* cMapPtr = NULL;
             label pIndex = slaveMap.patchIndex();
 
             if (locallyCoupledEntity(fIndex))
             {
-                local = true;
+                localCouple = true;
+                procCouple = false;
             }
             else
             if (processorCoupledEntity(fIndex))
             {
-                local = false;
+                procCouple = true;
+                localCouple = false;
             }
 
-            if (local)
+            if (localCouple && !procCouple)
             {
                 cMapPtr = &(patchCoupling_[pIndex].patchMap());
             }
             else
+            if (procCouple && !localCouple)
             {
                 coupledPatchInfo& recvMesh = recvPatchMeshes_[pIndex];
                 cMapPtr = &(recvMesh.patchMap());
@@ -1365,21 +1497,25 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             Map<label>& pointMap = cMap.entityMap(pointEnum);
             Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
 
-            if (pointMap.found(cv0))
+            if (collapsingSlave)
             {
-                // Erase the reverse map first
+                pointMap.erase(rPointMap[cv0]);
+                rPointMap.erase(cv0);
+            }
+            else
+            {
                 rPointMap.erase(pointMap[cv0]);
-
-                // Update pointMap
                 pointMap.erase(cv0);
             }
 
-            if (pointMap.found(cv1))
+            if (collapsingSlave)
             {
-                // Erase the reverse map first
+                pointMap.erase(rPointMap[cv1]);
+                rPointMap.erase(cv1);
+            }
+            else
+            {
                 rPointMap.erase(pointMap[cv1]);
-
-                // Update pointMap
                 pointMap.erase(cv1);
             }
 
@@ -1390,12 +1526,14 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             Map<label>& faceMap = cMap.entityMap(faceEnum);
             Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
 
-            if (faceMap.found(fIndex))
+            if (collapsingSlave)
             {
-                // Erase the reverse map first
+                faceMap.erase(faceMap[fIndex]);
+                rFaceMap.erase(fIndex);
+            }
+            else
+            {
                 rFaceMap.erase(faceMap[fIndex]);
-
-                // Update faceMap
                 faceMap.erase(fIndex);
             }
 
@@ -1784,25 +1922,32 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (coupledModification_)
         {
-            bool local = false;
+            // Alias for convenience...
+            const changeMap& slaveMap = slaveMaps[0];
+
+            bool localCouple = false, procCouple = false;
+
             const coupleMap* cMapPtr = NULL;
             label pIndex = slaveMap.patchIndex();
 
             if (locallyCoupledEntity(fIndex))
             {
-                local = true;
+                localCouple = true;
+                procCouple = false;
             }
             else
             if (processorCoupledEntity(fIndex))
             {
-                local = false;
+                procCouple = true;
+                localCouple = false;
             }
 
-            if (local)
+            if (localCouple && !procCouple)
             {
                 cMapPtr = &(patchCoupling_[pIndex].patchMap());
             }
             else
+            if (procCouple && !localCouple)
             {
                 coupledPatchInfo& recvMesh = recvPatchMeshes_[pIndex];
                 cMapPtr = &(recvMesh.patchMap());
@@ -1818,21 +1963,25 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             Map<label>& pointMap = cMap.entityMap(pointEnum);
             Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
 
-            if (pointMap.found(cv2))
+            if (collapsingSlave)
             {
-                // Erase the reverse map first
+                pointMap.erase(rPointMap[cv2]);
+                rPointMap.erase(cv2);
+            }
+            else
+            {
                 rPointMap.erase(pointMap[cv2]);
-
-                // Update pointMap
                 pointMap.erase(cv2);
             }
 
-            if (pointMap.found(cv3))
+            if (collapsingSlave)
             {
-                // Erase the reverse map first
+                pointMap.erase(rPointMap[cv3]);
+                rPointMap.erase(cv3);
+            }
+            else
+            {
                 rPointMap.erase(pointMap[cv3]);
-
-                // Update pointMap
                 pointMap.erase(cv3);
             }
 
@@ -1843,12 +1992,14 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             Map<label>& faceMap = cMap.entityMap(faceEnum);
             Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
 
-            if (faceMap.found(fIndex))
+            if (collapsingSlave)
             {
-                // Erase the reverse map first
+                faceMap.erase(faceMap[fIndex]);
+                rFaceMap.erase(fIndex);
+            }
+            else
+            {
                 rFaceMap.erase(faceMap[fIndex]);
-
-                // Update faceMap
                 faceMap.erase(fIndex);
             }
 
@@ -2595,22 +2746,25 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // master edge, collapse its slaves as well.
     if (coupledModification_)
     {
-        bool local = false;
+        bool localCouple = false, procCouple = false;
+
         const label edgeEnum = coupleMap::EDGE;
         const label pointEnum = coupleMap::POINT;
 
-        // Is this a locally coupled edge?
-        if (locallyCoupledEntity(eIndex))
+        // Is this a locally coupled edge (either master or slave)?
+        if (locallyCoupledEntity(eIndex, true))
         {
-            local = true;
+            localCouple = true;
+            procCouple = false;
         }
         else
         if (processorCoupledEntity(eIndex))
         {
-            local = false;
+            procCouple = true;
+            localCouple = false;
         }
 
-        if (local)
+        if (localCouple && !procCouple)
         {
             // Determine the slave index.
             label sIndex = -1, pIndex = -1;
@@ -2658,7 +2812,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
-                    << " Edge: " << eIndex << nl
+                    << " Edge: " << eIndex << ": " << edges_[eIndex] << nl
                     << abort(FatalError);
             }
             else
@@ -2682,13 +2836,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
         }
         else
+        if (procCouple && !localCouple)
         {
             // Check slaves
             forAll(procIndices_, pI)
             {
-                // Fetch non-const reference to subMeshes
-                coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
-                coupleMap& cMap = recvMesh.patchMap();
+                // Fetch reference to subMeshes
+                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupleMap& cMap = recvMesh.patchMap();
 
                 label sIndex = -1;
 
@@ -2733,6 +2888,26 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
             }
         }
+        else
+        {
+            // Something's wrong with coupling maps
+            FatalErrorIn
+            (
+                "\n"
+                "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+                "(\n"
+                "    const label eIndex,\n"
+                "    label overRideCase,\n"
+                "    bool checkOnly,\n"
+                "    bool forceOp\n"
+                ")\n"
+            )
+                << "Coupled maps were improperly specified." << nl
+                << " localCouple: " << localCouple << nl
+                << " procCouple: " << procCouple << nl
+                << " Edge: " << eIndex << ": " << edges_[eIndex] << nl
+                << abort(FatalError);
+        }
 
         // Temporarily turn off coupledModification
         unsetCoupledModification();
@@ -2762,13 +2937,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             edge mEdge(edges_[eIndex]), sEdge(-1, -1);
 
-            if (local)
+            if (localCouple)
             {
                 sEdge = edges_[sIndex];
 
                 cMapPtr = &(patchCoupling_[pI].patchMap());
             }
             else
+            if (procCouple)
             {
                 sEdge = recvPatchMeshes_[pI].subMesh().edges_[sIndex];
 
@@ -2860,14 +3036,33 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             unsetCoupledModification();
 
             // Test the slave edge
-            slaveMap = collapseEdge(sIndex, slaveOverRide, true, forceOp);
+            if (localCouple)
+            {
+                slaveMap = collapseEdge(sIndex, slaveOverRide, true, forceOp);
+            }
+            else
+            if (procCouple)
+            {
+                dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+
+                slaveMap =
+                (
+                    sMesh.collapseEdge
+                    (
+                        sIndex,
+                        slaveOverRide,
+                        true,
+                        forceOp
+                    )
+                );
+            }
 
             // Turn it back on.
             setCoupledModification();
 
             if (slaveMap.type() <= 0)
             {
-                // Slave couldn't perform bisection.
+                // Slave couldn't perform collapse.
                 map.type() = -2;
 
                 return map;
@@ -2878,17 +3073,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             slaveMap.patchIndex() = pI;
         }
 
-        // Temporarily turn off coupledModification
-        unsetCoupledModification();
-
-        // Now perform the final operations.
-        // First collapse the master edge...
-        masterMap = collapseEdge(eIndex, -1, false, forceOp);
-
-        // Turn it back on.
-        setCoupledModification();
-
-        // Next collapse each slave edge..
+        // Next collapse each slave edge (for real this time...)
         forAll(slaveMaps, slaveI)
         {
             // Alias for convenience...
@@ -2902,7 +3087,25 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             unsetCoupledModification();
 
             // Collapse the slave
-            slaveMap = collapseEdge(sIndex, slaveOverRide, false, forceOp);
+            if (localCouple)
+            {
+                slaveMap = collapseEdge(sIndex, slaveOverRide, false, forceOp);
+            }
+            else
+            {
+                dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+
+                slaveMap =
+                (
+                    sMesh.collapseEdge
+                    (
+                        sIndex,
+                        slaveOverRide,
+                        false,
+                        forceOp
+                    )
+                );
+            }
 
             // Turn it back on.
             setCoupledModification();
@@ -2922,6 +3125,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     ")\n"
                 )
                     << "Coupled topo-change for slave failed." << nl
+                    << " Edge: " << eIndex << ": " << edges_[eIndex] << nl
                     << " Slave index: " << sIndex << nl
                     << " Patch index: " << pI << nl
                     << " Type: " << slaveMap.type() << nl
@@ -3229,12 +3433,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         return map;
     }
 
-    // Update number of surface collapses, if necessary.
-    if (whichEdgePatch(eIndex) > -1)
-    {
-        statistics_[6]++;
-    }
-
     // Define indices on the hull for removal / replacement
     label removeEdgeIndex = -1, replaceEdgeIndex = -1;
     label removeFaceIndex = -1, replaceFaceIndex = -1;
@@ -3384,6 +3582,204 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                   + "_Collapse_0",
                     vtkCells
                 );
+            }
+        }
+    }
+
+    if (whichEdgePatch(eIndex) > -1)
+    {
+        // Update number of surface collapses, if necessary.
+        statistics_[6]++;
+
+        // If modification is coupled, update mapping info.
+        if (coupledModification_)
+        {
+            label nBF = 0;
+            FixedList<label, 2> bFaces(-1), bEdges(-1);
+            FixedList<bool, 2> mappedFace(false), mappedEdges(false);
+
+            // Identify boundary entities that need to be removed
+            forAll(faceHull, indexI)
+            {
+                if (whichPatch(faceHull[indexI]) > -1)
+                {
+                    bFaces[nBF] = faceHull[indexI];
+                    bEdges[nBF] = ringEntities[removeEdgeIndex][indexI];
+
+                    nBF++;
+                }
+            }
+
+            bool localCouple = false, procCouple = false;
+
+            // Is this a locally coupled edge (either master or slave)?
+            if (locallyCoupledEntity(eIndex, true))
+            {
+                localCouple = true;
+                procCouple = false;
+            }
+            else
+            if (processorCoupledEntity(eIndex))
+            {
+                procCouple = true;
+                localCouple = false;
+            }
+
+            forAll(slaveMaps, slaveI)
+            {
+                // Alias for convenience...
+                const changeMap& slaveMap = slaveMaps[slaveI];
+
+                label pI = slaveMap.patchIndex();
+
+                // Fetch the appropriate coupleMap
+                const coupleMap* cMapPtr = NULL;
+
+                if (localCouple && !procCouple)
+                {
+                    cMapPtr = &(patchCoupling_[pI].patchMap());
+                }
+                else
+                if (procCouple && !localCouple)
+                {
+                    cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+                }
+
+                // Alias for convenience...
+                const coupleMap& cMap = *cMapPtr;
+
+                label pointEnum = coupleMap::POINT;
+
+                // Obtain references
+                Map<label>& pointMap = cMap.entityMap(pointEnum);
+                Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
+
+                if (collapsingSlave)
+                {
+                    pointMap.erase(rPointMap[collapsePoint]);
+                    rPointMap.erase(collapsePoint);
+                }
+                else
+                {
+                    rPointMap.erase(pointMap[collapsePoint]);
+                    pointMap.erase(collapsePoint);
+                }
+
+                const label edgeEnum = coupleMap::EDGE;
+
+                // Obtain references
+                Map<label>& edgeMap = cMap.entityMap(edgeEnum);
+                Map<label>& rEdgeMap = cMap.reverseEntityMap(edgeEnum);
+
+                if (collapsingSlave)
+                {
+                    edgeMap.erase(rEdgeMap[eIndex]);
+                    rEdgeMap.erase(eIndex);
+                }
+                else
+                {
+                    rEdgeMap.erase(edgeMap[eIndex]);
+                    edgeMap.erase(eIndex);
+                }
+
+                const label faceEnum = coupleMap::FACE;
+
+                // Obtain references
+                Map<label>& faceMap = cMap.entityMap(faceEnum);
+                Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
+
+                forAll(bFaces, faceI)
+                {
+                    // Skip if we're already done
+                    if (mappedFace[faceI])
+                    {
+                        continue;
+                    }
+
+                    label fIndex = bFaces[faceI];
+
+                    if (collapsingSlave)
+                    {
+                        if (rFaceMap.found(fIndex))
+                        {
+                            faceMap.erase(faceMap[fIndex]);
+                            rFaceMap.erase(fIndex);
+
+                            mappedFace[faceI] = true;
+                        }
+                    }
+                    else
+                    {
+                        if (faceMap.found(fIndex))
+                        {
+                            rFaceMap.erase(faceMap[fIndex]);
+                            faceMap.erase(fIndex);
+
+                            mappedFace[faceI] = true;
+                        }
+                    }
+                }
+
+                // Should have found maps for faces by now.
+                // (Both local and processor)
+                if (!mappedFace[0] || !mappedFace[1])
+                {
+                    FatalErrorIn
+                    (
+                        "\n"
+                        "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+                        "(\n"
+                        "    const label eIndex,\n"
+                        "    label overRideCase,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
+                        ")\n"
+                    )
+                        << "Edge: " << eIndex
+                        << ": " << edges_[eIndex] << nl
+                        << " Failed to update face maps." << nl
+                        << " Faces : " << nl
+                        << bFaces[0] << " :: " << faces_[bFaces[0]] << nl
+                        << bFaces[1] << " :: " << faces_[bFaces[1]] << nl
+                        << abort(FatalError);
+                }
+
+                // Push operation into coupleMap
+                switch (slaveMap.type())
+                {
+                    case 1:
+                    {
+                        cMap.pushOperation
+                        (
+                            slaveMap.index(),
+                            coupleMap::COLLAPSE_FIRST
+                        );
+
+                        break;
+                    }
+
+                    case 2:
+                    {
+                        cMap.pushOperation
+                        (
+                            slaveMap.index(),
+                            coupleMap::COLLAPSE_SECOND
+                        );
+
+                        break;
+                    }
+
+                    case 3:
+                    {
+                        cMap.pushOperation
+                        (
+                            slaveMap.index(),
+                            coupleMap::COLLAPSE_MIDPOINT
+                        );
+
+                        break;
+                    }
+                }
             }
         }
     }
