@@ -118,6 +118,17 @@ void dynamicTopoFvMesh::computeMapping
                     Foam::max(maxError, mag(1.0 - sum(cellWeights_[cellI])))
                 );
 
+                if (debug)
+                {
+                    Info<< nl
+                        << " Inconsistent cell: " << cIndex << nl
+                        << " Parents: "
+                        << cellsFromCells_[cellI].masterObjects() << nl
+                        << " Weights: " << cellWeights_[cellI] << nl
+                        << " Error: " << mag(1.0 - sum(cellWeights_[cellI]))
+                        << endl;
+                }
+
                 nInconsistencies++;
             }
         }
@@ -188,6 +199,17 @@ void dynamicTopoFvMesh::computeMapping
                     Foam::max(maxError, mag(1.0 - sum(faceWeights_[faceI])))
                 );
 
+                if (debug)
+                {
+                    Info<< nl
+                        << " Inconsistent face: " << fIndex << nl
+                        << " Parents: "
+                        << facesFromFaces_[faceI].masterObjects() << nl
+                        << " Weights: " << faceWeights_[faceI] << nl
+                        << " Error: " << mag(1.0 - sum(faceWeights_[faceI]))
+                        << endl;
+                }
+
                 nInconsistencies++;
             }
         }
@@ -198,6 +220,9 @@ void dynamicTopoFvMesh::computeMapping
         Info << " Mapping inconsistencies: " << nInconsistencies
              << " max error: " << maxError
              << endl;
+
+        // Write out connectivity information for post-processing
+        // cellAlgorithm.write();
     }
 }
 
@@ -753,7 +778,7 @@ bool dynamicTopoFvMesh::computeWeights
         algorithm.populateLists(parents, centres, weights);
     }
 
-    if (debug && (precisionAttempts == 0))
+    if (debug > 1 && (precisionAttempts == 0))
     {
         label pT = algorithm.dimension();
 

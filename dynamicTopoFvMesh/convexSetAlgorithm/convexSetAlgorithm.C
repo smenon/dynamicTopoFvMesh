@@ -35,8 +35,13 @@ Author
 
 \*---------------------------------------------------------------------------*/
 
+#include "Time.H"
+#include "IOMap.H"
 #include "meshOps.H"
 #include "polyMesh.H"
+#include "objectMap.H"
+#include "edgeIOList.H"
+#include "cellIOList.H"
 
 #include "convexSetAlgorithm.H"
 
@@ -44,6 +49,11 @@ Author
 
 namespace Foam
 {
+
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+defineTemplateTypeNameAndDebugWithName(IOMap<labelList>, "labelListIOMap", 0);
+defineTemplateTypeNameAndDebugWithName(IOList<objectMap>, "objectMapIOList", 0);
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -354,6 +364,133 @@ void convexSetAlgorithm::setHighPrecision() const
 void convexSetAlgorithm::unsetHighPrecision() const
 {
     highPrecision_ = false;
+}
+
+
+// Write out connectivity information to disk
+bool convexSetAlgorithm::write() const
+{
+    pointIOField
+    (
+        IOobject
+        (
+            "newPoints",
+            mesh_.time().timeName(),
+            "convexSetAlgorithm",
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        newPoints_
+    ).write();
+
+    edgeIOList
+    (
+        IOobject
+        (
+            "newEdges",
+            mesh_.time().timeName(),
+            "convexSetAlgorithm",
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        newEdges_
+    ).write();
+
+    faceIOList
+    (
+        IOobject
+        (
+            "newFaces",
+            mesh_.time().timeName(),
+            "convexSetAlgorithm",
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        newFaces_
+    ).write();
+
+    cellIOList
+    (
+        IOobject
+        (
+            "newCells",
+            mesh_.time().timeName(),
+            "convexSetAlgorithm",
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        newCells_
+    ).write();
+
+    labelIOList
+    (
+        IOobject
+        (
+            "newOwner",
+            mesh_.time().timeName(),
+            "convexSetAlgorithm",
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        newOwner_
+    ).write();
+
+    labelIOList
+    (
+        IOobject
+        (
+            "newNeighbour",
+            mesh_.time().timeName(),
+            "convexSetAlgorithm",
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        newNeighbour_
+    ).write();
+
+    IOList<objectMap>
+    (
+        IOobject
+        (
+            "pointsFromPoints",
+            mesh_.time().timeName(),
+            "convexSetAlgorithm",
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        pointsFromPoints_
+    ).write();
+
+    IOMap<labelList>
+    (
+        IOobject
+        (
+            "modPoints",
+            mesh_.time().timeName(),
+            "convexSetAlgorithm",
+            mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE,
+            false
+        ),
+        modPoints_
+    ).write();
+
+    return true;
 }
 
 

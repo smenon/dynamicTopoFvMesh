@@ -695,8 +695,8 @@ void dynamicTopoFvMesh::writeVTK
 // Return the status report interval
 scalar dynamicTopoFvMesh::reportInterval() const
 {
-    // Default to 3 seconds
-    scalar interval = 3.0;
+    // Default to 1 second
+    scalar interval = 1.0;
 
     const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
 

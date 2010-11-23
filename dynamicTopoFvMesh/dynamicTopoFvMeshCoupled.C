@@ -2566,7 +2566,8 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                 << abort(FatalError);
         }
 
-        procScale /= (2.0 * nC);
+        // Average the final scale
+        procScale /= nC;
     }
 
     return procScale;

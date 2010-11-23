@@ -49,7 +49,7 @@ bool dynamicTopoFvMesh::testDelaunay
     bool failed = false, procCoupled = false;
     label eIndex = -1, pointIndex = -1, fLabel = -1;
     label sIndex = -1, pIndex = -1;
-    FixedList<triFace, 2> triFaces;
+    FixedList<triFace, 2> triFaces(triFace(-1, -1, -1));
     FixedList<bool, 2> foundTriFace(false);
 
     // Boundary faces are discarded.

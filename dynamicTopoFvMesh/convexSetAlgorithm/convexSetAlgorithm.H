@@ -203,6 +203,9 @@ public:
             const scalar& matchTol,
             bool output
         ) const = 0;
+
+        // Write out connectivity information to disk
+        bool write() const;
 };
 
 

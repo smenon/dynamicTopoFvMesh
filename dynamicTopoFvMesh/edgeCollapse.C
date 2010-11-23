@@ -3596,7 +3596,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         {
             label nBF = 0;
             FixedList<label, 2> bFaces(-1), bEdges(-1);
-            FixedList<bool, 2> mappedFace(false), mappedEdges(false);
+            FixedList<bool, 2> mappedFace(false), mappedEdge(false);
 
             // Identify boundary entities that need to be removed
             forAll(faceHull, indexI)
@@ -3605,6 +3605,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 {
                     bFaces[nBF] = faceHull[indexI];
                     bEdges[nBF] = ringEntities[removeEdgeIndex][indexI];
+
+                    // If this face isn't coupled, skip updates
+
+
+                    // If the edge isn't coupled, skip updates
 
                     nBF++;
                 }
@@ -3671,6 +3676,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 Map<label>& edgeMap = cMap.entityMap(edgeEnum);
                 Map<label>& rEdgeMap = cMap.reverseEntityMap(edgeEnum);
 
+                // Remove for main edge
                 if (collapsingSlave)
                 {
                     edgeMap.erase(rEdgeMap[eIndex]);
@@ -3682,12 +3688,46 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     edgeMap.erase(eIndex);
                 }
 
+                // Check and remove other edges
+                forAll(bEdges, edgeI)
+                {
+                    // Skip if we're already done
+                    if (mappedEdge[edgeI])
+                    {
+                        continue;
+                    }
+
+                    label seIndex = bEdges[edgeI];
+
+                    if (collapsingSlave)
+                    {
+                        if (rEdgeMap.found(seIndex))
+                        {
+                            edgeMap.erase(rEdgeMap[seIndex]);
+                            rEdgeMap.erase(seIndex);
+
+                            mappedEdge[edgeI] = true;
+                        }
+                    }
+                    else
+                    {
+                        if (edgeMap.found(seIndex))
+                        {
+                            rEdgeMap.erase(edgeMap[seIndex]);
+                            edgeMap.erase(seIndex);
+
+                            mappedEdge[edgeI] = true;
+                        }
+                    }
+                }
+
                 const label faceEnum = coupleMap::FACE;
 
                 // Obtain references
                 Map<label>& faceMap = cMap.entityMap(faceEnum);
                 Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
 
+                // Check and remove other faces
                 forAll(bFaces, faceI)
                 {
                     // Skip if we're already done
@@ -3702,7 +3742,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         if (rFaceMap.found(fIndex))
                         {
-                            faceMap.erase(faceMap[fIndex]);
+                            faceMap.erase(rFaceMap[fIndex]);
                             rFaceMap.erase(fIndex);
 
                             mappedFace[faceI] = true;
@@ -3718,30 +3758,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             mappedFace[faceI] = true;
                         }
                     }
-                }
-
-                // Should have found maps for faces by now.
-                // (Both local and processor)
-                if (!mappedFace[0] || !mappedFace[1])
-                {
-                    FatalErrorIn
-                    (
-                        "\n"
-                        "const changeMap dynamicTopoFvMesh::collapseEdge\n"
-                        "(\n"
-                        "    const label eIndex,\n"
-                        "    label overRideCase,\n"
-                        "    bool checkOnly,\n"
-                        "    bool forceOp\n"
-                        ")\n"
-                    )
-                        << "Edge: " << eIndex
-                        << ": " << edges_[eIndex] << nl
-                        << " Failed to update face maps." << nl
-                        << " Faces : " << nl
-                        << bFaces[0] << " :: " << faces_[bFaces[0]] << nl
-                        << bFaces[1] << " :: " << faces_[bFaces[1]] << nl
-                        << abort(FatalError);
                 }
 
                 // Push operation into coupleMap
@@ -3780,6 +3796,56 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         break;
                     }
                 }
+            }
+
+            // Should have found maps for edges by now.
+            // (Both local and processor)
+            if (!mappedEdge[0] || !mappedEdge[1])
+            {
+                FatalErrorIn
+                (
+                    "\n"
+                    "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+                    "(\n"
+                    "    const label eIndex,\n"
+                    "    label overRideCase,\n"
+                    "    bool checkOnly,\n"
+                    "    bool forceOp\n"
+                    ")\n"
+                )
+                    << "Edge: " << eIndex
+                    << ": " << edges_[eIndex] << nl
+                    << " Failed to update edge maps." << nl
+                    << " Edges : " << nl
+                    << bEdges[0] << " :: " << edges_[bEdges[0]] << nl
+                    << bEdges[1] << " :: " << edges_[bEdges[1]] << nl
+                    << " mappedEdge: " << mappedEdge << nl
+                    << abort(FatalError);
+            }
+
+            // Should have found maps for faces by now.
+            // (Both local and processor)
+            if (!mappedFace[0] || !mappedFace[1])
+            {
+                FatalErrorIn
+                (
+                    "\n"
+                    "const changeMap dynamicTopoFvMesh::collapseEdge\n"
+                    "(\n"
+                    "    const label eIndex,\n"
+                    "    label overRideCase,\n"
+                    "    bool checkOnly,\n"
+                    "    bool forceOp\n"
+                    ")\n"
+                )
+                    << "Edge: " << eIndex
+                    << ": " << edges_[eIndex] << nl
+                    << " Failed to update face maps." << nl
+                    << " Faces : " << nl
+                    << bFaces[0] << " :: " << faces_[bFaces[0]] << nl
+                    << bFaces[1] << " :: " << faces_[bFaces[1]] << nl
+                    << " mappedFace: " << mappedFace << nl
+                    << abort(FatalError);
             }
         }
     }
