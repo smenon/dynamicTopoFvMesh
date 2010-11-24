@@ -2578,7 +2578,9 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 bool dynamicTopoFvMesh::locallyCoupledEntity
 (
     const label index,
-    bool checkSlaves
+    bool checkSlaves,
+    bool checkProcs,
+    bool checkFace
 ) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
@@ -2589,7 +2591,7 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
         return false;
     }
 
-    if (twoDMesh_)
+    if (twoDMesh_ || checkFace)
     {
         label patch = whichPatch(index);
 
@@ -2599,7 +2601,7 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
         }
 
         // Processor checks receive priority.
-        if (isA<processorPolyPatch>(boundary[patch]))
+        if (isA<processorPolyPatch>(boundary[patch]) && checkProcs)
         {
             return false;
         }
@@ -2639,7 +2641,7 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
                 label patch = whichPatch(eFaces[faceI]);
 
                 // Processor checks receive priority.
-                if (isA<processorPolyPatch>(boundary[patch]))
+                if (isA<processorPolyPatch>(boundary[patch]) && checkProcs)
                 {
                     return false;
                 }
@@ -2729,10 +2731,11 @@ label dynamicTopoFvMesh::locallyCoupledEdgePatch
 }
 
 
-// Method to determine whether the master entity is on a processor
+// Method to determine if the entity is on a processor boundary
 bool dynamicTopoFvMesh::processorCoupledEntity
 (
-    const label index
+    const label index,
+    bool checkFace
 ) const
 {
     // Skip check for serial runs
@@ -2745,7 +2748,7 @@ bool dynamicTopoFvMesh::processorCoupledEntity
 
     label patch = -2;
 
-    if (twoDMesh_)
+    if (twoDMesh_ || checkFace)
     {
         patch = whichPatch(index);
 

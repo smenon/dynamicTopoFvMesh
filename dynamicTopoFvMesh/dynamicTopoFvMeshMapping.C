@@ -82,6 +82,7 @@ void dynamicTopoFvMesh::computeMapping
     {
         label precisionAttempts = 0;
         label cIndex = cellsFromCells_[cellI].index();
+        labelList& masterObjects = cellsFromCells_[cellI].masterObjects();
 
         if (skipMapping)
         {
@@ -105,7 +106,7 @@ void dynamicTopoFvMesh::computeMapping
                     matchTol,
                     cellAlgorithm,
                     precisionAttempts,
-                    cellsFromCells_[cellI].masterObjects(),
+                    masterObjects,
                     cellWeights_[cellI],
                     cellCentres_[cellI]
                 )
@@ -122,8 +123,8 @@ void dynamicTopoFvMesh::computeMapping
                 {
                     Info<< nl
                         << " Inconsistent cell: " << cIndex << nl
-                        << " Parents: "
-                        << cellsFromCells_[cellI].masterObjects() << nl
+                        << " parents: " << cellParents_[cIndex] << nl
+                        << " masterObjects: " << masterObjects << nl
                         << " Weights: " << cellWeights_[cellI] << nl
                         << " Error: " << mag(1.0 - sum(cellWeights_[cellI]))
                         << endl;
@@ -153,6 +154,8 @@ void dynamicTopoFvMesh::computeMapping
     {
         label precisionAttempts = 0;
         label fIndex = facesFromFaces_[faceI].index();
+        labelList& masterObjects = facesFromFaces_[faceI].masterObjects();
+
         label patchIndex = whichPatch(fIndex);
 
         // Skip mapping for internal faces.
@@ -186,7 +189,7 @@ void dynamicTopoFvMesh::computeMapping
                     matchTol,
                     faceAlgorithm,
                     precisionAttempts,
-                    facesFromFaces_[faceI].masterObjects(),
+                    masterObjects,
                     faceWeights_[faceI],
                     faceCentres_[faceI]
                 )
@@ -203,8 +206,8 @@ void dynamicTopoFvMesh::computeMapping
                 {
                     Info<< nl
                         << " Inconsistent face: " << fIndex << nl
-                        << " Parents: "
-                        << facesFromFaces_[faceI].masterObjects() << nl
+                        << " parents: " << faceParents_[fIndex] << nl
+                        << " masterObjects: " << masterObjects << nl
                         << " Weights: " << faceWeights_[faceI] << nl
                         << " Error: " << mag(1.0 - sum(faceWeights_[faceI]))
                         << endl;

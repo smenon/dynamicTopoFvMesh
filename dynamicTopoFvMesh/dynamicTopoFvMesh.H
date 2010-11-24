@@ -884,14 +884,20 @@ class dynamicTopoFvMesh
         bool locallyCoupledEntity
         (
             const label index,
-            bool checkSlaves = false
+            bool checkSlaves = false,
+            bool checkProcs = true,
+            bool checkFace = false
         ) const;
 
         // Method to determine the locally coupled patch index
         label locallyCoupledEdgePatch(const label eIndex) const;
 
-        // Method to determine whether the master entity is on a processor
-        bool processorCoupledEntity(const label index) const;
+        // Method to determine if the entity is on a processor boundary
+        bool processorCoupledEntity
+        (
+            const label index,
+            bool checkFace = false
+        ) const;
 
         // Obtain the maximum coupled patch index
         label getMaxCouplingIndex() const;

@@ -2660,12 +2660,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 //     0: Collapse could not be performed.
 //     1: Collapsed to first node.
 //     2: Collapsed to second node.
-//     3: Collapsed to mid-point (default)
+//     3: Collapsed to mid-point (default).
 // - overRideCase is used to force a certain collapse configuration.
 //    -1: Use this value to let collapseEdge decide a case.
 //     1: Force collapse to first node.
 //     2: Force collapse to second node.
-//     3: Force collapse to mid-point
+//     3: Force collapse to mid-point.
 // - checkOnly performs a feasibility check and returns without modifications.
 // - forceOp to force the collapse.
 const changeMap dynamicTopoFvMesh::collapseEdge
@@ -2849,14 +2849,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                 {
-                    if (debug > 3)
-                    {
-                        Pout << "Checking slave edge: " << sIndex
-                             << " on proc: " << procIndices_[pI]
-                             << " for master edge: " << eIndex
-                             << endl;
-                    }
-
                     // Check if a lower-ranked processor is
                     // handling this edge
                     if (procIndices_[pI] < Pstream::myProcNo())
@@ -2946,9 +2938,24 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             else
             if (procCouple)
             {
-                sEdge = recvPatchMeshes_[pI].subMesh().edges_[sIndex];
+                const dynamicTopoFvMesh& sMesh =
+                (
+                    recvPatchMeshes_[pI].subMesh()
+                );
+
+                sEdge = sMesh.edges_[sIndex];
 
                 cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+
+                if (debug > 3)
+                {
+                    Pout << "Checking slave edge: " << sIndex
+                         << "::" << sMesh.edges_[sIndex]
+                         << " on proc: " << procIndices_[pI]
+                         << " for master edge: " << eIndex
+                         << " using collapseCase: " << masterMap.type()
+                         << endl;
+                }
             }
 
             const Map<label>& pointMap = cMapPtr->entityMap(pointEnum);
@@ -2969,6 +2976,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     }
                     else
                     {
+                        // Write out for for post-processing
+                        writeVTK("mEdge_" + Foam::name(eIndex), eIndex, 1);
+
                         FatalErrorIn
                         (
                             "\n"
@@ -2982,8 +2992,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             ")\n"
                         )
                             << "Coupled collapse failed." << nl
-                            << "Master: " << mEdge << nl
-                            << "Slave: " << sEdge << nl
+                            << "Master: " << eIndex << " : " << mEdge << nl
+                            << "Slave: " << sIndex << " : " << sEdge << nl
                             << abort(FatalError);
                     }
 
@@ -3003,6 +3013,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     }
                     else
                     {
+                        // Write out for for post-processing
+                        writeVTK("mEdge_" + Foam::name(eIndex), eIndex, 1);
+
                         FatalErrorIn
                         (
                             "\n"
@@ -3016,8 +3029,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             ")\n"
                         )
                             << "Coupled collapse failed." << nl
-                            << "Master: " << mEdge << nl
-                            << "Slave: " << sEdge << nl
+                            << "Master: " << eIndex << " : " << mEdge << nl
+                            << "Slave: " << sIndex << " : " << sEdge << nl
                             << abort(FatalError);
                     }
 
@@ -3417,16 +3430,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Are we only performing checks?
     if (checkOnly)
     {
+        // Return a succesful collapse possibility
         map.type() = collapseCase;
+
+        // Make note of the removed point
+        map.removePoint(collapsePoint);
 
         if (debug > 2)
         {
-            Info << "Edge: " << eIndex
+            Pout << "Edge: " << eIndex
                  << ":: " << edges_[eIndex] << nl
-                 << " collapseCase determined to be: "
-                 << collapseCase << nl
-                 << " Resulting quality: "
-                 << collapseQuality
+                 << " collapseCase determined to be: " << collapseCase << nl
+                 << " Resulting quality: " << collapseQuality << nl
+                 << " collapsePoint: " << collapsePoint << nl
                  << endl;
         }
 
@@ -3473,39 +3489,39 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     if (debug > 1)
     {
-        Info << nl << nl
+        Pout << nl << nl
              << "Edge: " << eIndex
              << ": " << edges_[eIndex]
              << " is to be collapsed. " << endl;
 
         label epIndex = whichEdgePatch(eIndex);
 
-        Info << "Patch: ";
+        Pout << "Patch: ";
 
         if (epIndex == -1)
         {
-            Info << "Internal" << endl;
+            Pout << "Internal" << endl;
         }
         else
         {
-            Info << boundaryMesh()[epIndex].name() << endl;
+            Pout << boundaryMesh()[epIndex].name() << endl;
         }
 
-        Info << " nBoundCurves: " << nBoundCurves << endl;
-        Info << " collapseCase: " << collapseCase << endl;
+        Pout << " nBoundCurves: " << nBoundCurves << endl;
+        Pout << " collapseCase: " << collapseCase << endl;
 
-        Info << " Resulting quality: " << collapseQuality << endl;
+        Pout << " Resulting quality: " << collapseQuality << endl;
 
         if (debug > 2)
         {
-            Info << "Vertices: " << edgePoints_[eIndex] << endl;
-            Info << "Edges: " << edgeHull << endl;
-            Info << "Faces: " << faceHull << endl;
-            Info << "Cells: " << cellHull << endl;
-            Info << "replacePoint: " << replacePoint << endl;
-            Info << "collapsePoint: " << collapsePoint << endl;
-            Info << "checkPoints: " << checkPoints << endl;;
-            Info << "ringEntities (removed faces): " << endl;
+            Pout << "Vertices: " << edgePoints_[eIndex] << endl;
+            Pout << "Edges: " << edgeHull << endl;
+            Pout << "Faces: " << faceHull << endl;
+            Pout << "Cells: " << cellHull << endl;
+            Pout << "replacePoint: " << replacePoint << endl;
+            Pout << "collapsePoint: " << collapsePoint << endl;
+            Pout << "checkPoints: " << checkPoints << endl;;
+            Pout << "ringEntities (removed faces): " << endl;
 
             forAll(ringEntities[removeFaceIndex], faceI)
             {
@@ -3516,10 +3532,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     continue;
                 }
 
-                Info << fIndex << ": " << faces_[fIndex] << endl;
+                Pout << fIndex << ": " << faces_[fIndex] << endl;
             }
 
-            Info << "ringEntities (removed edges): " << endl;
+            Pout << "ringEntities (removed edges): " << endl;
+
             forAll(ringEntities[removeEdgeIndex], edgeI)
             {
                 label ieIndex = ringEntities[removeEdgeIndex][edgeI];
@@ -3529,10 +3546,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     continue;
                 }
 
-                Info << ieIndex << ": " << edges_[ieIndex] << endl;
+                Pout << ieIndex << ": " << edges_[ieIndex] << endl;
             }
 
-            Info << "ringEntities (replacement faces): " << endl;
+            Pout << "ringEntities (replacement faces): " << endl;
+
             forAll(ringEntities[replaceFaceIndex], faceI)
             {
                 label fIndex = ringEntities[replaceFaceIndex][faceI];
@@ -3542,10 +3560,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     continue;
                 }
 
-                Info << fIndex << ": " << faces_[fIndex] << endl;
+                Pout << fIndex << ": " << faces_[fIndex] << endl;
             }
 
-            Info << "ringEntities (replacement edges): " << endl;
+            Pout << "ringEntities (replacement edges): " << endl;
+
             forAll(ringEntities[replaceEdgeIndex], edgeI)
             {
                 label ieIndex = ringEntities[replaceEdgeIndex][edgeI];
@@ -3555,19 +3574,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     continue;
                 }
 
-                Info << ieIndex << ": " << edges_[ieIndex] << endl;
+                Pout << ieIndex << ": " << edges_[ieIndex] << endl;
             }
 
             labelList& collapsePointEdges = pointEdges_[collapsePoint];
 
-            Info << "pointEdges (collapsePoint): ";
+            Pout << "pointEdges (collapsePoint): ";
 
             forAll(collapsePointEdges, edgeI)
             {
-                Info << collapsePointEdges[edgeI] << " ";
+                Pout << collapsePointEdges[edgeI] << " ";
             }
 
-            Info << endl;
+            Pout << endl;
 
             // Write out VTK files prior to change
             if (debug > 3)
@@ -3577,8 +3596,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 writeVTK
                 (
                     Foam::name(eIndex)
-                  + '(' + Foam::name(edges_[eIndex][0])
-                  + ',' + Foam::name(edges_[eIndex][1]) + ')'
+                  + '(' + Foam::name(collapsePoint)
+                  + ',' + Foam::name(replacePoint) + ')'
                   + "_Collapse_0",
                     vtkCells
                 );
@@ -3606,10 +3625,31 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     bFaces[nBF] = faceHull[indexI];
                     bEdges[nBF] = ringEntities[removeEdgeIndex][indexI];
 
-                    // If this face isn't coupled, skip updates
+                    // If this face isn't locally coupled, skip updates
+                    // (Don't check for processors here)
+                    if (!locallyCoupledEntity(bFaces[nBF], true, false, true))
+                    {
+                        mappedFace[nBF] = true;
+                    }
 
+                    // If this face isn't on a processor boundary, skip updates
+                    if (!processorCoupledEntity(bFaces[nBF], true))
+                    {
+                        mappedFace[nBF] = true;
+                    }
 
-                    // If the edge isn't coupled, skip updates
+                    // If this edge isn't locally coupled, skip updates
+                    // (Don't check for processors here)
+                    if (!locallyCoupledEntity(bEdges[nBF], true, false))
+                    {
+                        mappedEdge[nBF] = true;
+                    }
+
+                    // If this edge isn't on a processor boundary, skip updates
+                    if (!processorCoupledEntity(bEdges[nBF]))
+                    {
+                        mappedEdge[nBF] = true;
+                    }
 
                     nBF++;
                 }
@@ -3635,20 +3675,37 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 // Alias for convenience...
                 const changeMap& slaveMap = slaveMaps[slaveI];
 
+                label sIndex = slaveMap.index();
                 label pI = slaveMap.patchIndex();
 
                 // Fetch the appropriate coupleMap
                 const coupleMap* cMapPtr = NULL;
 
+                // Configure the slave edge
+                edge sEdge(-1, -1);
+
                 if (localCouple && !procCouple)
                 {
+                    sEdge = edges_[sIndex];
+
                     cMapPtr = &(patchCoupling_[pI].patchMap());
                 }
                 else
                 if (procCouple && !localCouple)
                 {
+                    const dynamicTopoFvMesh& sMesh =
+                    (
+                        recvPatchMeshes_[pI].subMesh()
+                    );
+
+                    sEdge = sMesh.edges_[sIndex];
+
                     cMapPtr = &(recvPatchMeshes_[pI].patchMap());
                 }
+
+                // Configure the slave replacement point
+                label scPoint = slaveMap.removedPointList()[0];
+                label srPoint = (sEdge[0] == scPoint) ? sEdge[1] : sEdge[0];
 
                 // Alias for convenience...
                 const coupleMap& cMap = *cMapPtr;
@@ -3661,11 +3718,23 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 if (collapsingSlave)
                 {
+                    if (rPointMap[replacePoint] == scPoint)
+                    {
+                        pointMap[srPoint] = replacePoint;
+                        rPointMap[replacePoint] = srPoint;
+                    }
+
                     pointMap.erase(rPointMap[collapsePoint]);
                     rPointMap.erase(collapsePoint);
                 }
                 else
                 {
+                    if (pointMap[replacePoint] == scPoint)
+                    {
+                        rPointMap[srPoint] = replacePoint;
+                        pointMap[replacePoint] = srPoint;
+                    }
+
                     rPointMap.erase(pointMap[collapsePoint]);
                     pointMap.erase(collapsePoint);
                 }
@@ -4098,6 +4167,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             // Remove the edge
                             removeEdge(newFE[edgeI]);
 
+                            // Update map
+                            map.removeEdge(newFE[edgeI]);
+
                             // Replace faceEdges with new edge index
                             newFE[edgeI] = newEdgeIndex;
 
@@ -4124,6 +4196,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                     // Remove the face
                     removeFace(replaceFace);
+
+                    // Update map
+                    map.removeFace(replaceFace);
 
                     // Replace label for the new owner
                     meshOps::replaceLabel
@@ -4160,6 +4235,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             // This edge has to be removed entirely.
                             removeEdge(rmFE[edgeI]);
 
+                            // Update map
+                            map.removeEdge(rmFE[edgeI]);
+
                             label i =
                             (
                                 findIndex
@@ -4183,7 +4261,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         }
                     }
 
+                    // Remove the face
                     removeFace(replaceFace);
+
+                    // Update map
+                    map.removeFace(replaceFace);
 
                     // Modify ringEntities and replaceFace
                     replaceFace = -1;
@@ -4280,6 +4362,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         // Remove the edge
                         removeEdge(newFE[edgeI]);
 
+                        // Update map
+                        map.removeEdge(newFE[edgeI]);
+
                         // Replace faceEdges with new edge index
                         newFE[edgeI] = newEdgeIndex;
 
@@ -4306,6 +4391,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 // Remove the face
                 removeFace(replaceFace);
+
+                // Update map
+                map.removeFace(replaceFace);
 
                 // Replace label for the new owner
                 meshOps::replaceLabel
@@ -4383,15 +4471,27 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Remove faceToRemove and associated faceEdges
             removeFace(faceToRemove);
 
+            // Update map
+            map.removeFace(faceToRemove);
+
             // Remove the hull cell
             removeCell(cellToRemove);
+
+            // Update map
+            map.removeCell(cellToRemove);
         }
 
         // Remove the hull edge and associated edgeFaces
         removeEdge(edgeToRemove);
 
+        // Update map
+        map.removeEdge(edgeToRemove);
+
         // Remove the hull face
         removeFace(faceHull[indexI]);
+
+        // Update map
+        map.removeFace(faceHull[indexI]);
     }
 
     // Loop through pointEdges for the collapsePoint,
@@ -4543,8 +4643,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Remove the collapse point
     removePoint(collapsePoint);
 
+    // Update map
+    map.removePoint(collapsePoint);
+
     // Remove the edge
     removeEdge(eIndex);
+
+    // Update map
+    map.removeEdge(eIndex);
 
     // For cell-mapping, exclude all hull-cells
     forAll(cellHull, indexI)
@@ -4563,8 +4669,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         writeVTK
         (
             Foam::name(eIndex)
-          + '(' + Foam::name(edges_[eIndex][0])
-          + ',' + Foam::name(edges_[eIndex][1]) + ')'
+          + '(' + Foam::name(collapsePoint)
+          + ',' + Foam::name(replacePoint) + ')'
           + "_Collapse_1",
             mapCells
         );

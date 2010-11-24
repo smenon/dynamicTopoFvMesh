@@ -90,6 +90,12 @@ class changeMap
     List<objectMap> addedFaces_;
     List<objectMap> addedCells_;
 
+    // Entities that were removed during the operation
+    labelList removedPoints_;
+    labelList removedEdges_;
+    labelList removedFaces_;
+    labelList removedCells_;
+
 public:
 
     // Constructor
@@ -105,7 +111,11 @@ public:
         addedPoints_(0),
         addedEdges_(0),
         addedFaces_(0),
-        addedCells_(0)
+        addedCells_(0),
+        removedPoints_(0),
+        removedEdges_(0),
+        removedFaces_(0),
+        removedCells_(0)
     {}
 
     //- Access
@@ -162,6 +172,18 @@ public:
         inline const List<objectMap>& addedEdgeList() const;
         inline const List<objectMap>& addedFaceList() const;
         inline const List<objectMap>& addedCellList() const;
+
+        // Removed entities
+        inline void removePoint(const label pIndex);
+        inline void removeEdge(const label eIndex);
+        inline void removeFace(const label fIndex);
+        inline void removeCell(const label cIndex);
+
+        // Return the list of removed entities
+        inline const labelList& removedPointList() const;
+        inline const labelList& removedEdgeList() const;
+        inline const labelList& removedFaceList() const;
+        inline const labelList& removedCellList() const;
 
     //- Operators
 

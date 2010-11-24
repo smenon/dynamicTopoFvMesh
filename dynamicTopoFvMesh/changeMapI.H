@@ -107,7 +107,6 @@ inline label& changeMap::opposingFace()
 }
 
 
-// Added entities
 inline void changeMap::addPoint
 (
     const label pIndex,
@@ -168,7 +167,6 @@ inline void changeMap::addCell
 }
 
 
-// Return an added point
 inline const List<objectMap>&
 changeMap::addedPointList() const
 {
@@ -176,7 +174,6 @@ changeMap::addedPointList() const
 }
 
 
-// Return the list of added entities
 inline const List<objectMap>&
 changeMap::addedEdgeList() const
 {
@@ -195,6 +192,70 @@ inline const List<objectMap>&
 changeMap::addedCellList() const
 {
     return addedCells_;
+}
+
+
+inline void changeMap::removePoint(const label pIndex)
+{
+    label curSize = removedPoints_.size();
+
+    removedPoints_.setSize(curSize + 1);
+    removedPoints_[curSize] = pIndex;
+}
+
+
+inline void changeMap::removeEdge(const label eIndex)
+{
+    label curSize = removedEdges_.size();
+
+    removedEdges_.setSize(curSize + 1);
+    removedEdges_[curSize] = eIndex;
+}
+
+
+inline void changeMap::removeFace(const label fIndex)
+{
+    label curSize = removedFaces_.size();
+
+    removedFaces_.setSize(curSize + 1);
+    removedFaces_[curSize] = fIndex;
+}
+
+
+inline void changeMap::removeCell(const label cIndex)
+{
+    label curSize = removedCells_.size();
+
+    removedCells_.setSize(curSize + 1);
+    removedCells_[curSize] = cIndex;
+}
+
+
+inline const labelList&
+changeMap::removedPointList() const
+{
+    return removedPoints_;
+}
+
+
+inline const labelList&
+changeMap::removedEdgeList() const
+{
+    return removedEdges_;
+}
+
+
+inline const labelList&
+changeMap::removedFaceList() const
+{
+    return removedFaces_;
+}
+
+
+inline const labelList&
+changeMap::removedCellList() const
+{
+    return removedCells_;
 }
 
 
@@ -259,6 +320,11 @@ inline void changeMap::operator=(const changeMap& rhs)
             rhs.addedCells_[indexI].masterObjects()
         );
     }
+
+    removedPoints_ = rhs.removedPoints_;
+    removedEdges_ = rhs.removedEdges_;
+    removedFaces_ = rhs.removedFaces_;
+    removedCells_ = rhs.removedCells_;
 }
 
 

@@ -356,7 +356,7 @@ label dynamicTopoFvMesh::insertCell
 
     if (debug > 2)
     {
-        Info << "Inserting cell: "
+        Pout << "Inserting cell: "
              << newCellIndex << ": "
              << newCell << endl;
     }
@@ -388,7 +388,7 @@ void dynamicTopoFvMesh::removeCell
 {
     if (debug > 2)
     {
-        Info << "Removing cell: "
+        Pout << "Removing cell: "
              << cIndex << ": "
              << cells_[cIndex]
              << endl;
@@ -484,21 +484,21 @@ label dynamicTopoFvMesh::insertFace
 
     if (debug > 2)
     {
-        Info << "Inserting face: "
+        Pout << "Inserting face: "
              << newFaceIndex << ": "
              << newFace
              << " Owner: " << newOwner
              << " Neighbour: " << newNeighbour;
 
-        Info << " Patch: ";
+        Pout << " Patch: ";
 
         if (patch == -1)
         {
-            Info << "Internal" << endl;
+            Pout << "Internal" << endl;
         }
         else
         {
-            Info << boundaryMesh()[patch].name() << endl;
+            Pout << boundaryMesh()[patch].name() << endl;
         }
     }
 
@@ -588,7 +588,7 @@ void dynamicTopoFvMesh::removeFace
 {
     if (debug > 2)
     {
-        Info << "Removed face: "
+        Pout << "Removed face: "
              << fIndex << ": "
              << faces_[fIndex] << endl;
     }
@@ -747,19 +747,19 @@ label dynamicTopoFvMesh::insertEdge
 
     if (debug > 2)
     {
-        Info << "Inserting edge: "
+        Pout << "Inserting edge: "
              << newEdgeIndex << ": "
              << newEdge;
 
-        Info << " Patch: ";
+        Pout << " Patch: ";
 
         if (patch == -1)
         {
-            Info << "Internal" << endl;
+            Pout << "Internal" << endl;
         }
         else
         {
-            Info << boundaryMesh()[patch].name() << endl;
+            Pout << boundaryMesh()[patch].name() << endl;
         }
 
         if (!twoDMesh_)
@@ -831,7 +831,7 @@ void dynamicTopoFvMesh::removeEdge
 {
     if (debug > 2)
     {
-        Info << "Removing edge: "
+        Pout << "Removing edge: "
              << eIndex << ": "
              << edges_[eIndex] << endl;
     }
@@ -939,7 +939,7 @@ label dynamicTopoFvMesh::insertPoint
 
     if (debug > 2)
     {
-        Info << "Inserting new point: "
+        Pout << "Inserting new point: "
              << newPointIndex << ": "
              << newPoint
              << " and old point: "
@@ -982,7 +982,7 @@ void dynamicTopoFvMesh::removePoint
 {
     if (debug > 2)
     {
-        Info << "Removing point: "
+        Pout << "Removing point: "
              << pIndex << ": "
              << points_[pIndex] << endl;
     }
@@ -1259,11 +1259,11 @@ void dynamicTopoFvMesh::buildEdgePoints
 
         if (!found)
         {
-            Info << "edgeFaces: " << endl;
+            Pout << "edgeFaces: " << endl;
 
             forAll(eFaces, faceI)
             {
-                Info << " Face: " << eFaces[faceI]
+                Pout << " Face: " << eFaces[faceI]
                      << ":: " << faces_[eFaces[faceI]]
                      << " Owner: " << owner_[eFaces[faceI]]
                      << " Neighbour: " << neighbour_[eFaces[faceI]]
@@ -2306,13 +2306,13 @@ void dynamicTopoFvMesh::remove2DSlivers()
     {
         if (thresholdSlivers_.size())
         {
-            Info << "Sliver list: " << endl;
+            Pout << "Sliver list: " << endl;
 
             forAll(indices, indexI)
             {
                 label cIndex = cIndices[indices[indexI]];
 
-                Info << " Cell: " << cIndex
+                Pout << " Cell: " << cIndex
                      << " Quality: " << thresholdSlivers_[cIndex]
                      << endl;
             }
@@ -2978,13 +2978,13 @@ void dynamicTopoFvMesh::removeSlivers()
 
     if (debug && thresholdSlivers_.size())
     {
-        Info << "Sliver list: " << endl;
+        Pout << "Sliver list: " << endl;
 
         forAll(indices, indexI)
         {
             label cIndex = cIndices[indices[indexI]];
 
-            Info << " Cell: " << cIndex
+            Pout << " Cell: " << cIndex
                  << " Quality: " << thresholdSlivers_[cIndex]
                  << endl;
         }
@@ -3361,7 +3361,7 @@ scalar dynamicTopoFvMesh::faceLengthScale
                     ((distance / 5.0) < scale)
                 )
                 {
-                    Info << " Closest opposing face detected for face: " << nl
+                    Pout << " Closest opposing face detected for face: " << nl
                          << '\t' << fIndex
                          << " :: " << faces_[fIndex]
                          << " was face:\n"
@@ -3458,7 +3458,7 @@ scalar dynamicTopoFvMesh::edgeLengthScale
                     ((distance / 5.0) < scale)
                 )
                 {
-                    Info << " Closest opposing face detected for edge: " << nl
+                    Pout << " Closest opposing face detected for edge: " << nl
                          << '\t' << eIndex
                          << " :: " << edges_[eIndex]
                          << " was face:\n"
@@ -3521,7 +3521,7 @@ scalar dynamicTopoFvMesh::edgeLengthScale
 
                 if (debug > 3 && self() == 0)
                 {
-                    Info << "Deviation: " << deviation << nl
+                    Pout << "Deviation: " << deviation << nl
                          << "curvatureDeviation: " << refDeviation
                          << ", Edge: " << eIndex << ", Length: " << length
                          << ", Scale: " << scale << nl
@@ -3686,8 +3686,9 @@ bool dynamicTopoFvMesh::resetMesh()
         threadedMapping(matchTol, skipMapping);
 
         // Print out stats
-        Info << " Mapping time: " << mappingTimer.elapsedTime()
-             << " s" << endl;
+        Info << " Mapping time: "
+             << mappingTimer.elapsedTime() << " s"
+             << endl;
 
         // Obtain references to zones, if any
         pointZoneMesh& pointZones = polyMesh::pointZones();
@@ -3737,8 +3738,9 @@ bool dynamicTopoFvMesh::resetMesh()
         );
 
         // Print out stats
-        Info << " Reordering time: " << reOrderingTimer.elapsedTime()
-             << " s" << endl;
+        Info << " Reordering time: "
+             << reOrderingTimer.elapsedTime() << " s"
+             << endl;
 
         // Obtain the patch-point maps before resetting the mesh
         List<Map<label> > oldPatchPointMaps(boundaryMesh().size());

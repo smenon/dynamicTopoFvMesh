@@ -2456,14 +2456,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                 {
-                    if (debug > 3)
-                    {
-                        Pout << "Checking slave edge: " << sIndex
-                             << " on proc: " << procIndices_[pI]
-                             << " for master edge: " << eIndex
-                             << endl;
-                    }
-
                     // Check if a lower-ranked processor is
                     // handling this edge
                     if (procIndices_[pI] < Pstream::myProcNo())
@@ -2551,6 +2543,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             if (procCouple)
             {
                 dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+
+                if (debug > 3)
+                {
+                    Pout << "Checking slave edge: " << sIndex
+                         << "::" << sMesh.edges_[sIndex]
+                         << " on proc: " << procIndices_[pI]
+                         << " for master edge: " << eIndex
+                         << endl;
+                }
 
                 slaveMap = sMesh.bisectEdge(sIndex, true, forceOp);
             }
@@ -2714,22 +2715,22 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     if (debug > 1)
     {
-        Info << nl << nl
+        Pout << nl << nl
              << "Edge: " << eIndex
              << ": " << edges_[eIndex]
              << " is to be bisected. " << endl;
 
         label epIndex = whichEdgePatch(eIndex);
 
-        Info << "Patch: ";
+        Pout << "Patch: ";
 
         if (epIndex == -1)
         {
-            Info << "Internal" << endl;
+            Pout << "Internal" << endl;
         }
         else
         {
-            Info << boundaryMesh()[epIndex].name() << endl;
+            Pout << boundaryMesh()[epIndex].name() << endl;
         }
 
         // Write out VTK files prior to change
@@ -3606,22 +3607,22 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 // They can, however, be matched for locally coupled edges.
                 if (!matchedEdges[meI] && localCouple)
                 {
-                    Info << "masterEdges: " << endl;
-                    Info << ameList << endl;
+                    Pout << "masterEdges: " << endl;
+                    Pout << ameList << endl;
 
-                    Info << "slaveEdges: " << endl;
-                    Info << aseList << endl;
+                    Pout << "slaveEdges: " << endl;
+                    Pout << aseList << endl;
 
                     forAll(ameList, meI)
                     {
-                        Info << ameList[meI].index() << ": "
+                        Pout << ameList[meI].index() << ": "
                              << edges_[ameList[meI].index()]
                              << endl;
                     }
 
                     forAll(aseList, seI)
                     {
-                        Info << aseList[seI].index() << ": "
+                        Pout << aseList[seI].index() << ": "
                              << edges_[aseList[seI].index()]
                              << endl;
                     }
@@ -3772,22 +3773,22 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 // They can, however, be matched for locally coupled faces.
                 if (!matchedFaces[mfI] && localCouple)
                 {
-                    Info << "masterFaces: " << endl;
-                    Info << amfList << endl;
+                    Pout << "masterFaces: " << endl;
+                    Pout << amfList << endl;
 
-                    Info << "slaveFaces: " << endl;
-                    Info << asfList << endl;
+                    Pout << "slaveFaces: " << endl;
+                    Pout << asfList << endl;
 
                     forAll(amfList, mfI)
                     {
-                        Info << amfList[mfI].index() << ": "
+                        Pout << amfList[mfI].index() << ": "
                              << faces_[amfList[mfI].index()]
                              << endl;
                     }
 
                     forAll(asfList, sfI)
                     {
-                        Info << asfList[sfI].index() << ": "
+                        Pout << asfList[sfI].index() << ": "
                              << faces_[asfList[sfI].index()]
                              << endl;
                     }
@@ -3815,19 +3816,19 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
         if (bPatch == -1)
         {
-            Info << "Patch: Internal" << endl;
+            Pout << "Patch: Internal" << endl;
         }
         else
         {
-            Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
+            Pout << "Patch: " << boundaryMesh()[bPatch].name() << endl;
         }
 
-        Info << "EdgePoints: " << vertexHull << endl;
-        Info << "Edges: " << edgeHull << endl;
-        Info << "Faces: " << faceHull << endl;
-        Info << "Cells: " << cellHull << endl;
+        Pout << "EdgePoints: " << vertexHull << endl;
+        Pout << "Edges: " << edgeHull << endl;
+        Pout << "Faces: " << faceHull << endl;
+        Pout << "Cells: " << cellHull << endl;
 
-        Info << "Modified cells: " << endl;
+        Pout << "Modified cells: " << endl;
 
         forAll(cellHull, cellI)
         {
@@ -3836,12 +3837,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 continue;
             }
 
-            Info << cellHull[cellI] << ":: "
+            Pout << cellHull[cellI] << ":: "
                  << cells_[cellHull[cellI]]
                  << endl;
         }
 
-        Info << "Added cells: " << endl;
+        Pout << "Added cells: " << endl;
 
         forAll(addedCellIndices, cellI)
         {
@@ -3850,17 +3851,17 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 continue;
             }
 
-            Info << addedCellIndices[cellI] << ":: "
+            Pout << addedCellIndices[cellI] << ":: "
                  << cells_[addedCellIndices[cellI]] << nl
                  << "lengthScale: " << lengthScale_[addedCellIndices[cellI]]
                  << endl;
         }
 
-        Info << "Modified faces: " << endl;
+        Pout << "Modified faces: " << endl;
 
         forAll(faceHull, faceI)
         {
-            Info << faceHull[faceI] << ":: "
+            Pout << faceHull[faceI] << ":: "
                  << faces_[faceHull[faceI]] << ": "
                  << owner_[faceHull[faceI]] << ": "
                  << neighbour_[faceHull[faceI]] << " "
@@ -3868,11 +3869,11 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                  << endl;
         }
 
-        Info << "Added faces: " << endl;
+        Pout << "Added faces: " << endl;
 
         forAll(addedFaceIndices, faceI)
         {
-            Info << addedFaceIndices[faceI] << ":: "
+            Pout << addedFaceIndices[faceI] << ":: "
                  << faces_[addedFaceIndices[faceI]] << ": "
                  << owner_[addedFaceIndices[faceI]] << ": "
                  << neighbour_[addedFaceIndices[faceI]] << " "
@@ -3887,34 +3888,33 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 continue;
             }
 
-            Info << addedIntFaceIndices[faceI] << ":: "
+            Pout << addedIntFaceIndices[faceI] << ":: "
                  << faces_[addedIntFaceIndices[faceI]] << ": "
                  << owner_[addedIntFaceIndices[faceI]] << ": "
                  << neighbour_[addedIntFaceIndices[faceI]] << " "
-                 << "faceEdges:: "
-                 << faceEdges_[addedIntFaceIndices[faceI]]
+                 << "faceEdges:: " << faceEdges_[addedIntFaceIndices[faceI]]
                  << endl;
         }
 
-        Info << "New edge:: " << newEdgeIndex
+        Pout << "New edge:: " << newEdgeIndex
              << ": " << edges_[newEdgeIndex] << nl
              << " edgeFaces:: " << edgeFaces_[newEdgeIndex] << nl
              << " edgePoints:: " << edgePoints_[newEdgeIndex]
              << endl;
 
-        Info << "Added edges: " << endl;
+        Pout << "Added edges: " << endl;
 
         forAll(addedEdgeIndices, edgeI)
         {
-            Info << addedEdgeIndices[edgeI]
+            Pout << addedEdgeIndices[edgeI]
                  << ":: " << edges_[addedEdgeIndices[edgeI]] << nl
                  << " edgeFaces:: " << edgeFaces_[addedEdgeIndices[edgeI]] << nl
                  << " edgePoints:: " << edgePoints_[addedEdgeIndices[edgeI]]
                  << endl;
         }
 
-        Info << "New Point:: " << newPointIndex << endl;
-        Info << "pointEdges:: " << pointEdges_[newPointIndex] << endl;
+        Pout << "New Point:: " << newPointIndex << endl;
+        Pout << "pointEdges:: " << pointEdges_[newPointIndex] << endl;
 
         // Write out VTK files after change
         if (debug > 3)
