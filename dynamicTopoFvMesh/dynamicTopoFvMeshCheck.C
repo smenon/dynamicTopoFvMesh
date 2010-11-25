@@ -265,6 +265,12 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
         {
             return true;
         }
+
+        // Processor coupled edges don't count
+        if (processorCoupledEntity(eIndex))
+        {
+            return false;
+        }
     }
 
     if (coupledModification_)

@@ -121,7 +121,7 @@ void dynamicTopoFvMesh::computeMapping
 
                 if (debug)
                 {
-                    Info<< nl
+                    Pout<< nl
                         << " Inconsistent cell: " << cIndex << nl
                         << " parents: " << cellParents_[cIndex] << nl
                         << " masterObjects: " << masterObjects << nl
@@ -204,7 +204,7 @@ void dynamicTopoFvMesh::computeMapping
 
                 if (debug)
                 {
-                    Info<< nl
+                    Pout<< nl
                         << " Inconsistent face: " << fIndex << nl
                         << " parents: " << faceParents_[fIndex] << nl
                         << " masterObjects: " << masterObjects << nl
@@ -220,7 +220,7 @@ void dynamicTopoFvMesh::computeMapping
 
     if (nInconsistencies)
     {
-        Info << " Mapping inconsistencies: " << nInconsistencies
+        Pout << " Mapping inconsistencies: " << nInconsistencies
              << " max error: " << maxError
              << endl;
 
@@ -314,8 +314,8 @@ void dynamicTopoFvMesh::threadedMapping
 
     if (debug > 2)
     {
-        Info << " Mapping Faces: " << index[0] << endl;
-        Info << " Mapping Cells: " << index[1] << endl;
+        Pout << " Mapping Faces: " << index[0] << endl;
+        Pout << " Mapping Cells: " << index[1] << endl;
     }
 
     forAll(index, indexI)
@@ -336,8 +336,8 @@ void dynamicTopoFvMesh::threadedMapping
 
         if (debug > 2)
         {
-            Info << " Load starts: " << tStarts[indexI] << endl;
-            Info << " Load sizes: " << tSizes[indexI] << endl;
+            Pout << " Load starts: " << tStarts[indexI] << endl;
+            Pout << " Load sizes: " << tSizes[indexI] << endl;
         }
     }
 
@@ -850,7 +850,7 @@ void dynamicTopoFvMesh::setCellMapping
     {
         if (debug > 3)
         {
-            Info << "Inserting mapping cell: " << cIndex << nl
+            Pout << "Inserting mapping cell: " << cIndex << nl
                  << " mapCells: " << mapCells
                  << endl;
         }
@@ -922,7 +922,7 @@ void dynamicTopoFvMesh::setFaceMapping
 
     if (debug > 3)
     {
-        Info << "Inserting mapping face: " << fIndex << nl
+        Pout << "Inserting mapping face: " << fIndex << nl
              << " patch: " << patch << nl
              << " mapFaces: " << mapFaces
              << endl;
