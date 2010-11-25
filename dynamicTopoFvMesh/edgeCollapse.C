@@ -4775,12 +4775,245 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 );
 
                 // Skip mapping if all points were not found
-                if (mFace[0] == -1 || mFace[1] == -1 || mFace[2] == -1)
+                if (cFace[0] == -1 || cFace[1] == -1 || cFace[2] == -1)
                 {
                     continue;
                 }
 
-                //bool matchedFace = false;
+                bool matchedFace = false;
+
+                // Select appropriate mesh
+                const dynamicTopoFvMesh* meshPtr = NULL;
+
+                if (localCouple)
+                {
+                    meshPtr = this;
+                }
+                else
+                if (procCouple)
+                {
+                    meshPtr = &(recvPatchMeshes_[pI].subMesh());
+                }
+
+                const dynamicTopoFvMesh& sMesh = *meshPtr;
+
+                // Check all edgeFaces connected to slave points
+                forAll(cFace, pointI)
+                {
+                    label cpIndex = cFace[pointI];
+
+                    const labelList& pEdges = sMesh.pointEdges_[cpIndex];
+
+                    forAll(pEdges, edgeI)
+                    {
+                        label ceIndex = pEdges[edgeI];
+
+                        const labelList& eFaces = sMesh.edgeFaces_[ceIndex];
+
+                        forAll(eFaces, faceJ)
+                        {
+                            label checkFace = eFaces[faceJ];
+
+                            if (sMesh.whichPatch(checkFace) == -1)
+                            {
+                                continue;
+                            }
+
+                            const face& sFace = sMesh.faces_[checkFace];
+
+                            if
+                            (
+                                triFace::compare
+                                (
+                                    triFace(sFace[0], sFace[1], sFace[2]),
+                                    cFace
+                                )
+                            )
+                            {
+                                if (debug > 2)
+                                {
+                                    Pout << " Found face: " << checkFace
+                                         << "::" << cFace
+                                         << " with fIndex: " << fIndex
+                                         << "::" << mFace
+                                         << endl;
+                                }
+
+                                // Update faceMaps
+                                if (collapsingSlave)
+                                {
+                                    if (faceMap.found(checkFace))
+                                    {
+                                        faceMap[checkFace] = fIndex;
+                                    }
+                                    else
+                                    {
+                                        faceMap.insert(checkFace, fIndex);
+                                    }
+
+                                    if (rFaceMap.found(fIndex))
+                                    {
+                                        rFaceMap[fIndex] = checkFace;
+                                    }
+                                    else
+                                    {
+                                        rFaceMap.insert(fIndex, checkFace);
+                                    }
+
+                                }
+                                else
+                                {
+                                    if (rFaceMap.found(checkFace))
+                                    {
+                                        rFaceMap[checkFace] = fIndex;
+                                    }
+                                    else
+                                    {
+                                        rFaceMap.insert(checkFace, fIndex);
+                                    }
+
+                                    if (faceMap.found(fIndex))
+                                    {
+                                        faceMap[fIndex] = checkFace;
+                                    }
+                                    else
+                                    {
+                                        faceMap.insert(fIndex, checkFace);
+                                    }
+                                }
+
+                                matchedFace = true;
+
+                                break;
+                            }
+                        }
+
+                        if (matchedFace)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (matchedFace)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            // Check and match interior master edges converted to boundaries
+            const List<objectMap>& madE = map.addedEdgeList();
+
+            for (label i = 1; i < madE.size(); i++)
+            {
+                label meIndex = madE[i].index();
+
+                const edge& mE = edges_[meIndex];
+
+                edge cE
+                (
+                    pointMap.found(mE[0]) ? pointMap[mE[0]] : -1,
+                    pointMap.found(mE[1]) ? pointMap[mE[1]] : -1
+                );
+
+                // Skip mapping if all points were not found
+                if (cE[0] == -1 || cE[1] == -1)
+                {
+                    continue;
+                }
+
+                bool matchedEdge = false;
+
+                // Select appropriate mesh
+                const dynamicTopoFvMesh* meshPtr = NULL;
+
+                if (localCouple)
+                {
+                    meshPtr = this;
+                }
+                else
+                if (procCouple)
+                {
+                    meshPtr = &(recvPatchMeshes_[pI].subMesh());
+                }
+
+                const dynamicTopoFvMesh& sMesh = *meshPtr;
+
+                // Look at edges connected to points
+                forAll(cE, pointI)
+                {
+                    const labelList& pEdges = sMesh.pointEdges_[cE[pointI]];
+
+                    forAll(pEdges, edgeI)
+                    {
+                        label checkEdge = pEdges[edgeI];
+
+                        const edge& sE = sMesh.edges_[checkEdge];
+
+                        if (sE == cE)
+                        {
+                            if (debug > 2)
+                            {
+                                Pout << " Found edge: " << checkEdge
+                                     << "::" << cE
+                                     << " with meIndex: " << meIndex
+                                     << "::" << mE
+                                     << endl;
+                            }
+
+                            // Update edgeMaps
+                            if (collapsingSlave)
+                            {
+                                if (edgeMap.found(checkEdge))
+                                {
+                                    edgeMap[checkEdge] = meIndex;
+                                }
+                                else
+                                {
+                                    edgeMap.insert(checkEdge, meIndex);
+                                }
+
+                                if (rEdgeMap.found(meIndex))
+                                {
+                                    rEdgeMap[meIndex] = checkEdge;
+                                }
+                                else
+                                {
+                                    rEdgeMap.insert(meIndex, checkEdge);
+                                }
+                            }
+                            else
+                            {
+                                if (rEdgeMap.found(checkEdge))
+                                {
+                                    rEdgeMap[checkEdge] = meIndex;
+                                }
+                                else
+                                {
+                                    rEdgeMap.insert(checkEdge, meIndex);
+                                }
+
+                                if (edgeMap.found(meIndex))
+                                {
+                                    edgeMap[meIndex] = checkEdge;
+                                }
+                                else
+                                {
+                                    edgeMap.insert(meIndex, checkEdge);
+                                }
+                            }
+
+                            matchedEdge = true;
+
+                            break;
+                        }
+                    }
+
+                    if (matchedEdge)
+                    {
+                        break;
+                    }
+                }
             }
 
             // If any interior faces in the slave map were
@@ -4791,7 +5024,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             {
                 const face* facePtr = NULL;
                 label fIndex = sadF[faceI].index();
-                label oldfIndex = sadF[faceI].masterObjects()[0];
 
                 if (localCouple && !procCouple)
                 {
@@ -4823,81 +5055,97 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 bool matchedFace = false;
 
-                // Check all boundary faces on the cellHull
-                // and try to match the added face.
-                forAll(mapCells, cellI)
+                forAll(cFace, pointI)
                 {
-                    const cell& checkCell = cells_[mapCells[cellI]];
+                    label cpIndex = cFace[pointI];
 
-                    forAll(checkCell, faceJ)
+                    const labelList& pEdges = pointEdges_[cpIndex];
+
+                    forAll(pEdges, edgeI)
                     {
-                        label checkFace = checkCell[faceJ];
+                        label ceIndex = pEdges[edgeI];
 
-                        const face& mFace = faces_[checkFace];
+                        const labelList& eFaces = edgeFaces_[ceIndex];
 
-                        if
-                        (
-                            triFace::compare
-                            (
-                                triFace(mFace[0], mFace[1], mFace[2]),
-                                cFace
-                            )
-                        )
+                        forAll(eFaces, faceJ)
                         {
-                            if (debug > 2)
+                            label checkFace = eFaces[faceJ];
+
+                            if (whichPatch(checkFace) == -1)
                             {
-                                Pout << " Found face: " << checkFace
-                                     << "::" << cFace
-                                     << " with fIndex: " << fIndex
-                                     << "::" << sFace
-                                     << " oldfIndex: " << oldfIndex
-                                     << endl;
+                                continue;
                             }
 
-                            // Update faceMaps
-                            if (collapsingSlave)
+                            const face& mFace = faces_[checkFace];
+
+                            if
+                            (
+                                triFace::compare
+                                (
+                                    triFace(mFace[0], mFace[1], mFace[2]),
+                                    cFace
+                                )
+                            )
                             {
-                                if (rFaceMap.found(checkFace))
+                                if (debug > 2)
                                 {
-                                    rFaceMap[checkFace] = fIndex;
-                                }
-                                else
-                                {
-                                    rFaceMap.insert(checkFace, fIndex);
+                                    Pout << " Found face: " << checkFace
+                                         << "::" << cFace
+                                         << " with fIndex: " << fIndex
+                                         << "::" << sFace
+                                         << endl;
                                 }
 
-                                if (faceMap.found(fIndex))
+                                // Update faceMaps
+                                if (collapsingSlave)
                                 {
-                                    faceMap[fIndex] = checkFace;
+                                    if (rFaceMap.found(checkFace))
+                                    {
+                                        rFaceMap[checkFace] = fIndex;
+                                    }
+                                    else
+                                    {
+                                        rFaceMap.insert(checkFace, fIndex);
+                                    }
+
+                                    if (faceMap.found(fIndex))
+                                    {
+                                        faceMap[fIndex] = checkFace;
+                                    }
+                                    else
+                                    {
+                                        faceMap.insert(fIndex, checkFace);
+                                    }
                                 }
                                 else
                                 {
-                                    faceMap.insert(fIndex, checkFace);
+                                    if (faceMap.found(checkFace))
+                                    {
+                                        faceMap[checkFace] = fIndex;
+                                    }
+                                    else
+                                    {
+                                        faceMap.insert(checkFace, fIndex);
+                                    }
+
+                                    if (rFaceMap.found(fIndex))
+                                    {
+                                        rFaceMap[fIndex] = checkFace;
+                                    }
+                                    else
+                                    {
+                                        rFaceMap.insert(fIndex, checkFace);
+                                    }
                                 }
+
+                                matchedFace = true;
+
+                                break;
                             }
-                            else
-                            {
-                                if (faceMap.found(checkFace))
-                                {
-                                    faceMap[checkFace] = fIndex;
-                                }
-                                else
-                                {
-                                    faceMap.insert(checkFace, fIndex);
-                                }
+                        }
 
-                                if (rFaceMap.found(fIndex))
-                                {
-                                    rFaceMap[fIndex] = checkFace;
-                                }
-                                else
-                                {
-                                    rFaceMap.insert(fIndex, checkFace);
-                                }
-                            }
-
-                            matchedFace = true;
-
+                        if (matchedFace)
+                        {
                             break;
                         }
                     }
@@ -4909,38 +5157,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
             }
 
-            const List<objectMap>& madE = map.addedEdgeList();
-
-            // Check and match interior edges converted to boundaries
-            for (label i = 1; i < madE.size(); i++)
-            {
-                label meIndex = madE[i].index();
-                //label oldmeIndex = madE[i].masterObjects()[0];
-
-                edge mE(edges_[meIndex]);
-
-                edge cE
-                (
-                    pointMap.found(mE[0]) ? pointMap[mE[0]] : -1,
-                    pointMap.found(mE[1]) ? pointMap[mE[1]] : -1
-                );
-
-                // Skip mapping if all points were not found
-                if (cE[0] == -1 || cE[1] == -1)
-                {
-                    continue;
-                }
-
-                //bool matchedEdge = false;
-            }
-
+            // Check and match interior slave edges converted to boundaries
             const List<objectMap>& sadE = slaveMap.addedEdgeList();
 
-            // Check and match interior edges converted to boundaries
             for (label i = 1; i < sadE.size(); i++)
             {
                 label seIndex = sadE[i].index();
-                label oldseIndex = sadE[i].masterObjects()[0];
 
                 edge sE(-1, -1);
 
@@ -4987,7 +5209,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                      << "::" << cE
                                      << " with seIndex: " << seIndex
                                      << "::" << sE
-                                     << " oldseIndex: " << oldseIndex
                                      << endl;
                             }
 
