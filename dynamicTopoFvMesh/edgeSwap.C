@@ -1194,16 +1194,7 @@ void dynamicTopoFvMesh::initTables
     }
 
     // Size all elements by default.
-    label numIndices = -1;
-
-    if (coupledModification_)
-    {
-        numIndices = getMaxCouplingIndex() + 1;
-    }
-    else
-    {
-        numIndices = 1;
-    }
+    label numIndices = coupledModification_ ? 2 : 1;
 
     m.setSize(numIndices, -1);
     Q.setSize(numIndices);
@@ -1239,7 +1230,7 @@ void dynamicTopoFvMesh::initTables
 bool dynamicTopoFvMesh::fillTables
 (
     const label eIndex,
-    const scalar minQuality,
+    scalar& minQuality,
     labelList& m,
     PtrList<scalarListList>& Q,
     PtrList<labelListList>& K,
@@ -1250,93 +1241,11 @@ bool dynamicTopoFvMesh::fillTables
     const edge& edgeToCheck = edges_[eIndex];
     const labelList& hullVertices = edgePoints_[eIndex];
 
-    // Fill in the size
-    m[checkIndex] = hullVertices.size();
-
-    // Check if a table-resize is necessary
-    if (m[checkIndex] > maxTetsPerEdge_)
-    {
-        if (allowTableResize_)
-        {
-            // Resize the tables to account for
-            // more tets per edge
-            label& mtpe = const_cast<label&>(maxTetsPerEdge_);
-
-            mtpe = m[checkIndex];
-
-            // Clear tables for this index.
-            Q[checkIndex].clear();
-            K[checkIndex].clear();
-            triangulations[checkIndex].clear();
-
-            // Resize for this index.
-            initTables(m, Q, K, triangulations, checkIndex);
-        }
-        else
-        {
-            // Can't resize. Bail out.
-            return false;
-        }
-    }
-
-    for (label i = (m[checkIndex]-3); i >= 0; i--)
-    {
-        for (label j = i+2; j < m[checkIndex]; j++)
-        {
-            for (label k = i+1; k < j; k++)
-            {
-                scalar q = (*tetMetric_)
-                (
-                    points_[hullVertices[i]],
-                    points_[hullVertices[k]],
-                    points_[hullVertices[j]],
-                    points_[edgeToCheck[0]]
-                );
-
-                // For efficiency, check the bottom triangulation
-                // only when the top one if less than the hull quality.
-                if (q > minQuality)
-                {
-                    q =
-                    (
-                        Foam::min
-                        (
-                            q,
-                            (*tetMetric_)
-                            (
-                                points_[hullVertices[j]],
-                                points_[hullVertices[k]],
-                                points_[hullVertices[i]],
-                                points_[edgeToCheck[1]]
-                            )
-                        )
-                    );
-                }
-
-                if (k < j-1)
-                {
-                    q = Foam::min(q,Q[checkIndex][k][j]);
-                }
-
-                if (k > i+1)
-                {
-                    q = Foam::min(q,Q[checkIndex][i][k]);
-                }
-
-                if ((k == i+1) || (q > Q[checkIndex][i][j]))
-                {
-                    Q[checkIndex][i][j] = q;
-                    K[checkIndex][i][j] = k;
-                }
-            }
-        }
-    }
-
     if (coupledModification_)
     {
         if (locallyCoupledEntity(eIndex))
         {
-            // Fill tables for the slave edge as well.
+            // Fill tables for the slave edge.
             label sIndex = -1;
 
             // Determine the slave index.
@@ -1393,44 +1302,93 @@ bool dynamicTopoFvMesh::fillTables
         else
         if (processorCoupledEntity(eIndex))
         {
-            label n = 0;
-            const label edgeEnum = coupleMap::EDGE;
+            // Reset minQuality
+            minQuality = GREAT;
 
-            forAll(procIndices_, pI)
+            // Need to build alternate addressing / point-list
+            // for swaps across processors.
+            DynamicList<point> pHullPoints(10);
+            DynamicList<label> pHullVertices(10);
+
+            label nPoints = 0;
+
+            // First fill-in vertices for this processor
+            forAll(hullVertices, pointI)
             {
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
-                const coupleMap& cMap = recvMesh.patchMap();
-
-                label sIndex = -1;
-
-                if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
-                {
-                    if (debug > 3)
-                    {
-                        Pout << "Found " << sIndex
-                             << " for: " << eIndex
-                             << " on " << recvMesh.patchMap().slaveIndex()
-                             << endl;
-                    }
-
-                    // Recursively call for the slave edge.
-                    bool success =
-                    (
-                        recvMesh.subMesh().fillTables
-                        (
-                            sIndex, minQuality, m, Q, K, triangulations, ++n
-                        )
-                    );
-
-                    // If slave table couldn't be resized, don't continue
-                    if (!success)
-                    {
-                        return false;
-                    }
-                }
+                pHullPoints.append(points_[hullVertices[pointI]]);
+                pHullVertices.append(nPoints++);
             }
+
+            // Now look through processors, and add their points
+
+
+            // Fill the last two points for the edge
+            edge pEdge(-1, -1);
+
+            pHullPoints.append(points_[edgeToCheck[0]]);
+            pEdge[0] = nPoints++;
+
+            pHullPoints.append(points_[edgeToCheck[1]]);
+            pEdge[1] = nPoints++;
+
+            // Fill dynamic programming tables
+            fillTables
+            (
+                pEdge,
+                minQuality,
+                nPoints,
+                pHullVertices,
+                pHullPoints,
+                Q[0],
+                K[0],
+                triangulations[0]
+            );
+
+            return true;
         }
     }
+
+    // Fill in the size
+    m[checkIndex] = hullVertices.size();
+
+    // Check if a table-resize is necessary
+    if (m[checkIndex] > maxTetsPerEdge_)
+    {
+        if (allowTableResize_)
+        {
+            // Resize the tables to account for
+            // more tets per edge
+            label& mtpe = const_cast<label&>(maxTetsPerEdge_);
+
+            mtpe = m[checkIndex];
+
+            // Clear tables for this index.
+            Q[checkIndex].clear();
+            K[checkIndex].clear();
+            triangulations[checkIndex].clear();
+
+            // Resize for this index.
+            initTables(m, Q, K, triangulations, checkIndex);
+        }
+        else
+        {
+            // Can't resize. Bail out.
+            return false;
+        }
+    }
+
+    // Fill dynamic programming tables
+    fillTables
+    (
+        edgeToCheck,
+        minQuality,
+        m[checkIndex],
+        hullVertices,
+        points_,
+        Q[checkIndex],
+        K[checkIndex],
+        triangulations[checkIndex]
+    );
 
     // Print out tables for debugging
     if (debug > 3)
@@ -1439,6 +1397,74 @@ bool dynamicTopoFvMesh::fillTables
     }
 
     return true;
+}
+
+
+// Fill tables given addressing
+void dynamicTopoFvMesh::fillTables
+(
+    const edge& edgeToCheck,
+    const scalar minQuality,
+    const label m,
+    const labelList& hullVertices,
+    const UList<point>& points,
+    scalarListList& Q,
+    labelListList& K,
+    labelListList& triangulations
+) const
+{
+    for (label i = (m - 3); i >= 0; i--)
+    {
+        for (label j = i + 2; j < m; j++)
+        {
+            for (label k = i + 1; k < j; k++)
+            {
+                scalar q = (*tetMetric_)
+                (
+                    points[hullVertices[i]],
+                    points[hullVertices[k]],
+                    points[hullVertices[j]],
+                    points[edgeToCheck[0]]
+                );
+
+                // For efficiency, check the bottom triangulation
+                // only when the top one if less than the hull quality.
+                if (q > minQuality)
+                {
+                    q =
+                    (
+                        Foam::min
+                        (
+                            q,
+                            (*tetMetric_)
+                            (
+                                points[hullVertices[j]],
+                                points[hullVertices[k]],
+                                points[hullVertices[i]],
+                                points[edgeToCheck[1]]
+                            )
+                        )
+                    );
+                }
+
+                if (k < j - 1)
+                {
+                    q = Foam::min(q, Q[k][j]);
+                }
+
+                if (k > i + 1)
+                {
+                    q = Foam::min(q, Q[i][k]);
+                }
+
+                if ((k == i + 1) || (q > Q[i][j]))
+                {
+                    Q[i][j] = q;
+                    K[i][j] = k;
+                }
+            }
+        }
+    }
 }
 
 
@@ -2113,45 +2139,6 @@ scalar dynamicTopoFvMesh::computeMinQuality
     const edge& edgeToCheck = edges_[eIndex];
     const labelList& hullVertices = edgePoints_[eIndex];
 
-    // Obtain point references
-    const point& a = points_[edgeToCheck[0]];
-    const point& c = points_[edgeToCheck[1]];
-
-    if (whichEdgePatch(eIndex) < 0)
-    {
-        // Internal edge.
-        forAll(hullVertices, indexI)
-        {
-            label prevIndex = hullVertices.rcIndex(indexI);
-
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[prevIndex]];
-            const point& d = points_[hullVertices[indexI]];
-
-            // Compute the quality
-            cQuality = tetMetric_(a, b, c, d);
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-        }
-    }
-    else
-    {
-        // Boundary edge.
-        for (label indexI = 1; indexI < hullVertices.size(); indexI++)
-        {
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[indexI-1]];
-            const point& d = points_[hullVertices[indexI]];
-
-            // Compute the quality
-            cQuality = tetMetric_(a, b, c, d);
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-        }
-    }
-
     if (coupledModification_)
     {
         if (locallyCoupledEntity(eIndex))
@@ -2200,27 +2187,48 @@ scalar dynamicTopoFvMesh::computeMinQuality
         else
         if (processorCoupledEntity(eIndex))
         {
-            // Compute the minimum quality across patchSubMeshes.
-            const label edgeEnum = coupleMap::EDGE;
+            // Don't compute minQuality here, but do it in
+            // fillTables instead, while calculating hullPoints
+            return minQuality;
+        }
+    }
 
-            forAll(procIndices_, pI)
-            {
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
-                const coupleMap& cMap = recvMesh.patchMap();
+    // Obtain point references
+    const point& a = points_[edgeToCheck[0]];
+    const point& c = points_[edgeToCheck[1]];
 
-                label sIndex = -1;
+    if (whichEdgePatch(eIndex) < 0)
+    {
+        // Internal edge.
+        forAll(hullVertices, indexI)
+        {
+            label prevIndex = hullVertices.rcIndex(indexI);
 
-                if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
-                {
-                    // Recursively call for the slave edge.
-                    scalar slaveQuality =
-                    (
-                        recvMesh.subMesh().computeMinQuality(sIndex)
-                    );
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[prevIndex]];
+            const point& d = points_[hullVertices[indexI]];
 
-                    minQuality = Foam::min(slaveQuality, minQuality);
-                }
-            }
+            // Compute the quality
+            cQuality = tetMetric_(a, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+        }
+    }
+    else
+    {
+        // Boundary edge.
+        for (label indexI = 1; indexI < hullVertices.size(); indexI++)
+        {
+            // Pick vertices off the list
+            const point& b = points_[hullVertices[indexI-1]];
+            const point& d = points_[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = tetMetric_(a, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
         }
     }
 

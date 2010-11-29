@@ -656,12 +656,25 @@ class dynamicTopoFvMesh
         bool fillTables
         (
             const label eIndex,
-            const scalar minQuality,
+            scalar& minQuality,
             labelList& m,
             PtrList<scalarListList>& Q,
             PtrList<labelListList>& K,
             PtrList<labelListList>& triangulations,
             const label checkIndex = 0
+        ) const;
+
+        // Fill tables given addressing
+        void fillTables
+        (
+            const edge& edgeToCheck,
+            const scalar minQuality,
+            const label m,
+            const labelList& hullVertices,
+            const UList<point>& points,
+            scalarListList& Q,
+            labelListList& K,
+            labelListList& triangulations
         ) const;
 
         // Print out tables for debugging
@@ -898,9 +911,6 @@ class dynamicTopoFvMesh
             const label index,
             bool checkFace = false
         ) const;
-
-        // Obtain the maximum coupled patch index
-        label getMaxCouplingIndex() const;
 
         // Read optional dictionary parameters
         void readOptionalParameters(bool reRead = false);

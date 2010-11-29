@@ -2786,30 +2786,6 @@ bool dynamicTopoFvMesh::processorCoupledEntity
 }
 
 
-// Obtain the maximum coupled patch index
-label dynamicTopoFvMesh::getMaxCouplingIndex() const
-{
-    // Allocate a size for coupled patches
-    label index = -1;
-
-    forAll(patchCoupling_, patchI)
-    {
-        if (patchCoupling_(patchI))
-        {
-            index = Foam::max(index, patchI);
-        }
-    }
-
-    // Check processor coupling as well
-    if (Pstream::parRun())
-    {
-        index = Foam::max(index, procIndices_.size());
-    }
-
-    return index;
-}
-
-
 // Build a list of entities that need to be avoided
 // by regular topo-changes.
 void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
