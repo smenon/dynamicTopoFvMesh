@@ -233,7 +233,7 @@ const fvMesh& topoMapper::mesh() const
 
 
 //- Return reference to objectRegistry storing fields.
-const objectRegistry& topoMapper::db() const
+const objectRegistry& topoMapper::thisDb() const
 {
     return mesh_;
 }
@@ -266,24 +266,24 @@ void topoMapper::setMapper(const mapPolyMesh& mpm) const
 //- Set face weighting information
 void topoMapper::setFaceWeights
 (
-    List<scalarField>& weights,
-    List<vectorField>& centres
+    const Xfer<List<scalarField> >& weights,
+    const Xfer<List<vectorField> >& centres
 ) const
 {
-    faceWeights_.transfer(weights);
-    faceCentres_.transfer(centres);
+    faceWeights_.transfer(weights());
+    faceCentres_.transfer(centres());
 }
 
 
 //- Set cell weighting information
 void topoMapper::setCellWeights
 (
-    List<scalarField>& weights,
-    List<vectorField>& centres
+    const Xfer<List<scalarField> >& weights,
+    const Xfer<List<vectorField> >& centres
 ) const
 {
-    cellWeights_.transfer(weights);
-    cellCentres_.transfer(centres);
+    cellWeights_.transfer(weights());
+    cellCentres_.transfer(centres());
 }
 
 
@@ -447,7 +447,7 @@ void topoMapper::conservativeMapVolFields() const
         }
 
         // Set the field instance
-        field.instance() = field.mesh().db().time().timeName();
+        field.instance() = field.mesh().thisDb().time().timeName();
     }
 }
 
@@ -504,7 +504,7 @@ void topoMapper::conservativeMapSurfaceFields() const
         }
 
         // Set the field instance
-        field.instance() = field.mesh().db().time().timeName();
+        field.instance() = field.mesh().thisDb().time().timeName();
     }
 }
 

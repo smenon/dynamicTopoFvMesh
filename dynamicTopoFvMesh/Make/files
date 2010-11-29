@@ -10,16 +10,23 @@ meshOps.C
 multiPrecision.C
 
 dynamicTopoFvMesh.C
-dynamicTopoFvMeshReOrder.C
 dynamicTopoFvMeshCheck.C
+dynamicTopoFvMeshReOrder.C
 dynamicTopoFvMeshCoupled.C
 dynamicTopoFvMeshMapping.C
 edgeSwap.C
-edgeCollapse.C
 edgeBisect.C
+edgeCollapse.C
 
 convexSetAlgorithm/convexSetAlgorithm.C
 convexSetAlgorithm/faceSetAlgorithm.C
 convexSetAlgorithm/cellSetAlgorithm.C
+
+tetMetrics = tetMetrics
+$(tetMetrics)/tetMetric.C
+$(tetMetrics)/tetMetrics.C
+
+lengthScaleEstimator = lengthScaleEstimator
+$(lengthScaleEstimator)/lengthScaleEstimator.C
 
 LIB = $(FOAM_USER_LIBBIN)/libdynamicTopoFvMesh

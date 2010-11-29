@@ -51,7 +51,6 @@ SourceFiles
 
 #include "Switch.H"
 #include "tetMetric.H"
-#include "resizableList.H"
 #include "DynamicField.H"
 #include "threadHandler.H"
 #include "dynamicFvMesh.H"
@@ -140,13 +139,13 @@ class dynamicTopoFvMesh
         };
 
         resizable<point>::FieldType oldPoints_, points_;
-        resizableList<face> faces_;
-        resizableList<label> owner_, neighbour_;
-        resizableList<cell> cells_;
-        resizableList<edge> edges_;
-        resizableList<labelList> pointEdges_, edgePoints_;
-        resizableList<labelList> edgeFaces_, faceEdges_;
-        resizableList<scalar> lengthScale_;
+        resizable<face>::ListType faces_;
+        resizable<label>::ListType owner_, neighbour_;
+        resizable<cell>::ListType cells_;
+        resizable<edge>::ListType edges_;
+        resizable<labelList>::ListType pointEdges_, edgePoints_;
+        resizable<labelList>::ListType edgeFaces_, faceEdges_;
+        resizable<scalar>::ListType lengthScale_;
 
         //- Size information
         labelList oldPatchSizes_, patchSizes_;
@@ -265,15 +264,15 @@ class dynamicTopoFvMesh
         (
             const dynamicTopoFvMesh& mesh,
             const IOobject& io,
-            const pointField& points,
-            const pointField& oldPoints,
+            const Xfer<pointField>& points,
+            const Xfer<pointField>& oldPoints,
             const label nInternalEdges,
-            const edgeList& edges,
-            const faceList& faces,
-            const labelListList& faceEdges,
-            const labelList& owner,
-            const labelList& neighbour,
-            const cellList& cells
+            const Xfer<edgeList>& edges,
+            const Xfer<faceList>& faces,
+            const Xfer<labelListList>& faceEdges,
+            const Xfer<labelList>& owner,
+            const Xfer<labelList>& neighbour,
+            const Xfer<cellList>& cells
         );
 
         //- Disallow default bitwise assignment
@@ -991,7 +990,7 @@ public:
         virtual void updateMesh(const mapPolyMesh& mpm);
 
         // Map all fields in time using a customized mapper
-        virtual void mapFields(const mapPolyMesh& mpm);
+        virtual void mapFields(const mapPolyMesh& mpm) const;
 
         // Update the mesh for motion / topology changes
         // Return true if topology changes have occurred

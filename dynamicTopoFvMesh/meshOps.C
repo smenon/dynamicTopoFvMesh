@@ -44,7 +44,6 @@ Author
 #include "polyMesh.H"
 #include "triPointRef.H"
 #include "tetPointRef.H"
-#include "labelHashSet.H"
 
 //#if USE_CGAL
 //#include <CGAL/Gmpz.h>

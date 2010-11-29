@@ -23,90 +23,99 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    Stack
+    tetMetric
 
 Description
-    Thread-safe stack implementation using an internal DynamicList
+    Base class for tetrahedral mesh-quality metrics.
 
 Author
     Sandeep Menon
     University of Massachusetts Amherst
     All rights reserved
 
-SourceFiles
-    StackI.H
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef Stack_H
-#define Stack_H
+#ifndef tetMetric_H
+#define tetMetric_H
 
-#include "label.H"
-#include "DynamicList.H"
-#include "multiThreader.H"
+#include "point.H"
+#include "scalar.H"
+#include "memberFunctionSelectionTables.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-/*---------------------------------------------------------------------------*\
-                           Class Stack Declaration
-\*---------------------------------------------------------------------------*/
+// Class forward declarations
+class word;
+class dictionary;
 
-class Stack
+class tetMetric
 {
-    // Private data
+    // Private Member Functions
 
-        //- Internal list
-        DynamicList<label> stack_;
+        //- Disallow default bitwise copy construct
+        tetMetric(const tetMetric&);
 
-        //- Mutex for multi-threading
-        Mutex stackMutex_;
+        //- Disallow default bitwise assignment
+        void operator=(const tetMetric&);
+
 
 public:
 
-    // Constructor
-    Stack(){}
+    // Typedef for tetrahedral metrics
 
-    // Member functions for access to the stack
+        typedef scalar (*tetMetricReturnType)
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
 
-        //- Push items on to the stack
-        inline void push(const label index);
 
-        //- Insert item onto stack
-        inline void insert(const label index);
+    // Selector
 
-        //- Pop an item off the stack
-        inline label pop();
+        static tetMetricReturnType New
+        (
+            const dictionary& dict,
+            const word& metricName
+        );
 
-        //- Remove a specific index off the stack
-        inline void remove(const label index);
 
-        //- Return if a stack is empty or not
-        inline bool empty();
+    // Member Function Selectors
 
-        //- Return the size of the stack
-        inline label size();
+        declareMemberFunctionSelectionTable
+        (
+            scalar,
+            tetMetric,
+            metric,
+            Point,
+            (
+                const point& p0,
+                const point& p1,
+                const point& p2,
+                const point& p3
+            ),
+            (metricName)
+        );
 
-        //- Clear out the stack
-        inline void clear();
+        static scalar metric
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
 
-        //- Print out the stack
-        inline void print();
+    // Destructor
 
-        //- Access the stack as a list
-        inline label operator[](const label index);
+        virtual ~tetMetric()
+        {}
 };
 
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "StackI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

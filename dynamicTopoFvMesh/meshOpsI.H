@@ -44,35 +44,6 @@ Author
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
-
-template<class T1, class T2>
-inline const Vector<T1> convert(const Vector<T2>& v)
-{
-    Vector<T1> tv;
-
-    tv.x() = v.x();
-    tv.y() = v.y();
-    tv.z() = v.z();
-
-    return tv;
-}
-
-
-template<class T1, class T2>
-inline const Field<Vector<T1> > convert(const Field<Vector<T2> >& f)
-{
-    Field<Vector<T1> > tf(f.size());
-
-    forAll(tf, indexI)
-    {
-        tf[indexI] = convert<T1>(f[indexI]);
-    }
-
-    return tf;
-}
-
-
 namespace meshOps
 {
 
@@ -980,7 +951,7 @@ inline void pRead
 
 
 // Parallel non-blocking send for fixed lists
-template <class Type, label Size>
+template <class Type, unsigned Size>
 inline void pWrite
 (
     const label toID,
@@ -998,7 +969,7 @@ inline void pWrite
 
 
 // Parallel non-blocking receive for fixed lists
-template <class Type, label Size>
+template <class Type, unsigned Size>
 inline void pRead
 (
     const label fromID,

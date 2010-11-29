@@ -47,12 +47,12 @@ SourceFiles
 #include "point.H"
 #include "label.H"
 #include "scalar.H"
+#include "HashSet.H"
 #include "cellList.H"
 #include "edgeList.H"
 #include "faceList.H"
 #include "triangle.H"
 #include "vectorField.H"
-#include "labelHashSet.H"
 
 // Use the CGAL library, if necessary
 //#define USE_CGAL 0
@@ -331,7 +331,7 @@ namespace meshOps
     );
 
     // Parallel send (for fixed lists)
-    template <class Type, label Size>
+    template <class Type, unsigned Size>
     inline void pWrite
     (
         const label toID,
@@ -354,7 +354,7 @@ namespace meshOps
     );
 
     // Parallel receive (for fixed lists)
-    template <class Type, label Size>
+    template <class Type, unsigned Size>
     inline void pRead
     (
         const label fromID,
@@ -405,6 +405,36 @@ namespace meshOps
     );
 
 } // End namespace meshOps
+
+
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+
+template<class T1, class T2>
+inline const Vector<T1> convert(const Vector<T2>& v)
+{
+    Vector<T1> tv;
+
+    tv.x() = v.x();
+    tv.y() = v.y();
+    tv.z() = v.z();
+
+    return tv;
+}
+
+
+template<class T1, class T2>
+inline const Field<Vector<T1> > convert(const Field<Vector<T2> >& f)
+{
+    Field<Vector<T1> > tf(f.size());
+
+    forAll(tf, indexI)
+    {
+        tf[indexI] = convert<T1>(f[indexI]);
+    }
+
+    return tf;
+}
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

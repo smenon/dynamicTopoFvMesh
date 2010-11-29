@@ -141,13 +141,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     if (owner_.size() != neighbour_.size())
     {
         // Size up to number of faces
-        neighbour_.setSize(nFaces_);
-
-        // Padding with -1 for neighbours
-        for(label i = nInternalFaces_; i < nFaces_; i++)
-        {
-            neighbour_[i] = -1;
-        }
+        neighbour_.setSize(nFaces_, -1);
     }
 
     const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
@@ -200,15 +194,15 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
 (
     const dynamicTopoFvMesh& mesh,
     const IOobject& io,
-    const pointField& points,
-    const pointField& oldPoints,
+    const Xfer<pointField>& points,
+    const Xfer<pointField>& oldPoints,
     const label nInternalEdges,
-    const edgeList& edges,
-    const faceList& faces,
-    const labelListList& faceEdges,
-    const labelList& owner,
-    const labelList& neighbour,
-    const cellList& cells
+    const Xfer<edgeList>& edges,
+    const Xfer<faceList>& faces,
+    const Xfer<labelListList>& faceEdges,
+    const Xfer<labelList>& owner,
+    const Xfer<labelList>& neighbour,
+    const Xfer<cellList>& cells
 )
 :
     dynamicFvMesh
@@ -233,7 +227,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     mapper_(NULL),
     motionSolver_(NULL),
     lengthEstimator_(NULL),
-    oldPoints_(oldPoints),
+    oldPoints_(oldPoints()),
     points_(polyMesh::points()),
     faces_(polyMesh::faces()),
     cells_(polyMesh::cells()),
@@ -251,8 +245,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     patchNMeshPoints_(1, -1),
     nOldPoints_(points_.size()),
     nPoints_(points_.size()),
-    nOldEdges_(edges.size()),
-    nEdges_(edges.size()),
+    nOldEdges_(edges_.size()),
+    nEdges_(edges_.size()),
     nOldFaces_(faces_.size()),
     nFaces_(faces_.size()),
     nOldCells_(cells_.size()),
@@ -3759,24 +3753,23 @@ bool dynamicTopoFvMesh::resetMesh()
         // This takes over the weight data.
         fieldMapper.setFaceWeights
         (
-            faceWeights_,
-            faceCentres_
+            xferMove(faceWeights_),
+            xferMove(faceCentres_)
         );
 
         fieldMapper.setCellWeights
         (
-            cellWeights_,
-            cellCentres_
+            xferMove(cellWeights_),
+            xferMove(cellCentres_)
         );
 
         // Reset the mesh
         polyMesh::resetPrimitives
         (
-            nFaces_,
-            points,
-            faces,
-            owner,
-            neighbour,
+            xferCopy(points),
+            xferMove(faces),
+            xferMove(owner),
+            xferMove(neighbour),
             patchSizes_,
             patchStarts_
         );
@@ -4054,11 +4047,11 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
 
 
 // Map all fields in time using a customized mapper
-void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm)
+void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm) const
 {
     if (debug)
     {
-        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh&): "
+        Info << "void dynamicTopoFvMesh::mapFields(const mapPolyMesh&) const: "
              << "Mapping fv fields."
              << endl;
     }

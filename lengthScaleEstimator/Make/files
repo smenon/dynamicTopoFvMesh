@@ -1,3 +1,0 @@
-lengthScaleEstimator.C
-
-LIB = $(FOAM_USER_LIBBIN)/liblengthScaleEstimator

@@ -156,7 +156,7 @@ public:
         const fvMesh& mesh() const;
 
         //- Return reference to objectRegistry storing fields.
-        const objectRegistry& db() const;
+        const objectRegistry& thisDb() const;
 
         //- Set mapping information
         void setMapper(const mapPolyMesh& mpm) const;
@@ -164,15 +164,15 @@ public:
         //- Set face weighting information
         void setFaceWeights
         (
-            List<scalarField>& weights,
-            List<vectorField>& centres
+            const Xfer<List<scalarField> >& weights,
+            const Xfer<List<vectorField> >& centres
         ) const;
 
         //- Set cell weighting information
         void setCellWeights
         (
-            List<scalarField>& weights,
-            List<vectorField>& centres
+            const Xfer<List<scalarField> >& weights,
+            const Xfer<List<vectorField> >& centres
         ) const;
 
         //- Fetch face weights

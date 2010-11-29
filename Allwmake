@@ -22,11 +22,8 @@ fi
 ./AllwmakeLnInclude
 
 wmake libso coupleMap
-wmake libso lengthScaleEstimator
-#wmake libso conservativeMeshToMesh
 wmake libso freeSurface
 wmake libso enginePointPatchFields
 wmake libso mesquiteMotionSolver
 wmake libso dynamicTopoFvMesh
 wmake interTrackFoam
-#wmake mapConservativeFields

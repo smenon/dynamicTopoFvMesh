@@ -1957,15 +1957,15 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                     time().timeName(),
                     time()
                 ),
-                cMap.pointBuffer(),
-                cMap.oldPointBuffer(),
+                xferCopy(cMap.pointBuffer()),
+                xferCopy(cMap.oldPointBuffer()),
                 cMap.nEntities(coupleMap::INTERNAL_EDGE),
-                cMap.edges(),
-                cMap.faces(),
-                cMap.faceEdges(),
-                cMap.owner(),
-                cMap.neighbour(),
-                cMap.cells()
+                xferCopy(cMap.edges()),
+                xferCopy(cMap.faces()),
+                xferCopy(cMap.faceEdges()),
+                xferCopy(cMap.owner()),
+                xferCopy(cMap.neighbour()),
+                xferCopy(cMap.cells())
             )
         );
 
