@@ -1744,7 +1744,7 @@ void cellSetAlgorithm::convexSetVolume
 
         // Write out cells
         writeVTK("newCell_" + Foam::name(newCellIndex), newCellIndex, 3, false);
-        writeVTK("oldCell_" + Foam::name(oldCellIndex),oldCellIndex, 3, true);
+        writeVTK("oldCell_" + Foam::name(oldCellIndex), oldCellIndex, 3, true);
 
         meshOps::writeVTK
         (

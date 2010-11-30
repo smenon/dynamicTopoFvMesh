@@ -86,7 +86,7 @@ convexSetAlgorithm::convexSetAlgorithm
 {}
 
 
-// * * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Output an entity as a VTK file
 void convexSetAlgorithm::writeVTK
@@ -150,8 +150,6 @@ void convexSetAlgorithm::writeVTK
     }
 }
 
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 bool convexSetAlgorithm::consistent(const scalar tolerance) const
 {
@@ -383,7 +381,12 @@ bool convexSetAlgorithm::write() const
             false
         ),
         newPoints_
-    ).write();
+    ).writeObject
+    (
+        IOstream::BINARY,
+        IOstream::currentVersion,
+        IOstream::COMPRESSED
+    );
 
     edgeIOList
     (
@@ -398,7 +401,12 @@ bool convexSetAlgorithm::write() const
             false
         ),
         newEdges_
-    ).write();
+    ).writeObject
+    (
+        IOstream::BINARY,
+        IOstream::currentVersion,
+        IOstream::COMPRESSED
+    );
 
     faceIOList
     (
@@ -413,7 +421,12 @@ bool convexSetAlgorithm::write() const
             false
         ),
         newFaces_
-    ).write();
+    ).writeObject
+    (
+        IOstream::BINARY,
+        IOstream::currentVersion,
+        IOstream::COMPRESSED
+    );
 
     cellIOList
     (
@@ -428,7 +441,12 @@ bool convexSetAlgorithm::write() const
             false
         ),
         newCells_
-    ).write();
+    ).writeObject
+    (
+        IOstream::BINARY,
+        IOstream::currentVersion,
+        IOstream::COMPRESSED
+    );
 
     labelIOList
     (
@@ -443,7 +461,12 @@ bool convexSetAlgorithm::write() const
             false
         ),
         newOwner_
-    ).write();
+    ).writeObject
+    (
+        IOstream::BINARY,
+        IOstream::currentVersion,
+        IOstream::COMPRESSED
+    );
 
     labelIOList
     (
@@ -458,7 +481,12 @@ bool convexSetAlgorithm::write() const
             false
         ),
         newNeighbour_
-    ).write();
+    ).writeObject
+    (
+        IOstream::BINARY,
+        IOstream::currentVersion,
+        IOstream::COMPRESSED
+    );
 
     IOList<objectMap>
     (
@@ -473,7 +501,12 @@ bool convexSetAlgorithm::write() const
             false
         ),
         pointsFromPoints_
-    ).write();
+    ).writeObject
+    (
+        IOstream::BINARY,
+        IOstream::currentVersion,
+        IOstream::COMPRESSED
+    );
 
     IOMap<labelList>
     (
@@ -488,7 +521,12 @@ bool convexSetAlgorithm::write() const
             false
         ),
         modPoints_
-    ).write();
+    ).writeObject
+    (
+        IOstream::BINARY,
+        IOstream::currentVersion,
+        IOstream::COMPRESSED
+    );
 
     return true;
 }

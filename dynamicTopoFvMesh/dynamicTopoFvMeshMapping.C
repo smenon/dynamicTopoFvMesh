@@ -37,6 +37,7 @@ Author
 
 #include "dynamicTopoFvMesh.H"
 
+#include "Time.H"
 #include "meshOps.H"
 #include "IOmanip.H"
 #include "triFace.H"
@@ -76,6 +77,7 @@ void dynamicTopoFvMesh::computeMapping
 
     scalar maxError = 0.0;
     label nInconsistencies = 0;
+    List<objectMap> failedCells, failedFaces;
 
     // Compute cell mapping
     for (label cellI = cellStart; cellI < (cellStart + cellSize); cellI++)
@@ -119,7 +121,7 @@ void dynamicTopoFvMesh::computeMapping
                     Foam::max(maxError, mag(1.0 - sum(cellWeights_[cellI])))
                 );
 
-                if (debug)
+                if (debug > 1)
                 {
                     Pout<< nl
                         << " Inconsistent cell: " << cIndex << nl
@@ -128,6 +130,12 @@ void dynamicTopoFvMesh::computeMapping
                         << " Weights: " << cellWeights_[cellI] << nl
                         << " Error: " << mag(1.0 - sum(cellWeights_[cellI]))
                         << endl;
+
+                    meshOps::sizeUpList
+                    (
+                        objectMap(cIndex, cellParents_[cIndex]),
+                        failedCells
+                    );
                 }
 
                 nInconsistencies++;
@@ -202,7 +210,7 @@ void dynamicTopoFvMesh::computeMapping
                     Foam::max(maxError, mag(1.0 - sum(faceWeights_[faceI])))
                 );
 
-                if (debug)
+                if (debug > 1)
                 {
                     Pout<< nl
                         << " Inconsistent face: " << fIndex << nl
@@ -211,6 +219,12 @@ void dynamicTopoFvMesh::computeMapping
                         << " Weights: " << faceWeights_[faceI] << nl
                         << " Error: " << mag(1.0 - sum(faceWeights_[faceI]))
                         << endl;
+
+                    meshOps::sizeUpList
+                    (
+                        objectMap(fIndex, faceParents_[fIndex]),
+                        failedFaces
+                    );
                 }
 
                 nInconsistencies++;
@@ -224,8 +238,51 @@ void dynamicTopoFvMesh::computeMapping
              << " max error: " << maxError
              << endl;
 
-        // Write out connectivity information for post-processing
-        // cellAlgorithm.write();
+        if (debug > 1)
+        {
+            // Write out list of failed entities
+            if (failedCells.size())
+            {
+                IOList<objectMap>
+                (
+                    IOobject
+                    (
+                        "failedCells",
+                        time().timeName(),
+                        "convexSetAlgorithm",
+                        (*this),
+                        IOobject::NO_READ,
+                        IOobject::NO_WRITE,
+                        false
+                    ),
+                    failedCells
+                ).write();
+            }
+
+            if (failedFaces.size())
+            {
+                IOList<objectMap>
+                (
+                    IOobject
+                    (
+                        "failedFaces",
+                        time().timeName(),
+                        "convexSetAlgorithm",
+                        (*this),
+                        IOobject::NO_READ,
+                        IOobject::NO_WRITE,
+                        false
+                    ),
+                    failedFaces
+                ).write();
+            }
+
+            // Write out connectivity information for post-processing
+            if (failedCells.size() || failedFaces.size())
+            {
+                cellAlgorithm.write();
+            }
+        }
     }
 }
 

@@ -118,26 +118,6 @@ protected:
 
 #       endif
 
-    //- Output connectivity to VTK
-
-        // Output an entity as a VTK file
-        void writeVTK
-        (
-            const word& name,
-            const label entity,
-            const label primitiveType = 3,
-            const bool useOldConnectivity = false
-        ) const;
-
-        // Output a list of entities as a VTK file
-        void writeVTK
-        (
-            const word& name,
-            const labelList& cList,
-            const label primitiveType = 3,
-            const bool useOldConnectivity = false
-        ) const;
-
 public:
 
     //- Constructor
@@ -206,6 +186,24 @@ public:
 
         // Write out connectivity information to disk
         bool write() const;
+
+        // Output an entity as a VTK file
+        void writeVTK
+        (
+            const word& name,
+            const label entity,
+            const label primitiveType = 3,
+            const bool useOldConnectivity = false
+        ) const;
+
+        // Output a list of entities as a VTK file
+        void writeVTK
+        (
+            const word& name,
+            const labelList& cList,
+            const label primitiveType = 3,
+            const bool useOldConnectivity = false
+        ) const;
 };
 
 
