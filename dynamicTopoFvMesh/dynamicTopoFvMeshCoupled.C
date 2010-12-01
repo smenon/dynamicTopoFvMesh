@@ -916,21 +916,20 @@ void dynamicTopoFvMesh::handleCoupledPatches
                      << nEntities << endl;
             }
 
+            meshOps::pWrite(proc, nEntities);
+
             if (nEntities)
             {
                 // Schedule transfer to processor
-                const labelList& indices = cMap.entityIndices();
-                const labelList& operations = cMap.entityOperations();
-
-                meshOps::pWrite(proc, indices);
-                meshOps::pWrite(proc, operations);
+                meshOps::pWrite(proc, cMap.entityIndices());
+                meshOps::pWrite(proc, cMap.entityOperations());
             }
         }
-
-        // We won't wait for transfers to complete for the moment,
-        // and will deal with operations once the internal mesh
-        // has been dealt with.
     }
+
+    // We won't wait for transfers to complete for the moment,
+    // and will deal with operations once the internal mesh
+    // has been dealt with.
 }
 
 
@@ -1247,7 +1246,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                             localCommonCells.insert(cellI);
                         }
 
-                        // Check if thr processor exists on the list
+                        // Check if the processor exists on the list
                         // and if not, add it.
                         labelList& procList = commonCells[cellI];
 
@@ -1300,7 +1299,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                                 localCommonCells.insert(own);
                             }
 
-                            // Check if thr processor exists on the list
+                            // Check if the processor exists on the list
                             // and if not, add it.
                             labelList& procList = commonCells[own];
 
@@ -1330,7 +1329,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                                 localCommonCells.insert(nei);
                             }
 
-                            // Check if thr processor exists on the list
+                            // Check if the processor exists on the list
                             // and if not, add it.
                             labelList& procList = commonCells[nei];
 

@@ -711,24 +711,24 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
     // Perform a few debug calls before modifications
     if (debug > 1)
     {
-        Info << nl << nl << "Face: " << fIndex
+        Pout << nl << nl << "Face: " << fIndex
              << " needs to be flipped. " << endl;
-
-        Info << "Cell[0]: " << c0 << ": " << cells_[c0] << endl;
-        Info << "Cell[1]: " << c1 << ": " << cells_[c1] << endl;
 
         if (debug > 2)
         {
-            Info << "Common Faces: Set 1: "
+            Pout << "Cell[0]: " << c0 << ": " << cells_[c0] << endl;
+            Pout << "Cell[1]: " << c1 << ": " << cells_[c1] << endl;
+
+            Pout << "Common Faces: Set 1: "
                  << commonFaceIndex[0] << ": " << commonFaces[0] << ", "
                  << commonFaceIndex[1] << ": " << commonFaces[1] << endl;
 
-            Info << "Common Faces: Set 2: "
+            Pout << "Common Faces: Set 2: "
                  << commonFaceIndex[2] << ": " << commonFaces[2] << ", "
                  << commonFaceIndex[3] << ": " << commonFaces[3] << endl;
 
-            Info << "Old face: " << faces_[fIndex] << endl;
-            Info << "Old faceEdges: " << faceEdges_[fIndex] << endl;
+            Pout << "Old face: " << faces_[fIndex] << endl;
+            Pout << "Old faceEdges: " << faceEdges_[fIndex] << endl;
         }
 
         // Write out VTK files before change
@@ -908,13 +908,13 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
     if (debug > 1)
     {
-        Info << "New flipped face: " << newFace << endl;
+        Pout << "New flipped face: " << newFace << endl;
 
         if (debug > 2)
         {
             forAll(newBdyFace, faceI)
             {
-                Info << "New boundary face[" << faceI << "]: "
+                Pout << "New boundary face[" << faceI << "]: "
                      << commonFaceIndex[faceI]
                      << ": " << newBdyFace[faceI] << endl;
             }
@@ -1485,7 +1485,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
     if (debug > 2)
     {
-        Info << " Removing edge : " << eIndex << " by flipping."
+        Pout << " Removing edge : " << eIndex << " by flipping."
              << " Edge: " << edges_[eIndex]
              << " minQuality: " << minQuality << endl;
     }
@@ -1568,7 +1568,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     {
         const edge& edgeToCheck = edges_[eIndex];
 
-        Info << " All triangulations: " << nl
+        Pout << " All triangulations: " << nl
              << ' ' << triangulations[checkIndex][0] << nl
              << ' ' << triangulations[checkIndex][1] << nl
              << ' ' << triangulations[checkIndex][2] << nl
@@ -1603,13 +1603,13 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
     if (debug > 2)
     {
-        Info << " Identified tF as: " << tF << endl;
-        Info << " Triangulation: "
+        Pout << " Identified tF as: " << tF << endl;
+        Pout << " Triangulation: "
              << triangulations[checkIndex][0][tF] << " "
              << triangulations[checkIndex][1][tF] << " "
              << triangulations[checkIndex][2][tF] << " "
              << endl;
-        Info << " All triangulations: " << nl
+        Pout << " All triangulations: " << nl
              << ' ' << triangulations[checkIndex][0] << nl
              << ' ' << triangulations[checkIndex][1] << nl
              << ' ' << triangulations[checkIndex][2] << nl
@@ -1660,7 +1660,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             if (debug > 2)
             {
-                Info << nl << "Removing slave edge: " << sIndex
+                Pout << nl << "Removing slave edge: " << sIndex
                      << " for master edge: " << eIndex << endl;
             }
 
@@ -1737,10 +1737,10 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
         if (numSwaps == 0)
         {
-            Info << "Triangulations: " << endl;
+            Pout << "Triangulations: " << endl;
             forAll(triangulations[checkIndex], row)
             {
-                Info << triangulations[checkIndex][row] << endl;
+                Pout << triangulations[checkIndex][row] << endl;
             }
 
             // Should have performed at least one swap
@@ -1850,22 +1850,22 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             if (!matched)
             {
-                Info << "masterFaces: " << endl;
-                Info << amfList << endl;
+                Pout << "masterFaces: " << endl;
+                Pout << amfList << endl;
 
-                Info << "slaveFaces: " << endl;
-                Info << asfList << endl;
+                Pout << "slaveFaces: " << endl;
+                Pout << asfList << endl;
 
                 forAll(amfList, mfI)
                 {
-                    Info << amfList[mfI].index() << ": "
+                    Pout << amfList[mfI].index() << ": "
                          << faces_[amfList[mfI].index()]
                          << endl;
                 }
 
                 forAll(asfList, sfI)
                 {
-                    Info << asfList[sfI].index() << ": "
+                    Pout << asfList[sfI].index() << ": "
                          << faces_[asfList[sfI].index()]
                          << endl;
                 }
@@ -1980,11 +1980,11 @@ label dynamicTopoFvMesh::identify32Swap
 
     if (debug > 1 || output)
     {
-        Info << nl << nl << "Hull Vertices: " << endl;
+        Pout << nl << nl << "Hull Vertices: " << endl;
 
         forAll(hullVertices, vertexI)
         {
-            Info << hullVertices[vertexI] << ": "
+            Pout << hullVertices[vertexI] << ": "
                  << points_[hullVertices[vertexI]]
                  << endl;
         }
@@ -2060,7 +2060,7 @@ label dynamicTopoFvMesh::identify32Swap
 
     if (debug > 1 || output)
     {
-        Info << " All distances :" << dist << nl
+        Pout << " All distances :" << dist << nl
              << " Triangulation index: " << mT
              << endl;
     }
@@ -2339,9 +2339,9 @@ const changeMap dynamicTopoFvMesh::swap23
     if (debug > 1)
     {
         // Print out arguments
-        Info << endl;
-        Info << "== Swapping 2-3 ==" << endl;
-        Info << "Edge: " << eIndex << ": " << edgeToCheck << endl;
+        Pout << endl;
+        Pout << "== Swapping 2-3 ==" << endl;
+        Pout << "Edge: " << eIndex << ": " << edgeToCheck << endl;
 
         if (debug > 2)
         {
@@ -2349,22 +2349,22 @@ const changeMap dynamicTopoFvMesh::swap23
 
             if (bPatch == -1)
             {
-                Info << "Patch: Internal" << endl;
+                Pout << "Patch: Internal" << endl;
             }
             else
             {
-                Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
+                Pout << "Patch: " << boundaryMesh()[bPatch].name() << endl;
             }
 
-            Info << "Ring: " << hullVertices << endl;
-            Info << "Faces: " << hullFaces << endl;
-            Info << "Cells: " << hullCells << endl;
-            Info << "Triangulation: "
+            Pout << "Ring: " << hullVertices << endl;
+            Pout << "Faces: " << hullFaces << endl;
+            Pout << "Cells: " << hullCells << endl;
+            Pout << "Triangulation: "
                  << triangulations[0][triangulationIndex] << " "
                  << triangulations[1][triangulationIndex] << " "
                  << triangulations[2][triangulationIndex] << " "
                  << endl;
-            Info << "Isolated vertex: " << isolatedVertex << endl;
+            Pout << "Isolated vertex: " << isolatedVertex << endl;
         }
 
         if (debug > 3)
@@ -2386,10 +2386,10 @@ const changeMap dynamicTopoFvMesh::swap23
     if (cellsForRemoval[1] == -1)
     {
         // Write out for post-processing
-        Info << " isolatedVertex: " << isolatedVertex << endl;
-        Info << " triangulations: " << triangulations << endl;
-        Info << " numTriangulations: " << numTriangulations << endl;
-        Info << " triangulationIndex: " << triangulationIndex << endl;
+        Pout << " isolatedVertex: " << isolatedVertex << endl;
+        Pout << " triangulations: " << triangulations << endl;
+        Pout << " numTriangulations: " << numTriangulations << endl;
+        Pout << " triangulationIndex: " << triangulationIndex << endl;
 
         writeVTK("Edge23_" + Foam::name(eIndex), eIndex, 1);
         writeVTK("Cells23_" + Foam::name(eIndex), hullCells, 3);
@@ -2917,30 +2917,30 @@ const changeMap dynamicTopoFvMesh::swap23
 
     if (debug > 2)
     {
-        Info << "Added edge: " << endl;
+        Pout << "Added edge: " << endl;
 
-        Info << newEdgeIndex << ":: "
+        Pout << newEdgeIndex << ":: "
              << edges_[newEdgeIndex]
              << " edgeFaces: "
              << edgeFaces_[newEdgeIndex]
              << endl;
 
-        Info << "Added faces: " << endl;
+        Pout << "Added faces: " << endl;
 
         forAll(newFaceIndex, faceI)
         {
-            Info << newFaceIndex[faceI] << ":: "
+            Pout << newFaceIndex[faceI] << ":: "
                  << faces_[newFaceIndex[faceI]]
                  << " faceEdges: "
                  << faceEdges_[newFaceIndex[faceI]]
                  << endl;
         }
 
-        Info << "Added cells: " << endl;
+        Pout << "Added cells: " << endl;
 
         forAll(newCellIndex, cellI)
         {
-            Info << newCellIndex[cellI] << ":: "
+            Pout << newCellIndex[cellI] << ":: "
                  << cells_[newCellIndex[cellI]]
                  << endl;
         }
@@ -3034,18 +3034,18 @@ const changeMap dynamicTopoFvMesh::swap32
     if (debug > 1)
     {
         // Print out arguments
-        Info << endl;
+        Pout << endl;
 
         if (edgePatch < 0)
         {
-            Info << "== Swapping 3-2 ==" << endl;
+            Pout << "== Swapping 3-2 ==" << endl;
         }
         else
         {
-            Info << "== Swapping 2-2 ==" << endl;
+            Pout << "== Swapping 2-2 ==" << endl;
         }
 
-        Info << "Edge: " << eIndex << ": " << edgeToCheck << endl;
+        Pout << "Edge: " << eIndex << ": " << edgeToCheck << endl;
 
         if (debug > 2)
         {
@@ -3053,17 +3053,17 @@ const changeMap dynamicTopoFvMesh::swap32
 
             if (bPatch == -1)
             {
-                Info << "Patch: Internal" << endl;
+                Pout << "Patch: Internal" << endl;
             }
             else
             {
-                Info << "Patch: " << boundaryMesh()[bPatch].name() << endl;
+                Pout << "Patch: " << boundaryMesh()[bPatch].name() << endl;
             }
 
-            Info << "Ring: " << hullVertices << endl;
-            Info << "Faces: " << hullFaces << endl;
-            Info << "Cells: " << hullCells << endl;
-            Info << "Triangulation: "
+            Pout << "Ring: " << hullVertices << endl;
+            Pout << "Faces: " << hullFaces << endl;
+            Pout << "Cells: " << hullCells << endl;
+            Pout << "Triangulation: "
                  << triangulations[0][triangulationIndex] << " "
                  << triangulations[1][triangulationIndex] << " "
                  << triangulations[2][triangulationIndex] << " "
@@ -3593,21 +3593,21 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         if (edgePatch > -1)
         {
-            Info << "Added edge: " << endl;
+            Pout << "Added edge: " << endl;
 
-            Info << newEdgeIndex << ":: "
+            Pout << newEdgeIndex << ":: "
                  << edges_[newEdgeIndex]
                  << " edgeFaces: "
                  << edgeFaces_[newEdgeIndex]
                  << endl;
         }
 
-        Info << "Added face(s): " << endl;
+        Pout << "Added face(s): " << endl;
 
-        Info << newFaceIndex << ":: "
+        Pout << newFaceIndex << ":: "
              << faces_[newFaceIndex];
 
-        Info << " faceEdges: "
+        Pout << " faceEdges: "
              << faceEdges_[newFaceIndex]
              << endl;
 
@@ -3615,7 +3615,7 @@ const changeMap dynamicTopoFvMesh::swap32
         {
             forAll(newBdyFaceIndex, faceI)
             {
-                Info << newBdyFaceIndex[faceI] << ":: "
+                Pout << newBdyFaceIndex[faceI] << ":: "
                      << faces_[newBdyFaceIndex[faceI]]
                      << " faceEdges: "
                      << faceEdges_[newBdyFaceIndex[faceI]]
@@ -3623,11 +3623,11 @@ const changeMap dynamicTopoFvMesh::swap32
             }
         }
 
-        Info << "Added cells: " << endl;
+        Pout << "Added cells: " << endl;
 
         forAll(newCellIndex, cellI)
         {
-            Info << newCellIndex[cellI] << ":: "
+            Pout << newCellIndex[cellI] << ":: "
                  << cells_[newCellIndex[cellI]]
                  << endl;
         }

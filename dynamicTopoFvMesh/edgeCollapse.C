@@ -973,7 +973,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (debug > 2)
         {
-            Info << "Face: " << fIndex
+            Pout << "Face: " << fIndex
                  << ":: " << faces_[fIndex] << nl
                  << " collapseCase determined to be: "
                  << collapseCase << nl
@@ -989,84 +989,84 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     {
         const labelList& fE = faceEdges_[fIndex];
 
-        Info << nl << nl
+        Pout << nl << nl
              << "Face: " << fIndex << ": " << faces_[fIndex] << nl
              << "faceEdges: " << fE
              << " is to be collapsed. " << endl;
 
         label epIndex = whichPatch(fIndex);
 
-        Info << "Patch: ";
+        Pout << "Patch: ";
 
         if (epIndex == -1)
         {
-            Info << "Internal" << endl;
+            Pout << "Internal" << endl;
         }
         else
         {
-            Info << boundaryMesh()[epIndex].name() << endl;
+            Pout << boundaryMesh()[epIndex].name() << endl;
         }
 
         if (debug > 2)
         {
-            Info << endl;
-            Info << "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-            Info << "Hulls before modification" << endl;
-            Info << "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+            Pout << endl;
+            Pout << "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+            Pout << "Hulls before modification" << endl;
+            Pout << "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 
-            Info << nl << "Cells belonging to first Edge Hull: "
+            Pout << nl << "Cells belonging to first Edge Hull: "
                  << hullCells[0] << endl;
 
             forAll(hullCells[0],cellI)
             {
                 const cell& firstCurCell = cells_[hullCells[0][cellI]];
 
-                Info << "Cell: " << hullCells[0][cellI]
+                Pout << "Cell: " << hullCells[0][cellI]
                      << ": " << firstCurCell << endl;
 
                 forAll(firstCurCell,faceI)
                 {
-                    Info << firstCurCell[faceI]
+                    Pout << firstCurCell[faceI]
                          << ": " << faces_[firstCurCell[faceI]] << endl;
                 }
             }
 
             const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
-            Info << nl << "First Edge Face Hull: "
+            Pout << nl << "First Edge Face Hull: "
                  << firstEdgeFaces << endl;
 
             forAll(firstEdgeFaces,indexI)
             {
-                Info << firstEdgeFaces[indexI]
+                Pout << firstEdgeFaces[indexI]
                      << ": " << faces_[firstEdgeFaces[indexI]] << endl;
             }
 
-            Info << nl << "Cells belonging to second Edge Hull: "
+            Pout << nl << "Cells belonging to second Edge Hull: "
                  << hullCells[1] << endl;
 
             forAll(hullCells[1], cellI)
             {
                 const cell& secondCurCell = cells_[hullCells[1][cellI]];
 
-                Info << "Cell: " << hullCells[1][cellI]
+                Pout << "Cell: " << hullCells[1][cellI]
                      << ": " << secondCurCell << endl;
 
                 forAll(secondCurCell, faceI)
                 {
-                    Info << secondCurCell[faceI]
+                    Pout << secondCurCell[faceI]
                          << ": " << faces_[secondCurCell[faceI]] << endl;
                 }
             }
 
             const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
-            Info << nl << "Second Edge Face Hull: "
+            Pout << nl << "Second Edge Face Hull: "
                  << secondEdgeFaces << endl;
 
             forAll(secondEdgeFaces, indexI)
             {
-                Info << secondEdgeFaces[indexI]
+                Pout << secondEdgeFaces[indexI]
                      << ": " << faces_[secondEdgeFaces[indexI]] << endl;
             }
 
@@ -2047,74 +2047,74 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     if (debug > 2)
     {
-        Info << endl;
-        Info << "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-        Info << "Hulls after modification" << endl;
-        Info << "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+        Pout << endl;
+        Pout << "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+        Pout << "Hulls after modification" << endl;
+        Pout << "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 
-        Info << nl << "Cells belonging to first Edge Hull: "
+        Pout << nl << "Cells belonging to first Edge Hull: "
              << hullCells[0] << endl;
 
         forAll(hullCells[0], cellI)
         {
             const cell& firstCurCell = cells_[hullCells[0][cellI]];
 
-            Info << "Cell: " << hullCells[0][cellI]
+            Pout << "Cell: " << hullCells[0][cellI]
                  << ": " << firstCurCell << endl;
 
             forAll(firstCurCell, faceI)
             {
-                Info << firstCurCell[faceI]
+                Pout << firstCurCell[faceI]
                      << ": " << faces_[firstCurCell[faceI]] << endl;
             }
         }
 
         const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
-        Info << nl << "First Edge Face Hull: " << firstEdgeFaces << endl;
+        Pout << nl << "First Edge Face Hull: " << firstEdgeFaces << endl;
 
         forAll(firstEdgeFaces, indexI)
         {
-            Info << firstEdgeFaces[indexI]
+            Pout << firstEdgeFaces[indexI]
                  << ": " << faces_[firstEdgeFaces[indexI]] << endl;
         }
 
-        Info << nl << "Cells belonging to second Edge Hull: "
+        Pout << nl << "Cells belonging to second Edge Hull: "
              << hullCells[1] << endl;
 
         forAll(hullCells[1], cellI)
         {
             const cell& secondCurCell = cells_[hullCells[1][cellI]];
 
-            Info << "Cell: " << hullCells[1][cellI]
+            Pout << "Cell: " << hullCells[1][cellI]
                  << ": " << secondCurCell << endl;
 
             forAll(secondCurCell, faceI)
             {
-                Info << secondCurCell[faceI]
+                Pout << secondCurCell[faceI]
                      << ": " << faces_[secondCurCell[faceI]] << endl;
             }
         }
 
         const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
-        Info << nl << "Second Edge Face Hull: " << secondEdgeFaces << endl;
+        Pout << nl << "Second Edge Face Hull: " << secondEdgeFaces << endl;
 
         forAll(secondEdgeFaces, indexI)
         {
-            Info << secondEdgeFaces[indexI]
+            Pout << secondEdgeFaces[indexI]
                  << ": " << faces_[secondEdgeFaces[indexI]] << endl;
         }
 
-        Info << endl;
+        Pout << endl;
 
-        Info << "Retained face: "
+        Pout << "Retained face: "
              << faceToKeep[0] << ": "
              << " owner: " << owner_[faceToKeep[0]]
              << " neighbour: " << neighbour_[faceToKeep[0]]
              << endl;
 
-        Info << "Discarded face: "
+        Pout << "Discarded face: "
              << faceToThrow[0] << ": "
              << " owner: " << owner_[faceToThrow[0]]
              << " neighbour: " << neighbour_[faceToThrow[0]]
@@ -2122,13 +2122,13 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (c1 != -1)
         {
-            Info << "Retained face: "
+            Pout << "Retained face: "
                  << faceToKeep[1] << ": "
                  << " owner: " << owner_[faceToKeep[1]]
                  << " neighbour: " << neighbour_[faceToKeep[1]]
                  << endl;
 
-            Info << "Discarded face: "
+            Pout << "Discarded face: "
                  << faceToThrow[1] << ": "
                  << " owner: " << owner_[faceToThrow[1]]
                  << " neighbour: " << neighbour_[faceToThrow[1]]
@@ -5393,7 +5393,7 @@ void dynamicTopoFvMesh::mergeBoundaryFaces
 {
     if (debug > 2)
     {
-        Info << "Merging faces: "
+        Pout << "Merging faces: "
              << firstFace << " and "
              << secondFace << endl;
     }
@@ -5719,7 +5719,7 @@ const changeMap dynamicTopoFvMesh::removeCells
 
         if (nConvFaces > 2)
         {
-            Info << "Invalid conversion. Bailing out." << endl;
+            Pout << "Invalid conversion. Bailing out." << endl;
             return map;
         }
     }
