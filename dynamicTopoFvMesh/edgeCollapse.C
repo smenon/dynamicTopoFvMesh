@@ -302,6 +302,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     slaveMaps[curIndex].index() = sIndex;
                     slaveMaps[curIndex].patchIndex() = pI;
 
+                    // Only one slave coupling is possible, so bail out
                     break;
                 }
             }
@@ -521,7 +522,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Temporarily turn off coupledModification
         unsetCoupledModification();
 
-        // Can the overRideCase be used for this edge?
+        // Can the overRideCase be used for this face?
         masterMap = collapseQuadFace(fIndex, overRideCase, true);
 
         // Turn coupledModification back on.
@@ -545,7 +546,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         {
             coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
 
-            // Collapse the slave edge
+            // Collapse the slave face
             slaveMap = recvMesh.subMesh().collapseQuadFace(sIndex);
         }
 
@@ -1931,7 +1932,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             const coupleMap* cMapPtr = NULL;
             label pIndex = slaveMap.patchIndex();
 
-            if (locallyCoupledEntity(fIndex))
+            // Is this a locally coupled edge (either master or slave)?
+            if (locallyCoupledEntity(fIndex, true))
             {
                 localCouple = true;
                 procCouple = false;

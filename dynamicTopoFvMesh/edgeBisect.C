@@ -64,7 +64,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     label tIndex = self();
 
     // Prepare the changeMaps
-    changeMap map, slaveMap;
+    changeMap map;
+    List<changeMap> slaveMaps;
     bool bisectingSlave = false;
 
     if
@@ -175,6 +176,351 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         }
     }
 
+    // Find the common-edge between the triangular boundary faces
+    // and the face under consideration.
+    meshOps::findCommonEdge
+    (
+        c0BdyIndex[0],
+        fIndex,
+        faceEdges_,
+        commonEdgeIndex[0]
+    );
+
+    meshOps::findCommonEdge
+    (
+        c0BdyIndex[1],
+        fIndex,
+        faceEdges_,
+        commonEdgeIndex[1]
+    );
+
+    commonEdges[0] = edges_[commonEdgeIndex[0]];
+    commonEdges[1] = edges_[commonEdgeIndex[1]];
+
+    if (coupledModification_)
+    {
+        bool localCouple = false, procCouple = false;
+
+        const label faceEnum = coupleMap::FACE;
+        const label pointEnum = coupleMap::POINT;
+
+        // Is this a locally coupled face (either master or slave)?
+        if (locallyCoupledEntity(fIndex, true))
+        {
+            localCouple = true;
+            procCouple = false;
+        }
+        else
+        if (processorCoupledEntity(fIndex))
+        {
+            procCouple = true;
+            localCouple = false;
+        }
+
+        if (localCouple && !procCouple)
+        {
+            // Determine the slave index.
+            label sIndex = -1, pIndex = -1;
+
+            forAll(patchCoupling_, patchI)
+            {
+                if (patchCoupling_(patchI))
+                {
+                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                    if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+                    {
+                        pIndex = patchI;
+
+                        break;
+                    }
+
+                    // The following bit happens only during the sliver
+                    // exudation process, since slave edges are
+                    // usually not added to the coupled edge-stack.
+                    if ((sIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
+                    {
+                        pIndex = patchI;
+
+                        // Notice that we are collapsing a slave edge first.
+                        bisectingSlave = true;
+
+                        break;
+                    }
+                }
+            }
+
+            if (sIndex == -1)
+            {
+                FatalErrorIn
+                (
+                    "\n"
+                    "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
+                    "(\n"
+                    "    const label fIndex,\n"
+                    "    const changeMap& masterMap,\n"
+                    "    bool checkOnly,\n"
+                    "    bool forceOp"
+                    ")\n"
+                )
+                    << "Coupled maps were improperly specified." << nl
+                    << " Slave index not found for: " << nl
+                    << " Face: " << fIndex << ": " << faces_[fIndex] << nl
+                    << abort(FatalError);
+            }
+            else
+            {
+                // If we've found the slave, size up the list
+                meshOps::sizeUpList
+                (
+                    changeMap(),
+                    slaveMaps
+                );
+
+                // Save index and patch for posterity
+                slaveMaps[0].index() = sIndex;
+                slaveMaps[0].patchIndex() = pIndex;
+            }
+
+            if (debug > 1)
+            {
+                Pout << nl << " >> Bisecting slave face: " << sIndex
+                     << " for master face: " << fIndex << endl;
+            }
+        }
+        else
+        if (procCouple && !localCouple)
+        {
+            // Check slaves
+            forAll(procIndices_, pI)
+            {
+                // Fetch reference to subMesh
+                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupleMap& cMap = recvMesh.patchMap();
+
+                label sIndex = -1;
+
+                if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+                {
+                    if (debug > 3)
+                    {
+                        Pout << "Checking slave face: " << sIndex
+                             << " on proc: " << procIndices_[pI]
+                             << " for master face: " << fIndex
+                             << endl;
+                    }
+
+                    // Check if a lower-ranked processor is
+                    // handling this edge
+                    if (procIndices_[pI] < Pstream::myProcNo())
+                    {
+                        if (debug > 3)
+                        {
+                            Pout << "Face: " << fIndex
+                                 << " is handled by proc: "
+                                 << procIndices_[pI]
+                                 << ", so bailing out."
+                                 << endl;
+                        }
+
+                        return map;
+                    }
+
+                    label curIndex = slaveMaps.size();
+
+                    // Size up the list
+                    meshOps::sizeUpList
+                    (
+                        changeMap(),
+                        slaveMaps
+                    );
+
+                    // Save index and patch for posterity
+                    slaveMaps[curIndex].index() = sIndex;
+                    slaveMaps[curIndex].patchIndex() = pI;
+
+                    // Only one slave coupling is possible, so bail out
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // Something's wrong with coupling maps
+            FatalErrorIn
+            (
+                "\n"
+                "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
+                "(\n"
+                "    const label fIndex,\n"
+                "    const changeMap& masterMap,\n"
+                "    bool checkOnly,\n"
+                "    bool forceOp"
+                ")\n"
+            )
+                << "Coupled maps were improperly specified." << nl
+                << " localCouple: " << localCouple << nl
+                << " procCouple: " << procCouple << nl
+                << " Face: " << fIndex << ": " << faces_[fIndex] << nl
+                << abort(FatalError);
+        }
+
+        // Alias for convenience...
+        changeMap& slaveMap = slaveMaps[0];
+
+        label sIndex = slaveMap.index();
+        label pI = slaveMap.patchIndex();
+        const coupleMap* cMapPtr = NULL;
+
+        // Temporarily turn off coupledModification
+        unsetCoupledModification();
+
+        if (localCouple)
+        {
+            cMapPtr = &(patchCoupling_[pI].patchMap());
+
+            // First check the slave for bisection feasibility.
+            slaveMap = bisectQuadFace(sIndex, changeMap(), true, forceOp);
+        }
+        else
+        if (procCouple)
+        {
+            cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+
+            // First check the slave for bisection feasibility.
+            slaveMap =
+            (
+                recvMesh.subMesh().bisectQuadFace
+                (
+                    sIndex,
+                    changeMap(),
+                    true,
+                    forceOp
+                )
+            );
+        }
+
+        // Turn it back on.
+        setCoupledModification();
+
+        if (slaveMap.type() <= 0)
+        {
+            // Slave couldn't perform bisection.
+            map.type() = -2;
+
+            return map;
+        }
+
+        // Save index and patch for posterity
+        slaveMap.index() = sIndex;
+        slaveMap.patchIndex() = pI;
+
+        // Alias for convenience..
+        const coupleMap& cMap = *cMapPtr;
+
+        // Temporarily turn off coupledModification
+        unsetCoupledModification();
+
+        // First check the master for bisection feasibility.
+        changeMap masterMap = bisectQuadFace(fIndex, changeMap(), true);
+
+        // Turn it back on.
+        setCoupledModification();
+
+        // Master couldn't perform bisection
+        if (masterMap.type() <= 0)
+        {
+            return masterMap;
+        }
+
+        // Fill the masterMap with points that
+        // we seek maps for...
+        FixedList<labelList, 2> slaveEdges(labelList(2, -1));
+
+        forAll(slaveEdges, edgeI)
+        {
+            labelList& slaveEdge = slaveEdges[edgeI];
+
+            // Renumber to slave indices
+            forAll(slaveEdge, pointI)
+            {
+                slaveEdge[pointI] =
+                (
+                    cMap.findSlaveIndex
+                    (
+                        pointEnum,
+                        commonEdges[edgeI][pointI]
+                    )
+                );
+            }
+
+            masterMap.addPoint(-1, slaveEdge);
+        }
+
+        // Temporarily turn off coupledModification
+        unsetCoupledModification();
+
+        if (localCouple)
+        {
+            // Bisect the local slave.
+            slaveMap = bisectQuadFace(sIndex, masterMap, false, forceOp);
+        }
+        else
+        {
+            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+
+            // Bisect the slave face
+            slaveMap =
+            (
+                recvMesh.subMesh().bisectQuadFace
+                (
+                    sIndex,
+                    masterMap,
+                    false,
+                    forceOp
+                )
+            );
+        }
+
+        // Turn coupledModification back on.
+        setCoupledModification();
+
+        // The final operation has to succeed.
+        if (slaveMap.type() <= 0)
+        {
+            FatalErrorIn
+            (
+                "\n"
+                "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
+                "(\n"
+                "    const label fIndex,\n"
+                "    const changeMap& masterMap,\n"
+                "    bool checkOnly,\n"
+                "    bool forceOp"
+                ")\n"
+            )
+                << "Coupled topo-change for slave failed."
+                << " Master face: " << fIndex << nl
+                << " Slave face: " << sIndex << nl
+                << " Patch index: " << pI << nl
+                << " Type: " << slaveMap.type() << nl
+                << abort(FatalError);
+        }
+
+        // Save index and patch for posterity
+        slaveMap.index() = sIndex;
+        slaveMap.patchIndex() = pI;
+    }
+
+    // Are we performing only checks?
+    if (checkOnly)
+    {
+        map.type() = 1;
+        return map;
+    }
+
     if (debug > 1)
     {
         Info << nl << nl << "Face: " << fIndex
@@ -233,373 +579,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 cellHull
             );
         }
-    }
-
-    // Find the common-edge between the triangular boundary faces
-    // and the face under consideration.
-    meshOps::findCommonEdge
-    (
-        c0BdyIndex[0],
-        fIndex,
-        faceEdges_,
-        commonEdgeIndex[0]
-    );
-
-    meshOps::findCommonEdge
-    (
-        c0BdyIndex[1],
-        fIndex,
-        faceEdges_,
-        commonEdgeIndex[1]
-    );
-
-    commonEdges[0] = edges_[commonEdgeIndex[0]];
-    commonEdges[1] = edges_[commonEdgeIndex[1]];
-
-    if (coupledModification_)
-    {
-        // Is this a locally coupled face?
-        if (locallyCoupledEntity(fIndex))
-        {
-            label sIndex = -1, pIndex = -1;
-
-            const label faceEnum  = coupleMap::FACE;
-            const label pointEnum = coupleMap::POINT;
-
-            // Determine the slave index.
-            forAll(patchCoupling_, patchI)
-            {
-                if (patchCoupling_(patchI))
-                {
-                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
-
-                    if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
-                    {
-                        // Keep this index for master/slave mapping.
-                        pIndex = patchI;
-
-                        break;
-                    }
-
-                    // The following bit happens only during the sliver
-                    // exudation process, since slave faces are
-                    // usually not added to the coupled face-stack.
-                    if ((sIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
-                    {
-                        // Keep this index for master/slave mapping.
-                        pIndex = patchI;
-
-                        // Notice that we are bisecting a slave face.
-                        bisectingSlave = true;
-
-                        break;
-                    }
-                }
-            }
-
-            if (sIndex == -1)
-            {
-                FatalErrorIn
-                (
-                    "\n"
-                    "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
-                    "(\n"
-                    "    const label fIndex,\n"
-                    "    const changeMap& masterMap,\n"
-                    "    bool checkOnly,\n"
-                    "    bool forceOp"
-                    ")\n"
-                )
-                    << "Coupled maps were improperly specified." << nl
-                    << " Slave index not found for: " << nl
-                    << " Face: " << fIndex << nl
-                    << abort(FatalError);
-            }
-
-            if (debug > 1)
-            {
-                Pout << nl << " >> Bisecting slave face: " << sIndex
-                     << " for master face: " << fIndex << endl;
-            }
-
-            // Temporarily turn off coupledModification.
-            unsetCoupledModification();
-
-            // First check the slave for bisection feasibility.
-            slaveMap =
-            (
-                bisectQuadFace
-                (
-                    sIndex,
-                    changeMap(),
-                    true
-                )
-            );
-
-            if (slaveMap.type() == 1)
-            {
-                // Can the master be bisected as well?
-                changeMap masterMap =
-                (
-                    bisectQuadFace
-                    (
-                        fIndex,
-                        changeMap(),
-                        true
-                    )
-                );
-
-                // Master couldn't perform bisection
-                if (masterMap.type() != 1)
-                {
-                    setCoupledModification();
-
-                    return masterMap;
-                }
-
-                const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
-
-                // Fill the masterMap with points that
-                // we seek maps for...
-                FixedList<labelList, 2> slaveEdges(labelList(2, -1));
-
-                forAll(slaveEdges, edgeI)
-                {
-                    labelList& slaveEdge = slaveEdges[edgeI];
-
-                    // Renumber to slave indices
-                    forAll(slaveEdge, pointI)
-                    {
-                        slaveEdge[pointI] =
-                        (
-                            cMap.findSlaveIndex
-                            (
-                                pointEnum,
-                                commonEdges[edgeI][pointI]
-                            )
-                        );
-                    }
-
-                    masterMap.addPoint(-1, slaveEdge);
-                }
-
-                // Bisect the slave edge
-                slaveMap = bisectQuadFace(sIndex, masterMap, false);
-
-                // The final operation has to succeed.
-                if (slaveMap.type() <= 0)
-                {
-                    FatalErrorIn
-                    (
-                        "\n"
-                        "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
-                        "(\n"
-                        "    const label fIndex,\n"
-                        "    const changeMap& masterMap,\n"
-                        "    bool checkOnly,\n"
-                        "    bool forceOp"
-                        ")\n"
-                    )
-                        << "Coupled topo-change for slave failed." << nl
-                        << " Master index: " << fIndex << nl
-                        << " Slave index: " << sIndex << nl
-                        << " Type: " << slaveMap.type()
-                        << abort(FatalError);
-                }
-
-                // Save index and patch for posterity
-                slaveMap.index() = sIndex;
-                slaveMap.patchIndex() = pIndex;
-            }
-            else
-            {
-                // Slave couldn't perform bisection.
-                setCoupledModification();
-
-                map.type() = -2;
-
-                return map;
-            }
-
-            // Turn it back on.
-            setCoupledModification();
-        }
-        else
-        if (processorCoupledEntity(fIndex))
-        {
-            // Bisect face on the patchSubMesh.
-            const label faceEnum = coupleMap::FACE;
-            const label pointEnum = coupleMap::POINT;
-
-            // Check slaves
-            forAll(procIndices_, pI)
-            {
-                // Fetch non-const reference to subMeshes
-                coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
-                coupleMap& cMap = recvMesh.patchMap();
-
-                label sIndex = -1;
-
-                if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
-                {
-                    if (debug > 3)
-                    {
-                        Pout << "Checking slave face: " << sIndex
-                             << " on proc: " << procIndices_[pI]
-                             << " for master face: " << fIndex
-                             << endl;
-                    }
-
-                    // Check if a lower-ranked processor is
-                    // handling this edge
-                    if (procIndices_[pI] < Pstream::myProcNo())
-                    {
-                        if (debug > 3)
-                        {
-                            Pout << "Face: " << fIndex
-                                 << " is handled by proc: "
-                                 << procIndices_[pI]
-                                 << ", so bailing out."
-                                 << endl;
-                        }
-
-                        return map;
-                    }
-
-                    // First check the slave for bisection feasibility.
-                    slaveMap =
-                    (
-                        recvMesh.subMesh().bisectQuadFace
-                        (
-                            sIndex,
-                            changeMap(),
-                            true,
-                            forceOp
-                        )
-                    );
-
-                    if (slaveMap.type() != 1)
-                    {
-                        // Slave couldn't perform bisection.
-                        map.type() = -2;
-
-                        return map;
-                    }
-
-                    // Save index and patch for posterity
-                    slaveMap.index() = sIndex;
-                    slaveMap.patchIndex() = pI;
-
-                    break;
-                }
-            }
-
-            // Temporarily turn off coupledModification.
-            unsetCoupledModification();
-
-            // Can the master be bisected as well?
-            changeMap masterMap =
-            (
-                bisectQuadFace
-                (
-                    fIndex,
-                    changeMap(),
-                    true
-                )
-            );
-
-            // Turn it back on.
-            setCoupledModification();
-
-            // Master couldn't perform bisection
-            if (masterMap.type() != 1)
-            {
-                return masterMap;
-            }
-
-            label sIndex = slaveMap.index();
-            label pI = slaveMap.patchIndex();
-
-            // Fetch non-const reference to subMeshes
-            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
-            const coupleMap& cMap = recvMesh.patchMap();
-
-            // Fill the masterMap with points that
-            // we seek maps for...
-            FixedList<labelList, 2> slaveEdges(labelList(2, -1));
-
-            forAll(slaveEdges, edgeI)
-            {
-                labelList& slaveEdge = slaveEdges[edgeI];
-
-                // Renumber to slave indices
-                forAll(slaveEdge, pointI)
-                {
-                    slaveEdge[pointI] =
-                    (
-                        cMap.findSlaveIndex
-                        (
-                            pointEnum,
-                            commonEdges[edgeI][pointI]
-                        )
-                    );
-                }
-
-                masterMap.addPoint(-1, slaveEdge);
-            }
-
-            if (debug > 1)
-            {
-                Pout << nl << " >> Bisecting slave face: " << sIndex
-                     << " for master face: " << fIndex << endl;
-            }
-
-            // Bisect the slave edge
-            slaveMap =
-            (
-                recvMesh.subMesh().bisectQuadFace
-                (
-                    sIndex,
-                    masterMap,
-                    false,
-                    forceOp
-                )
-            );
-
-            // The final operation has to succeed.
-            if (slaveMap.type() <= 0)
-            {
-                FatalErrorIn
-                (
-                    "\n"
-                    "const changeMap "
-                    "dynamicTopoFvMesh::bisectQuadFace\n"
-                    "(\n"
-                    "    const label fIndex,\n"
-                    "    const changeMap& masterMap,\n"
-                    "    bool checkOnly,\n"
-                    "    bool forceOp\n"
-                    ")\n"
-                )
-                    << "Coupled topo-change for slave failed."
-                    << " Master face: " << fIndex << nl
-                    << " Slave face: " << sIndex << nl
-                    << " Patch index: " << pI << nl
-                    << " Type: " << slaveMap.type() << nl
-                    << abort(FatalError);
-            }
-
-            // Save index and patch for posterity
-            slaveMap.index() = sIndex;
-            slaveMap.patchIndex() = pI;
-        }
-    }
-
-    // Are we performing only checks?
-    if (checkOnly)
-    {
-        map.type() = 1;
-        return map;
     }
 
     // Find the isolated point on both boundary faces of cell[0]
@@ -1939,33 +1918,33 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     if (coupledModification_)
     {
-        // Create a master/slave entry for the new face on the patch.
-        // Identical for local and processor coupled patches.
-        FixedList<bool, 2> foundMatch(false);
-        FixedList<label, 2> checkFaces(-1);
+        // Alias for convenience...
+        const changeMap& slaveMap = slaveMaps[0];
 
-        // Add the new points to the coupling map
-        const label pIndex = slaveMap.patchIndex();
-        const List<objectMap>& apList = slaveMap.addedPointList();
+        bool localCouple = false, procCouple = false;
 
-        bool local = false;
         const coupleMap* cMapPtr = NULL;
+        const label pIndex = slaveMap.patchIndex();
 
-        if (locallyCoupledEntity(fIndex))
+        // Is this a locally coupled edge (either master or slave)?
+        if (locallyCoupledEntity(fIndex, true))
         {
-            local = true;
+            localCouple = true;
+            procCouple = false;
         }
         else
         if (processorCoupledEntity(fIndex))
         {
-            local = false;
+            procCouple = true;
+            localCouple = false;
         }
 
-        if (local)
+        if (localCouple && !procCouple)
         {
             cMapPtr = &(patchCoupling_[pIndex].patchMap());
         }
         else
+        if (procCouple && !localCouple)
         {
             coupledPatchInfo& recvMesh = recvPatchMeshes_[pIndex];
             cMapPtr = &(recvMesh.patchMap());
@@ -1973,6 +1952,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         // Alias for convenience
         const coupleMap& cMap = *cMapPtr;
+
+        // Add the new points to the coupling map
+        const List<objectMap>& apList = slaveMap.addedPointList();
 
         // Update pointMap
         cMap.mapSlave
@@ -2004,6 +1986,10 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             newPointIndex[1]
         );
 
+        // Create a master/slave entry for the new face on the patch.
+        FixedList<bool, 2> foundMatch(false);
+        FixedList<label, 2> checkFaces(-1);
+
         // Fill in the faces to check for...
         checkFaces[0] = fIndex;
         checkFaces[1] = newFaceIndex[3];
@@ -2020,11 +2006,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             {
                 const face* facePtr = NULL;
 
-                if (local)
+                if (localCouple && !procCouple)
                 {
                     facePtr = &(faces_[afList[sfI].index()]);
                 }
                 else
+                if (procCouple && !localCouple)
                 {
                     const dynamicTopoFvMesh& mesh =
                     (
@@ -2448,7 +2435,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             // Check slaves
             forAll(procIndices_, pI)
             {
-                // Fetch reference to subMeshes
+                // Fetch reference to subMesh
                 const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
                 const coupleMap& cMap = recvMesh.patchMap();
 
@@ -2456,6 +2443,14 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
                 {
+                    if (debug > 3)
+                    {
+                        Pout << "Checking slave edge: " << sIndex
+                             << " on proc: " << procIndices_[pI]
+                             << " for master edge: " << eIndex
+                             << endl;
+                    }
+
                     // Check if a lower-ranked processor is
                     // handling this edge
                     if (procIndices_[pI] < Pstream::myProcNo())

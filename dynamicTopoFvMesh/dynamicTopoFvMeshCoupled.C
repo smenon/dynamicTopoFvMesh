@@ -943,11 +943,102 @@ void dynamicTopoFvMesh::synchronizeCoupledPatches()
     forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
-        //coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
+        coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
 
         if (proc < Pstream::myProcNo())
         {
-            // const coupleMap& cMap = sendMesh.patchMap();
+            const coupleMap& cMap = sendMesh.patchMap();
+            const labelList& indices = cMap.entityIndices();
+            const labelList& operations = cMap.entityOperations();
+
+            // Fetch the appropriate map
+            const Map<label>* entityMapPtr =
+            (
+                twoDMesh_ ?
+                &(cMap.entityMap(coupleMap::FACE)) :
+                &(cMap.entityMap(coupleMap::EDGE))
+            );
+
+            const Map<label>& entityMap = *entityMapPtr;
+
+            // Keep track of added entities from initial set
+            label nEntities =
+            (
+                twoDMesh_ ?
+                cMap.nEntities(coupleMap::FACE) :
+                cMap.nEntities(coupleMap::EDGE)
+            );
+
+            // Specify a mapping for added indices
+            Map<label> addedEntityMap;
+
+            // Sequentially execute operations
+            forAll(indices, indexI)
+            {
+                label index = indices[indexI], op = operations[indexI];
+
+                // Determine the appropriate local index
+                label localIndex =
+                (
+                    entityMap.found(index) ?
+                    entityMap[index] :
+                    addedEntityMap[index]
+                );
+
+                changeMap opMap;
+
+                switch (op)
+                {
+                    case coupleMap::BISECTION:
+                    {
+                        opMap = bisectEdge(localIndex);
+
+                        // Insert the added index into the map
+                        addedEntityMap.insert
+                        (
+                            nEntities++,
+                            (
+                                twoDMesh_ ?
+                                opMap.addedFaceList()[2].index() :
+                                opMap.addedEdgeList()[0].index()
+                            )
+                        );
+
+                        break;
+                    }
+
+                    case coupleMap::COLLAPSE_FIRST:
+                    {
+                        opMap = collapseEdge(localIndex, 1);
+                        break;
+                    }
+
+                    case coupleMap::COLLAPSE_SECOND:
+                    {
+                        opMap = collapseEdge(localIndex, 2);
+                        break;
+                    }
+
+                    case coupleMap::COLLAPSE_MIDPOINT:
+                    {
+                        opMap = collapseEdge(localIndex, 3);
+                        break;
+                    }
+                }
+
+                if (opMap.type() < 0)
+                {
+                    FatalErrorIn
+                    (
+                        "void dynamicTopoFvMesh::synchronizeCoupledPatches()"
+                    )
+                        << " Operation failed." << nl
+                        << " Index: " << index << nl
+                        << " localIndex: " << localIndex << nl
+                        << " operation: " << op << nl
+                        << abort(FatalError);
+                }
+            }
         }
     }
 }
