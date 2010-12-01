@@ -2762,6 +2762,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Add this point to the map.
     map.addPoint(newPointIndex);
 
+    // If either of the master points were modified during
+    // a collapse, set the new point as modified as well.
+    if (modPoints_.found(mP[0]) || modPoints_.found(mP[1]))
+    {
+        modPoints_.insert(newPointIndex, mP);
+    }
+
     // New edges can lie on a bounding curve between
     // coupled and non-coupled faces. Preferentially
     // add edges to coupled-patches, if they exist.
@@ -3804,6 +3811,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                         << abort(FatalError);
                 }
             }
+
+            // Push operation into coupleMap
+            cMap.pushOperation
+            (
+                slaveMap.index(),
+                coupleMap::BISECTION
+            );
         }
     }
 

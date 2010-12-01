@@ -69,45 +69,46 @@ tmp<vectorField> freeSurface::pointDisplacement(const scalarField& deltaH) const
 
         const labelList& curPointFaces = pointFaces[curPoint];
 
-        symmTensor M = symmTensor::zero;
-
-        vector S = vector::zero;
-
-
         scalarField w(curPointFaces.size(), 0.0);
 
         forAll (curPointFaces, faceI)
         {
             label curFace = curPointFaces[faceI];
 
-            w[faceI] = 1.0/mag
+            scalar magDistance =
             (
-                controlPoints()[curFace]
-              - points[curPoint]
+                 stabilise
+                 (
+                     mag
+                     (
+                        controlPoints()[curFace]
+                      - points[curPoint]
+                     ), VSMALL
+                 )
             );
+
+            w[faceI] = 1.0/magDistance;
         }
 
         w /= sum(w);
+
+        vector Q = vector::zero;
 
         forAll (curPointFaces, faceI)
         {
             label curFace = curPointFaces[faceI];
 
-            M = M + sqr(w[faceI])*sqr(controlPoints()[curFace]);
-
-            S += sqr(w[faceI])*controlPoints()[curFace];
+            Q += w[faceI]*controlPoints()[curFace];
         }
 
-        vector N = inv(M)&S;
-
-        N /= mag(N);
-
-        scalar p = (S&N)/sum(sqr(w));
-
         displacement[curPoint] =
-            pointsDisplacementDir()[curPoint]*
-            (p - (points[curPoint]&N))/
-            (pointsDisplacementDir()[curPoint]&N);
+        (
+           -1.0*
+           (
+               pointsDisplacementDir()[curPoint] & (points[curPoint] - Q)
+              *pointsDisplacementDir()[curPoint]
+           )
+        );
     }
 
     // Calculate displacement of points

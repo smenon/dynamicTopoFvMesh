@@ -295,7 +295,7 @@ bool cellSetAlgorithm::cellIntersection
     {
         label pIndex = newCellPoints[pointI];
 
-        if (pIndex >= nOldPoints_)
+        if (pIndex >= nOldPoints_ && !modPoints.found(pIndex))
         {
             // Check pointsFromPoints info
             label index = -1;
@@ -325,12 +325,12 @@ bool cellSetAlgorithm::cellIntersection
 
             if (allMaster)
             {
-                commonPoints.insert(newCellPoints[pointI], mObj);
+                commonPoints.insert(pIndex, mObj);
 
                 intersections.set
                 (
                     ++nInts,
-                    convert<T>(newPoints[newCellPoints[pointI]])
+                    convert<T>(newPoints[pIndex])
                 );
             }
         }
