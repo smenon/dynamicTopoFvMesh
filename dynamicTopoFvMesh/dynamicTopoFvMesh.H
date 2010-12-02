@@ -949,7 +949,7 @@ class dynamicTopoFvMesh
         void handleCoupledPatches(labelHashSet& entities);
 
         // Synchronize topology operations across processors
-        void synchronizeCoupledPatches();
+        void syncCoupledPatches();
 
         // Build patch sub-meshes for processor patches
         void buildProcessorPatchMeshes();
@@ -966,6 +966,22 @@ class dynamicTopoFvMesh
 
         // Build coupled maps for coupled processor patches
         void buildProcessorCoupledMaps();
+
+        // Initialize coupled boundary ordering
+        void initCoupledBoundaryOrdering
+        (
+            List<pointField>& centres,
+            List<pointField>& anchors
+        ) const;
+
+        // Synchronize coupled boundary ordering
+        void syncCoupledBoundaryOrdering
+        (
+            List<pointField>& centres,
+            List<pointField>& anchors,
+            labelListList& faceMaps,
+            labelListList& rotations
+        );
 
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);

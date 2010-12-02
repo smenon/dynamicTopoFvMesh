@@ -38,6 +38,7 @@ Author
 #include "Time.H"
 #include "triFace.H"
 #include "changeMap.H"
+#include "matchPoints.H"
 #include "globalMeshData.H"
 #include "coupledPatchInfo.H"
 #include "dynamicTopoFvMesh.H"
@@ -934,7 +935,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
 
 // Synchronize topology operations across processors
-void dynamicTopoFvMesh::synchronizeCoupledPatches()
+void dynamicTopoFvMesh::syncCoupledPatches()
 {
     // Wait for all transfers to complete.
     meshOps::waitForBuffers();
@@ -1029,7 +1030,7 @@ void dynamicTopoFvMesh::synchronizeCoupledPatches()
                 {
                     FatalErrorIn
                     (
-                        "void dynamicTopoFvMesh::synchronizeCoupledPatches()"
+                        "void dynamicTopoFvMesh::syncCoupledPatches()"
                     )
                         << " Operation failed." << nl
                         << " Index: " << index << nl
@@ -2429,6 +2430,245 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             forAll(mesh.edges_, edgeI)
             {
                 mesh.buildEdgePoints(edgeI);
+            }
+        }
+    }
+}
+
+
+// Initialize coupled boundary ordering
+// - Assumes that faces_ and points_ are consistent
+// - Assumes that patchStarts_ and patchSizes_ are consistent
+void dynamicTopoFvMesh::initCoupledBoundaryOrdering
+(
+    List<pointField>& centres,
+    List<pointField>& anchors
+) const
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    forAll(boundary, pI)
+    {
+        if (isA<processorPolyPatch>(boundary[pI]))
+        {
+            // Check if this is a master processor patch.
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[pI])
+            );
+
+            label start = patchStarts_[pI];
+            label size = patchSizes_[pI];
+
+            // Prepare centres and anchors
+            centres[pI].setSize(size, vector::zero);
+            anchors[pI].setSize(size, vector::zero);
+
+            if (Pstream::myProcNo() < pp.neighbProcNo())
+            {
+                forAll(centres[pI], fI)
+                {
+                    centres[pI][fI] = faces_[fI + start].centre(points_);
+                    anchors[pI][fI] = points_[faces_[fI + start][0]];
+                }
+
+                if (debug)
+                {
+                    // Ensure that we're sending the right size
+                    meshOps::pWrite(pp.neighbProcNo(), size);
+                }
+
+                // Send information to neighbour
+                meshOps::pWrite(pp.neighbProcNo(), centres);
+                meshOps::pWrite(pp.neighbProcNo(), anchors);
+            }
+            else
+            {
+                if (debug)
+                {
+                    label nEntities = -1;
+
+                    // Ensure that we're receiving the right size
+                    meshOps::pRead(pp.neighbProcNo(), nEntities);
+
+                    if (nEntities != size)
+                    {
+                        FatalErrorIn
+                        (
+                            "void dynamicTopoFvMesh::"
+                            "initCoupledBoundaryOrdering() const"
+                        )
+                            << "Incorrect send / recv sizes: " << nl
+                            << " nEntities: " << nEntities << nl
+                            << " size: " << size << nl
+                            << abort(FatalError);
+                    }
+                }
+
+                // Schedule receive from neighbour
+                meshOps::pRead(pp.neighbProcNo(), centres);
+                meshOps::pRead(pp.neighbProcNo(), anchors);
+            }
+        }
+    }
+}
+
+
+// Synchronize coupled boundary ordering
+void dynamicTopoFvMesh::syncCoupledBoundaryOrdering
+(
+    List<pointField>& centres,
+    List<pointField>& anchors,
+    labelListList& faceMaps,
+    labelListList& rotations
+)
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Calculate centres and tolerances for any slave patches
+    List<scalarField> slaveTols(boundary.size());
+    List<pointField> slaveCentres(boundary.size());
+
+    scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-4);
+
+    forAll(boundary, pI)
+    {
+        if (isA<processorPolyPatch>(boundary[pI]))
+        {
+            // Check if this is a slave processor patch.
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[pI])
+            );
+
+            label start = patchStarts_[pI];
+            label size = patchSizes_[pI];
+
+            if (Pstream::myProcNo() > pp.neighbProcNo())
+            {
+                slaveTols[pI].setSize(size, 0.0);
+                slaveCentres[pI].setSize(size, vector::zero);
+
+                forAll(slaveCentres[pI], fI)
+                {
+                    point& fc = slaveCentres[pI][fI];
+
+                    const face& checkFace = faces_[fI + start];
+
+                    // Calculate centre
+                    fc = checkFace.centre(points_);
+
+                    scalar maxLen = -GREAT;
+
+                    forAll(checkFace, fpI)
+                    {
+                        maxLen = max(maxLen, mag(points_[checkFace[fpI]] - fc));
+                    }
+
+                    slaveTols[pI][fI] = matchTol*maxLen;
+                }
+            }
+        }
+    }
+
+    // Wait for transfers before continuing.
+    meshOps::waitForBuffers();
+
+    forAll(boundary, pI)
+    {
+        if (isA<processorPolyPatch>(boundary[pI]))
+        {
+            // Check if this is a master processor patch.
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[pI])
+            );
+
+            labelList& faceMap = faceMaps[pI];
+            labelList& rotation = rotations[pI];
+
+            // Initialize map and rotation
+            faceMap.setSize(pp.size(), -1);
+            rotation.setSize(pp.size(), 0);
+
+            if (Pstream::myProcNo() < pp.neighbProcNo())
+            {
+                // Do nothing (i.e. identical mapping, zero rotation).
+                forAll(faceMap, pfI)
+                {
+                    faceMap[pfI] = pfI;
+                }
+            }
+            else
+            {
+                // Try zero separation automatic matching
+                matchPoints
+                (
+                    slaveCentres[pI],
+                    centres[pI],
+                    slaveTols[pI],
+                    true,
+                    faceMap
+                );
+
+                label start = patchStarts_[pI];
+
+                // Set rotation.
+                forAll(faceMap, oldFaceI)
+                {
+                    label newFaceI = faceMap[oldFaceI];
+
+                    const point& anchor = anchors[pI][newFaceI];
+                    const scalar& faceTol = slaveTols[pI][oldFaceI];
+                    const face& checkFace = faces_[start + oldFaceI];
+
+                    label anchorFp = -1;
+                    scalar minDSqr = GREAT;
+
+                    forAll(checkFace, fpI)
+                    {
+                        scalar dSqr = magSqr(anchor - points_[checkFace[fpI]]);
+
+                        if (dSqr < minDSqr)
+                        {
+                            minDSqr = dSqr;
+                            anchorFp = fpI;
+                        }
+                    }
+
+                    if (anchorFp == -1 || mag(minDSqr) > faceTol)
+                    {
+                        FatalErrorIn
+                        (
+                            "void dynamicTopoFvMesh::"
+                            "syncCoupledBoundaryOrdering() const"
+                        )
+                            << "Cannot find anchor: " << anchor << nl
+                            << " Face: " << checkFace << nl
+                            << " Vertices: "
+                            << UIndirectList<point>(points_, checkFace) << nl
+                            << " on patch: " << pp.name()
+                            << abort(FatalError);
+                    }
+                    else
+                    {
+                        // Positive rotation
+                        rotation[newFaceI] =
+                        (
+                            (checkFace.size() - anchorFp) % checkFace.size()
+                        );
+                    }
+                }
             }
         }
     }

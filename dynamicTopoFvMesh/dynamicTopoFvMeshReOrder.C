@@ -738,7 +738,6 @@ void dynamicTopoFvMesh::reOrderFaces
     labelListList oldFaceEdges(allFaces);
 
     addedFaceRenumbering_.clear();
-    Map<label> addedFaceReverseRenumbering;
 
     // Make a copy of the old face-based lists, and clear them
     forAll(faces_, faceI)
@@ -808,7 +807,6 @@ void dynamicTopoFvMesh::reOrderFaces
 
     // Handle boundaries first. If any coupled interfaces need to be
     // updated, they can be reshuffled after interior faces are done.
-    // Update maps for boundaries now.
     for (label faceI = nOldInternalFaces_; faceI < allFaces; faceI++)
     {
         if (visited[faceI] == -1)
@@ -824,17 +822,46 @@ void dynamicTopoFvMesh::reOrderFaces
             }
             else
             {
-                addedFaceRenumbering_.insert(faceI, bFaceIndex);
-
-                addedFaceReverseRenumbering.insert(bFaceIndex, faceI);
-
                 faceMap_[bFaceIndex] = -1;
+                addedFaceRenumbering_.insert(faceI, bFaceIndex);
             }
+
+            // Renumber owner
+            label ownerRenumber =
+            (
+                oldOwner[faceI] < nOldCells_
+              ? reverseCellMap_[oldOwner[faceI]]
+              : addedCellRenumbering_[oldOwner[faceI]]
+            );
+
+            // Insert entities into local lists...
+            owner_[bFaceIndex] = ownerRenumber;
+            neighbour_[bFaceIndex] = -1;
+            faces_[bFaceIndex] = oldFaces[faceI];
+            faceEdges_[bFaceIndex] = oldFaceEdges[faceI];
+
+            // Insert entities into mesh-reset lists...
+            owner[bFaceIndex] = ownerRenumber;
+            faces[bFaceIndex].transfer(oldFaces[faceI]);
+            faceEdges[bFaceIndex].transfer(oldFaceEdges[faceI]);
 
             // Mark this face as visited
             visited[faceI] = 0;
         }
     }
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Prepare centres and anchors for coupled interfaces
+    List<pointField> centres(boundary.size()), anchors(boundary.size());
+
+    // Now that points and boundary faces are up-to-date,
+    // send and receive centres and anchor points for coupled patches
+    initCoupledBoundaryOrdering
+    (
+        centres,
+        anchors
+    );
 
     // Upper-triangular ordering of internal faces:
 
@@ -984,43 +1011,25 @@ void dynamicTopoFvMesh::reOrderFaces
         }
     }
 
-    // All internal faces have been inserted. Now insert boundary faces.
-    label oldIndex;
+    // Prepare faceMaps and rotations for coupled interfaces
+    labelListList faceMaps(boundary.size()), rotations(boundary.size());
 
-    for (label i = nInternalFaces_; i < nFaces_; i++)
+    // Now compute faceMaps for coupled interfaces
+    syncCoupledBoundaryOrdering
+    (
+        centres,
+        anchors,
+        faceMaps,
+        rotations
+    );
+
+    forAll(faceMaps, pI)
     {
-        if (faceMap_[i] == -1)
+        if (faceMaps[pI].size())
         {
-            // This boundary face was added during the topology change
-            oldIndex = addedFaceReverseRenumbering[i];
+            // Faces in this patch need to be shuffled
+
         }
-        else
-        {
-            oldIndex = faceMap_[i];
-        }
-
-        // Renumber owner/neighbour
-        label ownerRenumber =
-        (
-            oldOwner[oldIndex] < nOldCells_
-          ? reverseCellMap_[oldOwner[oldIndex]]
-          : addedCellRenumbering_[oldOwner[oldIndex]]
-        );
-
-        // Insert entities into local listsLists...
-        faces_[faceInOrder] = oldFaces[oldIndex];
-        owner_[faceInOrder] = ownerRenumber;
-        neighbour_[faceInOrder] = -1;
-        faceEdges_[faceInOrder] = oldFaceEdges[oldIndex];
-
-        // Insert entities into mesh-reset lists
-        // NOTE: From OF-1.5 onwards, neighbour array
-        //       does not store -1 for boundary faces
-        faces[faceInOrder].transfer(oldFaces[oldIndex]);
-        owner[faceInOrder] = ownerRenumber;
-        faceEdges[faceInOrder].transfer(oldFaceEdges[oldIndex]);
-
-        faceInOrder++;
     }
 
     // Now that we're done with faces, unlock it
