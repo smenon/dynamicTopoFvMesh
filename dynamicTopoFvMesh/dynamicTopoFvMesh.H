@@ -975,13 +975,13 @@ class dynamicTopoFvMesh
         ) const;
 
         // Synchronize coupled boundary ordering
-        void syncCoupledBoundaryOrdering
+        bool syncCoupledBoundaryOrdering
         (
             List<pointField>& centres,
             List<pointField>& anchors,
             labelListList& faceMaps,
             labelListList& rotations
-        );
+        ) const;
 
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);

@@ -2520,18 +2520,20 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
 
 
 // Synchronize coupled boundary ordering
-void dynamicTopoFvMesh::syncCoupledBoundaryOrdering
+bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
 (
     List<pointField>& centres,
     List<pointField>& anchors,
-    labelListList& faceMaps,
+    labelListList& patchMaps,
     labelListList& rotations
-)
+) const
 {
     if (!Pstream::parRun())
     {
-        return;
+        return false;
     }
+
+    bool anyChange = false;
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -2594,19 +2596,19 @@ void dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                 refCast<const processorPolyPatch>(boundary[pI])
             );
 
-            labelList& faceMap = faceMaps[pI];
+            labelList& patchMap = patchMaps[pI];
             labelList& rotation = rotations[pI];
 
             // Initialize map and rotation
-            faceMap.setSize(pp.size(), -1);
+            patchMap.setSize(pp.size(), -1);
             rotation.setSize(pp.size(), 0);
 
             if (Pstream::myProcNo() < pp.neighbProcNo())
             {
                 // Do nothing (i.e. identical mapping, zero rotation).
-                forAll(faceMap, pfI)
+                forAll(patchMap, pfI)
                 {
-                    faceMap[pfI] = pfI;
+                    patchMap[pfI] = pfI;
                 }
             }
             else
@@ -2618,15 +2620,15 @@ void dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                     centres[pI],
                     slaveTols[pI],
                     true,
-                    faceMap
+                    patchMap
                 );
 
                 label start = patchStarts_[pI];
 
                 // Set rotation.
-                forAll(faceMap, oldFaceI)
+                forAll(patchMap, oldFaceI)
                 {
-                    label newFaceI = faceMap[oldFaceI];
+                    label newFaceI = patchMap[oldFaceI];
 
                     const point& anchor = anchors[pI][newFaceI];
                     const scalar& faceTol = slaveTols[pI][oldFaceI];
@@ -2669,9 +2671,14 @@ void dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                         );
                     }
                 }
+
+                // Set the flag
+                anyChange = true;
             }
         }
     }
+
+    return anyChange;
 }
 
 

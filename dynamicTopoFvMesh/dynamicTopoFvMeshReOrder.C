@@ -343,7 +343,6 @@ void dynamicTopoFvMesh::reOrderEdges
     labelListList oldEdgePoints(allEdges);
 
     addedEdgeRenumbering_.clear();
-    Map<label> addedEdgeReverseRenumbering;
 
     // Transfer old edge-based lists, and clear them
     forAll(edges_, edgeI)
@@ -367,7 +366,7 @@ void dynamicTopoFvMesh::reOrderEdges
     // Keep track of inserted boundary edge indices
     labelList boundaryPatchIndices(edgePatchStarts_);
 
-    // Loop through all edges and add internal ones first
+    // Loop through all edges and add them
     forAll(oldEdges, edgeI)
     {
         // Ensure that we're adding valid edges
@@ -379,8 +378,10 @@ void dynamicTopoFvMesh::reOrderEdges
         // Determine which patch this edge belongs to
         label patch = whichEdgePatch(edgeI);
 
-        // Update maps for boundary edges. Edge insertion for
-        // boundaries will be done after internal edges.
+        // Obtain references
+        edge& thisEdge = oldEdges[edgeI];
+        labelList& thisEF = oldEdgeFaces[edgeI];
+
         if (patch >= 0)
         {
             label bEdgeIndex = boundaryPatchIndices[patch]++;
@@ -393,18 +394,25 @@ void dynamicTopoFvMesh::reOrderEdges
             }
             else
             {
-                addedEdgeRenumbering_.insert(edgeI, bEdgeIndex);
-                addedEdgeReverseRenumbering.insert(bEdgeIndex, edgeI);
-
                 edgeMap_[bEdgeIndex] = -1;
+                addedEdgeRenumbering_.insert(edgeI, bEdgeIndex);
+            }
+
+            // Insert entities into local lists...
+            edges_[bEdgeIndex] = thisEdge;
+            edgeFaces_[bEdgeIndex] = thisEF;
+
+            // Insert entities into mesh-reset lists
+            edges[bEdgeIndex] = thisEdge;
+            edgeFaces[bEdgeIndex].transfer(thisEF);
+
+            if (!twoDMesh_)
+            {
+                edgePoints_[bEdgeIndex].transfer(oldEdgePoints[edgeI]);
             }
         }
         else
         {
-            // Obtain references
-            edge& thisEdge = oldEdges[edgeI];
-            labelList& thisEF = oldEdgeFaces[edgeI];
-
             // Renumber internal edges and add normally.
             if (edgeI < nOldEdges_)
             {
@@ -433,37 +441,6 @@ void dynamicTopoFvMesh::reOrderEdges
         }
     }
 
-    // All internal edges have been inserted. Now insert boundary edges.
-    label oldIndex;
-
-    for(label i = nInternalEdges_; i < nEdges_; i++)
-    {
-        if (edgeMap_[i] == -1)
-        {
-            // This boundary edge was added during the topology change
-            oldIndex = addedEdgeReverseRenumbering[i];
-        }
-        else
-        {
-            oldIndex = edgeMap_[i];
-        }
-
-        // Insert entities into local Lists...
-        edges_[edgeInOrder] = oldEdges[oldIndex];
-        edgeFaces_[edgeInOrder] = oldEdgeFaces[oldIndex];
-
-        // Insert entities into mesh-reset lists
-        edges[edgeInOrder] = oldEdges[oldIndex];
-        edgeFaces[edgeInOrder].transfer(oldEdgeFaces[oldIndex]);
-
-        if (!twoDMesh_)
-        {
-            edgePoints_[edgeInOrder].transfer(oldEdgePoints[oldIndex]);
-        }
-
-        edgeInOrder++;
-    }
-
     // Now that we're done with edges, unlock it
     if (threaded)
     {
@@ -471,12 +448,12 @@ void dynamicTopoFvMesh::reOrderEdges
     }
 
     // Final check to ensure everything went okay
-    if (edgeInOrder != nEdges_)
+    if (edgeInOrder != nInternalEdges_)
     {
         FatalErrorIn("dynamicTopoFvMesh::reOrderEdges()") << nl
-                << " Algorithm did not visit every edge in the mesh."
-                << " Something's messed up." << nl
-                << abort(FatalError);
+            << " Algorithm did not visit every internal edge in the mesh."
+            << " Something's messed up." << nl
+            << abort(FatalError);
     }
 
     // Renumber all edges / edgePoints with updated point information
@@ -1012,23 +989,90 @@ void dynamicTopoFvMesh::reOrderFaces
     }
 
     // Prepare faceMaps and rotations for coupled interfaces
-    labelListList faceMaps(boundary.size()), rotations(boundary.size());
+    labelListList patchMaps(boundary.size()), rotations(boundary.size());
 
-    // Now compute faceMaps for coupled interfaces
-    syncCoupledBoundaryOrdering
+    // Now compute patchMaps for coupled interfaces
+    bool anyChange =
     (
-        centres,
-        anchors,
-        faceMaps,
-        rotations
+        syncCoupledBoundaryOrdering
+        (
+            centres,
+            anchors,
+            patchMaps,
+            rotations
+        )
     );
 
-    forAll(faceMaps, pI)
+    if (anyChange)
     {
-        if (faceMaps[pI].size())
+        forAll(patchMaps, pI)
         {
-            // Faces in this patch need to be shuffled
+            const labelList& patchMap = patchMaps[pI];
 
+            if (patchMap.size())
+            {
+                // Faces in this patch need to be shuffled
+                label pStart = patchStarts_[pI];
+
+                forAll(patchMap, fI)
+                {
+                    label oldPos = fI + pStart;
+                    label newPos = patchMap[fI] + pStart;
+
+                    // Rotate the face in-place
+                    const face& oldFace = faces_[oldPos];
+
+                    face newFace(oldFace.size());
+                    label nPos = rotations[pI][fI];
+
+                    forAll(oldFace, fpI)
+                    {
+                        label nfpI = (fpI + nPos) % oldFace.size();
+
+                        if (nfpI < 0)
+                        {
+                            nfpI += oldFace.size();
+                        }
+
+                        newFace[nfpI] = oldFace[fpI];
+                    }
+
+                    // Map to new locations, using the
+                    // 'old' lists as temporaries.
+                    //  - All boundary neighbours are '-1',
+                    //    so use that as a faceMap temporary
+                    oldNeighbour[newPos] = faceMap_[oldPos];
+
+                    oldOwner[newPos] = owner_[oldPos];
+                    oldFaces[newPos].transfer(newFace);
+                    oldFaceEdges[newPos].transfer(faceEdges_[oldPos]);
+                }
+
+                // Now copy / transfer back to original lists
+                forAll(patchMap, fI)
+                {
+                    label index = (fI + pStart);
+
+                    faceMap_[index] = oldNeighbour[index];
+
+                    owner_[index] = oldOwner[index];
+                    faces_[index] = oldFaces[index];
+                    faceEdges_[index] = oldFaceEdges[index];
+
+                    owner[index] = oldOwner[index];
+                    faces[index].transfer(oldFaces[index]);
+                    faceEdges[index].transfer(oldFaceEdges[index]);
+                }
+            }
+        }
+
+        // Now renumber reverseFaceMap
+        forAll(faceMap_, newFaceI)
+        {
+            if (faceMap_[newFaceI] > -1)
+            {
+                reverseFaceMap_[faceMap_[newFaceI]] = newFaceI;
+            }
         }
     }
 
