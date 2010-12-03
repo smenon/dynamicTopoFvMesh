@@ -1,5 +1,4 @@
 conservativeMeshToMesh.C
 conservativeMeshToMeshAddressing.C
-conservativeMeshToMeshWriteVTK.C
 
 LIB = $(FOAM_USER_LIBBIN)/libconservativeMeshToMesh

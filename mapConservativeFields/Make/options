@@ -1,4 +1,5 @@
 EXE_INC = \
+    -I../dynamicTopoFvMesh/lnInclude \
     -I../conservativeMeshToMesh/lnInclude \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/sampling/lnInclude

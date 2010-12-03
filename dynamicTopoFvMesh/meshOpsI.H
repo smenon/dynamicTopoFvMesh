@@ -1040,7 +1040,7 @@ inline void insertPointLabels
 (
     const Vector<T>& refNorm,
     const Field<Vector<T> >& points,
-    const labelHashSet& pLabels,
+    const DynamicList<label>& pLabels,
     face& modFace
 )
 {
@@ -1049,14 +1049,14 @@ inline void insertPointLabels
 
     const T pointFive(0.5);
 
-    forAllConstIter(labelHashSet, pLabels, pIter)
+    forAll(pLabels, pointI)
     {
         forAll(newFace, pI)
         {
             label nI = newFace.fcIndex(pI);
 
             const Vector<T>& a = points[newFace[pI]];
-            const Vector<T>& b = points[pIter.key()];
+            const Vector<T>& b = points[pLabels[pointI]];
             const Vector<T>& c = points[newFace[nI]];
 
             // Compute the normal.
@@ -1067,7 +1067,7 @@ inline void insertPointLabels
                 // Insert the point.
                 meshOps::insertLabel
                 (
-                    pIter.key(),
+                    pLabels[pointI],
                     newFace[pI],
                     newFace[nI],
                     newFace

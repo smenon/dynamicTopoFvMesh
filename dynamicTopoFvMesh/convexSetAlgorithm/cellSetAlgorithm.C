@@ -248,8 +248,8 @@ bool cellSetAlgorithm::cellIntersection
     const cell& newCell = this->newCells_[newIndex];
     const UList<face>& newFaces = this->newFaces_;
     const UList<label>& newOwner = this->newOwner_;
-    const edgeList newCellEdges = newCell.edges(this->newFaces_);
-    const labelList newCellPoints = newCell.labels(this->newFaces_);
+    const edgeList newCellEdges = newCell.edges(newFaces);
+    const labelList newCellPoints = newCell.labels(newFaces);
 
     // Alias references
     const UList<point>& newPoints = this->newPoints_;
@@ -675,6 +675,8 @@ bool cellSetAlgorithm::cellIntersection
             }
         }
 
+        const edge& oldEdge = oldCellEdges[edgeI];
+
         forAll(newCellEdges, edgeJ)
         {
             // For 2D meshes, only select edges on wedge/empty planes
@@ -694,8 +696,10 @@ bool cellSetAlgorithm::cellIntersection
                 }
             }
 
+            const edge& newEdge = newCellEdges[edgeJ];
+
             // Form an edge-pair
-            Pair<edge> edgePair(oldCellEdges[edgeI], newCellEdges[edgeJ]);
+            Pair<edge> edgePair(oldEdge, newEdge);
 
             bool disableCheck = false;
 
@@ -1372,7 +1376,7 @@ void cellSetAlgorithm::convexSetVolume
     face tmpFace(3);
     label nFaces = 0;
     faceList testFaces(0);
-    labelHashSet uniquePts;
+    DynamicList<label> uniquePts;
 
     // Loop through all points, and build faces with every
     // other point in the set
@@ -1516,7 +1520,7 @@ void cellSetAlgorithm::convexSetVolume
                         }
                         else
                         {
-                            uniquePts.insert(tmpFace[pI]);
+                            uniquePts.append(tmpFace[pI]);
                         }
                     }
 
@@ -1636,7 +1640,7 @@ void cellSetAlgorithm::convexSetVolume
                         }
                         else
                         {
-                            uniquePts.insert(testFace[pI]);
+                            uniquePts.append(testFace[pI]);
                         }
                     }
 
@@ -1674,7 +1678,7 @@ void cellSetAlgorithm::convexSetVolume
                         }
                         else
                         {
-                            uniquePts.insert(checkFace[pI]);
+                            uniquePts.append(checkFace[pI]);
                         }
                     }
 

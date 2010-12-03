@@ -44,6 +44,7 @@ SourceFiles
 #ifndef conservativeMeshToMesh_H
 #define conservativeMeshToMesh_H
 
+#include "meshOps.H"
 #include "meshToMesh.H"
 #include "className.H"
 #include "multiThreader.H"
@@ -110,36 +111,15 @@ class conservativeMeshToMesh
             vectorField& centres
         ) const;
 
-        // Obtain a list of possible parent cells from the old mesh.
-        labelList cellParents
-        (
-            const label newCellIndex,
-            const scalar searchFactor,
-            const label oldCandidate
-        ) const;
-
-        label whichSide
-        (
-            const labelList& cellPoints,
-            const pointField& points,
-            const point& dir,
-            const point& p
-        ) const;
-
-        // Test for intersection between two cells
-        bool testIntersection
-        (
-            const label newCellIndex,
-            const label oldCellIndex
-        ) const;
-
         // Return the intersection points between cells in old/new meshes
+        template <class T>
         bool cellIntersection
         (
-            const label newCellIndex,
-            const label oldCellIndex,
-            const scalar matchTol,
-            vectorField& intPoints
+            const label newIndex,
+            const label oldIndex,
+            const T& matchTol,
+            Field<Vector<T> >& intPoints,
+            bool output = false
         ) const;
 
         // Find all indices in edge
@@ -147,54 +127,6 @@ class conservativeMeshToMesh
         (
             const labelList& cList,
             const edge& edgeToCheck
-        ) const;
-
-        // Determine whether the particular point lies
-        // inside the given cell
-        bool pointInCell
-        (
-            const label cellIndex,
-            const point& checkPoint,
-            const bool useFromMesh
-        ) const;
-
-        // Determine whether a point lies on a segment
-        bool pointSegmentIntersection
-        (
-            const edge& segment,
-            const pointField& points,
-            const point& checkPoint,
-            const scalar matchTol
-        ) const;
-
-        // Determine whether a two line segments intersect
-        bool segmentSegmentIntersection
-        (
-            const edge& fromSegment,
-            const edge& toSegment,
-            const scalar matchTol,
-            point& intPoint
-        ) const;
-
-        // Determine whether a particular line segment
-        // intersects with a given face
-        bool segmentFaceIntersection
-        (
-            const FixedList<vector,2>& segment,
-            const edge& segmentIndices,
-            const label faceIndex,
-            const scalar matchTol,
-            point& intPoint,
-            const bool useFromMesh
-        ) const;
-
-        // Determine whether the particular point lies
-        // inside the given face
-        bool pointInFace
-        (
-            const label faceIndex,
-            const point& checkPoint,
-            const bool useFromMesh
         ) const;
 
         // Compute the volume / centre of a polyhedron
@@ -207,26 +139,6 @@ class conservativeMeshToMesh
             scalar& cVolume,
             vector& cCentre,
             bool output = false
-        ) const;
-
-        // Method to insert labels in a face, so that
-        // right-handedness is preserved.
-        void insertPointLabels
-        (
-            const vector& refNorm,
-            const vectorField& points,
-            const DynamicList<label>& pLabels,
-            face& modFace
-        ) const;
-
-        // Method to insert a label between two labels in a face
-        // Assumes that all labels are unique.
-        void insertLabel
-        (
-            const label newLabel,
-            const label labelA,
-            const label labelB,
-            labelList& list
         ) const;
 
         //- Interpolate internal field values (conservative first-order)
@@ -273,42 +185,23 @@ class conservativeMeshToMesh
             const GeometricField<Type, fvPatchField, volMesh>& fromVf
         ) const;
 
-    // Private debugging routines
-
-        void writeVTK
-        (
-            const label newCellIndex,
-            const label oldCellIndex,
-            const vectorField& cvxSet
-        ) const;
-
+        // Output an entity as a VTK file
         void writeVTK
         (
             const word& name,
-            const fvMesh& mesh,
             const label entity,
-            const label primitiveType
+            const label primitiveType = 3,
+            const bool useOldConnectivity = false
         ) const;
 
+        // Output a list of entities as a VTK file
         void writeVTK
         (
             const word& name,
-            const fvMesh& mesh,
             const labelList& cList,
-            const label primitiveType
-        ) const;
-
-        void writeVTK
-        (
-            const word& name,
-            const label nPoints,
-            const label nCells,
-            const label nTotalCells,
-            const pointField& points,
-            const labelListList& cpList,
-            const label primitiveType,
-            const Map<label>& reversePointMap = Map<label>(),
-            const Map<label>& reverseCellMap = Map<label>()
+            const label primitiveType = 3,
+            const bool useOldConnectivity = false,
+            const UList<scalar>& field = UList<scalar>()
         ) const;
 
     // Private static members

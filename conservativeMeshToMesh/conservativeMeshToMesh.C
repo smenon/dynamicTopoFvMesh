@@ -173,19 +173,10 @@ conservativeMeshToMesh::conservativeMeshToMesh
     {
         // Prior to multi-threaded operation,
         // force calculation of demand-driven data
-        fromMesh().edges();
+        toMesh().cells();
         fromMesh().cells();
         fromMesh().cellCentres();
-        fromMesh().cellEdges();
-        fromMesh().cellPoints();
-        fromMesh().faceEdges();
         fromMesh().cellCells();
-
-        toMesh().edges();
-        toMesh().cells();
-        toMesh().cellEdges();
-        toMesh().cellPoints();
-        toMesh().faceEdges();
 
         multiThreader threader(nThreads);
 
@@ -266,11 +257,12 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
             ctrMutex_.lock();
 
-            Info << "\r Progress: "
-                 << 100.0 * (double(counter_) / toMesh().nCells())
-                 << "% :  Cells processed: " << counter_
-                 << " out of " << toMesh().nCells() << " total."
-                 << "             "
+            scalar percent = 100.0 * (double(counter_) / toMesh().nCells());
+
+            Info << "  Progress: " << percent << "% : "
+                 << "  Cells processed: " << counter_
+                 << "  out of " << toMesh().nCells() << " total."
+                 << "             \r"
                  << flush;
 
             ctrMutex_.unlock();
@@ -413,6 +405,77 @@ void conservativeMeshToMesh::calcAddressingAndWeightsThreaded
         thread->sendSignal(handler::STOP);
     }
 }
+
+
+// Output an entity as a VTK file
+void conservativeMeshToMesh::writeVTK
+(
+    const word& name,
+    const label entity,
+    const label primitiveType,
+    const bool useOldConnectivity
+) const
+{
+    writeVTK
+    (
+        name,
+        labelList(1, entity),
+        primitiveType,
+        useOldConnectivity
+    );
+}
+
+
+// Output a list of primitives as a VTK file.
+//  - primitiveType is:
+//      0: List of points
+//      1: List of edges
+//      2: List of faces
+//      3: List of cells
+void conservativeMeshToMesh::writeVTK
+(
+    const word& name,
+    const labelList& cList,
+    const label primitiveType,
+    const bool useOldConnectivity,
+    const UList<scalar>& field
+) const
+{
+    if (useOldConnectivity)
+    {
+        // Use points from polyMesh
+        meshOps::writeVTK
+        (
+            fromMesh(),
+            name,
+            cList,
+            primitiveType,
+            fromMesh().points(),
+            fromMesh().edges(),
+            fromMesh().faces(),
+            fromMesh().cells(),
+            fromMesh().faceOwner(),
+            field
+        );
+    }
+    else
+    {
+        meshOps::writeVTK
+        (
+            toMesh(),
+            name,
+            cList,
+            primitiveType,
+            toMesh().points(),
+            toMesh().edges(),
+            toMesh().faces(),
+            toMesh().cells(),
+            toMesh().faceOwner(),
+            field
+        );
+    }
+}
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

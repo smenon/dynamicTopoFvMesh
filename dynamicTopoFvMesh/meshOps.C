@@ -66,7 +66,7 @@ namespace meshOps
 
 // Utility method to build a hull of cells
 // connected to the edge (for 2D simplical meshes)
-void constructPrismHull
+inline void constructPrismHull
 (
     const label eIndex,
     const UList<face>& faces,
@@ -136,7 +136,7 @@ void constructPrismHull
 
 // Utility method to build a hull of cells (and faces)
 // around an edge (for 3D simplical meshes)
-void constructHull
+inline void constructHull
 (
     const label eIndex,
     const UList<face>& faces,
@@ -344,7 +344,7 @@ void constructHull
 //    Renaud Waldura
 //    Dijkstra's Shortest Path Algorithm in Java
 //    http://renaud.waldura.com/
-bool Dijkstra
+inline bool Dijkstra
 (
     const Map<point>& points,
     const Map<edge>& edges,
@@ -514,7 +514,7 @@ bool Dijkstra
 
 // Select a list of elements from connectivity,
 // and output to a VTK format
-void writeVTK
+inline void writeVTK
 (
     const polyMesh& mesh,
     const word& name,
@@ -804,7 +804,7 @@ void writeVTK
 
 
 // Actual routine to write out the VTK file
-void writeVTK
+inline void writeVTK
 (
     const polyMesh& mesh,
     const word& name,
