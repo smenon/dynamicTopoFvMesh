@@ -6,8 +6,6 @@ ePatches = eMesh/ePatches
 $(ePatches)/ePatch/ePatch.C
 $(ePatches)/ePatch/newEPatch.C
 
-multiPrecision.C
-
 dynamicTopoFvMesh.C
 dynamicTopoFvMeshCheck.C
 dynamicTopoFvMeshReOrder.C

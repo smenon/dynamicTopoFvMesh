@@ -176,7 +176,7 @@ public:
         virtual void computeNormFactor(const label index) const = 0;
 
         // Compute intersections
-        virtual bool computeInsersection
+        virtual bool computeIntersection
         (
             const label newIndex,
             const label oldIndex,

@@ -124,7 +124,7 @@ public:
         virtual void computeNormFactor(const label index) const;
 
         // Compute intersections
-        virtual bool computeInsersection
+        virtual bool computeIntersection
         (
             const label newIndex,
             const label oldIndex,

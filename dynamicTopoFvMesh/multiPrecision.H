@@ -217,6 +217,32 @@ typedef Tensor<mpScalar> mpTensor;
 typedef SymmTensor<mpScalar> mpSymmTensor;
 typedef SphericalTensor<mpScalar> mpSphericalTensor;
 
+template<unsigned P, mpfr_rnd_t R>
+const char* const pTraits<multiPrecisionScalar<P,R> >::typeName = "mpScalar";
+
+template<unsigned P, mpfr_rnd_t R>
+const multiPrecisionScalar<P,R>
+pTraits<multiPrecisionScalar<P,R> >::zero =
+(
+    multiPrecisionScalar<P,R>("0.0")
+);
+
+template<unsigned P, mpfr_rnd_t R>
+const multiPrecisionScalar<P,R>
+pTraits<multiPrecisionScalar<P,R> >::one =
+(
+    multiPrecisionScalar<P,R>("1.0")
+);
+
+template<unsigned P, mpfr_rnd_t R>
+const char* pTraits<multiPrecisionScalar<P,R> >::componentNames[] = { "x" };
+
+template<unsigned P, mpfr_rnd_t R>
+pTraits<multiPrecisionScalar<P,R> >::pTraits(Istream& is)
+{
+    is >> p_;
+}
+
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

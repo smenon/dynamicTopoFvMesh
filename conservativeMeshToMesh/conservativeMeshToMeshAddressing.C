@@ -23,10 +23,10 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Description
-    Private member of conservativeMeshToMesh.
+    Private members of conservativeMeshToMesh.
 
     Calculates mesh to mesh addressing pattern (for each cell from one mesh
-    find the closest cells in the other mesh).
+    find the intersecting cells in the other mesh).
 
 \*---------------------------------------------------------------------------*/
 
@@ -37,7 +37,6 @@ Description
 #include "ListOps.H"
 #include "clockTime.H"
 #include "tetPointRef.H"
-#include "SortableList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -64,8 +63,9 @@ void conservativeMeshToMesh::calcAddressingAndWeights
 
     clockTime sTimer;
     bool reported = false;
-    label count = 0, oldStart = cellStart;
-    scalar interval = 0.5, oIndex = 0.0, nIndex = 0.0;
+    scalar maxError = 0.0;
+    label count = 0, oldStart = cellStart, nInconsistencies = 0;
+    scalar interval = 0.5, oIndex = 0.0, nIndex = 0.0, matchTol = 1e-4;
 
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
@@ -100,15 +100,38 @@ void conservativeMeshToMesh::calcAddressingAndWeights
         scalarField& weights = weights_[cellI];
         vectorField& centres = centres_[cellI];
 
+        label precisionAttempts = 0;
+
         // Obtain weighting factors for this cell.
-        computeCellWeights
+        bool consistent =
         (
-            cellI,
-            cAddr[cellI],
-            parents,
-            weights,
-            centres
+            computeWeights
+            (
+                cellI,
+                cAddr[cellI],
+                fromMesh().cellCells(),
+                matchTol,
+                precisionAttempts,
+                parents,
+                weights,
+                centres
+            )
         );
+
+        if (!consistent)
+        {
+            maxError = Foam::max(maxError, mag(1.0 - sum(weights)));
+
+            Info<< nl
+                << " Inconsistent cell: " << cellI << nl
+                << " candidate: " << cAddr[cellI] << nl
+                << " parents: " << parents << nl
+                << " weights: " << weights << nl
+                << " Error: " << mag(1.0 - sum(weights))
+                << endl;
+
+            nInconsistencies++;
+        }
 
         if ((cellI - oldStart) > 50)
         {
@@ -282,19 +305,49 @@ bool conservativeMeshToMesh::invertAddressing()
 }
 
 
-// Compute cell weighting factors for a particular cell
-void conservativeMeshToMesh::computeCellWeights
+// Compute weighting factors for a particular cell
+bool conservativeMeshToMesh::computeWeights
 (
-    const label newCellIndex,
+    const label index,
     const label oldCandidate,
+    const labelListList& oldNeighbourList,
+    const scalar mTol,
+    label& precisionAttempts,
     labelList& parents,
     scalarField& weights,
-    vectorField& centres
+    vectorField& centres,
+    bool highPrecision
 ) const
 {
-    //- Geometric match tolerance
+    if (parents.size() || weights.size() || centres.size())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "bool conservativeMeshToMesh::computeWeights\n"
+            "(\n"
+            "    const label index,\n"
+            "    const label oldCandidate,\n"
+            "    const labelListList& oldNeighbourList,\n"
+            "    const scalar mTol,\n"
+            "    label& precisionAttempts,\n"
+            "    labelList& parents,\n"
+            "    scalarField& weights,\n"
+            "    vectorField& centres,\n"
+            "    bool highPrecision\n"
+            ") const\n"
+        )
+            << " Addressing has already been calculated." << nl
+            << " Index: " << index << nl
+            << " oldCandidate: " << oldCandidate << nl
+            << " Parents: " << parents << nl
+            << " Weights: " << weights << nl
+            << " Centres: " << centres << nl
+            << abort(FatalError);
+    }
+
     bool changed;
-    scalar matchTol = 1e-4;;
+    scalar matchTol = mTol;
     label nAttempts = 0, nIntersects = 0;
 
     label mapCandidate = -1;
@@ -306,7 +359,7 @@ void conservativeMeshToMesh::computeCellWeights
         label minCell = -1;
 
         const vectorField& oldCentres = fromMesh().cellCentres();
-        const vector newCentre = toMesh().cellCentres()[newCellIndex];
+        const vector newCentre = toMesh().cellCentres()[index];
 
         forAll(oldCentres, cellI)
         {
@@ -326,10 +379,7 @@ void conservativeMeshToMesh::computeCellWeights
     }
 
     // Fetch the volume of the new cell
-    scalar newCellVolume = toMesh().cellVolumes()[newCellIndex];
-
-    // Fetch cellCells addressing
-    const labelListList& oldNeighbourList = fromMesh().cellCells();
+    scalar newCellVolume = toMesh().cellVolumes()[index];
 
     // Maintain a check-list
     labelHashSet checked, skipped;
@@ -382,16 +432,48 @@ void conservativeMeshToMesh::computeCellWeights
 
                 vectorField intPoints(0);
 
-                bool intersect =
-                (
-                    cellIntersection
+                bool intersect = false;
+
+#               if USE_MPFR
+                if (highPrecision)
+                {
+                    // Invoke the high-precision variant
+                    Field<mpVector> mpIntPoints;
+                    const mpScalar mpMatchTol(matchTol);
+
+                    intersect =
                     (
-                        newCellIndex,
-                        checkEntity,
-                        matchTol,
-                        intPoints
-                    )
-                );
+                        cellIntersection
+                        (
+                            index,
+                            checkEntity,
+                            mpMatchTol,
+                            mpIntPoints
+                        )
+                    );
+
+                    // Convert back to vector
+                    intPoints.setSize(mpIntPoints.size());
+
+                    forAll(intPoints, i)
+                    {
+                        intPoints[i] = convert<scalar>(mpIntPoints[i]);
+                    }
+                }
+                else
+#               endif
+                {
+                    intersect =
+                    (
+                        cellIntersection
+                        (
+                            index,
+                            checkEntity,
+                            matchTol,
+                            intPoints
+                        )
+                    );
+                }
 
                 if (intersect)
                 {
@@ -401,7 +483,7 @@ void conservativeMeshToMesh::computeCellWeights
                     // Compute weights
                     convexSetVolume
                     (
-                        newCellIndex,
+                        index,
                         checkEntity,
                         intPoints,
                         weight,
@@ -426,19 +508,27 @@ void conservativeMeshToMesh::computeCellWeights
                 else
                 if (nAttempts == 0)
                 {
-                    InfoIn
+                    FatalErrorIn
                     (
                         "\n\n"
-                        "void conservativeMeshToMesh::computeCellWeights\n"
+                        "bool conservativeMeshToMesh::computeWeights\n"
                         "(\n"
-                        "    const label cIndex,\n"
-                        "    const labelList& mapCandidate,\n"
+                        "    const label index,\n"
+                        "    const label oldCandidate,\n"
+                        "    const labelListList& oldNeighbourList,\n"
+                        "    const scalar mTol,\n"
+                        "    label& precisionAttempts,\n"
                         "    labelList& parents,\n"
                         "    scalarField& weights,\n"
-                        "    vectorField& centres\n"
+                        "    vectorField& centres,\n"
+                        "    bool highPrecision\n"
                         ") const\n"
                     )
-                        << endl;
+                        << " First intersection was not found." << nl
+                        << " Index: " << index << nl
+                        << " oldCandidate: " << oldCandidate << nl
+                        << " mapCandidate: " << mapCandidate << nl
+                        << abort(FatalError);
                 }
                 else
                 {
@@ -461,42 +551,71 @@ void conservativeMeshToMesh::computeCellWeights
 
     } while (changed);
 
+    bool consistent = (mag(1.0 - (sum(weights)/newCellVolume)) < 1e-13);
+
     // Test weights for consistency
-    if (mag(newCellVolume - sum(weights)) > 1e-17)
+    if (!consistent)
+    {
+        if (precisionAttempts < 12)
+        {
+            // Could be a precision problem.
+            // Recurse until consistency is obtained.
+            matchTol *= 0.1;
+
+            // Clear maps before continuing
+            parents.clear();
+            weights.clear();
+            centres.clear();
+
+            bool highPrecision = false;
+
+            // Toggle higher precision, if necessary
+            if (precisionAttempts > 11)
+            {
+                highPrecision = true;
+            }
+
+            // Regular precision computation
+            consistent =
+            (
+                computeWeights
+                (
+                    index,
+                    mapCandidate,
+                    oldNeighbourList,
+                    matchTol,
+                    ++precisionAttempts,
+                    parents,
+                    weights,
+                    centres,
+                    highPrecision
+                )
+            );
+        }
+    }
+
+    if (precisionAttempts)
+    {
+        precisionAttempts--;
+    }
+    else
+    {
+        // Normalize weights
+        weights /= newCellVolume;
+    }
+
+    if (precisionAttempts == 0 && !consistent)
     {
         // Write out for post-processing
         labelList uList = skipped.toc();
 
-        writeVTK("nE_" + Foam::name(newCellIndex), newCellIndex);
-        writeVTK("oE_" + Foam::name(newCellIndex), mapCandidate, 3, true);
-        writeVTK("mE_" + Foam::name(newCellIndex), parents, 3, true);
-        writeVTK("uE_" + Foam::name(newCellIndex), uList, 3, true);
+        writeVTK("nE_" + Foam::name(index), index);
+        writeVTK("oE_" + Foam::name(index), mapCandidate, 3, true);
+        writeVTK("mE_" + Foam::name(index), parents, 3, true);
+        writeVTK("uE_" + Foam::name(index), uList, 3, true);
     }
 
-    /*
-    // Check if tolerances were adjusted.
-    if (nInnerAttempts)
-    {
-        InfoIn
-        (
-            "\n\n"
-            "void conservativeMeshToMesh::computeCellWeights\n"
-            "(\n"
-            "    const label cIndex,\n"
-            "    const labelList& mapCandidate,\n"
-            "    labelList& parents,\n"
-            "    scalarField& weights,\n"
-            "    vectorField& centres\n"
-            ") const\n"
-        )
-            << " matchTol_ was reduced to: "
-            << matchTol_ << nl
-            << endl;
-
-        // Reset match tolerance, if necessary
-        matchTol_ *= Foam::pow(10, nInnerAttempts);
-    }
-    */
+    return consistent;
 }
 
 
@@ -520,17 +639,19 @@ bool conservativeMeshToMesh::cellIntersection
     // Fetch references for each mesh
     const cell& oldCell = fromMesh().cells()[oldIndex];
     const faceList& oldFaces = fromMesh().faces();
-    const pointField& oldPoints = fromMesh().points();
     const labelList& oldOwner = fromMesh().faceOwner();
     const edgeList oldCellEdges = oldCell.edges(oldFaces);
     const labelList oldCellPoints = oldCell.labels(oldFaces);
 
     const cell& newCell = toMesh().cells()[newIndex];
     const faceList& newFaces = toMesh().faces();
-    const pointField& newPoints = toMesh().points();
     const labelList& newOwner = toMesh().faceOwner();
     const edgeList newCellEdges = newCell.edges(newFaces);
     const labelList newCellPoints = newCell.labels(newFaces);
+
+    // Alias references
+    const pointField& newPoints = toMesh().points();
+    const pointField& oldPoints = fromMesh().points();
 
     // Track all possible intersections from here on.
     label nInts = 0;
@@ -538,25 +659,24 @@ bool conservativeMeshToMesh::cellIntersection
     Vector<T> intPoint = Vector<T>::zero;
     Vector<T> checkPoint = Vector<T>::zero;
 
-    FixedList<vector,2> segment(vector::zero);
-
-    scalar minEdgeMag = GREAT;
+    // Compute the merge-tolerance
+    scalar mergeTol = -1.0;
 
     forAll(oldCellEdges, edgeI)
     {
-        scalar edgeMag = mag(oldCellEdges[edgeI].vec(oldPoints));
-
-        minEdgeMag = Foam::min(edgeMag, minEdgeMag);
+        const edge& e = oldCellEdges[edgeI];
+        scalar edgeMag = mag(oldPoints[e[1]] - oldPoints[e[0]]);
+        mergeTol = Foam::max(edgeMag, mergeTol);
     }
 
     forAll(newCellEdges, edgeI)
     {
-        scalar edgeMag = mag(newCellEdges[edgeI].vec(newPoints));
-
-        minEdgeMag = Foam::min(edgeMag, minEdgeMag);
+        const edge& e = newCellEdges[edgeI];
+        scalar edgeMag = mag(newPoints[e[1]] - newPoints[e[0]]);
+        mergeTol = Foam::max(edgeMag, mergeTol);
     }
 
-    scalar pointMergeTol = magSqr(matchTol) * minEdgeMag;
+    mergeTol *= 1e-06;
 
     // Check if any points are coincident.
     Map<labelList> OtoN, NtoO;
@@ -571,7 +691,7 @@ bool conservativeMeshToMesh::cellIntersection
                 (
                     oldPoints[oldCellPoints[pointI]]
                   - newPoints[newCellPoints[pointJ]]
-                ) < pointMergeTol
+                ) < mergeTol
             )
             {
                 OtoN.insert
@@ -586,7 +706,11 @@ bool conservativeMeshToMesh::cellIntersection
                     labelList(1, oldCellPoints[pointI])
                 );
 
-                intersections.set(++nInts, newPoints[newCellPoints[pointJ]]);
+                intersections.set
+                (
+                    ++nInts,
+                    convert<T>(newPoints[newCellPoints[pointJ]])
+                );
             }
         }
     }
@@ -595,13 +719,29 @@ bool conservativeMeshToMesh::cellIntersection
     if (nInts == oldCellPoints.size())
     {
         // Copy intersections
-        intPoints.setSize(nInts, vector::zero);
+        intPoints.setSize(nInts, Vector<T>::zero);
 
         nInts = 0;
 
-        forAllConstIter(Map<vector>, intersections, pI)
+        forAllConstIter(typename Map<Vector<T> >, intersections, pI)
         {
             intPoints[nInts++] = pI();
+        }
+
+        if (output)
+        {
+            meshOps::checkPointNearness(intPoints, T(1e-20));
+
+            meshOps::writeVTK
+            (
+                toMesh(),
+                "ccSet_" + Foam::name(newIndex)
+              + '<' + Foam::name(oldIndex) + '>',
+                intPoints.size(),
+                intPoints.size(),
+                intPoints.size(),
+                convert<scalar>(intPoints)
+            );
         }
 
         return true;
@@ -719,8 +859,10 @@ bool conservativeMeshToMesh::cellIntersection
                 continue;
             }
 
-            vector edgeVec = edgeToCheck.vec(oldPoints);
+            Vector<T> oldS = convert<T>(oldPoints[edgeToCheck.start()]);
+            Vector<T> oldE = convert<T>(oldPoints[edgeToCheck.end()]);
 
+            Vector<T> edgeVec = (oldS - oldE);
             edgeVec /= mag(edgeVec) + VSMALL;
 
             if (mag(edgeVec & planeNormal) < 0.5)
@@ -728,14 +870,7 @@ bool conservativeMeshToMesh::cellIntersection
                 continue;
             }
 
-            vector checkPoint =
-            (
-                0.5 *
-                (
-                    oldPoints[edgeToCheck.start()] +
-                    oldPoints[edgeToCheck.end()]
-                )
-            );
+            checkPoint = (0.5 * (oldS + oldE));
 
             if
             (
@@ -746,13 +881,13 @@ bool conservativeMeshToMesh::cellIntersection
                     newFaces,
                     newOwner,
                     newPoints,
-                    0.0,
+                    T(0.0),
                     checkPoint
                 )
             )
             {
-                intersections.set(++nInts, oldPoints[edgeToCheck.start()]);
-                intersections.set(++nInts, oldPoints[edgeToCheck.end()]);
+                intersections.set(++nInts, oldS);
+                intersections.set(++nInts, oldE);
             }
         }
 
@@ -769,8 +904,10 @@ bool conservativeMeshToMesh::cellIntersection
                 continue;
             }
 
-            vector edgeVec = edgeToCheck.vec(newPoints);
+            Vector<T> newS = convert<T>(newPoints[edgeToCheck.start()]);
+            Vector<T> newE = convert<T>(newPoints[edgeToCheck.end()]);
 
+            Vector<T> edgeVec = (newS - newE);
             edgeVec /= mag(edgeVec) + VSMALL;
 
             if (mag(edgeVec & planeNormal) < 0.5)
@@ -778,14 +915,7 @@ bool conservativeMeshToMesh::cellIntersection
                 continue;
             }
 
-            vector checkPoint =
-            (
-                0.5 *
-                (
-                    newPoints[edgeToCheck.start()] +
-                    newPoints[edgeToCheck.end()]
-                )
-            );
+            checkPoint = (0.5 * (newS + newE));
 
             if
             (
@@ -796,13 +926,13 @@ bool conservativeMeshToMesh::cellIntersection
                     oldFaces,
                     oldOwner,
                     oldPoints,
-                    0.0,
+                    T(0.0),
                     checkPoint
                 )
             )
             {
-                intersections.set(++nInts, newPoints[edgeToCheck.start()]);
-                intersections.set(++nInts, newPoints[edgeToCheck.end()]);
+                intersections.set(++nInts, newS);
+                intersections.set(++nInts, newE);
             }
         }
     }
@@ -812,12 +942,14 @@ bool conservativeMeshToMesh::cellIntersection
         // the new cell. Count these as 'intersections'.
         forAll(oldCellPoints, pointI)
         {
-            if (OtoN.found(oldCellPoints[pointI]))
+            label oldPoint = oldCellPoints[pointI];
+
+            if (OtoN.found(oldPoint))
             {
                 continue;
             }
 
-            checkPoint = oldPoints[oldCellPoints[pointI]];
+            checkPoint = convert<T>(oldPoints[oldPoint]);
 
             if
             (
@@ -828,7 +960,7 @@ bool conservativeMeshToMesh::cellIntersection
                     newFaces,
                     newOwner,
                     newPoints,
-                    0.0,
+                    T(0.0),
                     checkPoint
                 )
             )
@@ -841,12 +973,14 @@ bool conservativeMeshToMesh::cellIntersection
         // the old cell. Count these as 'intersections'.
         forAll(newCellPoints, pointI)
         {
-            if (NtoO.found(newCellPoints[pointI]))
+            label newPoint = newCellPoints[pointI];
+
+            if (NtoO.found(newPoint))
             {
                 continue;
             }
 
-            checkPoint = newPoints[newCellPoints[pointI]];
+            checkPoint = convert<T>(newPoints[newPoint]);
 
             if
             (
@@ -857,7 +991,7 @@ bool conservativeMeshToMesh::cellIntersection
                     oldFaces,
                     oldOwner,
                     oldPoints,
-                    0.0,
+                    T(0.0),
                     checkPoint
                 )
             )
@@ -1042,6 +1176,90 @@ bool conservativeMeshToMesh::cellIntersection
              << " newCellIndex: " << newIndex
              << " oldCellIndex: " << oldIndex
              << endl;
+    }
+
+    // Check for point-face intersections
+    forAll(newCellPoints, pointI)
+    {
+        label newPoint = newCellPoints[pointI];
+
+        if (NtoO.found(newPoint))
+        {
+            continue;
+        }
+
+        checkPoint = convert<T>(newPoints[newPoint]);
+
+        forAll(oldCell, faceI)
+        {
+            const triFace faceToCheck(oldFaces[oldCell[faceI]]);
+
+            foundIntersection = false;
+
+            foundIntersection =
+            (
+                meshOps::pointInTriFace
+                (
+                    triangle<Vector<T>, const Vector<T>&>
+                    (
+                        convert<T>(oldPoints[faceToCheck[0]]),
+                        convert<T>(oldPoints[faceToCheck[1]]),
+                        convert<T>(oldPoints[faceToCheck[2]])
+                    ),
+                    checkPoint,
+                    matchTol,
+                    true
+                )
+            );
+
+            if (foundIntersection)
+            {
+                // Add to the list.
+                intersections.set(++nInts, checkPoint);
+            }
+        }
+    }
+
+    // Check for point-face intersections
+    forAll(oldCellPoints, pointI)
+    {
+        label oldPoint = oldCellPoints[pointI];
+
+        if (OtoN.found(oldPoint))
+        {
+            continue;
+        }
+
+        checkPoint = convert<T>(oldPoints[oldPoint]);
+
+        forAll(newCell, faceI)
+        {
+            const triFace faceToCheck(newFaces[newCell[faceI]]);
+
+            foundIntersection = false;
+
+            foundIntersection =
+            (
+                meshOps::pointInTriFace
+                (
+                    triangle<Vector<T>, const Vector<T>&>
+                    (
+                        convert<T>(newPoints[faceToCheck[0]]),
+                        convert<T>(newPoints[faceToCheck[1]]),
+                        convert<T>(newPoints[faceToCheck[2]])
+                    ),
+                    checkPoint,
+                    matchTol,
+                    true
+                )
+            );
+
+            if (foundIntersection)
+            {
+                // Add to the list.
+                intersections.set(++nInts, checkPoint);
+            }
+        }
     }
 
     // Loop through all old edges, and find possible
@@ -1256,6 +1474,27 @@ bool conservativeMeshToMesh::cellIntersection
         }
     }
 
+    // Points may become coincident due to round-off errors.
+    // Merge as necessary.
+    {
+        forAllConstIter(typename Map<Vector<T> >, intersections, pI)
+        {
+            forAllIter(typename Map<Vector<T> >, intersections, pJ)
+            {
+                if (pI.key() != pJ.key())
+                {
+                    if (mag(pI() - pJ()) < mergeTol)
+                    {
+                        intersections.erase(pJ);
+                    }
+                }
+            }
+        }
+
+        // Update actual intersections
+        nInts = intersections.size();
+    }
+
     if (nInts < 4)
     {
         // Does not intersect.
@@ -1263,7 +1502,7 @@ bool conservativeMeshToMesh::cellIntersection
     }
 
     // Copy intersections
-    intPoints.setSize(nInts, vector::zero);
+    intPoints.setSize(nInts, Vector<T>::zero);
 
     nInts = 0;
 

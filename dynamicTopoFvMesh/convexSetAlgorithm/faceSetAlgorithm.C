@@ -115,7 +115,7 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
 
 
 // Compute intersections
-bool faceSetAlgorithm::computeInsersection
+bool faceSetAlgorithm::computeIntersection
 (
     const label newIndex,
     const label oldIndex,

@@ -50,6 +50,13 @@ SourceFiles
 #include "multiThreader.H"
 #include "threadHandler.H"
 
+// Use the MPFR library, if necessary
+#define USE_MPFR 1
+
+#if USE_MPFR
+#include "multiPrecision.H"
+#endif
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -101,14 +108,18 @@ class conservativeMeshToMesh
         // Invert addressing from source to target
         bool invertAddressing();
 
-        // Compute cell weighting factors for a particular cell
-        void computeCellWeights
+        // Compute weighting factors for a particular cell
+        bool computeWeights
         (
-            const label newCellIndex,
+            const label index,
             const label oldCandidate,
+            const labelListList& oldNeighbourList,
+            const scalar mTol,
+            label& precisionAttempts,
             labelList& parents,
             scalarField& weights,
-            vectorField& centres
+            vectorField& centres,
+            bool highPrecision = false
         ) const;
 
         // Return the intersection points between cells in old/new meshes

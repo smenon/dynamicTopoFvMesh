@@ -548,7 +548,7 @@ bool dynamicTopoFvMesh::computeWeights
 
                 bool intersect =
                 (
-                    algorithm.computeInsersection
+                    algorithm.computeIntersection
                     (
                         index,
                         checkEntity + offset,
@@ -618,7 +618,7 @@ bool dynamicTopoFvMesh::computeWeights
 
                 bool intersect =
                 (
-                    algorithm.computeInsersection
+                    algorithm.computeIntersection
                     (
                         index,
                         checkEntity + offset,
@@ -772,7 +772,7 @@ bool dynamicTopoFvMesh::computeWeights
                 // Write out intersections for post-processing
                 forAll(parents, indexI)
                 {
-                    algorithm.computeInsersection
+                    algorithm.computeIntersection
                     (
                         index,
                         parents[indexI],
@@ -858,7 +858,7 @@ bool dynamicTopoFvMesh::computeWeights
             // Write out intersections for post-processing
             forAll(parents, indexI)
             {
-                algorithm.computeInsersection
+                algorithm.computeIntersection
                 (
                     index,
                     parents[indexI],

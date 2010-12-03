@@ -122,7 +122,7 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
 }
 
 
-bool cellSetAlgorithm::computeInsersection
+bool cellSetAlgorithm::computeIntersection
 (
     const label newIndex,
     const label oldIndex,
@@ -264,6 +264,25 @@ bool cellSetAlgorithm::cellIntersection
     Vector<T> intPoint = Vector<T>::zero;
     Vector<T> checkPoint = Vector<T>::zero;
 
+    // Compute the merge-tolerance
+    scalar mergeTol = -1.0;
+
+    forAll(oldCellEdges, edgeI)
+    {
+        const edge& e = oldCellEdges[edgeI];
+        scalar edgeMag = mag(oldPoints[e[1]] - oldPoints[e[0]]);
+        mergeTol = Foam::max(edgeMag, mergeTol);
+    }
+
+    forAll(newCellEdges, edgeI)
+    {
+        const edge& e = newCellEdges[edgeI];
+        scalar edgeMag = mag(newPoints[e[1]] - newPoints[e[0]]);
+        mergeTol = Foam::max(edgeMag, mergeTol);
+    }
+
+    mergeTol *= 1e-06;
+
     // Topologically check for common points
     Map<labelList> commonPoints;
 
@@ -367,25 +386,6 @@ bool cellSetAlgorithm::cellIntersection
 
         return true;
     }
-
-    // Compute the merge-tolerance
-    scalar mergeTol = -1.0;
-
-    forAll(oldCellEdges, edgeI)
-    {
-        const edge& e = oldCellEdges[edgeI];
-        scalar edgeMag = mag(oldPoints[e[1]] - oldPoints[e[0]]);
-        mergeTol = Foam::max(edgeMag, mergeTol);
-    }
-
-    forAll(newCellEdges, edgeI)
-    {
-        const edge& e = newCellEdges[edgeI];
-        scalar edgeMag = mag(newPoints[e[1]] - newPoints[e[0]]);
-        mergeTol = Foam::max(edgeMag, mergeTol);
-    }
-
-    mergeTol *= 1e-06;
 
     // Check for point-segment intersections
     bool pointIntersections = false;
@@ -837,13 +837,13 @@ bool cellSetAlgorithm::cellIntersection
                 (
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<T>(oldPoints[edgePair.first().start()]),
-                        convert<T>(oldPoints[edgePair.first().end()])
+                        convert<T>(oldPoints[oldEdge.start()]),
+                        convert<T>(oldPoints[oldEdge.end()])
                     ),
                     line<Vector<T>, const Vector<T>&>
                     (
-                        convert<T>(newPoints[edgePair.second().start()]),
-                        convert<T>(newPoints[edgePair.second().end()])
+                        convert<T>(newPoints[newEdge.start()]),
+                        convert<T>(newPoints[newEdge.end()])
                     ),
                     matchTol,
                     intPoint
