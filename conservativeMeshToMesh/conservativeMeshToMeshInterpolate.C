@@ -86,7 +86,7 @@ void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
 
         // Fetch addressing and weights for this cell
         const labelList& addr = addressing_[celli];
-        const scalarField& w = weights_[celli];
+        const scalarField& w = volumes_[celli];
 
         // Accumulate volume-weighted interpolate
         forAll(addr, cellj)
@@ -175,7 +175,7 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
 
         // Fetch addressing and weights for this cell
         const labelList& addr = addressing_[celli];
-        const scalarField& w = weights_[celli];
+        const scalarField& w = volumes_[celli];
         const vectorField& x = centres_[celli];
 
         forAll(addr, cellj)

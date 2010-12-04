@@ -78,6 +78,9 @@ class conservativeMeshToMesh
         //- Interpolation weights
         IOList<scalarField> weights_;
 
+        //- Interpolation volumes
+        IOList<scalarField> volumes_;
+
         //- Interpolation centres
         IOList<vectorField> centres_;
 
@@ -118,6 +121,7 @@ class conservativeMeshToMesh
             label& precisionAttempts,
             labelList& parents,
             scalarField& weights,
+            scalarField& volumes,
             vectorField& centres,
             bool highPrecision = false
         ) const;

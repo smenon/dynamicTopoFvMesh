@@ -988,17 +988,20 @@ int main(int argc, char *argv[])
             writeAddr
         );
 
-        testCyclicRemap
-        (
-            250,
-            COSINE_HILL_2D,
-            meshSource,
-            meshTarget,
-            method,
-            nThreads,
-            forceRecalc,
-            writeAddr
-        );
+        if (meshSource.nGeometricD() == 2)
+        {
+            testCyclicRemap
+            (
+                250,
+                COSINE_HILL_2D,
+                meshSource,
+                meshTarget,
+                method,
+                nThreads,
+                forceRecalc,
+                writeAddr
+            );
+        }
     }
     else
     {

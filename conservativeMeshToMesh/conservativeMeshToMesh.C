@@ -118,6 +118,18 @@ conservativeMeshToMesh::conservativeMeshToMesh
             "weights",
             meshTo.time().timeName(),
             meshTo,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        meshTo.nCells()
+    ),
+    volumes_
+    (
+        IOobject
+        (
+            "volumes",
+            meshTo.time().timeName(),
+            meshTo,
             IOobject::READ_IF_PRESENT,
             IOobject::NO_WRITE
         ),
@@ -139,13 +151,13 @@ conservativeMeshToMesh::conservativeMeshToMesh
     twoDMesh_(false),
     boundaryAddressing_(meshTo.boundaryMesh().size())
 {
-    if (addressing_.headerOk() && weights_.headerOk() && centres_.headerOk())
+    if (addressing_.headerOk() && volumes_.headerOk() && centres_.headerOk())
     {
         // Check if sizes match. Otherwise, re-calculate.
         if
         (
             addressing_.size() == meshTo.nCells() &&
-            weights_.size() == meshTo.nCells() &&
+            volumes_.size() == meshTo.nCells() &&
             centres_.size() == meshTo.nCells() &&
            !forceRecalculation
         )
@@ -283,7 +295,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
         // Track progress of threads
         while (true)
         {
-            sleep(0.5);
+            sleep(1.0);
 
             ctrMutex_.lock();
 
@@ -317,7 +329,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
         Info << " Writing addressing to disk." << endl;
 
         addressing_.write();
-        weights_.write();
+        volumes_.write();
         centres_.write();
     }
 
@@ -492,7 +504,7 @@ void conservativeMeshToMesh::writeVTK
     {
         meshOps::writeVTK
         (
-            toMesh(),
+            fromMesh(),
             name,
             cList,
             primitiveType,

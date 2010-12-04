@@ -98,6 +98,7 @@ void conservativeMeshToMesh::calcAddressingAndWeights
         // Fetch references
         labelList& parents = addressing_[cellI];
         scalarField& weights = weights_[cellI];
+        scalarField& volumes = volumes_[cellI];
         vectorField& centres = centres_[cellI];
 
         label precisionAttempts = 0;
@@ -114,6 +115,7 @@ void conservativeMeshToMesh::calcAddressingAndWeights
                 precisionAttempts,
                 parents,
                 weights,
+                volumes,
                 centres
             )
         );
@@ -127,6 +129,7 @@ void conservativeMeshToMesh::calcAddressingAndWeights
                 << " candidate: " << cAddr[cellI] << nl
                 << " parents: " << parents << nl
                 << " weights: " << weights << nl
+                << " volumes: " << volumes << nl
                 << " Error: " << mag(1.0 - sum(weights))
                 << endl;
 
@@ -214,11 +217,11 @@ bool conservativeMeshToMesh::invertAddressing()
     }
 
     // Read weights
-    IOList<scalarField> srcWeights
+    IOList<scalarField> srcVolumes
     (
         IOobject
         (
-            "weights",
+            "volumes",
             fromMesh().time().timeName(),
             fromMesh(),
             IOobject::MUST_READ,
@@ -243,7 +246,7 @@ bool conservativeMeshToMesh::invertAddressing()
     forAll(nCellsPerCell, cellI)
     {
         addressing_[cellI].setSize(nCellsPerCell[cellI]);
-        weights_[cellI].setSize(nCellsPerCell[cellI]);
+        volumes_[cellI].setSize(nCellsPerCell[cellI]);
         centres_[cellI].setSize(nCellsPerCell[cellI]);
     }
 
@@ -253,7 +256,7 @@ bool conservativeMeshToMesh::invertAddressing()
     forAll(srcAddressing, cellI)
     {
         const labelList& srcAddr = srcAddressing[cellI];
-        const scalarField& srcWt = srcWeights[cellI];
+        const scalarField& srcVl = srcVolumes[cellI];
         const vectorField& srcCt = srcCentres[cellI];
 
         forAll(srcAddr, j)
@@ -261,7 +264,7 @@ bool conservativeMeshToMesh::invertAddressing()
             label cellJ = srcAddr[j];
 
             addressing_[cellJ][nCellsPerCell[cellJ]] = cellI;
-            weights_[cellJ][nCellsPerCell[cellJ]] = srcWt[j];
+            volumes_[cellJ][nCellsPerCell[cellJ]] = srcVl[j];
             centres_[cellJ][nCellsPerCell[cellJ]] = srcCt[j];
 
             nCellsPerCell[cellJ]++;
@@ -273,13 +276,14 @@ bool conservativeMeshToMesh::invertAddressing()
 
     forAll(V, cellI)
     {
-        if (mag(V[cellI] - sum(weights_[cellI])) > 1e-16)
+        if (mag((V[cellI] - sum(volumes_[cellI])) / V[cellI]) > 5e-14)
         {
             Info << " Weights are not compatible. " << nl
                  << " Cell: " << cellI << nl
                  << " Volume: " << V[cellI] << nl
-                 << " Sum(weights): " << sum(weights_[cellI]) << nl
-                 << " Error: " << mag(V[cellI] - sum(weights_[cellI]))
+                 << " Sum(volumes): " << sum(volumes_[cellI]) << nl
+                 << " Error: "
+                 << mag((V[cellI] - sum(volumes_[cellI])) / V[cellI])
                  << endl;
 
             compatible = false;
@@ -291,10 +295,12 @@ bool conservativeMeshToMesh::invertAddressing()
     {
         addressing_.clear();
         weights_.clear();
+        volumes_.clear();
         centres_.clear();
 
         addressing_.setSize(targetCells);
         weights_.setSize(targetCells);
+        volumes_.setSize(targetCells);
         centres_.setSize(targetCells);
 
         return false;
@@ -315,11 +321,12 @@ bool conservativeMeshToMesh::computeWeights
     label& precisionAttempts,
     labelList& parents,
     scalarField& weights,
+    scalarField& volumes,
     vectorField& centres,
     bool highPrecision
 ) const
 {
-    if (parents.size() || weights.size() || centres.size())
+    if (parents.size() || weights.size() || volumes.size() || centres.size())
     {
         FatalErrorIn
         (
@@ -333,6 +340,7 @@ bool conservativeMeshToMesh::computeWeights
             "    label& precisionAttempts,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
+            "    scalarField& volumes,\n"
             "    vectorField& centres,\n"
             "    bool highPrecision\n"
             ") const\n"
@@ -342,6 +350,7 @@ bool conservativeMeshToMesh::computeWeights
             << " oldCandidate: " << oldCandidate << nl
             << " Parents: " << parents << nl
             << " Weights: " << weights << nl
+            << " Volumes: " << volumes << nl
             << " Centres: " << centres << nl
             << abort(FatalError);
     }
@@ -477,7 +486,7 @@ bool conservativeMeshToMesh::computeWeights
 
                 if (intersect)
                 {
-                    scalar weight = 0.0;
+                    scalar volume = 0.0;
                     vector centre = vector::zero;
 
                     // Compute weights
@@ -486,14 +495,15 @@ bool conservativeMeshToMesh::computeWeights
                         index,
                         checkEntity,
                         intPoints,
-                        weight,
+                        volume,
                         centre
                     );
 
                     label oldSize = parents.size();
 
                     parents.setSize(oldSize + 1, checkEntity);
-                    weights.setSize(oldSize + 1, weight);
+                    weights.setSize(oldSize + 1, volume);
+                    volumes.setSize(oldSize + 1, volume);
                     centres.setSize(oldSize + 1, centre);
 
                     nIntersects++;
@@ -520,6 +530,7 @@ bool conservativeMeshToMesh::computeWeights
                         "    label& precisionAttempts,\n"
                         "    labelList& parents,\n"
                         "    scalarField& weights,\n"
+                        "    scalarField& volumes,\n"
                         "    vectorField& centres,\n"
                         "    bool highPrecision\n"
                         ") const\n"
@@ -551,7 +562,7 @@ bool conservativeMeshToMesh::computeWeights
 
     } while (changed);
 
-    bool consistent = (mag(1.0 - (sum(weights)/newCellVolume)) < 1e-13);
+    bool consistent = (mag(1.0 - (sum(weights)/newCellVolume)) < 5e-14);
 
     // Test weights for consistency
     if (!consistent)
@@ -565,6 +576,7 @@ bool conservativeMeshToMesh::computeWeights
             // Clear maps before continuing
             parents.clear();
             weights.clear();
+            volumes.clear();
             centres.clear();
 
             bool highPrecision = false;
@@ -587,6 +599,7 @@ bool conservativeMeshToMesh::computeWeights
                     ++precisionAttempts,
                     parents,
                     weights,
+                    volumes,
                     centres,
                     highPrecision
                 )
@@ -676,7 +689,7 @@ bool conservativeMeshToMesh::cellIntersection
         mergeTol = Foam::max(edgeMag, mergeTol);
     }
 
-    mergeTol *= 1e-06;
+    mergeTol *= 1e-08;
 
     // Check if any points are coincident.
     Map<labelList> OtoN, NtoO;
