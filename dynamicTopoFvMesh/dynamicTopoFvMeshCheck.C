@@ -249,7 +249,11 @@ dynamicTopoFvMesh::checkEdgeBoundary
 
 
 // Check whether the given edge is on a bounding curve
-bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
+bool dynamicTopoFvMesh::checkBoundingCurve
+(
+    const label eIndex,
+    const bool overRidePurityCheck
+) const
 {
     // Internal edges don't count
     label edgePatch = -1;
@@ -266,10 +270,29 @@ bool dynamicTopoFvMesh::checkBoundingCurve(const label eIndex) const
             return true;
         }
 
-        // Processor coupled edges don't count
-        if (processorCoupledEntity(eIndex))
+        // Explicit check for processor edges (both 2D and 3D)
+        if (processorCoupledEntity(eIndex, false, true))
         {
-            return false;
+            // 'Pure' processor coupled edges don't count
+            if (processorCoupledEntity(eIndex, false, true, true))
+            {
+                return false;
+            }
+            else
+            {
+                if (overRidePurityCheck)
+                {
+                    // An explicit overRide was requested.
+                    // This is usually a call from swap3DEdges,
+                    // since 2-2 swaps should be allowed for impure edges
+                    return false;
+                }
+
+                // This edge lies between a processor and physical patch,
+                // which makes it a bounding curve (unless an override is
+                // requested)
+                return true;
+            }
         }
     }
 

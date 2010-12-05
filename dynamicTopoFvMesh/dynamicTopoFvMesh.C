@@ -53,6 +53,7 @@ Author
 #include "fvPatchFields.H"
 #include "fvsPatchFields.H"
 #include "coupledPatchInfo.H"
+#include "processorPolyPatch.H"
 #include "lengthScaleEstimator.H"
 
 namespace Foam
@@ -196,13 +197,16 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     const IOobject& io,
     const Xfer<pointField>& points,
     const Xfer<pointField>& oldPoints,
-    const label nInternalEdges,
     const Xfer<edgeList>& edges,
     const Xfer<faceList>& faces,
     const Xfer<labelListList>& faceEdges,
     const Xfer<labelList>& owner,
     const Xfer<labelList>& neighbour,
-    const Xfer<cellList>& cells
+    const Xfer<cellList>& cells,
+    const labelList& faceStarts,
+    const labelList& faceSizes,
+    const labelList& edgeStarts,
+    const labelList& edgeSizes
 )
 :
     dynamicFvMesh
@@ -233,16 +237,16 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     cells_(polyMesh::cells()),
     edges_(edges),
     faceEdges_(faceEdges),
-    oldPatchSizes_(1, 0),
-    patchSizes_(1, 0),
-    oldPatchStarts_(1, -1),
-    patchStarts_(1, -1),
-    oldEdgePatchSizes_(1, 0),
-    edgePatchSizes_(1, 0),
-    oldEdgePatchStarts_(1, -1),
-    edgePatchStarts_(1, -1),
-    oldPatchNMeshPoints_(1, -1),
-    patchNMeshPoints_(1, -1),
+    oldPatchSizes_(faceSizes),
+    patchSizes_(faceSizes),
+    oldPatchStarts_(faceStarts),
+    patchStarts_(faceStarts),
+    oldEdgePatchSizes_(edgeSizes),
+    edgePatchSizes_(edgeSizes),
+    oldEdgePatchStarts_(edgeStarts),
+    edgePatchStarts_(edgeStarts),
+    oldPatchNMeshPoints_(faceStarts.size(), -1),
+    patchNMeshPoints_(faceStarts.size(), -1),
     nOldPoints_(points_.size()),
     nPoints_(points_.size()),
     nOldEdges_(edges_.size()),
@@ -251,10 +255,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nFaces_(faces_.size()),
     nOldCells_(cells_.size()),
     nCells_(cells_.size()),
-    nOldInternalFaces_(primitiveMesh::nInternalFaces()),
-    nInternalFaces_(primitiveMesh::nInternalFaces()),
-    nOldInternalEdges_(nInternalEdges),
-    nInternalEdges_(nInternalEdges),
+    nOldInternalFaces_(faceStarts[0]),
+    nInternalFaces_(faceStarts[0]),
+    nOldInternalEdges_(edgeStarts[0]),
+    nInternalEdges_(edgeStarts[0]),
     maxModifications_(mesh.maxModifications_),
     statistics_(0),
     sliverThreshold_(mesh.sliverThreshold_),
@@ -288,28 +292,26 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
 
     const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
 
-    // Add a default patch as boundary for polyMesh.
-    polyMesh::addPatches
-    (
-        List<polyPatch*>
+    // Add a boundary patches for polyMesh.
+    List<polyPatch*> patches(faceStarts.size());
+
+    forAll(patches, patchI)
+    {
+        patches[patchI] =
         (
-            1,
             new polyPatch
             (
-                "defaultPatch",
-                (nFaces_ - nInternalFaces_),
-                nInternalFaces_,
-                0,
+                "patch_" + Foam::name(patchI),
+                faceSizes[patchI],
+                faceStarts[patchI],
+                patchI,
                 boundary
             )
-        )
-    );
+        );
+    }
 
-    // Initialize patch-size information
-    oldPatchSizes_[0] = patchSizes_[0] = (nFaces_ - nInternalFaces_);
-    oldPatchStarts_[0] = patchStarts_[0] = nInternalFaces_;
-    oldEdgePatchSizes_[0] = edgePatchSizes_[0] = (nEdges_ - nInternalEdges_);
-    oldEdgePatchStarts_[0] = edgePatchStarts_[0] = nInternalEdges_;
+    // Add patches, but don't calculate geometry, etc
+    polyMesh::addPatches(patches, false);
 
     // Set sizes for the reverse maps
     reversePointMap_.setSize(nPoints_, -7);
@@ -1576,11 +1578,8 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
         lsfPtr->write();
     }
 
-    if (Pstream::parRun())
-    {
-        // Exchange length-scale buffers across processors.
-        exchangeLengthBuffers();
-    }
+    // Exchange length-scale buffers across processors.
+    exchangeLengthBuffers();
 }
 
 
@@ -2118,7 +2117,8 @@ void dynamicTopoFvMesh::swap3DEdges
         scalar minQuality = mesh.computeMinQuality(eIndex);
 
         // Check if this edge is on a bounding curve
-        if (mesh.checkBoundingCurve(eIndex))
+        // (Override purity check for processor edges)
+        if (mesh.checkBoundingCurve(eIndex, true))
         {
             continue;
         }

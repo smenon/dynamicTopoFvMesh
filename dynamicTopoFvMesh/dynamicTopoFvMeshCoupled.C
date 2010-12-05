@@ -760,7 +760,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
     labelHashSet& entities
 )
 {
-    if (!patchCoupling_.size() && procIndices_.empty())
+    if (patchCoupling_.empty() && procIndices_.empty())
     {
         return;
     }
@@ -937,6 +937,11 @@ void dynamicTopoFvMesh::handleCoupledPatches
 // Synchronize topology operations across processors
 void dynamicTopoFvMesh::syncCoupledPatches()
 {
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
     // Wait for all transfers to complete.
     meshOps::waitForBuffers();
 
@@ -1384,6 +1389,13 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         nC++;
     }
 
+    // Keep track of inserted boundary face indices
+    // - Add exposed internal faces to a 'default' patch
+    //   at the end of the list.
+    labelList bdyFaceSizes(boundary.size() + 1, 0);
+    labelList bdyFaceStarts(boundary.size() + 1, 0);
+    labelList bdyFaceIndices(boundary.size() + 1, 0);
+
     // Allocate the faceMap. Interior faces need to be detected
     // first and added before boundary ones. Do this in two stages.
     label sumNFE = 0;
@@ -1400,26 +1412,17 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
                 if (!rFaceMap.found(fIndex))
                 {
-                    if (stage == 0)
-                    {
-                        // Check if neighbouring cells do not
-                        // belong to the cellMap
-                        bool boundaryFace = true;
+                    // Determine the patch index
+                    label patchID = whichPatch(fIndex);
 
+                    if (patchID == -1)
+                    {
+                        // Internal face. Check if this needs to
+                        // be added to the 'default' patch.
                         label own = owner_[fIndex];
                         label nei = neighbour_[fIndex];
 
-                        if (nei > -1)
-                        {
-                            // Internal face. Does cellMap contain
-                            // both owner and neighbour?
-                            if (rCellMap.found(own) && rCellMap.found(nei))
-                            {
-                                boundaryFace = false;
-                            }
-                        }
-
-                        if (!boundaryFace)
+                        if (rCellMap.found(own) && rCellMap.found(nei))
                         {
                             faceMap.insert(nF, fIndex);
                             rFaceMap.insert(fIndex, nF);
@@ -1428,12 +1431,41 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
                             // Accumulate face sizes
                             sumNFE += faces_[fIndex].size();
                         }
+                        else
+                        if (stage == 0)
+                        {
+                            // This face needs to be added to
+                            // the 'default' patch.
+                            // Only update sizes for now.
+                            bdyFaceSizes[boundary.size()]++;
+                        }
+                        else
+                        {
+                            // Second stage. Update boundary maps.
+                            label bfI = bdyFaceIndices[boundary.size()]++;
+
+                            faceMap.insert(bfI, fIndex);
+                            rFaceMap.insert(fIndex, bfI);
+                            nF++;
+
+                            // Accumulate face sizes
+                            sumNFE += faces_[fIndex].size();
+                        }
+                    }
+                    else
+                    if (stage == 0)
+                    {
+                        // Add to respective patch.
+                        // Only update sizes for now.
+                        bdyFaceSizes[patchID]++;
                     }
                     else
                     {
-                        // Adding only boundary faces at this stage
-                        faceMap.insert(nF, fIndex);
-                        rFaceMap.insert(fIndex, nF);
+                        // Second stage. Update boundary maps.
+                        label bfI = bdyFaceIndices[patchID]++;
+
+                        faceMap.insert(bfI, fIndex);
+                        rFaceMap.insert(fIndex, bfI);
                         nF++;
 
                         // Accumulate face sizes
@@ -1443,12 +1475,30 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
             }
         }
 
-        // Set the number of internal faces at this point
         if (stage == 0)
         {
+            // Set the number of internal faces at this point
             cMap.nEntities(coupleMap::INTERNAL_FACE) = nF;
+
+            // Set patch starts
+            bdyFaceStarts[0] = nF;
+
+            for (label i = 1; i < bdyFaceStarts.size(); i++)
+            {
+                bdyFaceStarts[i] = bdyFaceStarts[i-1] + bdyFaceSizes[i-1];
+            }
+
+            // Set indices to patch starts
+            bdyFaceIndices = bdyFaceStarts;
         }
     }
+
+    // Keep track of inserted boundary edge indices
+    // - Add exposed internal edges to a 'default' patch
+    //   at the end of the list.
+    labelList bdyEdgeSizes(boundary.size() + 1, 0);
+    labelList bdyEdgeStarts(boundary.size() + 1, 0);
+    labelList bdyEdgeIndices(boundary.size() + 1, 0);
 
     // Allocate the edgeMap. Interior edges need to be detected
     // first and added before boundary ones. Do this in two stages.
@@ -1464,52 +1514,72 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
                 if (!rEdgeMap.found(eIndex))
                 {
-                    if (stage == 0)
+                    // Determine the patch index
+                    label patchID = whichPatch(eIndex);
+
+                    if (patchID == -1)
                     {
                         bool boundaryEdge = false;
 
-                        if (whichEdgePatch(eIndex) == -1)
+                        // Check if any cells touching edgeFaces
+                        // do not belong to the cellMap.
+                        const labelList& eFaces = edgeFaces_[eIndex];
+
+                        forAll(eFaces, faceI)
                         {
-                            // Check if any cells touching edgeFaces
-                            // do not belong to the cellMap.
-                            const labelList& eFaces = edgeFaces_[eIndex];
+                            label fIndex = eFaces[faceI];
 
-                            forAll(eFaces, faceI)
+                            label own = owner_[fIndex];
+                            label nei = neighbour_[fIndex];
+
+                            if (!rCellMap.found(own) || !rCellMap.found(nei))
                             {
-                                label fIndex = eFaces[faceI];
+                                boundaryEdge = true;
+                                break;
+                            }
+                        }
 
-                                label own = owner_[fIndex];
-                                label nei = neighbour_[fIndex];
+                        if (boundaryEdge)
+                        {
+                            if (stage == 0)
+                            {
+                                // This edge needs to be added to
+                                // the 'default' patch.
+                                // Only update sizes for now.
+                                bdyEdgeSizes[boundary.size()]++;
+                            }
+                            else
+                            {
+                                // Second stage. Update boundary maps.
+                                label beI = bdyEdgeIndices[patchID]++;
 
-                                if
-                                (
-                                    !rCellMap.found(own) ||
-                                    !rCellMap.found(nei)
-                                )
-                                {
-                                    boundaryEdge = true;
-                                    break;
-                                }
+                                edgeMap.insert(beI, eIndex);
+                                rEdgeMap.insert(eIndex, beI);
+                                nE++;
                             }
                         }
                         else
                         {
-                            // Traditional boundary edge
-                            boundaryEdge = true;
-                        }
-
-                        if (!boundaryEdge)
-                        {
+                            // Internal edge
                             edgeMap.insert(nE, eIndex);
                             rEdgeMap.insert(eIndex, nE);
                             nE++;
                         }
                     }
                     else
+                    if (stage == 0)
                     {
-                        // Adding only boundary edges at this stage.
-                        edgeMap.insert(nE, eIndex);
-                        rEdgeMap.insert(eIndex, nE);
+                        // Add to respective patch.
+                        // Only update sizes for now.
+                        bdyEdgeSizes[patchID]++;
+                    }
+                    else
+                    {
+                        // Second stage. Update boundary maps.
+                        label beI = bdyEdgeIndices[patchID]++;
+
+                        edgeMap.insert(beI, eIndex);
+                        rEdgeMap.insert(eIndex, beI);
                         nE++;
                     }
                 }
@@ -1520,6 +1590,17 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         if (stage == 0)
         {
             cMap.nEntities(coupleMap::INTERNAL_EDGE) = nE;
+
+            // Set patch starts
+            bdyEdgeStarts[0] = nE;
+
+            for (label i = 1; i < bdyEdgeStarts.size(); i++)
+            {
+                bdyEdgeStarts[i] = bdyEdgeStarts[i-1] + bdyEdgeSizes[i-1];
+            }
+
+            // Set indices to patch starts
+            bdyEdgeIndices = bdyEdgeStarts;
         }
     }
 
@@ -1545,11 +1626,12 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     // Assign sizes to the mesh
     cMap.nEntities(coupleMap::POINT) = nP;
-    cMap.nEntities(coupleMap::EDGE)  = nE;
-    cMap.nEntities(coupleMap::FACE)  = nF;
-    cMap.nEntities(coupleMap::CELL)  = nC;
+    cMap.nEntities(coupleMap::EDGE) = nE;
+    cMap.nEntities(coupleMap::FACE) = nF;
+    cMap.nEntities(coupleMap::CELL) = nC;
     cMap.nEntities(coupleMap::SHARED_POINT) = subMeshPoints.size();
     cMap.nEntities(coupleMap::NFE_SIZE) = sumNFE;
+    cMap.nEntities(coupleMap::NBDY) = boundary.size() + 1;
 
     // Size up buffers and fill them
     cMap.allocateBuffers();
@@ -1576,34 +1658,9 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         eBuffer[index++] = rPointMap[edgeToCheck[1]];
     }
 
-    labelList& fpBuffer = cMap.entityBuffer(coupleMap::PATCH_ID);
-
-    label faceIndex = 0;
-
-    forAllConstIter(Map<label>, faceMap, fIter)
-    {
-        // Find the actual patchID for this face.
-        label pIndex = whichPatch(fIter());
-
-        // Fill it in, provided it isn't a processor boundary face.
-        if (pIndex == -1)
-        {
-            fpBuffer[faceIndex++] = pIndex;
-        }
-        else
-        if (isA<processorPolyPatch>(boundary[pIndex]))
-        {
-            fpBuffer[faceIndex++] = -2;
-        }
-        else
-        {
-            fpBuffer[faceIndex++] = pIndex;
-        }
-    }
-
     index = 0;
-    face thisFace(3);
-    labelList& fBuffer  = cMap.entityBuffer(coupleMap::FACE);
+    face thisFace;
+    labelList& fBuffer = cMap.entityBuffer(coupleMap::FACE);
     labelList& feBuffer = cMap.entityBuffer(coupleMap::FACE_EDGE);
 
     forAllConstIter(Map<label>, faceMap, fIter)
@@ -1650,7 +1707,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     }
 
     index = 0;
-    labelList& cBuffer  = cMap.entityBuffer(coupleMap::CELL);
+    labelList& cBuffer = cMap.entityBuffer(coupleMap::CELL);
 
     forAllConstIter(Map<label>, cellMap, cIter)
     {
@@ -1661,6 +1718,12 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
             cBuffer[index++] = rFaceMap[cellToCheck[faceI]];
         }
     }
+
+    // Fill in boundary information
+    cMap.entityBuffer(coupleMap::FACE_STARTS) = bdyFaceStarts;
+    cMap.entityBuffer(coupleMap::FACE_SIZES) = bdyFaceSizes;
+    cMap.entityBuffer(coupleMap::EDGE_STARTS) = bdyEdgeStarts;
+    cMap.entityBuffer(coupleMap::EDGE_SIZES) = bdyEdgeSizes;
 
     // Set maps as built.
     subMesh.setBuiltMaps();
@@ -1688,7 +1751,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 //     the re-ordering stage.
 void dynamicTopoFvMesh::buildLocalCoupledMaps()
 {
-    if (!patchCoupling_.size())
+    if (patchCoupling_.empty())
     {
         return;
     }
@@ -2070,13 +2133,16 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 ),
                 xferCopy(cMap.pointBuffer()),
                 xferCopy(cMap.oldPointBuffer()),
-                cMap.nEntities(coupleMap::INTERNAL_EDGE),
                 xferCopy(cMap.edges()),
                 xferCopy(cMap.faces()),
                 xferCopy(cMap.faceEdges()),
                 xferCopy(cMap.owner()),
                 xferCopy(cMap.neighbour()),
-                xferCopy(cMap.cells())
+                xferCopy(cMap.cells()),
+                cMap.entityBuffer(coupleMap::FACE_STARTS),
+                cMap.entityBuffer(coupleMap::FACE_SIZES),
+                cMap.entityBuffer(coupleMap::EDGE_STARTS),
+                cMap.entityBuffer(coupleMap::EDGE_SIZES)
             )
         );
 
@@ -2773,6 +2839,11 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
 // and exchange across processors.
 void dynamicTopoFvMesh::exchangeLengthBuffers()
 {
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
     forAll(procIndices_, pI)
     {
         coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
@@ -3010,7 +3081,7 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
     const polyBoundaryMesh& boundary = boundaryMesh();
 
     // Bail out if no patchCoupling is present
-    if (!patchCoupling_.size())
+    if (patchCoupling_.empty())
     {
         return false;
     }
@@ -3105,10 +3176,7 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
 
 
 // Method to determine the locally coupled patch index
-label dynamicTopoFvMesh::locallyCoupledEdgePatch
-(
-    const label eIndex
-) const
+label dynamicTopoFvMesh::locallyCoupledEdgePatch(const label eIndex) const
 {
     const labelList& eFaces = edgeFaces_[eIndex];
 
@@ -3156,10 +3224,15 @@ label dynamicTopoFvMesh::locallyCoupledEdgePatch
 
 
 // Method to determine if the entity is on a processor boundary
+//  - Also provides an additional check for 'pure' processor edges
+//    i.e., edges that do not abut a physical patch. This is necessary
+//    while deciding on collapse cases towards bounding curves.
 bool dynamicTopoFvMesh::processorCoupledEntity
 (
     const label index,
-    bool checkFace
+    bool checkFace,
+    bool checkEdge,
+    bool checkPure
 ) const
 {
     // Skip check for serial runs
@@ -3172,7 +3245,7 @@ bool dynamicTopoFvMesh::processorCoupledEntity
 
     label patch = -2;
 
-    if (twoDMesh_ || checkFace)
+    if ((twoDMesh_ || checkFace) && !checkEdge)
     {
         patch = whichPatch(index);
 
@@ -3190,6 +3263,8 @@ bool dynamicTopoFvMesh::processorCoupledEntity
     {
         const labelList& eFaces = edgeFaces_[index];
 
+        label nPhysical = 0, nProcessor = 0;
+
         // Search for boundary faces, and determine boundary type.
         forAll(eFaces, faceI)
         {
@@ -3199,8 +3274,30 @@ bool dynamicTopoFvMesh::processorCoupledEntity
 
                 if (isA<processorPolyPatch>(boundary[patch]))
                 {
-                    return true;
+                    // Increment the processor patch count
+                    nProcessor++;
+
+                    if (!checkPure)
+                    {
+                        // We don't have to validate if this
+                        // is a 'pure' processor edge, so bail out.
+                        return true;
+                    }
                 }
+                else
+                {
+                    // Not a processor patch.
+                    nPhysical++;
+                }
+            }
+        }
+
+        // Purity check
+        if (checkPure)
+        {
+            if (nProcessor && !nPhysical)
+            {
+                return true;
             }
         }
     }

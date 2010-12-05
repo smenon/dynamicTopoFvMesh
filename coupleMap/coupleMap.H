@@ -88,7 +88,7 @@ class coupleMap
     mutable FixedList<Map<label>,4> reverseEntityMap_;
 
     // Entity Buffers (as specified by the entityType enumerant)
-    mutable FixedList<labelList,7> entityBuffer_;
+    mutable FixedList<labelList,9> entityBuffer_;
 
     // List of entity indices with topological operations
     mutable labelList entityIndices_;
@@ -132,10 +132,14 @@ public:
         SHARED_POINT = 6,
         UNIQUE_CELL = 7,
         NFE_SIZE = 8,
+        NBDY = 9,
         // Buffers only
         FACE_EDGE = 4,
-        PATCH_ID = 5,
-        NFE_BUFFER = 6
+        NFE_BUFFER = 5,
+        FACE_STARTS = 6,
+        FACE_SIZES = 7,
+        EDGE_STARTS = 8,
+        EDGE_SIZES = 9
     };
 
     enum operationType
@@ -269,7 +273,7 @@ public:
         inline Map<label>& entityMap(const label eType) const;
         inline Map<label>& reverseEntityMap(const label eType) const;
 
-        inline FixedList<labelList,7>& entityBuffer() const;
+        inline FixedList<labelList,9>& entityBuffer() const;
         inline labelList& entityBuffer(const label eType) const;
 
         inline labelList& entityIndices() const;

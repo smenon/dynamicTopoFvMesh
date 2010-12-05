@@ -354,7 +354,12 @@ void coupleMap::allocateBuffers() const
     // Size up connectivity buffers
     entityBuffer(coupleMap::POINT).setSize(nEntities(coupleMap::SHARED_POINT));
     entityBuffer(coupleMap::EDGE).setSize(2*nEntities(coupleMap::EDGE));
-    entityBuffer(coupleMap::PATCH_ID).setSize(nEntities(coupleMap::FACE));
+
+    // Size up boundary buffers
+    entityBuffer(coupleMap::FACE_STARTS).setSize(nEntities(coupleMap::NBDY));
+    entityBuffer(coupleMap::FACE_SIZES).setSize(nEntities(coupleMap::NBDY));
+    entityBuffer(coupleMap::EDGE_STARTS).setSize(nEntities(coupleMap::NBDY));
+    entityBuffer(coupleMap::EDGE_SIZES).setSize(nEntities(coupleMap::NBDY));
 
     // nFaceEdges buffer is required only for 2D,
     // due to a mix of triangle / quad faces

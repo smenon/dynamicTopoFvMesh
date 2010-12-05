@@ -975,10 +975,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         {
             Pout << "Face: " << fIndex
                  << ":: " << faces_[fIndex] << nl
-                 << " collapseCase determined to be: "
-                 << collapseCase << nl
-                 << " Resulting quality: "
-                 << collapseQuality
+                 << " collapseCase determined to be: " << collapseCase << nl
+                 << " Resulting quality: " << collapseQuality << nl
+                 << " edgeBoundary: " << edgeBoundary << nl
+                 << " nBoundCurves: " << nBoundCurves
                  << endl;
         }
 

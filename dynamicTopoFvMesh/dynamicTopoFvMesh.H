@@ -266,13 +266,16 @@ class dynamicTopoFvMesh
             const IOobject& io,
             const Xfer<pointField>& points,
             const Xfer<pointField>& oldPoints,
-            const label nInternalEdges,
             const Xfer<edgeList>& edges,
             const Xfer<faceList>& faces,
             const Xfer<labelListList>& faceEdges,
             const Xfer<labelList>& owner,
             const Xfer<labelList>& neighbour,
-            const Xfer<cellList>& cells
+            const Xfer<cellList>& cells,
+            const labelList& faceStarts,
+            const labelList& faceSizes,
+            const labelList& edgeStarts,
+            const labelList& edgeSizes
         );
 
         //- Disallow default bitwise assignment
@@ -629,7 +632,11 @@ class dynamicTopoFvMesh
         scalar computeTrisectionQuality(const label fIndex) const;
 
         // Check whether the given edge is on a bounding curve
-        bool checkBoundingCurve(const label eIndex) const;
+        bool checkBoundingCurve
+        (
+            const label eIndex,
+            const bool overRidePurityCheck = false
+        ) const;
 
         // Allocate dynamic programming tables
         void initTables
@@ -908,7 +915,9 @@ class dynamicTopoFvMesh
         bool processorCoupledEntity
         (
             const label index,
-            bool checkFace = false
+            bool checkFace = false,
+            bool checkEdge = false,
+            bool checkPure = false
         ) const;
 
         // Read optional dictionary parameters
