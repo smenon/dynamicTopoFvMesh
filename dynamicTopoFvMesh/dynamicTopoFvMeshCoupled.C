@@ -991,6 +991,11 @@ void dynamicTopoFvMesh::syncCoupledPatches()
                 {
                     case coupleMap::BISECTION:
                     {
+                        if (debug > 3)
+                        {
+                            Pout<< "Bisection Op: " << localIndex << endl;
+                        }
+
                         opMap = bisectEdge(localIndex);
 
                         // Insert the added index into the map
@@ -1009,18 +1014,33 @@ void dynamicTopoFvMesh::syncCoupledPatches()
 
                     case coupleMap::COLLAPSE_FIRST:
                     {
+                        if (debug > 3)
+                        {
+                            Pout<< "Collapse [0] Op: " << localIndex << endl;
+                        }
+
                         opMap = collapseEdge(localIndex, 1);
                         break;
                     }
 
                     case coupleMap::COLLAPSE_SECOND:
                     {
+                        if (debug > 3)
+                        {
+                            Pout<< "Collapse [1] Op: " << localIndex << endl;
+                        }
+
                         opMap = collapseEdge(localIndex, 2);
                         break;
                     }
 
                     case coupleMap::COLLAPSE_MIDPOINT:
                     {
+                        if (debug > 3)
+                        {
+                            Pout<< "Collapse Mid Op: " << localIndex << endl;
+                        }
+
                         opMap = collapseEdge(localIndex, 3);
                         break;
                     }
@@ -2479,13 +2499,28 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
 
                 if (debug)
                 {
+                    if (debug > 3)
+                    {
+                        Pout<< "Sending to: " << pp.neighbProcNo()
+                            << " nCentres: " << size << endl;
+
+                        // Write out my centres to disk
+                        meshOps::writeVTK
+                        (
+                            (*this),
+                            "centres_" + pp.name(),
+                            size, size, size,
+                            centres[pI]
+                        );
+                    }
+
                     // Ensure that we're sending the right size
                     meshOps::pWrite(pp.neighbProcNo(), size);
                 }
 
                 // Send information to neighbour
-                meshOps::pWrite(pp.neighbProcNo(), centres);
-                meshOps::pWrite(pp.neighbProcNo(), anchors);
+                meshOps::pWrite(pp.neighbProcNo(), centres[pI]);
+                meshOps::pWrite(pp.neighbProcNo(), anchors[pI]);
             }
             else
             {
@@ -2495,6 +2530,12 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
 
                     // Ensure that we're receiving the right size
                     meshOps::pRead(pp.neighbProcNo(), nEntities);
+
+                    if (debug > 3)
+                    {
+                        Pout<< " Recving from: " << pp.neighbProcNo()
+                            << " nCentres: " << size << endl;
+                    }
 
                     if (nEntities != size)
                     {
@@ -2511,8 +2552,8 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
                 }
 
                 // Schedule receive from neighbour
-                meshOps::pRead(pp.neighbProcNo(), centres);
-                meshOps::pRead(pp.neighbProcNo(), anchors);
+                meshOps::pRead(pp.neighbProcNo(), centres[pI]);
+                meshOps::pRead(pp.neighbProcNo(), anchors[pI]);
             }
         }
     }
@@ -2579,6 +2620,18 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
 
                     slaveTols[pI][fI] = matchTol*maxLen;
                 }
+
+                // Write out my centres to disk
+                if (debug > 3)
+                {
+                    meshOps::writeVTK
+                    (
+                        (*this),
+                        "slaveCentres_" + pp.name(),
+                        size, size, size,
+                        slaveCentres[pI]
+                    );
+                }
             }
         }
     }
@@ -2600,8 +2653,8 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
             labelList& rotation = rotations[pI];
 
             // Initialize map and rotation
-            patchMap.setSize(pp.size(), -1);
-            rotation.setSize(pp.size(), 0);
+            patchMap.setSize(patchSizes_[pI], -1);
+            rotation.setSize(patchSizes_[pI], 0);
 
             if (Pstream::myProcNo() < pp.neighbProcNo())
             {
@@ -2614,14 +2667,48 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
             else
             {
                 // Try zero separation automatic matching
-                matchPoints
+                bool matchedAll =
                 (
-                    slaveCentres[pI],
-                    centres[pI],
-                    slaveTols[pI],
-                    true,
-                    patchMap
+                    matchPoints
+                    (
+                        slaveCentres[pI],
+                        centres[pI],
+                        slaveTols[pI],
+                        true,
+                        patchMap
+                    )
                 );
+
+                // Write out master centres to disk
+                if (debug > 3 || !matchedAll)
+                {
+                    label mSize = centres[pI].size();
+                    label sSize = slaveCentres[pI].size();
+
+                    meshOps::writeVTK
+                    (
+                        (*this),
+                        "masterCentres_" + pp.name(),
+                        mSize, mSize, mSize,
+                        centres[pI]
+                    );
+
+                    meshOps::writeVTK
+                    (
+                        (*this),
+                        "slaveCentres_" + pp.name(),
+                        sSize, sSize, sSize,
+                        slaveCentres[pI]
+                    );
+
+                    if (!matchedAll)
+                    {
+                        Pout<< " Patch: " << pp.name()
+                            << " mSize: " << mSize << " sSize: " << sSize
+                            << " failed on match for face centres."
+                            << endl;
+                    }
+                }
 
                 label start = patchStarts_[pI];
 

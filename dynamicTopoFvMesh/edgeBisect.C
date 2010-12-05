@@ -528,21 +528,21 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
              << ": " << faces_[fIndex]
              << " is to be bisected. " << endl;
 
-        label epIndex = whichPatch(fIndex);
-
-        Pout << "Patch: ";
-
-        if (epIndex == -1)
-        {
-            Pout << "Internal" << endl;
-        }
-        else
-        {
-            Pout << boundaryMesh()[epIndex].name() << endl;
-        }
-
         if (debug > 2)
         {
+            label epIndex = whichPatch(fIndex);
+
+            Pout << "Patch: ";
+
+            if (epIndex == -1)
+            {
+                Pout << "Internal" << endl;
+            }
+            else
+            {
+                Pout << boundaryMesh()[epIndex].name() << endl;
+            }
+
             Pout << "Cell[0]: " << c0 << ": " << oldCells[0] << endl;
 
             forAll(oldCells[0], faceI)
@@ -2254,7 +2254,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Increment surface-counter
     if (c1 == -1)
     {
-        statistics_[5]++;
+        // Do not update stats for processor patches
+        if (!processorCoupledEntity(fIndex))
+        {
+            statistics_[5]++;
+        }
     }
 
     // Increment the number of modifications
@@ -2671,7 +2675,11 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Update number of surface bisections, if necessary.
     if (whichEdgePatch(eIndex) > -1)
     {
-        statistics_[5]++;
+        // Do not update stats for processor patches
+        if (!processorCoupledEntity(eIndex))
+        {
+            statistics_[5]++;
+        }
     }
 
     // Hull variables
