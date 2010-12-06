@@ -1394,103 +1394,92 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     //   at the end of the list.
     labelList bdyFaceSizes(boundary.size() + 1, 0);
     labelList bdyFaceStarts(boundary.size() + 1, 0);
-    labelList bdyFaceIndices(boundary.size() + 1, 0);
+    List<Map<label> > bdyFaceIndices(boundary.size() + 1);
 
-    // Allocate the faceMap. Interior faces need to be detected
-    // first and added before boundary ones. Do this in two stages.
+    // Allocate the faceMap. Since the number of internal faces is unknown,
+    // detect internal ones first and update boundaries later.
     label sumNFE = 0;
 
-    for (label stage = 0; stage < 2; stage++)
+    forAllConstIter(Map<label>, rCellMap, cIter)
     {
-        forAllConstIter(Map<label>, rCellMap, cIter)
+        const cell& thisCell = cells_[cIter.key()];
+
+        forAll(thisCell, faceI)
         {
-            const cell& thisCell = cells_[cIter.key()];
+            label fIndex = thisCell[faceI];
 
-            forAll(thisCell, faceI)
+            if (!rFaceMap.found(fIndex))
             {
-                label fIndex = thisCell[faceI];
+                // Determine the patch index
+                label patchID = whichPatch(fIndex);
 
-                if (!rFaceMap.found(fIndex))
+                if (patchID == -1)
                 {
-                    // Determine the patch index
-                    label patchID = whichPatch(fIndex);
+                    // Internal face. Check if this needs to
+                    // be added to the 'default' patch.
+                    label own = owner_[fIndex];
+                    label nei = neighbour_[fIndex];
 
-                    if (patchID == -1)
+                    if (rCellMap.found(own) && rCellMap.found(nei))
                     {
-                        // Internal face. Check if this needs to
-                        // be added to the 'default' patch.
-                        label own = owner_[fIndex];
-                        label nei = neighbour_[fIndex];
-
-                        if (rCellMap.found(own) && rCellMap.found(nei))
-                        {
-                            faceMap.insert(nF, fIndex);
-                            rFaceMap.insert(fIndex, nF);
-                            nF++;
-
-                            // Accumulate face sizes
-                            sumNFE += faces_[fIndex].size();
-                        }
-                        else
-                        if (stage == 0)
-                        {
-                            // This face needs to be added to
-                            // the 'default' patch.
-                            // Only update sizes for now.
-                            bdyFaceSizes[boundary.size()]++;
-                        }
-                        else
-                        {
-                            // Second stage. Update boundary maps.
-                            label bfI = bdyFaceIndices[boundary.size()]++;
-
-                            faceMap.insert(bfI, fIndex);
-                            rFaceMap.insert(fIndex, bfI);
-                            nF++;
-
-                            // Accumulate face sizes
-                            sumNFE += faces_[fIndex].size();
-                        }
-                    }
-                    else
-                    if (stage == 0)
-                    {
-                        // Add to respective patch.
-                        // Only update sizes for now.
-                        bdyFaceSizes[patchID]++;
-                    }
-                    else
-                    {
-                        // Second stage. Update boundary maps.
-                        label bfI = bdyFaceIndices[patchID]++;
-
-                        faceMap.insert(bfI, fIndex);
-                        rFaceMap.insert(fIndex, bfI);
+                        faceMap.insert(nF, fIndex);
+                        rFaceMap.insert(fIndex, nF);
                         nF++;
+                    }
+                    else
+                    {
+                        // Update boundary maps.
+                        label bfI = bdyFaceSizes[boundary.size()]++;
 
-                        // Accumulate face sizes
-                        sumNFE += faces_[fIndex].size();
+                        // Skip faceMap and update the reverseMap for now.
+                        // faceMap will be updated once all
+                        // internal faces have been detected.
+                        rFaceMap.insert(fIndex, bfI);
+                        bdyFaceIndices[boundary.size()].insert(bfI, fIndex);
                     }
                 }
+                else
+                {
+                    // Update boundary maps.
+                    label bfI = bdyFaceSizes[patchID]++;
+
+                    // Skip faceMap and update the reverseMap for now.
+                    // faceMap will be updated once all
+                    // internal faces have been detected.
+                    rFaceMap.insert(fIndex, bfI);
+                    bdyFaceIndices[patchID].insert(bfI, fIndex);
+                }
+
+                // Accumulate face sizes
+                sumNFE += faces_[fIndex].size();
             }
         }
+    }
 
-        if (stage == 0)
+    // Set the number of internal faces at this point
+    cMap.nEntities(coupleMap::INTERNAL_FACE) = nF;
+
+    // Set patch starts
+    bdyFaceStarts[0] = nF;
+
+    for (label i = 1; i < bdyFaceStarts.size(); i++)
+    {
+        bdyFaceStarts[i] = bdyFaceStarts[i-1] + bdyFaceSizes[i-1];
+    }
+
+    // Update faceMap and reverseFaceMap for boundaries
+    forAll(bdyFaceIndices, patchI)
+    {
+        label pStart = bdyFaceStarts[patchI];
+
+        forAllConstIter(Map<label>, bdyFaceIndices[patchI], fIter)
         {
-            // Set the number of internal faces at this point
-            cMap.nEntities(coupleMap::INTERNAL_FACE) = nF;
-
-            // Set patch starts
-            bdyFaceStarts[0] = nF;
-
-            for (label i = 1; i < bdyFaceStarts.size(); i++)
-            {
-                bdyFaceStarts[i] = bdyFaceStarts[i-1] + bdyFaceSizes[i-1];
-            }
-
-            // Set indices to patch starts
-            bdyFaceIndices = bdyFaceStarts;
+            faceMap.insert(fIter.key() + pStart, fIter());
+            rFaceMap[fIter()] = fIter.key() + pStart;
         }
+
+        // Update face-count
+        nF += bdyFaceSizes[patchI];
     }
 
     // Keep track of inserted boundary edge indices
@@ -1498,110 +1487,103 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     //   at the end of the list.
     labelList bdyEdgeSizes(boundary.size() + 1, 0);
     labelList bdyEdgeStarts(boundary.size() + 1, 0);
-    labelList bdyEdgeIndices(boundary.size() + 1, 0);
+    List<Map<label> > bdyEdgeIndices(boundary.size() + 1);
 
-    // Allocate the edgeMap. Interior edges need to be detected
-    // first and added before boundary ones. Do this in two stages.
-    for (label stage = 0; stage < 2; stage++)
+    // Allocate the edgeMap. Since the number of internal edges is unknown,
+    // detect internal ones first and update boundaries later.
+    forAllConstIter(Map<label>, rFaceMap, fIter)
     {
-        forAllConstIter(Map<label>, rFaceMap, fIter)
+        const labelList& fEdges = faceEdges_[fIter.key()];
+
+        forAll(fEdges, edgeI)
         {
-            const labelList& fEdges = faceEdges_[fIter.key()];
+            label eIndex = fEdges[edgeI];
 
-            forAll(fEdges, edgeI)
+            if (!rEdgeMap.found(eIndex))
             {
-                label eIndex = fEdges[edgeI];
+                // Determine the patch index
+                label patchID = whichEdgePatch(eIndex);
 
-                if (!rEdgeMap.found(eIndex))
+                if (patchID == -1)
                 {
-                    // Determine the patch index
-                    label patchID = whichPatch(eIndex);
+                    bool boundaryEdge = false;
 
-                    if (patchID == -1)
+                    // Check if any cells touching edgeFaces
+                    // do not belong to the cellMap.
+                    const labelList& eFaces = edgeFaces_[eIndex];
+
+                    forAll(eFaces, faceI)
                     {
-                        bool boundaryEdge = false;
+                        label fIndex = eFaces[faceI];
 
-                        // Check if any cells touching edgeFaces
-                        // do not belong to the cellMap.
-                        const labelList& eFaces = edgeFaces_[eIndex];
+                        label own = owner_[fIndex];
+                        label nei = neighbour_[fIndex];
 
-                        forAll(eFaces, faceI)
+                        if (!rCellMap.found(own) || !rCellMap.found(nei))
                         {
-                            label fIndex = eFaces[faceI];
-
-                            label own = owner_[fIndex];
-                            label nei = neighbour_[fIndex];
-
-                            if (!rCellMap.found(own) || !rCellMap.found(nei))
-                            {
-                                boundaryEdge = true;
-                                break;
-                            }
-                        }
-
-                        if (boundaryEdge)
-                        {
-                            if (stage == 0)
-                            {
-                                // This edge needs to be added to
-                                // the 'default' patch.
-                                // Only update sizes for now.
-                                bdyEdgeSizes[boundary.size()]++;
-                            }
-                            else
-                            {
-                                // Second stage. Update boundary maps.
-                                label beI = bdyEdgeIndices[patchID]++;
-
-                                edgeMap.insert(beI, eIndex);
-                                rEdgeMap.insert(eIndex, beI);
-                                nE++;
-                            }
-                        }
-                        else
-                        {
-                            // Internal edge
-                            edgeMap.insert(nE, eIndex);
-                            rEdgeMap.insert(eIndex, nE);
-                            nE++;
+                            boundaryEdge = true;
+                            break;
                         }
                     }
-                    else
-                    if (stage == 0)
-                    {
-                        // Add to respective patch.
-                        // Only update sizes for now.
-                        bdyEdgeSizes[patchID]++;
-                    }
-                    else
-                    {
-                        // Second stage. Update boundary maps.
-                        label beI = bdyEdgeIndices[patchID]++;
 
-                        edgeMap.insert(beI, eIndex);
+                    if (boundaryEdge)
+                    {
+                        // Update boundary maps.
+                        label beI = bdyEdgeSizes[boundary.size()]++;
+
+                        // Skip edgeMap and update the reverseMap for now.
+                        // edgeMap will be updated once all
+                        // internal edges have been detected.
                         rEdgeMap.insert(eIndex, beI);
+                        bdyEdgeIndices[boundary.size()].insert(beI, eIndex);
+                    }
+                    else
+                    {
+                        // Internal edge
+                        edgeMap.insert(nE, eIndex);
+                        rEdgeMap.insert(eIndex, nE);
                         nE++;
                     }
                 }
+                else
+                {
+                    // Update boundary maps.
+                    label beI = bdyEdgeSizes[patchID]++;
+
+                    // Skip edgeMap and update the reverseMap for now.
+                    // edgeMap will be updated once all
+                    // internal edges have been detected.
+                    rEdgeMap.insert(eIndex, beI);
+                    bdyEdgeIndices[patchID].insert(beI, eIndex);
+                }
             }
         }
+    }
 
-        // Set the number of internal edges at this point
-        if (stage == 0)
+    // Set the number of internal edges at this point
+    cMap.nEntities(coupleMap::INTERNAL_EDGE) = nE;
+
+    // Set patch starts
+    bdyEdgeStarts[0] = nE;
+
+    for (label i = 1; i < bdyEdgeStarts.size(); i++)
+    {
+        bdyEdgeStarts[i] = bdyEdgeStarts[i-1] + bdyEdgeSizes[i-1];
+    }
+
+    // Update edgeMap and reverseEdgeMap for boundaries
+    forAll(bdyEdgeIndices, patchI)
+    {
+        label pStart = bdyEdgeStarts[patchI];
+
+        forAllConstIter(Map<label>, bdyEdgeIndices[patchI], eIter)
         {
-            cMap.nEntities(coupleMap::INTERNAL_EDGE) = nE;
-
-            // Set patch starts
-            bdyEdgeStarts[0] = nE;
-
-            for (label i = 1; i < bdyEdgeStarts.size(); i++)
-            {
-                bdyEdgeStarts[i] = bdyEdgeStarts[i-1] + bdyEdgeSizes[i-1];
-            }
-
-            // Set indices to patch starts
-            bdyEdgeIndices = bdyEdgeStarts;
+            edgeMap.insert(eIter.key() + pStart, eIter());
+            rEdgeMap[eIter()] = eIter.key() + pStart;
         }
+
+        // Update edge-count
+        nE += bdyEdgeSizes[patchI];
     }
 
     // Set additional points in the pointMap
@@ -1645,14 +1627,15 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         opBuffer[pIter.key()] = oldPoints_[pIter()];
     }
 
+    label index = 0;
+
     // Edge buffer size: 2 points for every edge
     labelList& eBuffer = cMap.entityBuffer(coupleMap::EDGE);
 
-    label index = 0;
-
-    forAllConstIter(Map<label>, edgeMap, eIter)
+    for (label i = 0; i < nE; i++)
     {
-        edge& edgeToCheck = edges_[eIter()];
+        label eIndex = edgeMap[i];
+        const edge& edgeToCheck = edges_[eIndex];
 
         eBuffer[index++] = rPointMap[edgeToCheck[0]];
         eBuffer[index++] = rPointMap[edgeToCheck[1]];
@@ -1663,35 +1646,38 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     labelList& fBuffer = cMap.entityBuffer(coupleMap::FACE);
     labelList& feBuffer = cMap.entityBuffer(coupleMap::FACE_EDGE);
 
-    forAllConstIter(Map<label>, faceMap, fIter)
+    for (label i = 0; i < nF; i++)
     {
-        label own = owner_[fIter()];
-        label nei = neighbour_[fIter()];
+        label fIndex = faceMap[i];
+        label own = owner_[fIndex];
+        label nei = neighbour_[fIndex];
 
         if (rCellMap.found(own))
         {
             // Check if this face is pointed the right way
             if (rCellMap.found(nei) && (rCellMap[nei] < rCellMap[own]))
             {
-                thisFace = faces_[fIter()].reverseFace();
+                thisFace = faces_[fIndex].reverseFace();
             }
             else
             {
-                thisFace = faces_[fIter()];
+                thisFace = faces_[fIndex];
             }
         }
         else
         {
             // This face is pointed the wrong way.
-            thisFace = faces_[fIter()].reverseFace();
+            thisFace = faces_[fIndex].reverseFace();
         }
 
-        const labelList& fEdges = faceEdges_[fIter()];
+        const labelList& fEdges = faceEdges_[fIndex];
 
         forAll(fEdges, indexI)
         {
             fBuffer[index] = rPointMap[thisFace[indexI]];
-            feBuffer[index++] = rEdgeMap[fEdges[indexI]];
+            feBuffer[index] = rEdgeMap[fEdges[indexI]];
+
+            index++;
         }
     }
 
@@ -1709,9 +1695,10 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     index = 0;
     labelList& cBuffer = cMap.entityBuffer(coupleMap::CELL);
 
-    forAllConstIter(Map<label>, cellMap, cIter)
+    for (label i = 0; i < nC; i++)
     {
-        const cell& cellToCheck = cells_[cIter()];
+        label cIndex = cellMap[i];
+        const cell& cellToCheck = cells_[cIndex];
 
         forAll(cellToCheck, faceI)
         {
@@ -1724,6 +1711,26 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     cMap.entityBuffer(coupleMap::FACE_SIZES) = bdyFaceSizes;
     cMap.entityBuffer(coupleMap::EDGE_STARTS) = bdyEdgeStarts;
     cMap.entityBuffer(coupleMap::EDGE_SIZES) = bdyEdgeSizes;
+
+    // Build a list of permitted patch types
+    HashTable<label> permittedTypes;
+
+    permittedTypes.insert("wall", 0);
+    permittedTypes.insert("wedge", 1);
+    permittedTypes.insert("empty", 2);
+    permittedTypes.insert("processor", 3);
+    permittedTypes.insert("symmetryPlane", 4);
+
+    labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_TYPES);
+
+    // Fill types for all but the last one (which is default).
+    forAll(boundary, patchI)
+    {
+        ptBuffer[patchI] = permittedTypes[boundary[patchI].type()];
+    }
+
+    // Fill type for the default patch (wall)
+    ptBuffer[boundary.size()] = 0;
 
     // Set maps as built.
     subMesh.setBuiltMaps();
@@ -1740,6 +1747,13 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
           + "to" + Foam::name(proc),
             rCellMap.toc()
         );
+
+        // Write out patch information
+        Pout<< "faceStarts: " << bdyFaceStarts << endl;
+        Pout<< "faceSizes: " << bdyFaceSizes << endl;
+        Pout<< "edgeStarts: " << bdyEdgeStarts << endl;
+        Pout<< "edgeSizes: " << bdyEdgeSizes << endl;
+        Pout<< "patchTypes: " << ptBuffer << endl;
     }
 }
 
@@ -2111,12 +2125,30 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
     // Put un-matched faces in a list.
     labelHashSet unMatchedFaces;
 
+    // Build a list of permitted patch types
+    Map<word> permittedTypes;
+
+    permittedTypes.insert(0, "wall");
+    permittedTypes.insert(1, "wedge");
+    permittedTypes.insert(2, "empty");
+    permittedTypes.insert(3, "processor");
+    permittedTypes.insert(4, "symmetryPlane");
+
     forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
 
         coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
         const coupleMap& cMap = recvMesh.patchMap();
+        const labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_TYPES);
+
+        // Specify the list of patch-types
+        wordList patchTypes(ptBuffer.size());
+
+        forAll(patchTypes, pI)
+        {
+            patchTypes[pI] = permittedTypes[ptBuffer[pI]];
+        }
 
         // Set the autoPtr.
         recvMesh.setMesh
@@ -2142,7 +2174,8 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 cMap.entityBuffer(coupleMap::FACE_STARTS),
                 cMap.entityBuffer(coupleMap::FACE_SIZES),
                 cMap.entityBuffer(coupleMap::EDGE_STARTS),
-                cMap.entityBuffer(coupleMap::EDGE_SIZES)
+                cMap.entityBuffer(coupleMap::EDGE_SIZES),
+                patchTypes
             )
         );
 

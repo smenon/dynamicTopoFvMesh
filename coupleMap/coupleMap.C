@@ -360,6 +360,7 @@ void coupleMap::allocateBuffers() const
     entityBuffer(coupleMap::FACE_SIZES).setSize(nEntities(coupleMap::NBDY));
     entityBuffer(coupleMap::EDGE_STARTS).setSize(nEntities(coupleMap::NBDY));
     entityBuffer(coupleMap::EDGE_SIZES).setSize(nEntities(coupleMap::NBDY));
+    entityBuffer(coupleMap::PATCH_TYPES).setSize(nEntities(coupleMap::NBDY));
 
     // nFaceEdges buffer is required only for 2D,
     // due to a mix of triangle / quad faces

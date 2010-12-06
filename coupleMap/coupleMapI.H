@@ -217,7 +217,7 @@ inline bool coupleMap::isRecv() const
 }
 
 
-inline FixedList<label,9>& coupleMap::nEntities() const
+inline FixedList<label,10>& coupleMap::nEntities() const
 {
     return nEntities_;
 }
@@ -241,7 +241,7 @@ inline Map<label>& coupleMap::reverseEntityMap(const label eType) const
 }
 
 
-inline FixedList<labelList,9>& coupleMap::entityBuffer() const
+inline FixedList<labelList,11>& coupleMap::entityBuffer() const
 {
     return entityBuffer_;
 }

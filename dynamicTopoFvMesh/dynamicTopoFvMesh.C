@@ -53,7 +53,6 @@ Author
 #include "fvPatchFields.H"
 #include "fvsPatchFields.H"
 #include "coupledPatchInfo.H"
-#include "processorPolyPatch.H"
 #include "lengthScaleEstimator.H"
 
 namespace Foam
@@ -206,7 +205,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     const labelList& faceStarts,
     const labelList& faceSizes,
     const labelList& edgeStarts,
-    const labelList& edgeSizes
+    const labelList& edgeSizes,
+    const wordList& patchTypes
 )
 :
     dynamicFvMesh
@@ -297,16 +297,30 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
 
     forAll(patches, patchI)
     {
+        // Make a temporary dictionary for patch construction
+        dictionary patchDict;
+
+        // Add relevant info
+        patchDict.add("type", patchTypes[patchI]);
+        patchDict.add("startFace", faceStarts[patchI]);
+        patchDict.add("nFaces", faceSizes[patchI]);
+
+        // For processor types, add dummy information
+        if (patchTypes[patchI] == "processor")
+        {
+            patchDict.add("myProcNo", -1);
+            patchDict.add("neighbProcNo", -1);
+        }
+
         patches[patchI] =
         (
-            new polyPatch
+            polyPatch::New
             (
                 "patch_" + Foam::name(patchI),
-                faceSizes[patchI],
-                faceStarts[patchI],
+                patchDict,
                 patchI,
                 boundary
-            )
+            ).ptr()
         );
     }
 

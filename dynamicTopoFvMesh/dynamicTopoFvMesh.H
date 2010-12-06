@@ -275,7 +275,8 @@ class dynamicTopoFvMesh
             const labelList& faceStarts,
             const labelList& faceSizes,
             const labelList& edgeStarts,
-            const labelList& edgeSizes
+            const labelList& edgeSizes,
+            const wordList& patchTypes
         );
 
         //- Disallow default bitwise assignment

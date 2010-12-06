@@ -81,14 +81,14 @@ class coupleMap
     mutable labelList subMeshPoints_;
 
     // Entity sizes (as specified by the entityType enumerant)
-    mutable FixedList<label,9> nEntities_;
+    mutable FixedList<label,10> nEntities_;
 
     // Maps for entities
     mutable FixedList<Map<label>,4> entityMap_;
     mutable FixedList<Map<label>,4> reverseEntityMap_;
 
     // Entity Buffers (as specified by the entityType enumerant)
-    mutable FixedList<labelList,9> entityBuffer_;
+    mutable FixedList<labelList,11> entityBuffer_;
 
     // List of entity indices with topological operations
     mutable labelList entityIndices_;
@@ -139,7 +139,8 @@ public:
         FACE_STARTS = 6,
         FACE_SIZES = 7,
         EDGE_STARTS = 8,
-        EDGE_SIZES = 9
+        EDGE_SIZES = 9,
+        PATCH_TYPES = 10
     };
 
     enum operationType
@@ -267,13 +268,13 @@ public:
             const label master
         ) const;
 
-        inline FixedList<label,9>& nEntities() const;
+        inline FixedList<label,10>& nEntities() const;
         inline label& nEntities(const label eType) const;
 
         inline Map<label>& entityMap(const label eType) const;
         inline Map<label>& reverseEntityMap(const label eType) const;
 
-        inline FixedList<labelList,9>& entityBuffer() const;
+        inline FixedList<labelList,11>& entityBuffer() const;
         inline labelList& entityBuffer(const label eType) const;
 
         inline labelList& entityIndices() const;
