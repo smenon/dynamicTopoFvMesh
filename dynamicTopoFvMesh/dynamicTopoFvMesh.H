@@ -935,7 +935,11 @@ class dynamicTopoFvMesh
 
         // Build a list of entities that need to be avoided
         // by regular topo-changes.
-        void buildEntitiesToAvoid(labelHashSet& entities);
+        void buildEntitiesToAvoid
+        (
+            labelHashSet& entities,
+            bool checkSubMesh
+        );
 
         // Check whether the specified edge is a coupled master edge.
         bool isCoupledMaster(const label eIndex) const;
@@ -959,7 +963,7 @@ class dynamicTopoFvMesh
         void handleCoupledPatches(labelHashSet& entities);
 
         // Synchronize topology operations across processors
-        void syncCoupledPatches();
+        void syncCoupledPatches(labelHashSet& entities);
 
         // Build patch sub-meshes for processor patches
         void buildProcessorPatchMeshes();

@@ -409,6 +409,32 @@ inline void dynamicTopoFvMesh::initStacks
             }
         }
     }
+
+    if (debug > 3 && Pstream::parRun())
+    {
+        Pout << nl << "Stack size: " << stack(0).size() << endl;
+
+        if (debug > 4)
+        {
+            // Write out stack entities
+            labelList stackElements(stack(0).size(), -1);
+
+            forAll(stackElements, elemI)
+            {
+                stackElements[elemI] = stack(0)[elemI];
+            }
+
+            label elemType = twoDMesh_ ? 2 : 1;
+
+            writeVTK
+            (
+                "Stack_"
+              + Foam::name(Pstream::myProcNo()),
+                stackElements,
+                elemType
+            );
+        }
+    }
 }
 
 

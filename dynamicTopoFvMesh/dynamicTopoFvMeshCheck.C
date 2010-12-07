@@ -1818,18 +1818,42 @@ bool dynamicTopoFvMesh::checkCollapse
     // Final quality check
     if (collapseQuality < sliverThreshold_ && !forceOp)
     {
+        if (debug > 3)
+        {
+            Pout<< " * * * 2D checkCollapse * * * " << nl
+                << " collapseQuality: " << collapseQuality
+                << " below threshold: " << sliverThreshold_
+                << endl;
+        }
+
         return true;
     }
 
     // Negative quality is a no-no
     if (collapseQuality < 0.0)
     {
+        if (forceOp)
+        {
+            Pout<< " * * * 2D checkCollapse * * * " << nl
+                << " Negative collapseQuality: " << collapseQuality << nl
+                << " Operation cannot be forced."
+                << endl;
+        }
+
         return true;
     }
 
     // Negative old-area is also a no-no
     if (minArea < 0.0)
     {
+        if (forceOp)
+        {
+            Pout<< " * * * 2D checkCollapse * * * " << nl
+                << " minArea: " << minArea << nl
+                << " Operation cannot be forced."
+                << endl;
+        }
+
         return true;
     }
 
@@ -1927,20 +1951,7 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         if (debug > 3)
         {
-            InfoIn
-            (
-                "\n\n"
-                "bool dynamicTopoFvMesh::checkCollapse\n"
-                "(\n"
-                "    const point& newPoint,\n"
-                "    const point& oldPoint,\n"
-                "    const label pointIndex,\n"
-                "    const label cellIndex,\n"
-                "    labelHashSet& cellsChecked,\n"
-                "    scalar& collapseQuality,\n"
-                "    bool forceOp\n"
-                ") const\n"
-            )
+            Pout<< " * * * 3D checkCollapse * * * " << nl
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
                 << faceToCheck[0] << "," << faceToCheck[1] << ","
@@ -1960,20 +1971,7 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         if (forceOp)
         {
-            InfoIn
-            (
-                "\n\n"
-                "bool dynamicTopoFvMesh::checkCollapse\n"
-                "(\n"
-                "    const point& newPoint,\n"
-                "    const point& oldPoint,\n"
-                "    const label pointIndex,\n"
-                "    const label cellIndex,\n"
-                "    labelHashSet& cellsChecked,\n"
-                "    scalar& collapseQuality,\n"
-                "    bool forceOp\n"
-                ") const\n"
-            )
+            Pout<< " * * * 3D checkCollapse * * * " << nl
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
                 << faceToCheck[0] << "," << faceToCheck[1] << ","
@@ -1994,20 +1992,7 @@ bool dynamicTopoFvMesh::checkCollapse
     {
         if (forceOp)
         {
-            InfoIn
-            (
-                "\n\n"
-                "bool dynamicTopoFvMesh::checkCollapse\n"
-                "(\n"
-                "    const point& newPoint,\n"
-                "    const point& oldPoint,\n"
-                "    const label pointIndex,\n"
-                "    const label cellIndex,\n"
-                "    labelHashSet& cellsChecked,\n"
-                "    scalar& collapseQuality,\n"
-                "    bool forceOp\n"
-                ") const\n"
-            )
+            Pout<< " * * * 3D checkCollapse * * * " << nl
                 << "\nCollapsing cell: " << cellIndex
                 << " containing points:\n"
                 << faceToCheck[0] << "," << faceToCheck[1] << ","

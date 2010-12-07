@@ -141,7 +141,7 @@ void dynamicTopoFvMesh::initCoupledStack()
         }
     }
 
-    if (debug > 3)
+    if (debug > 3 && Pstream::parRun())
     {
         Pout << nl << "Coupled stack size: " << stack(0).size() << endl;
 
@@ -159,7 +159,7 @@ void dynamicTopoFvMesh::initCoupledStack()
 
             writeVTK
             (
-                "stack_"
+                "coupledStack_"
               + Foam::name(Pstream::myProcNo()),
                 stackElements,
                 elemType
@@ -812,24 +812,21 @@ void dynamicTopoFvMesh::handleCoupledPatches
         edgeRefinementEngine(&(handlerPtr_[0]));
     }
 
+    // Re-Initialize the stack
+    initCoupledStack();
+
     if (twoDMesh_)
     {
-        // Re-Initialize the stack
-        initCoupledStack();
-
         swap2DEdges(&(handlerPtr_[0]));
     }
     else
     {
-        // Re-Initialize the stack
-        initCoupledStack();
-
         swap3DEdges(&(handlerPtr_[0]));
     }
 
     // Build a list of entities that need to be avoided
     // by regular topo-changes.
-    buildEntitiesToAvoid(entities);
+    buildEntitiesToAvoid(entities, true);
 
     // Reset coupled modifications.
     unsetCoupledModification();
@@ -913,8 +910,11 @@ void dynamicTopoFvMesh::handleCoupledPatches
             if (debug > 3)
             {
                 Pout << " Op tranfer:"
-                     << " Sending to [" << proc << "]:: nEntities: "
-                     << nEntities << endl;
+                     << " Sending to [" << proc << "]:: "
+                     << " nEntities: " << nEntities << nl
+                     << "  entityIndices: " << cMap.entityIndices() << nl
+                     << "  entityOperations: " << cMap.entityOperations() << nl
+                     << endl;
             }
 
             meshOps::pWrite(proc, nEntities);
@@ -935,7 +935,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
 
 // Synchronize topology operations across processors
-void dynamicTopoFvMesh::syncCoupledPatches()
+void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 {
     if (!Pstream::parRun())
     {
@@ -982,6 +982,11 @@ void dynamicTopoFvMesh::syncCoupledPatches()
             {
                 label index = indices[indexI], op = operations[indexI];
 
+                if (debug > 3)
+                {
+                    Pout<< " Recv Op index: " << index << endl;
+                }
+
                 // Determine the appropriate local index
                 label localIndex =
                 (
@@ -1003,16 +1008,22 @@ void dynamicTopoFvMesh::syncCoupledPatches()
 
                         opMap = bisectEdge(localIndex);
 
-                        // Insert the added index into the map
-                        addedEntityMap.insert
+                        label nIndex =
                         (
-                            nEntities++,
-                            (
-                                twoDMesh_ ?
-                                opMap.addedFaceList()[2].index() :
-                                opMap.addedEdgeList()[0].index()
-                            )
+                            twoDMesh_ ?
+                            opMap.addedFaceList()[2].index() :
+                            opMap.addedEdgeList()[0].index()
                         );
+
+                        // Insert the added index into the map
+                        addedEntityMap.insert(nEntities++, nIndex);
+
+                        if (debug > 3)
+                        {
+                            Pout<< " Adding Op index: " << nIndex
+                                << " for index: " << localIndex
+                                << endl;
+                        }
 
                         break;
                     }
@@ -1051,17 +1062,15 @@ void dynamicTopoFvMesh::syncCoupledPatches()
                     }
                 }
 
-                if (opMap.type() < 0)
+                if (opMap.type() <= 0)
                 {
-                    FatalErrorIn
-                    (
-                        "void dynamicTopoFvMesh::syncCoupledPatches()"
-                    )
+                    Pout<< " * * * Sync Operations * * * " << nl
                         << " Operation failed." << nl
                         << " Index: " << index << nl
                         << " localIndex: " << localIndex << nl
                         << " operation: " << op << nl
-                        << abort(FatalError);
+                        << " opMap.type: " << opMap.type() << nl
+                        << endl;
                 }
             }
         }
@@ -3342,7 +3351,11 @@ bool dynamicTopoFvMesh::processorCoupledEntity
 
 // Build a list of entities that need to be avoided
 // by regular topo-changes.
-void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
+void dynamicTopoFvMesh::buildEntitiesToAvoid
+(
+    labelHashSet& entities,
+    bool checkSubMesh
+)
 {
     entities.clear();
 
@@ -3413,38 +3426,48 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid(labelHashSet& entities)
         }
     }
 
-    // Loop through entities contained in patchSubMeshes
-    forAll(procIndices_, pI)
+    // Loop through entities contained in patchSubMeshes, if requested
+    if (checkSubMesh)
     {
-        const coupleMap& cMap = sendPatchMeshes_[pI].patchMap();
-        const Map<label> rFaceMap = cMap.reverseEntityMap(coupleMap::FACE);
-
-        if (cMap.slaveIndex() == Pstream::myProcNo())
+        forAll(procIndices_, pI)
         {
-            forAllConstIter(Map<label>, rFaceMap, fIter)
-            {
-                if (twoDMesh_)
-                {
-                    // Avoid this face during regular modification.
-                    if
-                    (
-                        faces_[fIter.key()].size() == 4 &&
-                        !entities.found(fIter.key())
-                    )
-                    {
-                        entities.insert(fIter.key());
-                    }
-                }
-                else
-                {
-                    const labelList& fEdges = faceEdges_[fIter.key()];
+            const coupleMap& cMap = sendPatchMeshes_[pI].patchMap();
+            const Map<label> rEdgeMap = cMap.reverseEntityMap(coupleMap::EDGE);
 
-                    forAll(fEdges, edgeI)
+            if (cMap.slaveIndex() == Pstream::myProcNo())
+            {
+                forAllConstIter(Map<label>, rEdgeMap, eIter)
+                {
+                    if (twoDMesh_)
                     {
-                        // Avoid this edge during regular modification.
-                        if (!entities.found(fEdges[edgeI]))
+                        const labelList& eFaces = edgeFaces_[eIter.key()];
+
+                        forAll(eFaces, faceI)
                         {
-                            entities.insert(fEdges[edgeI]);
+                            if (faces_[eFaces[faceI]].size() == 4)
+                            {
+                                if (!entities.found(eFaces[faceI]))
+                                {
+                                    entities.insert(eFaces[faceI]);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        const edge& check = edges_[eIter.key()];
+
+                        forAll(check, pI)
+                        {
+                            const labelList& pEdges = pointEdges_[check[pI]];
+
+                            forAll(pEdges, edgeI)
+                            {
+                                if (!entities.found(pEdges[edgeI]))
+                                {
+                                    entities.insert(pEdges[edgeI]);
+                                }
+                            }
                         }
                     }
                 }

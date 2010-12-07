@@ -3641,7 +3641,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     }
 
     // Synchronize coupled patches
-    syncCoupledPatches();
+    syncCoupledPatches(entities);
 }
 
 
