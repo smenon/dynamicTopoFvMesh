@@ -135,11 +135,11 @@ bool dynamicTopoFvMesh::testDelaunay
             const coupleMap& cMap = recvMesh.patchMap();
             const dynamicTopoFvMesh& sMesh = recvMesh.subMesh();
 
-            if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+            if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
             {
                 // Find equivalent points on the slave
-                cEdge[0] = cMap.findSlaveIndex(pointEnum, checkEdge[0]);
-                cEdge[1] = cMap.findSlaveIndex(pointEnum, checkEdge[1]);
+                cEdge[0] = cMap.findSlave(pointEnum, checkEdge[0]);
+                cEdge[1] = cMap.findSlave(pointEnum, checkEdge[1]);
 
                 // Find a triangular face containing cEdge
                 const labelList& sfE = sMesh.faceEdges_[sIndex];
@@ -303,7 +303,7 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
             coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
             const coupleMap& cMap = recvMesh.patchMap();
 
-            if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+            if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
             {
                 if (debug > 3)
                 {
@@ -1256,7 +1256,7 @@ bool dynamicTopoFvMesh::fillTables
                     const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
                         break;
                     }
@@ -1307,42 +1307,167 @@ bool dynamicTopoFvMesh::fillTables
 
             // Need to build alternate addressing / point-list
             // for swaps across processors.
-            DynamicList<point> pHullPoints(10);
-            DynamicList<label> pHullVertices(10);
+            DynamicList<point> parPts(10);
+            DynamicList<label> parVtx(10), addedProcs(10);
 
             label nPoints = 0;
 
             // First fill-in vertices for this processor
             forAll(hullVertices, pointI)
             {
-                pHullPoints.append(points_[hullVertices[pointI]]);
-                pHullVertices.append(nPoints++);
+                parPts.append(points_[hullVertices[pointI]]);
+                parVtx.append(nPoints++);
             }
 
-            // Now look through processors, and add their points
+            // Specify a merge tolerance
+            vector edgeVec = edgeToCheck.reverseEdge().vec(points_);
+            scalar mTol = 1e-4 * mag(edgeVec);
 
+            bool changed = false, closed = false;
+            point lastPoint = parPts[nPoints - 1];
+
+            do
+            {
+                // Now look through processors, and add their points
+                forAll(procIndices_, pI)
+                {
+                    // If this was detected before, skip it
+                    if (findIndex(addedProcs, pI) > -1)
+                    {
+                        continue;
+                    }
+
+                    // Fetch reference to subMesh
+                    const label edgeEnum = coupleMap::EDGE;
+                    const label pointEnum = coupleMap::POINT;
+                    const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                    const coupleMap& cMap = recvMesh.patchMap();
+                    const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+
+                    label sIndex = -1;
+
+                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) == -1)
+                    {
+                        Pout<< " * * * Error in fillTables * * * " << nl
+                            << "Coupled maps were improperly specified." << nl
+                            << " Slave index not found for: " << nl
+                            << " Edge: " << eIndex << nl
+                            << abort(FatalError);
+                    }
+
+                    const edge& eCheck = mesh.edges_[sIndex];
+                    const labelList& eP = mesh.edgePoints_[sIndex];
+
+                    // Find the point corresponding to edgeToCheck[0]
+                    label sP = -1;
+
+                    if ((sP = cMap.findSlave(pointEnum, edgeToCheck[0])) == -1)
+                    {
+                        Pout<< " * * * Error in fillTables * * * " << nl
+                            << "Coupled maps were improperly specified." << nl
+                            << " Slave index not found for: " << nl
+                            << " Point: " << edgeToCheck[0] << nl
+                            << abort(FatalError);
+                    }
+
+                    bool reverse = false;
+                    point sPoint(vector::zero);
+
+                    if (sP == eCheck[0])
+                    {
+                        sPoint = mesh.points_[eP[0]];
+                    }
+                    else
+                    if (sP == eCheck[1])
+                    {
+                        sPoint = mesh.points_[eP[eP.size() - 1]];
+                        reverse = true;
+                    }
+
+                    // Compare distance
+                    if (mag(lastPoint - sPoint) < mTol)
+                    {
+                        if (reverse)
+                        {
+                            for (label i = (eP.size() - 2); i >= 0; i--)
+                            {
+                                parPts.append(mesh.points_[eP[i]]);
+                                parVtx.append(nPoints++);
+                            }
+                        }
+                        else
+                        {
+                            for (label i = 1; i < eP.size(); i++)
+                            {
+                                parPts.append(mesh.points_[eP[i]]);
+                                parVtx.append(nPoints++);
+                            }
+                        }
+
+                        // Update last point
+                        lastPoint = parPts[nPoints - 1];
+
+                        // Set the flag
+                        addedProcs.append(pI);
+                        changed = true;
+                        break;
+                    }
+                }
+
+            } while (changed);
+
+            // If the last point is identical to the first,
+            // this is a closed loop.
+            if (mag(lastPoint - parPts[0]) < mTol)
+            {
+                parPts.remove();
+                parVtx.remove();
+
+                closed = true;
+
+                nPoints--;
+            }
 
             // Fill the last two points for the edge
-            edge pEdge(-1, -1);
+            edge parEdge(-1, -1);
 
-            pHullPoints.append(points_[edgeToCheck[0]]);
-            pEdge[0] = nPoints++;
+            parPts.append(points_[edgeToCheck[0]]);
+            parEdge[0] = nPoints++;
 
-            pHullPoints.append(points_[edgeToCheck[1]]);
-            pEdge[1] = nPoints++;
+            parPts.append(points_[edgeToCheck[1]]);
+            parEdge[1] = nPoints++;
+
+            // Compute minQuality with this loop
+            minQuality =
+            (
+                Foam::min
+                (
+                    computeMinQuality
+                    (
+                        parEdge,
+                        parVtx,
+                        parPts,
+                        closed
+                    ),
+                    minQuality
+                )
+            );
 
             // Fill dynamic programming tables
             fillTables
             (
-                pEdge,
+                parEdge,
                 minQuality,
                 nPoints,
-                pHullVertices,
-                pHullPoints,
+                parVtx,
+                parPts,
                 Q[0],
                 K[0],
                 triangulations[0]
             );
+
+            // Fill in the size
+            m[0] = nPoints;
 
             return true;
         }
@@ -1631,7 +1756,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
                     const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
                         break;
                     }
@@ -2127,13 +2252,9 @@ bool dynamicTopoFvMesh::boundaryTriangulation
 
 
 // Utility method to compute the minimum quality of a vertex hull
-scalar dynamicTopoFvMesh::computeMinQuality
-(
-    const label eIndex
-) const
+scalar dynamicTopoFvMesh::computeMinQuality(const label eIndex) const
 {
     scalar minQuality = GREAT;
-    scalar cQuality = 0.0;
 
     // Obtain a reference to this edge and corresponding edgePoints
     const edge& edgeToCheck = edges_[eIndex];
@@ -2154,7 +2275,7 @@ scalar dynamicTopoFvMesh::computeMinQuality
                     const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
                         break;
                     }
@@ -2193,44 +2314,21 @@ scalar dynamicTopoFvMesh::computeMinQuality
         }
     }
 
-    // Obtain point references
-    const point& a = points_[edgeToCheck[0]];
-    const point& c = points_[edgeToCheck[1]];
-
-    if (whichEdgePatch(eIndex) < 0)
-    {
-        // Internal edge.
-        forAll(hullVertices, indexI)
-        {
-            label prevIndex = hullVertices.rcIndex(indexI);
-
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[prevIndex]];
-            const point& d = points_[hullVertices[indexI]];
-
-            // Compute the quality
-            cQuality = tetMetric_(a, b, c, d);
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-        }
-    }
-    else
-    {
-        // Boundary edge.
-        for (label indexI = 1; indexI < hullVertices.size(); indexI++)
-        {
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[indexI-1]];
-            const point& d = points_[hullVertices[indexI]];
-
-            // Compute the quality
-            cQuality = tetMetric_(a, b, c, d);
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-        }
-    }
+    // Compute minQuality
+    minQuality =
+    (
+        Foam::min
+        (
+            computeMinQuality
+            (
+                edgeToCheck,
+                hullVertices,
+                points_,
+                (whichEdgePatch(eIndex) < 0)
+            ),
+            minQuality
+        )
+    );
 
     // Ensure that the mesh is valid
     if (minQuality < 0.0)
@@ -2294,6 +2392,61 @@ scalar dynamicTopoFvMesh::computeMinQuality
             << "EdgePoints: " << hullVertices << nl
             << "Minimum Quality: " << minQuality
             << abort(FatalError);
+    }
+
+    return minQuality;
+}
+
+
+// Compute minQuality given addressing
+scalar dynamicTopoFvMesh::computeMinQuality
+(
+    const edge& edgeToCheck,
+    const labelList& hullVertices,
+    const UList<point>& points,
+    bool closedRing
+) const
+{
+    scalar cQuality = 0.0;
+    scalar minQuality = GREAT;
+
+    // Obtain point references
+    const point& a = points[edgeToCheck[0]];
+    const point& c = points[edgeToCheck[1]];
+
+    if (closedRing)
+    {
+        // Internal edge.
+        forAll(hullVertices, indexI)
+        {
+            label prevIndex = hullVertices.rcIndex(indexI);
+
+            // Pick vertices off the list
+            const point& b = points[hullVertices[prevIndex]];
+            const point& d = points[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = tetMetric_(a, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+        }
+    }
+    else
+    {
+        // Boundary edge.
+        for (label indexI = 1; indexI < hullVertices.size(); indexI++)
+        {
+            // Pick vertices off the list
+            const point& b = points[hullVertices[indexI-1]];
+            const point& d = points[hullVertices[indexI]];
+
+            // Compute the quality
+            cQuality = tetMetric_(a, b, c, d);
+
+            // Check if the quality is worse
+            minQuality = Foam::min(cQuality, minQuality);
+        }
     }
 
     return minQuality;

@@ -63,10 +63,67 @@ void dynamicTopoFvMesh::unsetCoupledModification() const
 
 
 // Initialize the coupled stack
-void dynamicTopoFvMesh::initCoupledStack()
+void dynamicTopoFvMesh::initCoupledStack
+(
+    const labelHashSet& entities,
+    bool useEntities
+)
 {
     // Clear existing lists/stacks.
     stack(0).clear();
+
+    if (useEntities)
+    {
+        bool emptyEntity;
+
+        // Initialize the stack with entries
+        // in the labelHashSet and return
+        forAllConstIter(labelHashSet, entities, eIter)
+        {
+            // Add only valid entities
+            emptyEntity =
+            (
+                twoDMesh_ ?
+                faces_[eIter.key()].empty() :
+                edgeFaces_[eIter.key()].empty()
+            );
+
+            if (emptyEntity)
+            {
+                continue;
+            }
+
+            stack(0).insert(eIter.key());
+        }
+
+        if (debug > 3 && Pstream::parRun())
+        {
+            Pout << nl << "Entity stack size: " << stack(0).size() << endl;
+
+            if (debug > 4)
+            {
+                // Write out stack entities
+                labelList stackElements(stack(0).size(), -1);
+
+                forAll(stackElements, elemI)
+                {
+                    stackElements[elemI] = stack(0)[elemI];
+                }
+
+                label elemType = twoDMesh_ ? 2 : 1;
+
+                writeVTK
+                (
+                    "entityStack_"
+                  + Foam::name(Pstream::myProcNo()),
+                    stackElements,
+                    elemType
+                );
+            }
+        }
+
+        return;
+    }
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -675,7 +732,7 @@ const changeMap dynamicTopoFvMesh::insertCells
             // Check whether a face mapping exists for this face
             label mIndex = -1, fIndex = checkCell[fI];
 
-            if ((mIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
+            if ((mIndex = cMap.findMaster(faceEnum, fIndex)) > -1)
             {
                 if (!masterFacesToConvert.found(mIndex))
                 {
@@ -804,7 +861,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
     setCoupledModification();
 
     // Initialize the coupled stack
-    initCoupledStack();
+    initCoupledStack(entities, false);
 
     // Loop through the coupled stack and perform changes.
     if (edgeRefinement_)
@@ -813,7 +870,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
     }
 
     // Re-Initialize the stack
-    initCoupledStack();
+    initCoupledStack(entities, false);
 
     if (twoDMesh_)
     {
@@ -1074,6 +1131,42 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                 }
             }
         }
+    }
+
+    // Re-Initialize the stack with avoided entities from subMeshes
+    // and leave those on processor patches untouched
+    labelHashSet procEntities;
+
+    buildEntitiesToAvoid(procEntities, false);
+
+    // First remove processor entries
+    forAllConstIter(labelHashSet, procEntities, pIter)
+    {
+        if (entities.found(pIter.key()))
+        {
+            entities.erase(pIter.key());
+        }
+    }
+
+    // Initialize the coupled stack, using supplied entities
+    initCoupledStack(entities, true);
+
+    // Loop through the coupled stack and perform changes.
+    if (edgeRefinement_)
+    {
+        edgeRefinementEngine(&(handlerPtr_[0]));
+    }
+
+    // Re-Initialize the stack, using supplied entities
+    initCoupledStack(entities, true);
+
+    if (twoDMesh_)
+    {
+        swap2DEdges(&(handlerPtr_[0]));
+    }
+    else
+    {
+        swap3DEdges(&(handlerPtr_[0]));
     }
 }
 
@@ -2997,7 +3090,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
             label sIndex = -1;
 
-            if ((sIndex = cMap.findSlaveIndex(faceEnum, index)) > -1)
+            if ((sIndex = cMap.findSlave(faceEnum, index)) > -1)
             {
                 procScale +=
                 (
@@ -3062,7 +3155,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
             label sIndex = -1;
 
-            if ((sIndex = cMap.findSlaveIndex(edgeEnum, index)) > -1)
+            if ((sIndex = cMap.findSlave(edgeEnum, index)) > -1)
             {
                 // Fetch connectivity from patchSubMesh
                 const labelList& peFaces =

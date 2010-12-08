@@ -190,7 +190,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 {
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+                    if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -200,7 +200,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     // The following bit happens only during the sliver
                     // exudation process, since slave edges are
                     // usually not added to the coupled edge-stack.
-                    if ((sIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
+                    if ((sIndex = cMap.findMaster(faceEnum, fIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -263,7 +263,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 label sIndex = -1;
 
-                if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+                if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
                 {
                     if (debug > 3)
                     {
@@ -2778,7 +2778,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 {
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -2788,7 +2788,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     // The following bit happens only during the sliver
                     // exudation process, since slave edges are
                     // usually not added to the coupled edge-stack.
-                    if ((sIndex = cMap.findMasterIndex(edgeEnum, eIndex)) > -1)
+                    if ((sIndex = cMap.findMaster(edgeEnum, eIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -2850,7 +2850,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 label sIndex = -1;
 
-                if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                 {
                     // Check if a lower-ranked processor is
                     // handling this edge

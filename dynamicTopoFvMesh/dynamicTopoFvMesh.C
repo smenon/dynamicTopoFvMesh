@@ -649,8 +649,8 @@ void dynamicTopoFvMesh::removeFace
         {
             const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-            cMap.removeMasterIndex(coupleMap::FACE, fIndex);
-            cMap.removeSlaveIndex(coupleMap::FACE, fIndex);
+            cMap.removeMaster(coupleMap::FACE, fIndex);
+            cMap.removeSlave(coupleMap::FACE, fIndex);
         }
     }
 
@@ -875,8 +875,8 @@ void dynamicTopoFvMesh::removeEdge
             {
                 const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                cMap.removeMasterIndex(coupleMap::EDGE, eIndex);
-                cMap.removeSlaveIndex(coupleMap::EDGE, eIndex);
+                cMap.removeMaster(coupleMap::EDGE, eIndex);
+                cMap.removeSlave(coupleMap::EDGE, eIndex);
             }
         }
     }

@@ -380,7 +380,7 @@ void coupleMap::allocateBuffers() const
 }
 
 
-label coupleMap::findSlaveIndex
+label coupleMap::findSlave
 (
     const label eType,
     const label Index
@@ -397,7 +397,7 @@ label coupleMap::findSlaveIndex
 }
 
 
-label coupleMap::findMasterIndex
+label coupleMap::findMaster
 (
     const label eType,
     const label Index
@@ -414,7 +414,7 @@ label coupleMap::findMasterIndex
 }
 
 
-void coupleMap::removeSlaveIndex
+void coupleMap::removeSlave
 (
     const label eType,
     const label Index
@@ -427,7 +427,7 @@ void coupleMap::removeSlaveIndex
 }
 
 
-void coupleMap::removeMasterIndex
+void coupleMap::removeMaster
 (
     const label eType,
     const label Index

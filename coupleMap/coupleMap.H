@@ -230,25 +230,25 @@ public:
 
         void allocateBuffers() const;
 
-        label findSlaveIndex
+        label findSlave
         (
             const label eType,
             const label Index
         ) const;
 
-        label findMasterIndex
+        label findMaster
         (
             const label eType,
             const label Index
         ) const;
 
-        void removeSlaveIndex
+        void removeSlave
         (
             const label eType,
             const label Index
         ) const;
 
-        void removeMasterIndex
+        void removeMaster
         (
             const label eType,
             const label Index

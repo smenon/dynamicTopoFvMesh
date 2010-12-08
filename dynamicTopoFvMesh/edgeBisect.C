@@ -228,7 +228,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 {
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+                    if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -238,7 +238,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                     // The following bit happens only during the sliver
                     // exudation process, since slave edges are
                     // usually not added to the coupled edge-stack.
-                    if ((sIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
+                    if ((sIndex = cMap.findMaster(faceEnum, fIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -300,7 +300,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
                 label sIndex = -1;
 
-                if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+                if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
                 {
                     if (debug > 3)
                     {
@@ -448,7 +448,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             {
                 slaveEdge[pointI] =
                 (
-                    cMap.findSlaveIndex
+                    cMap.findSlave
                     (
                         pointEnum,
                         commonEdges[edgeI][pointI]
@@ -2376,7 +2376,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 {
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -2386,7 +2386,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     // The following bit happens only during the sliver
                     // exudation process, since slave edges are
                     // usually not added to the coupled edge-stack.
-                    if ((sIndex = cMap.findMasterIndex(edgeEnum, eIndex)) > -1)
+                    if ((sIndex = cMap.findMaster(edgeEnum, eIndex)) > -1)
                     {
                         pIndex = patchI;
 
@@ -2447,7 +2447,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 label sIndex = -1;
 
-                if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                 {
                     if (debug > 3)
                     {
@@ -4055,7 +4055,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 const label faceEnum  = coupleMap::FACE;
                 const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                if ((sIndex = cMap.findSlaveIndex(faceEnum, fIndex)) > -1)
+                if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
                 {
                     // Keep this index for master/slave mapping.
                     pIndex = patchI;
@@ -4065,7 +4065,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
                 // The following bit happens only during the sliver
                 // exudation process.
-                if ((sIndex = cMap.findMasterIndex(faceEnum, fIndex)) > -1)
+                if ((sIndex = cMap.findMaster(faceEnum, fIndex)) > -1)
                 {
                     // Keep this index for master/slave mapping.
                     pIndex = patchI;

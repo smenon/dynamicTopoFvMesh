@@ -391,7 +391,7 @@ bool dynamicTopoFvMesh::checkQuality
                     const label edgeEnum  = coupleMap::EDGE;
                     const coupleMap& cMap = patchCoupling_[patchI].patchMap();
 
-                    if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
                         break;
                     }
@@ -442,7 +442,7 @@ bool dynamicTopoFvMesh::checkQuality
 
                 label sIndex = -1;
 
-                if ((sIndex = cMap.findSlaveIndex(edgeEnum, eIndex)) > -1)
+                if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                 {
                     // Recursively call for the slave edge.
                     myResult =

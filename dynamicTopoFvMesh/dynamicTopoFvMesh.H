@@ -390,7 +390,11 @@ class dynamicTopoFvMesh
         inline void initStacks(const labelHashSet& entities);
 
         // Initialize the coupled stack
-        void initCoupledStack();
+        void initCoupledStack
+        (
+            const labelHashSet& entities,
+            bool useEntities
+        );
 
         // Method to determine the boundary patch index for a given face
         inline label whichPatch(const label index) const;
@@ -623,6 +627,15 @@ class dynamicTopoFvMesh
 
         // Utility method to compute the minimum quality of a vertex hull
         scalar computeMinQuality(const label eIndex) const;
+
+        // Compute minQuality given addressing
+        scalar computeMinQuality
+        (
+            const edge& edgeToCheck,
+            const labelList& hullVertices,
+            const UList<point>& points,
+            bool closedRing = false
+        ) const;
 
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.
