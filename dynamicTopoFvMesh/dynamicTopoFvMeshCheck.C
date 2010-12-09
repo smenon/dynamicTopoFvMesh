@@ -368,16 +368,17 @@ bool dynamicTopoFvMesh::checkQuality
 
         if (debug > 2)
         {
-            Info << nl << nl
-                 << " eIndex: " << eIndex
-                 << " minQuality: " << minQuality
-                 << " newQuality: " << Q[checkIndex][0][m[checkIndex]-1]
-                 << endl;
+            Pout<< nl << nl
+                << " eIndex: " << eIndex
+                << " minQuality: " << minQuality
+                << " newQuality: " << Q[checkIndex][0][m[checkIndex]-1]
+                << endl;
         }
     }
 
     if (coupledModification_)
     {
+        // Only locally coupled indices require checks
         if (locallyCoupledEntity(eIndex))
         {
             // Check the quality of the slave edge as well.
@@ -428,33 +429,6 @@ bool dynamicTopoFvMesh::checkQuality
 
             // Turn it back on.
             setCoupledModification();
-        }
-        else
-        if (processorCoupledEntity(eIndex))
-        {
-            label n = 0;
-            const label edgeEnum = coupleMap::EDGE;
-
-            forAll(procIndices_, pI)
-            {
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
-                const coupleMap& cMap = recvMesh.patchMap();
-
-                label sIndex = -1;
-
-                if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
-                {
-                    // Recursively call for the slave edge.
-                    myResult =
-                    (
-                        myResult &&
-                        recvMesh.subMesh().checkQuality
-                        (
-                            sIndex, m, Q, minQuality, ++n
-                        )
-                    );
-                }
-            }
         }
     }
 

@@ -860,12 +860,12 @@ void dynamicTopoFvMesh::handleCoupledPatches
     // Set coupled modifications.
     setCoupledModification();
 
-    // Initialize the coupled stack
-    initCoupledStack(entities, false);
-
     // Loop through the coupled stack and perform changes.
     if (edgeRefinement_)
     {
+        // Initialize the coupled stack
+        initCoupledStack(entities, false);
+
         edgeRefinementEngine(&(handlerPtr_[0]));
     }
 
@@ -1820,19 +1820,28 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     permittedTypes.insert("wall", 0);
     permittedTypes.insert("wedge", 1);
     permittedTypes.insert("empty", 2);
-    permittedTypes.insert("processor", 3);
-    permittedTypes.insert("symmetryPlane", 4);
+    permittedTypes.insert("patch", 3);
+    permittedTypes.insert("processor", 4);
+    permittedTypes.insert("symmetryPlane", 5);
 
     labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_TYPES);
 
     // Fill types for all but the last one (which is default).
     forAll(boundary, patchI)
     {
-        ptBuffer[patchI] = permittedTypes[boundary[patchI].type()];
+        if (!permittedTypes.found(boundary[patchI].type()))
+        {
+            // Default to patch type
+            ptBuffer[patchI] = permittedTypes["patch"];
+        }
+        else
+        {
+            ptBuffer[patchI] = permittedTypes[boundary[patchI].type()];
+        }
     }
 
-    // Fill type for the default patch (wall)
-    ptBuffer[boundary.size()] = 0;
+    // Fill type for the default patch
+    ptBuffer[boundary.size()] = permittedTypes["patch"];
 
     // Set maps as built.
     subMesh.setBuiltMaps();
@@ -2233,8 +2242,9 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
     permittedTypes.insert(0, "wall");
     permittedTypes.insert(1, "wedge");
     permittedTypes.insert(2, "empty");
-    permittedTypes.insert(3, "processor");
-    permittedTypes.insert(4, "symmetryPlane");
+    permittedTypes.insert(3, "patch");
+    permittedTypes.insert(4, "processor");
+    permittedTypes.insert(5, "symmetryPlane");
 
     forAll(procIndices_, pI)
     {

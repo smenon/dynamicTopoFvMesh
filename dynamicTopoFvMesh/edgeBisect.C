@@ -2451,10 +2451,10 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 {
                     if (debug > 3)
                     {
-                        Pout << "Checking slave edge: " << sIndex
-                             << " on proc: " << procIndices_[pI]
-                             << " for master edge: " << eIndex
-                             << endl;
+                        Pout<< "Checking slave edge: " << sIndex
+                            << " on proc: " << procIndices_[pI]
+                            << " for master edge: " << eIndex
+                            << endl;
                     }
 
                     // Check if a lower-ranked processor is
@@ -2463,11 +2463,11 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     {
                         if (debug > 3)
                         {
-                            Pout << "Edge: " << eIndex
-                                 << " is handled by proc: "
-                                 << procIndices_[pI]
-                                 << ", so bailing out."
-                                 << endl;
+                            Pout<< "Edge: " << eIndex
+                                << " is handled by proc: "
+                                << procIndices_[pI]
+                                << ", so bailing out."
+                                << endl;
                         }
 
                         return map;

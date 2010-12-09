@@ -24,6 +24,8 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "dynamicTopoFvMesh.H"
+
 #include "triFace.H"
 #include "objectMap.H"
 #include "changeMap.H"
@@ -31,7 +33,6 @@ License
 #include "linePointRef.H"
 #include "multiThreader.H"
 #include "coupledPatchInfo.H"
-#include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -1312,61 +1313,131 @@ bool dynamicTopoFvMesh::fillTables
 
             label nPoints = 0;
 
-            // First fill-in vertices for this processor
-            forAll(hullVertices, pointI)
+            edge checkEdge(-1);
+            bool reverseEdge = false;
+
+            // Additionally check if this is a pure-processor edge
+            if (processorCoupledEntity(eIndex, false, true, true))
             {
-                parPts.append(points_[hullVertices[pointI]]);
-                parVtx.append(nPoints++);
+                reverseEdge = false;
+            }
+            else
+            {
+                // Edge lies on a boundary patch.
+                // Check if reversal is necessary.
+                const labelList& eFaces = edgeFaces_[eIndex];
+
+                forAll(eFaces, faceI)
+                {
+                    if (neighbour_[eFaces[faceI]] == -1)
+                    {
+                        if (!processorCoupledEntity(eFaces[faceI], true))
+                        {
+                            label isoPoint = -1, nextPoint = -1;
+
+                            meshOps::findIsolatedPoint
+                            (
+                                faces_[eFaces[faceI]],
+                                edgeToCheck,
+                                isoPoint,
+                                nextPoint
+                            );
+
+                            if (isoPoint == hullVertices[0])
+                            {
+                                // Starts conventionally. No problem.
+                                reverseEdge = false;
+                            }
+                            else
+                            {
+                                reverseEdge = true;
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (reverseEdge)
+            {
+                // Reversed edge orientation
+                checkEdge = edgeToCheck.reverseEdge();
+
+                // Fill-in vertices in reverse for this processor
+                forAllReverse(hullVertices, pointI)
+                {
+                    parPts.append(points_[hullVertices[pointI]]);
+                    parVtx.append(nPoints++);
+                }
+            }
+            else
+            {
+                // Conventional edge orientation
+                checkEdge = edgeToCheck;
+
+                // First fill-in vertices for this processor
+                forAll(hullVertices, pointI)
+                {
+                    parPts.append(points_[hullVertices[pointI]]);
+                    parVtx.append(nPoints++);
+                }
             }
 
             // Specify a merge tolerance
-            vector edgeVec = edgeToCheck.reverseEdge().vec(points_);
+            vector edgeVec = checkEdge.reverseEdge().vec(points_);
             scalar mTol = 1e-4 * mag(edgeVec);
 
-            bool changed = false, closed = false;
+            bool changed, closed = false;
             point lastPoint = parPts[nPoints - 1];
 
             do
             {
+                // Initialize to unchanged
+                changed = false;
+
                 // Now look through processors, and add their points
                 forAll(procIndices_, pI)
                 {
+                    // Fetch reference to subMesh
+                    const label edgeEnum = coupleMap::EDGE;
+                    const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                    const coupleMap& cMap = recvMesh.patchMap();
+
+                    label sIndex = -1;
+
+                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) == -1)
+                    {
+                        continue;
+                    }
+
+                    // Skip if this edge is being processed by a lower-rank
+                    if (procIndices_[pI] < Pstream::myProcNo())
+                    {
+                        return false;
+                    }
+
                     // If this was detected before, skip it
                     if (findIndex(addedProcs, pI) > -1)
                     {
                         continue;
                     }
 
-                    // Fetch reference to subMesh
-                    const label edgeEnum = coupleMap::EDGE;
                     const label pointEnum = coupleMap::POINT;
-                    const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
-                    const coupleMap& cMap = recvMesh.patchMap();
                     const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
-
-                    label sIndex = -1;
-
-                    if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) == -1)
-                    {
-                        Pout<< " * * * Error in fillTables * * * " << nl
-                            << "Coupled maps were improperly specified." << nl
-                            << " Slave index not found for: " << nl
-                            << " Edge: " << eIndex << nl
-                            << abort(FatalError);
-                    }
 
                     const edge& eCheck = mesh.edges_[sIndex];
                     const labelList& eP = mesh.edgePoints_[sIndex];
 
-                    // Find the point corresponding to edgeToCheck[0]
+                    // Find the point corresponding to checkEdge[0]
                     label sP = -1;
 
-                    if ((sP = cMap.findSlave(pointEnum, edgeToCheck[0])) == -1)
+                    if ((sP = cMap.findSlave(pointEnum, checkEdge[0])) == -1)
                     {
                         Pout<< " * * * Error in fillTables * * * " << nl
                             << "Coupled maps were improperly specified." << nl
                             << " Slave index not found for: " << nl
-                            << " Point: " << edgeToCheck[0] << nl
+                            << " Point: " << checkEdge[0] << nl
                             << abort(FatalError);
                     }
 
@@ -1431,11 +1502,26 @@ bool dynamicTopoFvMesh::fillTables
             // Fill the last two points for the edge
             edge parEdge(-1, -1);
 
-            parPts.append(points_[edgeToCheck[0]]);
+            parPts.append(points_[checkEdge[0]]);
             parEdge[0] = nPoints++;
 
-            parPts.append(points_[edgeToCheck[1]]);
+            parPts.append(points_[checkEdge[1]]);
             parEdge[1] = nPoints++;
+
+            if (debug > 4)
+            {
+                writeVTK("parEdge_" + Foam::name(eIndex), eIndex, 1);
+
+                meshOps::writeVTK
+                (
+                    (*this),
+                    "parPts_" + Foam::name(eIndex),
+                    parPts.size(),
+                    parPts.size(),
+                    parPts.size(),
+                    pointField(parPts)
+                );
+            }
 
             // Compute minQuality with this loop
             minQuality =
@@ -1453,21 +1539,21 @@ bool dynamicTopoFvMesh::fillTables
                 )
             );
 
+            // Fill in the size
+            m[0] = parVtx.size();
+
             // Fill dynamic programming tables
             fillTables
             (
                 parEdge,
                 minQuality,
-                nPoints,
+                m[0],
                 parVtx,
                 parPts,
                 Q[0],
                 K[0],
                 triangulations[0]
             );
-
-            // Fill in the size
-            m[0] = nPoints;
 
             return true;
         }
@@ -1610,9 +1696,18 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
     if (debug > 2)
     {
-        Pout << " Removing edge : " << eIndex << " by flipping."
-             << " Edge: " << edges_[eIndex]
-             << " minQuality: " << minQuality << endl;
+        Pout<< " Removing edge : " << eIndex << " by flipping."
+            << " Edge: " << edges_[eIndex]
+            << " minQuality: " << minQuality << endl;
+    }
+
+    if (coupledModification_)
+    {
+        if (processorCoupledEntity(eIndex))
+        {
+            // Agglomerate cells from surrounding subMeshes
+            // and add them to this processor.
+        }
     }
 
     // Make a copy of edgePoints, since it will be
