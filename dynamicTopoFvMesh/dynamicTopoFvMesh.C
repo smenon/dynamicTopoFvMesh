@@ -2146,7 +2146,14 @@ void dynamicTopoFvMesh::swap3DEdges
                 if (thread->master())
                 {
                     // Remove this edge according to the swap sequence
-                    mesh.removeEdgeFlips(eIndex, minQuality, K, triangulations);
+                    mesh.removeEdgeFlips
+                    (
+                        eIndex,
+                        minQuality,
+                        Q,
+                        K,
+                        triangulations
+                    );
                 }
                 else
                 {

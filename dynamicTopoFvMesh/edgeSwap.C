@@ -1144,7 +1144,7 @@ void dynamicTopoFvMesh::swapEdge
         if (newQuality > minQuality)
         {
             // Remove this edge according to the swap sequence
-            removeEdgeFlips(eIndex, minQuality, K, triangulations);
+            removeEdgeFlips(eIndex, minQuality, Q, K, triangulations);
         }
         else
         if (forceOp)
@@ -1164,7 +1164,7 @@ void dynamicTopoFvMesh::swapEdge
             }
             else
             {
-                removeEdgeFlips(eIndex, minQuality, K, triangulations);
+                removeEdgeFlips(eIndex, minQuality, Q, K, triangulations);
             }
         }
     }
@@ -1542,6 +1542,32 @@ bool dynamicTopoFvMesh::fillTables
             // Fill in the size
             m[0] = parVtx.size();
 
+            // Check if a table-resize is necessary
+            if (m[0] > maxTetsPerEdge_)
+            {
+                if (allowTableResize_)
+                {
+                    // Resize the tables to account for
+                    // more tets per edge
+                    label& mtpe = const_cast<label&>(maxTetsPerEdge_);
+
+                    mtpe = m[0];
+
+                    // Clear tables for this index.
+                    Q[0].clear();
+                    K[0].clear();
+                    triangulations[0].clear();
+
+                    // Resize for this index.
+                    initTables(m, Q, K, triangulations);
+                }
+                else
+                {
+                    // Can't resize. Bail out.
+                    return false;
+                }
+            }
+
             // Fill dynamic programming tables
             fillTables
             (
@@ -1687,7 +1713,8 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 (
     const label eIndex,
     const scalar minQuality,
-    const PtrList<labelListList>& K,
+    PtrList<scalarListList>& Q,
+    PtrList<labelListList>& K,
     PtrList<labelListList>& triangulations,
     const label checkIndex
 )
@@ -1705,8 +1732,76 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     {
         if (processorCoupledEntity(eIndex))
         {
+            labelHashSet cellsToInsert;
+
             // Agglomerate cells from surrounding subMeshes
             // and add them to this processor.
+            forAll(procIndices_, pI)
+            {
+                // Fetch reference to subMesh
+                const label edgeEnum = coupleMap::EDGE;
+                coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupleMap& cMap = recvMesh.patchMap();
+
+                label sIndex = -1;
+
+                if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) == -1)
+                {
+                    continue;
+                }
+
+                // Add all cells connected to the slave edge
+                dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+
+                const labelList& eFaces = mesh.edgeFaces_[sIndex];
+
+                forAll(eFaces, faceI)
+                {
+                    const label own = mesh.owner_[eFaces[faceI]];
+                    const label nei = mesh.neighbour_[eFaces[faceI]];
+
+                    if (!cellsToInsert.found(own))
+                    {
+                        cellsToInsert.insert(own);
+                    }
+
+                    if (!cellsToInsert.found(nei) && (nei != -1))
+                    {
+                        cellsToInsert.insert(nei);
+                    }
+                }
+
+                // Now insert cells
+                insertCells(cellsToInsert.toc(), recvMesh);
+
+                // Clear cells, now that we're done
+                cellsToInsert.clear();
+            }
+
+            // Re-fill tables for the reconfigured edge.
+            // This should not be a coupled edge anymore.
+            label newIndex = -1;
+
+            const edge& newEdge = edges_[newIndex];
+            const labelList& newEdgePoints = edgePoints_[newIndex];
+
+            fillTables
+            (
+                newEdge,
+                minQuality,
+                newEdgePoints.size(),
+                newEdgePoints,
+                points_,
+                Q[0],
+                K[0],
+                triangulations[0]
+            );
+
+            // Recursively call this function for the new edge
+            return
+            (
+                removeEdgeFlips(newIndex, minQuality, Q, K, triangulations)
+            );
         }
     }
 
@@ -1890,7 +1985,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             // Recursively call for the slave edge.
             slaveMap =
             (
-                removeEdgeFlips(sIndex, minQuality, K, triangulations, 1)
+                removeEdgeFlips(sIndex, minQuality, Q, K, triangulations, 1)
             );
 
             // Turn it back on.

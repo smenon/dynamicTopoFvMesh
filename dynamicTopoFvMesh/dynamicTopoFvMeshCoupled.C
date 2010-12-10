@@ -712,12 +712,16 @@ const changeMap dynamicTopoFvMesh::insertCells
     changeMap map;
 
     // Fetch the patchMap
-    const label faceEnum = coupleMap::FACE;
     const coupleMap& cMap = cInfo.patchMap();
     dynamicTopoFvMesh& sMesh = cInfo.subMesh();
 
+    Map<label> masterPointsToInsert, masterCellsToInsert;
+    Map<label> masterEdgesToConvert, masterEdgesToInsert;
+    Map<label> slaveEdgesToConvert, slaveEdgesToRemove;
     Map<label> masterFacesToConvert, masterFacesToInsert;
     Map<label> slaveFacesToConvert, slaveFacesToRemove;
+
+    label convertPatch = -1;
 
     // First loop through cell faces and accumulate
     // a set of faces to be removed / converted.
@@ -727,16 +731,35 @@ const changeMap dynamicTopoFvMesh::insertCells
 
         const cell& checkCell = sMesh.cells_[cIndex];
 
+        scalar sLengthScale = -1.0;
+
+        if (edgeRefinement_)
+        {
+            sLengthScale = sMesh.lengthScale_[cIndex];
+        }
+
+        // Add an empty cell for now, and update
+        // with face information at a later stage.
+        label newCellIndex = insertCell(cell(checkCell.size()), sLengthScale);
+
+        masterCellsToInsert.insert(cIndex, newCellIndex);
+
+        // Add this cell to the map.
+        map.addCell(newCellIndex);
+
         forAll(checkCell, fI)
         {
-            // Check whether a face mapping exists for this face
             label mIndex = -1, fIndex = checkCell[fI];
 
-            if ((mIndex = cMap.findMaster(faceEnum, fIndex)) > -1)
+            // Check whether a face mapping exists for this face
+            if ((mIndex = cMap.findMaster(coupleMap::FACE, fIndex)) > -1)
             {
                 if (!masterFacesToConvert.found(mIndex))
                 {
                     masterFacesToConvert.insert(mIndex, -1);
+
+                    // Obtain patch index for posterity
+                    convertPatch = whichPatch(mIndex);
                 }
             }
             else
@@ -751,24 +774,63 @@ const changeMap dynamicTopoFvMesh::insertCells
             {
                 slaveFacesToRemove.insert(fIndex, -1);
             }
+
+            // Loop through edges and check whether edge-mapping exists
+            const labelList& fEdges = sMesh.faceEdges_[fIndex];
+
+            forAll(fEdges, edgeI)
+            {
+                const label eIndex = fEdges[edgeI];
+                const edge& cEdge = sMesh.edges_[eIndex];
+
+                // Meshes in 2D don't have edge-mapping, so check
+                // point maps instead. If either point doesn't exist
+                // this is an edge that needs to be inserted.
+                label cMs = cMap.findMaster(coupleMap::POINT, cEdge[0]);
+                label cMe = cMap.findMaster(coupleMap::POINT, cEdge[1]);
+
+                if (cMs == -1)
+                {
+                    if (!masterPointsToInsert.found(cEdge[0]))
+                    {
+                        masterPointsToInsert.insert(cEdge[0], -1);
+                    }
+                }
+
+                if (cMe == -1)
+                {
+                    if (!masterPointsToInsert.found(cEdge[1]))
+                    {
+                        masterPointsToInsert.insert(cEdge[1], -1);
+                    }
+                }
+
+                if (cMs == -1 || cMe == -1)
+                {
+                    if (!masterEdgesToInsert.found(eIndex))
+                    {
+                        masterEdgesToInsert.insert(eIndex, -1);
+                    }
+                }
+                else
+                if (cMs != -1 && cMe != -1)
+                {
+                    // Both points are on the map, so this
+                    // could be a candidate for conversion.
+                    // Find the corresponding master index.
+
+                }
+            }
         }
     }
 
     if (debug > 3)
     {
-        Pout << nl << " Inserting cells: " << cList << endl;
+        Pout<< nl << " Inserting cells: " << cList << endl;
+        Pout<< " Cell map: " << masterCellsToInsert << endl;
 
         if (debug > 4)
         {
-            writeVTK
-            (
-                "masterFacesToConvert"
-              + Foam::name(Pstream::myProcNo())
-              + '_' + Foam::name(cList[0]),
-                masterFacesToConvert.toc(),
-                2
-            );
-
             sMesh.writeVTK
             (
                 "insertCells_"
@@ -779,7 +841,43 @@ const changeMap dynamicTopoFvMesh::insertCells
 
             sMesh.writeVTK
             (
-                "masterFacesToInsert"
+                "masterPointsToInsert_"
+              + Foam::name(Pstream::myProcNo())
+              + '_' + Foam::name(cList[0]),
+                masterPointsToInsert.toc(),
+                0
+            );
+
+            sMesh.writeVTK
+            (
+                "masterEdgesToConvert_"
+              + Foam::name(Pstream::myProcNo())
+              + '_' + Foam::name(cList[0]),
+                masterEdgesToConvert.toc(),
+                1
+            );
+
+            sMesh.writeVTK
+            (
+                "masterEdgesToInsert_"
+              + Foam::name(Pstream::myProcNo())
+              + '_' + Foam::name(cList[0]),
+                masterEdgesToInsert.toc(),
+                1
+            );
+
+            writeVTK
+            (
+                "masterFacesToConvert_"
+              + Foam::name(Pstream::myProcNo())
+              + '_' + Foam::name(cList[0]),
+                masterFacesToConvert.toc(),
+                2
+            );
+
+            sMesh.writeVTK
+            (
+                "masterFacesToInsert_"
               + Foam::name(Pstream::myProcNo())
               + '_' + Foam::name(cList[0]),
                 masterFacesToInsert.toc(),
@@ -788,7 +886,7 @@ const changeMap dynamicTopoFvMesh::insertCells
 
             sMesh.writeVTK
             (
-                "slaveFacesToRemove"
+                "slaveFacesToRemove_"
               + Foam::name(Pstream::myProcNo())
               + '_' + Foam::name(cList[0]),
                 slaveFacesToRemove.toc(),
@@ -797,8 +895,183 @@ const changeMap dynamicTopoFvMesh::insertCells
         }
     }
 
+    // Add all points to the mesh, and fetch indices for mapping
+    forAllIter(Map<label>, masterPointsToInsert, pIter)
+    {
+        pIter() =
+        (
+            insertPoint
+            (
+                sMesh.points_[pIter.key()],
+                sMesh.oldPoints_[pIter.key()],
+                labelList(1, -1)
+            )
+        );
+
+        // Update maps for the new point
+        cMap.mapSlave(coupleMap::POINT,	pIter(), pIter.key());
+        cMap.mapMaster(coupleMap::POINT, pIter.key(), pIter());
+
+        // Add this point to the map.
+        map.addPoint(pIter());
+    }
+
+    // Add edges to the mesh, noting that all
+    // required points have already been added.
+    forAllIter(Map<label>, masterEdgesToInsert, eIter)
+    {
+        const edge& cEdge = sMesh.edges_[eIter.key()];
+
+        label cMs = cMap.findMaster(coupleMap::POINT, cEdge[0]);
+        label cMe = cMap.findMaster(coupleMap::POINT, cEdge[1]);
+
+        // Insert edge with null edgeFaces / edgePoints for now.
+        // This can be corrected later.
+        eIter() =
+        (
+            insertEdge
+            (
+                convertPatch,
+                edge(cMs, cMe),
+                labelList(0),
+                labelList(0)
+            )
+        );
+
+        // Add this edge to the map.
+        map.addEdge(eIter());
+    }
+
+    forAllIter(Map<label>, masterFacesToInsert, fIter)
+    {
+        const face& cFace = sMesh.faces_[fIter.key()];
+        const labelList& cfEdges = sMesh.faceEdges_[fIter.key()];
+
+        face newFace(cFace.size());
+        labelList newFaceEdges(cfEdges.size());
+
+        // Configure points from map
+        forAll(newFace, pointI)
+        {
+            newFace[pointI] =
+            (
+                cMap.findMaster(coupleMap::POINT, cFace[pointI])
+            );
+        }
+
+        // Configure edges from edgesTo(Insert/Convert)
+        forAll(cfEdges, edgeI)
+        {
+            label mIndex = -1;
+
+            // Configure with the appropriate edge
+            if (masterPointsToInsert.found(cfEdges[edgeI]))
+            {
+                mIndex = masterPointsToInsert[cfEdges[edgeI]];
+            }
+            else
+            if (masterEdgesToConvert.found(cfEdges[edgeI]))
+            {
+                mIndex = masterEdgesToConvert[cfEdges[edgeI]];
+            }
+            else
+            {
+                // Something is wrong here.
+                Pout<< "Could not find correspondence for edge: "
+                    << cfEdges[edgeI]
+                    << ":: " << sMesh.edges_[cfEdges[edgeI]]
+                    << abort(FatalError);
+            }
+
+            newFaceEdges[edgeI] = mIndex;
+        }
+
+        // Determine patch, owner and neighbour for this face
+        label newPatch = -1, newOwner = -1, newNeighbour = -1;
+
+        label sFaceOwn = sMesh.owner_[fIter.key()];
+        label sFaceNei = sMesh.neighbour_[fIter.key()];
+
+        label mFaceOwn =
+        (
+            masterCellsToInsert.found(sFaceOwn) ?
+            masterCellsToInsert[sFaceOwn] : -1
+        );
+
+        label mFaceNei =
+        (
+            masterCellsToInsert.found(sFaceNei) ?
+            masterCellsToInsert[sFaceNei] : -1
+        );
+
+        if (mFaceOwn != -1 && mFaceNei == -1)
+        {
+            // Boundary face already has correct orientation
+            newOwner = mFaceOwn;
+            newNeighbour = -1;
+            newPatch = convertPatch;
+        }
+        else
+        if (mFaceOwn == -1 && mFaceNei != -1)
+        {
+            // Boundary face is inverted. Flip it
+            newFace = newFace.reverseFace();
+            newOwner = mFaceNei;
+            newNeighbour = -1;
+            newPatch = convertPatch;
+        }
+        else
+        if (mFaceOwn != -1 && mFaceNei != -1)
+        {
+            // Interior face. Check if a flip is necessary.
+            if (mFaceNei < mFaceOwn)
+            {
+                newFace = newFace.reverseFace();
+            }
+
+            newOwner = mFaceOwn;
+            newNeighbour = mFaceNei;
+            newPatch = -1;
+        }
+        else
+        if (mFaceOwn == -1 && mFaceNei == -1)
+        {
+            // Something is wrong here.
+            Pout<< "Could not find correct owner / neighbour info: " << nl
+                << " Face: " << newFace << nl
+                << " Owner: " << mFaceOwn << nl
+                << " Neighbour: " << mFaceNei << nl
+                << "  - Slave Face: " << cFace << nl
+                << "  - Slave Owner: " << sFaceOwn << nl
+                << "  - Slave Neighbour: " << sFaceNei << nl
+                << abort(FatalError);
+        }
+
+        // Insert the new face
+        fIter() =
+        (
+            insertFace
+            (
+                newPatch,
+                newFace,
+                newOwner,
+                newNeighbour
+            )
+        );
+
+        // Add the faceEdges entry as well
+        faceEdges_.append(newFaceEdges);
+
+        // Add this face to the map.
+        map.addFace(fIter());
+    }
+
+    // Add faces to the mesh, noting that all required
+    // points and edges have already been added.
+
     // Remove the specified cells from the subMesh,
-    // and add exposed internal faces to the defaultPatch [0]
+    // and add exposed internal faces to the patch
+    // talking to this processor
     //changeMap sMeshMap = sMesh.removeCells(cList, 0);
 
     // Now map modified boundary faces

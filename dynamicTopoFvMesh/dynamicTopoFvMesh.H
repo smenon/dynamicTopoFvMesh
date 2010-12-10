@@ -712,7 +712,8 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             const scalar minQuality,
-            const PtrList<labelListList>& K,
+            PtrList<scalarListList>& Q,
+            PtrList<labelListList>& K,
             PtrList<labelListList>& triangulations,
             const label checkIndex = 0
         );
