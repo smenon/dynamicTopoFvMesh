@@ -576,13 +576,6 @@ class dynamicTopoFvMesh
             const Map<bool>& cellColors
         );
 
-        // Merge two boundary faces into one internal face
-        void mergeBoundaryFaces
-        (
-            const label firstFace,
-            const label secondFace
-        );
-
         // Insert the specified edge to the mesh
         label insertEdge
         (
