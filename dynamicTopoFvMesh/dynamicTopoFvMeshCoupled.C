@@ -721,7 +721,10 @@ const changeMap dynamicTopoFvMesh::insertCells
     Map<label> masterFacesToConvert, masterFacesToInsert;
     Map<label> slaveFacesToConvert, slaveFacesToRemove;
 
-    label convertPatch = -1;
+    label masterConvertPatch = -1, slaveConvertPatch = -1;
+
+    // Maintain face counts for each inserted cell
+    Map<label> nCellFaces;
 
     // First loop through cell faces and accumulate
     // a set of faces to be removed / converted.
@@ -744,64 +747,79 @@ const changeMap dynamicTopoFvMesh::insertCells
 
         masterCellsToInsert.insert(cIndex, newCellIndex);
 
+        // Initialize a face counter
+        nCellFaces.insert(newCellIndex, 0);
+
+        if (debug > 3)
+        {
+            Pout<< " Map cell: " << newCellIndex
+                << " for cell: " << cIndex
+                << endl;
+        }
+
         // Add this cell to the map.
         map.addCell(newCellIndex);
 
         forAll(checkCell, fI)
         {
-            label mIndex = -1, fIndex = checkCell[fI];
+            label mIndex = -1, sIndex = checkCell[fI];
 
             // Check whether a face mapping exists for this face
-            if ((mIndex = cMap.findMaster(coupleMap::FACE, fIndex)) > -1)
+            if ((mIndex = cMap.findMaster(coupleMap::FACE, sIndex)) > -1)
             {
-                if (!masterFacesToConvert.found(mIndex))
+                // This face is to be converted from boundary to interior
+                if (!masterFacesToConvert.found(sIndex))
                 {
-                    masterFacesToConvert.insert(mIndex, -1);
+                    masterFacesToConvert.insert(sIndex, mIndex);
 
                     // Obtain patch index for posterity
-                    convertPatch = whichPatch(mIndex);
+                    if (masterConvertPatch == -1)
+                    {
+                        masterConvertPatch = whichPatch(mIndex);
+                        slaveConvertPatch = sMesh.whichPatch(sIndex);
+                    }
                 }
             }
             else
             {
-                if (!masterFacesToInsert.found(fIndex))
+                if (!masterFacesToInsert.found(sIndex))
                 {
-                    masterFacesToInsert.insert(fIndex, -1);
+                    masterFacesToInsert.insert(sIndex, -1);
                 }
             }
 
-            if (!slaveFacesToRemove.found(fIndex))
+            if (!slaveFacesToRemove.found(sIndex))
             {
-                slaveFacesToRemove.insert(fIndex, -1);
+                slaveFacesToRemove.insert(sIndex, -1);
             }
 
             // Loop through edges and check whether edge-mapping exists
-            const labelList& fEdges = sMesh.faceEdges_[fIndex];
+            const labelList& fEdges = sMesh.faceEdges_[sIndex];
 
             forAll(fEdges, edgeI)
             {
                 const label eIndex = fEdges[edgeI];
-                const edge& cEdge = sMesh.edges_[eIndex];
+                const edge& sEdge = sMesh.edges_[eIndex];
 
                 // Meshes in 2D don't have edge-mapping, so check
                 // point maps instead. If either point doesn't exist
                 // this is an edge that needs to be inserted.
-                label cMs = cMap.findMaster(coupleMap::POINT, cEdge[0]);
-                label cMe = cMap.findMaster(coupleMap::POINT, cEdge[1]);
+                label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
+                label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
 
                 if (cMs == -1)
                 {
-                    if (!masterPointsToInsert.found(cEdge[0]))
+                    if (!masterPointsToInsert.found(sEdge[0]))
                     {
-                        masterPointsToInsert.insert(cEdge[0], -1);
+                        masterPointsToInsert.insert(sEdge[0], -1);
                     }
                 }
 
                 if (cMe == -1)
                 {
-                    if (!masterPointsToInsert.found(cEdge[1]))
+                    if (!masterPointsToInsert.found(sEdge[1]))
                     {
-                        masterPointsToInsert.insert(cEdge[1], -1);
+                        masterPointsToInsert.insert(sEdge[1], -1);
                     }
                 }
 
@@ -812,13 +830,47 @@ const changeMap dynamicTopoFvMesh::insertCells
                         masterEdgesToInsert.insert(eIndex, -1);
                     }
                 }
-                else
-                if (cMs != -1 && cMe != -1)
-                {
-                    // Both points are on the map, so this
-                    // could be a candidate for conversion.
-                    // Find the corresponding master index.
+            }
+        }
+    }
 
+    // Build a list of edges that need to be
+    // converted from boundary to interior.
+    // - Do this by looking at edges of master face conversion candidates.
+    // - Some edges may not need conversion, but deal with this later.
+    forAllConstIter(Map<label>, masterFacesToConvert, fIter)
+    {
+        const labelList& mfEdges = faceEdges_[fIter()];
+        const labelList& sfEdges = sMesh.faceEdges_[fIter.key()];
+
+        forAll(sfEdges, edgeI)
+        {
+            if (masterEdgesToConvert.found(sfEdges[edgeI]))
+            {
+                continue;
+            }
+
+            // Configure the comparison edge
+            const edge& sEdge = sMesh.edges_[sfEdges[edgeI]];
+
+            label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
+            label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
+
+            edge cEdge(cMs, cMe);
+
+            forAll(mfEdges, edgeJ)
+            {
+                const edge& mEdge = edges_[mfEdges[edgeJ]];
+
+                if (mEdge == cEdge)
+                {
+                    masterEdgesToConvert.insert
+                    (
+                        sfEdges[edgeI],
+                        mfEdges[edgeJ]
+                    );
+
+                    break;
                 }
             }
         }
@@ -827,7 +879,6 @@ const changeMap dynamicTopoFvMesh::insertCells
     if (debug > 3)
     {
         Pout<< nl << " Inserting cells: " << cList << endl;
-        Pout<< " Cell map: " << masterCellsToInsert << endl;
 
         if (debug > 4)
         {
@@ -866,7 +917,7 @@ const changeMap dynamicTopoFvMesh::insertCells
                 1
             );
 
-            writeVTK
+            sMesh.writeVTK
             (
                 "masterFacesToConvert_"
               + Foam::name(Pstream::myProcNo())
@@ -912,6 +963,13 @@ const changeMap dynamicTopoFvMesh::insertCells
         cMap.mapSlave(coupleMap::POINT,	pIter(), pIter.key());
         cMap.mapMaster(coupleMap::POINT, pIter.key(), pIter());
 
+        if (debug > 3)
+        {
+            Pout<< " Map point: " << pIter()
+                << " for point: " << pIter.key()
+                << endl;
+        }
+
         // Add this point to the map.
         map.addPoint(pIter());
     }
@@ -920,10 +978,10 @@ const changeMap dynamicTopoFvMesh::insertCells
     // required points have already been added.
     forAllIter(Map<label>, masterEdgesToInsert, eIter)
     {
-        const edge& cEdge = sMesh.edges_[eIter.key()];
+        const edge& sEdge = sMesh.edges_[eIter.key()];
 
-        label cMs = cMap.findMaster(coupleMap::POINT, cEdge[0]);
-        label cMe = cMap.findMaster(coupleMap::POINT, cEdge[1]);
+        label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
+        label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
 
         // Insert edge with null edgeFaces / edgePoints for now.
         // This can be corrected later.
@@ -931,12 +989,19 @@ const changeMap dynamicTopoFvMesh::insertCells
         (
             insertEdge
             (
-                convertPatch,
+                masterConvertPatch,
                 edge(cMs, cMe),
                 labelList(0),
                 labelList(0)
             )
         );
+
+        if (debug > 3)
+        {
+            Pout<< " Map edge: " << eIter() << "::" << edge(cMs, cMe)
+                << " for edge: " << eIter.key() << "::" << sEdge
+                << endl;
+        }
 
         // Add this edge to the map.
         map.addEdge(eIter());
@@ -944,42 +1009,41 @@ const changeMap dynamicTopoFvMesh::insertCells
 
     forAllIter(Map<label>, masterFacesToInsert, fIter)
     {
-        const face& cFace = sMesh.faces_[fIter.key()];
-        const labelList& cfEdges = sMesh.faceEdges_[fIter.key()];
+        const face& sFace = sMesh.faces_[fIter.key()];
+        const labelList& sfEdges = sMesh.faceEdges_[fIter.key()];
 
-        face newFace(cFace.size());
-        labelList newFaceEdges(cfEdges.size());
+        face newFace(sFace.size());
+        labelList newFaceEdges(sfEdges.size());
 
         // Configure points from map
         forAll(newFace, pointI)
         {
             newFace[pointI] =
             (
-                cMap.findMaster(coupleMap::POINT, cFace[pointI])
+                cMap.findMaster(coupleMap::POINT, sFace[pointI])
             );
         }
 
         // Configure edges from edgesTo(Insert/Convert)
-        forAll(cfEdges, edgeI)
+        forAll(sfEdges, edgeI)
         {
             label mIndex = -1;
 
             // Configure with the appropriate edge
-            if (masterPointsToInsert.found(cfEdges[edgeI]))
+            if (masterEdgesToInsert.found(sfEdges[edgeI]))
             {
-                mIndex = masterPointsToInsert[cfEdges[edgeI]];
+                mIndex = masterEdgesToInsert[sfEdges[edgeI]];
             }
             else
-            if (masterEdgesToConvert.found(cfEdges[edgeI]))
+            if (masterEdgesToConvert.found(sfEdges[edgeI]))
             {
-                mIndex = masterEdgesToConvert[cfEdges[edgeI]];
+                mIndex = masterEdgesToConvert[sfEdges[edgeI]];
             }
             else
             {
                 // Something is wrong here.
                 Pout<< "Could not find correspondence for edge: "
-                    << cfEdges[edgeI]
-                    << ":: " << sMesh.edges_[cfEdges[edgeI]]
+                    << sfEdges[edgeI] << ":: " << sMesh.edges_[sfEdges[edgeI]]
                     << abort(FatalError);
             }
 
@@ -989,6 +1053,9 @@ const changeMap dynamicTopoFvMesh::insertCells
         // Determine patch, owner and neighbour for this face
         label newPatch = -1, newOwner = -1, newNeighbour = -1;
 
+        const polyBoundaryMesh& slaveBoundary = sMesh.boundaryMesh();
+
+        label sfPatch = sMesh.whichPatch(fIter.key());
         label sFaceOwn = sMesh.owner_[fIter.key()];
         label sFaceNei = sMesh.neighbour_[fIter.key()];
 
@@ -1009,7 +1076,28 @@ const changeMap dynamicTopoFvMesh::insertCells
             // Boundary face already has correct orientation
             newOwner = mFaceOwn;
             newNeighbour = -1;
-            newPatch = convertPatch;
+
+            // Determine patch
+            if (sfPatch == -1)
+            {
+                // Slave face was an interior one
+                newPatch = masterConvertPatch;
+            }
+            else
+            if
+            (
+                isA<processorPolyPatch>(slaveBoundary[sfPatch]) ||
+                (sfPatch == (slaveBoundary.size() - 1))
+            )
+            {
+                // Processor, or 'defaultPatch'
+                newPatch = masterConvertPatch;
+            }
+            else
+            {
+                // Physical type
+                newPatch = sfPatch;
+            }
         }
         else
         if (mFaceOwn == -1 && mFaceNei != -1)
@@ -1018,7 +1106,28 @@ const changeMap dynamicTopoFvMesh::insertCells
             newFace = newFace.reverseFace();
             newOwner = mFaceNei;
             newNeighbour = -1;
-            newPatch = convertPatch;
+
+            // Determine patch
+            if (sfPatch == -1)
+            {
+                // Slave face was an interior one
+                newPatch = masterConvertPatch;
+            }
+            else
+            if
+            (
+                isA<processorPolyPatch>(slaveBoundary[sfPatch]) ||
+                (sfPatch == (slaveBoundary.size() - 1))
+            )
+            {
+                // Processor, or 'defaultPatch'
+                newPatch = masterConvertPatch;
+            }
+            else
+            {
+                // Physical type
+                newPatch = sfPatch;
+            }
         }
         else
         if (mFaceOwn != -1 && mFaceNei != -1)
@@ -1041,9 +1150,10 @@ const changeMap dynamicTopoFvMesh::insertCells
                 << " Face: " << newFace << nl
                 << " Owner: " << mFaceOwn << nl
                 << " Neighbour: " << mFaceNei << nl
-                << "  - Slave Face: " << cFace << nl
-                << "  - Slave Owner: " << sFaceOwn << nl
-                << "  - Slave Neighbour: " << sFaceNei << nl
+                << " - Slave Face: " << sFace << nl
+                << " - Slave Patch: " << slaveBoundary[sfPatch].name() << nl
+                << " - Slave Owner: " << sFaceOwn << nl
+                << " - Slave Neighbour: " << sFaceNei << nl
                 << abort(FatalError);
         }
 
@@ -1062,8 +1172,27 @@ const changeMap dynamicTopoFvMesh::insertCells
         // Add the faceEdges entry as well
         faceEdges_.append(newFaceEdges);
 
+        if (debug > 3)
+        {
+            Pout<< " Map face: " << fIter() << "::" << newFace
+                << " Own: " << newOwner << " Nei: " << newNeighbour
+                << " fE: " << newFaceEdges << nl
+                << " for face: " << fIter.key() << "::" << sFace
+                << " Own: " << sFaceOwn << " Nei: " << sFaceNei
+                << " fE: " << sfEdges
+                << endl;
+        }
+
         // Add this face to the map.
         map.addFace(fIter());
+
+        // Update cells
+        cells_[newOwner][nCellFaces[newOwner]++] = fIter();
+
+        if (newNeighbour > -1)
+        {
+            cells_[newNeighbour][nCellFaces[newNeighbour]++] = fIter();
+        }
     }
 
     // Add faces to the mesh, noting that all required
@@ -1072,7 +1201,7 @@ const changeMap dynamicTopoFvMesh::insertCells
     // Remove the specified cells from the subMesh,
     // and add exposed internal faces to the patch
     // talking to this processor
-    //changeMap sMeshMap = sMesh.removeCells(cList, 0);
+    changeMap sMeshMap = sMesh.removeCells(cList, slaveConvertPatch);
 
     // Now map modified boundary faces
 
@@ -2087,34 +2216,27 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     cMap.entityBuffer(coupleMap::EDGE_STARTS) = bdyEdgeStarts;
     cMap.entityBuffer(coupleMap::EDGE_SIZES) = bdyEdgeSizes;
 
-    // Build a list of permitted patch types
-    HashTable<label> permittedTypes;
-
-    permittedTypes.insert("wall", 0);
-    permittedTypes.insert("wedge", 1);
-    permittedTypes.insert("empty", 2);
-    permittedTypes.insert("patch", 3);
-    permittedTypes.insert("processor", 4);
-    permittedTypes.insert("symmetryPlane", 5);
-
-    labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_TYPES);
+    labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_ID);
 
     // Fill types for all but the last one (which is default).
     forAll(boundary, patchI)
     {
-        if (!permittedTypes.found(boundary[patchI].type()))
+        if (isA<processorPolyPatch>(boundary[patchI]))
         {
-            // Default to patch type
-            ptBuffer[patchI] = permittedTypes["patch"];
+            // Set processor patches to a special type
+            ptBuffer[patchI] = -2;
         }
         else
         {
-            ptBuffer[patchI] = permittedTypes[boundary[patchI].type()];
+            // Conventional physical patch. Make an identical
+            // map, since physical boundaries are present on
+            // all processors.
+            ptBuffer[patchI] = patchI;
         }
     }
 
-    // Fill type for the default patch
-    ptBuffer[boundary.size()] = permittedTypes["patch"];
+    // Fill the default patch with a special type
+    ptBuffer[boundary.size()] = -3;
 
     // Set maps as built.
     subMesh.setBuiltMaps();
@@ -2509,30 +2631,42 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
     // Put un-matched faces in a list.
     labelHashSet unMatchedFaces;
 
-    // Build a list of permitted patch types
-    Map<word> permittedTypes;
-
-    permittedTypes.insert(0, "wall");
-    permittedTypes.insert(1, "wedge");
-    permittedTypes.insert(2, "empty");
-    permittedTypes.insert(3, "patch");
-    permittedTypes.insert(4, "processor");
-    permittedTypes.insert(5, "symmetryPlane");
-
     forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
 
         coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
         const coupleMap& cMap = recvMesh.patchMap();
-        const labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_TYPES);
+        const labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_ID);
 
-        // Specify the list of patch-types
+        // Specify the list of patch names and types
+        wordList patchNames(ptBuffer.size());
         wordList patchTypes(ptBuffer.size());
 
         forAll(patchTypes, pI)
         {
-            patchTypes[pI] = permittedTypes[ptBuffer[pI]];
+            if (ptBuffer[pI] == -2)
+            {
+                patchNames[pI] =
+                (
+                    "procBoundary"
+                  + Foam::name(proc) + "to"
+                  + Foam::name(Pstream::myProcNo())
+                );
+
+                patchTypes[pI] = "processor";
+            }
+            else
+            if (ptBuffer[pI] == -3)
+            {
+                patchNames[pI] = "defaultPatch";
+                patchTypes[pI] = "patch";
+            }
+            else
+            {
+                patchNames[pI] = boundary[ptBuffer[pI]].name();
+                patchTypes[pI] = boundary[ptBuffer[pI]].type();
+            }
         }
 
         // Set the autoPtr.
@@ -2560,6 +2694,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 cMap.entityBuffer(coupleMap::FACE_SIZES),
                 cMap.entityBuffer(coupleMap::EDGE_STARTS),
                 cMap.entityBuffer(coupleMap::EDGE_SIZES),
+                patchNames,
                 patchTypes
             )
         );

@@ -5814,7 +5814,12 @@ const changeMap dynamicTopoFvMesh::removeCells
             // Create copies before appending.
             edge newEdge = edges_[eIter.key()];
             labelList eFaces = edgeFaces_[eIter.key()];
-            labelList ePoints = edgePoints_[eIter.key()];
+            labelList ePoints;
+
+            if (!twoDMesh_)
+            {
+                ePoints = edgePoints_[eIter.key()];
+            }
 
             eIter() =
             (

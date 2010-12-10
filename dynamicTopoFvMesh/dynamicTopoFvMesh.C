@@ -206,6 +206,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     const labelList& faceSizes,
     const labelList& edgeStarts,
     const labelList& edgeSizes,
+    const wordList& patchNames,
     const wordList& patchTypes
 )
 :
@@ -316,7 +317,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
         (
             polyPatch::New
             (
-                "patch_" + Foam::name(patchI),
+                patchNames[patchI],
                 patchDict,
                 patchI,
                 boundary

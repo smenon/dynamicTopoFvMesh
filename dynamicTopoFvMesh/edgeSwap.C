@@ -308,10 +308,10 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
             {
                 if (debug > 3)
                 {
-                    Pout << "Checking slave face: " << sIndex
-                         << " on proc: " << procIndices_[pI]
-                         << " for master face: " << fIndex
-                         << endl;
+                    Pout<< "Checking slave face: " << sIndex
+                        << " on proc: " << procIndices_[pI]
+                        << " for master face: " << fIndex
+                        << endl;
                 }
 
                 // Check if a lower-ranked processor is
@@ -320,11 +320,11 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
                 {
                     if (debug > 3)
                     {
-                        Pout << "Face: " << fIndex
-                             << " is handled by proc: "
-                             << procIndices_[pI]
-                             << ", so bailing out."
-                             << endl;
+                        Pout<< "Face: " << fIndex
+                            << " is handled by proc: "
+                            << procIndices_[pI]
+                            << ", so bailing out."
+                            << endl;
                     }
 
                     return map;
@@ -348,12 +348,12 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
                 {
                     if (debug > 3)
                     {
-                        Pout << " Insertion of cell: " << cIndex
-                             << " for slave face: " << sIndex
-                             << " on proc: " << procIndices_[pI]
-                             << " for master face: " << fIndex
-                             << " failed. Bailing out."
-                             << endl;
+                        Pout<< " Insertion of cell: " << cIndex
+                            << " for slave face: " << sIndex
+                            << " on proc: " << procIndices_[pI]
+                            << " for master face: " << fIndex
+                            << " failed. Bailing out."
+                            << endl;
                     }
 
                     return map;
@@ -378,12 +378,9 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
         if (debug > 1)
         {
-            Pout << nl << " >> Swapping using slave face: " << sIndex
-                 << " for master face: " << fIndex << endl;
+            Pout<< nl << " >> Swapping using slave face: " << sIndex
+                << " for master face: " << fIndex << endl;
         }
-
-        // Temporarily return failed operation
-        return map;
     }
 
     // Get the two cells on either side...

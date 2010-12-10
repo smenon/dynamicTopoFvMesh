@@ -276,6 +276,7 @@ class dynamicTopoFvMesh
             const labelList& faceSizes,
             const labelList& edgeStarts,
             const labelList& edgeSizes,
+            const wordList& patchNames,
             const wordList& patchTypes
         );
 

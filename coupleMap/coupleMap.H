@@ -140,7 +140,7 @@ public:
         FACE_SIZES = 7,
         EDGE_STARTS = 8,
         EDGE_SIZES = 9,
-        PATCH_TYPES = 10
+        PATCH_ID = 10
     };
 
     enum operationType
