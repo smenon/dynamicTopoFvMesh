@@ -95,10 +95,34 @@ conservativeMeshToMesh::conservativeMeshToMesh
     const fvMesh& meshTo,
     const label nThreads,
     const bool forceRecalculation,
-    const bool writeAddressing
+    const bool writeAddressing,
+    const bool decompSource,
+    const bool decompTarget
 )
 :
-    meshToMesh(meshFrom, meshTo),
+    meshToMesh
+    (
+        decomposeMesh
+        (
+            meshFrom,
+            decompSource,
+            srcTetMesh_,
+            srcTetFvMesh_,
+            srcTetStarts_,
+            srcTetSizes_
+        ),
+        decomposeMesh
+        (
+            meshTo,
+            decompTarget,
+            tgtTetMesh_,
+            tgtTetFvMesh_,
+            tgtTetStarts_,
+            tgtTetSizes_
+        )
+    ),
+    meshFrom_(meshFrom),
+    meshTo_(meshTo),
     addressing_
     (
         IOobject
@@ -204,21 +228,32 @@ conservativeMeshToMesh::conservativeMeshToMesh
         }
     }
 
+    // If the target mesh is decomposed, sizes would be wrong,
+    // so fix it temporarily for the addressing calculation.
+    // This will be readjusted later to actual addressing
+    if (decompTarget)
+    {
+        addressing_.setSize(tgtTetFvMesh_().nCells());
+        weights_.setSize(tgtTetFvMesh_().nCells());
+        volumes_.setSize(tgtTetFvMesh_().nCells());
+        centres_.setSize(tgtTetFvMesh_().nCells());
+    }
+
     // Track calculation time
     clockTime calcTimer;
 
     if (nThreads == 1)
     {
-        calcAddressingAndWeights(0, meshTo.nCells(), true);
+        calcAddressingAndWeights(0, tgtMesh().nCells(), true);
     }
     else
     {
         // Prior to multi-threaded operation,
         // force calculation of demand-driven data
-        toMesh().cells();
-        fromMesh().cells();
-        fromMesh().cellCentres();
-        fromMesh().cellCells();
+        tgtMesh().cells();
+        srcMesh().cells();
+        srcMesh().cellCentres();
+        srcMesh().cellCells();
 
         multiThreader threader(nThreads);
 
@@ -238,7 +273,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
         labelList tStarts(threader.getNumThreads(), 0);
         labelList tSizes(threader.getNumThreads(), 0);
 
-        label index = meshTo.nCells(), j = 0;
+        label index = tgtMesh().nCells(), j = 0;
 
         while (index--)
         {
@@ -303,13 +338,13 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
             Info << "  Progress: " << percent << "% : "
                  << "  Cells processed: " << counter_
-                 << "  out of " << toMesh().nCells() << " total."
+                 << "  out of " << tgtMesh().nCells() << " total."
                  << "             \r"
                  << flush;
 
             ctrMutex_.unlock();
 
-            if (counter_ == toMesh().nCells())
+            if (counter_ == tgtMesh().nCells())
             {
                 break;
             }
@@ -323,6 +358,100 @@ conservativeMeshToMesh::conservativeMeshToMesh
     }
 
     Info << nl << " Calculation time: " << calcTimer.elapsedTime() << endl;
+
+    labelList srcPolyCell;
+
+    // Build a map for each target tet to target polyhedral cell
+    if (decompSource)
+    {
+        srcPolyCell.setSize(srcTetFvMesh_().nCells(), -1);
+
+        forAll(srcTetStarts_, cellI)
+        {
+            label start = srcTetStarts_[cellI];
+            label size = srcTetSizes_[cellI];
+
+            for (label i = 0; i < size; i++)
+            {
+                srcPolyCell[start + i] = cellI;
+            }
+        }
+    }
+    else
+    {
+        // Identity map
+        srcPolyCell = identity(meshFrom.nCells());
+    }
+
+    if (decompTarget)
+    {
+        // Agglomerate intersections from tets for each polyhedral cell
+        List<labelList> newAddressing(meshFrom.nCells());
+        List<scalarField> newVolumes(meshFrom.nCells());
+        List<vectorField> newCentres(meshFrom.nCells());
+
+        forAll(newAddressing, cellI)
+        {
+            // First count the number of intersections per tet
+            labelList& cellAddr = newAddressing[cellI];
+            scalarField& cellVols = newVolumes[cellI];
+            vectorField& cellCtrs = newCentres[cellI];
+
+            label nParents = 0;
+
+            label start = tgtTetStarts_[cellI];
+            label size = tgtTetSizes_[cellI];
+
+            for (label i = 0; i < size; i++)
+            {
+                nParents += addressing_[start + i].size();
+            }
+
+            // Set sizes
+            cellAddr.setSize(nParents);
+            cellVols.setSize(nParents);
+            cellCtrs.setSize(nParents);
+
+            // Now fill in addressing, weights and centres
+            label nP = 0;
+
+            for (label i = 0; i < size; i++)
+            {
+                const labelList& tetAddr = addressing_[start + i];
+                const scalarField& tetVol = volumes_[start + i];
+                const vectorField& tetCtr = centres_[start + i];
+
+                forAll(tetAddr, j)
+                {
+                    cellAddr[nP] = srcPolyCell[tetAddr[j]];
+                    cellVols[nP] = tetVol[j];
+                    cellCtrs[nP] = tetCtr[j];
+
+                    nP++;
+                }
+            }
+        }
+
+        // Transfer new lists
+        addressing_.transfer(newAddressing);
+        volumes_.transfer(newVolumes);
+        centres_.transfer(newCentres);
+    }
+    else
+    if (decompSource)
+    {
+        // Source is decomposed. Renumber to correct addressing.
+        // Volumes and centres are already okay.
+        forAll(addressing_, cellI)
+        {
+            labelList& addr = addressing_[cellI];
+
+            forAll(addr, i)
+            {
+                addr[i] = srcPolyCell[addr[i]];
+            }
+        }
+    }
 
     if (writeAddressing)
     {
@@ -420,6 +549,129 @@ conservativeMeshToMesh::~conservativeMeshToMesh()
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
+// Return (decomposed) source mesh
+const fvMesh& conservativeMeshToMesh::srcMesh() const
+{
+    if (srcTetFvMesh_.valid())
+    {
+        return srcTetFvMesh_();
+    }
+
+    return meshFrom_;
+}
+
+
+// Return (decomposed) target mesh
+const fvMesh& conservativeMeshToMesh::tgtMesh() const
+{
+    if (tgtTetFvMesh_.valid())
+    {
+        return tgtTetFvMesh_();
+    }
+
+    return meshTo_;
+}
+
+
+// Decompose a given mesh, using tetDecomposition
+const fvMesh& conservativeMeshToMesh::decomposeMesh
+(
+    const fvMesh& initialMesh,
+    const bool decomp,
+    autoPtr<tetPolyMesh>& tetDecomp,
+    autoPtr<fvMesh>& tetDecompFvMesh,
+    labelList& tetStarts,
+    labelList& tetSizes
+)
+{
+    if (!decomp)
+    {
+        // Do nothing. Return original mesh.
+        return initialMesh;
+    }
+
+    // Construct the tetPolyMesh
+    tetDecomp.set(new tetPolyMesh(initialMesh));
+
+    const tetPolyMesh& initTets = tetDecomp();
+
+    label initialCells = initialMesh.nCells();
+
+    Info<< " Creating decomposed tet mesh."
+        << " Initial cells: " << initialCells
+        << " Number of tets: " << initTets.nTets()
+        << endl;
+
+    tetStarts.setSize(initialCells, 0);
+    tetSizes.setSize(initialCells, 0);
+
+    // Set addressing from polyhedra to tets
+    label nTotCells = 0;
+
+    forAll(tetStarts, i)
+    {
+        label nTetsForCell = initTets.nTetsForCell(i);
+
+        tetStarts[i] = nTotCells;
+        tetSizes[i] = nTetsForCell;
+
+        nTotCells += nTetsForCell;
+    }
+
+    if (nTotCells != initTets.nTets())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "const fvMesh& conservativeMeshToMesh::decomposeMesh()\n"
+        )   << " Incorrect addressing. " << nl
+            << " nTets: " << initTets.nTets() << nl
+            << " nTotCells: " << nTotCells << nl
+            << exit(FatalError);
+    }
+
+    // Construct fvMesh from polyMesh, since a shapes
+    // constructor doesn't exist
+    polyMesh newMesh
+    (
+        IOobject
+        (
+            fvMesh::defaultRegion,
+            initialMesh.time().timeName(),
+            initialMesh.time()
+        ),
+        xferCopy(initTets.points()()),
+        initTets.tetCells(),
+        initTets.boundary().boundaryTriFaces(),
+        initialMesh.boundaryMesh().names(),
+        initialMesh.boundaryMesh().types(),
+        polyPatch::typeName,
+        "defaultPatch",
+        initialMesh.boundaryMesh().physicalTypes()
+    );
+
+    // Now set the fvMesh from the decomposed polyMesh
+    tetDecompFvMesh.set
+    (
+        new fvMesh
+        (
+            IOobject
+            (
+                fvMesh::defaultRegion,
+                initialMesh.time().timeName(),
+                initialMesh.time()
+            ),
+            xferCopy(newMesh.points()),
+            xferCopy(newMesh.faces()),
+            xferCopy(newMesh.faceOwner()),
+            xferCopy(newMesh.faceNeighbour())
+        )
+    );
+
+    return tetDecompFvMesh();
+}
+
+
 void conservativeMeshToMesh::calcAddressingAndWeightsThreaded
 (
     void *argument
@@ -492,11 +744,11 @@ void conservativeMeshToMesh::writeVTK
             name,
             cList,
             primitiveType,
-            fromMesh().points(),
-            fromMesh().edges(),
-            fromMesh().faces(),
-            fromMesh().cells(),
-            fromMesh().faceOwner(),
+            srcMesh().points(),
+            srcMesh().edges(),
+            srcMesh().faces(),
+            srcMesh().cells(),
+            srcMesh().faceOwner(),
             field
         );
     }
@@ -508,11 +760,11 @@ void conservativeMeshToMesh::writeVTK
             name,
             cList,
             primitiveType,
-            toMesh().points(),
-            toMesh().edges(),
-            toMesh().faces(),
-            toMesh().cells(),
-            toMesh().faceOwner(),
+            tgtMesh().points(),
+            tgtMesh().edges(),
+            tgtMesh().faces(),
+            tgtMesh().cells(),
+            tgtMesh().faceOwner(),
             field
         );
     }

@@ -45,8 +45,9 @@ SourceFiles
 #define conservativeMeshToMesh_H
 
 #include "meshOps.H"
-#include "meshToMesh.H"
 #include "className.H"
+#include "meshToMesh.H"
+#include "tetPolyMesh.H"
 #include "multiThreader.H"
 #include "threadHandler.H"
 
@@ -71,6 +72,18 @@ class conservativeMeshToMesh
     public meshToMesh
 {
     // Private data
+
+        // Hold references to the original mesh
+        const fvMesh& meshFrom_;
+        const fvMesh& meshTo_;
+
+        //- Pointers for optional decomposition
+        autoPtr<fvMesh> srcTetFvMesh_, tgtTetFvMesh_;
+        autoPtr<tetPolyMesh> srcTetMesh_, tgtTetMesh_;
+
+        //- Addressing from polyhedra to tets
+        labelList srcTetStarts_, srcTetSizes_;
+        labelList tgtTetStarts_, tgtTetSizes_;
 
         //- Interpolation cells
         IOList<labelList> addressing_;
@@ -100,6 +113,23 @@ class conservativeMeshToMesh
         labelListList boundaryAddressing_;
 
     // Private Member Functions
+
+        // Return (decomposed) source mesh
+        const fvMesh& srcMesh() const;
+
+        // Return (decomposed) target mesh
+        const fvMesh& tgtMesh() const;
+
+        // Decompose a given mesh, using tetDecomposition
+        static const fvMesh& decomposeMesh
+        (
+            const fvMesh& initialMesh,
+            const bool decomp,
+            autoPtr<tetPolyMesh>& tetDecomp,
+            autoPtr<fvMesh>& tetDecompFvMesh,
+            labelList& tetStarts,
+            labelList& tetSizes
+        );
 
         void calcAddressingAndWeights
         (
@@ -247,7 +277,9 @@ public:
             const fvMesh& toMesh,
             const label nThreads = 1,
             const bool forceRecalculation = false,
-            const bool writeAddressing = false
+            const bool writeAddressing = false,
+            const bool decompSource = false,
+            const bool decompTarget = false
         );
 
     // Destructor

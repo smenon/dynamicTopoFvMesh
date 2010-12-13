@@ -8,6 +8,8 @@
     argList::validOptions.insert("forceRecalc", "");
     argList::validOptions.insert("writeAddr", "");
     argList::validOptions.insert("testOnly", "");
+    argList::validOptions.insert("decompSource", "");
+    argList::validOptions.insert("decompTarget", "");
 
     argList args(argc, argv);
 
@@ -59,4 +61,18 @@
     if (args.options().found("testOnly"))
     {
         testOnly = true;
+    }
+
+    bool decompSource = false;
+
+    if (args.options().found("decompSource"))
+    {
+        decompSource = true;
+    }
+
+    bool decompTarget = false;
+
+    if (args.options().found("decompTarget"))
+    {
+        decompTarget = true;
     }

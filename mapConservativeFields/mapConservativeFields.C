@@ -659,7 +659,9 @@ void testCyclicRemap
     const label method,
     const label nThreads,
     const bool forceRecalc,
-    const bool writeAddr
+    const bool writeAddr,
+    const bool decompSource,
+    const bool decompTarget
 )
 {
     // Initialize and populate fields
@@ -698,7 +700,9 @@ void testCyclicRemap
         meshTarget,
         nThreads,
         forceRecalc,
-        writeAddr
+        writeAddr,
+        decompSource,
+        decompTarget
     );
 
     // Create the interpolation scheme
@@ -708,7 +712,9 @@ void testCyclicRemap
         meshSource,
         nThreads,
         forceRecalc,
-        writeAddr
+        writeAddr,
+        decompSource,
+        decompTarget
     );
 
     Info << " Remapping for " << nCycles << " cycles..." << endl;
@@ -784,7 +790,9 @@ void testMappingError
     const label method,
     const label nThreads,
     const bool forceRecalc,
-    const bool writeAddr
+    const bool writeAddr,
+    const bool decompSource,
+    const bool decompTarget
 )
 {
     // Initialize and populate fields
@@ -840,7 +848,9 @@ void mapConservativeMesh
     const label method,
     const label nThreads,
     const bool forceRecalc,
-    const bool writeAddr
+    const bool writeAddr,
+    const bool decompSource,
+    const bool decompTarget
 )
 {
     // Create the interpolation scheme
@@ -850,7 +860,9 @@ void mapConservativeMesh
         meshTarget,
         nThreads,
         forceRecalc,
-        writeAddr
+        writeAddr,
+        decompSource,
+        decompTarget
     );
 
     Info << nl
@@ -985,7 +997,9 @@ int main(int argc, char *argv[])
             method,
             nThreads,
             forceRecalc,
-            writeAddr
+            writeAddr,
+            decompSource,
+            decompTarget
         );
 
         if (meshSource.nGeometricD() == 2)
@@ -999,7 +1013,9 @@ int main(int argc, char *argv[])
                 method,
                 nThreads,
                 forceRecalc,
-                writeAddr
+                writeAddr,
+                decompSource,
+                decompTarget
             );
         }
     }
@@ -1012,7 +1028,9 @@ int main(int argc, char *argv[])
             method,
             nThreads,
             forceRecalc,
-            writeAddr
+            writeAddr,
+            decompSource,
+            decompTarget
         );
     }
 

@@ -110,7 +110,7 @@ void conservativeMeshToMesh::calcAddressingAndWeights
             (
                 cellI,
                 cAddr[cellI],
-                fromMesh().cellCells(),
+                srcMesh().cellCells(),
                 matchTol,
                 precisionAttempts,
                 parents,
