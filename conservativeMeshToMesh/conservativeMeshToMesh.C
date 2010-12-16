@@ -394,6 +394,12 @@ conservativeMeshToMesh::conservativeMeshToMesh
         List<scalarField> newVolumes(meshTo.nCells());
         List<vectorField> newCentres(meshTo.nCells());
 
+        // Fetch cell-volumes from the target mesh
+        const scalarField& tVols = meshTo.cellVolumes();
+
+        // Track max error
+        scalar maxError = 0.0;
+
         forAll(newAddressing, cellI)
         {
             // First count the number of intersections per tet
@@ -434,7 +440,18 @@ conservativeMeshToMesh::conservativeMeshToMesh
                     nP++;
                 }
             }
+
+            maxError =
+            (
+                Foam::max
+                (
+                    maxError,
+                    mag(1.0 - (sum(cellVols) / tVols[cellI]))
+                )
+            );
         }
+
+        Info<< " Max volume error: " << maxError << endl;
 
         // Transfer new lists
         addressing_.transfer(newAddressing);

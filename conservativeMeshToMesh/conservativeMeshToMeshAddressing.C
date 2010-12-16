@@ -1950,37 +1950,65 @@ void conservativeMeshToMesh::convexSetVolume
         }
     } while (changed);
 
-    // Find an approximate cell-centroid
-    vector xC = average(cvxSet);
+    // Prepare temporary connectivity
+    // for volume / centre computation.
+    labelList owner(testFaces.size(), 0);
+    cellList cells(1, cell(identity(testFaces.size())));
 
-    // Calculate volume from all accumulated faces.
+    bool validVolume =
+    (
+        meshOps::cellCentreAndVolumeT
+        (
+            0,
+            cvxSet,
+            testFaces,
+            cells,
+            owner,
+            cCentre,
+            cVolume
+        )
+    );
+
+    // Check faces for consistency
+    label nValidFaces = 0;
+
     forAll(testFaces, faceI)
     {
-        const face& checkFace = testFaces[faceI];
-
-        if (checkFace.empty())
+        if (testFaces[faceI].size())
         {
-            continue;
+            nValidFaces++;
         }
-
-        vector xF = checkFace.centre(cvxSet);
-        vector Sf = checkFace.normal(cvxSet);
-
-        // Calculate 3*face-pyramid volume
-        scalar pyr3Vol = Sf & (xF - xC);
-
-        // Calculate face-pyramid centre
-        vector pc = (3.0/4.0)*xF + (1.0/4.0)*xC;
-
-        // Accumulate volume-weighted face-pyramid centre
-        cCentre += pyr3Vol*pc;
-
-        // Accumulate face-pyramid volume
-        cVolume += pyr3Vol;
     }
 
-    cCentre /= cVolume + VSMALL;
-    cVolume *= (1.0/3.0);
+    if (nValidFaces <= 3 || !validVolume)
+    {
+        meshOps::checkPointNearness(cvxSet, 1e-20);
+
+        // Write out cells
+        writeVTK("newCell_" + Foam::name(newCellIndex), newCellIndex, 3, false);
+        writeVTK("oldCell_" + Foam::name(oldCellIndex), oldCellIndex, 3, true);
+
+        meshOps::writeVTK
+        (
+            fromMesh(),
+            "tfSet_" + Foam::name(newCellIndex)
+          + '<' + Foam::name(oldCellIndex) + '>',
+            cvxSet.size(),
+            cvxSet.size(),
+            cvxSet.size(),
+            cvxSet
+        );
+
+        FatalErrorIn("void conservativeMeshToMesh::convexSetVolume() const")
+            << " Incorrect number of valid faces." << nl
+            << "   newCellIndex: " << newCellIndex << nl
+            << "   oldCellIndex: " << oldCellIndex << nl
+            << "   nFaces: " << nValidFaces << nl
+            << "   Volume: " << cVolume << nl
+            << "   testFaces: " << nl << testFaces << nl
+            << "   Point set: " << nl << cvxSet << nl
+            << abort(FatalError);
+    }
 
     if (output)
     {
