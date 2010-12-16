@@ -42,7 +42,7 @@ void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
     const GeometricField<Type, fvPatchField, volMesh>& fromVf
 ) const
 {
-    if (fromVf.mesh() != fromMesh())
+    if (fromVf.mesh() != origSrcMesh())
     {
         FatalErrorIn
         (
@@ -55,7 +55,7 @@ void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
             ") const\n"
         )   << "the argument field does not correspond to the right mesh. "
             << "Field size: " << fromVf.size()
-            << " mesh size: " << fromMesh().nCells()
+            << " mesh size: " << origSrcMesh().nCells()
             << exit(FatalError);
     }
 
@@ -72,12 +72,12 @@ void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
             ") const\n"
         )   << "the argument field does not correspond to the right mesh. "
             << "Field size: " << toF.size()
-            << " mesh size: " << toMesh().nCells()
+            << " mesh size: " << origTgtMesh().nCells()
             << exit(FatalError);
     }
 
     // Fetch geometry
-    const scalarField& toCellVols = toMesh().cellVolumes();
+    const scalarField& toCellVols = origTgtMesh().cellVolumes();
 
     forAll (toF, celli)
     {
@@ -120,7 +120,7 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
     >& fromgVf
 ) const
 {
-    if (fromVf.mesh() != fromMesh())
+    if (fromVf.mesh() != origSrcMesh())
     {
         FatalErrorIn
         (
@@ -138,11 +138,11 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
             ") const\n"
         )   << "The argument field does not correspond to the right mesh. "
             << "Field size: " << fromVf.size()
-            << " mesh size: " << fromMesh().nCells()
+            << " mesh size: " << origSrcMesh().nCells()
             << exit(FatalError);
     }
 
-    if (toF.size() != toMesh().nCells())
+    if (toF.size() != origTgtMesh().nCells())
     {
         FatalErrorIn
         (
@@ -160,13 +160,13 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
             ") const\n"
         )   << "The argument field does not correspond to the right mesh. "
             << "Field size: " << toF.size()
-            << " mesh size: " << toMesh().nCells()
+            << " mesh size: " << origTgtMesh().nCells()
             << exit(FatalError);
     }
 
     // Fetch geometry
-    const scalarField& toCellVols = toMesh().cellVolumes();
-    const vectorField& fromCellCentres = fromMesh().cellCentres();
+    const scalarField& toCellVols = origTgtMesh().cellVolumes();
+    const vectorField& fromCellCentres = origSrcMesh().cellCentres();
 
     forAll (toF, celli)
     {
@@ -227,7 +227,7 @@ void conservativeMeshToMesh::interpolateInternalFieldInvDist
     const GeometricField<Type, fvPatchField, volMesh>& fromVf
 ) const
 {
-    if (fromVf.mesh() != fromMesh())
+    if (fromVf.mesh() != origSrcMesh())
     {
         FatalErrorIn
         (
@@ -239,11 +239,11 @@ void conservativeMeshToMesh::interpolateInternalFieldInvDist
             ") const\n"
         )   << "the argument field does not correspond to the right mesh. "
             << "Field size: " << fromVf.size()
-            << " mesh size: " << fromMesh().nCells()
+            << " mesh size: " << origSrcMesh().nCells()
             << exit(FatalError);
     }
 
-    if (toF.size() != toMesh().nCells())
+    if (toF.size() != origTgtMesh().nCells())
     {
         FatalErrorIn
         (
@@ -255,13 +255,13 @@ void conservativeMeshToMesh::interpolateInternalFieldInvDist
             ") const\n"
         )   << "the argument field does not correspond to the right mesh. "
             << "Field size: " << toF.size()
-            << " mesh size: " << toMesh().nCells()
+            << " mesh size: " << origTgtMesh().nCells()
             << exit(FatalError);
     }
 
     // Fetch geometry
-    const vectorField& newCentres = toMesh().cellCentres();
-    const vectorField& oldCentres = fromMesh().cellCentres();
+    const vectorField& newCentres = origTgtMesh().cellCentres();
+    const vectorField& oldCentres = origSrcMesh().cellCentres();
 
     forAll (toF, celli)
     {
@@ -450,13 +450,13 @@ conservativeMeshToMesh::interpolate
 ) const
 {
     // Create and map the internal-field values
-    Field<Type> internalField(toMesh().nCells(), pTraits<Type>::zero);
+    Field<Type> internalField(origTgtMesh().nCells(), pTraits<Type>::zero);
 
     interpolateInternalField(internalField, fromVf, method);
 
     // Check whether both meshes have got the same number
     // of boundary patches
-    if (fromMesh().boundary().size() != toMesh().boundary().size())
+    if (origSrcMesh().boundary().size() != origTgtMesh().boundary().size())
     {
         FatalErrorIn
         (
@@ -481,9 +481,9 @@ conservativeMeshToMesh::interpolate
             fvPatchField<Type>::New
             (
                 fromVf.boundaryField()[patchI],
-                toMesh().boundary()[patchI],
+                origTgtMesh().boundary()[patchI],
                 DimensionedField<Type, volMesh>::null(),
-                patchFieldInterpolator(boundaryAddressing_[patchI])
+                meshToMesh::patchFieldInterpolator(boundaryAddressing_[patchI])
             )
         );
     }
@@ -496,12 +496,12 @@ conservativeMeshToMesh::interpolate
             IOobject
             (
                 "interpolated(" + fromVf.name() + ')',
-                toMesh().time().timeName(),
-                toMesh(),
+                origTgtMesh().time().timeName(),
+                origTgtMesh(),
                 IOobject::NO_READ,
                 IOobject::NO_WRITE
             ),
-            toMesh(),
+            origTgtMesh(),
             fromVf.dimensions(),
             internalField,
             patchFields

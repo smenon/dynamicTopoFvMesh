@@ -298,6 +298,8 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
         label sIndex = -1;
 
+        changeMap cellMap;
+
         forAll(procIndices_, pI)
         {
             // Fetch non-const reference to subMeshes
@@ -335,10 +337,11 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
                 // and update maps
                 label cIndex = recvMesh.subMesh().owner_[sIndex];
 
-                changeMap cellMap =
+                cellMap =
                 (
                     insertCells
                     (
+                        fIndex,
                         labelList(1, cIndex),
                         recvMesh
                     )
@@ -381,6 +384,12 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
             Pout<< nl << " >> Swapping using slave face: " << sIndex
                 << " for master face: " << fIndex << endl;
         }
+
+        // Figure out the new internal face index
+        label newIndex = -1;
+
+        // Recursively call this function for the new face
+        return swapQuadFace(newIndex);
     }
 
     // Get the two cells on either side...
@@ -1731,6 +1740,9 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         {
             labelHashSet cellsToInsert;
 
+            // Prepare changeMaps for cell insertion
+            List<changeMap> cellMaps;
+
             // Agglomerate cells from surrounding subMeshes
             // and add them to this processor.
             forAll(procIndices_, pI)
@@ -1768,8 +1780,21 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
                     }
                 }
 
+                // If we've found the slave, size up the list
+                label cmIndex = cellMaps.size();
+
+                meshOps::sizeUpList(changeMap(), cellMaps);
+
                 // Now insert cells
-                insertCells(cellsToInsert.toc(), recvMesh);
+                cellMaps[cmIndex] =
+                (
+                    insertCells
+                    (
+                        eIndex,
+                        cellsToInsert.toc(),
+                        recvMesh
+                    )
+                );
 
                 // Clear cells, now that we're done
                 cellsToInsert.clear();

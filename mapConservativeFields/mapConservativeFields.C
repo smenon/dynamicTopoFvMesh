@@ -713,8 +713,8 @@ void testCyclicRemap
         nThreads,
         forceRecalc,
         writeAddr,
-        decompSource,
-        decompTarget
+        decompTarget,
+        decompSource
     );
 
     Info << " Remapping for " << nCycles << " cycles..." << endl;
@@ -824,7 +824,9 @@ void testMappingError
         meshTarget,
         nThreads,
         forceRecalc,
-        writeAddr
+        writeAddr,
+        decompSource,
+        decompTarget
     );
 
     // Interpolate field

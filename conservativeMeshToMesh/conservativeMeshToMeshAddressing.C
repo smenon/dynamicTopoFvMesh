@@ -59,7 +59,7 @@ void conservativeMeshToMesh::calcAddressingAndWeights
     }
 
     // Fetch nearest-cell addressing from meshToMesh
-    const labelList& cAddr = meshToMesh::cellAddressing();
+    const labelList& cAddr = meshToMeshPtr_().cellAddressing();
 
     clockTime sTimer;
     bool reported = false;
@@ -1126,13 +1126,13 @@ bool conservativeMeshToMesh::cellIntersection
             {
                 OeToNe.setSize
                 (
-                    OeToNe[edgeI].size() + 1,
+                    OeToNe.size() + 1,
                     edgePair
                 );
 
                 NeToOe.setSize
                 (
-                    NeToOe[edgeJ].size() + 1,
+                    NeToOe.size() + 1,
                     edgePair.reversePair()
                 );
 

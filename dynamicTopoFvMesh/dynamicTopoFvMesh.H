@@ -963,6 +963,7 @@ class dynamicTopoFvMesh
         const changeMap
         insertCells
         (
+            const label masterIndex,
             const labelList& cList,
             coupledPatchInfo& cInfo
         );

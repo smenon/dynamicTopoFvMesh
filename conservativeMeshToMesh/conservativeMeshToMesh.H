@@ -68,12 +68,13 @@ namespace Foam
 \*---------------------------------------------------------------------------*/
 
 class conservativeMeshToMesh
-:
-    public meshToMesh
 {
     // Private data
 
-        // Hold references to the original mesh
+        //- Pointers to meshToMesh interpolation
+        autoPtr<meshToMesh> meshToMeshPtr_;
+
+        //- Hold references to the original mesh
         const fvMesh& meshFrom_;
         const fvMesh& meshTo_;
 
@@ -113,6 +114,12 @@ class conservativeMeshToMesh
         labelListList boundaryAddressing_;
 
     // Private Member Functions
+
+        // Return basic source mesh (undecomposed)
+        const fvMesh& origSrcMesh() const;
+
+        // Return basic target mesh (undecomposed)
+        const fvMesh& origTgtMesh() const;
 
         // Return (decomposed) source mesh
         const fvMesh& srcMesh() const;
@@ -289,68 +296,76 @@ public:
 
     // Member Functions
 
-        template<class Type>
-        void interpolateInternalField
-        (
-            Field<Type>&,
-            const GeometricField<Type, fvPatchField, volMesh>&,
-            const label method
-        ) const;
+        // Access
 
-        template<class Type>
-        void interpolateInternalField
-        (
-            Field<Type>&,
-            const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
-            const label method
-        ) const;
+            const fvMesh& fromMesh() const;
 
-        //- Interpolate volume field with a supplied gradient
-        template<class Type>
-        void interpolate
-        (
-            GeometricField<Type, fvPatchField, volMesh>&,
-            const GeometricField<Type, fvPatchField, volMesh>&,
-            const GeometricField
-            <
-                typename outerProduct<vector, Type>::type,
-                fvPatchField,
-                volMesh
-            >&,
-            const label method
-        ) const;
+            const fvMesh& toMesh() const;
 
-        //- Interpolate volume field
-        template<class Type>
-        void interpolate
-        (
-            GeometricField<Type, fvPatchField, volMesh>&,
-            const GeometricField<Type, fvPatchField, volMesh>&,
-            const label method
-        ) const;
+        // Interpolation
 
-        template<class Type>
-        void interpolate
-        (
-            GeometricField<Type, fvPatchField, volMesh>&,
-            const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
-            const label method
-        ) const;
+            template<class Type>
+            void interpolateInternalField
+            (
+                Field<Type>&,
+                const GeometricField<Type, fvPatchField, volMesh>&,
+                const label method
+            ) const;
 
-        //- Interpolate volume field
-        template<class Type>
-        tmp<GeometricField<Type, fvPatchField, volMesh> > interpolate
-        (
-            const GeometricField<Type, fvPatchField, volMesh>&,
-            const label method
-        ) const;
+            template<class Type>
+            void interpolateInternalField
+            (
+                Field<Type>&,
+                const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
+                const label method
+            ) const;
 
-        template<class Type>
-        tmp<GeometricField<Type, fvPatchField, volMesh> > interpolate
-        (
-            const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
-            const label method
-        ) const;
+            //- Interpolate volume field with a supplied gradient
+            template<class Type>
+            void interpolate
+            (
+                GeometricField<Type, fvPatchField, volMesh>&,
+                const GeometricField<Type, fvPatchField, volMesh>&,
+                const GeometricField
+                <
+                    typename outerProduct<vector, Type>::type,
+                    fvPatchField,
+                    volMesh
+                >&,
+                const label method
+            ) const;
+
+            //- Interpolate volume field
+            template<class Type>
+            void interpolate
+            (
+                GeometricField<Type, fvPatchField, volMesh>&,
+                const GeometricField<Type, fvPatchField, volMesh>&,
+                const label method
+            ) const;
+
+            template<class Type>
+            void interpolate
+            (
+                GeometricField<Type, fvPatchField, volMesh>&,
+                const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
+                const label method
+            ) const;
+
+            //- Interpolate volume field
+            template<class Type>
+            tmp<GeometricField<Type, fvPatchField, volMesh> > interpolate
+            (
+                const GeometricField<Type, fvPatchField, volMesh>&,
+                const label method
+            ) const;
+
+            template<class Type>
+            tmp<GeometricField<Type, fvPatchField, volMesh> > interpolate
+            (
+                const tmp<GeometricField<Type, fvPatchField, volMesh> >&,
+                const label method
+            ) const;
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

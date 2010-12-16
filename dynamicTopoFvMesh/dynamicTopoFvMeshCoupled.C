@@ -704,6 +704,7 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 //    -1: Insertion failed
 const changeMap dynamicTopoFvMesh::insertCells
 (
+    const label masterIndex,
     const labelList& cList,
     coupledPatchInfo& cInfo
 )

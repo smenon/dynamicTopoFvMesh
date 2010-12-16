@@ -100,27 +100,6 @@ conservativeMeshToMesh::conservativeMeshToMesh
     const bool decompTarget
 )
 :
-    meshToMesh
-    (
-        decomposeMesh
-        (
-            meshFrom,
-            decompSource,
-            srcTetMesh_,
-            srcTetFvMesh_,
-            srcTetStarts_,
-            srcTetSizes_
-        ),
-        decomposeMesh
-        (
-            meshTo,
-            decompTarget,
-            tgtTetMesh_,
-            tgtTetFvMesh_,
-            tgtTetStarts_,
-            tgtTetSizes_
-        )
-    ),
     meshFrom_(meshFrom),
     meshTo_(meshTo),
     addressing_
@@ -175,6 +154,31 @@ conservativeMeshToMesh::conservativeMeshToMesh
     twoDMesh_(false),
     boundaryAddressing_(meshTo.boundaryMesh().size())
 {
+    meshToMeshPtr_.set
+    (
+        new meshToMesh
+        (
+            decomposeMesh
+            (
+                meshFrom,
+                decompSource,
+                srcTetMesh_,
+                srcTetFvMesh_,
+                srcTetStarts_,
+                srcTetSizes_
+            ),
+            decomposeMesh
+            (
+                meshTo,
+                decompTarget,
+                tgtTetMesh_,
+                tgtTetFvMesh_,
+                tgtTetStarts_,
+                tgtTetSizes_
+            )
+        )
+    );
+
     if (addressing_.headerOk() && volumes_.headerOk() && centres_.headerOk())
     {
         // Check if sizes match. Otherwise, re-calculate.
@@ -386,9 +390,9 @@ conservativeMeshToMesh::conservativeMeshToMesh
     if (decompTarget)
     {
         // Agglomerate intersections from tets for each polyhedral cell
-        List<labelList> newAddressing(meshFrom.nCells());
-        List<scalarField> newVolumes(meshFrom.nCells());
-        List<vectorField> newCentres(meshFrom.nCells());
+        List<labelList> newAddressing(meshTo.nCells());
+        List<scalarField> newVolumes(meshTo.nCells());
+        List<vectorField> newCentres(meshTo.nCells());
 
         forAll(newAddressing, cellI)
         {
@@ -549,6 +553,34 @@ conservativeMeshToMesh::~conservativeMeshToMesh()
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
+// Return basic source mesh (undecomposed)
+const fvMesh& conservativeMeshToMesh::origSrcMesh() const
+{
+    return meshFrom_;
+}
+
+
+// Return basic target mesh (undecomposed)
+const fvMesh& conservativeMeshToMesh::origTgtMesh() const
+{
+    return meshTo_;
+}
+
+
+// Return (decomposed) source mesh
+const fvMesh& conservativeMeshToMesh::fromMesh() const
+{
+    return meshToMeshPtr_().fromMesh();
+}
+
+
+// Return (decomposed) target mesh
+const fvMesh& conservativeMeshToMesh::toMesh() const
+{
+    return meshToMeshPtr_().toMesh();
+}
+
+
 // Return (decomposed) source mesh
 const fvMesh& conservativeMeshToMesh::srcMesh() const
 {
@@ -589,6 +621,9 @@ const fvMesh& conservativeMeshToMesh::decomposeMesh
         // Do nothing. Return original mesh.
         return initialMesh;
     }
+
+    // Reset pointer to null
+    tetDecomp.clear();
 
     // Construct the tetPolyMesh
     tetDecomp.set(new tetPolyMesh(initialMesh));
@@ -667,6 +702,30 @@ const fvMesh& conservativeMeshToMesh::decomposeMesh
             xferCopy(newMesh.faceNeighbour())
         )
     );
+
+    // Add patches to newly created mesh
+    const polyBoundaryMesh& newBoundary = newMesh.boundaryMesh();
+
+    List<polyPatch*> patchList(newBoundary.size());
+
+    forAll(newBoundary, patchI)
+    {
+        patchList[patchI] =
+        (
+            polyPatch::New
+            (
+                newBoundary[patchI].type(),
+                newBoundary[patchI].name(),
+                newBoundary[patchI].size(),
+                newBoundary[patchI].start(),
+                patchI,
+                tetDecompFvMesh().boundaryMesh()
+            ).ptr()
+        );
+    }
+
+    // Add patches
+    tetDecompFvMesh().addFvPatches(patchList);
 
     return tetDecompFvMesh();
 }
