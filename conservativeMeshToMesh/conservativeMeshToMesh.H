@@ -190,6 +190,7 @@ class conservativeMeshToMesh
             const vectorField& cvxSet,
             scalar& cVolume,
             vector& cCentre,
+            faceList& vFaces,
             bool output = false
         ) const;
 

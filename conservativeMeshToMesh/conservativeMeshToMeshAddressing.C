@@ -54,8 +54,8 @@ void conservativeMeshToMesh::calcAddressingAndWeights
 {
     if (debug)
     {
-        Info << "conservativeMeshToMesh::calculateIntersectionAddressing() : "
-             << "calculating mesh-to-mesh cell addressing" << endl;
+        Info<< "conservativeMeshToMesh::calculateIntersectionAddressing() : "
+            << "calculating mesh-to-mesh cell addressing" << endl;
     }
 
     // Fetch nearest-cell addressing from meshToMesh
@@ -85,11 +85,11 @@ void conservativeMeshToMesh::calcAddressingAndWeights
             // Report progress
             if (report)
             {
-                Info << "  Progress: " << percent << "% : "
-                     << "  Cells processed: " << count
-                     << "  out of " << cellSize << " total."
-                     << "             \r"
-                     << flush;
+                Info<< "  Progress: " << percent << "% : "
+                    << "  Cells processed: " << count
+                    << "  out of " << cellSize << " total."
+                    << "             \r"
+                    << flush;
 
                 reported = true;
             }
@@ -158,11 +158,11 @@ void conservativeMeshToMesh::calcAddressingAndWeights
 
     if (reported && report)
     {
-        Info << "  Progress: 100%"
-             << "  Entities processed: " << count
-             << "  out of " << cellSize << " total."
-             << "             \r"
-             << endl;
+        Info<< "  Progress: 100%"
+            << "  Entities processed: " << count
+            << "  out of " << cellSize << " total."
+            << "             \r"
+            << endl;
     }
 }
 
@@ -196,7 +196,7 @@ bool conservativeMeshToMesh::invertAddressing()
 
         if (srcAddressing[cellI][maxIndex] >= targetCells)
         {
-            Info << " Addressing is not compatible. " << endl;
+            Info<< " Addressing is not compatible. " << endl;
 
             compatible = false;
             break;
@@ -278,13 +278,13 @@ bool conservativeMeshToMesh::invertAddressing()
     {
         if (mag((V[cellI] - sum(volumes_[cellI])) / V[cellI]) > 5e-14)
         {
-            Info << " Weights are not compatible. " << nl
-                 << " Cell: " << cellI << nl
-                 << " Volume: " << V[cellI] << nl
-                 << " Sum(volumes): " << sum(volumes_[cellI]) << nl
-                 << " Error: "
-                 << mag((V[cellI] - sum(volumes_[cellI])) / V[cellI])
-                 << endl;
+            Info<< " Weights are not compatible. " << nl
+                << " Cell: " << cellI << nl
+                << " Volume: " << V[cellI] << nl
+                << " Sum(volumes): " << sum(volumes_[cellI]) << nl
+                << " Error: "
+                << mag((V[cellI] - sum(volumes_[cellI])) / V[cellI])
+                << endl;
 
             compatible = false;
             break;
@@ -358,6 +358,11 @@ bool conservativeMeshToMesh::computeWeights
     bool changed;
     scalar matchTol = mTol;
     label nAttempts = 0, nIntersects = 0;
+
+    // Optionally turn debugging on
+    bool output = false;
+    faceListList xSectionFaces;
+    List<pointField> xSectionPoints;
 
     label mapCandidate = -1;
 
@@ -488,6 +493,7 @@ bool conservativeMeshToMesh::computeWeights
                 {
                     scalar volume = 0.0;
                     vector centre = vector::zero;
+                    faceList vFaces(0);
 
                     // Compute weights
                     convexSetVolume
@@ -496,7 +502,9 @@ bool conservativeMeshToMesh::computeWeights
                         checkEntity,
                         intPoints,
                         volume,
-                        centre
+                        centre,
+                        vFaces,
+                        output
                     );
 
                     label oldSize = parents.size();
@@ -505,6 +513,12 @@ bool conservativeMeshToMesh::computeWeights
                     weights.setSize(oldSize + 1, volume);
                     volumes.setSize(oldSize + 1, volume);
                     centres.setSize(oldSize + 1, centre);
+
+                    if (output)
+                    {
+                        xSectionFaces.setSize(oldSize + 1, vFaces);
+                        xSectionPoints.setSize(oldSize + 1, intPoints);
+                    }
 
                     nIntersects++;
 
@@ -626,6 +640,83 @@ bool conservativeMeshToMesh::computeWeights
         writeVTK("oE_" + Foam::name(index), mapCandidate, 3, true);
         writeVTK("mE_" + Foam::name(index), parents, 3, true);
         writeVTK("uE_" + Foam::name(index), uList, 3, true);
+    }
+
+    if (consistent && output)
+    {
+        faceList allFaces;
+        labelList allOwner;
+        pointField allPoints;
+
+        labelList pOffset(xSectionPoints.size(), 0);
+        cellList allCells(xSectionFaces.size());
+
+        label nAllPoints = 0, nAllFaces = 0, nP = 0, nF = 0;
+
+        // Size the point / face list
+        forAll(xSectionPoints, indexI)
+        {
+            nAllPoints += xSectionPoints[indexI].size();
+            nAllFaces += xSectionFaces[indexI].size();
+        }
+
+        allFaces.setSize(nAllFaces);
+        allOwner.setSize(nAllFaces);
+        allPoints.setSize(nAllPoints);
+
+        // Serially fill in points
+        forAll(xSectionPoints, indexI)
+        {
+            pOffset[indexI] = nP;
+
+            forAll(xSectionPoints[indexI], pointI)
+            {
+                allPoints[nP++] = xSectionPoints[indexI][pointI];
+            }
+        }
+
+        // Loop through all faces and renumber with point offsets
+        forAll(xSectionFaces, indexI)
+        {
+            faceList& fList = xSectionFaces[indexI];
+
+            allCells[indexI].setSize(fList.size());
+
+            forAll(fList, faceI)
+            {
+                // Renumber face points
+                face& fCheck = fList[faceI];
+
+                forAll(fCheck, pI)
+                {
+                    fCheck[pI] += pOffset[indexI];
+                }
+
+                // Set in all faces and owner
+                allFaces[nF] = fCheck;
+                allOwner[nF] = indexI;
+
+                // Set the cell list
+                allCells[indexI][faceI] = nF;
+
+                nF++;
+            }
+        }
+
+        // Finally write out the VTK
+        meshOps::writeVTK
+        (
+            toMesh(),
+            "xSection_" + Foam::name(index),
+            identity(allCells.size()),
+            3,
+            allPoints,
+            edgeList(0),
+            allFaces,
+            allCells,
+            allOwner,
+            scalarList(allCells.size(), scalar(index))
+        );
     }
 
     return consistent;
@@ -849,10 +940,10 @@ bool conservativeMeshToMesh::cellIntersection
 
     if (pointIntersections && output)
     {
-        Info << "Point Intersections exist: " << nl
-             << " newCellIndex: " << newIndex
-             << " oldCellIndex: " << oldIndex
-             << endl;
+        Info<< "Point Intersections exist: " << nl
+            << " newCellIndex: " << newIndex
+            << " oldCellIndex: " << oldIndex
+            << endl;
     }
 
     if (twoDMesh_)
@@ -1185,10 +1276,10 @@ bool conservativeMeshToMesh::cellIntersection
 
     if (edgeIntersections && output)
     {
-        Info << "Edge Intersections exist: " << nl
-             << " newCellIndex: " << newIndex
-             << " oldCellIndex: " << oldIndex
-             << endl;
+        Info<< "Edge Intersections exist: " << nl
+            << " newCellIndex: " << newIndex
+            << " oldCellIndex: " << oldIndex
+            << endl;
     }
 
     // Check for point-face intersections
@@ -1576,6 +1667,7 @@ void conservativeMeshToMesh::convexSetVolume
     const vectorField& cvxSet,
     scalar& cVolume,
     vector& cCentre,
+    faceList& vFaces,
     bool output
 ) const
 {
@@ -1585,7 +1677,7 @@ void conservativeMeshToMesh::convexSetVolume
 
     // Try the trivial case for a tetrahedron.
     // No checking for orientation here.
-    if (cvxSet.size() == 4)
+    if (cvxSet.size() == 4 && !output)
     {
         cCentre = average(cvxSet);
 
@@ -1602,15 +1694,6 @@ void conservativeMeshToMesh::convexSetVolume
                 ).mag()
             )
         );
-
-        if (output)
-        {
-            Info << " newCellIndex: " << newCellIndex
-                 << " oldCellIndex: " << oldCellIndex << nl
-                 << " Volume: " << cVolume << nl
-                 << " Centre: " << cCentre << nl
-                 << endl;
-        }
 
         return;
     }
@@ -1969,6 +2052,11 @@ void conservativeMeshToMesh::convexSetVolume
         )
     );
 
+    if (output)
+    {
+        vFaces.setSize(testFaces.size());
+    }
+
     // Check faces for consistency
     label nValidFaces = 0;
 
@@ -1976,8 +2064,19 @@ void conservativeMeshToMesh::convexSetVolume
     {
         if (testFaces[faceI].size())
         {
+            if (output)
+            {
+                vFaces[nValidFaces] = testFaces[faceI];
+            }
+
             nValidFaces++;
         }
+    }
+
+    if (output)
+    {
+        // Shorten to actual size
+        vFaces.setSize(nValidFaces);
     }
 
     if (nValidFaces <= 3 || !validVolume)
@@ -2008,16 +2107,6 @@ void conservativeMeshToMesh::convexSetVolume
             << "   testFaces: " << nl << testFaces << nl
             << "   Point set: " << nl << cvxSet << nl
             << abort(FatalError);
-    }
-
-    if (output)
-    {
-        Info << " newCellIndex: " << newCellIndex
-             << " oldCellIndex: " << oldCellIndex << nl
-             << " Faces: " << testFaces << nl
-             << " Volume: " << cVolume << nl
-             << " Centre: " << cCentre << nl
-             << endl;
     }
 }
 

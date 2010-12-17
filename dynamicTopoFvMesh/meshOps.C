@@ -771,6 +771,12 @@ inline void writeVTK
                 // Check if this point was added to the map
                 if (!pointMap.found(cpList[nCells][pointI]))
                 {
+                    // Resize pointField if necessary
+                    if (nPoints >= points.size())
+                    {
+                        points.setSize(2 * nPoints);
+                    }
+
                     // Point was not found, so add it
                     points[nPoints] = meshPoints[cpList[nCells][pointI]];
 
