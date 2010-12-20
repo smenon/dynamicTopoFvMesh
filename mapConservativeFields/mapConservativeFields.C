@@ -636,6 +636,7 @@ void computeError
          << " Linf error: " << smError << nl
          << " dx: " << sdx << nl
          << " dx2: " << sqr(sdx) << nl
+         << " nCells: " << isF.size() << nl
          << endl;
 
     Info << " ~~~~~~~~~~~~~~~~~ " << nl
@@ -645,6 +646,7 @@ void computeError
          << " Linf error: " << tmError << nl
          << " dx: " << tdx << nl
          << " dx2: " << sqr(tdx) << nl
+         << " nCells: " << itF.size() << nl
          << endl;
 }
 
@@ -829,14 +831,49 @@ void testMappingError
         decompTarget
     );
 
-    // Interpolate field
-    meshToMeshInterp.interpolate
-    (
-        fieldTarget(),
-        fieldSource(),
-        gfieldSource(),
-        method
-    );
+    if (decompTarget)
+    {
+        // Additional fields for decomposition
+        autoPtr<volScalarField> fieldTargetDecomp;
+        autoPtr<volVectorField> gfieldTargetDecomp;
+
+        initTestField
+        (
+            meshToMeshInterp.tgtMesh(),
+            type,
+            fieldTargetDecomp,
+            gfieldTargetDecomp,
+            false
+        );
+
+        // Interpolate field to tets
+        meshToMeshInterp.interpolate
+        (
+            fieldTargetDecomp(),
+            fieldSource(),
+            gfieldSource(),
+            method
+        );
+
+        // Interpolate from tets to polyhedra
+        meshToMeshInterp.interpolate
+        (
+            fieldTarget(),
+            fieldTargetDecomp(),
+            conservativeMeshToMesh::DECOMP
+        );
+    }
+    else
+    {
+        // Interpolate field
+        meshToMeshInterp.interpolate
+        (
+            fieldTarget(),
+            fieldSource(),
+            gfieldSource(),
+            method
+        );
+    }
 
     // Compute interpolation error
     computeError(fieldSource, fieldTarget, type);

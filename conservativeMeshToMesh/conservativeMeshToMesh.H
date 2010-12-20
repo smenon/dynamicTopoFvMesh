@@ -115,18 +115,6 @@ class conservativeMeshToMesh
 
     // Private Member Functions
 
-        // Return basic source mesh (undecomposed)
-        const fvMesh& origSrcMesh() const;
-
-        // Return basic target mesh (undecomposed)
-        const fvMesh& origTgtMesh() const;
-
-        // Return (decomposed) source mesh
-        const fvMesh& srcMesh() const;
-
-        // Return (decomposed) target mesh
-        const fvMesh& tgtMesh() const;
-
         // Decompose a given mesh, using tetDecomposition
         static const fvMesh& decomposeMesh
         (
@@ -192,6 +180,14 @@ class conservativeMeshToMesh
             vector& cCentre,
             faceList& vFaces,
             bool output = false
+        ) const;
+
+        //- Interpolate internal field values from decomposition
+        template<class Type>
+        void interpolateInternalFieldDecomp
+        (
+            Field<Type>& toF,
+            const GeometricField<Type, fvPatchField, volMesh>& fromVf
         ) const;
 
         //- Interpolate internal field values (conservative first-order)
@@ -271,7 +267,8 @@ public:
     {
         CONSERVATIVE,
         INVERSE_DISTANCE,
-        CONSERVATIVE_FIRST_ORDER
+        CONSERVATIVE_FIRST_ORDER,
+        DECOMP
     };
 
     // Constructors
@@ -299,9 +296,23 @@ public:
 
         // Access
 
+            // Return (decomposed) source mesh
             const fvMesh& fromMesh() const;
 
+            // Return (decomposed) target mesh
             const fvMesh& toMesh() const;
+
+            // Return basic source mesh (undecomposed)
+            const fvMesh& origSrcMesh() const;
+
+            // Return basic target mesh (undecomposed)
+            const fvMesh& origTgtMesh() const;
+
+            // Return (decomposed) source mesh
+            const fvMesh& srcMesh() const;
+
+            // Return (decomposed) target mesh
+            const fvMesh& tgtMesh() const;
 
         // Interpolation
 

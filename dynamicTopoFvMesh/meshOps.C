@@ -525,7 +525,8 @@ inline void writeVTK
     const UList<face>& faces,
     const UList<cell>& cells,
     const UList<label>& owner,
-    const UList<scalar>& field
+    const UList<scalar>& scalField,
+    const UList<label>& lablField
 )
 {
     label nTotalCells = 0;
@@ -812,7 +813,8 @@ inline void writeVTK
         primitiveType,
         reversePointMap,
         reverseCellMap,
-        field
+        scalField,
+        lablField
     );
 }
 
@@ -830,7 +832,8 @@ inline void writeVTK
     const label primitiveType,
     const Map<label>& reversePointMap,
     const Map<label>& reverseCellMap,
-    const UList<scalar>& field
+    const UList<scalar>& scalField,
+    const UList<label>& lablField
 )
 {
     // Make the directory
@@ -957,11 +960,16 @@ inline void writeVTK
     if (reverseCellMap.size())
     {
         nCellFields++;
+    }
 
-        if (field.size() == reverseCellMap.size())
-        {
-            nCellFields++;
-        }
+    if (scalField.size() == reverseCellMap.size())
+    {
+        nCellFields++;
+    }
+
+    if (lablField.size() == reverseCellMap.size())
+    {
+        nCellFields++;
     }
 
     // Write out indices for visualization.
@@ -983,13 +991,25 @@ inline void writeVTK
             file << endl;
         }
 
-        if (field.size() == reverseCellMap.size())
+        if (scalField.size() == reverseCellMap.size())
         {
             file << "CellScalar 1 " << nCells << " double" << endl;
 
-            forAll(field, i)
+            forAll(scalField, i)
             {
-                file << field[i] << ' ';
+                file << scalField[i] << ' ';
+            }
+
+            file << endl;
+        }
+
+        if (lablField.size() == reverseCellMap.size())
+        {
+            file << "CellLabel 1 " << nCells << " int" << endl;
+
+            forAll(lablField, i)
+            {
+                file << lablField[i] << ' ';
             }
 
             file << endl;
@@ -999,11 +1019,16 @@ inline void writeVTK
     if (reversePointMap.size())
     {
         nPointFields++;
+    }
 
-        if (field.size() == reversePointMap.size())
-        {
-            nPointFields++;
-        }
+    if (scalField.size() == reversePointMap.size())
+    {
+        nPointFields++;
+    }
+
+    if (lablField.size() == reversePointMap.size())
+    {
+        nPointFields++;
     }
 
     // Write out indices for visualization.
@@ -1025,13 +1050,25 @@ inline void writeVTK
             file << endl;
         }
 
-        if (field.size() == reversePointMap.size())
+        if (scalField.size() == reversePointMap.size())
         {
             file << "PointScalar 1 " << nPoints << " double" << endl;
 
-            forAll(field, i)
+            forAll(scalField, i)
             {
-                file << field[i] << ' ';
+                file << scalField[i] << ' ';
+            }
+
+            file << endl;
+        }
+
+        if (lablField.size() == reversePointMap.size())
+        {
+            file << "PointLabel 1 " << nPoints << " int" << endl;
+
+            forAll(lablField, i)
+            {
+                file << lablField[i] << ' ';
             }
 
             file << endl;

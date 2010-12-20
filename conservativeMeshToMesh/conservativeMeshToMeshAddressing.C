@@ -32,6 +32,7 @@ Description
 
 #include "conservativeMeshToMesh.H"
 
+#include "Random.H"
 #include "triFace.H"
 #include "IOmanip.H"
 #include "ListOps.H"
@@ -715,7 +716,8 @@ bool conservativeMeshToMesh::computeWeights
             allFaces,
             allCells,
             allOwner,
-            scalarList(allCells.size(), scalar(index))
+            scalarList(0),
+            labelList(allCells.size(), Random(index).integer(0, 1000))
         );
     }
 
