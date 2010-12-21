@@ -45,11 +45,15 @@ Author
 // Enumerants for testing
 enum testType
 {
+    CONSTANT,
     LINEAR,
     SINUSOID_2D,
     SINUSOID_3D,
     COSINE_HILL_2D
 };
+
+// For constant-value tests, specify a value
+const scalar constScalVal = 2.0;
 
 int getTimeIndex
 (
@@ -197,6 +201,19 @@ void initBoundaryFields
 
     switch (type)
     {
+        case CONSTANT:
+        {
+            forAll(field.boundaryField(), patchI)
+            {
+                forAll(field.boundaryField()[patchI], faceI)
+                {
+                    field.boundaryField()[patchI][faceI] = constScalVal;
+                }
+            }
+
+            break;
+        }
+
         case LINEAR:
         {
             forAll(field.boundaryField(), patchI)
@@ -358,6 +375,18 @@ void initTestField
 
         switch (type)
         {
+            case CONSTANT:
+            {
+                // Test constant field
+                forAll(field, cellI)
+                {
+                    field[cellI] = constScalVal;
+                    gfield[cellI] = vector(0.0, 0.0, 0.0);
+                }
+
+                break;
+            }
+
             case LINEAR:
             {
                 // Test linear field
@@ -525,6 +554,13 @@ void computeError
 
         switch (type)
         {
+            case CONSTANT:
+            {
+                sExact = constScalVal;
+
+                break;
+            }
+
             case LINEAR:
             {
                 sExact = 2.0*xC.x() + 3.0*xC.y() + xC.z();
@@ -577,6 +613,13 @@ void computeError
 
         switch (type)
         {
+            case CONSTANT:
+            {
+                tExact = constScalVal;
+
+                break;
+            }
+
             case LINEAR:
             {
                 tExact = 2.0*xC.x() + 3.0*xC.y() + xC.z();
