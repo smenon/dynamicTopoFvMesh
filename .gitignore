@@ -1,6 +1,7 @@
 # Ignore eclipse .cproject and .project files
 .project
 .cproject
+.settings
 
 # Ignore build files
 *.dep

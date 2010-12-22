@@ -697,646 +697,175 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 }
 
 
-// Insert the specified cells to the mesh,
-// given existing coupled patch information
+// Insert the cells around the coupled master entity to the mesh
 // - Returns a changeMap with a type specifying:
 //     1: Insertion was successful
 //    -1: Insertion failed
-const changeMap dynamicTopoFvMesh::insertCells
-(
-    const label masterIndex,
-    const labelList& cList,
-    coupledPatchInfo& cInfo
-)
+//    -2: Failed because entity was being handled elsewhere
+const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 {
     // Prepare the changeMaps
     changeMap map;
 
-    // Fetch the patchMap
-    const coupleMap& cMap = cInfo.patchMap();
-    dynamicTopoFvMesh& sMesh = cInfo.subMesh();
-
-    Map<label> masterPointsToInsert, masterCellsToInsert;
-    Map<label> masterEdgesToConvert, masterEdgesToInsert;
-    Map<label> slaveEdgesToConvert, slaveEdgesToRemove;
-    Map<label> masterFacesToConvert, masterFacesToInsert;
-    Map<label> slaveFacesToConvert, slaveFacesToRemove;
-
-    label masterConvertPatch = -1, slaveConvertPatch = -1;
-
     // Maintain face counts for each inserted cell
     Map<label> nCellFaces;
+    Map<Map<label> > masterCellsToInsert;
+    Map<Map<label> > masterFacesToConvert;
+    Map<Map<label> > masterEdgesToInsert, masterFacesToInsert;
 
-    // First loop through cell faces and accumulate
-    // a set of faces to be removed / converted.
-    forAll(cList, cellI)
+    Map<label> masterFaceConvertPatches, slaveFaceConvertPatches;
+
+    // First check to ensure that this case can be handled
+    forAll(procIndices_, pI)
     {
-        label cIndex = cList[cellI];
+        const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
-        const cell& checkCell = sMesh.cells_[cIndex];
+        // Fetch reference to maps
+        coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+        const coupleMap& cMap = recvMesh.patchMap();
 
-        scalar sLengthScale = -1.0;
-
-        if (edgeRefinement_)
+        // Does a coupling exist?
+        if (cMap.findSlave(cplEnum, mIndex) == -1)
         {
-            sLengthScale = sMesh.lengthScale_[cIndex];
+            continue;
         }
 
-        // Add an empty cell for now, and update
-        // with face information at a later stage.
-        label newCellIndex = insertCell(cell(checkCell.size()), sLengthScale);
-
-        masterCellsToInsert.insert(cIndex, newCellIndex);
-
-        // Initialize a face counter
-        nCellFaces.insert(newCellIndex, 0);
-
-        if (debug > 3)
+        // If this entity is being handled elsewhere, bail out
+        if (procIndices_[pI] < Pstream::myProcNo())
         {
-            Pout<< " Map cell: " << newCellIndex
-                << " for cell: " << cIndex
-                << endl;
-        }
+            map.type() = -2;
 
-        // Add this cell to the map.
-        map.addCell(newCellIndex);
-
-        forAll(checkCell, fI)
-        {
-            label mIndex = -1, sIndex = checkCell[fI];
-
-            // Check whether a face mapping exists for this face
-            if ((mIndex = cMap.findMaster(coupleMap::FACE, sIndex)) > -1)
-            {
-                // This face is to be converted from boundary to interior
-                if (!masterFacesToConvert.found(sIndex))
-                {
-                    masterFacesToConvert.insert(sIndex, mIndex);
-
-                    // Obtain patch index for posterity
-                    if (masterConvertPatch == -1)
-                    {
-                        masterConvertPatch = whichPatch(mIndex);
-                        slaveConvertPatch = sMesh.whichPatch(sIndex);
-                    }
-                }
-            }
-            else
-            {
-                if (!masterFacesToInsert.found(sIndex))
-                {
-                    masterFacesToInsert.insert(sIndex, -1);
-                }
-            }
-
-            if (!slaveFacesToRemove.found(sIndex))
-            {
-                slaveFacesToRemove.insert(sIndex, -1);
-            }
-
-            // Loop through edges and check whether edge-mapping exists
-            const labelList& fEdges = sMesh.faceEdges_[sIndex];
-
-            forAll(fEdges, edgeI)
-            {
-                const label eIndex = fEdges[edgeI];
-                const edge& sEdge = sMesh.edges_[eIndex];
-
-                // Meshes in 2D don't have edge-mapping, so check
-                // point maps instead. If either point doesn't exist
-                // this is an edge that needs to be inserted.
-                label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
-                label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
-
-                if (cMs == -1)
-                {
-                    if (!masterPointsToInsert.found(sEdge[0]))
-                    {
-                        masterPointsToInsert.insert(sEdge[0], -1);
-                    }
-                }
-
-                if (cMe == -1)
-                {
-                    if (!masterPointsToInsert.found(sEdge[1]))
-                    {
-                        masterPointsToInsert.insert(sEdge[1], -1);
-                    }
-                }
-
-                if (cMs == -1 || cMe == -1)
-                {
-                    if (!masterEdgesToInsert.found(eIndex))
-                    {
-                        masterEdgesToInsert.insert(eIndex, -1);
-                    }
-                }
-            }
+            return map;
         }
     }
 
-    // Build a list of edges that need to be
-    // converted from boundary to interior.
-    // - Do this by looking at edges of master face conversion candidates.
-    // - Some edges may not need conversion, but deal with this later.
-    forAllConstIter(Map<label>, masterFacesToConvert, fIter)
+    // Agglomerate cells from surrounding subMeshes
+    // and add them to this processor.
+    forAll(procIndices_, pI)
     {
-        const labelList& mfEdges = faceEdges_[fIter()];
-        const labelList& sfEdges = sMesh.faceEdges_[fIter.key()];
+        const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
-        forAll(sfEdges, edgeI)
+        // Fetch reference to maps
+        coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+        const coupleMap& cMap = recvMesh.patchMap();
+
+        label sIndex = -1;
+
+        if ((sIndex = cMap.findSlave(cplEnum, mIndex)) == -1)
         {
-            if (masterEdgesToConvert.found(sfEdges[edgeI]))
-            {
-                continue;
-            }
-
-            // Configure the comparison edge
-            const edge& sEdge = sMesh.edges_[sfEdges[edgeI]];
-
-            label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
-            label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
-
-            edge cEdge(cMs, cMe);
-
-            forAll(mfEdges, edgeJ)
-            {
-                const edge& mEdge = edges_[mfEdges[edgeJ]];
-
-                if (mEdge == cEdge)
-                {
-                    masterEdgesToConvert.insert
-                    (
-                        sfEdges[edgeI],
-                        mfEdges[edgeJ]
-                    );
-
-                    break;
-                }
-            }
-        }
-    }
-
-    if (debug > 3)
-    {
-        Pout<< nl << " Inserting cells: " << cList << endl;
-
-        if (debug > 4)
-        {
-            sMesh.writeVTK
-            (
-                "insertCells_"
-              + Foam::name(Pstream::myProcNo())
-              + '_' + Foam::name(cList[0]),
-                cList
-            );
-
-            sMesh.writeVTK
-            (
-                "masterPointsToInsert_"
-              + Foam::name(Pstream::myProcNo())
-              + '_' + Foam::name(cList[0]),
-                masterPointsToInsert.toc(),
-                0
-            );
-
-            sMesh.writeVTK
-            (
-                "masterEdgesToConvert_"
-              + Foam::name(Pstream::myProcNo())
-              + '_' + Foam::name(cList[0]),
-                masterEdgesToConvert.toc(),
-                1
-            );
-
-            sMesh.writeVTK
-            (
-                "masterEdgesToInsert_"
-              + Foam::name(Pstream::myProcNo())
-              + '_' + Foam::name(cList[0]),
-                masterEdgesToInsert.toc(),
-                1
-            );
-
-            sMesh.writeVTK
-            (
-                "masterFacesToConvert_"
-              + Foam::name(Pstream::myProcNo())
-              + '_' + Foam::name(cList[0]),
-                masterFacesToConvert.toc(),
-                2
-            );
-
-            sMesh.writeVTK
-            (
-                "masterFacesToInsert_"
-              + Foam::name(Pstream::myProcNo())
-              + '_' + Foam::name(cList[0]),
-                masterFacesToInsert.toc(),
-                2
-            );
-
-            sMesh.writeVTK
-            (
-                "slaveFacesToRemove_"
-              + Foam::name(Pstream::myProcNo())
-              + '_' + Foam::name(cList[0]),
-                slaveFacesToRemove.toc(),
-                2
-            );
-        }
-    }
-
-    // Add all points to the mesh, and fetch indices for mapping
-    forAllIter(Map<label>, masterPointsToInsert, pIter)
-    {
-        pIter() =
-        (
-            insertPoint
-            (
-                sMesh.points_[pIter.key()],
-                sMesh.oldPoints_[pIter.key()],
-                labelList(1, -1)
-            )
-        );
-
-        // Update maps for the new point
-        cMap.mapSlave(coupleMap::POINT,	pIter(), pIter.key());
-        cMap.mapMaster(coupleMap::POINT, pIter.key(), pIter());
-
-        if (debug > 3)
-        {
-            Pout<< " Map point: " << pIter()
-                << " for point: " << pIter.key()
-                << endl;
+            continue;
         }
 
-        // Add this point to the map.
-        map.addPoint(pIter());
-    }
-
-    // Add edges to the mesh, noting that all
-    // required points have already been added.
-    forAllIter(Map<label>, masterEdgesToInsert, eIter)
-    {
-        const edge& sEdge = sMesh.edges_[eIter.key()];
-
-        label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
-        label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
-
-        // Insert edge with null edgeFaces / edgePoints for now.
-        // This can be corrected later.
-        eIter() =
-        (
-            insertEdge
-            (
-                masterConvertPatch,
-                edge(cMs, cMe),
-                labelList(0),
-                labelList(0)
-            )
-        );
-
-        if (debug > 3)
+        // Make a new entry for this processor, if necessary
+        if (!masterCellsToInsert.found(pI))
         {
-            Pout<< " Map edge: " << eIter() << "::" << edge(cMs, cMe)
-                << " for edge: " << eIter.key() << "::" << sEdge
-                << endl;
+            masterCellsToInsert.insert(pI, Map<label>());
         }
 
-        // Add this edge to the map.
-        map.addEdge(eIter());
-    }
+        // Fetch references
+        dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+        Map<label>& procCellMap = masterCellsToInsert[pI];
 
-    // Add faces to the mesh, noting that all required
-    // points and edges have already been added.
-    forAllIter(Map<label>, masterFacesToInsert, fIter)
-    {
-        const face& sFace = sMesh.faces_[fIter.key()];
-        const labelList& sfEdges = sMesh.faceEdges_[fIter.key()];
-
-        face newFace(sFace.size());
-        labelList newFaceEdges(sfEdges.size());
-
-        // Configure points from map
-        forAll(newFace, pointI)
+        if (twoDMesh_)
         {
-            newFace[pointI] =
-            (
-                cMap.findMaster(coupleMap::POINT, sFace[pointI])
-            );
-        }
-
-        // Configure edges from edgesTo(Insert/Convert)
-        forAll(sfEdges, edgeI)
-        {
-            label mIndex = -1;
-
-            // Configure with the appropriate edge
-            if (masterEdgesToInsert.found(sfEdges[edgeI]))
-            {
-                mIndex = masterEdgesToInsert[sfEdges[edgeI]];
-            }
-            else
-            if (masterEdgesToConvert.found(sfEdges[edgeI]))
-            {
-                mIndex = masterEdgesToConvert[sfEdges[edgeI]];
-            }
-            else
-            {
-                // Something is wrong here.
-                Pout<< "Could not find correspondence for edge: "
-                    << sfEdges[edgeI] << ":: " << sMesh.edges_[sfEdges[edgeI]]
-                    << abort(FatalError);
-            }
-
-            newFaceEdges[edgeI] = mIndex;
-        }
-
-        // Determine patch, owner and neighbour for this face
-        label newPatch = -1, newOwner = -1, newNeighbour = -1;
-
-        const polyBoundaryMesh& slaveBoundary = sMesh.boundaryMesh();
-
-        label sfPatch = sMesh.whichPatch(fIter.key());
-        label sFaceOwn = sMesh.owner_[fIter.key()];
-        label sFaceNei = sMesh.neighbour_[fIter.key()];
-
-        label mFaceOwn =
-        (
-            masterCellsToInsert.found(sFaceOwn) ?
-            masterCellsToInsert[sFaceOwn] : -1
-        );
-
-        label mFaceNei =
-        (
-            masterCellsToInsert.found(sFaceNei) ?
-            masterCellsToInsert[sFaceNei] : -1
-        );
-
-        if (mFaceOwn != -1 && mFaceNei == -1)
-        {
-            // Boundary face already has correct orientation
-            newOwner = mFaceOwn;
-            newNeighbour = -1;
-
-            // Determine patch
-            if (sfPatch == -1)
-            {
-                // Slave face was an interior one
-                newPatch = masterConvertPatch;
-            }
-            else
-            if
-            (
-                isA<processorPolyPatch>(slaveBoundary[sfPatch]) ||
-                (sfPatch == (slaveBoundary.size() - 1))
-            )
-            {
-                // Processor, or 'defaultPatch'
-                newPatch = masterConvertPatch;
-            }
-            else
-            {
-                // Physical type
-                newPatch = sfPatch;
-            }
+            // Insert the owner cell
+            procCellMap.insert(mesh.owner_[sIndex], -1);
         }
         else
-        if (mFaceOwn == -1 && mFaceNei != -1)
         {
-            // Boundary face is inverted. Flip it
-            newFace = newFace.reverseFace();
-            newOwner = mFaceNei;
-            newNeighbour = -1;
+            // Insert all cells connected to this edge
+            const labelList& eFaces = mesh.edgeFaces_[sIndex];
 
-            // Determine patch
-            if (sfPatch == -1)
-            {
-                // Slave face was an interior one
-                newPatch = masterConvertPatch;
-            }
-            else
-            if
-            (
-                isA<processorPolyPatch>(slaveBoundary[sfPatch]) ||
-                (sfPatch == (slaveBoundary.size() - 1))
-            )
-            {
-                // Processor, or 'defaultPatch'
-                newPatch = masterConvertPatch;
-            }
-            else
-            {
-                // Physical type
-                newPatch = sfPatch;
-            }
-        }
-        else
-        if (mFaceOwn != -1 && mFaceNei != -1)
-        {
-            // Interior face. Check if a flip is necessary.
-            if (mFaceNei < mFaceOwn)
-            {
-                newFace = newFace.reverseFace();
-            }
-
-            newOwner = mFaceOwn;
-            newNeighbour = mFaceNei;
-            newPatch = -1;
-        }
-        else
-        if (mFaceOwn == -1 && mFaceNei == -1)
-        {
-            // Something is wrong here.
-            Pout<< "Could not find correct owner / neighbour info: " << nl
-                << " Face: " << newFace << nl
-                << " Owner: " << mFaceOwn << nl
-                << " Neighbour: " << mFaceNei << nl
-                << " - Slave Face: " << sFace << nl
-                << " - Slave Patch: " << slaveBoundary[sfPatch].name() << nl
-                << " - Slave Owner: " << sFaceOwn << nl
-                << " - Slave Neighbour: " << sFaceNei << nl
-                << abort(FatalError);
-        }
-
-        // Insert the new face
-        fIter() =
-        (
-            insertFace
-            (
-                newPatch,
-                newFace,
-                newOwner,
-                newNeighbour
-            )
-        );
-
-        // Add the faceEdges entry as well
-        faceEdges_.append(newFaceEdges);
-
-        // Size up edgeFaces for each edge
-        forAll(newFaceEdges, edgeI)
-        {
-            meshOps::sizeUpList
-            (
-                fIter(),
-                edgeFaces_[newFaceEdges[edgeI]]
-            );
-        }
-
-        if (debug > 3)
-        {
-            Pout<< " Map face: " << fIter() << "::" << newFace
-                << " Own: " << newOwner << " Nei: " << newNeighbour
-                << " fE: " << newFaceEdges << nl
-                << " for face: " << fIter.key() << "::" << sFace
-                << " Own: " << sFaceOwn << " Nei: " << sFaceNei
-                << " fE: " << sfEdges
-                << endl;
-        }
-
-        // Add this face to the map.
-        map.addFace(fIter());
-
-        // Update cells
-        cells_[newOwner][nCellFaces[newOwner]++] = fIter();
-
-        if (newNeighbour > -1)
-        {
-            cells_[newNeighbour][nCellFaces[newNeighbour]++] = fIter();
-        }
-    }
-
-    // Loop through conversion faces
-    forAllIter(Map<label>, masterFacesToConvert, fIter)
-    {
-        // Fetch the owner information
-        label mFaceOwn = owner_[fIter()];
-        label sFaceOwn = sMesh.owner_[fIter.key()];
-        label newNeighbour = masterCellsToInsert[sFaceOwn];
-
-        // Insert a new internal face.
-        // Orientation should be correct, because this is a boundary
-        // face converted to an interior, and adjacent to an added cell.
-        label newFaceIndex =
-        (
-            insertFace
-            (
-                -1,
-                faces_[fIter()],
-                mFaceOwn,
-                newNeighbour
-            )
-        );
-
-        // Add the new faceEdges from the existing face. This may contain
-        // edges that need to be converted, but that will be done later.
-        faceEdges_.append(faceEdges_[fIter()]);
-
-        // Update map
-        map.addFace(newFaceIndex, labelList(1, fIter()));
-
-        // Update the owner cell
-        meshOps::replaceLabel
-        (
-            fIter(),
-            newFaceIndex,
-            cells_[mFaceOwn]
-        );
-
-        // Update the neighbour cell
-        cells_[newNeighbour][nCellFaces[newNeighbour]++] = newFaceIndex;
-
-        // Replace edgeFaces with the new face index
-        const labelList& fEdges = faceEdges_[newFaceIndex];
-
-        forAll(fEdges, edgeI)
-        {
-            meshOps::replaceLabel
-            (
-                fIter(),
-                newFaceIndex,
-                edgeFaces_[fEdges[edgeI]]
-            );
-        }
-
-        // Remove the old boundary face
-        removeFace(fIter());
-
-        // Update map
-        map.removeFace(fIter());
-    }
-
-    // Loop through conversion edges
-    forAllIter(Map<label>, masterEdgesToConvert, eIter)
-    {
-        bool allInterior = true;
-
-        const labelList& eFaces = edgeFaces_[eIter()];
-
-        forAll(eFaces, faceI)
-        {
-            if (whichPatch(eFaces[faceI]) > -1)
-            {
-                allInterior = false;
-                break;
-            }
-        }
-
-        if (allInterior)
-        {
-            // This edge needs to be converted to an interior one
-            label newEdgeIndex =
-            (
-                insertEdge
-                (
-                    -1,
-                    edges_[eIter()],
-                    edgeFaces_[eIter()],
-                    labelList(0)
-                )
-            );
-
-            // Update map
-            map.addEdge(newEdgeIndex, labelList(1, eIter()));
-
-            // Update faceEdges information for all connected faces
             forAll(eFaces, faceI)
             {
-                meshOps::replaceLabel
-                (
-                    eIter(),
-                    newEdgeIndex,
-                    faceEdges_[eFaces[faceI]]
-                );
+                const label own = mesh.owner_[eFaces[faceI]];
+                const label nei = mesh.neighbour_[eFaces[faceI]];
+
+                if (!procCellMap.found(own))
+                {
+                    procCellMap.insert(own, -1);
+                }
+
+                if (!procCellMap.found(nei) && (nei != -1))
+                {
+                    procCellMap.insert(nei, -1);
+                }
+            }
+        }
+
+        // Loop through inserted cells and
+        // create an equivalent on this mesh
+        forAllIter(Map<label>, procCellMap, cIter)
+        {
+            const cell& checkCell = mesh.cells_[cIter.key()];
+
+            scalar sLengthScale = -1.0;
+
+            if (edgeRefinement_)
+            {
+                sLengthScale = mesh.lengthScale_[cIter.key()];
             }
 
-            // Remove the old boundary edge
-            removeEdge(eIter());
+            // Add an empty cell for now, and update
+            // with face information at a later stage.
+            cIter() = insertCell(cell(checkCell.size()), sLengthScale);
 
-            // Update map
-            map.removeEdge(eIter());
+            // Initialize a face counter
+            nCellFaces.insert(cIter(), 0);
+
+            if (debug > 3)
+            {
+                Pout<< " Map cell: " << cIter()
+                    << " for cell: " << cIter.key()
+                    << " on proc: " << procIndices_[pI]
+                    << endl;
+            }
+
+            // Add this cell to the map.
+            map.addCell(cIter());
+
+            forAll(checkCell, fI)
+            {
+                label mIndex = -1, sfIndex = checkCell[fI];
+
+                // Check whether a face mapping exists for this face
+                if ((mIndex = cMap.findMaster(coupleMap::FACE, sfIndex)) > -1)
+                {
+                    // Add a new entry if necessary
+                    if (!masterFacesToConvert.found(pI))
+                    {
+                        masterFacesToConvert.insert(pI, Map<label>());
+                    }
+
+                    // Add a new face entry
+                    masterFacesToConvert[pI].insert(sfIndex, mIndex);
+
+                    // Add a patch entry as well
+                    if (!masterFaceConvertPatches.found(pI))
+                    {
+                        masterFaceConvertPatches.insert
+                        (
+                            pI,
+                            whichPatch(mIndex)
+                        );
+                    }
+
+                    if (!slaveFaceConvertPatches.found(pI))
+                    {
+                        slaveFaceConvertPatches.insert
+                        (
+                            pI,
+                            mesh.whichPatch(sfIndex)
+                        );
+                    }
+                }
+                else
+                {
+
+                }
+            }
         }
     }
-
-    if (!twoDMesh_)
-    {
-        // Fix edgePoints for all new / converted edges
-        const List<objectMap>& addedEdgeList = map.addedEdgeList();
-
-        forAll(addedEdgeList, indexI)
-        {
-            buildEdgePoints(addedEdgeList[indexI].index());
-        }
-    }
-
-    // Remove the specified cells from the subMesh,
-    // and add exposed internal faces to the patch
-    // talking to this processor
-    changeMap sMeshMap = sMesh.removeCells(cList, slaveConvertPatch);
-
-    // Now map modified boundary faces
 
     // Specify that the operation was successful
     map.type() = 1;

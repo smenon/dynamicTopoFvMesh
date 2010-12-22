@@ -958,15 +958,8 @@ class dynamicTopoFvMesh
         // Unset coupled modification
         void unsetCoupledModification() const;
 
-        // Insert the specified cells to the mesh,
-        // given existing coupled patch information
-        const changeMap
-        insertCells
-        (
-            const label masterIndex,
-            const labelList& cList,
-            coupledPatchInfo& cInfo
-        );
+        // Insert the cells around the coupled master entity to the mesh
+        const changeMap insertCells(const label mIndex);
 
         // Handle topology changes for coupled patches
         void handleCoupledPatches(labelHashSet& entities);
