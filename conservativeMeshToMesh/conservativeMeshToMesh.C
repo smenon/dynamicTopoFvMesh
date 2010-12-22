@@ -363,6 +363,109 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
     Info << nl << " Calculation time: " << calcTimer.elapsedTime() << endl;
 
+    labelList srcPolyCell;
+
+    // Build a map for each target tet to target polyhedral cell
+    if (decompSource)
+    {
+        srcPolyCell.setSize(srcTetFvMesh_().nCells(), -1);
+
+        forAll(srcTetStarts_, cellI)
+        {
+            label start = srcTetStarts_[cellI];
+            label size = srcTetSizes_[cellI];
+
+            for (label i = 0; i < size; i++)
+            {
+                srcPolyCell[start + i] = cellI;
+            }
+        }
+    }
+    else
+    {
+        // Identity map
+        srcPolyCell = identity(meshFrom.nCells());
+    }
+
+    if (decompTarget)
+    {
+        // Agglomerate intersections from tets for each polyhedral cell
+        List<labelList> newAddressing(meshTo.nCells());
+        List<scalarField> newVolumes(meshTo.nCells());
+        List<vectorField> newCentres(meshTo.nCells());
+
+        Map<scalar> polyVol;
+        Map<vector> polyCtr;
+
+        forAll(newAddressing, cellI)
+        {
+            // First count the number of intersections per tet
+            labelList& cellAddr = newAddressing[cellI];
+            scalarField& cellVols = newVolumes[cellI];
+            vectorField& cellCtrs = newCentres[cellI];
+
+            label start = tgtTetStarts_[cellI];
+            label size = tgtTetSizes_[cellI];
+
+            // Clear the map
+            polyVol.clear();
+            polyCtr.clear();
+
+            for (label i = 0; i < size; i++)
+            {
+                const labelList& tetAddr = addressing_[start + i];
+                const scalarField& tetVol = volumes_[start + i];
+                const vectorField& tetCtr = centres_[start + i];
+
+                forAll(tetAddr, j)
+                {
+                    // Add a new entry if necessary
+                    if (!polyVol.found(srcPolyCell[tetAddr[j]]))
+                    {
+                        polyVol.insert(srcPolyCell[tetAddr[j]], 0.0);
+                        polyCtr.insert(srcPolyCell[tetAddr[j]], vector::zero);
+                    }
+
+                    // Accumulate volumes and weighted-centroids
+                    polyVol[srcPolyCell[tetAddr[j]]] += tetVol[j];
+                    polyCtr[srcPolyCell[tetAddr[j]]] += tetCtr[j] * tetVol[j];
+                }
+            }
+
+            // Set the addressing
+            cellAddr = polyVol.toc();
+
+            cellVols.setSize(cellAddr.size());
+            cellCtrs.setSize(cellAddr.size());
+
+            forAll(cellAddr, polyI)
+            {
+                cellVols[polyI] = polyVol[cellAddr[polyI]];
+                cellCtrs[polyI] = polyCtr[cellAddr[polyI]] / cellVols[polyI];
+            }
+        }
+
+        // Transfer new lists
+        addressing_.transfer(newAddressing);
+        volumes_.transfer(newVolumes);
+        centres_.transfer(newCentres);
+    }
+    else
+    if (decompSource)
+    {
+        // Source is decomposed. Renumber to correct addressing.
+        // Volumes and centres are already okay.
+        forAll(addressing_, cellI)
+        {
+            labelList& addr = addressing_[cellI];
+
+            forAll(addr, i)
+            {
+                addr[i] = srcPolyCell[addr[i]];
+            }
+        }
+    }
+
     if (writeAddressing)
     {
         Info << " Writing addressing to disk." << endl;

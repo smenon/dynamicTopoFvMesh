@@ -34,81 +34,6 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-//- Interpolate internal field values from decomposition
-template<class Type>
-void conservativeMeshToMesh::interpolateInternalFieldDecomp
-(
-    Field<Type>& toF,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf
-) const
-{
-    if (fromVf.internalField().size() != tgtMesh().nCells())
-    {
-        FatalErrorIn
-        (
-            "\n\n"
-            "void conservativeMeshToMesh::"
-            "interpolateInternalFieldDecomp\n"
-            "(\n"
-            "    Field<Type>& toF,\n"
-            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf\n"
-            ") const\n"
-        )   << "the argument field does not correspond to the right mesh. "
-            << "Field size: " << fromVf.internalField().size()
-            << " mesh size: " << tgtMesh().nCells()
-            << exit(FatalError);
-    }
-
-    if (toF.size() != origTgtMesh().nCells())
-    {
-        FatalErrorIn
-        (
-            "\n\n"
-            "void conservativeMeshToMesh::"
-            "interpolateInternalFieldDecomp\n"
-            "(\n"
-            "    Field<Type>& toF,\n"
-            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf\n"
-            ") const\n"
-        )   << "the argument field does not correspond to the right mesh. "
-            << "Field size: " << toF.size()
-            << " mesh size: " << origTgtMesh().nCells()
-            << exit(FatalError);
-    }
-
-    // Fetch geometry
-    const scalarField& fromCellVols = tgtMesh().cellVolumes();
-    const scalarField& toCellVols = origTgtMesh().cellVolumes();
-
-    scalar maxError = 0.0;
-
-    forAll(toF, celli)
-    {
-        // Initialize to zero
-        toF[celli] = pTraits<Type>::zero;
-
-        scalar sumVol = 0.0;
-
-        label start = tgtTetStarts_[celli];
-        label size = tgtTetSizes_[celli];
-
-        for (label i = 0; i < size; i++)
-        {
-            toF[celli] += (fromCellVols[start + i] * fromVf[start + i]);
-
-            sumVol += fromCellVols[start + i];
-        }
-
-        // Divide by current volume
-        toF[celli] /= toCellVols[celli];
-
-        maxError = Foam::max(maxError, mag(1.0 - (sumVol / toCellVols[celli])));
-    }
-
-    Info<< " Max. decomp volume error: " << maxError << endl;
-}
-
-
 //- Interpolate internal field values (conservative first-order)
 template<class Type>
 void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
@@ -217,7 +142,7 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
             << exit(FatalError);
     }
 
-    if (toF.size() != tgtMesh().nCells())
+    if (toF.size() != origTgtMesh().nCells())
     {
         FatalErrorIn
         (
@@ -235,12 +160,12 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
             ") const\n"
         )   << "The argument field does not correspond to the right mesh. "
             << "Field size: " << toF.size()
-            << " mesh size: " << tgtMesh().nCells()
+            << " mesh size: " << origTgtMesh().nCells()
             << exit(FatalError);
     }
 
     // Fetch geometry
-    const scalarField& toCellVols = tgtMesh().cellVolumes();
+    const scalarField& toCellVols = origTgtMesh().cellVolumes();
     const vectorField& fromCellCentres = origSrcMesh().cellCentres();
 
     forAll(toF, celli)
@@ -408,13 +333,6 @@ void conservativeMeshToMesh::interpolateInternalField
             break;
         }
 
-        case DECOMP:
-        {
-            interpolateInternalFieldDecomp(toVf, fromVf);
-
-            break;
-        }
-
         default:
         {
             FatalErrorIn
@@ -423,6 +341,8 @@ void conservativeMeshToMesh::interpolateInternalField
                 "void conservativeMeshToMesh::interpolateInternalField\n"
             )   << "unknown interpolation scheme " << method
                 << exit(FatalError);
+
+            break;
         }
     }
 }
@@ -479,13 +399,6 @@ void conservativeMeshToMesh::interpolate
             break;
         }
 
-        case DECOMP:
-        {
-            interpolateInternalFieldDecomp(toVf, fromVf);
-
-            break;
-        }
-
         default:
         {
             FatalErrorIn
@@ -494,6 +407,8 @@ void conservativeMeshToMesh::interpolate
                 "void conservativeMeshToMesh::interpolateInternalField()\n"
             )   << "unknown interpolation scheme " << method
                 << exit(FatalError);
+
+            break;
         }
     }
 }

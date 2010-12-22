@@ -182,14 +182,6 @@ class conservativeMeshToMesh
             bool output = false
         ) const;
 
-        //- Interpolate internal field values from decomposition
-        template<class Type>
-        void interpolateInternalFieldDecomp
-        (
-            Field<Type>& toF,
-            const GeometricField<Type, fvPatchField, volMesh>& fromVf
-        ) const;
-
         //- Interpolate internal field values (conservative first-order)
         template<class Type>
         void interpolateInternalFieldConserveFirstOrder
@@ -267,8 +259,7 @@ public:
     {
         CONSERVATIVE,
         INVERSE_DISTANCE,
-        CONSERVATIVE_FIRST_ORDER,
-        DECOMP
+        CONSERVATIVE_FIRST_ORDER
     };
 
     // Constructors

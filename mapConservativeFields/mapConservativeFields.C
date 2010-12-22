@@ -105,7 +105,7 @@ void MapConservativeVolFields
         ++fieldIter
     )
     {
-        Info << "    Interpolating " << fieldIter()->name() << endl;
+        Info<< "    Interpolating " << fieldIter()->name() << endl;
 
         // Read field
         GeometricField<Type, fvPatchField, volMesh> fieldSource
@@ -117,7 +117,7 @@ void MapConservativeVolFields
         // Compute integral of source field
         Type intSource = gSum(meshSource.V() * fieldSource.internalField());
 
-        Info << "Integral source: " << intSource << endl;
+        Info<< "Integral source: " << intSource << endl;
 
         IOobject fieldTargetIOobject
         (
@@ -175,8 +175,8 @@ void MapConservativeVolFields
             fieldTarget.write();
         }
 
-        Info << "Integral target: " << intTarget << endl;
-        Info << "mag(intError): " << mag(intSource - intTarget) << endl;
+        Info<< "Integral target: " << intTarget << endl;
+        Info<< "mag(intError): " << mag(intSource - intTarget) << endl;
     }
 }
 
@@ -672,25 +672,25 @@ void computeError
     scalar sdx = Foam::cbrt(1.0 / isF.size());
     scalar tdx = Foam::cbrt(1.0 / itF.size());
 
-    Info << " ~~~~~~~~~~~~~~~~~ " << nl
-         << "      Source       " << nl
-         << " ~~~~~~~~~~~~~~~~~ " << nl
-         << " L2 error: " << Foam::sqrt(sError/isF.size()) << nl
-         << " Linf error: " << smError << nl
-         << " dx: " << sdx << nl
-         << " dx2: " << sqr(sdx) << nl
-         << " nCells: " << isF.size() << nl
-         << endl;
+    Info<< " ~~~~~~~~~~~~~~~~~ " << nl
+        << "      Source       " << nl
+        << " ~~~~~~~~~~~~~~~~~ " << nl
+        << " L2 error: " << Foam::sqrt(sError/isF.size()) << nl
+        << " Linf error: " << smError << nl
+        << " dx: " << sdx << nl
+        << " dx2: " << sqr(sdx) << nl
+        << " nCells: " << isF.size() << nl
+        << endl;
 
-    Info << " ~~~~~~~~~~~~~~~~~ " << nl
-         << "      Target       " << nl
-         << " ~~~~~~~~~~~~~~~~~ " << nl
-         << " L2 error: " << Foam::sqrt(tError/itF.size()) << nl
-         << " Linf error: " << tmError << nl
-         << " dx: " << tdx << nl
-         << " dx2: " << sqr(tdx) << nl
-         << " nCells: " << itF.size() << nl
-         << endl;
+    Info<< " ~~~~~~~~~~~~~~~~~ " << nl
+        << "      Target       " << nl
+        << " ~~~~~~~~~~~~~~~~~ " << nl
+        << " L2 error: " << Foam::sqrt(tError/itF.size()) << nl
+        << " Linf error: " << tmError << nl
+        << " dx: " << tdx << nl
+        << " dx2: " << sqr(tdx) << nl
+        << " nCells: " << itF.size() << nl
+        << endl;
 }
 
 
@@ -762,7 +762,7 @@ void testCyclicRemap
         decompSource
     );
 
-    Info << " Remapping for " << nCycles << " cycles..." << endl;
+    Info<< " Remapping for " << nCycles << " cycles..." << endl;
 
     // Perform initial map
     meshSourceToTarget.interpolate
@@ -813,16 +813,16 @@ void testCyclicRemap
     // Compute interpolation error
     computeError(fieldSource, fieldTarget, type);
 
-    Info << " Done." << endl;
+    Info<< " Done." << endl;
 
-    Info << "Integral source (before): " << intSource << endl;
+    Info<< "Integral source (before): " << intSource << endl;
 
     scalar intSourceAfter = gSum(meshSource.V() * fieldSource->internalField());
     scalar intTarget = gSum(meshTarget.V() * fieldTarget->internalField());
 
-    Info << "Integral source (after): " << intSourceAfter << endl;
-    Info << "Integral target: " << intTarget << endl;
-    Info << "mag(intError): " << mag(intSource - intTarget) << endl;
+    Info<< "Integral source (after): " << intSourceAfter << endl;
+    Info<< "Integral target: " << intTarget << endl;
+    Info<< "mag(intError): " << mag(intSource - intTarget) << endl;
 }
 
 
@@ -874,49 +874,14 @@ void testMappingError
         decompTarget
     );
 
-    if (decompTarget)
-    {
-        // Additional fields for decomposition
-        autoPtr<volScalarField> fieldTargetDecomp;
-        autoPtr<volVectorField> gfieldTargetDecomp;
-
-        initTestField
-        (
-            meshToMeshInterp.tgtMesh(),
-            type,
-            fieldTargetDecomp,
-            gfieldTargetDecomp,
-            false
-        );
-
-        // Interpolate field to tets
-        meshToMeshInterp.interpolate
-        (
-            fieldTargetDecomp(),
-            fieldSource(),
-            gfieldSource(),
-            method
-        );
-
-        // Interpolate from tets to polyhedra
-        meshToMeshInterp.interpolate
-        (
-            fieldTarget(),
-            fieldTargetDecomp(),
-            conservativeMeshToMesh::DECOMP
-        );
-    }
-    else
-    {
-        // Interpolate field
-        meshToMeshInterp.interpolate
-        (
-            fieldTarget(),
-            fieldSource(),
-            gfieldSource(),
-            method
-        );
-    }
+    // Interpolate field
+    meshToMeshInterp.interpolate
+    (
+        fieldTarget(),
+        fieldSource(),
+        gfieldSource(),
+        method
+    );
 
     // Compute interpolation error
     computeError(fieldSource, fieldTarget, type);
@@ -947,9 +912,9 @@ void mapConservativeMesh
         decompTarget
     );
 
-    Info << nl
-         << "Conservatively creating and mapping fields for time "
-         << meshSource.time().timeName() << nl << endl;
+    Info<< nl
+        << "Conservatively creating and mapping fields for time "
+        << meshSource.time().timeName() << nl << endl;
 
     {
         // Search for list of objects for this time
@@ -1042,21 +1007,21 @@ int main(int argc, char *argv[])
     {
         case conservativeMeshToMesh::CONSERVATIVE:
         {
-            Info << "Using method: CONSERVATIVE" << endl;
+            Info<< "Using method: CONSERVATIVE" << endl;
 
             break;
         }
 
         case conservativeMeshToMesh::INVERSE_DISTANCE:
         {
-            Info << "Using method: INVERSE_DISTANCE" << endl;
+            Info<< "Using method: INVERSE_DISTANCE" << endl;
 
             break;
         }
 
         case conservativeMeshToMesh::CONSERVATIVE_FIRST_ORDER:
         {
-            Info << "Using method: CONSERVATIVE_FIRST_ORDER" << endl;
+            Info<< "Using method: CONSERVATIVE_FIRST_ORDER" << endl;
 
             break;
         }
