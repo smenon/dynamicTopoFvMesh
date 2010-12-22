@@ -82,6 +82,9 @@ class conservativeMeshToMesh
         autoPtr<fvMesh> srcTetFvMesh_, tgtTetFvMesh_;
         autoPtr<tetPolyMesh> srcTetMesh_, tgtTetMesh_;
 
+        // Source cell indices for post-processing
+        Map<label> srcCellIndex_;
+
         //- Addressing from polyhedra to tets
         labelList srcTetStarts_, srcTetSizes_;
         labelList tgtTetStarts_, tgtTetSizes_;

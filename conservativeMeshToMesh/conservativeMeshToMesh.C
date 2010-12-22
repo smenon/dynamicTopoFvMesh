@@ -25,6 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "octree.H"
+#include "Random.H"
 #include "clockTime.H"
 #include "multiThreader.H"
 #include "threadHandler.H"
@@ -243,6 +244,40 @@ conservativeMeshToMesh::conservativeMeshToMesh
         centres_.setSize(tgtTetFvMesh_().nCells());
     }
 
+    labelList srcPolyCell;
+
+    // Build a map for each target tet to target polyhedral cell
+    if (decompSource)
+    {
+        srcPolyCell.setSize(srcTetFvMesh_().nCells(), -1);
+
+        forAll(srcTetStarts_, cellI)
+        {
+            label start = srcTetStarts_[cellI];
+            label size = srcTetSizes_[cellI];
+
+            // Select a random integer for this cell
+            label randInt = Random(cellI).integer(0, 1000);
+
+            for (label i = 0; i < size; i++)
+            {
+                srcPolyCell[start + i] = cellI;
+                srcCellIndex_.insert(start + i, randInt);
+            }
+        }
+    }
+    else
+    {
+        // Identity map
+        srcPolyCell = identity(meshFrom.nCells());
+
+        // Assign a random index for each cell on the source
+        forAll(srcPolyCell, cellI)
+        {
+            srcCellIndex_.insert(cellI, Random(cellI).integer(0, 1000));
+        }
+    }
+
     // Track calculation time
     clockTime calcTimer;
 
@@ -362,30 +397,6 @@ conservativeMeshToMesh::conservativeMeshToMesh
     }
 
     Info << nl << " Calculation time: " << calcTimer.elapsedTime() << endl;
-
-    labelList srcPolyCell;
-
-    // Build a map for each target tet to target polyhedral cell
-    if (decompSource)
-    {
-        srcPolyCell.setSize(srcTetFvMesh_().nCells(), -1);
-
-        forAll(srcTetStarts_, cellI)
-        {
-            label start = srcTetStarts_[cellI];
-            label size = srcTetSizes_[cellI];
-
-            for (label i = 0; i < size; i++)
-            {
-                srcPolyCell[start + i] = cellI;
-            }
-        }
-    }
-    else
-    {
-        // Identity map
-        srcPolyCell = identity(meshFrom.nCells());
-    }
 
     if (decompTarget)
     {

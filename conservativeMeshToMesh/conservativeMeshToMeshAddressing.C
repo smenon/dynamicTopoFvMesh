@@ -32,7 +32,6 @@ Description
 
 #include "conservativeMeshToMesh.H"
 
-#include "Random.H"
 #include "triFace.H"
 #include "IOmanip.H"
 #include "ListOps.H"
@@ -704,6 +703,15 @@ bool conservativeMeshToMesh::computeWeights
             }
         }
 
+        // Identify parents
+        labelList parentIDs(parents);
+
+        // Renumber to stored random indices
+        forAll(parentIDs, indexI)
+        {
+            parentIDs[indexI] = srcCellIndex_[parentIDs[indexI]];
+        }
+
         // Finally write out the VTK
         meshOps::writeVTK
         (
@@ -717,7 +725,7 @@ bool conservativeMeshToMesh::computeWeights
             allCells,
             allOwner,
             scalarList(0),
-            labelList(allCells.size(), Random(index).integer(0, 1000))
+            parentIDs
         );
     }
 
