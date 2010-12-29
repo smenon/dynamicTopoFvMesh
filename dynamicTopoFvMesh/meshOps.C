@@ -962,12 +962,12 @@ inline void writeVTK
         nCellFields++;
     }
 
-    if (scalField.size() == reverseCellMap.size())
+    if (scalField.size() == reverseCellMap.size() && scalField.size())
     {
         nCellFields++;
     }
 
-    if (lablField.size() == reverseCellMap.size())
+    if (lablField.size() == reverseCellMap.size() && lablField.size())
     {
         nCellFields++;
     }
@@ -1021,12 +1021,12 @@ inline void writeVTK
         nPointFields++;
     }
 
-    if (scalField.size() == reversePointMap.size())
+    if (scalField.size() == reversePointMap.size() && scalField.size())
     {
         nPointFields++;
     }
 
-    if (lablField.size() == reversePointMap.size())
+    if (lablField.size() == reversePointMap.size() && lablField.size())
     {
         nPointFields++;
     }
