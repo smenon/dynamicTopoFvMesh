@@ -130,7 +130,9 @@ void conservativeMeshToMesh::calcAddressingAndWeights
                 << " parents: " << parents << nl
                 << " weights: " << weights << nl
                 << " volumes: " << volumes << nl
-                << " Error: " << mag(1.0 - sum(weights))
+                << " Error: " << mag(1.0 - sum(weights)) << nl
+                << " Volume: " << toMesh().cellVolumes()[cellI] << nl
+                << " Sum(volumes): " << sum(volumes) << nl
                 << endl;
 
             nInconsistencies++;
@@ -642,7 +644,7 @@ bool conservativeMeshToMesh::computeWeights
         writeVTK("uE_" + Foam::name(index), uList, 3, true);
     }
 
-    if (consistent && output)
+    if (output)
     {
         faceList allFaces;
         labelList allOwner;
@@ -2099,7 +2101,7 @@ void conservativeMeshToMesh::convexSetVolume
 
         meshOps::writeVTK
         (
-            fromMesh(),
+            toMesh(),
             "tfSet_" + Foam::name(newCellIndex)
           + '<' + Foam::name(oldCellIndex) + '>',
             cvxSet.size(),

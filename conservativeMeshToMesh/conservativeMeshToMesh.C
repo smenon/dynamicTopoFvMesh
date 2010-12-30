@@ -819,7 +819,7 @@ void conservativeMeshToMesh::writeVTK
         // Use points from polyMesh
         meshOps::writeVTK
         (
-            fromMesh(),
+            toMesh(),
             name,
             cList,
             primitiveType,
@@ -835,7 +835,7 @@ void conservativeMeshToMesh::writeVTK
     {
         meshOps::writeVTK
         (
-            fromMesh(),
+            toMesh(),
             name,
             cList,
             primitiveType,
