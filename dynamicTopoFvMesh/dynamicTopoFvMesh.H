@@ -878,7 +878,8 @@ class dynamicTopoFvMesh
             const label primitiveType = 3,
             const bool useOldConnectivity = false,
             const bool useOldPoints = false,
-            const UList<scalar>& field = UList<scalar>()
+            const UList<scalar>& scalField = UList<scalar>(),
+            const UList<label>& lablField = UList<label>()
         ) const;
 
         // Return the status report interval

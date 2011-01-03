@@ -318,10 +318,18 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
             // Figure out the new internal face index.
             // This should not be a coupled face anymore.
-            label newIndex = -1;
+            label newIndex = faceMap.index();
+
+            // Temporarily turn off coupledModification
+            unsetCoupledModification();
 
             // Recursively call this function for the new face
-            return swapQuadFace(newIndex);
+            map = swapQuadFace(newIndex);
+
+            // Turn it back on.
+            setCoupledModification();
+
+            return map;
         }
     }
 
@@ -1700,9 +1708,12 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
                     << abort(FatalError);
             }
 
+            // Temporarily turn off coupledModification
+            unsetCoupledModification();
+
             // Re-fill tables for the reconfigured edge.
             // This should not be a coupled edge anymore.
-            label newIndex = -1;
+            label newIndex = edgeMap.index();
 
             const edge& newEdge = edges_[newIndex];
             const labelList& newEdgePoints = edgePoints_[newIndex];
@@ -1720,10 +1731,12 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             );
 
             // Recursively call this function for the new edge
-            return
-            (
-                removeEdgeFlips(newIndex, minQuality, Q, K, triangulations)
-            );
+            map = removeEdgeFlips(newIndex, minQuality, Q, K, triangulations);
+
+            // Turn it back on.
+            setCoupledModification();
+
+            return map;
         }
     }
 
