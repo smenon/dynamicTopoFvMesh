@@ -1433,7 +1433,6 @@ void mesquiteMotionSolver::initParallelConnectivity()
                 );
             }
 
-            /*
             const Map<label>& pMap = cMap.entityMap(coupleMap::POINT);
             const labelList& fpB = cMap.entityBuffer(coupleMap::PATCH_ID);
             const faceList& fList = cMap.faces();
@@ -1484,7 +1483,6 @@ void mesquiteMotionSolver::initParallelConnectivity()
                     }
                 }
             }
-            */
         }
     }
 
@@ -2670,7 +2668,6 @@ void mesquiteMotionSolver::preparePointNormals()
                 continue;
             }
 
-            /*
             const Map<label>& aspMap = auxSurfPointMap_[neiProcNo];
             const labelList& fpB = cMap.entityBuffer(coupleMap::PATCH_ID);
             const faceList& fList = cMap.faces();
@@ -2698,7 +2695,6 @@ void mesquiteMotionSolver::preparePointNormals()
                     }
                 }
             }
-            */
         }
     }
 

@@ -148,7 +148,8 @@ public:
         BISECTION = 0,
         COLLAPSE_FIRST = 1,
         COLLAPSE_SECOND = 2,
-        COLLAPSE_MIDPOINT = 3
+        COLLAPSE_MIDPOINT = 3,
+        REMOVE_CELL = 4
     };
 
     //- Runtime type information

@@ -1682,6 +1682,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(cellsToInsert, procI)
     {
         const Map<label>& procCellMap = cellsToInsert[procI];
+        const coupleMap& cMap = recvPatchMeshes_[procI].patchMap();
 
         if (procCellMap.empty())
         {
@@ -1707,6 +1708,16 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 slaveConvertPatch[procI]
             )
         );
+
+        // Push operation into coupleMap
+        forAll(cellsToRemove, cellI)
+        {
+            cMap.pushOperation
+            (
+                cellsToRemove[cellI],
+                coupleMap::REMOVE_CELL
+            );
+        }
     }
 
     // Now map entities from the removeCells operation
@@ -2462,10 +2473,14 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
     // Wait for all transfers to complete.
     meshOps::waitForBuffers();
 
+    // Buffer for cell-removal
+    DynamicList<label> removeCellList(10);
+
     forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
-        coupledPatchInfo& sPM = sendPatchMeshes_[pI];
+
+        const coupledPatchInfo& sPM = sendPatchMeshes_[pI];
 
         if (proc < Pstream::myProcNo())
         {
@@ -2482,6 +2497,38 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             );
 
             const Map<label>& entityMap = *entityMapPtr;
+
+            // Find the appropriate processor patch
+            // for cell-removal operations
+            label procPatch = -1;
+
+            const polyBoundaryMesh& boundary = boundaryMesh();
+
+            forAll(boundary, pI)
+            {
+                if (!isA<processorPolyPatch>(boundary[pI]))
+                {
+                    continue;
+                }
+
+                const processorPolyPatch& pp =
+                (
+                    refCast<const processorPolyPatch>(boundary[pI])
+                );
+
+                if (pp.neighbProcNo() == proc)
+                {
+                    procPatch = pI;
+                    break;
+                }
+            }
+
+            if (procPatch == -1)
+            {
+                Pout<< " * * * Sync Operations * * * " << nl
+                    << " Could not find patch for proc: " << proc << nl
+                    << abort(FatalError);
+            }
 
             // Keep track of added entities from initial set
             label nEntities =
@@ -2575,6 +2622,42 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         }
 
                         opMap = collapseEdge(localIndex, 3);
+                        break;
+                    }
+
+                    case coupleMap::REMOVE_CELL:
+                    {
+                        if (debug > 3)
+                        {
+                            Pout<< "Remove cell: " << localIndex << endl;
+                        }
+
+                        // Might be a series of cell-removal operations
+                        //  - Check if the next index is also a removal,
+                        //    and accumulate to remove as a set.
+                        label nextI = operations.fcIndex(indexI);
+
+                        // Add index to list
+                        removeCellList.append(localIndex);
+
+                        if
+                        (
+                            nextI > indexI &&
+                            operations[nextI] == coupleMap::REMOVE_CELL
+                        )
+                        {
+                            // Temporarily set operations as successful
+                            opMap.type() = 1;
+                        }
+                        else
+                        {
+                            // Perform operation as a set.
+                            opMap = removeCells(removeCellList, procPatch);
+
+                            // Clear the existing list.
+                            removeCellList.clear();
+                        }
+
                         break;
                     }
                 }
@@ -2680,8 +2763,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         }
 
         // Obtain references
-        coupledPatchInfo& rPM = recvPatchMeshes_[pI];
-
+        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
         const coupleMap& rcMap = rPM.patchMap();
 
         // First read entity sizes.
