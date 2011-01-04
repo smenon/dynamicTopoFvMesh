@@ -3284,8 +3284,14 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     {
         if (isA<processorPolyPatch>(boundary[patchI]))
         {
+            // Fetch the neighbouring processor ID
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[patchI])
+            );
+
             // Set processor patches to a special type
-            ptBuffer[patchI] = -2;
+            ptBuffer[patchI] = -2 - pp.neighbProcNo();
         }
         else
         {
@@ -3296,8 +3302,8 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         }
     }
 
-    // Fill the default patch with a special type
-    ptBuffer[boundary.size()] = -3;
+    // Fill the default patch as 'internal'
+    ptBuffer[boundary.size()] = -1;
 
     // Set maps as built.
     subMesh.setBuiltMaps();
@@ -3704,24 +3710,35 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
         wordList patchNames(ptBuffer.size());
         wordList patchTypes(ptBuffer.size());
 
+        // Specify additional info for processor types
+        labelList sProcNo(ptBuffer.size(), -1);
+        labelList nProcNo(ptBuffer.size(), -1);
+
         forAll(patchTypes, pI)
         {
-            if (ptBuffer[pI] == -2)
+            if (pI == patchTypes.size() - 1)
             {
+                patchNames[pI] = "defaultPatch";
+                patchTypes[pI] = "patch";
+            }
+            else
+            if (ptBuffer[pI] <= -2)
+            {
+                // Back out the neighbouring processor ID
+                label neiProcNo = Foam::mag(ptBuffer[pI] + 2);
+
                 patchNames[pI] =
                 (
                     "procBoundary"
                   + Foam::name(proc) + "to"
-                  + Foam::name(Pstream::myProcNo())
+                  + Foam::name(neiProcNo)
                 );
 
+                // Fill in additional patch information
+                sProcNo[pI] = proc;
+                nProcNo[pI] = neiProcNo;
+
                 patchTypes[pI] = "processor";
-            }
-            else
-            if (ptBuffer[pI] == -3)
-            {
-                patchNames[pI] = "defaultPatch";
-                patchTypes[pI] = "patch";
             }
             else
             {
@@ -3756,7 +3773,9 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 cMap.entityBuffer(coupleMap::EDGE_STARTS),
                 cMap.entityBuffer(coupleMap::EDGE_SIZES),
                 patchNames,
-                patchTypes
+                patchTypes,
+                sProcNo,
+                nProcNo
             )
         );
 

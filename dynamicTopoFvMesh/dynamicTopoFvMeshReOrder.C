@@ -52,10 +52,10 @@ void dynamicTopoFvMesh::reOrderPoints
     {
         if (threaded)
         {
-            Info << "Thread: " << self() << ": ";
+            Info<< "Thread: " << self() << ": ";
         }
 
-        Info << "ReOrdering points..." << flush;
+        Info<< "ReOrdering points..." << flush;
     }
 
     // Allocate for the mapping information
@@ -268,7 +268,7 @@ void dynamicTopoFvMesh::reOrderPoints
 
     if (debug)
     {
-        Info << "Done." << endl;
+        Info<< "Done." << endl;
     }
 }
 
@@ -328,10 +328,10 @@ void dynamicTopoFvMesh::reOrderEdges
     {
         if (threaded)
         {
-            Info << "Thread: " << self() << ": ";
+            Info<< "Thread: " << self() << ": ";
         }
 
-        Info << "ReOrdering edges..." << flush;
+        Info<< "ReOrdering edges..." << flush;
     }
 
     // Allocate for mapping information
@@ -633,7 +633,7 @@ void dynamicTopoFvMesh::reOrderEdges
 
     if (debug)
     {
-        Info << "Done." << endl;
+        Info<< "Done." << endl;
     }
 }
 
@@ -700,10 +700,10 @@ void dynamicTopoFvMesh::reOrderFaces
     {
         if (threaded)
         {
-            Info << "Thread: " << self() << ": ";
+            Info<< "Thread: " << self() << ": ";
         }
 
-        Info << "ReOrdering faces..." << flush;
+        Info<< "ReOrdering faces..." << flush;
     }
 
     // Allocate for mapping information
@@ -1303,7 +1303,7 @@ void dynamicTopoFvMesh::reOrderFaces
 
     if (debug)
     {
-        Info << "Done." << endl;
+        Info<< "Done." << endl;
     }
 }
 
@@ -1381,10 +1381,10 @@ void dynamicTopoFvMesh::reOrderCells
     {
         if (threaded)
         {
-            Info << "Thread: " << self() << ": ";
+            Info<< "Thread: " << self() << ": ";
         }
 
-        Info << "ReOrdering cells..." << flush;
+        Info<< "ReOrdering cells..." << flush;
     }
 
     // Allocate for mapping information
@@ -1704,7 +1704,7 @@ void dynamicTopoFvMesh::reOrderCells
 
     if (debug)
     {
-        Info << "Done." << endl;
+        Info<< "Done." << endl;
     }
 }
 
@@ -1755,40 +1755,44 @@ void dynamicTopoFvMesh::reOrderMesh
 {
     if (debug)
     {
-        Info << endl;
-        Info << "=================" << endl;
-        Info << " Mesh reOrdering " << endl;
-        Info << "=================" << endl;
-        Info << "Mesh Info [n]:" << endl;
-        Info << "Points: " << nOldPoints_ << endl;
-        Info << "Edges: " << nOldEdges_ << endl;
-        Info << "Faces: " << nOldFaces_ << endl;
-        Info << "Cells: " << nOldCells_ << endl;
-        Info << "Internal Edges: " << nOldInternalEdges_ << endl;
-        Info << "Internal Faces: " << nOldInternalFaces_ << endl;
+        Info<< nl
+            << "=================" << nl
+            << " Mesh reOrdering " << nl
+            << "=================" << nl
+            << " Mesh Info [n]:" << nl
+            << " Points: " << nOldPoints_ << nl
+            << " Edges: " << nOldEdges_ << nl
+            << " Faces: " << nOldFaces_ << nl
+            << " Cells: " << nOldCells_ << nl
+            << " Internal Edges: " << nOldInternalEdges_ << nl
+            << " Internal Faces: " << nOldInternalFaces_ << nl;
+
         if (debug > 1)
         {
-            Info << "Patch Starts [Face]: " << oldPatchStarts_ << endl;
-            Info << "Patch Sizes  [Face]: " << oldPatchSizes_ << endl;
-            Info << "Patch Starts [Edge]: " << oldEdgePatchStarts_ << endl;
-            Info << "Patch Sizes  [Edge]: " << oldEdgePatchSizes_ << endl;
+            Info<< " Patch Starts [Face]: " << oldPatchStarts_ << nl
+                << " Patch Sizes  [Face]: " << oldPatchSizes_ << nl
+                << " Patch Starts [Edge]: " << oldEdgePatchStarts_ << nl
+                << " Patch Sizes  [Edge]: " << oldEdgePatchSizes_ << nl;
         }
-        Info << "=================" << endl;
-        Info << "Mesh Info [n+1]:" << endl;
-        Info << "Points: " << nPoints_ << endl;
-        Info << "Edges: " << nEdges_ << endl;
-        Info << "Faces: " << nFaces_ << endl;
-        Info << "Cells: " << nCells_ << endl;
-        Info << "Internal Edges: " << nInternalEdges_ << endl;
-        Info << "Internal Faces: " << nInternalFaces_ << endl;
+
+        Info<< "=================" << nl
+            << " Mesh Info [n+1]:" << nl
+            << " Points: " << nPoints_ << nl
+            << " Edges: " << nEdges_ << nl
+            << " Faces: " << nFaces_ << nl
+            << " Cells: " << nCells_ << nl
+            << " Internal Edges: " << nInternalEdges_ << nl
+            << " Internal Faces: " << nInternalFaces_ << nl;
+
         if (debug > 1)
         {
-            Info << "Patch Starts [Face]: " << patchStarts_ << endl;
-            Info << "Patch Sizes: [Face]: " << patchSizes_ << endl;
-            Info << "Patch Starts [Edge]: " << edgePatchStarts_ << endl;
-            Info << "Patch Sizes: [Edge]: " << edgePatchSizes_ << endl;
+            Info<< " Patch Starts [Face]: " << patchStarts_ << nl
+                << " Patch Sizes: [Face]: " << patchSizes_ << nl
+                << " Patch Starts [Edge]: " << edgePatchStarts_ << nl
+                << " Patch Sizes: [Edge]: " << edgePatchSizes_ << nl;
         }
-        Info << "=================" << endl;
+
+        Info<< "=================" << endl;
 
         // Check connectivity structures for consistency
         // before entering the reOrdering phase.

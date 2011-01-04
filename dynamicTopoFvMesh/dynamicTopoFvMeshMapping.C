@@ -234,9 +234,9 @@ void dynamicTopoFvMesh::computeMapping
 
     if (nInconsistencies)
     {
-        Pout << " Mapping inconsistencies: " << nInconsistencies
-             << " max error: " << maxError
-             << endl;
+        Pout<< " Mapping inconsistencies: " << nInconsistencies
+            << " max error: " << maxError
+            << endl;
 
         if (debug > 1)
         {
@@ -336,7 +336,7 @@ void dynamicTopoFvMesh::threadedMapping
     // If mapping is being skipped, issue a warning.
     if (skipMapping)
     {
-        Info << " *** Mapping is being skipped *** " << endl;
+        Info<< " *** Mapping is being skipped *** " << endl;
     }
 
     // Check if single-threaded
@@ -371,8 +371,8 @@ void dynamicTopoFvMesh::threadedMapping
 
     if (debug > 2)
     {
-        Pout << " Mapping Faces: " << index[0] << endl;
-        Pout << " Mapping Cells: " << index[1] << endl;
+        Pout<< " Mapping Faces: " << index[0] << nl
+            << " Mapping Cells: " << index[1] << endl;
     }
 
     forAll(index, indexI)
@@ -393,8 +393,8 @@ void dynamicTopoFvMesh::threadedMapping
 
         if (debug > 2)
         {
-            Pout << " Load starts: " << tStarts[indexI] << endl;
-            Pout << " Load sizes: " << tSizes[indexI] << endl;
+            Pout<< " Load starts: " << tStarts[indexI] << nl
+                << " Load sizes: " << tSizes[indexI] << endl;
         }
     }
 
@@ -907,9 +907,9 @@ void dynamicTopoFvMesh::setCellMapping
     {
         if (debug > 3)
         {
-            Pout << "Inserting mapping cell: " << cIndex << nl
-                 << " mapCells: " << mapCells
-                 << endl;
+            Pout<< "Inserting mapping cell: " << cIndex << nl
+                << " mapCells: " << mapCells
+                << endl;
         }
 
         // Insert index into the list, and overwrite if necessary
@@ -979,10 +979,10 @@ void dynamicTopoFvMesh::setFaceMapping
 
     if (debug > 3)
     {
-        Pout << "Inserting mapping face: " << fIndex << nl
-             << " patch: " << patch << nl
-             << " mapFaces: " << mapFaces
-             << endl;
+        Pout<< "Inserting mapping face: " << fIndex << nl
+            << " patch: " << patch << nl
+            << " mapFaces: " << mapFaces
+            << endl;
     }
 
     bool foundError = false;

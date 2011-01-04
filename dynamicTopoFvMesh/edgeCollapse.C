@@ -247,8 +247,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             if (debug > 1)
             {
-                Pout << nl << " >> Collapsing slave face: " << sIndex
-                     << " for master face: " << fIndex << endl;
+                Pout<< nl << " >> Collapsing slave face: " << sIndex
+                    << " for master face: " << fIndex << endl;
             }
         }
         else
@@ -267,10 +267,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 {
                     if (debug > 3)
                     {
-                        Pout << "Checking slave face: " << sIndex
-                             << " on proc: " << procIndices_[pI]
-                             << " for master face: " << fIndex
-                             << endl;
+                        Pout<< "Checking slave face: " << sIndex
+                            << " on proc: " << procIndices_[pI]
+                            << " for master face: " << fIndex
+                            << endl;
                     }
 
                     // Check if a lower-ranked processor is
@@ -279,11 +279,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     {
                         if (debug > 3)
                         {
-                            Pout << "Face: " << fIndex
-                                 << " is handled by proc: "
-                                 << procIndices_[pI]
-                                 << ", so bailing out."
-                                 << endl;
+                            Pout<< "Face: " << fIndex
+                                << " is handled by proc: "
+                                << procIndices_[pI]
+                                << ", so bailing out."
+                                << endl;
                         }
 
                         return map;
@@ -973,13 +973,13 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (debug > 2)
         {
-            Pout << "Face: " << fIndex
-                 << ":: " << faces_[fIndex] << nl
-                 << " collapseCase determined to be: " << collapseCase << nl
-                 << " Resulting quality: " << collapseQuality << nl
-                 << " edgeBoundary: " << edgeBoundary << nl
-                 << " nBoundCurves: " << nBoundCurves
-                 << endl;
+            Pout<< "Face: " << fIndex
+                << ":: " << faces_[fIndex] << nl
+                << " collapseCase determined to be: " << collapseCase << nl
+                << " Resulting quality: " << collapseQuality << nl
+                << " edgeBoundary: " << edgeBoundary << nl
+                << " nBoundCurves: " << nBoundCurves
+                << endl;
         }
 
         return map;
@@ -989,85 +989,85 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     {
         const labelList& fE = faceEdges_[fIndex];
 
-        Pout << nl << nl
-             << "Face: " << fIndex << ": " << faces_[fIndex] << nl
-             << "faceEdges: " << fE
-             << " is to be collapsed. " << endl;
+        Pout<< nl << nl
+            << "Face: " << fIndex << ": " << faces_[fIndex] << nl
+            << "faceEdges: " << fE
+            << " is to be collapsed. " << endl;
 
         label epIndex = whichPatch(fIndex);
 
-        Pout << "Patch: ";
+        Pout<< "Patch: ";
 
         if (epIndex == -1)
         {
-            Pout << "Internal" << endl;
+            Pout<< "Internal" << endl;
         }
         else
         {
-            Pout << boundaryMesh()[epIndex].name() << endl;
+            Pout<< boundaryMesh()[epIndex].name() << endl;
         }
 
         if (debug > 2)
         {
-            Pout << endl;
-            Pout << "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-            Pout << "Hulls before modification" << endl;
-            Pout << "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+            Pout<< endl;
+            Pout<< "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+            Pout<< "Hulls before modification" << endl;
+            Pout<< "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 
-            Pout << nl << "Cells belonging to first Edge Hull: "
-                 << hullCells[0] << endl;
+            Pout<< nl << "Cells belonging to first Edge Hull: "
+                << hullCells[0] << endl;
 
             forAll(hullCells[0],cellI)
             {
                 const cell& firstCurCell = cells_[hullCells[0][cellI]];
 
-                Pout << "Cell: " << hullCells[0][cellI]
-                     << ": " << firstCurCell << endl;
+                Pout<< "Cell: " << hullCells[0][cellI]
+                    << ": " << firstCurCell << endl;
 
                 forAll(firstCurCell,faceI)
                 {
-                    Pout << firstCurCell[faceI]
-                         << ": " << faces_[firstCurCell[faceI]] << endl;
+                    Pout<< firstCurCell[faceI]
+                        << ": " << faces_[firstCurCell[faceI]] << endl;
                 }
             }
 
             const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
-            Pout << nl << "First Edge Face Hull: "
-                 << firstEdgeFaces << endl;
+            Pout<< nl << "First Edge Face Hull: "
+                << firstEdgeFaces << endl;
 
             forAll(firstEdgeFaces,indexI)
             {
-                Pout << firstEdgeFaces[indexI]
-                     << ": " << faces_[firstEdgeFaces[indexI]] << endl;
+                Pout<< firstEdgeFaces[indexI]
+                    << ": " << faces_[firstEdgeFaces[indexI]] << endl;
             }
 
-            Pout << nl << "Cells belonging to second Edge Hull: "
-                 << hullCells[1] << endl;
+            Pout<< nl << "Cells belonging to second Edge Hull: "
+                << hullCells[1] << endl;
 
             forAll(hullCells[1], cellI)
             {
                 const cell& secondCurCell = cells_[hullCells[1][cellI]];
 
-                Pout << "Cell: " << hullCells[1][cellI]
-                     << ": " << secondCurCell << endl;
+                Pout<< "Cell: " << hullCells[1][cellI]
+                    << ": " << secondCurCell << endl;
 
                 forAll(secondCurCell, faceI)
                 {
-                    Pout << secondCurCell[faceI]
-                         << ": " << faces_[secondCurCell[faceI]] << endl;
+                    Pout<< secondCurCell[faceI]
+                        << ": " << faces_[secondCurCell[faceI]] << endl;
                 }
             }
 
             const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
-            Pout << nl << "Second Edge Face Hull: "
-                 << secondEdgeFaces << endl;
+            Pout<< nl << "Second Edge Face Hull: "
+                << secondEdgeFaces << endl;
 
             forAll(secondEdgeFaces, indexI)
             {
-                Pout << secondEdgeFaces[indexI]
-                     << ": " << faces_[secondEdgeFaces[indexI]] << endl;
+                Pout<< secondEdgeFaces[indexI]
+                    << ": " << faces_[secondEdgeFaces[indexI]] << endl;
             }
 
             // Write out VTK files prior to change
@@ -2047,92 +2047,90 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     if (debug > 2)
     {
-        Pout << endl;
-        Pout << "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-        Pout << "Hulls after modification" << endl;
-        Pout << "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+        Pout<< endl;
+        Pout<< "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+        Pout<< "Hulls after modification" << endl;
+        Pout<< "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
 
-        Pout << nl << "Cells belonging to first Edge Hull: "
-             << hullCells[0] << endl;
+        Pout<< nl << "Cells belonging to first Edge Hull: "
+            << hullCells[0] << endl;
 
         forAll(hullCells[0], cellI)
         {
             const cell& firstCurCell = cells_[hullCells[0][cellI]];
 
-            Pout << "Cell: " << hullCells[0][cellI]
-                 << ": " << firstCurCell << endl;
+            Pout<< "Cell: " << hullCells[0][cellI]
+                << ": " << firstCurCell << endl;
 
             forAll(firstCurCell, faceI)
             {
-                Pout << firstCurCell[faceI]
-                     << ": " << faces_[firstCurCell[faceI]] << endl;
+                Pout<< firstCurCell[faceI]
+                    << ": " << faces_[firstCurCell[faceI]] << endl;
             }
         }
 
         const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
-        Pout << nl << "First Edge Face Hull: " << firstEdgeFaces << endl;
+        Pout<< nl << "First Edge Face Hull: " << firstEdgeFaces << endl;
 
         forAll(firstEdgeFaces, indexI)
         {
-            Pout << firstEdgeFaces[indexI]
-                 << ": " << faces_[firstEdgeFaces[indexI]] << endl;
+            Pout<< firstEdgeFaces[indexI]
+                << ": " << faces_[firstEdgeFaces[indexI]] << endl;
         }
 
-        Pout << nl << "Cells belonging to second Edge Hull: "
-             << hullCells[1] << endl;
+        Pout<< nl << "Cells belonging to second Edge Hull: "
+            << hullCells[1] << endl;
 
         forAll(hullCells[1], cellI)
         {
             const cell& secondCurCell = cells_[hullCells[1][cellI]];
 
-            Pout << "Cell: " << hullCells[1][cellI]
-                 << ": " << secondCurCell << endl;
+            Pout<< "Cell: " << hullCells[1][cellI]
+                << ": " << secondCurCell << endl;
 
             forAll(secondCurCell, faceI)
             {
-                Pout << secondCurCell[faceI]
-                     << ": " << faces_[secondCurCell[faceI]] << endl;
+                Pout<< secondCurCell[faceI]
+                    << ": " << faces_[secondCurCell[faceI]] << endl;
             }
         }
 
         const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
-        Pout << nl << "Second Edge Face Hull: " << secondEdgeFaces << endl;
+        Pout<< nl << "Second Edge Face Hull: " << secondEdgeFaces << endl;
 
         forAll(secondEdgeFaces, indexI)
         {
-            Pout << secondEdgeFaces[indexI]
-                 << ": " << faces_[secondEdgeFaces[indexI]] << endl;
+            Pout<< secondEdgeFaces[indexI]
+                << ": " << faces_[secondEdgeFaces[indexI]] << endl;
         }
 
-        Pout << endl;
+        Pout<< "Retained face: "
+            << faceToKeep[0] << ": "
+            << " owner: " << owner_[faceToKeep[0]]
+            << " neighbour: " << neighbour_[faceToKeep[0]]
+            << endl;
 
-        Pout << "Retained face: "
-             << faceToKeep[0] << ": "
-             << " owner: " << owner_[faceToKeep[0]]
-             << " neighbour: " << neighbour_[faceToKeep[0]]
-             << endl;
-
-        Pout << "Discarded face: "
-             << faceToThrow[0] << ": "
-             << " owner: " << owner_[faceToThrow[0]]
-             << " neighbour: " << neighbour_[faceToThrow[0]]
-             << endl;
+        Pout<< "Discarded face: "
+            << faceToThrow[0] << ": "
+            << " owner: " << owner_[faceToThrow[0]]
+            << " neighbour: " << neighbour_[faceToThrow[0]]
+            << endl;
 
         if (c1 != -1)
         {
-            Pout << "Retained face: "
-                 << faceToKeep[1] << ": "
-                 << " owner: " << owner_[faceToKeep[1]]
-                 << " neighbour: " << neighbour_[faceToKeep[1]]
-                 << endl;
+            Pout<< "Retained face: "
+                << faceToKeep[1] << ": "
+                << " owner: " << owner_[faceToKeep[1]]
+                << " neighbour: " << neighbour_[faceToKeep[1]]
+                << endl;
 
-            Pout << "Discarded face: "
-                 << faceToThrow[1] << ": "
-                 << " owner: " << owner_[faceToThrow[1]]
-                 << " neighbour: " << neighbour_[faceToThrow[1]]
-                 << endl;
+            Pout<< "Discarded face: "
+                << faceToThrow[1] << ": "
+                << " owner: " << owner_[faceToThrow[1]]
+                << " neighbour: " << neighbour_[faceToThrow[1]]
+                << endl;
         }
     }
 
@@ -2834,8 +2832,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             if (debug > 1)
             {
-                Pout << nl << " >> Collapsing slave edge: " << sIndex
-                     << " for master edge: " << eIndex << endl;
+                Pout<< nl << " >> Collapsing slave edge: " << sIndex
+                    << " for master edge: " << eIndex << endl;
             }
         }
         else
@@ -2858,11 +2856,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         if (debug > 3)
                         {
-                            Pout << "Edge: " << eIndex
-                                 << " is handled by proc: "
-                                 << procIndices_[pI]
-                                 << ", so bailing out."
-                                 << endl;
+                            Pout<< "Edge: " << eIndex
+                                << " is handled by proc: "
+                                << procIndices_[pI]
+                                << ", so bailing out."
+                                << endl;
                         }
 
                         return map;
@@ -2952,12 +2950,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 if (debug > 3)
                 {
-                    Pout << "Checking slave edge: " << sIndex
-                         << "::" << sMesh.edges_[sIndex]
-                         << " on proc: " << procIndices_[pI]
-                         << " for master edge: " << eIndex
-                         << " using collapseCase: " << masterMap.type()
-                         << endl;
+                    Pout<< "Checking slave edge: " << sIndex
+                        << "::" << sMesh.edges_[sIndex]
+                        << " on proc: " << procIndices_[pI]
+                        << " for master edge: " << eIndex
+                        << " using collapseCase: " << masterMap.type()
+                        << endl;
                 }
             }
 
@@ -3445,13 +3443,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         if (debug > 2)
         {
-            Pout << nl << "Edge: " << eIndex
-                 << ":: " << edges_[eIndex] << nl
-                 << " collapseCase determined to be: " << collapseCase << nl
-                 << " Resulting quality: " << collapseQuality << nl
-                 << " collapsePoint: " << collapsePoint << nl
-                 << " nBoundCurves: " << nBoundCurves << nl
-                 << endl;
+            Pout<< nl << "Edge: " << eIndex
+                << ":: " << edges_[eIndex] << nl
+                << " collapseCase determined to be: " << collapseCase << nl
+                << " Resulting quality: " << collapseQuality << nl
+                << " collapsePoint: " << collapsePoint << nl
+                << " nBoundCurves: " << nBoundCurves << nl
+                << endl;
         }
 
         return map;
@@ -3497,39 +3495,38 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     if (debug > 1)
     {
-        Pout << nl << nl
-             << "Edge: " << eIndex
-             << ": " << edges_[eIndex]
-             << " is to be collapsed. " << endl;
+        Pout<< nl << nl
+            << "Edge: " << eIndex
+            << ": " << edges_[eIndex]
+            << " is to be collapsed. " << nl;
 
         label epIndex = whichEdgePatch(eIndex);
 
-        Pout << "Patch: ";
+        Pout<< "Patch: ";
 
         if (epIndex == -1)
         {
-            Pout << "Internal" << endl;
+            Pout<< "Internal" << nl;
         }
         else
         {
-            Pout << boundaryMesh()[epIndex].name() << endl;
+            Pout<< boundaryMesh()[epIndex].name() << nl;
         }
 
-        Pout << " nBoundCurves: " << nBoundCurves << endl;
-        Pout << " collapseCase: " << collapseCase << endl;
-
-        Pout << " Resulting quality: " << collapseQuality << endl;
+        Pout<< " nBoundCurves: " << nBoundCurves << nl
+            << " collapseCase: " << collapseCase << nl
+            << " Resulting quality: " << collapseQuality << endl;
 
         if (debug > 2)
         {
-            Pout << "Vertices: " << edgePoints_[eIndex] << endl;
-            Pout << "Edges: " << edgeHull << endl;
-            Pout << "Faces: " << faceHull << endl;
-            Pout << "Cells: " << cellHull << endl;
-            Pout << "replacePoint: " << replacePoint << endl;
-            Pout << "collapsePoint: " << collapsePoint << endl;
-            Pout << "checkPoints: " << checkPoints << endl;;
-            Pout << "ringEntities (removed faces): " << endl;
+            Pout<< " Vertices: " << edgePoints_[eIndex] << nl
+                << " Edges: " << edgeHull << nl
+                << " Faces: " << faceHull << nl
+                << " Cells: " << cellHull << nl
+                << " replacePoint: " << replacePoint << nl
+                << " collapsePoint: " << collapsePoint << nl
+                << " checkPoints: " << checkPoints << nl
+                << " ringEntities (removed faces): " << endl;
 
             forAll(ringEntities[removeFaceIndex], faceI)
             {
@@ -3540,10 +3537,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     continue;
                 }
 
-                Pout << fIndex << ": " << faces_[fIndex] << endl;
+                Pout<< fIndex << ": " << faces_[fIndex] << nl;
             }
 
-            Pout << "ringEntities (removed edges): " << endl;
+            Pout<< " ringEntities (removed edges): " << nl;
 
             forAll(ringEntities[removeEdgeIndex], edgeI)
             {
@@ -3554,10 +3551,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     continue;
                 }
 
-                Pout << ieIndex << ": " << edges_[ieIndex] << endl;
+                Pout<< ieIndex << ": " << edges_[ieIndex] << nl;
             }
 
-            Pout << "ringEntities (replacement faces): " << endl;
+            Pout<< " ringEntities (replacement faces): " << nl;
 
             forAll(ringEntities[replaceFaceIndex], faceI)
             {
@@ -3568,10 +3565,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     continue;
                 }
 
-                Pout << fIndex << ": " << faces_[fIndex] << endl;
+                Pout<< fIndex << ": " << faces_[fIndex] << nl;
             }
 
-            Pout << "ringEntities (replacement edges): " << endl;
+            Pout<< " ringEntities (replacement edges): " << nl;
 
             forAll(ringEntities[replaceEdgeIndex], edgeI)
             {
@@ -3582,19 +3579,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     continue;
                 }
 
-                Pout << ieIndex << ": " << edges_[ieIndex] << endl;
+                Pout<< ieIndex << ": " << edges_[ieIndex] << nl;
             }
 
             labelList& collapsePointEdges = pointEdges_[collapsePoint];
 
-            Pout << "pointEdges (collapsePoint): ";
+            Pout<< " pointEdges (collapsePoint): ";
 
             forAll(collapsePointEdges, edgeI)
             {
-                Pout << collapsePointEdges[edgeI] << " ";
+                Pout<< collapsePointEdges[edgeI] << " ";
             }
 
-            Pout << endl;
+            Pout<< nl;
 
             // Write out VTK files prior to change
             if (debug > 3)
@@ -3673,14 +3670,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             if (debug > 2)
             {
-                Pout << nl << "Coupled collapse map candidates: " << nl
-                     << " bFaces: " << bFaces
-                     << " mappedFace: " << mappedFace << nl
-                     << " brmEdges: " << brmEdges
-                     << " mappedRmEdge: " << mappedRmEdge << nl
-                     << " brpEdges: " << brpEdges
-                     << " mappedRpEdge: " << mappedRpEdge << nl
-                     << endl;
+                Pout<< nl << "Coupled collapse map candidates: " << nl
+                    << " bFaces: " << bFaces
+                    << " mappedFace: " << mappedFace << nl
+                    << " brmEdges: " << brmEdges
+                    << " mappedRmEdge: " << mappedRmEdge << nl
+                    << " brpEdges: " << brpEdges
+                    << " mappedRpEdge: " << mappedRpEdge << nl
+                    << endl;
             }
         }
     }
@@ -3749,13 +3746,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
             {
-                if (debug > 2)
-                {
-                    Pout << "Renumbering face: "
-                         << rmvEdgeFaces[faceI] << ": "
-                         << faceToCheck << endl;
-                }
-
                 // Renumber the face...
                 faces_[rmvEdgeFaces[faceI]][replaceIndex] = replacePoint;
 
@@ -4290,13 +4280,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         if (edgeIndex != eIndex)
         {
-            if (debug > 2)
-            {
-                Pout << "Renumbering [edge]: "
-                     << edgeIndex << ": "
-                     << edges_[edgeIndex] << endl;
-            }
-
             if (edges_[edgeIndex][0] == collapsePoint)
             {
                 edges_[edgeIndex][0] = replacePoint;
@@ -4348,13 +4331,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 if ((replaceIndex = faceToCheck.which(collapsePoint)) > -1)
                 {
-                    if (debug > 2)
-                    {
-                        Pout << "Renumbering face: "
-                             << eFaces[faceI] << ": "
-                             << faceToCheck << endl;
-                    }
-
                     // Renumber the face...
                     faces_[eFaces[faceI]][replaceIndex] = replacePoint;
 
@@ -4407,14 +4383,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         if (ringEntities[replaceEdgeIndex][edgeI] == -1)
         {
             continue;
-        }
-
-        if (debug > 2)
-        {
-            Pout << "Building edgePoints for edge: "
-                 << ringEntities[replaceEdgeIndex][edgeI] << ": "
-                 << edges_[ringEntities[replaceEdgeIndex][edgeI]]
-                 << endl;
         }
 
         buildEdgePoints(ringEntities[replaceEdgeIndex][edgeI]);
@@ -4599,14 +4567,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             {
                 if (pointMap[replacePoint] == scPoint)
                 {
-                    if (debug > 2)
-                    {
-                        Pout << " Replacing scPoint: " << scPoint
-                             << " with srPoint: " << srPoint
-                             << " for replacePoint: " << replacePoint
-                             << endl;
-                    }
-
                     rPointMap[srPoint] = replacePoint;
                     pointMap[replacePoint] = srPoint;
                 }
@@ -4834,11 +4794,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             {
                                 if (debug > 2)
                                 {
-                                    Pout << " Found face: " << checkFace
-                                         << "::" << cFace
-                                         << " with fIndex: " << fIndex
-                                         << "::" << mFace
-                                         << endl;
+                                    Pout<< " Found face: " << checkFace
+                                        << "::" << cFace
+                                        << " with fIndex: " << fIndex
+                                        << "::" << mFace
+                                        << endl;
                                 }
 
                                 // Update faceMaps
@@ -4956,11 +4916,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         {
                             if (debug > 2)
                             {
-                                Pout << " Found edge: " << checkEdge
-                                     << "::" << cE
-                                     << " with meIndex: " << meIndex
-                                     << "::" << mE
-                                     << endl;
+                                Pout<< " Found edge: " << checkEdge
+                                    << "::" << cE
+                                    << " with meIndex: " << meIndex
+                                    << "::" << mE
+                                    << endl;
                             }
 
                             // Update edgeMaps
@@ -5091,11 +5051,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             {
                                 if (debug > 2)
                                 {
-                                    Pout << " Found face: " << checkFace
-                                         << "::" << cFace
-                                         << " with fIndex: " << fIndex
-                                         << "::" << sFace
-                                         << endl;
+                                    Pout<< " Found face: " << checkFace
+                                        << "::" << cFace
+                                        << " with fIndex: " << fIndex
+                                        << "::" << sFace
+                                        << endl;
                                 }
 
                                 // Update faceMaps
@@ -5207,11 +5167,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         {
                             if (debug > 2)
                             {
-                                Pout << " Found edge: " << checkEdge
-                                     << "::" << cE
-                                     << " with seIndex: " << seIndex
-                                     << "::" << sE
-                                     << endl;
+                                Pout<< " Found edge: " << checkEdge
+                                    << "::" << cE
+                                    << " with seIndex: " << seIndex
+                                    << "::" << sE
+                                    << endl;
                             }
 
                             // Update edgeMaps

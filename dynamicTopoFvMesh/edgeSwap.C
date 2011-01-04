@@ -664,19 +664,19 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
         if (debug > 2)
         {
-            Pout<< "Cell[0]: " << c0 << ": " << cells_[c0] << endl;
-            Pout<< "Cell[1]: " << c1 << ": " << cells_[c1] << endl;
+            Pout<< " Cell[0]: " << c0 << ": " << cells_[c0] << nl
+                << " Cell[1]: " << c1 << ": " << cells_[c1] << nl;
 
-            Pout<< "Common Faces: Set 1: "
+            Pout<< " Common Faces: Set 1: "
                 << commonFaceIndex[0] << ": " << commonFaces[0] << ", "
-                << commonFaceIndex[1] << ": " << commonFaces[1] << endl;
+                << commonFaceIndex[1] << ": " << commonFaces[1] << nl;
 
-            Pout<< "Common Faces: Set 2: "
+            Pout<< " Common Faces: Set 2: "
                 << commonFaceIndex[2] << ": " << commonFaces[2] << ", "
-                << commonFaceIndex[3] << ": " << commonFaces[3] << endl;
+                << commonFaceIndex[3] << ": " << commonFaces[3] << nl;
 
-            Pout<< "Old face: " << faces_[fIndex] << endl;
-            Pout<< "Old faceEdges: " << faceEdges_[fIndex] << endl;
+            Pout<< " Old face: " << faces_[fIndex] << nl
+                << " Old faceEdges: " << faceEdges_[fIndex] << endl;
         }
 
         // Write out VTK files before change
@@ -687,12 +687,7 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
             cellHull[0] = c0;
             cellHull[1] = c1;
 
-            writeVTK
-            (
-                Foam::name(fIndex)
-              + "_Swap_0",
-                cellHull
-            );
+            writeVTK(Foam::name(fIndex) + "_Swap_0", cellHull);
         }
     }
 
@@ -856,7 +851,7 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
     if (debug > 1)
     {
-        Pout<< "New flipped face: " << newFace << endl;
+        Pout<< "New flipped face: " << newFace << nl;
 
         if (debug > 2)
         {
@@ -864,9 +859,11 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
             {
                 Pout<< "New boundary face[" << faceI << "]: "
                     << commonFaceIndex[faceI]
-                    << ": " << newBdyFace[faceI] << endl;
+                    << ": " << newBdyFace[faceI] << nl;
             }
         }
+
+        Pout<< endl;
     }
 
     // Check the orientation of the two quad faces, and modify as necessary
@@ -1854,12 +1851,14 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
     if (debug > 2)
     {
-        Pout<< " Identified tF as: " << tF << endl;
+        Pout<< " Identified tF as: " << tF << nl;
+
         Pout<< " Triangulation: "
             << triangulations[checkIndex][0][tF] << " "
             << triangulations[checkIndex][1][tF] << " "
             << triangulations[checkIndex][2][tF] << " "
-            << endl;
+            << nl;
+
         Pout<< " All triangulations: " << nl
             << ' ' << triangulations[checkIndex][0] << nl
             << ' ' << triangulations[checkIndex][1] << nl
@@ -1989,12 +1988,14 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
         if (numSwaps == 0)
         {
-            Pout<< "Triangulations: " << endl;
+            Pout<< "Triangulations: " << nl;
 
             forAll(triangulations[checkIndex], row)
             {
-                Pout<< triangulations[checkIndex][row] << endl;
+                Pout<< triangulations[checkIndex][row] << nl;
             }
+
+            Pout<<endl;
 
             // Should have performed at least one swap
             FatalErrorIn
@@ -2104,25 +2105,27 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             if (!matched)
             {
-                Pout<< "masterFaces: " << endl;
-                Pout<< amfList << endl;
+                Pout<< "masterFaces: " << nl
+                    << amfList << endl;
 
-                Pout<< "slaveFaces: " << endl;
-                Pout<< asfList << endl;
+                Pout<< "slaveFaces: " << nl
+                    << asfList << endl;
 
                 forAll(amfList, mfI)
                 {
                     Pout<< amfList[mfI].index() << ": "
                         << faces_[amfList[mfI].index()]
-                        << endl;
+                        << nl;
                 }
 
                 forAll(asfList, sfI)
                 {
                     Pout<< asfList[sfI].index() << ": "
                         << faces_[asfList[sfI].index()]
-                        << endl;
+                        << nl;
                 }
+
+                Pout<< endl;
 
                 FatalErrorIn
                 (
@@ -2235,13 +2238,13 @@ label dynamicTopoFvMesh::identify32Swap
 
     if (debug > 1 || output)
     {
-        Pout<< nl << nl << "Hull Vertices: " << endl;
+        Pout<< nl << nl << "Hull Vertices: " << nl;
 
         forAll(hullVertices, vertexI)
         {
             Pout<< hullVertices[vertexI] << ": "
                 << points_[hullVertices[vertexI]]
-                << endl;
+                << nl;
         }
 
         InfoIn
@@ -2257,8 +2260,7 @@ label dynamicTopoFvMesh::identify32Swap
             << "Could not determine 3-2 swap triangulation." << nl
             << "Edge: " << edgeToCheck << nl
             << "Edge Points: "
-            << segment.start() << ","
-            << segment.end() << nl
+            << segment.start() << "," << segment.end() << nl
             << endl;
     }
 
@@ -2619,9 +2621,9 @@ const changeMap dynamicTopoFvMesh::swap23
     if (debug > 1)
     {
         // Print out arguments
-        Pout<< endl;
-        Pout<< "== Swapping 2-3 ==" << endl;
-        Pout<< "Edge: " << eIndex << ": " << edgeToCheck << endl;
+        Pout<< nl
+            << "== Swapping 2-3 ==" << nl
+            << "Edge: " << eIndex << ": " << edgeToCheck << endl;
 
         if (debug > 2)
         {
@@ -2629,22 +2631,22 @@ const changeMap dynamicTopoFvMesh::swap23
 
             if (bPatch == -1)
             {
-                Pout<< "Patch: Internal" << endl;
+                Pout<< " Patch: Internal" << nl;
             }
             else
             {
-                Pout<< "Patch: " << boundaryMesh()[bPatch].name() << endl;
+                Pout<< " Patch: " << boundaryMesh()[bPatch].name() << nl;
             }
 
-            Pout<< "Ring: " << hullVertices << endl;
-            Pout<< "Faces: " << hullFaces << endl;
-            Pout<< "Cells: " << hullCells << endl;
-            Pout<< "Triangulation: "
+            Pout<< " Ring: " << hullVertices << nl
+                << " Faces: " << hullFaces << nl
+                << " Cells: " << hullCells << nl
+                << " Triangulation: "
                 << triangulations[0][triangulationIndex] << " "
                 << triangulations[1][triangulationIndex] << " "
                 << triangulations[2][triangulationIndex] << " "
-                << endl;
-            Pout<< "Isolated vertex: " << isolatedVertex << endl;
+                << nl
+                << " Isolated vertex: " << isolatedVertex << endl;
         }
 
         if (debug > 3)
@@ -2666,10 +2668,10 @@ const changeMap dynamicTopoFvMesh::swap23
     if (cellsForRemoval[1] == -1)
     {
         // Write out for post-processing
-        Pout<< " isolatedVertex: " << isolatedVertex << endl;
-        Pout<< " triangulations: " << triangulations << endl;
-        Pout<< " numTriangulations: " << numTriangulations << endl;
-        Pout<< " triangulationIndex: " << triangulationIndex << endl;
+        Pout<< " isolatedVertex: " << isolatedVertex << nl
+            << " triangulations: " << triangulations << nl
+            << " numTriangulations: " << numTriangulations << nl
+            << " triangulationIndex: " << triangulationIndex << endl;
 
         writeVTK("Edge23_" + Foam::name(eIndex), eIndex, 1);
         writeVTK("Cells23_" + Foam::name(eIndex), hullCells, 3);
@@ -3197,15 +3199,15 @@ const changeMap dynamicTopoFvMesh::swap23
 
     if (debug > 2)
     {
-        Pout<< "Added edge: " << endl;
+        Pout<< "Added edge: " << nl;
 
         Pout<< newEdgeIndex << ":: "
             << edges_[newEdgeIndex]
             << " edgeFaces: "
             << edgeFaces_[newEdgeIndex]
-            << endl;
+            << nl;
 
-        Pout<< "Added faces: " << endl;
+        Pout<< "Added faces: " << nl;
 
         forAll(newFaceIndex, faceI)
         {
@@ -3213,17 +3215,19 @@ const changeMap dynamicTopoFvMesh::swap23
                 << faces_[newFaceIndex[faceI]]
                 << " faceEdges: "
                 << faceEdges_[newFaceIndex[faceI]]
-                << endl;
+                << nl;
         }
 
-        Pout<< "Added cells: " << endl;
+        Pout<< "Added cells: " << nl;
 
         forAll(newCellIndex, cellI)
         {
             Pout<< newCellIndex[cellI] << ":: "
                 << cells_[newCellIndex[cellI]]
-                << endl;
+                << nl;
         }
+
+        Pout<< endl;
 
         if (debug > 3)
         {
@@ -3314,18 +3318,18 @@ const changeMap dynamicTopoFvMesh::swap32
     if (debug > 1)
     {
         // Print out arguments
-        Pout<< endl;
+        Pout<< nl;
 
         if (edgePatch < 0)
         {
-            Pout<< "== Swapping 3-2 ==" << endl;
+            Pout<< "== Swapping 3-2 ==" << nl;
         }
         else
         {
-            Pout<< "== Swapping 2-2 ==" << endl;
+            Pout<< "== Swapping 2-2 ==" << nl;
         }
 
-        Pout<< "Edge: " << eIndex << ": " << edgeToCheck << endl;
+        Pout<< " Edge: " << eIndex << ": " << edgeToCheck << endl;
 
         if (debug > 2)
         {
@@ -3333,17 +3337,17 @@ const changeMap dynamicTopoFvMesh::swap32
 
             if (bPatch == -1)
             {
-                Pout<< "Patch: Internal" << endl;
+                Pout<< " Patch: Internal" << nl;
             }
             else
             {
-                Pout<< "Patch: " << boundaryMesh()[bPatch].name() << endl;
+                Pout<< " Patch: " << boundaryMesh()[bPatch].name() << nl;
             }
 
-            Pout<< "Ring: " << hullVertices << endl;
-            Pout<< "Faces: " << hullFaces << endl;
-            Pout<< "Cells: " << hullCells << endl;
-            Pout<< "Triangulation: "
+            Pout<< " Ring: " << hullVertices << nl
+                << " Faces: " << hullFaces << nl
+                << " Cells: " << hullCells << nl
+                << " Triangulation: "
                 << triangulations[0][triangulationIndex] << " "
                 << triangulations[1][triangulationIndex] << " "
                 << triangulations[2][triangulationIndex] << " "
@@ -3873,16 +3877,15 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         if (edgePatch > -1)
         {
-            Pout<< "Added edge: " << endl;
-
-            Pout<< newEdgeIndex << ":: "
+            Pout<< "Added edge: "
+                << newEdgeIndex << ":: "
                 << edges_[newEdgeIndex]
                 << " edgeFaces: "
                 << edgeFaces_[newEdgeIndex]
                 << endl;
         }
 
-        Pout<< "Added face(s): " << endl;
+        Pout<< "Added face(s): " << nl;
 
         Pout<< newFaceIndex << ":: "
             << faces_[newFaceIndex];
@@ -3899,18 +3902,20 @@ const changeMap dynamicTopoFvMesh::swap32
                     << faces_[newBdyFaceIndex[faceI]]
                     << " faceEdges: "
                     << faceEdges_[newBdyFaceIndex[faceI]]
-                    << endl;
+                    << nl;
             }
         }
 
-        Pout<< "Added cells: " << endl;
+        Pout<< "Added cells: " << nl;
 
         forAll(newCellIndex, cellI)
         {
             Pout<< newCellIndex[cellI] << ":: "
                 << cells_[newCellIndex[cellI]]
-                << endl;
+                << nl;
         }
+
+        Pout<< endl;
 
         if (debug > 3)
         {

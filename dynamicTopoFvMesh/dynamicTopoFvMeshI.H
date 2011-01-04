@@ -412,7 +412,7 @@ inline void dynamicTopoFvMesh::initStacks
 
     if (debug > 3 && Pstream::parRun())
     {
-        Pout << nl << "Stack size: " << stack(0).size() << endl;
+        Pout<< nl << "Stack size: " << stack(0).size() << endl;
 
         if (debug > 4)
         {
