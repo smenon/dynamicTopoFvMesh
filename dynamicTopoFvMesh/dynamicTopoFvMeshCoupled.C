@@ -98,7 +98,7 @@ void dynamicTopoFvMesh::initCoupledStack
 
         if (debug > 3 && Pstream::parRun())
         {
-            Pout << nl << "Entity stack size: " << stack(0).size() << endl;
+            Pout<< nl << "Entity stack size: " << stack(0).size() << endl;
 
             if (debug > 4)
             {
@@ -200,7 +200,7 @@ void dynamicTopoFvMesh::initCoupledStack
 
     if (debug > 3 && Pstream::parRun())
     {
-        Pout << nl << "Coupled stack size: " << stack(0).size() << endl;
+        Pout<< nl << "Coupled stack size: " << stack(0).size() << endl;
 
         if (debug > 4)
         {
@@ -273,10 +273,8 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             {
                 if (debug)
                 {
-                    Info << " Found "
-                         << gData.nGlobalPoints()
-                         << " global points."
-                         << endl;
+                    Info<< " Found " << gData.nGlobalPoints()
+                        << " global points." << endl;
                 }
 
                 // Send others my addressing.
@@ -319,7 +317,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             else
             if (debug)
             {
-                Info << "Did not find any global points." << endl;
+                Info<< "Did not find any global points." << endl;
             }
 
             labelHashSet immNeighbours;
@@ -384,8 +382,8 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
                         if (foundGlobalMatch && debug)
                         {
-                            Pout << "Additionally talking to processor: "
-                                 << proc << endl;
+                            Pout<< "Additionally talking to processor: "
+                                << proc << endl;
                         }
 
                         procPatchPoints[proc] = neiSet.toc();
@@ -505,7 +503,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
             if (debug > 3)
             {
-                Pout << "Talking to processors: " << procIndices_ << endl;
+                Pout<< "Talking to processors: " << procIndices_ << endl;
 
                 forAll(procIndices_, pI)
                 {
@@ -580,10 +578,9 @@ void dynamicTopoFvMesh::readCoupledPatches()
 
             if (debug)
             {
-                Info << " Adding master: " << masterPatch
-                     << " : " << mPatch
-                     << " with slave: " << slavePatch
-                     << " : " << sPatch << endl;
+                Info<< " Adding master: " << masterPatch << " : " << mPatch
+                    << " with slave: " << slavePatch << " : " << sPatch
+                    << endl;
             }
 
             // Add to the list if entries are legitimate
@@ -2050,7 +2047,7 @@ const changeMap dynamicTopoFvMesh::removeCells
 
         if (nConvFaces > 2)
         {
-            Pout << "Invalid conversion. Bailing out." << endl;
+            Pout<< "Invalid conversion. Bailing out." << endl;
             return map;
         }
     }
@@ -2299,12 +2296,12 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
                 if (mSize != sSize)
                 {
-                    Pout << "Coupled patch-count is inconsistent." << nl
-                         << " Master Patch: " << cMap.masterIndex()
-                         << " Count: " << mSize << nl
-                         << " Slave Patch: " << cMap.slaveIndex()
-                         << " Count: " << sSize
-                         << endl;
+                    Pout<< "Coupled patch-count is inconsistent." << nl
+                        << " Master Patch: " << cMap.masterIndex()
+                        << " Count: " << mSize << nl
+                        << " Slave Patch: " << cMap.slaveIndex()
+                        << " Count: " << sSize
+                        << endl;
 
                     FatalErrorIn
                     (
@@ -2317,7 +2314,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
             }
         }
 
-        Info << "Handling coupled patches...";
+        Info<< "Handling coupled patches...";
     }
 
     // Set coupled modifications.
@@ -2353,7 +2350,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
     if (debug)
     {
-        Info << "Done." << endl;
+        Info<< "Done." << endl;
 
         // Check coupled-patch sizes after changes.
         forAll(patchCoupling_, patchI)
@@ -2367,12 +2364,12 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
                 if (mSize != sSize)
                 {
-                    Pout << "Coupled patch-count is inconsistent." << nl
-                         << " Master Patch: " << cMap.masterIndex()
-                         << " Count: " << mSize << nl
-                         << " Slave Patch: " << cMap.slaveIndex()
-                         << " Count: " << sSize
-                         << endl;
+                    Pout<< "Coupled patch-count is inconsistent." << nl
+                        << " Master Patch: " << cMap.masterIndex()
+                        << " Count: " << mSize << nl
+                        << " Slave Patch: " << cMap.slaveIndex()
+                        << " Count: " << sSize
+                        << endl;
 
                     FatalErrorIn("dynamicTopoFvMesh::handleCoupledPatches()")
                         << " Failures were found in connectivity"
@@ -2402,9 +2399,9 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
             if (debug > 3)
             {
-                Pout << " Op tranfer:"
-                     << " Receiving from [" << proc << "]:: nEntities: "
-                     << nEntities << endl;
+                Pout<< " Op tranfer:"
+                    << " Receiving from [" << proc << "]:: nEntities: "
+                    << nEntities << endl;
             }
 
             if (nEntities)
@@ -2429,12 +2426,12 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
             if (debug > 3)
             {
-                Pout << " Op tranfer:"
-                     << " Sending to [" << proc << "]:: "
-                     << " nEntities: " << nEntities << nl
-                     << "  entityIndices: " << cMap.entityIndices() << nl
-                     << "  entityOperations: " << cMap.entityOperations() << nl
-                     << endl;
+                Pout<< " Op tranfer:"
+                    << " Sending to [" << proc << "]:: "
+                    << " nEntities: " << nEntities << nl
+                    << "  entityIndices: " << cMap.entityIndices() << nl
+                    << "  entityOperations: " << cMap.entityOperations() << nl
+                    << endl;
             }
 
             meshOps::pWrite(proc, nEntities);
@@ -2665,9 +2662,8 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 
         if (debug > 3)
         {
-            Pout << "Sending to [" << proc << "]:: nEntities: "
-                 << scMap.nEntities()
-                 << endl;
+            Pout<< "Sending to [" << proc << "]:: nEntities: "
+                << scMap.nEntities() << endl;
         }
 
         // Send the pointBuffers
@@ -2693,9 +2689,8 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 
         if (debug > 3)
         {
-            Pout << "Receiving from [" << proc << "]:: nEntities: "
-                 << rcMap.nEntities()
-                 << endl;
+            Pout<< "Receiving from [" << proc << "]:: nEntities: "
+                << rcMap.nEntities() << endl;
         }
 
         // Size the buffers.
@@ -3311,8 +3306,8 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     // For debugging purposes...
     if (debug > 3)
     {
-        Pout << "Writing out coupledPatchInfo for processor: "
-             << proc << endl;
+        Pout<< "Writing out coupledPatchInfo for processor: "
+            << proc << endl;
 
         writeVTK
         (
@@ -3322,11 +3317,11 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         );
 
         // Write out patch information
-        Pout<< "faceStarts: " << bdyFaceStarts << endl;
-        Pout<< "faceSizes: " << bdyFaceSizes << endl;
-        Pout<< "edgeStarts: " << bdyEdgeStarts << endl;
-        Pout<< "edgeSizes: " << bdyEdgeSizes << endl;
-        Pout<< "patchTypes: " << ptBuffer << endl;
+        Pout<< " faceStarts: " << bdyFaceStarts << nl
+            << " faceSizes: " << bdyFaceSizes << nl
+            << " edgeStarts: " << bdyEdgeStarts << nl
+            << " edgeSizes: " << bdyEdgeSizes << nl
+            << " patchTypes: " << ptBuffer << endl;
     }
 }
 
@@ -3345,7 +3340,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
     if (debug)
     {
-        Info << "Building local coupled maps...";
+        Info<< "Building local coupled maps...";
     }
 
     // Check if a geometric tolerance has been specified.
@@ -3661,7 +3656,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
     if (debug)
     {
-        Info << "Done." << endl;
+        Info<< "Done." << endl;
     }
 }
 
@@ -4136,11 +4131,6 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
         // build associated edgePoints.
         if (proc > Pstream::myProcNo() && !twoDMesh_)
         {
-            if (debug > 3)
-            {
-                Pout << "Building edgePoints for proc: " << proc << endl;
-            }
-
             dynamicTopoFvMesh& mesh = rPM.subMesh();
 
             forAll(mesh.edges_, edgeI)
@@ -4502,11 +4492,11 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 
             if (debug > 4)
             {
-                Pout << "Sending to: "
-                     << scMap.masterIndex()
-                     << " nCells: "
-                     << scMap.nEntities(coupleMap::CELL)
-                     << endl;
+                Pout<< "Sending to: "
+                    << scMap.masterIndex()
+                    << " nCells: "
+                    << scMap.nEntities(coupleMap::CELL)
+                    << endl;
             }
         }
 
@@ -4528,11 +4518,11 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 
             if (debug > 4)
             {
-                Pout << "Receiving from: "
-                     << rcMap.slaveIndex()
-                     << " nCells: "
-                     << rcMap.nEntities(coupleMap::CELL)
-                     << endl;
+                Pout<< "Receiving from: "
+                    << rcMap.slaveIndex()
+                    << " nCells: "
+                    << rcMap.nEntities(coupleMap::CELL)
+                    << endl;
             }
         }
     }
@@ -5062,7 +5052,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
 
     if (debug > 3)
     {
-        Pout << nl << "nEntitiesToAvoid: " << entities.size() << endl;
+        Pout<< nl << "nEntitiesToAvoid: " << entities.size() << endl;
 
         if (debug > 4)
         {
