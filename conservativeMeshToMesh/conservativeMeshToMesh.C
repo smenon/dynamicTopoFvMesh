@@ -58,36 +58,6 @@ defineTemplateTypeNameAndDebugWithName
     IOList<vectorField>, "vectorFieldList", 0
 );
 
-#if USE_MPFR
-template<>
-const char* const mpVector::typeName = "mpVector";
-
-template<>
-const char* mpVector::componentNames[] = {"x", "y", "z"};
-
-template<>
-const mpVector mpVector::zero =
-(
-   mpVector
-   (
-       pTraits<mpScalar>::zero,
-       pTraits<mpScalar>::zero,
-       pTraits<mpScalar>::zero
-   )
-);
-
-template<>
-const mpVector mpVector::one =
-(
-   mpVector
-   (
-       pTraits<mpScalar>::one,
-       pTraits<mpScalar>::one,
-       pTraits<mpScalar>::one
-   )
-);
-#endif
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 conservativeMeshToMesh::conservativeMeshToMesh

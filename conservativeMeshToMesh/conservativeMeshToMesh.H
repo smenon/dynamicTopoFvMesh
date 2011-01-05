@@ -51,13 +51,6 @@ SourceFiles
 #include "multiThreader.H"
 #include "threadHandler.H"
 
-// Use the MPFR library, if necessary
-#define USE_MPFR 1
-
-#if USE_MPFR
-#include "multiPrecision.H"
-#endif
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam

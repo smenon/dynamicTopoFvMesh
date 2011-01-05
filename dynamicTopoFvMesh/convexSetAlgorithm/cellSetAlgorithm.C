@@ -87,13 +87,6 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
     centres_.clear();
     weights_.clear();
 
-#   if USE_MPFR
-
-    mpCentres_.clear();
-    mpWeights_.clear();
-
-#   endif
-
     // Compute volume / centre
     {
         meshOps::cellCentreAndVolume
@@ -120,27 +113,6 @@ bool cellSetAlgorithm::computeIntersection
 {
     bool intersects = false;
 
-#   if USE_MPFR
-    if (convexSetAlgorithm::highPrecision())
-    {
-        // Invoke the high-precision variant
-
-        if (intersects)
-        {
-            mpScalar volume;
-            mpVector centre;
-
-            // Size-up the internal lists
-            if (!output)
-            {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(volume, mpWeights_);
-                meshOps::sizeUpList(centre, mpCentres_);
-            }
-        }
-    }
-    else
-#   endif
     {
         // Invoke the conventional variant
 

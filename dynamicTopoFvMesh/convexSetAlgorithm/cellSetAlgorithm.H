@@ -65,7 +65,6 @@ class cellSetAlgorithm
         //- Disallow default bitwise assignment
         void operator=(const cellSetAlgorithm&);
 
-
 public:
 
     //- Constructor

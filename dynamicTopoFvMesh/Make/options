@@ -10,6 +10,4 @@ LIB_LIBS = \
     -ldynamicFvMesh \
     -lfiniteVolume \
     -L$(FOAM_USER_LIBBIN) \
-    -lcoupleMap \
-    -lmpfr \
-    -lgmp
+    -lcoupleMap

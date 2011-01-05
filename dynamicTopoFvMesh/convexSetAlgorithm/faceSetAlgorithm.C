@@ -87,24 +87,8 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
     centres_.clear();
     weights_.clear();
 
-#   if USE_MPFR
-
-    mpCentres_.clear();
-    mpWeights_.clear();
-
-    if (highPrecision())
     {
-        //meshOps::faceNormal(newFaces_[index], newPoints_, mpRefNorm_);
-
-        mpNormFactor_ = mag(mpRefNorm_);
-
-        // Normalize for later use
-        mpRefNorm_ /= mpNormFactor_ + VSMALL;
-    }
-    else
-#   endif
-    {
-        //meshOps::faceNormal(newFaces_[index], newPoints_, refNorm_);
+        refNorm_ = newFaces_[index].normal(newPoints_);
 
         normFactor_ = mag(refNorm_);
 
@@ -125,34 +109,7 @@ bool faceSetAlgorithm::computeIntersection
 {
     bool intersects = false;
 
-#   if USE_MPFR
-    if (convexSetAlgorithm::highPrecision())
     {
-        Field<mpVector> mpIntPoints;
-        const mpScalar mpMatchTol(matchTol);
-
-        // Invoke the high-precision variant
-
-
-        if (intersects)
-        {
-            mpScalar area;
-            mpVector centre;
-
-            // Size-up the internal lists
-            if (!output)
-            {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(area, mpWeights_);
-                meshOps::sizeUpList(centre, mpCentres_);
-            }
-        }
-    }
-    else
-#   endif
-    {
-        vectorField intPoints;
-
         // Invoke the conventional variant
 
 

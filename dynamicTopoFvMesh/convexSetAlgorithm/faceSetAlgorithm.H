@@ -65,32 +65,6 @@ class faceSetAlgorithm
         //- Disallow default bitwise assignment
         void operator=(const faceSetAlgorithm&);
 
-        // Compute the area / centre of a polygon
-        // formed by a convex set of points.
-        template <class T>
-        void convexSetArea
-        (
-            const label newIndex,
-            const label oldIndex,
-            const Field<Vector<T> >& cvxSet,
-            const Vector<T>& refNorm,
-            T& fArea,
-            Vector<T>& fCentre,
-            bool output
-        ) const;
-
-        //- Intersection member function
-        //  Templated for precision
-        template <class T>
-        bool faceIntersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            const T& matchTol,
-            Field<Vector<T> >& intPoints,
-            bool output
-        ) const;
-
 public:
 
     //- Constructor

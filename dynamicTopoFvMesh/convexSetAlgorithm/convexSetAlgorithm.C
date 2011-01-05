@@ -55,36 +55,6 @@ namespace Foam
 defineTemplateTypeNameAndDebugWithName(IOMap<labelList>, "labelListIOMap", 0);
 defineTemplateTypeNameAndDebugWithName(IOList<objectMap>, "objectMapIOList", 0);
 
-#if USE_MPFR
-template<>
-const char* const mpVector::typeName = "mpVector";
-
-template<>
-const char* mpVector::componentNames[] = {"x", "y", "z"};
-
-template<>
-const mpVector mpVector::zero =
-(
-   mpVector
-   (
-       pTraits<mpScalar>::zero,
-       pTraits<mpScalar>::zero,
-       pTraits<mpScalar>::zero
-   )
-);
-
-template<>
-const mpVector mpVector::one =
-(
-   mpVector
-   (
-       pTraits<mpScalar>::one,
-       pTraits<mpScalar>::one,
-       pTraits<mpScalar>::one
-   )
-);
-#endif
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
@@ -197,44 +167,6 @@ bool convexSetAlgorithm::consistent(const scalar tolerance) const
         }
     }
 
-#   if USE_MPFR
-
-    if (weights_.size() && mpWeights_.size())
-    {
-        FatalErrorIn
-        (
-            "bool convexSetAlgorithm::consistent"
-            "(const scalar tolerance) const"
-        )
-            << nl << " Inconsistent internal lists: " << nl
-            << " weights: " << weights_ << nl
-            << " mpWeights: " << mpWeights_ << nl
-            << abort(FatalError);
-    }
-
-    if (mpWeights_.size())
-    {
-        scalar sumNormWeights = 0.0;
-
-        forAll(mpWeights_, indexI)
-        {
-            sumNormWeights += (mpWeights_[indexI]/mpNormFactor_);
-        }
-
-        scalar normError = mag(1.0 - sumNormWeights);
-
-        if (normError < tolerance)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-#   endif
-
     return false;
 }
 
@@ -242,18 +174,7 @@ bool convexSetAlgorithm::consistent(const scalar tolerance) const
 // Return the normFactor
 scalar convexSetAlgorithm::normFactor() const
 {
-#   if USE_MPFR
-    if (highPrecision())
-    {
-        return mpNormFactor_;
-    }
-    else
-#   endif
-    {
-        return normFactor_;
-    }
-
-    return 0.0;
+    return normFactor_;
 }
 
 
@@ -274,45 +195,6 @@ void convexSetAlgorithm::normalize(bool normSum) const
             weights_ /= normFactor_;
         }
     }
-
-#   if USE_MPFR
-
-    if (weights_.size() && mpWeights_.size())
-    {
-        FatalErrorIn
-        (
-            "void convexSetAlgorithm::normalize(bool normSum) const"
-        )
-            << nl << " Inconsistent internal lists: " << nl
-            << " weights: " << weights_ << nl
-            << " mpWeights: " << mpWeights_ << nl
-            << abort(FatalError);
-    }
-
-    if (normSum)
-    {
-        if (mpWeights_.size())
-        {
-            mpScalar sumWeights = sum(mpWeights_);
-
-            forAll(mpWeights_, indexI)
-            {
-                mpWeights_[indexI] /= sumWeights;
-            }
-        }
-    }
-    else
-    {
-        if (mpWeights_.size())
-        {
-            forAll(mpWeights_, indexI)
-            {
-                mpWeights_[indexI] /= mpNormFactor_;
-            }
-        }
-    }
-
-#   endif
 }
 
 
@@ -335,42 +217,6 @@ void convexSetAlgorithm::populateLists
         centres = centres_;
         weights = weights_;
     }
-
-#   if USE_MPFR
-
-    if (weights_.size() && mpWeights_.size())
-    {
-        FatalErrorIn
-        (
-            "\n\n"
-            "void convexSetAlgorithm::populateLists\n"
-            "(\n"
-            "    labelList& parents,\n"
-            "    vectorField& centres,\n"
-            "    scalarField& weights\n"
-            ") const\n"
-        )
-            << nl << " Inconsistent internal lists: " << nl
-            << " weights: " << weights_ << nl
-            << " mpWeights: " << mpWeights_ << nl
-            << abort(FatalError);
-    }
-
-    if (mpWeights_.size())
-    {
-        parents = parents_;
-
-        centres.setSize(parents.size());
-        weights.setSize(parents.size());
-
-        forAll(parents, i)
-        {
-            centres[i] = convert<scalar>(mpCentres_[i]);
-            weights[i] = mpWeights_[i];
-        }
-    }
-
-#   endif
 }
 
 

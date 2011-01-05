@@ -10,6 +10,4 @@ LIB_LIBS = \
     -lsampling \
     -lmeshTools \
     -lfiniteVolume \
-    -lmpfr \
-    -lgmp \
     $(WM_DECOMP_LIBS)

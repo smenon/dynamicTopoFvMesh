@@ -49,13 +49,6 @@ SourceFiles
 #include "objectMap.H"
 #include "vectorField.H"
 
-// Use the MPFR library, if necessary
-#define USE_MPFR 1
-
-#if USE_MPFR
-#include "multiPrecision.H"
-#endif
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -107,16 +100,6 @@ protected:
         mutable scalar normFactor_;
         mutable vectorField centres_;
         mutable scalarField weights_;
-
-#       if USE_MPFR
-
-        //- High-precision fields
-        mutable mpVector mpRefNorm_;
-        mutable mpScalar mpNormFactor_;
-        mutable Field<mpVector> mpCentres_;
-        mutable Field<mpScalar> mpWeights_;
-
-#       endif
 
 public:
 
