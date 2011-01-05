@@ -70,6 +70,7 @@ class polyMesh;
 
 namespace meshOps
 {
+    /*
     // Compute the centre for a given face, using UList
     template <class T1, class T2>
     inline void faceCentre
@@ -87,6 +88,7 @@ namespace meshOps
         const UList<Vector<T1> >& points,
         Vector<T2>& normal
     );
+    */
 
     // Method to find the common-edge between two faces.
     inline bool findCommonEdge
@@ -184,7 +186,7 @@ namespace meshOps
         scalar& volume,
         bool checkClosed = false
     );
-
+/*
     // Given a cell index, find the centroid / volume of a cell.
     template <class T1, class T2>
     inline bool cellCentreAndVolumeT
@@ -217,7 +219,7 @@ namespace meshOps
         const T& matchTol,
         Vector<T>& intPoint
     );
-
+*/
     // Determine whether a segment intersects a triangular face
     template <class T>
     inline bool segmentTriFaceIntersection
@@ -238,7 +240,7 @@ namespace meshOps
         const T& matchTol,
         bool testCoplanarity
     );
-
+/*
     // Determine whether the particular point lies
     // inside the given cell
     template <class T>
@@ -252,7 +254,7 @@ namespace meshOps
         const T& matchTol,
         const Vector<T>& cP
     );
-
+*/
     // Dijkstra's algorithm for the shortest path problem
     inline bool Dijkstra
     (
@@ -262,7 +264,7 @@ namespace meshOps
         const label endPoint,
         Map<label>& pi
     );
-
+/*
     // Method to insert labels in a face, so that
     // right-handedness is preserved.
     template <class T>
@@ -273,7 +275,7 @@ namespace meshOps
         const DynamicList<label>& pLabels,
         face& modFace
     );
-
+*/
     // Method to insert a label between two labels in a list
     inline void insertLabel
     (

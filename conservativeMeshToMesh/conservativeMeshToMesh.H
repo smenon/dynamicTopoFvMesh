@@ -154,37 +154,6 @@ class conservativeMeshToMesh
             bool highPrecision = false
         ) const;
 
-        // Return the intersection points between cells in old/new meshes
-        template <class T>
-        bool cellIntersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            const T& matchTol,
-            Field<Vector<T> >& intPoints,
-            bool output = false
-        ) const;
-
-        // Find all indices in edge
-        bool findInEdge
-        (
-            const labelList& cList,
-            const edge& edgeToCheck
-        ) const;
-
-        // Compute the volume / centre of a polyhedron
-        // formed by a convex set of points.
-        void convexSetVolume
-        (
-            const label newCellIndex,
-            const label oldCellIndex,
-            const vectorField& cvxSet,
-            scalar& cVolume,
-            vector& cCentre,
-            faceList& vFaces,
-            bool output = false
-        ) const;
-
         //- Interpolate internal field values (conservative first-order)
         template<class Type>
         void interpolateInternalFieldConserveFirstOrder

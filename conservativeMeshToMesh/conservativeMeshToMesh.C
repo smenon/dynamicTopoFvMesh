@@ -452,7 +452,11 @@ conservativeMeshToMesh::conservativeMeshToMesh
             forAll(cellAddr, polyI)
             {
                 cellVols[polyI] = polyVol[cellAddr[polyI]];
-                cellCtrs[polyI] = polyCtr[cellAddr[polyI]] / cellVols[polyI];
+
+                cellCtrs[polyI] =
+                (
+                    polyCtr[cellAddr[polyI]] / (cellVols[polyI] + VSMALL)
+                );
             }
         }
 

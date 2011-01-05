@@ -23,25 +23,32 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    cellSetAlgorithm
+    tetIntersection
 
 Description
-    Class for convexSetAlgorithms pertaining to cells
+    Implementation of the tetrahedron intersection algorithm given in:
 
-Author
+    D.H. Eberly, 3D Game Engine Design: A Practical Approach to Real-time
+    Computer Graphics, Morgan Kaufmann, 2001.
+
+Implemented by
     Sandeep Menon
     University of Massachusetts Amherst
-    All rights reserved
 
 SourceFiles
-    cellSetAlgorithm.C
+    tetIntersectionI.H
+    tetIntersection.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cellSetAlgorithm_H
-#define cellSetAlgorithm_H
+#ifndef tetIntersection_H
+#define tetIntersection_H
 
-#include "convexSetAlgorithm.H"
+#include "point.H"
+#include "label.H"
+#include "Tuple2.H"
+#include "FixedList.H"
+#include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -49,70 +56,75 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class cellSetAlgorithm Declaration
+                       Class tetIntersection Declaration
 \*---------------------------------------------------------------------------*/
 
-class cellSetAlgorithm
-:
-    public convexSetAlgorithm
+class tetIntersection
 {
+    // Private data
+
+        //- Const reference to clipping tetrahedron
+        const FixedList<point, 4>& clipTet_;
+
+        //- Hessian-normal plane definition
+        typedef Tuple2<vector, scalar> hPlane;
+
+        FixedList<hPlane, 4> clipPlanes_;
+
+        //- Tetrahedra used as temporaries
+        DynamicList<FixedList<point, 4> > inside_;
+
+        //- All intersection tets
+        DynamicList<FixedList<point, 4> > allTets_;
 
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
-        cellSetAlgorithm(const cellSetAlgorithm&);
+        tetIntersection(const tetIntersection&);
 
         //- Disallow default bitwise assignment
-        void operator=(const cellSetAlgorithm&);
+        void operator=(const tetIntersection&);
 
+        // Split and decompose
+        inline void splitAndDecompose
+        (
+            const label tetPlaneIndex,
+            FixedList<point, 4>& tetra,
+            DynamicList<FixedList<point, 4> >& decompTets
+        );
 
 public:
 
-    //- Constructor
+    // Constructors
 
-        cellSetAlgorithm
-        (
-            const polyMesh& mesh,
-            const pointField& newPoints,
-            const UList<edge>& newEdges,
-            const UList<face>& newFaces,
-            const UList<cell>& newCells,
-            const UList<label>& newOwner,
-            const UList<label>& newNeighbour,
-            const List<objectMap>& pointsFromPoints,
-            const Map<labelList>& modPoints
-        );
+        //- Construct from components
+        tetIntersection(const FixedList<point, 4>& clipTet);
 
-    //- Destructor
 
-        virtual ~cellSetAlgorithm()
-        {}
+    // Destructor
 
-    //- Virtual member functions
+        ~tetIntersection();
 
-        // Dimensions of the algorithm
-        virtual label dimension() const
-        {
-            return 3;
-        }
 
-        // Compute normFactor
-        virtual void computeNormFactor(const label index) const;
+    // Member Functions
 
-        // Compute intersections
-        virtual bool computeIntersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            const scalar& matchTol,
-            bool output
-        ) const;
+        //- Evaluate for intersections against input tetrahedron
+        inline bool evaluate(const FixedList<point, 4>& subjectTet);
+
+        //- Return intersections
+        inline const DynamicList<FixedList<point, 4> >& getIntersection() const;
+
+        //- Evaluate and return volume / centroid
+        inline void getVolumeAndCentre(scalar& volume, vector& centre) const;
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "tetIntersectionI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

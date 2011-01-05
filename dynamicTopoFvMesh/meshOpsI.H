@@ -46,7 +46,7 @@ namespace Foam
 
 namespace meshOps
 {
-
+/*
 // Compute the centroid for a given face, using UList
 template <class T1, class T2>
 inline void faceCentre
@@ -170,7 +170,7 @@ inline void faceNormal
         normal += (pointFive * ((b - a)^(c - a)));
     }
 }
-
+*/
 
 // Utility method to find the common edge between two faces.
 inline bool findCommonEdge
@@ -498,7 +498,7 @@ inline bool cellCentreAndVolume
     return true;
 }
 
-
+/*
 // Given a cell index, find the centroid / volume of a cell.
 template <class T1, class T2>
 inline bool cellCentreAndVolumeT
@@ -712,7 +712,7 @@ inline bool segmentSegmentIntersection
 
     return true;
 }
-
+*/
 
 // Determine whether a segment intersects a triangular face
 template <class T>
@@ -821,7 +821,7 @@ inline bool pointInTriFace
     return true;
 }
 
-
+/*
 // Determine whether the particular point lies
 // inside the given cell
 template <class T>
@@ -864,7 +864,7 @@ inline bool pointInCell
     // Passed test with all faces
     return true;
 }
-
+*/
 
 // Utility method to check for concurrent points.
 template <class T>
@@ -1032,7 +1032,7 @@ inline void waitForBuffers()
     }
 }
 
-
+/*
 // Method to insert labels in a face, so that
 // right-handedness is preserved.
 template <class T>
@@ -1081,7 +1081,7 @@ inline void insertPointLabels
     // Take over storage
     modFace.transfer(newFace);
 }
-
+*/
 
 // Method to insert a label between two labels in a list
 // Assumes that all labels are unique.
