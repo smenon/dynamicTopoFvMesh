@@ -31,6 +31,10 @@ Description
     D.H. Eberly, 3D Game Engine Design: A Practical Approach to Real-time
     Computer Graphics, Morgan Kaufmann, 2001.
 
+    Geometric Tools, LLC
+    Distributed under the Boost Software License, Version 1.0.
+    http://www.boost.org/LICENSE_1_0.txt
+
 Implemented by
     Sandeep Menon
     University of Massachusetts Amherst
@@ -85,25 +89,28 @@ class tetIntersection
         //- Disallow default bitwise assignment
         void operator=(const tetIntersection&);
 
-        // Split and decompose
+        //- Compute clip-planes
+        inline void computeClipPlanes();
+
+        //- Split and decompose
         inline void splitAndDecompose
         (
             const label tetPlaneIndex,
             FixedList<point, 4>& tetra,
             DynamicList<FixedList<point, 4> >& decompTets
-        );
+        ) const;
 
 public:
 
     // Constructors
 
         //- Construct from components
-        tetIntersection(const FixedList<point, 4>& clipTet);
+        inline tetIntersection(const FixedList<point, 4>& clipTet);
 
 
     // Destructor
 
-        ~tetIntersection();
+        inline ~tetIntersection();
 
 
     // Member Functions

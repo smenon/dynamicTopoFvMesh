@@ -33,13 +33,54 @@ namespace Foam
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
+// Compute clip-planes
+inline void tetIntersection::computeClipPlanes()
+{
+    // Define edge vectors
+    vector edge10 = clipTet_[1] - clipTet_[0];
+    vector edge20 = clipTet_[2] - clipTet_[0];
+    vector edge30 = clipTet_[3] - clipTet_[0];
+    vector edge21 = clipTet_[2] - clipTet_[1];
+    vector edge31 = clipTet_[3] - clipTet_[1];
+
+    // Cross-products
+    clipPlanes_[0].first() = (edge20 ^ edge10);
+    clipPlanes_[1].first() = (edge10 ^ edge30);
+    clipPlanes_[2].first() = (edge30 ^ edge20);
+    clipPlanes_[3].first() = (edge21 ^ edge31);
+
+    // Normalize
+    clipPlanes_[0].first() /= mag(clipPlanes_[0].first()) + VSMALL;
+    clipPlanes_[1].first() /= mag(clipPlanes_[1].first()) + VSMALL;
+    clipPlanes_[2].first() /= mag(clipPlanes_[2].first()) + VSMALL;
+    clipPlanes_[3].first() /= mag(clipPlanes_[3].first()) + VSMALL;
+
+    scalar det = (edge10 & clipPlanes_[3].first());
+
+    if (det < 0.0)
+    {
+        // Reverse normal directions
+        clipPlanes_[0].first() = -clipPlanes_[0].first();
+        clipPlanes_[1].first() = -clipPlanes_[1].first();
+        clipPlanes_[2].first() = -clipPlanes_[2].first();
+        clipPlanes_[3].first() = -clipPlanes_[3].first();
+    }
+
+    // Determine plane constants
+    clipPlanes_[0].second() = (clipTet_[0] & clipPlanes_[0].first());
+    clipPlanes_[1].second() = (clipTet_[1] & clipPlanes_[1].first());
+    clipPlanes_[2].second() = (clipTet_[2] & clipPlanes_[2].first());
+    clipPlanes_[3].second() = (clipTet_[3] & clipPlanes_[3].first());
+}
+
+
 // Split and decompose
 inline void tetIntersection::splitAndDecompose
 (
     const label tetPlaneIndex,
     FixedList<point, 4>& tetra,
     DynamicList<FixedList<point, 4> >& decompTets
-)
+) const
 {
     FixedList<scalar, 4> C;
     FixedList<vector, 4> tmpTetra;
@@ -195,7 +236,8 @@ inline void tetIntersection::splitAndDecompose
 
             decompTets.append(tmpTetra);
         }
-        else if (nNeg == 2)
+        else
+        if (nNeg == 2)
         {
             // +--0
             for (i = 0; i < nNeg; ++i)
@@ -237,55 +279,20 @@ inline void tetIntersection::splitAndDecompose
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-tetIntersection::tetIntersection(const FixedList<point, 4>& clipTet)
+inline tetIntersection::tetIntersection(const FixedList<point, 4>& clipTet)
 :
     clipTet_(clipTet),
     inside_(10),
     allTets_(10)
 {
-    //- Pre-compute clipping planes
-
-    // Define edge vectors
-    vector edge10 = clipTet[1] - clipTet[0];
-    vector edge20 = clipTet[2] - clipTet[0];
-    vector edge30 = clipTet[3] - clipTet[0];
-    vector edge21 = clipTet[2] - clipTet[1];
-    vector edge31 = clipTet[3] - clipTet[1];
-
-    // Cross-products
-    clipPlanes_[0].first() = (edge20 ^ edge10);
-    clipPlanes_[1].first() = (edge10 ^ edge30);
-    clipPlanes_[2].first() = (edge30 ^ edge20);
-    clipPlanes_[3].first() = (edge21 ^ edge31);
-
-    // Normalize
-    clipPlanes_[0].first() /= mag(clipPlanes_[0].first()) + VSMALL;
-    clipPlanes_[1].first() /= mag(clipPlanes_[1].first()) + VSMALL;
-    clipPlanes_[2].first() /= mag(clipPlanes_[2].first()) + VSMALL;
-    clipPlanes_[3].first() /= mag(clipPlanes_[3].first()) + VSMALL;
-
-    scalar det = (edge10 & clipPlanes_[3].first());
-
-    if (det < 0.0)
-    {
-        // Reverse normal directions
-        clipPlanes_[0].first() = -clipPlanes_[0].first();
-        clipPlanes_[1].first() = -clipPlanes_[1].first();
-        clipPlanes_[2].first() = -clipPlanes_[2].first();
-        clipPlanes_[3].first() = -clipPlanes_[3].first();
-    }
-
-    // Determine plane constants
-    clipPlanes_[0].second() = (clipTet[0] & clipPlanes_[0].first());
-    clipPlanes_[1].second() = (clipTet[1] & clipPlanes_[1].first());
-    clipPlanes_[2].second() = (clipTet[2] & clipPlanes_[2].first());
-    clipPlanes_[3].second() = (clipTet[3] & clipPlanes_[3].first());
+    // Pre-compute clipping planes
+    computeClipPlanes();
 }
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-tetIntersection::~tetIntersection()
+inline tetIntersection::~tetIntersection()
 {}
 
 
