@@ -3692,7 +3692,7 @@ bool dynamicTopoFvMesh::resetMesh()
         cellCentres_.setSize(cellsFromCells_.size(), vectorField(0));
 
         // Fetch the match tolerance for mapping
-        scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-4);
+        scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-10);
 
         // Determine if mapping is to be skipped
         // Optionally skip mapping for remeshing-only / pre-processing

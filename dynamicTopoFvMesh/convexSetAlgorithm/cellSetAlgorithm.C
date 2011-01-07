@@ -238,9 +238,19 @@ bool cellSetAlgorithm::computeIntersection
             // Normalize centre
             totalCentre /= totalVolume + VSMALL;
 
-            meshOps::sizeUpList(oldIndex, parents_);
-            meshOps::sizeUpList(totalVolume, weights_);
-            meshOps::sizeUpList(totalCentre, centres_);
+            // Normalize and check if this is worth it
+            if (mag(totalVolume/normFactor_) > SMALL)
+            {
+                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList(totalVolume, weights_);
+                meshOps::sizeUpList(totalCentre, centres_);
+
+                intersects = true;
+            }
+            else
+            {
+                intersects = false;
+            }
         }
     }
     else
@@ -305,12 +315,20 @@ bool cellSetAlgorithm::computeIntersection
             // Fetch volume and centre
             intersector.getVolumeAndCentre(volume, centre);
 
-            // Size-up the internal lists
-            if (!output)
+            // Normalize and check if this is worth it
+            if (mag(volume/normFactor_) > SMALL)
             {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(volume, weights_);
-                meshOps::sizeUpList(centre, centres_);
+                // Size-up the internal lists
+                if (!output)
+                {
+                    meshOps::sizeUpList(oldIndex, parents_);
+                    meshOps::sizeUpList(volume, weights_);
+                    meshOps::sizeUpList(centre, centres_);
+                }
+            }
+            else
+            {
+                intersects = false;
             }
         }
     }

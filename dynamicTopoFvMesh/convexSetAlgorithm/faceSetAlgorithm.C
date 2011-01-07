@@ -194,9 +194,19 @@ bool faceSetAlgorithm::computeIntersection
             // Normalize centre
             totalCentre /= totalArea + VSMALL;
 
-            meshOps::sizeUpList(oldIndex, parents_);
-            meshOps::sizeUpList(totalArea, weights_);
-            meshOps::sizeUpList(totalCentre, centres_);
+            // Normalize and check if this is worth it
+            if (mag(totalArea/normFactor_) > SMALL)
+            {
+                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList(totalArea, weights_);
+                meshOps::sizeUpList(totalCentre, centres_);
+
+                intersects = true;
+            }
+            else
+            {
+                intersects = false;
+            }
         }
     }
     else
@@ -231,12 +241,20 @@ bool faceSetAlgorithm::computeIntersection
             // Fetch area and centre
             intersector.getAreaAndCentre(area, centre);
 
-            // Size-up the internal lists
-            if (!output)
+            // Normalize and check if this is worth it
+            if (mag(area/normFactor_) > SMALL)
             {
-                meshOps::sizeUpList(oldIndex, parents_);
-                meshOps::sizeUpList(area, weights_);
-                meshOps::sizeUpList(centre, centres_);
+                // Size-up the internal lists
+                if (!output)
+                {
+                    meshOps::sizeUpList(oldIndex, parents_);
+                    meshOps::sizeUpList(area, weights_);
+                    meshOps::sizeUpList(centre, centres_);
+                }
+            }
+            else
+            {
+                intersects = false;
             }
         }
     }
