@@ -316,7 +316,6 @@ class dynamicTopoFvMesh
             const labelListList& oldNeighbourList,
             const scalar mTol,
             const convexSetAlgorithm& algorithm,
-            label& precisionAttempts,
             labelList& parents,
             scalarField& weights,
             vectorField& centres

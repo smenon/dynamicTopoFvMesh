@@ -380,7 +380,6 @@ inline bool segmentTriFaceIntersection
 (
     const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
     const line<Vector<T>, const Vector<T>&>& edgeToCheck,
-    const T& matchTol,
     Vector<T>& intPoint
 )
 {
@@ -407,16 +406,15 @@ inline bool segmentTriFaceIntersection
     }
 
     T u = (numerator / denominator);
-    T tolerance = (matchTol * mag(p2 - p1));
 
     // Check for intersection along line.
-    if ((u > tolerance) && (u < (pTraits<T>::one - tolerance)))
+    if ((u >= 0.0) && (u <= pTraits<T>::one))
     {
         // Compute point of intersection
         intPoint = p1 + u*(p2 - p1);
 
         // Also make sure that intPoint lies within the face
-        if (pointInTriFace(faceToCheck, intPoint, matchTol, false))
+        if (pointInTriFace(faceToCheck, intPoint, false))
         {
             return true;
         }
@@ -434,7 +432,6 @@ inline bool pointInTriFace
 (
     const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
     const Vector<T>& cP,
-    const T& matchTol,
     bool testCoplanarity
 )
 {
@@ -471,7 +468,7 @@ inline bool pointInTriFace
         nf /= mag(nf) + VSMALL;
         ftp /= mag(ftp) + VSMALL;
 
-        if (mag(ftp & nf) > matchTol)
+        if (mag(ftp & nf) > VSMALL)
         {
             return false;
         }

@@ -82,7 +82,6 @@ void dynamicTopoFvMesh::computeMapping
     // Compute cell mapping
     for (label cellI = cellStart; cellI < (cellStart + cellSize); cellI++)
     {
-        label precisionAttempts = 0;
         label cIndex = cellsFromCells_[cellI].index();
         labelList& masterObjects = cellsFromCells_[cellI].masterObjects();
 
@@ -107,7 +106,6 @@ void dynamicTopoFvMesh::computeMapping
                     polyMesh::cellCells(),
                     matchTol,
                     cellAlgorithm,
-                    precisionAttempts,
                     masterObjects,
                     cellWeights_[cellI],
                     cellCentres_[cellI]
@@ -160,7 +158,6 @@ void dynamicTopoFvMesh::computeMapping
     // Compute face mapping
     for (label faceI = faceStart; faceI < (faceStart + faceSize); faceI++)
     {
-        label precisionAttempts = 0;
         label fIndex = facesFromFaces_[faceI].index();
         labelList& masterObjects = facesFromFaces_[faceI].masterObjects();
 
@@ -196,7 +193,6 @@ void dynamicTopoFvMesh::computeMapping
                     boundaryMesh()[patchIndex].faceFaces(),
                     matchTol,
                     faceAlgorithm,
-                    precisionAttempts,
                     masterObjects,
                     faceWeights_[faceI],
                     faceCentres_[faceI]
@@ -442,7 +438,6 @@ bool dynamicTopoFvMesh::computeWeights
     const labelListList& oldNeighbourList,
     const scalar mTol,
     const convexSetAlgorithm& algorithm,
-    label& precisionAttempts,
     labelList& parents,
     scalarField& weights,
     vectorField& centres
@@ -460,7 +455,6 @@ bool dynamicTopoFvMesh::computeWeights
             "    const labelListList& oldNeighbourList,\n"
             "    const scalar mTol,\n"
             "    const convexSetAlgorithm& algorithm,\n"
-            "    label& precisionAttempts,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
             "    vectorField& centres\n"
@@ -478,7 +472,6 @@ bool dynamicTopoFvMesh::computeWeights
     }
 
     bool changed;
-    scalar matchTol = mTol;
     label nAttempts = 0, nIntersects = 0;
 
     // Figure out the patch offset
@@ -552,7 +545,6 @@ bool dynamicTopoFvMesh::computeWeights
                     (
                         index,
                         checkEntity + offset,
-                        matchTol,
                         false
                     )
                 );
@@ -622,7 +614,6 @@ bool dynamicTopoFvMesh::computeWeights
                     (
                         index,
                         checkEntity + offset,
-                        matchTol,
                         false
                     )
                 );
@@ -659,7 +650,7 @@ bool dynamicTopoFvMesh::computeWeights
     } while (changed);
 
     // Test weights for consistency
-    bool consistent = algorithm.consistent(1e-13);
+    bool consistent = algorithm.consistent(mTol);
     bool normByWeights = false;
 
     if (!consistent)
@@ -776,7 +767,6 @@ bool dynamicTopoFvMesh::computeWeights
                     (
                         index,
                         parents[indexI],
-                        matchTol,
                         true
                     );
                 }
@@ -785,60 +775,15 @@ bool dynamicTopoFvMesh::computeWeights
             // Normalize by sum of weights instead
             normByWeights = true;
         }
-        else
-        if (precisionAttempts < 12)
-        {
-            // Could be a precision problem.
-            // Recurse until consistency is obtained.
-            matchTol *= 0.1;
-
-            // Toggle higher precision, if necessary
-            if (precisionAttempts > 11)
-            {
-                algorithm.setHighPrecision();
-            }
-
-            consistent =
-            (
-                computeWeights
-                (
-                    index,
-                    mapCandidates,
-                    oldNeighbourList,
-                    matchTol,
-                    algorithm,
-                    ++precisionAttempts,
-                    parents,
-                    weights,
-                    centres
-                )
-            );
-        }
     }
 
-    // Return normalized weights,
-    // but only if we're at the top
-    // of the recursion stack,
-    if (precisionAttempts)
-    {
-        precisionAttempts--;
-    }
-    else
-    {
-        // Normalize weights
-        algorithm.normalize(normByWeights);
+    // Normalize weights
+    algorithm.normalize(normByWeights);
 
-        // Revert precision, if necessary
-        if (algorithm.highPrecision())
-        {
-            algorithm.unsetHighPrecision();
-        }
+    // Populate lists
+    algorithm.populateLists(parents, centres, weights);
 
-        // Populate lists
-        algorithm.populateLists(parents, centres, weights);
-    }
-
-    if (debug > 1 && (precisionAttempts == 0))
+    if (debug > 1)
     {
         label pT = algorithm.dimension();
 
@@ -862,7 +807,6 @@ bool dynamicTopoFvMesh::computeWeights
                 (
                     index,
                     parents[indexI],
-                    matchTol,
                     true
                 );
             }

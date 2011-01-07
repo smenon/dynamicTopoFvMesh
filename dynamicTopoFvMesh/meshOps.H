@@ -54,9 +54,6 @@ SourceFiles
 #include "triangle.H"
 #include "vectorField.H"
 
-// Use the CGAL library, if necessary
-//#define USE_CGAL 0
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -173,7 +170,6 @@ namespace meshOps
     (
         const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
         const line<Vector<T>, const Vector<T>&>& edgeToCheck,
-        const T& matchTol,
         Vector<T>& intPoint
     );
 
@@ -184,7 +180,6 @@ namespace meshOps
     (
         const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
         const Vector<T>& checkPoint,
-        const T& matchTol,
         bool testCoplanarity
     );
 
@@ -331,36 +326,6 @@ namespace meshOps
     );
 
 } // End namespace meshOps
-
-
-// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
-
-template<class T1, class T2>
-inline const Vector<T1> convert(const Vector<T2>& v)
-{
-    Vector<T1> tv;
-
-    tv.x() = v.x();
-    tv.y() = v.y();
-    tv.z() = v.z();
-
-    return tv;
-}
-
-
-template<class T1, class T2>
-inline const Field<Vector<T1> > convert(const Field<Vector<T2> >& f)
-{
-    Field<Vector<T1> > tf(f.size());
-
-    forAll(tf, indexI)
-    {
-        tf[indexI] = convert<T1>(f[indexI]);
-    }
-
-    return tf;
-}
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

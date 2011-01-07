@@ -106,7 +106,6 @@ bool cellSetAlgorithm::computeIntersection
 (
     const label newIndex,
     const label oldIndex,
-    const scalar& matchTol,
     bool output
 ) const
 {

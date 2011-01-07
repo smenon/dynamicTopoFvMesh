@@ -81,8 +81,7 @@ convexSetAlgorithm::convexSetAlgorithm
     newOwner_(newOwner),
     newNeighbour_(newNeighbour),
     pointsFromPoints_(pointsFromPoints),
-    modPoints_(modPoints),
-    highPrecision_(false)
+    modPoints_(modPoints)
 {}
 
 
@@ -217,27 +216,6 @@ void convexSetAlgorithm::populateLists
         centres = centres_;
         weights = weights_;
     }
-}
-
-
-// Return the highPrecision switch
-bool convexSetAlgorithm::highPrecision() const
-{
-    return highPrecision_;
-}
-
-
-// Set higher precision mode
-void convexSetAlgorithm::setHighPrecision() const
-{
-    highPrecision_ = true;
-}
-
-
-// Reset higher precision mode
-void convexSetAlgorithm::unsetHighPrecision() const
-{
-    highPrecision_ = false;
 }
 
 

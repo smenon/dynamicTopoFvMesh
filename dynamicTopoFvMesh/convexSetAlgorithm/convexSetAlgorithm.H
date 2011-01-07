@@ -89,13 +89,10 @@ protected:
         //- Reference to modified-points information
         const Map<labelList>& modPoints_;
 
-        //- Switch for higher precision
-        mutable bool highPrecision_;
-
         //- Entity parents
         mutable labelList parents_;
 
-        //- Low-precision fields
+        //- Internal fields
         mutable vector refNorm_;
         mutable scalar normFactor_;
         mutable vectorField centres_;
@@ -146,15 +143,6 @@ public:
             scalarField& weights
         ) const;
 
-        // Return the highPrecision switch
-        bool highPrecision() const;
-
-        // Set higher precision mode
-        void setHighPrecision() const;
-
-        // Reset higher precision mode
-        void unsetHighPrecision() const;
-
         // Compute normFactor
         virtual void computeNormFactor(const label index) const = 0;
 
@@ -163,7 +151,6 @@ public:
         (
             const label newIndex,
             const label oldIndex,
-            const scalar& matchTol,
             bool output
         ) const = 0;
 

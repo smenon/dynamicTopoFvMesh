@@ -23,25 +23,29 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    faceSetAlgorithm
+    triIntersection
 
 Description
-    Class for convexSetAlgorithms pertaining to faces
+    Implementation of the triangle intersection algorithm
 
-Author
+Implemented by
     Sandeep Menon
     University of Massachusetts Amherst
     All rights reserved
 
 SourceFiles
-    faceSetAlgorithm.C
+    triIntersectionI.H
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef faceSetAlgorithm_H
-#define faceSetAlgorithm_H
+#ifndef triIntersection_H
+#define triIntersection_H
 
-#include "convexSetAlgorithm.H"
+#include "point.H"
+#include "label.H"
+#include "Tuple2.H"
+#include "FixedList.H"
+#include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -49,68 +53,79 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class faceSetAlgorithm Declaration
+                       Class triIntersection Declaration
 \*---------------------------------------------------------------------------*/
 
-class faceSetAlgorithm
-:
-    public convexSetAlgorithm
+class triIntersection
 {
+    // Private data
+
+        //- Const reference to clipping triangle
+        const FixedList<point, 3>& clipTri_;
+
+        //- Clip triangle normal
+        vector tNorm_;
+
+        //- Hessian-normal plane definition
+        typedef Tuple2<vector, scalar> hPlane;
+
+        FixedList<hPlane, 3> clipPlanes_;
+
+        //- Triangles used as temporaries
+        DynamicList<FixedList<point, 3> > inside_;
+
+        //- All intersection tris
+        DynamicList<FixedList<point, 3> > allTris_;
 
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
-        faceSetAlgorithm(const faceSetAlgorithm&);
+        triIntersection(const triIntersection&);
 
         //- Disallow default bitwise assignment
-        void operator=(const faceSetAlgorithm&);
+        void operator=(const triIntersection&);
+
+        //- Compute clip-planes
+        inline void computeClipPlanes();
+
+        //- Split and decompose
+        inline void splitAndDecompose
+        (
+            const label triPlaneIndex,
+            FixedList<point, 3>& tri,
+            DynamicList<FixedList<point, 3> >& decompTris
+        ) const;
 
 public:
 
-    //- Constructor
+    // Constructors
 
-        faceSetAlgorithm
-        (
-            const polyMesh& mesh,
-            const pointField& newPoints,
-            const UList<edge>& newEdges,
-            const UList<face>& newFaces,
-            const UList<cell>& newCells,
-            const UList<label>& newOwner,
-            const UList<label>& newNeighbour,
-            const List<objectMap>& pointsFromPoints,
-            const Map<labelList>& modPoints
-        );
+        //- Construct from components
+        inline triIntersection(const FixedList<point, 3>& clipTri);
 
-    //- Destructor
+    // Destructor
 
-        virtual ~faceSetAlgorithm()
-        {}
+        inline ~triIntersection();
 
-    //- Virtual member functions
+    // Member Functions
 
-        // Dimensions of the algorithm
-        virtual label dimension() const
-        {
-            return 2;
-        }
+        //- Evaluate for intersections against input triangle
+        inline bool evaluate(const FixedList<point, 3>& subjectTri);
 
-        // Compute normFactor
-        virtual void computeNormFactor(const label index) const;
+        //- Return intersections
+        inline const DynamicList<FixedList<point, 3> >& getIntersection() const;
 
-        // Compute intersections
-        virtual bool computeIntersection
-        (
-            const label newIndex,
-            const label oldIndex,
-            bool output
-        ) const;
+        //- Evaluate and return area / centroid
+        inline void getAreaAndCentre(scalar& area, vector& centre) const;
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "triIntersectionI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

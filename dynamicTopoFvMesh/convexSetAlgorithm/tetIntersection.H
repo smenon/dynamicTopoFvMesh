@@ -41,7 +41,6 @@ Implemented by
 
 SourceFiles
     tetIntersectionI.H
-    tetIntersection.C
 
 \*---------------------------------------------------------------------------*/
 

@@ -2225,7 +2225,6 @@ label dynamicTopoFvMesh::identify32Swap
                     points_[hullVertices[triangulations[2][i]]]
                 ),
                 segment,
-                1e-6,
                 intPt
             )
         );
