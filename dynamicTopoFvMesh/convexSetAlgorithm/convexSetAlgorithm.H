@@ -83,12 +83,6 @@ protected:
         const UList<label>& newOwner_;
         const UList<label>& newNeighbour_;
 
-        //- Reference to pointsFromPoints information
-        const List<objectMap>& pointsFromPoints_;
-
-        //- Reference to modified-points information
-        const Map<labelList>& modPoints_;
-
         //- Entity parents
         mutable labelList parents_;
 
@@ -111,9 +105,7 @@ public:
             const UList<face>& newFaces,
             const UList<cell>& newCells,
             const UList<label>& newOwner,
-            const UList<label>& newNeighbour,
-            const List<objectMap>& pointsFromPoints,
-            const Map<labelList>& modPoints
+            const UList<label>& newNeighbour
         );
 
     //- Destructor

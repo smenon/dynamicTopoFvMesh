@@ -3993,9 +3993,8 @@ bool dynamicTopoFvMesh::resetMesh()
         deletedFaces_.clear();
         deletedCells_.clear();
 
-        // Clear flipFaces / modPoints
+        // Clear flipFaces
         flipFaces_.clear();
-        modPoints_.clear();
 
         // Set new sizes for the reverse maps
         reversePointMap_.setSize(nPoints_, -7);

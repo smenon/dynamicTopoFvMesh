@@ -58,9 +58,7 @@ cellSetAlgorithm::cellSetAlgorithm
     const UList<face>& newFaces,
     const UList<cell>& newCells,
     const UList<label>& newOwner,
-    const UList<label>& newNeighbour,
-    const List<objectMap>& pointsFromPoints,
-    const Map<labelList>& modPoints
+    const UList<label>& newNeighbour
 )
 :
     convexSetAlgorithm
@@ -71,9 +69,7 @@ cellSetAlgorithm::cellSetAlgorithm
         newFaces,
         newCells,
         newOwner,
-        newNeighbour,
-        pointsFromPoints,
-        modPoints
+        newNeighbour
     )
 {}
 

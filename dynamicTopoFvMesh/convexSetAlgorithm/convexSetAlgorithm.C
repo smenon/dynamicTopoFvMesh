@@ -50,11 +50,6 @@ Author
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
-
-defineTemplateTypeNameAndDebugWithName(IOMap<labelList>, "labelListIOMap", 0);
-defineTemplateTypeNameAndDebugWithName(IOList<objectMap>, "objectMapIOList", 0);
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
@@ -66,9 +61,7 @@ convexSetAlgorithm::convexSetAlgorithm
     const UList<face>& newFaces,
     const UList<cell>& newCells,
     const UList<label>& newOwner,
-    const UList<label>& newNeighbour,
-    const List<objectMap>& pointsFromPoints,
-    const Map<labelList>& modPoints
+    const UList<label>& newNeighbour
 )
 :
     twoDMesh_(mesh.nGeometricD() == 2),
@@ -79,9 +72,7 @@ convexSetAlgorithm::convexSetAlgorithm
     newFaces_(newFaces),
     newCells_(newCells),
     newOwner_(newOwner),
-    newNeighbour_(newNeighbour),
-    pointsFromPoints_(pointsFromPoints),
-    modPoints_(modPoints)
+    newNeighbour_(newNeighbour)
 {}
 
 
@@ -335,46 +326,6 @@ bool convexSetAlgorithm::write() const
             false
         ),
         newNeighbour_
-    ).writeObject
-    (
-        IOstream::BINARY,
-        IOstream::currentVersion,
-        IOstream::COMPRESSED
-    );
-
-    IOList<objectMap>
-    (
-        IOobject
-        (
-            "pointsFromPoints",
-            mesh_.time().timeName(),
-            "convexSetAlgorithm",
-            mesh_,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false
-        ),
-        pointsFromPoints_
-    ).writeObject
-    (
-        IOstream::BINARY,
-        IOstream::currentVersion,
-        IOstream::COMPRESSED
-    );
-
-    IOMap<labelList>
-    (
-        IOobject
-        (
-            "modPoints",
-            mesh_.time().timeName(),
-            "convexSetAlgorithm",
-            mesh_,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false
-        ),
-        modPoints_
     ).writeObject
     (
         IOstream::BINARY,

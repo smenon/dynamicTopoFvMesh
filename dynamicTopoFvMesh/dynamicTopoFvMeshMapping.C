@@ -70,9 +70,7 @@ void dynamicTopoFvMesh::computeMapping
         faces_,
         cells_,
         owner_,
-        neighbour_,
-        pointsFromPoints_,
-        modPoints_
+        neighbour_
     );
 
     scalar maxError = 0.0;
@@ -150,9 +148,7 @@ void dynamicTopoFvMesh::computeMapping
         faces_,
         cells_,
         owner_,
-        neighbour_,
-        pointsFromPoints_,
-        modPoints_
+        neighbour_
     );
 
     // Compute face mapping
