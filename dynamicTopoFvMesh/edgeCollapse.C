@@ -109,7 +109,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Define the edges on the face to be collapsed
-    FixedList<edge,4> checkEdge(edge(-1,-1));
+    FixedList<edge,4> checkEdge(edge(-1, -1));
     FixedList<label,4> checkEdgeIndex(-1);
 
     // Define checkEdges
@@ -613,8 +613,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
 
     // Define variables for the prism-face calculation
-    FixedList<face,2> c0BdyFace, c0IntFace, c1BdyFace, c1IntFace;
-    FixedList<label,2> c0BdyIndex, c0IntIndex, c1BdyIndex, c1IntIndex;
+    FixedList<label,2> c0BdyIndex(-1), c0IntIndex(-1);
+    FixedList<label,2> c1BdyIndex(-1), c1IntIndex(-1);
+    FixedList<face,2> c0BdyFace(face(3)), c0IntFace(face(4));
+    FixedList<face,2> c1BdyFace(face(3)), c1IntFace(face(4));
 
     // Find the prism-faces
     meshOps::findPrismFaces
@@ -992,7 +994,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         Pout<< nl << nl
             << "Face: " << fIndex << ": " << faces_[fIndex] << nl
             << "faceEdges: " << fE
-            << " is to be collapsed. " << endl;
+            << " is to be collapsed. "
+            << nl;
 
         label epIndex = whichPatch(fIndex);
 
@@ -1000,82 +1003,160 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         if (epIndex == -1)
         {
-            Pout<< "Internal" << endl;
+            Pout<< "Internal" << nl;
         }
         else
         {
-            Pout<< boundaryMesh()[epIndex].name() << endl;
+            Pout<< boundaryMesh()[epIndex].name() << nl;
         }
 
         if (debug > 2)
         {
-            Pout<< endl;
-            Pout<< "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-            Pout<< "Hulls before modification" << endl;
-            Pout<< "~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+            Pout<< nl
+                << "~~~~~~~~~~~~~~~~~~~~~~~~~" << nl
+                << "Hulls before modification" << nl
+                << "~~~~~~~~~~~~~~~~~~~~~~~~~" << nl;
+
+            if (debug > 3)
+            {
+                Pout<< "Cell [0] Boundary faces: " << nl
+                    << " Face: "<< c0BdyIndex[0]
+                    << "::" << c0BdyFace[0] << nl
+                    << " Face: "<< c0BdyIndex[1]
+                    << "::" << c0BdyFace[1] << nl;
+
+                Pout<< "Cell [0] Interior faces: " << nl
+                    << " Face: "<< c0IntIndex[0]
+                    << "::" << c0IntFace[0] << nl
+                    << " Face: "<< c0IntIndex[1]
+                    << "::" << c0IntFace[1] << nl;
+
+                if (c1 != -1)
+                {
+                    Pout<< "Cell [1] Boundary faces: " << nl
+                        << " Face: "<< c1BdyIndex[0]
+                        << "::" << c1BdyFace[0] << nl
+                        << " Face: "<< c1BdyIndex[1]
+                        << "::" << c1BdyFace[1] << nl;
+
+                    Pout<< "Cell [1] Interior faces: " << nl
+                        << " Face: "<< c1IntIndex[0]
+                        << "::" << c1IntFace[0] << nl
+                        << " Face: "<< c1IntIndex[1]
+                        << "::" << c1IntFace[1] << nl;
+                }
+            }
 
             Pout<< nl << "Cells belonging to first Edge Hull: "
-                << hullCells[0] << endl;
+                << hullCells[0] << nl;
 
             forAll(hullCells[0],cellI)
             {
                 const cell& firstCurCell = cells_[hullCells[0][cellI]];
 
                 Pout<< "Cell: " << hullCells[0][cellI]
-                    << ": " << firstCurCell << endl;
+                    << ": " << firstCurCell << nl;
 
                 forAll(firstCurCell,faceI)
                 {
                     Pout<< " Face: " << firstCurCell[faceI]
                         << " : " << faces_[firstCurCell[faceI]]
                         << " fE: " << faceEdges_[firstCurCell[faceI]]
-                        << endl;
+                        << nl;
+
+                    if (debug > 3)
+                    {
+                        const labelList& fE = faceEdges_[firstCurCell[faceI]];
+
+                        forAll(fE, edgeI)
+                        {
+                            Pout<< "  Edge: " << fE[edgeI]
+                                << " : " << edges_[fE[edgeI]]
+                                << nl;
+                        }
+                    }
                 }
             }
 
             const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
             Pout<< nl << "First Edge Face Hull: "
-                << firstEdgeFaces << endl;
+                << firstEdgeFaces << nl;
 
             forAll(firstEdgeFaces,indexI)
             {
                 Pout<< " Face: " << firstEdgeFaces[indexI]
                     << " : " << faces_[firstEdgeFaces[indexI]]
                     << " fE: " << faceEdges_[firstEdgeFaces[indexI]]
-                    << endl;
+                    << nl;
+
+                if (debug > 3)
+                {
+                    const labelList& fE = faceEdges_[firstEdgeFaces[indexI]];
+
+                    forAll(fE, edgeI)
+                    {
+                        Pout<< "  Edge: " << fE[edgeI]
+                            << " : " << edges_[fE[edgeI]]
+                            << nl;
+                    }
+                }
             }
 
             Pout<< nl << "Cells belonging to second Edge Hull: "
-                << hullCells[1] << endl;
+                << hullCells[1] << nl;
 
             forAll(hullCells[1], cellI)
             {
                 const cell& secondCurCell = cells_[hullCells[1][cellI]];
 
                 Pout<< "Cell: " << hullCells[1][cellI]
-                    << ": " << secondCurCell << endl;
+                    << ": " << secondCurCell << nl;
 
                 forAll(secondCurCell, faceI)
                 {
                     Pout<< " Face: " << secondCurCell[faceI]
                         << " : " << faces_[secondCurCell[faceI]]
                         << " fE: " << faceEdges_[secondCurCell[faceI]]
-                        << endl;
+                        << nl;
+
+                    if (debug > 3)
+                    {
+                        const labelList& fE = faceEdges_[secondCurCell[faceI]];
+
+                        forAll(fE, edgeI)
+                        {
+                            Pout<< "  Edge: " << fE[edgeI]
+                                << " : " << edges_[fE[edgeI]]
+                                << nl;
+                        }
+                    }
                 }
             }
 
             const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
             Pout<< nl << "Second Edge Face Hull: "
-                << secondEdgeFaces << endl;
+                << secondEdgeFaces << nl;
 
             forAll(secondEdgeFaces, indexI)
             {
                 Pout<< " Face: " << secondEdgeFaces[indexI]
                     << " : " << faces_[secondEdgeFaces[indexI]]
                     << " fE: " << faceEdges_[secondEdgeFaces[indexI]]
-                    << endl;
+                    << nl;
+
+                if (debug > 3)
+                {
+                    const labelList& fE = faceEdges_[secondEdgeFaces[indexI]];
+
+                    forAll(fE, edgeI)
+                    {
+                        Pout<< "  Edge: " << fE[edgeI]
+                            << " : " << edges_[fE[edgeI]]
+                            << nl;
+                    }
+                }
             }
 
             // Write out VTK files prior to change
@@ -2055,84 +2136,84 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     if (debug > 2)
     {
-        Pout<< endl;
-        Pout<< "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
-        Pout<< "Hulls after modification" << endl;
-        Pout<< "~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+        Pout<< nl
+            << "~~~~~~~~~~~~~~~~~~~~~~~~" << nl
+            << "Hulls after modification" << nl
+            << "~~~~~~~~~~~~~~~~~~~~~~~~" << nl;
 
         Pout<< nl << "Cells belonging to first Edge Hull: "
-            << hullCells[0] << endl;
+            << hullCells[0] << nl;
 
         forAll(hullCells[0], cellI)
         {
             const cell& firstCurCell = cells_[hullCells[0][cellI]];
 
             Pout<< "Cell: " << hullCells[0][cellI]
-                << ": " << firstCurCell << endl;
+                << ": " << firstCurCell << nl;
 
             forAll(firstCurCell, faceI)
             {
                 Pout<< " Face: " << firstCurCell[faceI]
                     << " : " << faces_[firstCurCell[faceI]]
                     << " fE: " << faceEdges_[firstCurCell[faceI]]
-                    << endl;
+                    << nl;
             }
         }
 
         const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
-        Pout<< nl << "First Edge Face Hull: " << firstEdgeFaces << endl;
+        Pout<< nl << "First Edge Face Hull: " << firstEdgeFaces << nl;
 
         forAll(firstEdgeFaces, indexI)
         {
             Pout<< " Face: " << firstEdgeFaces[indexI]
                 << " : " << faces_[firstEdgeFaces[indexI]]
                 << " fE: " << faceEdges_[firstEdgeFaces[indexI]]
-                << endl;
+                << nl;
         }
 
         Pout<< nl << "Cells belonging to second Edge Hull: "
-            << hullCells[1] << endl;
+            << hullCells[1] << nl;
 
         forAll(hullCells[1], cellI)
         {
             const cell& secondCurCell = cells_[hullCells[1][cellI]];
 
             Pout<< "Cell: " << hullCells[1][cellI]
-                << ": " << secondCurCell << endl;
+                << ": " << secondCurCell << nl;
 
             forAll(secondCurCell, faceI)
             {
                 Pout<< " Face: " << secondCurCell[faceI]
                     << " : " << faces_[secondCurCell[faceI]]
                     << " fE: " << faceEdges_[secondCurCell[faceI]]
-                    << endl;
+                    << nl;
             }
         }
 
         const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
-        Pout<< nl << "Second Edge Face Hull: " << secondEdgeFaces << endl;
+        Pout<< nl << "Second Edge Face Hull: " << secondEdgeFaces << nl;
 
         forAll(secondEdgeFaces, indexI)
         {
             Pout<< " Face : " << secondEdgeFaces[indexI]
                 << " : " << faces_[secondEdgeFaces[indexI]]
                 << " fE: " << faceEdges_[secondEdgeFaces[indexI]]
-                << endl;
+                << nl;
         }
 
         Pout<< "Retained face: "
             << faceToKeep[0] << ": "
             << " owner: " << owner_[faceToKeep[0]]
             << " neighbour: " << neighbour_[faceToKeep[0]]
-            << endl;
+            << nl;
 
         Pout<< "Discarded face: "
             << faceToThrow[0] << ": "
             << " owner: " << owner_[faceToThrow[0]]
             << " neighbour: " << neighbour_[faceToThrow[0]]
-            << endl;
+            << nl;
 
         if (c1 != -1)
         {
@@ -2140,14 +2221,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 << faceToKeep[1] << ": "
                 << " owner: " << owner_[faceToKeep[1]]
                 << " neighbour: " << neighbour_[faceToKeep[1]]
-                << endl;
+                << nl;
 
             Pout<< "Discarded face: "
                 << faceToThrow[1] << ": "
                 << " owner: " << owner_[faceToThrow[1]]
                 << " neighbour: " << neighbour_[faceToThrow[1]]
-                << endl;
+                << nl;
         }
+
+        Pout<< endl;
     }
 
     // Ensure proper orientation for the two retained faces

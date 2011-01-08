@@ -924,7 +924,8 @@ void dynamicTopoFvMesh::setFaceMapping
     if (debug > 3)
     {
         Pout<< "Inserting mapping face: " << fIndex << nl
-            << " patch: " << patch << nl
+            << " patch: "
+            << (patch > -1 ? boundaryMesh()[patch].name() : "Internal") << nl
             << " mapFaces: " << mapFaces
             << endl;
     }

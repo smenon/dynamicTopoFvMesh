@@ -736,7 +736,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
     );
 
     // Check face-label ranges
-    Info<< "Checking index ranges...";
+    Pout<< "Checking index ranges...";
 
     forAll(edges_, edgeI)
     {
@@ -920,9 +920,9 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         }
     }
 
-    Info<< "Done." << endl;
+    Pout<< "Done." << endl;
 
-    Info<< "Checking face-cell connectivity...";
+    Pout<< "Checking face-cell connectivity...";
 
     forAll(nCellsPerFace, faceI)
     {
@@ -1016,9 +1016,9 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         }
     }
 
-    Info<< "Done." << endl;
+    Pout<< "Done." << endl;
 
-    Info<< "Checking for unused points...";
+    Pout<< "Checking for unused points...";
 
     forAll(nPointFaces, pointI)
     {
@@ -1051,9 +1051,9 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         }
     }
 
-    Info<< "Done." << endl;
+    Pout<< "Done." << endl;
 
-    Info<< "Checking edge-face connectivity...";
+    Pout<< "Checking edge-face connectivity...";
 
     label allEdges = edges_.size();
     labelList nEdgeFaces(allEdges, 0);
@@ -1269,7 +1269,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         }
     }
 
-    Info<< "Done." << endl;
+    Pout<< "Done." << endl;
 
     // Check coupled-patch sizes
     forAll(patchCoupling_, patchI)
@@ -1297,7 +1297,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
     if (!twoDMesh_)
     {
-        Info<< "Checking point-edge connectivity...";
+        Pout<< "Checking point-edge connectivity...";
 
         label allPoints = points_.size();
         List<labelHashSet> hlPointEdges(allPoints);
@@ -1358,9 +1358,9 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
             }
         }
 
-        Info<< "Done." << endl;
+        Pout<< "Done." << endl;
 
-        Info<< "Checking edge-points connectivity...";
+        Pout<< "Checking edge-points connectivity...";
 
         label otherPoint = -1, nextPoint = -1;
 
@@ -1386,7 +1386,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
                 forAll(edgeFaces, faceI)
                 {
-                    Info<< edgeFaces[faceI] << ": "
+                    Pout<< edgeFaces[faceI] << ": "
                         << faces_[edgeFaces[faceI]]
                         << endl;
                 }
@@ -1425,7 +1425,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
                     forAll(edgeFaces, faceI)
                     {
-                        Info<< edgeFaces[faceI] << ": "
+                        Pout<< edgeFaces[faceI] << ": "
                             << faces_[edgeFaces[faceI]]
                             << endl;
                     }
@@ -1441,10 +1441,10 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
             }
         }
 
-        Info<< "Done." << endl;
+        Pout<< "Done." << endl;
     }
 
-    Info<< "Checking cell-point connectivity...";
+    Pout<< "Checking cell-point connectivity...";
 
     // Loop through all cells and construct cell-to-node
     label cIndex = 0;
@@ -1527,9 +1527,13 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         }
     }
 
-    Info<< "Done." << endl;
+    Pout<< "Done." << endl;
 
-    reduce(nFailedChecks, orOp<bool>());
+    // Perform a reduce only if this is a global check
+    if (!isSubMesh_)
+    {
+        reduce(nFailedChecks, orOp<bool>());
+    }
 
     if (nFailedChecks)
     {
