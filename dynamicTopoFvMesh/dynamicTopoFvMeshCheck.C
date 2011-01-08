@@ -1858,7 +1858,7 @@ bool dynamicTopoFvMesh::checkCollapse
     const point& oldPoint,
     const label pointIndex,
     const label cellIndex,
-    labelHashSet& cellsChecked,
+    DynamicList<label>& cellsChecked,
     scalar& collapseQuality,
     bool forceOp
 ) const
@@ -1994,7 +1994,7 @@ bool dynamicTopoFvMesh::checkCollapse
     }
 
     // No problems, so a collapse is feasible
-    cellsChecked.insert(cellIndex);
+    cellsChecked.append(cellIndex);
 
     // Update input quality
     collapseQuality = Foam::min(collapseQuality, cQuality);

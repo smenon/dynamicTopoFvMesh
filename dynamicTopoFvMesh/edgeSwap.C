@@ -3290,7 +3290,7 @@ const changeMap dynamicTopoFvMesh::swap32
 
     // Determine the three faces to be removed
     FixedList<label,3> facesForRemoval;
-    labelHashSet cellsForRemoval(3);
+    DynamicList<label> cellRemovalList(3);
 
     forAll(facesForRemoval, faceI)
     {
@@ -3303,18 +3303,19 @@ const changeMap dynamicTopoFvMesh::swap32
         label nei = neighbour_[facesForRemoval[faceI]];
 
         // Check and add cells as well
-        if (!cellsForRemoval.found(own))
+        if (findIndex(cellRemovalList, own) == -1)
         {
-            cellsForRemoval.insert(own);
+            cellRemovalList.append(own);
         }
 
-        if (!cellsForRemoval.found(nei) && nei != -1)
+        if (nei != -1)
         {
-            cellsForRemoval.insert(nei);
+            if (findIndex(cellRemovalList, nei) == -1)
+            {
+                cellRemovalList.append(nei);
+            }
         }
     }
-
-    labelList cellRemovalList = cellsForRemoval.toc();
 
     if (debug > 1)
     {

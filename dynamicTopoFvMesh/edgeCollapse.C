@@ -1196,7 +1196,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     FixedList<label,4> edgeToKeep(-1), edgeToThrow(-1);
 
     // Maintain a list of modified faces for mapping
-    labelHashSet modifiedFaces;
+    DynamicList<label> modifiedFaces(10);
 
     // Case 2 & 3 use identical connectivity,
     // but different point locations
@@ -1223,9 +1223,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             );
 
             // Add an entry for mapping
-            if (!modifiedFaces.found(firstEdgeFaces[faceI]))
+            if (findIndex(modifiedFaces, firstEdgeFaces[faceI]) == -1)
             {
-                modifiedFaces.insert(firstEdgeFaces[faceI]);
+                modifiedFaces.append(firstEdgeFaces[faceI]);
             }
 
             // Determine the quad-face in cell[0] & cell[1]
@@ -1689,9 +1689,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             );
 
             // Add an entry for mapping
-            if (!modifiedFaces.found(secondEdgeFaces[faceI]))
+            if (findIndex(modifiedFaces, secondEdgeFaces[faceI]) == -1)
             {
-                modifiedFaces.insert(secondEdgeFaces[faceI]);
+                modifiedFaces.append(secondEdgeFaces[faceI]);
             }
 
             // Determine the quad-face(s) in cell[0] & cell[1]
@@ -2441,10 +2441,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         );
 
         // Add an entry for mapping
-        if (!modifiedFaces.found(newFaceIndex))
-        {
-            modifiedFaces.insert(newFaceIndex);
-        }
+        modifiedFaces.append(newFaceIndex);
 
         // Add a faceEdges entry as well.
         // Edges don't have to change, since they're
@@ -2538,10 +2535,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             );
 
             // Add an entry for mapping
-            if (!modifiedFaces.found(newFaceIndex))
-            {
-                modifiedFaces.insert(newFaceIndex);
-            }
+            modifiedFaces.append(newFaceIndex);
 
             // Add a faceEdges entry as well.
             // Edges don't have to change, since they're
@@ -2668,28 +2662,30 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Set face mapping information for modified faces
-    forAllConstIter(labelHashSet, modifiedFaces, fIter)
+    forAll(modifiedFaces, faceI)
     {
+        const label mfIndex = modifiedFaces[faceI];
+
         // Exclude deleted faces
-        if (faces_[fIter.key()].empty())
+        if (faces_[mfIndex].empty())
         {
             continue;
         }
 
         // Decide between default / weighted mapping
         // based on boundary information
-        label fPatch = whichPatch(fIter.key());
+        label fPatch = whichPatch(mfIndex);
 
         if (fPatch == -1)
         {
-            setFaceMapping(fIter.key());
+            setFaceMapping(mfIndex);
         }
         else
         {
             // Fill-in candidate mapping information
             labelList faceCandidates;
 
-            const labelList& fEdges = faceEdges_[fIter.key()];
+            const labelList& fEdges = faceEdges_[mfIndex];
 
             forAll(fEdges, edgeI)
             {
@@ -2702,7 +2698,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     {
                         if
                         (
-                            (eFaces[faceI] != fIter.key()) &&
+                            (eFaces[faceI] != mfIndex) &&
                             (whichPatch(eFaces[faceI]) == fPatch)
                         )
                         {
@@ -2717,7 +2713,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             }
 
             // Set the mapping for this face
-            setFaceMapping(fIter.key(), faceCandidates);
+            setFaceMapping(mfIndex, faceCandidates);
         }
     }
 
@@ -3426,7 +3422,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // Also, keep track of resulting cell quality,
     // if collapse is indeed feasible
     scalar collapseQuality(GREAT);
-    labelHashSet cellsChecked;
+    DynamicList<label> cellsChecked(10);
 
     // Add all hull cells as 'checked',
     // and therefore, feasible
@@ -3437,7 +3433,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             continue;
         }
 
-        cellsChecked.insert(cellHull[cellI]);
+        cellsChecked.append(cellHull[cellI]);
     }
 
     // Check collapsibility of cells around edges
@@ -3462,7 +3458,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 label nei = neighbour_[eFaces[faceI]];
 
                 // Check owner cell
-                if (!cellsChecked.found(own))
+                if (findIndex(cellsChecked, own) == -1)
                 {
                     // Check if a collapse is feasible
                     if
@@ -3485,25 +3481,28 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
 
                 // Check neighbour cell
-                if (!cellsChecked.found(nei) && nei != -1)
+                if (nei != -1)
                 {
-                    // Check if a collapse is feasible
-                    if
-                    (
-                        checkCollapse
-                        (
-                            newPoint,
-                            oldPoint,
-                            checkPoints[pointI],
-                            nei,
-                            cellsChecked,
-                            collapseQuality,
-                            forceOp
-                        )
-                    )
+                    if (findIndex(cellsChecked, nei) == -1)
                     {
-                        map.type() = 0;
-                        return map;
+                        // Check if a collapse is feasible
+                        if
+                        (
+                            checkCollapse
+                            (
+                                newPoint,
+                                oldPoint,
+                                checkPoints[pointI],
+                                nei,
+                                cellsChecked,
+                                collapseQuality,
+                                forceOp
+                            )
+                        )
+                        {
+                            map.type() = 0;
+                            return map;
+                        }
                     }
                 }
             }
@@ -3678,15 +3677,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Write out VTK files prior to change
             if (debug > 3)
             {
-                labelList vtkCells = cellsChecked.toc();
-
                 writeVTK
                 (
                     Foam::name(eIndex)
                   + '(' + Foam::name(collapsePoint)
                   + ',' + Foam::name(replacePoint) + ')'
                   + "_Collapse_0",
-                    vtkCells
+                    cellsChecked
                 );
             }
         }
@@ -3765,7 +3762,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Maintain a list of modified faces for mapping
-    labelHashSet modifiedFaces;
+    DynamicList<label> modifiedFaces(10);
 
     // Renumber all hull faces and edges
     forAll(faceHull, indexI)
@@ -3832,9 +3829,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 faces_[rmvEdgeFaces[faceI]][replaceIndex] = replacePoint;
 
                 // Add an entry for mapping
-                if (!modifiedFaces.found(rmvEdgeFaces[faceI]))
+                if (findIndex(modifiedFaces, rmvEdgeFaces[faceI]) == -1)
                 {
-                    modifiedFaces.insert(rmvEdgeFaces[faceI]);
+                    modifiedFaces.append(rmvEdgeFaces[faceI]);
                 }
             }
 
@@ -3942,10 +3939,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     );
 
                     // Set this face aside for mapping
-                    if (!modifiedFaces.found(newFaceIndex))
-                    {
-                        modifiedFaces.insert(newFaceIndex);
-                    }
+                    modifiedFaces.append(newFaceIndex);
 
                     // Update map.
                     map.addFace(newFaceIndex, labelList(1, faceToRemove));
@@ -4146,10 +4140,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 );
 
                 // Set this face aside for mapping
-                if (!modifiedFaces.found(newFaceIndex))
-                {
-                    modifiedFaces.insert(newFaceIndex);
-                }
+                modifiedFaces.append(newFaceIndex);
 
                 // Update map
                 map.addFace(newFaceIndex, labelList(1, faceToRemove));
@@ -4417,9 +4408,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     faces_[eFaces[faceI]][replaceIndex] = replacePoint;
 
                     // Set this face aside for mapping
-                    if (!modifiedFaces.found(eFaces[faceI]))
+                    if (findIndex(modifiedFaces, eFaces[faceI]) == -1)
                     {
-                        modifiedFaces.insert(eFaces[faceI]);
+                        modifiedFaces.append(eFaces[faceI]);
                     }
 
                     // Look for an edge on this face that doesn't
@@ -4487,15 +4478,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     map.removeEdge(eIndex);
 
     // For cell-mapping, exclude all hull-cells
-    forAll(cellHull, indexI)
+    forAll(cellsChecked, indexI)
     {
-        if (cellsChecked.found(cellHull[indexI]))
+        if (findIndex(cellHull, cellsChecked[indexI]) > 0)
         {
-            cellsChecked.erase(cellHull[indexI]);
+            cellsChecked[indexI] = -1;
         }
     }
-
-    labelList mapCells = cellsChecked.toc();
 
     // Write out VTK files after change
     if (debug > 3)
@@ -4506,44 +4495,51 @@ const changeMap dynamicTopoFvMesh::collapseEdge
           + '(' + Foam::name(collapsePoint)
           + ',' + Foam::name(replacePoint) + ')'
           + "_Collapse_1",
-            mapCells
+            cellsChecked
         );
     }
 
     // Now that all old / new cells possess correct connectivity,
     // compute mapping information.
-    forAll(mapCells, cellI)
+    forAll(cellsChecked, cellI)
     {
+        if (cellsChecked[cellI] < 0)
+        {
+            continue;
+        }
+
         // Fill-in candidate mapping information
-        labelList mC(1, mapCells[cellI]);
+        labelList mC(1, cellsChecked[cellI]);
 
         // Set the mapping for this cell
-        setCellMapping(mapCells[cellI], mC);
+        setCellMapping(cellsChecked[cellI], mC);
     }
 
     // Set face mapping information for modified faces
-    forAllConstIter(labelHashSet, modifiedFaces, fIter)
+    forAll(modifiedFaces, faceI)
     {
+        const label mfIndex = modifiedFaces[faceI];
+
         // Exclude deleted faces
-        if (faces_[fIter.key()].empty())
+        if (faces_[mfIndex].empty())
         {
             continue;
         }
 
         // Decide between default / weighted mapping
         // based on boundary information
-        label fPatch = whichPatch(fIter.key());
+        label fPatch = whichPatch(mfIndex);
 
         if (fPatch == -1)
         {
-            setFaceMapping(fIter.key());
+            setFaceMapping(mfIndex);
         }
         else
         {
             // Fill-in candidate mapping information
             labelList faceCandidates;
 
-            const labelList& fEdges = faceEdges_[fIter.key()];
+            const labelList& fEdges = faceEdges_[mfIndex];
 
             forAll(fEdges, edgeI)
             {
@@ -4556,7 +4552,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         if
                         (
-                            (eFaces[faceI] != fIter.key()) &&
+                            (eFaces[faceI] != mfIndex) &&
                             (whichPatch(eFaces[faceI]) == fPatch)
                         )
                         {
@@ -4571,7 +4567,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
 
             // Set the mapping for this face
-            setFaceMapping(fIter.key(), faceCandidates);
+            setFaceMapping(mfIndex, faceCandidates);
         }
     }
 

@@ -896,6 +896,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
             }
         }
+
+        // Push operation for the slave into coupleMap
+        cMap.pushOperation
+        (
+            sIndex,
+            coupleMap::REMOVE_CELL
+        );
     }
 
     // Build a list of edges that need to be converted to interior.
@@ -1542,10 +1549,11 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // Loop through conversion faces
     forAll(facesToConvert, procI)
     {
-        // Fetch non-const reference to subMesh
-        coupledPatchInfo& rPM = recvPatchMeshes_[procI];
-        dynamicTopoFvMesh& mesh = rPM.subMesh();
+        // Fetch reference to subMesh
+        const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
 
+        const coupleMap& cMap = rPM.patchMap();
+        const dynamicTopoFvMesh& mesh = rPM.subMesh();
         const Map<label>& procFaceMap = facesToConvert[procI];
 
         forAllConstIter(Map<label>, procFaceMap, fIter)
@@ -1606,6 +1614,14 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             // Update map
             map.removeFace(fIter());
 
+            // Obtain references
+            Map<label>& faceMap = cMap.entityMap(coupleMap::FACE);
+            Map<label>& rFaceMap = cMap.reverseEntityMap(coupleMap::FACE);
+
+            // Erase entries
+            rFaceMap.erase(faceMap[fIter()]);
+            faceMap.erase(fIter());
+
             // For 2D meshes, the boundary face gets converted
             // to an interior one. Note the index for further operations.
             if ((mIndex == fIter()) && twoDMesh_)
@@ -1618,6 +1634,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // Loop through conversion edges
     forAll(edgesToConvert, procI)
     {
+        // Fetch reference to subMesh
+        const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+
+        const coupleMap& cMap = rPM.patchMap();
         const Map<label>& procEdgeMap = edgesToConvert[procI];
 
         // Loop through conversion edges
@@ -1676,6 +1696,14 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 {
                     map.index() = newEdgeIndex;
                 }
+
+                // Obtain references. Updates are actually only in 3D.
+                Map<label>& edgeMap = cMap.entityMap(coupleMap::EDGE);
+                Map<label>& rEdgeMap = cMap.reverseEntityMap(coupleMap::EDGE);
+
+                // Erase entries
+                rEdgeMap.erase(edgeMap[eIter()]);
+                edgeMap.erase(eIter());
             }
         }
     }
@@ -1697,7 +1725,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(cellsToInsert, procI)
     {
         const Map<label>& procCellMap = cellsToInsert[procI];
-        const coupleMap& cMap = recvPatchMeshes_[procI].patchMap();
 
         if (procCellMap.empty())
         {
@@ -1723,16 +1750,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 slaveConvertPatch[procI]
             )
         );
-
-        // Push operation into coupleMap
-        forAll(cellsToRemove, cellI)
-        {
-            cMap.pushOperation
-            (
-                cellsToRemove[cellI],
-                coupleMap::REMOVE_CELL
-            );
-        }
     }
 
     // Now map entities from the removeCells operation
@@ -2499,7 +2516,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
     meshOps::waitForBuffers();
 
     // Buffer for cell-removal
-    DynamicList<label> removeCellList(10);
+    DynamicList<label> rCellList(10);
 
     forAll(procIndices_, pI)
     {
@@ -2590,11 +2607,6 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                 {
                     case coupleMap::BISECTION:
                     {
-                        if (debug > 3)
-                        {
-                            Pout<< "Bisection Op: " << localIndex << endl;
-                        }
-
                         opMap = bisectEdge(localIndex);
 
                         label nIndex =
@@ -2619,69 +2631,58 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                     case coupleMap::COLLAPSE_FIRST:
                     {
-                        if (debug > 3)
-                        {
-                            Pout<< "Collapse [0] Op: " << localIndex << endl;
-                        }
-
                         opMap = collapseEdge(localIndex, 1);
                         break;
                     }
 
                     case coupleMap::COLLAPSE_SECOND:
                     {
-                        if (debug > 3)
-                        {
-                            Pout<< "Collapse [1] Op: " << localIndex << endl;
-                        }
-
                         opMap = collapseEdge(localIndex, 2);
                         break;
                     }
 
                     case coupleMap::COLLAPSE_MIDPOINT:
                     {
-                        if (debug > 3)
-                        {
-                            Pout<< "Collapse Mid Op: " << localIndex << endl;
-                        }
-
                         opMap = collapseEdge(localIndex, 3);
                         break;
                     }
 
                     case coupleMap::REMOVE_CELL:
                     {
-                        if (debug > 3)
+                        // Clear existing list
+                        rCellList.clear();
+
+                        if (twoDMesh_)
                         {
-                            Pout<< "Remove cell: " << localIndex << endl;
-                        }
-
-                        // Might be a series of cell-removal operations
-                        //  - Check if the next index is also a removal,
-                        //    and accumulate to remove as a set.
-                        label nextI = operations.fcIndex(indexI);
-
-                        // Add index to list
-                        removeCellList.append(localIndex);
-
-                        if
-                        (
-                            nextI > indexI &&
-                            operations[nextI] == coupleMap::REMOVE_CELL
-                        )
-                        {
-                            // Temporarily set operations as successful
-                            opMap.type() = 1;
+                            // Insert the owner cell
+                            rCellList.append(owner_[localIndex]);
                         }
                         else
                         {
-                            // Perform operation as a set.
-                            opMap = removeCells(removeCellList, procPatch);
+                            // Insert all cells connected to this edge
+                            const labelList& eFaces = edgeFaces_[localIndex];
 
-                            // Clear the existing list.
-                            removeCellList.clear();
+                            forAll(eFaces, faceI)
+                            {
+                                const label own = owner_[eFaces[faceI]];
+                                const label nei = neighbour_[eFaces[faceI]];
+
+                                if (findIndex(rCellList, own) == -1)
+                                {
+                                    rCellList.append(own);
+                                }
+
+                                if (nei != -1)
+                                {
+                                    if (findIndex(rCellList, nei) == -1)
+                                    {
+                                        rCellList.append(nei);
+                                    }
+                                }
+                            }
                         }
+
+                        opMap = removeCells(rCellList, procPatch);
 
                         break;
                     }

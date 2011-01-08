@@ -4623,7 +4623,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         check[5][0] = faces_[fIndex][1]; check[5][1] = faces_[fIndex][2];
 
         // Build a list of cellEdges
-        labelHashSet cellEdges;
+        DynamicList<label> cellEdges(6);
 
         forAll(cells_[owner_[fIndex]], faceI)
         {
@@ -4634,17 +4634,18 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             forAll(fEdges, edgeI)
             {
-                if (!cellEdges.found(fEdges[edgeI]))
+                if (findIndex(cellEdges, fEdges[edgeI]) == -1)
                 {
-                    cellEdges.insert(fEdges[edgeI]);
+                    cellEdges.append(fEdges[edgeI]);
                 }
             }
         }
 
         // Loop through cellEdges, and perform appropriate actions.
-        forAllIter(labelHashSet, cellEdges, eIter)
+        forAll(cellEdges, edgeI)
         {
-            const edge& edgeToCheck = edges_[eIter.key()];
+            const label ceIndex = cellEdges[edgeI];
+            const edge& edgeToCheck = edges_[ceIndex];
 
             // Check against the specified edges.
             if (edgeToCheck == check[0])
@@ -4654,11 +4655,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][1],
                     faces_[fIndex][2],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[0], edgeFaces_[eIter.key()]);
-                newFaceEdges[0][nE[0]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[0], edgeFaces_[ceIndex]);
+                newFaceEdges[0][nE[0]++] = ceIndex;
             }
 
             if (edgeToCheck == check[1])
@@ -4668,11 +4669,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][0],
                     faces_[fIndex][2],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[1], edgeFaces_[eIter.key()]);
-                newFaceEdges[1][nE[1]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[1], edgeFaces_[ceIndex]);
+                newFaceEdges[1][nE[1]++] = ceIndex;
             }
 
             if (edgeToCheck == check[2])
@@ -4682,11 +4683,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][0],
                     faces_[fIndex][1],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[2], edgeFaces_[eIter.key()]);
-                newFaceEdges[2][nE[2]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[2], edgeFaces_[ceIndex]);
+                newFaceEdges[2][nE[2]++] = ceIndex;
             }
 
             if (edgeToCheck == check[3])
@@ -4695,17 +4696,17 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 (
                     faces_[fIndex][1],
                     newPointIndex,
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
                 meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[3],
-                    edgeFaces_[eIter.key()]
+                    edgeFaces_[ceIndex]
                 );
 
-                newFaceEdges[3][nE[3]++] = eIter.key();
+                newFaceEdges[3][nE[3]++] = ceIndex;
             }
 
             if (edgeToCheck == check[4])
@@ -4714,17 +4715,17 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 (
                     faces_[fIndex][2],
                     newPointIndex,
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
                 meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[4],
-                    edgeFaces_[eIter.key()]
+                    edgeFaces_[ceIndex]
                 );
 
-                newFaceEdges[4][nE[4]++] = eIter.key();
+                newFaceEdges[4][nE[4]++] = ceIndex;
             }
 
             if (edgeToCheck == check[5])
@@ -4733,17 +4734,17 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 (
                     faces_[fIndex][0],
                     newPointIndex,
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
                 meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[5],
-                    edgeFaces_[eIter.key()]
+                    edgeFaces_[ceIndex]
                 );
 
-                newFaceEdges[5][nE[5]++] = eIter.key();
+                newFaceEdges[5][nE[5]++] = ceIndex;
             }
         }
 
@@ -5437,7 +5438,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
         check[8][0] = apexPoint[1]; check[8][1] = faces_[fIndex][2];
 
         // Build a list of cellEdges
-        labelHashSet cellEdges;
+        DynamicList<label> cellEdges(12);
 
         forAll(cells_[owner_[fIndex]], faceI)
         {
@@ -5448,9 +5449,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             forAll(fEdges, edgeI)
             {
-                if (!cellEdges.found(fEdges[edgeI]))
+                if (findIndex(cellEdges, fEdges[edgeI]) == -1)
                 {
-                    cellEdges.insert(fEdges[edgeI]);
+                    cellEdges.append(fEdges[edgeI]);
                 }
             }
         }
@@ -5464,17 +5465,18 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             forAll(fEdges, edgeI)
             {
-                if (!cellEdges.found(fEdges[edgeI]))
+                if (findIndex(cellEdges, fEdges[edgeI]) == -1)
                 {
-                    cellEdges.insert(fEdges[edgeI]);
+                    cellEdges.append(fEdges[edgeI]);
                 }
             }
         }
 
         // Loop through cellEdges, and perform appropriate actions.
-        forAllIter(labelHashSet, cellEdges, eIter)
+        forAll(cellEdges, edgeI)
         {
-            const edge& edgeToCheck = edges_[eIter.key()];
+            const label ceIndex = cellEdges[edgeI];
+            const edge& edgeToCheck = edges_[ceIndex];
 
             // Check against the specified edges.
             if (edgeToCheck == check[0])
@@ -5484,11 +5486,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][1],
                     faces_[fIndex][2],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[0], edgeFaces_[eIter.key()]);
-                newFaceEdges[0][nE[0]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[0], edgeFaces_[ceIndex]);
+                newFaceEdges[0][nE[0]++] = ceIndex;
             }
 
             if (edgeToCheck == check[1])
@@ -5498,11 +5500,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][0],
                     faces_[fIndex][2],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[1], edgeFaces_[eIter.key()]);
-                newFaceEdges[1][nE[1]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[1], edgeFaces_[ceIndex]);
+                newFaceEdges[1][nE[1]++] = ceIndex;
             }
 
             if (edgeToCheck == check[2])
@@ -5512,11 +5514,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][0],
                     faces_[fIndex][1],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[2], edgeFaces_[eIter.key()]);
-                newFaceEdges[2][nE[2]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[2], edgeFaces_[ceIndex]);
+                newFaceEdges[2][nE[2]++] = ceIndex;
             }
 
             if (edgeToCheck == check[3])
@@ -5525,17 +5527,17 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 (
                     faces_[fIndex][1],
                     newPointIndex,
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
                 meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[3],
-                    edgeFaces_[eIter.key()]
+                    edgeFaces_[ceIndex]
                 );
 
-                newFaceEdges[3][nE[3]++] = eIter.key();
+                newFaceEdges[3][nE[3]++] = ceIndex;
             }
 
             if (edgeToCheck == check[4])
@@ -5544,17 +5546,17 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 (
                     faces_[fIndex][2],
                     newPointIndex,
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
                 meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[4],
-                    edgeFaces_[eIter.key()]
+                    edgeFaces_[ceIndex]
                 );
 
-                newFaceEdges[4][nE[4]++] = eIter.key();
+                newFaceEdges[4][nE[4]++] = ceIndex;
             }
 
             if (edgeToCheck == check[5])
@@ -5563,17 +5565,17 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 (
                     faces_[fIndex][0],
                     newPointIndex,
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
                 meshOps::replaceLabel
                 (
                     fIndex,
                     newFaceIndex[5],
-                    edgeFaces_[eIter.key()]
+                    edgeFaces_[ceIndex]
                 );
 
-                newFaceEdges[5][nE[5]++] = eIter.key();
+                newFaceEdges[5][nE[5]++] = ceIndex;
             }
 
             if (edgeToCheck == check[6])
@@ -5583,11 +5585,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][1],
                     faces_[fIndex][2],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[6], edgeFaces_[eIter.key()]);
-                newFaceEdges[6][nE[6]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[6], edgeFaces_[ceIndex]);
+                newFaceEdges[6][nE[6]++] = ceIndex;
             }
 
             if (edgeToCheck == check[7])
@@ -5597,11 +5599,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][0],
                     faces_[fIndex][2],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[7], edgeFaces_[eIter.key()]);
-                newFaceEdges[7][nE[7]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[7], edgeFaces_[ceIndex]);
+                newFaceEdges[7][nE[7]++] = ceIndex;
             }
 
             if (edgeToCheck == check[8])
@@ -5611,11 +5613,11 @@ const changeMap dynamicTopoFvMesh::trisectFace
                     newPointIndex,
                     faces_[fIndex][0],
                     faces_[fIndex][1],
-                    edgePoints_[eIter.key()]
+                    edgePoints_[ceIndex]
                 );
 
-                meshOps::sizeUpList(newFaceIndex[8], edgeFaces_[eIter.key()]);
-                newFaceEdges[8][nE[8]++] = eIter.key();
+                meshOps::sizeUpList(newFaceIndex[8], edgeFaces_[ceIndex]);
+                newFaceEdges[8][nE[8]++] = ceIndex;
             }
         }
 
