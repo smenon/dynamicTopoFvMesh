@@ -48,6 +48,10 @@ Author
 namespace Foam
 {
 
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+defineTemplateTypeNameAndDebugWithName(IOList<objectMap>, "objectMapIOList", 0);
+
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Compute mapping weights for modified entities

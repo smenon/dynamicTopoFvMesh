@@ -745,6 +745,15 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
+    // Perform a few debug calls before modifications
+    if (debug > 1)
+    {
+        Pout<< nl << nl
+            << "Inserting cell(s) around coupled "
+            << (twoDMesh_ ? "face: " : "edge: ") << mIndex
+            << endl;
+    }
+
     // Agglomerate cells from surrounding subMeshes
     // and add them to this processor.
     forAll(procIndices_, pI)
@@ -1240,6 +1249,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
         forAllIter(Map<label>, procFaceMap, fIter)
         {
+            // Skip if the face is a conversion candidate
+            if (fIter() != -1)
+            {
+                continue;
+            }
+
             const face& sFace = mesh.faces_[fIter.key()];
             const labelList& sfEdges = mesh.faceEdges_[fIter.key()];
 
@@ -1896,6 +1911,16 @@ const changeMap dynamicTopoFvMesh::removeCells
             << " cList: " << cList << nl
             << " patch: " << patch << nl
             << abort(FatalError);
+    }
+
+    // Perform a few debug calls before modifications
+    if (debug > 1)
+    {
+        Pout<< nl << nl
+            << "Removing cell(s): " << cList
+            << " and adding internal faces / edges to patch: "
+            << boundaryMesh()[patch].name()
+            << endl;
     }
 
     changeMap map;

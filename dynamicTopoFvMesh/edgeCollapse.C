@@ -1026,8 +1026,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 forAll(firstCurCell,faceI)
                 {
-                    Pout<< firstCurCell[faceI]
-                        << ": " << faces_[firstCurCell[faceI]] << endl;
+                    Pout<< " Face: " << firstCurCell[faceI]
+                        << " : " << faces_[firstCurCell[faceI]]
+                        << " fE: " << faceEdges_[firstCurCell[faceI]]
+                        << endl;
                 }
             }
 
@@ -1038,8 +1040,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             forAll(firstEdgeFaces,indexI)
             {
-                Pout<< firstEdgeFaces[indexI]
-                    << ": " << faces_[firstEdgeFaces[indexI]] << endl;
+                Pout<< " Face: " << firstEdgeFaces[indexI]
+                    << " : " << faces_[firstEdgeFaces[indexI]]
+                    << " fE: " << faceEdges_[firstEdgeFaces[indexI]]
+                    << endl;
             }
 
             Pout<< nl << "Cells belonging to second Edge Hull: "
@@ -1054,8 +1058,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 forAll(secondCurCell, faceI)
                 {
-                    Pout<< secondCurCell[faceI]
-                        << ": " << faces_[secondCurCell[faceI]] << endl;
+                    Pout<< " Face: " << secondCurCell[faceI]
+                        << " : " << faces_[secondCurCell[faceI]]
+                        << " fE: " << faceEdges_[secondCurCell[faceI]]
+                        << endl;
                 }
             }
 
@@ -1066,8 +1072,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             forAll(secondEdgeFaces, indexI)
             {
-                Pout<< secondEdgeFaces[indexI]
-                    << ": " << faces_[secondEdgeFaces[indexI]] << endl;
+                Pout<< " Face: " << secondEdgeFaces[indexI]
+                    << " : " << faces_[secondEdgeFaces[indexI]]
+                    << " fE: " << faceEdges_[secondEdgeFaces[indexI]]
+                    << endl;
             }
 
             // Write out VTK files prior to change
@@ -2064,8 +2072,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             forAll(firstCurCell, faceI)
             {
-                Pout<< firstCurCell[faceI]
-                    << ": " << faces_[firstCurCell[faceI]] << endl;
+                Pout<< " Face: " << firstCurCell[faceI]
+                    << " : " << faces_[firstCurCell[faceI]]
+                    << " fE: " << faceEdges_[firstCurCell[faceI]]
+                    << endl;
             }
         }
 
@@ -2075,8 +2085,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         forAll(firstEdgeFaces, indexI)
         {
-            Pout<< firstEdgeFaces[indexI]
-                << ": " << faces_[firstEdgeFaces[indexI]] << endl;
+            Pout<< " Face: " << firstEdgeFaces[indexI]
+                << " : " << faces_[firstEdgeFaces[indexI]]
+                << " fE: " << faceEdges_[firstEdgeFaces[indexI]]
+                << endl;
         }
 
         Pout<< nl << "Cells belonging to second Edge Hull: "
@@ -2091,8 +2103,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             forAll(secondCurCell, faceI)
             {
-                Pout<< secondCurCell[faceI]
-                    << ": " << faces_[secondCurCell[faceI]] << endl;
+                Pout<< " Face: " << secondCurCell[faceI]
+                    << " : " << faces_[secondCurCell[faceI]]
+                    << " fE: " << faceEdges_[secondCurCell[faceI]]
+                    << endl;
             }
         }
 
@@ -2102,8 +2116,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         forAll(secondEdgeFaces, indexI)
         {
-            Pout<< secondEdgeFaces[indexI]
-                << ": " << faces_[secondEdgeFaces[indexI]] << endl;
+            Pout<< " Face : " << secondEdgeFaces[indexI]
+                << " : " << faces_[secondEdgeFaces[indexI]]
+                << " fE: " << faceEdges_[secondEdgeFaces[indexI]]
+                << endl;
         }
 
         Pout<< "Retained face: "
