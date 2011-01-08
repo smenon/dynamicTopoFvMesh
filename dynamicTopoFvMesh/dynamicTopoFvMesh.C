@@ -636,14 +636,8 @@ void dynamicTopoFvMesh::removeFace
     neighbour_[fIndex] = -1;
     faceEdges_[fIndex].clear();
 
-    if (twoDMesh_)
-    {
-        // Remove from the stack as well
-        forAll(entityStack_, stackI)
-        {
-            stack(stackI).remove(fIndex);
-        }
-    }
+    // Entity won't be removed from the stack for efficiency
+    // It will be discarded on access instead.
 
     // Update coupled face maps, if necessary.
     forAll(patchCoupling_, patchI)
@@ -865,11 +859,8 @@ void dynamicTopoFvMesh::removeEdge
             meshOps::sizeDownList(eIndex, pointEdges_[edges_[eIndex][1]]);
         }
 
-        // Remove from the stack as well
-        forAll(entityStack_, stackI)
-        {
-            stack(stackI).remove(eIndex);
-        }
+        // Entity won't be removed from the stack for efficiency
+        // It will be discarded on access instead.
 
         // Update coupled face maps, if necessary.
         forAll(patchCoupling_, patchI)

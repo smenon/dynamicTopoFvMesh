@@ -259,6 +259,13 @@ bool dynamicTopoFvMesh::checkBoundingCurve
     // Internal edges don't count
     label edgePatch = -1;
 
+    // If this entity was deleted, skip it.
+    if (edgeFaces_[eIndex].empty())
+    {
+        // Return true so that swap3DEdges skips this edge.
+        return true;
+    }
+
     if ((edgePatch = whichEdgePatch(eIndex)) < 0)
     {
         return false;

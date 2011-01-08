@@ -209,6 +209,12 @@ inline bool dynamicTopoFvMesh::checkBisection
 
     if (twoDMesh_)
     {
+        // If this entity was deleted, skip it.
+        if (faces_[index].empty())
+        {
+            return false;
+        }
+
         // Fetch the edge
         const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
 
@@ -227,6 +233,12 @@ inline bool dynamicTopoFvMesh::checkBisection
     }
     else
     {
+        // If this entity was deleted, skip it.
+        if (edgeFaces_[index].empty())
+        {
+            return false;
+        }
+
         // Fetch the edge
         const edge& edgeToCheck = edges_[index];
 
@@ -265,6 +277,12 @@ inline bool dynamicTopoFvMesh::checkCollapse
 
     if (twoDMesh_)
     {
+        // If this entity was deleted, skip it.
+        if (faces_[index].empty())
+        {
+            return false;
+        }
+
         // Fetch the edge
         const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
 
@@ -283,6 +301,12 @@ inline bool dynamicTopoFvMesh::checkCollapse
     }
     else
     {
+        // If this entity was deleted, skip it.
+        if (edgeFaces_[index].empty())
+        {
+            return false;
+        }
+
         // Fetch the edge
         const edge& edgeToCheck = edges_[index];
 

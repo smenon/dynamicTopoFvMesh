@@ -42,6 +42,7 @@ namespace Foam
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Perform a Delaunay test on an internal face
+// - Returns 'true' if the test failed
 bool dynamicTopoFvMesh::testDelaunay
 (
     const label fIndex
@@ -52,6 +53,12 @@ bool dynamicTopoFvMesh::testDelaunay
     label sIndex = -1, pIndex = -1;
     FixedList<triFace, 2> triFaces(triFace(-1, -1, -1));
     FixedList<bool, 2> foundTriFace(false);
+
+    // If this entity was deleted, skip it.
+    if (faces_[fIndex].empty())
+    {
+        return failed;
+    }
 
     // Boundary faces are discarded.
     if (whichPatch(fIndex) > -1)
@@ -2392,6 +2399,12 @@ scalar dynamicTopoFvMesh::computeMinQuality(const label eIndex) const
     // Obtain a reference to this edge and corresponding edgePoints
     const edge& edgeToCheck = edges_[eIndex];
     const labelList& hullVertices = edgePoints_[eIndex];
+
+    // If this entity was deleted, skip it.
+    if (hullVertices.empty())
+    {
+        return minQuality;
+    }
 
     if (coupledModification_)
     {

@@ -4503,7 +4503,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // compute mapping information.
     forAll(cellsChecked, cellI)
     {
-        if (cellsChecked[cellI] < 0)
+        if (cellsChecked[cellI] < 0 || cells_[cellsChecked[cellI]].empty())
         {
             continue;
         }
