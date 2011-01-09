@@ -3785,7 +3785,8 @@ bool dynamicTopoFvMesh::resetMesh()
             xferMove(cellCentres_)
         );
 
-        // Reset the mesh
+        // Reset the mesh, and specify a non-valid
+        // boundary to avoid globalData construction
         polyMesh::resetPrimitives
         (
             xferCopy(points),
@@ -3793,7 +3794,8 @@ bool dynamicTopoFvMesh::resetMesh()
             xferMove(owner),
             xferMove(neighbour),
             patchSizes_,
-            patchStarts_
+            patchStarts_,
+            false
         );
 
         // Check the dictionary to determine whether
@@ -3951,24 +3953,6 @@ bool dynamicTopoFvMesh::resetMesh()
             motionSolver_->updateMesh(mpm);
         }
 
-        // Now that all connectivity changes are successful,
-        // update coupled maps (in a separate thread, if available).
-        if (Pstream::parRun())
-        {
-            if (threader_->multiThreaded())
-            {
-                threader_->addToWorkQueue
-                (
-                    &initCoupledConnectivity,
-                    this
-                );
-            }
-            else
-            {
-                initCoupledConnectivity(this);
-            }
-        }
-
         // Clear unwanted member data
         addedFacePatches_.clear();
         addedEdgePatches_.clear();
@@ -4016,6 +4000,29 @@ bool dynamicTopoFvMesh::resetMesh()
             checkMesh(true);
         }
 
+        // Now that all connectivity changes are successful,
+        // update coupled maps (in a separate thread, if available).
+        if (Pstream::parRun())
+        {
+            // Clear parallel structures
+            procIndices_.clear();
+            sendPatchMeshes_.clear();
+            recvPatchMeshes_.clear();
+
+            if (threader_->multiThreaded())
+            {
+                threader_->addToWorkQueue
+                (
+                    &initCoupledConnectivity,
+                    this
+                );
+            }
+            else
+            {
+                initCoupledConnectivity(this);
+            }
+        }
+
         // Reset statistics
         statistics_ = 0;
     }
@@ -4025,8 +4032,11 @@ bool dynamicTopoFvMesh::resetMesh()
         // Only execute mesh-motion.
         if (motionSolver_.valid())
         {
-            movePoints(motionSolver_->curPoints());
+            movePoints(points_);
         }
+
+        // Move coupled subMesh points
+        moveCoupledSubMeshes(points_);
     }
 
     // Obtain mesh stats after topo-changes
@@ -4053,14 +4063,11 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
     // Delete oldPoints in polyMesh
     polyMesh::resetMotion();
 
-    // Update polyMesh.
-    polyMesh::updateMesh(mpm);
-
     // Clear-out fvMesh geometry and addressing
     fvMesh::clearOut();
 
-    // Update topology for all registered classes
-    meshObjectBase::allUpdateTopology<polyMesh>(*this, mpm);
+    // Update polyMesh.
+    polyMesh::updateMesh(mpm);
 
     // Map all fields
     mapFields(mpm);

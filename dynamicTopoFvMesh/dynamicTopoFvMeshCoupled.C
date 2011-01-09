@@ -689,8 +689,58 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 
     // Build maps for coupled processor patches.
     mesh->buildProcessorCoupledMaps();
+}
 
-    // Synchronize before continuing
+
+// Move coupled patch subMesh points
+void dynamicTopoFvMesh::moveCoupledSubMeshes(const pointField& points)
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    if (debug)
+    {
+        Info<< " void dynamicTopoFvMesh::moveCoupledSubMeshes() :"
+            << " Moving points for coupled subMeshes."
+            << endl;
+    }
+
+    forAll(procIndices_, pI)
+    {
+        label proc = procIndices_[pI];
+
+        const coupledPatchInfo& sPM = sendPatchMeshes_[pI];
+        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+
+        // Fetch the coupleMap
+        const coupleMap& scMap = sPM.patchMap();
+        const coupleMap& rcMap = rPM.patchMap();
+
+        Map<label>& pointMap = scMap.entityMap(coupleMap::POINT);
+
+        // Fill point buffers
+        pointField& pBuffer = scMap.pointBuffer();
+        pointField& opBuffer = scMap.oldPointBuffer();
+
+        forAllConstIter(Map<label>, pointMap, pIter)
+        {
+            pBuffer[pIter.key()] = points_[pIter()];
+            opBuffer[pIter.key()] = oldPoints_[pIter()];
+        }
+
+        // Buffers have already been allocated
+        // to the right size, so just transfer points
+
+        // Send point buffers to neighbour
+        meshOps::pWrite(proc, scMap.pointBuffer());
+        meshOps::pWrite(proc, scMap.oldPointBuffer());
+
+        // Receive point buffers from neighbour
+        meshOps::pRead(proc, rcMap.pointBuffer());
+        meshOps::pRead(proc, rcMap.oldPointBuffer());
+    }
 }
 
 
