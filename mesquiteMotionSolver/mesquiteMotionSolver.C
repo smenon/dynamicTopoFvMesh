@@ -1412,6 +1412,7 @@ void mesquiteMotionSolver::initParallelConnectivity()
     }
 
     Map<DynamicList<point> > auxSurfPoints;
+    boolList bdyMarker(pointMarker_.size(), false);
 
     forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
     {
@@ -1481,6 +1482,9 @@ void mesquiteMotionSolver::initParallelConnectivity()
                     {
                         // Fix boundary condition for this point.
                         bdy_[fieldIndex] = vector::one;
+
+                        // Mark for posterity.
+                        bdyMarker[fieldIndex] = true;
 
                         // Modify point marker
                         if (slaveProc)
@@ -1659,12 +1663,28 @@ void mesquiteMotionSolver::initParallelConnectivity()
         {
             // If both points on this edge are marked,
             // this edge needs to be left out.
-            bool p0 = (pointMarker_[edges[i][0] + offsets_[patchI]] < 0.5);
-            bool p1 = (pointMarker_[edges[i][1] + offsets_[patchI]] < 0.5);
+            label i0 = edges[i][0] + offsets_[patchI];
+            label i1 = edges[i][1] + offsets_[patchI];
+
+            bool p0 = (pointMarker_[i0] < 0.5);
+            bool p1 = (pointMarker_[i1] < 0.5);
 
             if (p0 && p1)
             {
                 edgeMarker_[patchI][i] = 0.0;
+            }
+
+            // Check for corner points.
+            // If only one vertex is marked,
+            // fix the boundary condition vector
+            if (bdyMarker[i0] && !bdyMarker[i1])
+            {
+                bdy_[i0] = vector::zero;
+            }
+            else
+            if (!bdyMarker[i0] && bdyMarker[i1])
+            {
+                bdy_[i1] = vector::zero;
             }
         }
     }
