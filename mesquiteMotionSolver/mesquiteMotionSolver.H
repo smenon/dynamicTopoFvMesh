@@ -131,6 +131,7 @@ class mesquiteMotionSolver
         //- Map for the auxiliary entities
         Map<Map<label> > auxPointMap_;
         Map<Map<label> > auxSurfPointMap_;
+        Map<Map<label> > auxNeiBufferMap_;
 
         //- The quality metric
         word qMetric_;
