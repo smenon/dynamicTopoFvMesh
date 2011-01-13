@@ -61,6 +61,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
     MeshObject<polyMesh, mesquiteMotionSolver>(mesh),
     Mesh_(mesh),
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
+    arraysInitialized_(false),
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
     nAuxPoints_(0),
@@ -92,9 +93,6 @@ mesquiteMotionSolver::mesquiteMotionSolver
 {
     // Read options from the dictionary
     readOptions();
-
-    // Initialize connectivity arrays for Mesquite
-    initArrays();
 }
 
 
@@ -108,6 +106,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
     MeshObject<polyMesh, mesquiteMotionSolver>(mesh),
     Mesh_(mesh),
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
+    arraysInitialized_(false),
     nPoints_(mesh.nPoints()),
     nCells_(mesh.nCells()),
     nAuxPoints_(0),
@@ -139,9 +138,6 @@ mesquiteMotionSolver::mesquiteMotionSolver
 {
     // Read options from the dictionary
     readOptions();
-
-    // Initialize connectivity arrays for Mesquite
-    initArrays();
 }
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -155,6 +151,11 @@ mesquiteMotionSolver::~mesquiteMotionSolver()
 // Clear out addressing
 void mesquiteMotionSolver::clearOut()
 {
+    if (debug)
+    {
+        Info<< "Clearing out mesquite arrays" << endl;
+    }
+
     // Delete memory pointers
     delete [] vtxCoords_;
     delete [] cellToNode_;
@@ -164,6 +165,9 @@ void mesquiteMotionSolver::clearOut()
     vtxCoords_ = NULL;
     cellToNode_ = NULL;
     fixFlags_ = NULL;
+
+    // Reset array flag
+    arraysInitialized_ = false;
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -171,6 +175,11 @@ void mesquiteMotionSolver::clearOut()
 // Read options from the dictionary
 void mesquiteMotionSolver::readOptions()
 {
+    if (debug)
+    {
+        Info<< "Reading options for mesquiteMotionSolver" << endl;
+    }
+
     // Fetch the sub-dictionary
     const dictionary& optionsDict = subDict("mesquiteOptions");
 
@@ -1062,6 +1071,9 @@ void mesquiteMotionSolver::initArrays()
         // Initialise parallel connectivity, if necessary
         initParallelConnectivity();
 
+        // Set the flag
+        arraysInitialized_ = true;
+
         return;
     }
 
@@ -1138,6 +1150,9 @@ void mesquiteMotionSolver::initArrays()
 
     // Initialise parallel connectivity, if necessary
     initParallelConnectivity();
+
+    // Set the flag
+    arraysInitialized_ = true;
 }
 
 
@@ -1147,6 +1162,11 @@ void mesquiteMotionSolver::initParallelConnectivity()
     if (!Pstream::parRun())
     {
         return;
+    }
+
+    if (debug)
+    {
+        Info<< "Initializing parallel connectivity" << endl;
     }
 
     Map<label> nPrc;
@@ -1621,13 +1641,6 @@ void mesquiteMotionSolver::initParallelConnectivity()
 
         if (matchedAll)
         {
-            if (debug)
-            {
-                Pout<< " NeiProc: " << proc
-                    << " pMap: " << pMap
-                    << endl;
-            }
-
             // Renumber to shuffled indices
             Map<label>& anbMap = auxNeiBufferMap_[proc];
 
@@ -2064,6 +2077,13 @@ scalar mesquiteMotionSolver::normFactor
     vectorField nFw = (w - tmpField);
     vectorField nFb = (b - tmpField);
 
+    if (debug)
+    {
+        Info<< " xRef: " << xRef << nl
+            << " cmptSumMag(nFw): " << cmptSumMag(nFw) << nl
+            << " cmptSumMag(nFb): " << cmptSumMag(nFb) << endl;
+    }
+
     return cmptSumMag(nFw) + cmptSumMag(nFb) + 1.0e-20;
 }
 
@@ -2108,6 +2128,11 @@ label mesquiteMotionSolver::CG
 
     // Compute the normFactor, using 'r' as scratch-space
     scalar norm = normFactor(x,b,w,r);
+
+    if (debug)
+    {
+        Info<< "normFactor: " << norm << endl;
+    }
 
     r = b - w;
     p = r;
@@ -2155,6 +2180,11 @@ label mesquiteMotionSolver::CG
 // Apply fixed-value boundary conditions, if any.
 void mesquiteMotionSolver::applyFixedValuePatches()
 {
+    if (debug)
+    {
+        Info<< "Applying fixed-value patches, if any" << endl;
+    }
+
     // Fetch the sub-dictionary
     const dictionary& optionsDict = subDict("mesquiteOptions");
 
@@ -2225,13 +2255,13 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         // Apply values to points common with coupleMaps
 
         // Search the registry for all mapping objects.
-        if (Pstream::parRun())
+        if (Pstream::parRun() && !twoDMesh_)
         {
             HashTable<const coupleMap*> cMaps = Mesh_.lookupClass<coupleMap>();
 
-            forAllIter(HashTable<const coupleMap*>, cMaps, cmIter)
+            forAllConstIter(HashTable<const coupleMap*>, cMaps, cmIter)
             {
-                coupleMap& cMap = const_cast<coupleMap&>(*cmIter());
+                const coupleMap& cMap = *cmIter();
 
                 if (cMap.isLocal() || cMap.isSend())
                 {
@@ -2270,6 +2300,11 @@ void mesquiteMotionSolver::applyFixedValuePatches()
 // Private member function to perform Laplacian surface smoothing
 void mesquiteMotionSolver::smoothSurfaces()
 {
+    if (debug)
+    {
+        Info<< "Smoothing surfaces" << endl;
+    }
+
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
     // Copy refPoints prior to all surface-smoothing sweeps.
@@ -2573,6 +2608,11 @@ void mesquiteMotionSolver::enforceCylindricalConstraints()
         return;
     }
 
+    if (debug)
+    {
+        Info<< "Enforcing cylindrical constraints, if any" << endl;
+    }
+
     // Fetch the sub-dictionary
     const dictionary& optionsDict = subDict("mesquiteOptions");
 
@@ -2755,6 +2795,11 @@ bool mesquiteMotionSolver::checkValidity
 // Prepare point-normals with updated point positions
 void mesquiteMotionSolver::preparePointNormals()
 {
+    if (debug)
+    {
+        Info<< "Preparing point normals for surface smoothing" << endl;
+    }
+
     // Search the registry for all mapping objects.
     HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
 
@@ -2771,7 +2816,6 @@ void mesquiteMotionSolver::preparePointNormals()
         }
 
         // Now compute point normals from updated local points
-        // const labelListList& pFaces = boundary[pIDs_[patchI]].pointFaces();
         const faceList& faces = boundary[pIDs_[patchI]].localFaces();
 
         pNormals_[patchI] = vector::zero;
@@ -2793,7 +2837,7 @@ void mesquiteMotionSolver::preparePointNormals()
         {
             const coupleMap& cMap = *(cmIter());
 
-            if (cMap.isLocal())
+            if (cMap.isLocal() || cMap.isSend())
             {
                 continue;
             }
@@ -2802,26 +2846,25 @@ void mesquiteMotionSolver::preparePointNormals()
             bool slaveProc = false;
 
             // Fetch the neighbour's procIndex
-            if (cMap.masterIndex() == Pstream::myProcNo() && cMap.isRecv())
+            if (cMap.masterIndex() == Pstream::myProcNo())
             {
                 neiProcNo = cMap.slaveIndex();
             }
             else
-            if (cMap.slaveIndex() == Pstream::myProcNo() && cMap.isSend())
+            if (cMap.slaveIndex() == Pstream::myProcNo())
             {
                 neiProcNo = cMap.masterIndex();
                 slaveProc = true;
             }
-            else
-            {
-                // Either a sendMesh where I'm a master,
-                // or a recvMesh where I'm a slave.
-                continue;
-            }
 
-            const Map<label>& aspMap = auxSurfPointMap_[neiProcNo];
+            // Fetch reference
+            const Map<label>& apMap = auxPointMap_[neiProcNo];
+
+            // Fetch buffers from coupleMap
+            const pointField& mPts = cMap.pointBuffer();
             const labelList& starts = cMap.entityBuffer(coupleMap::FACE_STARTS);
             const labelList& sizes = cMap.entityBuffer(coupleMap::FACE_SIZES);
+            const label nShared = cMap.nEntities(coupleMap::SHARED_POINT);
             const faceList& fList = cMap.faces();
 
             // Physical patches are ordered the same way
@@ -2833,16 +2876,30 @@ void mesquiteMotionSolver::preparePointNormals()
             {
                 const face& thisFace = fList[faceI];
 
-                vector n = thisFace.normal(cMap.pointBuffer());
+                vector n = thisFace.normal(mPts);
 
                 forAll(thisFace, pI)
                 {
-                    if (aspMap.found(thisFace[pI]))
+                    if (thisFace[pI] >= nShared)
                     {
-                        // Fetch the local point index
-                        label local = (aspMap[thisFace[pI]] - offsets_[patchI]);
+                        continue;
+                    }
 
-                        pNormals_[patchI][local] += n;
+                    // Fetch the global index.
+                    label gIndex = apMap[thisFace[pI]];
+                    label lIndex = boundary[pIDs_[patchI]].whichPoint(gIndex);
+
+                    if (lIndex > -1)
+                    {
+                        pNormals_[patchI][lIndex] += n;
+                    }
+                    else
+                    {
+                        // Something is wrong here.
+                        Pout<< " Unable to find local index. " << nl
+                            << " gIndex: " << gIndex << nl
+                            << " lIndex: " << lIndex << nl
+                            << abort(FatalError);
                     }
                 }
             }
@@ -2871,6 +2928,12 @@ tmp<pointField> mesquiteMotionSolver::curPoints() const
 //- Solve for new mesh points
 void mesquiteMotionSolver::solve()
 {
+    // Initialize connectivity arrays for Mesquite
+    if (!arraysInitialized_)
+    {
+        initArrays();
+    }
+
     // Apply fixed-value motion BC's, if any.
     applyFixedValuePatches();
 
@@ -3043,14 +3106,15 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     // Clear the auxiliary point map
     auxPointMap_.clear();
     auxSurfPointMap_.clear();
+    auxNeiBufferMap_.clear();
     sendFields_.clear();
     recvFields_.clear();
 
     // Clear Mesquite arrays
     clearOut();
 
-    // Initialize data structures
-    initArrays();
+    // Reset flag
+    arraysInitialized_ = false;
 }
 
 } // End namespace Foam

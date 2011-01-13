@@ -77,6 +77,9 @@ class mesquiteMotionSolver
         //- Mesh characteristics [2D/3D]
         Switch twoDMesh_;
 
+        //- Flag to determine if arrays have been initialized
+        bool arraysInitialized_;
+
         //- Number of points
         unsigned long nPoints_;
 
