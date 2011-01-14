@@ -123,13 +123,16 @@ void dynamicTopoFvMesh::computeMapping
 
                 if (debug > 1)
                 {
-                    Pout<< nl
-                        << " Inconsistent cell: " << cIndex << nl
-                        << " parents: " << cellParents_[cIndex] << nl
-                        << " masterObjects: " << masterObjects << nl
-                        << " Weights: " << cellWeights_[cellI] << nl
-                        << " Error: " << mag(1.0 - sum(cellWeights_[cellI]))
-                        << endl;
+                    if (debug > 4)
+                    {
+                        Pout<< nl
+                            << " Inconsistent cell: " << cIndex << nl
+                            << " parents: " << cellParents_[cIndex] << nl
+                            << " masterObjects: " << masterObjects << nl
+                            << " Weights: " << cellWeights_[cellI] << nl
+                            << " Error: " << mag(1.0 - sum(cellWeights_[cellI]))
+                            << endl;
+                    }
 
                     meshOps::sizeUpList
                     (
@@ -208,13 +211,16 @@ void dynamicTopoFvMesh::computeMapping
 
                 if (debug > 1)
                 {
-                    Pout<< nl
-                        << " Inconsistent face: " << fIndex << nl
-                        << " parents: " << faceParents_[fIndex] << nl
-                        << " masterObjects: " << masterObjects << nl
-                        << " Weights: " << faceWeights_[faceI] << nl
-                        << " Error: " << mag(1.0 - sum(faceWeights_[faceI]))
-                        << endl;
+                    if (debug > 4)
+                    {
+                        Pout<< nl
+                            << " Inconsistent face: " << fIndex << nl
+                            << " parents: " << faceParents_[fIndex] << nl
+                            << " masterObjects: " << masterObjects << nl
+                            << " Weights: " << faceWeights_[faceI] << nl
+                            << " Error: " << mag(1.0 - sum(faceWeights_[faceI]))
+                            << endl;
+                    }
 
                     meshOps::sizeUpList
                     (

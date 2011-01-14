@@ -100,9 +100,6 @@ void coupledPatchInfo::setMesh
 )
 {
     subMesh_.set(mesh);
-
-    // Modify the subMesh directory as well.
-    subMesh_().meshSubDir = "proc_" + Foam::name(index);
 }
 
 

@@ -1594,23 +1594,26 @@ void mesquiteMotionSolver::initParallelConnectivity()
         vectorField& recvField = recvFields_[proc];
 
         // Send and receive points
-        IPstream::read
-        (
-            Pstream::nonBlocking,
-            proc,
-            reinterpret_cast<char*>(recvField.begin()),
-            recvField.byteSize()
-        );
+        if (recvField.size())
+        {
+            IPstream::read
+            (
+                Pstream::nonBlocking,
+                proc,
+                reinterpret_cast<char*>(recvField.begin()),
+                recvField.byteSize()
+            );
 
-        DynamicList<point>& bufPoints = auxSurfPoints[proc];
+            DynamicList<point>& bufPoints = auxSurfPoints[proc];
 
-        OPstream::write
-        (
-            Pstream::nonBlocking,
-            proc,
-            reinterpret_cast<const char*>(&bufPoints[0]),
-            bufPoints.size()*sizeof(vector)
-        );
+            OPstream::write
+            (
+                Pstream::nonBlocking,
+                proc,
+                reinterpret_cast<const char*>(&bufPoints[0]),
+                bufPoints.size()*sizeof(vector)
+            );
+        }
     }
 
     // Wait for all transfers to complete.
@@ -1704,6 +1707,56 @@ void mesquiteMotionSolver::initParallelConnectivity()
 }
 
 
+// Update coupleMaps with up-to-date point information
+void mesquiteMotionSolver::updateCoupleMaps()
+{
+    if (twoDMesh_)
+    {
+        return;
+    }
+
+    // Search the registry for all mapping objects.
+    if (Pstream::parRun())
+    {
+        HashTable<const coupleMap*> cMaps = Mesh_.lookupClass<coupleMap>();
+
+        forAllConstIter(HashTable<const coupleMap*>, cMaps, cmIter)
+        {
+            const coupleMap& cMap = *cmIter();
+
+            if (cMap.isLocal() || cMap.isSend())
+            {
+                continue;
+            }
+
+            // Obtain a reference to the point buffer
+            pointField& pField = cMap.pointBuffer();
+
+            // Pick maps for which this sub-domain is master
+            if (cMap.masterIndex() == Pstream::myProcNo())
+            {
+                // Fetch the neighbour's procIndex
+                label neiProcNo = cMap.slaveIndex();
+
+                const Map<label>& pointMap = auxPointMap_[neiProcNo];
+
+                label pIndex = -1;
+
+                forAll(pField, pointI)
+                {
+                    pIndex = pointMap[pointI];
+
+                    if (pIndex < label(nPoints_))
+                    {
+                        pField[pointI] = refPoints_[pIndex];
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 // Copy auxiliary points to/from buffers
 void mesquiteMotionSolver::copyAuxiliaryPoints(bool copyBack)
 {
@@ -1755,9 +1808,10 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool copyBack)
 
                     if (debug)
                     {
-                        Pout << "Sending to proc: "
-                             << neiProcNo
-                             << endl;
+                        Pout<< "copyAuxiliaryPoints: Sending to proc: "
+                            << neiProcNo
+                            << " nEntities: " << pField.size()
+                            << endl;
                     }
 
                     // Send points to the slave.
@@ -1792,9 +1846,10 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool copyBack)
         {
             if (debug)
             {
-                Pout << "Receiving from proc: "
-                     << cMap.masterIndex()
-                     << endl;
+                Pout<< "copyAuxiliaryPoints: Receiving from proc: "
+                    << cMap.masterIndex()
+                    << " nEntities: " << pField.size()
+                    << endl;
             }
 
             // This sub-domain is a slave.
@@ -1942,27 +1997,30 @@ void mesquiteMotionSolver::transferBuffers
         vectorField& sendField = sendFields_[neiProcNo];
 
         // Schedule receipt from neighbour
-        IPstream::read
-        (
-            Pstream::nonBlocking,
-            neiProcNo,
-            reinterpret_cast<char*>(recvField.begin()),
-            recvField.byteSize()
-        );
-
-        // Prepare a send buffer.
-        forAllConstIter(Map<label>, pointMap, pIter)
+        if (recvField.size() && sendField.size())
         {
-            sendField[pIter()] = field[pIter.key()];
-        }
+            IPstream::read
+            (
+                Pstream::nonBlocking,
+                neiProcNo,
+                reinterpret_cast<char*>(recvField.begin()),
+                recvField.byteSize()
+            );
 
-        OPstream::write
-        (
-            Pstream::nonBlocking,
-            neiProcNo,
-            reinterpret_cast<const char*>(&sendField[0]),
-            sendField.size()*sizeof(vector)
-        );
+            // Prepare a send buffer.
+            forAllConstIter(Map<label>, pointMap, pIter)
+            {
+                sendField[pIter()] = field[pIter.key()];
+            }
+
+            OPstream::write
+            (
+                Pstream::nonBlocking,
+                neiProcNo,
+                reinterpret_cast<const char*>(&sendField[0]),
+                sendField.size()*sizeof(vector)
+            );
+        }
     }
 
     // Wait for all transfers to complete.
@@ -2015,14 +2073,17 @@ void mesquiteMotionSolver::applyBCs
     }
 
     // If no boundaries were fixed, fix a few points at random
-    if (min(bdy_) > vector(0.5,0.5,0.5))
+    if (bdy_.size())
     {
-        Random randomizer(1);
-        label nFix = (field.size()*5)/100;
-
-        for(label i = 0; i < nFix; i++)
+        if (Foam::min(bdy_) > vector(0.5,0.5,0.5))
         {
-            field[randomizer.integer(0, field.size()-1)] = vector::zero;
+            Random randomizer(1);
+            label nFix = (field.size()*5)/100;
+
+            for(label i = 0; i < nFix; i++)
+            {
+                field[randomizer.integer(0, field.size()-1)] = vector::zero;
+            }
         }
     }
 }
@@ -2122,6 +2183,8 @@ label mesquiteMotionSolver::CG
     // Local variables
     scalar alpha, beta, rho, rhoOld, residual;
     label maxIter = x.size(), iter = 0;
+
+    reduce(maxIter, sumOp<label>());
 
     // Compute initial residual
     A(x,w);
@@ -2253,46 +2316,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         refPoints_ += dPointField;
 
         // Apply values to points common with coupleMaps
-
-        // Search the registry for all mapping objects.
-        if (Pstream::parRun() && !twoDMesh_)
-        {
-            HashTable<const coupleMap*> cMaps = Mesh_.lookupClass<coupleMap>();
-
-            forAllConstIter(HashTable<const coupleMap*>, cMaps, cmIter)
-            {
-                const coupleMap& cMap = *cmIter();
-
-                if (cMap.isLocal() || cMap.isSend())
-                {
-                    continue;
-                }
-
-                // Obtain a reference to the point buffer
-                pointField& pField = cMap.pointBuffer();
-
-                // Pick maps for which this sub-domain is master
-                if (cMap.masterIndex() == Pstream::myProcNo())
-                {
-                    // Fetch the neighbour's procIndex
-                    label neiProcNo = cMap.slaveIndex();
-
-                    const Map<label>& pointMap = auxPointMap_[neiProcNo];
-
-                    label pIndex = -1;
-
-                    forAll(pField, pointI)
-                    {
-                        pIndex = pointMap[pointI];
-
-                        if (pIndex < label(nPoints_))
-                        {
-                            pField[pointI] = refPoints_[pIndex];
-                        }
-                    }
-                }
-            }
-        }
+        updateCoupleMaps();
     }
 }
 
@@ -2409,6 +2433,9 @@ void mesquiteMotionSolver::smoothSurfaces()
                 }
             }
         }
+
+        // Apply values to points common with coupleMaps
+        updateCoupleMaps();
     }
 }
 
@@ -2640,6 +2667,7 @@ void mesquiteMotionSolver::enforceCylindricalConstraints()
                     "void mesquiteMotionSolver::enforceCylindricalConstraints()"
                 )
                     << " Cannot find patch: " << cstrPatches[wordI]
+                    << " in the slipPatches sub-dictionary."
                     << abort(FatalError);
             }
 

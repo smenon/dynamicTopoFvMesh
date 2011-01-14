@@ -219,6 +219,9 @@ class mesquiteMotionSolver
         // Private member function to construct parallel connectivity data
         void initParallelConnectivity();
 
+        // Update coupleMaps with up-to-date point information
+        void updateCoupleMaps();
+
         // Copy auxiliary points to/from buffers
         void copyAuxiliaryPoints(bool copyBack = false);
 

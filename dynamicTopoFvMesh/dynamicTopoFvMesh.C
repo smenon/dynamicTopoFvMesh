@@ -4036,7 +4036,7 @@ bool dynamicTopoFvMesh::resetMesh()
         }
 
         // Move coupled subMesh points
-        moveCoupledSubMeshes(points_);
+        moveCoupledSubMeshes();
     }
 
     // Obtain mesh stats after topo-changes

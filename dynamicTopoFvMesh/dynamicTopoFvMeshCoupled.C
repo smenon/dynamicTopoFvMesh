@@ -693,7 +693,7 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 
 
 // Move coupled patch subMesh points
-void dynamicTopoFvMesh::moveCoupledSubMeshes(const pointField& points)
+void dynamicTopoFvMesh::moveCoupledSubMeshes()
 {
     if (!Pstream::parRun())
     {

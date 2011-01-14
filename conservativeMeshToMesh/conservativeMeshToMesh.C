@@ -161,16 +161,16 @@ conservativeMeshToMesh::conservativeMeshToMesh
            !forceRecalculation
         )
         {
-            Info << " Reading addressing from file." << endl;
+            Info<< " Reading addressing from file." << endl;
 
             return;
         }
 
-        Info << " Recalculating addressing." << endl;
+        Info<< " Recalculating addressing." << endl;
     }
     else
     {
-        Info << " Calculating addressing." << endl;
+        Info<< " Calculating addressing." << endl;
     }
 
     // Set mesh characteristics
@@ -193,12 +193,12 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
     if (srcHeader.headerOk() && !addressing_.headerOk())
     {
-        Info << " Found addressing in source directory."
-             << " Checking for compatibility." << endl;
+        Info<< " Found addressing in source directory."
+            << " Checking for compatibility." << endl;
 
         if (invertAddressing())
         {
-            Info << " Inversion successful. " << endl;
+            Info<< " Inversion successful. " << endl;
             return;
         }
     }
@@ -300,8 +300,8 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
         if (debug)
         {
-            Info << " Load starts: " << tStarts << endl;
-            Info << " Load sizes: " << tSizes << endl;
+            Info<< " Load starts: " << tStarts << endl;
+            Info<< " Load sizes: " << tSizes << endl;
         }
 
         // Set the argument list for each thread
@@ -345,11 +345,11 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
             scalar percent = 100.0 * (double(counter_) / toMesh().nCells());
 
-            Info << "  Progress: " << percent << "% : "
-                 << "  Cells processed: " << counter_
-                 << "  out of " << tgtMesh().nCells() << " total."
-                 << "             \r"
-                 << flush;
+            Info<< "  Progress: " << percent << "% : "
+                << "  Cells processed: " << counter_
+                << "  out of " << tgtMesh().nCells() << " total."
+                << "             \r"
+                << flush;
 
             ctrMutex_.unlock();
 
@@ -366,7 +366,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
         }
     }
 
-    Info << nl << " Calculation time: " << calcTimer.elapsedTime() << endl;
+    Info<< nl << " Calculation time: " << calcTimer.elapsedTime() << endl;
 
     if (decompTarget)
     {
@@ -453,7 +453,7 @@ conservativeMeshToMesh::conservativeMeshToMesh
 
     if (writeAddressing)
     {
-        Info << " Writing addressing to disk." << endl;
+        Info<< " Writing addressing to disk." << endl;
 
         addressing_.write();
         volumes_.write();

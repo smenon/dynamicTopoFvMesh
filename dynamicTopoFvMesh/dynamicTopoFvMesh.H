@@ -943,7 +943,7 @@ class dynamicTopoFvMesh
         static void initCoupledConnectivity(void *argument);
 
         // Move coupled patch subMesh points
-        void moveCoupledSubMeshes(const pointField& points);
+        void moveCoupledSubMeshes();
 
         // Build a list of entities that need to be avoided
         // by regular topo-changes.

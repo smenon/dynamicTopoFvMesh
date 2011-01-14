@@ -558,13 +558,15 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
                     "    const labelListList& triangulations\n"
                     ") const\n"
                 )
-                    << "Swap sequence leads to negative old-volumes." << nl
-                    << "Edge: " << edgeToCheck << nl
-                    << "using Points: " << nl
+                    << " Swap sequence leads to negative old-volumes." << nl
+                    << " Edge: " << edgeToCheck << nl
+                    << " using Points: " << nl
                     << oldPoints_[hullVertices[triangulations[0][i]]] << nl
                     << oldPoints_[hullVertices[triangulations[1][i]]] << nl
                     << oldPoints_[hullVertices[triangulations[2][i]]] << nl
-                    << oldPoints_[edgeToCheck[0]] << endl;
+                    << oldPoints_[edgeToCheck[0]] << nl
+                    << " Volume: " << tetVol
+                    << endl;
             }
 
             return true;
@@ -594,13 +596,15 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
                     "    const labelListList& triangulations\n"
                     ") const\n"
                 )
-                    << "Swap sequence leads to negative old-volumes." << nl
-                    << "Edge: " << edgeToCheck << nl
-                    << "using Points: " << nl
+                    << " Swap sequence leads to negative old-volumes." << nl
+                    << " Edge: " << edgeToCheck << nl
+                    << " using Points: " << nl
                     << oldPoints_[hullVertices[triangulations[2][i]]] << nl
                     << oldPoints_[hullVertices[triangulations[1][i]]] << nl
                     << oldPoints_[hullVertices[triangulations[0][i]]] << nl
-                    << oldPoints_[edgeToCheck[1]] << endl;
+                    << oldPoints_[edgeToCheck[1]] << nl
+                    << " Volume: " << tetVol
+                    << endl;
             }
 
             return true;
