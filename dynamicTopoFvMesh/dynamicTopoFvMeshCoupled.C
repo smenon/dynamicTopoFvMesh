@@ -741,6 +741,9 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
         meshOps::pRead(proc, rcMap.pointBuffer());
         meshOps::pRead(proc, rcMap.oldPointBuffer());
     }
+
+    // Wait for transfers to complete before moving on
+    meshOps::waitForBuffers();
 }
 
 
@@ -1249,13 +1252,16 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             );
 
             // Ensure that this edge hasn't been added before
+            label neIndex = -1;
             bool foundDuplicate = false;
 
             const List<objectMap>& addedEdges = map.addedEdgeList();
 
             forAll(addedEdges, edgeI)
             {
-                if (edges_[addedEdges[edgeI].index()] == newEdge)
+                neIndex = addedEdges[edgeI].index();
+
+                if (edges_[neIndex] == newEdge)
                 {
                     foundDuplicate = true;
                     break;
@@ -1264,6 +1270,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             if (foundDuplicate)
             {
+                // Note the duplicate index for later
+                eIter() = neIndex;
+
                 continue;
             }
 
@@ -1394,6 +1403,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         // Was the duplicate face inserted before this?
                         if (fJ() != -1)
                         {
+                            // Note the duplicate index for later
+                            fIter() = fJ();
+
                             foundInsertedDuplicate = true;
                         }
 
@@ -1402,6 +1414,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
             }
 
+            // Face was inserted before, so don't insert again
             if (foundInsertedDuplicate)
             {
                 continue;
@@ -1410,22 +1423,24 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             // Configure edges from edgesToInsert
             forAll(sfEdges, eI)
             {
-                label mIndex = -1;
+                label meIndex = -1;
 
                 // Configure with the appropriate edge
                 if (edgesToInsert[procI].found(sfEdges[eI]))
                 {
-                    mIndex = edgesToInsert[procI][sfEdges[eI]];
+                    meIndex = edgesToInsert[procI][sfEdges[eI]];
                 }
-                else
+
+                if (meIndex == -1)
                 {
                     // Something is wrong here.
-                    Pout<< "  Could not find correspondence for edge: "
+                    Pout<< "  Could not find correspondence for slave edge: "
                         << sfEdges[eI] << ":: " << mesh.edges_[sfEdges[eI]]
+                        << nl << " mIndex: " << mIndex
                         << abort(FatalError);
                 }
 
-                nFaceEdges[eI] = mIndex;
+                nFaceEdges[eI] = meIndex;
             }
 
             // Determine patch, owner and neighbour for this face
@@ -1608,8 +1623,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
         forAllConstIter(Map<label>, procFaceMap, fIter)
         {
+            label fIndex = fIter();
+
             // Fetch the owner information
-            label mFaceOwn = owner_[fIter()];
+            label mFaceOwn = owner_[fIndex];
             label sFaceOwn = mesh.owner_[fIter.key()];
             label newNeighbour = cellsToInsert[procI][sFaceOwn];
 
@@ -1621,7 +1638,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 insertFace
                 (
                     -1,
-                    faces_[fIter()],
+                    faces_[fIndex],
                     mFaceOwn,
                     newNeighbour
                 )
@@ -1629,15 +1646,15 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Add the new faceEdges from the existing face. This may contain
             // edges that need to be converted, but that will be done later.
-            faceEdges_.append(faceEdges_[fIter()]);
+            faceEdges_.append(faceEdges_[fIndex]);
 
             // Update map
-            map.addFace(newFaceIndex, labelList(1, fIter()));
+            map.addFace(newFaceIndex, labelList(1, fIndex));
 
             // Update the owner cell
             meshOps::replaceLabel
             (
-                fIter(),
+                fIndex,
                 newFaceIndex,
                 cells_[mFaceOwn]
             );
@@ -1652,29 +1669,29 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             {
                 meshOps::replaceLabel
                 (
-                    fIter(),
+                    fIndex,
                     newFaceIndex,
                     edgeFaces_[fEdges[edgeI]]
                 );
             }
 
             // Remove the old boundary face
-            removeFace(fIter());
+            removeFace(fIndex);
 
             // Update map
-            map.removeFace(fIter());
+            map.removeFace(fIndex);
 
             // Obtain references
             Map<label>& faceMap = cMap.entityMap(coupleMap::FACE);
             Map<label>& rFaceMap = cMap.reverseEntityMap(coupleMap::FACE);
 
             // Erase entries
-            rFaceMap.erase(faceMap[fIter()]);
-            faceMap.erase(fIter());
+            rFaceMap.erase(faceMap[fIndex]);
+            faceMap.erase(fIndex);
 
             // For 2D meshes, the boundary face gets converted
             // to an interior one. Note the index for further operations.
-            if ((mIndex == fIter()) && twoDMesh_)
+            if ((mIndex == fIndex) && twoDMesh_)
             {
                 map.index() = newFaceIndex;
             }
@@ -1693,17 +1710,42 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         // Loop through conversion edges
         forAllConstIter(Map<label>, procEdgeMap, eIter)
         {
+            label eIndex = eIter();
+
             bool allInterior = true;
 
-            const labelList& eFaces = edgeFaces_[eIter()];
-
-            forAll(eFaces, faceI)
+            if (eIndex < 0)
             {
-                if (whichPatch(eFaces[faceI]) > -1)
+                // Not a conversion edge. Search added edge list for index
+                eIndex = edgesToInsert[procI][eIter.key()];
+
+                if (eIndex < 0)
                 {
-                    allInterior = false;
-                    break;
+                    // Something's wrong
+                    Pout<< " Edge: " << eIter.key()
+                        << " :: " << rPM.subMesh().edges_[eIter.key()]
+                        << " was never inserted."
+                        << abort(FatalError);
                 }
+            }
+
+            const labelList& eFaces = edgeFaces_[eIndex];
+
+            if (eFaces.size())
+            {
+                forAll(eFaces, faceI)
+                {
+                    if (whichPatch(eFaces[faceI]) > -1)
+                    {
+                        allInterior = false;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // Edge was deleted before, so skip it
+                allInterior = false;
             }
 
             if (allInterior)
@@ -1714,35 +1756,35 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     insertEdge
                     (
                         -1,
-                        edges_[eIter()],
-                        edgeFaces_[eIter()],
+                        edges_[eIndex],
+                        edgeFaces_[eIndex],
                         labelList(0)
                     )
                 );
 
                 // Update map
-                map.addEdge(newEdgeIndex, labelList(1, eIter()));
+                map.addEdge(newEdgeIndex, labelList(1, eIndex));
 
                 // Update faceEdges information for all connected faces
                 forAll(eFaces, faceI)
                 {
                     meshOps::replaceLabel
                     (
-                        eIter(),
+                        eIndex,
                         newEdgeIndex,
                         faceEdges_[eFaces[faceI]]
                     );
                 }
 
                 // Remove the old boundary edge
-                removeEdge(eIter());
+                removeEdge(eIndex);
 
                 // Update map
-                map.removeEdge(eIter());
+                map.removeEdge(eIndex);
 
                 // For 3D meshes, the boundary edge gets converted
                 // to an interior one. Note the index for further operations.
-                if ((mIndex == eIter()) && !twoDMesh_)
+                if ((mIndex == eIndex) && !twoDMesh_)
                 {
                     map.index() = newEdgeIndex;
                 }
@@ -1752,8 +1794,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 Map<label>& rEdgeMap = cMap.reverseEntityMap(coupleMap::EDGE);
 
                 // Erase entries
-                rEdgeMap.erase(edgeMap[eIter()]);
-                edgeMap.erase(eIter());
+                rEdgeMap.erase(edgeMap[eIndex]);
+                edgeMap.erase(eIndex);
             }
         }
     }
@@ -1946,6 +1988,22 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
             }
         }
+    }
+
+    // Write out cells for debug, if necessary
+    if (debug > 4)
+    {
+        const List<objectMap>& acList = map.addedCellList();
+
+        labelList addedCells(acList.size(), -1);
+
+        forAll(acList, indexI)
+        {
+            addedCells[indexI] = acList[indexI].index();
+        }
+
+        // Write it out
+        writeVTK("insertCells(" + Foam::name(mIndex) + ')',	addedCells);
     }
 
     // Specify that the operation was successful
