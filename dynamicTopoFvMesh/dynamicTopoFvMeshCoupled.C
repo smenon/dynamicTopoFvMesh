@@ -1803,11 +1803,28 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     if (!twoDMesh_)
     {
         // Fix edgePoints for all new / converted edges
-        const List<objectMap>& addedEdgeList = map.addedEdgeList();
+        DynamicList<label> fixEdges(10);
 
-        forAll(addedEdgeList, indexI)
+        forAll(edgesToInsert, procI)
         {
-            buildEdgePoints(addedEdgeList[indexI].index());
+            const Map<label>& procEdgeMap = edgesToInsert[procI];
+
+            forAllConstIter(Map<label>, procEdgeMap, eIter)
+            {
+                if ((findIndex(fixEdges, eIter()) < 0) && (eIter() != mIndex))
+                {
+                    fixEdges.append(eIter());
+                }
+            }
+        }
+
+        // Fix the conversion edge as well
+        fixEdges.append(map.index());
+
+        // Sequentially fix all edges
+        forAll(fixEdges, indexI)
+        {
+            buildEdgePoints(fixEdges[indexI]);
         }
     }
 
@@ -5247,16 +5264,21 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
                     else
                     {
                         const edge& check = edges_[eIter.key()];
+                        const labelList& eFaces = edgeFaces_[eIter.key()];
 
-                        forAll(check, pI)
+                        // Skip deleted edges
+                        if (eFaces.size())
                         {
-                            const labelList& pEdges = pointEdges_[check[pI]];
-
-                            forAll(pEdges, edgeI)
+                            forAll(check, pI)
                             {
-                                if (!entities.found(pEdges[edgeI]))
+                                const labelList& pE = pointEdges_[check[pI]];
+
+                                forAll(pE, edgeI)
                                 {
-                                    entities.insert(pEdges[edgeI]);
+                                    if (!entities.found(pE[edgeI]))
+                                    {
+                                        entities.insert(pE[edgeI]);
+                                    }
                                 }
                             }
                         }
