@@ -1,3 +1,4 @@
 derived/timeVaryingDisplacement/timeVaryingDisplacementPointPatchVectorField.C
+derived/rotatingTranslation/rotatingTranslationPointPatchVectorField.C
 
 LIB = $(FOAM_USER_LIBBIN)/libenginePointPatchFields
