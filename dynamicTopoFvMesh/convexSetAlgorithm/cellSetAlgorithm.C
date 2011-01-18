@@ -141,6 +141,8 @@ bool cellSetAlgorithm::computeIntersection
                 subjectTets[ntOld][0] = oldPoints[oldFace[0]];
                 subjectTets[ntOld][1] = oldPoints[oldFace[1]];
                 subjectTets[ntOld][2] = oldPoints[oldFace[2]];
+
+                ntOld++;
             }
             else
             {
@@ -149,11 +151,12 @@ bool cellSetAlgorithm::computeIntersection
                     subjectTets[ntOld][0] = oldPoints[oldFace[pI]];
                     subjectTets[ntOld][1] = oldPoints[oldFace.nextLabel(pI)];
                     subjectTets[ntOld][2] = fCentre;
+
+                    ntOld++;
                 }
             }
 
             oldCentre += fCentre;
-            ntOld++;
         }
 
         // Configure tets from newCell
@@ -168,6 +171,8 @@ bool cellSetAlgorithm::computeIntersection
                 clippingTets[ntNew][0] = newPoints[newFace[0]];
                 clippingTets[ntNew][1] = newPoints[newFace[1]];
                 clippingTets[ntNew][2] = newPoints[newFace[2]];
+
+                ntNew++;
             }
             else
             {
@@ -176,11 +181,12 @@ bool cellSetAlgorithm::computeIntersection
                     clippingTets[ntNew][0] = newPoints[newFace[pI]];
                     clippingTets[ntNew][1] = newPoints[newFace.nextLabel(pI)];
                     clippingTets[ntNew][2] = fCentre;
+
+                    ntNew++;
                 }
             }
 
             newCentre += fCentre;
-            ntNew++;
         }
 
         oldCentre /= 5.0;
@@ -330,6 +336,50 @@ bool cellSetAlgorithm::computeIntersection
     }
 
     return intersects;
+}
+
+
+//- Write out tets as a VTK
+void cellSetAlgorithm::writeVTK
+(
+    const word& name,
+    const DynamicList<FixedList<point, 4> >& tetList
+) const
+{
+    // Fill up all points
+    label pI = 0;
+
+    List<cell> allTets(tetList.size(), cell(4));
+    pointField allPoints(4 * tetList.size());
+
+    forAll(tetList, tetI)
+    {
+        allTets[tetI][0] = pI;
+        allPoints[pI++] = tetList[tetI][0];
+
+        allTets[tetI][1] = pI;
+        allPoints[pI++] = tetList[tetI][1];
+
+        allTets[tetI][2] = pI;
+        allPoints[pI++] = tetList[tetI][2];
+
+        allTets[tetI][3] = pI;
+        allPoints[pI++] = tetList[tetI][3];
+    }
+
+    // Write out in cell-to-node addressing
+    meshOps::writeVTK
+    (
+        mesh_,
+        name,
+        identity(tetList.size()),
+        3,
+        allPoints,
+        List<edge>(0),
+        List<face>(0),
+        allTets,
+        List<label>(0)
+    );
 }
 
 

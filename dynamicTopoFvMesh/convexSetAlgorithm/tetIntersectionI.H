@@ -55,15 +55,19 @@ inline void tetIntersection::computeClipPlanes()
     clipPlanes_[2].first() /= mag(clipPlanes_[2].first()) + VSMALL;
     clipPlanes_[3].first() /= mag(clipPlanes_[3].first()) + VSMALL;
 
-    scalar det = (edge10 & clipPlanes_[3].first());
+    // Compute magnitude of clipping tetrahedron
+    clipTetMag_ = (1.0 / 6.0) * (edge10 & clipPlanes_[3].first());
 
-    if (det < 0.0)
+    if (clipTetMag_ < 0.0)
     {
         // Reverse normal directions
         clipPlanes_[0].first() = -clipPlanes_[0].first();
         clipPlanes_[1].first() = -clipPlanes_[1].first();
         clipPlanes_[2].first() = -clipPlanes_[2].first();
         clipPlanes_[3].first() = -clipPlanes_[3].first();
+
+        // Reverse sign
+        clipTetMag_ = mag(clipTetMag_);
     }
 
     // Determine plane constants
@@ -282,6 +286,7 @@ inline void tetIntersection::splitAndDecompose
 inline tetIntersection::tetIntersection(const FixedList<point, 4>& clipTet)
 :
     clipTet_(clipTet),
+    clipTetMag_(0.0),
     inside_(10),
     allTets_(10)
 {
@@ -297,6 +302,13 @@ inline tetIntersection::~tetIntersection()
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+// Return magnitude of clipping tetrahedron
+inline scalar tetIntersection::clipTetMag() const
+{
+    return clipTetMag_;
+}
+
 
 // Evaluate for intersections
 inline bool tetIntersection::evaluate(const FixedList<point, 4>& subjectTet)

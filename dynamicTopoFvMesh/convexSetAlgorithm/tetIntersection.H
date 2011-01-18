@@ -74,6 +74,9 @@ class tetIntersection
 
         FixedList<hPlane, 4> clipPlanes_;
 
+        //- Magnitude of clipping tetrahedron
+        scalar clipTetMag_;
+
         //- Tetrahedra used as temporaries
         DynamicList<FixedList<point, 4> > inside_;
 
@@ -113,6 +116,9 @@ public:
 
 
     // Member Functions
+
+        //- Return magnitude of clipping tetrahedron
+        inline scalar clipTetMag() const;
 
         //- Evaluate for intersections against input tetrahedron
         inline bool evaluate(const FixedList<point, 4>& subjectTet);

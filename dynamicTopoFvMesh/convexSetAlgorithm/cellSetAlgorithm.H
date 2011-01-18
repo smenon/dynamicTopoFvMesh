@@ -65,6 +65,13 @@ class cellSetAlgorithm
         //- Disallow default bitwise assignment
         void operator=(const cellSetAlgorithm&);
 
+        //- Write out tets as a VTK
+        void writeVTK
+        (
+            const word&,
+            const DynamicList<FixedList<point, 4> >&
+        ) const;
+
 public:
 
     //- Constructor
