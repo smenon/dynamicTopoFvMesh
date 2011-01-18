@@ -15,10 +15,6 @@ edgeSwap.C
 edgeBisect.C
 edgeCollapse.C
 
-convexSetAlgorithm/convexSetAlgorithm.C
-convexSetAlgorithm/faceSetAlgorithm.C
-convexSetAlgorithm/cellSetAlgorithm.C
-
 tetMetrics = tetMetrics
 $(tetMetrics)/tetMetric.C
 $(tetMetrics)/tetMetrics.C

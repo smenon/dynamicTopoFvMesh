@@ -4032,10 +4032,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             // Fetch addressing for this patch.
             const processorPolyPatch& pp =
             (
-                refCast<const processorPolyPatch>
-                (
-                    boundary[nPrc[proc]]
-                )
+                refCast<const processorPolyPatch>(boundary[nPrc[proc]])
             );
 
             const labelList& neiPoints = pp.neighbPoints();
@@ -4046,8 +4043,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 {
                     FatalErrorIn
                     (
-                        "void dynamicTopoFvMesh::"
-                        "buildProcessorCoupledMaps()"
+                        "void dynamicTopoFvMesh::buildProcessorCoupledMaps()"
                     )
                         << " Multiply connected point." << nl
                         << " My procID: " << Pstream::myProcNo() << nl
@@ -4121,8 +4117,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 {
                     FatalErrorIn
                     (
-                        "void dynamicTopoFvMesh::"
-                        "buildProcessorCoupledMaps()"
+                        "void dynamicTopoFvMesh::buildProcessorCoupledMaps()"
                     )
                         << " Failed to match point: " << pIter.key()
                         << ": " << points_[pIter.key()]
@@ -4353,8 +4348,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
             FatalErrorIn
             (
-                "void dynamicTopoFvMesh::"
-                "buildProcessorCoupledMaps()"
+                "void dynamicTopoFvMesh::buildProcessorCoupledMaps()"
             )
                 << " Unmatched faces were found for processor: " << proc
                 << abort(FatalError);
