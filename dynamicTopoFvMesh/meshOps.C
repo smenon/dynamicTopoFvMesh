@@ -589,113 +589,159 @@ inline void writeVTK
             {
                 const cell& tCell = cells[cList[cellI]];
 
-                if (tCell.size() == 4)
+                // Is face information provided?
+                if (faces.size())
                 {
-                    // Point-ordering for tetrahedra
-                    const face& baseFace = faces[tCell[0]];
-                    const face& checkFace = faces[tCell[1]];
-
-                    // Size the list
-                    cpList[nCells].setSize(4);
-
-                    // Get the fourth point
-                    label apexPoint =
-                    (
-                        meshOps::findIsolatedPoint(baseFace, checkFace)
-                    );
-
-                    // Something's wrong with connectivity.
-                    if (apexPoint == -1)
+                    if (tCell.size() == 4)
                     {
-                        FatalErrorIn
+                        // Point-ordering for tetrahedra
+                        const face& baseFace = faces[tCell[0]];
+                        const face& checkFace = faces[tCell[1]];
+
+                        // Size the list
+                        cpList[nCells].setSize(4);
+
+                        // Get the fourth point
+                        label apexPoint =
                         (
-                            "void writeVTK\n"
-                            "(\n"
-                            "    const polyMesh& mesh,\n"
-                            "    const word& name,\n"
-                            "    const labelList& cList,\n"
-                            "    const label primitiveType,\n"
-                            "    const UList<point>& points,\n"
-                            "    const UList<edge>& edges,\n"
-                            "    const UList<face>& faces,\n"
-                            "    const UList<cell>& cells,\n"
-                            "    const UList<label>& owner\n"
-                            ") const\n"
-                        )
-                            << "Cell: " << cList[cellI]
-                            << ":: " << tCell
-                            << " has inconsistent connectivity."
-                            << abort(FatalError);
-                    }
+                            meshOps::findIsolatedPoint(baseFace, checkFace)
+                        );
 
-                    // Write-out in order
-                    label ownCell = owner[tCell[0]];
-
-                    if (ownCell == cList[cellI])
-                    {
-                        cpList[nCells][0] = baseFace[2];
-                        cpList[nCells][1] = baseFace[1];
-                        cpList[nCells][2] = baseFace[0];
-                        cpList[nCells][3] = apexPoint;
-                    }
-                    else
-                    {
-                        cpList[nCells][0] = baseFace[0];
-                        cpList[nCells][1] = baseFace[1];
-                        cpList[nCells][2] = baseFace[2];
-                        cpList[nCells][3] = apexPoint;
-                    }
-
-                    nTotalCells += 4;
-                }
-                else
-                if (tCell.size() > 4)
-                {
-                    // Point ordering for polyhedra
-                    isPolyhedron = true;
-
-                    // First obtain the face count
-                    label npF = 0;
-
-                    forAll(tCell, faceI)
-                    {
-                        npF += faces[tCell[faceI]].size();
-                    }
-
-                    // Size the list
-                    cpList[nCells].setSize(tCell.size() + npF + 1);
-
-                    // Fill in facePoints
-                    label nP = 0;
-
-                    // Fill in the number of faces
-                    cpList[nCells][nP++] = tCell.size();
-
-                    forAll(tCell, faceI)
-                    {
-                        const face& checkFace = faces[tCell[faceI]];
-
-                        // First fill in face size
-                        cpList[nCells][nP++] = checkFace.size();
-
-                        // Next fill in points in order
-                        if (owner[tCell[faceI]] == cList[cellI])
+                        // Something's wrong with connectivity.
+                        if (apexPoint == -1)
                         {
-                            forAll(checkFace, pI)
-                            {
-                                cpList[nCells][nP++] = checkFace[pI];
-                            }
+                            FatalErrorIn
+                            (
+                                "void writeVTK\n"
+                                "(\n"
+                                "    const polyMesh& mesh,\n"
+                                "    const word& name,\n"
+                                "    const labelList& cList,\n"
+                                "    const label primitiveType,\n"
+                                "    const UList<point>& points,\n"
+                                "    const UList<edge>& edges,\n"
+                                "    const UList<face>& faces,\n"
+                                "    const UList<cell>& cells,\n"
+                                "    const UList<label>& owner\n"
+                                ") const\n"
+                            )
+                                << "Cell: " << cList[cellI]
+                                << ":: " << tCell
+                                << " has inconsistent connectivity."
+                                << abort(FatalError);
+                        }
+
+                        // Write-out in order
+                        label ownCell = owner[tCell[0]];
+
+                        if (ownCell == cList[cellI])
+                        {
+                            cpList[nCells][0] = baseFace[2];
+                            cpList[nCells][1] = baseFace[1];
+                            cpList[nCells][2] = baseFace[0];
+                            cpList[nCells][3] = apexPoint;
                         }
                         else
                         {
-                            forAllReverse(checkFace, pI)
+                            cpList[nCells][0] = baseFace[0];
+                            cpList[nCells][1] = baseFace[1];
+                            cpList[nCells][2] = baseFace[2];
+                            cpList[nCells][3] = apexPoint;
+                        }
+
+                        nTotalCells += 4;
+                    }
+                    else
+                    if (tCell.size() > 4)
+                    {
+                        // Point ordering for polyhedra
+                        isPolyhedron = true;
+
+                        // First obtain the face count
+                        label npF = 0;
+
+                        forAll(tCell, faceI)
+                        {
+                            npF += faces[tCell[faceI]].size();
+                        }
+
+                        // Size the list
+                        cpList[nCells].setSize(tCell.size() + npF + 1);
+
+                        // Fill in facePoints
+                        label nP = 0;
+
+                        // Fill in the number of faces
+                        cpList[nCells][nP++] = tCell.size();
+
+                        forAll(tCell, faceI)
+                        {
+                            const face& checkFace = faces[tCell[faceI]];
+
+                            // First fill in face size
+                            cpList[nCells][nP++] = checkFace.size();
+
+                            // Next fill in points in order
+                            if (owner[tCell[faceI]] == cList[cellI])
                             {
-                                cpList[nCells][nP++] = checkFace[pI];
+                                forAll(checkFace, pI)
+                                {
+                                    cpList[nCells][nP++] = checkFace[pI];
+                                }
+                            }
+                            else
+                            {
+                                forAllReverse(checkFace, pI)
+                                {
+                                    cpList[nCells][nP++] = checkFace[pI];
+                                }
                             }
                         }
-                    }
 
-                    nTotalCells += (tCell.size() + npF + 1);
+                        nTotalCells += (tCell.size() + npF + 1);
+                    }
+                }
+                else
+                {
+                    // No face information.
+                    // Assume cell-to-node information.
+                    if (tCell.size() == 4)
+                    {
+                        // Build a face out of first three points.
+                        triPointRef tpr
+                        (
+                            meshPoints[tCell[0]],
+                            meshPoints[tCell[1]],
+                            meshPoints[tCell[2]]
+                        );
+
+                        // Fetch fourth point
+                        const point& d = meshPoints[tCell[3]];
+
+                        scalar dDotN = ((d - tpr.a()) & tpr.normal());
+
+                        // Size the list
+                        cpList[nCells].setSize(4);
+
+                        if (dDotN > 0.0)
+                        {
+                            // Correct orientation
+                            cpList[nCells][0] = tCell[0];
+                            cpList[nCells][1] = tCell[1];
+                            cpList[nCells][2] = tCell[2];
+                            cpList[nCells][3] = tCell[3];
+                        }
+                        else
+                        {
+                            // Flip triangle
+                            cpList[nCells][0] = tCell[2];
+                            cpList[nCells][1] = tCell[1];
+                            cpList[nCells][2] = tCell[0];
+                            cpList[nCells][3] = tCell[3];
+                        }
+
+                        nTotalCells += 4;
+                    }
                 }
 
                 break;
