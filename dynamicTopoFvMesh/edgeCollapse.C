@@ -4480,6 +4480,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // For cell-mapping, exclude all hull-cells
     forAll(cellsChecked, indexI)
     {
+        if (cells_[cellsChecked[indexI]].empty())
+        {
+            cellsChecked[indexI] = -1;
+        }
+        else
         if (findIndex(cellHull, cellsChecked[indexI]) > 0)
         {
             cellsChecked[indexI] = -1;
@@ -4503,7 +4508,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // compute mapping information.
     forAll(cellsChecked, cellI)
     {
-        if (cellsChecked[cellI] < 0 || cells_[cellsChecked[cellI]].empty())
+        if (cellsChecked[cellI] < 0)
         {
             continue;
         }
@@ -4574,6 +4579,84 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     // If modification is coupled, update mapping info.
     if (coupledModification_)
     {
+        // Check if the collapse point is present
+        // on a processor not involved in the current
+        // operation, and update if necessary.
+        if (procCouple && !localCouple)
+        {
+            forAll(procIndices_, pI)
+            {
+                bool involved = false;
+
+                forAll(slaveMaps, slaveI)
+                {
+                    if (slaveMaps[slaveI].patchIndex() == pI)
+                    {
+                        // Involved in this operation. Break out.
+                        involved = true;
+                        break;
+                    }
+                }
+
+                if (involved)
+                {
+                    continue;
+                }
+
+                // Check coupleMaps for point coupling
+                const label pointEnum = coupleMap::POINT;
+
+                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupleMap& cMap = recvMesh.patchMap();
+
+                // Obtain non-const references
+                Map<label>& pointMap = cMap.entityMap(pointEnum);
+                Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
+
+                label sI = -1;
+
+                if (collapsingSlave)
+                {
+                    if ((sI = cMap.findMaster(pointEnum, collapsePoint)) > -1)
+                    {
+                        if (rPointMap.found(replacePoint))
+                        {
+                            rPointMap[replacePoint] = sI;
+                        }
+                        else
+                        {
+                            rPointMap.insert(replacePoint, sI);
+                        }
+
+                        pointMap[sI] = replacePoint;
+                    }
+                }
+                else
+                {
+                    if ((sI = cMap.findSlave(pointEnum, collapsePoint)) > -1)
+                    {
+                        if (pointMap.found(replacePoint))
+                        {
+                            pointMap[replacePoint] = sI;
+                        }
+                        else
+                        {
+                            pointMap.insert(replacePoint, sI);
+                        }
+
+                        rPointMap[sI] = replacePoint;
+                    }
+                }
+
+                if (sI > -1 && debug > 2)
+                {
+                    Pout<< " Found " << collapsePoint
+                        << " on proc: " << procIndices_[pI]
+                        << endl;
+                }
+            }
+        }
+
         forAll(slaveMaps, slaveI)
         {
             // Alias for convenience...

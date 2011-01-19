@@ -2686,6 +2686,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     // Hull variables
     face tmpTriFace(3);
+    edge origEdge(edges_[eIndex]);
     labelList tmpEdgeFaces(3,-1);
     labelList tmpIntEdgeFaces(4,-1);
     labelList tmpEdgePoints(3,-1);
@@ -2724,7 +2725,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     {
         Pout<< nl << nl
             << "Edge: " << eIndex
-            << ": " << edges_[eIndex]
+            << ": " << origEdge
             << " is to be bisected. " << endl;
 
         label epIndex = whichEdgePatch(eIndex);
@@ -2743,7 +2744,14 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Write out VTK files prior to change
         if (debug > 3)
         {
-            writeVTK(Foam::name(eIndex) + "_Bisect_0", cellHull);
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + '(' + Foam::name(origEdge[0])
+              + ',' + Foam::name(origEdge[1]) + ')'
+              + "_Bisect_0",
+                cellHull
+            );
         }
     }
 
@@ -3943,7 +3951,14 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 newHull[i] = addedCellIndices[i - start];
             }
 
-            writeVTK(Foam::name(eIndex) + "_Bisect_1", newHull);
+            writeVTK
+            (
+                Foam::name(eIndex)
+              + '(' + Foam::name(origEdge[0])
+              + ',' + Foam::name(origEdge[1]) + ')'
+              + "_Bisect_1",
+                newHull
+            );
         }
     }
 

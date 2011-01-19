@@ -1798,6 +1798,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 // Erase entries
                 rEdgeMap.erase(edgeMap[eIndex]);
                 edgeMap.erase(eIndex);
+
+                // Replace the entry in edgesToInsert, so that
+                // edgePoints is corrected for the right edge
+                edgesToInsert[procI][eIter.key()] = newEdgeIndex;
             }
         }
     }
@@ -1813,15 +1817,16 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             forAllConstIter(Map<label>, procEdgeMap, eIter)
             {
-                if ((findIndex(fixEdges, eIter()) < 0) && (eIter() != mIndex))
+                if
+                (
+                    (findIndex(fixEdges, eIter()) < 0) &&
+                    (edgeFaces_[eIter()].size())
+                )
                 {
                     fixEdges.append(eIter());
                 }
             }
         }
-
-        // Fix the conversion edge as well
-        fixEdges.append(map.index());
 
         // Sequentially fix all edges
         forAll(fixEdges, indexI)

@@ -710,6 +710,13 @@ inline void writeVTK
 
                         nTotalCells += (tCell.size() + npF + 1);
                     }
+                    else
+                    {
+                        FatalErrorIn("void meshOps::writeVTK()")
+                            << " Wrong cell size: " << tCell << nl
+                            << " Index: " << cList[cellI] << nl
+                            << abort(FatalError);
+                    }
                 }
                 else
                 {
@@ -751,6 +758,13 @@ inline void writeVTK
                         }
 
                         nTotalCells += 4;
+                    }
+                    else
+                    {
+                        FatalErrorIn("void meshOps::writeVTK()")
+                            << " Wrong cell size: " << tCell << nl
+                            << " Index: " << cList[cellI] << nl
+                            << abort(FatalError);
                     }
                 }
 
