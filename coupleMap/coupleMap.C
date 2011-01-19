@@ -500,6 +500,8 @@ void coupleMap::clearBuffers() const
     pointBuffer_.clear();
     oldPointBuffer_.clear();
 
+    subMeshPoints_.clear();
+
     forAll(entityBuffer_, bufferI)
     {
         entityBuffer_[bufferI].clear();

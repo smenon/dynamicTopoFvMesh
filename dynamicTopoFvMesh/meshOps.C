@@ -612,18 +612,21 @@ inline void writeVTK
                         {
                             FatalErrorIn
                             (
-                                "void writeVTK\n"
+                                "void meshOps::writeVTK\n"
                                 "(\n"
                                 "    const polyMesh& mesh,\n"
                                 "    const word& name,\n"
                                 "    const labelList& cList,\n"
                                 "    const label primitiveType,\n"
-                                "    const UList<point>& points,\n"
+                                "    const UList<point>& meshPoints,\n"
                                 "    const UList<edge>& edges,\n"
                                 "    const UList<face>& faces,\n"
                                 "    const UList<cell>& cells,\n"
                                 "    const UList<label>& owner\n"
-                                ") const\n"
+                                "    const UList<scalar>& scalField,\n"
+                                "    const UList<label>& lablField,\n"
+                                "    const UList<vector>& vectField\n"
+                                ")\n"
                             )
                                 << "Cell: " << cList[cellI]
                                 << ":: " << tCell
@@ -677,6 +680,13 @@ inline void writeVTK
                         forAll(tCell, faceI)
                         {
                             const face& checkFace = faces[tCell[faceI]];
+
+                            if (checkFace.empty())
+                            {
+                                FatalErrorIn("void meshOps::writeVTK()")
+                                    << " Empty face: " << tCell[faceI]
+                                    << abort(FatalError);
+                            }
 
                             // First fill in face size
                             cpList[nCells][nP++] = checkFace.size();

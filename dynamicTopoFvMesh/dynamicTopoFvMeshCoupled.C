@@ -35,13 +35,15 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
+#include "dynamicTopoFvMesh.H"
+
 #include "Time.H"
 #include "triFace.H"
 #include "changeMap.H"
 #include "matchPoints.H"
 #include "globalMeshData.H"
 #include "coupledPatchInfo.H"
-#include "dynamicTopoFvMesh.H"
+#include "processorPolyPatch.H"
 
 namespace Foam
 {
@@ -2964,14 +2966,14 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     const labelList& subMeshPoints = cMap.subMeshPoints();
 
     Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
-    Map<label>& rEdgeMap  = cMap.reverseEntityMap(coupleMap::EDGE);
-    Map<label>& rFaceMap  = cMap.reverseEntityMap(coupleMap::FACE);
-    Map<label>& rCellMap  = cMap.reverseEntityMap(coupleMap::CELL);
+    Map<label>& rEdgeMap = cMap.reverseEntityMap(coupleMap::EDGE);
+    Map<label>& rFaceMap = cMap.reverseEntityMap(coupleMap::FACE);
+    Map<label>& rCellMap = cMap.reverseEntityMap(coupleMap::CELL);
 
     Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
-    Map<label>& edgeMap  = cMap.entityMap(coupleMap::EDGE);
-    Map<label>& faceMap  = cMap.entityMap(coupleMap::FACE);
-    Map<label>& cellMap  = cMap.entityMap(coupleMap::CELL);
+    Map<label>& edgeMap = cMap.entityMap(coupleMap::EDGE);
+    Map<label>& faceMap = cMap.entityMap(coupleMap::FACE);
+    Map<label>& cellMap = cMap.entityMap(coupleMap::CELL);
 
     // Add all cells connected to points on the subMeshPoints list
     label proc = -1;
@@ -3093,10 +3095,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         forAll(subMeshPoints, pointI)
         {
             // Loop through pointEdges for this point.
-            const labelList& pEdges =
-            (
-                pointEdges_[subMeshPoints[pointI]]
-            );
+            const labelList& pEdges = pointEdges_[subMeshPoints[pointI]];
 
             forAll(pEdges, edgeI)
             {
@@ -3539,7 +3538,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     // For debugging purposes...
     if (debug > 3)
     {
-        Pout<< "Writing out coupledPatchInfo for processor: "
+        Pout<< "Writing out sent subMesh for processor: "
             << proc << endl;
 
         writeVTK
@@ -4007,6 +4006,19 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             )
         );
 
+        if (debug > 3)
+        {
+            Pout<< "Writing out received subMesh for processor: "
+                << proc << endl;
+
+            rPM.subMesh().writeVTK
+            (
+                "rPatchMesh_" + Foam::name(Pstream::myProcNo())
+              + "to" + Foam::name(proc),
+                identity(cMap.cells().size())
+            );
+        }
+
         // Sanity check: Do sub-mesh point sizes match?
         if
         (
@@ -4017,7 +4029,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             FatalErrorIn("void dynamicTopoFvMesh::buildProcessorCoupledMaps()")
                 << " Sub-mesh point sizes don't match." << nl
                 << " My procID: " << Pstream::myProcNo() << nl
-                << " Slave processor: " << proc << nl
+                << " Neighbour processor: " << proc << nl
                 << abort(FatalError);
         }
 
@@ -4039,15 +4051,24 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
             if (debug)
             {
-                if (findIndex(neiPoints, -1) > -1)
+                // Find all occurrences of multiply connected points
+                labelList mIdx = findIndices(neiPoints, -1);
+
+                if (mIdx.size())
                 {
+                    // Write out for post-processing
+                    UIndirectList<label> myIdx(mP, mIdx);
+                    writeVTK("mcPoints", labelList(myIdx), 0);
+
                     FatalErrorIn
                     (
                         "void dynamicTopoFvMesh::buildProcessorCoupledMaps()"
                     )
                         << " Multiply connected point." << nl
                         << " My procID: " << Pstream::myProcNo() << nl
-                        << " Slave processor: " << proc << nl
+                        << " Neighbour processor: " << proc << nl
+                        << " Neighbour Indices: " << mIdx << nl
+                        << " My indices: " << myIdx << nl
                         << abort(FatalError);
                 }
             }
