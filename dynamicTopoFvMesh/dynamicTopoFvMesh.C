@@ -3664,7 +3664,7 @@ bool dynamicTopoFvMesh::resetMesh()
     if (topoChangeFlag_)
     {
         // Write out statistics
-        Info<< " Bisections :: Total: " << status(3)
+        Pout<< " Bisections :: Total: " << status(3)
             << ", Surface: " << status(5) << nl
             << " Collapses  :: Total: " << status(4)
             << ", Surface: " << status(6) << nl
@@ -3673,7 +3673,7 @@ bool dynamicTopoFvMesh::resetMesh()
 
         if (status(7))
         {
-            Info<< " Slivers    :: " << status(7) << endl;
+            Pout<< " Slivers    :: " << status(7) << endl;
         }
 
         // Set sizes for mapping

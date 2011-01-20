@@ -4096,8 +4096,8 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
             if (debug > 1)
             {
-                Info << nl << "Trisecting slave face: " << sIndex
-                     << " for master face: " << fIndex << endl;
+                Pout<< nl << "Trisecting slave face: " << sIndex
+                    << " for master face: " << fIndex << endl;
             }
 
             // Temporarily turn off coupledModification.
@@ -4227,10 +4227,10 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
     if (debug > 1)
     {
-        Info << nl << nl
-             << "Face: " << fIndex
-             << ": " << faces_[fIndex]
-             << " is to be trisected. " << endl;
+        Pout<< nl << nl
+            << "Face: " << fIndex
+            << ": " << faces_[fIndex]
+            << " is to be trisected. " << endl;
 
         // Write out VTK files prior to change
         if (debug > 3)
@@ -4911,24 +4911,24 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
                     if (!matched)
                     {
-                        Info << "masterEdges: " << endl;
-                        Info << ameList << endl;
+                        Pout<< "masterEdges: " << nl
+                            << ameList << endl;
 
-                        Info << "slaveEdges: " << endl;
-                        Info << aseList << endl;
+                        Pout<< "slaveEdges: " << nl
+                            << aseList << endl;
 
                         forAll(ameList, meI)
                         {
-                            Info << ameList[meI].index() << ": "
-                                 << edges_[ameList[meI].index()]
-                                 << endl;
+                            Pout<< ameList[meI].index() << ": "
+                                << edges_[ameList[meI].index()]
+                                << endl;
                         }
 
                         forAll(aseList, seI)
                         {
-                            Info << aseList[seI].index() << ": "
-                                 << edges_[aseList[seI].index()]
-                                 << endl;
+                            Pout<< aseList[seI].index() << ": "
+                                << edges_[aseList[seI].index()]
+                                << endl;
                         }
 
                         FatalErrorIn
@@ -5046,24 +5046,24 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
                     if (!matched)
                     {
-                        Info << "masterFaces: " << endl;
-                        Info << amfList << endl;
+                        Pout<< "masterFaces: " << nl
+                            << amfList << endl;
 
-                        Info << "slaveFaces: " << endl;
-                        Info << asfList << endl;
+                        Pout<< "slaveFaces: " << nl
+                            << asfList << endl;
 
                         forAll(amfList, mfI)
                         {
-                            Info << amfList[mfI].index() << ": "
-                                 << faces_[amfList[mfI].index()]
-                                 << endl;
+                            Pout<< amfList[mfI].index() << ": "
+                                << faces_[amfList[mfI].index()]
+                                << endl;
                         }
 
                         forAll(asfList, sfI)
                         {
-                            Info << asfList[sfI].index() << ": "
-                                 << faces_[asfList[sfI].index()]
-                                 << endl;
+                            Pout<< asfList[sfI].index() << ": "
+                                << faces_[asfList[sfI].index()]
+                                << endl;
                         }
 
                         FatalErrorIn
@@ -5719,23 +5719,25 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
     if (debug > 2)
     {
-        Info << "New Point:: " << newPointIndex << endl;
+        Pout<< "New Point:: " << newPointIndex << endl;
 
         const labelList& pEdges = pointEdges_[newPointIndex];
 
-        Info << "pointEdges:: " << pEdges << endl;
+        Pout<< "pointEdges:: " << pEdges << endl;
 
-        Info << "Added edges: " << endl;
+        Pout<< "Added edges: " << endl;
+
         forAll(pEdges, edgeI)
         {
-            Info << pEdges[edgeI]
-                 << ":: " << edges_[pEdges[edgeI]] << nl
-                 << " edgeFaces:: " << edgeFaces_[pEdges[edgeI]] << nl
-                 << " edgePoints:: " << edgePoints_[pEdges[edgeI]]
-                 << endl;
+            Pout<< pEdges[edgeI]
+                << ":: " << edges_[pEdges[edgeI]] << nl
+                << " edgeFaces:: " << edgeFaces_[pEdges[edgeI]] << nl
+                << " edgePoints:: " << edgePoints_[pEdges[edgeI]]
+                << endl;
         }
 
-        Info << "Added faces: " << endl;
+        Pout<< "Added faces: " << endl;
+
         forAll(newFaceIndex, faceI)
         {
             if (newFaceIndex[faceI] == -1)
@@ -5743,12 +5745,13 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 continue;
             }
 
-            Info << newFaceIndex[faceI] << ":: "
-                 << faces_[newFaceIndex[faceI]]
-                 << endl;
+            Pout<< newFaceIndex[faceI] << ":: "
+                << faces_[newFaceIndex[faceI]]
+                << endl;
         }
 
-        Info << "Added cells: " << endl;
+        Pout<< "Added cells: " << endl;
+
         forAll(newCellIndex, cellI)
         {
             if (newCellIndex[cellI] == -1)
@@ -5756,9 +5759,9 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 continue;
             }
 
-            Info << newCellIndex[cellI] << ":: "
-                 << cells_[newCellIndex[cellI]]
-                 << endl;
+            Pout<< newCellIndex[cellI] << ":: "
+                << cells_[newCellIndex[cellI]]
+                << endl;
         }
 
         // Write out VTK files after change
@@ -6045,9 +6048,9 @@ void dynamicTopoFvMesh::sliceMesh
 {
     if (debug > 1)
     {
-        Info << nl << nl
-             << "Pair: " << pointPair
-             << " is to be used for mesh slicing. " << endl;
+        Pout<< nl << nl
+            << "Pair: " << pointPair
+            << " is to be used for mesh slicing. " << endl;
     }
 
     label patchIndex = -1;
@@ -6093,10 +6096,10 @@ void dynamicTopoFvMesh::sliceMesh
     {
         if (debug > 1)
         {
-            Info << nl << nl
-                 << "Pair: " << pointPair
-                 << " is too close to another slice point. "
-                 << endl;
+            Pout<< nl << nl
+                << "Pair: " << pointPair
+                << " is too close to another slice point. "
+                << endl;
         }
 
         // Too close to another slice-point. Bail out.
@@ -6192,9 +6195,9 @@ void dynamicTopoFvMesh::sliceMesh
 
         if (debug > 1)
         {
-            Info << nl << nl
-                 << " Point [0]: " << points_[pointPair.first()] << nl
-                 << " Point [1]: " << points_[pointPair.second()] << endl;
+            Pout<< nl << nl
+                << " Point [0]: " << points_[pointPair.first()] << nl
+                << " Point [1]: " << points_[pointPair.second()] << endl;
 
             if (debug > 3)
             {
@@ -6320,7 +6323,7 @@ void dynamicTopoFvMesh::sliceMesh
 
             if (debug > 1)
             {
-                Info << "Dijkstra's algorithm could not find a path." << endl;
+                Pout<< "Dijkstra's algorithm could not find a path." << endl;
 
                 if (debug > 3)
                 {
@@ -6362,11 +6365,11 @@ void dynamicTopoFvMesh::sliceMesh
         }
     }
 
-    // if (debug > 1)
+    if (debug > 1)
     {
-        Info << nl << nl
-             << " Plane point: " << p << nl
-             << " Plane normal: " << N << endl;
+        Pout<< nl << nl
+            << " Plane point: " << p << nl
+            << " Plane normal: " << N << endl;
     }
 
     // Mark cells and interior faces that fall

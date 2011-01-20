@@ -2158,6 +2158,9 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     // Finally remove the edge
     removeEdge(eIndex);
 
+    // Update map
+    map.removeEdge(eIndex);
+
     // Increment the counter
     statistics_[1]++;
 
@@ -2262,7 +2265,8 @@ label dynamicTopoFvMesh::identify32Swap
             "(\n"
             "    const label eIndex,\n"
             "    const labelList& hullVertices,\n"
-            "    const labelListList& triangulations\n"
+            "    const labelListList& triangulations,\n"
+            "    bool output\n"
             ") const\n"
         )   << nl
             << "Could not determine 3-2 swap triangulation." << nl
@@ -2273,11 +2277,9 @@ label dynamicTopoFvMesh::identify32Swap
     }
 
     // Could not find an intersecting triangulation.
-    //  - If this is a boundary edge, a curved surface-mesh.
+    //  - If this is a boundary edge, a curved surface-mesh
     //    was probably the reason why this failed.
     //  - If so, declare the nearest triangulation instead.
-    //  - Internal edges also occasionally encounter
-    //    precision issues. Use the same approach.
     vector eCentre = segment.centre();
 
     scalarField dist(m-2, 0.0);
@@ -2597,8 +2599,9 @@ scalar dynamicTopoFvMesh::computeMinQuality
 
 
 // Method used to perform a 2-3 swap in 3D
-// - Returns a changeMap with the index of
-//   the triangulated face in opposingFace.
+// - Returns a changeMap with a type specifying:
+//     1: Swap was successful
+// - The index of the triangulated face in map.index()
 const changeMap dynamicTopoFvMesh::swap23
 (
     const label isolatedVertex,
@@ -2612,7 +2615,7 @@ const changeMap dynamicTopoFvMesh::swap23
 )
 {
     // A 2-3 swap performs the following operations:
-    //      [1] Remove face: [ edge[0] edge[1] isolatedVertex ]
+    //      [1] Remove face: [ edgeToCheck[0] edgeToCheck[1] isolatedVertex ]
     //      [2] Remove two cells on either side of removed face
     //      [3] Add one edge
     //      [4] Add three new faces
@@ -2737,6 +2740,9 @@ const changeMap dynamicTopoFvMesh::swap23
 
         // Insert the cell
         newCellIndex[cellI] = insertCell(newTetCell[cellI], avgScale);
+
+        // Add this cell to the map.
+        map.addCell(newCellIndex[cellI]);
     }
 
     // Obtain point-ordering for the other vertices
@@ -2781,8 +2787,11 @@ const changeMap dynamicTopoFvMesh::swap23
         )
     );
 
-    // Add an entry to the map
-    map.opposingFace() = newFaceIndex[0];
+    // Add this face to the map.
+    map.addFace(newFaceIndex[0]);
+
+    // Note the triangulation face in index()
+    map.index() = newFaceIndex[0];
 
     // Second face: Triangle involving edgeToCheck[0]
     tmpTriFace[0] = otherVertices[0];
@@ -2800,6 +2809,9 @@ const changeMap dynamicTopoFvMesh::swap23
         )
     );
 
+    // Add this face to the map.
+    map.addFace(newFaceIndex[1]);
+
     // Third face: Triangle involving edgeToCheck[1]
     tmpTriFace[0] = otherVertices[1];
     tmpTriFace[1] = edgeToCheck[1];
@@ -2815,6 +2827,9 @@ const changeMap dynamicTopoFvMesh::swap23
             newCellIndex[2]
         )
     );
+
+    // Add this face to the map.
+    map.addFace(newFaceIndex[2]);
 
     // Append three dummy faceEdges entries.
     for (label i = 0; i < 3; i++)
@@ -2849,6 +2864,9 @@ const changeMap dynamicTopoFvMesh::swap23
             newEdgePoints
         )
     );
+
+    // Add this edge to the map.
+    map.addEdge(newEdgeIndex);
 
     // Define the six edges to check while building faceEdges:
     FixedList<edge,6> check;
@@ -3174,9 +3192,15 @@ const changeMap dynamicTopoFvMesh::swap23
     // Remove the face
     removeFace(faceForRemoval);
 
+    // Update map
+    map.removeFace(faceForRemoval);
+
     forAll(cellsForRemoval, cellI)
     {
         removeCell(cellsForRemoval[cellI]);
+
+        // Update map
+        map.removeCell(cellsForRemoval[cellI]);
     }
 
     // Fill-in candidate mapping information
@@ -3269,8 +3293,7 @@ const changeMap dynamicTopoFvMesh::swap23
 // Method used to perform a 2-2 / 3-2 swap in 3D
 // - Returns a changeMap with a type specifying:
 //     1: Swap was successful
-// - The index of the triangulated face in opposingFace.
-// - For 2-2 swaps, the newly added edge index.
+// - The index of the triangulated face in map.index()
 const changeMap dynamicTopoFvMesh::swap32
 (
     const label eIndex,
@@ -3404,6 +3427,9 @@ const changeMap dynamicTopoFvMesh::swap32
 
         // Insert the cell
         newCellIndex[cellI] = insertCell(newTetCell[cellI], avgScale);
+
+        // Add this cell to the map.
+        map.addCell(newCellIndex[cellI]);
     }
 
     // Insert a new internal face
@@ -3424,8 +3450,11 @@ const changeMap dynamicTopoFvMesh::swap32
         )
     );
 
-    // Add an entry to the map
-    map.opposingFace() = newFaceIndex;
+    // Add this face to the map.
+    map.addFace(newFaceIndex);
+
+    // Note the triangulation face in index()
+    map.index() = newFaceIndex;
 
     // Add faceEdges for the new face as well.
     faceEdges_.append(labelList(3));
@@ -3850,11 +3879,17 @@ const changeMap dynamicTopoFvMesh::swap32
 
         // Now remove the face...
         removeFace(facesForRemoval[faceI]);
+
+        // Update map
+        map.removeFace(facesForRemoval[faceI]);
     }
 
     forAll(cellRemovalList, cellI)
     {
         removeCell(cellRemovalList[cellI]);
+
+        // Update map
+        map.removeCell(cellRemovalList[cellI]);
     }
 
     // Update the cell list with newly configured cells.

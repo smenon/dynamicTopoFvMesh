@@ -113,12 +113,7 @@ inline void changeMap::addPoint
     const labelList& master
 )
 {
-    label curSize = addedPoints_.size();
-
-    addedPoints_.setSize(curSize + 1);
-
-    addedPoints_[curSize].index() = pIndex;
-    addedPoints_[curSize].masterObjects() = master;
+    addedPoints_.append(objectMap(pIndex, master));
 }
 
 
@@ -128,12 +123,7 @@ inline void changeMap::addEdge
     const labelList& master
 )
 {
-    label curSize = addedEdges_.size();
-
-    addedEdges_.setSize(curSize + 1);
-
-    addedEdges_[curSize].index() = eIndex;
-    addedEdges_[curSize].masterObjects() = master;
+    addedEdges_.append(objectMap(eIndex, master));
 }
 
 
@@ -143,12 +133,7 @@ inline void changeMap::addFace
     const labelList& master
 )
 {
-    label curSize = addedFaces_.size();
-
-    addedFaces_.setSize(curSize + 1);
-
-    addedFaces_[curSize].index() = fIndex;
-    addedFaces_[curSize].masterObjects() = master;
+    addedFaces_.append(objectMap(fIndex, master));
 }
 
 
@@ -158,12 +143,7 @@ inline void changeMap::addCell
     const labelList& master
 )
 {
-    label curSize = addedCells_.size();
-
-    addedCells_.setSize(curSize + 1);
-
-    addedCells_[curSize].index() = cIndex;
-    addedCells_[curSize].masterObjects() = master;
+    addedCells_.append(objectMap(cIndex, master));
 }
 
 
@@ -197,37 +177,25 @@ changeMap::addedCellList() const
 
 inline void changeMap::removePoint(const label pIndex)
 {
-    label curSize = removedPoints_.size();
-
-    removedPoints_.setSize(curSize + 1);
-    removedPoints_[curSize] = pIndex;
+    removedPoints_.append(pIndex);
 }
 
 
 inline void changeMap::removeEdge(const label eIndex)
 {
-    label curSize = removedEdges_.size();
-
-    removedEdges_.setSize(curSize + 1);
-    removedEdges_[curSize] = eIndex;
+    removedEdges_.append(eIndex);
 }
 
 
 inline void changeMap::removeFace(const label fIndex)
 {
-    label curSize = removedFaces_.size();
-
-    removedFaces_.setSize(curSize + 1);
-    removedFaces_[curSize] = fIndex;
+    removedFaces_.append(fIndex);
 }
 
 
 inline void changeMap::removeCell(const label cIndex)
 {
-    label curSize = removedCells_.size();
-
-    removedCells_.setSize(curSize + 1);
-    removedCells_[curSize] = cIndex;
+    removedCells_.append(cIndex);
 }
 
 

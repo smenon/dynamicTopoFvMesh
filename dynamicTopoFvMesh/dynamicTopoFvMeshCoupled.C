@@ -2713,7 +2713,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             );
 
             // Specify a mapping for added indices
-            Map<label> addedEntityMap;
+            Map<label> addedEntityMap, reverseEntityMap;
 
             // Sequentially execute operations
             forAll(indices, indexI)
@@ -2740,24 +2740,6 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                     case coupleMap::BISECTION:
                     {
                         opMap = bisectEdge(localIndex);
-
-                        label nIndex =
-                        (
-                            twoDMesh_ ?
-                            opMap.addedFaceList()[2].index() :
-                            opMap.addedEdgeList()[0].index()
-                        );
-
-                        // Insert the added index into the map
-                        addedEntityMap.insert(nEntities++, nIndex);
-
-                        if (debug > 3)
-                        {
-                            Pout<< " Adding Op index: " << nIndex
-                                << " for index: " << localIndex
-                                << endl;
-                        }
-
                         break;
                     }
 
@@ -2829,6 +2811,75 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         << " operation: " << op << nl
                         << " opMap.type: " << opMap.type() << nl
                         << endl;
+                }
+
+                // If the operation added any entities
+                // to the mesh, make note of it
+                if (twoDMesh_)
+                {
+                    const List<objectMap>& afList = opMap.addedFaceList();
+
+                    forAll(afList, indexI)
+                    {
+                        label nI = afList[indexI].index();
+
+                        if (nI < nOldFaces_)
+                        {
+                            continue;
+                        }
+
+                        if (reverseEntityMap.found(nI))
+                        {
+                            continue;
+                        }
+
+                        // Insert the added indices into the map
+                        addedEntityMap.insert(nEntities, nI);
+                        reverseEntityMap.insert(nI, nEntities);
+
+                        if (debug > 3)
+                        {
+                            Pout<< " Adding Op index: " << nI
+                                << " for index: " << localIndex
+                                << " nEntities: " << nEntities
+                                << endl;
+                        }
+
+                        nEntities++;
+                    }
+                }
+                else
+                {
+                    const List<objectMap>& aeList = opMap.addedEdgeList();
+
+                    forAll(aeList, indexI)
+                    {
+                        label nI = aeList[indexI].index();
+
+                        if (nI < nOldEdges_)
+                        {
+                            continue;
+                        }
+
+                        if (reverseEntityMap.found(nI))
+                        {
+                            continue;
+                        }
+
+                        // Insert the added indices into the map
+                        addedEntityMap.insert(nEntities, nI);
+                        reverseEntityMap.insert(nI, nEntities);
+
+                        if (debug > 3)
+                        {
+                            Pout<< " Adding Op index: " << nI
+                                << " for index: " << localIndex
+                                << " nEntities: " << nEntities
+                                << endl;
+                        }
+
+                        nEntities++;
+                    }
                 }
             }
         }

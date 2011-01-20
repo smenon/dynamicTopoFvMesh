@@ -43,6 +43,7 @@ SourceFiles
 
 #include "objectMap.H"
 #include "labelList.H"
+#include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -85,16 +86,16 @@ class changeMap
     label opposingFace_;
 
     // Entities that were added during the operation.
-    List<objectMap> addedPoints_;
-    List<objectMap> addedEdges_;
-    List<objectMap> addedFaces_;
-    List<objectMap> addedCells_;
+    DynamicList<objectMap> addedPoints_;
+    DynamicList<objectMap> addedEdges_;
+    DynamicList<objectMap> addedFaces_;
+    DynamicList<objectMap> addedCells_;
 
     // Entities that were removed during the operation
-    labelList removedPoints_;
-    labelList removedEdges_;
-    labelList removedFaces_;
-    labelList removedCells_;
+    DynamicList<label> removedPoints_;
+    DynamicList<label> removedEdges_;
+    DynamicList<label> removedFaces_;
+    DynamicList<label> removedCells_;
 
 public:
 
@@ -108,14 +109,14 @@ public:
         secondEdge_(-1),
         apexPoint_(-1),
         opposingFace_(-1),
-        addedPoints_(0),
-        addedEdges_(0),
-        addedFaces_(0),
-        addedCells_(0),
-        removedPoints_(0),
-        removedEdges_(0),
-        removedFaces_(0),
-        removedCells_(0)
+        addedPoints_(5),
+        addedEdges_(5),
+        addedFaces_(5),
+        addedCells_(5),
+        removedPoints_(5),
+        removedEdges_(5),
+        removedFaces_(5),
+        removedCells_(5)
     {}
 
     //- Access
