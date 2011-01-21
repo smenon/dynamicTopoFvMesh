@@ -465,11 +465,18 @@ void coupleMap::mapMaster
 void coupleMap::pushOperation
 (
     const label index,
-    const label opType
+    const label opType,
+    const point& newPoint,
+    const point& oldPoint
 ) const
 {
     entityIndices_.setSize(entityIndices_.size() + 1, index);
     entityOperations_.setSize(entityOperations_.size() + 1, opType);
+
+    if (opType == coupleMap::MOVE_POINT)
+    {
+
+    }
 }
 
 

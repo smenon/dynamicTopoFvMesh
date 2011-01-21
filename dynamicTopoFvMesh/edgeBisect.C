@@ -2649,7 +2649,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             {
                 dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
 
-                slaveMap = sMesh.bisectEdge(sIndex,	false, forceOp);
+                slaveMap = sMesh.bisectEdge(sIndex, false, forceOp);
             }
 
             // Turn it back on.

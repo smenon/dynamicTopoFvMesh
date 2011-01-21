@@ -2827,6 +2827,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     if (coupledModification_)
     {
+        const edge& eCheck = edges_[eIndex];
+
         const label edgeEnum = coupleMap::EDGE;
         const label pointEnum = coupleMap::POINT;
 
@@ -2891,7 +2893,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 )
                     << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
-                    << " Edge: " << eIndex << ": " << edges_[eIndex] << nl
+                    << " Edge: " << eIndex << ": " << eCheck << nl
                     << abort(FatalError);
             }
             else
@@ -2957,6 +2959,51 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     slaveMaps[curIndex].index() = sIndex;
                     slaveMaps[curIndex].patchIndex() = pI;
                 }
+                else
+                if
+                (
+                    (cMap.findSlave(pointEnum, eCheck[0]) > -1) ||
+                    (cMap.findSlave(pointEnum, eCheck[1]) > -1)
+                )
+                {
+                    // A point-only coupling exists.
+
+                    // Check if a lower-ranked processor is
+                    // handling this edge
+                    if (procIndices_[pI] < Pstream::myProcNo())
+                    {
+                        if (debug > 3)
+                        {
+                            Pout<< "Edge point on: " << eIndex
+                                << " is handled by proc: "
+                                << procIndices_[pI]
+                                << ", so bailing out."
+                                << endl;
+                        }
+
+                        return map;
+                    }
+
+                    label curIndex = slaveMaps.size();
+
+                    // Size up the list
+                    meshOps::sizeUpList
+                    (
+                        changeMap(),
+                        slaveMaps
+                    );
+
+                    // Pick the right point
+                    if ((sIndex = cMap.findSlave(pointEnum, eCheck[0])) == -1)
+                    {
+                        sIndex = cMap.findSlave(pointEnum, eCheck[1]);
+                    }
+
+                    // Save index and patch for posterity
+                    //  - Negate the index to signify point coupling
+                    slaveMaps[curIndex].index() = -sIndex;
+                    slaveMaps[curIndex].patchIndex() = pI;
+                }
             }
         }
         else
@@ -2976,7 +3023,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << "Coupled maps were improperly specified." << nl
                 << " localCouple: " << localCouple << nl
                 << " procCouple: " << procCouple << nl
-                << " Edge: " << eIndex << ": " << edges_[eIndex] << nl
+                << " Edge: " << eIndex << ": " << eCheck << nl
                 << abort(FatalError);
         }
 
@@ -2995,6 +3042,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             return masterMap;
         }
 
+        // For point-only coupling, define the points for checking
+        pointField slaveMoveNewPoint(slaveMaps.size(), vector::zero);
+        pointField slaveMoveOldPoint(slaveMaps.size(), vector::zero);
+
         // Now check each of the slaves for collapse feasibility
         forAll(slaveMaps, slaveI)
         {
@@ -3006,7 +3057,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             label pI = slaveMap.patchIndex();
             const coupleMap* cMapPtr = NULL;
 
-            edge mEdge(edges_[eIndex]), sEdge(-1, -1);
+            edge mEdge(eCheck), sEdge(-1, -1);
 
             if (localCouple)
             {
@@ -3022,18 +3073,33 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     recvPatchMeshes_[pI].subMesh()
                 );
 
-                sEdge = sMesh.edges_[sIndex];
-
                 cMapPtr = &(recvPatchMeshes_[pI].patchMap());
 
-                if (debug > 3)
+                if (sIndex < 0)
                 {
-                    Pout<< "Checking slave edge: " << sIndex
-                        << "::" << sMesh.edges_[sIndex]
-                        << " on proc: " << procIndices_[pI]
-                        << " for master edge: " << eIndex
-                        << " using collapseCase: " << masterMap.type()
-                        << endl;
+                    if (debug > 3)
+                    {
+                        Pout<< "Checking slave point: " << mag(sIndex)
+                            << "::" << sMesh.points_[mag(sIndex)]
+                            << " on proc: " << procIndices_[pI]
+                            << " for master edge: " << eIndex
+                            << " using collapseCase: " << masterMap.type()
+                            << endl;
+                    }
+                }
+                else
+                {
+                    sEdge = sMesh.edges_[sIndex];
+
+                    if (debug > 3)
+                    {
+                        Pout<< "Checking slave edge: " << sIndex
+                            << "::" << sMesh.edges_[sIndex]
+                            << " on proc: " << procIndices_[pI]
+                            << " for master edge: " << eIndex
+                            << " using collapseCase: " << masterMap.type()
+                            << endl;
+                    }
                 }
             }
 
@@ -3052,6 +3118,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     if (pointMap[mEdge[1]] == sEdge[0])
                     {
                         slaveOverRide = 2;
+                    }
+                    else
+                    if (sIndex < 0)
+                    {
+                        slaveMoveNewPoint[slaveI] = points_[mEdge[0]];
+                        slaveMoveOldPoint[slaveI] = oldPoints_[mEdge[0]];
                     }
                     else
                     {
@@ -3091,6 +3163,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         slaveOverRide = 1;
                     }
                     else
+                    if (sIndex < 0)
+                    {
+                        slaveMoveNewPoint[slaveI] = points_[mEdge[1]];
+                        slaveMoveOldPoint[slaveI] = oldPoints_[mEdge[1]];
+                    }
+                    else
                     {
                         // Write out for for post-processing
                         writeVTK("mEdge_" + Foam::name(eIndex), eIndex, 1);
@@ -3118,7 +3196,22 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 case 3:
                 {
-                    slaveOverRide = 3;
+                    if (sIndex < 0)
+                    {
+                        slaveMoveNewPoint[slaveI] =
+                        (
+                            0.5 * (points_[mEdge[0]] + points_[mEdge[1]])
+                        );
+
+                        slaveMoveOldPoint[slaveI] =
+                        (
+                            0.5 * (oldPoints_[mEdge[0]] + oldPoints_[mEdge[1]])
+                        );
+                    }
+                    else
+                    {
+                        slaveOverRide = 3;
+                    }
 
                     break;
                 }
@@ -3137,16 +3230,111 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             {
                 dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
 
-                slaveMap =
-                (
-                    sMesh.collapseEdge
+                if (sIndex < 0)
+                {
+                    // Point-based coupling
+                    scalar slaveCollapseQuality(GREAT);
+                    DynamicList<label> cellsChecked(10);
+
+                    // Check cells connected to coupled point
+                    const labelList& pEdges = sMesh.pointEdges_[mag(sIndex)];
+
+                    bool infeasible = false;
+
+                    forAll(pEdges, edgeI)
+                    {
+                        const labelList& eFaces =
+                        (
+                            sMesh.edgeFaces_[pEdges[edgeI]]
+                        );
+
+                        // Build a list of cells to check
+                        forAll(eFaces, faceI)
+                        {
+                            label own = sMesh.owner_[eFaces[faceI]];
+                            label nei = sMesh.neighbour_[eFaces[faceI]];
+
+                            // Check owner cell
+                            if (findIndex(cellsChecked, own) == -1)
+                            {
+                                // Check if point movement is feasible
+                                if
+                                (
+                                    sMesh.checkCollapse
+                                    (
+                                        slaveMoveNewPoint[slaveI],
+                                        slaveMoveOldPoint[slaveI],
+                                        mag(sIndex),
+                                        own,
+                                        cellsChecked,
+                                        slaveCollapseQuality,
+                                        forceOp
+                                    )
+                                )
+                                {
+                                    infeasible = true;
+                                    break;
+                                }
+                            }
+
+                            if (nei == -1)
+                            {
+                                continue;
+                            }
+
+                            // Check neighbour cell
+                            if (findIndex(cellsChecked, nei) == -1)
+                            {
+                                // Check if point movement is feasible
+                                if
+                                (
+                                    sMesh.checkCollapse
+                                    (
+                                        slaveMoveNewPoint[slaveI],
+                                        slaveMoveOldPoint[slaveI],
+                                        mag(sIndex),
+                                        nei,
+                                        cellsChecked,
+                                        slaveCollapseQuality,
+                                        forceOp
+                                    )
+                                )
+                                {
+                                    infeasible = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (infeasible)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (infeasible)
+                    {
+                        slaveMap.type() = 0;
+                    }
+                    else
+                    {
+                        slaveMap.type() = 1;
+                    }
+                }
+                else
+                {
+                    // Edge-based coupling
+                    slaveMap =
                     (
-                        sIndex,
-                        slaveOverRide,
-                        true,
-                        forceOp
-                    )
-                );
+                        sMesh.collapseEdge
+                        (
+                            sIndex,
+                            slaveOverRide,
+                            true,
+                            forceOp
+                        )
+                    );
+                }
             }
 
             // Turn it back on.
@@ -3187,16 +3375,41 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             {
                 dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
 
-                slaveMap =
-                (
-                    sMesh.collapseEdge
+                if (sIndex < 0)
+                {
+                    // Point based coupling
+                    const coupleMap& cMap = recvPatchMeshes_[pI].patchMap();
+
+                    // Move points to new location,
+                    // and update operation into coupleMap
+                    sMesh.points_[mag(sIndex)] = slaveMoveNewPoint[slaveI];
+                    sMesh.oldPoints_[mag(sIndex)] = slaveMoveOldPoint[slaveI];
+
+                    cMap.pushOperation
                     (
-                        sIndex,
-                        slaveOverRide,
-                        false,
-                        forceOp
-                    )
-                );
+                        mag(sIndex),
+                        coupleMap::MOVE_POINT,
+                        slaveMoveNewPoint[slaveI],
+                        slaveMoveOldPoint[slaveI]
+                    );
+
+                    // Force operation to succeed
+                    slaveMap.type() = 1;
+                }
+                else
+                {
+                    // Edge-based coupling
+                    slaveMap =
+                    (
+                        sMesh.collapseEdge
+                        (
+                            sIndex,
+                            slaveOverRide,
+                            false,
+                            forceOp
+                        )
+                    );
+                }
             }
 
             // Turn it back on.
@@ -3217,7 +3430,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     ")\n"
                 )
                     << "Coupled topo-change for slave failed." << nl
-                    << " Edge: " << eIndex << ": " << edges_[eIndex] << nl
+                    << " Edge: " << eIndex << ": " << eCheck << nl
                     << " Slave index: " << sIndex << nl
                     << " Patch index: " << pI << nl
                     << " Type: " << slaveMap.type() << nl
@@ -3480,29 +3693,31 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     }
                 }
 
-                // Check neighbour cell
-                if (nei != -1)
+                if (nei == -1)
                 {
-                    if (findIndex(cellsChecked, nei) == -1)
-                    {
-                        // Check if a collapse is feasible
-                        if
+                    continue;
+                }
+
+                // Check neighbour cell
+                if (findIndex(cellsChecked, nei) == -1)
+                {
+                    // Check if a collapse is feasible
+                    if
+                    (
+                        checkCollapse
                         (
-                            checkCollapse
-                            (
-                                newPoint,
-                                oldPoint,
-                                checkPoints[pointI],
-                                nei,
-                                cellsChecked,
-                                collapseQuality,
-                                forceOp
-                            )
+                            newPoint,
+                            oldPoint,
+                            checkPoints[pointI],
+                            nei,
+                            cellsChecked,
+                            collapseQuality,
+                            forceOp
                         )
-                        {
-                            map.type() = 0;
-                            return map;
-                        }
+                    )
+                    {
+                        map.type() = 0;
+                        return map;
                     }
                 }
             }
@@ -4590,7 +4805,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 forAll(slaveMaps, slaveI)
                 {
-                    if (slaveMaps[slaveI].patchIndex() == pI)
+                    // Alias for convenience...
+                    const changeMap& slaveMap = slaveMaps[slaveI];
+
+                    if (slaveMap.patchIndex() == pI && slaveMap.index() >= 0)
                     {
                         // Involved in this operation. Break out.
                         involved = true;
@@ -4661,6 +4879,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         {
             // Alias for convenience...
             const changeMap& slaveMap = slaveMaps[slaveI];
+
+            // Skip updates for point-based coupling
+            if (slaveMap.index() < 0)
+            {
+                continue;
+            }
 
             label pI = slaveMap.patchIndex();
 

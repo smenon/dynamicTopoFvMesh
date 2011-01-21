@@ -2713,6 +2713,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             );
 
             // Specify a mapping for added indices
+            Map<label> addedPointMap, reversePointMap;
             Map<label> addedEntityMap, reverseEntityMap;
 
             // Sequentially execute operations
@@ -2726,12 +2727,26 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                 }
 
                 // Determine the appropriate local index
-                label localIndex =
-                (
-                    entityMap.found(index) ?
-                    entityMap[index] :
-                    addedEntityMap[index]
-                );
+                label localIndex = -1;
+
+                if (op == coupleMap::MOVE_POINT)
+                {
+                    localIndex =
+                    (
+                        cMap.entityMap(coupleMap::POINT).found(index) ?
+                        cMap.entityMap(coupleMap::POINT)[index] :
+                        addedPointMap[index]
+                    );
+                }
+                else
+                {
+                    localIndex =
+                    (
+                        entityMap.found(index) ?
+                        entityMap[index] :
+                        addedEntityMap[index]
+                    );
+                }
 
                 changeMap opMap;
 
@@ -2797,6 +2812,15 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         }
 
                         opMap = removeCells(rCellList, procPatch);
+
+                        break;
+                    }
+
+                    case coupleMap::MOVE_POINT:
+                    {
+
+                        // Force a successful operation
+                        opMap.type() = 1;
 
                         break;
                     }
@@ -4629,6 +4653,8 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
     // Wait for transfers before continuing.
     meshOps::waitForBuffers();
 
+    bool failedPatchMatch = false;
+
     forAll(boundary, pI)
     {
         if (isA<processorPolyPatch>(boundary[pI]))
@@ -4664,7 +4690,7 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                         slaveCentres[pI],
                         centres[pI],
                         slaveTols[pI],
-                        true,
+                        false,
                         patchMap
                     )
                 );
@@ -4697,6 +4723,12 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                             << " mSize: " << mSize << " sSize: " << sSize
                             << " failed on match for face centres."
                             << endl;
+
+                        // Failed on match-for-all, so patchMaps
+                        // will be invalid. Bail out for now.
+                        failedPatchMatch = true;
+
+                        continue;
                     }
                 }
 
@@ -4729,8 +4761,15 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                     {
                         FatalErrorIn
                         (
+                            "\n"
                             "void dynamicTopoFvMesh::"
-                            "syncCoupledBoundaryOrdering() const"
+                            "syncCoupledBoundaryOrdering\n"
+                            "(\n"
+                            "    List<pointField>& centres,\n"
+                            "    List<pointField>& anchors,\n"
+                            "    labelListList& patchMaps,\n"
+                            "    labelListList& rotations\n"
+                            ") const\n"
                         )
                             << "Cannot find anchor: " << anchor << nl
                             << " Face: " << checkFace << nl
@@ -4753,6 +4792,42 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                 anyChange = true;
             }
         }
+    }
+
+    // Reduce failures across processors
+    reduce(failedPatchMatch, orOp<bool>());
+
+    // Write out processor patch faces if a failure was encountered
+    if (failedPatchMatch)
+    {
+        forAll(boundary, pI)
+        {
+            if (isA<processorPolyPatch>(boundary[pI]))
+            {
+                writeVTK
+                (
+                    "patchFaces_" + boundary[pI].name(),
+                    identity(patchSizes_[pI]) + patchStarts_[pI],
+                    2
+                );
+            }
+        }
+
+        FatalErrorIn
+        (
+            "\n"
+            "void dynamicTopoFvMesh::"
+            "syncCoupledBoundaryOrdering\n"
+            "(\n"
+            "    List<pointField>& centres,\n"
+            "    List<pointField>& anchors,\n"
+            "    labelListList& patchMaps,\n"
+            "    labelListList& rotations\n"
+            ") const\n"
+        )
+            << " Matching for processor patches failed. " << nl
+            << " Patch faces written out to disk." << nl
+            << abort(FatalError);
     }
 
     return anyChange;

@@ -149,7 +149,8 @@ public:
         COLLAPSE_FIRST = 1,
         COLLAPSE_SECOND = 2,
         COLLAPSE_MIDPOINT = 3,
-        REMOVE_CELL = 4
+        REMOVE_CELL = 4,
+        MOVE_POINT = 5
     };
 
     //- Runtime type information
@@ -284,7 +285,9 @@ public:
         void pushOperation
         (
             const label index,
-            const label opType
+            const label opType,
+            const point& newPoint = vector::zero,
+            const point& oldPoint = vector::zero
         ) const;
 
         //- Demand-driven data
