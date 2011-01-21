@@ -704,6 +704,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Currently invalid, but will be updated later.
     newCellIndex[0] = insertCell(newCells[0], lengthScale_[c0]);
 
+    // Add this cell to the map.
+    map.addCell(newCellIndex[0]);
+
     // Modify the two existing triangle boundary faces
 
     // Zeroth boundary face - Owner = c[0] & Neighbour [-1] (unchanged)
@@ -885,6 +888,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Add a faceEdges entry as well
     faceEdges_.append(tmpQFEdges);
 
+    // Add this face to the map.
+    map.addFace(newFaceIndex[0]);
+
     // Find the common edge between quad/quad faces...
     meshOps::findCommonEdge
     (
@@ -915,9 +921,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         oldCells[0]
     );
 
-    // remove2DSliver requires this face index for removal
-    map.addFace(newFaceIndex[0]);
-
     // Second boundary face; Owner = newCell[0] & Neighbour = [-1]
     tmpTriFace[0] = otherPointIndex[0];
     tmpTriFace[1] = newPointIndex[0];
@@ -936,6 +939,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     // Add a faceEdges entry as well
     faceEdges_.append(tmpTFEdges);
+
+    // Add this face to the map.
+    map.addFace(newFaceIndex[1]);
 
     meshOps::replaceLabel
     (
@@ -963,6 +969,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Add a faceEdges entry as well
     faceEdges_.append(tmpTFEdges);
 
+    // Add this face to the map.
+    map.addFace(newFaceIndex[2]);
+
     meshOps::replaceLabel
     (
         -1,
@@ -987,6 +996,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             tmpTriEdgeFaces
         )
     );
+
+    // Add this edge to the map.
+    map.addEdge(newEdgeIndex[1]);
 
     // Find the common edge between the quad/tri faces...
     meshOps::findCommonEdge
@@ -1026,6 +1038,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             tmpTriEdgeFaces
         )
     );
+
+    // Add this edge to the map.
+    map.addEdge(newEdgeIndex[2]);
 
     // Find the common edge between the quad/tri faces...
     meshOps::findCommonEdge
@@ -1071,11 +1086,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             )
         );
 
-        // Add this face to the map.
-        map.addFace(newFaceIndex[3]);
-
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
+
+        // Add this face to the map.
+        map.addFace(newFaceIndex[3]);
 
         // Correct edgeFaces for otherEdgeIndex[1]
         meshOps::replaceLabel
@@ -1109,6 +1124,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             )
         );
 
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex[0]);
+
         // Replace an edge on the bisected face
         meshOps::replaceLabel
         (
@@ -1131,6 +1149,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             )
         );
 
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex[3]);
+
         tmpBiEdgeFaces[0] = c0BdyIndex[1];
         tmpBiEdgeFaces[1] = newFaceIndex[3];
 
@@ -1143,6 +1164,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 tmpBiEdgeFaces
             )
         );
+
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex[4]);
 
         // Now that edges are defined, configure faceEdges
         // for all new faces
@@ -1240,7 +1264,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     {
         oldCells[1] = cells_[c1];
 
+        // Add a new prism cell to the end of the list.
+        // Currently invalid, but will be updated later.
         newCellIndex[1] = insertCell(newCells[1], lengthScale_[c1]);
+
+        // Add this cell to the map.
+        map.addCell(newCellIndex[1]);
 
         if (debug > 2)
         {
@@ -1351,6 +1380,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
+
+        // Add this face to the map.
+        map.addFace(newFaceIndex[3]);
 
         // Correct edgeFaces for otherEdgeIndex[1]
         meshOps::replaceLabel
@@ -1502,7 +1534,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Add a faceEdges entry as well
         faceEdges_.append(tmpQFEdges);
 
-        // remove2DSliver requires this face index for removal
+        // Add this face to the map.
         map.addFace(newFaceIndex[4]);
 
         // Find the common edge between quad/quad faces...
@@ -1554,6 +1586,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Add a faceEdges entry as well
         faceEdges_.append(tmpTFEdges);
 
+        // Add this face to the map.
+        map.addFace(newFaceIndex[5]);
+
         meshOps::replaceLabel
         (
             -1,
@@ -1579,6 +1614,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         // Add a faceEdges entry as well
         faceEdges_.append(tmpTFEdges);
+
+        // Add this face to the map.
+        map.addFace(newFaceIndex[6]);
 
         meshOps::replaceLabel
         (
@@ -1606,6 +1644,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             )
         );
 
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex[0]);
+
         // Replace an edge on the bisected face
         meshOps::replaceLabel
         (
@@ -1629,6 +1670,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             )
         );
 
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex[3]);
+
         tmpTriEdgeFaces[0] = c0BdyIndex[1];
         tmpTriEdgeFaces[1] = newFaceIndex[3];
         tmpTriEdgeFaces[2] = newFaceIndex[6];
@@ -1642,6 +1686,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 tmpTriEdgeFaces
             )
         );
+
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex[4]);
 
         // The edge bisecting the second boundary triangular face
         tmpTriEdgeFaces[0] = commonFaceIndex[2];
@@ -1657,6 +1704,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 tmpTriEdgeFaces
             )
         );
+
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex[5]);
 
         // Find the common edge between the quad/tri faces...
         meshOps::findCommonEdge
@@ -1696,6 +1746,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 tmpTriEdgeFaces
             )
         );
+
+        // Add this edge to the map.
+        map.addEdge(newEdgeIndex[6]);
 
         // Find the common edge between the quad/tri faces...
         meshOps::findCommonEdge

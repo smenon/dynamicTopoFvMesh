@@ -3664,12 +3664,24 @@ bool dynamicTopoFvMesh::resetMesh()
     if (topoChangeFlag_)
     {
         // Write out statistics
-        Pout<< " Bisections :: Total: " << status(3)
-            << ", Surface: " << status(5) << nl
-            << " Collapses  :: Total: " << status(4)
-            << ", Surface: " << status(6) << nl
-            << " Swaps      :: Total: " << status(1)
-            << ", Surface: " << status(2) << endl;
+        if (Pstream::parRun() && debug)
+        {
+            Pout<< " Bisections :: Total: " << status(3)
+                << ", Surface: " << status(5) << nl
+                << " Collapses  :: Total: " << status(4)
+                << ", Surface: " << status(6) << nl
+                << " Swaps      :: Total: " << status(1)
+                << ", Surface: " << status(2) << endl;
+        }
+        else
+        {
+            Info<< " Bisections :: Total: " << status(3)
+                << ", Surface: " << status(5) << nl
+                << " Collapses  :: Total: " << status(4)
+                << ", Surface: " << status(6) << nl
+                << " Swaps      :: Total: " << status(1)
+                << ", Surface: " << status(2) << endl;
+        }
 
         if (status(7))
         {

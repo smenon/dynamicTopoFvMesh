@@ -1117,6 +1117,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
     }
 
     label nInternalEdges = 0;
+    DynamicList<label> bPatchIDs(10);
     labelList patchInfo(boundaryMesh().size(), 0);
 
     forAll(edgeFaces_, edgeI)
@@ -1141,6 +1142,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         }
 
         label nBF = 0;
+        bPatchIDs.clear();
 
         // Check if this edge belongs to faceEdges for each face
         forAll(edgeFaces, faceI)
@@ -1163,6 +1165,9 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
             if (neighbour_[edgeFaces[faceI]] == -1)
             {
+                // Add to list of patch IDs
+                bPatchIDs.append(whichPatch(edgeFaces[faceI]));
+
                 nBF++;
             }
         }
@@ -1202,8 +1207,41 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                 patchInfo[patchID]++;
             }
 
-            if (nBF > 2 && !isSubMesh_)
+            bool failedManifoldCheck = false;
+
+            if (nBF > 2)
             {
+                if (Pstream::parRun())
+                {
+                    // Pinched manifolds should be allowed in parallel
+                    failedManifoldCheck = false;
+                }
+                else
+                {
+                    failedManifoldCheck = true;
+                }
+            }
+
+            if (failedManifoldCheck)
+            {
+                // Write out for post-processing
+                forAll(bPatchIDs, faceI)
+                {
+                    if (bPatchIDs[faceI] == -1)
+                    {
+                        Pout<< " Edge: " << edgeI
+                            << " Face Patch: Internal" << nl;
+                    }
+                    else
+                    {
+                        Pout<< " Edge: " << edgeI
+                            << " Face Patch: "
+                            << boundaryMesh()[bPatchIDs[faceI]].name() << nl;
+                    }
+                }
+
+                Pout<< endl;
+
                 writeVTK("pinched_" + Foam::name(edgeI), edgeFaces, 2);
 
                 Pout<< "Edge: " << edgeI
@@ -1261,6 +1299,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         if ((patch < 0) && (nBF > 0))
         {
             Pout<< nl << nl << "Edge: " << key
+                << "::" << edges_[key]
                 << ", edgeFaces: " << edgeFaces
                 << " is internal, but contains boundary faces."
                 << endl;
@@ -1270,13 +1309,17 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
         if ((patch >= 0) && (nBF != 2))
         {
-            Pout<< nl << nl << "Edge: " << key
-                << ", edgeFaces: " << edgeFaces
-                << " is on a boundary patch, but doesn't contain"
-                << " two boundary faces."
-                << endl;
+            if (!Pstream::parRun())
+            {
+                Pout<< nl << nl << "Edge: " << key
+                    << "::" << edges_[key]
+                    << ", edgeFaces: " << edgeFaces
+                    << " is on a boundary patch, but doesn't contain"
+                    << " two boundary faces."
+                    << endl;
 
-            nFailedChecks++;
+                nFailedChecks++;
+            }
         }
     }
 
