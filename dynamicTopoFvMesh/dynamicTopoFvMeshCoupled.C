@@ -746,6 +746,19 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
 
     // Wait for transfers to complete before moving on
     meshOps::waitForBuffers();
+
+    // Set points in mesh
+    forAll(procIndices_, pI)
+    {
+        // Fetch non-const reference to patchSubMesh
+        coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+
+        // Fetch the coupleMap
+        const coupleMap& rcMap = rPM.patchMap();
+
+        rPM.subMesh().points_ = rcMap.pointBuffer();
+        rPM.subMesh().oldPoints_ = rcMap.oldPointBuffer();
+    }
 }
 
 
@@ -1803,6 +1816,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 // edgePoints is corrected for the right edge
                 edgesToInsert[procI][eIter.key()] = newEdgeIndex;
             }
+            else
+            if ((mIndex == eIndex) && !twoDMesh_)
+            {
+                // Initial edge was already on a physical boundary,
+                // and no conversion was done. Note this for later.
+                map.index() = eIndex;
+            }
         }
     }
 
@@ -1863,7 +1883,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             mesh.removeCells
             (
                 cellsToRemove,
-                slaveConvertPatch[procI]
+                slaveConvertPatch[procI],
+                "rc_" + Foam::name(mIndex)
             )
         );
     }
@@ -2046,7 +2067,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 const changeMap dynamicTopoFvMesh::removeCells
 (
     const labelList& cList,
-    const label patch
+    const label patch,
+    const word& rcName
 )
 {
     if (cList.empty() || patch < 0)
@@ -2240,12 +2262,12 @@ const changeMap dynamicTopoFvMesh::removeCells
     // Write out candidates for post-processing
     if (debug > 2)
     {
-        writeVTK("pointsToRemove", pointsToRemove.toc(), 0);
-        writeVTK("edgesToRemove", edgesToRemove.toc(), 1);
-        writeVTK("facesToRemove", facesToRemove.toc(), 2);
-        writeVTK("cellsToRemove", cList, 3);
-        writeVTK("edgesToConvert", edgesToConvert.toc(), 1);
-        writeVTK("facesToConvert", facesToConvert.toc(), 2);
+        writeVTK("pointsToRemove_" + rcName, pointsToRemove.toc(), 0);
+        writeVTK("edgesToRemove_" + rcName, edgesToRemove.toc(), 1);
+        writeVTK("facesToRemove_" + rcName, facesToRemove.toc(), 2);
+        writeVTK("cellsToRemove_" + rcName, cList, 3);
+        writeVTK("edgesToConvert_" + rcName, edgesToConvert.toc(), 1);
+        writeVTK("facesToConvert_" + rcName, facesToConvert.toc(), 2);
     }
 
     // Loop through all faces for conversion, check orientation
@@ -2466,6 +2488,9 @@ void dynamicTopoFvMesh::handleCoupledPatches
     {
         return;
     }
+
+    // Move coupled subMesh points
+    moveCoupledSubMeshes();
 
     if (debug)
     {
@@ -2844,7 +2869,15 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                             }
                         }
 
-                        opMap = removeCells(rCellList, procPatch);
+                        opMap =
+                        (
+                            removeCells
+                            (
+                                rCellList,
+                                procPatch,
+                                "rcs_" + Foam::name(localIndex)
+                            )
+                        );
 
                         break;
                     }

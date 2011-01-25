@@ -542,7 +542,8 @@ class dynamicTopoFvMesh
         removeCells
         (
             const labelList& cList,
-            const label patch
+            const label patch,
+            const word& rcName
         );
 
         // Remove the specified cell from the mesh

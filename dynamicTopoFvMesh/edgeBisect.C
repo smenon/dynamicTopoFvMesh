@@ -6398,7 +6398,17 @@ void dynamicTopoFvMesh::sliceMesh
                 }
             }
 
-            changeMap sliceMap = removeCells(cList, patchIndex);
+            changeMap sliceMap =
+            (
+                removeCells
+                (
+                    cList,
+                    patchIndex,
+                    "Slice_"
+                  + Foam::name(pointPair.first()) + '_'
+                  + Foam::name(pointPair.second())
+                )
+            );
 
             if (debug)
             {
