@@ -4017,6 +4017,11 @@ bool dynamicTopoFvMesh::resetMesh()
         // update coupled maps (in a separate thread, if available).
         if (Pstream::parRun())
         {
+            if (debug)
+            {
+                checkParallelBoundaries();
+            }
+
             // Clear parallel structures
             procIndices_.clear();
             sendPatchMeshes_.clear();

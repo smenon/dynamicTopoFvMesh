@@ -1817,7 +1817,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 edgesToInsert[procI][eIter.key()] = newEdgeIndex;
             }
             else
-            if ((mIndex == eIndex) && !twoDMesh_)
+            if ((mIndex == eIndex) && (map.index() == -1) && !twoDMesh_)
             {
                 // Initial edge was already on a physical boundary,
                 // and no conversion was done. Note this for later.
@@ -3052,6 +3052,118 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
     {
         swap3DEdges(&(handlerPtr_[0]));
     }
+}
+
+
+// Check the state of parallel boundaries
+//  - Return true if errors are present
+bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
+{
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    forAll(boundary, pI)
+    {
+        if (isA<processorPolyPatch>(boundary[pI]))
+        {
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[pI])
+            );
+
+            label neiProcNo = pp.neighbProcNo();
+
+            // Send face sizes
+            meshOps::pWrite(neiProcNo, boundary[pI].size());
+
+            // Send centres / areas
+            meshOps::pWrite(neiProcNo, boundary[pI].faceAreas());
+            meshOps::pWrite(neiProcNo, boundary[pI].faceCentres());
+        }
+    }
+
+    // Maintain a list of areas / centres
+    List<vectorField> fAreas(boundary.size());
+    List<vectorField> fCentres(boundary.size());
+
+    bool sizeError = false, misMatchError = false;
+
+    forAll(boundary, pI)
+    {
+        if (isA<processorPolyPatch>(boundary[pI]))
+        {
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[pI])
+            );
+
+            label neiProcNo = pp.neighbProcNo(), neiSize = -1;
+
+            // Receive face sizes
+            meshOps::pRead(neiProcNo, neiSize);
+
+            // Size up lists
+            fAreas[pI].setSize(neiSize);
+            fCentres[pI].setSize(neiSize);
+
+            // Receive centres / areas
+            meshOps::pRead(neiProcNo, fAreas[pI]);
+            meshOps::pRead(neiProcNo, fCentres[pI]);
+
+            if (neiSize != boundary[pI].size())
+            {
+                sizeError = true;
+
+                Pout<< "Incorrect send / recv sizes: " << nl
+                    << " Patch: " << boundary[pI].name() << nl
+                    << " my size: " << boundary[pI].size() << nl
+                    << " neiSize: " << neiSize << nl
+                    << endl;
+            }
+        }
+    }
+
+    // Wait for transfers to complete
+    meshOps::waitForBuffers();
+
+    // Check centres / areas
+    forAll(boundary, pI)
+    {
+        if (!isA<processorPolyPatch>(boundary[pI]))
+        {
+            continue;
+        }
+
+        const vectorField& myAreas = boundary[pI].faceAreas();
+        const vectorField& myCentres = boundary[pI].faceCentres();
+
+        forAll(myAreas, faceI)
+        {
+            scalar magSf = mag(myAreas[faceI]);
+            scalar nbrMagSf = mag(fAreas[pI][faceI]);
+            scalar avSf = 0.5 * (magSf + nbrMagSf);
+
+            if (mag(magSf - nbrMagSf)/avSf > 1e-4)
+            {
+                misMatchError = true;
+
+                Pout<< " Face: " << faceI
+                    << " area does not match neighbour by: "
+                    << 100 * mag(magSf - nbrMagSf)/avSf
+                    << "% - possible patch ordering problem. "
+                    << " My area:" << magSf
+                    << " Neighbour area: " << nbrMagSf
+                    << " My centre: " << myCentres[faceI]
+                    << endl;
+            }
+        }
+    }
+
+    if (!sizeError && !misMatchError && report)
+    {
+        Pout<< " Parallel boundary check: No problems." << endl;
+    }
+
+    return (sizeError || misMatchError);
 }
 
 
