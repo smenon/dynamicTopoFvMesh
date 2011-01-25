@@ -265,6 +265,18 @@ inline labelList& coupleMap::entityOperations() const
 }
 
 
+inline pointField& coupleMap::moveNewPoints() const
+{
+    return moveNewPoints_;
+}
+
+
+inline pointField& coupleMap::moveOldPoints() const
+{
+    return moveOldPoints_;
+}
+
+
 } // End namespace Foam
 
 // ************************************************************************* //

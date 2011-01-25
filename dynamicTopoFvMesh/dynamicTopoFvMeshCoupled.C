@@ -2578,15 +2578,18 @@ void dynamicTopoFvMesh::handleCoupledPatches
             const coupleMap& cMap = sPM.patchMap();
 
             // How many entities am I receiving..
-            label nEntities = -1;
+            label nEntities = -1, nMovePoints = -1;
 
             meshOps::pRead(proc, nEntities);
+            meshOps::pRead(proc, nMovePoints);
 
             if (debug > 3)
             {
                 Pout<< " Op tranfer:"
-                    << " Receiving from [" << proc << "]:: nEntities: "
-                    << nEntities << endl;
+                    << " Receiving from [" << proc << "]::"
+                    << " nEntities: " << nEntities
+                    << " nMovePoints: " << nMovePoints
+                    << endl;
             }
 
             if (nEntities)
@@ -2602,12 +2605,27 @@ void dynamicTopoFvMesh::handleCoupledPatches
                 meshOps::pRead(proc, indices);
                 meshOps::pRead(proc, operations);
             }
+
+            if (nMovePoints)
+            {
+                // Size up the receipt buffers
+                pointField& newPoints = cMap.moveNewPoints();
+                pointField& oldPoints = cMap.moveOldPoints();
+
+                newPoints.setSize(nMovePoints);
+                oldPoints.setSize(nMovePoints);
+
+                // Schedule old / new points for receipt
+                meshOps::pRead(proc, newPoints);
+                meshOps::pRead(proc, oldPoints);
+            }
         }
         else
         {
             const coupleMap& cMap = rPM.patchMap();
 
             label nEntities = cMap.entityIndices().size();
+            label nMovePoints = cMap.moveNewPoints().size();
 
             if (debug > 3)
             {
@@ -2616,16 +2634,27 @@ void dynamicTopoFvMesh::handleCoupledPatches
                     << " nEntities: " << nEntities << nl
                     << "  entityIndices: " << cMap.entityIndices() << nl
                     << "  entityOperations: " << cMap.entityOperations() << nl
+                    << " nMovePoints: " << nMovePoints << nl
+                    << "  moveNewPoints: " << cMap.moveNewPoints() << nl
+                    << "  moveOldPoints: " << cMap.moveOldPoints() << nl
                     << endl;
             }
 
             meshOps::pWrite(proc, nEntities);
+            meshOps::pWrite(proc, nMovePoints);
 
             if (nEntities)
             {
                 // Schedule transfer to processor
                 meshOps::pWrite(proc, cMap.entityIndices());
                 meshOps::pWrite(proc, cMap.entityOperations());
+            }
+
+            if (nMovePoints)
+            {
+                // Schedule transfer to processor
+                meshOps::pWrite(proc, cMap.moveNewPoints());
+                meshOps::pWrite(proc, cMap.moveOldPoints());
             }
         }
     }
@@ -2661,6 +2690,8 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             const coupleMap& cMap = sPM.patchMap();
             const labelList& indices = cMap.entityIndices();
             const labelList& operations = cMap.entityOperations();
+            const pointField& newPoints = cMap.moveNewPoints();
+            const pointField& oldPoints = cMap.moveOldPoints();
 
             // Fetch the appropriate map
             const Map<label>* entityMapPtr =
@@ -2705,6 +2736,8 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             }
 
             // Keep track of added entities from initial set
+            label nPoints = cMap.nEntities(coupleMap::POINT), nMovePoints = 0;
+
             label nEntities =
             (
                 twoDMesh_ ?
@@ -2818,9 +2851,20 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                     case coupleMap::MOVE_POINT:
                     {
+                        const point& newPoint = newPoints[nMovePoints];
+                        const point& oldPoint = oldPoints[nMovePoints];
+
+                        // Move old / new points
+                        points_[localIndex] = newPoint;
+                        oldPoints_[localIndex] = oldPoint;
+
+                        // Clear the existing map
+                        opMap.clear();
 
                         // Force a successful operation
                         opMap.type() = 1;
+
+                        nMovePoints++;
 
                         break;
                     }
@@ -2839,6 +2883,37 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                 // If the operation added any entities
                 // to the mesh, make note of it
+                const List<objectMap>& apList = opMap.addedPointList();
+
+                forAll(apList, indexI)
+                {
+                    label nI = apList[indexI].index();
+
+                    if (nI < nOldPoints_)
+                    {
+                        continue;
+                    }
+
+                    if (reversePointMap.found(nI))
+                    {
+                        continue;
+                    }
+
+                    // Insert the added indices into the map
+                    addedPointMap.insert(nPoints, nI);
+                    reversePointMap.insert(nI, nPoints);
+
+                    if (debug > 3)
+                    {
+                        Pout<< " Adding Op point: " << nI
+                            << " for point: " << localIndex
+                            << " nPoints: " << nPoints
+                            << endl;
+                    }
+
+                    nPoints++;
+                }
+
                 if (twoDMesh_)
                 {
                     const List<objectMap>& afList = opMap.addedFaceList();
@@ -4463,7 +4538,8 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
             forAll(mesh.edges_, edgeI)
             {
-                mesh.buildEdgePoints(edgeI);
+                // Disable debug reporting, not very useful anyway
+                mesh.buildEdgePoints(edgeI, 0, false);
             }
         }
     }

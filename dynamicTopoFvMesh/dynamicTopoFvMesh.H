@@ -610,7 +610,8 @@ class dynamicTopoFvMesh
         void buildEdgePoints
         (
             const label eIndex,
-            const label checkIndex = 0
+            const label checkIndex = 0,
+            bool debugReport = true
         );
 
         // Utility to check whether points of an edge lie on a boundary

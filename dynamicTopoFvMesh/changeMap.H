@@ -186,6 +186,11 @@ public:
         inline const labelList& removedFaceList() const;
         inline const labelList& removedCellList() const;
 
+    //- Edit
+
+        // Clear existing lists
+        inline void clear();
+
     //- Operators
 
         inline void operator=(const changeMap& rhs);

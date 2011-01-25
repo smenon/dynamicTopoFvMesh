@@ -1061,10 +1061,11 @@ void dynamicTopoFvMesh::removePoint
 void dynamicTopoFvMesh::buildEdgePoints
 (
     const label eIndex,
-    const label checkIndex
+    const label checkIndex,
+    bool debugReport
 )
 {
-    if (debug > 2)
+    if (debug > 2 && debugReport)
     {
         Pout<< " Building edgePoints for edge: "
             << eIndex << ": " << edges_[eIndex]

@@ -96,6 +96,10 @@ class coupleMap
     // List of operations performed on entities
     mutable labelList entityOperations_;
 
+    // List of point-locations to move points to
+    mutable pointField moveNewPoints_;
+    mutable pointField moveOldPoints_;
+
     //- Demand-driven connectivity data.
         mutable label nInternalFaces_;
         mutable labelList* ownerPtr_;
@@ -281,6 +285,9 @@ public:
 
         inline labelList& entityIndices() const;
         inline labelList& entityOperations() const;
+
+        inline pointField& moveNewPoints() const;
+        inline pointField& moveOldPoints() const;
 
         void pushOperation
         (

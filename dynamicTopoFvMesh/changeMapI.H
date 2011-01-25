@@ -227,6 +227,34 @@ changeMap::removedCellList() const
 }
 
 
+// Clear existing lists
+inline void changeMap::clear()
+{
+    index_ = -1;
+    pIndex_ = -1;
+
+    type_ = -1;
+
+    firstEdge_ = -1;
+    secondEdge_ = -1;
+
+    apexPoint_ = -1;
+    opposingFace_ = -1;
+
+    // Clear added entities
+    addedPoints_.clear();
+    addedEdges_.clear();
+    addedFaces_.clear();
+    addedCells_.clear();
+
+    // Clear removed entities
+    removedPoints_.clear();
+    removedEdges_.clear();
+    removedFaces_.clear();
+    removedCells_.clear();
+}
+
+
 inline void changeMap::operator=(const changeMap& rhs)
 {
     index_ = rhs.index_;

@@ -857,7 +857,7 @@ void dynamicTopoFvMesh::setCellMapping
     {
         if (debug > 3)
         {
-            Pout<< "Inserting mapping cell: " << cIndex << nl
+            Pout<< "Inserting mapping cell: " << cIndex
                 << " mapCells: " << mapCells
                 << endl;
         }
@@ -929,9 +929,9 @@ void dynamicTopoFvMesh::setFaceMapping
 
     if (debug > 3)
     {
-        Pout<< "Inserting mapping face: " << fIndex << nl
+        Pout<< "Inserting mapping face: " << fIndex
             << " patch: "
-            << (patch > -1 ? boundaryMesh()[patch].name() : "Internal") << nl
+            << (patch > -1 ? boundaryMesh()[patch].name() : "Internal")
             << " mapFaces: " << mapFaces
             << endl;
     }

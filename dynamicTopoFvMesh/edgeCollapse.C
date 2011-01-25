@@ -2923,12 +2923,35 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
+                const coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
                 const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
-                const coupleMap& cMap = recvMesh.patchMap();
+
+                const coupleMap& scMap = sendMesh.patchMap();
+                const coupleMap& rcMap = recvMesh.patchMap();
+
+                // If this edge was sent to a lower-ranked
+                // processor, skip it.
+                if (procIndices_[pI] < Pstream::myProcNo())
+                {
+                    if (scMap.reverseEntityMap(edgeEnum).found(eIndex))
+                    {
+                        if (debug > 3)
+                        {
+                            Pout<< "Edge: " << eIndex
+                                << "::" << eCheck
+                                << " was sent to proc: "
+                                << procIndices_[pI]
+                                << ", so bailing out."
+                                << endl;
+                        }
+
+                        return map;
+                    }
+                }
 
                 label sIndex = -1;
 
-                if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
+                if ((sIndex = rcMap.findSlave(edgeEnum, eIndex)) > -1)
                 {
                     // Check if a lower-ranked processor is
                     // handling this edge
@@ -2937,6 +2960,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         if (debug > 3)
                         {
                             Pout<< "Edge: " << eIndex
+                                << "::" << eCheck
                                 << " is handled by proc: "
                                 << procIndices_[pI]
                                 << ", so bailing out."
@@ -2962,8 +2986,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 else
                 if
                 (
-                    (cMap.findSlave(pointEnum, eCheck[0]) > -1) ||
-                    (cMap.findSlave(pointEnum, eCheck[1]) > -1)
+                    (rcMap.findSlave(pointEnum, eCheck[0]) > -1) ||
+                    (rcMap.findSlave(pointEnum, eCheck[1]) > -1)
                 )
                 {
                     // A point-only coupling exists.
@@ -2972,16 +2996,30 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     // handling this edge
                     if (procIndices_[pI] < Pstream::myProcNo())
                     {
-                        if (debug > 3)
-                        {
-                            Pout<< "Edge point on: " << eIndex
-                                << " is handled by proc: "
-                                << procIndices_[pI]
-                                << ", so bailing out."
-                                << endl;
-                        }
+                         if (debug > 3)
+                         {
+                             Pout<< "Edge point on: " << eIndex
+                                 << "::" << eCheck
+                                 << " is handled by proc: "
+                                 << procIndices_[pI]
+                                 << ", so bailing out."
+                                 << endl;
+                         }
 
-                        return map;
+                         return map;
+                    }
+
+                    label p0Index = rcMap.findSlave(pointEnum, eCheck[0]);
+                    label p1Index = rcMap.findSlave(pointEnum, eCheck[1]);
+
+                    if (p0Index > -1 && p1Index == -1)
+                    {
+                        sIndex = p0Index;
+                    }
+                    else
+                    if (p0Index == -1 && p1Index > -1)
+                    {
+                        sIndex = p1Index;
                     }
 
                     label curIndex = slaveMaps.size();
@@ -2992,12 +3030,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         changeMap(),
                         slaveMaps
                     );
-
-                    // Pick the right point
-                    if ((sIndex = cMap.findSlave(pointEnum, eCheck[0])) == -1)
-                    {
-                        sIndex = cMap.findSlave(pointEnum, eCheck[1]);
-                    }
 
                     // Save index and patch for posterity
                     //  - Negate the index to signify point coupling

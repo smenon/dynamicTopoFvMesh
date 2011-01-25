@@ -475,7 +475,8 @@ void coupleMap::pushOperation
 
     if (opType == coupleMap::MOVE_POINT)
     {
-
+        moveNewPoints_.setSize(moveNewPoints_.size() + 1, newPoint);
+        moveOldPoints_.setSize(moveOldPoints_.size() + 1, oldPoint);
     }
 }
 
@@ -516,6 +517,9 @@ void coupleMap::clearBuffers() const
 
     entityIndices_.clear();
     entityOperations_.clear();
+
+    moveNewPoints_.clear();
+    moveOldPoints_.clear();
 }
 
 
