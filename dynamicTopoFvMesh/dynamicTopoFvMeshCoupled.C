@@ -4505,7 +4505,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             {
                 scalar dist = mag(points_[pIter.key()] - sPoints[pIter()]);
 
-                if (dist > debug::tolerances("processorMatchTol"))
+                if (dist > debug::tolerances("processorMatchTol", 1e-4))
                 {
                     FatalErrorIn
                     (

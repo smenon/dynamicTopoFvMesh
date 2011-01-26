@@ -716,6 +716,10 @@ void dynamicTopoFvMesh::reOrderFaces
 
     addedFaceRenumbering_.clear();
 
+    // Track reverse renumbering for added faces.
+    //  - Required during coupled patch re-ordering.
+    Map<label> addedFaceReverseRenumbering;
+
     // Make a copy of the old face-based lists, and clear them
     forAll(faces_, faceI)
     {
@@ -801,6 +805,7 @@ void dynamicTopoFvMesh::reOrderFaces
             {
                 faceMap_[bFaceIndex] = -1;
                 addedFaceRenumbering_.insert(faceI, bFaceIndex);
+                addedFaceReverseRenumbering.insert(bFaceIndex, faceI);
             }
 
             // Renumber owner
@@ -1043,6 +1048,24 @@ void dynamicTopoFvMesh::reOrderFaces
                     //    so use that as a faceMap temporary
                     oldNeighbour[newPos] = faceMap_[oldPos];
 
+                    // Check if this face was added
+                    if (faceMap_[oldPos] == -1)
+                    {
+                        // Fetch the index for the new face
+                        label addedIndex = addedFaceReverseRenumbering[oldPos];
+
+                        // Renumber for the added index
+                        addedFaceRenumbering_[addedIndex] = newPos;
+                    }
+                    else
+                    {
+                        // Fetch the index for the existing face
+                        label existIndex = faceMap_[oldPos];
+
+                        // Renumber the reverse map
+                        reverseFaceMap_[existIndex] = newPos;
+                    }
+
                     oldOwner[newPos] = owner_[oldPos];
                     oldFaces[newPos].transfer(newFace);
                     oldFaceEdges[newPos].transfer(faceEdges_[oldPos]);
@@ -1063,15 +1086,6 @@ void dynamicTopoFvMesh::reOrderFaces
                     faces[index].transfer(oldFaces[index]);
                     faceEdges[index].transfer(oldFaceEdges[index]);
                 }
-            }
-        }
-
-        // Now renumber reverseFaceMap
-        forAll(faceMap_, newFaceI)
-        {
-            if (faceMap_[newFaceI] > -1)
-            {
-                reverseFaceMap_[faceMap_[newFaceI]] = newFaceI;
             }
         }
     }
