@@ -3061,6 +3061,9 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
 
+    // Check if a geometric tolerance has been specified.
+    scalar gTol = debug::tolerances("processorMatchTol", 1e-4);
+
     forAll(boundary, pI)
     {
         if (isA<processorPolyPatch>(boundary[pI]))
@@ -3072,18 +3075,21 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
 
             label neiProcNo = pp.neighbProcNo();
 
-            // Send face sizes
+            // Send point / face sizes
+            meshOps::pWrite(neiProcNo, boundary[pI].nPoints());
             meshOps::pWrite(neiProcNo, boundary[pI].size());
 
-            // Send centres / areas
+            // Send points / centres / areas
             meshOps::pWrite(neiProcNo, boundary[pI].faceAreas());
             meshOps::pWrite(neiProcNo, boundary[pI].faceCentres());
+            meshOps::pWrite(neiProcNo, boundary[pI].localPoints());
         }
     }
 
-    // Maintain a list of areas / centres
+    // Maintain a list of points / areas / centres
     List<vectorField> fAreas(boundary.size());
     List<vectorField> fCentres(boundary.size());
+    List<vectorField> neiPoints(boundary.size());
 
     bool sizeError = false, misMatchError = false;
 
@@ -3096,27 +3102,38 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
                 refCast<const processorPolyPatch>(boundary[pI])
             );
 
-            label neiProcNo = pp.neighbProcNo(), neiSize = -1;
+            label neiProcNo = pp.neighbProcNo();
 
-            // Receive face sizes
+            // Receive point / face sizes
+            label neiPSize = -1, neiSize = -1;
+
+            meshOps::pRead(neiProcNo, neiPSize);
             meshOps::pRead(neiProcNo, neiSize);
 
             // Size up lists
             fAreas[pI].setSize(neiSize);
             fCentres[pI].setSize(neiSize);
+            neiPoints[pI].setSize(neiPSize);
 
-            // Receive centres / areas
+            // Receive points / centres / areas
             meshOps::pRead(neiProcNo, fAreas[pI]);
             meshOps::pRead(neiProcNo, fCentres[pI]);
+            meshOps::pRead(neiProcNo, neiPoints[pI]);
 
-            if (neiSize != boundary[pI].size())
+            if
+            (
+                neiSize != boundary[pI].size() ||
+                neiPSize != boundary[pI].nPoints()
+            )
             {
                 sizeError = true;
 
                 Pout<< "Incorrect send / recv sizes: " << nl
                     << " Patch: " << boundary[pI].name() << nl
-                    << " my size: " << boundary[pI].size() << nl
-                    << " neiSize: " << neiSize << nl
+                    << " My nPoints: " << boundary[pI].nPoints() << nl
+                    << " Nei nPoints: " << neiPSize << nl
+                    << " My nFaces: " << boundary[pI].size() << nl
+                    << " Nei nFaces: " << neiSize << nl
                     << endl;
             }
         }
@@ -3136,13 +3153,20 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
         const vectorField& myAreas = boundary[pI].faceAreas();
         const vectorField& myCentres = boundary[pI].faceCentres();
 
+        // Fetch local connectivity
+        const faceList& myFaces = boundary[pI].localFaces();
+        const vectorField& myPoints = boundary[pI].localPoints();
+
+        // Calculate a point-match tolerance per patch
+        scalar pTol = -GREAT;
+
         forAll(myAreas, faceI)
         {
             scalar magSf = mag(myAreas[faceI]);
             scalar nbrMagSf = mag(fAreas[pI][faceI]);
             scalar avSf = 0.5 * (magSf + nbrMagSf);
 
-            if (mag(magSf - nbrMagSf)/avSf > 1e-4)
+            if (mag(magSf - nbrMagSf)/avSf > gTol)
             {
                 misMatchError = true;
 
@@ -3153,6 +3177,58 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
                     << " My area:" << magSf
                     << " Neighbour area: " << nbrMagSf
                     << " My centre: " << myCentres[faceI]
+                    << endl;
+            }
+
+            pTol =
+            (
+                Foam::max
+                (
+                    pTol,
+                    gTol *
+                    mag
+                    (
+                        myPoints[myFaces[faceI][0]]
+                      - myCentres[faceI]
+                    )
+                )
+            );
+        }
+
+        // Check neighbPoints addressing
+        const processorPolyPatch& pp =
+        (
+            refCast<const processorPolyPatch>(boundary[pI])
+        );
+
+        const labelList& nPts = pp.neighbPoints();
+
+        forAll(myPoints, pointI)
+        {
+            if (nPts[pointI] < 0)
+            {
+                Pout<< " Point: " <<  pointI << "::" << myPoints[pointI]
+                    << " reported to be multiply connected." << nl
+                    << " neighbPoint: " << nPts[pointI] << nl
+                    << endl;
+
+                misMatchError = true;
+
+                continue;
+            }
+
+            scalar dist = mag(myPoints[pointI] - neiPoints[pI][nPts[pointI]]);
+
+            if (dist > pTol)
+            {
+                misMatchError = true;
+
+                Pout<< " Point: " << pointI << "::" << myPoints[pointI] << nl
+                    << " Mismatch for processor: " << pp.neighbProcNo() << nl
+                    << " Neighbour Pt: " << neiPoints[pI][nPts[pointI]] << nl
+                    << " Tolerance: " << pTol << nl
+                    << " Measured distance: " << dist << nl
+                    << " Neighbour Index:" << nPts[pointI] << nl
                     << endl;
             }
         }
@@ -3876,12 +3952,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
     }
 
     // Check if a geometric tolerance has been specified.
-    scalar gTol = debug::tolerances("processorMatchTol");
-
-    if (dict_.found("gTol") || mandatory_)
-    {
-        gTol = readScalar(dict_.lookup("gTol"));
-    }
+    scalar gTol = debug::tolerances("processorMatchTol", 1e-4);
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 

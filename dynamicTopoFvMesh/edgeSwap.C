@@ -195,6 +195,9 @@ bool dynamicTopoFvMesh::testDelaunay
 
         if (sIndex == -1 || !foundEdge)
         {
+            // Write out for post-processing
+            writeVTK("coupledDelaunayFace_" + Foam::name(fIndex), fIndex, 2);
+
             FatalErrorIn
             (
                 "bool dynamicTopoFvMesh::testDelaunay"
@@ -203,6 +206,7 @@ bool dynamicTopoFvMesh::testDelaunay
                 << "Coupled maps were improperly specified." << nl
                 << " Slave index not found for: " << nl
                 << " Face: " << fIndex << nl
+                << " checkEdge: " << checkEdge << nl
                 << " cEdge: " << cEdge << nl
                 << abort(FatalError);
         }

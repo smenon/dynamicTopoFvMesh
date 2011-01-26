@@ -937,29 +937,30 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
     forAll(nCellsPerFace, faceI)
     {
+        // This might be a deleted face
+        if (faceI < nOldFaces_)
+        {
+            if (reverseFaceMap_[faceI] == -1)
+            {
+                continue;
+            }
+        }
+        else
+        if (deletedFaces_.found(faceI))
+        {
+            continue;
+        }
+
+        // Determine patch
+        label uPatch = whichPatch(faceI);
+
         if (nCellsPerFace[faceI] == 0)
         {
-            // This might be a deleted face
-            if (faceI < nOldFaces_)
-            {
-                if (reverseFaceMap_[faceI] == -1)
-                {
-                    continue;
-                }
-            }
-            else
-            {
-                if (deletedFaces_.found(faceI))
-                {
-                    continue;
-                }
-            }
-
             // Looks like this is really an unused face.
-            Pout<< "Face " << faceI
-                << " :: " << faces_[faceI]
-                << " is unused. "
-                << endl;
+            Pout<< "Face " << faceI << " :: " << faces_[faceI]
+                << " is unused. Patch: "
+                << (uPatch > -1 ? boundaryMesh()[uPatch].name() : "Internal")
+                << nl << endl;
 
             nFailedChecks++;
 
@@ -968,7 +969,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                 << endl;
         }
         else
-        if (nCellsPerFace[faceI] != 2 && whichPatch(faceI) == -1)
+        if (nCellsPerFace[faceI] != 2 && uPatch == -1)
         {
             // Internal face is not shared by exactly two cells
             Pout<< "Internal Face " << faceI
@@ -976,7 +977,8 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                 << " Owner: " << owner_[faceI]
                 << " Neighbour: " << neighbour_[faceI]
                 << " is multiply connected." << nl
-                << " nCellsPerFace: " << nCellsPerFace[faceI]
+                << " nCellsPerFace: " << nCellsPerFace[faceI] << nl
+                << " Patch: Internal" << nl
                 << endl;
 
             // Loop through cells and find another instance
@@ -997,7 +999,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                 << endl;
         }
         else
-        if (nCellsPerFace[faceI] != 1 && whichPatch(faceI) > -1)
+        if (nCellsPerFace[faceI] != 1 && uPatch > -1)
         {
             // Boundary face is not shared by exactly one cell
             Pout<< "Boundary Face " << faceI
@@ -1005,7 +1007,8 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                 << " Owner: " << owner_[faceI]
                 << " Neighbour: " << neighbour_[faceI]
                 << " is multiply connected." << nl
-                << " nCellsPerFace: " << nCellsPerFace[faceI]
+                << " nCellsPerFace: " << nCellsPerFace[faceI] << nl
+                << " Patch: " << boundaryMesh()[uPatch].name() << nl
                 << endl;
 
             // Loop through cells and find another instance

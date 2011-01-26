@@ -4019,7 +4019,15 @@ bool dynamicTopoFvMesh::resetMesh()
         {
             if (debug)
             {
-                checkParallelBoundaries();
+                bool failed = checkParallelBoundaries();
+
+                if (failed)
+                {
+                    FatalErrorIn("bool dynamicTopoFvMesh::resetMesh()")
+                        << " Parallel boundary check failed on processor: "
+                        << Pstream::myProcNo()
+                        << abort(FatalError);
+                }
             }
 
             // Clear parallel structures
