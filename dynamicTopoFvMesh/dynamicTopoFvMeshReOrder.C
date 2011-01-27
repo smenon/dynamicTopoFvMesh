@@ -1027,19 +1027,23 @@ void dynamicTopoFvMesh::reOrderFaces
                     // Rotate the face in-place
                     const face& oldFace = faces_[oldPos];
 
-                    face newFace(oldFace.size());
+                    // Copy the old face, and rotate if necessary
+                    face newFace(oldFace);
                     label nPos = rotations[pI][fI];
 
-                    forAll(oldFace, fpI)
+                    if (nPos != 0)
                     {
-                        label nfpI = (fpI + nPos) % oldFace.size();
-
-                        if (nfpI < 0)
+                        forAll(oldFace, fpI)
                         {
-                            nfpI += oldFace.size();
-                        }
+                            label nfpI = (fpI + nPos) % oldFace.size();
 
-                        newFace[nfpI] = oldFace[fpI];
+                            if (nfpI < 0)
+                            {
+                                nfpI += oldFace.size();
+                            }
+
+                            newFace[nfpI] = oldFace[fpI];
+                        }
                     }
 
                     // Map to new locations, using the
