@@ -2446,7 +2446,8 @@ void mesquiteMotionSolver::smoothSurfaces()
 inline scalar mesquiteMotionSolver::tetQuality
 (
     const label cIndex,
-    const pointField& pField
+    const pointField& pField,
+    bool returnVolume
 )
 {
     const cell& cellToCheck = mesh().cells()[cIndex];
@@ -2482,7 +2483,14 @@ inline scalar mesquiteMotionSolver::tetQuality
 
                 scalar V = ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
 
-                return sign(V)*((24.96100588*::cbrt(V*V))/Le);
+                if (returnVolume)
+                {
+                    return V;
+                }
+                else
+                {
+                    return sign(V)*((24.96100588*::cbrt(V*V))/Le);
+                }
             }
             else
             {
@@ -2501,7 +2509,14 @@ inline scalar mesquiteMotionSolver::tetQuality
 
                 scalar V = ((1.0/6.0)*(((b - a) ^ (c - a)) & (d - a)));
 
-                return sign(V)*((24.96100588*::cbrt(V*V))/Le);
+                if (returnVolume)
+                {
+                    return V;
+                }
+                else
+                {
+                    return sign(V)*((24.96100588*::cbrt(V*V))/Le);
+                }
             }
         }
     }
@@ -2624,6 +2639,149 @@ void mesquiteMotionSolver::correctInvalidCells()
             break;
         }
     }
+}
+
+
+//  Member function to adjust domain volume back to pre-smoothing value
+//  +/- some tolerance. Uses the bisection method to identify an
+//  approriate magnitude to displace all surface nodes (along point normals)
+//  by some value to correct for volume loss/gain.
+void mesquiteMotionSolver::correctGlobalVolume()
+{
+    if (!volumeCorrection_)
+    {
+        return;
+    }
+
+    const cellList& allCells = mesh().cells();
+
+    // Obtain point-positions after smoothing
+    pointField oldField = refPoints_;
+
+    scalar lengthScale = mag(mesh().bounds().max());
+    label iterations = 0;
+    scalar magPlus, magMinus;
+
+    // One of the initial bracket guesses will always be zero
+    scalar magVal = 0;
+    scalar domainVolume = 0;
+
+    forAll(allCells, cellI)
+    {
+        domainVolume += tetQuality(cellI, refPoints_, true);
+    }
+
+    scalar error = (domainVolume - oldVolume_);
+
+    // Check which way the error is going and
+    // adjust left and right brackets accordingly
+    if (error > 0.0)
+    {
+        magMinus = -1.0*lengthScale;
+        magPlus = 0;
+    }
+    else
+    {
+        magPlus = lengthScale;
+        magMinus = 0;
+    }
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    while (iterations < volCorrMaxIter_)
+    {
+        // Reset previously calculated volume
+        domainVolume = 0;
+
+        forAll(allCells, cellI)
+        {
+            domainVolume += tetQuality(cellI, refPoints_, true);
+        }
+
+        error = (domainVolume - oldVolume_);
+
+        // Move one bracket side based on sign
+        // of error of last iteration
+        if (error > 0.0)
+        {
+            magPlus = magVal;
+        }
+        else
+        {
+            magMinus = magVal;
+        }
+
+        // Bring points back to old location just after smoothing
+        refPoints_ = oldField;
+
+        if (mag(error) < volCorrTolerance_)
+        {
+            // Final update of refPoints with optimal magnitude
+            forAll(pIDs_, patchI)
+            {
+                const labelList& meshPts =
+                (
+                    boundary[pIDs_[patchI]].meshPoints()
+                );
+
+                forAll(meshPts,pointI)
+                {
+                    refPoints_[meshPts[pointI]] +=
+                    (
+                        magVal*pNormals_[patchI][pointI]
+                    );
+                }
+            }
+
+            domainVolume = 0;
+
+            forAll(allCells,cellI)
+            {
+                domainVolume += tetQuality(cellI, refPoints_, true);
+            }
+
+            if (debug)
+            {
+                Info << nl
+                     << "    Volume Correction Iterations: "
+                     << iterations << endl;
+                Info << "    Final Volume Error: "
+                     << error << endl;
+                Info << "    Magnitude of correction vector: "
+                     << magVal << endl;
+            }
+
+            return;
+        }
+
+        // Bisection of updated guesses
+        magVal = 0.5*(magPlus + magMinus);
+
+        // Update refPoints
+        forAll(pIDs_, patchI)
+        {
+            const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
+
+            forAll(meshPts,pointI)
+            {
+                // Move all surface points in the
+                // point normal direction by magVal
+                refPoints_[meshPts[pointI]] +=
+                (
+                    magVal*pNormals_[patchI][pointI]
+                );
+            }
+        }
+
+        iterations++;
+    }
+
+    // Output if loop doesn't exit by meeting error tolerance.
+    WarningIn
+    (
+        "mesquiteSmoother::correctGlobalVolume()"
+    )   << "Maximum volume correction iterations reached. "
+        << endl;
 }
 
 
@@ -2982,6 +3140,9 @@ void mesquiteMotionSolver::solve()
 
         // Check for invalid cells and correct if necessary.
         correctInvalidCells();
+
+        // Correct global volume, if necessary
+        correctGlobalVolume();
 
         // Enforce constraints, if necessary
         enforceCylindricalConstraints();

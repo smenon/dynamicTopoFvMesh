@@ -3219,7 +3219,7 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
         );
 
         // Check anchor points
-        forAll(mAnchors, faceI)
+        forAll(mAnchors[pI], faceI)
         {
             scalar dist = mag(mAnchors[pI][faceI] - nAnchors[pI][faceI]);
 
