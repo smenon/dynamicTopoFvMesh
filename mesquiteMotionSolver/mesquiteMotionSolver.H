@@ -238,12 +238,16 @@ class mesquiteMotionSolver
         scalar tetQuality
         (
             const label cIndex,
-            const pointField& pField
+            const pointField& pField,
+            bool returnVolume = false
         );
 
         // Private member function to check for invalid
         // cells and correct if necessary.
         void correctInvalidCells();
+
+        // Correct global volume
+        void correctGlobalVolume();
 
         // Enforce cylindrical constraints for slip-patches
         void enforceCylindricalConstraints();
