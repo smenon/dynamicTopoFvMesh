@@ -3064,6 +3064,9 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
     // Check if a geometric tolerance has been specified.
     scalar gTol = debug::tolerances("processorMatchTol", 1e-4);
 
+    List<vectorField> mAnchors(boundary.size());
+    List<vectorField> nAnchors(boundary.size());
+
     forAll(boundary, pI)
     {
         if (isA<processorPolyPatch>(boundary[pI]))
@@ -3083,6 +3086,19 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
             meshOps::pWrite(neiProcNo, boundary[pI].faceAreas());
             meshOps::pWrite(neiProcNo, boundary[pI].faceCentres());
             meshOps::pWrite(neiProcNo, boundary[pI].localPoints());
+
+            // Prepare and send anchor points
+            mAnchors[pI].setSize(boundary[pI].size());
+
+            const faceList& lFaces = boundary[pI].localFaces();
+            const pointField& lPoints = boundary[pI].localPoints();
+
+            forAll(lFaces, faceI)
+            {
+                mAnchors[pI][faceI] = lPoints[lFaces[faceI][0]];
+            }
+
+            meshOps::pWrite(neiProcNo, mAnchors[pI]);
         }
     }
 
@@ -3114,11 +3130,13 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
             fAreas[pI].setSize(neiSize);
             fCentres[pI].setSize(neiSize);
             neiPoints[pI].setSize(neiPSize);
+            nAnchors[pI].setSize(neiSize);
 
-            // Receive points / centres / areas
+            // Receive points / centres / areas / anchors
             meshOps::pRead(neiProcNo, fAreas[pI]);
             meshOps::pRead(neiProcNo, fCentres[pI]);
             meshOps::pRead(neiProcNo, neiPoints[pI]);
+            meshOps::pRead(neiProcNo, nAnchors[pI]);
 
             if
             (
@@ -3195,12 +3213,30 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
             );
         }
 
-        // Check neighbPoints addressing
         const processorPolyPatch& pp =
         (
             refCast<const processorPolyPatch>(boundary[pI])
         );
 
+        // Check anchor points
+        forAll(mAnchors, faceI)
+        {
+            scalar dist = mag(mAnchors[pI][faceI] - nAnchors[pI][faceI]);
+
+            if (dist > pTol)
+            {
+                misMatchError = true;
+
+                Pout<< " Face: " << faceI << "::" << mAnchors[pI][faceI] << nl
+                    << " Mismatch for processor: " << pp.neighbProcNo() << nl
+                    << " Neighbour Anchor: " << nAnchors[pI][faceI] << nl
+                    << " Tolerance: " << pTol << nl
+                    << " Measured distance: " << dist << nl
+                    << endl;
+            }
+        }
+
+        // Check neighbPoints addressing
         const labelList& nPts = pp.neighbPoints();
 
         forAll(myPoints, pointI)
@@ -5073,7 +5109,9 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                     else
                     {
                         // Positive rotation
-                        rotation[newFaceI] =
+                        //  - Set for old face. Will be rotated later
+                        //    during the shuffling stage
+                        rotation[oldFaceI] =
                         (
                             (checkFace.size() - anchorFp) % checkFace.size()
                         );
