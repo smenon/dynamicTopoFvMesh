@@ -2908,7 +2908,108 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // operation, and update if necessary
         if (procCouple && !localCouple)
         {
+            forAll(procIndices_, pI)
+            {
+                bool involved = false;
 
+                forAll(slaveMaps, slaveI)
+                {
+                    // Alias for convenience...
+                    const changeMap& slaveMap = slaveMaps[slaveI];
+
+                    if (slaveMap.patchIndex() == pI && slaveMap.index() >= 0)
+                    {
+                        // Involved in this operation. Break out.
+                        involved = true;
+                        break;
+                    }
+                }
+
+                if (involved)
+                {
+                    continue;
+                }
+
+                // Check coupleMaps for point coupling
+                const label pointEnum = coupleMap::POINT;
+
+                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupleMap& cMap = recvMesh.patchMap();
+
+                // Obtain non-const references
+                Map<label>& pointMap = cMap.entityMap(pointEnum);
+                Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
+
+                label sI0 = -1, sI1 = -1;
+
+                if (collapsingSlave)
+                {
+                    if ((sI0 = cMap.findMaster(pointEnum, original[0])) > -1)
+                    {
+                        if (rPointMap.found(replacement[0]))
+                        {
+                            rPointMap[replacement[0]] = sI0;
+                        }
+                        else
+                        {
+                            rPointMap.insert(replacement[0], sI0);
+                        }
+
+                        pointMap[sI0] = replacement[0];
+                    }
+
+                    if ((sI1 = cMap.findMaster(pointEnum, original[1])) > -1)
+                    {
+                        if (rPointMap.found(replacement[1]))
+                        {
+                            rPointMap[replacement[1]] = sI1;
+                        }
+                        else
+                        {
+                            rPointMap.insert(replacement[1], sI1);
+                        }
+
+                        pointMap[sI1] = replacement[1];
+                    }
+                }
+                else
+                {
+                    if ((sI0 = cMap.findSlave(pointEnum, original[0])) > -1)
+                    {
+                        if (pointMap.found(replacement[0]))
+                        {
+                            pointMap[replacement[0]] = sI0;
+                        }
+                        else
+                        {
+                            pointMap.insert(replacement[0], sI0);
+                        }
+
+                        rPointMap[sI0] = replacement[0];
+                    }
+
+                    if ((sI1 = cMap.findSlave(pointEnum, original[1])) > -1)
+                    {
+                        if (pointMap.found(replacement[1]))
+                        {
+                            pointMap[replacement[1]] = sI1;
+                        }
+                        else
+                        {
+                            pointMap.insert(replacement[1], sI1);
+                        }
+
+                        rPointMap[sI1] = replacement[1];
+                    }
+                }
+
+                if (sI0 > -1 && sI1 > -1 && debug > 2)
+                {
+                    Pout<< " Found " << original[0] << " and " << original[1]
+                        << " on proc: " << procIndices_[pI]
+                        << endl;
+                }
+            }
         }
 
         forAll(slaveMaps, slaveI)
@@ -3052,8 +3153,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             forAll(madF, faceI)
             {
-                label fIndex = madF[faceI].index();
-                const face& mFace = faces_[fIndex];
+                label mfIndex = madF[faceI].index();
+                const face& mFace = faces_[mfIndex];
 
                 forAll(cFace, pointI)
                 {
@@ -3062,6 +3163,112 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         pointMap.found(mFace[pointI]) ?
                         pointMap[mFace[pointI]] : -1
                     );
+                }
+
+                bool matchedFace = false;
+
+                // Select appropriate mesh
+                const dynamicTopoFvMesh* meshPtr = NULL;
+
+                if (localCouple)
+                {
+                    meshPtr = this;
+                }
+                else
+                if (procCouple)
+                {
+                    meshPtr = &(recvPatchMeshes_[pI].subMesh());
+                }
+
+                const dynamicTopoFvMesh& sMesh = *meshPtr;
+
+                // Loop through all boundary faces on the subMesh
+                for
+                (
+                    label faceJ = sMesh.nOldInternalFaces_;
+                    faceJ < sMesh.faces_.size();
+                    faceJ++
+                )
+                {
+                    const face& sFace = sMesh.faces_[faceJ];
+
+                    if (face::compare(sFace, cFace))
+                    {
+                        if (debug > 2)
+                        {
+                            Pout<< " Found face: " << faceJ
+                                << "::" << sFace
+                                << " with mfIndex: " << mfIndex
+                                << "::" << mFace
+                                << endl;
+                        }
+
+                        // Update faceMaps
+                        if (collapsingSlave)
+                        {
+                            if (faceMap.found(faceJ))
+                            {
+                                faceMap[faceJ] = mfIndex;
+                            }
+                            else
+                            {
+                                faceMap.insert(faceJ, mfIndex);
+                            }
+
+                            if (rFaceMap.found(mfIndex))
+                            {
+                                rFaceMap[mfIndex] = faceJ;
+                            }
+                            else
+                            {
+                                rFaceMap.insert(mfIndex, faceJ);
+                            }
+                        }
+                        else
+                        {
+                            if (rFaceMap.found(faceJ))
+                            {
+                                rFaceMap[faceJ] = mfIndex;
+                            }
+                            else
+                            {
+                                rFaceMap.insert(faceJ, mfIndex);
+                            }
+
+                            if (faceMap.found(mfIndex))
+                            {
+                                faceMap[mfIndex] = faceJ;
+                            }
+                            else
+                            {
+                                faceMap.insert(mfIndex, faceJ);
+                            }
+                        }
+
+                        matchedFace = true;
+
+                        break;
+                    }
+                }
+
+                if (!matchedFace)
+                {
+                    FatalErrorIn
+                    (
+                        "\n"
+                        "const changeMap "
+                        "dynamicTopoFvMesh::collapseQuadFace\n"
+                        "(\n"
+                        "    const label fIndex,\n"
+                        "    label overRideCase,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
+                        ")\n"
+                    )
+                        << " Master face: " << mfIndex
+                        << ": " << mFace << " could not be matched." << nl
+                        << " cFace: " << cFace << nl
+                        << abort(FatalError);
                 }
             }
 
@@ -3072,18 +3279,18 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             forAll(sadF, faceI)
             {
                 const face* facePtr = NULL;
-                label fIndex = sadF[faceI].index();
+                label sfIndex = sadF[faceI].index();
 
                 if (localCouple && !procCouple)
                 {
-                    facePtr = &(faces_[fIndex]);
+                    facePtr = &(faces_[sfIndex]);
                 }
                 else
                 if (procCouple && !localCouple)
                 {
                     facePtr =
                     (
-                        &(recvPatchMeshes_[pI].subMesh().faces_[fIndex])
+                        &(recvPatchMeshes_[pI].subMesh().faces_[sfIndex])
                     );
                 }
 
@@ -3096,6 +3303,97 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         rPointMap.found(sFace[pointI]) ?
                         rPointMap[sFace[pointI]] : -1
                     );
+                }
+
+                bool matchedFace = false;
+
+                // Loop through all boundary faces on this mesh
+                for
+                (
+                    label faceJ = nOldInternalFaces_;
+                    faceJ < faces_.size();
+                    faceJ++
+                )
+                {
+                    const face& mFace = faces_[faceJ];
+
+                    if (face::compare(mFace, cFace))
+                    {
+                        if (debug > 2)
+                        {
+                            Pout<< " Found face: " << faceJ
+                                << "::" << mFace
+                                << " with sfIndex: " << sfIndex
+                                << "::" << sFace
+                                << endl;
+                        }
+
+                        // Update faceMaps
+                        if (collapsingSlave)
+                        {
+                            if (rFaceMap.found(faceJ))
+                            {
+                                rFaceMap[faceJ] = sfIndex;
+                            }
+                            else
+                            {
+                                rFaceMap.insert(faceJ, sfIndex);
+                            }
+
+                            if (faceMap.found(sfIndex))
+                            {
+                                faceMap[sfIndex] = faceJ;
+                            }
+                            else
+                            {
+                                faceMap.insert(sfIndex, faceJ);
+                            }
+                        }
+                        else
+                        {
+                            if (faceMap.found(faceJ))
+                            {
+                                faceMap[faceJ] = sfIndex;
+                            }
+                            else
+                            {
+                                faceMap.insert(faceJ, sfIndex);
+                            }
+
+                            if (rFaceMap.found(sfIndex))
+                            {
+                                rFaceMap[sfIndex] = faceJ;
+                            }
+                            else
+                            {
+                                rFaceMap.insert(sfIndex, faceJ);
+                            }
+                        }
+
+                        matchedFace = true;
+
+                        break;
+                    }
+                }
+
+                if (!matchedFace)
+                {
+                    FatalErrorIn
+                    (
+                        "\n"
+                        "const changeMap "
+                        "dynamicTopoFvMesh::collapseQuadFace\n"
+                        "(\n"
+                        "    const label fIndex,\n"
+                        "    label overRideCase,\n"
+                        "    bool checkOnly,\n"
+                        "    bool forceOp\n"
+                        ")\n"
+                    )
+                        << " Slave face: " << sfIndex
+                        << ": " << sFace << " could not be matched." << nl
+                        << " cFace: " << cFace << nl
+                        << abort(FatalError);
                 }
             }
 
