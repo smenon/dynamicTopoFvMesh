@@ -283,9 +283,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     // Save index and patch for posterity
                     slaveMaps[curIndex].index() = sIndex;
                     slaveMaps[curIndex].patchIndex() = pI;
-
-                    // Only one slave coupling is possible, so bail out
-                    break;
                 }
                 else
                 if
@@ -399,6 +396,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     //  - Negate the index to signify edge coupling
                     slaveMaps[curIndex].index() = -seIndex;
                     slaveMaps[curIndex].patchIndex() = pI;
+
+                    // Save edgeCouple as well, so that
+                    // another map comparison is avoided.
+                    slaveMaps[curIndex].type() = edgeCouple;
                 }
             }
         }
@@ -503,7 +504,17 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 if (sIndex < 0)
                 {
-
+                    if (slaveMap.type() == 1)
+                    {
+                        mEdge[0][0] = rPointMap[cv0];
+                        mEdge[0][1] = rPointMap[cv1];
+                    }
+                    else
+                    if (slaveMap.type() == 2)
+                    {
+                        mEdge[0][0] = rPointMap[cv2];
+                        mEdge[0][1] = rPointMap[cv3];
+                    }
                 }
                 else
                 {
@@ -523,7 +534,17 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 if (sIndex < 0)
                 {
-
+                    if (slaveMap.type() == 1)
+                    {
+                        mEdge[0][0] = pointMap[cv0];
+                        mEdge[0][1] = pointMap[cv1];
+                    }
+                    else
+                    if (slaveMap.type() == 2)
+                    {
+                        mEdge[0][0] = pointMap[cv2];
+                        mEdge[0][1] = pointMap[cv3];
+                    }
                 }
                 else
                 {
@@ -596,9 +617,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                         slaveMoveOldPoint[slaveI][0] = oldPoints_[cv0];
                         slaveMoveOldPoint[slaveI][1] = oldPoints_[cv1];
-
-                        // Check edge orientation
-                        compVal = edge::compare(mEdge[0], sEdge[0]);
                     }
                     else
                     if (mEdge[0] == sEdge[0])
@@ -653,9 +671,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                         slaveMoveOldPoint[slaveI][0] = oldPoints_[cv2];
                         slaveMoveOldPoint[slaveI][1] = oldPoints_[cv3];
-
-                        // Check edge orientation
-                        compVal = edge::compare(mEdge[0], sEdge[0]);
                     }
                     else
                     if (mEdge[1] == sEdge[1])
@@ -715,18 +730,15 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                             0.5 * (points_[cv1] + points_[cv3])
                         );
 
-                        slaveMoveNewPoint[slaveI][0] =
+                        slaveMoveOldPoint[slaveI][0] =
                         (
                             0.5 * (oldPoints_[cv0] + oldPoints_[cv2])
                         );
 
-                        slaveMoveNewPoint[slaveI][1] =
+                        slaveMoveOldPoint[slaveI][1] =
                         (
                             0.5 * (oldPoints_[cv1] + oldPoints_[cv3])
                         );
-
-                        // Check edge orientation
-                        compVal = edge::compare(mEdge[0], sEdge[0]);
                     }
                     else
                     {
@@ -739,6 +751,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             if (sIndex < 0)
             {
+                // Check edge orientation
+                compVal = edge::compare(mEdge[0], sEdge[0]);
+
                 // Swap components if necessary
                 if (compVal == -1)
                 {
@@ -911,6 +926,34 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 if (sIndex < 0)
                 {
                     // Edge-based coupling
+                    const coupleMap& cMap = recvPatchMeshes_[pI].patchMap();
+
+                    // Fetch the slave edge
+                    edge sEdge = sMesh.edges_[mag(sIndex)];
+
+                    // Move points to new location,
+                    // and update operation into coupleMap
+                    sMesh.points_[sEdge[0]] = slaveMoveNewPoint[slaveI][0];
+                    sMesh.points_[sEdge[1]] = slaveMoveNewPoint[slaveI][1];
+
+                    sMesh.oldPoints_[sEdge[0]] = slaveMoveOldPoint[slaveI][0];
+                    sMesh.oldPoints_[sEdge[1]] = slaveMoveOldPoint[slaveI][1];
+
+                    cMap.pushOperation
+                    (
+                        sEdge[0],
+                        coupleMap::MOVE_POINT,
+                        slaveMoveNewPoint[slaveI][0],
+                        slaveMoveOldPoint[slaveI][0]
+                    );
+
+                    cMap.pushOperation
+                    (
+                        sEdge[1],
+                        coupleMap::MOVE_POINT,
+                        slaveMoveNewPoint[slaveI][1],
+                        slaveMoveOldPoint[slaveI][1]
+                    );
 
                     // Force operation to succeed
                     slaveMap.type() = 1;
@@ -1290,6 +1333,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
     }
 
+    // Add a map entry of the replacements as 'addedPoints'
+    //  - Used in coupled mapping
+    map.addPoint(replacement[0]);
+    map.addPoint(replacement[1]);
+
     // Are we only performing checks?
     if (checkOnly)
     {
@@ -1315,8 +1363,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         Pout<< nl << nl
             << "Face: " << fIndex << ": " << faces_[fIndex] << nl
-            << "faceEdges: " << fE
-            << " is to be collapsed. "
+            << "faceEdges: " << fE << " is to be collapsed. "
             << nl;
 
         label epIndex = whichPatch(fIndex);
@@ -1878,113 +1925,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Update map
         map.removePoint(cv0);
         map.removePoint(cv1);
-
-        if (coupledModification_)
-        {
-            // Alias for convenience...
-            const changeMap& slaveMap = slaveMaps[0];
-
-            const coupleMap* cMapPtr = NULL;
-            label pIndex = slaveMap.patchIndex();
-
-            if (localCouple && !procCouple)
-            {
-                cMapPtr = &(patchCoupling_[pIndex].patchMap());
-            }
-            else
-            if (procCouple && !localCouple)
-            {
-                coupledPatchInfo& recvMesh = recvPatchMeshes_[pIndex];
-                cMapPtr = &(recvMesh.patchMap());
-            }
-
-            // Alias for convenience
-            const coupleMap& cMap = *cMapPtr;
-
-            // Remove the point entries.
-            const label pointEnum = coupleMap::POINT;
-
-            // Obtain references
-            Map<label>& pointMap = cMap.entityMap(pointEnum);
-            Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
-
-            if (collapsingSlave)
-            {
-                pointMap.erase(rPointMap[cv0]);
-                rPointMap.erase(cv0);
-            }
-            else
-            {
-                rPointMap.erase(pointMap[cv0]);
-                pointMap.erase(cv0);
-            }
-
-            if (collapsingSlave)
-            {
-                pointMap.erase(rPointMap[cv1]);
-                rPointMap.erase(cv1);
-            }
-            else
-            {
-                rPointMap.erase(pointMap[cv1]);
-                pointMap.erase(cv1);
-            }
-
-            // Remove the face entries
-            const label faceEnum = coupleMap::FACE;
-
-            // Obtain references
-            Map<label>& faceMap = cMap.entityMap(faceEnum);
-            Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
-
-            if (collapsingSlave)
-            {
-                faceMap.erase(faceMap[fIndex]);
-                rFaceMap.erase(fIndex);
-            }
-            else
-            {
-                rFaceMap.erase(faceMap[fIndex]);
-                faceMap.erase(fIndex);
-            }
-
-            // Push operation into coupleMap
-            switch (slaveMap.type())
-            {
-                case 1:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_FIRST
-                    );
-
-                    break;
-                }
-
-                case 2:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_SECOND
-                    );
-
-                    break;
-                }
-
-                case 3:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_MIDPOINT
-                    );
-
-                    break;
-                }
-            }
-        }
     }
     else
     {
@@ -2342,113 +2282,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Update map
         map.removePoint(cv2);
         map.removePoint(cv3);
-
-        if (coupledModification_)
-        {
-            // Alias for convenience...
-            const changeMap& slaveMap = slaveMaps[0];
-
-            const coupleMap* cMapPtr = NULL;
-            label pIndex = slaveMap.patchIndex();
-
-            if (localCouple && !procCouple)
-            {
-                cMapPtr = &(patchCoupling_[pIndex].patchMap());
-            }
-            else
-            if (procCouple && !localCouple)
-            {
-                coupledPatchInfo& recvMesh = recvPatchMeshes_[pIndex];
-                cMapPtr = &(recvMesh.patchMap());
-            }
-
-            // Alias for convenience
-            const coupleMap& cMap = *cMapPtr;
-
-            // Remove the point entries.
-            const label pointEnum = coupleMap::POINT;
-
-            // Obtain references
-            Map<label>& pointMap = cMap.entityMap(pointEnum);
-            Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
-
-            if (collapsingSlave)
-            {
-                pointMap.erase(rPointMap[cv2]);
-                rPointMap.erase(cv2);
-            }
-            else
-            {
-                rPointMap.erase(pointMap[cv2]);
-                pointMap.erase(cv2);
-            }
-
-            if (collapsingSlave)
-            {
-                pointMap.erase(rPointMap[cv3]);
-                rPointMap.erase(cv3);
-            }
-            else
-            {
-                rPointMap.erase(pointMap[cv3]);
-                pointMap.erase(cv3);
-            }
-
-            // Remove the face entries
-            const label faceEnum = coupleMap::FACE;
-
-            // Obtain references
-            Map<label>& faceMap = cMap.entityMap(faceEnum);
-            Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
-
-            if (collapsingSlave)
-            {
-                faceMap.erase(faceMap[fIndex]);
-                rFaceMap.erase(fIndex);
-            }
-            else
-            {
-                rFaceMap.erase(faceMap[fIndex]);
-                faceMap.erase(fIndex);
-            }
-
-            // Push operation into coupleMap
-            switch (slaveMap.type())
-            {
-                case 1:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_FIRST
-                    );
-
-                    break;
-                }
-
-                case 2:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_SECOND
-                    );
-
-                    break;
-                }
-
-                case 3:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_MIDPOINT
-                    );
-
-                    break;
-                }
-            }
-        }
     }
 
     if (debug > 2)
@@ -3064,6 +2897,244 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             // Set the mapping for this face
             setFaceMapping(mfIndex, faceCandidates);
+        }
+    }
+
+    // If modification is coupled, update mapping info.
+    if (coupledModification_)
+    {
+        // Check if the collapse points are present
+        // on a processor not involved in the current
+        // operation, and update if necessary
+        if (procCouple && !localCouple)
+        {
+
+        }
+
+        forAll(slaveMaps, slaveI)
+        {
+            // Alias for convenience...
+            const changeMap& slaveMap = slaveMaps[slaveI];
+
+            // Skip updates for edge-based coupling
+            if (slaveMap.index() < 0)
+            {
+                continue;
+            }
+
+            label pI = slaveMap.patchIndex();
+
+            // Fetch the appropriate coupleMap
+            const coupleMap* cMapPtr = NULL;
+
+            if (localCouple && !procCouple)
+            {
+                cMapPtr = &(patchCoupling_[pI].patchMap());
+            }
+            else
+            if (procCouple && !localCouple)
+            {
+                cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+            }
+
+            // Configure the slave replacement points.
+            //  - collapseQuadFace stores this as 'addedPoints'
+            label scP0 = slaveMap.removedPointList()[0];
+            label scP1 = slaveMap.removedPointList()[1];
+
+            label srP0 = slaveMap.addedPointList()[0].index();
+            label srP1 = slaveMap.addedPointList()[1].index();
+
+            // Alias for convenience
+            const coupleMap& cMap = *cMapPtr;
+
+            // Remove the point entries.
+            const label pointEnum = coupleMap::POINT;
+
+            // Obtain references
+            Map<label>& pointMap = cMap.entityMap(pointEnum);
+            Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
+
+            if (collapsingSlave)
+            {
+                if (rPointMap[replacement[0]] == scP0)
+                {
+                    pointMap[srP0] = replacement[0];
+                    rPointMap[replacement[0]] = srP0;
+                }
+                else
+                if (rPointMap[replacement[0]] == scP1)
+                {
+                    pointMap[srP1] = replacement[0];
+                    rPointMap[replacement[0]] = srP1;
+                }
+
+                pointMap.erase(rPointMap[original[0]]);
+                rPointMap.erase(original[0]);
+            }
+            else
+            {
+                if (pointMap[replacement[0]] == scP0)
+                {
+                    rPointMap[srP0] = replacement[0];
+                    pointMap[replacement[0]] = srP0;
+                }
+                else
+                if (pointMap[replacement[0]] == scP1)
+                {
+                    rPointMap[srP1] = replacement[0];
+                    pointMap[replacement[0]] = srP1;
+                }
+
+                rPointMap.erase(pointMap[original[0]]);
+                pointMap.erase(original[0]);
+            }
+
+            if (collapsingSlave)
+            {
+                if (rPointMap[replacement[1]] == scP0)
+                {
+                    pointMap[srP0] = replacement[1];
+                    rPointMap[replacement[1]] = srP0;
+                }
+                else
+                if (rPointMap[replacement[1]] == scP1)
+                {
+                    pointMap[srP1] = replacement[1];
+                    rPointMap[replacement[1]] = srP1;
+                }
+
+                pointMap.erase(rPointMap[original[1]]);
+                rPointMap.erase(original[1]);
+            }
+            else
+            {
+                if (pointMap[replacement[1]] == scP0)
+                {
+                    rPointMap[srP0] = replacement[1];
+                    pointMap[replacement[1]] = srP0;
+                }
+                else
+                if (pointMap[replacement[1]] == scP1)
+                {
+                    rPointMap[srP1] = replacement[1];
+                    pointMap[replacement[1]] = srP1;
+                }
+
+                rPointMap.erase(pointMap[original[1]]);
+                pointMap.erase(original[1]);
+            }
+
+            // Remove the face entries
+            const label faceEnum = coupleMap::FACE;
+
+            // Obtain references
+            Map<label>& faceMap = cMap.entityMap(faceEnum);
+            Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
+
+            if (collapsingSlave)
+            {
+                faceMap.erase(faceMap[fIndex]);
+                rFaceMap.erase(fIndex);
+            }
+            else
+            {
+                rFaceMap.erase(faceMap[fIndex]);
+                faceMap.erase(fIndex);
+            }
+
+            // Configure a comparison face
+            face cFace(4);
+
+            // If any interior faces in the master map were
+            // converted to boundaries, account for it
+            const List<objectMap>& madF = map.addedFaceList();
+
+            forAll(madF, faceI)
+            {
+                label fIndex = madF[faceI].index();
+                const face& mFace = faces_[fIndex];
+
+                forAll(cFace, pointI)
+                {
+                    cFace[pointI] =
+                    (
+                        pointMap.found(mFace[pointI]) ?
+                        pointMap[mFace[pointI]] : -1
+                    );
+                }
+            }
+
+            // If any interior faces in the slave map were
+            // converted to boundaries, account for it
+            const List<objectMap>& sadF = slaveMap.addedFaceList();
+
+            forAll(sadF, faceI)
+            {
+                const face* facePtr = NULL;
+                label fIndex = sadF[faceI].index();
+
+                if (localCouple && !procCouple)
+                {
+                    facePtr = &(faces_[fIndex]);
+                }
+                else
+                if (procCouple && !localCouple)
+                {
+                    facePtr =
+                    (
+                        &(recvPatchMeshes_[pI].subMesh().faces_[fIndex])
+                    );
+                }
+
+                const face& sFace = *facePtr;
+
+                forAll(cFace, pointI)
+                {
+                    cFace[pointI] =
+                    (
+                        rPointMap.found(sFace[pointI]) ?
+                        rPointMap[sFace[pointI]] : -1
+                    );
+                }
+            }
+
+            // Push operation into coupleMap
+            switch (slaveMap.type())
+            {
+                case 1:
+                {
+                    cMap.pushOperation
+                    (
+                        slaveMap.index(),
+                        coupleMap::COLLAPSE_FIRST
+                    );
+
+                    break;
+                }
+
+                case 2:
+                {
+                    cMap.pushOperation
+                    (
+                        slaveMap.index(),
+                        coupleMap::COLLAPSE_SECOND
+                    );
+
+                    break;
+                }
+
+                case 3:
+                {
+                    cMap.pushOperation
+                    (
+                        slaveMap.index(),
+                        coupleMap::COLLAPSE_MIDPOINT
+                    );
+
+                    break;
+                }
+            }
         }
     }
 
@@ -4106,9 +4177,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
     }
 
-    // Add a map entry of the existing edge as 'added',
-    // since it will be deleted at the end of this operation
-    map.addEdge(eIndex, labelList(edges_[eIndex]));
+    // Add a map entry of the replacePoint as an 'addedPoint'
+    //  - Used in coupled mapping
+    map.addPoint(replacePoint);
 
     // Are we only performing checks?
     if (checkOnly)
@@ -4174,8 +4245,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     if (debug > 1)
     {
         Pout<< nl << nl
-            << "Edge: " << eIndex
-            << ": " << edges_[eIndex]
+            << "Edge: " << eIndex << ": " << edges_[eIndex]
             << " is to be collapsed. " << nl;
 
         label epIndex = whichEdgePatch(eIndex);
@@ -5273,17 +5343,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Fetch the appropriate coupleMap
             const coupleMap* cMapPtr = NULL;
 
-            // Configure the slave edge.
-            //  - collapseEdge store this as the first edge
-            //    on the list of added edges.
-            //  - Since slave edges have already been deleted
-            //    at this point, use changeMap information instead.
-            edge sEdge
-            (
-                slaveMap.addedEdgeList()[0].masterObjects()[0],
-                slaveMap.addedEdgeList()[0].masterObjects()[1]
-            );
-
             if (localCouple && !procCouple)
             {
                 cMapPtr = &(patchCoupling_[pI].patchMap());
@@ -5294,14 +5353,15 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 cMapPtr = &(recvPatchMeshes_[pI].patchMap());
             }
 
-            // Configure the slave replacement point
+            // Configure the slave replacement point.
+            //  - collapseEdge stores this as an 'addedPoint'
             label scPoint = slaveMap.removedPointList()[0];
-            label srPoint = (sEdge[0] == scPoint) ? sEdge[1] : sEdge[0];
+            label srPoint = slaveMap.addedPointList()[0].index();
 
             // Alias for convenience...
             const coupleMap& cMap = *cMapPtr;
 
-            label pointEnum = coupleMap::POINT;
+            const label pointEnum = coupleMap::POINT;
 
             // Obtain references
             Map<label>& pointMap = cMap.entityMap(pointEnum);
