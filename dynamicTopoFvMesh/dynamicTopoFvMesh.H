@@ -357,6 +357,16 @@ class dynamicTopoFvMesh
         // contains a triangular face.
         inline label getTriBoundaryEdge(const label fIndex) const;
 
+        // Given an input quad-face, determine checkEdges from mesh
+        static void getCheckEdges
+        (
+            const label fIndex,
+            const dynamicTopoFvMesh& mesh,
+            changeMap& map,
+            FixedList<edge,4>& checkEdge,
+            FixedList<label,4>& checkEdgeIndex
+        );
+
         // Return length-scale at an face-location in the mesh [2D]
         scalar faceLengthScale(const label fIndex) const;
 
@@ -480,8 +490,9 @@ class dynamicTopoFvMesh
         ) const;
 
         // Utility method to check for invalid face-collapse.
-        bool checkCollapse
+        static bool checkCollapse
         (
+            const dynamicTopoFvMesh& mesh,
             const labelList& triFaces,
             const FixedList<label,2>& c0BdyIndex,
             const FixedList<label,2>& c1BdyIndex,
@@ -491,7 +502,7 @@ class dynamicTopoFvMesh
             scalar& collapseQuality,
             const bool checkNeighbour,
             bool forceOp = false
-        ) const;
+        );
 
         // Utility method to check for invalid edge-collapse.
         bool checkCollapse

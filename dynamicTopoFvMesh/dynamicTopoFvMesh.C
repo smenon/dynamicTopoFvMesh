@@ -3327,6 +3327,64 @@ void dynamicTopoFvMesh::removeSlivers()
 }
 
 
+// Given an input quad-face, determine checkEdges from mesh
+//  - Does not refer to member data directly,
+//    since this is also used by subMeshes
+void dynamicTopoFvMesh::getCheckEdges
+(
+    const label fIndex,
+    const dynamicTopoFvMesh& mesh,
+    changeMap& map,
+    FixedList<edge,4>& checkEdge,
+    FixedList<label,4>& checkEdgeIndex
+)
+{
+    checkEdgeIndex[0] = mesh.getTriBoundaryEdge(fIndex);
+    checkEdge[0] = mesh.edges_[checkEdgeIndex[0]];
+
+    const labelList& fEdges = mesh.faceEdges_[fIndex];
+
+    forAll(fEdges, edgeI)
+    {
+        if (checkEdgeIndex[0] != fEdges[edgeI])
+        {
+            const edge& thisEdge = mesh.edges_[fEdges[edgeI]];
+
+            if
+            (
+                checkEdge[0].start() == thisEdge[0] ||
+                checkEdge[0].start() == thisEdge[1]
+            )
+            {
+                checkEdgeIndex[1] = fEdges[edgeI];
+                checkEdge[1] = thisEdge;
+
+                // Update the map
+                map.firstEdge() = checkEdgeIndex[1];
+            }
+            else
+            if
+            (
+                checkEdge[0].end() == thisEdge[0] ||
+                checkEdge[0].end() == thisEdge[1]
+            )
+            {
+                checkEdgeIndex[2] = fEdges[edgeI];
+                checkEdge[2] = thisEdge;
+
+                // Update the map
+                map.secondEdge() = checkEdgeIndex[2];
+            }
+            else
+            {
+                checkEdgeIndex[3] = fEdges[edgeI];
+                checkEdge[3] = thisEdge;
+            }
+        }
+    }
+}
+
+
 // Return length-scale at an face-location in the mesh [2D]
 scalar dynamicTopoFvMesh::faceLengthScale
 (

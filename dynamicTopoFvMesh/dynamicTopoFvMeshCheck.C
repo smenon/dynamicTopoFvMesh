@@ -1749,13 +1749,15 @@ bool dynamicTopoFvMesh::checkBisection
 }
 
 
-// Utility method to check whether the cell given by 'cellIndex' will yield
-// a valid cell when 'pointIndex' is moved to 'newPoint'.
+// Utility method to check whether the faces in triFaces will yield
+// valid triangles when 'pointIndex' is moved to 'newPoint'.
 //  - The routine performs metric-based checks.
-//  - Returns 'true' if the collapse in NOT feasible, and
-//    makes entries in cellsChecked to avoid repetitive checks.
+//  - Returns 'true' if the collapse in NOT feasible.
+//  - Does not reference member data, because this function
+//    is also used on subMeshes
 bool dynamicTopoFvMesh::checkCollapse
 (
+    const dynamicTopoFvMesh& mesh,
     const labelList& triFaces,
     const FixedList<label,2>& c0BdyIndex,
     const FixedList<label,2>& c1BdyIndex,
@@ -1765,7 +1767,7 @@ bool dynamicTopoFvMesh::checkCollapse
     scalar& collapseQuality,
     const bool checkNeighbour,
     bool forceOp
-) const
+)
 {
     // Reset input
     collapseQuality = GREAT;
@@ -1794,7 +1796,7 @@ bool dynamicTopoFvMesh::checkCollapse
             }
         }
 
-        const face& checkFace = faces_[triFaces[indexI]];
+        const face& checkFace = mesh.faces_[triFaces[indexI]];
 
         // Configure a triangle face
         FixedList<point, 3> tFNew(vector::zero);
@@ -1803,8 +1805,8 @@ bool dynamicTopoFvMesh::checkCollapse
         // Make necessary replacements
         forAll(checkFace, pointI)
         {
-            tFNew[pointI] = points_[checkFace[pointI]];
-            tFOld[pointI] = oldPoints_[checkFace[pointI]];
+            tFNew[pointI] = mesh.points_[checkFace[pointI]];
+            tFOld[pointI] = mesh.oldPoints_[checkFace[pointI]];
 
             if (checkFace[pointI] == pointIndex[0])
             {
@@ -1858,13 +1860,13 @@ bool dynamicTopoFvMesh::checkCollapse
     }
 
     // Final quality check
-    if (collapseQuality < sliverThreshold_ && !forceOp)
+    if (collapseQuality < mesh.sliverThreshold_ && !forceOp)
     {
         if (debug > 3)
         {
             Pout<< " * * * 2D checkCollapse * * * " << nl
                 << " collapseQuality: " << collapseQuality
-                << " below threshold: " << sliverThreshold_
+                << " below threshold: " << mesh.sliverThreshold_
                 << endl;
         }
 
