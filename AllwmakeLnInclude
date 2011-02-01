@@ -1,7 +1,6 @@
 #!/bin/sh
 set -x
 
-wmakeLnInclude coupleMap
 wmakeLnInclude freeSurface
 wmakeLnInclude enginePointPatchFields
 wmakeLnInclude mesquiteMotionSolver

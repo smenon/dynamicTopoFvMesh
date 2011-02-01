@@ -2,7 +2,6 @@
 set -x
 
 # Clean out existing object files
-wclean coupleMap
 wclean mesquiteMotionSolver
 wclean freeSurface
 wclean enginePointPatchFields

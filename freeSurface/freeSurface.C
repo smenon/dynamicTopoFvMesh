@@ -55,7 +55,6 @@ Description
 #include "fixedValueCorrectedFvPatchFields.H"
 
 #include "mapPolyMesh.H"
-#include "coupleMap.H"
 #include "setMotionBC.H"
 
 #include "primitivePatchInterpolation.H"
@@ -311,37 +310,6 @@ tmp<Field<Type> > Foam::freeSurface::pointInterpolateAB
     const Field<Type>& field
 )
 {
-    // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps = mesh().lookupClass<coupleMap>();
-
-    const Map<label>& mPA = mesh().boundaryMesh()[aPatchID()].meshPointMap();
-    const Map<label>& mPB = mesh().boundaryMesh()[bPatchID()].meshPointMap();
-
-    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
-    {
-        const coupleMap& cMap = *(cmIter());
-
-        // Ensure that both master and slave patches match.
-        if
-        (
-            (cMap.masterIndex() == aPatchID()) &&
-            (cMap.slaveIndex() == bPatchID()) &&
-            (cMap.isLocal())
-        )
-        {
-            return cMap.pointInterpolate(mPA, mPB, field);
-        }
-    }
-
-    if (useCoupleMap_)
-    {
-        WarningIn("freeSurface::pointInterpolateAB()")
-            << "Could not find coupling map: " << nl
-            << "Master: " << aPatchID() << nl
-            << "Slave: " << bPatchID()
-            << abort(FatalError);
-    }
-
     // Return conventional interpolation
     return interpolatorAB().pointInterpolate(field);
 }
@@ -354,37 +322,6 @@ tmp<Field<Type> > Foam::freeSurface::pointInterpolateBA
     const Field<Type>& field
 )
 {
-    // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps = mesh().lookupClass<coupleMap>();
-
-    const Map<label>& mPA = mesh().boundaryMesh()[aPatchID()].meshPointMap();
-    const Map<label>& mPB = mesh().boundaryMesh()[bPatchID()].meshPointMap();
-
-    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
-    {
-        const coupleMap& cMap = *(cmIter());
-
-        // Ensure that both master and slave patches match.
-        if
-        (
-            (cMap.masterIndex() == aPatchID()) &&
-            (cMap.slaveIndex() == bPatchID()) &&
-            (cMap.isLocal())
-        )
-        {
-            return cMap.pointInterpolate(mPA, mPB, field, true);
-        }
-    }
-
-    if (useCoupleMap_)
-    {
-        WarningIn("freeSurface::pointInterpolateBA()")
-            << "Could not find coupling map: " << nl
-            << "Master: " << aPatchID() << nl
-            << "Slave: " << bPatchID()
-            << abort(FatalError);
-    }
-
     // Return conventional interpolation
     return interpolatorBA().pointInterpolate(field);
 }
@@ -397,37 +334,6 @@ tmp<Field<Type> > Foam::freeSurface::faceInterpolateAB
     const Field<Type>& field
 )
 {
-    // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps = mesh().lookupClass<coupleMap>();
-
-    label mStart = mesh().boundaryMesh()[aPatchID()].start();
-    label sStart = mesh().boundaryMesh()[bPatchID()].start();
-
-    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
-    {
-        const coupleMap& cMap = *(cmIter());
-
-        // Ensure that both master and slave patches match.
-        if
-        (
-            (cMap.masterIndex() == aPatchID()) &&
-            (cMap.slaveIndex() == bPatchID()) &&
-            (cMap.isLocal())
-        )
-        {
-            return cMap.faceInterpolate(mStart, sStart, field);
-        }
-    }
-
-    if (useCoupleMap_)
-    {
-        WarningIn("freeSurface::faceInterpolateAB()")
-            << "Could not find coupling map: " << nl
-            << "Master: " << aPatchID() << nl
-            << "Slave: " << bPatchID()
-            << abort(FatalError);
-    }
-
     // Return conventional interpolation
     return interpolatorAB().faceInterpolate(field);
 }
@@ -440,37 +346,6 @@ tmp<Field<Type> > Foam::freeSurface::faceInterpolateBA
     const Field<Type>& field
 )
 {
-    // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps = mesh().lookupClass<coupleMap>();
-
-    label mStart = mesh().boundaryMesh()[aPatchID()].start();
-    label sStart = mesh().boundaryMesh()[bPatchID()].start();
-
-    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
-    {
-        const coupleMap& cMap = *(cmIter());
-
-        // Ensure that both master and slave patches match.
-        if
-        (
-            (cMap.masterIndex() == aPatchID()) &&
-            (cMap.slaveIndex() == bPatchID()) &&
-            (cMap.isLocal())
-        )
-        {
-            return cMap.faceInterpolate(mStart, sStart, field, true);
-        }
-    }
-
-    if (useCoupleMap_)
-    {
-        WarningIn("freeSurface::faceInterpolateBA()")
-            << "Could not find coupling map: " << nl
-            << "Master: " << aPatchID() << nl
-            << "Slave: " << bPatchID()
-            << abort(FatalError);
-    }
-
     // Return conventional interpolation
     return interpolatorBA().faceInterpolate(field);;
 }

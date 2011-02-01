@@ -109,16 +109,16 @@ class coupleMap
         mutable cellList* cellsPtr_;
         mutable labelListList* faceEdgesPtr_;
 
-        void makeEdges() const;
-        void makeFaces() const;
-        void makeCells() const;
+        inline void makeEdges() const;
+        inline void makeFaces() const;
+        inline void makeCells() const;
 
-        void makeAddressing() const;
+        inline void makeAddressing() const;
 
-        void clearAddressing() const;
+        inline void clearAddressing() const;
 
     //- Disallow default bitwise assignment
-    void operator=(const coupleMap&);
+        inline void operator=(const coupleMap&);
 
 public:
 
@@ -161,7 +161,7 @@ public:
     TypeName("coupleMap");
 
     // Constructor
-    coupleMap
+    inline coupleMap
     (
         const IOobject& io,
         const bool twoDMesh,
@@ -172,11 +172,11 @@ public:
     );
 
     // Construct as copy
-    coupleMap(const coupleMap&);
+    inline coupleMap(const coupleMap&);
 
     // Destructor
 
-        virtual ~coupleMap();
+        inline virtual ~coupleMap();
 
     // Interpolation functions
 
@@ -229,45 +229,45 @@ public:
         inline bool isSend() const;
         inline bool isRecv() const;
 
-        pointField& pointBuffer() const;
-        pointField& oldPointBuffer() const;
+        inline pointField& pointBuffer() const;
+        inline pointField& oldPointBuffer() const;
 
-        labelList& subMeshPoints() const;
+        inline labelList& subMeshPoints() const;
 
-        void allocateBuffers() const;
+        inline void allocateBuffers() const;
 
-        label findSlave
+        inline label findSlave
         (
             const label eType,
             const label Index
         ) const;
 
-        label findMaster
+        inline label findMaster
         (
             const label eType,
             const label Index
         ) const;
 
-        void removeSlave
+        inline void removeSlave
         (
             const label eType,
             const label Index
         ) const;
 
-        void removeMaster
+        inline void removeMaster
         (
             const label eType,
             const label Index
         ) const;
 
-        void mapSlave
+        inline void mapSlave
         (
             const label eType,
             const label master,
             const label slave
         ) const;
 
-        void mapMaster
+        inline void mapMaster
         (
             const label eType,
             const label slave,
@@ -289,7 +289,7 @@ public:
         inline pointField& moveNewPoints() const;
         inline pointField& moveOldPoints() const;
 
-        void pushOperation
+        inline void pushOperation
         (
             const label index,
             const label opType,
@@ -298,28 +298,28 @@ public:
         ) const;
 
         //- Demand-driven data
-        label nInternalFaces() const;
-        const labelList& owner() const;
-        const labelList& neighbour() const;
-        const edgeList& edges() const;
-        const faceList& faces() const;
-        const cellList& cells() const;
-        const labelListList& faceEdges() const;
+        inline label nInternalFaces() const;
+        inline const labelList& owner() const;
+        inline const labelList& neighbour() const;
+        inline const edgeList& edges() const;
+        inline const faceList& faces() const;
+        inline const cellList& cells() const;
+        inline const labelListList& faceEdges() const;
 
-        void transferMaps
+        inline void transferMaps
         (
             const label eType,
             Map<label>& newEntityMap,
             Map<label>& newReverseEntityMap
         ) const;
 
-        void clearMaps() const;
+        inline void clearMaps() const;
 
-        void clearBuffers() const;
+        inline void clearBuffers() const;
 
-        bool readData(Istream&);
+        inline bool readData(Istream&);
 
-        bool writeData(Ostream&) const;
+        inline bool writeData(Ostream&) const;
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -327,6 +327,10 @@ public:
 } // End namespace Foam
 
 #include "coupleMapI.H"
+
+#ifdef NoRepository
+#    include "coupleMap.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

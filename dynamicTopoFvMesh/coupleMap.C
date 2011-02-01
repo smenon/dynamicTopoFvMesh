@@ -42,13 +42,9 @@ Author
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
-
-defineTypeNameAndDebug(coupleMap, 0);
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-coupleMap::coupleMap
+inline coupleMap::coupleMap
 (
     const IOobject& io,
     const bool twoDMesh,
@@ -87,7 +83,7 @@ coupleMap::coupleMap
 
 
 // Construct as copy
-coupleMap::coupleMap(const coupleMap& cm)
+inline coupleMap::coupleMap(const coupleMap& cm)
 :
     regIOobject(cm, true),
     twoDMesh_(cm.twoDMesh_),
@@ -119,7 +115,7 @@ coupleMap::coupleMap(const coupleMap& cm)
 
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
 
-coupleMap::~coupleMap()
+inline coupleMap::~coupleMap()
 {
     clearMaps();
     clearBuffers();
@@ -129,7 +125,7 @@ coupleMap::~coupleMap()
 
 // * * * * * * * * * * * * * * * Private Functions * * * * * * * * * * * * * //
 
-void coupleMap::clearAddressing() const
+inline void coupleMap::clearAddressing() const
 {
     nInternalFaces_ = -1;
     deleteDemandDrivenData(ownerPtr_);
@@ -141,7 +137,7 @@ void coupleMap::clearAddressing() const
 }
 
 
-void coupleMap::makeAddressing() const
+inline void coupleMap::makeAddressing() const
 {
     // It is an error to attempt to recalculate
     // if the pointer is already set
@@ -200,7 +196,7 @@ void coupleMap::makeAddressing() const
 }
 
 
-void coupleMap::makeEdges() const
+inline void coupleMap::makeEdges() const
 {
     // It is an error to attempt to recalculate
     // if the pointer is already set
@@ -226,7 +222,7 @@ void coupleMap::makeEdges() const
 }
 
 
-void coupleMap::makeFaces() const
+inline void coupleMap::makeFaces() const
 {
     // It is an error to attempt to recalculate
     // if the pointer is already set
@@ -283,7 +279,7 @@ void coupleMap::makeFaces() const
 }
 
 
-void coupleMap::makeCells() const
+inline void coupleMap::makeCells() const
 {
     // It is an error to attempt to recalculate
     // if the pointer is already set
@@ -316,31 +312,31 @@ void coupleMap::makeCells() const
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-pointField& coupleMap::pointBuffer() const
+inline pointField& coupleMap::pointBuffer() const
 {
     return pointBuffer_;
 }
 
 
-pointField& coupleMap::oldPointBuffer() const
+inline pointField& coupleMap::oldPointBuffer() const
 {
     return oldPointBuffer_;
 }
 
 
-labelList& coupleMap::subMeshPoints() const
+inline labelList& coupleMap::subMeshPoints() const
 {
     return subMeshPoints_;
 }
 
 
-void coupleMap::allocateBuffers() const
+inline void coupleMap::allocateBuffers() const
 {
     forAll(nEntities_, entityI)
     {
         if (nEntities_[entityI] < 0)
         {
-            FatalErrorIn("coupleMap::allocateBuffers()")
+            FatalErrorIn("inline void coupleMap::allocateBuffers() const")
                 << " Entity sizes are not valid." << nl
                 << " nEntities: " << nEntities_
                 << abort(FatalError);
@@ -380,7 +376,7 @@ void coupleMap::allocateBuffers() const
 }
 
 
-label coupleMap::findSlave
+inline label coupleMap::findSlave
 (
     const label eType,
     const label Index
@@ -397,7 +393,7 @@ label coupleMap::findSlave
 }
 
 
-label coupleMap::findMaster
+inline label coupleMap::findMaster
 (
     const label eType,
     const label Index
@@ -414,7 +410,7 @@ label coupleMap::findMaster
 }
 
 
-void coupleMap::removeSlave
+inline void coupleMap::removeSlave
 (
     const label eType,
     const label Index
@@ -427,7 +423,7 @@ void coupleMap::removeSlave
 }
 
 
-void coupleMap::removeMaster
+inline void coupleMap::removeMaster
 (
     const label eType,
     const label Index
@@ -440,7 +436,7 @@ void coupleMap::removeMaster
 }
 
 
-void coupleMap::mapSlave
+inline void coupleMap::mapSlave
 (
     const label eType,
     const label master,
@@ -451,7 +447,7 @@ void coupleMap::mapSlave
 }
 
 
-void coupleMap::mapMaster
+inline void coupleMap::mapMaster
 (
     const label eType,
     const label slave,
@@ -462,7 +458,7 @@ void coupleMap::mapMaster
 }
 
 
-void coupleMap::pushOperation
+inline void coupleMap::pushOperation
 (
     const label index,
     const label opType,
@@ -481,7 +477,7 @@ void coupleMap::pushOperation
 }
 
 
-void coupleMap::transferMaps
+inline void coupleMap::transferMaps
 (
     const label eType,
     Map<label>& newEntityMap,
@@ -493,7 +489,7 @@ void coupleMap::transferMaps
 }
 
 
-void coupleMap::clearMaps() const
+inline void coupleMap::clearMaps() const
 {
     forAll(entityMap_, mapI)
     {
@@ -503,7 +499,7 @@ void coupleMap::clearMaps() const
 }
 
 
-void coupleMap::clearBuffers() const
+inline void coupleMap::clearBuffers() const
 {
     pointBuffer_.clear();
     oldPointBuffer_.clear();
@@ -523,7 +519,7 @@ void coupleMap::clearBuffers() const
 }
 
 
-label coupleMap::nInternalFaces() const
+inline label coupleMap::nInternalFaces() const
 {
     if (nInternalFaces_ == -1)
     {
@@ -534,7 +530,7 @@ label coupleMap::nInternalFaces() const
 }
 
 
-const labelList& coupleMap::owner() const
+inline const labelList& coupleMap::owner() const
 {
     if (!ownerPtr_)
     {
@@ -545,7 +541,7 @@ const labelList& coupleMap::owner() const
 }
 
 
-const labelList& coupleMap::neighbour() const
+inline const labelList& coupleMap::neighbour() const
 {
     if (!neighbourPtr_)
     {
@@ -556,7 +552,7 @@ const labelList& coupleMap::neighbour() const
 }
 
 
-const edgeList& coupleMap::edges() const
+inline const edgeList& coupleMap::edges() const
 {
     if (!edgesPtr_)
     {
@@ -567,7 +563,7 @@ const edgeList& coupleMap::edges() const
 }
 
 
-const faceList& coupleMap::faces() const
+inline const faceList& coupleMap::faces() const
 {
     if (!facesPtr_)
     {
@@ -578,7 +574,7 @@ const faceList& coupleMap::faces() const
 }
 
 
-const cellList& coupleMap::cells() const
+inline const cellList& coupleMap::cells() const
 {
     if (!cellsPtr_)
     {
@@ -589,7 +585,7 @@ const cellList& coupleMap::cells() const
 }
 
 
-const labelListList& coupleMap::faceEdges() const
+inline const labelListList& coupleMap::faceEdges() const
 {
     if (!faceEdgesPtr_)
     {
@@ -600,7 +596,7 @@ const labelListList& coupleMap::faceEdges() const
 }
 
 
-bool coupleMap::readData(Istream& is)
+inline bool coupleMap::readData(Istream& is)
 {
     Map<label> tmpMap(is);
 
@@ -619,7 +615,7 @@ bool coupleMap::readData(Istream& is)
 }
 
 
-bool coupleMap::writeData(Ostream& os) const
+inline bool coupleMap::writeData(Ostream& os) const
 {
     // Only write-out point-map information
     // to avoid geometric checking.
@@ -630,7 +626,7 @@ bool coupleMap::writeData(Ostream& os) const
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void coupleMap::operator=(const coupleMap& rhs)
+inline void coupleMap::operator=(const coupleMap& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)

@@ -21,7 +21,6 @@ fi
 
 ./AllwmakeLnInclude
 
-wmake libso coupleMap
 wmake libso freeSurface
 wmake libso enginePointPatchFields
 wmake libso mesquiteMotionSolver

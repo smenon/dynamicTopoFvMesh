@@ -14,6 +14,4 @@ EXE_LIBS = \
     -lmeshTools \
     -lfiniteVolume \
     -lfiniteArea \
-    -llduSolvers \
-    -L$(FOAM_USER_LIBBIN) \
-    -lcoupleMap
+    -llduSolvers 
