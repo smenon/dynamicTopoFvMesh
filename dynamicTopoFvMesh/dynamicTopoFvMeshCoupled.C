@@ -268,14 +268,14 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             const labelList& spAddr = gData.sharedPointAddr();
             const labelList& spLabels = gData.sharedPointLabels();
 
-            labelList nRecvPoints(Pstream::nProcs(), 0);
             labelListList spBuffer(Pstream::nProcs(), labelList(0));
 
             if (gData.nGlobalPoints())
             {
                 if (debug)
                 {
-                    Info<< " Found " << gData.nGlobalPoints()
+                    Info<< " identifyCoupledPatches :"
+                        << " Found " << gData.nGlobalPoints()
                         << " global points." << endl;
                 }
 
@@ -319,7 +319,8 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             else
             if (debug)
             {
-                Info<< "Did not find any global points." << endl;
+                Info<< " identifyCoupledPatches :"
+                    << " Did not find any global points." << endl;
             }
 
             labelHashSet immNeighbours;
@@ -384,7 +385,8 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
                         if (foundGlobalMatch && debug)
                         {
-                            Pout<< "Additionally talking to processor: "
+                            Pout<< " identifyCoupledPatches :"
+                                << " Additionally talking to processor: "
                                 << proc << endl;
                         }
 
@@ -505,7 +507,9 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
             if (debug > 3)
             {
-                Pout<< "Talking to processors: " << procIndices_ << endl;
+                Pout<< " identifyCoupledPatches :"
+                    << " Talking to processors: "
+                    << procIndices_ << endl;
 
                 forAll(procIndices_, pI)
                 {

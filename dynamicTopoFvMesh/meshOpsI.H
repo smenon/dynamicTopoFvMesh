@@ -534,10 +534,7 @@ inline void pWrite
     (
         Pstream::blocking,
         toID,
-        reinterpret_cast<const char*>
-        (
-            &data
-        ),
+        reinterpret_cast<const char*>(&data),
         sizeof(label)
     );
 }
@@ -554,10 +551,7 @@ inline void pRead
     (
         Pstream::blocking,
         fromID,
-        reinterpret_cast<char*>
-        (
-            &data
-        ),
+        reinterpret_cast<char*>(&data),
         sizeof(label)
     );
 }

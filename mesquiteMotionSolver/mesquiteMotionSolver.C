@@ -31,7 +31,6 @@ License
 #include "processorPolyPatch.H"
 #include "addToRunTimeSelectionTable.H"
 #include "polyMesh.H"
-#include "coupleMap.H"
 
 #include "matchPoints.H"
 #include "DimensionedField.H"
@@ -171,6 +170,76 @@ void mesquiteMotionSolver::clearOut()
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+// Parallel blocking send
+void mesquiteMotionSolver::parWrite
+(
+    const label toID,
+    const label& data
+)
+{
+    OPstream::write
+    (
+        Pstream::blocking,
+        toID,
+        reinterpret_cast<const char*>(&data),
+        sizeof(label)
+    );
+}
+
+
+// Parallel blocking receive
+void mesquiteMotionSolver::parRead
+(
+    const label fromID,
+    label& data
+)
+{
+    IPstream::read
+    (
+        Pstream::blocking,
+        fromID,
+        reinterpret_cast<char*>(&data),
+        sizeof(label)
+    );
+}
+
+
+// Parallel non-blocking send for lists
+template <class Type>
+void mesquiteMotionSolver::parWrite
+(
+    const label toID,
+    const UList<Type>& data
+)
+{
+    OPstream::write
+    (
+        Pstream::nonBlocking,
+        toID,
+        reinterpret_cast<const char*>(&data[0]),
+        data.size()*sizeof(Type)
+    );
+}
+
+
+// Parallel non-blocking receive for lists
+template <class Type>
+void mesquiteMotionSolver::parRead
+(
+    const label fromID,
+    UList<Type>& data
+)
+{
+    IPstream::read
+    (
+        Pstream::nonBlocking,
+        fromID,
+        reinterpret_cast<char*>(&data[0]),
+        data.size()*sizeof(Type)
+    );
+}
+
 
 // Read options from the dictionary
 void mesquiteMotionSolver::readOptions()
@@ -1156,8 +1225,8 @@ void mesquiteMotionSolver::initArrays()
 }
 
 
-// Private member function to construct parallel connectivity data
-void mesquiteMotionSolver::initParallelConnectivity()
+// Identify coupled patches
+void mesquiteMotionSolver::identifyCoupledPatches()
 {
     if (!Pstream::parRun())
     {
@@ -1166,369 +1235,298 @@ void mesquiteMotionSolver::initParallelConnectivity()
 
     if (debug)
     {
-        Info<< "Initializing parallel connectivity" << endl;
+        Info<< "Identifying coupled patches" << endl;
     }
 
-    Map<label> nPrc;
-    label pIndex = nPoints_, cIndex = (4*nCells_);
-
+    // Maintain a separate list of processor IDs in procIndices.
+    // This is done because this sub-domain may talk to processors
+    // that share only edges/points.
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
-    // Build a list of nearest neighbours.
-    forAll(boundary, patchI)
-    {
-        if (isA<processorPolyPatch>(boundary[patchI]))
-        {
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[patchI])
-            );
+    // Fetch the list of global points from polyMesh.
+    const globalMeshData& gData = mesh().globalData();
 
-            nPrc.insert(pp.neighbProcNo(), patchI);
+    const labelList& spAddr = gData.sharedPointAddr();
+    const labelList& spLabels = gData.sharedPointLabels();
+
+    labelListList spBuffer(Pstream::nProcs(), labelList(0));
+
+    if (gData.nGlobalPoints())
+    {
+        if (debug)
+        {
+            Info<< " Found " << gData.nGlobalPoints()
+                << " global points." << endl;
+        }
+
+        // Send others my addressing.
+        for (label proc = 0; proc < Pstream::nProcs(); proc++)
+        {
+            if (proc != Pstream::myProcNo())
+            {
+                // Send number of entities first.
+                parWrite(proc, spAddr.size());
+
+                // Send the buffer.
+                if (spAddr.size())
+                {
+                    parWrite(proc, spAddr);
+                }
+            }
+        }
+
+        // Receive addressing from others
+        for (label proc = 0; proc < Pstream::nProcs(); proc++)
+        {
+            if (proc != Pstream::myProcNo())
+            {
+                label procInfoSize = -1;
+
+                // How many entities am I going to be receiving?
+                parRead(proc, procInfoSize);
+
+                if (procInfoSize)
+                {
+                    // Size the receive buffer.
+                    spBuffer[proc].setSize(procInfoSize, -1);
+
+                    // Schedule for receipt.
+                    parRead(proc, spBuffer[proc]);
+                }
+            }
         }
     }
-
-    // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
-
+    else
     if (debug)
     {
-        forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
-        {
-            const coupleMap& cMap = *(cmIter());
-
-            Pout<< " Name: " << cMap.name()
-                << " Send: " << cMap.isSend()
-                << " Recv: " << cMap.isRecv()
-                << endl;
-        }
+        Info<< "Did not find any global points." << endl;
     }
 
-    if (!twoDMesh_)
+    labelHashSet immNeighbours;
+    labelListList procPatchPoints(Pstream::nProcs());
+
+    // Insert my immediate neighbours into the list.
+    forAll(boundary, pI)
     {
-        // Prepare arrays for mesquite
-        forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+        if (isA<processorPolyPatch>(boundary[pI]))
         {
-            const coupleMap& cMap = *(cmIter());
-
-            // Pick maps for which this sub-domain is master
-            if
-            (
-                (cMap.masterIndex() == Pstream::myProcNo()) &&
-                (cMap.isRecv()) && (!cMap.isLocal())
-            )
-            {
-                nAuxPoints_ +=
-                (
-                    cMap.nEntities(coupleMap::POINT)
-                  - cMap.nEntities(coupleMap::SHARED_POINT)
-                );
-
-                nAuxCells_ += cMap.nEntities(coupleMap::CELL);
-            }
-        }
-
-        double *vtxCoordsNew = NULL;
-        unsigned long *cellToNodeNew = NULL;
-        int *fixFlagsNew = NULL;
-
-        vtxCoordsNew = new double[3 * (nPoints_ + nAuxPoints_)];
-        cellToNodeNew = new unsigned long[4 * (nCells_ + nAuxCells_)];
-        fixFlagsNew = new int[(nPoints_ + nAuxPoints_)];
-
-        // Copy existing arrays
-        for (label i = 0; i < cIndex; i++)
-        {
-            cellToNodeNew[i] = cellToNode_[i];
-        }
-
-        for (label i = 0; i < pIndex; i++)
-        {
-            fixFlagsNew[i] = fixFlags_[i];
-        }
-
-        // Delete demand-driven data
-        clearOut();
-
-        // Transfer pointers
-        vtxCoords_ = vtxCoordsNew;
-        cellToNode_ = cellToNodeNew;
-        fixFlags_ = fixFlagsNew;
-
-        vtxCoordsNew = NULL;
-        cellToNodeNew = NULL;
-        fixFlagsNew = NULL;
-    }
-
-    // Search the registry for all mapping objects.
-    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
-    {
-        const coupleMap& cMap = *(cmIter());
-
-        if (cMap.isLocal() || cMap.isSend())
-        {
-            continue;
-        }
-
-        const labelList& pBuffer = cMap.entityBuffer(coupleMap::POINT);
-
-        label neiProcNo = -1;
-
-        if (cMap.masterIndex() == Pstream::myProcNo())
-        {
-            neiProcNo = cMap.slaveIndex();
-        }
-        else
-        if (cMap.slaveIndex() == Pstream::myProcNo())
-        {
-            neiProcNo = cMap.masterIndex();
-        }
-        else
-        {
-            FatalErrorIn
-            (
-                "void mesquiteMotionSolver::initParallelConnectivity()"
-            )
-                << " Wrongly configured coupleMap: " << nl
-                << " My proc: " << Pstream::myProcNo() << nl
-                << " masterIndex: " << cMap.masterIndex() << nl
-                << " slaveIndex: " << cMap.slaveIndex() << nl
-                << abort(FatalError);
-        }
-
-        // Prepare a new Map for this processor
-        auxPointMap_.insert(neiProcNo, Map<label>());
-
-        // Determine addressing for all shared points.
-        if (nPrc.found(neiProcNo))
-        {
-            // Fetch addressing for this patch.
             const processorPolyPatch& pp =
             (
-                refCast<const processorPolyPatch>(boundary[nPrc[neiProcNo]])
+                refCast<const processorPolyPatch>(boundary[pI])
             );
 
-            const labelList& neiPoints = pp.neighbPoints();
-            const labelList& mPoints = boundary[nPrc[neiProcNo]].meshPoints();
+            label neiProcNo = pp.neighbProcNo();
 
-            forAll(mPoints, pointI)
-            {
-                auxPointMap_[neiProcNo].insert
-                (
-                    neiPoints[pointI],
-                    mPoints[pointI]
-                );
-            }
+            // Insert all boundary points.
+            procPatchPoints[neiProcNo] = pp.meshPoints();
+
+            // Keep track of immediate neighbours.
+            immNeighbours.insert(neiProcNo);
         }
-        else
-        {
-            // Disconnected neighbour.
-            // Look at globalPoint addressing
-            // for its information.
-            const globalMeshData& gD = mesh().globalData();
-            const labelList& spA = gD.sharedPointAddr();
-            const labelList& spL = gD.sharedPointLabels();
+    }
 
-            forAll(pBuffer, pointI)
+    if (gData.nGlobalPoints())
+    {
+        // Wait for all transfers to complete.
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+
+        // Now loop through all processor addressing, and check if
+        // any labels coincide with my global shared points.
+        // If this is true, we need to be talking to that neighbour
+        // as well (if not already).
+        for (label proc = 0; proc < Pstream::nProcs(); proc++)
+        {
+            if
+            (
+                (proc != Pstream::myProcNo()) &&
+                (!immNeighbours.found(proc))
+            )
             {
-                label addrIndex = findIndex(spA, pBuffer[pointI]);
+                bool foundGlobalMatch = false;
 
-                // Find the global index.
-                auxPointMap_[neiProcNo].insert(pointI, spL[addrIndex]);
-            }
-        }
+                labelHashSet neiSet;
 
-        if (twoDMesh_)
-        {
-            continue;
-        }
-
-        if (cMap.masterIndex() == Pstream::myProcNo())
-        {
-            // Fetch demand-driven addressing from coupleMap
-            const labelList& own = cMap.owner();
-            const cellList& cList = cMap.cells();
-            const faceList& fList = cMap.faces();
-
-            forAll(cList, cellI)
-            {
-                const cell& cellToCheck = cList[cellI];
-
-                // Assume all tetrahedral cells
-                FixedList<label, 4> p(-1);
-
-                // Fetch the first two faces for this cell.
-                const face& tFI = fList[cellToCheck[0]];
-                const face& tFJ = fList[cellToCheck[1]];
-
-                // Determine a unique point on the second face.
-                forAll(tFJ, pJ)
+                forAll(spBuffer[proc], pointI)
                 {
-                    if
-                    (
-                        (tFJ[pJ] != tFI[0]) &&
-                        (tFJ[pJ] != tFI[1]) &&
-                        (tFJ[pJ] != tFI[2])
-                    )
+                    forAll(spAddr, pointJ)
                     {
-                        // Found all necessary points.
-                        // Now check orientation.
-                        if (own[cellToCheck[0]] == cellI)
+                        if (spAddr[pointJ] == spBuffer[proc][pointI])
                         {
-                            p[0] = tFI[2];
-                            p[1] = tFI[1];
-                            p[2] = tFI[0];
-                            p[3] = tFJ[pJ];
-                        }
-                        else
-                        {
-                            p[0] = tFI[0];
-                            p[1] = tFI[1];
-                            p[2] = tFI[2];
-                            p[3] = tFJ[pJ];
-                        }
+                            // Make an entry
+                            neiSet.insert(spLabels[pointJ]);
 
-                        break;
+                            foundGlobalMatch = true;
+
+                            break;
+                        }
                     }
                 }
 
-                // Prepare maps for all new points and fill in cellToNode.
-                forAll(p, i)
+                if (foundGlobalMatch && debug)
                 {
-                    if (!auxPointMap_[neiProcNo].found(p[i]))
-                    {
-                        auxPointMap_[neiProcNo].insert
-                        (
-                            p[i],
-                            pIndex++
-                        );
-
-                        // Hold all new points as fixed.
-                        fixFlags_[p[i]] = 1;
-                    }
-
-                    // Assign cellToNode
-                    cellToNode_[cIndex++] = auxPointMap_[neiProcNo][p[i]];
+                    Pout<< "Additionally talking to processor: "
+                        << proc << endl;
                 }
-            }
-        }
-        else
-        {
-            // Fetch the neighbour's procIndex
-            const labelList& smPoints = cMap.subMeshPoints();
 
-            // Hold all subMeshPoints as fixed.
-            forAll(smPoints, pointI)
-            {
-                fixFlags_[smPoints[pointI]] = 1;
+                procPatchPoints[proc] = neiSet.toc();
             }
         }
     }
 
-    // Initialize connectivity for surface smoothing.
+    // Estimate an initial size
+    procIndices_.setSize(Pstream::nProcs());
+
+    // Patch sub meshes need to be prepared in ascending
+    // order of neighbouring processors.
+    label nTotalProcs = 0;
+
+    forAll(procPatchPoints, procI)
+    {
+        if (procPatchPoints[procI].size())
+        {
+            procIndices_[nTotalProcs++] = procI;
+        }
+    }
+
+    // Shrink to actual size
+    procIndices_.setSize(nTotalProcs);
+
+    // Create send/recv patch points, and copy
+    // the list of points for each processor.
+    sendProcPoints_.setSize(nTotalProcs);
+
+    forAll(procIndices_, pI)
+    {
+        sendProcPoints_[pI].transfer(procPatchPoints[procIndices_[pI]]);
+    }
+}
+
+
+// Prepare for parallel surface smoothing
+void mesquiteMotionSolver::initParallelSurfaceSmoothing()
+{
     if (!surfaceSmoothing_)
     {
         return;
     }
 
-    Map<DynamicList<point> > auxSurfPoints;
+    if (debug)
+    {
+        Info<< "Initializing parallel smoothing connectivity" << endl;
+    }
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
     boolList bdyMarker(pointMarker_.size(), false);
 
-    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+    // Maintain a list of points for geometric matching
+    List<DynamicList<point> > auxSurfPoints
+    (
+        procIndices_.size(),
+        DynamicList<point>(20)
+    );
+
+    // Prepare a new Map for all processors
+    sendFields_.setSize(procIndices_.size());
+    recvFields_.setSize(procIndices_.size());
+    auxSurfPointMap_.setSize(procIndices_.size());
+    auxNeiBufferMap_.setSize(procIndices_.size());
+
+    // Build a reverse processor map for convenience
+    Map<label> procMap;
+
+    forAll(procIndices_, pI)
     {
-        const coupleMap& cMap = *(cmIter());
+        procMap.insert(procIndices_[pI], pI);
+    }
 
-        if (cMap.isLocal())
+    const labelListList& eFaces = mesh().edgeFaces();
+
+    // Configure a magnitude for distance matching
+    scalar matchMag = GREAT;
+
+    forAll(pIDs_, patchI)
+    {
+        const edgeList& edges = boundary[pIDs_[patchI]].edges();
+        const pointField& points = boundary[pIDs_[patchI]].localPoints();
+        const labelList& meshEdges = boundary[pIDs_[patchI]].meshEdges();
+
+        // Loop through boundary edges, and determine
+        // if this is adjacent to a processor patch.
+        for
+        (
+            label i = boundary[pIDs_[patchI]].nInternalEdges();
+            i < edges.size();
+            i++
+        )
         {
-            continue;
-        }
+            const labelList& eF = eFaces[meshEdges[i]];
 
-        label neiProcNo = -1;
-        bool slaveProc = false;
-
-        // Fetch the neighbour's procIndex
-        if (cMap.masterIndex() == Pstream::myProcNo())
-        {
-            neiProcNo = cMap.slaveIndex();
-        }
-        else
-        if (cMap.slaveIndex() == Pstream::myProcNo())
-        {
-            neiProcNo = cMap.masterIndex();
-            slaveProc = true;
-        }
-
-        // Prepare a new Map for this processor
-        auxSurfPointMap_.insert(neiProcNo, Map<label>());
-        auxNeiBufferMap_.insert(neiProcNo, Map<label>());
-        auxSurfPoints.insert(neiProcNo, DynamicList<point>(20));
-
-        // Fetch reference
-        Map<label>& aspMap = auxSurfPointMap_[neiProcNo];
-        Map<label>& anbMap = auxNeiBufferMap_[neiProcNo];
-        DynamicList<point>& asPoints = auxSurfPoints[neiProcNo];
-
-        // Fetch buffers from coupleMap
-        const pointField& mPts = cMap.pointBuffer();
-        const labelList& starts = cMap.entityBuffer(coupleMap::FACE_STARTS);
-        const labelList& sizes = cMap.entityBuffer(coupleMap::FACE_SIZES);
-        const label nShared = cMap.nEntities(coupleMap::SHARED_POINT);
-        const faceList& fList = cMap.faces();
-
-        forAll(pIDs_, patchI)
-        {
-            // Physical patches are ordered the same way
-            // in coupleMaps, so pIDs_ can be used directly.
-            label fStart = starts[pIDs_[patchI]];
-            label fSize = sizes[pIDs_[patchI]];
-
-            for (label faceI = fStart; faceI < fStart + fSize; faceI++)
+            forAll(eF, fI)
             {
-                const face& thisFace = fList[faceI];
+                label curPatchID = boundary.whichPatch(eF[fI]);
 
-                forAll(thisFace, pI)
+                // Disregard internal faces
+                if (curPatchID == -1)
                 {
-                    if (thisFace[pI] >= nShared)
+                    continue;
+                }
+
+                // Determine processor id
+                label pI = -1;
+
+                if (isA<processorPolyPatch>(boundary[curPatchID]))
+                {
+                    const processorPolyPatch& pp =
+                    (
+                        refCast<const processorPolyPatch>(boundary[curPatchID])
+                    );
+
+                    // Fetch index from map
+                    pI = procMap[pp.neighbProcNo()];
+                }
+                else
+                {
+                    // Disregard non-processor patches
+                    continue;
+                }
+
+                // Fetch references
+                Map<label>& aspMap = auxSurfPointMap_[pI];
+                Map<label>& anbMap = auxNeiBufferMap_[pI];
+                DynamicList<point>& asPoints = auxSurfPoints[pI];
+
+                const edge& localEdge = edges[i];
+
+                // Update match magnitude
+                matchMag = Foam::min(matchMag, magSqr(localEdge.vec(points)));
+
+                forAll(localEdge, pointI)
+                {
+                    // Locate index in field
+                    label fieldIndex = localEdge[pointI] + offsets_[patchI];
+
+                    // Fix boundary condition for this point.
+                    bdy_[fieldIndex] = vector::one;
+
+                    // Mark for posterity.
+                    bdyMarker[fieldIndex] = true;
+
+                    // Modify point marker
+                    if (procIndices_[pI] < Pstream::myProcNo())
                     {
-                        continue;
+                        pointMarker_[fieldIndex] = 0.0;
                     }
 
-                    // Fetch the global index.
-                    label gIndex = auxPointMap_[neiProcNo][thisFace[pI]];
-                    label lIndex = boundary[pIDs_[patchI]].whichPoint(gIndex);
-                    label fieldIndex = lIndex + offsets_[patchI];
-
-                    if (lIndex > -1)
+                    // Add a mapping entry.
+                    if (!aspMap.found(fieldIndex))
                     {
-                        // Fix boundary condition for this point.
-                        bdy_[fieldIndex] = vector::one;
+                        aspMap.insert(fieldIndex, asPoints.size());
+                        anbMap.insert(fieldIndex, asPoints.size());
 
-                        // Mark for posterity.
-                        bdyMarker[fieldIndex] = true;
-
-                        // Modify point marker
-                        if (slaveProc)
-                        {
-                            pointMarker_[fieldIndex] = 0.0;
-                        }
-
-                        // Add a mapping entry.
-                        if (!aspMap.found(fieldIndex))
-                        {
-                            aspMap.insert(fieldIndex, asPoints.size());
-                            anbMap.insert(fieldIndex, asPoints.size());
-
-                            // Insert corresponding point
-                            asPoints.append(mPts[thisFace[pI]]);
-                        }
-                    }
-                    else
-                    {
-                        // Something is wrong here.
-                        Pout<< " Unable to find local index. " << nl
-                            << " gIndex: " << gIndex << nl
-                            << " lIndex: " << lIndex << nl
-                            << abort(FatalError);
+                        // Insert corresponding point
+                        asPoints.append(points[localEdge[pointI]]);
                     }
                 }
             }
@@ -1537,82 +1535,67 @@ void mesquiteMotionSolver::initParallelConnectivity()
 
     if (debug)
     {
+        // Check to ensure that field sizes match
         Map<label> nProcSize;
 
-        // Check to ensure that field sizes match
-
-        // Transfer to neighbour
-        forAllConstIter(Map<Map<label> >, auxSurfPointMap_, mIter)
+        forAll(auxSurfPointMap_, pI)
         {
-            OPstream toProc(Pstream::blocking, mIter.key(), sizeof(label));
-
-            toProc << mIter().size();
+            // Transfer to neighbour
+            parWrite(procIndices_[pI], auxSurfPointMap_[pI].size());
 
             // Set an entry for this processor
-            nProcSize.insert(mIter.key(), -1);
+            nProcSize.insert(procIndices_[pI], -1);
         }
 
-        // Receive from neighbour
-        forAllConstIter(Map<Map<label> >, auxSurfPointMap_, mIter)
+        forAll(auxSurfPointMap_, pI)
         {
-            IPstream fmProc(Pstream::blocking, mIter.key(), sizeof(label));
+            // Receive from neighbour
+            parRead(procIndices_[pI], nProcSize[procIndices_[pI]]);
 
-            fmProc >> nProcSize[mIter.key()];
-
-            Pout<< " neiProcNo: " << mIter.key()
-                << " mySize: " << mIter().size()
-                << " neiSize: " << nProcSize[mIter.key()]
+            Pout<< " neiProcNo: " << procIndices_[pI]
+                << " mySize: " << auxSurfPointMap_[pI].size()
+                << " neiSize: " << nProcSize[procIndices_[pI]]
                 << endl;
 
-            if (nProcSize[mIter.key()] != mIter().size())
+            if (nProcSize[procIndices_[pI]] != auxSurfPointMap_[pI].size())
             {
                 FatalErrorIn
                 (
-                    "void mesquiteMotionSolver::initParallelConnectivity()"
+                    "void mesquiteMotionSolver::initParallelSurfaceSmoothing()"
                 )
                     << " Buffer size mismatch: " << nl
                     << " My proc: " << Pstream::myProcNo() << nl
-                    << " neiProcNo: " << mIter.key()
-                    << " mySize: " << mIter().size()
-                    << " neiSize: " << nProcSize[mIter.key()]
+                    << " neiProcNo: " << procIndices_[pI]
+                    << " mySize: " << auxSurfPointMap_[pI].size()
+                    << " neiSize: " << nProcSize[procIndices_[pI]]
                     << abort(FatalError);
             }
         }
     }
 
     // Match points geometrically
-    forAllConstIter(Map<Map<label> >, auxSurfPointMap_, mIter)
+    forAll(auxSurfPointMap_, pI)
     {
-        label proc = mIter.key();
-        label bSize = mIter().size();
+        label proc = procIndices_[pI];
+        label bSize = auxSurfPointMap_[pI].size();
 
         // Size-up send / recv fields
-        sendFields_.insert(proc, vectorField(bSize, vector::zero));
-        recvFields_.insert(proc, vectorField(bSize, vector::zero));
+        sendFields_[pI].setSize(bSize, vector::zero);
+        recvFields_[pI].setSize(bSize, vector::zero);
 
         // Fetch references
-        vectorField& recvField = recvFields_[proc];
+        vectorField& recvField = recvFields_[pI];
 
         // Send and receive points
         if (recvField.size())
         {
-            IPstream::read
-            (
-                Pstream::nonBlocking,
-                proc,
-                reinterpret_cast<char*>(recvField.begin()),
-                recvField.byteSize()
-            );
+            // Get field from neighbour
+            parRead(proc, recvField);
 
-            DynamicList<point>& bufPoints = auxSurfPoints[proc];
+            DynamicList<point>& bufPoints = auxSurfPoints[pI];
 
-            OPstream::write
-            (
-                Pstream::nonBlocking,
-                proc,
-                reinterpret_cast<const char*>(&bufPoints[0]),
-                bufPoints.size()*sizeof(vector)
-            );
+            // Send points to neighbour
+            parWrite(proc, bufPoints);
         }
     }
 
@@ -1620,13 +1603,13 @@ void mesquiteMotionSolver::initParallelConnectivity()
     OPstream::waitRequests();
     IPstream::waitRequests();
 
-    forAllIter(Map<Map<label> >, auxSurfPointMap_, mIter)
+    forAll(auxSurfPointMap_, pI)
     {
-        label proc = mIter.key();
+        label proc = procIndices_[pI];
 
         // Fetch references
-        vectorField& recvField = recvFields_[proc];
-        DynamicList<point>& bufPoints = auxSurfPoints[proc];
+        vectorField& recvField = recvFields_[pI];
+        DynamicList<point>& bufPoints = auxSurfPoints[pI];
 
         labelList pMap(recvField.size(), -1);
 
@@ -1636,7 +1619,11 @@ void mesquiteMotionSolver::initParallelConnectivity()
             (
                 bufPoints,
                 recvField,
-                List<scalar>(recvField.size(), SMALL),
+                List<scalar>
+                (
+                    recvField.size(),
+                    1e-4 * Foam::sqrt(matchMag)
+                ),
                 true,
                 pMap
             )
@@ -1645,7 +1632,7 @@ void mesquiteMotionSolver::initParallelConnectivity()
         if (matchedAll)
         {
             // Renumber to shuffled indices
-            Map<label>& anbMap = auxNeiBufferMap_[proc];
+            Map<label>& anbMap = auxNeiBufferMap_[pI];
 
             forAllIter(Map<label>, anbMap, pIter)
             {
@@ -1656,7 +1643,7 @@ void mesquiteMotionSolver::initParallelConnectivity()
         {
             FatalErrorIn
             (
-                "void mesquiteMotionSolver::initParallelConnectivity()"
+                "void mesquiteMotionSolver::initParallelSurfaceSmoothing()"
             )
                 << " Failed point match: " << nl
                 << " My proc: " << Pstream::myProcNo() << nl
@@ -1707,223 +1694,258 @@ void mesquiteMotionSolver::initParallelConnectivity()
 }
 
 
-// Update coupleMaps with up-to-date point information
-void mesquiteMotionSolver::updateCoupleMaps()
-{
-    if (twoDMesh_)
-    {
-        return;
-    }
-
-    // Search the registry for all mapping objects.
-    if (Pstream::parRun())
-    {
-        HashTable<const coupleMap*> cMaps = Mesh_.lookupClass<coupleMap>();
-
-        forAllConstIter(HashTable<const coupleMap*>, cMaps, cmIter)
-        {
-            const coupleMap& cMap = *cmIter();
-
-            if (cMap.isLocal() || cMap.isSend())
-            {
-                continue;
-            }
-
-            // Obtain a reference to the point buffer
-            pointField& pField = cMap.pointBuffer();
-
-            // Pick maps for which this sub-domain is master
-            if (cMap.masterIndex() == Pstream::myProcNo())
-            {
-                // Fetch the neighbour's procIndex
-                label neiProcNo = cMap.slaveIndex();
-
-                const Map<label>& pointMap = auxPointMap_[neiProcNo];
-
-                label pIndex = -1;
-
-                forAll(pField, pointI)
-                {
-                    pIndex = pointMap[pointI];
-
-                    if (pIndex < label(nPoints_))
-                    {
-                        pField[pointI] = refPoints_[pIndex];
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// Copy auxiliary points to/from buffers
-void mesquiteMotionSolver::copyAuxiliaryPoints(bool copyBack)
+// Private member function to construct parallel connectivity data
+void mesquiteMotionSolver::initParallelConnectivity()
 {
     if (!Pstream::parRun())
     {
         return;
     }
 
-    // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
-
-    forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+    if (debug)
     {
-        coupleMap& cMap = const_cast<coupleMap&>(*cmIter());
+        Info<< "Initializing parallel connectivity" << endl;
+    }
 
-        if (cMap.isLocal())
+    // First identify all processors that I talk to...
+    identifyCoupledPatches();
+
+    // Prepare for parallel surface smoothing
+    initParallelSurfaceSmoothing();
+
+    // If this is a 2D mesh, we're done
+    if (twoDMesh_)
+    {
+        return;
+    }
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    Map<label> nPrc;
+
+    // Build a list of nearest neighbours.
+    forAll(boundary, patchI)
+    {
+        if (isA<processorPolyPatch>(boundary[patchI]))
         {
-            continue;
-        }
-
-        // Obtain a reference to the point buffer
-        pointField& pField = cMap.pointBuffer();
-
-        // Pick maps for which this sub-domain is master
-        if (cMap.masterIndex() == Pstream::myProcNo())
-        {
-            // Fetch the neighbour's procIndex
-            label neiProcNo = cMap.slaveIndex();
-
-            const Map<label>& pointMap = auxPointMap_[neiProcNo];
-
-            label pIndex = -1;
-            vector v = vector::zero;
-
-            if (copyBack)
-            {
-                if (cMap.isRecv())
-                {
-                    forAll(pField, pointI)
-                    {
-                        pIndex = pointMap[pointI];
-
-                        v.x() = vtxCoords_[(3*pIndex)+0];
-                        v.y() = vtxCoords_[(3*pIndex)+1];
-                        v.z() = vtxCoords_[(3*pIndex)+2];
-
-                        pField[pointI] = v;
-                    }
-
-                    if (debug)
-                    {
-                        Pout<< "copyAuxiliaryPoints: Sending to proc: "
-                            << neiProcNo
-                            << " nEntities: " << pField.size()
-                            << endl;
-                    }
-
-                    // Send points to the slave.
-                    OPstream::write
-                    (
-                        Pstream::nonBlocking,
-                        neiProcNo,
-                        reinterpret_cast<const char*>(&pField[0]),
-                        pField.size()*sizeof(vector)
-                    );
-                }
-            }
-            else
-            {
-                if (cMap.isRecv())
-                {
-                    forAll(pField, pointI)
-                    {
-                        pIndex = pointMap[pointI];
-
-                        v = pField[pointI];
-
-                        vtxCoords_[(3*pIndex)+0] = v.x();
-                        vtxCoords_[(3*pIndex)+1] = v.y();
-                        vtxCoords_[(3*pIndex)+2] = v.z();
-                    }
-                }
-            }
-        }
-        else
-        if (copyBack && cMap.isSend())
-        {
-            if (debug)
-            {
-                Pout<< "copyAuxiliaryPoints: Receiving from proc: "
-                    << cMap.masterIndex()
-                    << " nEntities: " << pField.size()
-                    << endl;
-            }
-
-            // This sub-domain is a slave.
-            // Prepare for buffer receipt.
-            IPstream::read
+            const processorPolyPatch& pp =
             (
-                Pstream::nonBlocking,
-                cMap.masterIndex(),
-                reinterpret_cast<char*>(pField.begin()),
-                pField.byteSize()
+                refCast<const processorPolyPatch>(boundary[patchI])
             );
+
+            nPrc.insert(pp.neighbProcNo(), patchI);
         }
     }
 
-    if (copyBack)
+    auxPointMap_.setSize(procIndices_.size());
+
+    // Make a rough estimate for cellToNode
+    List<DynamicList<label> > myCellToNode
+    (
+        procIndices_.size(),
+        DynamicList<label>(50)
+    );
+
+    // Prepare arrays for mesquite
+    forAll(procIndices_, pI)
     {
-        // Wait for all transfers to complete.
-        OPstream::waitRequests();
-        IPstream::waitRequests();
+        label proc = procIndices_[pI];
 
-        DynamicList<label> procRanks(10);
+        const labelList& procPoints = sendProcPoints_[pI];
+        const labelListList& pointCells = mesh().pointCells();
 
-        // Update points in descending order of processors,
-        // so that the lowest rank is updated last.
-        forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+        // Add all points / cells connected to procPoints
+        label nProcPoints = 0, nProcCells = 0;
+        Map<label> addedCells, addedPoints;
+
+        // Determine addressing for all shared points.
+        if (nPrc.found(proc))
         {
-            coupleMap& cMap = const_cast<coupleMap&>(*cmIter());
+            // Fetch addressing for this patch.
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[nPrc[proc]])
+            );
 
-            if (cMap.isLocal() || cMap.isRecv())
+            const labelList& neiPoints = pp.neighbPoints();
+
+            forAll(procPoints, pointI)
             {
-                continue;
+                auxPointMap_[pI].insert
+                (
+                    neiPoints[pointI],
+                    procPoints[pointI]
+                );
+
+                addedPoints.insert(procPoints[pointI], nProcPoints++);
             }
+        }
+        else
+        {
+            // Disconnected neighbour.
+            // Look at globalPoint addressing
+            // for its information.
+            const globalMeshData& gD = mesh().globalData();
+            const labelList& spA = gD.sharedPointAddr();
+            const labelList& spL = gD.sharedPointLabels();
 
-            if (cMap.slaveIndex() == Pstream::myProcNo())
+            forAll(procPoints, pointI)
             {
-                procRanks.append(cMap.masterIndex());
+                label addrIndex = findIndex(spA, procPoints[pointI]);
+
+                // Find the global index.
+                auxPointMap_[pI].insert
+                (
+                    pointI,
+                    spL[addrIndex]
+                );
+
+                addedPoints.insert(spL[addrIndex], nProcPoints++);
             }
         }
 
-        procRanks.shrink();
-        sort(procRanks);
+        const cellList& cells = mesh().cells();
+        const faceList& faces = mesh().faces();
+        const labelList& owner = mesh().faceOwner();
 
-        forAllReverse(procRanks, indexI)
+        // Assume all tetrahedral cells
+        FixedList<label, 4> p(-1);
+
+        forAll(procPoints, pointI)
         {
-            // Now copy updated locations to refPoints.
-            forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
-            {
-                coupleMap& cMap = const_cast<coupleMap&>(*cmIter());
+            const labelList& pCells = pointCells[procPoints[pointI]];
 
-                if (cMap.isLocal() || cMap.isRecv())
+            forAll(pCells, cellI)
+            {
+                if (addedCells.found(pCells[cellI]))
                 {
                     continue;
                 }
 
-                // Obtain a reference to the point buffer
-                const pointField& pField = cMap.pointBuffer();
+                // Fetch the cell
+                const cell& cellToCheck = cells[pCells[cellI]];
 
-                // Pick maps for which this sub-domain is a slave
-                if
-                (
-                    cMap.slaveIndex() == Pstream::myProcNo() &&
-                    cMap.masterIndex() == procRanks[indexI]
-                )
+                // Find a face that doesn't contain
+                forAll(cellToCheck, faceI)
                 {
-                    const labelList& smPoints = cMap.subMeshPoints();
+                    const face& checkFace = faces[cellToCheck[faceI]];
 
-                    // Only update shared-point positions.
-                    forAll(smPoints, pointI)
+                    if (findIndex(checkFace, procPoints[pointI]) > -1)
                     {
-                        refPoints_[smPoints[pointI]] = pField[pointI];
+                        if (owner[cellToCheck[faceI]] == pCells[cellI])
+                        {
+                            p[0] = checkFace[2];
+                            p[1] = checkFace[1];
+                            p[2] = checkFace[0];
+                            p[3] = procPoints[pointI];
+                        }
+                        else
+                        {
+                            p[0] = checkFace[0];
+                            p[1] = checkFace[1];
+                            p[2] = checkFace[2];
+                            p[3] = procPoints[pointI];
+                        }
+
+                        break;
                     }
                 }
+
+                // Prepare maps for all new points and fill in cellToNode.
+                forAll(p, i)
+                {
+                    // Add undiscovered points to map
+                    if (!addedPoints.found(p[i]))
+                    {
+                        addedPoints.insert
+                        (
+                            p[i],
+                            nProcPoints++
+                        );
+                    }
+
+                    // Assign cellToNode
+                    myCellToNode[pI].append(addedPoints[p[i]]);
+                }
+
+                // Add to list
+                addedCells.insert(pCells[cellI], nProcCells++);
             }
         }
+
+        // Schedule transfer of entities
+    }
+
+    // Wait for transfers to complete
+    OPstream::waitRequests();
+    IPstream::waitRequests();
+
+    //label pIndex = nPoints_, cIndex = (4 * nCells_);
+
+//    forAll(procIndices_, pI)
+//    {
+//        label proc = procIndices_[pI];
+//    }
+}
+
+
+// Copy auxiliary points to/from buffers
+void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    if (firstCopy)
+    {
+        forAll(procIndices_, pI)
+        {
+            label proc = procIndices_[pI];
+
+            const Map<label>& pointMap = auxPointMap_[pI];
+
+            // Fetch reference to send / recv point buffers
+            vectorField& psField = auxSendBuffer_[pI];
+            vectorField& prField = auxRecvBuffer_[pI];
+
+            label pIndex = -1;
+            vector v = vector::zero;
+
+            // Fill the send buffer
+            forAllConstIter(Map<label>, pointMap, pIter)
+            {
+                pIndex = pIter();
+
+                v.x() = vtxCoords_[(3*pIndex)+0];
+                v.y() = vtxCoords_[(3*pIndex)+1];
+                v.z() = vtxCoords_[(3*pIndex)+2];
+
+                psField[pIter.key()] = v;
+            }
+
+            if (debug)
+            {
+                Pout<< " copyAuxiliaryPoints: Proc: " << proc
+                    << " Sending: " << " : " << psField.size()
+                    << " Recving: " << " : " << prField.size()
+                    << endl;
+            }
+
+            // Send points to neighbour
+            parWrite(proc, psField);
+
+            // Receive points from neighbour
+            parRead(proc, prField);
+        }
+
+        // Wait for all transfers to complete.
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+    }
+    else
+    {
+
     }
 }
 
@@ -1987,10 +2009,10 @@ void mesquiteMotionSolver::transferBuffers
         return;
     }
 
-    forAllConstIter(Map<Map<label> >, auxNeiBufferMap_, mIter)
+    forAll(procIndices_, pI)
     {
-        label neiProcNo = mIter.key();
-        const Map<label>& pointMap = mIter();
+        label neiProcNo = procIndices_[pI];
+        const Map<label>& pointMap = auxNeiBufferMap_[pI];
 
         // Fetch references
         vectorField& recvField = recvFields_[neiProcNo];
@@ -1999,13 +2021,7 @@ void mesquiteMotionSolver::transferBuffers
         // Schedule receipt from neighbour
         if (recvField.size() && sendField.size())
         {
-            IPstream::read
-            (
-                Pstream::nonBlocking,
-                neiProcNo,
-                reinterpret_cast<char*>(recvField.begin()),
-                recvField.byteSize()
-            );
+            parRead(neiProcNo, recvField);
 
             // Prepare a send buffer.
             forAllConstIter(Map<label>, pointMap, pIter)
@@ -2013,13 +2029,7 @@ void mesquiteMotionSolver::transferBuffers
                 sendField[pIter()] = field[pIter.key()];
             }
 
-            OPstream::write
-            (
-                Pstream::nonBlocking,
-                neiProcNo,
-                reinterpret_cast<const char*>(&sendField[0]),
-                sendField.size()*sizeof(vector)
-            );
+            parWrite(neiProcNo, sendField);
         }
     }
 
@@ -2027,10 +2037,10 @@ void mesquiteMotionSolver::transferBuffers
     OPstream::waitRequests();
     IPstream::waitRequests();
 
-    forAllConstIter(Map<Map<label> >, auxSurfPointMap_, mIter)
+    forAll(procIndices_, pI)
     {
-        label neiProcNo = mIter.key();
-        const Map<label>& pointMap = mIter();
+        label neiProcNo = procIndices_[pI];
+        const Map<label>& pointMap = auxSurfPointMap_[pI];
 
         // Fetch references
         const vectorField& recvField = recvFields_[neiProcNo];
@@ -2314,9 +2324,6 @@ void mesquiteMotionSolver::applyFixedValuePatches()
 
         // Now update refPoints with patch values
         refPoints_ += dPointField;
-
-        // Apply values to points common with coupleMaps
-        updateCoupleMaps();
     }
 }
 
@@ -2376,66 +2383,6 @@ void mesquiteMotionSolver::smoothSurfaces()
                 );
             }
         }
-
-        // Update locally coupled patches
-        if (patchCoupling_.size())
-        {
-            // Search the registry for all mapping objects.
-            HashTable<const coupleMap*> coupleMaps =
-            (
-                Mesh_.lookupClass<coupleMap>()
-            );
-
-            forAllIter(Map<label>, patchCoupling_, patchI)
-            {
-                const labelList& meshPts = boundary[patchI.key()].meshPoints();
-
-                bool foundMap = false;
-
-                forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
-                {
-                    const coupleMap& cMap = *(cmIter());
-
-                    // Ensure that both master and slave patches match.
-                    if
-                    (
-                        (cMap.masterIndex() == patchI.key()) &&
-                        (cMap.slaveIndex() == patchI()) &&
-                        (cMap.isLocal())
-                    )
-                    {
-                        const Map<label>& mtsMap =
-                        (
-                            cMap.entityMap(coupleMap::POINT)
-                        );
-
-                        forAll(meshPts, pointI)
-                        {
-                            refPoints_[mtsMap[meshPts[pointI]]] =
-                            (
-                                refPoints_[meshPts[pointI]]
-                            );
-                        }
-
-                        foundMap = true;
-
-                        break;
-                    }
-                }
-
-                if (!foundMap)
-                {
-                    FatalErrorIn("void mesquiteMotionSolver::smoothSurfaces()")
-                        << "Could not find coupling map: " << nl
-                        << "Master: " << patchI.key() << nl
-                        << "Slave: " << patchI()
-                        << abort(FatalError);
-                }
-            }
-        }
-
-        // Apply values to points common with coupleMaps
-        updateCoupleMaps();
     }
 }
 
@@ -2867,69 +2814,6 @@ void mesquiteMotionSolver::enforceCylindricalConstraints()
                     }
                 }
             }
-
-            // If this is a coupled patch, correct the slave as well.
-            if (patchCoupling_.found(pID))
-            {
-                // Search the registry for all mapping objects.
-                HashTable<const coupleMap*> coupleMaps =
-                (
-                    Mesh_.lookupClass<coupleMap>()
-                );
-
-                const labelList& mMeshPts = boundary[pID].meshPoints();
-
-                bool foundMap = false;
-
-                forAllIter
-                (
-                    HashTable<const coupleMap*>,
-                    coupleMaps,
-                    cmIter
-                )
-                {
-                    const coupleMap& cMap = *(cmIter());
-
-                    // Ensure that both master and slave patches match.
-                    if
-                    (
-                        (cMap.masterIndex() == pID) &&
-                        (cMap.slaveIndex() == patchCoupling_[pID]) &&
-                        (cMap.isLocal())
-                    )
-                    {
-                        const Map<label>& mtsMap =
-                        (
-                            cMap.entityMap(coupleMap::POINT)
-                        );
-
-                        forAll(mMeshPts, pointI)
-                        {
-                            refPoints_[mtsMap[mMeshPts[pointI]]] =
-                            (
-                                refPoints_[mMeshPts[pointI]]
-                            );
-                        }
-
-                        foundMap = true;
-
-                        break;
-                    }
-                }
-
-                if (!foundMap)
-                {
-                    FatalErrorIn
-                    (
-                        "void mesquiteMotionSolver::"
-                        "enforceCylindricalConstraints()"
-                    )
-                        << "Could not find coupling map: " << nl
-                        << "Master: " << pID << nl
-                        << "Slave: " << patchCoupling_[pID]
-                        << abort(FatalError);
-                }
-            }
         }
     }
 }
@@ -2986,9 +2870,6 @@ void mesquiteMotionSolver::preparePointNormals()
         Info<< "Preparing point normals for surface smoothing" << endl;
     }
 
-    // Search the registry for all mapping objects.
-    HashTable<const coupleMap*> coupleMaps = Mesh_.lookupClass<coupleMap>();
-
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
     forAll(pIDs_, patchI)
@@ -3017,77 +2898,37 @@ void mesquiteMotionSolver::preparePointNormals()
                 pNormals_[patchI][thisFace[pointI]] += n;
             }
         }
+    }
 
-        // Add contributions from neighbouring processors
-        forAllIter(HashTable<const coupleMap*>, coupleMaps, cmIter)
+    if (Pstream::parRun())
+    {
+        // Size up the buffer
+        vectorField parNormals(pointMarker_.size(), vector::zero);
+
+        // Copy point-normals to buffer
+        forAll(pIDs_, patchI)
         {
-            const coupleMap& cMap = *(cmIter());
+            label pOffset = offsets_[patchI];
+            vectorField& pN = pNormals_[patchI];
 
-            if (cMap.isLocal() || cMap.isSend())
+            forAll(pN, pointI)
             {
-                continue;
+                parNormals[pOffset + pointI] = pN[pointI];
             }
+        }
 
-            label neiProcNo = -1;
-            bool slaveProc = false;
+        // Transfer buffers across processors
+        transferBuffers(parNormals);
 
-            // Fetch the neighbour's procIndex
-            if (cMap.masterIndex() == Pstream::myProcNo())
+        // Set updated normals
+        forAll(pIDs_, patchI)
+        {
+            label pOffset = offsets_[patchI];
+            vectorField& pN = pNormals_[patchI];
+
+            forAll(pN, pointI)
             {
-                neiProcNo = cMap.slaveIndex();
-            }
-            else
-            if (cMap.slaveIndex() == Pstream::myProcNo())
-            {
-                neiProcNo = cMap.masterIndex();
-                slaveProc = true;
-            }
-
-            // Fetch reference
-            const Map<label>& apMap = auxPointMap_[neiProcNo];
-
-            // Fetch buffers from coupleMap
-            const pointField& mPts = cMap.pointBuffer();
-            const labelList& starts = cMap.entityBuffer(coupleMap::FACE_STARTS);
-            const labelList& sizes = cMap.entityBuffer(coupleMap::FACE_SIZES);
-            const label nShared = cMap.nEntities(coupleMap::SHARED_POINT);
-            const faceList& fList = cMap.faces();
-
-            // Physical patches are ordered the same way
-            // in coupleMaps, so pIDs_ can be used directly.
-            label fStart = starts[pIDs_[patchI]];
-            label fSize = sizes[pIDs_[patchI]];
-
-            for (label faceI = fStart; faceI < fStart + fSize; faceI++)
-            {
-                const face& thisFace = fList[faceI];
-
-                vector n = thisFace.normal(mPts);
-
-                forAll(thisFace, pI)
-                {
-                    if (thisFace[pI] >= nShared)
-                    {
-                        continue;
-                    }
-
-                    // Fetch the global index.
-                    label gIndex = apMap[thisFace[pI]];
-                    label lIndex = boundary[pIDs_[patchI]].whichPoint(gIndex);
-
-                    if (lIndex > -1)
-                    {
-                        pNormals_[patchI][lIndex] += n;
-                    }
-                    else
-                    {
-                        // Something is wrong here.
-                        Pout<< " Unable to find local index. " << nl
-                            << " gIndex: " << gIndex << nl
-                            << " lIndex: " << lIndex << nl
-                            << abort(FatalError);
-                    }
-                }
+                pN[pointI] = parNormals[pOffset + pointI];
             }
         }
     }
@@ -3159,8 +3000,8 @@ void mesquiteMotionSolver::solve()
         vtxCoords_[(3*pointI)+2] = refPoints_[pointI][2];
     }
 
-    // Copy auxiliary points from slaves
-    copyAuxiliaryPoints();
+    // Copy auxiliary points
+    copyAuxiliaryPoints(true);
 
     Mesquite::MsqError err;
 
@@ -3226,8 +3067,8 @@ void mesquiteMotionSolver::solve()
         );
     }
 
-    // Copy auxiliary points back to slaves
-    copyAuxiliaryPoints(true);
+    // Copy auxiliary points
+    copyAuxiliaryPoints(false);
 }
 
 
@@ -3293,6 +3134,8 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     refPoints_ = Mesh_.points();
 
     // Clear the auxiliary point map
+    procIndices_.clear();
+    sendProcPoints_.clear();
     auxPointMap_.clear();
     auxSurfPointMap_.clear();
     auxNeiBufferMap_.clear();

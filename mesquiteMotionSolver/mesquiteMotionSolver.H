@@ -131,11 +131,6 @@ class mesquiteMotionSolver
         //- Original points prior to surface-smoothing
         mutable pointField origPoints_;
 
-        //- Map for the auxiliary entities
-        Map<Map<label> > auxPointMap_;
-        Map<Map<label> > auxSurfPointMap_;
-        Map<Map<label> > auxNeiBufferMap_;
-
         //- The quality metric
         word qMetric_;
 
@@ -160,8 +155,15 @@ class mesquiteMotionSolver
         List<vectorField> localPts_;
         List<scalarField> edgeMarker_;
 
-        Map<vectorField> sendFields_;
-        Map<vectorField> recvFields_;
+        //- Data for the auxiliary entities
+        labelList procIndices_;
+        labelListList sendProcPoints_;
+
+        List<vectorField> sendFields_, recvFields_;
+        List<Map<label> > auxSurfPointMap_, auxNeiBufferMap_;
+
+        List<Map<label> > auxPointMap_;
+        List<vectorField> auxSendBuffer_, auxRecvBuffer_;
 
         //- Explicit patch coupling for surface smoothing
         Map<label> patchCoupling_;
@@ -219,11 +221,28 @@ class mesquiteMotionSolver
         // Private member function to construct parallel connectivity data
         void initParallelConnectivity();
 
-        // Update coupleMaps with up-to-date point information
-        void updateCoupleMaps();
+        // Parallel send
+        void parWrite(const label toID, const label& data);
+
+        // Parallel send (for lists)
+        template <class Type>
+        void parWrite(const label toID, const UList<Type>& data);
+
+        // Parallel receive
+        void parRead(const label fromID, label& data);
+
+        // Parallel receive (for lists)
+        template <class Type>
+        void parRead(const label fromID, UList<Type>& data);
+
+        // Identify coupled patches
+        void identifyCoupledPatches();
+
+        // Prepare for parallel surface smoothing
+        void initParallelSurfaceSmoothing();
 
         // Copy auxiliary points to/from buffers
-        void copyAuxiliaryPoints(bool copyBack = false);
+        void copyAuxiliaryPoints(bool firstCopy);
 
         // Private member functions to read dictionary options
         void readOptions();
