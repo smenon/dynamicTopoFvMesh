@@ -87,10 +87,10 @@ class mesquiteMotionSolver
         unsigned long nCells_;
 
         //- Number of auxiliary points
-        label nAuxPoints_;
+        labelList nAuxPoints_;
 
         //- Number of auxiliary elements
-        label nAuxCells_;
+        labelList nAuxCells_;
 
         //- Switch to toggle surface smoothing
         Switch surfaceSmoothing_;
@@ -157,13 +157,14 @@ class mesquiteMotionSolver
 
         //- Data for the auxiliary entities
         labelList procIndices_;
-        labelListList sendProcPoints_;
+        labelListList procPointLabels_;
 
-        List<vectorField> sendFields_, recvFields_;
-        List<Map<label> > auxSurfPointMap_, auxNeiBufferMap_;
+        List<vectorField> sendSurfFields_, recvSurfFields_;
+        List<Map<label> > sendSurfPointMap_, recvSurfPointMap_;
 
-        List<Map<label> > auxPointMap_;
-        List<vectorField> auxSendBuffer_, auxRecvBuffer_;
+        List<Map<label> > sendPointMap_, recvPointMap_;
+        List<labelList> sendCellToNode_, recvCellToNode_;
+        List<vectorField> sendPointBuffer_, recvPointBuffer_;
 
         //- Explicit patch coupling for surface smoothing
         Map<label> patchCoupling_;
