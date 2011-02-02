@@ -157,6 +157,7 @@ class mesquiteMotionSolver
 
         //- Data for the auxiliary entities
         labelList procIndices_;
+        scalarField pointFractions_;
         labelListList procPointLabels_;
 
         List<vectorField> sendSurfFields_, recvSurfFields_;
@@ -241,6 +242,9 @@ class mesquiteMotionSolver
 
         // Prepare for parallel surface smoothing
         void initParallelSurfaceSmoothing();
+
+        // Prepare mesquite connectivity for parallel runs
+        void initMesquiteParallelArrays();
 
         // Copy auxiliary points to/from buffers
         void copyAuxiliaryPoints(bool firstCopy);

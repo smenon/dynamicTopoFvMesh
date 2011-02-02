@@ -1689,8 +1689,8 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
 }
 
 
-// Private member function to construct parallel connectivity data
-void mesquiteMotionSolver::initParallelConnectivity()
+// Prepare mesquite connectivity for parallel runs
+void mesquiteMotionSolver::initMesquiteParallelArrays()
 {
     if (!Pstream::parRun())
     {
@@ -1699,21 +1699,7 @@ void mesquiteMotionSolver::initParallelConnectivity()
 
     if (debug)
     {
-        Info<< "Initializing parallel connectivity" << endl;
-    }
-
-    // First identify all processors that I talk to...
-    identifyCoupledPatches();
-
-    // Prepare for parallel surface smoothing
-    initParallelSurfaceSmoothing();
-
-    // If this is a 2D mesh, we're done
-    if (twoDMesh_)
-    {
-        arraysInitialized_ = true;
-
-        return;
+        Info<< "Initializing parallel connectivity for Mesquite" << endl;
     }
 
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
@@ -1747,6 +1733,7 @@ void mesquiteMotionSolver::initParallelConnectivity()
     recvPointBuffer_.setSize(procIndices_.size());
 
     // Make a rough estimate for cellToNode
+    Map<label> addedCells;
     DynamicList<label> myCellToNode(50);
 
     forAll(procIndices_, pI)
@@ -1758,7 +1745,6 @@ void mesquiteMotionSolver::initParallelConnectivity()
 
         // Add all points / cells connected to procPoints
         label nProcPoints = 0, nProcCells = 0;
-        Map<label> addedCells;
 
         // Determine addressing for all shared points.
         if (nPrc.found(proc))
@@ -1840,7 +1826,7 @@ void mesquiteMotionSolver::initParallelConnectivity()
                 {
                     const face& checkFace = faces[cellToCheck[faceI]];
 
-                    if (findIndex(checkFace, procPoints[pointI]) > -1)
+                    if (findIndex(checkFace, procPoints[pointI]) == -1)
                     {
                         if (owner[cellToCheck[faceI]] == pCells[cellI])
                         {
@@ -1921,6 +1907,7 @@ void mesquiteMotionSolver::initParallelConnectivity()
         }
 
         // Clear cellToNode for next processor
+        addedCells.clear();
         myCellToNode.clear();
     }
 
@@ -2003,9 +1990,74 @@ void mesquiteMotionSolver::initParallelConnectivity()
         }
     }
 
+    label expectedCells = (4 * (nCells_ + nExtraCells));
+    label expectedPoints = (nPoints_ + nExtraPoints);
+
+    if ( (cIndex != expectedCells) || (pIndex != expectedPoints) )
+    {
+        FatalErrorIn
+        (
+            "void mesquiteMotionSolver::initMesquiteParallelArrays()"
+        )
+            << " Wrong sizes: " << nl
+            << " cIndex: " << cIndex
+            << " Expected: " << expectedCells << nl
+            << " pIndex: " << pIndex
+            << " Expected: " << expectedPoints << nl
+            << abort(FatalError);
+    }
+
     // Override existing point / cell sizes
-    nPoints_ = pIndex;
-    nCells_ = cIndex;
+    nPoints_ = (nPoints_ + nExtraPoints);
+    nCells_ = (nCells_ + nExtraCells);
+
+    // Set up pointFractions
+    pointFractions_.setSize(nPoints_, 1.0);
+
+    forAll(procIndices_, pI)
+    {
+        const labelList& procPoints = procPointLabels_[pI];
+
+        forAll(procPoints, pointI)
+        {
+            pointFractions_[procPoints[pointI]] += 1.0;
+        }
+    }
+
+    // Invert pointFractions
+    pointFractions_ = (1.0 / pointFractions_);
+}
+
+
+// Private member function to construct parallel connectivity data
+void mesquiteMotionSolver::initParallelConnectivity()
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    if (debug)
+    {
+        Info<< "Initializing parallel connectivity" << endl;
+    }
+
+    // First identify all processors that I talk to...
+    identifyCoupledPatches();
+
+    // Prepare for parallel surface smoothing
+    initParallelSurfaceSmoothing();
+
+    // If this is a 2D mesh, we're done
+    if (twoDMesh_)
+    {
+        arraysInitialized_ = true;
+
+        return;
+    }
+
+    // Initialize connectivity for mesquite
+    initMesquiteParallelArrays();
 
     // Set the flag and return
     arraysInitialized_ = true;
@@ -2091,7 +2143,87 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
     }
     else
     {
+        // Perform a reverse copy by swapping send / recv buffers
+        forAll(procIndices_, pI)
+        {
+            label proc = procIndices_[pI];
 
+            const Map<label>& pointMap = recvPointMap_[pI];
+
+            // Fetch reference to send / recv point buffers
+            vectorField& psField = sendPointBuffer_[pI];
+            vectorField& prField = recvPointBuffer_[pI];
+
+            label pIndex = -1;
+
+            // Copy to recv buffer
+            forAllConstIter(Map<label>, pointMap, pIter)
+            {
+                pIndex = pIter();
+
+                vector& v = prField[pIter.key()];
+
+                v.x() = vtxCoords_[(3*pIndex)+0];
+                v.y() = vtxCoords_[(3*pIndex)+1];
+                v.z() = vtxCoords_[(3*pIndex)+2];
+            }
+
+            if (debug)
+            {
+                Pout<< " copyAuxiliaryPoints: Proc: " << proc
+                    << " Sending: " << " : " << prField.size()
+                    << " Recving: " << " : " << psField.size()
+                    << endl;
+            }
+
+            // Send points to neighbour
+            parWrite(proc, prField);
+
+            // Receive points from neighbour
+            parRead(proc, psField);
+        }
+
+        // Wait for all transfers to complete.
+        OPstream::waitRequests();
+        IPstream::waitRequests();
+
+        forAll(procIndices_, pI)
+        {
+            const Map<label>& pointMap = sendPointMap_[pI];
+
+            // Fetch reference to send buffer
+            const vectorField& psField = sendPointBuffer_[pI];
+
+            label pIndex = -1, nShared = procPointLabels_[pI].size();
+            vector v = vector::zero;
+
+            forAllConstIter(Map<label>, pointMap, pIter)
+            {
+                pIndex = pIter.key();
+
+                // Only update shared points
+                if (pIndex < nShared)
+                {
+                    v = psField[pIter()];
+
+                    // Accumulate positions
+                    vtxCoords_[(3*pIndex)+0] += v.x();
+                    vtxCoords_[(3*pIndex)+1] += v.y();
+                    vtxCoords_[(3*pIndex)+2] += v.z();
+                }
+            }
+        }
+
+        // Now loop through all points
+        // and average point positions
+        forAll(pointFractions_, pointI)
+        {
+            scalar fract = pointFractions_[pointI];
+
+            vtxCoords_[(3*pointI)+0] *= fract;
+            vtxCoords_[(3*pointI)+1] *= fract;
+            vtxCoords_[(3*pointI)+2] *= fract;
+        }
     }
 }
 
@@ -2161,8 +2293,8 @@ void mesquiteMotionSolver::transferBuffers
         const Map<label>& pointMap = recvSurfPointMap_[pI];
 
         // Fetch references
-        vectorField& recvField = recvSurfFields_[neiProcNo];
-        vectorField& sendField = sendSurfFields_[neiProcNo];
+        vectorField& recvField = recvSurfFields_[pI];
+        vectorField& sendField = sendSurfFields_[pI];
 
         // Schedule receipt from neighbour
         if (recvField.size() && sendField.size())
@@ -2185,11 +2317,9 @@ void mesquiteMotionSolver::transferBuffers
 
     forAll(procIndices_, pI)
     {
-        label neiProcNo = procIndices_[pI];
-        const Map<label>& pointMap = sendSurfPointMap_[pI];
-
         // Fetch references
-        const vectorField& recvField = recvSurfFields_[neiProcNo];
+        const Map<label>& pointMap = sendSurfPointMap_[pI];
+        const vectorField& recvField = recvSurfFields_[pI];
 
         // Prepare a send buffer.
         forAllConstIter(Map<label>, pointMap, pIter)
@@ -3198,6 +3328,9 @@ void mesquiteMotionSolver::solve()
     // Launches optimization on the mesh
     queue.run_instructions(&msqMesh, err);
 
+    // Copy auxiliary points
+    copyAuxiliaryPoints(false);
+
     // Copy updated positions
     forAll(refPoints_, pointI)
     {
@@ -3212,9 +3345,6 @@ void mesquiteMotionSolver::solve()
           + ((1.0 - relax_) * origPoints_[pointI])
         );
     }
-
-    // Copy auxiliary points
-    copyAuxiliaryPoints(false);
 }
 
 
@@ -3281,6 +3411,7 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
 
     // Clear the auxiliary maps / buffers
     procIndices_.clear();
+    pointFractions_.clear();
     procPointLabels_.clear();
 
     sendSurfFields_.clear();
