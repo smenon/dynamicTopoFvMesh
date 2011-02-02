@@ -2202,7 +2202,7 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
                 pIndex = pIter.key();
 
                 // Only update shared points
-                if (pIndex < nShared)
+                if (pIter() < nShared)
                 {
                     v = psField[pIter()];
 
@@ -3319,8 +3319,8 @@ void mesquiteMotionSolver::solve()
     // Assess the quality of the final mesh after smoothing
     queue.add_quality_assessor(&qA, err);
 
-    // Disable slave output for parallel runs.
-    if (Pstream::parRun() && !Pstream::master())
+    // Disable Mesquite output for parallel runs.
+    if (Pstream::parRun())
     {
         qA.disable_printing_results();
     }
