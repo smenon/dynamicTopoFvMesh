@@ -1333,11 +1333,7 @@ void mesquiteMotionSolver::identifyCoupledPatches()
         // as well (if not already).
         for (label proc = 0; proc < Pstream::nProcs(); proc++)
         {
-            if
-            (
-                (proc != Pstream::myProcNo()) &&
-                (!immNeighbours.found(proc))
-            )
+            if (proc != Pstream::myProcNo())
             {
                 bool foundGlobalMatch = false;
 
@@ -1359,13 +1355,24 @@ void mesquiteMotionSolver::identifyCoupledPatches()
                     }
                 }
 
-                if (foundGlobalMatch && debug)
-                {
-                    Pout<< "Additionally talking to processor: "
-                        << proc << endl;
-                }
+                // Clear the entries
+                spBuffer[proc].clear();
 
-                procPatchPoints[proc] = neiSet.toc();
+                if (immNeighbours.found(proc))
+                {
+                    // Store the reduced set for this processor
+                    spBuffer[proc] = neiSet.toc();
+                }
+                else
+                {
+                    if (foundGlobalMatch && debug)
+                    {
+                        Pout<< "Additionally talking to processor: "
+                            << proc << endl;
+                    }
+
+                    procPatchPoints[proc] = neiSet.toc();
+                }
             }
         }
     }
@@ -1389,11 +1396,13 @@ void mesquiteMotionSolver::identifyCoupledPatches()
     procIndices_.setSize(nTotalProcs);
 
     // Transfer to shortened lists
-    procPointLabels_.setSize(nTotalProcs);
+    procPointLabels_.setSize(nTotalProcs, labelList(0));
+    globalProcPointLabels_.setSize(nTotalProcs, labelList(0));
 
     forAll(procIndices_, pI)
     {
         procPointLabels_[pI].transfer(procPatchPoints[procIndices_[pI]]);
+        globalProcPointLabels_[pI].transfer(spBuffer[procIndices_[pI]]);
     }
 }
 
@@ -1523,6 +1532,64 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                         // Insert corresponding point
                         asPoints.append(points[localEdge[pointI]]);
                     }
+                }
+            }
+        }
+
+        // Loop through global-points information,
+        // and check if additional points need to be added
+        forAll(globalProcPointLabels_, pI)
+        {
+            const labelList& pLabels = globalProcPointLabels_[pI];
+
+            forAll(pLabels, pointI)
+            {
+                // Find local index in patch
+                label local =
+                (
+                    boundary[pIDs_[patchI]].whichPoint(pLabels[pointI])
+                );
+
+                if (local == -1)
+                {
+                    continue;
+                }
+
+                // Locate index in field
+                label fieldIndex = local + offsets_[patchI];
+
+                // Fix boundary condition for this point.
+                bdy_[fieldIndex] = vector::one;
+
+                // Mark for posterity.
+                bdyMarker[fieldIndex] = true;
+
+                // Modify point marker
+                if (procIndices_[pI] < Pstream::myProcNo())
+                {
+                    pointMarker_[fieldIndex] = 0.0;
+                }
+
+                // Fetch references
+                Map<label>& aspMap = sendSurfPointMap_[pI];
+                Map<label>& anbMap = recvSurfPointMap_[pI];
+                DynamicList<point>& asPoints = auxSurfPoints[pI];
+
+                // Add an entry if it wasn't done before
+                if (!aspMap.found(fieldIndex))
+                {
+                    if (debug)
+                    {
+                        Pout<< " Found local: " << local
+                            << " for global: " << pLabels[pointI]
+                            << endl;
+                    }
+
+                    aspMap.insert(fieldIndex, asPoints.size());
+                    anbMap.insert(fieldIndex, asPoints.size());
+
+                    // Insert corresponding point
+                    asPoints.append(points[local]);
                 }
             }
         }
@@ -3413,6 +3480,7 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     procIndices_.clear();
     pointFractions_.clear();
     procPointLabels_.clear();
+    globalProcPointLabels_.clear();
 
     sendSurfFields_.clear();
     recvSurfFields_.clear();

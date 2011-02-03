@@ -168,7 +168,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     initEdges();
 
     // Initialize coupled patch connectivity for topology modifications.
-    // This needs to be done before the motionSolver is initialized.
     initCoupledConnectivity(this);
 
     // Load the mesh-motion solver

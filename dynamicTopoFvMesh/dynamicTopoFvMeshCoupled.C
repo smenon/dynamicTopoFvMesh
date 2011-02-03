@@ -3305,11 +3305,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         coupledPatchInfo& sPM = sendPatchMeshes_[pI];
 
         // Build the subMesh.
-        buildProcessorPatchMesh
-        (
-            sPM,
-            commonCells
-        );
+        buildProcessorPatchMesh(sPM, commonCells);
 
         const coupleMap& scMap = sPM.patchMap();
 
