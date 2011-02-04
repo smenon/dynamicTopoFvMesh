@@ -794,7 +794,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     List<Map<label> > edgesToConvert(procIndices_.size());
     List<Map<label> > facesToConvert(procIndices_.size());
 
-    labelList masterConvertPatch(procIndices_.size(), -1);
+    // Track edge / face patch information
+    List<Map<label> > masterConvertEdgePatch(procIndices_.size());
+    List<Map<label> > masterConvertFacePatch(procIndices_.size());
+
     labelList slaveConvertPatch(procIndices_.size(), -1);
 
     // First check to ensure that this case can be handled
@@ -821,17 +824,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Perform a few debug calls before modifications
-    if (debug > 1)
-    {
-        Pout<< nl << nl
-            << "Inserting cell(s) around coupled "
-            << (twoDMesh_ ? "face: " : "edge: ") << mIndex
-            << endl;
-    }
+    const polyBoundaryMesh& boundary = boundaryMesh();
 
     // Agglomerate cells from surrounding subMeshes
-    // and add them to this processor.
     forAll(procIndices_, pI)
     {
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
@@ -878,8 +873,319 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             }
         }
 
-        // Loop through inserted cells and
-        // create an equivalent on this mesh
+        // Find a patch that talks to this processor
+        label neiProcPatch = -1;
+
+        forAll(boundary, patchI)
+        {
+            if (isA<processorPolyPatch>(boundary[patchI]))
+            {
+                const processorPolyPatch& pp =
+                (
+                    refCast<const processorPolyPatch>(boundary[patchI])
+                );
+
+                if (pp.neighbProcNo() == procIndices_[pI])
+                {
+                    neiProcPatch = patchI;
+                    break;
+                }
+            }
+        }
+
+        // Prepare information about inserted / converted faces and edges
+        const polyBoundaryMesh& slaveBoundary = mesh.boundaryMesh();
+
+        forAllIter(Map<label>, procCellMap, cIter)
+        {
+            const cell& checkCell = mesh.cells_[cIter.key()];
+
+            forAll(checkCell, fI)
+            {
+                label facePatch = -1;
+                label mfIndex = -1, sfIndex = checkCell[fI];
+                label slavePatch = mesh.whichPatch(sfIndex);
+
+                // Determine patch
+                if (!masterConvertFacePatch[pI].found(sfIndex))
+                {
+                    if (slavePatch == -1)
+                    {
+                        // Slave face was an interior one
+                        facePatch = neiProcPatch;
+                    }
+                    else
+                    if (slavePatch == (slaveBoundary.size() - 1))
+                    {
+                        // The 'defaultPatch'
+                        facePatch = neiProcPatch;
+                    }
+                    else
+                    if (isA<processorPolyPatch>(slaveBoundary[slavePatch]))
+                    {
+                        const processorPolyPatch& pp =
+                        (
+                            refCast<const processorPolyPatch>
+                            (
+                                slaveBoundary[slavePatch]
+                            )
+                        );
+
+                        label neiProcNo = pp.neighbProcNo();
+
+                        if (neiProcNo == Pstream::myProcNo())
+                        {
+                            // Set the slave conversion patch
+                            slaveConvertPatch[pI] = slavePatch;
+
+                            // Set the master face patch
+                            facePatch = neiProcPatch;
+                        }
+                        else
+                        {
+                            if (debug > 3)
+                            {
+                                Pout<< nl << nl
+                                    << " Face: " << sfIndex
+                                    << " :: " << mesh.faces_[sfIndex]
+                                    << " is talking to processor: "
+                                    << neiProcNo << endl;
+                            }
+
+                            // Find an appropriate boundary patch
+                            forAll(boundary, patchI)
+                            {
+                                if (isA<processorPolyPatch>(boundary[patchI]))
+                                {
+                                    const processorPolyPatch& pp =
+                                    (
+                                        refCast<const processorPolyPatch>
+                                        (
+                                            boundary[patchI]
+                                        )
+                                    );
+
+                                    if (pp.neighbProcNo() == neiProcNo)
+                                    {
+                                        facePatch = patchI;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Physical type
+                        facePatch = slavePatch;
+                    }
+
+                    if (facePatch == -1)
+                    {
+                        Pout<< " Could not find correct patch info: " << nl
+                            << " sfIndex: " << sfIndex << nl
+                            << " slavePatch: " <<
+                            (
+                                slavePatch > -1 ?
+                                slaveBoundary[slavePatch].name() :
+                                "Internal"
+                            )
+                            << abort(FatalError);
+                    }
+
+                    // Add the patch entry
+                    masterConvertFacePatch[pI].insert
+                    (
+                        sfIndex,
+                        facePatch
+                    );
+                }
+
+                // Check whether a face mapping exists for this face
+                if ((mfIndex = cMap.findMaster(coupleMap::FACE, sfIndex)) > -1)
+                {
+                    // Mark as a candidate for conversion
+                    facesToInsert[pI].insert(sfIndex, mfIndex);
+                    facesToConvert[pI].insert(sfIndex, mfIndex);
+                }
+                else
+                {
+                    // Mark for insertion. Some faces may be duplicated
+                    // across processors, but this will be dealt
+                    // with at a later stage.
+                    facesToInsert[pI].insert(sfIndex, -1);
+                }
+
+                // Loop through edges and check whether edge-mapping exists
+                const labelList& sfEdges = mesh.faceEdges_[sfIndex];
+
+                forAll(sfEdges, edgeI)
+                {
+                    const label seIndex = sfEdges[edgeI];
+                    const edge& sEdge = mesh.edges_[seIndex];
+
+                    // Meshes in 2D don't have edge-mapping, so check
+                    // point maps instead. If either point doesn't exist,
+                    // this is an edge that needs to be inserted.
+                    label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
+                    label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
+
+                    if (!pointsToInsert[pI].found(sEdge[0]))
+                    {
+                        pointsToInsert[pI].insert(sEdge[0], cMs);
+                    }
+
+                    if (!pointsToInsert[pI].found(sEdge[1]))
+                    {
+                        pointsToInsert[pI].insert(sEdge[1], cMe);
+                    }
+
+                    if (!edgesToInsert[pI].found(seIndex))
+                    {
+                        edgesToInsert[pI].insert(seIndex, -1);
+                    }
+
+                    // If both points have maps, this is a conversion edge
+                    if (cMs > -1 && cMe > -1)
+                    {
+                        if (!edgesToConvert[pI].found(seIndex))
+                        {
+                            edgesToConvert[pI].insert(seIndex, -1);
+                        }
+                    }
+
+                    // Add a patch entry as well
+                    if (masterConvertEdgePatch[pI].found(seIndex))
+                    {
+                        continue;
+                    }
+
+                    label edgePatch = -1;
+                    label sePatch = mesh.whichEdgePatch(seIndex);
+
+                    // Determine patch
+                    if (sePatch == -1)
+                    {
+                        // Slave edge was an interior one
+                        edgePatch = neiProcPatch;
+                    }
+                    else
+                    if (sePatch == (slaveBoundary.size() - 1))
+                    {
+                        // The 'defaultPatch'
+                        edgePatch = neiProcPatch;
+                    }
+                    else
+                    if (isA<processorPolyPatch>(slaveBoundary[sePatch]))
+                    {
+                        const processorPolyPatch& pp =
+                        (
+                            refCast<const processorPolyPatch>
+                            (
+                                slaveBoundary[sePatch]
+                            )
+                        );
+
+                        label neiProcNo = pp.neighbProcNo();
+
+                        if (neiProcNo == Pstream::myProcNo())
+                        {
+                            // Set the master edge patch
+                            edgePatch = neiProcPatch;
+                        }
+                        else
+                        {
+                            if (debug > 3)
+                            {
+                                Pout<< nl << nl
+                                    << " Edge: " << seIndex
+                                    << " :: " << mesh.edges_[seIndex]
+                                    << " is talking to processor: "
+                                    << neiProcNo << endl;
+                            }
+
+                            // Find an appropriate boundary patch
+                            forAll(boundary, patchI)
+                            {
+                                if (isA<processorPolyPatch>(boundary[patchI]))
+                                {
+                                    const processorPolyPatch& pp =
+                                    (
+                                        refCast<const processorPolyPatch>
+                                        (
+                                            boundary[patchI]
+                                        )
+                                    );
+
+                                    if (pp.neighbProcNo() == neiProcNo)
+                                    {
+                                        edgePatch = patchI;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Physical type
+                        edgePatch = sePatch;
+                    }
+
+                    if (edgePatch == -1)
+                    {
+                        Pout<< " Could not find correct patch info: " << nl
+                            << " seIndex: " << seIndex << nl
+                            << " slavePatch: " <<
+                            (
+                                slavePatch > -1 ?
+                                slaveBoundary[slavePatch].name() :
+                                "Internal"
+                            )
+                            << abort(FatalError);
+                    }
+
+                    // Add the patch entry
+                    masterConvertEdgePatch[pI].insert
+                    (
+                        seIndex,
+                        edgePatch
+                    );
+                }
+            }
+        }
+    }
+
+    // Perform a few debug calls before modifications
+    if (debug > 1)
+    {
+        Pout<< nl << nl
+            << "Inserting cell(s) around coupled "
+            << (twoDMesh_ ? "face: " : "edge: ") << mIndex
+            << endl;
+    }
+
+    // Loop through insertion cells and
+    // create an equivalent on this mesh
+    forAll(procIndices_, pI)
+    {
+        const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
+
+        // Fetch reference to maps
+        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        const coupleMap& cMap = rPM.patchMap();
+
+        label sIndex = -1;
+
+        if ((sIndex = cMap.findSlave(cplEnum, mIndex)) == -1)
+        {
+            continue;
+        }
+
+        // Fetch references
+        const dynamicTopoFvMesh& mesh = rPM.subMesh();
+        Map<label>& procCellMap = cellsToInsert[pI];
+
         forAllIter(Map<label>, procCellMap, cIter)
         {
             const cell& checkCell = mesh.cells_[cIter.key()];
@@ -908,69 +1214,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Add this cell to the map.
             map.addCell(cIter());
-
-            forAll(checkCell, fI)
-            {
-                label mfIndex = -1, sfIndex = checkCell[fI];
-
-                // Check whether a face mapping exists for this face
-                if ((mfIndex = cMap.findMaster(coupleMap::FACE, sfIndex)) > -1)
-                {
-                    // Mark as a candidate for conversion
-                    facesToInsert[pI].insert(sfIndex, mfIndex);
-                    facesToConvert[pI].insert(sfIndex, mfIndex);
-
-                    // Add a patch entry as well
-                    masterConvertPatch[pI] = whichPatch(mfIndex);
-                    slaveConvertPatch[pI] = mesh.whichPatch(sfIndex);
-                }
-                else
-                {
-                    // Mark for insertion. Some faces may be duplicated
-                    // across processors, but this will be dealt
-                    // with at a later stage.
-                    facesToInsert[pI].insert(sfIndex, -1);
-                }
-
-                // Loop through edges and check whether edge-mapping exists
-                const labelList& fEdges = mesh.faceEdges_[sfIndex];
-
-                forAll(fEdges, edgeI)
-                {
-                    const label eIndex = fEdges[edgeI];
-                    const edge& sEdge = mesh.edges_[eIndex];
-
-                    // Meshes in 2D don't have edge-mapping, so check
-                    // point maps instead. If either point doesn't exist,
-                    // this is an edge that needs to be inserted.
-                    label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
-                    label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
-
-                    if (!pointsToInsert[pI].found(sEdge[0]))
-                    {
-                        pointsToInsert[pI].insert(sEdge[0], cMs);
-                    }
-
-                    if (!pointsToInsert[pI].found(sEdge[1]))
-                    {
-                        pointsToInsert[pI].insert(sEdge[1], cMe);
-                    }
-
-                    if (!edgesToInsert[pI].found(eIndex))
-                    {
-                        edgesToInsert[pI].insert(eIndex, -1);
-                    }
-
-                    // If both points have maps, this is a conversion edge
-                    if (cMs > -1 && cMe > -1)
-                    {
-                        if (!edgesToConvert[pI].found(eIndex))
-                        {
-                            edgesToConvert[pI].insert(eIndex, -1);
-                        }
-                    }
-                }
-            }
         }
 
         // Push operation for the slave into coupleMap
@@ -1305,7 +1548,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             (
                 insertEdge
                 (
-                    masterConvertPatch[procI],
+                    masterConvertEdgePatch[procI][eIter.key()],
                     newEdge,
                     labelList(0),
                     labelList(0)
@@ -1501,26 +1744,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 nNeighbour = -1;
 
                 // Determine patch
-                if (sfPatch == -1)
-                {
-                    // Slave face was an interior one
-                    nPatch = masterConvertPatch[procI];
-                }
-                else
-                if
-                (
-                    isA<processorPolyPatch>(slaveBoundary[sfPatch]) ||
-                    (sfPatch == (slaveBoundary.size() - 1))
-                )
-                {
-                    // Processor, or 'defaultPatch'
-                    nPatch = masterConvertPatch[procI];
-                }
-                else
-                {
-                    // Physical type
-                    nPatch = sfPatch;
-                }
+                nPatch = masterConvertFacePatch[procI][fIter.key()];
             }
             else
             if (mFaceOwn == -1 && mFaceNei != -1)
@@ -1531,26 +1755,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 nNeighbour = -1;
 
                 // Determine patch
-                if (sfPatch == -1)
-                {
-                    // Slave face was an interior one
-                    nPatch = masterConvertPatch[procI];
-                }
-                else
-                if
-                (
-                    isA<processorPolyPatch>(slaveBoundary[sfPatch]) ||
-                    (sfPatch == (slaveBoundary.size() - 1))
-                )
-                {
-                    // Processor, or 'defaultPatch'
-                    nPatch = masterConvertPatch[procI];
-                }
-                else
-                {
-                    // Physical type
-                    nPatch = sfPatch;
-                }
+                nPatch = masterConvertFacePatch[procI][fIter.key()];
             }
             else
             if (mFaceOwn != -1 && mFaceNei != -1)

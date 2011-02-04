@@ -598,15 +598,26 @@ void dynamicTopoFvMesh::removeFace
     const label fIndex
 )
 {
-    if (debug > 2)
-    {
-        Pout<< "Removed face: "
-            << fIndex << ": "
-            << faces_[fIndex] << endl;
-    }
-
     // Identify the patch for this face
     label patch = whichPatch(fIndex);
+
+    if (debug > 2)
+    {
+        Pout<< "Removing face: "
+            << fIndex << ": "
+            << faces_[fIndex];
+
+        Pout<< " Patch: ";
+
+        if (patch == -1)
+        {
+            Pout<< "Internal" << endl;
+        }
+        else
+        {
+            Pout<< boundaryMesh()[patch].name() << endl;
+        }
+    }
 
     if (patch >= 0)
     {
@@ -835,13 +846,6 @@ void dynamicTopoFvMesh::removeEdge
     const label eIndex
 )
 {
-    if (debug > 2)
-    {
-        Pout<< "Removing edge: "
-            << eIndex << ": "
-            << edges_[eIndex] << endl;
-    }
-
     if (!twoDMesh_)
     {
         // Remove the edgePoints entry
@@ -861,7 +865,7 @@ void dynamicTopoFvMesh::removeEdge
         // Entity won't be removed from the stack for efficiency
         // It will be discarded on access instead.
 
-        // Update coupled face maps, if necessary.
+        // Update coupled edge maps, if necessary.
         forAll(patchCoupling_, patchI)
         {
             if (patchCoupling_(patchI))
@@ -874,11 +878,30 @@ void dynamicTopoFvMesh::removeEdge
         }
     }
 
-    edges_[eIndex] = edge(-1, -1);
-    edgeFaces_[eIndex].clear();
-
     // Identify the patch for this edge
     label patch = whichEdgePatch(eIndex);
+
+    if (debug > 2)
+    {
+        Pout<< "Removing edge: "
+            << eIndex << ": "
+            << edges_[eIndex];
+
+        Pout<< " Patch: ";
+
+        if (patch == -1)
+        {
+            Pout<< "Internal" << endl;
+        }
+        else
+        {
+            Pout<< boundaryMesh()[patch].name() << endl;
+        }
+    }
+
+    // Invalidate edge and edgeFaces
+    edges_[eIndex] = edge(-1, -1);
+    edgeFaces_[eIndex].clear();
 
     if (patch >= 0)
     {
@@ -1609,7 +1632,23 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
     // Enable/disable run-time debug level
     if (meshSubDict.found("debug") || mandatory_)
     {
-        debug = readLabel(meshSubDict.lookup("debug"));
+        // Look for a processor-specific debug flag
+        if (Pstream::parRun() && meshSubDict.found("parDebugProcs"))
+        {
+            labelList procs(meshSubDict.lookup("parDebugProcs"));
+
+            forAll(procs, procI)
+            {
+                if (Pstream::myProcNo() == procs[procI])
+                {
+                    debug = readLabel(meshSubDict.lookup("debug"));
+                }
+            }
+        }
+        else
+        {
+            debug = readLabel(meshSubDict.lookup("debug"));
+        }
     }
     else
     {
