@@ -52,7 +52,7 @@ Author
 #include "motionSolver.H"
 #include "fvPatchFields.H"
 #include "fvsPatchFields.H"
-#include "coupledPatchInfo.H"
+#include "coupledInfo.H"
 #include "lengthScaleEstimator.H"
 
 namespace Foam

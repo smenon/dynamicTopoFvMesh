@@ -29,7 +29,7 @@ License
 #include "objectMap.H"
 #include "changeMap.H"
 #include "multiThreader.H"
-#include "coupledPatchInfo.H"
+#include "coupledInfo.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -224,8 +224,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& sendMesh = sendPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.patchMap();
                 const coupleMap& rcMap = recvMesh.patchMap();
@@ -2933,7 +2933,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 // Check coupleMaps for point coupling
                 const label pointEnum = coupleMap::POINT;
 
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
                 const coupleMap& cMap = recvMesh.patchMap();
 
                 // Obtain non-const references
@@ -3642,8 +3642,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& sendMesh = sendPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.patchMap();
                 const coupleMap& rcMap = recvMesh.patchMap();
@@ -5574,7 +5574,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 // Check coupleMaps for point coupling
                 const label pointEnum = coupleMap::POINT;
 
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
                 const coupleMap& cMap = recvMesh.patchMap();
 
                 // Obtain non-const references

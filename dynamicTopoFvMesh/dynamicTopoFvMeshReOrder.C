@@ -25,7 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectMap.H"
-#include "coupledPatchInfo.H"
+#include "coupledInfo.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

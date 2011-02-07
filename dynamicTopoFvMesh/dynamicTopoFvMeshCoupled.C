@@ -42,7 +42,7 @@ Author
 #include "changeMap.H"
 #include "matchPoints.H"
 #include "globalMeshData.H"
-#include "coupledPatchInfo.H"
+#include "coupledInfo.H"
 #include "processorPolyPatch.H"
 
 namespace Foam
@@ -449,7 +449,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             sendPatchMeshes_.set
             (
                 pI,
-                new coupledPatchInfo
+                new coupledInfo
                 (
                     *this,               // Reference to this mesh
                     twoDMesh_,           // 2D or 3D
@@ -473,7 +473,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             recvPatchMeshes_.set
             (
                 pI,
-                new coupledPatchInfo
+                new coupledInfo
                 (
                     *this,               // Reference to this mesh
                     twoDMesh_,           // 2D or 3D
@@ -499,7 +499,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             sendPatchMeshes_.set
             (
                 pI,
-                new coupledPatchInfo
+                new coupledInfo
                 (
                     *this,               // Reference to this mesh
                     twoDMesh_,           // 2D or 3D
@@ -523,7 +523,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             recvPatchMeshes_.set
             (
                 pI,
-                new coupledPatchInfo
+                new coupledInfo
                 (
                     *this,               // Reference to this mesh
                     twoDMesh_,           // 2D or 3D
@@ -718,7 +718,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                 patchCoupling_.set
                 (
                     mPatch,
-                    new coupledPatchInfo
+                    new coupledInfo
                     (
                         *this,
                         cMap,
@@ -790,8 +790,8 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
     {
         label proc = procIndices_[pI];
 
-        const coupledPatchInfo& sPM = sendPatchMeshes_[pI];
-        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        const coupledInfo& sPM = sendPatchMeshes_[pI];
+        const coupledInfo& rPM = recvPatchMeshes_[pI];
 
         // Fetch the coupleMap
         const coupleMap& scMap = sPM.patchMap();
@@ -828,7 +828,7 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
     forAll(procIndices_, pI)
     {
         // Fetch non-const reference to patchSubMesh
-        coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        coupledInfo& rPM = recvPatchMeshes_[pI];
 
         // Fetch the coupleMap
         const coupleMap& rcMap = rPM.patchMap();
@@ -876,7 +876,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        const coupledInfo& rPM = recvPatchMeshes_[pI];
         const coupleMap& cMap = rPM.patchMap();
 
         // Does a coupling exist?
@@ -902,7 +902,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        const coupledInfo& rPM = recvPatchMeshes_[pI];
         const coupleMap& cMap = rPM.patchMap();
 
         label sIndex = -1;
@@ -975,129 +975,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 label facePatch = -1;
                 label mfIndex = -1, sfIndex = checkCell[fI];
                 label slavePatch = mesh.whichPatch(sfIndex);
-
-                // Determine patch
-                if (!masterConvertFacePatch[pI].found(sfIndex))
-                {
-                    if (slavePatch == -1)
-                    {
-                        // Slave face was an interior one
-                        facePatch = neiProcPatch;
-                    }
-                    else
-                    if (slavePatch == (slaveBoundary.size() - 1))
-                    {
-                        // The 'defaultPatch'
-                        facePatch = neiProcPatch;
-                    }
-                    else
-                    if (isA<processorPolyPatch>(slaveBoundary[slavePatch]))
-                    {
-                        const processorPolyPatch& pp =
-                        (
-                            refCast<const processorPolyPatch>
-                            (
-                                slaveBoundary[slavePatch]
-                            )
-                        );
-
-                        label neiProcNo = pp.neighbProcNo();
-
-                        if (neiProcNo == Pstream::myProcNo())
-                        {
-                            // Set the slave conversion patch
-                            slaveConvertPatch[pI] = slavePatch;
-
-                            // Set the master face patch
-                            facePatch = neiProcPatch;
-                        }
-                        else
-                        {
-                            // If this other processor is
-                            // lesser-ranked, bail out.
-                            if (neiProcNo < Pstream::myProcNo())
-                            {
-                                map.type() = -2;
-
-                                return map;
-                            }
-                            else
-                            if (debug > 3)
-                            {
-                                Pout<< nl << nl
-                                    << " Face: " << sfIndex
-                                    << " :: " << mesh.faces_[sfIndex]
-                                    << " is talking to processor: "
-                                    << neiProcNo << endl;
-                            }
-
-                            // Find an appropriate boundary patch
-                            forAll(boundary, patchI)
-                            {
-                                if (isA<processorPolyPatch>(boundary[patchI]))
-                                {
-                                    const processorPolyPatch& pp =
-                                    (
-                                        refCast<const processorPolyPatch>
-                                        (
-                                            boundary[patchI]
-                                        )
-                                    );
-
-                                    if (pp.neighbProcNo() == neiProcNo)
-                                    {
-                                        facePatch = patchI;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // Specify a convert-patch operation
-                            // for later, if this operation succeeds
-                            const face& sfCheck = mesh.faces_[sfIndex];
-
-                            const point& nfC = sfCheck.centre(mesh.points_);
-                            const point& ofC = sfCheck.centre(mesh.oldPoints_);
-
-                            label cFaceIndex = -1;
-
-                            // Search subMesh face centres
-
-
-                            // Add to the list
-                            convertPatchPoints[pI].insert
-                            (
-                                cFaceIndex,
-                                Pair<point>(nfC, ofC)
-                            );
-                        }
-                    }
-                    else
-                    {
-                        // Physical type
-                        facePatch = slavePatch;
-                    }
-
-                    if (facePatch == -1)
-                    {
-                        Pout<< " Could not find correct patch info: " << nl
-                            << " sfIndex: " << sfIndex << nl
-                            << " slavePatch: " <<
-                            (
-                                slavePatch > -1 ?
-                                slaveBoundary[slavePatch].name() :
-                                "Internal"
-                            )
-                            << abort(FatalError);
-                    }
-
-                    // Add the patch entry
-                    masterConvertFacePatch[pI].insert
-                    (
-                        sfIndex,
-                        facePatch
-                    );
-                }
 
                 // Check whether a face mapping exists for this face
                 if ((mfIndex = cMap.findMaster(coupleMap::FACE, sfIndex)) > -1)
@@ -1250,6 +1127,139 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         edgePatch
                     );
                 }
+
+                // Determine patch
+                if (masterConvertFacePatch[pI].found(sfIndex))
+                {
+                    continue;
+                }
+
+                if (slavePatch == -1)
+                {
+                    // Slave face was an interior one
+                    facePatch = neiProcPatch;
+                }
+                else
+                if (slavePatch == (slaveBoundary.size() - 1))
+                {
+                    // The 'defaultPatch'
+                    facePatch = neiProcPatch;
+                }
+                else
+                if (isA<processorPolyPatch>(slaveBoundary[slavePatch]))
+                {
+                    const processorPolyPatch& pp =
+                    (
+                        refCast<const processorPolyPatch>
+                        (
+                            slaveBoundary[slavePatch]
+                        )
+                    );
+
+                    label neiProcNo = pp.neighbProcNo();
+
+                    if (neiProcNo == Pstream::myProcNo())
+                    {
+                        // Set the slave conversion patch
+                        slaveConvertPatch[pI] = slavePatch;
+
+                        // Set the master face patch
+                        facePatch = neiProcPatch;
+                    }
+                    else
+                    {
+                        // If this other processor is
+                        // lesser-ranked, bail out.
+                        if (neiProcNo < Pstream::myProcNo())
+                        {
+                            map.type() = -2;
+
+                            return map;
+                        }
+                        else
+                        if (debug > 3)
+                        {
+                            Pout<< nl << nl
+                                << " Face: " << sfIndex
+                                << " :: " << mesh.faces_[sfIndex]
+                                << " is talking to processor: "
+                                << neiProcNo << endl;
+                        }
+
+                        // Find an appropriate boundary patch
+                        forAll(boundary, patchI)
+                        {
+                            if (isA<processorPolyPatch>(boundary[patchI]))
+                            {
+                                const processorPolyPatch& pp =
+                                (
+                                    refCast<const processorPolyPatch>
+                                    (
+                                        boundary[patchI]
+                                    )
+                                );
+
+                                if (pp.neighbProcNo() == neiProcNo)
+                                {
+                                    facePatch = patchI;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Specify a convert-patch operation
+                        // for later, if this operation succeeds
+                        const face& sfCheck = mesh.faces_[sfIndex];
+
+                        const point& nfC = sfCheck.centre(mesh.points_);
+                        const point& ofC = sfCheck.centre(mesh.oldPoints_);
+
+                        label cFaceIndex = -1;
+
+                        // Are we talking to this processor already?
+                        label prI = findIndex(procIndices_, neiProcNo);
+
+                        // Search subMesh face centres
+                        if (prI > -1)
+                        {
+                            // Fetch references
+//                            const coupledInfo& rrPM = recvPatchMeshes_[prI];
+//                            const dynamicTopoFvMesh& mesh = rrPM.subMesh();
+                        }
+
+                        // Add to the list
+                        convertPatchPoints[pI].insert
+                        (
+                            cFaceIndex,
+                            Pair<point>(nfC, ofC)
+                        );
+                    }
+                }
+                else
+                {
+                    // Physical type
+                    facePatch = slavePatch;
+                }
+
+                if (facePatch == -1)
+                {
+                    Pout<< " Could not find correct patch info: " << nl
+                        << " sfIndex: " << sfIndex << nl
+                        << " slavePatch: " <<
+                        (
+                            slavePatch > -1 ?
+                            slaveBoundary[slavePatch].name() :
+                            "Internal"
+                        )
+                        << abort(FatalError);
+                }
+
+                // Add the patch entry
+                masterConvertFacePatch[pI].insert
+                (
+                    sfIndex,
+                    facePatch
+                );
             }
         }
     }
@@ -1270,7 +1280,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        const coupledInfo& rPM = recvPatchMeshes_[pI];
         const coupleMap& cMap = rPM.patchMap();
 
         label sIndex = -1;
@@ -1326,7 +1336,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(convertPatchPoints, pI)
     {
         // Fetch reference to maps
-        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        const coupledInfo& rPM = recvPatchMeshes_[pI];
         const coupleMap& cMap = rPM.patchMap();
 
         forAllConstIter(Map<Pair<point> >, convertPatchPoints[pI], fIter)
@@ -1347,7 +1357,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(facesToConvert, procI)
     {
         // Fetch reference to subMesh
-        const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+        const coupledInfo& rPM = recvPatchMeshes_[procI];
 
         const coupleMap& cMap = rPM.patchMap();
         const dynamicTopoFvMesh& mesh = rPM.subMesh();
@@ -1397,7 +1407,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             label procIndex = procIndices_[procI];
 
             // Fetch reference to subMesh
-            const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+            const coupledInfo& rPM = recvPatchMeshes_[procI];
             const dynamicTopoFvMesh& mesh = rPM.subMesh();
 
             if (pointsToInsert[procI].size())
@@ -1485,7 +1495,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         Map<label>& procIPointMap = pointsToInsert[procI];
 
         // Fetch reference to subMesh
-        const coupledPatchInfo& rPMI = recvPatchMeshes_[procI];
+        const coupledInfo& rPMI = recvPatchMeshes_[procI];
 
         const coupleMap& cMapI = rPMI.patchMap();
         const dynamicTopoFvMesh& meshI = rPMI.subMesh();
@@ -1511,7 +1521,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 Map<label>& procJPointMap = pointsToInsert[procJ];
 
                 // Fetch reference to subMesh
-                const coupledPatchInfo& rPMJ = recvPatchMeshes_[procJ];
+                const coupledInfo& rPMJ = recvPatchMeshes_[procJ];
 
                 const coupleMap& cMapJ = rPMJ.patchMap();
                 const dynamicTopoFvMesh& meshJ = rPMJ.subMesh();
@@ -1611,7 +1621,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(edgesToInsert, procI)
     {
         // Fetch reference to subMesh
-        const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+        const coupledInfo& rPM = recvPatchMeshes_[procI];
 
         const coupleMap& cMap = rPM.patchMap();
         const dynamicTopoFvMesh& mesh = rPM.subMesh();
@@ -1689,7 +1699,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(facesToInsert, procI)
     {
         // Fetch reference to subMesh
-        const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+        const coupledInfo& rPM = recvPatchMeshes_[procI];
 
         const coupleMap& cMap = rPM.patchMap();
         const dynamicTopoFvMesh& mesh = rPM.subMesh();
@@ -1729,7 +1739,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
 
                 // Fetch reference to subMesh
-                const coupledPatchInfo& rmJ = recvPatchMeshes_[procJ];
+                const coupledInfo& rmJ = recvPatchMeshes_[procJ];
 
                 const coupleMap& cMJ = rmJ.patchMap();
                 const dynamicTopoFvMesh& mJ = rmJ.subMesh();
@@ -1960,7 +1970,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(facesToConvert, procI)
     {
         // Fetch reference to subMesh
-        const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+        const coupledInfo& rPM = recvPatchMeshes_[procI];
 
         const coupleMap& cMap = rPM.patchMap();
         const dynamicTopoFvMesh& mesh = rPM.subMesh();
@@ -2047,7 +2057,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(edgesToConvert, procI)
     {
         // Fetch reference to subMesh
-        const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+        const coupledInfo& rPM = recvPatchMeshes_[procI];
 
         const coupleMap& cMap = rPM.patchMap();
         const Map<label>& procEdgeMap = edgesToConvert[procI];
@@ -2204,7 +2214,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const labelList cellsToRemove = procCellMap.toc();
 
         // Fetch non-const reference to subMesh
-        coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+        coupledInfo& rPM = recvPatchMeshes_[procI];
         dynamicTopoFvMesh& mesh = rPM.subMesh();
 
         // Now remove cells for this processor
@@ -2230,7 +2240,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             continue;
         }
 
-        const coupledPatchInfo& rPM = recvPatchMeshes_[procI];
+        const coupledInfo& rPM = recvPatchMeshes_[procI];
 
         const coupleMap& cMap = rPM.patchMap();
         const dynamicTopoFvMesh& mesh = rPM.subMesh();
@@ -2925,8 +2935,8 @@ void dynamicTopoFvMesh::handleCoupledPatches
     {
         label proc = procIndices_[pI];
 
-        coupledPatchInfo& sPM = sendPatchMeshes_[pI];
-        coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        coupledInfo& sPM = sendPatchMeshes_[pI];
+        coupledInfo& rPM = recvPatchMeshes_[pI];
 
         if (proc < Pstream::myProcNo())
         {
@@ -3038,7 +3048,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
     {
         label proc = procIndices_[pI];
 
-        const coupledPatchInfo& sPM = sendPatchMeshes_[pI];
+        const coupledInfo& sPM = sendPatchMeshes_[pI];
 
         if (proc < Pstream::myProcNo())
         {
@@ -3781,7 +3791,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
     {
         label proc = procIndices_[pI];
 
-        coupledPatchInfo& sPM = sendPatchMeshes_[pI];
+        coupledInfo& sPM = sendPatchMeshes_[pI];
 
         // Build the subMesh.
         buildProcessorPatchMesh(sPM, commonCells);
@@ -3811,7 +3821,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         }
 
         // Obtain references
-        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        const coupledInfo& rPM = recvPatchMeshes_[pI];
         const coupleMap& rcMap = rPM.patchMap();
 
         // First read entity sizes.
@@ -3850,7 +3860,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 //   of neighbouring processors.
 void dynamicTopoFvMesh::buildProcessorPatchMesh
 (
-    coupledPatchInfo& subMesh,
+    coupledInfo& subMesh,
     Map<labelList>& commonCells
 )
 {
@@ -4477,7 +4487,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         }
 
         // Build maps only for the first time.
-        // coupledPatchInfo is subsequently mapped for each topo-change.
+        // coupledInfo is subsequently mapped for each topo-change.
         if (patchCoupling_[patchI].builtMaps())
         {
             continue;
@@ -4813,7 +4823,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
     {
         label proc = procIndices_[pI];
 
-        coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        coupledInfo& rPM = recvPatchMeshes_[pI];
         const coupleMap& cMap = rPM.patchMap();
         const labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_ID);
 
@@ -5662,8 +5672,8 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 
     forAll(procIndices_, pI)
     {
-        coupledPatchInfo& sPM = sendPatchMeshes_[pI];
-        coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        coupledInfo& sPM = sendPatchMeshes_[pI];
+        coupledInfo& rPM = recvPatchMeshes_[pI];
 
         const coupleMap& scMap = sPM.patchMap();
         const coupleMap& rcMap = rPM.patchMap();
@@ -5730,7 +5740,7 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
     {
         forAll(procIndices_, pI)
         {
-            const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+            const coupledInfo& rPM = recvPatchMeshes_[pI];
             const coupleMap& rcMap = rPM.patchMap();
 
             if (rcMap.masterIndex() == Pstream::myProcNo())
@@ -5766,7 +5776,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
         {
             // Fetch non-const reference to subMeshes
             const label faceEnum = coupleMap::FACE;
-            const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+            const coupledInfo& rPM = recvPatchMeshes_[pI];
             const coupleMap& cMap = rPM.patchMap();
 
             label sIndex = -1;
@@ -5828,7 +5838,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
         forAll(procIndices_, pI)
         {
-            const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+            const coupledInfo& rPM = recvPatchMeshes_[pI];
             const coupleMap& cMap = rPM.patchMap();
 
             label sIndex = -1;

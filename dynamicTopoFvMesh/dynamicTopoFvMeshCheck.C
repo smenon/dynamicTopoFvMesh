@@ -41,7 +41,7 @@ Author
 #include "volFields.H"
 #include "triPointRef.H"
 #include "tetPointRef.H"
-#include "coupledPatchInfo.H"
+#include "coupledInfo.H"
 
 namespace Foam
 {

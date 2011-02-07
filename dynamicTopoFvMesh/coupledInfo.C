@@ -25,7 +25,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "Time.H"
-#include "coupledPatchInfo.H"
+#include "coupledInfo.H"
 #include "dynamicTopoFvMesh.H"
 
 namespace Foam
@@ -33,8 +33,8 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-// Constructor for coupledPatchInfo
-coupledPatchInfo::coupledPatchInfo
+// Constructor for coupledInfo
+coupledInfo::coupledInfo
 (
     const dynamicTopoFvMesh& mesh,
     const coupleMap& cMap,
@@ -50,7 +50,7 @@ coupledPatchInfo::coupledPatchInfo
 {}
 
 
-coupledPatchInfo::coupledPatchInfo
+coupledInfo::coupledInfo
 (
     const dynamicTopoFvMesh& mesh,
     const bool isTwoDMesh,
@@ -93,7 +93,7 @@ coupledPatchInfo::coupledPatchInfo
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void coupledPatchInfo::setMesh
+void coupledInfo::setMesh
 (
     label index,
     dynamicTopoFvMesh* mesh
@@ -103,15 +103,11 @@ void coupledPatchInfo::setMesh
 }
 
 
-dynamicTopoFvMesh& coupledPatchInfo::subMesh()
+dynamicTopoFvMesh& coupledInfo::subMesh()
 {
     if (!subMesh_.valid())
     {
-        FatalErrorIn
-        (
-            "dynamicTopoFvMesh& "
-            "coupledPatchInfo::subMesh()"
-        )
+        FatalErrorIn("dynamicTopoFvMesh& coupledInfo::subMesh()")
             << " Sub-mesh pointer has not been set."
             << abort(FatalError);
     }
@@ -120,15 +116,11 @@ dynamicTopoFvMesh& coupledPatchInfo::subMesh()
 }
 
 
-const dynamicTopoFvMesh& coupledPatchInfo::subMesh() const
+const dynamicTopoFvMesh& coupledInfo::subMesh() const
 {
     if (!subMesh_.valid())
     {
-        FatalErrorIn
-        (
-            "const dynamicTopoFvMesh& "
-            "coupledPatchInfo::subMesh() const"
-        )
+        FatalErrorIn("const dynamicTopoFvMesh& coupledInfo::subMesh() const")
             << " Sub-mesh pointer has not been set."
             << abort(FatalError);
     }
@@ -137,37 +129,37 @@ const dynamicTopoFvMesh& coupledPatchInfo::subMesh() const
 }
 
 
-bool coupledPatchInfo::builtMaps() const
+bool coupledInfo::builtMaps() const
 {
     return builtMaps_;
 }
 
 
-void coupledPatchInfo::setBuiltMaps()
+void coupledInfo::setBuiltMaps()
 {
     builtMaps_ = true;
 }
 
 
-coupleMap& coupledPatchInfo::patchMap()
+coupleMap& coupledInfo::patchMap()
 {
     return patchMap_;
 }
 
 
-const coupleMap& coupledPatchInfo::patchMap() const
+const coupleMap& coupledInfo::patchMap() const
 {
     return patchMap_;
 }
 
 
-label coupledPatchInfo::masterFaceZone() const
+label coupledInfo::masterFaceZone() const
 {
     return masterFaceZone_;
 }
 
 
-label coupledPatchInfo::slaveFaceZone() const
+label coupledInfo::slaveFaceZone() const
 {
     return slaveFaceZone_;
 }
@@ -175,19 +167,14 @@ label coupledPatchInfo::slaveFaceZone() const
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void coupledPatchInfo::operator=
-(
-    const coupledPatchInfo& rhs
-)
+void coupledInfo::operator=(const coupledInfo& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)
     {
         FatalErrorIn
         (
-            "void "
-            "coupledPatchInfo::operator="
-            "(const Foam::coupledPatchInfo&)"
+            "void coupledInfo::operator=(const Foam::coupledInfo&)"
         )
             << "Attempted assignment to self"
             << abort(FatalError);

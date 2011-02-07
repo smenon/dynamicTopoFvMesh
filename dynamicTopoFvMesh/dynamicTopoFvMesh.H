@@ -67,7 +67,7 @@ class changeMap;
 class objectMap;
 class topoMapper;
 class motionSolver;
-class coupledPatchInfo;
+class coupledInfo;
 class convexSetAlgorithm;
 class lengthScaleEstimator;
 
@@ -243,14 +243,14 @@ class dynamicTopoFvMesh
         FixedList<Mutex, 4> entityMutex_;
 
         // Local coupled patch information
-        PtrList<coupledPatchInfo> patchCoupling_;
+        PtrList<coupledInfo> patchCoupling_;
 
         // List of processors that this sub-domain talks to
         labelList procIndices_;
 
         // Sub-Mesh pointers
-        PtrList<coupledPatchInfo> sendPatchMeshes_;
-        PtrList<coupledPatchInfo> recvPatchMeshes_;
+        PtrList<coupledInfo> sendPatchMeshes_;
+        PtrList<coupledInfo> recvPatchMeshes_;
 
     // Private Member Functions
 
@@ -993,7 +993,7 @@ class dynamicTopoFvMesh
         // Build patch sub-mesh for a specified processor
         void buildProcessorPatchMesh
         (
-            coupledPatchInfo& subMesh,
+            coupledInfo& subMesh,
             Map<labelList>& commonCells
         );
 

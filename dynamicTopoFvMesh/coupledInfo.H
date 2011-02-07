@@ -23,7 +23,7 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    coupledPatchInfo
+    coupledInfo
 
 Description
     An interface class that provides patch coupling functionality
@@ -34,12 +34,12 @@ Author
     All rights reserved
 
 SourceFiles
-    coupledPatchInfo.C
+    coupledInfo.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef coupledPatchInfo_H
-#define coupledPatchInfo_H
+#ifndef coupledInfo_H
+#define coupledInfo_H
 
 #include "autoPtr.H"
 #include "coupleMap.H"
@@ -51,10 +51,10 @@ namespace Foam
 class dynamicTopoFvMesh;
 
 /*---------------------------------------------------------------------------*\
-                         Class coupledPatchInfo Declaration
+                         Class coupledInfo Declaration
 \*---------------------------------------------------------------------------*/
 
-class coupledPatchInfo
+class coupledInfo
 {
     // Reference to the parent mesh
     const dynamicTopoFvMesh& mesh_;
@@ -74,12 +74,12 @@ class coupledPatchInfo
     label slaveFaceZone_;
 
     //- Disallow default bitwise assignment
-    inline void operator=(const coupledPatchInfo&);
+    inline void operator=(const coupledInfo&);
 
 public:
 
     // Constructor
-    inline coupledPatchInfo
+    inline coupledInfo
     (
         const dynamicTopoFvMesh& mesh,
         const coupleMap& cMap,
@@ -87,7 +87,7 @@ public:
         const label sfzIndex = -1
     );
 
-    inline coupledPatchInfo
+    inline coupledInfo
     (
         const dynamicTopoFvMesh& mesh,
         const bool isTwoDMesh,
@@ -132,7 +132,7 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #ifdef NoRepository
-#include "coupledPatchInfo.C"
+#    include "coupledInfo.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -32,7 +32,7 @@ License
 #include "triPointRef.H"
 #include "linePointRef.H"
 #include "multiThreader.H"
-#include "coupledPatchInfo.H"
+#include "coupledInfo.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -138,7 +138,7 @@ bool dynamicTopoFvMesh::testDelaunay
         forAll(procIndices_, pI)
         {
             // Fetch non-const reference to subMeshes
-            const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+            const coupledInfo& recvMesh = recvPatchMeshes_[pI];
 
             const coupleMap& cMap = recvMesh.patchMap();
             const dynamicTopoFvMesh& sMesh = recvMesh.subMesh();
@@ -1358,7 +1358,7 @@ bool dynamicTopoFvMesh::fillTables
                 {
                     // Fetch reference to subMesh
                     const label edgeEnum = coupleMap::EDGE;
-                    const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                    const coupledInfo& recvMesh = recvPatchMeshes_[pI];
                     const coupleMap& cMap = recvMesh.patchMap();
 
                     label sIndex = -1;

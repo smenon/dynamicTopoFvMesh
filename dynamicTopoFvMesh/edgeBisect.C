@@ -29,7 +29,7 @@ License
 #include "objectMap.H"
 #include "changeMap.H"
 #include "multiThreader.H"
-#include "coupledPatchInfo.H"
+#include "coupledInfo.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -297,7 +297,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMesh
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
                 const coupleMap& cMap = recvMesh.patchMap();
 
                 label sIndex = -1;
@@ -389,7 +389,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         {
             cMapPtr = &(recvPatchMeshes_[pI].patchMap());
 
-            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+            coupledInfo& recvMesh = recvPatchMeshes_[pI];
 
             // First check the slave for bisection feasibility.
             slaveMap =
@@ -471,7 +471,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         }
         else
         {
-            coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+            coupledInfo& recvMesh = recvPatchMeshes_[pI];
 
             // Bisect the slave face
             slaveMap =
@@ -2003,7 +2003,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         else
         if (procCouple && !localCouple)
         {
-            coupledPatchInfo& recvMesh = recvPatchMeshes_[pIndex];
+            coupledInfo& recvMesh = recvPatchMeshes_[pIndex];
             cMapPtr = &(recvMesh.patchMap());
         }
 
@@ -2500,8 +2500,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledPatchInfo& sendMesh = sendPatchMeshes_[pI];
-                const coupledPatchInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& sendMesh = sendPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.patchMap();
                 const coupleMap& rcMap = recvMesh.patchMap();
