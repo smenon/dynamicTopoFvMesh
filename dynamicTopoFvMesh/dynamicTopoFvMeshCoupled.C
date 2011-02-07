@@ -1214,25 +1214,34 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         const point& nfC = sfCheck.centre(mesh.points_);
                         const point& ofC = sfCheck.centre(mesh.oldPoints_);
 
-                        label cFaceIndex = -1;
-
                         // Are we talking to this processor already?
                         label prI = findIndex(procIndices_, neiProcNo);
 
-                        // Search subMesh face centres
-                        if (prI > -1)
+                        // Check for contact
+                        if (prI == -1)
                         {
-                            // Fetch references
-//                            const coupledInfo& rrPM = recvPatchMeshes_[prI];
-//                            const dynamicTopoFvMesh& mesh = rrPM.subMesh();
-                        }
+                            //if (debug > 3)
+                            {
+                                Pout<< nl << nl
+                                    << " No direct contact with"
+                                    << " processor: " << neiProcNo
+                                    << endl;
+                            }
 
-                        // Add to the list
-                        convertPatchPoints[pI].insert
-                        (
-                            cFaceIndex,
-                            Pair<point>(nfC, ofC)
-                        );
+                            // Bail out for now
+                            map.type() = -2;
+
+                            return map;
+                        }
+                        else
+                        {
+                            // Add to the list
+                            convertPatchPoints[prI].insert
+                            (
+                                convertPatchPoints[prI].size(),
+                                Pair<point>(nfC, ofC)
+                            );
+                        }
                     }
                 }
                 else
@@ -1336,8 +1345,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(convertPatchPoints, pI)
     {
         // Fetch reference to maps
-        const coupledInfo& rPM = recvPatchMeshes_[pI];
-        const coupleMap& cMap = rPM.patchMap();
+        const coupleMap& cMap = recvPatchMeshes_[pI].patchMap();
 
         forAllConstIter(Map<Pair<point> >, convertPatchPoints[pI], fIter)
         {
@@ -3140,16 +3148,6 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                 else
                 if (op == coupleMap::CONVERT_PATCH)
                 {
-                    if (index > -1)
-                    {
-                        localIndex =
-                        (
-                            entityMap.found(index) ?
-                            entityMap[index] :
-                            addedEntityMap[index]
-                        );
-                    }
-
                     if (debug > 3)
                     {
                         const point& newCentre = newPoints[pointCounter];
@@ -3275,53 +3273,42 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                         label replaceFace = -1;
 
-                        if (localIndex > -1)
+                        // Loop through all boundary faces,
+                        // and compute / compare face centres
+                        label sTot = nFaces_;
+                        label sInt = nOldInternalFaces_;
+
+                        for (label faceI = sInt; faceI < sTot; faceI++)
                         {
-                            // An index was provided
-                            replaceFace = localIndex;
-                        }
-                        else
-                        {
-                            // Loop through all boundary faces,
-                            // and compute / compare face centres
-                            for
-                            (
-                                label faceI = nOldInternalFaces_;
-                                faceI < faces_.size();
-                                faceI++
-                            )
+                            const face& fCheck = faces_[faceI];
+
+                            if (fCheck.empty())
                             {
-                                const face& fCheck = faces_[faceI];
+                                continue;
+                            }
 
-                                if (fCheck.empty())
-                                {
-                                    continue;
-                                }
+                            label pIndex = whichPatch(faceI);
 
-                                label pIndex = whichPatch(faceI);
+                            if (pIndex == -1)
+                            {
+                                continue;
+                            }
 
-                                if (pIndex == -1)
-                                {
-                                    continue;
-                                }
+                            if (!isA<processorPolyPatch>(boundary[pIndex]))
+                            {
+                                continue;
+                            }
 
-                                if (isA<processorPolyPatch>(boundary[pIndex]))
-                                {
-                                    // Compute face-centre
-                                    vector fC = fCheck.centre(points_);
+                            // Compute face-centre
+                            vector fC = fCheck.centre(points_);
 
-                                    // Compute tolerance
-                                    scalar tol =
-                                    (
-                                        mag(points_[fCheck[0]] - fC)
-                                    );
+                            // Compute tolerance
+                            scalar tol = mag(points_[fCheck[0]] - fC);
 
-                                    if (mag(fC - newCentre) < (1e-4 * tol))
-                                    {
-                                        replaceFace = faceI;
-                                        break;
-                                    }
-                                }
+                            if (mag(fC - newCentre) < (1e-4 * tol))
+                            {
+                                replaceFace = faceI;
+                                break;
                             }
                         }
 

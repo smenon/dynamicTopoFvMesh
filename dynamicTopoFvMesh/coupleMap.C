@@ -480,7 +480,11 @@ inline void coupleMap::pushOperation
     entityIndices_.setSize(entityIndices_.size() + 1, index);
     entityOperations_.setSize(entityOperations_.size() + 1, opType);
 
-    if (opType == coupleMap::MOVE_POINT)
+    if
+    (
+        opType == coupleMap::MOVE_POINT ||
+        opType == coupleMap::CONVERT_PATCH
+    )
     {
         moveNewPoints_.setSize(moveNewPoints_.size() + 1, newPoint);
         moveOldPoints_.setSize(moveOldPoints_.size() + 1, oldPoint);
