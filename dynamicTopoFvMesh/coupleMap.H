@@ -49,6 +49,7 @@ SourceFiles
 #include "edgeList.H"
 #include "faceList.H"
 #include "cellList.H"
+#include "labelPair.H"
 #include "Map.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -79,6 +80,7 @@ class coupleMap
     // List of points that are required
     // during patch sub-mesh creation
     mutable labelList subMeshPoints_;
+    mutable List<labelPair> globalProcPoints_;
 
     // Entity sizes (as specified by the entityType enumerant)
     mutable FixedList<label,10> nEntities_;
@@ -134,7 +136,7 @@ public:
         INTERNAL_EDGE = 4,
         INTERNAL_FACE = 5,
         SHARED_POINT = 6,
-        UNIQUE_CELL = 7,
+        GLOBAL_POINT = 7,
         NFE_SIZE = 8,
         NBDY = 9,
         // Buffers only
@@ -154,7 +156,8 @@ public:
         COLLAPSE_SECOND = 2,
         COLLAPSE_MIDPOINT = 3,
         REMOVE_CELL = 4,
-        MOVE_POINT = 5
+        MOVE_POINT = 5,
+        CONVERT_PATCH = 6
     };
 
     //- Runtime type information
@@ -233,6 +236,7 @@ public:
         inline pointField& oldPointBuffer() const;
 
         inline labelList& subMeshPoints() const;
+        inline List<labelPair>& globalProcPoints() const;
 
         inline void allocateBuffers() const;
 

@@ -330,6 +330,12 @@ inline labelList& coupleMap::subMeshPoints() const
 }
 
 
+inline List<labelPair>& coupleMap::globalProcPoints() const
+{
+    return globalProcPoints_;
+}
+
+
 inline void coupleMap::allocateBuffers() const
 {
     forAll(nEntities_, entityI)
@@ -348,8 +354,13 @@ inline void coupleMap::allocateBuffers() const
     oldPointBuffer().setSize(nEntities(coupleMap::POINT));
 
     // Size up connectivity buffers
-    entityBuffer(coupleMap::POINT).setSize(nEntities(coupleMap::SHARED_POINT));
-    entityBuffer(coupleMap::EDGE).setSize(2*nEntities(coupleMap::EDGE));
+    entityBuffer(coupleMap::POINT).setSize
+    (
+        nEntities(coupleMap::GLOBAL_POINT)
+      - nEntities(coupleMap::SHARED_POINT)
+    );
+
+    entityBuffer(coupleMap::EDGE).setSize(2 * nEntities(coupleMap::EDGE));
 
     // Size up boundary buffers
     entityBuffer(coupleMap::FACE_STARTS).setSize(nEntities(coupleMap::NBDY));
@@ -505,6 +516,7 @@ inline void coupleMap::clearBuffers() const
     oldPointBuffer_.clear();
 
     subMeshPoints_.clear();
+    globalProcPoints_.clear();
 
     forAll(entityBuffer_, bufferI)
     {

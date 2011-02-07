@@ -248,301 +248,370 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     // Maintain a separate list of processor IDs in procIndices.
     // This is done because this sub-domain may talk to processors
     // that share only edges/points.
-    if (Pstream::parRun())
+    if (!Pstream::parRun() || procIndices_.size())
     {
-        const polyBoundaryMesh& boundary = boundaryMesh();
+        return coupledPatchesAbsent;
+    }
 
-        forAll(boundary, patchI)
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    forAll(boundary, patchI)
+    {
+        if (isA<processorPolyPatch>(boundary[patchI]))
         {
-            if (isA<processorPolyPatch>(boundary[patchI]))
-            {
-                coupledPatchesAbsent = false;
+            coupledPatchesAbsent = false;
 
-                break;
+            break;
+        }
+    }
+
+    // Prepare a list of points for sub-mesh creation.
+    //  - Obtain global shared-points information, if necessary.
+
+    // Fetch the list of global points from polyMesh.
+    //  - This should be the first evaluation of globalData,
+    //    so this involves global communication
+    const globalMeshData& gData = polyMesh::globalData();
+
+    const labelList& spA = gData.sharedPointAddr();
+    const labelList& spL = gData.sharedPointLabels();
+
+    labelListList spB(Pstream::nProcs(), labelList(0));
+
+    if (gData.nGlobalPoints())
+    {
+        if (debug)
+        {
+            Info<< " identifyCoupledPatches :"
+                << " Found " << gData.nGlobalPoints()
+                << " global points." << endl;
+        }
+
+        // Send others my addressing.
+        for (label proc = 0; proc < Pstream::nProcs(); proc++)
+        {
+            if (proc != Pstream::myProcNo())
+            {
+                // Send number of entities first.
+                meshOps::pWrite(proc, spA.size());
+
+                // Send the buffer.
+                if (spA.size())
+                {
+                    meshOps::pWrite(proc, spA);
+                }
             }
         }
 
-        // Prepare a list of points for sub-mesh creation.
-        //  - Obtain global shared-points information, if necessary.
-        if (procIndices_.empty())
+        // Receive addressing from others
+        for (label proc = 0; proc < Pstream::nProcs(); proc++)
         {
-            // Fetch the list of global points from polyMesh.
-            const globalMeshData& gData = polyMesh::globalData();
-
-            const labelList& spAddr = gData.sharedPointAddr();
-            const labelList& spLabels = gData.sharedPointLabels();
-
-            labelListList spBuffer(Pstream::nProcs(), labelList(0));
-
-            if (gData.nGlobalPoints())
+            if (proc != Pstream::myProcNo())
             {
-                if (debug)
+                label procInfoSize = -1;
+
+                // How many entities am I going to be receiving?
+                meshOps::pRead(proc, procInfoSize);
+
+                if (procInfoSize)
                 {
-                    Info<< " identifyCoupledPatches :"
-                        << " Found " << gData.nGlobalPoints()
-                        << " global points." << endl;
+                    // Size the receive buffer.
+                    spB[proc].setSize(procInfoSize, -1);
+
+                    // Schedule for receipt.
+                    meshOps::pRead(proc, spB[proc]);
                 }
+            }
+        }
+    }
+    else
+    if (debug)
+    {
+        Info<< " identifyCoupledPatches :"
+            << " Did not find any global points." << endl;
+    }
 
-                // Send others my addressing.
-                for (label proc = 0; proc < Pstream::nProcs(); proc++)
+    labelHashSet immNeighbours;
+    labelListList procPoints(Pstream::nProcs());
+
+    // Track globally shared points
+    List<DynamicList<labelPair> > globalProcPoints
+    (
+        Pstream::nProcs(),
+        DynamicList<labelPair>(5)
+    );
+
+    // Insert my immediate neighbours into the list.
+    forAll(boundary, pI)
+    {
+        if (isA<processorPolyPatch>(boundary[pI]))
+        {
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[pI])
+            );
+
+            label neiProcNo = pp.neighbProcNo();
+
+            // Insert all boundary points.
+            procPoints[neiProcNo] = pp.meshPoints();
+
+            // Keep track of immediate neighbours.
+            immNeighbours.insert(neiProcNo);
+        }
+    }
+
+    if (gData.nGlobalPoints())
+    {
+        // Wait for all transfers to complete.
+        meshOps::waitForBuffers();
+
+        // Now loop through all processor addressing, and check if
+        // any labels coincide with my global shared points.
+        // If this is true, we need to be talking to that neighbour
+        // as well (if not already).
+        for (label proc = 0; proc < Pstream::nProcs(); proc++)
+        {
+            if (proc == Pstream::myProcNo())
+            {
+                continue;
+            }
+
+            bool foundGlobalMatch = false;
+
+            // Fetch reference to buffer
+            const labelList& procBuffer = spB[proc];
+
+            forAll(procBuffer, pointI)
+            {
+                forAll(spA, pointJ)
                 {
-                    if (proc != Pstream::myProcNo())
+                    if (spA[pointJ] == procBuffer[pointI])
                     {
-                        // Send number of entities first.
-                        meshOps::pWrite(proc, spAddr.size());
-
-                        // Send the buffer.
-                        if (spAddr.size())
+                        // Make an entry, if one wasn't made already
+                        if (findIndex(procPoints[proc], spL[pointJ]) == -1)
                         {
-                            meshOps::pWrite(proc, spAddr);
+                            globalProcPoints[proc].append
+                            (
+                                labelPair(spL[pointJ], spA[pointJ])
+                            );
                         }
+
+                        foundGlobalMatch = true;
+
+                        break;
                     }
                 }
+            }
 
-                // Receive addressing from others
-                for (label proc = 0; proc < Pstream::nProcs(); proc++)
+            if (!immNeighbours.found(proc))
+            {
+                if (foundGlobalMatch && debug)
                 {
-                    if (proc != Pstream::myProcNo())
-                    {
-                        label procInfoSize = -1;
-
-                        // How many entities am I going to be receiving?
-                        meshOps::pRead(proc, procInfoSize);
-
-                        if (procInfoSize)
-                        {
-                            // Size the receive buffer.
-                            spBuffer[proc].setSize(procInfoSize, -1);
-
-                            // Schedule for receipt.
-                            meshOps::pRead(proc, spBuffer[proc]);
-                        }
-                    }
+                    Pout<< " identifyCoupledPatches :"
+                        << " Additionally talking to processor: "
+                        << proc << endl;
                 }
+            }
+        }
+    }
+
+    // Estimate an initial size
+    procIndices_.setSize(Pstream::nProcs());
+
+    // Patch sub meshes need to be prepared in ascending
+    // order of neighbouring processors.
+    label nTotalProcs = 0;
+
+    forAll(procPoints, procI)
+    {
+        if (procPoints[procI].size())
+        {
+            procIndices_[nTotalProcs++] = procI;
+        }
+    }
+
+    // Shrink to actual size
+    procIndices_.setSize(nTotalProcs);
+
+    // Size the PtrLists.
+    sendPatchMeshes_.setSize(nTotalProcs);
+    recvPatchMeshes_.setSize(nTotalProcs);
+
+    // Create send/recv patch meshes, and copy
+    // the list of points for each processor.
+    forAll(procIndices_, pI)
+    {
+        label proc = procIndices_[pI];
+
+        if (proc < Pstream::myProcNo())
+        {
+            sendPatchMeshes_.set
+            (
+                pI,
+                new coupledPatchInfo
+                (
+                    *this,               // Reference to this mesh
+                    twoDMesh_,           // 2D or 3D
+                    false,               // Not local
+                    true,                // Sent to neighbour
+                    proc,                // Master index
+                    Pstream::myProcNo()  // Slave index
+                )
+            );
+
+            sendPatchMeshes_[pI].patchMap().subMeshPoints() =
+            (
+                procPoints[procIndices_[pI]]
+            );
+
+            sendPatchMeshes_[pI].patchMap().globalProcPoints() =
+            (
+                globalProcPoints[procIndices_[pI]]
+            );
+
+            recvPatchMeshes_.set
+            (
+                pI,
+                new coupledPatchInfo
+                (
+                    *this,               // Reference to this mesh
+                    twoDMesh_,           // 2D or 3D
+                    false,               // Not local
+                    false,               // Not sent to neighbour
+                    proc,                // Master index
+                    Pstream::myProcNo()  // Slave index
+                )
+            );
+
+            recvPatchMeshes_[pI].patchMap().subMeshPoints() =
+            (
+                procPoints[procIndices_[pI]]
+            );
+
+            recvPatchMeshes_[pI].patchMap().globalProcPoints() =
+            (
+                globalProcPoints[procIndices_[pI]]
+            );
+        }
+        else
+        {
+            sendPatchMeshes_.set
+            (
+                pI,
+                new coupledPatchInfo
+                (
+                    *this,               // Reference to this mesh
+                    twoDMesh_,           // 2D or 3D
+                    false,               // Not local
+                    true,                // Sent to neighbour
+                    Pstream::myProcNo(), // Master index
+                    proc                 // Slave index
+                )
+            );
+
+            sendPatchMeshes_[pI].patchMap().subMeshPoints() =
+            (
+                procPoints[procIndices_[pI]]
+            );
+
+            sendPatchMeshes_[pI].patchMap().globalProcPoints() =
+            (
+                globalProcPoints[procIndices_[pI]]
+            );
+
+            recvPatchMeshes_.set
+            (
+                pI,
+                new coupledPatchInfo
+                (
+                    *this,               // Reference to this mesh
+                    twoDMesh_,           // 2D or 3D
+                    false,               // Not local
+                    false,               // Not sent to neighbour
+                    Pstream::myProcNo(), // Master index
+                    proc                 // Slave index
+                )
+            );
+
+            recvPatchMeshes_[pI].patchMap().subMeshPoints() =
+            (
+                procPoints[procIndices_[pI]]
+            );
+
+            recvPatchMeshes_[pI].patchMap().globalProcPoints() =
+            (
+                globalProcPoints[procIndices_[pI]]
+            );
+        }
+    }
+
+    if (debug > 3)
+    {
+        Pout<< " identifyCoupledPatches :"
+            << " Talking to processors: "
+            << procIndices_ << endl;
+
+        forAll(procIndices_, pI)
+        {
+            label proc = procIndices_[pI];
+
+            const List<labelPair>* gppPtr = NULL;
+
+            // Write out subMeshPoints as a VTK
+            if (proc < Pstream::myProcNo())
+            {
+                const coupleMap& cMap = sendPatchMeshes_[pI].patchMap();
+
+                writeVTK
+                (
+                    "subMeshPoints_" +
+                    Foam::name(Pstream::myProcNo()) + "to" +
+                    Foam::name(proc),
+                    cMap.subMeshPoints(),
+                    0
+                );
+
+                // Fetch reference
+                gppPtr = &(cMap.globalProcPoints());
             }
             else
-            if (debug)
             {
-                Info<< " identifyCoupledPatches :"
-                    << " Did not find any global points." << endl;
+                const coupleMap& cMap = sendPatchMeshes_[pI].patchMap();
+
+                writeVTK
+                (
+                    "subMeshPoints_" +
+                    Foam::name(Pstream::myProcNo()) + "to" +
+                    Foam::name(proc),
+                    cMap.subMeshPoints(),
+                    0
+                );
+
+                // Fetch reference
+                gppPtr = &(cMap.globalProcPoints());
             }
 
-            labelHashSet immNeighbours;
-            labelListList procPatchPoints(Pstream::nProcs());
+            // Write out globalProcPoints as a VTK
+            const List<labelPair>& gpp = *gppPtr;
 
-            // Insert my immediate neighbours into the list.
-            forAll(boundary, pI)
+            if (gpp.size())
             {
-                if (isA<processorPolyPatch>(boundary[pI]))
+                labelList gpPoints(gpp.size(), -1);
+
+                forAll(gpp, pointI)
                 {
-                    const processorPolyPatch& pp =
-                    (
-                        refCast<const processorPolyPatch>(boundary[pI])
-                    );
-
-                    label neiProcNo = pp.neighbProcNo();
-
-                    // Insert all boundary points.
-                    procPatchPoints[neiProcNo] = pp.meshPoints();
-
-                    // Keep track of immediate neighbours.
-                    immNeighbours.insert(neiProcNo);
+                    gpPoints[pointI] = gpp[pointI].first();
                 }
-            }
 
-            if (gData.nGlobalPoints())
-            {
-                // Wait for all transfers to complete.
-                meshOps::waitForBuffers();
-
-                // Now loop through all processor addressing, and check if
-                // any labels coincide with my global shared points.
-                // If this is true, we need to be talking to that neighbour
-                // as well (if not already).
-                for (label proc = 0; proc < Pstream::nProcs(); proc++)
-                {
-                    if
-                    (
-                        (proc != Pstream::myProcNo()) &&
-                        (!immNeighbours.found(proc))
-                    )
-                    {
-                        bool foundGlobalMatch = false;
-
-                        labelHashSet neiSet;
-
-                        forAll(spBuffer[proc], pointI)
-                        {
-                            forAll(spAddr, pointJ)
-                            {
-                                if (spAddr[pointJ] == spBuffer[proc][pointI])
-                                {
-                                    // Make an entry
-                                    neiSet.insert(spLabels[pointJ]);
-
-                                    foundGlobalMatch = true;
-
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (foundGlobalMatch && debug)
-                        {
-                            Pout<< " identifyCoupledPatches :"
-                                << " Additionally talking to processor: "
-                                << proc << endl;
-                        }
-
-                        procPatchPoints[proc] = neiSet.toc();
-                    }
-                }
-            }
-
-            // Estimate an initial size
-            procIndices_.setSize(Pstream::nProcs());
-
-            // Patch sub meshes need to be prepared in ascending
-            // order of neighbouring processors.
-            label nTotalProcs = 0;
-
-            forAll(procPatchPoints, procI)
-            {
-                if (procPatchPoints[procI].size())
-                {
-                    procIndices_[nTotalProcs++] = procI;
-                }
-            }
-
-            // Shrink to actual size
-            procIndices_.setSize(nTotalProcs);
-
-            // Size the PtrLists.
-            sendPatchMeshes_.setSize(nTotalProcs);
-            recvPatchMeshes_.setSize(nTotalProcs);
-
-            // Create send/recv patch meshes, and copy
-            // the list of points for each processor.
-            forAll(procIndices_, pI)
-            {
-                label proc = procIndices_[pI];
-
-                if (proc < Pstream::myProcNo())
-                {
-                    sendPatchMeshes_.set
-                    (
-                        pI,
-                        new coupledPatchInfo
-                        (
-                            *this,               // Reference to this mesh
-                            twoDMesh_,           // 2D or 3D
-                            false,               // Not local
-                            true,                // Sent to neighbour
-                            proc,                // Master index
-                            Pstream::myProcNo()  // Slave index
-                        )
-                    );
-
-                    sendPatchMeshes_[pI].patchMap().subMeshPoints() =
-                    (
-                        procPatchPoints[procIndices_[pI]]
-                    );
-
-                    recvPatchMeshes_.set
-                    (
-                        pI,
-                        new coupledPatchInfo
-                        (
-                            *this,               // Reference to this mesh
-                            twoDMesh_,           // 2D or 3D
-                            false,               // Not local
-                            false,               // Not sent to neighbour
-                            proc,                // Master index
-                            Pstream::myProcNo()  // Slave index
-                        )
-                    );
-
-                    recvPatchMeshes_[pI].patchMap().subMeshPoints() =
-                    (
-                        procPatchPoints[procIndices_[pI]]
-                    );
-                }
-                else
-                {
-                    sendPatchMeshes_.set
-                    (
-                        pI,
-                        new coupledPatchInfo
-                        (
-                            *this,               // Reference to this mesh
-                            twoDMesh_,           // 2D or 3D
-                            false,               // Not local
-                            true,                // Sent to neighbour
-                            Pstream::myProcNo(), // Master index
-                            proc                 // Slave index
-                        )
-                    );
-
-                    sendPatchMeshes_[pI].patchMap().subMeshPoints() =
-                    (
-                        procPatchPoints[procIndices_[pI]]
-                    );
-
-                    recvPatchMeshes_.set
-                    (
-                        pI,
-                        new coupledPatchInfo
-                        (
-                            *this,               // Reference to this mesh
-                            twoDMesh_,           // 2D or 3D
-                            false,               // Not local
-                            false,               // Not sent to neighbour
-                            Pstream::myProcNo(), // Master index
-                            proc                 // Slave index
-                        )
-                    );
-
-                    recvPatchMeshes_[pI].patchMap().subMeshPoints() =
-                    (
-                        procPatchPoints[procIndices_[pI]]
-                    );
-                }
-            }
-
-            if (debug > 3)
-            {
-                Pout<< " identifyCoupledPatches :"
-                    << " Talking to processors: "
-                    << procIndices_ << endl;
-
-                forAll(procIndices_, pI)
-                {
-                    label proc = procIndices_[pI];
-
-                    // Write out points as a VTK
-                    if (proc < Pstream::myProcNo())
-                    {
-                        writeVTK
-                        (
-                            "subMeshPoints_" +
-                            Foam::name(Pstream::myProcNo()) + "to" +
-                            Foam::name(proc),
-                            sendPatchMeshes_[pI].patchMap().subMeshPoints(),
-                            0
-                        );
-                    }
-                    else
-                    {
-                        writeVTK
-                        (
-                            "subMeshPoints_" +
-                            Foam::name(Pstream::myProcNo()) + "to" +
-                            Foam::name(proc),
-                            recvPatchMeshes_[pI].patchMap().subMeshPoints(),
-                            0
-                        );
-                    }
-                }
+                writeVTK
+                (
+                    "globalProcPoints_" +
+                    Foam::name(Pstream::myProcNo()) + "to" +
+                    Foam::name(proc),
+                    gpPoints,
+                    0
+                );
             }
         }
     }
@@ -799,6 +868,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     List<Map<label> > masterConvertFacePatch(procIndices_.size());
 
     labelList slaveConvertPatch(procIndices_.size(), -1);
+    List<Map<Pair<point> > > convertPatchPoints(procIndices_.size());
 
     // First check to ensure that this case can be handled
     forAll(procIndices_, pI)
@@ -943,6 +1013,15 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         }
                         else
                         {
+                            // If this other processor is
+                            // lesser-ranked, bail out.
+                            if (neiProcNo < Pstream::myProcNo())
+                            {
+                                map.type() = -2;
+
+                                return map;
+                            }
+                            else
                             if (debug > 3)
                             {
                                 Pout<< nl << nl
@@ -972,6 +1051,25 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                     }
                                 }
                             }
+
+                            // Specify a convert-patch operation
+                            // for later, if this operation succeeds
+                            const face& sfCheck = mesh.faces_[sfIndex];
+
+                            const point& nfC = sfCheck.centre(mesh.points_);
+                            const point& ofC = sfCheck.centre(mesh.oldPoints_);
+
+                            label cFaceIndex = -1;
+
+                            // Search subMesh face centres
+
+
+                            // Add to the list
+                            convertPatchPoints[pI].insert
+                            (
+                                cFaceIndex,
+                                Pair<point>(nfC, ofC)
+                            );
                         }
                     }
                     else
@@ -1222,6 +1320,25 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             sIndex,
             coupleMap::REMOVE_CELL
         );
+    }
+
+    // Sequentially add any convert-patch operations
+    forAll(convertPatchPoints, pI)
+    {
+        // Fetch reference to maps
+        const coupledPatchInfo& rPM = recvPatchMeshes_[pI];
+        const coupleMap& cMap = rPM.patchMap();
+
+        forAllConstIter(Map<Pair<point> >, convertPatchPoints[pI], fIter)
+        {
+            cMap.pushOperation
+            (
+                fIter.key(),
+                coupleMap::CONVERT_PATCH,
+                fIter().first(),
+                fIter().second()
+            );
+        }
     }
 
     // Build a list of edges that need to be converted to interior.
@@ -2396,7 +2513,7 @@ const changeMap dynamicTopoFvMesh::removeCells
 
         forAll(eFaces, faceI)
         {
-            if (facesToConvert.found(eFaces[faceI]))
+            if (!facesToRemove.found(eFaces[faceI]))
             {
                 allRemove = false;
                 break;
@@ -2974,7 +3091,8 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             }
 
             // Keep track of added entities from initial set
-            label nPoints = cMap.nEntities(coupleMap::POINT), nMovePoints = 0;
+            label pointCounter = 0;
+            label nPoints = cMap.nEntities(coupleMap::POINT);
 
             label nEntities =
             (
@@ -3008,6 +3126,31 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         cMap.entityMap(coupleMap::POINT)[index] :
                         addedPointMap[index]
                     );
+                }
+                else
+                if (op == coupleMap::CONVERT_PATCH)
+                {
+                    if (index > -1)
+                    {
+                        localIndex =
+                        (
+                            entityMap.found(index) ?
+                            entityMap[index] :
+                            addedEntityMap[index]
+                        );
+                    }
+
+                    if (debug > 3)
+                    {
+                        const point& newCentre = newPoints[pointCounter];
+                        const point& oldCentre = oldPoints[pointCounter];
+
+                        Pout<< " Convert patch: " << index << nl
+                            << " localIndex: " << localIndex << nl
+                            << " newCentre: " << newCentre << nl
+                            << " oldCentre: " << oldCentre << nl
+                            << endl;
+                    }
                 }
                 else
                 {
@@ -3097,8 +3240,8 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                     case coupleMap::MOVE_POINT:
                     {
-                        const point& newPoint = newPoints[nMovePoints];
-                        const point& oldPoint = oldPoints[nMovePoints];
+                        const point& newPoint = newPoints[pointCounter];
+                        const point& oldPoint = oldPoints[pointCounter];
 
                         // Move old / new points
                         points_[localIndex] = newPoint;
@@ -3110,7 +3253,138 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         // Force a successful operation
                         opMap.type() = 1;
 
-                        nMovePoints++;
+                        pointCounter++;
+
+                        break;
+                    }
+
+                    case coupleMap::CONVERT_PATCH:
+                    {
+                        const point& newCentre = newPoints[pointCounter];
+                        const point& oldCentre = oldPoints[pointCounter];
+
+                        label replaceFace = -1;
+
+                        if (localIndex > -1)
+                        {
+                            // An index was provided
+                            replaceFace = localIndex;
+                        }
+                        else
+                        {
+                            // Loop through all boundary faces,
+                            // and compute / compare face centres
+                            for
+                            (
+                                label faceI = nOldInternalFaces_;
+                                faceI < faces_.size();
+                                faceI++
+                            )
+                            {
+                                const face& fCheck = faces_[faceI];
+
+                                if (fCheck.empty())
+                                {
+                                    continue;
+                                }
+
+                                label pIndex = whichPatch(faceI);
+
+                                if (pIndex == -1)
+                                {
+                                    continue;
+                                }
+
+                                if (isA<processorPolyPatch>(boundary[pIndex]))
+                                {
+                                    // Compute face-centre
+                                    vector fC = fCheck.centre(points_);
+
+                                    // Compute tolerance
+                                    scalar tol =
+                                    (
+                                        mag(points_[fCheck[0]] - fC)
+                                    );
+
+                                    if (mag(fC - newCentre) < (1e-4 * tol))
+                                    {
+                                        replaceFace = faceI;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Ensure that the face was found
+                        if (replaceFace == -1)
+                        {
+                            Pout<< " * * * Sync Operations * * * " << nl
+                                << " Convert patch Op failed." << nl
+                                << " Index: " << index << nl
+                                << " pointCounter: " << pointCounter << nl
+                                << " newCentre: " << newCentre << nl
+                                << " oldCentre: " << oldCentre << nl
+                                << abort(FatalError);
+                        }
+
+                        // Obtain a copy before adding the new face,
+                        // since the reference might become
+                        // invalid during list resizing.
+                        face newFace = faces_[replaceFace];
+                        label newOwn = owner_[replaceFace];
+                        labelList newFaceEdges = faceEdges_[replaceFace];
+
+                        label newFaceIndex =
+                        (
+                            insertFace
+                            (
+                                procPatch,
+                                newFace,
+                                newOwn,
+                                -1
+                            )
+                        );
+
+                        // Add a faceEdges entry as well.
+                        // Edges don't have to change, since they're
+                        // all on the boundary anyway.
+                        faceEdges_.append(newFaceEdges);
+
+                        meshOps::replaceLabel
+                        (
+                            replaceFace,
+                            newFaceIndex,
+                            cells_[newOwn]
+                        );
+
+                        // Correct edgeFaces with the new face label.
+                        forAll(newFaceEdges, edgeI)
+                        {
+                            meshOps::replaceLabel
+                            (
+                                replaceFace,
+                                newFaceIndex,
+                                edgeFaces_[newFaceEdges[edgeI]]
+                            );
+                        }
+
+                        // Finally remove the face
+                        removeFace(replaceFace);
+
+                        // Clear the existing map
+                        opMap.clear();
+
+                        // Update map
+                        opMap.addFace
+                        (
+                            newFaceIndex,
+                            labelList(1, replaceFace)
+                        );
+
+                        // Force a successful operation
+                        opMap.type() = 1;
+
+                        pointCounter++;
 
                         break;
                     }
@@ -3585,6 +3859,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     // Obtain references
     const coupleMap& cMap = subMesh.patchMap();
     const labelList& subMeshPoints = cMap.subMeshPoints();
+    const List<labelPair>& globalProcPoints = cMap.globalProcPoints();
 
     Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
     Map<label>& rEdgeMap = cMap.reverseEntityMap(coupleMap::EDGE);
@@ -3612,7 +3887,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     const polyBoundaryMesh& boundary = boundaryMesh();
 
     label patchIndex = -1;
-    bool nonDirectNeighbour = true;
 
     forAll(boundary, patchI)
     {
@@ -3626,7 +3900,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
             if (pp.neighbProcNo() == proc)
             {
                 patchIndex = patchI;
-                nonDirectNeighbour = false;
 
                 break;
             }
@@ -3642,27 +3915,26 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         nP++;
     }
 
+    // Set the number of points (shared) at this point.
+    cMap.nEntities(coupleMap::SHARED_POINT) = nP;
+
     // Size up the point-buffer with global index information.
     // Direct neighbours do not require any addressing.
-    labelList& spBuffer = cMap.entityBuffer(coupleMap::POINT);
-    spBuffer = identity(subMeshPoints.size());
+    labelList& gpBuffer = cMap.entityBuffer(coupleMap::POINT);
+    gpBuffer.setSize(globalProcPoints.size(), -1);
 
-    if (nonDirectNeighbour)
+    forAll(globalProcPoints, pointI)
     {
-        // Fetch the list of global points from polyMesh.
-        const globalMeshData& gData = polyMesh::globalData();
+        pointMap.insert(nP, globalProcPoints[pointI].first());
+        rPointMap.insert(globalProcPoints[pointI].first(), nP);
+        nP++;
 
-        const labelList& spAddr = gData.sharedPointAddr();
-        const labelList& spLabels = gData.sharedPointLabels();
-
-        forAll(subMeshPoints, pointI)
-        {
-            label addrIndex = findIndex(spLabels, subMeshPoints[pointI]);
-
-            // Store global shared-point index
-            spBuffer[pointI] = spAddr[addrIndex];
-        }
+        // Fill in buffer with global point index
+        gpBuffer[pointI] = globalProcPoints[pointI].second();
     }
+
+    // Set the number of points (shared + global) at this point.
+    cMap.nEntities(coupleMap::GLOBAL_POINT) = nP;
 
     labelHashSet localCommonCells;
 
@@ -3790,9 +4062,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
             }
         }
     }
-
-    // Set the number of unique cells at this point.
-    cMap.nEntities(coupleMap::UNIQUE_CELL) = nC;
 
     // Now add locally common cells.
     forAllConstIter(labelHashSet, localCommonCells, cIter)
@@ -4024,7 +4293,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     cMap.nEntities(coupleMap::EDGE) = nE;
     cMap.nEntities(coupleMap::FACE) = nF;
     cMap.nEntities(coupleMap::CELL) = nC;
-    cMap.nEntities(coupleMap::SHARED_POINT) = subMeshPoints.size();
     cMap.nEntities(coupleMap::NFE_SIZE) = sumNFE;
     cMap.nEntities(coupleMap::NBDY) = boundary.size() + 1;
 
@@ -4635,22 +4903,23 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             );
         }
 
+        // First, topologically map points based on subMeshPoints.
+        const labelList& mP = cMap.subMeshPoints();
+
+        label nShared = cMap.nEntities(coupleMap::SHARED_POINT);
+        label nGlobal = cMap.nEntities(coupleMap::GLOBAL_POINT);
+
         // Sanity check: Do sub-mesh point sizes match?
-        if
-        (
-            cMap.subMeshPoints().size()
-         != cMap.nEntities(coupleMap::SHARED_POINT)
-        )
+        if (mP.size() != nShared)
         {
             FatalErrorIn("void dynamicTopoFvMesh::buildProcessorCoupledMaps()")
                 << " Sub-mesh point sizes don't match." << nl
                 << " My procID: " << Pstream::myProcNo() << nl
                 << " Neighbour processor: " << proc << nl
+                << " mP size: " << mP.size() << nl
+                << " nShared: " << nShared << nl
                 << abort(FatalError);
         }
-
-        // First, topologically map points based on subMeshPoints.
-        const labelList& mP = cMap.subMeshPoints();
 
         if (nPrc.found(proc))
         {
@@ -4707,38 +4976,47 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 );
             }
         }
-        else
+
+        // Prepare point maps for globally shared points
+        const labelList& gpB = cMap.entityBuffer(coupleMap::POINT);
+
+        // Sanity check: Do global point buffer sizes match?
+        if ((mP.size() + gpB.size()) != nGlobal)
         {
-            // Disconnected neighbour.
-            // Look at globalPoint addressing for its information.
-            const globalMeshData& gD = polyMesh::globalData();
-            const labelList& spA = gD.sharedPointAddr();
-            const labelList& spL = gD.sharedPointLabels();
+            FatalErrorIn("void dynamicTopoFvMesh::buildProcessorCoupledMaps()")
+                << " Global point sizes don't match"
+                << " for processor: " << proc << nl
+                << " mP size: " << mP.size() << nl
+                << " gpB size: " << gpB.size() << nl
+                << " Total: " << (mP.size() + gpB.size()) << nl
+                << " nGlobal: " << nGlobal << nl
+                << abort(FatalError);
+        }
 
-            // Fetch global-point addressing from buffer
-            const labelList& spB = cMap.entityBuffer(coupleMap::POINT);
+        // Look at globalPoint addressing for its information.
+        const globalMeshData& gD = polyMesh::globalData();
+        const labelList& spA = gD.sharedPointAddr();
+        const labelList& spL = gD.sharedPointLabels();
 
-            // Match all points first.
-            forAll(mP, pointI)
-            {
-                label maIndex = findIndex(spL, mP[pointI]);
-                label saIndex = findIndex(spB, spA[maIndex]);
+        forAll(gpB, pointI)
+        {
+            // Find my equivalent global point
+            label maIndex = findIndex(spA, gpB[pointI]);
 
-                // Add a map entry
-                cMap.mapSlave
-                (
-                    coupleMap::POINT,
-                    mP[pointI],
-                    spB[saIndex]
-                );
+            // Add a map entry
+            cMap.mapSlave
+            (
+                coupleMap::POINT,
+                spL[maIndex],
+                (pointI + nShared)
+            );
 
-                cMap.mapMaster
-                (
-                    coupleMap::POINT,
-                    spB[saIndex],
-                    mP[pointI]
-                );
-            }
+            cMap.mapMaster
+            (
+                coupleMap::POINT,
+                (pointI + nShared),
+                spL[maIndex]
+            );
         }
 
         if (debug > 1)
