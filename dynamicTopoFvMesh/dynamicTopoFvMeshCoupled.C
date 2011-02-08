@@ -253,20 +253,12 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
         return coupledPatchesAbsent;
     }
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
-    forAll(boundary, patchI)
-    {
-        if (isA<processorPolyPatch>(boundary[patchI]))
-        {
-            coupledPatchesAbsent = false;
-
-            break;
-        }
-    }
-
     // Prepare a list of points for sub-mesh creation.
     //  - Obtain global shared-points information, if necessary.
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Set flag as default for parallel runs
+    coupledPatchesAbsent = false;
 
     // Fetch the list of global points from polyMesh.
     //  - This should be the first evaluation of globalData,
@@ -282,7 +274,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     {
         if (debug)
         {
-            Info<< " identifyCoupledPatches :"
+            Info<< " dynamicTopoFvMesh::identifyCoupledPatches :"
                 << " Found " << gData.nGlobalPoints()
                 << " global points." << endl;
         }
@@ -327,7 +319,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     else
     if (debug)
     {
-        Info<< " identifyCoupledPatches :"
+        Info<< " dynamicTopoFvMesh::identifyCoupledPatches :"
             << " Did not find any global points." << endl;
     }
 
@@ -408,7 +400,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             {
                 if (foundGlobalMatch && debug)
                 {
-                    Pout<< " identifyCoupledPatches :"
+                    Pout<< " dynamicTopoFvMesh::identifyCoupledPatches :"
                         << " Additionally talking to processor: "
                         << proc << endl;
                 }
@@ -426,6 +418,12 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     forAll(procPoints, procI)
     {
         if (procPoints[procI].size())
+        {
+            procIndices_[nTotalProcs++] = procI;
+        }
+
+        // Check for point / edge coupling
+        if (globalProcPoints[procI].size() && !procPoints[procI].size())
         {
             procIndices_[nTotalProcs++] = procI;
         }
@@ -972,9 +970,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             forAll(checkCell, fI)
             {
-                label facePatch = -1;
                 label mfIndex = -1, sfIndex = checkCell[fI];
-                label slavePatch = mesh.whichPatch(sfIndex);
 
                 // Check whether a face mapping exists for this face
                 if ((mfIndex = cMap.findMaster(coupleMap::FACE, sfIndex)) > -1)
@@ -1070,6 +1066,15 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         }
                         else
                         {
+                            // If this other processor is
+                            // lesser-ranked, bail out.
+                            if (neiProcNo < Pstream::myProcNo())
+                            {
+                                map.type() = -2;
+
+                                return map;
+                            }
+                            else
                             if (debug > 3)
                             {
                                 Pout<< nl << nl
@@ -1099,6 +1104,27 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                     }
                                 }
                             }
+
+                            if (edgePatch == -1)
+                            {
+                                // Are we talking to this processor already?
+                                label prI = findIndex(procIndices_, neiProcNo);
+
+                                // Check for contact
+                                if (prI == -1)
+                                {
+                                    if (debug > 3)
+                                    {
+                                        Pout<< nl << nl
+                                            << " No direct contact with"
+                                            << " processor: " << neiProcNo
+                                            << endl;
+                                    }
+
+                                    // Add this to neiProcPatch instead.
+                                    edgePatch = neiProcPatch;
+                                }
+                            }
                         }
                     }
                     else
@@ -1109,12 +1135,17 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                     if (edgePatch == -1)
                     {
+                        // Write out the edge
+                        mesh.writeVTK("seEdge", seIndex, 1);
+
                         Pout<< " Could not find correct patch info: " << nl
                             << " seIndex: " << seIndex << nl
-                            << " slavePatch: " <<
+                            << " sePatch: " << sePatch << nl
+                            << " neiProcPatch: " << neiProcPatch << nl
+                            << " Patch Name: " <<
                             (
-                                slavePatch > -1 ?
-                                slaveBoundary[slavePatch].name() :
+                                sePatch > -1 ?
+                                slaveBoundary[sePatch].name() :
                                 "Internal"
                             )
                             << abort(FatalError);
@@ -1134,25 +1165,28 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     continue;
                 }
 
-                if (slavePatch == -1)
+                label facePatch = -1;
+                label sfPatch = mesh.whichPatch(sfIndex);
+
+                if (sfPatch == -1)
                 {
                     // Slave face was an interior one
                     facePatch = neiProcPatch;
                 }
                 else
-                if (slavePatch == (slaveBoundary.size() - 1))
+                if (sfPatch == (slaveBoundary.size() - 1))
                 {
                     // The 'defaultPatch'
                     facePatch = neiProcPatch;
                 }
                 else
-                if (isA<processorPolyPatch>(slaveBoundary[slavePatch]))
+                if (isA<processorPolyPatch>(slaveBoundary[sfPatch]))
                 {
                     const processorPolyPatch& pp =
                     (
                         refCast<const processorPolyPatch>
                         (
-                            slaveBoundary[slavePatch]
+                            slaveBoundary[sfPatch]
                         )
                     );
 
@@ -1161,7 +1195,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     if (neiProcNo == Pstream::myProcNo())
                     {
                         // Set the slave conversion patch
-                        slaveConvertPatch[pI] = slavePatch;
+                        slaveConvertPatch[pI] = sfPatch;
 
                         // Set the master face patch
                         facePatch = neiProcPatch;
@@ -1220,7 +1254,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         // Check for contact
                         if (prI == -1)
                         {
-                            //if (debug > 3)
+                            if (debug > 3)
                             {
                                 Pout<< nl << nl
                                     << " No direct contact with"
@@ -1247,17 +1281,22 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 else
                 {
                     // Physical type
-                    facePatch = slavePatch;
+                    facePatch = sfPatch;
                 }
 
                 if (facePatch == -1)
                 {
+                    // Write out the face
+                    mesh.writeVTK("sfFace", sfIndex, 2);
+
                     Pout<< " Could not find correct patch info: " << nl
                         << " sfIndex: " << sfIndex << nl
+                        << " sfPatch: " << sfPatch << nl
+                        << " neiProcPatch: " << neiProcPatch << nl
                         << " slavePatch: " <<
                         (
-                            slavePatch > -1 ?
-                            slaveBoundary[slavePatch].name() :
+                            sfPatch > -1 ?
+                            slaveBoundary[sfPatch].name() :
                             "Internal"
                         )
                         << abort(FatalError);
@@ -3044,6 +3083,26 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
     if (!Pstream::parRun())
     {
         return;
+    }
+
+    labelList createPatchOrders(Pstream::nProcs(), 0);
+
+    for (label proc = 0; proc < Pstream::nProcs(); proc++)
+    {
+        if (proc == Pstream::myProcNo())
+        {
+            continue;
+        }
+
+        // Send / recv create patch orders, if any
+        if (proc > Pstream::myProcNo())
+        {
+            meshOps::pWrite(proc, createPatchOrders[proc]);
+        }
+        else
+        {
+            meshOps::pRead(proc, createPatchOrders[proc]);
+        }
     }
 
     // Wait for all transfers to complete.
@@ -5244,6 +5303,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             }
         }
         else
+        if (!twoDMesh_)
         {
             // Not a nearest neighbour. Attempt to match
             // edges, provided any common ones exist.

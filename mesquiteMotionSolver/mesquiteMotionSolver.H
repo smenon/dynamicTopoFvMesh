@@ -42,6 +42,7 @@ SourceFiles
 #include "Map.H"
 #include "Switch.H"
 #include "edgeList.H"
+#include "labelPair.H"
 #include "pointIOField.H"
 #include "MeshObject.H"
 #include "HashSet.H"
@@ -159,7 +160,7 @@ class mesquiteMotionSolver
         labelList procIndices_;
         scalarField pointFractions_;
         labelListList procPointLabels_;
-        labelListList globalProcPointLabels_;
+        List<List<labelPair> > globalProcPoints_;
 
         List<vectorField> sendSurfFields_, recvSurfFields_;
         List<Map<label> > sendSurfPointMap_, recvSurfPointMap_;

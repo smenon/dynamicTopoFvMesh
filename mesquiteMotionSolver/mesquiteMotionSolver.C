@@ -1242,16 +1242,17 @@ void mesquiteMotionSolver::identifyCoupledPatches()
     // Fetch the list of global points from polyMesh.
     const globalMeshData& gData = mesh().globalData();
 
-    const labelList& spAddr = gData.sharedPointAddr();
-    const labelList& spLabels = gData.sharedPointLabels();
+    const labelList& spA = gData.sharedPointAddr();
+    const labelList& spL = gData.sharedPointLabels();
 
-    labelListList spBuffer(Pstream::nProcs(), labelList(0));
+    labelListList spB(Pstream::nProcs(), labelList(0));
 
     if (gData.nGlobalPoints())
     {
         if (debug)
         {
-            Info<< " Found " << gData.nGlobalPoints()
+            Info<< " mesquiteMotionSolver::identifyCoupledPatches :"
+                << " Found " << gData.nGlobalPoints()
                 << " global points." << endl;
         }
 
@@ -1261,12 +1262,12 @@ void mesquiteMotionSolver::identifyCoupledPatches()
             if (proc != Pstream::myProcNo())
             {
                 // Send number of entities first.
-                parWrite(proc, spAddr.size());
+                parWrite(proc, spA.size());
 
                 // Send the buffer.
-                if (spAddr.size())
+                if (spA.size())
                 {
-                    parWrite(proc, spAddr);
+                    parWrite(proc, spA);
                 }
             }
         }
@@ -1284,10 +1285,10 @@ void mesquiteMotionSolver::identifyCoupledPatches()
                 if (procInfoSize)
                 {
                     // Size the receive buffer.
-                    spBuffer[proc].setSize(procInfoSize, -1);
+                    spB[proc].setSize(procInfoSize, -1);
 
                     // Schedule for receipt.
-                    parRead(proc, spBuffer[proc]);
+                    parRead(proc, spB[proc]);
                 }
             }
         }
@@ -1295,11 +1296,19 @@ void mesquiteMotionSolver::identifyCoupledPatches()
     else
     if (debug)
     {
-        Info<< "Did not find any global points." << endl;
+        Info<< " mesquiteMotionSolver::identifyCoupledPatches :"
+            << " Did not find any global points." << endl;
     }
 
     labelHashSet immNeighbours;
-    labelListList procPatchPoints(Pstream::nProcs());
+    labelListList procPoints(Pstream::nProcs());
+
+    // Track globally shared points
+    List<DynamicList<labelPair> > globalProcPoints
+    (
+        Pstream::nProcs(),
+        DynamicList<labelPair>(5)
+    );
 
     // Insert my immediate neighbours into the list.
     forAll(boundary, pI)
@@ -1314,7 +1323,7 @@ void mesquiteMotionSolver::identifyCoupledPatches()
             label neiProcNo = pp.neighbProcNo();
 
             // Insert all boundary points.
-            procPatchPoints[neiProcNo] = pp.meshPoints();
+            procPoints[neiProcNo] = pp.meshPoints();
 
             // Keep track of immediate neighbours.
             immNeighbours.insert(neiProcNo);
@@ -1333,45 +1342,45 @@ void mesquiteMotionSolver::identifyCoupledPatches()
         // as well (if not already).
         for (label proc = 0; proc < Pstream::nProcs(); proc++)
         {
-            if (proc != Pstream::myProcNo())
+            if (proc == Pstream::myProcNo())
             {
-                bool foundGlobalMatch = false;
+                continue;
+            }
 
-                labelHashSet neiSet;
+            bool foundGlobalMatch = false;
 
-                forAll(spBuffer[proc], pointI)
+            // Fetch reference to buffer
+            const labelList& procBuffer = spB[proc];
+
+            forAll(procBuffer, pointI)
+            {
+                forAll(spA, pointJ)
                 {
-                    forAll(spAddr, pointJ)
+                    if (spA[pointJ] == procBuffer[pointI])
                     {
-                        if (spAddr[pointJ] == spBuffer[proc][pointI])
+                        // Make an entry, if one wasn't made already
+                        if (findIndex(procPoints[proc], spL[pointJ]) == -1)
                         {
-                            // Make an entry
-                            neiSet.insert(spLabels[pointJ]);
-
-                            foundGlobalMatch = true;
-
-                            break;
+                            globalProcPoints[proc].append
+                            (
+                                labelPair(spL[pointJ], spA[pointJ])
+                            );
                         }
+
+                        foundGlobalMatch = true;
+
+                        break;
                     }
                 }
+            }
 
-                // Clear the entries
-                spBuffer[proc].clear();
-
-                if (immNeighbours.found(proc))
+            if (!immNeighbours.found(proc))
+            {
+                if (foundGlobalMatch && debug)
                 {
-                    // Store the reduced set for this processor
-                    spBuffer[proc] = neiSet.toc();
-                }
-                else
-                {
-                    if (foundGlobalMatch && debug)
-                    {
-                        Pout<< "Additionally talking to processor: "
-                            << proc << endl;
-                    }
-
-                    procPatchPoints[proc] = neiSet.toc();
+                    Pout<< " mesquiteMotionSolver::identifyCoupledPatches :"
+                        << " Additionally talking to processor: "
+                        << proc << endl;
                 }
             }
         }
@@ -1384,9 +1393,15 @@ void mesquiteMotionSolver::identifyCoupledPatches()
     // order of neighbouring processors.
     label nTotalProcs = 0;
 
-    forAll(procPatchPoints, procI)
+    forAll(procPoints, procI)
     {
-        if (procPatchPoints[procI].size())
+        if (procPoints[procI].size())
+        {
+            procIndices_[nTotalProcs++] = procI;
+        }
+
+        // Check for point / edge coupling
+        if (globalProcPoints[procI].size() && !procPoints[procI].size())
         {
             procIndices_[nTotalProcs++] = procI;
         }
@@ -1397,12 +1412,12 @@ void mesquiteMotionSolver::identifyCoupledPatches()
 
     // Transfer to shortened lists
     procPointLabels_.setSize(nTotalProcs, labelList(0));
-    globalProcPointLabels_.setSize(nTotalProcs, labelList(0));
+    globalProcPoints_.setSize(nTotalProcs, List<labelPair>(0));
 
     forAll(procIndices_, pI)
     {
-        procPointLabels_[pI].transfer(procPatchPoints[procIndices_[pI]]);
-        globalProcPointLabels_[pI].transfer(spBuffer[procIndices_[pI]]);
+        procPointLabels_[pI].transfer(procPoints[procIndices_[pI]]);
+        globalProcPoints_[pI] = globalProcPoints[procIndices_[pI]];
     }
 }
 
@@ -1538,16 +1553,19 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
 
         // Loop through global-points information,
         // and check if additional points need to be added
-        forAll(globalProcPointLabels_, pI)
+        forAll(globalProcPoints_, pI)
         {
-            const labelList& pLabels = globalProcPointLabels_[pI];
+            const List<labelPair>& pLabels = globalProcPoints_[pI];
 
             forAll(pLabels, pointI)
             {
                 // Find local index in patch
                 label local =
                 (
-                    boundary[pIDs_[patchI]].whichPoint(pLabels[pointI])
+                    boundary[pIDs_[patchI]].whichPoint
+                    (
+                        pLabels[pointI].first()
+                    )
                 );
 
                 if (local == -1)
@@ -3480,7 +3498,7 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     procIndices_.clear();
     pointFractions_.clear();
     procPointLabels_.clear();
-    globalProcPointLabels_.clear();
+    globalProcPoints_.clear();
 
     sendSurfFields_.clear();
     recvSurfFields_.clear();
