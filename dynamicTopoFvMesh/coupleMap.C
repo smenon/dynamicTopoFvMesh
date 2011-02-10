@@ -50,6 +50,7 @@ inline coupleMap::coupleMap
     const bool twoDMesh,
     const bool isLocal,
     const bool isSend,
+    const label patchIndex,
     const label masterIndex,
     const label slaveIndex
 )
@@ -58,6 +59,7 @@ inline coupleMap::coupleMap
     twoDMesh_(twoDMesh),
     isLocal_(isLocal),
     isSend_(isSend),
+    patchIndex_(patchIndex),
     masterIndex_(masterIndex),
     slaveIndex_(slaveIndex),
     nEntities_(-1),
@@ -89,6 +91,7 @@ inline coupleMap::coupleMap(const coupleMap& cm)
     twoDMesh_(cm.twoDMesh_),
     isLocal_(cm.isLocal_),
     isSend_(cm.isSend_),
+    patchIndex_(cm.patchIndex_),
     masterIndex_(cm.masterIndex_),
     slaveIndex_(cm.slaveIndex_),
     nEntities_(cm.nEntities_),

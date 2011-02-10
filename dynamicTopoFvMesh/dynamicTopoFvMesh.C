@@ -70,6 +70,7 @@ addToRunTimeSelectionTable(dynamicFvMesh, dynamicTopoFvMesh, IOobject);
 dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 :
     dynamicFvMesh(io),
+    nPatches_(boundaryMesh().size()),
     topoChangeFlag_(false),
     isSubMesh_(false),
     dict_
@@ -107,16 +108,16 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     owner_(polyMesh::faceOwner()),
     neighbour_(polyMesh::faceNeighbour()),
     cells_(primitiveMesh::cells()),
-    oldPatchSizes_(boundaryMesh().size(),0),
-    patchSizes_(boundaryMesh().size(),0),
-    oldPatchStarts_(boundaryMesh().size(),-1),
-    patchStarts_(boundaryMesh().size(),-1),
-    oldEdgePatchSizes_(boundaryMesh().size(),0),
-    edgePatchSizes_(boundaryMesh().size(),0),
-    oldEdgePatchStarts_(boundaryMesh().size(),-1),
-    edgePatchStarts_(boundaryMesh().size(),-1),
-    oldPatchNMeshPoints_(boundaryMesh().size(),-1),
-    patchNMeshPoints_(boundaryMesh().size(),-1),
+    oldPatchSizes_(nPatches_, 0),
+    patchSizes_(nPatches_, 0),
+    oldPatchStarts_(nPatches_, -1),
+    patchStarts_(nPatches_, -1),
+    oldEdgePatchSizes_(nPatches_, 0),
+    edgePatchSizes_(nPatches_, 0),
+    oldEdgePatchStarts_(nPatches_, -1),
+    edgePatchStarts_(nPatches_, -1),
+    oldPatchNMeshPoints_(nPatches_, -1),
+    patchNMeshPoints_(nPatches_, -1),
     nOldPoints_(primitiveMesh::nPoints()),
     nPoints_(primitiveMesh::nPoints()),
     nOldEdges_(0),
@@ -153,10 +154,10 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     readOptionalParameters();
 
     // Initialize patch-size information
-    for (label i = 0; i < boundaryMesh().size(); i++)
+    for (label i = 0; i < nPatches_; i++)
     {
         patchNMeshPoints_[i] = boundary[i].meshPoints().size();
-        oldPatchSizes_[i] = patchSizes_[i]  = boundary[i].size();
+        oldPatchSizes_[i] = patchSizes_[i] = boundary[i].size();
         oldPatchStarts_[i] = patchStarts_[i] = boundary[i].start();
         oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
     }
@@ -219,6 +220,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
         cells,
         false
     ),
+    nPatches_(faceStarts.size()),
     topoChangeFlag_(false),
     isSubMesh_(true),
     dict_(mesh.dict_),
@@ -314,6 +316,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
             patchDict.add("neighbProcNo", nProcNo[patchI]);
         }
 
+        // Set the pointer
         patches[patchI] =
         (
             polyPatch::New
@@ -502,6 +505,8 @@ label dynamicTopoFvMesh::insertFace
             << " Owner: " << newOwner
             << " Neighbour: " << newNeighbour;
 
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         Pout<< " Patch: ";
 
         if (patch == -1)
@@ -509,8 +514,13 @@ label dynamicTopoFvMesh::insertFace
             Pout<< "Internal" << endl;
         }
         else
+        if (patch < boundary.size())
         {
-            Pout<< boundaryMesh()[patch].name() << endl;
+            Pout<< boundary[patch].name() << endl;
+        }
+        else
+        {
+            Pout<< " New patch: " << patch << endl;
         }
     }
 
@@ -523,7 +533,7 @@ label dynamicTopoFvMesh::insertFace
         // Modify patch information for this boundary face
         patchSizes_[patch]++;
 
-        for (label i = (patch + 1); i < boundaryMesh().size(); i++)
+        for (label i = (patch + 1); i < nPatches_; i++)
         {
             patchStarts_[i]++;
         }
@@ -534,7 +544,7 @@ label dynamicTopoFvMesh::insertFace
         // and subsequent patch-starts
         nInternalFaces_++;
 
-        for (label i = 0; i < boundaryMesh().size(); i++)
+        for (label i = 0; i < nPatches_; i++)
         {
             patchStarts_[i]++;
         }
@@ -607,6 +617,8 @@ void dynamicTopoFvMesh::removeFace
             << fIndex << ": "
             << faces_[fIndex];
 
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         Pout<< " Patch: ";
 
         if (patch == -1)
@@ -614,8 +626,13 @@ void dynamicTopoFvMesh::removeFace
             Pout<< "Internal" << endl;
         }
         else
+        if (patch < boundary.size())
         {
-            Pout<< boundaryMesh()[patch].name() << endl;
+            Pout<< boundary[patch].name() << endl;
+        }
+        else
+        {
+            Pout<< " New patch: " << patch << endl;
         }
     }
 
@@ -624,7 +641,7 @@ void dynamicTopoFvMesh::removeFace
         // Modify patch information for this boundary face
         patchSizes_[patch]--;
 
-        for (label i = (patch + 1); i < boundaryMesh().size(); i++)
+        for (label i = (patch + 1); i < nPatches_; i++)
         {
             patchStarts_[i]--;
         }
@@ -768,6 +785,8 @@ label dynamicTopoFvMesh::insertEdge
             << newEdgeIndex << ": "
             << newEdge;
 
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         Pout<< " Patch: ";
 
         if (patch == -1)
@@ -775,8 +794,13 @@ label dynamicTopoFvMesh::insertEdge
             Pout<< "Internal" << endl;
         }
         else
+        if (patch < boundary.size())
         {
-            Pout<< boundaryMesh()[patch].name() << endl;
+            Pout<< boundary[patch].name() << endl;
+        }
+        else
+        {
+            Pout<< " New patch: " << patch << endl;
         }
 
         if (!twoDMesh_)
@@ -810,7 +834,7 @@ label dynamicTopoFvMesh::insertEdge
         // Modify patch information for this boundary edge
         edgePatchSizes_[patch]++;
 
-        for (label i = (patch + 1); i < boundaryMesh().size(); i++)
+        for (label i = (patch + 1); i < nPatches_; i++)
         {
             edgePatchStarts_[i]++;
         }
@@ -820,7 +844,7 @@ label dynamicTopoFvMesh::insertEdge
         // Increment the number of internal edges, and subsequent patch-starts
         nInternalEdges_++;
 
-        for (label i = 0; i < boundaryMesh().size(); i++)
+        for (label i = 0; i < nPatches_; i++)
         {
             edgePatchStarts_[i]++;
         }
@@ -851,15 +875,17 @@ void dynamicTopoFvMesh::removeEdge
         // Remove the edgePoints entry
         edgePoints_[eIndex].clear();
 
+        const edge& rEdge = edges_[eIndex];
+
         // Size-down the pointEdges list
-        if (pointEdges_[edges_[eIndex][0]].size())
+        if (pointEdges_[rEdge[0]].size())
         {
-            meshOps::sizeDownList(eIndex, pointEdges_[edges_[eIndex][0]]);
+            meshOps::sizeDownList(eIndex, pointEdges_[rEdge[0]]);
         }
 
-        if (pointEdges_[edges_[eIndex][1]].size())
+        if (pointEdges_[rEdge[1]].size())
         {
-            meshOps::sizeDownList(eIndex, pointEdges_[edges_[eIndex][1]]);
+            meshOps::sizeDownList(eIndex, pointEdges_[rEdge[1]]);
         }
 
         // Entity won't be removed from the stack for efficiency
@@ -887,6 +913,8 @@ void dynamicTopoFvMesh::removeEdge
             << eIndex << ": "
             << edges_[eIndex];
 
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         Pout<< " Patch: ";
 
         if (patch == -1)
@@ -894,8 +922,13 @@ void dynamicTopoFvMesh::removeEdge
             Pout<< "Internal" << endl;
         }
         else
+        if (patch < boundary.size())
         {
-            Pout<< boundaryMesh()[patch].name() << endl;
+            Pout<< boundary[patch].name() << endl;
+        }
+        else
+        {
+            Pout<< " New patch: " << patch << endl;
         }
     }
 
@@ -908,7 +941,7 @@ void dynamicTopoFvMesh::removeEdge
         // Modify patch information for this boundary edge
         edgePatchSizes_[patch]--;
 
-        for (label i = (patch + 1); i < boundaryMesh().size(); i++)
+        for (label i = (patch + 1); i < nPatches_; i++)
         {
             edgePatchStarts_[i]--;
         }
@@ -1656,8 +1689,6 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
     }
 
     // Set debug option for underlying classes as well.
-    lengthScaleEstimator::debug = debug;
-
     if (debug > 2)
     {
         fvMesh::debug = true;
@@ -3867,8 +3898,11 @@ bool dynamicTopoFvMesh::resetMesh()
             << reOrderingTimer.elapsedTime() << " s"
             << endl;
 
+        // Obtain the number of patches before mesh reset
+        label nOldPatches = boundaryMesh().size();
+
         // Obtain the patch-point maps before resetting the mesh
-        List<Map<label> > oldPatchPointMaps(boundaryMesh().size());
+        List<Map<label> > oldPatchPointMaps(nOldPatches);
 
         forAll(oldPatchPointMaps, patchI)
         {
@@ -3893,6 +3927,64 @@ bool dynamicTopoFvMesh::resetMesh()
             xferMove(cellWeights_),
             xferMove(cellCentres_)
         );
+
+        // If the number of patches have changed
+        // at run-time, reset boundaries first
+        if (nPatches_ != nOldPatches)
+        {
+            // Prepare a new list of patches
+            List<polyPatch*> patches(nPatches_);
+
+            // Fetch reference to existing boundary
+            // - The removeBoundary member merely resets
+            //   boundary size, so this reference is safe
+            const polyBoundaryMesh& boundary = boundaryMesh();
+
+            // Copy all existing patches first
+            for (label patchI = 0; patchI < nOldPatches; patchI++)
+            {
+                // Clone the patch
+                patches[patchI] = boundary[patchI].clone(boundary).ptr();
+            }
+
+            // Create new processor patches
+            for (label patchI = nOldPatches; patchI < nPatches_; patchI++)
+            {
+                // Make a temporary dictionary for patch construction
+                dictionary patchDict;
+
+                // Back out the neighbour processor ID
+                label neiProcNo = getNeighbourProcessor(patchI);
+
+                // Add relevant info
+                patchDict.add("type", "processor");
+                patchDict.add("startFace", patchStarts_[patchI]);
+                patchDict.add("nFaces", patchSizes_[patchI]);
+                patchDict.add("myProcNo", Pstream::myProcNo());
+                patchDict.add("neighbProcNo", neiProcNo);
+
+                // Set the pointer
+                patches[patchI] =
+                (
+                    polyPatch::New
+                    (
+                        "procBoundary"
+                      + Foam::name(Pstream::myProcNo())
+                      + "to"
+                      + Foam::name(neiProcNo),
+                        patchDict,
+                        patchI,
+                        boundary
+                    ).ptr()
+                );
+            }
+
+            // Remove the old boundary
+            fvMesh::removeFvBoundary();
+
+            // Add patches, but don't calculate geometry, etc
+            fvMesh::addPatches(patches, false);
+        }
 
         // Reset the mesh, and specify a non-valid
         // boundary to avoid globalData construction
@@ -3934,9 +4026,9 @@ bool dynamicTopoFvMesh::resetMesh()
         );
 
         // Generate mapping for points on boundary patches
-        labelListList patchPointMap(boundaryMesh().size());
+        labelListList patchPointMap(nPatches_);
 
-        for (label i = 0; i < boundaryMesh().size(); i++)
+        for (label i = 0; i < nPatches_; i++)
         {
             // Obtain new patch mesh points after reset.
             const labelList& meshPointLabels = boundaryMesh()[i].meshPoints();
@@ -3944,6 +4036,12 @@ bool dynamicTopoFvMesh::resetMesh()
             patchNMeshPoints_[i] = meshPointLabels.size();
 
             patchPointMap[i].setSize(meshPointLabels.size(), -1);
+
+            // Skip for newly introduced patches
+            if (i >= nOldPatches)
+            {
+                continue;
+            }
 
             forAll(meshPointLabels, pointI)
             {
@@ -4094,7 +4192,7 @@ bool dynamicTopoFvMesh::resetMesh()
         nOldInternalFaces_ = nInternalFaces_;
         nOldInternalEdges_ = nInternalEdges_;
 
-        for (label i = 0; i < boundaryMesh().size(); i++)
+        for (label i = 0; i < nPatches_; i++)
         {
             oldPatchSizes_[i] = patchSizes_[i];
             oldPatchStarts_[i] = patchStarts_[i];

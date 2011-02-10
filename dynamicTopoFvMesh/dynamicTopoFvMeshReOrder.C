@@ -832,10 +832,8 @@ void dynamicTopoFvMesh::reOrderFaces
         }
     }
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
     // Prepare centres and anchors for coupled interfaces
-    List<pointField> centres(boundary.size()), anchors(boundary.size());
+    List<pointField> centres(nPatches_), anchors(nPatches_);
 
     // Now that points and boundary faces are up-to-date,
     // send and receive centres and anchor points for coupled patches
@@ -994,7 +992,7 @@ void dynamicTopoFvMesh::reOrderFaces
     }
 
     // Prepare faceMaps and rotations for coupled interfaces
-    labelListList patchMaps(boundary.size()), rotations(boundary.size());
+    labelListList patchMaps(nPatches_), rotations(nPatches_);
 
     // Now compute patchMaps for coupled interfaces
     bool anyChange =
@@ -1783,7 +1781,8 @@ void dynamicTopoFvMesh::reOrderMesh
             << " Faces: " << nOldFaces_ << nl
             << " Cells: " << nOldCells_ << nl
             << " Internal Edges: " << nOldInternalEdges_ << nl
-            << " Internal Faces: " << nOldInternalFaces_ << nl;
+            << " Internal Faces: " << nOldInternalFaces_ << nl
+            << " nPatches: " << nPatches_ << nl;
 
         if (debug > 1)
         {
@@ -1800,7 +1799,8 @@ void dynamicTopoFvMesh::reOrderMesh
             << " Faces: " << nFaces_ << nl
             << " Cells: " << nCells_ << nl
             << " Internal Edges: " << nInternalEdges_ << nl
-            << " Internal Faces: " << nInternalFaces_ << nl;
+            << " Internal Faces: " << nInternalFaces_ << nl
+            << " nPatches: " << nPatches_ << nl;
 
         if (debug > 1)
         {

@@ -56,6 +56,7 @@ coupledInfo::coupledInfo
     const bool isTwoDMesh,
     const bool isLocal,
     const bool isSend,
+    const label patchIndex,
     const label mPatch,
     const label sPatch,
     const label mfzIndex,
@@ -83,6 +84,7 @@ coupledInfo::coupledInfo
         isTwoDMesh,
         isLocal,
         isSend,
+        patchIndex,
         mPatch,
         sPatch
     ),

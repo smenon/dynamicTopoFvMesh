@@ -175,6 +175,12 @@ coupleMap::faceInterpolate
 }
 
 
+inline label& coupleMap::patchIndex() const
+{
+    return patchIndex_;
+}
+
+
 inline label coupleMap::masterIndex() const
 {
     return masterIndex_;

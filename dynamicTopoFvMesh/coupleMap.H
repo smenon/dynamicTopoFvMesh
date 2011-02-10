@@ -71,6 +71,8 @@ class coupleMap
     mutable bool isLocal_;
     mutable bool isSend_;
 
+    mutable label patchIndex_;
+
     mutable label masterIndex_;
     mutable label slaveIndex_;
 
@@ -170,6 +172,7 @@ public:
         const bool twoDMesh,
         const bool isLocal,
         const bool isSend,
+        const label patchIndex,
         const label masterIndex,
         const label slaveIndex
     );
@@ -222,6 +225,8 @@ public:
         ) const;
 
     //- Access
+
+        inline label& patchIndex() const;
 
         inline label masterIndex() const;
         inline label slaveIndex() const;

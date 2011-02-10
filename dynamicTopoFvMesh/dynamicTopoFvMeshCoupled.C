@@ -40,9 +40,9 @@ Author
 #include "Time.H"
 #include "triFace.H"
 #include "changeMap.H"
+#include "coupledInfo.H"
 #include "matchPoints.H"
 #include "globalMeshData.H"
-#include "coupledInfo.H"
 #include "processorPolyPatch.H"
 
 namespace Foam
@@ -131,8 +131,6 @@ void dynamicTopoFvMesh::initCoupledStack
         return;
     }
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
     // Loop though boundary faces and check whether
     // they belong to master/slave coupled patches.
     for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
@@ -174,16 +172,11 @@ void dynamicTopoFvMesh::initCoupledStack
         }
 
         // Check if this is a processor patch.
-        if (isA<processorPolyPatch>(boundary[pIndex]))
+        label neiProcID = getNeighbourProcessor(pIndex);
+
+        if (neiProcID > -1)
         {
             // Check if this is a master processor patch.
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[pIndex])
-            );
-
-            label neiProcID = pp.neighbProcNo();
-
             if (neiProcID > Pstream::myProcNo())
             {
                 // Add this to the coupled modification stack.
@@ -323,7 +316,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             << " Did not find any global points." << endl;
     }
 
-    labelHashSet immNeighbours;
+    Map<label> immNeighbours;
     labelListList procPoints(Pstream::nProcs());
 
     // Track globally shared points
@@ -349,7 +342,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             procPoints[neiProcNo] = pp.meshPoints();
 
             // Keep track of immediate neighbours.
-            immNeighbours.insert(neiProcNo);
+            immNeighbours.insert(neiProcNo, pI);
         }
     }
 
@@ -440,108 +433,72 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     // the list of points for each processor.
     forAll(procIndices_, pI)
     {
-        label proc = procIndices_[pI];
+        label proc = procIndices_[pI], master = -1, slave = -1;
+
+        // For processors that have only point / edge coupling
+        // specify an invalid patch ID for now
+        label patchID = immNeighbours.found(proc) ? immNeighbours[proc] : -1;
 
         if (proc < Pstream::myProcNo())
         {
-            sendPatchMeshes_.set
-            (
-                pI,
-                new coupledInfo
-                (
-                    *this,               // Reference to this mesh
-                    twoDMesh_,           // 2D or 3D
-                    false,               // Not local
-                    true,                // Sent to neighbour
-                    proc,                // Master index
-                    Pstream::myProcNo()  // Slave index
-                )
-            );
-
-            sendPatchMeshes_[pI].patchMap().subMeshPoints() =
-            (
-                procPoints[procIndices_[pI]]
-            );
-
-            sendPatchMeshes_[pI].patchMap().globalProcPoints() =
-            (
-                globalProcPoints[procIndices_[pI]]
-            );
-
-            recvPatchMeshes_.set
-            (
-                pI,
-                new coupledInfo
-                (
-                    *this,               // Reference to this mesh
-                    twoDMesh_,           // 2D or 3D
-                    false,               // Not local
-                    false,               // Not sent to neighbour
-                    proc,                // Master index
-                    Pstream::myProcNo()  // Slave index
-                )
-            );
-
-            recvPatchMeshes_[pI].patchMap().subMeshPoints() =
-            (
-                procPoints[procIndices_[pI]]
-            );
-
-            recvPatchMeshes_[pI].patchMap().globalProcPoints() =
-            (
-                globalProcPoints[procIndices_[pI]]
-            );
+            master = proc;
+            slave = Pstream::myProcNo();
         }
         else
         {
-            sendPatchMeshes_.set
-            (
-                pI,
-                new coupledInfo
-                (
-                    *this,               // Reference to this mesh
-                    twoDMesh_,           // 2D or 3D
-                    false,               // Not local
-                    true,                // Sent to neighbour
-                    Pstream::myProcNo(), // Master index
-                    proc                 // Slave index
-                )
-            );
-
-            sendPatchMeshes_[pI].patchMap().subMeshPoints() =
-            (
-                procPoints[procIndices_[pI]]
-            );
-
-            sendPatchMeshes_[pI].patchMap().globalProcPoints() =
-            (
-                globalProcPoints[procIndices_[pI]]
-            );
-
-            recvPatchMeshes_.set
-            (
-                pI,
-                new coupledInfo
-                (
-                    *this,               // Reference to this mesh
-                    twoDMesh_,           // 2D or 3D
-                    false,               // Not local
-                    false,               // Not sent to neighbour
-                    Pstream::myProcNo(), // Master index
-                    proc                 // Slave index
-                )
-            );
-
-            recvPatchMeshes_[pI].patchMap().subMeshPoints() =
-            (
-                procPoints[procIndices_[pI]]
-            );
-
-            recvPatchMeshes_[pI].patchMap().globalProcPoints() =
-            (
-                globalProcPoints[procIndices_[pI]]
-            );
+            master = Pstream::myProcNo();
+            slave = proc;
         }
+
+        sendPatchMeshes_.set
+        (
+            pI,
+            new coupledInfo
+            (
+                *this,               // Reference to this mesh
+                twoDMesh_,           // 2D or 3D
+                false,               // Not local
+                true,                // Sent to neighbour
+                patchID,             // Patch index
+                master,              // Master index
+                slave                // Slave index
+            )
+        );
+
+        sendPatchMeshes_[pI].patchMap().subMeshPoints() =
+        (
+            procPoints[procIndices_[pI]]
+        );
+
+        sendPatchMeshes_[pI].patchMap().globalProcPoints() =
+        (
+            globalProcPoints[procIndices_[pI]]
+        );
+
+        recvPatchMeshes_.set
+        (
+            pI,
+            new coupledInfo
+            (
+                *this,               // Reference to this mesh
+                twoDMesh_,           // 2D or 3D
+                false,               // Not local
+                false,               // Not sent to neighbour
+                patchID,             // Patch index
+                master,              // Master index
+                slave                // Slave index
+            )
+        );
+
+        recvPatchMeshes_[pI].patchMap().subMeshPoints() =
+        (
+            procPoints[procIndices_[pI]]
+        );
+
+        recvPatchMeshes_[pI].patchMap().globalProcPoints() =
+        (
+            globalProcPoints[procIndices_[pI]]
+        );
     }
 
     if (debug > 3)
@@ -640,18 +597,11 @@ void dynamicTopoFvMesh::readCoupledPatches()
 
             // Lookup the master / slave patches
             word masterPatch = dictI.lookup("master");
-            word slavePatch  = dictI.lookup("slave");
+            word slavePatch = dictI.lookup("slave");
 
             // Determine patch indices
             label mPatch = boundary.findPatchID(masterPatch);
             label sPatch = boundary.findPatchID(slavePatch);
-
-            if (mPatch == -1 && sPatch == -1)
-            {
-                // This pair doesn't exist. This might be
-                // true for some sub-domains.
-                continue;
-            }
 
             if (debug)
             {
@@ -709,6 +659,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                     twoDMesh_,
                     true,
                     false,
+                    mPatch,
                     mPatch,
                     sPatch
                 );
@@ -865,6 +816,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     List<Map<label> > masterConvertEdgePatch(procIndices_.size());
     List<Map<label> > masterConvertFacePatch(procIndices_.size());
 
+    Map<label> createPatch;
     labelList slaveConvertPatch(procIndices_.size(), -1);
     List<Map<Pair<point> > > convertPatchPoints(procIndices_.size());
 
@@ -1107,23 +1059,16 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                             if (edgePatch == -1)
                             {
-                                // Are we talking to this processor already?
-                                label prI = findIndex(procIndices_, neiProcNo);
-
-                                // Check for contact
-                                if (prI == -1)
+                                if (debug > 3)
                                 {
-                                    if (debug > 3)
-                                    {
-                                        Pout<< nl << nl
-                                            << " No direct contact with"
-                                            << " processor: " << neiProcNo
-                                            << endl;
-                                    }
-
-                                    // Add this to neiProcPatch instead.
-                                    edgePatch = neiProcPatch;
+                                    Pout<< nl << nl
+                                        << " No direct contact with"
+                                        << " processor: " << neiProcNo
+                                        << endl;
                                 }
+
+                                // Add this to neiProcPatch instead.
+                                edgePatch = neiProcPatch;
                             }
                         }
                     }
@@ -1251,31 +1196,47 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         // Are we talking to this processor already?
                         label prI = findIndex(procIndices_, neiProcNo);
 
-                        // Check for contact
-                        if (prI == -1)
+                        // Check for face-contact
+                        if (facePatch == -1)
                         {
                             if (debug > 3)
                             {
                                 Pout<< nl << nl
-                                    << " No direct contact with"
+                                    << " No face contact with"
                                     << " processor: " << neiProcNo
                                     << endl;
                             }
 
-                            // Bail out for now
-                            map.type() = -2;
+                            if (prI == -1)
+                            {
+                                Pout<< " No contact with: " << neiProcNo
+                                    << abort(FatalError);
+                            }
 
-                            return map;
-                        }
-                        else
-                        {
-                            // Add to the list
-                            convertPatchPoints[prI].insert
+                            label pIdx =
                             (
-                                convertPatchPoints[prI].size(),
-                                Pair<point>(nfC, ofC)
+                                sendPatchMeshes_[prI].patchMap().patchIndex()
                             );
+
+                            // Add a patch creation order, if necessary
+                            if (pIdx == -1 && !createPatch.found(neiProcNo))
+                            {
+                                createPatch.insert(neiProcNo, -1);
+                            }
+
+                            // Specify a value for facePatch:
+                            //  - Specify a value that we can use
+                            //    to back out the patch after creation
+                            //  - Also needs to bypass failure check
+                            facePatch = (-2 - neiProcNo);
                         }
+
+                        // Add to the list
+                        convertPatchPoints[prI].insert
+                        (
+                            convertPatchPoints[prI].size(),
+                            Pair<point>(nfC, ofC)
+                        );
                     }
                 }
                 else
@@ -1319,6 +1280,36 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             << "Inserting cell(s) around coupled "
             << (twoDMesh_ ? "face: " : "edge: ") << mIndex
             << endl;
+    }
+
+    // Check to see if any new processor
+    // patches need to be created
+    forAllIter(Map<label>, createPatch, procIter)
+    {
+        label neiProcNo = procIter.key();
+
+        // Create a new processor patch
+        procIter() = createProcessorPatch(neiProcNo);
+
+        forAll(masterConvertFacePatch, pI)
+        {
+            Map<label>& convertMap = masterConvertFacePatch[pI];
+
+            forAllIter(Map<label>, convertMap, mIter)
+            {
+                if (mIter() < 0)
+                {
+                    // Back out the neighbouring processor ID
+                    label proc = Foam::mag(mIter() + 2);
+
+                    if (proc == neiProcNo)
+                    {
+                        // Set the index
+                        mIter() = procIter();
+                    }
+                }
+            }
+        }
     }
 
     // Loop through insertion cells and
@@ -3085,8 +3076,22 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
         return;
     }
 
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
     labelList createPatchOrders(Pstream::nProcs(), 0);
 
+    forAll(procIndices_, pI)
+    {
+        const coupleMap& cMap = sendPatchMeshes_[pI].patchMap();
+
+        if (cMap.patchIndex() >= boundary.size())
+        {
+            // This processor needs a new patch talking to me
+            createPatchOrders[procIndices_[pI]] = 1;
+        }
+    }
+
+    // Send / recv create patch orders, if any
     for (label proc = 0; proc < Pstream::nProcs(); proc++)
     {
         if (proc == Pstream::myProcNo())
@@ -3094,7 +3099,6 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             continue;
         }
 
-        // Send / recv create patch orders, if any
         if (proc > Pstream::myProcNo())
         {
             meshOps::pWrite(proc, createPatchOrders[proc]);
@@ -3102,6 +3106,21 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
         else
         {
             meshOps::pRead(proc, createPatchOrders[proc]);
+        }
+    }
+
+    Map<label> addedProcPatches;
+
+    for (label proc = 0; proc < Pstream::myProcNo(); proc++)
+    {
+        if (createPatchOrders[proc])
+        {
+            // Create a new processor patch
+            addedProcPatches.insert
+            (
+                proc,
+                createProcessorPatch(proc)
+            );
         }
     }
 
@@ -3139,8 +3158,6 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             // for cell-removal operations
             label procPatch = -1;
 
-            const polyBoundaryMesh& boundary = boundaryMesh();
-
             forAll(boundary, pI)
             {
                 if (!isA<processorPolyPatch>(boundary[pI]))
@@ -3162,9 +3179,25 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
             if (procPatch == -1)
             {
-                Pout<< " * * * Sync Operations * * * " << nl
-                    << " Could not find patch for proc: " << proc << nl
-                    << abort(FatalError);
+                // Check if this was a newly added patch
+                if (addedProcPatches.found(proc))
+                {
+                    procPatch = addedProcPatches[proc];
+                }
+                else
+                if (operations.size())
+                {
+                    // If we actually have operations from
+                    // this processor, this is a problem.
+                    Pout<< " * * * Sync Operations * * * " << nl
+                        << " Could not find patch for proc: " << proc << nl
+                        << abort(FatalError);
+                }
+                else
+                {
+                    // Move on to the next processor
+                    continue;
+                }
             }
 
             // Keep track of added entities from initial set
@@ -5342,6 +5375,131 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 }
 
 
+// Introduce a new processor patch to the mesh
+label dynamicTopoFvMesh::createProcessorPatch(const label proc)
+{
+    if (!Pstream::parRun())
+    {
+        return -2;
+    }
+
+    // Size up procIndices, if necessary
+    label pI = findIndex(procIndices_, proc);
+
+    if (pI == -1)
+    {
+        Pout<< " Could not find index for processor: " << proc
+            << " in indices: " << procIndices_
+            << abort(FatalError);
+    }
+
+    // Get the new patch index,
+    // and increment the number of patches
+    label patchID = nPatches_++;
+
+    // Size up patches, and copy old information
+    label prevPatchID = patchID - 1;
+
+    patchSizes_.setSize(nPatches_, 0);
+    oldPatchSizes_.setSize(nPatches_, 0);
+
+    patchStarts_.setSize
+    (
+        nPatches_,
+        patchStarts_[prevPatchID] + patchSizes_[prevPatchID]
+    );
+    oldPatchStarts_.setSize
+    (
+        nPatches_,
+        oldPatchStarts_[prevPatchID] + oldPatchSizes_[prevPatchID]
+    );
+
+    edgePatchSizes_.setSize(nPatches_, 0);
+    oldEdgePatchSizes_.setSize(nPatches_, 0);
+
+    edgePatchStarts_.setSize
+    (
+        nPatches_,
+        edgePatchStarts_[prevPatchID] + edgePatchSizes_[prevPatchID]
+    );
+    oldEdgePatchStarts_.setSize
+    (
+        nPatches_,
+        oldEdgePatchStarts_[prevPatchID] + oldEdgePatchSizes_[prevPatchID]
+    );
+
+    patchNMeshPoints_.setSize(nPatches_, 0);
+    oldPatchNMeshPoints_.setSize(nPatches_, 0);
+
+    // Set the new patch index in patchMaps
+    sendPatchMeshes_[pI].patchMap().patchIndex() = patchID;
+    recvPatchMeshes_[pI].patchMap().patchIndex() = patchID;
+
+    if (debug)
+    {
+        Pout<< " dynamicTopoFvMesh::createProcessorPatch :"
+            << " Created new patch for processor: " << proc << nl
+            << " pI: " << pI << nl
+            << " patchID: " << patchID << nl
+            << " patchStarts: " << patchStarts_ << nl
+            << " patchSizes: " << patchSizes_ << nl
+            << endl;
+    }
+
+    // Return the new patch index
+    return patchID;
+}
+
+
+// If a patch is of processor type, get the neighbouring processor ID
+label dynamicTopoFvMesh::getNeighbourProcessor(const label patch) const
+{
+    label neiProcNo = -1;
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    if (patch < boundary.size())
+    {
+        if (isA<processorPolyPatch>(boundary[patch]))
+        {
+            const processorPolyPatch& pp =
+            (
+                refCast<const processorPolyPatch>(boundary[patch])
+            );
+
+            // Set the neighbour processor ID
+            neiProcNo = pp.neighbProcNo();
+        }
+    }
+    else
+    {
+        // New processor patch
+
+        // Find the neighbour processor ID
+        forAll(procIndices_, pI)
+        {
+            label patchID = sendPatchMeshes_[pI].patchMap().patchIndex();
+
+            if (patch == patchID)
+            {
+                neiProcNo = procIndices_[pI];
+                break;
+            }
+        }
+
+        if (neiProcNo == -1)
+        {
+            // An index should have been defined by now
+            Pout<< " Patch: " << patch
+                << " was not defined on patch subMeshes."
+                << abort(FatalError);
+        }
+    }
+
+    return neiProcNo;
+}
+
+
 // Initialize coupled boundary ordering
 // - Assumes that faces_ and points_ are consistent
 // - Assumes that patchStarts_ and patchSizes_ are consistent
@@ -5356,91 +5514,91 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
         return;
     }
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
-    forAll(boundary, pI)
+    for (label pI = 0; pI < nPatches_; pI++)
     {
-        if (isA<processorPolyPatch>(boundary[pI]))
+        label neiProcNo = getNeighbourProcessor(pI);
+
+        if (neiProcNo == -1)
         {
-            // Check if this is a master processor patch.
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[pI])
-            );
+            continue;
+        }
 
-            label start = patchStarts_[pI];
-            label size = patchSizes_[pI];
+        // Check if this is a master processor patch.
+        label start = patchStarts_[pI];
+        label size = patchSizes_[pI];
 
-            // Prepare centres and anchors
-            centres[pI].setSize(size, vector::zero);
-            anchors[pI].setSize(size, vector::zero);
+        // Prepare centres and anchors
+        centres[pI].setSize(size, vector::zero);
+        anchors[pI].setSize(size, vector::zero);
 
-            if (Pstream::myProcNo() < pp.neighbProcNo())
+        if (Pstream::myProcNo() < neiProcNo)
+        {
+            forAll(centres[pI], fI)
             {
-                forAll(centres[pI], fI)
-                {
-                    centres[pI][fI] = faces_[fI + start].centre(points_);
-                    anchors[pI][fI] = points_[faces_[fI + start][0]];
-                }
-
-                if (debug)
-                {
-                    if (debug > 3)
-                    {
-                        Pout<< "Sending to: " << pp.neighbProcNo()
-                            << " nCentres: " << size << endl;
-
-                        // Write out my centres to disk
-                        meshOps::writeVTK
-                        (
-                            (*this),
-                            "centres_" + pp.name(),
-                            size, size, size,
-                            centres[pI]
-                        );
-                    }
-
-                    // Ensure that we're sending the right size
-                    meshOps::pWrite(pp.neighbProcNo(), size);
-                }
-
-                // Send information to neighbour
-                meshOps::pWrite(pp.neighbProcNo(), centres[pI]);
-                meshOps::pWrite(pp.neighbProcNo(), anchors[pI]);
+                centres[pI][fI] = faces_[fI + start].centre(points_);
+                anchors[pI][fI] = points_[faces_[fI + start][0]];
             }
-            else
+
+            if (debug)
             {
-                if (debug)
+                if (debug > 3)
                 {
-                    label nEntities = -1;
+                    Pout<< "Sending to: " << neiProcNo
+                        << " nCentres: " << size << endl;
 
-                    // Ensure that we're receiving the right size
-                    meshOps::pRead(pp.neighbProcNo(), nEntities);
-
-                    if (debug > 3)
-                    {
-                        Pout<< " Recving from: " << pp.neighbProcNo()
-                            << " nCentres: " << size << endl;
-                    }
-
-                    if (nEntities != size)
-                    {
-                        FatalErrorIn
-                        (
-                            "void dynamicTopoFvMesh::"
-                            "initCoupledBoundaryOrdering() const"
-                        )
-                            << "Incorrect send / recv sizes: " << nl
-                            << " nEntities: " << nEntities << nl
-                            << " size: " << size << nl
-                            << abort(FatalError);
-                    }
+                    // Write out my centres to disk
+                    meshOps::writeVTK
+                    (
+                        (*this),
+                        "centres_"
+                      + Foam::name(Pstream::myProcNo())
+                      + "to"
+                      + Foam::name(neiProcNo),
+                        size, size, size,
+                        centres[pI]
+                    );
                 }
 
-                // Schedule receive from neighbour
-                meshOps::pRead(pp.neighbProcNo(), centres[pI]);
-                meshOps::pRead(pp.neighbProcNo(), anchors[pI]);
+                // Ensure that we're sending the right size
+                meshOps::pWrite(neiProcNo, size);
             }
+
+            // Send information to neighbour
+            meshOps::pWrite(neiProcNo, centres[pI]);
+            meshOps::pWrite(neiProcNo, anchors[pI]);
+        }
+        else
+        {
+            if (debug)
+            {
+                label nEntities = -1;
+
+                // Ensure that we're receiving the right size
+                meshOps::pRead(neiProcNo, nEntities);
+
+                if (debug > 3)
+                {
+                    Pout<< " Recving from: " << neiProcNo
+                        << " nCentres: " << size << endl;
+                }
+
+                if (nEntities != size)
+                {
+                    FatalErrorIn
+                    (
+                        "void dynamicTopoFvMesh::"
+                        "initCoupledBoundaryOrdering() const"
+                    )
+                        << "Incorrect send / recv sizes: " << nl
+                        << " nEntities: " << nEntities << nl
+                        << " size: " << size << nl
+                        << abort(FatalError);
+                }
+            }
+
+            // Schedule receive from neighbour
+            meshOps::pRead(neiProcNo, centres[pI]);
+            meshOps::pRead(neiProcNo, anchors[pI]);
         }
     }
 }
@@ -5470,54 +5628,54 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
 
     scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-4);
 
-    forAll(boundary, pI)
+    for (label pI = 0; pI < nPatches_; pI++)
     {
-        if (isA<processorPolyPatch>(boundary[pI]))
+        label neiProcNo = getNeighbourProcessor(pI);
+
+        if (neiProcNo == -1)
         {
-            // Check if this is a slave processor patch.
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[pI])
-            );
+            continue;
+        }
 
-            label start = patchStarts_[pI];
-            label size = patchSizes_[pI];
+        // Check if this is a slave processor patch.
+        label start = patchStarts_[pI];
+        label size = patchSizes_[pI];
 
-            if (Pstream::myProcNo() > pp.neighbProcNo())
+        if (Pstream::myProcNo() > neiProcNo)
+        {
+            slaveTols[pI].setSize(size, 0.0);
+            slaveCentres[pI].setSize(size, vector::zero);
+
+            forAll(slaveCentres[pI], fI)
             {
-                slaveTols[pI].setSize(size, 0.0);
-                slaveCentres[pI].setSize(size, vector::zero);
+                point& fc = slaveCentres[pI][fI];
 
-                forAll(slaveCentres[pI], fI)
+                const face& checkFace = faces_[fI + start];
+
+                // Calculate centre
+                fc = checkFace.centre(points_);
+
+                scalar maxLen = -GREAT;
+
+                forAll(checkFace, fpI)
                 {
-                    point& fc = slaveCentres[pI][fI];
-
-                    const face& checkFace = faces_[fI + start];
-
-                    // Calculate centre
-                    fc = checkFace.centre(points_);
-
-                    scalar maxLen = -GREAT;
-
-                    forAll(checkFace, fpI)
-                    {
-                        maxLen = max(maxLen, mag(points_[checkFace[fpI]] - fc));
-                    }
-
-                    slaveTols[pI][fI] = matchTol*maxLen;
+                    maxLen = max(maxLen, mag(points_[checkFace[fpI]] - fc));
                 }
 
-                // Write out my centres to disk
-                if (debug > 3)
-                {
-                    meshOps::writeVTK
-                    (
-                        (*this),
-                        "slaveCentres_" + pp.name(),
-                        size, size, size,
-                        slaveCentres[pI]
-                    );
-                }
+                slaveTols[pI][fI] = matchTol*maxLen;
+            }
+
+            // Write out my centres to disk
+            if (debug > 3)
+            {
+                meshOps::writeVTK
+                (
+                    (*this),
+                    "slaveCentres_"
+                  + Foam::name(neiProcNo),
+                    size, size, size,
+                    slaveCentres[pI]
+                );
             }
         }
     }
@@ -5527,144 +5685,147 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
 
     bool failedPatchMatch = false;
 
-    forAll(boundary, pI)
+    for (label pI = 0; pI < nPatches_; pI++)
     {
-        if (isA<processorPolyPatch>(boundary[pI]))
+        label neiProcNo = getNeighbourProcessor(pI);
+
+        if (neiProcNo == -1)
         {
-            // Check if this is a master processor patch.
-            const processorPolyPatch& pp =
+            continue;
+        }
+
+        // Check if this is a master processor patch.
+        labelList& patchMap = patchMaps[pI];
+        labelList& rotation = rotations[pI];
+
+        // Initialize map and rotation
+        patchMap.setSize(patchSizes_[pI], -1);
+        rotation.setSize(patchSizes_[pI], 0);
+
+        if (Pstream::myProcNo() < neiProcNo)
+        {
+            // Do nothing (i.e. identical mapping, zero rotation).
+            forAll(patchMap, pfI)
+            {
+                patchMap[pfI] = pfI;
+            }
+        }
+        else
+        {
+            // Try zero separation automatic matching
+            bool matchedAll =
             (
-                refCast<const processorPolyPatch>(boundary[pI])
+                matchPoints
+                (
+                    slaveCentres[pI],
+                    centres[pI],
+                    slaveTols[pI],
+                    false,
+                    patchMap
+                )
             );
 
-            labelList& patchMap = patchMaps[pI];
-            labelList& rotation = rotations[pI];
-
-            // Initialize map and rotation
-            patchMap.setSize(patchSizes_[pI], -1);
-            rotation.setSize(patchSizes_[pI], 0);
-
-            if (Pstream::myProcNo() < pp.neighbProcNo())
+            // Write out master centres to disk
+            if (debug > 3 || !matchedAll)
             {
-                // Do nothing (i.e. identical mapping, zero rotation).
-                forAll(patchMap, pfI)
-                {
-                    patchMap[pfI] = pfI;
-                }
-            }
-            else
-            {
-                // Try zero separation automatic matching
-                bool matchedAll =
+                label mSize = centres[pI].size();
+                label sSize = slaveCentres[pI].size();
+
+                meshOps::writeVTK
                 (
-                    matchPoints
-                    (
-                        slaveCentres[pI],
-                        centres[pI],
-                        slaveTols[pI],
-                        false,
-                        patchMap
-                    )
+                    (*this),
+                    "masterCentres_"
+                  + Foam::name(neiProcNo),
+                    mSize, mSize, mSize,
+                    centres[pI]
                 );
 
-                // Write out master centres to disk
-                if (debug > 3 || !matchedAll)
+                meshOps::writeVTK
+                (
+                    (*this),
+                    "slaveCentres_"
+                  + Foam::name(neiProcNo),
+                    sSize, sSize, sSize,
+                    slaveCentres[pI]
+                );
+
+                if (!matchedAll)
                 {
-                    label mSize = centres[pI].size();
-                    label sSize = slaveCentres[pI].size();
+                    Pout<< " Patch: " << pI
+                        << " Processor: " << neiProcNo
+                        << " mSize: " << mSize << " sSize: " << sSize
+                        << " failed on match for face centres."
+                        << endl;
 
-                    meshOps::writeVTK
-                    (
-                        (*this),
-                        "masterCentres_" + pp.name(),
-                        mSize, mSize, mSize,
-                        centres[pI]
-                    );
+                    // Failed on match-for-all, so patchMaps
+                    // will be invalid. Bail out for now.
+                    failedPatchMatch = true;
 
-                    meshOps::writeVTK
-                    (
-                        (*this),
-                        "slaveCentres_" + pp.name(),
-                        sSize, sSize, sSize,
-                        slaveCentres[pI]
-                    );
-
-                    if (!matchedAll)
-                    {
-                        Pout<< " Patch: " << pp.name()
-                            << " mSize: " << mSize << " sSize: " << sSize
-                            << " failed on match for face centres."
-                            << endl;
-
-                        // Failed on match-for-all, so patchMaps
-                        // will be invalid. Bail out for now.
-                        failedPatchMatch = true;
-
-                        continue;
-                    }
+                    continue;
                 }
-
-                label start = patchStarts_[pI];
-
-                // Set rotation.
-                forAll(patchMap, oldFaceI)
-                {
-                    label newFaceI = patchMap[oldFaceI];
-
-                    const point& anchor = anchors[pI][newFaceI];
-                    const scalar& faceTol = slaveTols[pI][oldFaceI];
-                    const face& checkFace = faces_[start + oldFaceI];
-
-                    label anchorFp = -1;
-                    scalar minDSqr = GREAT;
-
-                    forAll(checkFace, fpI)
-                    {
-                        scalar dSqr = magSqr(anchor - points_[checkFace[fpI]]);
-
-                        if (dSqr < minDSqr)
-                        {
-                            minDSqr = dSqr;
-                            anchorFp = fpI;
-                        }
-                    }
-
-                    if (anchorFp == -1 || mag(minDSqr) > faceTol)
-                    {
-                        FatalErrorIn
-                        (
-                            "\n"
-                            "void dynamicTopoFvMesh::"
-                            "syncCoupledBoundaryOrdering\n"
-                            "(\n"
-                            "    List<pointField>& centres,\n"
-                            "    List<pointField>& anchors,\n"
-                            "    labelListList& patchMaps,\n"
-                            "    labelListList& rotations\n"
-                            ") const\n"
-                        )
-                            << "Cannot find anchor: " << anchor << nl
-                            << " Face: " << checkFace << nl
-                            << " Vertices: "
-                            << UIndirectList<point>(points_, checkFace) << nl
-                            << " on patch: " << pp.name()
-                            << abort(FatalError);
-                    }
-                    else
-                    {
-                        // Positive rotation
-                        //  - Set for old face. Will be rotated later
-                        //    during the shuffling stage
-                        rotation[oldFaceI] =
-                        (
-                            (checkFace.size() - anchorFp) % checkFace.size()
-                        );
-                    }
-                }
-
-                // Set the flag
-                anyChange = true;
             }
+
+            label start = patchStarts_[pI];
+
+            // Set rotation.
+            forAll(patchMap, oldFaceI)
+            {
+                label newFaceI = patchMap[oldFaceI];
+
+                const point& anchor = anchors[pI][newFaceI];
+                const scalar& faceTol = slaveTols[pI][oldFaceI];
+                const face& checkFace = faces_[start + oldFaceI];
+
+                label anchorFp = -1;
+                scalar minDSqr = GREAT;
+
+                forAll(checkFace, fpI)
+                {
+                    scalar dSqr = magSqr(anchor - points_[checkFace[fpI]]);
+
+                    if (dSqr < minDSqr)
+                    {
+                        minDSqr = dSqr;
+                        anchorFp = fpI;
+                    }
+                }
+
+                if (anchorFp == -1 || mag(minDSqr) > faceTol)
+                {
+                    FatalErrorIn
+                    (
+                        "\n"
+                        "void dynamicTopoFvMesh::"
+                        "syncCoupledBoundaryOrdering\n"
+                        "(\n"
+                        "    List<pointField>& centres,\n"
+                        "    List<pointField>& anchors,\n"
+                        "    labelListList& patchMaps,\n"
+                        "    labelListList& rotations\n"
+                        ") const\n"
+                    )
+                        << "Cannot find anchor: " << anchor << nl
+                        << " Face: " << checkFace << nl
+                        << " Vertices: "
+                        << UIndirectList<point>(points_, checkFace) << nl
+                        << " on patch: " << pI
+                        << " for processor: " << neiProcNo
+                        << abort(FatalError);
+                }
+                else
+                {
+                    // Positive rotation
+                    //  - Set for old face. Will be rotated later
+                    //    during the shuffling stage
+                    rotation[oldFaceI] =
+                    (
+                        (checkFace.size() - anchorFp) % checkFace.size()
+                    );
+                }
+            }
+
+            // Set the flag
+            anyChange = true;
         }
     }
 
@@ -5674,17 +5835,21 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
     // Write out processor patch faces if a failure was encountered
     if (failedPatchMatch)
     {
-        forAll(boundary, pI)
+        for (label pI = 0; pI < nPatches_; pI++)
         {
-            if (isA<processorPolyPatch>(boundary[pI]))
+            label neiProcNo = getNeighbourProcessor(pI);
+
+            if (neiProcNo == -1)
             {
-                writeVTK
-                (
-                    "patchFaces_" + boundary[pI].name(),
-                    identity(patchSizes_[pI]) + patchStarts_[pI],
-                    2
-                );
+                continue;
             }
+
+            writeVTK
+            (
+                "patchFaces_" + Foam::name(neiProcNo),
+                identity(patchSizes_[pI]) + patchStarts_[pI],
+                2
+            );
         }
 
         FatalErrorIn
@@ -5948,8 +6113,6 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
     bool checkFace
 ) const
 {
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
     // Bail out if no patchCoupling is present
     if (patchCoupling_.empty())
     {
@@ -5966,9 +6129,12 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
         }
 
         // Processor checks receive priority.
-        if (isA<processorPolyPatch>(boundary[patch]) && checkProcs)
+        if (checkProcs)
         {
-            return false;
+            if (getNeighbourProcessor(patch) > -1)
+            {
+                return false;
+            }
         }
 
         // Check coupled master patches.
@@ -6006,9 +6172,12 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
                 label patch = whichPatch(eFaces[faceI]);
 
                 // Processor checks receive priority.
-                if (isA<processorPolyPatch>(boundary[patch]) && checkProcs)
+                if (checkProcs)
                 {
-                    return false;
+                    if (getNeighbourProcessor(patch) > -1)
+                    {
+                        return false;
+                    }
                 }
 
                 // Check coupled master patches.
@@ -6111,8 +6280,6 @@ bool dynamicTopoFvMesh::processorCoupledEntity
         return false;
     }
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
     label patch = -2;
 
     if ((twoDMesh_ || checkFace) && !checkEdge)
@@ -6124,7 +6291,7 @@ bool dynamicTopoFvMesh::processorCoupledEntity
             return false;
         }
 
-        if (isA<processorPolyPatch>(boundary[patch]))
+        if (getNeighbourProcessor(patch) > -1)
         {
             return true;
         }
@@ -6142,7 +6309,7 @@ bool dynamicTopoFvMesh::processorCoupledEntity
             {
                 label patch = whichPatch(eFaces[faceI]);
 
-                if (isA<processorPolyPatch>(boundary[patch]))
+                if (getNeighbourProcessor(patch) > -1)
                 {
                     // Increment the processor patch count
                     nProcessor++;
@@ -6189,7 +6356,6 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
 
     // Build a set of entities to avoid during regular modifications,
     // and build a master stack for coupled modifications.
-    const polyBoundaryMesh& boundary = boundaryMesh();
 
     // Determine locally coupled slave patches.
     labelHashSet localMasterPatches, localSlavePatches;
@@ -6227,7 +6393,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
         (
             localMasterPatches.found(pIndex) ||
             localSlavePatches.found(pIndex) ||
-            isA<processorPolyPatch>(boundary[pIndex])
+            getNeighbourProcessor(pIndex) > -1
         )
         {
             if (twoDMesh_)

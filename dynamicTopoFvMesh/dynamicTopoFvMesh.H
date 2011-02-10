@@ -81,6 +81,9 @@ class dynamicTopoFvMesh
 {
     // Private data
 
+        //- Number of boundary patches
+        label nPatches_;
+
         //- Topology change flag
         bool topoChangeFlag_;
 
@@ -1002,6 +1005,13 @@ class dynamicTopoFvMesh
 
         // Build coupled maps for coupled processor patches
         void buildProcessorCoupledMaps();
+
+        // Introduce a new processor patch to the mesh
+        label createProcessorPatch(const label proc);
+
+        // If a patch is of processor type,
+        // get the neighbouring processor ID
+        label getNeighbourProcessor(const label patch) const;
 
         // Initialize coupled boundary ordering
         void initCoupledBoundaryOrdering

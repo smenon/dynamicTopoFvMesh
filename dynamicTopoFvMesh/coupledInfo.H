@@ -93,6 +93,7 @@ public:
         const bool isTwoDMesh,
         const bool isLocal,
         const bool isSend,
+        const label patchIndex,
         const label mPatch,
         const label sPatch,
         const label mfzIndex = -1,
