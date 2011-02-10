@@ -532,6 +532,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         if (debug > 2)
         {
+            const polyBoundaryMesh& boundary = boundaryMesh();
+
             label epIndex = whichPatch(fIndex);
 
             Pout<< "Patch: ";
@@ -541,8 +543,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 Pout<< "Internal" << endl;
             }
             else
+            if (epIndex < boundary.size())
             {
-                Pout<< boundaryMesh()[epIndex].name() << endl;
+                Pout<< boundary[epIndex].name() << endl;
+            }
+            else
+            {
+                Pout<< " New patch: " << epIndex << endl;
             }
 
             Pout<< "Cell[0]: " << c0 << ": " << oldCells[0] << endl;
@@ -2809,6 +2816,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
         label epIndex = whichEdgePatch(eIndex);
 
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         Pout<< "Patch: ";
 
         if (epIndex == -1)
@@ -2816,8 +2825,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             Pout<< "Internal" << endl;
         }
         else
+        if (epIndex < boundary.size())
         {
-            Pout<< boundaryMesh()[epIndex].name() << endl;
+            Pout<< boundary[epIndex].name() << endl;
+        }
+        else
+        {
+            Pout<< " New patch: " << epIndex << endl;
         }
 
         // Write out VTK files prior to change
@@ -3895,13 +3909,20 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     {
         label bPatch = whichEdgePatch(eIndex);
 
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         if (bPatch == -1)
         {
             Pout<< "Patch: Internal" << nl;
         }
         else
+        if (bPatch < boundary.size())
         {
-            Pout<< "Patch: " << boundaryMesh()[bPatch].name() << nl;
+            Pout<< "Patch: " << boundary[bPatch].name() << nl;
+        }
+        else
+        {
+            Pout<< " New patch: " << bPatch << endl;
         }
 
         Pout<< "EdgePoints: " << vertexHull << nl

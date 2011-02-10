@@ -5532,6 +5532,65 @@ label dynamicTopoFvMesh::getNeighbourProcessor(const label patch) const
 }
 
 
+// If the number of patches have changed during run-time,
+// reset boundaries with new processor patches
+void dynamicTopoFvMesh::resetBoundaries()
+{
+    // Prepare a new list of patches
+    List<polyPatch*> patches(nPatches_);
+
+    // Fetch reference to existing boundary
+    // - The removeBoundary member merely resets
+    //   boundary size, so this reference is safe
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Copy all existing patches first
+    for (label patchI = 0; patchI < boundaryMesh().size(); patchI++)
+    {
+        // Clone the patch
+        patches[patchI] = boundary[patchI].clone(boundary).ptr();
+    }
+
+    // Create new processor patches
+    for (label patchI = boundaryMesh().size(); patchI < nPatches_; patchI++)
+    {
+        // Make a temporary dictionary for patch construction
+        dictionary patchDict;
+
+        // Back out the neighbour processor ID
+        label neiProcNo = getNeighbourProcessor(patchI);
+
+        // Add relevant info
+        patchDict.add("type", "processor");
+        patchDict.add("startFace", patchStarts_[patchI]);
+        patchDict.add("nFaces", patchSizes_[patchI]);
+        patchDict.add("myProcNo", Pstream::myProcNo());
+        patchDict.add("neighbProcNo", neiProcNo);
+
+        // Set the pointer
+        patches[patchI] =
+        (
+            polyPatch::New
+            (
+                "procBoundary"
+              + Foam::name(Pstream::myProcNo())
+              + "to"
+              + Foam::name(neiProcNo),
+                patchDict,
+                patchI,
+                boundary
+            ).ptr()
+        );
+    }
+
+    // Remove the old boundary
+    fvMesh::removeFvBoundary();
+
+    // Add patches, but don't calculate geometry, etc
+    fvMesh::addFvPatches(patches, false);
+}
+
+
 // Initialize coupled boundary ordering
 // - Assumes that faces_ and points_ are consistent
 // - Assumes that patchStarts_ and patchSizes_ are consistent

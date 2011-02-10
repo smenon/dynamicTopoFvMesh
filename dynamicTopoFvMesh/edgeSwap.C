@@ -2650,13 +2650,20 @@ const changeMap dynamicTopoFvMesh::swap23
         {
             label bPatch = whichEdgePatch(eIndex);
 
+            const polyBoundaryMesh& boundary = boundaryMesh();
+
             if (bPatch == -1)
             {
                 Pout<< " Patch: Internal" << nl;
             }
             else
+            if (bPatch < boundary.size())
             {
-                Pout<< " Patch: " << boundaryMesh()[bPatch].name() << nl;
+                Pout<< " Patch: " << boundary[bPatch].name() << nl;
+            }
+            else
+            {
+                Pout<< " New patch: " << bPatch << endl;
             }
 
             Pout<< " Ring: " << hullVertices << nl
@@ -3377,13 +3384,20 @@ const changeMap dynamicTopoFvMesh::swap32
         {
             label bPatch = whichEdgePatch(eIndex);
 
+            const polyBoundaryMesh& boundary = boundaryMesh();
+
             if (bPatch == -1)
             {
                 Pout<< " Patch: Internal" << nl;
             }
             else
+            if (bPatch < boundary.size())
             {
-                Pout<< " Patch: " << boundaryMesh()[bPatch].name() << nl;
+                Pout<< " Patch: " << boundary[bPatch].name() << nl;
+            }
+            else
+            {
+                Pout<< " New patch: " << bPatch << endl;
             }
 
             Pout<< " Ring: " << hullVertices << nl

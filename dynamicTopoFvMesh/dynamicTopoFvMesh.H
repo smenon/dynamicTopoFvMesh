@@ -1013,6 +1013,10 @@ class dynamicTopoFvMesh
         // get the neighbouring processor ID
         label getNeighbourProcessor(const label patch) const;
 
+        // If the number of patches have changed during run-time,
+        // reset boundaries with new processor patches
+        void resetBoundaries();
+
         // Initialize coupled boundary ordering
         void initCoupledBoundaryOrdering
         (

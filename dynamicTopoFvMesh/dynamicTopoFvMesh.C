@@ -3932,58 +3932,7 @@ bool dynamicTopoFvMesh::resetMesh()
         // at run-time, reset boundaries first
         if (nPatches_ != nOldPatches)
         {
-            // Prepare a new list of patches
-            List<polyPatch*> patches(nPatches_);
-
-            // Fetch reference to existing boundary
-            // - The removeBoundary member merely resets
-            //   boundary size, so this reference is safe
-            const polyBoundaryMesh& boundary = boundaryMesh();
-
-            // Copy all existing patches first
-            for (label patchI = 0; patchI < nOldPatches; patchI++)
-            {
-                // Clone the patch
-                patches[patchI] = boundary[patchI].clone(boundary).ptr();
-            }
-
-            // Create new processor patches
-            for (label patchI = nOldPatches; patchI < nPatches_; patchI++)
-            {
-                // Make a temporary dictionary for patch construction
-                dictionary patchDict;
-
-                // Back out the neighbour processor ID
-                label neiProcNo = getNeighbourProcessor(patchI);
-
-                // Add relevant info
-                patchDict.add("type", "processor");
-                patchDict.add("startFace", patchStarts_[patchI]);
-                patchDict.add("nFaces", patchSizes_[patchI]);
-                patchDict.add("myProcNo", Pstream::myProcNo());
-                patchDict.add("neighbProcNo", neiProcNo);
-
-                // Set the pointer
-                patches[patchI] =
-                (
-                    polyPatch::New
-                    (
-                        "procBoundary"
-                      + Foam::name(Pstream::myProcNo())
-                      + "to"
-                      + Foam::name(neiProcNo),
-                        patchDict,
-                        patchI,
-                        boundary
-                    ).ptr()
-                );
-            }
-
-            // Remove the old boundary
-            fvMesh::removeFvBoundary();
-
-            // Add patches, but don't calculate geometry, etc
-            fvMesh::addPatches(patches, false);
+            resetBoundaries();
         }
 
         // Reset the mesh, and specify a non-valid

@@ -1350,7 +1350,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 << " collapseCase determined to be: " << collapseCase << nl
                 << " Resulting quality: " << collapseQuality << nl
                 << " edgeBoundary: " << edgeBoundary << nl
-                << " nBoundCurves: " << nBoundCurves
+                << " nBoundCurves: " << nBoundCurves << nl
+                << " collapsePoints: " << original << nl
+                << " replacePoints: " << replacement << nl
                 << endl;
         }
 
@@ -1368,6 +1370,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         label epIndex = whichPatch(fIndex);
 
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         Pout<< "Patch: ";
 
         if (epIndex == -1)
@@ -1375,8 +1379,13 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             Pout<< "Internal" << nl;
         }
         else
+        if (epIndex < boundary.size())
         {
-            Pout<< boundaryMesh()[epIndex].name() << nl;
+            Pout<< boundary[epIndex].name() << nl;
+        }
+        else
+        {
+            Pout<< " New patch: " << epIndex << endl;
         }
 
         if (debug > 2)
@@ -3156,31 +3165,72 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 label mfIndex = madF[faceI].index();
                 const face& mFace = faces_[mfIndex];
 
-                forAll(cFace, pointI)
+                // Select appropriate mesh
+                const dynamicTopoFvMesh* meshPtr = NULL;
+
+                // Fetch the appropriate coupleMap
+                const coupleMap* crMapPtr = NULL;
+
+                // Fetch patch info
+                label ofPatch = whichPatch(fIndex);
+                label mfPatch = whichPatch(mfIndex);
+
+                if (localCouple && !procCouple)
                 {
-                    cFace[pointI] =
-                    (
-                        pointMap.found(mFace[pointI]) ?
-                        pointMap[mFace[pointI]] : -1
-                    );
+                    // Local coupling. Use this mesh itself
+                    meshPtr = this;
+                    crMapPtr = &(patchCoupling_[pI].patchMap());
+                }
+                else
+                if (procCouple && !localCouple)
+                {
+                    // Occasionally, this face might talk to
+                    // a processor other than the slave
+                    if (ofPatch == mfPatch)
+                    {
+                        meshPtr = &(recvPatchMeshes_[pI].subMesh());
+                        crMapPtr = &(recvPatchMeshes_[pI].patchMap());
+                    }
+                    else
+                    {
+                        label neiProcNo = getNeighbourProcessor(mfPatch);
+
+                        if (neiProcNo == -1)
+                        {
+                            // Not a processor patch. No mapping required.
+                            continue;
+                        }
+                        else
+                        {
+                            // Find an appropriate subMesh
+                            label prI = findIndex(procIndices_, neiProcNo);
+
+                            meshPtr = &(recvPatchMeshes_[prI].subMesh());
+                            crMapPtr = &(recvPatchMeshes_[prI].patchMap());
+                        }
+                    }
                 }
 
                 bool matchedFace = false;
 
-                // Select appropriate mesh
-                const dynamicTopoFvMesh* meshPtr = NULL;
-
-                if (localCouple)
-                {
-                    meshPtr = this;
-                }
-                else
-                if (procCouple)
-                {
-                    meshPtr = &(recvPatchMeshes_[pI].subMesh());
-                }
-
+                // Alias for convenience
+                const coupleMap& crMap = *crMapPtr;
                 const dynamicTopoFvMesh& sMesh = *meshPtr;
+
+                // Obtain references
+                Map<label>& pMap = crMap.entityMap(pointEnum);
+                Map<label>& fMap = crMap.entityMap(faceEnum);
+                Map<label>& rfMap = crMap.reverseEntityMap(faceEnum);
+
+                // Configure the face
+                forAll(cFace, pointI)
+                {
+                    cFace[pointI] =
+                    (
+                        pMap.found(mFace[pointI]) ?
+                        pMap[mFace[pointI]] : -1
+                    );
+                }
 
                 // Loop through all boundary faces on the subMesh
                 for
@@ -3206,42 +3256,42 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         // Update faceMaps
                         if (collapsingSlave)
                         {
-                            if (faceMap.found(faceJ))
+                            if (fMap.found(faceJ))
                             {
-                                faceMap[faceJ] = mfIndex;
+                                fMap[faceJ] = mfIndex;
                             }
                             else
                             {
-                                faceMap.insert(faceJ, mfIndex);
+                                fMap.insert(faceJ, mfIndex);
                             }
 
-                            if (rFaceMap.found(mfIndex))
+                            if (rfMap.found(mfIndex))
                             {
-                                rFaceMap[mfIndex] = faceJ;
+                                rfMap[mfIndex] = faceJ;
                             }
                             else
                             {
-                                rFaceMap.insert(mfIndex, faceJ);
+                                rfMap.insert(mfIndex, faceJ);
                             }
                         }
                         else
                         {
-                            if (rFaceMap.found(faceJ))
+                            if (rfMap.found(faceJ))
                             {
-                                rFaceMap[faceJ] = mfIndex;
+                                rfMap[faceJ] = mfIndex;
                             }
                             else
                             {
-                                rFaceMap.insert(faceJ, mfIndex);
+                                rfMap.insert(faceJ, mfIndex);
                             }
 
-                            if (faceMap.found(mfIndex))
+                            if (fMap.found(mfIndex))
                             {
-                                faceMap[mfIndex] = faceJ;
+                                fMap[mfIndex] = faceJ;
                             }
                             else
                             {
-                                faceMap.insert(mfIndex, faceJ);
+                                fMap.insert(mfIndex, faceJ);
                             }
                         }
 
@@ -3253,6 +3303,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 if (!matchedFace)
                 {
+                    // Write out for post-processing
+                    writeVTK("masterFace_" + Foam::name(mfIndex), mfIndex, 2);
+
                     FatalErrorIn
                     (
                         "\n"
@@ -3278,23 +3331,36 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             forAll(sadF, faceI)
             {
-                const face* facePtr = NULL;
+                label sIndex = slaveMap.index();
                 label sfIndex = sadF[faceI].index();
+
+                // Select appropriate mesh
+                const dynamicTopoFvMesh* meshPtr = NULL;
 
                 if (localCouple && !procCouple)
                 {
-                    facePtr = &(faces_[sfIndex]);
+                    // Local coupling. Use this mesh itself
+                    meshPtr = this;
                 }
                 else
                 if (procCouple && !localCouple)
                 {
-                    facePtr =
-                    (
-                        &(recvPatchMeshes_[pI].subMesh().faces_[sfIndex])
-                    );
+                    meshPtr = &(recvPatchMeshes_[pI].subMesh());
                 }
 
-                const face& sFace = *facePtr;
+                // Alias for convenience
+                const dynamicTopoFvMesh& sMesh = *meshPtr;
+
+                label ofPatch = sMesh.whichPatch(sIndex);
+                label sfPatch = sMesh.whichPatch(sfIndex);
+
+                // Skip dissimilar patches
+                if (ofPatch != sfPatch)
+                {
+                    continue;
+                }
+
+                const face& sFace = sMesh.faces_[sfIndex];
 
                 forAll(cFace, pointI)
                 {
@@ -4548,6 +4614,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         label epIndex = whichEdgePatch(eIndex);
 
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
         Pout<< "Patch: ";
 
         if (epIndex == -1)
@@ -4555,8 +4623,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             Pout<< "Internal" << nl;
         }
         else
+        if (epIndex < boundary.size())
         {
-            Pout<< boundaryMesh()[epIndex].name() << nl;
+            Pout<< boundary[epIndex].name() << nl;
+        }
+        else
+        {
+            Pout<< " New patch: " << epIndex << endl;
         }
 
         Pout<< " nBoundCurves: " << nBoundCurves << nl
