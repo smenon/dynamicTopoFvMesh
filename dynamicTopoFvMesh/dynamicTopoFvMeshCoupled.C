@@ -2531,6 +2531,16 @@ const changeMap dynamicTopoFvMesh::removeCells
             {
                 edgesToConvert.set(fEdges[edgeI], -1);
             }
+
+            if (twoDMesh_)
+            {
+                // Add all points as candidates for removal.
+                // Some (or all) of these will be weeded out.
+                const edge& eCheck = edges_[fEdges[edgeI]];
+
+                pointsToRemove.set(eCheck[0]);
+                pointsToRemove.set(eCheck[1]);
+            }
         }
     }
 
@@ -2584,7 +2594,24 @@ const changeMap dynamicTopoFvMesh::removeCells
     }
 
     // Build a set of points to be removed.
-    if (!twoDMesh_)
+    if (twoDMesh_)
+    {
+        forAllConstIter(Map<label>, edgesToConvert, eIter)
+        {
+            const edge& eCheck = edges_[eIter.key()];
+
+            if (pointsToRemove.found(eCheck[0]))
+            {
+                pointsToRemove.erase(eCheck[0]);
+            }
+
+            if (pointsToRemove.found(eCheck[1]))
+            {
+                pointsToRemove.erase(eCheck[1]);
+            }
+        }
+    }
+    else
     {
         forAllConstIter(labelHashSet, edgesToRemove, eIter)
         {
@@ -5454,6 +5481,11 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
 // If a patch is of processor type, get the neighbouring processor ID
 label dynamicTopoFvMesh::getNeighbourProcessor(const label patch) const
 {
+    if (!Pstream::parRun())
+    {
+        return -1;
+    }
+
     label neiProcNo = -1;
 
     const polyBoundaryMesh& boundary = boundaryMesh();
@@ -5620,11 +5652,9 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
 
     bool anyChange = false;
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
     // Calculate centres and tolerances for any slave patches
-    List<scalarField> slaveTols(boundary.size());
-    List<pointField> slaveCentres(boundary.size());
+    List<scalarField> slaveTols(nPatches_);
+    List<pointField> slaveCentres(nPatches_);
 
     scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-4);
 

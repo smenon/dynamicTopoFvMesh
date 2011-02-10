@@ -949,7 +949,11 @@ void dynamicTopoFvMesh::setFaceMapping
     // only from other faces on the same patch
     if (patch > -1 && mapFaces.empty())
     {
-        foundError = true;
+        // Is this a non-processor patch?
+        if (getNeighbourProcessor(patch) == -1)
+        {
+            foundError = true;
+        }
     }
 
     if (foundError)

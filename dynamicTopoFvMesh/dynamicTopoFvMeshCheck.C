@@ -1055,7 +1055,8 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
             }
 
             // Looks like this is really an unused point.
-            Pout<< "Point " << pointI << " is unused. " << endl;
+            Pout<< nl << nl << "Point " << pointI
+                << " is unused. " << endl;
 
             nFailedChecks++;
 
@@ -1589,7 +1590,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
     // Perform a reduce only if this is a global check
     if (!isSubMesh_)
     {
-        reduce(nFailedChecks, orOp<bool>());
+        reduce(nFailedChecks, sumOp<label>());
     }
 
     if (nFailedChecks)
