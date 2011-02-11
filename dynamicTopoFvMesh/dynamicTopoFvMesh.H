@@ -252,8 +252,8 @@ class dynamicTopoFvMesh
         labelList procIndices_;
 
         // Sub-Mesh pointers
-        PtrList<coupledInfo> sendPatchMeshes_;
-        PtrList<coupledInfo> recvPatchMeshes_;
+        PtrList<coupledInfo> sendMeshes_;
+        PtrList<coupledInfo> recvMeshes_;
 
     // Private Member Functions
 

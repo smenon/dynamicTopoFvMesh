@@ -224,8 +224,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledInfo& sendMesh = sendPatchMeshes_[pI];
-                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& sendMesh = sendMeshes_[pI];
+                const coupledInfo& recvMesh = recvMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.patchMap();
                 const coupleMap& rcMap = recvMesh.patchMap();
@@ -464,10 +464,10 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             {
                 const dynamicTopoFvMesh& sMesh =
                 (
-                    recvPatchMeshes_[pI].subMesh()
+                    recvMeshes_[pI].subMesh()
                 );
 
-                cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+                cMapPtr = &(recvMeshes_[pI].patchMap());
 
                 if (debug > 3)
                 {
@@ -579,7 +579,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             {
                 const dynamicTopoFvMesh& sMesh =
                 (
-                    recvPatchMeshes_[pI].subMesh()
+                    recvMeshes_[pI].subMesh()
                 );
 
                 if (sIndex < 0)
@@ -807,7 +807,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             else
             if (procCouple)
             {
-                dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+                dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
                 if (sIndex < 0)
                 {
@@ -921,12 +921,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             }
             else
             {
-                dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+                dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
                 if (sIndex < 0)
                 {
                     // Edge-based coupling
-                    const coupleMap& cMap = recvPatchMeshes_[pI].patchMap();
+                    const coupleMap& cMap = recvMeshes_[pI].patchMap();
 
                     // Fetch the slave edge
                     edge sEdge = sMesh.edges_[mag(sIndex)];
@@ -2942,7 +2942,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 // Check coupleMaps for point coupling
                 const label pointEnum = coupleMap::POINT;
 
-                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvMeshes_[pI];
                 const coupleMap& cMap = recvMesh.patchMap();
 
                 // Obtain non-const references
@@ -3044,7 +3044,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             else
             if (procCouple && !localCouple)
             {
-                cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+                cMapPtr = &(recvMeshes_[pI].patchMap());
             }
 
             // Configure the slave replacement points.
@@ -3188,8 +3188,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     // a processor other than the slave
                     if (ofPatch == mfPatch)
                     {
-                        meshPtr = &(recvPatchMeshes_[pI].subMesh());
-                        crMapPtr = &(recvPatchMeshes_[pI].patchMap());
+                        meshPtr = &(recvMeshes_[pI].subMesh());
+                        crMapPtr = &(recvMeshes_[pI].patchMap());
                     }
                     else
                     {
@@ -3205,8 +3205,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                             // Find an appropriate subMesh
                             label prI = findIndex(procIndices_, neiProcNo);
 
-                            meshPtr = &(recvPatchMeshes_[prI].subMesh());
-                            crMapPtr = &(recvPatchMeshes_[prI].patchMap());
+                            meshPtr = &(recvMeshes_[prI].subMesh());
+                            crMapPtr = &(recvMeshes_[prI].patchMap());
                         }
                     }
                 }
@@ -3345,7 +3345,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 else
                 if (procCouple && !localCouple)
                 {
-                    meshPtr = &(recvPatchMeshes_[pI].subMesh());
+                    meshPtr = &(recvMeshes_[pI].subMesh());
                 }
 
                 // Alias for convenience
@@ -3708,8 +3708,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledInfo& sendMesh = sendPatchMeshes_[pI];
-                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& sendMesh = sendMeshes_[pI];
+                const coupledInfo& recvMesh = recvMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.patchMap();
                 const coupleMap& rcMap = recvMesh.patchMap();
@@ -3885,12 +3885,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             else
             if (procCouple)
             {
-                const dynamicTopoFvMesh& sMesh =
-                (
-                    recvPatchMeshes_[pI].subMesh()
-                );
+                const dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
-                cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+                cMapPtr = &(recvMeshes_[pI].patchMap());
 
                 if (sIndex < 0)
                 {
@@ -4045,7 +4042,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             else
             if (procCouple)
             {
-                dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+                dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
                 if (sIndex < 0)
                 {
@@ -4190,12 +4187,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
             else
             {
-                dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+                dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
                 if (sIndex < 0)
                 {
                     // Point based coupling
-                    const coupleMap& cMap = recvPatchMeshes_[pI].patchMap();
+                    const coupleMap& cMap = recvMeshes_[pI].patchMap();
 
                     // Move points to new location,
                     // and update operation into coupleMap
@@ -5647,7 +5644,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 // Check coupleMaps for point coupling
                 const label pointEnum = coupleMap::POINT;
 
-                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvMeshes_[pI];
                 const coupleMap& cMap = recvMesh.patchMap();
 
                 // Obtain non-const references
@@ -5721,7 +5718,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             else
             if (procCouple && !localCouple)
             {
-                cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+                cMapPtr = &(recvMeshes_[pI].patchMap());
             }
 
             // Configure the slave replacement point.
@@ -5940,7 +5937,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 else
                 if (procCouple)
                 {
-                    meshPtr = &(recvPatchMeshes_[pI].subMesh());
+                    meshPtr = &(recvMeshes_[pI].subMesh());
                 }
 
                 const dynamicTopoFvMesh& sMesh = *meshPtr;
@@ -6082,7 +6079,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 else
                 if (procCouple)
                 {
-                    meshPtr = &(recvPatchMeshes_[pI].subMesh());
+                    meshPtr = &(recvMeshes_[pI].subMesh());
                 }
 
                 const dynamicTopoFvMesh& sMesh = *meshPtr;
@@ -6182,7 +6179,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 {
                     facePtr =
                     (
-                        &(recvPatchMeshes_[pI].subMesh().faces_[fIndex])
+                        &(recvMeshes_[pI].subMesh().faces_[fIndex])
                     );
                 }
 
@@ -6321,7 +6318,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 else
                 if (procCouple && !localCouple)
                 {
-                    sE = recvPatchMeshes_[pI].subMesh().edges_[seIndex];
+                    sE = recvMeshes_[pI].subMesh().edges_[seIndex];
                 }
 
                 edge cE

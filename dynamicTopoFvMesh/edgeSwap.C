@@ -138,7 +138,7 @@ bool dynamicTopoFvMesh::testDelaunay
         forAll(procIndices_, pI)
         {
             // Fetch non-const reference to subMeshes
-            const coupledInfo& recvMesh = recvPatchMeshes_[pI];
+            const coupledInfo& recvMesh = recvMeshes_[pI];
 
             const coupleMap& cMap = recvMesh.patchMap();
             const dynamicTopoFvMesh& sMesh = recvMesh.subMesh();
@@ -257,7 +257,7 @@ bool dynamicTopoFvMesh::testDelaunay
 
     if (procCoupled)
     {
-        otherPoint = recvPatchMeshes_[pIndex].subMesh().points_[pointIndex];
+        otherPoint = recvMeshes_[pIndex].subMesh().points_[pointIndex];
     }
     else
     {
@@ -1358,7 +1358,7 @@ bool dynamicTopoFvMesh::fillTables
                 {
                     // Fetch reference to subMesh
                     const label edgeEnum = coupleMap::EDGE;
-                    const coupledInfo& recvMesh = recvPatchMeshes_[pI];
+                    const coupledInfo& recvMesh = recvMeshes_[pI];
                     const coupleMap& cMap = recvMesh.patchMap();
 
                     label sIndex = -1;

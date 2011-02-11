@@ -3099,7 +3099,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 {
                     Map<label>& rCellMap =
                     (
-                        sendPatchMeshes_[proc].patchMap().reverseEntityMap
+                        sendMeshes_[proc].patchMap().reverseEntityMap
                         (
                             coupleMap::CELL
                         )
@@ -4175,8 +4175,8 @@ bool dynamicTopoFvMesh::resetMesh()
 
             // Clear parallel structures
             procIndices_.clear();
-            sendPatchMeshes_.clear();
-            recvPatchMeshes_.clear();
+            sendMeshes_.clear();
+            recvMeshes_.clear();
 
             if (threader_->multiThreaded())
             {

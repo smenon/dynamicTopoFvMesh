@@ -929,9 +929,26 @@ void dynamicTopoFvMesh::setFaceMapping
 
     if (debug > 3)
     {
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
+        word pName;
+
+        if (patch == -1)
+        {
+            pName = "Internal";
+        }
+        else
+        if (patch < boundary.size())
+        {
+            pName = boundaryMesh()[patch].name();
+        }
+        else
+        {
+            pName = "New patch: " + Foam::name(patch);
+        }
+
         Pout<< "Inserting mapping face: " << fIndex
-            << " patch: "
-            << (patch > -1 ? boundaryMesh()[patch].name() : "Internal")
+            << " patch: " << pName
             << " mapFaces: " << mapFaces
             << endl;
     }

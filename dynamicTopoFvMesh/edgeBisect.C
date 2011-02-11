@@ -199,10 +199,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     commonEdges[0] = edges_[commonEdgeIndex[0]];
     commonEdges[1] = edges_[commonEdgeIndex[1]];
 
+    // If coupled modification is set, and this is a
+    // master edge, bisect its slaves as well.
+    bool localCouple = false, procCouple = false;
+
     if (coupledModification_)
     {
-        bool localCouple = false, procCouple = false;
-
         const label faceEnum = coupleMap::FACE;
         const label pointEnum = coupleMap::POINT;
 
@@ -297,7 +299,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMesh
-                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& recvMesh = recvMeshes_[pI];
                 const coupleMap& cMap = recvMesh.patchMap();
 
                 label sIndex = -1;
@@ -387,9 +389,9 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         else
         if (procCouple)
         {
-            cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+            cMapPtr = &(recvMeshes_[pI].patchMap());
 
-            coupledInfo& recvMesh = recvPatchMeshes_[pI];
+            coupledInfo& recvMesh = recvMeshes_[pI];
 
             // First check the slave for bisection feasibility.
             slaveMap =
@@ -471,7 +473,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         }
         else
         {
-            coupledInfo& recvMesh = recvPatchMeshes_[pI];
+            coupledInfo& recvMesh = recvMeshes_[pI];
 
             // Bisect the slave face
             slaveMap =
@@ -1985,33 +1987,19 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Alias for convenience...
         const changeMap& slaveMap = slaveMaps[0];
 
-        bool localCouple = false, procCouple = false;
+        const label pI = slaveMap.patchIndex();
 
+        // Fetch the appropriate coupleMap
         const coupleMap* cMapPtr = NULL;
-        const label pIndex = slaveMap.patchIndex();
-
-        // Is this a locally coupled edge (either master or slave)?
-        if (locallyCoupledEntity(fIndex, true))
-        {
-            localCouple = true;
-            procCouple = false;
-        }
-        else
-        if (processorCoupledEntity(fIndex))
-        {
-            procCouple = true;
-            localCouple = false;
-        }
 
         if (localCouple && !procCouple)
         {
-            cMapPtr = &(patchCoupling_[pIndex].patchMap());
+            cMapPtr = &(patchCoupling_[pI].patchMap());
         }
         else
         if (procCouple && !localCouple)
         {
-            coupledInfo& recvMesh = recvPatchMeshes_[pIndex];
-            cMapPtr = &(recvMesh.patchMap());
+            cMapPtr = &(recvMeshes_[pI].patchMap());
         }
 
         // Alias for convenience
@@ -2020,35 +2008,70 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Add the new points to the coupling map
         const List<objectMap>& apList = slaveMap.addedPointList();
 
-        // Update pointMap
-        cMap.mapSlave
-        (
-            coupleMap::POINT,
-            newPointIndex[0],
-            apList[0].index()
-        );
+        if (bisectingSlave)
+        {
+            // Update reverse pointMap
+            cMap.mapMaster
+            (
+                coupleMap::POINT,
+                newPointIndex[0],
+                apList[0].index()
+            );
 
-        cMap.mapSlave
-        (
-            coupleMap::POINT,
-            newPointIndex[1],
-            apList[1].index()
-        );
+            cMap.mapMaster
+            (
+                coupleMap::POINT,
+                newPointIndex[1],
+                apList[1].index()
+            );
 
-        // Update reverse pointMap
-        cMap.mapMaster
-        (
-            coupleMap::POINT,
-            apList[0].index(),
-            newPointIndex[0]
-        );
+            // Update pointMap
+            cMap.mapSlave
+            (
+                coupleMap::POINT,
+                apList[0].index(),
+                newPointIndex[0]
+            );
 
-        cMap.mapMaster
-        (
-            coupleMap::POINT,
-            apList[1].index(),
-            newPointIndex[1]
-        );
+            cMap.mapSlave
+            (
+                coupleMap::POINT,
+                apList[1].index(),
+                newPointIndex[1]
+            );
+        }
+        else
+        {
+            // Update pointMap
+            cMap.mapSlave
+            (
+                coupleMap::POINT,
+                newPointIndex[0],
+                apList[0].index()
+            );
+
+            cMap.mapSlave
+            (
+                coupleMap::POINT,
+                newPointIndex[1],
+                apList[1].index()
+            );
+
+            // Update reverse pointMap
+            cMap.mapMaster
+            (
+                coupleMap::POINT,
+                apList[0].index(),
+                newPointIndex[0]
+            );
+
+            cMap.mapMaster
+            (
+                coupleMap::POINT,
+                apList[1].index(),
+                newPointIndex[1]
+            );
+        }
 
         // Create a master/slave entry for the new face on the patch.
         FixedList<bool, 2> foundMatch(false);
@@ -2077,10 +2100,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                 else
                 if (procCouple && !localCouple)
                 {
-                    const dynamicTopoFvMesh& mesh =
-                    (
-                        recvPatchMeshes_[pIndex].subMesh()
-                    );
+                    const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
                     facePtr = &(mesh.faces_[afList[sfI].index()]);
                 }
@@ -2507,8 +2527,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledInfo& sendMesh = sendPatchMeshes_[pI];
-                const coupledInfo& recvMesh = recvPatchMeshes_[pI];
+                const coupledInfo& sendMesh = sendMeshes_[pI];
+                const coupledInfo& recvMesh = recvMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.patchMap();
                 const coupleMap& rcMap = recvMesh.patchMap();
@@ -2631,7 +2651,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             else
             if (procCouple)
             {
-                dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+                dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
                 if (debug > 3)
                 {
@@ -2680,7 +2700,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             }
             else
             {
-                dynamicTopoFvMesh& sMesh = recvPatchMeshes_[pI].subMesh();
+                dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
                 slaveMap = sMesh.bisectEdge(sIndex, false, forceOp);
             }
@@ -3512,7 +3532,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             // Alias for convenience...
             const changeMap& slaveMap = slaveMaps[slaveI];
 
-            label pI = slaveMap.patchIndex();
+            const label pI = slaveMap.patchIndex();
 
             // Fetch the appropriate coupleMap
             const coupleMap* cMapPtr = NULL;
@@ -3524,42 +3544,49 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             else
             if (procCouple && !localCouple)
             {
-                cMapPtr = &(recvPatchMeshes_[pI].patchMap());
+                cMapPtr = &(recvMeshes_[pI].patchMap());
             }
 
             // Alias for convenience...
             const coupleMap& cMap = *cMapPtr;
 
+            // Add the new points to the coupling map
+            const List<objectMap>& apList = slaveMap.addedPointList();
+
             // Map points
             if (bisectingSlave)
             {
+                // Update reverse pointMap
                 cMap.mapMaster
                 (
                     coupleMap::POINT,
                     newPointIndex,
-                    slaveMap.addedPointList()[0].index()
+                    apList[0].index()
                 );
 
+                // Update pointMap
                 cMap.mapSlave
                 (
                     coupleMap::POINT,
-                    slaveMap.addedPointList()[0].index(),
+                    apList[0].index(),
                     newPointIndex
                 );
             }
             else
             {
+                // Update pointMap
                 cMap.mapSlave
                 (
                     coupleMap::POINT,
                     newPointIndex,
-                    slaveMap.addedPointList()[0].index()
+                    apList[0].index()
                 );
 
+                // Update reverse pointMap
                 cMap.mapMaster
                 (
                     coupleMap::POINT,
-                    slaveMap.addedPointList()[0].index(),
+                    apList[0].index(),
                     newPointIndex
                 );
             }
@@ -3640,13 +3667,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     else
                     if (procCouple && !localCouple)
                     {
-                        sE =
+                        const dynamicTopoFvMesh& mesh =
                         (
-                            recvPatchMeshes_[pI].subMesh().edges_
-                            [
-                                aseList[seI].index()
-                            ]
+                            recvMeshes_[pI].subMesh()
                         );
+
+                        sE = mesh.edges_[aseList[seI].index()];
                     }
 
                     if (cE == sE)
@@ -3731,11 +3757,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             }
 
             // Add a mapping entry for two new faces as well.
-            face cF(3), sF(3);
+            triFace cF, sF;
 
             // Compare all master faces
             forAll(amfList, mfI)
             {
+                label amfIndex = amfList[mfI].index();
                 label fpIndex = whichPatch(amfList[mfI].index());
 
                 // Skip internal faces
@@ -3745,7 +3772,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     continue;
                 }
 
-                const face& mF = faces_[amfList[mfI].index()];
+                const face& mF = faces_[amfIndex];
 
                 const Map<label>& pointMap =
                 (
@@ -3799,38 +3826,45 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 forAll(asfList, sfI)
                 {
+                    label asfIndex = asfList[sfI].index();
+
                     if (localCouple && !procCouple)
                     {
-                        sF = faces_[asfList[sfI].index()];
+                        const face& tF = faces_[asfIndex];
+
+                        sF[0] = tF[0];
+                        sF[1] = tF[1];
+                        sF[2] = tF[2];
                     }
                     else
                     if (procCouple && !localCouple)
                     {
-                        sF =
+                        const face& tF =
                         (
-                            recvPatchMeshes_[pI].subMesh().faces_
-                            [
-                                asfList[sfI].index()
-                            ]
+                            recvMeshes_[pI].subMesh().faces_[asfIndex]
                         );
+
+                        sF[0] = tF[0];
+                        sF[1] = tF[1];
+                        sF[2] = tF[2];
                     }
 
-                    if (cF == sF)
+                    if (triFace::compare(cF, sF))
                     {
                         if (bisectingSlave)
                         {
                             cMap.mapMaster
                             (
                                 coupleMap::FACE,
-                                amfList[mfI].index(),
-                                asfList[sfI].index()
+                                amfIndex,
+                                asfIndex
                             );
 
                             cMap.mapSlave
                             (
                                 coupleMap::FACE,
-                                asfList[sfI].index(),
-                                amfList[mfI].index()
+                                asfIndex,
+                                amfIndex
                             );
                         }
                         else
@@ -3838,15 +3872,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             cMap.mapSlave
                             (
                                 coupleMap::FACE,
-                                amfList[mfI].index(),
-                                asfList[sfI].index()
+                                amfIndex,
+                                asfIndex
                             );
 
                             cMap.mapMaster
                             (
                                 coupleMap::FACE,
-                                asfList[sfI].index(),
-                                amfList[mfI].index()
+                                asfIndex,
+                                amfIndex
                             );
                         }
 
