@@ -1420,14 +1420,14 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // Build a list of edges that need to be converted to interior.
     // - Do this by looking at edges of master face conversion candidates.
     // - Some edges may not need conversion, but deal with this later.
-    forAll(facesToConvert, procI)
+    forAll(facesToConvert, pI)
     {
         // Fetch reference to subMesh
-        const coupledInfo& rPM = recvMeshes_[procI];
+        const coupledInfo& rPM = recvMeshes_[pI];
 
         const coupleMap& cMap = rPM.patchMap();
         const dynamicTopoFvMesh& mesh = rPM.subMesh();
-        const Map<label>& procFaceMap = facesToConvert[procI];
+        const Map<label>& procFaceMap = facesToConvert[pI];
 
         forAllConstIter(Map<label>, procFaceMap, fIter)
         {
@@ -1436,7 +1436,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             forAll(sfEdges, edgeI)
             {
-                if (edgesToInsert[procI][sfEdges[edgeI]] != -1)
+                if (edgesToInsert[pI][sfEdges[edgeI]] != -1)
                 {
                     // Already mapped this edge. Move on.
                     continue;
@@ -1456,9 +1456,47 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                     if (mEdge == cEdge)
                     {
-                        edgesToInsert[procI][sfEdges[edgeI]] = mfEdges[edgeJ];
-                        edgesToConvert[procI][sfEdges[edgeI]] = mfEdges[edgeJ];
+                        edgesToInsert[pI][sfEdges[edgeI]] = mfEdges[edgeJ];
+                        edgesToConvert[pI][sfEdges[edgeI]] = mfEdges[edgeJ];
                         break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Occassionally, inserted edges may already be present.
+    // Ensure that edges are not added twice.
+    if (!twoDMesh_)
+    {
+        forAll(facesToInsert, pI)
+        {
+            // Fetch reference to subMesh
+            const coupledInfo& rPM = recvMeshes_[pI];
+
+            const coupleMap& cMap = rPM.patchMap();
+            const dynamicTopoFvMesh& mesh = rPM.subMesh();
+            const Map<label>& procFaceMap = facesToInsert[pI];
+
+            forAllConstIter(Map<label>, procFaceMap, fIter)
+            {
+                const labelList& sfEdges = mesh.faceEdges_[fIter.key()];
+
+                forAll(sfEdges, edgeI)
+                {
+                    label seIndex = sfEdges[edgeI];
+
+                    if (edgesToInsert[pI][seIndex] != -1)
+                    {
+                        // Already mapped this edge. Move on.
+                        continue;
+                    }
+
+                    label cMe = cMap.findMaster(coupleMap::EDGE, seIndex);
+
+                    if (cMe > -1)
+                    {
+                        edgesToInsert[pI][seIndex] = cMe;
                     }
                 }
             }
@@ -1468,92 +1506,62 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // Write out prior to modifications
     if (debug > 4)
     {
-        forAll(cellsToInsert, procI)
+        forAll(cellsToInsert, pI)
         {
-            label procIndex = procIndices_[procI];
+            label procIndex = procIndices_[pI];
 
             // Fetch reference to subMesh
-            const coupledInfo& rPM = recvMeshes_[procI];
-            const dynamicTopoFvMesh& mesh = rPM.subMesh();
+            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-            if (pointsToInsert[procI].size())
-            {
-                mesh.writeVTK
-                (
-                    "pointsToInsert_"
-                  + Foam::name(mIndex) + '_'
-                  + Foam::name(procIndex),
-                    pointsToInsert[procI].toc(),
-                    0
-                );
+            // Define a convenience output macro
+#           define writeOutputVTK(fName, eMap, eType, insert)                  \
+            {                                                                  \
+                labelList entities(eMap.size());                               \
+                                                                               \
+                label nEnt = 0;                                                \
+                                                                               \
+                forAllConstIter(Map<label>, eMap, eIter)                       \
+                {                                                              \
+                    if (eIter() == -1 && insert)                               \
+                    {                                                          \
+                        entities[nEnt++] = eIter.key();                        \
+                    }                                                          \
+                    else                                                       \
+                    if (eIter() > -1 && !insert)                               \
+                    {                                                          \
+                        entities[nEnt++] = eIter.key();                        \
+                    }                                                          \
+                }                                                              \
+                                                                               \
+                entities.setSize(nEnt);                                        \
+                                                                               \
+                if (entities.size())                                           \
+                {                                                              \
+                    mesh.writeVTK                                              \
+                    (                                                          \
+                        word(fName) + '_'                                      \
+                      + Foam::name(mIndex) + '_'                               \
+                      + Foam::name(procIndex),                                 \
+                        entities,                                              \
+                        eType                                                  \
+                    );                                                         \
+                }                                                              \
             }
 
-            if (edgesToInsert[procI].size())
-            {
-                mesh.writeVTK
-                (
-                    "edgesToInsert_"
-                  + Foam::name(mIndex) + '_'
-                  + Foam::name(procIndex),
-                    edgesToInsert[procI].toc(),
-                    1
-                );
-            }
-
-            if (facesToInsert[procI].size())
-            {
-                mesh.writeVTK
-                (
-                    "facesToInsert_"
-                  + Foam::name(mIndex) + '_'
-                  + Foam::name(procIndex),
-                    facesToInsert[procI].toc(),
-                    2
-                );
-            }
-
-            if (cellsToInsert[procI].size())
-            {
-                mesh.writeVTK
-                (
-                    "cellsToInsert_"
-                  + Foam::name(mIndex) + '_'
-                  + Foam::name(procIndex),
-                    cellsToInsert[procI].toc(),
-                    3
-                );
-            }
-
-            if (edgesToConvert[procI].size())
-            {
-                mesh.writeVTK
-                (
-                    "edgesToConvert_"
-                  + Foam::name(mIndex) + '_'
-                  + Foam::name(procIndex),
-                    edgesToConvert[procI].toc(),
-                    1
-                );
-            }
-
-            if (facesToConvert[procI].size())
-            {
-                mesh.writeVTK
-                (
-                    "facesToConvert_"
-                  + Foam::name(mIndex) + '_'
-                  + Foam::name(procIndex),
-                    facesToConvert[procI].toc(),
-                    2
-                );
-            }
+            writeOutputVTK("edgesToConvert", edgesToConvert[pI], 1, false)
+            writeOutputVTK("facesToConvert", facesToConvert[pI], 2, false)
+            writeOutputVTK("pointsToConvert", pointsToInsert[pI], 0, false)
+            writeOutputVTK("pointsToInsert", pointsToInsert[pI], 0, true)
+            writeOutputVTK("edgesToInsert", edgesToInsert[pI], 1, true)
+            writeOutputVTK("facesToInsert", facesToInsert[pI], 2, true)
+            writeOutputVTK("cellsToInsert", cellsToInsert[pI], 3, false)
         }
     }
 
     // Loop through all insertion points, and merge if necessary
     scalar mergeTol =
     (
-        twoDMesh_ ?	0.0 : 1e-4 * mag(edges_[mIndex].vec(points_))
+        twoDMesh_ ? 0.0 : 1e-4 * mag(edges_[mIndex].vec(points_))
     );
 
     forAll(pointsToInsert, procI)
@@ -2454,7 +2462,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
 
         // Write it out
-        writeVTK("insertCells(" + Foam::name(mIndex) + ')',	addedCells);
+        writeVTK("insertCells(" + Foam::name(mIndex) + ')', addedCells);
     }
 
     // Specify that the operation was successful

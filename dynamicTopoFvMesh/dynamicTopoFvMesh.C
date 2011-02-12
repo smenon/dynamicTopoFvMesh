@@ -1169,8 +1169,37 @@ void dynamicTopoFvMesh::buildEdgePoints
         }
     }
 
+#   define writeEdgeCellsVTK()                                                 \
+    {                                                                          \
+        DynamicList<label> eCells(10);                                         \
+                                                                               \
+        forAll(eFaces, faceI)                                                  \
+        {                                                                      \
+            label own = owner_[eFaces[faceI]];                                 \
+            label nei = neighbour_[eFaces[faceI]];                             \
+                                                                               \
+            if (findIndex(eCells, own) == -1)                                  \
+            {                                                                  \
+                eCells.append(own);                                            \
+            }                                                                  \
+                                                                               \
+            if (nei > -1)                                                      \
+            {                                                                  \
+                if (findIndex(eCells, nei) == -1)                              \
+                {                                                              \
+                    eCells.append(nei);                                        \
+                }                                                              \
+            }                                                                  \
+        }                                                                      \
+                                                                               \
+        writeVTK("eCells_" + Foam::name(eIndex), eCells);                      \
+    }
+
     if (faceIndex == -1)
     {
+        // Write out for post-processing
+        writeEdgeCellsVTK()
+
         FatalErrorIn
         (
             "\n"
@@ -1248,6 +1277,9 @@ void dynamicTopoFvMesh::buildEdgePoints
 
             if (faceIndex == -1)
             {
+                // Write out for post-processing
+                writeEdgeCellsVTK()
+
                 FatalErrorIn
                 (
                     "\n"
@@ -1326,6 +1358,9 @@ void dynamicTopoFvMesh::buildEdgePoints
 
         if (!found)
         {
+            // Write out for post-processing
+            writeEdgeCellsVTK()
+
             Pout<< "edgeFaces: " << endl;
 
             forAll(eFaces, faceI)
@@ -1338,7 +1373,6 @@ void dynamicTopoFvMesh::buildEdgePoints
             }
 
             writeVTK("vRingEdgeFaces", eFaces, 2);
-            writeVTK("vRingCellToCheck", cellIndex);
 
             // Something's terribly wrong
             FatalErrorIn

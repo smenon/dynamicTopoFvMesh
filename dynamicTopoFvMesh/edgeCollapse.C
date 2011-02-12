@@ -4785,11 +4785,20 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             if (debug > 2)
             {
                 Pout<< nl << "Coupled collapse map candidates: " << nl
-                    << " bFaces: " << bFaces
+                    << " bFaces[0]: " << bFaces[0]
+                    << " :: " << faces_[bFaces[0]] << nl
+                    << " bFaces[1]: " << bFaces[1]
+                    << " :: " << faces_[bFaces[1]] << nl
                     << " mappedFace: " << mappedFace << nl
-                    << " brmEdges: " << brmEdges
+                    << " brmEdges[0]: " << brmEdges[0]
+                    << " :: " << edges_[brmEdges[0]] << nl
+                    << " brmEdges[1]: " << brmEdges[1]
+                    << " :: " << edges_[brmEdges[1]] << nl
                     << " mappedRmEdge: " << mappedRmEdge << nl
-                    << " brpEdges: " << brpEdges
+                    << " brpEdges[0]: " << brpEdges[0]
+                    << " :: " << edges_[brpEdges[0]] << nl
+                    << " brpEdges[1]: " << brpEdges[1]
+                    << " :: " << edges_[brpEdges[1]] << nl
                     << " mappedRpEdge: " << mappedRpEdge << nl
                     << endl;
             }
