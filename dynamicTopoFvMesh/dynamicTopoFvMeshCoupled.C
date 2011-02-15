@@ -42,6 +42,7 @@ Author
 #include "changeMap.H"
 #include "coupledInfo.H"
 #include "matchPoints.H"
+#include "SortableList.H"
 #include "globalMeshData.H"
 #include "processorPolyPatch.H"
 
@@ -6205,6 +6206,380 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 }
 
 
+// Implementing the fillTables operation for coupled edges
+bool dynamicTopoFvMesh::coupledFillTables
+(
+    const label eIndex,
+    scalar& minQuality,
+    labelList& m,
+    PtrList<scalarListList>& Q,
+    PtrList<labelListList>& K,
+    PtrList<labelListList>& triangulations
+) const
+{
+    bool success = false;
+
+    if (locallyCoupledEntity(eIndex))
+    {
+        // Fill tables for the slave edge.
+        label sI = -1;
+
+        // Determine the slave index.
+        forAll(patchCoupling_, patchI)
+        {
+            if (patchCoupling_(patchI))
+            {
+                const label edgeEnum  = coupleMap::EDGE;
+                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+
+                if ((sI = cMap.findSlave(edgeEnum, eIndex)) > -1)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (sI == -1)
+        {
+            FatalErrorIn
+            (
+                "\n"
+                "bool dynamicTopoFvMesh::coupledFillTables\n"
+                "(\n"
+                "    const label eIndex,\n"
+                "    const scalar minQuality,\n"
+                "    labelList& m,\n"
+                "    PtrList<scalarListList>& Q,\n"
+                "    PtrList<labelListList>& K,\n"
+                "    PtrList<labelListList>& triangulations\n"
+                ") const\n"
+            )
+                << "Coupled maps were improperly specified." << nl
+                << " Slave index not found for: " << nl
+                << " Edge: " << eIndex << nl
+                << abort(FatalError);
+        }
+
+        // Turn off switch temporarily.
+        unsetCoupledModification();
+
+        // Call fillTables for the slave edge.
+        success = fillTables(sI, minQuality, m, Q, K, triangulations, 1);
+
+        // Turn it back on.
+        setCoupledModification();
+    }
+    else
+    if (processorCoupledEntity(eIndex))
+    {
+        const edge& edgeToCheck = edges_[eIndex];
+        const labelList& eFaces = edgeFaces_[eIndex];
+        const labelList& hullVertices = edgePoints_[eIndex];
+
+        // Reset minQuality
+        minQuality = GREAT;
+
+        // Need to build alternate addressing / point-list
+        // for swaps across processors.
+        DynamicList<point> parPts(10);
+        DynamicList<label> parVtx(10);
+
+        label nPoints = 0, nProcs = 0;
+        label otherPoint = -1, nextPoint = -1;
+
+        edge checkEdge(-1);
+        bool reverseEdge = false;
+
+        // Pure processor edges are considered closed
+        bool closed = processorCoupledEntity(eIndex, false,	true, true);
+
+        if (closed)
+        {
+            reverseEdge = false;
+        }
+        else
+        {
+            // Edge lies on a boundary patch.
+            // Check if reversal is necessary.
+            forAll(eFaces, faceI)
+            {
+                if (neighbour_[eFaces[faceI]] == -1)
+                {
+                    label facePatch = whichPatch(eFaces[faceI]);
+
+                    // Skip processor patches
+                    if (getNeighbourProcessor(facePatch) > -1)
+                    {
+                        continue;
+                    }
+
+                    meshOps::findIsolatedPoint
+                    (
+                        faces_[eFaces[faceI]],
+                        edgeToCheck,
+                        otherPoint,
+                        nextPoint
+                    );
+
+                    if (otherPoint == hullVertices[0])
+                    {
+                        // Starts conventionally. No problem.
+                        reverseEdge = false;
+                    }
+                    else
+                    {
+                        reverseEdge = true;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        if (reverseEdge)
+        {
+            // Reversed edge orientation
+            checkEdge = edgeToCheck.reverseEdge();
+
+            // Fill-in vertices in reverse for this processor
+            forAllReverse(hullVertices, pointI)
+            {
+                parPts.append(points_[hullVertices[pointI]]);
+                parVtx.append(nPoints++);
+            }
+        }
+        else
+        {
+            // Conventional edge orientation
+            checkEdge = edgeToCheck;
+
+            // First fill-in vertices for this processor
+            forAll(hullVertices, pointI)
+            {
+                parPts.append(points_[hullVertices[pointI]]);
+                parVtx.append(nPoints++);
+            }
+        }
+
+        // Define a line for this edge
+        linePointRef lpr
+        (
+            points_[checkEdge.start()],
+            points_[checkEdge.end()]
+        );
+
+        // Define tangent-to-edge / centre
+        vector te = -lpr.vec(), xe = lpr.centre();
+
+        // Normalize tangent
+        te /= mag(te) + VSMALL;
+
+        // Now look through processors, and add their points
+        forAll(procIndices_, pI)
+        {
+            label proc = procIndices_[pI];
+
+            // Fetch reference to subMesh
+            const label edgeEnum = coupleMap::EDGE;
+            const coupleMap& cMap = recvMeshes_[pI].patchMap();
+            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+            label sI = -1;
+
+            if ((sI = cMap.findSlave(edgeEnum, eIndex)) == -1)
+            {
+                continue;
+            }
+
+            const edge& slaveEdge = mesh.edges_[sI];
+            const labelList& seFaces = mesh.edgeFaces_[sI];
+
+            forAll(seFaces, faceI)
+            {
+                label slavePatch = mesh.whichPatch(seFaces[faceI]);
+
+                // If this is talking to a lower-ranked processor,
+                // skip the insertion step.
+                label neiProc = mesh.getNeighbourProcessor(slavePatch);
+
+                if (neiProc > -1 && neiProc < proc)
+                {
+                    continue;
+                }
+
+                // This face is either internal or on a physical boundary
+                const face& slaveFace = mesh.faces_[seFaces[faceI]];
+
+                // Find the isolated point
+                meshOps::findIsolatedPoint
+                (
+                    slaveFace,
+                    slaveEdge,
+                    otherPoint,
+                    nextPoint
+                );
+
+                // Insert point and index
+                parPts.append(mesh.points_[otherPoint]);
+                parVtx.append(nPoints++);
+            }
+
+            nProcs++;
+        }
+
+        // Sort points / indices in counter-clockwise order
+        SortableList<scalar> angles(parPts.size(), 0.0);
+
+        // Fetch 2 * pi
+        scalar twoPi = mathematicalConstant::twoPi;
+
+        // Define a base vector
+        vector basePoint = (parPts[0] - xe);
+        basePoint -= ((basePoint & te) * te);
+
+        for (label i = 1; i < parPts.size(); i++)
+        {
+            vector projPoint = (parPts[i] - xe);
+            projPoint -= ((projPoint & te) * te);
+
+            scalar pPx = (projPoint & basePoint);
+            scalar pPy = (projPoint - (pPx * basePoint)).y();
+
+            scalar angle = atan2(pPy, pPx);
+
+            // Account for 3rd and 4th quadrants
+            angles[i] = (angle < 0.0 ? angle + twoPi : angle);
+        }
+
+        // Sort by angle
+        angles.sort();
+
+        // Reorder points
+        List<point> sortedParPts(parPts.size());
+
+        const labelList& indices = angles.indices();
+
+        forAll(sortedParPts, pointI)
+        {
+            sortedParPts[pointI] = parPts[indices[pointI]];
+        }
+
+        parPts.transfer(sortedParPts);
+
+        // Fill the last two points for the edge
+        edge parEdge(-1, -1);
+
+        parPts.append(lpr.start());
+        parEdge[0] = nPoints++;
+
+        parPts.append(lpr.end());
+        parEdge[1] = nPoints++;
+
+        if (debug > 4)
+        {
+            writeVTK("parEdge_" + Foam::name(eIndex), eIndex, 1);
+
+            meshOps::writeVTK
+            (
+                (*this),
+                "parPts_" + Foam::name(eIndex),
+                parPts.size(),
+                parPts.size(),
+                parPts.size(),
+                pointField(parPts)
+            );
+
+            writeVTK
+            (
+                "parEdgeFaces_"
+              + Foam::name(eIndex)
+              + '_'
+              + Foam::name(Pstream::myProcNo()),
+                eFaces,
+                2
+            );
+
+            forAll(procIndices_, pI)
+            {
+                // Fetch reference to subMesh
+                const label edgeEnum = coupleMap::EDGE;
+                const coupleMap& cMap = recvMeshes_[pI].patchMap();
+                const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+                label sI = -1;
+
+                if ((sI = cMap.findSlave(edgeEnum, eIndex)) == -1)
+                {
+                    continue;
+                }
+
+                const labelList& seF = mesh.edgeFaces_[sI];
+
+                mesh.writeVTK
+                (
+                    "parEdgeFaces_"
+                  + Foam::name(eIndex)
+                  + '_'
+                  + Foam::name(procIndices_[pI]),
+                    seF,
+                    2
+                );
+            }
+        }
+
+        // Compute minQuality with this loop
+        minQuality = computeMinQuality(parEdge, parVtx, parPts, closed);
+
+        // Fill in the size
+        m[0] = parVtx.size();
+
+        // Check if a table-resize is necessary
+        if (m[0] > maxTetsPerEdge_)
+        {
+            if (allowTableResize_)
+            {
+                // Resize the tables to account for
+                // more tets per edge
+                label& mtpe = const_cast<label&>(maxTetsPerEdge_);
+
+                mtpe = m[0];
+
+                // Clear tables for this index.
+                Q[0].clear();
+                K[0].clear();
+                triangulations[0].clear();
+
+                // Resize for this index.
+                initTables(m, Q, K, triangulations);
+            }
+            else
+            {
+                // Can't resize. Bail out.
+                return false;
+            }
+        }
+
+        // Fill dynamic programming tables
+        fillTables
+        (
+            parEdge,
+            minQuality,
+            m[0],
+            parVtx,
+            parPts,
+            Q[0],
+            K[0],
+            triangulations[0]
+        );
+
+        success = true;
+    }
+
+    return success;
+}
+
+
+// Fetch length-scale info for processor entities
 scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 {
     scalar procScale = 0.0;

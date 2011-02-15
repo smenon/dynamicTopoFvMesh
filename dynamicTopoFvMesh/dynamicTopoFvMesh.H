@@ -922,6 +922,17 @@ class dynamicTopoFvMesh
         // and exchange across processors.
         void exchangeLengthBuffers();
 
+        // Implementing the fillTables operation for coupled edges
+        bool coupledFillTables
+        (
+            const label eIndex,
+            scalar& minQuality,
+            labelList& m,
+            PtrList<scalarListList>& Q,
+            PtrList<labelListList>& K,
+            PtrList<labelListList>& triangulations
+        ) const;
+
         // Fetch length-scale info for processor entities
         scalar processorLengthScale(const label index) const;
 

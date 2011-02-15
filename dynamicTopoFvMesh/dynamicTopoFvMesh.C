@@ -1137,6 +1137,8 @@ void dynamicTopoFvMesh::buildEdgePoints
 
     // Re-size the list first
     labelList& ePoints = edgePoints_[eIndex];
+
+    ePoints.clear();
     ePoints.setSize(eFaces.size(), -1);
 
     if (whichEdgePatch(eIndex) == -1)
