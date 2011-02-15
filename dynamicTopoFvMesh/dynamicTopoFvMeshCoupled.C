@@ -44,6 +44,7 @@ Author
 #include "matchPoints.H"
 #include "SortableList.H"
 #include "globalMeshData.H"
+#include "coordinateSystem.H"
 #include "processorPolyPatch.H"
 
 namespace Foam
@@ -6361,19 +6362,6 @@ bool dynamicTopoFvMesh::coupledFillTables
             }
         }
 
-        // Define a line for this edge
-        linePointRef lpr
-        (
-            points_[checkEdge.start()],
-            points_[checkEdge.end()]
-        );
-
-        // Define tangent-to-edge / centre
-        vector te = -lpr.vec(), xe = lpr.centre();
-
-        // Normalize tangent
-        te /= mag(te) + VSMALL;
-
         // Now look through processors, and add their points
         forAll(procIndices_, pI)
         {
@@ -6433,19 +6421,29 @@ bool dynamicTopoFvMesh::coupledFillTables
         // Fetch 2 * pi
         scalar twoPi = mathematicalConstant::twoPi;
 
-        // Define a base vector
-        vector basePoint = (parPts[0] - xe);
-        basePoint -= ((basePoint & te) * te);
+        // Define a line for this edge
+        linePointRef lpr(points_[checkEdge.start()], points_[checkEdge.end()]);
+
+        // Define tangent-to-edge / edge-centre
+        vector te = -lpr.vec(), xe = lpr.centre();
+
+        // Normalize tangent
+        te /= mag(te) + VSMALL;
+
+        // Define a base direction
+        // from the start point
+        vector dir = (parPts[0] - xe);
+        dir -= ((dir & te) * te);
+        dir /= mag(dir) + VSMALL;
+
+        // Local coordinate system
+        coordinateSystem cs("cs", xe, te, dir);
 
         for (label i = 1; i < parPts.size(); i++)
         {
-            vector projPoint = (parPts[i] - xe);
-            projPoint -= ((projPoint & te) * te);
-
-            scalar pPx = (projPoint & basePoint);
-            scalar pPy = (projPoint - (pPx * basePoint)).y();
-
-            scalar angle = atan2(pPy, pPx);
+            // Convert to local csys and determine angle
+            vector local = cs.localPosition(parPts[i]);
+            scalar angle = atan2(local.y(), local.x());
 
             // Account for 3rd and 4th quadrants
             angles[i] = (angle < 0.0 ? angle + twoPi : angle);

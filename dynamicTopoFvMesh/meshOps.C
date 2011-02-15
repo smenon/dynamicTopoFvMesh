@@ -1024,17 +1024,17 @@ inline void writeVTK
         nCellFields++;
     }
 
-    if (scalField.size() == reverseCellMap.size() && scalField.size())
+    if (scalField.size() == nCells && scalField.size())
     {
         nCellFields++;
     }
 
-    if (lablField.size() == reverseCellMap.size() && lablField.size())
+    if (lablField.size() == nCells && lablField.size())
     {
         nCellFields++;
     }
 
-    if (vectField.size() == reverseCellMap.size() && vectField.size())
+    if (vectField.size() == nCells && vectField.size())
     {
         nCellFields++;
     }
@@ -1058,7 +1058,7 @@ inline void writeVTK
             file << endl;
         }
 
-        if (scalField.size() == reverseCellMap.size())
+        if (scalField.size() == nCells)
         {
             file << "CellScalars 1 " << nCells << " double" << endl;
 
@@ -1070,7 +1070,7 @@ inline void writeVTK
             file << endl;
         }
 
-        if (lablField.size() == reverseCellMap.size())
+        if (lablField.size() == nCells)
         {
             file << "CellLabels 1 " << nCells << " int" << endl;
 
@@ -1082,7 +1082,7 @@ inline void writeVTK
             file << endl;
         }
 
-        if (vectField.size() == reverseCellMap.size())
+        if (vectField.size() == nCells)
         {
             file << "CellVectors 3 " << nCells << " double" << endl;
 
@@ -1102,17 +1102,17 @@ inline void writeVTK
         nPointFields++;
     }
 
-    if (scalField.size() == reversePointMap.size() && scalField.size())
+    if (scalField.size() == nPoints && scalField.size())
     {
         nPointFields++;
     }
 
-    if (lablField.size() == reversePointMap.size() && lablField.size())
+    if (lablField.size() == nPoints && lablField.size())
     {
         nPointFields++;
     }
 
-    if (vectField.size() == reversePointMap.size() && vectField.size())
+    if (vectField.size() == nPoints && vectField.size())
     {
         nPointFields++;
     }
@@ -1136,7 +1136,7 @@ inline void writeVTK
             file << endl;
         }
 
-        if (scalField.size() == reversePointMap.size())
+        if (scalField.size() == nPoints)
         {
             file << "PointScalars 1 " << nPoints << " double" << endl;
 
@@ -1148,7 +1148,7 @@ inline void writeVTK
             file << endl;
         }
 
-        if (lablField.size() == reversePointMap.size())
+        if (lablField.size() == nPoints)
         {
             file << "PointLabels 1 " << nPoints << " int" << endl;
 
@@ -1160,7 +1160,7 @@ inline void writeVTK
             file << endl;
         }
 
-        if (vectField.size() == reversePointMap.size())
+        if (vectField.size() == nPoints)
         {
             file << "PointVectors 3 " << nPoints << " double" << endl;
 
