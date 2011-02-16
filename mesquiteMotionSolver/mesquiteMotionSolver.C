@@ -27,6 +27,7 @@ License
 #include "mesquiteMotionSolver.H"
 #include "Random.H"
 #include "IOmanip.H"
+#include "SortableList.H"
 #include "globalMeshData.H"
 #include "processorPolyPatch.H"
 #include "addToRunTimeSelectionTable.H"
@@ -1351,6 +1352,7 @@ void mesquiteMotionSolver::identifyCoupledPatches()
 
             // Fetch reference to buffer
             const labelList& procBuffer = spB[proc];
+            DynamicList<labelPair>& gPP = globalProcPoints[proc];
 
             forAll(procBuffer, pointI)
             {
@@ -1361,10 +1363,7 @@ void mesquiteMotionSolver::identifyCoupledPatches()
                         // Make an entry, if one wasn't made already
                         if (findIndex(procPoints[proc], spL[pointJ]) == -1)
                         {
-                            globalProcPoints[proc].append
-                            (
-                                labelPair(spL[pointJ], spA[pointJ])
-                            );
+                            gPP.append(labelPair(spL[pointJ], spA[pointJ]));
                         }
 
                         foundGlobalMatch = true;
@@ -1372,6 +1371,31 @@ void mesquiteMotionSolver::identifyCoupledPatches()
                         break;
                     }
                 }
+            }
+
+            // Sort in ascending order of global point labels
+            if (gPP.size())
+            {
+                SortableList<label> spALabels(gPP.size(), -1);
+
+                forAll(gPP, pointI)
+                {
+                    spALabels[pointI] = gPP[pointI].second();
+                }
+
+                spALabels.sort();
+
+                // Reorder list and transfer
+                List<labelPair> sortedGPP(gPP.size());
+
+                const labelList& indices = spALabels.indices();
+
+                forAll(sortedGPP, pointI)
+                {
+                    sortedGPP[pointI] = gPP[indices[pointI]];
+                }
+
+                gPP.transfer(sortedGPP);
             }
 
             if (!immNeighbours.found(proc))
@@ -1417,7 +1441,7 @@ void mesquiteMotionSolver::identifyCoupledPatches()
     forAll(procIndices_, pI)
     {
         procPointLabels_[pI].transfer(procPoints[procIndices_[pI]]);
-        globalProcPoints_[pI] = globalProcPoints[procIndices_[pI]];
+        globalProcPoints_[pI].transfer(globalProcPoints[procIndices_[pI]]);
     }
 }
 
@@ -1820,13 +1844,13 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
     // Make a rough estimate for cellToNode
     Map<label> addedCells;
     DynamicList<label> myCellToNode(50);
+    labelList nSharedPoints(procIndices_.size(), 0);
 
     forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
 
         const labelList& procPoints = procPointLabels_[pI];
-        const labelListList& pointCells = mesh().pointCells();
 
         // Add all points / cells connected to procPoints
         label nProcPoints = 0, nProcCells = 0;
@@ -1857,44 +1881,47 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
                 );
             }
         }
-        else
+
+        // Add global points as well
+        //  - pLabels is already sorted in ascending order
+        //    of global point indices, so this should match
+        //    across processors
+        const List<labelPair>& pLabels = globalProcPoints_[pI];
+
+        forAll(pLabels, pointI)
         {
-            // Disconnected neighbour.
-            // Look at globalPoint addressing
-            // for its information.
-            const globalMeshData& gD = mesh().globalData();
-            const labelList& spA = gD.sharedPointAddr();
-            const labelList& spL = gD.sharedPointLabels();
+            recvPointMap_[pI].insert
+            (
+                nProcPoints,
+                pLabels[pointI].first()
+            );
 
-            forAll(procPoints, pointI)
-            {
-                label addrIndex = findIndex(spA, procPoints[pointI]);
+            sendPointMap_[pI].insert
+            (
+                pLabels[pointI].first(),
+                nProcPoints
+            );
 
-                // Find the global index.
-                recvPointMap_[pI].insert
-                (
-                    pointI,
-                    spL[addrIndex]
-                );
-
-                sendPointMap_[pI].insert
-                (
-                    spL[addrIndex],
-                    nProcPoints++
-                );
-            }
+            nProcPoints++;
         }
+
+        // Make a note of shared point size
+        nSharedPoints[pI] = nProcPoints;
 
         const cellList& cells = mesh().cells();
         const faceList& faces = mesh().faces();
         const labelList& owner = mesh().faceOwner();
+        const labelListList& pointCells = mesh().pointCells();
 
         // Assume all tetrahedral cells
         FixedList<label, 4> p(-1);
 
-        forAll(procPoints, pointI)
+        // Fetch the list of shared processor points
+        const labelList sharedPoints = sendPointMap_[pI].toc();
+
+        forAll(sharedPoints, pointI)
         {
-            const labelList& pCells = pointCells[procPoints[pointI]];
+            const labelList& pCells = pointCells[sharedPoints[pointI]];
 
             forAll(pCells, cellI)
             {
@@ -1911,21 +1938,21 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
                 {
                     const face& checkFace = faces[cellToCheck[faceI]];
 
-                    if (findIndex(checkFace, procPoints[pointI]) == -1)
+                    if (findIndex(checkFace, sharedPoints[pointI]) == -1)
                     {
                         if (owner[cellToCheck[faceI]] == pCells[cellI])
                         {
                             p[0] = checkFace[2];
                             p[1] = checkFace[1];
                             p[2] = checkFace[0];
-                            p[3] = procPoints[pointI];
+                            p[3] = sharedPoints[pointI];
                         }
                         else
                         {
                             p[0] = checkFace[0];
                             p[1] = checkFace[1];
                             p[2] = checkFace[2];
-                            p[3] = procPoints[pointI];
+                            p[3] = sharedPoints[pointI];
                         }
 
                         break;
@@ -2009,7 +2036,7 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
     forAll(procIndices_, pI)
     {
         // Number of extra points excludes shared points
-        nExtraPoints += (nAuxPoints_[pI] - procPointLabels_[pI].size());
+        nExtraPoints += (nAuxPoints_[pI] - nSharedPoints[pI]);
 
         nExtraCells += nAuxCells_[pI];
     }
@@ -2106,6 +2133,18 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
         forAll(procPoints, pointI)
         {
             pointFractions_[procPoints[pointI]] += 1.0;
+        }
+    }
+
+    // Loop through global-points information,
+    // and check if additional points need to be added
+    forAll(globalProcPoints_, pI)
+    {
+        const List<labelPair>& pLabels = globalProcPoints_[pI];
+
+        forAll(pLabels, pointI)
+        {
+            pointFractions_[pLabels[pointI].first()] += 1.0;
         }
     }
 
@@ -2279,8 +2318,15 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
             // Fetch reference to send buffer
             const vectorField& psField = sendPointBuffer_[pI];
 
-            label pIndex = -1, nShared = procPointLabels_[pI].size();
+            label pIndex = -1;
             vector v = vector::zero;
+
+            // Count the number of shared points
+            label nShared =
+            (
+                procPointLabels_[pI].size()
+              + globalProcPoints_[pI].size()
+            );
 
             forAllConstIter(Map<label>, pointMap, pIter)
             {

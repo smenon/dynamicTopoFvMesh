@@ -1488,7 +1488,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     }
 
     // Write out prior to modifications
-    if (debug > 4)
+    if (debug > 2)
     {
         forAll(cellsToInsert, pI)
         {
@@ -3460,6 +3460,17 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         label sTot = nFaces_;
                         label sInt = nOldInternalFaces_;
 
+                        // Accumulate stats in case of failure
+                        scalar minDist = GREAT;
+                        vector minPoint = vector::zero;
+                        DynamicList<label> checkedFaces;
+
+                        if (debug > 2)
+                        {
+                            // Reserve for append
+                            checkedFaces.setCapacity(50);
+                        }
+
                         for (label faceI = sInt; faceI < sTot; faceI++)
                         {
                             const face& fCheck = faces_[faceI];
@@ -3471,12 +3482,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                             label pIndex = whichPatch(faceI);
 
-                            if (pIndex == -1)
-                            {
-                                continue;
-                            }
-
-                            if (!isA<processorPolyPatch>(boundary[pIndex]))
+                            if (getNeighbourProcessor(pIndex) == -1)
                             {
                                 continue;
                             }
@@ -3486,20 +3492,44 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                             // Compute tolerance
                             scalar tol = mag(points_[fCheck[0]] - fC);
+                            scalar dist = mag(fC - newCentre);
 
-                            if (mag(fC - newCentre) < (1e-4 * tol))
+                            if (dist < (1e-4 * tol))
                             {
                                 replaceFace = faceI;
                                 break;
+                            }
+                            else
+                            if (dist < minDist)
+                            {
+                                minPoint = fC;
+                                minDist = dist;
+
+                                if (debug > 2)
+                                {
+                                    checkedFaces.append(faceI);
+                                }
                             }
                         }
 
                         // Ensure that the face was found
                         if (replaceFace == -1)
                         {
+                            writeVTK
+                            (
+                                "checkedFaces"
+                              + Foam::name(index),
+                                checkedFaces,
+                                2
+                            );
+
                             Pout<< " * * * Sync Operations * * * " << nl
                                 << " Convert patch Op failed." << nl
                                 << " Index: " << index << nl
+                                << " Master processor: " << proc << nl
+                                << " procPatch: " << procPatch << nl
+                                << " minPoint: " << minPoint << nl
+                                << " minDistance: " << minDist << nl
                                 << " pointCounter: " << pointCounter << nl
                                 << " newCentre: " << newCentre << nl
                                 << " oldCentre: " << oldCentre << nl
@@ -6452,7 +6482,7 @@ bool dynamicTopoFvMesh::coupledFillTables
         // Sort by angle
         angles.sort();
 
-        // Reorder points
+        // Reorder points and transfer
         List<point> sortedParPts(parPts.size());
 
         const labelList& indices = angles.indices();
