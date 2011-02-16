@@ -953,6 +953,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             forAll(checkCell, fI)
             {
                 label mfIndex = -1, sfIndex = checkCell[fI];
+                label sfPatch = mesh.whichPatch(sfIndex);
 
                 // Check whether a face mapping exists for this face
                 if ((mfIndex = cMap.findMaster(coupleMap::FACE, sfIndex)) > -1)
@@ -969,6 +970,56 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     facesToInsert[pI].insert(sfIndex, -1);
                 }
 
+                // Get the neighbour processor index
+                label sNeiProcNo = mesh.getNeighbourProcessor(sfPatch);
+
+                const face& sFace = mesh.faces_[sfIndex];
+
+                // Configure points which need to be inserted
+                forAll(sFace, pointI)
+                {
+                    // Skip if added already
+                    if (pointsToInsert[pI].found(sFace[pointI]))
+                    {
+                        continue;
+                    }
+
+                    label cP =
+                    (
+                        cMap.findMaster
+                        (
+                            coupleMap::POINT,
+                            sFace[pointI]
+                        )
+                    );
+
+                    if (cP > -1)
+                    {
+                        // Check for coupled points
+                        pointsToInsert[pI].insert(sFace[pointI], cP);
+                    }
+                    else
+                    if (sfPatch == -1)
+                    {
+                        // Internal face points are to be added
+                        pointsToInsert[pI].insert(sFace[pointI], -1);
+                    }
+                    else
+                    if (sNeiProcNo == -1)
+                    {
+                        // Boundary face: Physical
+                        pointsToInsert[pI].insert(sFace[pointI], -1);
+                    }
+                    else
+                    if (sNeiProcNo > procIndices_[pI])
+                    {
+                        // Boundary face: Slave processor
+                        pointsToInsert[pI].insert(sFace[pointI], -1);
+                    }
+
+                    // Boundary face: Master processor. Skip.
+                }
+
                 // Loop through edges and check whether edge-mapping exists
                 const labelList& sfEdges = mesh.faceEdges_[sfIndex];
 
@@ -982,16 +1033,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     // this is an edge that needs to be inserted.
                     label cMs = cMap.findMaster(coupleMap::POINT, sEdge[0]);
                     label cMe = cMap.findMaster(coupleMap::POINT, sEdge[1]);
-
-                    if (!pointsToInsert[pI].found(sEdge[0]))
-                    {
-                        pointsToInsert[pI].insert(sEdge[0], cMs);
-                    }
-
-                    if (!pointsToInsert[pI].found(sEdge[1]))
-                    {
-                        pointsToInsert[pI].insert(sEdge[1], cMe);
-                    }
 
                     if (!edgesToInsert[pI].found(seIndex))
                     {
@@ -1141,7 +1182,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
 
                 label facePatch = -1;
-                label sfPatch = mesh.whichPatch(sfIndex);
 
                 if (sfPatch == -1)
                 {
@@ -1542,135 +1582,48 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Loop through all insertion points, and merge if necessary
-    scalar mergeTol =
-    (
-        twoDMesh_ ? 0.0 : 1e-4 * mag(edges_[mIndex].vec(points_))
-    );
-
-    forAll(pointsToInsert, procI)
+    // Insert all points
+    forAll(pointsToInsert, pI)
     {
-        Map<label>& procIPointMap = pointsToInsert[procI];
+        Map<label>& procPointMap = pointsToInsert[pI];
 
         // Fetch reference to subMesh
-        const coupledInfo& rPMI = recvMeshes_[procI];
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-        const coupleMap& cMapI = rPMI.patchMap();
-        const dynamicTopoFvMesh& meshI = rPMI.subMesh();
-
-        forAllIter(Map<label>, procIPointMap, pItI)
+        forAllIter(Map<label>, procPointMap, pItI)
         {
             if (pItI() != -1)
             {
                 continue;
             }
 
-            const point& pointI = meshI.points_[pItI.key()];
-
-            bool foundMerge = false;
-
-            forAll(pointsToInsert, procJ)
-            {
-                if (procJ == procI)
-                {
-                    continue;
-                }
-
-                Map<label>& procJPointMap = pointsToInsert[procJ];
-
-                // Fetch reference to subMesh
-                const coupledInfo& rPMJ = recvMeshes_[procJ];
-
-                const coupleMap& cMapJ = rPMJ.patchMap();
-                const dynamicTopoFvMesh& meshJ = rPMJ.subMesh();
-
-                // Compare points with this processor
-                forAllIter(Map<label>, procJPointMap, pItJ)
-                {
-                    if (pItJ() != -1)
-                    {
-                        continue;
-                    }
-
-                    const point& pointJ = meshJ.points_[pItJ.key()];
-
-                    if (mag(pointI - pointJ) < mergeTol)
-                    {
-                        // Make a merge entry
-                        label mergePointIndex =
-                        (
-                            insertPoint
-                            (
-                                pointJ,
-                                meshJ.oldPoints_[pItJ.key()],
-                                labelList(1, -1)
-                            )
-                        );
-
-                        pItI() = mergePointIndex;
-                        pItJ() = mergePointIndex;
-
-                        // Update maps for the new point
-                        cMapI.mapSlave(coupleMap::POINT, pItI(), pItI.key());
-                        cMapI.mapMaster(coupleMap::POINT, pItI.key(), pItI());
-
-                        cMapJ.mapSlave(coupleMap::POINT, pItJ(), pItJ.key());
-                        cMapJ.mapMaster(coupleMap::POINT, pItJ.key(), pItJ());
-
-                        if (debug > 3)
-                        {
-                            Pout<< " Map point: " << mergePointIndex
-                                << " pointI: " << pItI.key()
-                                << " procI: " << procIndices_[procI]
-                                << " pointJ: " << pItJ.key()
-                                << " procJ: " << procIndices_[procJ]
-                                << endl;
-                        }
-
-                        // Add this point to the map.
-                        map.addPoint(mergePointIndex);
-
-                        foundMerge = true;
-                        break;
-                    }
-                }
-
-                if (foundMerge)
-                {
-                    break;
-                }
-            }
-
-            if (!foundMerge)
-            {
-                // Found a unique point
-                label uniquePointIndex =
+            label newPointIndex =
+            (
+                insertPoint
                 (
-                    insertPoint
-                    (
-                        pointI,
-                        meshI.oldPoints_[pItI.key()],
-                        labelList(1, -1)
-                    )
-                );
+                    mesh.points_[pItI.key()],
+                    mesh.oldPoints_[pItI.key()],
+                    labelList(1, -1)
+                )
+            );
 
-                pItI() = uniquePointIndex;
+            pItI() = newPointIndex;
 
-                // Update maps for the new point
-                cMapI.mapSlave(coupleMap::POINT, pItI(), pItI.key());
-                cMapI.mapMaster(coupleMap::POINT, pItI.key(), pItI());
+            // Update maps for the new point
+            cMap.mapSlave(coupleMap::POINT, pItI(), pItI.key());
+            cMap.mapMaster(coupleMap::POINT, pItI.key(), pItI());
 
-                if (debug > 3)
-                {
-                    Pout<< " Map point: " << uniquePointIndex
-                        << " for point: " << pItI.key()
-                        << " on proc: " << procIndices_[procI]
-                        << endl;
-                }
-
-                // Add this point to the map.
-                map.addPoint(uniquePointIndex);
+            if (debug > 3)
+            {
+                Pout<< " Map point: " << newPointIndex
+                    << " for point: " << pItI.key()
+                    << " on proc: " << procIndices_[pI]
+                    << endl;
             }
+
+            // Add this point to the map.
+            map.addPoint(newPointIndex);
         }
     }
 
