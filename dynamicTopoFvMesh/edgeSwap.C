@@ -1387,6 +1387,27 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             // This should not be a coupled edge anymore.
             label newIndex = edgeMap.index();
 
+            if (processorCoupledEntity(newIndex))
+            {
+                FatalErrorIn
+                (
+                    "\n"
+                    "const changeMap dynamicTopoFvMesh::removeEdgeFlips\n"
+                    "(\n"
+                    "    const label eIndex,\n"
+                    "    const scalar minQuality,\n"
+                    "    PtrList<scalarListList>& Q,\n"
+                    "    PtrList<labelListList>& K,\n"
+                    "    PtrList<labelListList>& triangulations,\n"
+                    "    const label checkIndex\n"
+                    ")\n"
+                )
+                    << " Edge: " << newIndex
+                    << " :: " << edges_[newIndex] << nl
+                    << " is still processor-coupled. "
+                    << abort(FatalError);
+            }
+
             const edge& newEdge = edges_[newIndex];
             const labelList& newEdgePoints = edgePoints_[newIndex];
 

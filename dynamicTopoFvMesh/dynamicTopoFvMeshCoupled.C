@@ -856,8 +856,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupledInfo& rPM = recvMeshes_[pI];
-        const coupleMap& cMap = rPM.patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
 
         // Does a coupling exist?
         if (cMap.findSlave(cplEnum, mIndex) == -1)
@@ -882,8 +881,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupledInfo& rPM = recvMeshes_[pI];
-        const coupleMap& cMap = rPM.patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         label sIndex = -1;
 
@@ -893,7 +892,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
 
         // Fetch references
-        const dynamicTopoFvMesh& mesh = rPM.subMesh();
         Map<label>& procCellMap = cellsToInsert[pI];
 
         if (twoDMesh_)
@@ -970,9 +968,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     facesToInsert[pI].insert(sfIndex, -1);
                 }
 
-                // Get the neighbour processor index
-                label sNeiProcNo = mesh.getNeighbourProcessor(sfPatch);
-
+                // Check face points for coupling
                 const face& sFace = mesh.faces_[sfIndex];
 
                 // Configure points which need to be inserted
@@ -984,40 +980,16 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         continue;
                     }
 
-                    label cP =
+                    // Check for coupled points
+                    pointsToInsert[pI].insert
                     (
+                        sFace[pointI],
                         cMap.findMaster
                         (
                             coupleMap::POINT,
                             sFace[pointI]
                         )
                     );
-
-                    if (cP > -1)
-                    {
-                        // Check for coupled points
-                        pointsToInsert[pI].insert(sFace[pointI], cP);
-                    }
-                    else
-                    if (sfPatch == -1)
-                    {
-                        // Internal face points are to be added
-                        pointsToInsert[pI].insert(sFace[pointI], -1);
-                    }
-                    else
-                    if (sNeiProcNo == -1)
-                    {
-                        // Boundary face: Physical
-                        pointsToInsert[pI].insert(sFace[pointI], -1);
-                    }
-                    else
-                    if (sNeiProcNo > procIndices_[pI])
-                    {
-                        // Boundary face: Slave processor
-                        pointsToInsert[pI].insert(sFace[pointI], -1);
-                    }
-
-                    // Boundary face: Master processor. Skip.
                 }
 
                 // Loop through edges and check whether edge-mapping exists
@@ -1389,8 +1361,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupledInfo& rPM = recvMeshes_[pI];
-        const coupleMap& cMap = rPM.patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         label sIndex = -1;
 
@@ -1400,7 +1372,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
 
         // Fetch references
-        const dynamicTopoFvMesh& mesh = rPM.subMesh();
         Map<label>& procCellMap = cellsToInsert[pI];
 
         forAllIter(Map<label>, procCellMap, cIter)
@@ -1447,10 +1418,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(facesToConvert, pI)
     {
         // Fetch reference to subMesh
-        const coupledInfo& rPM = recvMeshes_[pI];
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-        const coupleMap& cMap = rPM.patchMap();
-        const dynamicTopoFvMesh& mesh = rPM.subMesh();
         const Map<label>& procFaceMap = facesToConvert[pI];
 
         forAllConstIter(Map<label>, procFaceMap, fIter)
@@ -1496,10 +1466,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         forAll(facesToInsert, pI)
         {
             // Fetch reference to subMesh
-            const coupledInfo& rPM = recvMeshes_[pI];
+            const coupleMap& cMap = recvMeshes_[pI].patchMap();
+            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-            const coupleMap& cMap = rPM.patchMap();
-            const dynamicTopoFvMesh& mesh = rPM.subMesh();
             const Map<label>& procFaceMap = facesToInsert[pI];
 
             forAllConstIter(Map<label>, procFaceMap, fIter)
@@ -1582,28 +1551,109 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
+    // Loop through all insertion points, and merge if necessary
+    scalar mergeTol =
+    (
+        twoDMesh_ ? 0.0 : 1e-4 * mag(edges_[mIndex].vec(points_))
+    );
+
     // Insert all points
     forAll(pointsToInsert, pI)
     {
-        Map<label>& procPointMap = pointsToInsert[pI];
+        Map<label>& procPointMapI = pointsToInsert[pI];
 
         // Fetch reference to subMesh
-        const coupleMap& cMap = recvMeshes_[pI].patchMap();
-        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+        const coupleMap& cMapI = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& meshI = recvMeshes_[pI].subMesh();
 
-        forAllIter(Map<label>, procPointMap, pItI)
+        forAllIter(Map<label>, procPointMapI, pItI)
         {
             if (pItI() != -1)
             {
                 continue;
             }
 
+            const point& pointI = meshI.points_[pItI.key()];
+
+            bool foundMerge = false;
+
+            forAll(pointsToInsert, pJ)
+            {
+                if (pJ == pI)
+                {
+                    continue;
+                }
+
+                Map<label>& procPointMapJ = pointsToInsert[pJ];
+
+                // Fetch reference to subMesh
+                const coupleMap& cMapJ = recvMeshes_[pJ].patchMap();
+                const dynamicTopoFvMesh& meshJ = recvMeshes_[pJ].subMesh();
+
+                // Compare points with this processor
+                forAllIter(Map<label>, procPointMapJ, pItJ)
+                {
+                    if (pItJ() != -1)
+                    {
+                        continue;
+                    }
+
+                    const point& pointJ = meshJ.points_[pItJ.key()];
+
+                    if (mag(pointI - pointJ) < mergeTol)
+                    {
+                        // Make a merge entry
+                        label mergePointIndex =
+                        (
+                            insertPoint
+                            (
+                                pointJ,
+                                meshJ.oldPoints_[pItJ.key()],
+                                labelList(1, -1)
+                            )
+                        );
+
+                        pItI() = mergePointIndex;
+                        pItJ() = mergePointIndex;
+
+                        // Update maps for the new point
+                        cMapI.mapSlave(coupleMap::POINT, pItI(), pItI.key());
+                        cMapI.mapMaster(coupleMap::POINT, pItI.key(), pItI());
+
+                        cMapJ.mapSlave(coupleMap::POINT, pItJ(), pItJ.key());
+                        cMapJ.mapMaster(coupleMap::POINT, pItJ.key(), pItJ());
+
+                        if (debug > 3)
+                        {
+                            Pout<< " Map point: " << mergePointIndex
+                                << " pointI: " << pItI.key()
+                                << " procI: " << procIndices_[pI]
+                                << " pointJ: " << pItJ.key()
+                                << " procJ: " << procIndices_[pJ]
+                                << endl;
+                        }
+
+                        // Add this point to the map.
+                        map.addPoint(mergePointIndex);
+
+                        foundMerge = true;
+                        break;
+                    }
+                }
+            }
+
+            if (foundMerge)
+            {
+                continue;
+            }
+
+            // Add a new unique point
             label newPointIndex =
             (
                 insertPoint
                 (
-                    mesh.points_[pItI.key()],
-                    mesh.oldPoints_[pItI.key()],
+                    pointI,
+                    meshI.oldPoints_[pItI.key()],
                     labelList(1, -1)
                 )
             );
@@ -1611,8 +1661,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             pItI() = newPointIndex;
 
             // Update maps for the new point
-            cMap.mapSlave(coupleMap::POINT, pItI(), pItI.key());
-            cMap.mapMaster(coupleMap::POINT, pItI.key(), pItI());
+            cMapI.mapSlave(coupleMap::POINT, pItI(), pItI.key());
+            cMapI.mapMaster(coupleMap::POINT, pItI.key(), pItI());
 
             if (debug > 3)
             {
@@ -1629,15 +1679,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
     // Add edges to the mesh, noting that all
     // required points have already been added.
-    forAll(edgesToInsert, procI)
+    forAll(edgesToInsert, pI)
     {
         // Fetch reference to subMesh
-        const coupledInfo& rPM = recvMeshes_[procI];
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-        const coupleMap& cMap = rPM.patchMap();
-        const dynamicTopoFvMesh& mesh = rPM.subMesh();
-
-        Map<label>& procEdgeMap = edgesToInsert[procI];
+        Map<label>& procEdgeMap = edgesToInsert[pI];
 
         forAllIter(Map<label>, procEdgeMap, eIter)
         {
@@ -1686,7 +1734,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             (
                 insertEdge
                 (
-                    masterConvertEdgePatch[procI][eIter.key()],
+                    masterConvertEdgePatch[pI][eIter.key()],
                     newEdge,
                     labelList(0),
                     labelList(0)
@@ -2003,14 +2051,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     }
 
     // Loop through conversion faces
-    forAll(facesToConvert, procI)
+    forAll(facesToConvert, pI)
     {
         // Fetch reference to subMesh
-        const coupledInfo& rPM = recvMeshes_[procI];
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-        const coupleMap& cMap = rPM.patchMap();
-        const dynamicTopoFvMesh& mesh = rPM.subMesh();
-        const Map<label>& procFaceMap = facesToConvert[procI];
+        const Map<label>& procFaceMap = facesToConvert[pI];
 
         forAllConstIter(Map<label>, procFaceMap, fIter)
         {
@@ -2019,7 +2066,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             // Fetch the owner information
             label mFaceOwn = owner_[fIndex];
             label sFaceOwn = mesh.owner_[fIter.key()];
-            label newNeighbour = cellsToInsert[procI][sFaceOwn];
+            label newNeighbour = cellsToInsert[pI][sFaceOwn];
 
             // Insert a new internal face.
             // Orientation should be correct, because this is a boundary
@@ -2108,13 +2155,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     }
 
     // Loop through conversion edges
-    forAll(edgesToConvert, procI)
+    forAll(edgesToConvert, pI)
     {
-        // Fetch reference to subMesh
-        const coupledInfo& rPM = recvMeshes_[procI];
+        // Fetch references
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-        const coupleMap& cMap = rPM.patchMap();
-        const Map<label>& procEdgeMap = edgesToConvert[procI];
+        const Map<label>& procEdgeMap = edgesToConvert[pI];
 
         // Loop through conversion edges
         forAllConstIter(Map<label>, procEdgeMap, eIter)
@@ -2126,13 +2173,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             if (eIndex < 0)
             {
                 // Not a conversion edge. Search added edge list for index
-                eIndex = edgesToInsert[procI][eIter.key()];
+                eIndex = edgesToInsert[pI][eIter.key()];
 
                 if (eIndex < 0)
                 {
                     // Something's wrong
                     Pout<< " Edge: " << eIter.key()
-                        << " :: " << rPM.subMesh().edges_[eIter.key()]
+                        << " :: " << mesh.edges_[eIter.key()]
                         << " was never inserted."
                         << abort(FatalError);
                 }
@@ -2208,7 +2255,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                 // Replace the entry in edgesToInsert, so that
                 // edgePoints is corrected for the right edge
-                edgesToInsert[procI][eIter.key()] = newEdgeIndex;
+                edgesToInsert[pI][eIter.key()] = newEdgeIndex;
             }
             else
             if ((mIndex == eIndex) && (map.index() == -1) && !twoDMesh_)
@@ -2225,9 +2272,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         // Fix edgePoints for all new / converted edges
         DynamicList<label> fixEdges(10);
 
-        forAll(edgesToInsert, procI)
+        forAll(edgesToInsert, pI)
         {
-            const Map<label>& procEdgeMap = edgesToInsert[procI];
+            const Map<label>& procEdgeMap = edgesToInsert[pI];
 
             forAllConstIter(Map<label>, procEdgeMap, eIter)
             {
@@ -2252,14 +2299,14 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     List<changeMap> slaveMaps(procIndices_.size());
 
     // Loop through all processors, and remove cells
-    forAll(cellsToInsert, procI)
+    forAll(cellsToInsert, pI)
     {
-        const Map<label>& procCellMap = cellsToInsert[procI];
+        const Map<label>& procCellMap = cellsToInsert[pI];
 
         if (procCellMap.empty())
         {
             // Set type to something recognizable
-            slaveMaps[procI].type() = -7;
+            slaveMaps[pI].type() = -7;
 
             continue;
         }
@@ -2268,25 +2315,24 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const labelList cellsToRemove = procCellMap.toc();
 
         // Fetch non-const reference to subMesh
-        coupledInfo& rPM = recvMeshes_[procI];
-        dynamicTopoFvMesh& mesh = rPM.subMesh();
+        dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         // Now remove cells for this processor
-        slaveMaps[procI] =
+        slaveMaps[pI] =
         (
             mesh.removeCells
             (
                 cellsToRemove,
-                slaveConvertPatch[procI],
+                slaveConvertPatch[pI],
                 "rc_" + Foam::name(mIndex)
             )
         );
     }
 
     // Now map entities from the removeCells operation
-    forAll(slaveMaps, procI)
+    forAll(slaveMaps, pI)
     {
-        const changeMap& slaveMap = slaveMaps[procI];
+        const changeMap& slaveMap = slaveMaps[pI];
 
         // Skip empty entities
         if (slaveMap.type() == -7)
@@ -2294,27 +2340,33 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             continue;
         }
 
-        const coupledInfo& rPM = recvMeshes_[procI];
-
-        const coupleMap& cMap = rPM.patchMap();
-        const dynamicTopoFvMesh& mesh = rPM.subMesh();
+        // Fetch references
+        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         // Map faces from patches.
-        const Map<label>& procFaceMap = facesToInsert[procI];
+        const Map<label>& procFaceMap = facesToInsert[pI];
         const List<objectMap>& asfList = slaveMap.addedFaceList();
 
         forAll(asfList, indexI)
         {
             label sfIndex = asfList[indexI].index(), mfIndex = -1;
 
-            if (mesh.whichPatch(sfIndex) == slaveConvertPatch[procI])
+            if (mesh.whichPatch(sfIndex) == slaveConvertPatch[pI])
             {
                 // Configure a comparison face
                 face cFace(mesh.faces_[sfIndex]);
 
-                forAll(cFace, pI)
+                forAll(cFace, pointI)
                 {
-                    cFace[pI] = cMap.findMaster(coupleMap::POINT, cFace[pI]);
+                    cFace[pointI] =
+                    (
+                        cMap.findMaster
+                        (
+                            coupleMap::POINT,
+                            cFace[pointI]
+                        )
+                    );
                 }
 
                 bool foundMatch = false;
@@ -2380,14 +2432,14 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         if (!twoDMesh_)
         {
             // Map edges from patches.
-            const Map<label>& procEdgeMap = edgesToInsert[procI];
+            const Map<label>& procEdgeMap = edgesToInsert[pI];
             const List<objectMap>& aseList = slaveMap.addedEdgeList();
 
             forAll(aseList, indexI)
             {
                 label seIndex = aseList[indexI].index(), meIndex = -1;
 
-                if (mesh.whichEdgePatch(seIndex) == slaveConvertPatch[procI])
+                if (mesh.whichEdgePatch(seIndex) == slaveConvertPatch[pI])
                 {
                     // Configure a comparison edge
                     edge cEdge(mesh.edges_[seIndex]);

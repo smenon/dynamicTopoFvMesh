@@ -3757,7 +3757,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             }
 
             // Add a mapping entry for two new faces as well.
-            triFace cF, sF;
+            triFace cF(-1, -1, -1), sF(-1, -1, -1);
 
             // Compare all master faces
             forAll(amfList, mfI)
