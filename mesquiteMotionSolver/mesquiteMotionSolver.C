@@ -1668,10 +1668,10 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                     "void mesquiteMotionSolver::initParallelSurfaceSmoothing()"
                 )
                     << " Buffer size mismatch: " << nl
-                    << " My proc: " << Pstream::myProcNo() << nl
+                    << " My proc: " << Pstream::myProcNo()
+                    << " mySize: " << sendSurfPointMap_[pI].size() << nl
                     << " neiProcNo: " << procIndices_[pI]
-                    << " mySize: " << sendSurfPointMap_[pI].size()
-                    << " neiSize: " << nProcSize[procIndices_[pI]]
+                    << " neiSize: " << nProcSize[procIndices_[pI]] << nl
                     << abort(FatalError);
             }
         }
@@ -1752,6 +1752,8 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                 << " Failed point match: " << nl
                 << " My proc: " << Pstream::myProcNo() << nl
                 << " neiProcNo: " << proc << nl
+                << " size(bufPoints): " << bufPoints.size() << nl
+                << " size(recvField): " << recvField.size() << nl
                 << abort(FatalError);
         }
     }
@@ -1845,6 +1847,8 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
     Map<label> addedCells;
     DynamicList<label> myCellToNode(50);
     labelList nSharedPoints(procIndices_.size(), 0);
+    List<labelList> myFixFlags(procIndices_.size());
+    List<labelList> neiFixFlags(procIndices_.size());
 
     forAll(procIndices_, pI)
     {
@@ -1990,6 +1994,16 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
         {
             // Size up send buffer
             sendPointBuffer_[pI].setSize(nProcPoints, vector::zero);
+
+            // Assign fixFlags and send to neighbour
+            myFixFlags[pI].setSize(nProcPoints, -1);
+
+            forAllConstIter(Map<label>, sendPointMap_[pI], pIter)
+            {
+                myFixFlags[pI][pIter()] = fixFlags_[pIter.key()];
+            }
+
+            parWrite(proc, myFixFlags[pI]);
         }
 
         if (nProcCells)
@@ -2008,6 +2022,11 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
         {
             // Size up recv buffer
             recvPointBuffer_[pI].setSize(nAuxPoints_[pI], vector::zero);
+
+            // Receive fix-flags from neighbour
+            neiFixFlags[pI].setSize(nAuxPoints_[pI], -1);
+
+            parRead(proc, neiFixFlags[pI]);
         }
 
         if (nAuxCells_[pI])
@@ -2099,6 +2118,16 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
 
             // Assign cellToNode
             cellToNode_[cIndex++] = recvPointMap_[pI][ctn[pointI]];
+        }
+
+        // Configure neighbour fixFlags
+        const labelList& neiFlags = neiFixFlags[pI];
+
+        forAllConstIter(Map<label>, recvPointMap_[pI], pIter)
+        {
+            const label ptIndex = pIter();
+
+            fixFlags_[ptIndex] = (fixFlags_[ptIndex] || neiFlags[pIter.key()]);
         }
     }
 
