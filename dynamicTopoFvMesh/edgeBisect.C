@@ -534,6 +534,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         if (debug > 2)
         {
+            Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+
             const polyBoundaryMesh& boundary = boundaryMesh();
 
             label epIndex = whichPatch(fIndex);
@@ -2834,6 +2836,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             << ": " << origEdge
             << " is to be bisected. " << endl;
 
+        Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+
         label epIndex = whichEdgePatch(eIndex);
 
         const polyBoundaryMesh& boundary = boundaryMesh();
@@ -2968,7 +2972,11 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             addedCellIndices[indexI] =
             (
-                insertCell(newCell, lengthScale_[cellHull[indexI]])
+                insertCell
+                (
+                    newCell,
+                    lengthScale_[cellHull[indexI]]
+                )
             );
 
             // Add this cell to the map.

@@ -1368,6 +1368,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             << "faceEdges: " << fE << " is to be collapsed. "
             << nl;
 
+        Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+
         label epIndex = whichPatch(fIndex);
 
         const polyBoundaryMesh& boundary = boundaryMesh();
@@ -4609,6 +4611,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             << "Edge: " << eIndex << ": " << edges_[eIndex]
             << " is to be collapsed. " << nl;
 
+        Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+
         label epIndex = whichEdgePatch(eIndex);
 
         const polyBoundaryMesh& boundary = boundaryMesh();
@@ -4641,8 +4645,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << " Cells: " << cellHull << nl
                 << " replacePoint: " << replacePoint << nl
                 << " collapsePoint: " << collapsePoint << nl
-                << " checkPoints: " << checkPoints << nl
-                << " ringEntities (removed faces): " << endl;
+                << " checkPoints: " << checkPoints << nl;
+
+            Pout<< " ringEntities (removed faces): " << nl;
 
             forAll(ringEntities[removeFaceIndex], faceI)
             {
@@ -4823,32 +4828,21 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         // Replace edgePoints for all edges emanating from hullVertices
         // except ring-edges; those are sized-down later
-        const labelList& hullPointEdges =
-        (
-            pointEdges_[edgePoints_[eIndex][indexI]]
-        );
+        const labelList& hpEdges = pointEdges_[edgePoints_[eIndex][indexI]];
 
-        forAll(hullPointEdges, edgeI)
+        forAll(hpEdges, edgeI)
         {
             if
             (
-                findIndex
-                (
-                    edgePoints_[hullPointEdges[edgeI]],
-                    collapsePoint
-                ) != -1
-             && findIndex
-                (
-                    edgePoints_[hullPointEdges[edgeI]],
-                    replacePoint
-                ) == -1
+                findIndex(edgePoints_[hpEdges[edgeI]], collapsePoint) != -1
+             && findIndex(edgePoints_[hpEdges[edgeI]], replacePoint) == -1
             )
             {
                 meshOps::replaceLabel
                 (
                     collapsePoint,
                     replacePoint,
-                    edgePoints_[hullPointEdges[edgeI]]
+                    edgePoints_[hpEdges[edgeI]]
                 );
             }
         }
@@ -5132,8 +5126,11 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                 )
                             );
 
-                            // Modify ringEntities
-                            ringEntities[replaceEdgeIndex][i] = -1;
+                            if (i > -1)
+                            {
+                                // Modify ringEntities
+                                ringEntities[replaceEdgeIndex][i] = -1;
+                            }
                         }
                         else
                         {
@@ -5505,6 +5502,21 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         buildEdgePoints(ringEntities[replaceEdgeIndex][edgeI]);
     }
 
+    // Check for unused edgePoints, and delete if necessary
+    const labelList& ePoints = edgePoints_[eIndex];
+
+    forAll(ePoints, pointI)
+    {
+        if (pointEdges_[ePoints[pointI]].empty())
+        {
+            // Remove the point
+            removePoint(ePoints[pointI]);
+
+            // Update map
+            map.removePoint(ePoints[pointI]);
+        }
+    }
+
     // Move old / new points
     oldPoints_[replacePoint] = oldPoint;
     points_[replacePoint] = newPoint;
@@ -5520,6 +5532,61 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     // Update map
     map.removeEdge(eIndex);
+
+    // Check for duplicate edges connected to the replacePoint
+    const labelList& rpEdges = pointEdges_[replacePoint];
+
+    DynamicList<label> mergeFaces(10);
+
+    forAll(rpEdges, edgeI)
+    {
+        const edge& eCheckI = edges_[rpEdges[edgeI]];
+        const label vCheckI = eCheckI.otherVertex(replacePoint);
+
+        for (label edgeJ = edgeI + 1; edgeJ < rpEdges.size(); edgeJ++)
+        {
+            const edge& eCheckJ = edges_[rpEdges[edgeJ]];
+            const label vCheckJ = eCheckJ.otherVertex(replacePoint);
+
+            if (vCheckJ == vCheckI)
+            {
+                labelPair efCheck(rpEdges[edgeI], rpEdges[edgeJ]);
+
+                forAll(efCheck, edgeI)
+                {
+                    const labelList& eF = edgeFaces_[efCheck[edgeI]];
+
+                    forAll(eF, faceI)
+                    {
+                        label patch = whichPatch(eF[faceI]);
+
+                        if (patch == -1)
+                        {
+                            continue;
+                        }
+
+                        if (findIndex(mergeFaces, eF[faceI]) == -1)
+                        {
+                            mergeFaces.append(eF[faceI]);
+                        }
+                    }
+                }
+
+                if (debug > 2)
+                {
+                    Pout<< " Found duplicate: " << eCheckI << nl
+                        << " Merge faces: " << mergeFaces << nl
+                        << endl;
+                }
+            }
+        }
+    }
+
+    // Merge faces if necessary
+    if (mergeFaces.size())
+    {
+        mergeBoundaryFaces(mergeFaces);
+    }
 
     // For cell-mapping, exclude all hull-cells
     forAll(cellsChecked, indexI)
@@ -6528,6 +6595,306 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     // Return a succesful collapse
     map.type() = collapseCase;
+
+    return map;
+}
+
+
+// Merge a set of boundary faces into internal
+const changeMap dynamicTopoFvMesh::mergeBoundaryFaces
+(
+    const labelList& mergeFaces
+)
+{
+    changeMap map;
+
+    if (debug > 2)
+    {
+        Pout << "Merging faces: " << mergeFaces << endl;
+    }
+
+    List<labelPair> mergePairs(0);
+
+    forAll(mergeFaces, faceI)
+    {
+        const face& fI = faces_[mergeFaces[faceI]];
+
+        for (label faceJ = faceI + 1; faceJ < mergeFaces.size(); faceJ++)
+        {
+            const face& fJ = faces_[mergeFaces[faceJ]];
+
+            bool merge = false;
+
+            if (fI.size() == fJ.size() && fI.size() == 3)
+            {
+                if
+                (
+                    triFace::compare
+                    (
+                        triFace(fI[0], fI[1], fI[2]),
+                        triFace(fJ[0], fJ[1], fJ[2])
+                    )
+                )
+                {
+                    merge = true;
+                }
+            }
+            else
+            if (face::compare(fI, fJ))
+            {
+                merge = true;
+            }
+
+            if (merge)
+            {
+                meshOps::sizeUpList
+                (
+                    labelPair(mergeFaces[faceI], mergeFaces[faceJ]),
+                    mergePairs
+                );
+
+                break;
+            }
+        }
+    }
+
+    if (debug > 2)
+    {
+        Pout<< " mergePairs: " << mergePairs << endl;
+    }
+
+    DynamicList<label> checkEdges(10);
+
+    forAll(mergePairs, pairI)
+    {
+        label firstFace = mergePairs[pairI].first();
+        label secondFace = mergePairs[pairI].second();
+
+        // Obtain owners for both faces, and compare their labels
+        label newOwner = -1, newNeighbour = -1;
+        label removedFace = -1, retainedFace = -1;
+
+        if (owner_[firstFace] < owner_[secondFace])
+        {
+            // Retain the first face
+            removedFace = secondFace;
+            retainedFace = firstFace;
+
+            newOwner = owner_[firstFace];
+            newNeighbour = owner_[secondFace];
+        }
+        else
+        {
+            // Retain the second face
+            removedFace = firstFace;
+            retainedFace = secondFace;
+
+            newOwner = owner_[secondFace];
+            newNeighbour = owner_[firstFace];
+        }
+
+        // Insert a new interior face
+        label newFaceIndex =
+        (
+            insertFace
+            (
+                -1,
+                face(faces_[retainedFace]),
+                newOwner,
+                newNeighbour
+            )
+        );
+
+        // Add the faceEdges entry
+        faceEdges_.append(labelList(faceEdges_[retainedFace]));
+
+        // Update map
+        map.addFace(newFaceIndex);
+
+        // Replace cell with the new face label
+        meshOps::replaceLabel
+        (
+            removedFace,
+            newFaceIndex,
+            cells_[owner_[removedFace]]
+        );
+
+        meshOps::replaceLabel
+        (
+            retainedFace,
+            newFaceIndex,
+            cells_[owner_[retainedFace]]
+        );
+
+        const labelList& fEdges = faceEdges_[newFaceIndex];
+        const labelList& rfEdges = faceEdges_[removedFace];
+
+        // Check for common edges on the removed face
+        forAll(rfEdges, edgeI)
+        {
+            label reIndex = rfEdges[edgeI];
+
+            if (findIndex(fEdges, reIndex) == -1)
+            {
+                // Find the equivalent edge
+                const edge& rEdge = edges_[reIndex];
+                const labelList& reFaces = edgeFaces_[reIndex];
+
+                label keIndex = -1;
+
+                forAll(fEdges, edgeJ)
+                {
+                    if (edges_[fEdges[edgeJ]] == rEdge)
+                    {
+                        keIndex = fEdges[edgeJ];
+                        break;
+                    }
+                }
+
+                if (keIndex == -1)
+                {
+                    Pout<< " Could not find edge for: "
+                        << reIndex << " :: " << rEdge
+                        << abort(FatalError);
+                }
+
+                // Add edgeFaces from this edge
+                forAll(reFaces, faceI)
+                {
+                    if (reFaces[faceI] == removedFace)
+                    {
+                        continue;
+                    }
+
+                    meshOps::sizeUpList
+                    (
+                        reFaces[faceI],
+                        edgeFaces_[keIndex]
+                    );
+
+                    meshOps::replaceLabel
+                    (
+                        reIndex,
+                        keIndex,
+                        faceEdges_[reFaces[faceI]]
+                    );
+                }
+
+                // Remove the old edge
+                removeEdge(reIndex);
+
+                // Update map
+                map.removeEdge(reIndex);
+            }
+        }
+
+        // Replace edgeFaces with the new face label
+        forAll(fEdges, edgeI)
+        {
+            label eIndex = fEdges[edgeI];
+
+            if (findIndex(edgeFaces_[eIndex], removedFace) > -1)
+            {
+                meshOps::sizeDownList
+                (
+                    removedFace,
+                    edgeFaces_[eIndex]
+                );
+            }
+
+            if (findIndex(edgeFaces_[eIndex], retainedFace) > -1)
+            {
+                meshOps::sizeDownList
+                (
+                    retainedFace,
+                    edgeFaces_[eIndex]
+                );
+            }
+
+            // Size-up list with the new face index
+            meshOps::sizeUpList
+            (
+                newFaceIndex,
+                edgeFaces_[eIndex]
+            );
+
+            if (findIndex(checkEdges, eIndex) == -1)
+            {
+                checkEdges.append(eIndex);
+            }
+        }
+
+        // Remove the boundary faces
+        removeFace(removedFace);
+        removeFace(retainedFace);
+
+        // Update map
+        map.removeFace(removedFace);
+        map.removeFace(retainedFace);
+    }
+
+    forAll(checkEdges, edgeI)
+    {
+        bool allInterior = true;
+        label eIndex = checkEdges[edgeI];
+
+        const labelList& eFaces = edgeFaces_[eIndex];
+
+        forAll(eFaces, faceI)
+        {
+            if (whichPatch(eFaces[faceI]) > -1)
+            {
+                allInterior = false;
+                break;
+            }
+        }
+
+        if (allInterior)
+        {
+            // This edge needs to be converted to an interior one
+            label newEdgeIndex =
+            (
+                insertEdge
+                (
+                    -1,
+                    edge(edges_[eIndex]),
+                    labelList(edgeFaces_[eIndex]),
+                    labelList(0)
+                )
+            );
+
+            // Update map
+            map.addEdge(newEdgeIndex, labelList(1, eIndex));
+
+            // Update faceEdges information for all connected faces
+            const labelList& neFaces = edgeFaces_[newEdgeIndex];
+
+            forAll(neFaces, faceI)
+            {
+                meshOps::replaceLabel
+                (
+                    eIndex,
+                    newEdgeIndex,
+                    faceEdges_[neFaces[faceI]]
+                );
+            }
+
+            // Remove the old boundary edge
+            removeEdge(eIndex);
+
+            // Update map
+            map.removeEdge(eIndex);
+
+            // Replace index
+            checkEdges[edgeI] = newEdgeIndex;
+        }
+
+        // Build edgePoints
+        buildEdgePoints(checkEdges[edgeI]);
+    }
+
+    // Return a succesful merge
+    map.type() = 1;
 
     return map;
 }

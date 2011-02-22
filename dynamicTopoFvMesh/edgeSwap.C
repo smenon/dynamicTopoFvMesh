@@ -1196,6 +1196,12 @@ bool dynamicTopoFvMesh::fillTables
     const label checkIndex
 ) const
 {
+    // If this entity was deleted, skip it.
+    if (edgeFaces_[eIndex].empty())
+    {
+        return false;
+    }
+
     const edge& edgeToCheck = edges_[eIndex];
     const labelList& hullVertices = edgePoints_[eIndex];
 
@@ -2313,6 +2319,8 @@ const changeMap dynamicTopoFvMesh::swap23
 
         if (debug > 2)
         {
+            Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+
             label bPatch = whichEdgePatch(eIndex);
 
             const polyBoundaryMesh& boundary = boundaryMesh();

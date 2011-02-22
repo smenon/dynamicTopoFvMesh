@@ -2076,7 +2076,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 insertFace
                 (
                     -1,
-                    faces_[fIndex],
+                    face(faces_[fIndex]),
                     mFaceOwn,
                     newNeighbour
                 )
@@ -2212,8 +2212,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     insertEdge
                     (
                         -1,
-                        edges_[eIndex],
-                        edgeFaces_[eIndex],
+                        edge(edges_[eIndex]),
+                        labelList(edgeFaces_[eIndex]),
                         labelList(0)
                     )
                 );
@@ -2482,7 +2482,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     }
 
     // Write out cells for debug, if necessary
-    if (debug > 4)
+    if (debug > 4 || map.index() < 0)
     {
         const List<objectMap>& acList = map.addedCellList();
 
@@ -2496,6 +2496,44 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         // Write it out
         writeVTK("insertCells(" + Foam::name(mIndex) + ')', addedCells);
     }
+
+//    // Set mapping information for any added faces
+//    const List<objectMap>& afList = map.addedFaceList();
+//
+//    forAll(afList, indexI)
+//    {
+//        label nfIndex = afList[indexI].index();
+//        label patch = whichPatch(nfIndex);
+//
+//        if (patch == -1)
+//        {
+//            // Set default mapping for interior faces
+//            setFaceMapping(nfIndex);
+//        }
+//        else
+//        if (getNeighbourProcessor(patch) == -1)
+//        {
+//            // Physical patch
+//            setFaceMapping(nfIndex, afList[indexI].masterObjects());
+//        }
+//    }
+//
+//    // Set mapping information for any added cells
+//    const List<objectMap>& acList = map.addedCellList();
+//
+//    forAll(acList, indexI)
+//    {
+//        label ncIndex = acList[indexI].index();
+//
+//        setCellMapping(ncIndex, acList[indexI].masterObjects());
+//    }
+//
+//    if (map.index() < 0)
+//    {
+//        Pout<< " Inserted index was not found: " << nl
+//            << "  mIndex: " << mIndex << nl
+//            << abort(FatalError);
+//    }
 
     // Specify that the operation was successful
     map.type() = 1;
@@ -5847,7 +5885,13 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
 
                 if (nEntities != size)
                 {
-                    FatalErrorIn
+                    // Set the size to what we're receiving
+                    centres[pI].setSize(nEntities, vector::zero);
+                    anchors[pI].setSize(nEntities, vector::zero);
+
+                    // Issue a warning now, and let
+                    // syncCoupledBoundaryOrdering fail later
+                    WarningIn
                     (
                         "void dynamicTopoFvMesh::"
                         "initCoupledBoundaryOrdering() const"
@@ -5855,7 +5899,7 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
                         << "Incorrect send / recv sizes: " << nl
                         << " nEntities: " << nEntities << nl
                         << " size: " << size << nl
-                        << abort(FatalError);
+                        << endl;
                 }
             }
 
