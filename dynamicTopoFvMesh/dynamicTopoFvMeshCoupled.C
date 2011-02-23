@@ -2166,9 +2166,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         // Loop through conversion edges
         forAllConstIter(Map<label>, procEdgeMap, eIter)
         {
-            label eIndex = eIter();
-
-            bool allInterior = true;
+            label eIndex = eIter(), physPatch = -1;
+            bool allInterior = true, keepEdge = true;
 
             if (eIndex < 0)
             {
@@ -2206,64 +2205,122 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             if (allInterior)
             {
-                // This edge needs to be converted to an interior one
-                label newEdgeIndex =
-                (
-                    insertEdge
-                    (
-                        -1,
-                        edge(edges_[eIndex]),
-                        labelList(edgeFaces_[eIndex]),
-                        labelList(0)
-                    )
-                );
-
-                // Update map
-                map.addEdge(newEdgeIndex, labelList(1, eIndex));
-
-                // Update faceEdges information for all connected faces
-                forAll(eFaces, faceI)
-                {
-                    meshOps::replaceLabel
-                    (
-                        eIndex,
-                        newEdgeIndex,
-                        faceEdges_[eFaces[faceI]]
-                    );
-                }
-
-                // Remove the old boundary edge
-                removeEdge(eIndex);
-
-                // Update map
-                map.removeEdge(eIndex);
-
-                // For 3D meshes, the boundary edge gets converted
-                // to an interior one. Note the index for further operations.
-                if ((mIndex == eIndex) && !twoDMesh_)
-                {
-                    map.index() = newEdgeIndex;
-                }
-
-                // Obtain references. Updates are actually only in 3D.
-                Map<label>& edgeMap = cMap.entityMap(coupleMap::EDGE);
-                Map<label>& rEdgeMap = cMap.reverseEntityMap(coupleMap::EDGE);
-
-                // Erase entries
-                rEdgeMap.erase(edgeMap[eIndex]);
-                edgeMap.erase(eIndex);
-
-                // Replace the entry in edgesToInsert, so that
-                // edgePoints is corrected for the right edge
-                edgesToInsert[pI][eIter.key()] = newEdgeIndex;
+                physPatch = -1;
+                keepEdge = false;
             }
             else
-            if ((mIndex == eIndex) && (map.index() == -1) && !twoDMesh_)
+            if (eFaces.size())
             {
-                // Initial edge was already on a physical boundary,
-                // and no conversion was done. Note this for later.
-                map.index() = eIndex;
+                // Check if patches need to be switched
+                label edgePatch = whichEdgePatch(eIndex);
+
+                // Is this edge on a processor patch?
+                bool edgeOnProc = (getNeighbourProcessor(edgePatch) > -1);
+
+                if (edgeOnProc)
+                {
+                    bool foundProc = false;
+
+                    forAll(eFaces, faceI)
+                    {
+                        label fPatch = whichPatch(eFaces[faceI]);
+
+                        if (fPatch == -1)
+                        {
+                            continue;
+                        }
+
+                        if (getNeighbourProcessor(fPatch) == -1)
+                        {
+                            // Note physical patch for later
+                            physPatch = fPatch;
+                        }
+                        else
+                        {
+                            // Still on a processor patch.
+                            foundProc = true;
+                            break;
+                        }
+                    }
+
+                    if (foundProc)
+                    {
+                        // Reset physPatch
+                        physPatch = -1;
+                    }
+                }
+
+                if (edgeOnProc && physPatch > -1)
+                {
+                    // Edge needs to be moved to another patch
+                    keepEdge = false;
+                }
+                else
+                if ((mIndex == eIndex) && !twoDMesh_ && map.index() == -1)
+                {
+                    // Keep the edge, and note index for later
+                    keepEdge = true;
+                    map.index() = eIndex;
+                }
             }
+
+            if (keepEdge)
+            {
+                continue;
+            }
+
+            // This edge needs to be converted to interior / other patch
+            label newEdgeIndex =
+            (
+                insertEdge
+                (
+                    physPatch,
+                    edge(edges_[eIndex]),
+                    labelList(edgeFaces_[eIndex]),
+                    labelList(0)
+                )
+            );
+
+            // Update map
+            map.addEdge(newEdgeIndex, labelList(1, eIndex));
+
+            // Update faceEdges information for all connected faces
+            const labelList& neFaces = edgeFaces_[newEdgeIndex];
+
+            forAll(neFaces, faceI)
+            {
+                meshOps::replaceLabel
+                (
+                    eIndex,
+                    newEdgeIndex,
+                    faceEdges_[neFaces[faceI]]
+                );
+            }
+
+            // Remove the old boundary edge
+            removeEdge(eIndex);
+
+            // Update map
+            map.removeEdge(eIndex);
+
+            // For 3D meshes, the boundary edge gets converted
+            // to an interior one. Note the index for further operations.
+            if ((mIndex == eIndex) && !twoDMesh_)
+            {
+                map.index() = newEdgeIndex;
+            }
+
+            // Obtain references. Updates are actually only in 3D.
+            Map<label>& edgeMap = cMap.entityMap(coupleMap::EDGE);
+            Map<label>& rEdgeMap = cMap.reverseEntityMap(coupleMap::EDGE);
+
+            // Erase entries
+            rEdgeMap.erase(edgeMap[eIndex]);
+            edgeMap.erase(eIndex);
+
+            // Replace the entry in edgesToInsert, so that
+            // edgePoints is corrected for the right edge
+            edgesToInsert[pI][eIter.key()] = newEdgeIndex;
         }
     }
 
@@ -2526,13 +2583,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 //        label ncIndex = acList[indexI].index();
 //
 //        setCellMapping(ncIndex, acList[indexI].masterObjects());
-//    }
-//
-//    if (map.index() < 0)
-//    {
-//        Pout<< " Inserted index was not found: " << nl
-//            << "  mIndex: " << mIndex << nl
-//            << abort(FatalError);
 //    }
 
     // Specify that the operation was successful

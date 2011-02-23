@@ -6125,9 +6125,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Check and match interior master edges converted to boundaries
             const List<objectMap>& madE = map.addedEdgeList();
 
-            for (label i = 1; i < madE.size(); i++)
+            forAll(madE, edgeI)
             {
-                label meIndex = madE[i].index();
+                label meIndex = madE[edgeI].index();
 
                 const edge& mE = edges_[meIndex];
 
@@ -6165,9 +6165,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 {
                     const labelList& pEdges = sMesh.pointEdges_[cE[pointI]];
 
-                    forAll(pEdges, edgeI)
+                    forAll(pEdges, edgeJ)
                     {
-                        label checkEdge = pEdges[edgeI];
+                        label checkEdge = pEdges[edgeJ];
 
                         const edge& sE = sMesh.edges_[checkEdge];
 
@@ -6381,9 +6381,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Check and match interior slave edges converted to boundaries
             const List<objectMap>& sadE = slaveMap.addedEdgeList();
 
-            for (label i = 1; i < sadE.size(); i++)
+            forAll(sadE, edgeI)
             {
-                label seIndex = sadE[i].index();
+                label seIndex = sadE[edgeI].index();
 
                 edge sE(-1, -1);
 
@@ -6416,9 +6416,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 {
                     const labelList& pEdges = pointEdges_[cE[pointI]];
 
-                    forAll(pEdges, edgeI)
+                    forAll(pEdges, edgeJ)
                     {
-                        label checkEdge = pEdges[edgeI];
+                        label checkEdge = pEdges[edgeJ];
 
                         const edge& mE = edges_[checkEdge];
 

@@ -3975,7 +3975,7 @@ bool dynamicTopoFvMesh::resetMesh()
         // boundary to avoid globalData construction
         polyMesh::resetPrimitives
         (
-            xferCopy(points),
+            xferCopy(preMotionPoints),
             xferMove(faces),
             xferMove(owner),
             xferMove(neighbour),

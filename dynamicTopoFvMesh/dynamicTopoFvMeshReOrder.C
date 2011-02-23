@@ -259,13 +259,6 @@ void dynamicTopoFvMesh::reOrderPoints
     points_ = points;
     oldPoints_ = preMotionPoints;
 
-    // If no mesh motion solver is present, we don't store
-    // any preMotionPoints information
-    if (!loadMotionSolver_)
-    {
-        preMotionPoints.clear();
-    }
-
     if (debug)
     {
         Info<< "Done." << endl;
