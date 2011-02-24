@@ -1374,7 +1374,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         const polyBoundaryMesh& boundary = boundaryMesh();
 
-        Pout<< "Patch: ";
+        Pout<< " Patch: ";
 
         if (epIndex == -1)
         {
@@ -4654,7 +4654,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         const polyBoundaryMesh& boundary = boundaryMesh();
 
-        Pout<< "Patch: ";
+        Pout<< " Patch: ";
 
         if (epIndex == -1)
         {
@@ -5899,7 +5899,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                 Pout<< " Found edge: " << seIndex
                                     << " :: " << sE
                                     << " with meIndex: " << meIndex
-                                    << " :: " << mE
+                                    << " :: " << edges_[meIndex]
                                     << " on proc: " << procIndices_[pI]
                                     << endl;
                             }
@@ -5933,7 +5933,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     if (!matchedEdge)
                     {
                         Pout<< " Failed to match edge: "
-                            << meIndex << " :: " << mE
+                            << meIndex << " :: " << edges_[meIndex]
                             << " using comparison edge: " << cE
                             << " on proc: " << procIndices_[pI]
                             << abort(FatalError);
@@ -5950,6 +5950,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 forAll(checkFaces, faceI)
                 {
                     label mfIndex = checkFaces[faceI];
+                    label mfPatch = whichPatch(mfIndex);
 
                     const face& mF = faces_[mfIndex];
 
@@ -5964,6 +5965,78 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     if (cF[0] == -1 || cF[1] == -1 || cF[2] == -1)
                     {
                         continue;
+                    }
+
+                    // Check if a patch conversion is necessary
+                    if (getNeighbourProcessor(mfPatch) != procIndices_[pI])
+                    {
+                        // This face needs to be converted
+                        label procPatch = -1;
+
+                        const polyBoundaryMesh& boundary = boundaryMesh();
+
+                        forAll(boundary, pi)
+                        {
+                            if (getNeighbourProcessor(pi) == procIndices_[pI])
+                            {
+                                procPatch = pi;
+                                break;
+                            }
+                        }
+
+                        // Obtain a copy before adding the new face,
+                        // since the reference might become
+                        // invalid during list resizing.
+                        face newFace = faces_[mfIndex];
+                        label newOwn = owner_[mfIndex];
+                        labelList newFaceEdges = faceEdges_[mfIndex];
+
+                        label newFaceIndex =
+                        (
+                            insertFace
+                            (
+                                procPatch,
+                                newFace,
+                                newOwn,
+                                -1
+                            )
+                        );
+
+                        faceEdges_.append(newFaceEdges);
+
+                        meshOps::replaceLabel
+                        (
+                            mfIndex,
+                            newFaceIndex,
+                            cells_[newOwn]
+                        );
+
+                        // Correct edgeFaces with the new face label.
+                        forAll(newFaceEdges, edgeI)
+                        {
+                            meshOps::replaceLabel
+                            (
+                                mfIndex,
+                                newFaceIndex,
+                                edgeFaces_[newFaceEdges[edgeI]]
+                            );
+                        }
+
+                        // Finally remove the face
+                        removeFace(mfIndex);
+
+                        // Replace index and patch
+                        mfIndex = newFaceIndex;
+                        mfPatch = procPatch;
+
+                        // Push a patch-conversion operation
+                        cMap.pushOperation
+                        (
+                            newFaceIndex,
+                            coupleMap::CONVERT_PATCH,
+                            newFace.centre(points_),
+                            newFace.centre(oldPoints_)
+                        );
                     }
 
                     bool matchedFace = false;
@@ -6003,11 +6076,28 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             {
                                 if (debug > 2)
                                 {
+                                    word pN;
+
+                                    if (mfPatch < 0)
+                                    {
+                                        pN = "Internal";
+                                    }
+                                    else
+                                    if (mfPatch < boundaryMesh().size())
+                                    {
+                                        pN = boundaryMesh()[mfPatch].name();
+                                    }
+                                    else
+                                    {
+                                        pN = "Patch: " + Foam::name(mfPatch);
+                                    }
+
                                     Pout<< " Found face: " << sfIndex
                                         << " :: " << sF
-                                        << " with meIndex: " << mfIndex
-                                        << " :: " << mF
+                                        << " with mfIndex: " << mfIndex
+                                        << " :: " << faces_[mfIndex]
                                         << " on proc: " << procIndices_[pI]
+                                        << " Patch: " << pN
                                         << endl;
                                 }
 
@@ -6044,7 +6134,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     if (!matchedFace)
                     {
                         Pout<< " Failed to match face: "
-                            << mfIndex << " :: " << mF
+                            << mfIndex << " :: " << faces_[mfIndex]
                             << " using comparison face: " << cF
                             << " on proc: " << procIndices_[pI]
                             << abort(FatalError);

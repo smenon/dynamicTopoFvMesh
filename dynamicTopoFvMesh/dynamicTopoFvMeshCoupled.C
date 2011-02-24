@@ -1232,8 +1232,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         // for later, if this operation succeeds
                         const face& sfCheck = mesh.faces_[sfIndex];
 
-                        const point& nfC = sfCheck.centre(mesh.points_);
-                        const point& ofC = sfCheck.centre(mesh.oldPoints_);
+                        point nfC = sfCheck.centre(mesh.points_);
+                        point ofC = sfCheck.centre(mesh.oldPoints_);
 
                         // Are we talking to this processor already?
                         label prI = findIndex(procIndices_, neiProcNo);
@@ -2084,7 +2084,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Add the new faceEdges from the existing face. This may contain
             // edges that need to be converted, but that will be done later.
-            faceEdges_.append(faceEdges_[fIndex]);
+            faceEdges_.append(labelList(faceEdges_[fIndex]));
 
             // Update map
             map.addFace(newFaceIndex, labelList(1, fIndex));

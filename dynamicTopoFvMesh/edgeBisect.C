@@ -540,7 +540,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
             label epIndex = whichPatch(fIndex);
 
-            Pout<< "Patch: ";
+            Pout<< " Patch: ";
 
             if (epIndex == -1)
             {
@@ -2842,7 +2842,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
         const polyBoundaryMesh& boundary = boundaryMesh();
 
-        Pout<< "Patch: ";
+        Pout<< " Patch: ";
 
         if (epIndex == -1)
         {
