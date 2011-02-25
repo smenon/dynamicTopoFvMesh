@@ -1242,6 +1242,10 @@ void dynamicTopoFvMesh::buildEdgePoints
                     failMode = 2;
                     break;
                 }
+                else
+                {
+                    continue;
+                }
             }
             else
             {
@@ -1306,12 +1310,33 @@ void dynamicTopoFvMesh::buildEdgePoints
         }
     }
 
-    // Check for invalid indices
-    if (debug)
+    if (debug > 2)
     {
+        // Check for invalid indices
         if (findIndex(ePoints, -1) > -1)
         {
             failMode = 4;
+        }
+
+        // Check for duplicate labels
+        if (!failMode)
+        {
+            labelHashSet uniquePoints;
+
+            forAll(ePoints, pointI)
+            {
+                bool inserted = uniquePoints.insert(ePoints[pointI]);
+
+                if (!inserted)
+                {
+                    Pout<< " edgePoints for edge: "
+                        << eIndex << "::" << edgeToCheck
+                        << " contains identical vertex labels: "
+                        << ePoints << endl;
+
+                    failMode = 5;
+                }
+            }
         }
     }
 
@@ -1340,8 +1365,9 @@ void dynamicTopoFvMesh::buildEdgePoints
         }
 
         // Write out for post-processing
-        writeVTK("eCells_" + Foam::name(eIndex), eCells, 3);
+        writeVTK("vRingEdge_" + Foam::name(eIndex), eIndex, 1);
         writeVTK("vRingEdgeFaces_" + Foam::name(eIndex), eFaces, 2);
+        writeVTK("vRingEdgeCells_" + Foam::name(eIndex), eCells, 3);
 
         Pout<< "edgeFaces: " << endl;
 

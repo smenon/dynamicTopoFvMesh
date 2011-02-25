@@ -1587,12 +1587,6 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
     Pout<< "Done." << endl;
 
-    // Perform a reduce only if this is a global check
-    if (!isSubMesh_)
-    {
-        reduce(nFailedChecks, sumOp<label>());
-    }
-
     if (nFailedChecks)
     {
         FatalErrorIn

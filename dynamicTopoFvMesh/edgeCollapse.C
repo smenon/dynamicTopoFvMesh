@@ -5450,21 +5450,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
     }
 
-    // At this point, edgePoints for the replacement edges are broken,
-    // but edgeFaces are consistent. So use this information to re-build
-    // edgePoints for all replacement edges.
-    forAll(ringEntities[replaceEdgeIndex], edgeI)
-    {
-        // If the ring edge was removed, don't bother.
-        if (ringEntities[replaceEdgeIndex][edgeI] == -1)
-        {
-            continue;
-        }
+    // Set old / new points
+    oldPoints_[replacePoint] = oldPoint;
+    points_[replacePoint] = newPoint;
 
-        buildEdgePoints(ringEntities[replaceEdgeIndex][edgeI]);
-    }
+    // Remove the collapse point
+    removePoint(collapsePoint);
+
+    // Update map
+    map.removePoint(collapsePoint);
 
     // Check for unused edgePoints, and delete if necessary
+    //  - Needs to be done after collapsePoint is removed,
+    //    for consistency in coupled updates
     const labelList& ePoints = edgePoints_[eIndex];
 
     forAll(ePoints, pointI)
@@ -5478,16 +5476,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             map.removePoint(ePoints[pointI]);
         }
     }
-
-    // Move old / new points
-    oldPoints_[replacePoint] = oldPoint;
-    points_[replacePoint] = newPoint;
-
-    // Remove the collapse point
-    removePoint(collapsePoint);
-
-    // Update map
-    map.removePoint(collapsePoint);
 
     // Remove the edge
     removeEdge(eIndex);
@@ -5548,6 +5536,59 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     if (mergeFaces.size())
     {
         mergeBoundaryFaces(mergeFaces);
+    }
+
+    // At this point, edgePoints for the replacement edges are broken,
+    // but edgeFaces are consistent. So use this information to re-build
+    // edgePoints for all replacement edges.
+    const labelList& replaceEdges = ringEntities[replaceEdgeIndex];
+
+    forAll(replaceEdges, edgeI)
+    {
+        label replaceEdge = replaceEdges[edgeI];
+
+        // If the ring edge was removed, don't bother.
+        if (replaceEdge > -1)
+        {
+            // Account for merged edges as well
+            if (edgeFaces_[replaceEdge].empty())
+            {
+                // Is this edge truly removed? If not, remove it.
+                if (edges_[replaceEdge] != edge(-1, -1))
+                {
+                    if (debug > 2)
+                    {
+                        Pout<< " Edge: " << replaceEdge
+                            << " :: " << edges_[replaceEdge]
+                            << " has empty edgeFaces."
+                            << endl;
+                    }
+
+                    // Remove the edge
+                    removeEdge(replaceEdge);
+
+                    // Update map
+                    map.removeEdge(replaceEdge);
+                }
+            }
+            else
+            {
+                // Correct edgePoints for the replacement edge
+                buildEdgePoints(replaceEdge);
+            }
+        }
+
+        // Check edgeHull for possible corrections
+        label ringEdge = edgeHull[edgeI];
+
+        if (ringEdge > -1)
+        {
+            if (edgePoints_[ringEdge].size() != edgeFaces_[ringEdge].size())
+            {
+                // Correct edgePoints for the ring edge
+                buildEdgePoints(ringEdge);
+            }
+        }
     }
 
     // For cell-mapping, exclude all hull-cells
@@ -5796,10 +5837,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     // Alias for convenience...
                     const changeMap& slaveMap = *slaveMapPtr;
 
+                    const labelList& rpList = slaveMap.removedPointList();
+                    const List<objectMap>& apList = slaveMap.addedPointList();
+
                     // Configure the slave replacement point.
                     //  - collapseEdge stores this as an 'addedPoint'
-                    label scPoint = slaveMap.removedPointList()[0];
-                    label srPoint = slaveMap.addedPointList()[0].index();
+                    label scPoint = rpList[0];
+                    label srPoint = apList[0].index();
 
                     if (collapsingSlave)
                     {
@@ -5825,9 +5869,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     }
 
                     // If any other points were removed, update map
-                    const labelList& rpList = slaveMap.removedPointList();
-
-                    forAll(rpList, pointI)
+                    for (label pointI = 1; pointI < rpList.size(); pointI++)
                     {
                         if (collapsingSlave)
                         {
@@ -5846,6 +5888,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                     Pout<< " Found removed point: "
                                         << rpList[pointI]
                                         << " on proc: " << procIndices_[pI]
+                                        << " for point on this proc: "
+                                        << rPointMap[rpList[pointI]]
                                         << endl;
                                 }
 
@@ -6451,6 +6495,11 @@ const changeMap dynamicTopoFvMesh::mergeBoundaryFaces
 
         // Build edgePoints
         buildEdgePoints(checkEdges[edgeI]);
+    }
+
+    if (debug > 2)
+    {
+        Pout<< "Merge complete." << nl << endl;
     }
 
     // Return a succesful merge
