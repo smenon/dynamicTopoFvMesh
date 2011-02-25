@@ -1130,6 +1130,7 @@ void dynamicTopoFvMesh::buildEdgePoints
     bool found = false;
     label faceIndex = -1, cellIndex = -1;
     label otherPoint = -1, nextPoint = -1;
+    label failMode = 0;
 
     // Obtain references
     const edge& edgeToCheck = edges_[eIndex];
@@ -1171,36 +1172,187 @@ void dynamicTopoFvMesh::buildEdgePoints
         }
     }
 
-#   define writeEdgeCellsVTK()                                                 \
-    {                                                                          \
-        DynamicList<label> eCells(10);                                         \
-                                                                               \
-        forAll(eFaces, faceI)                                                  \
-        {                                                                      \
-            label own = owner_[eFaces[faceI]];                                 \
-            label nei = neighbour_[eFaces[faceI]];                             \
-                                                                               \
-            if (findIndex(eCells, own) == -1)                                  \
-            {                                                                  \
-                eCells.append(own);                                            \
-            }                                                                  \
-                                                                               \
-            if (nei > -1)                                                      \
-            {                                                                  \
-                if (findIndex(eCells, nei) == -1)                              \
-                {                                                              \
-                    eCells.append(nei);                                        \
-                }                                                              \
-            }                                                                  \
-        }                                                                      \
-                                                                               \
-        writeVTK("eCells_" + Foam::name(eIndex), eCells);                      \
-    }
-
     if (faceIndex == -1)
     {
+        // Define failure-mode
+        failMode = 1;
+    }
+    else
+    {
+        // Shuffle vertices to appear in CCW order
+        forAll(ePoints, indexI)
+        {
+            meshOps::findIsolatedPoint
+            (
+                faces_[faceIndex],
+                edgeToCheck,
+                otherPoint,
+                nextPoint
+            );
+
+            // Add the isolated point
+            ePoints[indexI] = otherPoint;
+
+            // Figure out how this edge is oriented.
+            if (nextPoint == edgeToCheck[checkIndex])
+            {
+                // Counter-clockwise. Pick the owner.
+                cellIndex = owner_[faceIndex];
+            }
+            else
+            if (whichPatch(faceIndex) == -1)
+            {
+                // Clockwise. Pick the neighbour.
+                cellIndex = neighbour_[faceIndex];
+            }
+            else
+            if (indexI != (ePoints.size() - 1))
+            {
+                // This could be a pinched manifold edge
+                // (situation with more than two boundary faces)
+                // Pick another (properly oriented) boundary face.
+                faceIndex = -1;
+
+                forAll(eFaces, faceI)
+                {
+                    if (whichPatch(eFaces[faceI]) > -1)
+                    {
+                        meshOps::findIsolatedPoint
+                        (
+                            faces_[eFaces[faceI]],
+                            edgeToCheck,
+                            otherPoint,
+                            nextPoint
+                        );
+
+                        if
+                        (
+                            (nextPoint == edgeToCheck[checkIndex]) &&
+                            (findIndex(ePoints, otherPoint) == -1)
+                        )
+                        {
+                            faceIndex = eFaces[faceI];
+                            break;
+                        }
+                    }
+                }
+
+                if (faceIndex == -1)
+                {
+                    failMode = 2;
+                    break;
+                }
+            }
+            else
+            {
+                // Looks like we've hit the last boundary face. Break out.
+                break;
+            }
+
+            const cell& cellToCheck = cells_[cellIndex];
+
+            found = false;
+
+            // Assuming tet-cells,
+            // Loop through edgeFaces and get the next face
+            forAll(eFaces, faceI)
+            {
+                if
+                (
+                    eFaces[faceI] != faceIndex
+                 && eFaces[faceI] == cellToCheck[0]
+                )
+                {
+                    faceIndex = cellToCheck[0];
+                    found = true; break;
+                }
+
+                if
+                (
+                    eFaces[faceI] != faceIndex
+                 && eFaces[faceI] == cellToCheck[1]
+                )
+                {
+                    faceIndex = cellToCheck[1];
+                    found = true; break;
+                }
+
+                if
+                (
+                    eFaces[faceI] != faceIndex
+                 && eFaces[faceI] == cellToCheck[2]
+                )
+                {
+                    faceIndex = cellToCheck[2];
+                    found = true; break;
+                }
+
+                if
+                (
+                    eFaces[faceI] != faceIndex
+                 && eFaces[faceI] == cellToCheck[3]
+                )
+                {
+                    faceIndex = cellToCheck[3];
+                    found = true; break;
+                }
+            }
+
+            if (!found)
+            {
+                failMode = 3;
+                break;
+            }
+        }
+    }
+
+    // Check for invalid indices
+    if (debug)
+    {
+        if (findIndex(ePoints, -1) > -1)
+        {
+            failMode = 4;
+        }
+    }
+
+    if (failMode)
+    {
+        // Prepare edgeCells
+        DynamicList<label> eCells(10);
+
+        forAll(eFaces, faceI)
+        {
+            label own = owner_[eFaces[faceI]];
+            label nei = neighbour_[eFaces[faceI]];
+
+            if (findIndex(eCells, own) == -1)
+            {
+                eCells.append(own);
+            }
+
+            if (nei > -1)
+            {
+                if (findIndex(eCells, nei) == -1)
+                {
+                    eCells.append(nei);
+                }
+            }
+        }
+
         // Write out for post-processing
-        writeEdgeCellsVTK()
+        writeVTK("eCells_" + Foam::name(eIndex), eCells, 3);
+        writeVTK("vRingEdgeFaces_" + Foam::name(eIndex), eFaces, 2);
+
+        Pout<< "edgeFaces: " << endl;
+
+        forAll(eFaces, faceI)
+        {
+            Pout<< " Face: " << eFaces[faceI]
+                << ":: " << faces_[eFaces[faceI]]
+                << " Owner: " << owner_[eFaces[faceI]]
+                << " Neighbour: " << neighbour_[eFaces[faceI]]
+                << endl;
+        }
 
         FatalErrorIn
         (
@@ -1211,191 +1363,13 @@ void dynamicTopoFvMesh::buildEdgePoints
             "    const label checkIndex\n"
             ")"
         )
-            << " Failed to determine a start face. " << nl
-            << " edgeFaces connectivity is inconsistent. " << nl
+            << " Failed to determine a vertex ring. " << nl
+            << " Failure mode: " << failMode << nl
             << " Edge: " << eIndex << ":: " << edgeToCheck << nl
             << " edgeFaces: " << eFaces << nl
             << " Patch: " << whichEdgePatch(eIndex) << nl
+            << " Current edgePoints: " << ePoints
             << abort(FatalError);
-    }
-
-    // Shuffle vertices to appear in CCW order
-    forAll(ePoints, indexI)
-    {
-        meshOps::findIsolatedPoint
-        (
-            faces_[faceIndex],
-            edgeToCheck,
-            otherPoint,
-            nextPoint
-        );
-
-        // Add the isolated point
-        ePoints[indexI] = otherPoint;
-
-        // Figure out how this edge is oriented.
-        if (nextPoint == edgeToCheck[checkIndex])
-        {
-            // Counter-clockwise. Pick the owner.
-            cellIndex = owner_[faceIndex];
-        }
-        else
-        if (whichPatch(faceIndex) == -1)
-        {
-            // Clockwise. Pick the neighbour.
-            cellIndex = neighbour_[faceIndex];
-        }
-        else
-        if (indexI != (ePoints.size() - 1))
-        {
-            // This could be a pinched manifold edge
-            // (situation with more than two boundary faces)
-            // Pick another (properly oriented) boundary face.
-            faceIndex = -1;
-
-            forAll(eFaces, faceI)
-            {
-                if (whichPatch(eFaces[faceI]) > -1)
-                {
-                    meshOps::findIsolatedPoint
-                    (
-                        faces_[eFaces[faceI]],
-                        edgeToCheck,
-                        otherPoint,
-                        nextPoint
-                    );
-
-                    if
-                    (
-                        (nextPoint == edgeToCheck[checkIndex]) &&
-                        (findIndex(ePoints, otherPoint) == -1)
-                    )
-                    {
-                        faceIndex = eFaces[faceI];
-                        break;
-                    }
-                }
-            }
-
-            if (faceIndex == -1)
-            {
-                // Write out for post-processing
-                writeEdgeCellsVTK()
-
-                FatalErrorIn
-                (
-                    "\n"
-                    "void dynamicTopoFvMesh::buildEdgePoints\n"
-                    "(\n"
-                    "    const label eIndex,\n"
-                    "    const label checkIndex\n"
-                    ")\n"
-                )
-                    << " Failed to determine a vertex ring. " << nl
-                    << " edgeFaces connectivity is inconsistent. " << nl
-                    << " (Pinched manifold case)" << nl
-                    << " Edge: " << eIndex << ":: " << edgeToCheck << nl
-                    << " edgeFaces: " << eFaces << nl
-                    << " Patch: " << whichEdgePatch(eIndex) << nl
-                    << " Current edgePoints: " << ePoints
-                    << abort(FatalError);
-            }
-
-            continue;
-        }
-        else
-        {
-            // Looks like we've hit the last boundary face. Break out.
-            break;
-        }
-
-        const cell& cellToCheck = cells_[cellIndex];
-
-        found = false;
-
-        // Assuming tet-cells,
-        // Loop through edgeFaces and get the next face
-        forAll(eFaces, faceI)
-        {
-            if
-            (
-                eFaces[faceI] != faceIndex
-             && eFaces[faceI] == cellToCheck[0]
-            )
-            {
-                faceIndex = cellToCheck[0];
-                found = true; break;
-            }
-
-            if
-            (
-                eFaces[faceI] != faceIndex
-             && eFaces[faceI] == cellToCheck[1]
-            )
-            {
-                faceIndex = cellToCheck[1];
-                found = true; break;
-            }
-
-            if
-            (
-                eFaces[faceI] != faceIndex
-             && eFaces[faceI] == cellToCheck[2]
-            )
-            {
-                faceIndex = cellToCheck[2];
-                found = true; break;
-            }
-
-            if
-            (
-                eFaces[faceI] != faceIndex
-             && eFaces[faceI] == cellToCheck[3]
-            )
-            {
-                faceIndex = cellToCheck[3];
-                found = true; break;
-            }
-        }
-
-        if (!found)
-        {
-            // Write out for post-processing
-            writeEdgeCellsVTK()
-
-            Pout<< "edgeFaces: " << endl;
-
-            forAll(eFaces, faceI)
-            {
-                Pout<< " Face: " << eFaces[faceI]
-                    << ":: " << faces_[eFaces[faceI]]
-                    << " Owner: " << owner_[eFaces[faceI]]
-                    << " Neighbour: " << neighbour_[eFaces[faceI]]
-                    << endl;
-            }
-
-            writeVTK("vRingEdgeFaces", eFaces, 2);
-
-            // Something's terribly wrong
-            FatalErrorIn
-            (
-                "\n"
-                "void dynamicTopoFvMesh::buildEdgePoints\n"
-                "(\n"
-                "    const label eIndex,\n"
-                "    const label checkIndex\n"
-                ")"
-            )
-                << " Failed to determine a vertex ring. " << nl
-                << " edgeFaces connectivity is inconsistent. " << nl
-                << " Edge: " << eIndex << ":: " << edgeToCheck << nl
-                << " edgeFaces: " << eFaces << nl
-                << " Patch: " << whichEdgePatch(eIndex) << nl
-                << " cellIndex: " << cellIndex
-                << " :: " << cellToCheck << nl
-                << " Current edgePoints: " << ePoints
-                << abort(FatalError);
-        }
     }
 }
 
@@ -1873,8 +1847,17 @@ void dynamicTopoFvMesh::initEdges()
 
     if (!twoDMesh_)
     {
-        pointEdges_ = eMeshPtr_->pointEdges();
-        edgePoints_ = eMeshPtr_->edgePoints();
+        // Invert edges to obtain pointEdges
+        pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
+
+        // Size up edgePoints and build
+        edgePoints_.setSize(nEdges_, labelList(0));
+
+        forAll(edgePoints_, edgeI)
+        {
+            // Disable debug reporting, not very useful anyway
+            buildEdgePoints(edgeI, 0, false);
+        }
     }
 
     // Clear out unwanted eMesh connectivity
