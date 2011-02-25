@@ -1461,8 +1461,6 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
 
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
-    boolList bdyMarker(pointMarker_.size(), false);
-
     // Maintain a list of points for geometric matching
     List<DynamicList<point> > auxSurfPoints
     (
@@ -1553,9 +1551,6 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                     // Fix boundary condition for this point.
                     bdy_[fieldIndex] = vector::one;
 
-                    // Mark for posterity.
-                    bdyMarker[fieldIndex] = true;
-
                     // Modify point marker
                     if (procIndices_[pI] < Pstream::myProcNo())
                     {
@@ -1602,9 +1597,6 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
 
                 // Fix boundary condition for this point.
                 bdy_[fieldIndex] = vector::one;
-
-                // Mark for posterity.
-                bdyMarker[fieldIndex] = true;
 
                 // Modify point marker
                 if (procIndices_[pI] < Pstream::myProcNo())
@@ -1673,6 +1665,66 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                     << " neiProcNo: " << procIndices_[pI]
                     << " neiSize: " << nProcSize[procIndices_[pI]] << nl
                     << abort(FatalError);
+            }
+        }
+    }
+
+    // Prepare boundary markers for correction
+    vectorField bdyMarker(pointMarker_.size(), vector::zero);
+
+    // Prepare edgeMarkers
+    forAll(pIDs_, patchI)
+    {
+        const edgeList& edges = boundary[pIDs_[patchI]].edges();
+        const labelList& meshEdges = boundary[pIDs_[patchI]].meshEdges();
+
+        for
+        (
+            label i = boundary[pIDs_[patchI]].nInternalEdges();
+            i < edges.size();
+            i++
+        )
+        {
+            // If both points on this edge are marked,
+            // this edge needs to be left out.
+            label i0 = edges[i][0] + offsets_[patchI];
+            label i1 = edges[i][1] + offsets_[patchI];
+
+            bool p0 = (pointMarker_[i0] < 0.5);
+            bool p1 = (pointMarker_[i1] < 0.5);
+
+            if (p0 && p1)
+            {
+                edgeMarker_[patchI][i] = 0.0;
+            }
+
+            bool noProc = true;
+
+            const labelList& eF = eFaces[meshEdges[i]];
+
+            forAll(eF, fI)
+            {
+                label curPatchID = boundary.whichPatch(eF[fI]);
+
+                // Disregard internal faces
+                if (curPatchID == -1)
+                {
+                    continue;
+                }
+
+                if (isA<processorPolyPatch>(boundary[curPatchID]))
+                {
+                    // Disregard processor patches
+                    noProc = false;
+                    break;
+                }
+            }
+
+            // Mark boundary condition vector for this edge
+            if (noProc)
+            {
+                bdyMarker[i0] = vector::one;
+                bdyMarker[i1] = vector::one;
             }
         }
     }
@@ -1758,43 +1810,14 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         }
     }
 
-    // Prepare edgeMarkers
-    forAll(pIDs_, patchI)
+    // Fix boundary conditions
+    transferBuffers(bdyMarker);
+
+    forAll(bdyMarker, indexI)
     {
-        const edgeList& edges = boundary[pIDs_[patchI]].edges();
-
-        for
-        (
-            label i = boundary[pIDs_[patchI]].nInternalEdges();
-            i < edges.size();
-            i++
-        )
+        if (bdyMarker[indexI] > vector(0.5,0.5,0.5))
         {
-            // If both points on this edge are marked,
-            // this edge needs to be left out.
-            label i0 = edges[i][0] + offsets_[patchI];
-            label i1 = edges[i][1] + offsets_[patchI];
-
-            bool p0 = (pointMarker_[i0] < 0.5);
-            bool p1 = (pointMarker_[i1] < 0.5);
-
-            if (p0 && p1)
-            {
-                edgeMarker_[patchI][i] = 0.0;
-            }
-
-            // Check for corner points.
-            // If only one vertex is marked,
-            // fix the boundary condition vector
-            if (bdyMarker[i0] && !bdyMarker[i1])
-            {
-                bdy_[i0] = vector::zero;
-            }
-            else
-            if (!bdyMarker[i0] && bdyMarker[i1])
-            {
-                bdy_[i1] = vector::zero;
-            }
+            bdy_[indexI] = vector::zero;
         }
     }
 }
@@ -2436,7 +2459,7 @@ void mesquiteMotionSolver::A
 }
 
 
-// Transfer buffers after divergence compute.
+// Transfer buffers for surface point fields
 void mesquiteMotionSolver::transferBuffers
 (
     vectorField& field
@@ -2456,12 +2479,12 @@ void mesquiteMotionSolver::transferBuffers
         vectorField& recvField = recvSurfFields_[pI];
         vectorField& sendField = sendSurfFields_[pI];
 
-        // Schedule receipt from neighbour
         if (recvField.size() && sendField.size())
         {
+            // Schedule receipt from neighbour
             parRead(neiProcNo, recvField);
 
-            // Prepare a send buffer.
+            // Prepare the send buffer
             forAllConstIter(Map<label>, pointMap, pIter)
             {
                 sendField[pIter()] = field[pIter.key()];
@@ -2471,7 +2494,7 @@ void mesquiteMotionSolver::transferBuffers
         }
     }
 
-    // Wait for all transfers to complete.
+    // Wait for all transfers to complete
     OPstream::waitRequests();
     IPstream::waitRequests();
 
@@ -2481,7 +2504,7 @@ void mesquiteMotionSolver::transferBuffers
         const Map<label>& pointMap = sendSurfPointMap_[pI];
         const vectorField& recvField = recvSurfFields_[pI];
 
-        // Prepare a send buffer.
+        // Correct field values
         forAllConstIter(Map<label>, pointMap, pIter)
         {
             field[pIter.key()] += recvField[pIter()];

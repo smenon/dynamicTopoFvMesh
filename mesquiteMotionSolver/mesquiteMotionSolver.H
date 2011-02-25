@@ -213,7 +213,7 @@ class mesquiteMotionSolver
         // Component-wise sumMag
         scalar cmptSumMag(const vectorField& field);
 
-        // Transfer buffers after divergence compute.
+        // Transfer buffers for surface point fields
         void transferBuffers(vectorField &field);
 
         // Apply boundary conditions
