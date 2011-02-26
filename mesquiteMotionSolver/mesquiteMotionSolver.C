@@ -2781,6 +2781,64 @@ void mesquiteMotionSolver::applyFixedValuePatches()
             pField().updateCoeffs();
         }
 
+        if (Pstream::parRun())
+        {
+            label nDomainPoints = refPoints_.size();
+
+            forAll(procIndices_, pI)
+            {
+                label proc = procIndices_[pI];
+
+                const Map<label>& pointMap = sendPointMap_[pI];
+
+                // Fetch reference to send / recv point buffers
+                vectorField& psField = sendPointBuffer_[pI];
+                vectorField& prField = recvPointBuffer_[pI];
+
+                // Fill the send buffer
+                forAllConstIter(Map<label>, pointMap, pIter)
+                {
+                    if (pIter.key() < nDomainPoints)
+                    {
+                        psField[pIter()] = dPointField[pIter.key()];
+                    }
+                }
+
+                // Send to neighbour
+                parWrite(proc, psField);
+
+                // Receive from neighbour
+                parRead(proc, prField);
+            }
+
+            // Wait for all transfers to complete.
+            OPstream::waitRequests();
+            IPstream::waitRequests();
+
+            vector smallVec(VSMALL, VSMALL, VSMALL);
+
+            forAll(procIndices_, pI)
+            {
+                const Map<label>& pointMap = recvPointMap_[pI];
+
+                // Fetch reference to recv buffer
+                const vectorField& prField = recvPointBuffer_[pI];
+
+                forAllConstIter(Map<label>, pointMap, pIter)
+                {
+                    // Only update points in this domain
+                    if (pIter() < nDomainPoints)
+                    {
+                        // Only update for non-zero displacement
+                        if (cmptMag(dPointField[pIter()]) < smallVec)
+                        {
+                            dPointField[pIter()] = prField[pIter.key()];
+                        }
+                    }
+                }
+            }
+        }
+
         // Now update refPoints with patch values
         refPoints_ += dPointField;
     }

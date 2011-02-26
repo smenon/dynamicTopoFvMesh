@@ -962,8 +962,7 @@ void dynamicTopoFvMesh::setFaceMapping
         foundError = true;
     }
 
-    // Check to ensure that boundary faces map
-    // only from other faces on the same patch
+    // Check to ensure that mapFaces is non-empty
     if (patch > -1 && mapFaces.empty())
     {
         // Is this a non-processor patch?

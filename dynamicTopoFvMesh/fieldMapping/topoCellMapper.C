@@ -539,15 +539,14 @@ void topoCellMapper::mapInternalField
         int oldP = Info().precision();
 
         // Compare the global integral
-        Info << " Field : " << fieldName
-             << " integral errors : "
-             << setprecision(15)
-             << " source : " << mag(intSource)
-             << " target : " << mag(intTarget)
-             << " norm : "
-             << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
-             << setprecision(oldP)
-             << endl;
+        Pout<< " Field : " << fieldName
+            << " integral errors : " << setprecision(10)
+            << " source : " << mag(intSource)
+            << " target : " << mag(intTarget)
+            << " norm : "
+            << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
+            << setprecision(oldP)
+            << endl;
     }
 }
 

@@ -157,11 +157,11 @@ void topoMapper::storeGradients() const
 
     if (fvMesh::debug)
     {
-        Info << "Registered volScalarFields: " << endl;
-        Info << sGrads_.toc() << endl;
+        Info<< "Registered volScalarFields: " << endl;
+        Info<< sGrads_.toc() << endl;
 
-        Info << "Registered volVectorFields: " << endl;
-        Info << vGrads_.toc() << endl;
+        Info<< "Registered volVectorFields: " << endl;
+        Info<< vGrads_.toc() << endl;
     }
 }
 
@@ -422,10 +422,10 @@ void topoMapper::conservativeMapVolFields() const
 
         if (fvMesh::debug)
         {
-            Info << "Conservatively mapping "
-                 << field.typeName
-                 << ' ' << field.name()
-                 << endl;
+            Info<< "Conservatively mapping "
+                << field.typeName
+                << ' ' << field.name()
+                << endl;
         }
 
         // Map the internal field
@@ -480,10 +480,10 @@ void topoMapper::conservativeMapSurfaceFields() const
 
         if (fvMesh::debug)
         {
-            Info << "Conservatively mapping "
-                 << field.typeName
-                 << ' ' << field.name()
-                 << endl;
+            Info<< "Conservatively mapping "
+                << field.typeName
+                << ' ' << field.name()
+                << endl;
         }
 
         // Map the internal field
