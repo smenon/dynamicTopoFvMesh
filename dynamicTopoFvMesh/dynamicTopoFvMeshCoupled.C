@@ -6893,6 +6893,44 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
             if (nBoundary != 2)
             {
+                // Write out for post-processing
+                writeVTK("eFaces_" + Foam::name(index), eFaces, 2);
+
+                forAll(procIndices_, pI)
+                {
+                    Pout<< nl << "Proc: " << procIndices_[pI] << nl;
+
+                    const coupleMap& cMap = recvMeshes_[pI].patchMap();
+                    const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+                    label sIndex = -1;
+
+                    if ((sIndex = cMap.findSlave(edgeEnum, index)) > -1)
+                    {
+                        // Fetch connectivity from patchSubMesh
+                        const labelList& peF = mesh.edgeFaces_[sIndex];
+
+                        forAll(peF, faceI)
+                        {
+                            label p = mesh.whichPatch(peF[faceI]);
+
+                            word pN =
+                            (
+                                (p < 0) ?
+                                word("Internal") :
+                                mesh.boundaryMesh()[p].name()
+                            );
+
+                            Pout<< " Face:" << peF[faceI]
+                                << " :: " << mesh.faces_[peF[faceI]]
+                                << " Patch: " << pN
+                                << nl;
+                        }
+
+                        mesh.writeVTK("eFaces_" + Foam::name(sIndex), peF, 2);
+                    }
+                }
+
                 FatalErrorIn
                 (
                     "scalar dynamicTopoFvMesh::processorLengthScale"

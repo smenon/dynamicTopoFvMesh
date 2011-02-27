@@ -2406,9 +2406,14 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Check if edgeRefinements are to be avoided on patch.
     if (!isSubMesh_)
     {
-        if (lengthEstimator().checkRefinementPatch(whichEdgePatch(eIndex)))
+        const labelList& eF = edgeFaces_[eIndex];
+
+        forAll(eF, fI)
         {
-            return map;
+            if (lengthEstimator().checkRefinementPatch(whichPatch(eF[fI])))
+            {
+                return map;
+            }
         }
     }
 
@@ -2859,6 +2864,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         }
 
         // Write out VTK files prior to change
+        //  - Using old-points for convenience in post-processing
         if (debug > 3)
         {
             writeVTK
@@ -2867,7 +2873,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
               + '(' + Foam::name(origEdge[0])
               + ',' + Foam::name(origEdge[1]) + ')'
               + "_Bisect_0",
-                cellHull
+                cellHull,
+                3, false, true
             );
         }
     }
@@ -4081,13 +4088,16 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 newHull[i] = addedCellIndices[i - start];
             }
 
+            // Write out VTK files after change
+            //  - Using old-points for convenience in post-processing
             writeVTK
             (
                 Foam::name(eIndex)
               + '(' + Foam::name(origEdge[0])
               + ',' + Foam::name(origEdge[1]) + ')'
               + "_Bisect_1",
-                newHull
+                newHull,
+                3, false, true
             );
         }
     }
