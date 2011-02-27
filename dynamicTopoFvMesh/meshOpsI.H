@@ -216,8 +216,8 @@ inline label tetApexPoint
 (
     const label cIndex,
     const label fIndex,
-    const UList<face> faces,
-    const UList<cell> cells
+    const UList<face>& faces,
+    const UList<cell>& cells
 )
 {
     label apexPoint = -1;
@@ -241,13 +241,13 @@ inline label tetApexPoint
 
     if (!foundApex)
     {
-        Info << "fIndex: " << fIndex << ":: " << faces[fIndex] << endl;
-        Info << "cIndex: " << cIndex << ":: " << cellToCheck << endl;
+        Pout<< "fIndex: " << fIndex << ":: " << faces[fIndex] << endl;
+        Pout<< "cIndex: " << cIndex << ":: " << cellToCheck << endl;
 
         forAll(cellToCheck, faceI)
         {
-            Info << '\t' << cellToCheck[faceI] << ":: "
-                 << faces[cellToCheck[faceI]] << endl;
+            Pout<< '\t' << cellToCheck[faceI] << ":: "
+                << faces[cellToCheck[faceI]] << endl;
         }
 
         FatalErrorIn
@@ -257,8 +257,8 @@ inline label tetApexPoint
             "(\n"
             "    const label cIndex,\n"
             "    const label fIndex,\n"
-            "    const UList<face> faces,\n"
-            "    const UList<cell> cells\n"
+            "    const UList<face>& faces,\n"
+            "    const UList<cell>& cells\n"
             ")\n"
         )
             << "Could not find an apex point in cell: " << cIndex
@@ -272,7 +272,7 @@ inline label tetApexPoint
 
 // Given a cell index, find the centroid / volume of a cell.
 //  - If checking is enabled, return whether the cell is closed
-inline bool cellCentreAndVolume
+inline void cellCentreAndVolume
 (
     const label cIndex,
     const vectorField& points,
@@ -280,8 +280,7 @@ inline bool cellCentreAndVolume
     const UList<cell>& cells,
     const UList<label>& owner,
     vector& centre,
-    scalar& volume,
-    bool checkClosed
+    scalar& volume
 )
 {
     // Reset inputs
@@ -291,17 +290,11 @@ inline bool cellCentreAndVolume
     const cell& cellToCheck = cells[cIndex];
 
     // Average face-centres to get an estimate centroid
-    vector cEst(vector::zero), fCentre(vector::zero), fArea(vector::zero);
-    vector sumClosed(vector::zero), sumMagClosed(vector::zero);
+    vector cEst(vector::zero), fCentre(vector::zero);
 
     forAll(cellToCheck, faceI)
     {
         const face& checkFace = faces[cellToCheck[faceI]];
-
-        if (checkFace.empty())
-        {
-            continue;
-        }
 
         cEst += checkFace.centre(points);
     }
@@ -312,92 +305,82 @@ inline bool cellCentreAndVolume
     {
         const face& checkFace = faces[cellToCheck[faceI]];
 
-        if (checkFace.empty())
+        if (checkFace.size() == 3)
         {
-            continue;
-        }
-
-        fArea = checkFace.normal(points);
-        fCentre = checkFace.centre(points);
-
-        // Flip if necessary
-        if (owner[cellToCheck[faceI]] != cIndex)
-        {
-            fArea *= -1.0;
-        }
-
-        // Calculate 3*face-pyramid volume
-        scalar pyr3Vol = fArea & (fCentre - cEst);
-
-        // Calculate face-pyramid centre
-        vector pc = ((3.0 / 4.0) * fCentre) + ((1.0 / 4.0) * cEst);
-
-        // Accumulate volume-weighted face-pyramid centre
-        centre += pyr3Vol*pc;
-
-        // Accumulate face-pyramid volume
-        volume += pyr3Vol;
-
-        // Accumulate areas, if necessary
-        if (checkClosed)
-        {
-            sumClosed += fArea;
-            sumMagClosed += cmptMag(fArea);
-        }
-    }
-
-    centre /= volume + VSMALL;
-    volume *= (1.0 / 3.0);
-
-    if (checkClosed)
-    {
-        // Check the sum across components
-        scalar closed = 0.0;
-
-        for (direction cmpt = 0; cmpt < vector::nComponents; cmpt++)
-        {
-            closed =
+            tetPointRef tpr
             (
-                mag(sumClosed[cmpt]) / (sumMagClosed[cmpt] + VSMALL)
+                points[checkFace[2]],
+                points[checkFace[1]],
+                points[checkFace[0]],
+                cEst
             );
 
-            if (closed > 1e-06)
+            scalar tetVol = tpr.mag();
+
+            // Flip if necessary
+            if (owner[cellToCheck[faceI]] != cIndex)
             {
-                // Volume is invalid
-                return false;
+                tetVol *= -1.0;
+            }
+
+            // Accumulate volume-weighted tet centre
+            centre += tetVol*tpr.centre();
+
+            // Accumulate tet volume
+            volume += tetVol;
+        }
+        else
+        {
+            forAll(checkFace, pI)
+            {
+                tetPointRef tpr
+                (
+                    points[checkFace[pI]],
+                    points[checkFace.prevLabel(pI)],
+                    checkFace.centre(points),
+                    cEst
+                );
+
+                scalar tetVol = tpr.mag();
+
+                // Flip if necessary
+                if (owner[cellToCheck[faceI]] != cIndex)
+                {
+                    tetVol *= -1.0;
+                }
+
+                // Accumulate volume-weighted tet centre
+                centre += tetVol*tpr.centre();
+
+                // Accumulate tet volume
+                volume += tetVol;
             }
         }
     }
 
-    // Volume is valid
-    return true;
+    centre /= volume + VSMALL;
 }
 
 
 // Determine whether a segment intersects a triangular face
-template <class T>
 inline bool segmentTriFaceIntersection
 (
-    const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
-    const line<Vector<T>, const Vector<T>&>& edgeToCheck,
-    Vector<T>& intPoint
+    const triPointRef& faceToCheck,
+    const linePointRef& edgeToCheck,
+    vector& intPoint
 )
 {
     // Fetch references
-    const Vector<T>& p1 = edgeToCheck.start();
-    const Vector<T>& p2 = edgeToCheck.end();
+    const vector& p1 = edgeToCheck.start();
+    const vector& p2 = edgeToCheck.end();
 
-    const Vector<T>& a = faceToCheck.a();
-    const Vector<T>& b = faceToCheck.b();
-    const Vector<T>& c = faceToCheck.c();
-
-    // Define custom face-normal
-    Vector<T> n = (T(0.5) * ((b - a)^(c - a)));
+    // Define face-normal
+    vector n = faceToCheck.normal();
     n /= mag(n) + VSMALL;
 
     // Compute uValue
-    T numerator = n & (a - p1);
-    T denominator = n & (p2 - p1);
+    scalar numerator = n & (faceToCheck.a() - p1);
+    scalar denominator = n & (p2 - p1);
 
     // Check if the edge is parallel to the face
     if (mag(denominator) < VSMALL)
@@ -405,10 +388,10 @@ inline bool segmentTriFaceIntersection
         return false;
     }
 
-    T u = (numerator / denominator);
+    scalar u = (numerator / denominator);
 
     // Check for intersection along line.
-    if ((u >= 0.0) && (u <= pTraits<T>::one))
+    if ((u >= 0.0) && (u <= 1.0))
     {
         // Compute point of intersection
         intPoint = p1 + u*(p2 - p1);
@@ -427,42 +410,39 @@ inline bool segmentTriFaceIntersection
 
 // Determine whether the particular point lies
 // inside the given triangular face
-template <class T>
 inline bool pointInTriFace
 (
-    const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
-    const Vector<T>& cP,
+    const triPointRef& faceToCheck,
+    const vector& cP,
     bool testCoplanarity
 )
 {
     // Copy inputs
-    const Vector<T>& a = faceToCheck.a();
-    const Vector<T>& b = faceToCheck.b();
-    const Vector<T>& c = faceToCheck.c();
-
-    const T pointFive(0.5);
+    const vector& a = faceToCheck.a();
+    const vector& b = faceToCheck.b();
+    const vector& c = faceToCheck.c();
 
     // Compute the normal
-    Vector<T> nf = (pointFive * ((b - a)^(c - a)));
+    vector nf = faceToCheck.normal();
 
-    if ( ((pointFive * ((b - a)^(cP - a))) & nf) < pTraits<T>::zero)
+    if ( ((0.5 * ((b - a)^(cP - a))) & nf) < 0.0)
     {
         return false;
     }
 
-    if ( ((pointFive * ((c - b)^(cP - b))) & nf) < pTraits<T>::zero)
+    if ( ((0.5 * ((c - b)^(cP - b))) & nf) < 0.0)
     {
         return false;
     }
 
-    if ( ((pointFive * ((a - c)^(cP - c))) & nf) < pTraits<T>::zero)
+    if ( ((0.5 * ((a - c)^(cP - c))) & nf) < 0.0)
     {
         return false;
     }
 
     if (testCoplanarity)
     {
-        Vector<T> ftp(a - cP);
+        vector ftp(a - cP);
 
         // Normalize vectors
         nf /= mag(nf) + VSMALL;
@@ -476,50 +456,6 @@ inline bool pointInTriFace
 
     // Passed test with all edges
     return true;
-}
-
-
-// Utility method to check for concurrent points.
-template <class T>
-inline bool checkPointNearness
-(
-    const Field<Vector<T> >& points,
-    const T& magSqrTol
-)
-{
-    forAll(points, pI)
-    {
-        forAll(points, pJ)
-        {
-            if (pI == pJ)
-            {
-                continue;
-            }
-
-            T magSqrDist = magSqr(points[pI] - points[pJ]);
-
-            if (magSqrDist < magSqrTol)
-            {
-                SeriousErrorIn
-                (
-                    "inline bool meshOps::checkPointNearness"
-                    "(const Field<vector<T> >&, const T&)"
-                )
-                    << " Found concurrent points: " << nl
-                    << " pI: " << pI << " pJ: " << pJ << nl
-                    << " point: " << points[pI] << nl
-                    << " Points: " << points << nl
-                    << " distance: " << magSqrDist << nl
-                    << " tolerance: " << magSqrTol
-                    << endl;
-
-                return true;
-            }
-        }
-    }
-
-    // No errors detected.
-    return false;
 }
 
 

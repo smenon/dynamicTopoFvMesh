@@ -974,6 +974,8 @@ void dynamicTopoFvMesh::setFaceMapping
 
     if (foundError)
     {
+        writeVTK("mapFace_" + Foam::name(fIndex), fIndex, 2);
+
         FatalErrorIn
         (
             "\n"
@@ -989,7 +991,8 @@ void dynamicTopoFvMesh::setFaceMapping
             << "    2. Mapping specified for an internal face, " << nl
             << "       when none was expected." << nl << nl
             << " Face: " << fIndex << nl
-            << " Patch: " << patch << nl
+            << " Patch: "
+            << (patch > -1 ? boundaryMesh()[patch].name() : "Internal") << nl
             << " Owner: " << owner_[fIndex] << nl
             << " Neighbour: " << neighbour_[fIndex] << nl
             << " mapFaces: " << mapFaces << nl

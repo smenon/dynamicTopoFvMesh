@@ -36,6 +36,7 @@ Author
 \*----------------------------------------------------------------------------*/
 
 #include "IOmanip.H"
+#include "meshOps.H"
 #include "topoMapper.H"
 #include "mapPolyMesh.H"
 #include "topoPatchMapper.H"
@@ -108,6 +109,19 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
         {
             if (fffI.masterObjects().empty())
             {
+                // Write out for post-processing
+                meshOps::writeVTK
+                (
+                    mpm_.mesh(),
+                    "patchFaceInsError_"
+                  + Foam::name(fffI.index()),
+                    labelList(1, fffI.index()),
+                    2,
+                    mpm_.mesh().points(),
+                    List<edge>(0),
+                    mpm_.mesh().faces()
+                );
+
                 FatalErrorIn
                 (
                     "void topoPatchMapper::"
@@ -147,6 +161,19 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
                     }
                     else
                     {
+                        // Write out for post-processing
+                        meshOps::writeVTK
+                        (
+                            mpm_.mesh(),
+                            "patchFacePatchError_"
+                          + Foam::name(fffI.index()),
+                            labelList(1, fffI.index()),
+                            2,
+                            mpm_.mesh().points(),
+                            List<edge>(0),
+                            mpm_.mesh().faces()
+                        );
+
                         FatalErrorIn
                         (
                             "void topoPatchMapper::"
@@ -154,6 +181,7 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
                         )
                             << "Addressing into another patch is not allowed."
                             << nl << " Patch face index: " << faceI
+                            << nl << " Patch: " << patch_.name()
                             << nl << " addr[faceI]: " << addr[faceI]
                             << nl << " oldPatchStart: " << oldPatchStart
                             << nl << " oldPatchSize: " << oldPatchSize

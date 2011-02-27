@@ -961,7 +961,9 @@ class dynamicTopoFvMesh
             const label index,
             bool checkFace = false,
             bool checkEdge = false,
-            bool checkPure = false
+            bool checkPure = false,
+            FixedList<label, 2>* patchLabels = NULL,
+            FixedList<vector, 2>* patchNormals = NULL
         ) const;
 
         // Read optional dictionary parameters

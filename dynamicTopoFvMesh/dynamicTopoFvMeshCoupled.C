@@ -1354,6 +1354,39 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
+    // Build a list of mapping entities on this processor
+    DynamicList<label> mapCells(10);
+
+    if (twoDMesh_)
+    {
+        label own = owner_[mIndex];
+
+        mapCells.append(own);
+    }
+    else
+    {
+        const labelList& eFaces = edgeFaces_[mIndex];
+
+        forAll(eFaces, faceI)
+        {
+            label own = owner_[eFaces[faceI]];
+            label nei = neighbour_[eFaces[faceI]];
+
+            if (findIndex(mapCells, own) == -1)
+            {
+                mapCells.append(own);
+            }
+
+            if (nei > -1)
+            {
+                if (findIndex(mapCells, nei) == -1)
+                {
+                    mapCells.append(nei);
+                }
+            }
+        }
+    }
+
     // Loop through insertion cells and
     // create an equivalent on this mesh
     forAll(procIndices_, pI)
@@ -1401,7 +1434,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             }
 
             // Add this cell to the map.
-            map.addCell(cIter());
+            map.addCell(cIter(), mapCells);
         }
 
         // Push operation for the slave into coupleMap
@@ -2038,7 +2071,43 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             }
 
             // Add this face to the map.
-            map.addFace(fI());
+            if (nPatch == -1 || getNeighbourProcessor(nPatch) > -1)
+            {
+                map.addFace(fI());
+            }
+            else
+            {
+                // Select a face to map from
+                label mapFace = -1;
+
+                forAll(nFaceEdges, edgeI)
+                {
+                    const labelList& neF = edgeFaces_[nFaceEdges[edgeI]];
+
+                    forAll(neF, faceI)
+                    {
+                        label fPatch = whichPatch(neF[faceI]);
+
+                        if (fPatch == -1 || neF[faceI] == fI())
+                        {
+                            continue;
+                        }
+
+                        if (fPatch == nPatch)
+                        {
+                            mapFace = neF[faceI];
+                            break;
+                        }
+                    }
+
+                    if (mapFace > -1)
+                    {
+                        break;
+                    }
+                }
+
+                map.addFace(fI(), labelList(1, mapFace));
+            }
 
             // Update cells
             cells_[nOwner][nCellFaces[nOwner]++] = fI();
@@ -2554,36 +2623,36 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         writeVTK("insertCells(" + Foam::name(mIndex) + ')', addedCells);
     }
 
-//    // Set mapping information for any added faces
-//    const List<objectMap>& afList = map.addedFaceList();
-//
-//    forAll(afList, indexI)
-//    {
-//        label nfIndex = afList[indexI].index();
-//        label patch = whichPatch(nfIndex);
-//
-//        if (patch == -1)
-//        {
-//            // Set default mapping for interior faces
-//            setFaceMapping(nfIndex);
-//        }
-//        else
-//        if (getNeighbourProcessor(patch) == -1)
-//        {
-//            // Physical patch
-//            setFaceMapping(nfIndex, afList[indexI].masterObjects());
-//        }
-//    }
-//
-//    // Set mapping information for any added cells
-//    const List<objectMap>& acList = map.addedCellList();
-//
-//    forAll(acList, indexI)
-//    {
-//        label ncIndex = acList[indexI].index();
-//
-//        setCellMapping(ncIndex, acList[indexI].masterObjects());
-//    }
+    // Set mapping information for any added faces
+    const List<objectMap>& afList = map.addedFaceList();
+
+    forAll(afList, indexI)
+    {
+        label nfIndex = afList[indexI].index();
+        label patch = whichPatch(nfIndex);
+
+        if (patch == -1)
+        {
+            // Set default mapping for interior faces
+            setFaceMapping(nfIndex);
+        }
+        else
+        if (getNeighbourProcessor(patch) == -1)
+        {
+            // Physical patch
+            setFaceMapping(nfIndex, afList[indexI].masterObjects());
+        }
+    }
+
+    // Set mapping information for any added cells
+    const List<objectMap>& acList = map.addedCellList();
+
+    forAll(acList, indexI)
+    {
+        label ncIndex = acList[indexI].index();
+
+        setCellMapping(ncIndex, acList[indexI].masterObjects());
+    }
 
     // Specify that the operation was successful
     map.type() = 1;
@@ -6894,6 +6963,23 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
             if (nBoundary != 2)
             {
                 // Write out for post-processing
+                forAll(eFaces, faceI)
+                {
+                    label p = whichPatch(eFaces[faceI]);
+
+                    word pN =
+                    (
+                        (p < 0) ?
+                        word("Internal") :
+                        boundaryMesh()[p].name()
+                    );
+
+                    Pout<< " Face:" << eFaces[faceI]
+                        << " :: " << faces_[eFaces[faceI]]
+                        << " Patch: " << pN
+                        << nl;
+                }
+
                 writeVTK("eFaces_" + Foam::name(index), eFaces, 2);
 
                 forAll(procIndices_, pI)
@@ -7132,7 +7218,9 @@ bool dynamicTopoFvMesh::processorCoupledEntity
     const label index,
     bool checkFace,
     bool checkEdge,
-    bool checkPure
+    bool checkPure,
+    FixedList<label, 2>* patchLabels,
+    FixedList<vector, 2>* patchNormals
 ) const
 {
     // Skip check for serial runs
@@ -7166,25 +7254,80 @@ bool dynamicTopoFvMesh::processorCoupledEntity
         // Search for boundary faces, and determine boundary type.
         forAll(eFaces, faceI)
         {
-            if (neighbour_[eFaces[faceI]] == -1)
+            label patch = whichPatch(eFaces[faceI]);
+
+            if (patch == -1)
             {
-                label patch = whichPatch(eFaces[faceI]);
+                continue;
+            }
 
-                if (getNeighbourProcessor(patch) > -1)
+            if (getNeighbourProcessor(patch) > -1)
+            {
+                // Increment the processor patch count
+                nProcessor++;
+
+                if (!checkPure)
                 {
-                    // Increment the processor patch count
-                    nProcessor++;
-
-                    if (!checkPure)
-                    {
-                        // We don't have to validate if this
-                        // is a 'pure' processor edge, so bail out.
-                        return true;
-                    }
+                    // We don't have to validate if this
+                    // is a 'pure' processor edge, so bail out.
+                    return true;
                 }
-                else
+            }
+            else
+            {
+                // Physical patch.
+                if (patchLabels)
                 {
-                    // Not a processor patch.
+                    (*patchLabels)[nPhysical] = patch;
+                }
+
+                if (patchNormals)
+                {
+                    (*patchNormals)[nPhysical] =
+                    (
+                        faces_[eFaces[faceI]].normal(points_)
+                    );
+                }
+
+                nPhysical++;
+            }
+        }
+
+        if (patchLabels && patchNormals)
+        {
+            // Check other coupled-edges as well
+            forAll(procIndices_, pI)
+            {
+                // Fetch reference to subMesh
+                const coupleMap& cMap = recvMeshes_[pI].patchMap();
+                const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+                label sI = -1;
+
+                if ((sI = cMap.findSlave(coupleMap::EDGE, index)) == -1)
+                {
+                    continue;
+                }
+
+                const labelList& seFaces = mesh.edgeFaces_[sI];
+
+                forAll(seFaces, faceI)
+                {
+                    label sPatch = mesh.whichPatch(seFaces[faceI]);
+                    label neiProc = mesh.getNeighbourProcessor(sPatch);
+
+                    // Skip internal / processor faces
+                    if (sPatch == -1 || neiProc > -1)
+                    {
+                        continue;
+                    }
+
+                    const face& sFace = mesh.faces_[seFaces[faceI]];
+
+                    // Fill patch / normal info
+                    (*patchLabels)[nPhysical] = sPatch;
+                    (*patchNormals)[nPhysical] = sFace.normal(mesh.points_);
+
                     nPhysical++;
                 }
             }

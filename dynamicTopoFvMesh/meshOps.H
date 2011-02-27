@@ -43,7 +43,6 @@ SourceFiles
 #define meshOps_H
 
 #include "Map.H"
-#include "line.H"
 #include "point.H"
 #include "label.H"
 #include "scalar.H"
@@ -51,8 +50,10 @@ SourceFiles
 #include "cellList.H"
 #include "edgeList.H"
 #include "faceList.H"
-#include "triangle.H"
+#include "triPointRef.H"
+#include "tetPointRef.H"
 #include "vectorField.H"
+#include "linePointRef.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -147,12 +148,12 @@ namespace meshOps
     (
         const label cIndex,
         const label fIndex,
-        const UList<face> faces,
-        const UList<cell> cells
+        const UList<face>& faces,
+        const UList<cell>& cells
     );
 
     // Given a cell index, find the centroid / volume of a cell.
-    inline bool cellCentreAndVolume
+    inline void cellCentreAndVolume
     (
         const label cIndex,
         const vectorField& points,
@@ -160,26 +161,23 @@ namespace meshOps
         const UList<cell>& cells,
         const UList<label>& owner,
         vector& centre,
-        scalar& volume,
-        bool checkClosed = false
+        scalar& volume
     );
 
     // Determine whether a segment intersects a triangular face
-    template <class T>
     inline bool segmentTriFaceIntersection
     (
-        const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
-        const line<Vector<T>, const Vector<T>&>& edgeToCheck,
-        Vector<T>& intPoint
+        const triPointRef& faceToCheck,
+        const linePointRef& edgeToCheck,
+        vector& intPoint
     );
 
     // Determine whether the particular point lies
     // inside the given triangular face
-    template <class T>
     inline bool pointInTriFace
     (
-        const triangle<Vector<T>, const Vector<T>&>& faceToCheck,
-        const Vector<T>& checkPoint,
+        const triPointRef& faceToCheck,
+        const vector& checkPoint,
         bool testCoplanarity
     );
 
@@ -232,14 +230,6 @@ namespace meshOps
     (
         const label index,
         List<Type>& list
-    );
-
-    // Utility method to check for concurrent points.
-    template <class T>
-    inline bool checkPointNearness
-    (
-        const Field<Vector<T> >& points,
-        const T& magSqrTol
     );
 
     // Parallel send
@@ -300,10 +290,10 @@ namespace meshOps
         const labelList& cList,
         const label primitiveType,
         const UList<point>& meshPoints,
-        const UList<edge>& edges,
-        const UList<face>& faces,
-        const UList<cell>& cells,
-        const UList<label>& owner,
+        const UList<edge>& edges = List<edge>(0),
+        const UList<face>& faces = List<face>(0),
+        const UList<cell>& cells = List<cell>(0),
+        const UList<label>& owner = List<label>(0),
         const UList<scalar>& scalField = UList<scalar>(),
         const UList<label>& lablField = UList<label>(),
         const UList<vector>& vectField = UList<vector>()

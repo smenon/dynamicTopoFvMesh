@@ -266,6 +266,10 @@ bool dynamicTopoFvMesh::checkBoundingCurve
         return true;
     }
 
+    // Check if two boundary faces lie on different face-patches
+    FixedList<label, 2> fPatches(-1);
+    FixedList<vector, 2> fNorm(vector::zero);
+
     if ((edgePatch = whichEdgePatch(eIndex)) < 0)
     {
         return false;
@@ -279,61 +283,65 @@ bool dynamicTopoFvMesh::checkBoundingCurve
         }
 
         // Explicit check for processor edges (both 2D and 3D)
-        if (processorCoupledEntity(eIndex, false, true))
+        if
+        (
+            processorCoupledEntity
+            (
+                eIndex,
+                false,
+                true,
+                true,
+                &fPatches,
+                &fNorm
+            )
+        )
         {
             // 'Pure' processor coupled edges don't count
-            if (processorCoupledEntity(eIndex, false, true, true))
-            {
-                return false;
-            }
-            else
-            {
-                if (overRidePurityCheck)
-                {
-                    // An explicit overRide was requested.
-                    // This is usually a call from swap3DEdges,
-                    // since 2-2 swaps should be allowed for impure edges
-                    return false;
-                }
-
-                // This edge lies between a processor and physical patch,
-                // which makes it a bounding curve (unless an override is
-                // requested)
-                return true;
-            }
+            return false;
+        }
+        else
+        if (!overRidePurityCheck)
+        {
+            // This edge lies between a processor and physical patch,
+            //  - This a bounding curve (unless an override is requested)
+            //  - An override is warranted for 2-2 swaps on impure edges,
+            //    which is typically requested by swap3DEdges.
+            return true;
         }
     }
 
+    label fPatch, count = 0;
+
     if (coupledModification_)
     {
-        return false;
+        // Normalize patch normals from coupled check
+        fNorm[0] /= mag(fNorm[0]) + VSMALL;
+        fNorm[1] /= mag(fNorm[1]) + VSMALL;
     }
-
-    // Check if two boundary faces lie on different face-patches
-    FixedList<vector, 2> fNorm(vector::zero);
-    label fPatch, firstPatch = -1, secondPatch = -1, count = 0;
-    const labelList& edgeFaces = edgeFaces_[eIndex];
-
-    forAll(edgeFaces, faceI)
+    else
     {
-        if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
+        // Fetch patch indices / normals
+        const labelList& edgeFaces = edgeFaces_[eIndex];
+
+        forAll(edgeFaces, faceI)
         {
-            // Obtain the normal.
-            fNorm[count] = faces_[edgeFaces[faceI]].normal(points_);
-
-            // Normalize it.
-            fNorm[count] /= mag(fNorm[count]) + VSMALL;
-
-            count++;
-
-            if (firstPatch == -1)
+            if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
             {
-                firstPatch = fPatch;
-            }
-            else
-            {
-                secondPatch = fPatch;
-                break;
+                // Obtain the normal.
+                fNorm[count] = faces_[edgeFaces[faceI]].normal(points_);
+
+                // Normalize it.
+                fNorm[count] /= mag(fNorm[count]) + VSMALL;
+
+                // Note patch index
+                fPatches[count] = fPatch;
+
+                count++;
+
+                if (count == 2)
+                {
+                    break;
+                }
             }
         }
     }
@@ -346,8 +354,24 @@ bool dynamicTopoFvMesh::checkBoundingCurve
         return true;
     }
 
+    if (fPatches[0] < 0 || fPatches[1] < 0)
+    {
+        FatalErrorIn
+        (
+            "bool dynamicTopoFvMesh::checkBoundingCurve"
+            "(const label, const bool) const"
+        )
+            << "Edge: " << eIndex << ":: " << edges_[eIndex]
+            << " expected 2 boundary patches." << nl
+            << " fPatches[0]: " << fPatches[0] << nl
+            << " fPatches[1]: " << fPatches[1] << nl
+            << " fNorm[0]: " << fNorm[0] << nl
+            << " fNorm[1]: " << fNorm[1] << nl
+            << abort(FatalError);
+    }
+
     // Check if the edge borders two different patches
-    if (firstPatch != secondPatch)
+    if (fPatches[0] != fPatches[1])
     {
         return true;
     }
