@@ -4793,6 +4793,65 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         label replaceEdge = ringEntities[replaceEdgeIndex][indexI];
         label replaceFace = ringEntities[replaceFaceIndex][indexI];
 
+        label replacePatch = whichEdgePatch(replaceEdge);
+        label removePatch = whichEdgePatch(edgeToRemove);
+
+        // Check if a patch conversion is necessary
+        if (replacePatch == -1 && removePatch > -1)
+        {
+            if (debug > 2)
+            {
+                Pout<< " Edge: " << replaceEdge
+                    << " :: " << edges_[replaceEdge]
+                    << " is interior, but edge: " << edgeToRemove
+                    << " :: " << edges_[edgeToRemove]
+                    << " is on a boundary patch."
+                    << endl;
+            }
+
+            // Convert patch for edge
+            edge newEdge = edges_[replaceEdge];
+            labelList newEdgeFaces = edgeFaces_[replaceEdge];
+            labelList newEdgePoints = edgePoints_[replaceEdge];
+
+            // Insert the new edge
+            label newEdgeIndex =
+            (
+                insertEdge
+                (
+                    removePatch,
+                    newEdge,
+                    newEdgeFaces,
+                    newEdgePoints
+                )
+            );
+
+            // Replace faceEdges for all
+            // connected faces.
+            forAll(newEdgeFaces, faceI)
+            {
+                meshOps::replaceLabel
+                (
+                    replaceEdge,
+                    newEdgeIndex,
+                    faceEdges_[newEdgeFaces[faceI]]
+                );
+            }
+
+            // Remove the edge
+            removeEdge(replaceEdge);
+
+            // Update map
+            map.removeEdge(replaceEdge);
+            map.addEdge(newEdgeIndex, labelList(1, replaceEdge));
+
+            // Replace index and patch
+            replaceEdge = newEdgeIndex;
+
+            // Modify ringEntities
+            ringEntities[replaceEdgeIndex][indexI] = newEdgeIndex;
+        }
+
         const labelList& rmvEdgeFaces = edgeFaces_[edgeToRemove];
 
         // Replace edgePoints for all edges emanating from hullVertices
@@ -5775,8 +5834,17 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // Output check entities
         if (debug > 3)
         {
-            writeVTK("checkEdges_" + Foam::name(eIndex), checkEdges, 1);
-            writeVTK("checkFaces_" + Foam::name(eIndex), checkFaces, 2);
+            writeVTK
+            (
+                "checkEdges_" + Foam::name(eIndex),
+                checkEdges, 1, false, true
+            );
+
+            writeVTK
+            (
+                "checkFaces_" + Foam::name(eIndex),
+                checkFaces, 2, false, true
+            );
         }
 
         if (localCouple && !procCouple)
@@ -5971,7 +6039,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 forAll(checkFaces, faceI)
                 {
                     label mfIndex = checkFaces[faceI];
-                    label mfPatch = whichPatch(mfIndex);
 
                     const face& mF = faces_[mfIndex];
 
@@ -5982,6 +6049,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         continue;
                     }
 
+                    label mfPatch = whichPatch(mfIndex);
+                    label neiProc = getNeighbourProcessor(mfPatch);
+
                     triFace cF
                     (
                         pointMap.found(mF[0]) ? pointMap[mF[0]] : -1,
@@ -5989,35 +6059,26 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         pointMap.found(mF[2]) ? pointMap[mF[2]] : -1
                     );
 
+                    // Check if a patch conversion is necessary
+                    label newPatch = -1;
+                    bool requireConversion = false, physConvert = false;
+
                     // Skip mapping if all points were not found
                     if (cF[0] == -1 || cF[1] == -1 || cF[2] == -1)
                     {
-                        continue;
-                    }
-
-                    // Check if a patch conversion is necessary
-                    label newPatch = -1;
-                    bool requireConversion = false;
-
-                    // Are we talking to a different processor?
-                    if (getNeighbourProcessor(mfPatch) != procIndices_[pI])
-                    {
-                        // This face needs to be converted
-                        const polyBoundaryMesh& boundary = boundaryMesh();
-
-                        forAll(boundary, pi)
+                        // Is this actually a non-processor patch?
+                        if (neiProc == -1)
                         {
-                            if (getNeighbourProcessor(pi) == procIndices_[pI])
-                            {
-                                newPatch = pi;
-                                requireConversion = true;
-                                break;
-                            }
+                            continue;
+                        }
+                        else
+                        {
+                            physConvert = true;
                         }
                     }
 
                     // Has this face been converted to a physical boundary?
-                    if (faceMap.found(mfIndex) && slaveMapPtr && newPatch == -1)
+                    if (faceMap.found(mfIndex) && slaveMapPtr)
                     {
                         // Alias for convenience...
                         const changeMap& sMap = *slaveMapPtr;
@@ -6058,6 +6119,29 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             if ((af.index() == sfIndex) && (mo < 0))
                             {
                                 newPatch = Foam::mag(mo + 2);
+                                requireConversion = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Was an appropriate physical patch found?
+                    if (physConvert && !requireConversion)
+                    {
+                        continue;
+                    }
+
+                    // Are we talking to a different processor?
+                    if (neiProc != procIndices_[pI])
+                    {
+                        // This face needs to be converted
+                        const polyBoundaryMesh& boundary = boundaryMesh();
+
+                        forAll(boundary, pi)
+                        {
+                            if (getNeighbourProcessor(pi) == procIndices_[pI])
+                            {
+                                newPatch = pi;
                                 requireConversion = true;
                                 break;
                             }
@@ -6226,6 +6310,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                     if (!matchedFace)
                     {
+                        sMesh.writeVTK
+                        (
+                            "failedFacePoints_"
+                          + Foam::name(mfIndex),
+                            cF, 0, false, true
+                        );
+
                         Pout<< " Failed to match face: "
                             << mfIndex << " :: " << faces_[mfIndex]
                             << " using comparison face: " << cF
@@ -6274,7 +6365,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 forAll(checkEdges, edgeI)
                 {
                     label meIndex = checkEdges[edgeI];
-                    label mePatch = whichEdgePatch(meIndex);
 
                     const edge& mE = edges_[meIndex];
 
@@ -6285,21 +6375,32 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         continue;
                     }
 
+                    label mePatch = whichEdgePatch(meIndex);
+                    label neiProc = getNeighbourProcessor(mePatch);
+
                     edge cE
                     (
                         pointMap.found(mE[0]) ? pointMap[mE[0]] : -1,
                         pointMap.found(mE[1]) ? pointMap[mE[1]] : -1
                     );
 
+                    // Check if a patch conversion is necessary
+                    label newPatch = -1;
+                    bool requireConversion = true, physConvert = false;
+
                     // Skip mapping if all points were not found
                     if (cE[0] == -1 || cE[1] == -1)
                     {
-                        continue;
+                        // Is this actually a non-processor patch?
+                        if (neiProc == -1)
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            physConvert = true;
+                        }
                     }
-
-                    // Check if a patch conversion is necessary
-                    label newPatch = -1;
-                    bool requireConversion = true;
 
                     // Has this edge been converted to a physical boundary?
                     const labelList& meFaces = edgeFaces_[meIndex];
@@ -6322,6 +6423,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         {
                             requireConversion = false;
                         }
+                    }
+
+                    // Was an appropriate physical patch found?
+                    if (physConvert && !requireConversion)
+                    {
+                        continue;
                     }
 
                     if (requireConversion)
@@ -6455,6 +6562,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                     if (!matchedEdge)
                     {
+                        sMesh.writeVTK
+                        (
+                            "failedEdgePoints_"
+                          + Foam::name(meIndex),
+                            cE, 0, false, true
+                        );
+
                         Pout<< " Failed to match edge: "
                             << meIndex << " :: " << edges_[meIndex]
                             << " using comparison edge: " << cE
