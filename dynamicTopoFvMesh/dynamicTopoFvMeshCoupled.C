@@ -1569,7 +1569,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                       + Foam::name(mIndex) + '_'                               \
                       + Foam::name(procIndex),                                 \
                         entities,                                              \
-                        eType                                                  \
+                        eType, false, true                                     \
                     );                                                         \
                 }                                                              \
             }
@@ -2608,7 +2608,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     }
 
     // Write out cells for debug, if necessary
-    if (debug > 4 || map.index() < 0)
+    if (debug > 2 || map.index() < 0)
     {
         const List<objectMap>& acList = map.addedCellList();
 
@@ -6050,7 +6050,7 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
     List<scalarField> slaveTols(nPatches_);
     List<pointField> slaveCentres(nPatches_);
 
-    scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-4);
+    scalar matchTol = Foam::debug::tolerances("patchFaceMatchTol", 1e-4);
 
     for (label pI = 0; pI < nPatches_; pI++)
     {
@@ -6281,7 +6281,7 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
               + '_'
               + Foam::name(neiProcNo),
                 identity(patchSizes_[pI]) + patchStarts_[pI],
-                2
+                2, false, true
             );
         }
 

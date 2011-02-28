@@ -1310,7 +1310,7 @@ void dynamicTopoFvMesh::buildEdgePoints
         }
     }
 
-    if (debug > 2)
+    if (debug > 2 && !failMode)
     {
         // Check for invalid indices
         if (findIndex(ePoints, -1) > -1)

@@ -267,6 +267,7 @@ bool dynamicTopoFvMesh::checkBoundingCurve
     }
 
     // Check if two boundary faces lie on different face-patches
+    bool procCoupled = false;
     FixedList<label, 2> fPatches(-1);
     FixedList<vector, 2> fNorm(vector::zero);
 
@@ -283,36 +284,42 @@ bool dynamicTopoFvMesh::checkBoundingCurve
         }
 
         // Explicit check for processor edges (both 2D and 3D)
-        if
-        (
-            processorCoupledEntity
+        if (processorCoupledEntity(eIndex, false, true))
+        {
+            // Check for pure processor edge, and if not,
+            // fetch boundary patch labels / normals
+            if
             (
-                eIndex,
-                false,
-                true,
-                true,
-                &fPatches,
-                &fNorm
+                processorCoupledEntity
+                (
+                    eIndex,
+                    false,
+                    true,
+                    true,
+                    &fPatches,
+                    &fNorm
+                )
             )
-        )
-        {
-            // 'Pure' processor coupled edges don't count
-            return false;
-        }
-        else
-        if (!overRidePurityCheck)
-        {
-            // This edge lies between a processor and physical patch,
-            //  - This a bounding curve (unless an override is requested)
-            //  - An override is warranted for 2-2 swaps on impure edges,
-            //    which is typically requested by swap3DEdges.
-            return true;
+            {
+                // 'Pure' processor coupled edges don't count
+                return false;
+            }
+            else
+            if (!overRidePurityCheck)
+            {
+                // This edge lies between a processor and physical patch,
+                //  - This a bounding curve (unless an override is requested)
+                //  - An override is warranted for 2-2 swaps on impure edges,
+                //    which is typically requested by swap3DEdges.
+                return true;
+            }
+
+            // Specify that the edge is procCoupled
+            procCoupled = true;
         }
     }
 
-    label fPatch, count = 0;
-
-    if (coupledModification_)
+    if (procCoupled)
     {
         // Normalize patch normals from coupled check
         fNorm[0] /= mag(fNorm[0]) + VSMALL;
@@ -321,14 +328,16 @@ bool dynamicTopoFvMesh::checkBoundingCurve
     else
     {
         // Fetch patch indices / normals
-        const labelList& edgeFaces = edgeFaces_[eIndex];
+        const labelList& eFaces = edgeFaces_[eIndex];
 
-        forAll(edgeFaces, faceI)
+        label fPatch = -1, count = 0;
+
+        forAll(eFaces, faceI)
         {
-            if ((fPatch = whichPatch(edgeFaces[faceI])) > -1)
+            if ((fPatch = whichPatch(eFaces[faceI])) > -1)
             {
                 // Obtain the normal.
-                fNorm[count] = faces_[edgeFaces[faceI]].normal(points_);
+                fNorm[count] = faces_[eFaces[faceI]].normal(points_);
 
                 // Normalize it.
                 fNorm[count] /= mag(fNorm[count]) + VSMALL;
@@ -346,28 +355,44 @@ bool dynamicTopoFvMesh::checkBoundingCurve
         }
     }
 
+    // Check for legitimate patches
+    if (fPatches[0] < 0 || fPatches[1] < 0)
+    {
+        const labelList& eFaces = edgeFaces_[eIndex];
+
+        forAll(eFaces, faceI)
+        {
+            Pout<< " Face: " << eFaces[faceI]
+                << " :: " << faces_[eFaces[faceI]]
+                << " Patch: " << whichPatch(eFaces[faceI]) << nl;
+        }
+
+        label epI = whichEdgePatch(eIndex);
+
+        FatalErrorIn
+        (
+            "bool dynamicTopoFvMesh::checkBoundingCurve"
+            "(const label, const bool) const"
+        )
+            << " Edge: " << eIndex << ":: " << edges_[eIndex]
+            << " Patch: "
+            << (epI < 0 ? "Internal" : boundaryMesh()[epI].name())
+            << " edgeFaces: " << eFaces << nl
+            << " expected 2 boundary patches." << nl
+            << " fPatches[0]: " << fPatches[0] << nl
+            << " fPatches[1]: " << fPatches[1] << nl
+            << " fNorm[0]: " << fNorm[0] << nl
+            << " fNorm[1]: " << fNorm[1] << nl
+            << " coupledModification: " << coupledModification_
+            << abort(FatalError);
+    }
+
     scalar deviation = (fNorm[0] & fNorm[1]);
 
     // Check if the swap-curvature is too high
     if (mag(deviation) < swapDeviation_)
     {
         return true;
-    }
-
-    if (fPatches[0] < 0 || fPatches[1] < 0)
-    {
-        FatalErrorIn
-        (
-            "bool dynamicTopoFvMesh::checkBoundingCurve"
-            "(const label, const bool) const"
-        )
-            << "Edge: " << eIndex << ":: " << edges_[eIndex]
-            << " expected 2 boundary patches." << nl
-            << " fPatches[0]: " << fPatches[0] << nl
-            << " fPatches[1]: " << fPatches[1] << nl
-            << " fNorm[0]: " << fNorm[0] << nl
-            << " fNorm[1]: " << fNorm[1] << nl
-            << abort(FatalError);
     }
 
     // Check if the edge borders two different patches
