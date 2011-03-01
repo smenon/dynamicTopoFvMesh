@@ -1368,7 +1368,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             << "faceEdges: " << fE << " is to be collapsed. "
             << nl;
 
-        Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+        Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+        Pout<< " coupledModification: " << coupledModification_ << nl;
 
         label epIndex = whichPatch(fIndex);
 
@@ -4330,8 +4331,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     );
 
     // Check whether points of the edge lies on a boundary
-    FixedList<label, 2> nBoundCurves(0), checkPoints(-1);
     const FixedList<bool,2> edgeBoundary = checkEdgeBoundary(eIndex);
+    FixedList<label, 2> nBoundCurves(0), nProcCurves(0), checkPoints(-1);
 
     // Decide on collapseCase
     label collapseCase = -1;
@@ -4351,7 +4352,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // If this is an interior edge with two boundary points.
         // Bail out for now. If proximity based refinement is
         // switched on, mesh may be sliced at this point.
-        if (whichEdgePatch(eIndex) == -1)
+        label edgePatch = whichEdgePatch(eIndex);
+
+        if (edgePatch == -1)
         {
             return map;
         }
@@ -4359,17 +4362,32 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         // Check if either point lies on a bounding curve
         // Used to ensure that collapses happen towards bounding curves.
         // If the edge itself is on a bounding curve, collapse is valid.
-        forAll(edges_[eIndex], pointI)
+        const edge& edgeCheck = edges_[eIndex];
+
+        forAll(edgeCheck, pointI)
         {
-            const labelList& pEdges = pointEdges_[edges_[eIndex][pointI]];
+            const labelList& pEdges = pointEdges_[edgeCheck[pointI]];
 
             forAll(pEdges, edgeI)
             {
-                if (checkBoundingCurve(pEdges[edgeI]))
+                if
+                (
+                    checkBoundingCurve
+                    (
+                        pEdges[edgeI],
+                        false,
+                        &(nProcCurves[pointI])
+                    )
+                )
                 {
                     nBoundCurves[pointI]++;
                 }
             }
+        }
+
+        if (!coupledModification_ && nProcCurves[0] && nProcCurves[1])
+        {
+            return map;
         }
 
         // Pick the point which is connected to more bounding curves
@@ -4603,6 +4621,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 << " Resulting quality: " << collapseQuality << nl
                 << " collapsePoint: " << collapsePoint << nl
                 << " nBoundCurves: " << nBoundCurves << nl
+                << " nProcCurves: " << nProcCurves << nl
                 << endl;
         }
 
@@ -4653,7 +4672,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             << "Edge: " << eIndex << ": " << edges_[eIndex]
             << " is to be collapsed. " << nl;
 
-        Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+        Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+        Pout<< " coupledModification: " << coupledModification_ << nl;
 
         label epIndex = whichEdgePatch(eIndex);
 
@@ -4676,6 +4696,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
 
         Pout<< " nBoundCurves: " << nBoundCurves << nl
+            << " nProcCurves: " << nProcCurves << nl
             << " collapseCase: " << collapseCase << nl
             << " Resulting quality: " << collapseQuality << endl;
 

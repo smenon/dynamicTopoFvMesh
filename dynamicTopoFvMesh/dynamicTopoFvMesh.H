@@ -666,7 +666,8 @@ class dynamicTopoFvMesh
         bool checkBoundingCurve
         (
             const label eIndex,
-            const bool overRidePurityCheck = false
+            const bool overRidePurityCheck = false,
+            label* nProcCurves = NULL
         ) const;
 
         // Allocate dynamic programming tables

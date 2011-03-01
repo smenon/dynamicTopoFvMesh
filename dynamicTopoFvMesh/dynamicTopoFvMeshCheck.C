@@ -250,10 +250,13 @@ dynamicTopoFvMesh::checkEdgeBoundary
 
 
 // Check whether the given edge is on a bounding curve
+//  - If nProcCurves is provided, the variable is incremented
+//    if the edge is processor-coupled
 bool dynamicTopoFvMesh::checkBoundingCurve
 (
     const label eIndex,
-    const bool overRidePurityCheck
+    const bool overRidePurityCheck,
+    label* nProcCurves
 ) const
 {
     // Internal edges don't count
@@ -286,6 +289,12 @@ bool dynamicTopoFvMesh::checkBoundingCurve
         // Explicit check for processor edges (both 2D and 3D)
         if (processorCoupledEntity(eIndex, false, true))
         {
+            // Increment nProcCurves
+            if (nProcCurves)
+            {
+                (*nProcCurves)++;
+            }
+
             // Check for pure processor edge, and if not,
             // fetch boundary patch labels / normals
             if

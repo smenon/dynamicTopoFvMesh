@@ -2319,7 +2319,8 @@ const changeMap dynamicTopoFvMesh::swap23
 
         if (debug > 2)
         {
-            Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+            Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+            Pout<< " coupledModification: " << coupledModification_ << nl;
 
             label bPatch = whichEdgePatch(eIndex);
 
@@ -3055,6 +3056,9 @@ const changeMap dynamicTopoFvMesh::swap32
 
         if (debug > 2)
         {
+            Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+            Pout<< " coupledModification: " << coupledModification_ << nl;
+
             label bPatch = whichEdgePatch(eIndex);
 
             const polyBoundaryMesh& boundary = boundaryMesh();

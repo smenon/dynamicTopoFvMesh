@@ -534,7 +534,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         if (debug > 2)
         {
-            Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+            Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+            Pout<< " coupledModification: " << coupledModification_ << nl;
 
             const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -2841,7 +2842,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             << ": " << origEdge
             << " is to be bisected. " << endl;
 
-        Pout<< " On SubMesh: " << (isSubMesh_ ? "Yes" : "No") << nl;
+        Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+        Pout<< " coupledModification: " << coupledModification_ << nl;
 
         label epIndex = whichEdgePatch(eIndex);
 

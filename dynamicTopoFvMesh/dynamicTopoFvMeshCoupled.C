@@ -6471,9 +6471,8 @@ bool dynamicTopoFvMesh::coupledFillTables
     else
     if (processorCoupledEntity(eIndex))
     {
-        const edge& edgeToCheck = edges_[eIndex];
+        const edge& checkEdge = edges_[eIndex];
         const labelList& eFaces = edgeFaces_[eIndex];
-        const labelList& hullVertices = edgePoints_[eIndex];
 
         // Reset minQuality
         minQuality = GREAT;
@@ -6483,81 +6482,70 @@ bool dynamicTopoFvMesh::coupledFillTables
         DynamicList<point> parPts(10);
         DynamicList<label> parVtx(10);
 
+        bool closed = true;
         label nPoints = 0, nProcs = 0;
         label otherPoint = -1, nextPoint = -1;
 
-        edge checkEdge(-1);
-        bool reverseEdge = false;
+        // Define a line for this edge
+        linePointRef lpr
+        (
+            points_[checkEdge.start()],
+            points_[checkEdge.end()]
+        );
 
-        // Pure processor edges are considered closed
-        bool closed = processorCoupledEntity(eIndex, false,	true, true);
+        // Define tangent-to-edge / edge-centre
+        vector te = -lpr.vec(), xe = lpr.centre();
 
-        if (closed)
+        // Normalize tangent
+        te /= mag(te) + VSMALL;
+
+        // Fill-in vertices for this processor
+        forAll(eFaces, faceI)
         {
-            reverseEdge = false;
-        }
-        else
-        {
-            // Edge lies on a boundary patch.
-            // Check if reversal is necessary.
-            forAll(eFaces, faceI)
+            label fPatch = whichPatch(eFaces[faceI]);
+
+            // If this is talking to a lower-ranked processor,
+            // skip the insertion step.
+            label neiProc = getNeighbourProcessor(fPatch);
+
+            if (neiProc > -1 && neiProc < Pstream::myProcNo())
             {
-                if (neighbour_[eFaces[faceI]] == -1)
+                // This edge should not be here
+                Pout<< " Edge: " << eIndex
+                    << " is talking to processor: " << neiProc
+                    << abort(FatalError);
+            }
+
+            // This face is either internal or on a physical boundary
+            const face& checkFace = faces_[eFaces[faceI]];
+
+            // Find the isolated point
+            meshOps::findIsolatedPoint
+            (
+                checkFace,
+                checkEdge,
+                otherPoint,
+                nextPoint
+            );
+
+            // Insert point and index
+            parPts.append(points_[otherPoint]);
+            parVtx.append(nPoints);
+
+            // Physical patch: Is this an appropriate start face?
+            //  - If yes, swap with first index
+            if (fPatch > -1)
+            {
+                closed = false;
+
+                if (nextPoint == checkEdge[0])
                 {
-                    label facePatch = whichPatch(eFaces[faceI]);
-
-                    // Skip processor patches
-                    if (getNeighbourProcessor(facePatch) > -1)
-                    {
-                        continue;
-                    }
-
-                    meshOps::findIsolatedPoint
-                    (
-                        faces_[eFaces[faceI]],
-                        edgeToCheck,
-                        otherPoint,
-                        nextPoint
-                    );
-
-                    if (otherPoint == hullVertices[0])
-                    {
-                        // Starts conventionally. No problem.
-                        reverseEdge = false;
-                    }
-                    else
-                    {
-                        reverseEdge = true;
-                    }
-
-                    break;
+                    Foam::Swap(parPts[0], parPts[nPoints]);
                 }
             }
-        }
 
-        if (reverseEdge)
-        {
-            // Reversed edge orientation
-            checkEdge = edgeToCheck.reverseEdge();
-
-            // Fill-in vertices in reverse for this processor
-            forAllReverse(hullVertices, pointI)
-            {
-                parPts.append(points_[hullVertices[pointI]]);
-                parVtx.append(nPoints++);
-            }
-        }
-        else
-        {
-            // Conventional edge orientation
-            checkEdge = edgeToCheck;
-
-            // First fill-in vertices for this processor
-            forAll(hullVertices, pointI)
-            {
-                parPts.append(points_[hullVertices[pointI]]);
-                parVtx.append(nPoints++);
-            }
+            // Increment point index
+            nPoints++;
         }
 
         // Now look through processors, and add their points
@@ -6566,19 +6554,42 @@ bool dynamicTopoFvMesh::coupledFillTables
             label proc = procIndices_[pI];
 
             // Fetch reference to subMesh
-            const label edgeEnum = coupleMap::EDGE;
             const coupleMap& cMap = recvMeshes_[pI].patchMap();
             const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-            label sI = -1;
+            label sI = -1, sP = -1;
 
-            if ((sI = cMap.findSlave(edgeEnum, eIndex)) == -1)
+            if ((sI = cMap.findSlave(coupleMap::EDGE, eIndex)) == -1)
             {
                 continue;
             }
 
             const edge& slaveEdge = mesh.edges_[sI];
             const labelList& seFaces = mesh.edgeFaces_[sI];
+
+            // Determine the point index that corresponds to checkEdge[0]
+            edge cE
+            (
+                cMap.findMaster(coupleMap::POINT, slaveEdge[0]),
+                cMap.findMaster(coupleMap::POINT, slaveEdge[1])
+            );
+
+            if (cE[0] == checkEdge[0])
+            {
+                sP = slaveEdge[0];
+            }
+            else
+            if (cE[1] == checkEdge[0])
+            {
+                sP = slaveEdge[1];
+            }
+            else
+            {
+                Pout<< " Can't find master point: " << checkEdge[0]
+                    << " with slaveEdge: " << slaveEdge
+                    << " and cE: " << cE << " on proc: " << proc
+                    << abort(FatalError);
+            }
 
             forAll(seFaces, faceI)
             {
@@ -6607,26 +6618,32 @@ bool dynamicTopoFvMesh::coupledFillTables
 
                 // Insert point and index
                 parPts.append(mesh.points_[otherPoint]);
-                parVtx.append(nPoints++);
+                parVtx.append(nPoints);
+
+                // Physical patch: Is this an appropriate start face?
+                //  - If yes, swap with first index
+                if (slavePatch > -1)
+                {
+                    closed = false;
+
+                    if (nextPoint == sP)
+                    {
+                        Foam::Swap(parPts[0], parPts[nPoints]);
+                    }
+                }
+
+                // Increment point index
+                nPoints++;
             }
 
             nProcs++;
         }
 
         // Sort points / indices in counter-clockwise order
-        SortableList<scalar> angles(parPts.size(), 0.0);
+        SortableList<scalar> angles(nPoints, 0.0);
 
         // Fetch 2 * pi
         scalar twoPi = mathematicalConstant::twoPi;
-
-        // Define a line for this edge
-        linePointRef lpr(points_[checkEdge.start()], points_[checkEdge.end()]);
-
-        // Define tangent-to-edge / edge-centre
-        vector te = -lpr.vec(), xe = lpr.centre();
-
-        // Normalize tangent
-        te /= mag(te) + VSMALL;
 
         // Define a base direction
         // from the start point
@@ -6637,7 +6654,7 @@ bool dynamicTopoFvMesh::coupledFillTables
         // Local coordinate system
         coordinateSystem cs("cs", xe, te, dir);
 
-        for (label i = 1; i < parPts.size(); i++)
+        for (label i = 1; i < nPoints; i++)
         {
             // Convert to local csys and determine angle
             vector local = cs.localPosition(parPts[i]);
@@ -6651,7 +6668,7 @@ bool dynamicTopoFvMesh::coupledFillTables
         angles.sort();
 
         // Reorder points and transfer
-        List<point> sortedParPts(parPts.size());
+        List<point> sortedParPts(nPoints);
 
         const labelList& indices = angles.indices();
 
@@ -6670,6 +6687,9 @@ bool dynamicTopoFvMesh::coupledFillTables
 
         parPts.append(lpr.end());
         parEdge[1] = nPoints++;
+
+        // Compute minQuality with this loop
+        minQuality = computeMinQuality(parEdge, parVtx, parPts, closed);
 
         if (debug > 4)
         {
@@ -6693,6 +6713,39 @@ bool dynamicTopoFvMesh::coupledFillTables
               + Foam::name(Pstream::myProcNo()),
                 eFaces,
                 2
+            );
+
+            DynamicList<label> edgeCells(10);
+
+            forAll(eFaces, faceI)
+            {
+                label own = owner_[eFaces[faceI]];
+                label nei = neighbour_[eFaces[faceI]];
+
+                if (findIndex(edgeCells, own) == -1)
+                {
+                    edgeCells.append(own);
+                }
+
+                if (nei == -1)
+                {
+                    continue;
+                }
+
+                if (findIndex(edgeCells, nei) == -1)
+                {
+                    edgeCells.append(nei);
+                }
+            }
+
+            writeVTK
+            (
+                "parEdgeCells_"
+              + Foam::name(eIndex)
+              + '_'
+              + Foam::name(Pstream::myProcNo()),
+                edgeCells,
+                3
             );
 
             forAll(procIndices_, pI)
@@ -6720,11 +6773,51 @@ bool dynamicTopoFvMesh::coupledFillTables
                     seF,
                     2
                 );
+
+                // Clear existing list
+                edgeCells.clear();
+
+                forAll(seF, faceI)
+                {
+                    label own = mesh.owner_[seF[faceI]];
+                    label nei = mesh.neighbour_[seF[faceI]];
+
+                    if (findIndex(edgeCells, own) == -1)
+                    {
+                        edgeCells.append(own);
+                    }
+
+                    if (nei == -1)
+                    {
+                        continue;
+                    }
+
+                    if (findIndex(edgeCells, nei) == -1)
+                    {
+                        edgeCells.append(nei);
+                    }
+                }
+
+                mesh.writeVTK
+                (
+                    "parEdgeCells_"
+                  + Foam::name(eIndex)
+                  + '_'
+                  + Foam::name(procIndices_[pI]),
+                    edgeCells,
+                    3
+                );
+            }
+
+            if (minQuality < 0.0)
+            {
+                Pout<< " * * * Error in fillTables * * * " << nl
+                    << " Edge: " << eIndex << " :: " << checkEdge << nl
+                    << " minQuality: " << minQuality << nl
+                    << " Closed: " << Switch::asText(closed) << nl
+                    << abort(FatalError);
             }
         }
-
-        // Compute minQuality with this loop
-        minQuality = computeMinQuality(parEdge, parVtx, parPts, closed);
 
         // Fill in the size
         m[0] = parVtx.size();
@@ -6980,7 +7073,11 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                         << nl;
                 }
 
-                writeVTK("eFaces_" + Foam::name(index), eFaces, 2);
+                writeVTK
+                (
+                    "eFaces_" + Foam::name(index),
+                    eFaces, 2, false, true
+                );
 
                 forAll(procIndices_, pI)
                 {
