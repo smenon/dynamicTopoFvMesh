@@ -140,7 +140,7 @@ bool dynamicTopoFvMesh::testDelaunay
             // Fetch non-const reference to subMeshes
             const coupledInfo& recvMesh = recvMeshes_[pI];
 
-            const coupleMap& cMap = recvMesh.patchMap();
+            const coupleMap& cMap = recvMesh.map();
             const dynamicTopoFvMesh& sMesh = recvMesh.subMesh();
 
             if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
@@ -1581,7 +1581,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
                 if (patchCoupling_(patchI))
                 {
                     const label edgeEnum  = coupleMap::EDGE;
-                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                    const coupleMap& cMap = patchCoupling_[patchI].map();
 
                     if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
@@ -1742,7 +1742,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     if (coupledModification_)
     {
         // Create a mapping entry for the new edge.
-        const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
+        const coupleMap& cMap = patchCoupling_[pIndex].map();
 
         if (locallyCoupledEntity(map.addedEdgeList()[0].index()))
         {
@@ -2114,7 +2114,7 @@ scalar dynamicTopoFvMesh::computeMinQuality(const label eIndex) const
                 if (patchCoupling_(patchI))
                 {
                     const label edgeEnum  = coupleMap::EDGE;
-                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                    const coupleMap& cMap = patchCoupling_[patchI].map();
 
                     if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {

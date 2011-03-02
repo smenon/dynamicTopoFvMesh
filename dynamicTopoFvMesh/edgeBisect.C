@@ -230,7 +230,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             {
                 if (patchCoupling_(patchI))
                 {
-                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                    const coupleMap& cMap = patchCoupling_[patchI].map();
 
                     if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
                     {
@@ -300,7 +300,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             {
                 // Fetch reference to subMesh
                 const coupledInfo& recvMesh = recvMeshes_[pI];
-                const coupleMap& cMap = recvMesh.patchMap();
+                const coupleMap& cMap = recvMesh.map();
 
                 label sIndex = -1;
 
@@ -381,7 +381,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         if (localCouple)
         {
-            cMapPtr = &(patchCoupling_[pI].patchMap());
+            cMapPtr = &(patchCoupling_[pI].map());
 
             // First check the slave for bisection feasibility.
             slaveMap = bisectQuadFace(sIndex, changeMap(), true, forceOp);
@@ -389,7 +389,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         else
         if (procCouple)
         {
-            cMapPtr = &(recvMeshes_[pI].patchMap());
+            cMapPtr = &(recvMeshes_[pI].map());
 
             coupledInfo& recvMesh = recvMeshes_[pI];
 
@@ -1997,12 +1997,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         if (localCouple && !procCouple)
         {
-            cMapPtr = &(patchCoupling_[pI].patchMap());
+            cMapPtr = &(patchCoupling_[pI].map());
         }
         else
         if (procCouple && !localCouple)
         {
-            cMapPtr = &(recvMeshes_[pI].patchMap());
+            cMapPtr = &(recvMeshes_[pI].map());
         }
 
         // Alias for convenience
@@ -2467,7 +2467,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             {
                 if (patchCoupling_(patchI))
                 {
-                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                    const coupleMap& cMap = patchCoupling_[patchI].map();
 
                     if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
@@ -2538,8 +2538,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 const coupledInfo& sendMesh = sendMeshes_[pI];
                 const coupledInfo& recvMesh = recvMeshes_[pI];
 
-                const coupleMap& scMap = sendMesh.patchMap();
-                const coupleMap& rcMap = recvMesh.patchMap();
+                const coupleMap& scMap = sendMesh.map();
+                const coupleMap& rcMap = recvMesh.map();
 
                 // If this edge was sent to a lower-ranked
                 // processor, skip it.
@@ -3556,12 +3556,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             if (localCouple && !procCouple)
             {
-                cMapPtr = &(patchCoupling_[pI].patchMap());
+                cMapPtr = &(patchCoupling_[pI].map());
             }
             else
             if (procCouple && !localCouple)
             {
-                cMapPtr = &(recvMeshes_[pI].patchMap());
+                cMapPtr = &(recvMeshes_[pI].map());
             }
 
             // Alias for convenience...
@@ -4195,7 +4195,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 }
 
                 const label faceEnum  = coupleMap::FACE;
-                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                const coupleMap& cMap = patchCoupling_[patchI].map();
 
                 if ((sIndex = cMap.findSlave(faceEnum, fIndex)) > -1)
                 {
@@ -4923,7 +4923,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                 if (patchCoupling_(pIndex))
                 {
                     // Add the new point to the coupling map
-                    const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
+                    const coupleMap& cMap = patchCoupling_[pIndex].map();
 
                     if (trisectingSlave)
                     {
@@ -4974,7 +4974,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
                     if (patchCoupling_(pIndex))
                     {
-                        const coupleMap& cM = patchCoupling_[pIndex].patchMap();
+                        const coupleMap& cM = patchCoupling_[pIndex].map();
 
                         if (trisectingSlave && epIndex != cM.slaveIndex())
                         {
@@ -4986,7 +4986,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                         continue;
                     }
 
-                    const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
+                    const coupleMap& cMap = patchCoupling_[pIndex].map();
 
                     // Configure an edge for comparison.
                     edge cE(-1, -1);
@@ -5104,7 +5104,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
 
                     if (patchCoupling_(pIndex))
                     {
-                        const coupleMap& cM = patchCoupling_[pIndex].patchMap();
+                        const coupleMap& cM = patchCoupling_[pIndex].map();
 
                         if (trisectingSlave && fpIndex != cM.slaveIndex())
                         {
@@ -5116,7 +5116,7 @@ const changeMap dynamicTopoFvMesh::trisectFace
                         continue;
                     }
 
-                    const coupleMap& cMap = patchCoupling_[pIndex].patchMap();
+                    const coupleMap& cMap = patchCoupling_[pIndex].map();
 
                     // Configure a face for comparison.
                     const face& mF = faces_[amfList[mfI].index()];

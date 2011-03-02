@@ -210,7 +210,7 @@ void dynamicTopoFvMesh::initCoupledStack
 
                             // Fetch reference to subMeshes
                             const coupledInfo& recvMesh = recvMeshes_[pI];
-                            const coupleMap& rcMap = recvMesh.patchMap();
+                            const coupleMap& rcMap = recvMesh.map();
 
                             if (rcMap.findSlave(edgeEnum, eIndex) > -1)
                             {
@@ -497,12 +497,12 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             )
         );
 
-        sendMeshes_[pI].patchMap().subMeshPoints() =
+        sendMeshes_[pI].map().subMeshPoints() =
         (
             procPoints[procIndices_[pI]]
         );
 
-        sendMeshes_[pI].patchMap().globalProcPoints() =
+        sendMeshes_[pI].map().globalProcPoints() =
         (
             globalProcPoints[procIndices_[pI]]
         );
@@ -522,12 +522,12 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             )
         );
 
-        recvMeshes_[pI].patchMap().subMeshPoints() =
+        recvMeshes_[pI].map().subMeshPoints() =
         (
             procPoints[procIndices_[pI]]
         );
 
-        recvMeshes_[pI].patchMap().globalProcPoints() =
+        recvMeshes_[pI].map().globalProcPoints() =
         (
             globalProcPoints[procIndices_[pI]]
         );
@@ -548,7 +548,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             // Write out subMeshPoints as a VTK
             if (proc < Pstream::myProcNo())
             {
-                const coupleMap& cMap = sendMeshes_[pI].patchMap();
+                const coupleMap& cMap = sendMeshes_[pI].map();
 
                 writeVTK
                 (
@@ -564,7 +564,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             }
             else
             {
-                const coupleMap& cMap = sendMeshes_[pI].patchMap();
+                const coupleMap& cMap = sendMeshes_[pI].map();
 
                 writeVTK
                 (
@@ -775,8 +775,8 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
         const coupledInfo& rPM = recvMeshes_[pI];
 
         // Fetch the coupleMap
-        const coupleMap& scMap = sPM.patchMap();
-        const coupleMap& rcMap = rPM.patchMap();
+        const coupleMap& scMap = sPM.map();
+        const coupleMap& rcMap = rPM.map();
 
         Map<label>& pointMap = scMap.entityMap(coupleMap::POINT);
 
@@ -812,7 +812,7 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
         coupledInfo& rPM = recvMeshes_[pI];
 
         // Fetch the coupleMap
-        const coupleMap& rcMap = rPM.patchMap();
+        const coupleMap& rcMap = rPM.map();
 
         rPM.subMesh().points_ = rcMap.pointBuffer();
         rPM.subMesh().oldPoints_ = rcMap.oldPointBuffer();
@@ -858,7 +858,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].map();
 
         // Does a coupling exist?
         if (cMap.findSlave(cplEnum, mIndex) == -1)
@@ -883,7 +883,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].map();
         const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         label sIndex = -1;
@@ -1259,7 +1259,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                             label pIdx =
                             (
-                                sendMeshes_[prI].patchMap().patchIndex()
+                                sendMeshes_[prI].map().patchIndex()
                             );
 
                             // Add a patch creation order, if necessary
@@ -1396,7 +1396,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
-        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].map();
         const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         label sIndex = -1;
@@ -1453,7 +1453,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(facesToConvert, pI)
     {
         // Fetch reference to subMesh
-        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].map();
         const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         const Map<label>& procFaceMap = facesToConvert[pI];
@@ -1501,7 +1501,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         forAll(facesToInsert, pI)
         {
             // Fetch reference to subMesh
-            const coupleMap& cMap = recvMeshes_[pI].patchMap();
+            const coupleMap& cMap = recvMeshes_[pI].map();
             const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
             const Map<label>& procFaceMap = facesToInsert[pI];
@@ -1598,7 +1598,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         Map<label>& procPointMapI = pointsToInsert[pI];
 
         // Fetch reference to subMesh
-        const coupleMap& cMapI = recvMeshes_[pI].patchMap();
+        const coupleMap& cMapI = recvMeshes_[pI].map();
         const dynamicTopoFvMesh& meshI = recvMeshes_[pI].subMesh();
 
         forAllIter(Map<label>, procPointMapI, pItI)
@@ -1622,7 +1622,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 Map<label>& procPointMapJ = pointsToInsert[pJ];
 
                 // Fetch reference to subMesh
-                const coupleMap& cMapJ = recvMeshes_[pJ].patchMap();
+                const coupleMap& cMapJ = recvMeshes_[pJ].map();
                 const dynamicTopoFvMesh& meshJ = recvMeshes_[pJ].subMesh();
 
                 // Compare points with this processor
@@ -1717,7 +1717,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(edgesToInsert, pI)
     {
         // Fetch reference to subMesh
-        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].map();
         const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         Map<label>& procEdgeMap = edgesToInsert[pI];
@@ -1793,7 +1793,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(facesToInsert, pI)
     {
         // Fetch reference to subMesh and coupleMap
-        const coupleMap& cMapI = recvMeshes_[pI].patchMap();
+        const coupleMap& cMapI = recvMeshes_[pI].map();
         const dynamicTopoFvMesh& meshI = recvMeshes_[pI].subMesh();
 
         Map<label>& procFaceMap = facesToInsert[pI];
@@ -1839,7 +1839,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
 
                 // Fetch reference to subMesh and coupleMap
-                const coupleMap& cMapJ = recvMeshes_[pJ].patchMap();
+                const coupleMap& cMapJ = recvMeshes_[pJ].map();
                 const dynamicTopoFvMesh& meshJ = recvMeshes_[pJ].subMesh();
 
                 const Map<label>& procFaceMapJ = facesToInsert[pJ];
@@ -2202,7 +2202,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     forAll(convertPatchPoints, pI)
     {
         // Fetch reference to maps
-        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].map();
 
         forAllConstIter(Map<Pair<point> >, convertPatchPoints[pI], fIter)
         {
@@ -2451,7 +2451,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
 
         // Fetch references
-        const coupleMap& cMap = recvMeshes_[pI].patchMap();
+        const coupleMap& cMap = recvMeshes_[pI].map();
         const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
         // Map faces from patches.
@@ -3201,7 +3201,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
         {
             if (patchCoupling_(patchI))
             {
-                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                const coupleMap& cMap = patchCoupling_[patchI].map();
 
                 label mSize = patchSizes_[cMap.masterIndex()];
                 label sSize = patchSizes_[cMap.slaveIndex()];
@@ -3269,7 +3269,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
         {
             if (patchCoupling_(patchI))
             {
-                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                const coupleMap& cMap = patchCoupling_[patchI].map();
 
                 label mSize = patchSizes_[cMap.masterIndex()];
                 label sSize = patchSizes_[cMap.slaveIndex()];
@@ -3302,7 +3302,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
         if (proc < Pstream::myProcNo())
         {
-            const coupleMap& cMap = sPM.patchMap();
+            const coupleMap& cMap = sPM.map();
 
             // How many entities am I receiving..
             label nEntities = -1, nMovePoints = -1;
@@ -3349,7 +3349,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
         }
         else
         {
-            const coupleMap& cMap = rPM.patchMap();
+            const coupleMap& cMap = rPM.map();
 
             label nEntities = cMap.entityIndices().size();
             label nMovePoints = cMap.moveNewPoints().size();
@@ -3406,7 +3406,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
     forAll(procIndices_, pI)
     {
-        const coupleMap& cMap = sendMeshes_[pI].patchMap();
+        const coupleMap& cMap = sendMeshes_[pI].map();
 
         if (cMap.patchIndex() >= boundary.size())
         {
@@ -3462,7 +3462,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
         if (proc < Pstream::myProcNo())
         {
-            const coupleMap& cMap = sPM.patchMap();
+            const coupleMap& cMap = sPM.map();
             const labelList& indices = cMap.entityIndices();
             const labelList& operations = cMap.entityOperations();
             const pointField& newPoints = cMap.moveNewPoints();
@@ -4229,7 +4229,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         // Build the subMesh.
         buildProcessorPatchMesh(sPM, commonCells);
 
-        const coupleMap& scMap = sPM.patchMap();
+        const coupleMap& scMap = sPM.map();
 
         // Send my sub-mesh to the neighbour.
         meshOps::pWrite(proc, scMap.nEntities());
@@ -4255,7 +4255,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 
         // Obtain references
         const coupledInfo& rPM = recvMeshes_[pI];
-        const coupleMap& rcMap = rPM.patchMap();
+        const coupleMap& rcMap = rPM.map();
 
         // First read entity sizes.
         meshOps::pRead(proc, rcMap.nEntities());
@@ -4300,7 +4300,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     label nP = 0, nE = 0, nF = 0, nC = 0;
 
     // Obtain references
-    const coupleMap& cMap = subMesh.patchMap();
+    const coupleMap& cMap = subMesh.map();
     const labelList& subMeshPoints = cMap.subMeshPoints();
     const List<labelPair>& globalProcPoints = cMap.globalProcPoints();
 
@@ -4926,7 +4926,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
             continue;
         }
 
-        const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+        const coupleMap& cMap = patchCoupling_[patchI].map();
 
         // Map points on each patch.
         const labelList& mP = boundary[cMap.masterIndex()].meshPoints();
@@ -5257,7 +5257,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
         label proc = procIndices_[pI];
 
         coupledInfo& rPM = recvMeshes_[pI];
-        const coupleMap& cMap = rPM.patchMap();
+        const coupleMap& cMap = rPM.map();
         const labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_ID);
 
         // Specify the list of patch names and types
@@ -5884,8 +5884,8 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
     oldPatchNMeshPoints_.setSize(nPatches_, 0);
 
     // Set the new patch index in patchMaps
-    sendMeshes_[pI].patchMap().patchIndex() = patchID;
-    recvMeshes_[pI].patchMap().patchIndex() = patchID;
+    sendMeshes_[pI].map().patchIndex() = patchID;
+    recvMeshes_[pI].map().patchIndex() = patchID;
 
     if (debug)
     {
@@ -5940,7 +5940,7 @@ label dynamicTopoFvMesh::getNeighbourProcessor(const label patch) const
         // Find the neighbour processor ID
         forAll(procIndices_, pI)
         {
-            label patchID = sendMeshes_[pI].patchMap().patchIndex();
+            label patchID = sendMeshes_[pI].map().patchIndex();
 
             if (patch == patchID)
             {
@@ -6024,7 +6024,7 @@ void dynamicTopoFvMesh::resetBoundaries()
 // Initialize subMesh field transfers for mapping
 void dynamicTopoFvMesh::initFieldTransfers
 (
-    List<wordList>& fieldNames,
+    List<wordList>& names,
     List<List<char> >& sendBuffer,
     List<List<char> >& recvBuffer
 )
@@ -6044,21 +6044,21 @@ void dynamicTopoFvMesh::initFieldTransfers
     // Size up the list
     //  - Five templated volFields
     //  - Five templated surfaceFields
-    fieldNames.setSize(10);
-    wordList fieldTypes(10);
+    names.setSize(10);
+    wordList types(10);
 
     // Fill in field-types
-    fieldTypes[0] = volScalarField::typeName;
-    fieldTypes[1] = volVectorField::typeName;
-    fieldTypes[2] = volSphericalTensorField::typeName;
-    fieldTypes[3] = volSymmTensorField::typeName;
-    fieldTypes[4] = volTensorField::typeName;
+    types[0] = volScalarField::typeName;
+    types[1] = volVectorField::typeName;
+    types[2] = volSphericalTensorField::typeName;
+    types[3] = volSymmTensorField::typeName;
+    types[4] = volTensorField::typeName;
 
-    fieldTypes[5] = surfaceScalarField::typeName;
-    fieldTypes[6] = surfaceVectorField::typeName;
-    fieldTypes[7] = surfaceSphericalTensorField::typeName;
-    fieldTypes[8] = surfaceSymmTensorField::typeName;
-    fieldTypes[9] = surfaceTensorField::typeName;
+    types[5] = surfaceScalarField::typeName;
+    types[6] = surfaceVectorField::typeName;
+    types[7] = surfaceSphericalTensorField::typeName;
+    types[8] = surfaceSymmTensorField::typeName;
+    types[9] = surfaceTensorField::typeName;
 
     // Send / recv buffers for field names
     List<char> fieldNameSendBuffer, fieldNameRecvBuffer;
@@ -6074,14 +6074,14 @@ void dynamicTopoFvMesh::initFieldTransfers
         OStringStream& fNStream = fieldNameStream[0];
 
         // Fetch field-names by type
-        forAll(fieldTypes, typeI)
+        forAll(types, typeI)
         {
             // Get all fields of type
-            fieldNames[typeI] = objectRegistry::names(fieldTypes[typeI]);
+            names[typeI] = objectRegistry::names(types[typeI]);
         }
 
         // Send field names to Ostream
-        fNStream << fieldNames;
+        fNStream << names;
 
         // Size up buffers and fill contents
         string contents = fNStream.str();
@@ -6099,7 +6099,7 @@ void dynamicTopoFvMesh::initFieldTransfers
 
         if (debug > 4)
         {
-            Info<< " Registered fields: " << fieldNames << endl;
+            Info<< " Registered fields: " << names << endl;
         }
 
         // Send names to slaves
@@ -6137,7 +6137,7 @@ void dynamicTopoFvMesh::initFieldTransfers
         IStringStream fieldNameStream(contents, IOstream::BINARY);
 
         // Get names from stream
-        fieldNameStream >> fieldNames;
+        fieldNameStream >> names;
     }
 
     // Size up buffers
@@ -6145,90 +6145,34 @@ void dynamicTopoFvMesh::initFieldTransfers
     recvBuffer.setSize(procIndices_.size());
 
     // Size up the send stringStream
-    PtrList<OStringStream> sendFields(procIndices_.size());
+    PtrList<OStringStream> stream(procIndices_.size());
 
     // Now fill in subMesh fields
     forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
 
+        const coupledInfo& cInfo = sendMeshes_[pI];
+
         // Initialize stream
-        sendFields.set(pI, new OStringStream(IOstream::BINARY));
+        stream.set(pI, new OStringStream(IOstream::BINARY));
 
         // Subset volFields to stream
-        meshOps::subSetField<volScalarField>
-        (
-            (*this),
-            fieldNames[0],
-            sendFields[pI]
-        );
-
-        meshOps::subSetField<volVectorField>
-        (
-            (*this),
-            fieldNames[1],
-            sendFields[pI]
-        );
-
-        meshOps::subSetField<volSphericalTensorField>
-        (
-            (*this),
-            fieldNames[2],
-            sendFields[pI]
-        );
-
-        meshOps::subSetField<volSymmTensorField>
-        (
-            (*this),
-            fieldNames[3],
-            sendFields[pI]
-        );
-
-        meshOps::subSetField<volTensorField>
-        (
-            (*this),
-            fieldNames[4],
-            sendFields[pI]
-        );
+        cInfo.mapVolField<scalar>(names[0], types[0], stream[pI]);
+        cInfo.mapVolField<vector>(names[1], types[1], stream[pI]);
+        cInfo.mapVolField<sphericalTensor>(names[2], types[2], stream[pI]);
+        cInfo.mapVolField<symmTensor>(names[3], types[3], stream[pI]);
+        cInfo.mapVolField<tensor>(names[4], types[4], stream[pI]);
 
         // Subset surfaceFields to stream
-        meshOps::subSetField<surfaceScalarField>
-        (
-            (*this),
-            fieldNames[5],
-            sendFields[pI]
-        );
-
-        meshOps::subSetField<surfaceVectorField>
-        (
-            (*this),
-            fieldNames[6],
-            sendFields[pI]
-        );
-
-        meshOps::subSetField<surfaceSphericalTensorField>
-        (
-            (*this),
-            fieldNames[7],
-            sendFields[pI]
-        );
-
-        meshOps::subSetField<surfaceSymmTensorField>
-        (
-            (*this),
-            fieldNames[8],
-            sendFields[pI]
-        );
-
-        meshOps::subSetField<surfaceTensorField>
-        (
-            (*this),
-            fieldNames[9],
-            sendFields[pI]
-        );
+        cInfo.mapSurfaceField<scalar>(names[5], types[5], stream[pI]);
+        cInfo.mapSurfaceField<vector>(names[6], types[6], stream[pI]);
+        cInfo.mapSurfaceField<sphericalTensor>(names[7], types[7], stream[pI]);
+        cInfo.mapSurfaceField<symmTensor>(names[8], types[8], stream[pI]);
+        cInfo.mapSurfaceField<tensor>(names[9], types[9], stream[pI]);
 
         // Size up buffers and fill contents
-        string contents = sendFields[pI].str();
+        string contents = stream[pI].str();
         const char* ptr = contents.data();
 
         sendBuffer[pI].setSize(contents.size());
@@ -6239,7 +6183,7 @@ void dynamicTopoFvMesh::initFieldTransfers
         }
 
         // Clear the stream
-        sendFields.set(pI, NULL);
+        stream.set(pI, NULL);
 
         // Send buffer to processor
         meshOps::pWrite(proc, sendBuffer[pI].size());
@@ -6707,8 +6651,8 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
         coupledInfo& sPM = sendMeshes_[pI];
         coupledInfo& rPM = recvMeshes_[pI];
 
-        const coupleMap& scMap = sPM.patchMap();
-        const coupleMap& rcMap = rPM.patchMap();
+        const coupleMap& scMap = sPM.map();
+        const coupleMap& rcMap = rPM.map();
 
         if (scMap.slaveIndex() == Pstream::myProcNo())
         {
@@ -6773,7 +6717,7 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
         forAll(procIndices_, pI)
         {
             const coupledInfo& rPM = recvMeshes_[pI];
-            const coupleMap& rcMap = rPM.patchMap();
+            const coupleMap& rcMap = rPM.map();
 
             if (rcMap.masterIndex() == Pstream::myProcNo())
             {
@@ -6816,7 +6760,7 @@ bool dynamicTopoFvMesh::coupledFillTables
             if (patchCoupling_(patchI))
             {
                 const label edgeEnum  = coupleMap::EDGE;
-                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                const coupleMap& cMap = patchCoupling_[patchI].map();
 
                 if ((sI = cMap.findSlave(edgeEnum, eIndex)) > -1)
                 {
@@ -6941,7 +6885,7 @@ bool dynamicTopoFvMesh::coupledFillTables
             label proc = procIndices_[pI];
 
             // Fetch reference to subMesh
-            const coupleMap& cMap = recvMeshes_[pI].patchMap();
+            const coupleMap& cMap = recvMeshes_[pI].map();
             const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
             label sI = -1, sP = -1;
@@ -7148,7 +7092,7 @@ bool dynamicTopoFvMesh::coupledFillTables
             {
                 // Fetch reference to subMesh
                 const label edgeEnum = coupleMap::EDGE;
-                const coupleMap& cMap = recvMeshes_[pI].patchMap();
+                const coupleMap& cMap = recvMeshes_[pI].map();
                 const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
                 label sI = -1;
@@ -7281,7 +7225,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
         {
             // Fetch non-const reference to subMeshes
             const label faceEnum = coupleMap::FACE;
-            const coupleMap& cMap = recvMeshes_[pI].patchMap();
+            const coupleMap& cMap = recvMeshes_[pI].map();
             const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
             label sIndex = -1;
@@ -7345,7 +7289,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
             // Next check slaves
             forAll(procIndices_, pI)
             {
-                const coupleMap& cMap = recvMeshes_[pI].patchMap();
+                const coupleMap& cMap = recvMeshes_[pI].map();
                 const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
                 label sIndex = -1;
@@ -7411,7 +7355,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
             forAll(procIndices_, pI)
             {
-                const coupleMap& cMap = recvMeshes_[pI].patchMap();
+                const coupleMap& cMap = recvMeshes_[pI].map();
                 const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
                 label sIndex = -1;
@@ -7479,7 +7423,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                 {
                     Pout<< nl << "Proc: " << procIndices_[pI] << nl;
 
-                    const coupleMap& cMap = recvMeshes_[pI].patchMap();
+                    const coupleMap& cMap = recvMeshes_[pI].map();
                     const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
                     label sIndex = -1;
@@ -7590,7 +7534,7 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
             {
                 if (patchCoupling_(pI))
                 {
-                    const coupleMap& cMap = patchCoupling_[pI].patchMap();
+                    const coupleMap& cMap = patchCoupling_[pI].map();
 
                     if (cMap.slaveIndex() == patch)
                     {
@@ -7635,7 +7579,7 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
                         {
                             const coupleMap& cMap =
                             (
-                                patchCoupling_[pI].patchMap()
+                                patchCoupling_[pI].map()
                             );
 
                             if (cMap.slaveIndex() == patch)
@@ -7677,7 +7621,7 @@ label dynamicTopoFvMesh::locallyCoupledEdgePatch(const label eIndex) const
             {
                 if (patchCoupling_(pI))
                 {
-                    const coupleMap& cMap = patchCoupling_[pI].patchMap();
+                    const coupleMap& cMap = patchCoupling_[pI].map();
 
                     if (cMap.slaveIndex() == patch)
                     {
@@ -7792,7 +7736,7 @@ bool dynamicTopoFvMesh::processorCoupledEntity
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMesh
-                const coupleMap& cMap = recvMeshes_[pI].patchMap();
+                const coupleMap& cMap = recvMeshes_[pI].map();
                 const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
                 label sI = -1;
@@ -7861,7 +7805,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
     {
         if (patchCoupling_(patchI))
         {
-            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+            const coupleMap& cMap = patchCoupling_[patchI].map();
 
             localMasterPatches.insert(cMap.masterIndex());
             localSlavePatches.insert(cMap.slaveIndex());
@@ -7922,7 +7866,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
     {
         forAll(procIndices_, pI)
         {
-            const coupleMap& cMap = sendMeshes_[pI].patchMap();
+            const coupleMap& cMap = sendMeshes_[pI].map();
             const Map<label> rEdgeMap = cMap.reverseEntityMap(coupleMap::EDGE);
 
             if (cMap.slaveIndex() == Pstream::myProcNo())

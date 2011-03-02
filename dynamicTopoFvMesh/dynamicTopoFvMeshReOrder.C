@@ -213,7 +213,7 @@ void dynamicTopoFvMesh::reOrderPoints
             continue;
         }
 
-        const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+        const coupleMap& cMap = patchCoupling_[patchI].map();
 
         // Obtain references
         Map<label>& mtsMap = cMap.entityMap(coupleMap::POINT);
@@ -587,7 +587,7 @@ void dynamicTopoFvMesh::reOrderEdges
             }
 
             // Obtain references
-            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+            const coupleMap& cMap = patchCoupling_[patchI].map();
             const Map<label>& mtsMap = cMap.entityMap(coupleMap::EDGE);
 
             Map<label> newMtsMap, newStmMap;
@@ -1274,7 +1274,7 @@ void dynamicTopoFvMesh::reOrderFaces
         }
 
         // Obtain references
-        const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+        const coupleMap& cMap = patchCoupling_[patchI].map();
         const Map<label>& mtsMap = cMap.entityMap(coupleMap::FACE);
 
         Map<label> newMtsMap, newStmMap;

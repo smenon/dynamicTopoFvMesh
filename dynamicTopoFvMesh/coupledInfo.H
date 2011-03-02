@@ -67,7 +67,7 @@ class coupledInfo
 
     // For locally coupled patches,
     // specify a master / slave index
-    coupleMap patchMap_;
+    coupleMap map_;
 
     // Zone IDs for patches associated with faceZones
     label masterFaceZone_;
@@ -118,14 +118,34 @@ public:
         inline void setBuiltMaps();
 
         // Return a reference to the coupleMap
-        inline coupleMap& patchMap();
+        inline coupleMap& map();
 
         // Return a const reference to the coupleMap
-        inline const coupleMap& patchMap() const;
+        inline const coupleMap& map() const;
 
         // Return the master / slave face zone IDs
         inline label masterFaceZone() const;
         inline label slaveFaceZone() const;
+
+    //- Interpolation
+
+        // Subset the volume field to output stream
+        template <class Type>
+        void mapVolField
+        (
+            const wordList& fieldNames,
+            const word& fieldType,
+            OSstream& strStream
+        ) const;
+
+        // Subset the surface field to output stream
+        template <class Type>
+        void mapSurfaceField
+        (
+            const wordList& fieldNames,
+            const word& fieldType,
+            OSstream& strStream
+        ) const;
 };
 
 } // End namespace Foam

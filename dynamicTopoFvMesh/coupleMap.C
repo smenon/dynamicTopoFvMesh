@@ -146,7 +146,7 @@ inline void coupleMap::makeAddressing() const
     // if the pointer is already set
     if (ownerPtr_ || neighbourPtr_ || nInternalFaces_ > -1)
     {
-        FatalErrorIn("coupleMap::makeAddressing()")
+        FatalErrorIn("inline void coupleMap::makeAddressing() const")
             << "Addressing has already been calculated."
             << abort(FatalError);
     }
@@ -155,7 +155,7 @@ inline void coupleMap::makeAddressing() const
 
     if (nFaces < 0)
     {
-        FatalErrorIn("coupleMap::makeAddressing()")
+        FatalErrorIn("inline void coupleMap::makeAddressing() const")
             << "Invalid buffers. Cannot continue."
             << abort(FatalError);
     }
@@ -205,7 +205,7 @@ inline void coupleMap::makeEdges() const
     // if the pointer is already set
     if (edgesPtr_)
     {
-        FatalErrorIn("coupleMap::makeEdges()")
+        FatalErrorIn("inline void coupleMap::makeEdges() const")
             << "Edges have already been calculated."
             << abort(FatalError);
     }
@@ -231,7 +231,7 @@ inline void coupleMap::makeFaces() const
     // if the pointer is already set
     if (facesPtr_ || faceEdgesPtr_)
     {
-        FatalErrorIn("coupleMap::makeFaces()")
+        FatalErrorIn("inline void coupleMap::makeFaces() const")
             << "Faces have already been calculated."
             << abort(FatalError);
     }
@@ -273,7 +273,7 @@ inline void coupleMap::makeFaces() const
 
     if (sumNFE != nEntities(coupleMap::NFE_SIZE))
     {
-        FatalErrorIn("coupleMap::makeFaces()")
+        FatalErrorIn("inline void coupleMap::makeFaces() const")
             << " Mismatched buffer." << nl
             << " sumNFE: " << sumNFE << nl
             << " NFE_SIZE: " << nEntities(coupleMap::NFE_SIZE) << nl
@@ -288,7 +288,7 @@ inline void coupleMap::makeCells() const
     // if the pointer is already set
     if (cellsPtr_)
     {
-        FatalErrorIn("coupleMap::makeCells()")
+        FatalErrorIn("inline void coupleMap::makeCells() const")
             << "Cells have already been calculated."
             << abort(FatalError);
     }
@@ -309,6 +309,54 @@ inline void coupleMap::makeCells() const
         {
             cells[cellI][f] = cBuffer[(ncf*cellI) + f];
         }
+    }
+}
+
+
+inline void coupleMap::makeFaceMap() const
+{
+    // It is an error to attempt to recalculate
+    // if the map is already calculated
+    if (faceMap_.size())
+    {
+        FatalErrorIn("inline void coupleMap::makeFaceMap() const")
+            << "faceMap has already been calculated."
+            << abort(FatalError);
+    }
+
+    const Map<label>& mapFaces = entityMap(coupleMap::FACE);
+
+    // Size the list
+    faceMap_.setSize(mapFaces.size(), -1);
+
+    // Fill-in entries
+    forAllConstIter(Map<label>, mapFaces, fIter)
+    {
+        faceMap_[fIter.key()] = fIter();
+    }
+}
+
+
+inline void coupleMap::makeCellMap() const
+{
+    // It is an error to attempt to recalculate
+    // if the map is already calculated
+    if (cellMap_.size())
+    {
+        FatalErrorIn("inline void coupleMap::makeCellMap() const")
+            << "cellMap has already been calculated."
+            << abort(FatalError);
+    }
+
+    const Map<label>& mapCells = entityMap(coupleMap::CELL);
+
+    // Size the list
+    cellMap_.setSize(mapCells.size(), -1);
+
+    // Fill-in entries
+    forAllConstIter(Map<label>, mapCells, cIter)
+    {
+        cellMap_[cIter.key()] = cIter();
     }
 }
 
@@ -509,6 +557,9 @@ inline void coupleMap::transferMaps
 
 inline void coupleMap::clearMaps() const
 {
+    faceMap_.clear();
+    cellMap_.clear();
+
     forAll(entityMap_, mapI)
     {
         entityMap_[mapI].clear();
@@ -612,6 +663,28 @@ inline const labelListList& coupleMap::faceEdges() const
     }
 
     return *faceEdgesPtr_;
+}
+
+
+inline const labelList& coupleMap::faceMap() const
+{
+    if (faceMap_.empty())
+    {
+        makeFaceMap();
+    }
+
+    return faceMap_;
+}
+
+
+inline const labelList& coupleMap::cellMap() const
+{
+    if (cellMap_.empty())
+    {
+        makeCellMap();
+    }
+
+    return cellMap_;
 }
 
 

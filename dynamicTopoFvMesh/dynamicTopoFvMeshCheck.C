@@ -456,7 +456,7 @@ bool dynamicTopoFvMesh::checkQuality
                 if (patchCoupling_(patchI))
                 {
                     const label edgeEnum  = coupleMap::EDGE;
-                    const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                    const coupleMap& cMap = patchCoupling_[patchI].map();
 
                     if ((sIndex = cMap.findSlave(edgeEnum, eIndex)) > -1)
                     {
@@ -1392,7 +1392,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
     {
         if (patchCoupling_(patchI))
         {
-            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+            const coupleMap& cMap = patchCoupling_[patchI].map();
 
             label mSize = patchSizes_[cMap.masterIndex()];
             label sSize = patchSizes_[cMap.slaveIndex()];

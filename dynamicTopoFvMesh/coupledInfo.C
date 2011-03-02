@@ -44,7 +44,7 @@ coupledInfo::coupledInfo
 :
     mesh_(mesh),
     builtMaps_(false),
-    patchMap_(cMap),
+    map_(cMap),
     masterFaceZone_(mfzIndex),
     slaveFaceZone_(sfzIndex)
 {}
@@ -65,7 +65,7 @@ coupledInfo::coupledInfo
 :
     mesh_(mesh),
     builtMaps_(false),
-    patchMap_
+    map_
     (
         IOobject
         (
@@ -143,15 +143,15 @@ void coupledInfo::setBuiltMaps()
 }
 
 
-coupleMap& coupledInfo::patchMap()
+coupleMap& coupledInfo::map()
 {
-    return patchMap_;
+    return map_;
 }
 
 
-const coupleMap& coupledInfo::patchMap() const
+const coupleMap& coupledInfo::map() const
 {
-    return patchMap_;
+    return map_;
 }
 
 
@@ -164,6 +164,83 @@ label coupledInfo::masterFaceZone() const
 label coupledInfo::slaveFaceZone() const
 {
     return slaveFaceZone_;
+}
+
+
+template <class Type>
+void coupledInfo::mapVolField
+(
+    const wordList& fieldNames,
+    const word& fieldType,
+    OSstream& strStream
+) const
+{
+    strStream
+        << fieldType << token::NL
+        << token::BEGIN_BLOCK << token::NL;
+
+    forAll(fieldNames, i)
+    {
+        const GeometricField<Type, fvPatchField, volMesh>& fld =
+        (
+            mesh_.lookupObject
+            <
+                GeometricField<Type, fvPatchField, volMesh>
+            >(fieldNames[i])
+        );
+
+        // Create and map the internal-field values
+        Field<Type> internalField
+        (
+            fld.internalField(),
+            map().cellMap()
+        );
+
+        // Create and map the patch field values
+//        PtrList<fvPatchField<Type> > patchFields(pm.size());
+    }
+
+    strStream
+        << token::END_BLOCK << token::NL;
+}
+
+
+template <class Type>
+void coupledInfo::mapSurfaceField
+(
+    const wordList& fieldNames,
+    const word& fieldType,
+    OSstream& strStream
+) const
+{
+    strStream
+        << fieldType << token::NL
+        << token::BEGIN_BLOCK << token::NL;
+
+    forAll(fieldNames, i)
+    {
+        const GeometricField<Type, fvsPatchField, surfaceMesh>& fld =
+        (
+            mesh_.lookupObject
+            <
+                GeometricField<Type, fvsPatchField, surfaceMesh>
+            >(fieldNames[i])
+        );
+
+        // Create and map the internal-field values
+        Field<Type> internalField
+        (
+            fld.internalField(),
+            SubList<label>
+            (
+                map().faceMap(),
+                subMesh().nInternalFaces()
+            )
+        );
+    }
+
+    strStream
+        << token::END_BLOCK << token::NL;
 }
 
 

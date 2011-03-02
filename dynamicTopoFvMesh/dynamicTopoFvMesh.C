@@ -564,7 +564,7 @@ label dynamicTopoFvMesh::insertFace
                     break;
                 }
 
-                if (patchCoupling_[patchI].patchMap().slaveIndex() == patch)
+                if (patchCoupling_[patchI].map().slaveIndex() == patch)
                 {
                     if (patchCoupling_[patchI].slaveFaceZone() > -1)
                     {
@@ -657,7 +657,7 @@ void dynamicTopoFvMesh::removeFace
     {
         if (patchCoupling_(patchI))
         {
-            const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+            const coupleMap& cMap = patchCoupling_[patchI].map();
 
             cMap.removeMaster(coupleMap::FACE, fIndex);
             cMap.removeSlave(coupleMap::FACE, fIndex);
@@ -882,7 +882,7 @@ void dynamicTopoFvMesh::removeEdge
         {
             if (patchCoupling_(patchI))
             {
-                const coupleMap& cMap = patchCoupling_[patchI].patchMap();
+                const coupleMap& cMap = patchCoupling_[patchI].map();
 
                 cMap.removeMaster(coupleMap::EDGE, eIndex);
                 cMap.removeSlave(coupleMap::EDGE, eIndex);
@@ -1065,7 +1065,7 @@ void dynamicTopoFvMesh::removePoint
         if (patchCoupling_(patchI))
         {
             // Obtain references
-            const coupleMap & cMap = patchCoupling_[patchI].patchMap();
+            const coupleMap & cMap = patchCoupling_[patchI].map();
 
             Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
             Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
@@ -3130,7 +3130,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 {
                     Map<label>& rCellMap =
                     (
-                        sendMeshes_[proc].patchMap().reverseEntityMap
+                        sendMeshes_[proc].map().reverseEntityMap
                         (
                             coupleMap::CELL
                         )

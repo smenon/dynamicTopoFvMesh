@@ -278,15 +278,6 @@ namespace meshOps
         UList<Type>& data
     );
 
-    // Subset the field to output stream
-    template <class GeomField>
-    inline void subSetField
-    (
-        const polyMesh& mesh,
-        const wordList& fieldNames,
-        OSstream& strStream
-    );
-
     // Wait for buffer transfer completion.
     inline void waitForBuffers();
 

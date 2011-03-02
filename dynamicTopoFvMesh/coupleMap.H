@@ -104,6 +104,10 @@ class coupleMap
     mutable pointField moveNewPoints_;
     mutable pointField moveOldPoints_;
 
+    // Addressing for field mapping
+    mutable labelList faceMap_;
+    mutable labelList cellMap_;
+
     //- Demand-driven connectivity data.
         mutable label nInternalFaces_;
         mutable labelList* ownerPtr_;
@@ -116,6 +120,9 @@ class coupleMap
         inline void makeEdges() const;
         inline void makeFaces() const;
         inline void makeCells() const;
+
+        inline void makeFaceMap() const;
+        inline void makeCellMap() const;
 
         inline void makeAddressing() const;
 
@@ -314,6 +321,9 @@ public:
         inline const faceList& faces() const;
         inline const cellList& cells() const;
         inline const labelListList& faceEdges() const;
+
+        inline const labelList& faceMap() const;
+        inline const labelList& cellMap() const;
 
         inline void transferMaps
         (
