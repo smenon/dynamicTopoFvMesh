@@ -565,6 +565,28 @@ inline void pRead
 }
 
 
+template <class GeomField>
+inline void subSetField
+(
+    const polyMesh& mesh,
+    const wordList& fieldNames,
+    OSstream& strStream
+)
+{
+    strStream
+        << GeomField::typeName << token::NL
+        << token::BEGIN_BLOCK << token::NL;
+
+    forAll(fieldNames, i)
+    {
+
+    }
+
+    strStream
+        << token::END_BLOCK << token::NL;
+}
+
+
 // Wait for buffer transfer completion.
 inline void waitForBuffers()
 {

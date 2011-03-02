@@ -207,15 +207,13 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     const labelList& edgeStarts,
     const labelList& edgeSizes,
     const wordList& patchNames,
-    const wordList& patchTypes,
-    const labelList& sProcNo,
-    const labelList& nProcNo
+    const dictionary& patchDict
 )
 :
     dynamicFvMesh
     (
         io,
-        points,
+        oldPoints,
         faces,
         cells,
         false
@@ -235,8 +233,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     mapper_(NULL),
     motionSolver_(NULL),
     lengthEstimator_(NULL),
-    oldPoints_(oldPoints()),
-    points_(polyMesh::points()),
+    oldPoints_(polyMesh::points()),
+    points_(points()),
     faces_(polyMesh::faces()),
     cells_(polyMesh::cells()),
     edges_(edges),
@@ -301,28 +299,16 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
 
     forAll(patches, patchI)
     {
-        // Make a temporary dictionary for patch construction
-        dictionary patchDict;
-
-        // Add relevant info
-        patchDict.add("type", patchTypes[patchI]);
-        patchDict.add("startFace", faceStarts[patchI]);
-        patchDict.add("nFaces", faceSizes[patchI]);
-
-        // For processor types, add additional information
-        if (patchTypes[patchI] == "processor")
-        {
-            patchDict.add("myProcNo", sProcNo[patchI]);
-            patchDict.add("neighbProcNo", nProcNo[patchI]);
-        }
-
         // Set the pointer
         patches[patchI] =
         (
             polyPatch::New
             (
                 patchNames[patchI],
-                patchDict,
+                patchDict.subDict
+                (
+                    patchNames[patchI]
+                ),
                 patchI,
                 boundary
             ).ptr()
@@ -3861,14 +3847,31 @@ bool dynamicTopoFvMesh::resetMesh()
             Pout<< " Slivers    :: " << status(7) << endl;
         }
 
+        // Fetch reference to mapper
+        topoMapper& fieldMapper = mapper_();
+
+        // Set information for the mapping stage
+        //  - Must be done prior to field-transfers and mesh reset
+        fieldMapper.storeMeshInformation();
+
+        // Set up field-transfers before dealing with mapping
+        List<wordList> fieldNames;
+        PtrList<IStringStream> recvFields;
+        List<List<char> > sendBuffer, recvBuffer;
+
+        // Subset fields and transfer
+        initFieldTransfers
+        (
+            fieldNames,
+            sendBuffer,
+            recvBuffer
+        );
+
         // Set sizes for mapping
         faceWeights_.setSize(facesFromFaces_.size(), scalarField(0));
         faceCentres_.setSize(facesFromFaces_.size(), vectorField(0));
         cellWeights_.setSize(cellsFromCells_.size(), scalarField(0));
         cellCentres_.setSize(cellsFromCells_.size(), vectorField(0));
-
-        // Fetch the match tolerance for mapping
-        scalar matchTol = Foam::debug::tolerances("meshOpsMatchTol", 1e-10);
 
         // Determine if mapping is to be skipped
         // Optionally skip mapping for remeshing-only / pre-processing
@@ -3881,15 +3884,31 @@ bool dynamicTopoFvMesh::resetMesh()
             skipMapping = readBool(meshSubDict.lookup("skipMapping"));
         }
 
+        // Fetch the tolerance for mapping
+        scalar mapTol = 1e-10;
+
+        if (meshSubDict.found("mappingTol") || mandatory_)
+        {
+            mapTol = readScalar(meshSubDict.lookup("mappingTol"));
+        }
+
         clockTime mappingTimer;
 
         // Compute mapping weights for modified entities
-        threadedMapping(matchTol, skipMapping);
+        threadedMapping(mapTol, skipMapping);
 
         // Print out stats
         Info<< " Mapping time: "
             << mappingTimer.elapsedTime() << " s"
             << endl;
+
+        // Synchronize field transfers prior to the reOrdering stage
+        syncFieldTransfers
+        (
+            fieldNames,
+            recvBuffer,
+            recvFields
+        );
 
         // Obtain references to zones, if any
         pointZoneMesh& pointZones = polyMesh::pointZones();
@@ -3953,11 +3972,6 @@ bool dynamicTopoFvMesh::resetMesh()
         {
             oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
         }
-
-        topoMapper& fieldMapper = mapper_();
-
-        // Set information for the mapping stage, prior to mesh reset
-        fieldMapper.storeMeshInformation();
 
         // Set weighting information.
         // This takes over the weight data.

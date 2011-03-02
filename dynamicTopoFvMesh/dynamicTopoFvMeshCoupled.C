@@ -39,10 +39,12 @@ Author
 
 #include "Time.H"
 #include "triFace.H"
+#include "volFields.H"
 #include "changeMap.H"
 #include "coupledInfo.H"
 #include "matchPoints.H"
 #include "SortableList.H"
+#include "surfaceFields.H"
 #include "globalMeshData.H"
 #include "coordinateSystem.H"
 #include "processorPolyPatch.H"
@@ -5260,43 +5262,74 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
         // Specify the list of patch names and types
         wordList patchNames(ptBuffer.size());
-        wordList patchTypes(ptBuffer.size());
 
-        // Specify additional info for processor types
-        labelList sProcNo(ptBuffer.size(), -1);
-        labelList nProcNo(ptBuffer.size(), -1);
+        // Make a temporary dictionary for patch construction
+        dictionary patchDict;
 
-        forAll(patchTypes, pI)
+        // Fetch reference to patch starts / sizes
+        const labelList& faceStarts = cMap.entityBuffer(coupleMap::FACE_STARTS);
+        const labelList& faceSizes = cMap.entityBuffer(coupleMap::FACE_SIZES);
+        const labelList& edgeStarts = cMap.entityBuffer(coupleMap::EDGE_STARTS);
+        const labelList& edgeSizes = cMap.entityBuffer(coupleMap::EDGE_SIZES);
+
+        forAll(patchNames, patchI)
         {
-            if (pI == patchTypes.size() - 1)
+            // Add a new subDictionary
+            dictionary patchSubDict;
+
+            if (patchI == patchNames.size() - 1)
             {
-                patchNames[pI] = "defaultPatch";
-                patchTypes[pI] = "patch";
+                // Set name
+                patchNames[patchI] = "defaultPatch";
+
+                // Add type
+                patchSubDict.add("type", "patch");
+
+                // Add start / size
+                patchSubDict.add("startFace", faceStarts[patchI]);
+                patchSubDict.add("nFaces", faceSizes[patchI]);
             }
             else
-            if (ptBuffer[pI] <= -2)
+            if (ptBuffer[patchI] <= -2)
             {
                 // Back out the neighbouring processor ID
-                label neiProcNo = Foam::mag(ptBuffer[pI] + 2);
+                label neiProcNo = Foam::mag(ptBuffer[patchI] + 2);
 
-                patchNames[pI] =
+                // Set name
+                patchNames[patchI] =
                 (
                     "procBoundary"
-                  + Foam::name(proc) + "to"
+                  + Foam::name(proc)
+                  + "to"
                   + Foam::name(neiProcNo)
                 );
 
-                // Fill in additional patch information
-                sProcNo[pI] = proc;
-                nProcNo[pI] = neiProcNo;
+                // Add type
+                patchSubDict.add("type", "processor");
 
-                patchTypes[pI] = "processor";
+                // Add start / size
+                patchSubDict.add("startFace", faceStarts[patchI]);
+                patchSubDict.add("nFaces", faceSizes[patchI]);
+
+                // Add processor-specific info
+                patchSubDict.add("myProcNo", proc);
+                patchSubDict.add("neighbProcNo", neiProcNo);
             }
             else
             {
-                patchNames[pI] = boundary[ptBuffer[pI]].name();
-                patchTypes[pI] = boundary[ptBuffer[pI]].type();
+                // Set name
+                patchNames[patchI] = boundary[ptBuffer[patchI]].name();
+
+                // Add type
+                patchSubDict.add("type", boundary[ptBuffer[patchI]].type());
+
+                // Add start / size
+                patchSubDict.add("startFace", faceStarts[patchI]);
+                patchSubDict.add("nFaces", faceSizes[patchI]);
             }
+
+            // Add subdictionary
+            patchDict.add(patchNames[patchI], patchSubDict);
         }
 
         // Set the autoPtr.
@@ -5320,14 +5353,12 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 xferCopy(cMap.owner()),
                 xferCopy(cMap.neighbour()),
                 xferCopy(cMap.cells()),
-                cMap.entityBuffer(coupleMap::FACE_STARTS),
-                cMap.entityBuffer(coupleMap::FACE_SIZES),
-                cMap.entityBuffer(coupleMap::EDGE_STARTS),
-                cMap.entityBuffer(coupleMap::EDGE_SIZES),
+                faceStarts,
+                faceSizes,
+                edgeStarts,
+                edgeSizes,
                 patchNames,
-                patchTypes,
-                sProcNo,
-                nProcNo
+                patchDict
             )
         );
 
@@ -5987,6 +6018,292 @@ void dynamicTopoFvMesh::resetBoundaries()
 
     // Add patches, but don't calculate geometry, etc
     fvMesh::addFvPatches(patches, false);
+}
+
+
+// Initialize subMesh field transfers for mapping
+void dynamicTopoFvMesh::initFieldTransfers
+(
+    List<wordList>& fieldNames,
+    List<List<char> >& sendBuffer,
+    List<List<char> >& recvBuffer
+)
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    if (debug)
+    {
+        Info<< " void dynamicTopoFvMesh::initFieldTransfers() :"
+            << " Initializing subMesh field transfers."
+            << endl;
+    }
+
+    // Size up the list
+    //  - Five templated volFields
+    //  - Five templated surfaceFields
+    fieldNames.setSize(10);
+    wordList fieldTypes(10);
+
+    // Fill in field-types
+    fieldTypes[0] = volScalarField::typeName;
+    fieldTypes[1] = volVectorField::typeName;
+    fieldTypes[2] = volSphericalTensorField::typeName;
+    fieldTypes[3] = volSymmTensorField::typeName;
+    fieldTypes[4] = volTensorField::typeName;
+
+    fieldTypes[5] = surfaceScalarField::typeName;
+    fieldTypes[6] = surfaceVectorField::typeName;
+    fieldTypes[7] = surfaceSphericalTensorField::typeName;
+    fieldTypes[8] = surfaceSymmTensorField::typeName;
+    fieldTypes[9] = surfaceTensorField::typeName;
+
+    // Send / recv buffers for field names
+    List<char> fieldNameSendBuffer, fieldNameRecvBuffer;
+
+    if (Pstream::master())
+    {
+        PtrList<OStringStream> fieldNameStream(1);
+
+        // Set the stream
+        fieldNameStream.set(0, new OStringStream(IOstream::BINARY));
+
+        // Alias for convenience
+        OStringStream& fNStream = fieldNameStream[0];
+
+        // Fetch field-names by type
+        forAll(fieldTypes, typeI)
+        {
+            // Get all fields of type
+            fieldNames[typeI] = objectRegistry::names(fieldTypes[typeI]);
+        }
+
+        // Send field names to Ostream
+        fNStream << fieldNames;
+
+        // Size up buffers and fill contents
+        string contents = fNStream.str();
+        const char* ptr = contents.data();
+
+        fieldNameSendBuffer.setSize(contents.size());
+
+        forAll(fieldNameSendBuffer, i)
+        {
+            fieldNameSendBuffer[i] = *ptr++;
+        }
+
+        // Clear the stream
+        fieldNameStream.set(0, NULL);
+
+        if (debug > 4)
+        {
+            Info<< " Registered fields: " << fieldNames << endl;
+        }
+
+        // Send names to slaves
+        for (label proc = 1; proc < Pstream::nProcs(); proc++)
+        {
+            // Send buffer to processor
+            meshOps::pWrite(proc, fieldNameSendBuffer.size());
+            meshOps::pWrite(proc, fieldNameSendBuffer);
+        }
+    }
+    else
+    {
+        // Receive names from master
+        label recvBufferSize = -1;
+        meshOps::pRead(Pstream::masterNo(), recvBufferSize);
+
+        // Size up buffer and schedule receive
+        fieldNameRecvBuffer.setSize(recvBufferSize);
+        meshOps::pRead(Pstream::masterNo(), fieldNameRecvBuffer);
+    }
+
+    // Wait for transfers to complete
+    meshOps::waitForBuffers();
+
+    // Convert names from stringStream
+    if (!Pstream::master())
+    {
+        string contents
+        (
+            fieldNameRecvBuffer.begin(),
+            fieldNameRecvBuffer.size()
+        );
+
+        // Set the stream
+        IStringStream fieldNameStream(contents, IOstream::BINARY);
+
+        // Get names from stream
+        fieldNameStream >> fieldNames;
+    }
+
+    // Size up buffers
+    sendBuffer.setSize(procIndices_.size());
+    recvBuffer.setSize(procIndices_.size());
+
+    // Size up the send stringStream
+    PtrList<OStringStream> sendFields(procIndices_.size());
+
+    // Now fill in subMesh fields
+    forAll(procIndices_, pI)
+    {
+        label proc = procIndices_[pI];
+
+        // Initialize stream
+        sendFields.set(pI, new OStringStream(IOstream::BINARY));
+
+        // Subset volFields to stream
+        meshOps::subSetField<volScalarField>
+        (
+            (*this),
+            fieldNames[0],
+            sendFields[pI]
+        );
+
+        meshOps::subSetField<volVectorField>
+        (
+            (*this),
+            fieldNames[1],
+            sendFields[pI]
+        );
+
+        meshOps::subSetField<volSphericalTensorField>
+        (
+            (*this),
+            fieldNames[2],
+            sendFields[pI]
+        );
+
+        meshOps::subSetField<volSymmTensorField>
+        (
+            (*this),
+            fieldNames[3],
+            sendFields[pI]
+        );
+
+        meshOps::subSetField<volTensorField>
+        (
+            (*this),
+            fieldNames[4],
+            sendFields[pI]
+        );
+
+        // Subset surfaceFields to stream
+        meshOps::subSetField<surfaceScalarField>
+        (
+            (*this),
+            fieldNames[5],
+            sendFields[pI]
+        );
+
+        meshOps::subSetField<surfaceVectorField>
+        (
+            (*this),
+            fieldNames[6],
+            sendFields[pI]
+        );
+
+        meshOps::subSetField<surfaceSphericalTensorField>
+        (
+            (*this),
+            fieldNames[7],
+            sendFields[pI]
+        );
+
+        meshOps::subSetField<surfaceSymmTensorField>
+        (
+            (*this),
+            fieldNames[8],
+            sendFields[pI]
+        );
+
+        meshOps::subSetField<surfaceTensorField>
+        (
+            (*this),
+            fieldNames[9],
+            sendFields[pI]
+        );
+
+        // Size up buffers and fill contents
+        string contents = sendFields[pI].str();
+        const char* ptr = contents.data();
+
+        sendBuffer[pI].setSize(contents.size());
+
+        forAll(sendBuffer[pI], i)
+        {
+            sendBuffer[pI][i] = *ptr++;
+        }
+
+        // Clear the stream
+        sendFields.set(pI, NULL);
+
+        // Send buffer to processor
+        meshOps::pWrite(proc, sendBuffer[pI].size());
+        meshOps::pWrite(proc, sendBuffer[pI]);
+
+        // Receive buffer from processor
+        label recvBufferSize = -1;
+        meshOps::pRead(proc, recvBufferSize);
+
+        // Size up buffer and schedule receive
+        recvBuffer[pI].setSize(recvBufferSize);
+        meshOps::pRead(proc, recvBuffer[pI]);
+    }
+
+    // We won't wait for all transfers to complete for the moment.
+    // Meanwhile, do some other useful work, if possible.
+}
+
+
+// Synchronize field transfers for mapping
+void dynamicTopoFvMesh::syncFieldTransfers
+(
+    List<wordList>& fieldNames,
+    List<List<char> >& recvBuffer,
+    PtrList<IStringStream>& recvFields
+)
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    if (debug)
+    {
+        Info<< " void dynamicTopoFvMesh::syncFieldTransfers() :"
+            << " Synchronizing subMesh field transfers."
+            << endl;
+    }
+
+    // Wait for all transfers to complete.
+    meshOps::waitForBuffers();
+
+    // Size up stringStream
+    recvFields.setSize(procIndices_.size());
+
+    forAll(procIndices_, pI)
+    {
+        // Convert buffer to string
+        string contents(recvBuffer[pI].begin(), recvBuffer[pI].size());
+
+        recvFields.set
+        (
+            pI,
+            new IStringStream(contents, IOstream::BINARY)
+        );
+
+        // Construct dictionary from stream
+        dictionary fieldDicts(recvFields[pI]);
+
+        forAll(fieldNames, i)
+        {
+
+        }
+    }
 }
 
 

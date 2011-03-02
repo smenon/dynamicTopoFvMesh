@@ -279,9 +279,7 @@ class dynamicTopoFvMesh
             const labelList& edgeStarts,
             const labelList& edgeSizes,
             const wordList& patchNames,
-            const wordList& patchTypes,
-            const labelList& sProcNo,
-            const labelList& nProcNo
+            const dictionary& patchDict
         );
 
         //- Disallow default bitwise assignment
@@ -1037,6 +1035,22 @@ class dynamicTopoFvMesh
         // If the number of patches have changed during run-time,
         // reset boundaries with new processor patches
         void resetBoundaries();
+
+        // Initialize subMesh field transfers for mapping
+        void initFieldTransfers
+        (
+            List<wordList>& fieldNames,
+            List<List<char> >& sendBuffer,
+            List<List<char> >& recvBuffer
+        );
+
+        // Synchronize field transfers for mapping
+        void syncFieldTransfers
+        (
+            List<wordList>& fieldNames,
+            List<List<char> >& recvBuffer,
+            PtrList<IStringStream>& recvFields
+        );
 
         // Initialize coupled boundary ordering
         void initCoupledBoundaryOrdering
