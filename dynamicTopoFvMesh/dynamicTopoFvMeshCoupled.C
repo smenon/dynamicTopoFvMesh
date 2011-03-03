@@ -4877,11 +4877,13 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
         if (patchI == patchNames.size() - 1)
         {
+            // Artificially set the last patch
+
             // Set name
             patchNames[patchI] = "defaultPatch";
 
             // Add type
-            patchSubDict.add("type", "patch");
+            patchSubDict.add("type", "empty");
 
             // Add start / size
             patchSubDict.add("startFace", bdyFaceStarts[patchI]);
@@ -4971,8 +4973,10 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
         writeVTK
         (
-            "psMesh_" + Foam::name(Pstream::myProcNo())
-          + "to" + Foam::name(proc),
+            "psMesh_"
+          + Foam::name(Pstream::myProcNo())
+          + "to"
+          + Foam::name(proc),
             rCellMap.toc()
         );
 
@@ -5356,17 +5360,17 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
         const coupleMap& cMap = rPM.map();
         const labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_ID);
 
-        // Specify the list of patch names and types
-        wordList patchNames(ptBuffer.size());
-
-        // Make a temporary dictionary for patch construction
-        dictionary patchDict;
-
         // Fetch reference to patch starts / sizes
         const labelList& faceStarts = cMap.entityBuffer(coupleMap::FACE_STARTS);
         const labelList& faceSizes = cMap.entityBuffer(coupleMap::FACE_SIZES);
         const labelList& edgeStarts = cMap.entityBuffer(coupleMap::EDGE_STARTS);
         const labelList& edgeSizes = cMap.entityBuffer(coupleMap::EDGE_SIZES);
+
+        // Make a temporary dictionary for patch construction
+        dictionary patchDict;
+
+        // Specify the list of patch names and types
+        wordList patchNames(ptBuffer.size());
 
         forAll(patchNames, patchI)
         {
@@ -5375,11 +5379,13 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
             if (patchI == patchNames.size() - 1)
             {
+                // Artificially set the last patch
+
                 // Set name
                 patchNames[patchI] = "defaultPatch";
 
                 // Add type
-                patchSubDict.add("type", "patch");
+                patchSubDict.add("type", "empty");
 
                 // Add start / size
                 patchSubDict.add("startFace", faceStarts[patchI]);
@@ -6122,9 +6128,12 @@ void dynamicTopoFvMesh::resetBoundaries()
 // Initialize subMesh field transfers for mapping
 void dynamicTopoFvMesh::initFieldTransfers
 (
+    wordList& types,
     List<wordList>& names,
     List<List<char> >& sendBuffer,
-    List<List<char> >& recvBuffer
+    List<List<char> >& recvBuffer,
+    HashTable<autoPtr<volVectorField> >& scalarGrads,
+    HashTable<autoPtr<volTensorField> >& vectorGrads
 )
 {
     if (!Pstream::parRun())
@@ -6139,11 +6148,18 @@ void dynamicTopoFvMesh::initFieldTransfers
             << endl;
     }
 
-    // Size up the list
+    // Clear out mesh geometry, since those
+    // are to be wiped out after topo-changes anyway.
+    fvMesh::clearOut();
+    polyMesh::resetMotion();
+
+    // Size up wordLists
     //  - Five templated volFields
     //  - Five templated surfaceFields
-    names.setSize(10);
-    wordList types(10);
+    //  - One scalar volume gradient (conservative mapping)
+    //  - One vector volume gradient (conservative mapping)
+    names.setSize(12);
+    types.setSize(12);
 
     // Fill in field-types
     types[0] = volScalarField::typeName;
@@ -6157,6 +6173,9 @@ void dynamicTopoFvMesh::initFieldTransfers
     types[7] = surfaceSphericalTensorField::typeName;
     types[8] = surfaceSymmTensorField::typeName;
     types[9] = surfaceTensorField::typeName;
+
+    types[10] = "grad(" + volScalarField::typeName + ')';
+    types[11] = "grad(" + volVectorField::typeName + ')';
 
     // Send / recv buffers for field names
     List<char> fieldNameSendBuffer, fieldNameRecvBuffer;
@@ -6172,11 +6191,17 @@ void dynamicTopoFvMesh::initFieldTransfers
         OStringStream& fNStream = fieldNameStream[0];
 
         // Fetch field-names by type
-        forAll(types, typeI)
+        for (label typeI = 0; typeI < 10; typeI++)
         {
             // Get all fields of type
             names[typeI] = objectRegistry::names(types[typeI]);
         }
+
+        // Fetch scalar gradient names
+        names[10] = scalarGrads.toc();
+
+        // Fetch vector gradient names
+        names[11] = vectorGrads.toc();
 
         // Send field names to Ostream
         fNStream << names;
@@ -6238,12 +6263,14 @@ void dynamicTopoFvMesh::initFieldTransfers
         fieldNameStream >> names;
     }
 
+    label nProcs = procIndices_.size();
+
     // Size up buffers
-    sendBuffer.setSize(procIndices_.size());
-    recvBuffer.setSize(procIndices_.size());
+    sendBuffer.setSize(nProcs);
+    recvBuffer.setSize(nProcs);
 
     // Size up the send stringStream
-    PtrList<OStringStream> stream(procIndices_.size());
+    PtrList<OStringStream> stream(nProcs);
 
     // Now fill in subMesh fields
     forAll(procIndices_, pI)
@@ -6268,6 +6295,54 @@ void dynamicTopoFvMesh::initFieldTransfers
         cInfo.mapSurfaceField<sphericalTensor>(names[7], types[7], stream[pI]);
         cInfo.mapSurfaceField<symmTensor>(names[8], types[8], stream[pI]);
         cInfo.mapSurfaceField<tensor>(names[9], types[9], stream[pI]);
+
+        // Subset scalar gradients to stream
+        stream[pI]
+            << types[10] << token::NL
+            << token::BEGIN_BLOCK << token::NL;
+
+        forAll(names[10], i)
+        {
+            tmp<volVectorField> tvvfFld =
+            (
+                cInfo.subSetVolField(scalarGrads[names[10][i]]())
+            );
+
+            // Send field through stream
+            stream[pI]
+                << names[10][i]
+                << token::NL << token::BEGIN_BLOCK
+                << tvvfFld
+                << token::NL << token::END_BLOCK
+                << token::NL;
+        }
+
+        stream[pI]
+            << token::END_BLOCK << token::NL;
+
+        // Subset vector gradients to stream
+        stream[pI]
+            << types[11] << token::NL
+            << token::BEGIN_BLOCK << token::NL;
+
+        forAll(names[11], i)
+        {
+            tmp<volTensorField> tvtfFld =
+            (
+                cInfo.subSetVolField(vectorGrads[names[11][i]]())
+            );
+
+            // Send field through stream
+            stream[pI]
+                << names[11][i]
+                << token::NL << token::BEGIN_BLOCK
+                << tvtfFld
+                << token::NL << token::END_BLOCK
+                << token::NL;
+        }
+
+        stream[pI]
+            << token::END_BLOCK << token::NL;
 
         // Size up buffers and fill contents
         string contents = stream[pI].str();
@@ -6304,9 +6379,11 @@ void dynamicTopoFvMesh::initFieldTransfers
 // Synchronize field transfers for mapping
 void dynamicTopoFvMesh::syncFieldTransfers
 (
-    List<wordList>& fieldNames,
+    wordList& types,
+    List<wordList>& names,
     List<List<char> >& recvBuffer,
-    PtrList<IStringStream>& recvFields
+    HashTable<autoPtr<volVectorField> >& scalarGrads,
+    HashTable<autoPtr<volTensorField> >& vectorGrads
 )
 {
     if (!Pstream::parRun())
@@ -6324,27 +6401,61 @@ void dynamicTopoFvMesh::syncFieldTransfers
     // Wait for all transfers to complete.
     meshOps::waitForBuffers();
 
+    label nProcs = procIndices_.size();
+
     // Size up stringStream
-    recvFields.setSize(procIndices_.size());
+    PtrList<IStringStream> stream(nProcs);
+
+    // Size up field PtrLists
+    List<PtrList<volScalarField> > vsF(nProcs);
+    List<PtrList<volVectorField> > vvF(nProcs);
+    List<PtrList<volSphericalTensorField> > vsptF(nProcs);
+    List<PtrList<volSymmTensorField> > vsytF(nProcs);
+    List<PtrList<volTensorField> > vtF(nProcs);
+
+    List<PtrList<surfaceScalarField> > ssF(nProcs);
+    List<PtrList<surfaceVectorField> > svF(nProcs);
+    List<PtrList<surfaceSphericalTensorField> > ssptF(nProcs);
+    List<PtrList<surfaceSymmTensorField> > ssytF(nProcs);
+    List<PtrList<surfaceTensorField> > stF(nProcs);
+
+    List<PtrList<volVectorField> > vgsF(nProcs);
+    List<PtrList<volTensorField> > vgvF(nProcs);
 
     forAll(procIndices_, pI)
     {
+        const coupledInfo& cInfo = recvMeshes_[pI];
+
         // Convert buffer to string
         string contents(recvBuffer[pI].begin(), recvBuffer[pI].size());
 
-        recvFields.set
-        (
-            pI,
-            new IStringStream(contents, IOstream::BINARY)
-        );
+        // Initialize stream
+        stream.set(pI, new IStringStream(contents, IOstream::BINARY));
 
         // Construct dictionary from stream
-        dictionary fieldDicts(recvFields[pI]);
+        dictionary dict(stream[pI]);
 
-        forAll(fieldNames, i)
-        {
+        // Set field pointers
+        cInfo.setField(names[0], dict.subDict(types[0]), vsF[pI]);
+        cInfo.setField(names[1], dict.subDict(types[1]), vvF[pI]);
+        cInfo.setField(names[2], dict.subDict(types[2]), vsptF[pI]);
+        cInfo.setField(names[3], dict.subDict(types[3]), vsytF[pI]);
+        cInfo.setField(names[4], dict.subDict(types[4]), vtF[pI]);
 
-        }
+        cInfo.setField(names[5], dict.subDict(types[5]), ssF[pI]);
+        cInfo.setField(names[6], dict.subDict(types[6]), svF[pI]);
+        cInfo.setField(names[7], dict.subDict(types[7]), ssptF[pI]);
+        cInfo.setField(names[8], dict.subDict(types[8]), ssytF[pI]);
+        cInfo.setField(names[9], dict.subDict(types[9]), stF[pI]);
+
+        cInfo.setField(names[10], dict.subDict(types[10]), vgsF[pI]);
+        cInfo.setField(names[11], dict.subDict(types[11]), vgvF[pI]);
+    }
+
+    // Now map all fields with subMesh fields
+    forAll(names, i)
+    {
+
     }
 }
 

@@ -43,6 +43,8 @@ SourceFiles
 
 #include "autoPtr.H"
 #include "coupleMap.H"
+#include "volFieldsFwd.H"
+#include "surfaceFieldsFwd.H"
 #include "fvPatchFieldMapper.H"
 
 namespace Foam
@@ -133,7 +135,23 @@ public:
 
     //- Interpolation
 
-        // Subset the volume field to output stream
+        // Subset volume field
+        template <class Type>
+        tmp<GeometricField<Type, fvPatchField, volMesh> >
+        subSetVolField
+        (
+            const GeometricField<Type, fvPatchField, volMesh>& field
+        ) const;
+
+        // Subset surface field
+        template <class Type>
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh> >
+        subSetSurfaceField
+        (
+            const GeometricField<Type, fvsPatchField, surfaceMesh>& field
+        ) const;
+
+        // Subset the volume fields from registry to output stream
         template <class Type>
         void mapVolField
         (
@@ -142,13 +160,22 @@ public:
             OSstream& strStream
         ) const;
 
-        // Subset the surface field to output stream
+        // Subset the surface field from registry to output stream
         template <class Type>
         void mapSurfaceField
         (
             const wordList& fieldNames,
             const word& fieldType,
             OSstream& strStream
+        ) const;
+
+        // Set volume field pointer from input stream
+        template <class GeomField>
+        void setField
+        (
+            const wordList& fieldNames,
+            const dictionary& fieldDicts,
+            PtrList<GeomField>& fields
         ) const;
 
     //- SubMesh patchField mapper

@@ -202,6 +202,10 @@ public:
         //- Return stored patch centre information
         const vectorField& patchCentres(const label i) const;
 
+        // Stored gradients for mapping
+        HashTable<autoPtr<volVectorField> >& scalarGrads() const;
+        HashTable<autoPtr<volTensorField> >& vectorGrads() const;
+
         // Conservatively map all volFields in the registry
         template <class Type>
         void conservativeMapVolFields() const;
@@ -226,7 +230,7 @@ public:
         const fluxCorrector& surfaceFluxCorrector() const;
 
         //- Clear out member data
-        void clear();
+        void clear() const;
 };
 
 
@@ -235,7 +239,7 @@ public:
 } // End namespace Foam
 
 #ifdef NoRepository
-#include "topoMapper.C"
+#    include "topoMapper.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -3848,23 +3848,26 @@ bool dynamicTopoFvMesh::resetMesh()
         }
 
         // Fetch reference to mapper
-        topoMapper& fieldMapper = mapper_();
+        const topoMapper& fieldMapper = mapper_();
 
         // Set information for the mapping stage
         //  - Must be done prior to field-transfers and mesh reset
         fieldMapper.storeMeshInformation();
 
         // Set up field-transfers before dealing with mapping
+        wordList fieldTypes;
         List<wordList> fieldNames;
-        PtrList<IStringStream> recvFields;
         List<List<char> > sendBuffer, recvBuffer;
 
         // Subset fields and transfer
         initFieldTransfers
         (
+            fieldTypes,
             fieldNames,
             sendBuffer,
-            recvBuffer
+            recvBuffer,
+            fieldMapper.scalarGrads(),
+            fieldMapper.vectorGrads()
         );
 
         // Set sizes for mapping
@@ -3905,9 +3908,11 @@ bool dynamicTopoFvMesh::resetMesh()
         // Synchronize field transfers prior to the reOrdering stage
         syncFieldTransfers
         (
+            fieldTypes,
             fieldNames,
             recvBuffer,
-            recvFields
+            fieldMapper.scalarGrads(),
+            fieldMapper.vectorGrads()
         );
 
         // Obtain references to zones, if any

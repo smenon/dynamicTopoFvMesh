@@ -27,8 +27,8 @@ License
 #include "Time.H"
 #include "coupledInfo.H"
 #include "dynamicTopoFvMesh.H"
-#include "calculatedFvPatchFields.H"
-#include "calculatedFvsPatchFields.H"
+#include "emptyFvPatchFields.H"
+#include "emptyFvsPatchFields.H"
 
 namespace Foam
 {
@@ -203,6 +203,160 @@ label coupledInfo::slaveFaceZone() const
 }
 
 
+// Subset volume field
+template <class Type>
+tmp<GeometricField<Type, fvPatchField, volMesh> >
+coupledInfo::subSetVolField
+(
+    const GeometricField<Type, fvPatchField, volMesh>& fld
+) const
+{
+    // Create and map the internal-field values
+    Field<Type> internalField
+    (
+        fld.internalField(),
+        map().cellMap()
+    );
+
+    // Create and map the patch field values
+    label nPatches = subMesh().boundary().size();
+    PtrList<fvPatchField<Type> > patchFields(nPatches);
+
+    forAll(patchFields, patchI)
+    {
+        if (patchI == (nPatches - 1))
+        {
+            // Artificially set last patch
+            patchFields.set
+            (
+                patchI,
+                new emptyFvPatchField<Type>
+                (
+                    subMesh().boundary()[patchI],
+                    DimensionedField<Type, volMesh>::null()
+                )
+            );
+        }
+        else
+        {
+            patchFields.set
+            (
+                patchI,
+                fvPatchField<Type>::New
+                (
+                    fld.boundaryField()[patchI],
+                    subMesh().boundary()[patchI],
+                    DimensionedField<Type, volMesh>::null(),
+                    subMeshPatchMapper(*this, patchI)
+                )
+            );
+        }
+    }
+
+    // Create new field from pieces
+    tmp<GeometricField<Type, fvPatchField, volMesh> > subFld
+    (
+        new GeometricField<Type, fvPatchField, volMesh>
+        (
+            IOobject
+            (
+                "subField_" + fld.name(),
+                subMesh().time().timeName(),
+                subMesh(),
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            subMesh(),
+            fld.dimensions(),
+            internalField,
+            patchFields
+        )
+    );
+
+    return subFld;
+}
+
+
+// Subset surface field
+template <class Type>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh> >
+coupledInfo::subSetSurfaceField
+(
+    const GeometricField<Type, fvsPatchField, surfaceMesh>& fld
+) const
+{
+    // Create and map the internal-field values
+    Field<Type> internalField
+    (
+        fld.internalField(),
+        SubList<label>
+        (
+            map().faceMap(),
+            subMesh().nInternalFaces()
+        )
+    );
+
+    // Create and map the patch field values
+    label nPatches = subMesh().boundary().size();
+    PtrList<fvsPatchField<Type> > patchFields(nPatches);
+
+    forAll(patchFields, patchI)
+    {
+        if (patchI == (nPatches - 1))
+        {
+            // Artificially set last patch
+            patchFields.set
+            (
+                patchI,
+                new emptyFvsPatchField<Type>
+                (
+                    subMesh().boundary()[patchI],
+                    DimensionedField<Type, surfaceMesh>::null()
+                )
+            );
+        }
+        else
+        {
+            patchFields.set
+            (
+                patchI,
+                fvsPatchField<Type>::New
+                (
+                    fld.boundaryField()[patchI],
+                    subMesh().boundary()[patchI],
+                    DimensionedField<Type, surfaceMesh>::null(),
+                    subMeshPatchMapper(*this, patchI)
+                )
+            );
+        }
+    }
+
+    // Create new field from pieces
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh> > subFld
+    (
+        new GeometricField<Type, fvsPatchField, surfaceMesh>
+        (
+            IOobject
+            (
+                "subField_" + fld.name(),
+                subMesh().time().timeName(),
+                subMesh(),
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            subMesh(),
+            fld.dimensions(),
+            internalField,
+            patchFields
+        )
+    );
+
+    return subFld;
+}
+
+
 template <class Type>
 void coupledInfo::mapVolField
 (
@@ -225,71 +379,16 @@ void coupledInfo::mapVolField
             >(fieldNames[i])
         );
 
-        // Create and map the internal-field values
-        Field<Type> internalField
+        tmp<GeometricField<Type, fvPatchField, volMesh> > tsubFld =
         (
-            fld.internalField(),
-            map().cellMap()
-        );
-
-        // Create and map the patch field values
-        label nPatches = subMesh().boundary().size();
-        PtrList<fvPatchField<Type> > patchFields(nPatches);
-
-        forAll(patchFields, patchI)
-        {
-            if (patchI == (nPatches - 1))
-            {
-                // Artificially set last patch
-                patchFields.set
-                (
-                    patchI,
-                    new calculatedFvPatchField<Type>
-                    (
-                        subMesh().boundary()[patchI],
-                        DimensionedField<Type, volMesh>::null()
-                    )
-                );
-            }
-            else
-            {
-                patchFields.set
-                (
-                    patchI,
-                    fvPatchField<Type>::New
-                    (
-                        fld.boundaryField()[patchI],
-                        subMesh().boundary()[patchI],
-                        DimensionedField<Type, volMesh>::null(),
-                        subMeshPatchMapper(*this, patchI)
-                    )
-                );
-            }
-        }
-
-        // Create new field from pieces
-        GeometricField<Type, fvPatchField, volMesh> subFld
-        (
-            IOobject
-            (
-                "subField_" + fld.name(),
-                subMesh().time().timeName(),
-                subMesh(),
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            subMesh(),
-            fld.dimensions(),
-            internalField,
-            patchFields
+            subSetVolField(fld)
         );
 
         // Send field through stream
         strStream
             << fieldNames[i]
             << token::NL << token::BEGIN_BLOCK
-            << subFld
+            << tsubFld
             << token::NL << token::END_BLOCK
             << token::NL;
     }
@@ -321,81 +420,58 @@ void coupledInfo::mapSurfaceField
             >(fieldNames[i])
         );
 
-        // Create and map the internal-field values
-        Field<Type> internalField
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh> > tsubFld =
         (
-            fld.internalField(),
-            SubList<label>
-            (
-                map().faceMap(),
-                subMesh().nInternalFaces()
-            )
-        );
-
-        // Create and map the patch field values
-        label nPatches = subMesh().boundary().size();
-        PtrList<fvsPatchField<Type> > patchFields(nPatches);
-
-        forAll(patchFields, patchI)
-        {
-            if (patchI == (nPatches - 1))
-            {
-                // Artificially set last patch
-                patchFields.set
-                (
-                    patchI,
-                    new calculatedFvsPatchField<Type>
-                    (
-                        subMesh().boundary()[patchI],
-                        DimensionedField<Type, surfaceMesh>::null()
-                    )
-                );
-            }
-            else
-            {
-                patchFields.set
-                (
-                    patchI,
-                    fvsPatchField<Type>::New
-                    (
-                        fld.boundaryField()[patchI],
-                        subMesh().boundary()[patchI],
-                        DimensionedField<Type, surfaceMesh>::null(),
-                        subMeshPatchMapper(*this, patchI)
-                    )
-                );
-            }
-        }
-
-        // Create new field from pieces
-        GeometricField<Type, fvsPatchField, surfaceMesh> subFld
-        (
-            IOobject
-            (
-                "subField_" + fld.name(),
-                subMesh().time().timeName(),
-                subMesh(),
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            subMesh(),
-            fld.dimensions(),
-            internalField,
-            patchFields
+            subSetSurfaceField(fld)
         );
 
         // Send field through stream
         strStream
             << fieldNames[i]
             << token::NL << token::BEGIN_BLOCK
-            << subFld
+            << tsubFld
             << token::NL << token::END_BLOCK
             << token::NL;
     }
 
     strStream
         << token::END_BLOCK << token::NL;
+}
+
+
+// Set volume field pointer from input stream
+template <class GeomField>
+void coupledInfo::setField
+(
+    const wordList& fieldNames,
+    const dictionary& fieldDicts,
+    PtrList<GeomField>& fields
+) const
+{
+    // Size up the pointer list
+    fields.setSize(fieldNames.size());
+
+    forAll(fieldNames, i)
+    {
+        fields.set
+        (
+            i,
+            new GeomField
+            (
+                IOobject
+                (
+                    fieldNames[i],
+                    subMesh().time().timeName(),
+                    subMesh(),
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    false
+                ),
+                subMesh(),
+                fieldDicts.subDict(fieldNames[i])
+            )
+        );
+    }
 }
 
 

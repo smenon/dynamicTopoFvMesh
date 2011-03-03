@@ -392,6 +392,22 @@ const vectorField& topoMapper::patchCentres(const label i) const
 }
 
 
+// Return stored scalar gradients for mapping
+HashTable<autoPtr<volVectorField> >&
+topoMapper::scalarGrads() const
+{
+    return sGrads_;
+}
+
+
+// Return stored vector gradients for mapping
+HashTable<autoPtr<volTensorField> >&
+topoMapper::vectorGrads() const
+{
+    return vGrads_;
+}
+
+
 // Conservatively map all volFields in the registry
 template <class Type>
 void topoMapper::conservativeMapVolFields() const
@@ -591,7 +607,7 @@ const fluxCorrector& topoMapper::surfaceFluxCorrector() const
 
 
 //- Clear out member data
-void topoMapper::clear()
+void topoMapper::clear() const
 {
     // Clear out mappers
     cellMap_.clear();

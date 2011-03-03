@@ -1039,17 +1039,22 @@ class dynamicTopoFvMesh
         // Initialize subMesh field transfers for mapping
         void initFieldTransfers
         (
+            wordList& fieldTypes,
             List<wordList>& fieldNames,
             List<List<char> >& sendBuffer,
-            List<List<char> >& recvBuffer
+            List<List<char> >& recvBuffer,
+            HashTable<autoPtr<volVectorField> >& scalarGrads,
+            HashTable<autoPtr<volTensorField> >& vectorGrads
         );
 
         // Synchronize field transfers for mapping
         void syncFieldTransfers
         (
+            wordList& fieldTypes,
             List<wordList>& fieldNames,
             List<List<char> >& recvBuffer,
-            PtrList<IStringStream>& recvFields
+            HashTable<autoPtr<volVectorField> >& scalarGrads,
+            HashTable<autoPtr<volTensorField> >& vectorGrads
         );
 
         // Initialize coupled boundary ordering
