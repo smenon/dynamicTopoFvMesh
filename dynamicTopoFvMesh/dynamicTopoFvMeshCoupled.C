@@ -4864,6 +4864,102 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     // Fill the default patch as 'internal'
     ptBuffer[boundary.size()] = -1;
 
+    // Make a temporary dictionary for patch construction
+    dictionary patchDict;
+
+    // Specify the list of patch names and types
+    wordList patchNames(ptBuffer.size());
+
+    forAll(patchNames, patchI)
+    {
+        // Add a new subDictionary
+        dictionary patchSubDict;
+
+        if (patchI == patchNames.size() - 1)
+        {
+            // Set name
+            patchNames[patchI] = "defaultPatch";
+
+            // Add type
+            patchSubDict.add("type", "patch");
+
+            // Add start / size
+            patchSubDict.add("startFace", bdyFaceStarts[patchI]);
+            patchSubDict.add("nFaces", bdyFaceSizes[patchI]);
+        }
+        else
+        if (ptBuffer[patchI] <= -2)
+        {
+            // Back out the neighbouring processor ID
+            label neiProcNo = Foam::mag(ptBuffer[patchI] + 2);
+
+            // Set name
+            patchNames[patchI] =
+            (
+                "procBoundary"
+              + Foam::name(Pstream::myProcNo())
+              + "to"
+              + Foam::name(neiProcNo)
+            );
+
+            // Add type
+            patchSubDict.add("type", "processor");
+
+            // Add start / size
+            patchSubDict.add("startFace", bdyFaceStarts[patchI]);
+            patchSubDict.add("nFaces", bdyFaceSizes[patchI]);
+
+            // Add processor-specific info
+            patchSubDict.add("myProcNo", Pstream::myProcNo());
+            patchSubDict.add("neighbProcNo", neiProcNo);
+        }
+        else
+        {
+            // Set name
+            patchNames[patchI] = boundary[ptBuffer[patchI]].name();
+
+            // Add type
+            patchSubDict.add("type", boundary[ptBuffer[patchI]].type());
+
+            // Add start / size
+            patchSubDict.add("startFace", bdyFaceStarts[patchI]);
+            patchSubDict.add("nFaces", bdyFaceSizes[patchI]);
+        }
+
+        // Add subdictionary
+        patchDict.add(patchNames[patchI], patchSubDict);
+    }
+
+    // Set the autoPtr.
+    subMesh.setMesh
+    (
+        proc,
+        new dynamicTopoFvMesh
+        (
+            (*this),
+            IOobject
+            (
+                fvMesh::defaultRegion,
+                time().timeName(),
+                time()
+            ),
+            xferCopy(cMap.pointBuffer()),
+            xferCopy(cMap.oldPointBuffer()),
+            xferCopy(cMap.edges()),
+            xferCopy(cMap.faces()),
+            xferCopy(cMap.faceEdges()),
+            xferCopy(cMap.owner()),
+            xferCopy(cMap.neighbour()),
+            xferCopy(cMap.cells()),
+            bdyFaceStarts,
+            bdyFaceSizes,
+            bdyEdgeStarts,
+            bdyEdgeSizes,
+            patchNames,
+            patchDict
+        )
+    );
+
     // Set maps as built.
     subMesh.setBuiltMaps();
 
@@ -5369,8 +5465,10 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
             rPM.subMesh().writeVTK
             (
-                "rPatchMesh_" + Foam::name(Pstream::myProcNo())
-              + "to" + Foam::name(proc),
+                "rPatchMesh_"
+              + Foam::name(Pstream::myProcNo())
+              + "to"
+              + Foam::name(proc),
                 identity(cMap.cells().size())
             );
         }

@@ -316,7 +316,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     }
 
     // Add patches, but don't calculate geometry, etc
-    polyMesh::addPatches(patches, false);
+    fvMesh::addFvPatches(patches, false);
 
     // Set sizes for the reverse maps
     reversePointMap_.setSize(nPoints_, -7);

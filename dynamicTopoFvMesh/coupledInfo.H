@@ -43,6 +43,7 @@ SourceFiles
 
 #include "autoPtr.H"
 #include "coupleMap.H"
+#include "fvPatchFieldMapper.H"
 
 namespace Foam
 {
@@ -102,6 +103,9 @@ public:
 
     //- Access
 
+        // Return a const reference to the parent mesh
+        inline const dynamicTopoFvMesh& baseMesh() const;
+
         // Set a new subMesh
         inline void setMesh(label index, dynamicTopoFvMesh* mesh);
 
@@ -146,6 +150,66 @@ public:
             const word& fieldType,
             OSstream& strStream
         ) const;
+
+    //- SubMesh patchField mapper
+
+        class subMeshPatchMapper
+        :
+            public fvPatchFieldMapper
+        {
+            label sizeBeforeMapping_;
+
+            labelField directAddressing_;
+
+        public:
+
+            // Constructors
+
+                //- Construct from components
+                inline subMeshPatchMapper
+                (
+                    const label sbm,
+                    const labelList& da
+                )
+                :
+                    sizeBeforeMapping_(sbm),
+                    directAddressing_(da)
+                {}
+
+                //- Construct given addressing
+                inline subMeshPatchMapper
+                (
+                    const coupledInfo& cInfo,
+                    const label patchI
+                );
+
+            // Destructor
+
+                virtual ~subMeshPatchMapper()
+                {}
+
+            // Member Functions
+
+                label size() const
+                {
+                    return directAddressing_.size();
+                }
+
+                label sizeBeforeMapping() const
+                {
+                    return directAddressing_.size();
+                }
+
+                bool direct() const
+                {
+                    return true;
+                }
+
+                const unallocLabelList& directAddressing() const
+                {
+                    return directAddressing_;
+                }
+        };
 };
 
 } // End namespace Foam
