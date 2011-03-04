@@ -96,7 +96,7 @@ coupledInfo::coupledInfo
 
 
 //- Construct given addressing
-coupledInfo::subMeshPatchMapper::subMeshPatchMapper
+coupledInfo::subMeshMapper::subMeshMapper
 (
     const coupledInfo& cInfo,
     const label patchI
@@ -247,7 +247,7 @@ coupledInfo::subSetVolField
                     fld.boundaryField()[patchI],
                     subMesh().boundary()[patchI],
                     DimensionedField<Type, volMesh>::null(),
-                    subMeshPatchMapper(*this, patchI)
+                    subMeshMapper(*this, patchI)
                 )
             );
         }
@@ -326,7 +326,7 @@ coupledInfo::subSetSurfaceField
                     fld.boundaryField()[patchI],
                     subMesh().boundary()[patchI],
                     DimensionedField<Type, surfaceMesh>::null(),
-                    subMeshPatchMapper(*this, patchI)
+                    subMeshMapper(*this, patchI)
                 )
             );
         }
@@ -439,7 +439,7 @@ void coupledInfo::mapSurfaceField
 }
 
 
-// Set volume field pointer from input stream
+// Set volume field pointer from input dictionary
 template <class GeomField>
 void coupledInfo::setField
 (
@@ -470,6 +470,95 @@ void coupledInfo::setField
                 subMesh(),
                 fieldDicts.subDict(fieldNames[i])
             )
+        );
+    }
+}
+
+
+template <class GeomField>
+void coupledInfo::resizeMap
+(
+    const label srcIndex,
+    const subMeshMapper& internalMapper,
+    const List<labelList>& internalReverseMaps,
+    const PtrList<subMeshMapper>& boundaryMapper,
+    const List<labelListList>& boundaryReverseMaps,
+    const List<PtrList<GeomField> >& srcFields,
+    GeomField& field
+)
+{
+    // autoMap the internal field
+    field.internalField().autoMap(internalMapper);
+
+    // Reverse map for additional cells
+    forAll(srcFields, pI)
+    {
+        // Fetch field for this processor
+        const GeomField& srcField = srcFields[pI][srcIndex];
+
+        field.internalField().rmap
+        (
+            srcField.internalField(),
+            internalReverseMaps[pI]
+        );
+    }
+
+    // Map physical boundary-fields
+    forAll(boundaryMapper, patchI)
+    {
+        // autoMap the patchField
+        field.boundaryField()[patchI].autoMap(boundaryMapper[patchI]);
+
+        // Reverse map for additional patch faces
+        forAll(srcFields, pI)
+        {
+            // Fetch field for this processor
+            const GeomField& srcField = srcFields[pI][srcIndex];
+
+            field.boundaryField()[patchI].rmap
+            (
+                srcField.boundaryField()[patchI],
+                boundaryReverseMaps[pI][patchI]
+            );
+        }
+    }
+}
+
+
+// Resize all fields in registry
+template <class GeomField>
+void coupledInfo::resizeMap
+(
+    const wordList& names,
+    const objectRegistry& mesh,
+    const subMeshMapper& internalMapper,
+    const List<labelList>& internalReverseMaps,
+    const PtrList<subMeshMapper>& boundaryMapper,
+    const List<labelListList>& boundaryReverseMaps,
+    const List<PtrList<GeomField> >& srcFields
+)
+{
+    forAll(names, indexI)
+    {
+        // Fetch field from registry
+        GeomField& field =
+        (
+            const_cast<GeomField&>
+            (
+                mesh.lookupObject<GeomField>(names[indexI])
+            )
+        );
+
+        // Map the field
+        coupledInfo::resizeMap
+        (
+            indexI,
+            internalMapper,
+            internalReverseMaps,
+            boundaryMapper,
+            boundaryReverseMaps,
+            srcFields,
+            field
         );
     }
 }

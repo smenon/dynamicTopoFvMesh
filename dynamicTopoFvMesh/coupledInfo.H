@@ -135,6 +135,65 @@ public:
 
     //- Interpolation
 
+        //- Generic subMesh mapper
+        class subMeshMapper
+        :
+            public fvPatchFieldMapper
+        {
+            label sizeBeforeMapping_;
+
+            labelField directAddressing_;
+
+        public:
+
+            // Constructors
+
+                //- Construct from components
+                inline subMeshMapper
+                (
+                    const label sbm,
+                    const labelList& da
+                )
+                :
+                    sizeBeforeMapping_(sbm),
+                    directAddressing_(da)
+                {}
+
+                //- Construct given addressing
+                inline subMeshMapper
+                (
+                    const coupledInfo& cInfo,
+                    const label patchI
+                );
+
+            // Destructor
+
+                virtual ~subMeshMapper()
+                {}
+
+            // Member Functions
+
+                label size() const
+                {
+                    return directAddressing_.size();
+                }
+
+                label sizeBeforeMapping() const
+                {
+                    return directAddressing_.size();
+                }
+
+                bool direct() const
+                {
+                    return true;
+                }
+
+                const unallocLabelList& directAddressing() const
+                {
+                    return directAddressing_;
+                }
+        };
+
         // Subset volume field
         template <class Type>
         tmp<GeometricField<Type, fvPatchField, volMesh> >
@@ -169,7 +228,7 @@ public:
             OSstream& strStream
         ) const;
 
-        // Set volume field pointer from input stream
+        // Set volume field pointer from input dictionary
         template <class GeomField>
         void setField
         (
@@ -178,65 +237,31 @@ public:
             PtrList<GeomField>& fields
         ) const;
 
-    //- SubMesh patchField mapper
+        // Resize map for individual field
+        template <class GeomField>
+        static void resizeMap
+        (
+            const label srcIndex,
+            const subMeshMapper& internalMapper,
+            const List<labelList>& internalReverseMaps,
+            const PtrList<subMeshMapper>& boundaryMapper,
+            const List<labelListList>& boundaryReverseMaps,
+            const List<PtrList<GeomField> >& srcFields,
+            GeomField& field
+        );
 
-        class subMeshPatchMapper
-        :
-            public fvPatchFieldMapper
-        {
-            label sizeBeforeMapping_;
-
-            labelField directAddressing_;
-
-        public:
-
-            // Constructors
-
-                //- Construct from components
-                inline subMeshPatchMapper
-                (
-                    const label sbm,
-                    const labelList& da
-                )
-                :
-                    sizeBeforeMapping_(sbm),
-                    directAddressing_(da)
-                {}
-
-                //- Construct given addressing
-                inline subMeshPatchMapper
-                (
-                    const coupledInfo& cInfo,
-                    const label patchI
-                );
-
-            // Destructor
-
-                virtual ~subMeshPatchMapper()
-                {}
-
-            // Member Functions
-
-                label size() const
-                {
-                    return directAddressing_.size();
-                }
-
-                label sizeBeforeMapping() const
-                {
-                    return directAddressing_.size();
-                }
-
-                bool direct() const
-                {
-                    return true;
-                }
-
-                const unallocLabelList& directAddressing() const
-                {
-                    return directAddressing_;
-                }
-        };
+        // Resize map for all fields in registry
+        template <class GeomField>
+        static void resizeMap
+        (
+            const wordList& fieldNames,
+            const objectRegistry& mesh,
+            const subMeshMapper& internalMapper,
+            const List<labelList>& internalReverseMaps,
+            const PtrList<subMeshMapper>& boundaryMapper,
+            const List<labelListList>& boundaryReverseMaps,
+            const List<PtrList<GeomField> >& srcFields
+        );
 };
 
 } // End namespace Foam

@@ -6422,6 +6422,34 @@ void dynamicTopoFvMesh::syncFieldTransfers
     List<PtrList<volVectorField> > vgsF(nProcs);
     List<PtrList<volTensorField> > vgvF(nProcs);
 
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Keep track of extra / total entities
+    label nExtraCells = 0, nTotalCells = nOldCells_;
+    labelList nExtraPatchFaces(boundary.size(), 0);
+    labelList nTotalPatchFaces(oldPatchSizes_);
+
+    // Determine number of physical (non-processor) patches
+    label nPhysical = 0;
+
+    forAll(boundary, patchI)
+    {
+        if (isA<processorPolyPatch>(boundary[patchI]))
+        {
+            continue;
+        }
+
+        nPhysical++;
+    }
+
+    // Shorten to number of physical patches
+    nExtraPatchFaces.setSize(nPhysical);
+    nTotalPatchFaces.setSize(nPhysical);
+
+    // Allocate reverse maps
+    List<labelList> irMaps(nProcs);
+    List<labelListList> brMaps(nProcs);
+
     forAll(procIndices_, pI)
     {
         const coupledInfo& cInfo = recvMeshes_[pI];
@@ -6450,13 +6478,107 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
         cInfo.setField(names[10], dict.subDict(types[10]), vgsF[pI]);
         cInfo.setField(names[11], dict.subDict(types[11]), vgvF[pI]);
+
+        // Count the number of additional entities
+        const coupleMap& cMap = cInfo.map();
+
+        label nProcCells = cMap.nEntities(coupleMap::CELL);
+
+        // Set rmap for this processor
+        irMaps[pI] = (labelField(identity(nProcCells)) + nTotalCells);
+
+        // Update cell count
+        nExtraCells += nProcCells;
+        nTotalCells += nProcCells;
+
+        const labelList& faceSizes = cMap.entityBuffer(coupleMap::FACE_SIZES);
+
+        forAll(faceSizes, patchI)
+        {
+            if (patchI < nPhysical)
+            {
+                label nPatchFaces = faceSizes[patchI];
+
+                // Set rmap for this patch
+                brMaps[pI][patchI] =
+                (
+                    labelField(identity(nPatchFaces))
+                  + nTotalPatchFaces[patchI]
+                );
+
+                // Update patch-face count
+                nExtraPatchFaces[patchI] += nPatchFaces;
+                nTotalPatchFaces[patchI] += nPatchFaces;
+            }
+        }
     }
 
-    // Now map all fields with subMesh fields
-    forAll(names, i)
+    // Prepare internal mappers
+    labelList cellAddressing(nTotalCells, 0);
+
+    // Set identity map for first nCells,
+    // and map from cell[0] for the rest
+    for (label i = 0; i < nOldCells_; i++)
     {
-
+        cellAddressing[i] = i;
     }
+
+    coupledInfo::subMeshMapper vMap
+    (
+        nOldCells_,
+        cellAddressing
+    );
+
+    coupledInfo::subMeshMapper sMap
+    (
+        nOldInternalFaces_,
+        identity(nOldInternalFaces_)
+    );
+
+    // Prepare boundary mappers
+    labelListList patchAddressing(nPhysical);
+    PtrList<coupledInfo::subMeshMapper> bMap(nPhysical);
+
+    forAll(bMap, patchI)
+    {
+        // Prepare patch mappers
+        patchAddressing[patchI].setSize(nTotalPatchFaces[patchI], 0);
+
+        // Set identity map for first nPatchFaces,
+        // and map from patch-face[0] for the rest
+        for (label i = 0; i < oldPatchSizes_[patchI]; i++)
+        {
+            patchAddressing[patchI][i] = i;
+        }
+
+        // Set the boundary mapper pointer
+        bMap.set
+        (
+            patchI,
+            new coupledInfo::subMeshMapper
+            (
+                oldPatchSizes_[patchI],
+                patchAddressing[patchI]
+            )
+        );
+    }
+
+    // Loop through all volFields and re-size
+    // to accomodate additional cells / faces
+    coupledInfo::resizeMap(names[0], *this, vMap, irMaps, bMap, brMaps, vsF);
+    coupledInfo::resizeMap(names[1], *this, vMap, irMaps, bMap, brMaps, vvF);
+    coupledInfo::resizeMap(names[2], *this, vMap, irMaps, bMap, brMaps, vsptF);
+    coupledInfo::resizeMap(names[3], *this, vMap, irMaps, bMap, brMaps, vsytF);
+    coupledInfo::resizeMap(names[4], *this, vMap, irMaps, bMap, brMaps, vtF);
+
+    coupledInfo::resizeMap(names[5], *this, sMap, irMaps, bMap, brMaps, ssF);
+    coupledInfo::resizeMap(names[6], *this, sMap, irMaps, bMap, brMaps, svF);
+    coupledInfo::resizeMap(names[7], *this, sMap, irMaps, bMap, brMaps, ssptF);
+    coupledInfo::resizeMap(names[8], *this, sMap, irMaps, bMap, brMaps, ssytF);
+    coupledInfo::resizeMap(names[9], *this, sMap, irMaps, bMap, brMaps, stF);
+
+//    coupledInfo::resizeMap(names[10], *this, vMap, bMap, vgsF);
+//    coupledInfo::resizeMap(names[11], *this, vMap, bMap, vgvF);
 }
 
 
