@@ -42,18 +42,17 @@ SourceFiles
 #ifndef topoMapper_H
 #define topoMapper_H
 
+#include "autoPtr.H"
+#include "volFields.H"
 #include "fluxCorrector.H"
+#include "topoCellMapper.H"
+#include "topoSurfaceMapper.H"
+#include "topoBoundaryMeshMapper.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-
-// Class forward declarations
-class topoCellMapper;
-class topoSurfaceMapper;
-class topoBoundaryMeshMapper;
-class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
                          Class topoMapper Declaration
@@ -101,6 +100,10 @@ class topoMapper
         mutable List<vectorField> faceCentres_;
         mutable List<vectorField> cellCentres_;
 
+        //- Offsets
+        mutable labelList cellOffsets_;
+        mutable labelListList patchOffsets_;
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -116,10 +119,6 @@ class topoMapper
         (
             HashTable<autoPtr<gradType> >& gradTable
         ) const;
-
-        //- Fetch the gradient field
-        template <class Type>
-        const Type& gradient(const word& name) const;
 
         //- Store gradients prior to mesh reset
         void storeGradients() const;
@@ -175,6 +174,13 @@ public:
             const Xfer<List<vectorField> >& centres
         ) const;
 
+        //- Set cell / patch offset information
+        void setOffsets
+        (
+            const labelList& cellOffsets,
+            const labelListList& patchOffsets
+        ) const;
+
         //- Fetch face weights
         const List<scalarField>& faceWeights() const;
 
@@ -202,9 +208,15 @@ public:
         //- Return stored patch centre information
         const vectorField& patchCentres(const label i) const;
 
-        // Stored gradients for mapping
-        HashTable<autoPtr<volVectorField> >& scalarGrads() const;
-        HashTable<autoPtr<volTensorField> >& vectorGrads() const;
+        //- Return names of stored scalar gradients
+        const wordList scalarGrads() const;
+
+        //- Return names of stored vector gradients
+        const wordList vectorGrads() const;
+
+        //- Fetch the gradient field
+        template <class Type>
+        Type& gradient(const word& name) const;
 
         // Conservatively map all volFields in the registry
         template <class Type>
@@ -237,10 +249,6 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-#ifdef NoRepository
-#    include "topoMapper.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

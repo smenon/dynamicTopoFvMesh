@@ -111,44 +111,6 @@ void topoMapper::storeGradients
 }
 
 
-//- Fetch the gradient field (template specialisation)
-template <>
-const volVectorField& topoMapper::gradient(const word& name) const
-{
-    if (!sGrads_.found(name))
-    {
-        FatalErrorIn
-        (
-            "const volVectorField& "
-            "topoMapper::gradient(const word& name) const"
-        ) << nl << " Gradient for: " << name
-          << " has not been stored."
-          << abort(FatalError);
-    }
-
-    return sGrads_[name]();
-}
-
-
-//- Fetch the gradient field (template specialisation)
-template <>
-const volTensorField& topoMapper::gradient(const word& name) const
-{
-    if (!vGrads_.found(name))
-    {
-        FatalErrorIn
-        (
-            "const volTensorField& "
-            "topoMapper::gradient(const word& name) const"
-        ) << nl << " Gradient for: " << name
-          << " has not been stored."
-          << abort(FatalError);
-    }
-
-    return vGrads_[name]();
-}
-
-
 //- Store gradients prior to mesh reset
 void topoMapper::storeGradients() const
 {
@@ -157,11 +119,8 @@ void topoMapper::storeGradients() const
 
     if (fvMesh::debug)
     {
-        Info<< "Registered volScalarFields: " << endl;
-        Info<< sGrads_.toc() << endl;
-
-        Info<< "Registered volVectorFields: " << endl;
-        Info<< vGrads_.toc() << endl;
+        Info<< "Registered volScalarFields: " << scalarGrads() << endl;
+        Info<< "Registered volVectorFields: " << vectorGrads() << endl;
     }
 }
 
@@ -287,6 +246,18 @@ void topoMapper::setCellWeights
 }
 
 
+//- Set cell / patch offset information
+void topoMapper::setOffsets
+(
+    const labelList& cellOffsets,
+    const labelListList& patchOffsets
+) const
+{
+    cellOffsets_ = cellOffsets;
+    patchOffsets_ = patchOffsets;
+}
+
+
 //- Fetch face weights
 const List<scalarField>& topoMapper::faceWeights() const
 {
@@ -392,19 +363,53 @@ const vectorField& topoMapper::patchCentres(const label i) const
 }
 
 
-// Return stored scalar gradients for mapping
-HashTable<autoPtr<volVectorField> >&
-topoMapper::scalarGrads() const
+//- Return names of stored scalar gradients
+const wordList topoMapper::scalarGrads() const
 {
-    return sGrads_;
+    return sGrads_.toc();
 }
 
 
-// Return stored vector gradients for mapping
-HashTable<autoPtr<volTensorField> >&
-topoMapper::vectorGrads() const
+//- Return names of stored vector gradients
+const wordList topoMapper::vectorGrads() const
 {
-    return vGrads_;
+    return vGrads_.toc();
+}
+
+
+//- Fetch the gradient field (template specialisation)
+template <>
+volVectorField& topoMapper::gradient(const word& name) const
+{
+    if (!sGrads_.found(name))
+    {
+        FatalErrorIn
+        (
+            "volVectorField& topoMapper::gradient(const word& name) const"
+        ) << nl << " Gradient for: " << name
+          << " has not been stored."
+          << abort(FatalError);
+    }
+
+    return sGrads_[name]();
+}
+
+
+//- Fetch the gradient field (template specialisation)
+template <>
+volTensorField& topoMapper::gradient(const word& name) const
+{
+    if (!vGrads_.found(name))
+    {
+        FatalErrorIn
+        (
+            "volTensorField& topoMapper::gradient(const word& name) const"
+        ) << nl << " Gradient for: " << name
+          << " has not been stored."
+          << abort(FatalError);
+    }
+
+    return vGrads_[name]();
 }
 
 

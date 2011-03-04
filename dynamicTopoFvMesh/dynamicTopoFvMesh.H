@@ -1042,9 +1042,7 @@ class dynamicTopoFvMesh
             wordList& fieldTypes,
             List<wordList>& fieldNames,
             List<List<char> >& sendBuffer,
-            List<List<char> >& recvBuffer,
-            HashTable<autoPtr<volVectorField> >& scalarGrads,
-            HashTable<autoPtr<volTensorField> >& vectorGrads
+            List<List<char> >& recvBuffer
         );
 
         // Synchronize field transfers for mapping
@@ -1052,9 +1050,7 @@ class dynamicTopoFvMesh
         (
             wordList& fieldTypes,
             List<wordList>& fieldNames,
-            List<List<char> >& recvBuffer,
-            HashTable<autoPtr<volVectorField> >& scalarGrads,
-            HashTable<autoPtr<volTensorField> >& vectorGrads
+            List<List<char> >& recvBuffer
         );
 
         // Initialize coupled boundary ordering

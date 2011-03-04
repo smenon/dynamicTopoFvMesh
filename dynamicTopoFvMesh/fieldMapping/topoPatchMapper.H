@@ -200,10 +200,6 @@ public:
 
 } // End namespace Foam
 
-#ifdef NoRepository
-#include "topoPatchMapper.C"
-#endif
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #endif

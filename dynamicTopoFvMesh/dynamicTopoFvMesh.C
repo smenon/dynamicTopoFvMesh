@@ -46,13 +46,13 @@ Author
 #include "volFields.H"
 #include "MeshObject.H"
 #include "topoMapper.H"
+#include "coupledInfo.H"
 #include "mapPolyMesh.H"
 #include "MapFvFields.H"
 #include "SortableList.H"
 #include "motionSolver.H"
 #include "fvPatchFields.H"
 #include "fvsPatchFields.H"
-#include "coupledInfo.H"
 #include "lengthScaleEstimator.H"
 
 namespace Foam
@@ -3865,9 +3865,7 @@ bool dynamicTopoFvMesh::resetMesh()
             fieldTypes,
             fieldNames,
             sendBuffer,
-            recvBuffer,
-            fieldMapper.scalarGrads(),
-            fieldMapper.vectorGrads()
+            recvBuffer
         );
 
         // Set sizes for mapping
@@ -3910,9 +3908,7 @@ bool dynamicTopoFvMesh::resetMesh()
         (
             fieldTypes,
             fieldNames,
-            recvBuffer,
-            fieldMapper.scalarGrads(),
-            fieldMapper.vectorGrads()
+            recvBuffer
         );
 
         // Obtain references to zones, if any

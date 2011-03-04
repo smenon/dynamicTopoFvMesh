@@ -178,9 +178,6 @@ public:
 
 } // End namespace Foam
 
-#ifdef NoRepository
-#    include "topoCellMapper.C"
-#endif
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #endif

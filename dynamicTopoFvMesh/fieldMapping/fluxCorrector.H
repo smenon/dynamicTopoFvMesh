@@ -142,10 +142,6 @@ public:
 
 } // End namespace Foam
 
-#ifdef NoRepository
-#include "fluxCorrector.C"
-#endif
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #endif

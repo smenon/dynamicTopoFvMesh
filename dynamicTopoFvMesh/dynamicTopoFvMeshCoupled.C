@@ -41,6 +41,7 @@ Author
 #include "triFace.H"
 #include "volFields.H"
 #include "changeMap.H"
+#include "topoMapper.H"
 #include "coupledInfo.H"
 #include "matchPoints.H"
 #include "SortableList.H"
@@ -3229,6 +3230,75 @@ void dynamicTopoFvMesh::handleCoupledPatches
         Info<< "Handling coupled patches...";
     }
 
+    // Calculate mapping offsets
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Determine number of physical (non-processor) patches
+    label nPhysical = 0;
+
+    forAll(boundary, patchI)
+    {
+        if (isA<processorPolyPatch>(boundary[patchI]))
+        {
+            continue;
+        }
+
+        nPhysical++;
+    }
+
+    // Fetch number of processors
+    label nProcs = procIndices_.size();
+
+    // Allocate cell and patch offsets
+    labelList cellOffsets(nProcs, 0);
+    labelListList patchOffsets(nProcs, labelList(nPhysical, 0));
+
+    label nTotalCells = nOldCells_;
+    labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhysical));
+
+    forAll(procIndices_, pI)
+    {
+        const coupleMap& cMap = recvMeshes_[pI].map();
+
+        // Set cell-offset for this processor
+        cellOffsets[pI] = nTotalCells;
+
+        // Fetch cell size from subMesh
+        label nCells = cMap.nEntities(coupleMap::CELL);
+
+        // Update cell count
+        nTotalCells += nCells;
+
+        // Fetch patch sizes from subMesh
+        const labelList& nPatchFaces = cMap.entityBuffer(coupleMap::FACE_SIZES);
+
+        // Loop over physical patches
+        forAll(nTotalPatchFaces, patchI)
+        {
+            // Set patch-offsets for this processor
+            patchOffsets[pI][patchI] = nTotalPatchFaces[patchI];
+
+            // Fetch patch size from subMesh
+            label nFaces = nPatchFaces[patchI];
+
+            // Update patch count
+            nTotalPatchFaces[patchI] += nFaces;
+        }
+    }
+
+    // Set offsets in mapper
+    mapper_->setOffsets(cellOffsets, patchOffsets);
+
+    if (debug > 2)
+    {
+        Pout<< " procIndices: " << procIndices_ << nl
+            << " nCells: " << nOldCells_ << nl
+            << " cellOffsets: " << cellOffsets << nl
+            << " patchSizes: "
+            << SubList<label>(oldPatchSizes_, nPhysical) << nl
+            << " patchOffsets: " << patchOffsets << endl;
+    }
+
     // Set coupled modifications.
     setCoupledModification();
 
@@ -6131,9 +6201,7 @@ void dynamicTopoFvMesh::initFieldTransfers
     wordList& types,
     List<wordList>& names,
     List<List<char> >& sendBuffer,
-    List<List<char> >& recvBuffer,
-    HashTable<autoPtr<volVectorField> >& scalarGrads,
-    HashTable<autoPtr<volTensorField> >& vectorGrads
+    List<List<char> >& recvBuffer
 )
 {
     if (!Pstream::parRun())
@@ -6180,6 +6248,9 @@ void dynamicTopoFvMesh::initFieldTransfers
     // Send / recv buffers for field names
     List<char> fieldNameSendBuffer, fieldNameRecvBuffer;
 
+    // Fetch reference to mapper
+    const topoMapper& fieldMapper = mapper_();
+
     if (Pstream::master())
     {
         PtrList<OStringStream> fieldNameStream(1);
@@ -6198,10 +6269,10 @@ void dynamicTopoFvMesh::initFieldTransfers
         }
 
         // Fetch scalar gradient names
-        names[10] = scalarGrads.toc();
+        names[10] = fieldMapper.scalarGrads();
 
         // Fetch vector gradient names
-        names[11] = vectorGrads.toc();
+        names[11] = fieldMapper.vectorGrads();
 
         // Send field names to Ostream
         fNStream << names;
@@ -6305,7 +6376,13 @@ void dynamicTopoFvMesh::initFieldTransfers
         {
             tmp<volVectorField> tvvfFld =
             (
-                cInfo.subSetVolField(scalarGrads[names[10][i]]())
+                cInfo.subSetVolField
+                (
+                    fieldMapper.gradient<volVectorField>
+                    (
+                        names[10][i]
+                    )
+                )
             );
 
             // Send field through stream
@@ -6329,7 +6406,13 @@ void dynamicTopoFvMesh::initFieldTransfers
         {
             tmp<volTensorField> tvtfFld =
             (
-                cInfo.subSetVolField(vectorGrads[names[11][i]]())
+                cInfo.subSetVolField
+                (
+                    fieldMapper.gradient<volTensorField>
+                    (
+                        names[11][i]
+                    )
+                )
             );
 
             // Send field through stream
@@ -6381,9 +6464,7 @@ void dynamicTopoFvMesh::syncFieldTransfers
 (
     wordList& types,
     List<wordList>& names,
-    List<List<char> >& recvBuffer,
-    HashTable<autoPtr<volVectorField> >& scalarGrads,
-    HashTable<autoPtr<volTensorField> >& vectorGrads
+    List<List<char> >& recvBuffer
 )
 {
     if (!Pstream::parRun())
@@ -6424,11 +6505,6 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
-    // Keep track of extra / total entities
-    label nExtraCells = 0, nTotalCells = nOldCells_;
-    labelList nExtraPatchFaces(boundary.size(), 0);
-    labelList nTotalPatchFaces(oldPatchSizes_);
-
     // Determine number of physical (non-processor) patches
     label nPhysical = 0;
 
@@ -6442,13 +6518,13 @@ void dynamicTopoFvMesh::syncFieldTransfers
         nPhysical++;
     }
 
-    // Shorten to number of physical patches
-    nExtraPatchFaces.setSize(nPhysical);
-    nTotalPatchFaces.setSize(nPhysical);
+    // Keep track of extra / total entities
+    label nTotalCells = nOldCells_;
+    labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhysical));
 
     // Allocate reverse maps
     List<labelList> irMaps(nProcs);
-    List<labelListList> brMaps(nProcs);
+    List<labelListList> brMaps(nProcs, labelListList(nPhysical));
 
     forAll(procIndices_, pI)
     {
@@ -6482,34 +6558,32 @@ void dynamicTopoFvMesh::syncFieldTransfers
         // Count the number of additional entities
         const coupleMap& cMap = cInfo.map();
 
-        label nProcCells = cMap.nEntities(coupleMap::CELL);
+        // Fetch cell size from subMesh
+        label nCells = cMap.nEntities(coupleMap::CELL);
 
         // Set rmap for this processor
-        irMaps[pI] = (labelField(identity(nProcCells)) + nTotalCells);
+        irMaps[pI] = (labelField(identity(nCells)) + nTotalCells);
 
         // Update cell count
-        nExtraCells += nProcCells;
-        nTotalCells += nProcCells;
+        nTotalCells += nCells;
 
-        const labelList& faceSizes = cMap.entityBuffer(coupleMap::FACE_SIZES);
+        // Fetch patch sizes from subMesh
+        const labelList& nPatchFaces = cMap.entityBuffer(coupleMap::FACE_SIZES);
 
-        forAll(faceSizes, patchI)
+        // Loop over physical patches
+        forAll(nTotalPatchFaces, patchI)
         {
-            if (patchI < nPhysical)
-            {
-                label nPatchFaces = faceSizes[patchI];
+            label nFaces = nPatchFaces[patchI];
 
-                // Set rmap for this patch
-                brMaps[pI][patchI] =
-                (
-                    labelField(identity(nPatchFaces))
-                  + nTotalPatchFaces[patchI]
-                );
+            // Set rmap for this patch
+            brMaps[pI][patchI] =
+            (
+                labelField(identity(nFaces))
+              + nTotalPatchFaces[patchI]
+            );
 
-                // Update patch-face count
-                nExtraPatchFaces[patchI] += nPatchFaces;
-                nTotalPatchFaces[patchI] += nPatchFaces;
-            }
+            // Update patch-face count
+            nTotalPatchFaces[patchI] += nFaces;
         }
     }
 
@@ -6577,8 +6651,31 @@ void dynamicTopoFvMesh::syncFieldTransfers
     coupledInfo::resizeMap(names[8], *this, sMap, irMaps, bMap, brMaps, ssytF);
     coupledInfo::resizeMap(names[9], *this, sMap, irMaps, bMap, brMaps, stF);
 
-//    coupledInfo::resizeMap(names[10], *this, vMap, bMap, vgsF);
-//    coupledInfo::resizeMap(names[11], *this, vMap, bMap, vgvF);
+    // Fetch reference to mapper
+    const topoMapper& fieldMapper = mapper_();
+
+    // Map gradient fields
+    forAll(names[10], i)
+    {
+        volVectorField& sGrad =
+        (
+            fieldMapper.gradient<volVectorField>(names[10][i])
+        );
+
+        // Map the field
+        coupledInfo::resizeMap(i, vMap, irMaps, bMap, brMaps, vgsF, sGrad);
+    }
+
+    forAll(names[11], i)
+    {
+        volTensorField& vGrad =
+        (
+            fieldMapper.gradient<volTensorField>(names[11][i])
+        );
+
+        // Map the field
+        coupledInfo::resizeMap(i, vMap, irMaps, bMap, brMaps, vgvF, vGrad);
+    }
 }
 
 

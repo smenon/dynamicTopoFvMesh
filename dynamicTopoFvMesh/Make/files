@@ -15,6 +15,12 @@ edgeSwap.C
 edgeBisect.C
 edgeCollapse.C
 
+fieldMapping/topoMapper.C
+fieldMapping/fluxCorrector.C
+fieldMapping/topoCellMapper.C
+fieldMapping/topoPatchMapper.C
+fieldMapping/topoSurfaceMapper.C
+
 tetMetrics = tetMetrics
 $(tetMetrics)/tetMetric.C
 $(tetMetrics)/tetMetrics.C

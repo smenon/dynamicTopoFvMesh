@@ -165,10 +165,6 @@ public:
 
 } // End namespace Foam
 
-#ifdef NoRepository
-#include "topoSurfaceMapper.C"
-#endif
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #endif
