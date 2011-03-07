@@ -555,7 +555,8 @@ class dynamicTopoFvMesh
         (
             const labelList& cList,
             const label patch,
-            const word& rcName
+            const word& rcName,
+            bool checkOnly = false
         );
 
         // Remove the specified cell from the mesh

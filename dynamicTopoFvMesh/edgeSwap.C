@@ -1253,7 +1253,7 @@ bool dynamicTopoFvMesh::fillTables
     );
 
     // Print out tables for debugging
-    if (debug > 3)
+    if (debug > 5)
     {
         printTables(m, Q, K, checkIndex);
     }
@@ -1348,7 +1348,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
     if (debug > 2)
     {
-        Pout<< " Removing edge : " << eIndex << " by flipping."
+        Pout<< nl << " Removing edge : " << eIndex << " by flipping."
             << " Edge: " << edges_[eIndex]
             << " minQuality: " << minQuality
             << endl;

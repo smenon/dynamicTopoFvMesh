@@ -2202,14 +2202,177 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // Sequentially add any convert-patch operations
     forAll(convertPatchPoints, pI)
     {
-        // Fetch reference to maps
+        // Fetch reference to maps / mesh
         const coupleMap& cMap = recvMeshes_[pI].map();
+        dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+        const polyBoundaryMesh& slaveBoundary = mesh.boundaryMesh();
+
+        // Find the appropriate processor patch
+        // for patch conversion operations
+        label procPatch = -1;
+
+        forAll(slaveBoundary, patchI)
+        {
+            label neiProc = mesh.getNeighbourProcessor(patchI);
+
+            if (neiProc == Pstream::myProcNo())
+            {
+                procPatch = patchI;
+                break;
+            }
+        }
+
+        if (procPatch == -1)
+        {
+            Pout<< " * * * insertCells() * * * " << nl
+                << " Could not find patch for processor: "
+                << procIndices_[pI] << nl
+                << abort(FatalError);
+        }
 
         forAllConstIter(Map<Pair<point> >, convertPatchPoints[pI], fIter)
         {
+            // Search slave mesh for faces
+            const point& newCentre = fIter().first();
+            const point& oldCentre = fIter().second();
+
+            label replaceFace = -1;
+
+            // Accumulate stats in case of failure
+            scalar minDist = GREAT;
+            vector minPoint = vector::zero;
+            DynamicList<label> checkedFaces;
+
+            if (debug > 2)
+            {
+                // Reserve for append
+                checkedFaces.setCapacity(50);
+            }
+
+            // Loop through all boundary faces,
+            // and compute / compare face centres
+            label sTot = mesh.nFaces_, sInt = mesh.nOldInternalFaces_;
+
+            for (label faceI = sInt; faceI < sTot; faceI++)
+            {
+                const face& fCheck = mesh.faces_[faceI];
+
+                if (fCheck.empty())
+                {
+                    continue;
+                }
+
+                label pIndex = mesh.whichPatch(faceI);
+
+                if (mesh.getNeighbourProcessor(pIndex) == -1)
+                {
+                    continue;
+                }
+
+                // Compute face-centre
+                vector fC = fCheck.centre(mesh.points_);
+
+                // Compute tolerance
+                scalar tol = mag(mesh.points_[fCheck[0]] - fC);
+                scalar dist = mag(fC - newCentre);
+
+                if (dist < (1e-4 * tol))
+                {
+                    replaceFace = faceI;
+                    break;
+                }
+                else
+                if (dist < minDist)
+                {
+                    minPoint = fC;
+                    minDist = dist;
+
+                    if (debug > 2)
+                    {
+                        checkedFaces.append(faceI);
+                    }
+                }
+            }
+
+            // Ensure that the face was found
+            if (replaceFace == -1)
+            {
+                mesh.writeVTK
+                (
+                    "checkedFaces_"
+                  + Foam::name(fIter.key()),
+                    checkedFaces,
+                    2, false, true
+                );
+
+                Pout<< " * * * insertCells() * * * " << nl
+                    << " Convert patch Op failed." << nl
+                    << " Face: " << fIter.key() << nl
+                    << " minPoint: " << minPoint << nl
+                    << " minDistance: " << minDist << nl
+                    << " newCentre: " << newCentre << nl
+                    << " oldCentre: " << oldCentre << nl
+                    << abort(FatalError);
+            }
+
+            // Obtain a copy before adding the new face,
+            // since the reference might become
+            // invalid during list resizing.
+            face newFace = mesh.faces_[replaceFace];
+            label newOwn = mesh.owner_[replaceFace];
+            labelList newFaceEdges = mesh.faceEdges_[replaceFace];
+
+            label newFaceIndex =
+            (
+                mesh.insertFace
+                (
+                    procPatch,
+                    newFace,
+                    newOwn,
+                    -1
+                )
+            );
+
+            // Add a faceEdges entry as well.
+            // Edges don't have to change, since they're
+            // all on the boundary anyway.
+            mesh.faceEdges_.append(newFaceEdges);
+
+            meshOps::replaceLabel
+            (
+                replaceFace,
+                newFaceIndex,
+                mesh.cells_[newOwn]
+            );
+
+            // Correct edgeFaces with the new face label.
+            forAll(newFaceEdges, edgeI)
+            {
+                meshOps::replaceLabel
+                (
+                    replaceFace,
+                    newFaceIndex,
+                    mesh.edgeFaces_[newFaceEdges[edgeI]]
+                );
+            }
+
+            // Finally remove the face
+            mesh.removeFace(replaceFace);
+
+            if (debug > 3)
+            {
+                Pout<< " Pushing CONVERT_PATCH for face: " << replaceFace
+                    << " :: " << mesh.faces_[replaceFace]
+                    << " with new point: " << fIter().first()
+                    << " and old point: " << fIter().second()
+                    << " on proc: " << procIndices_[pI]
+                    << endl;
+            }
+
             cMap.pushOperation
             (
-                fIter.key(),
+                replaceFace,
                 coupleMap::CONVERT_PATCH,
                 fIter().first(),
                 fIter().second()
@@ -2472,8 +2635,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             {
                 if (debug > 2)
                 {
-                    Pout<< " Removing map for master face: " << mfIndex
+                    Pout<< " Removing map for master face: "
+                        << mfIndex << " :: " << faces_[mfIndex]
+                        << " Master map: "
+                        << cMap.findSlave(coupleMap::FACE, mfIndex)
                         << " and slave face: " << sfIndex
+                        << " on proc: " << procIndices_[pI]
                         << endl;
                 }
 
@@ -2555,6 +2722,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                             << " :: " << faces_[mfIndex]
                             << " for slave face: " << sfIndex
                             << " :: " << mesh.faces_[sfIndex]
+                            << " on proc: " << procIndices_[pI]
                             << endl;
                     }
 
@@ -2569,6 +2737,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         << "  Slave face: " << sfIndex
                         << "  :: " << mesh.faces_[sfIndex] << nl
                         << "  cFace: " << cFace << nl
+                        << "  on proc: " << procIndices_[pI] << nl
                         << abort(FatalError);
                 }
             }
@@ -2594,8 +2763,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 {
                     if (debug > 2)
                     {
-                        Pout<< " Removing map for master edge: " << meIndex
+                        Pout<< " Removing map for master edge: "
+                            << meIndex << " :: " << edges_[meIndex]
+                            << " Master map: "
+                            << cMap.findSlave(coupleMap::EDGE, meIndex)
                             << " and slave edge: " << seIndex
+                            << " on proc: " << procIndices_[pI]
                             << endl;
                     }
 
@@ -2641,6 +2814,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                 << " :: " << edges_[meIndex]
                                 << " for slave edge: " << seIndex
                                 << " :: " << mesh.edges_[seIndex]
+                                << " on proc: " << procIndices_[pI]
                                 << endl;
                         }
 
@@ -2655,6 +2829,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                             << "  Slave edge: " << seIndex
                             << "  :: " << mesh.edges_[seIndex] << nl
                             << "  cEdge: " << cEdge << nl
+                            << " on proc: " << procIndices_[pI] << nl
                             << abort(FatalError);
                     }
                 }
@@ -2722,11 +2897,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 // - Returns a changeMap with a type specifying:
 //     1: Operation was successful
 //    -1: Operation failed
+// - checkOnly performs a feasibility check and returns without modifications.
 const changeMap dynamicTopoFvMesh::removeCells
 (
     const labelList& cList,
     const label patch,
-    const word& rcName
+    const word& rcN,
+    bool checkOnly
 )
 {
     if (cList.empty() || patch < 0)
@@ -2734,22 +2911,12 @@ const changeMap dynamicTopoFvMesh::removeCells
         FatalErrorIn
         (
             "const changeMap dynamicTopoFvMesh::removeCells"
-            "(const labelList& cList, const label patch)"
+            "(const labelList&, const label, const word&, bool)"
         )
             << " Wrong arguments. " << nl
             << " cList: " << cList << nl
             << " patch: " << patch << nl
             << abort(FatalError);
-    }
-
-    // Perform a few debug calls before modifications
-    if (debug > 1)
-    {
-        Pout<< nl << nl
-            << "Removing cell(s): " << cList
-            << " and adding internal faces / edges to patch: "
-            << boundaryMesh()[patch].name()
-            << endl;
     }
 
     changeMap map;
@@ -2944,15 +3111,65 @@ const changeMap dynamicTopoFvMesh::removeCells
         }
     }
 
+    // Are we only performing checks?
+    if (checkOnly)
+    {
+        // Make necessary map entries
+        forAllConstIter(Map<label>, facesToConvert, fIter)
+        {
+            map.removeFace(fIter.key());
+        }
+
+        forAllConstIter(Map<label>, edgesToConvert, eIter)
+        {
+            map.removeEdge(eIter.key());
+        }
+
+        forAllConstIter(labelHashSet, facesToRemove, fIter)
+        {
+            map.removeFace(fIter.key());
+        }
+
+        forAllConstIter(labelHashSet, edgesToRemove, eIter)
+        {
+            map.removeEdge(eIter.key());
+        }
+
+        forAllConstIter(labelHashSet, pointsToRemove, pIter)
+        {
+            map.removePoint(pIter.key());
+        }
+
+        forAll(cList, cellI)
+        {
+            map.removeCell(cList[cellI]);
+        }
+
+        // Specify that the operation was successful
+        map.type() = 1;
+
+        return map;
+    }
+
+    // Perform a few debug calls before modifications
+    if (debug > 1)
+    {
+        Pout<< nl << nl
+            << " Removing cell(s): " << cList
+            << " and adding internal faces / edges to patch: "
+            << boundaryMesh()[patch].name()
+            << endl;
+    }
+
     // Write out candidates for post-processing
     if (debug > 2)
     {
-        writeVTK("pointsToRemove_" + rcName, pointsToRemove.toc(), 0);
-        writeVTK("edgesToRemove_" + rcName, edgesToRemove.toc(), 1);
-        writeVTK("facesToRemove_" + rcName, facesToRemove.toc(), 2);
-        writeVTK("cellsToRemove_" + rcName, cList, 3);
-        writeVTK("edgesToConvert_" + rcName, edgesToConvert.toc(), 1);
-        writeVTK("facesToConvert_" + rcName, facesToConvert.toc(), 2);
+        writeVTK("pointsToRemove_" + rcN, pointsToRemove.toc(), 0, false, true);
+        writeVTK("edgesToRemove_" + rcN, edgesToRemove.toc(), 1, false, true);
+        writeVTK("facesToRemove_" + rcN, facesToRemove.toc(), 2, false, true);
+        writeVTK("cellsToRemove_" + rcN, cList, 3, false, true);
+        writeVTK("edgesToConvert_" + rcN, edgesToConvert.toc(), 1, false, true);
+        writeVTK("facesToConvert_" + rcN, facesToConvert.toc(), 2, false, true);
     }
 
     // Loop through all faces for conversion, check orientation
@@ -2988,7 +3205,9 @@ const changeMap dynamicTopoFvMesh::removeCells
                 "const changeMap dynamicTopoFvMesh::removeCells\n"
                 "(\n"
                 "    const labelList& cList,\n"
-                "    const label patch\n"
+                "    const label patch,\n"
+                "    const word& rcN,\n"
+                "    bool checkOnly\n"
                 ")\n"
             )
                 << nl << " Invalid mesh. "
@@ -3159,7 +3378,7 @@ const changeMap dynamicTopoFvMesh::removeCells
         removePoint(pIter.key());
 
         // Update map
-        map.removeEdge(pIter.key());
+        map.removePoint(pIter.key());
     }
 
     // Remove all cells
@@ -3168,7 +3387,7 @@ const changeMap dynamicTopoFvMesh::removeCells
         removeCell(cList[cellI]);
 
         // Update map
-        map.removeEdge(cList[cellI]);
+        map.removeCell(cList[cellI]);
     }
 
     // Set the flag
@@ -5667,8 +5886,9 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
         if (debug > 1)
         {
+            const pointField& sPoints = rPM.subMesh().points_;
+
             const Map<label>& pMap = cMap.entityMap(coupleMap::POINT);
-            const pointField& sPoints = rPM.subMesh().points();
 
             forAllConstIter(Map<label>, pMap, pIter)
             {
@@ -7459,7 +7679,7 @@ bool dynamicTopoFvMesh::coupledFillTables
         // Compute minQuality with this loop
         minQuality = computeMinQuality(parEdge, parVtx, parPts, closed);
 
-        if (debug > 4)
+        if (debug > 4 || minQuality < 0.0)
         {
             writeVTK("parEdge_" + Foam::name(eIndex), eIndex, 1);
 
@@ -7480,13 +7700,30 @@ bool dynamicTopoFvMesh::coupledFillTables
               + '_'
               + Foam::name(Pstream::myProcNo()),
                 eFaces,
-                2
+                2, false, true
             );
 
             DynamicList<label> edgeCells(10);
 
             forAll(eFaces, faceI)
             {
+                if (minQuality < 0.0)
+                {
+                    label pIdx = whichPatch(eFaces[faceI]);
+
+                    word pName
+                    (
+                        (pIdx < 0) ?
+                        "Internal" :
+                        boundaryMesh()[pIdx].name()
+                    );
+
+                    Pout<< " Face: " << eFaces[faceI]
+                        << " :: " << faces_[eFaces[faceI]]
+                        << " Patch: " << pName
+                        << " Proc: " << Pstream::myProcNo() << nl;
+                }
+
                 label own = owner_[eFaces[faceI]];
                 label nei = neighbour_[eFaces[faceI]];
 
@@ -7513,7 +7750,7 @@ bool dynamicTopoFvMesh::coupledFillTables
               + '_'
               + Foam::name(Pstream::myProcNo()),
                 edgeCells,
-                3
+                3, false, true
             );
 
             forAll(procIndices_, pI)
@@ -7539,7 +7776,7 @@ bool dynamicTopoFvMesh::coupledFillTables
                   + '_'
                   + Foam::name(procIndices_[pI]),
                     seF,
-                    2
+                    2, false, true
                 );
 
                 // Clear existing list
@@ -7547,6 +7784,23 @@ bool dynamicTopoFvMesh::coupledFillTables
 
                 forAll(seF, faceI)
                 {
+                    if (minQuality < 0.0)
+                    {
+                        label pIdx = mesh.whichPatch(seF[faceI]);
+
+                        word pName
+                        (
+                            (pIdx < 0) ?
+                            "Internal" :
+                            mesh.boundaryMesh()[pIdx].name()
+                        );
+
+                        Pout<< " Face: " << seF[faceI]
+                            << " :: " << mesh.faces_[seF[faceI]]
+                            << " Patch: " << pName
+                            << " Proc: " << procIndices_[pI] << nl;
+                    }
+
                     label own = mesh.owner_[seF[faceI]];
                     label nei = mesh.neighbour_[seF[faceI]];
 
@@ -7573,7 +7827,7 @@ bool dynamicTopoFvMesh::coupledFillTables
                   + '_'
                   + Foam::name(procIndices_[pI]),
                     edgeCells,
-                    3
+                    3, false, true
                 );
             }
 
