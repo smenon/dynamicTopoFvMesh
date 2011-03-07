@@ -218,14 +218,6 @@ public:
         template <class Type>
         Type& gradient(const word& name) const;
 
-        // Conservatively map all volFields in the registry
-        template <class Type>
-        void conservativeMapVolFields() const;
-
-        // Conservatively map all surfaceFields in the registry
-        template <class Type>
-        void conservativeMapSurfaceFields() const;
-
         //- Correct fluxes after topology change
         void correctFluxes() const;
 
@@ -249,6 +241,12 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifdef NoRepository
+#   include "topoMapperTemplates.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

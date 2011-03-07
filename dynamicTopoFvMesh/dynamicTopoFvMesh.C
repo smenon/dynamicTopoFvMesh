@@ -54,6 +54,7 @@ Author
 #include "fvPatchFields.H"
 #include "fvsPatchFields.H"
 #include "lengthScaleEstimator.H"
+#include "conservativeMapFields.H"
 
 namespace Foam
 {
@@ -4316,8 +4317,8 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm) const
     fieldMapper.setMapper(mpm);
 
     // Conservatively map scalar/vector volFields
-    fieldMapper.conservativeMapVolFields<scalar>();
-    fieldMapper.conservativeMapVolFields<vector>();
+    conservativeMapVolFields<scalar>(fieldMapper);
+    conservativeMapVolFields<vector>(fieldMapper);
 
     // Map all the volFields in the objectRegistry
     MapGeometricFields<sphericalTensor,fvPatchField,topoMapper,volMesh>
@@ -4328,8 +4329,8 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm) const
         (fieldMapper);
 
     // Conservatively map scalar/vector surfaceFields
-    fieldMapper.conservativeMapSurfaceFields<scalar>();
-    fieldMapper.conservativeMapSurfaceFields<vector>();
+    conservativeMapSurfaceFields<scalar>(fieldMapper);
+    conservativeMapSurfaceFields<vector>(fieldMapper);
 
     // Map all the surfaceFields in the objectRegistry
     MapGeometricFields<sphericalTensor,fvsPatchField,topoMapper,surfaceMesh>

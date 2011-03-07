@@ -35,11 +35,9 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
-#include "fvc.H"
 #include "topoMapper.H"
 #include "fluxCorrector.H"
 #include "topoCellMapper.H"
-#include "leastSquaresGrad.H"
 #include "topoSurfaceMapper.H"
 #include "topoBoundaryMeshMapper.H"
 
@@ -47,69 +45,6 @@ namespace Foam
 {
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
-
-// Store gradients of fields on the mesh prior to topology changes
-template <class Type, class gradType>
-void topoMapper::storeGradients
-(
-    HashTable<autoPtr<gradType> >& gradTable
-) const
-{
-    // Define a few typedefs for convenience
-    typedef typename outerProduct<vector, Type>::type gCmptType;
-    typedef GeometricField<Type, fvPatchField, volMesh> volType;
-    typedef GeometricField<gCmptType, fvPatchField, volMesh> gVolType;
-
-    // Fetch all fields from registry
-    HashTable<const volType*> fields
-    (
-        mesh_.objectRegistry::lookupClass<volType>()
-    );
-
-    forAllConstIter(typename HashTable<const volType*>, fields, fIter)
-    {
-        const volType& field = *fIter();
-
-        // Compute the gradient.
-        tmp<gVolType> tGrad;
-
-        // If the fvSolution dictionary contains an entry,
-        // use that, otherwise, default to leastSquares
-        word gradName("grad(" + field.name() + ')');
-
-        if (mesh_.schemesDict().subDict("gradSchemes").found(gradName))
-        {
-            tGrad = fvc::grad(field);
-        }
-        else
-        {
-            tGrad = fv::leastSquaresGrad<Type>(mesh_).grad(field);
-        }
-
-        // Make a new entry, but don't register the field.
-        gradTable.insert
-        (
-            field.name(),
-            autoPtr<gradType>
-            (
-                new gradType
-                (
-                    IOobject
-                    (
-                        tGrad().name(),
-                        mesh_.time().timeName(),
-                        mesh_,
-                        IOobject::NO_READ,
-                        IOobject::NO_WRITE,
-                        false
-                    ),
-                    tGrad()
-                )
-            )
-        );
-    }
-}
-
 
 //- Store gradients prior to mesh reset
 void topoMapper::storeGradients() const
@@ -410,123 +345,6 @@ volTensorField& topoMapper::gradient(const word& name) const
     }
 
     return vGrads_[name]();
-}
-
-
-// Conservatively map all volFields in the registry
-template <class Type>
-void topoMapper::conservativeMapVolFields() const
-{
-    // Define a few typedefs for convenience
-    typedef typename outerProduct<vector, Type>::type gCmptType;
-    typedef GeometricField<Type, fvPatchField, volMesh> volType;
-    typedef GeometricField<gCmptType, fvPatchField, volMesh> gradVolType;
-
-    HashTable<const volType*> fields(mesh_.lookupClass<volType>());
-
-    // Store old-times before mapping
-    forAllIter(typename HashTable<const volType*>, fields, fIter)
-    {
-        volType& field = const_cast<volType&>(*fIter());
-
-        field.storeOldTimes();
-    }
-
-    // Fetch internal/boundary mappers
-    const topoCellMapper& fMap = volMap();
-    const topoBoundaryMeshMapper& bMap = boundaryMap();
-
-    // Now map all fields
-    forAllIter(typename HashTable<const volType*>, fields, fIter)
-    {
-        volType& field = const_cast<volType&>(*fIter());
-
-        if (fvMesh::debug)
-        {
-            Info<< "Conservatively mapping "
-                << field.typeName
-                << ' ' << field.name()
-                << endl;
-        }
-
-        // Map the internal field
-        fMap.mapInternalField
-        (
-            field.name(),
-            gradient<gradVolType>(field.name()).internalField(),
-            field.internalField()
-        );
-
-        // Map patch fields
-        forAll(bMap, patchI)
-        {
-            bMap[patchI].mapPatchField
-            (
-                field.name(),
-                field.boundaryField()[patchI]
-            );
-        }
-
-        // Set the field instance
-        field.instance() = field.mesh().thisDb().time().timeName();
-    }
-}
-
-
-// Conservatively map all surfaceFields in the registry
-template <class Type>
-void topoMapper::conservativeMapSurfaceFields() const
-{
-    // Define a few typedefs for convenience
-    typedef GeometricField<Type, fvsPatchField, surfaceMesh> surfType;
-
-    HashTable<const surfType*> fields(mesh_.lookupClass<surfType>());
-
-    // Store old-times before mapping
-    forAllIter(typename HashTable<const surfType*>, fields, fIter)
-    {
-        surfType& field = const_cast<surfType&>(*fIter());
-
-        field.storeOldTimes();
-    }
-
-    // Fetch internal/boundary mappers
-    const topoSurfaceMapper& fMap = surfaceMap();
-    const topoBoundaryMeshMapper& bMap = boundaryMap();
-
-    // Now map all fields
-    forAllIter(typename HashTable<const surfType*>, fields, fIter)
-    {
-        surfType& field = const_cast<surfType&>(*fIter());
-
-        if (fvMesh::debug)
-        {
-            Info<< "Conservatively mapping "
-                << field.typeName
-                << ' ' << field.name()
-                << endl;
-        }
-
-        // Map the internal field
-        fMap.mapInternalField
-        (
-            field.name(),
-            field.internalField()
-        );
-
-        // Map patch fields
-        forAll(bMap, patchI)
-        {
-            bMap[patchI].mapPatchField
-            (
-                field.name(),
-                field.boundaryField()[patchI]
-            );
-        }
-
-        // Set the field instance
-        field.instance() = field.mesh().thisDb().time().timeName();
-    }
 }
 
 
