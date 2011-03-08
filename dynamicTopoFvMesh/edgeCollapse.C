@@ -6227,6 +6227,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             continue;
                         }
 
+                        // Fail for now (TODO)
+                        Pout<< " Conversion required... "
+                            << " Face: " << newFace << " : "
+                            << newFace.centre(points_)
+                            << abort(FatalError);
+
                         // Push a patch-conversion operation
                         cMap.pushOperation
                         (
