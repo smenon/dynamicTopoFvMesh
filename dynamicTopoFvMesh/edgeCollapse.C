@@ -41,6 +41,7 @@ namespace Foam
 
 // Method to collapse a quad-face in 2D
 // - Returns a changeMap with a type specifying:
+//    -3: Collapse failed since face was on a noRefinement patch.
 //    -1: Collapse failed since max number of topo-changes was reached.
 //     0: Collapse could not be performed.
 //     1: Collapsed to first node.
@@ -81,12 +82,11 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Check if edgeRefinements are to be avoided on patch.
-    if (!isSubMesh_)
+    if (baseMesh_.lengthEstimator().checkRefinementPatch(whichPatch(fIndex)))
     {
-        if (lengthEstimator().checkRefinementPatch(whichPatch(fIndex)))
-        {
-            return map;
-        }
+        map.type() = -3;
+
+        return map;
     }
 
     // Sanity check: Is the index legitimate?
@@ -3530,6 +3530,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
 // Method for the collapse of an edge in 3D
 // - Returns a changeMap with a type specifying:
+//    -3: Collapse failed since edge was on a noRefinement patch.
 //    -1: Collapse failed since max number of topo-changes was reached.
 //     0: Collapse could not be performed.
 //     1: Collapsed to first node.
@@ -3590,16 +3591,17 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     }
 
     // Check if edgeRefinements are to be avoided on patch.
-    if (!isSubMesh_)
-    {
-        const labelList& eF = edgeFaces_[eIndex];
+    const labelList& eF = edgeFaces_[eIndex];
 
-        forAll(eF, fI)
+    forAll(eF, fI)
+    {
+        label fPatch = whichPatch(eF[fI]);
+
+        if (baseMesh_.lengthEstimator().checkRefinementPatch(fPatch))
         {
-            if (lengthEstimator().checkRefinementPatch(whichPatch(eF[fI])))
-            {
-                return map;
-            }
+            map.type() = -3;
+
+            return map;
         }
     }
 

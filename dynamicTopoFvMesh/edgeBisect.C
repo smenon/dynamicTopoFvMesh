@@ -44,6 +44,7 @@ namespace Foam
 //     1: Bisection was successful
 //    -1: Bisection failed since max number of topo-changes was reached.
 //    -2: Bisection failed since resulting quality would be unacceptable.
+//    -3: Bisection failed since edge was on a noRefinement patch.
 const changeMap dynamicTopoFvMesh::bisectQuadFace
 (
     const label fIndex,
@@ -81,12 +82,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     }
 
     // Check if edgeRefinements are to be avoided on patch.
-    if (!isSubMesh_)
+    if (baseMesh_.lengthEstimator().checkRefinementPatch(whichPatch(fIndex)))
     {
-        if (lengthEstimator().checkRefinementPatch(whichPatch(fIndex)))
-        {
-            return map;
-        }
+        map.type() = -3;
+
+        return map;
     }
 
     // Sanity check: Is the index legitimate?
@@ -2369,6 +2369,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 //     1: Bisection was successful
 //    -1: Bisection failed since max number of topo-changes was reached.
 //    -2: Bisection failed since resulting quality would be unacceptable.
+//    -3: Bisection failed since edge was on a noRefinement patch.
 // - AddedPoints contain the index of the newly added point.
 const changeMap dynamicTopoFvMesh::bisectEdge
 (
@@ -2412,16 +2413,17 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     }
 
     // Check if edgeRefinements are to be avoided on patch.
-    if (!isSubMesh_)
-    {
-        const labelList& eF = edgeFaces_[eIndex];
+    const labelList& eF = edgeFaces_[eIndex];
 
-        forAll(eF, fI)
+    forAll(eF, fI)
+    {
+        label fPatch = whichPatch(eF[fI]);
+
+        if (baseMesh_.lengthEstimator().checkRefinementPatch(fPatch))
         {
-            if (lengthEstimator().checkRefinementPatch(whichPatch(eF[fI])))
-            {
-                return map;
-            }
+            map.type() = -3;
+
+            return map;
         }
     }
 
@@ -5983,7 +5985,6 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
 
     // Obtain a reference to this edge and corresponding edgePoints
     const edge& edgeToCheck = edges_[eIndex];
-    const labelList& hullVertices = edgePoints_[eIndex];
 
     // Obtain point references
     const point& a = points_[edgeToCheck[0]];
@@ -5993,75 +5994,107 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
     const point& cOld = oldPoints_[edgeToCheck[1]];
 
     // Compute the mid-point of the edge
-    point midPoint = 0.5*(a + c);
-    point oldPoint = 0.5*(aOld + cOld);
+    point midPoint = 0.5 * (a + c);
+    point oldPoint = 0.5 * (aOld + cOld);
 
-    if (whichEdgePatch(eIndex) < 0)
+    DynamicList<label> eCells(10);
+
+    const labelList& eFaces = edgeFaces_[eIndex];
+
+    // Accumulate cells connected to this edge
+    forAll(eFaces, faceI)
     {
-        // Internal edge.
-        forAll(hullVertices, indexI)
+        label own = owner_[eFaces[faceI]];
+        label nei = neighbour_[eFaces[faceI]];
+
+        if (findIndex(eCells, own) == -1)
         {
-            label prevIndex = hullVertices.rcIndex(indexI);
+            eCells.append(own);
+        }
 
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[prevIndex]];
-            const point& d = points_[hullVertices[indexI]];
+        if (nei == -1)
+        {
+            continue;
+        }
 
-            const point& bOld = oldPoints_[hullVertices[prevIndex]];
-            const point& dOld = oldPoints_[hullVertices[indexI]];
-
-            // Compute the quality of the upper half.
-            cQuality = tetMetric_(a, b, midPoint, d);
-
-            // Compute old volume of the upper half.
-            oldVolume = tetPointRef(aOld, bOld, oldPoint, dOld).mag();
-
-            // Check if the volume / quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-            minVolume = Foam::min(oldVolume, minVolume);
-
-            // Compute the quality of the lower half.
-            cQuality = tetMetric_(midPoint, b, c, d);
-
-            // Compute old volume of the lower half.
-            oldVolume = tetPointRef(oldPoint, bOld, cOld, dOld).mag();
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-            minVolume = Foam::min(oldVolume, minVolume);
+        if (findIndex(eCells, nei) == -1)
+        {
+            eCells.append(nei);
         }
     }
-    else
+
+    // Loop through all cells and compute quality
+    forAll(eCells, cellI)
     {
-        // Boundary edge.
-        for(label indexI = 1; indexI < hullVertices.size(); indexI++)
+        label cellIndex = eCells[cellI];
+
+        const cell& checkCell = cells_[cellIndex];
+
+        // Find two faces that don't contain the edge
+        forAll(checkCell, faceI)
         {
-            // Pick vertices off the list
-            const point& b = points_[hullVertices[indexI-1]];
-            const point& d = points_[hullVertices[indexI]];
+            const face& checkFace = faces_[checkCell[faceI]];
 
-            const point& bOld = oldPoints_[hullVertices[indexI-1]];
-            const point& dOld = oldPoints_[hullVertices[indexI]];
+            if
+            (
+                (findIndex(checkFace, edgeToCheck[0]) == -1) &&
+                (findIndex(checkFace, edgeToCheck[1]) == -1)
+            )
+            {
+                // Check orientation
+                if (owner_[checkCell[faceI]] == cellIndex)
+                {
+                    cQuality =
+                    (
+                        tetMetric_
+                        (
+                            points_[checkFace[2]],
+                            points_[checkFace[1]],
+                            points_[checkFace[0]],
+                            midPoint
+                        )
+                    );
 
-            // Compute the quality of the upper half.
-            cQuality = tetMetric_(a, b, midPoint, d);
+                    oldVolume =
+                    (
+                        tetPointRef
+                        (
+                            oldPoints_[checkFace[2]],
+                            oldPoints_[checkFace[1]],
+                            oldPoints_[checkFace[0]],
+                            oldPoint
+                        ).mag()
+                    );
+                }
+                else
+                {
+                    cQuality =
+                    (
+                        tetMetric_
+                        (
+                            points_[checkFace[0]],
+                            points_[checkFace[1]],
+                            points_[checkFace[2]],
+                            midPoint
+                        )
+                    );
 
-            // Compute old volume of the upper half.
-            oldVolume = tetPointRef(aOld, bOld, oldPoint, dOld).mag();
+                    oldVolume =
+                    (
+                        tetPointRef
+                        (
+                            oldPoints_[checkFace[0]],
+                            oldPoints_[checkFace[1]],
+                            oldPoints_[checkFace[2]],
+                            oldPoint
+                        ).mag()
+                    );
+                }
 
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-            minVolume = Foam::min(oldVolume, minVolume);
-
-            // Compute the quality of the lower half.
-            cQuality = tetMetric_(midPoint, b, c, d);
-
-            // Compute old volume of the lower half.
-            oldVolume = tetPointRef(oldPoint, bOld, cOld, dOld).mag();
-
-            // Check if the quality is worse
-            minQuality = Foam::min(cQuality, minQuality);
-            minVolume = Foam::min(oldVolume, minVolume);
+                // Check if the quality is worse
+                minQuality = Foam::min(cQuality, minQuality);
+                minVolume = Foam::min(oldVolume, minVolume);
+            }
         }
     }
 
@@ -6070,25 +6103,7 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
     {
         if (debug > 3 && minQuality < 0.0)
         {
-            // Write out cells for post processing.
-            labelHashSet iCells;
-
-            const labelList& eFaces = edgeFaces_[eIndex];
-
-            forAll(eFaces, faceI)
-            {
-                if (!iCells.found(owner_[eFaces[faceI]]))
-                {
-                    iCells.insert(owner_[eFaces[faceI]]);
-                }
-
-                if (!iCells.found(neighbour_[eFaces[faceI]]))
-                {
-                    iCells.insert(neighbour_[eFaces[faceI]]);
-                }
-            }
-
-            writeVTK(Foam::name(eIndex) + "_iCells", iCells.toc());
+            writeVTK(Foam::name(eIndex) + "_iCells", eCells);
         }
 
         if (debug > 2)
@@ -6098,12 +6113,13 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
                 "scalar dynamicTopoFvMesh::computeBisectionQuality"
                 "(const label eIndex) const"
             )
-                << "Bisecting edge will fall below the "
-                << "sliver threshold of: " << sliverThreshold_ << nl
-                << "Edge: " << eIndex << ": " << edgeToCheck << nl
-                << "EdgePoints: " << hullVertices << nl
-                << "Minimum Quality: " << minQuality << nl
-                << "Mid point: " << midPoint
+                << " Bisecting edge will fall below the"
+                << " sliver threshold of: " << sliverThreshold_ << nl
+                << " Edge: " << eIndex << ": " << edgeToCheck << nl
+                << " Minimum Quality: " << minQuality << nl
+                << " Minimum Volume: " << minVolume << nl
+                << " Mid point: " << midPoint << nl
+                << " Old point: " << oldPoint << nl
                 << endl;
         }
     }

@@ -71,6 +71,7 @@ addToRunTimeSelectionTable(dynamicFvMesh, dynamicTopoFvMesh, IOobject);
 dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
 :
     dynamicFvMesh(io),
+    baseMesh_(*this),
     nPatches_(boundaryMesh().size()),
     topoChangeFlag_(false),
     isSubMesh_(false),
@@ -219,6 +220,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
         cells,
         false
     ),
+    baseMesh_(mesh),
     nPatches_(faceStarts.size()),
     topoChangeFlag_(false),
     isSubMesh_(true),

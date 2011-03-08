@@ -81,6 +81,9 @@ class dynamicTopoFvMesh
 {
     // Private data
 
+        //- Reference to base mesh
+        const dynamicTopoFvMesh& baseMesh_;
+
         //- Number of boundary patches
         label nPatches_;
 

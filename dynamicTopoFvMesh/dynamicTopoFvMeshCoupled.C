@@ -4138,7 +4138,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         << " localIndex: " << localIndex << nl
                         << " operation: " << op << nl
                         << " opMap.type: " << opMap.type() << nl
-                        << endl;
+                        << abort(FatalError);
                 }
             }
         }
@@ -4625,10 +4625,10 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     }
     else
     {
-        forAll(subMeshPoints, pointI)
+        forAllConstIter(Map<label>, rPointMap, pIter)
         {
             // Loop through pointEdges for this point.
-            const labelList& pEdges = pointEdges_[subMeshPoints[pointI]];
+            const labelList& pEdges = pointEdges_[pIter.key()];
 
             forAll(pEdges, edgeI)
             {
