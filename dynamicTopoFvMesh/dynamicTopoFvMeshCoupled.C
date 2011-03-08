@@ -3804,19 +3804,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                 }
             }
 
-            // Keep track of added entities from initial set
             label pointCounter = 0;
-            label nPoints = cMap.nEntities(coupleMap::POINT);
-            label nEdges = cMap.nEntities(coupleMap::EDGE);
-            label nFaces = cMap.nEntities(coupleMap::FACE);
-
-            // Track entities
-            label nEntities = (twoDMesh_ ? nFaces : nEdges);
-
-            // Specify a mapping for added indices
-            Map<label> addedPointMap, reversePointMap;
-            Map<label> addedFaceMap, reverseFaceMap;
-            Map<label> addedEdgeMap, reverseEdgeMap;
 
             // Sequentially execute operations
             forAll(indices, indexI)
@@ -3833,12 +3821,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                 if (op == coupleMap::MOVE_POINT)
                 {
-                    localIndex =
-                    (
-                        cMap.entityMap(coupleMap::POINT).found(index) ?
-                        cMap.entityMap(coupleMap::POINT)[index] :
-                        addedPointMap[index]
-                    );
+                    localIndex = cMap.entityMap(coupleMap::POINT)[index];
                 }
                 else
                 if (op == coupleMap::CONVERT_PATCH)
@@ -3846,8 +3829,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                     localIndex =
                     (
                         cMap.entityMap(coupleMap::FACE).found(index) ?
-                        cMap.entityMap(coupleMap::FACE)[index] :
-                        addedFaceMap[index]
+                        cMap.entityMap(coupleMap::FACE)[index] : -1
                     );
 
                     if (debug > 3)
@@ -3867,21 +3849,11 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                     // Pick localIndex based on entity type
                     if (twoDMesh_)
                     {
-                        localIndex =
-                        (
-                            cMap.entityMap(coupleMap::FACE).found(index) ?
-                            cMap.entityMap(coupleMap::FACE)[index] :
-                            addedFaceMap[index]
-                        );
+                        localIndex = cMap.entityMap(coupleMap::FACE)[index];
                     }
                     else
                     {
-                        localIndex =
-                        (
-                            cMap.entityMap(coupleMap::EDGE).found(index) ?
-                            cMap.entityMap(coupleMap::EDGE)[index] :
-                            addedEdgeMap[index]
-                        );
+                        localIndex = cMap.entityMap(coupleMap::EDGE)[index];
                     }
                 }
 
@@ -3986,6 +3958,87 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         const point& newCentre = newPoints[pointCounter];
                         const point& oldCentre = oldPoints[pointCounter];
 
+                        if (localIndex == -1)
+                        {
+                            // Accumulate stats in case of failure
+                            scalar minDist = GREAT;
+                            vector minPoint = vector::zero;
+                            DynamicList<label> checkedFaces;
+
+                            if (debug > 2)
+                            {
+                                // Reserve for append
+                                checkedFaces.setCapacity(50);
+                            }
+
+                            // New face. Check all boundary faces
+                            // and match up centre
+                            label sTot = faces_.size();
+                            label sInt = nOldInternalFaces_;
+
+                            for (label faceI = sInt; faceI < sTot; faceI++)
+                            {
+                                const face& fCheck = faces_[faceI];
+
+                                if (fCheck.empty())
+                                {
+                                    continue;
+                                }
+
+                                label pIndex = whichPatch(faceI);
+
+                                if (getNeighbourProcessor(pIndex) == -1)
+                                {
+                                    continue;
+                                }
+
+                                // Compute face-centre
+                                vector fC = fCheck.centre(points_);
+
+                                // Compute tolerance
+                                scalar tol = mag(points_[fCheck[0]] - fC);
+                                scalar dist = mag(fC - newCentre);
+
+                                if (dist < (1e-4 * tol))
+                                {
+                                    localIndex = faceI;
+                                    break;
+                                }
+                                else
+                                if (dist < minDist)
+                                {
+                                    minPoint = fC;
+                                    minDist = dist;
+
+                                    if (debug > 2)
+                                    {
+                                        checkedFaces.append(faceI);
+                                    }
+                                }
+                            }
+
+                            // Ensure that the face was found
+                            if (localIndex == -1)
+                            {
+                                writeVTK
+                                (
+                                    "checkedFaces_"
+                                  + Foam::name(index),
+                                    checkedFaces,
+                                    2, false, true
+                                );
+
+                                Pout<< " * * * syncCoupledPatches * * * " << nl
+                                    << " Convert patch Op failed." << nl
+                                    << " Face: " << index << nl
+                                    << " minPoint: " << minPoint << nl
+                                    << " minDistance: " << minDist << nl
+                                    << " newCentre: " << newCentre << nl
+                                    << " oldCentre: " << oldCentre << nl
+                                    << abort(FatalError);
+                            }
+                        }
+
                         // Fetch reference to face
                         const face& fCheck = faces_[localIndex];
 
@@ -4086,111 +4139,6 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         << " operation: " << op << nl
                         << " opMap.type: " << opMap.type() << nl
                         << endl;
-                }
-
-                // If the operation added any entities
-                // to the mesh, make note of it
-                const List<objectMap>& apList = opMap.addedPointList();
-
-                forAll(apList, indexI)
-                {
-                    label nI = apList[indexI].index();
-
-                    if (nI < nOldPoints_)
-                    {
-                        continue;
-                    }
-
-                    if (reversePointMap.found(nI))
-                    {
-                        continue;
-                    }
-
-                    // Insert the added indices into the map
-                    addedPointMap.insert(nPoints, nI);
-                    reversePointMap.insert(nI, nPoints);
-
-                    if (debug > 3)
-                    {
-                        Pout<< " Adding Op point: " << nI
-                            << " for point: " << localIndex
-                            << " nPoints: " << nPoints
-                            << endl;
-                    }
-
-                    nPoints++;
-                }
-
-                const List<objectMap>& aeList = opMap.addedEdgeList();
-
-                forAll(aeList, indexI)
-                {
-                    label nI = aeList[indexI].index();
-
-                    if (nI < nOldEdges_)
-                    {
-                        continue;
-                    }
-
-                    if (reverseEdgeMap.found(nI))
-                    {
-                        continue;
-                    }
-
-                    // Insert the added indices into the map
-                    addedEdgeMap.insert(nEdges, nI);
-                    reverseEdgeMap.insert(nI, nEdges);
-
-                    if (debug > 3)
-                    {
-                        Pout<< " Adding Op index: " << nI
-                            << " for index: " << localIndex
-                            << " nEntities: " << nEntities
-                            << endl;
-                    }
-
-                    nEdges++;
-
-                    if (!twoDMesh_)
-                    {
-                        nEntities++;
-                    }
-                }
-
-                const List<objectMap>& afList = opMap.addedFaceList();
-
-                forAll(afList, indexI)
-                {
-                    label nI = afList[indexI].index();
-
-                    if (nI < nOldFaces_)
-                    {
-                        continue;
-                    }
-
-                    if (reverseFaceMap.found(nI))
-                    {
-                        continue;
-                    }
-
-                    // Insert the added indices into the map
-                    addedFaceMap.insert(nFaces, nI);
-                    reverseFaceMap.insert(nI, nFaces);
-
-                    if (debug > 3)
-                    {
-                        Pout<< " Adding Op index: " << nI
-                            << " for index: " << localIndex
-                            << " nEntities: " << nEntities
-                            << endl;
-                    }
-
-                    nFaces++;
-
-                    if (twoDMesh_)
-                    {
-                        nEntities++;
-                    }
                 }
             }
         }
@@ -7410,6 +7358,13 @@ bool dynamicTopoFvMesh::coupledFillTables
     else
     if (processorCoupledEntity(eIndex))
     {
+        // If this is a new entity, bail out for now.
+        // This will be handled at the next time-step.
+        if (eIndex >= nOldEdges_)
+        {
+            return false;
+        }
+
         const edge& checkEdge = edges_[eIndex];
         const labelList& eFaces = edgeFaces_[eIndex];
 

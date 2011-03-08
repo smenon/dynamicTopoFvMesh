@@ -295,6 +295,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         else
         if (procCouple && !localCouple)
         {
+            // If this is a new entity, bail out for now.
+            // This will be handled at the next time-step.
+            if (fIndex >= nOldFaces_)
+            {
+                return map;
+            }
+
             // Check slaves
             forAll(procIndices_, pI)
             {
@@ -2531,6 +2538,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         else
         if (procCouple && !localCouple)
         {
+            // If this is a new entity, bail out for now.
+            // This will be handled at the next time-step.
+            if (eIndex >= nOldEdges_)
+            {
+                return map;
+            }
+
             // Check slaves
             forAll(procIndices_, pI)
             {

@@ -711,6 +711,100 @@ void dynamicTopoFvMesh::writeVTK
     const UList<label>& lablField
 ) const
 {
+    // Check if spatial bounding box has been specified
+    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
+    labelList entityList;
+
+    if (meshSubDict.found("spatialDebug") && !useOldConnectivity)
+    {
+        // Read the bounding box
+        boundBox bb
+        (
+            meshSubDict.subDict("spatialDebug").lookup("debugBoundBox")
+        );
+
+        DynamicList<label> cSubList(10);
+
+        forAll(cList, cellI)
+        {
+            label index = cList[cellI];
+
+            if (index < 0)
+            {
+                continue;
+            }
+
+            point containPoint(vector::zero);
+
+            switch (primitiveType)
+            {
+                // Are we looking at points?
+                case 0:
+                {
+                    containPoint = points_[index];
+                    break;
+                }
+
+                // Are we looking at edges?
+                case 1:
+                {
+                    containPoint = edges_[index].centre(points_);
+                    break;
+                }
+
+                // Are we looking at faces?
+                case 2:
+                {
+                    containPoint = faces_[index].centre(points_);
+                    break;
+                }
+
+                // Are we looking at cells?
+                case 3:
+                {
+                    scalar volume = 0.0;
+
+                    // Compute centre
+                    meshOps::cellCentreAndVolume
+                    (
+                        index,
+                        points_,
+                        faces_,
+                        cells_,
+                        owner_,
+                        containPoint,
+                        volume
+                    );
+
+                    break;
+                }
+            }
+
+            // Is the point of interest?
+            if (bb.contains(containPoint))
+            {
+                cSubList.append(index);
+            }
+        }
+
+        // If nothing is present, don't write out anything
+        if (cSubList.empty())
+        {
+            return;
+        }
+        else
+        {
+            // Take over contents
+            entityList = cSubList;
+        }
+    }
+    else
+    {
+        // Conventional output
+        entityList = cList;
+    }
+
     if (useOldPoints)
     {
         if (useOldConnectivity)
@@ -720,7 +814,7 @@ void dynamicTopoFvMesh::writeVTK
             (
                 (*this),
                 name,
-                cList,
+                entityList,
                 primitiveType,
                 polyMesh::points(),
                 polyMesh::edges(),
@@ -737,7 +831,7 @@ void dynamicTopoFvMesh::writeVTK
             (
                 (*this),
                 name,
-                cList,
+                entityList,
                 primitiveType,
                 oldPoints_,
                 edges_,
@@ -755,7 +849,7 @@ void dynamicTopoFvMesh::writeVTK
         (
             (*this),
             name,
-            cList,
+            entityList,
             primitiveType,
             points_,
             edges_,

@@ -129,6 +129,13 @@ bool dynamicTopoFvMesh::testDelaunay
 
     if (procCoupled)
     {
+        // If this is a new entity, bail out for now.
+        // This will be handled at the next time-step.
+        if (fIndex >= nOldFaces_)
+        {
+            return failed;
+        }
+
         const label faceEnum = coupleMap::FACE;
         const label pointEnum = coupleMap::POINT;
 

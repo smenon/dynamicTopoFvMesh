@@ -89,12 +89,10 @@ void dynamicTopoFvMesh::computeMapping
 
         if (skipMapping)
         {
-            // Set empty mapping parameters
-            const labelList& mo = cellParents_[cIndex];
-
-            cellsFromCells_[cellI].masterObjects() = mo;
-            cellWeights_[cellI].setSize(mo.size(), (1.0/(mo.size() + VSMALL)));
-            cellCentres_[cellI].setSize(mo.size(), vector::zero);
+            // Dummy map from cell[0]
+            cellsFromCells_[cellI].masterObjects() = labelList(1, 0);
+            cellWeights_[cellI].setSize(1, 1.0);
+            cellCentres_[cellI].setSize(1, vector::zero);
         }
         else
         {
@@ -170,19 +168,20 @@ void dynamicTopoFvMesh::computeMapping
         if (patchIndex == -1)
         {
             // Set dummy masters, so that the conventional
-            // faceMapper doesn't incur a seg-fault.
+            // faceMapper doesn't crash-and-burn
             facesFromFaces_[faceI].masterObjects() = labelList(1, 0);
+
             continue;
         }
 
         if (skipMapping)
         {
-            // Set empty mapping parameters
-            const labelList& mo = faceParents_[fIndex];
+            // Map from patch[0]
+            labelList mo(1, boundaryMesh()[patchIndex].start());
 
             facesFromFaces_[faceI].masterObjects() = mo;
-            faceWeights_[faceI].setSize(mo.size(), (1.0/(mo.size() + VSMALL)));
-            faceCentres_[faceI].setSize(mo.size(), vector::zero);
+            faceWeights_[faceI].setSize(1, 1.0);
+            faceCentres_[faceI].setSize(1, vector::zero);
         }
         else
         {
