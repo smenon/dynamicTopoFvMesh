@@ -6784,7 +6784,6 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
                 anchors[pI][fI] = points_[faces_[fI + start][0]];
             }
 
-            if (debug)
             {
                 if (debug > 3)
                 {
@@ -6814,7 +6813,6 @@ void dynamicTopoFvMesh::initCoupledBoundaryOrdering
         }
         else
         {
-            if (debug)
             {
                 label nEntities = -1;
 

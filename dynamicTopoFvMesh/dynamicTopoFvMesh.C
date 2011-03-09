@@ -1073,17 +1073,9 @@ void dynamicTopoFvMesh::buildVertexHull
 (
     const label eIndex,
     labelList& vertexHull,
-    const label checkIndex,
-    bool debugReport
+    const label checkIndex
 ) const
 {
-    if (debug > 2 && debugReport)
-    {
-        Pout<< " Building vertexHull for edge: "
-            << eIndex << ": " << edges_[eIndex]
-            << endl;
-    }
-
     bool found = false;
     label faceIndex = -1, cellIndex = -1;
     label otherPoint = -1, nextPoint = -1;

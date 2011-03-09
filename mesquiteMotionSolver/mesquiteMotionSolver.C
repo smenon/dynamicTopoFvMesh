@@ -2781,7 +2781,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
             pField().updateCoeffs();
         }
 
-        if (Pstream::parRun())
+        if (Pstream::parRun() && !twoDMesh_)
         {
             label nDomainPoints = refPoints_.size();
 
