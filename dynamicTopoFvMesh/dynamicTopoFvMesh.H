@@ -149,7 +149,7 @@ class dynamicTopoFvMesh
         resizable<label>::ListType owner_, neighbour_;
         resizable<cell>::ListType cells_;
         resizable<edge>::ListType edges_;
-        resizable<labelList>::ListType pointEdges_, edgePoints_;
+        resizable<labelList>::ListType pointEdges_;
         resizable<labelList>::ListType edgeFaces_, faceEdges_;
         resizable<scalar>::ListType lengthScale_;
 
@@ -447,13 +447,6 @@ class dynamicTopoFvMesh
             bool forceOp = false
         );
 
-        // Method for the swapping of an edge in 3D
-        void swapEdge
-        (
-            const label eIndex,
-            bool forceOp = false
-        );
-
         // Method for the bisection of an edge in 3D
         const changeMap
         bisectEdge
@@ -605,8 +598,7 @@ class dynamicTopoFvMesh
         (
             const label patch,
             const edge& newEdge,
-            const labelList& edgeFaces,
-            const labelList& edgePoints = labelList::null()
+            const labelList& edgeFaces
         );
 
         // Remove the specified edge from the mesh
@@ -630,13 +622,14 @@ class dynamicTopoFvMesh
             const label pIndex
         );
 
-        // Utility method to build edgePoints for an edge [3D]
-        void buildEdgePoints
+        // Utility method to build vertexHull for an edge [3D]
+        void buildVertexHull
         (
             const label eIndex,
+            labelList& vertexHull,
             const label checkIndex = 0,
             bool debugReport = true
-        );
+        ) const;
 
         // Utility to check whether points of an edge lie on a boundary
         const FixedList<bool,2> checkEdgeBoundary(const label eIndex) const;
@@ -645,7 +638,11 @@ class dynamicTopoFvMesh
         inline void setFlip(const label fIndex);
 
         // Utility method to compute the minimum quality of a vertex hull
-        scalar computeMinQuality(const label eIndex) const;
+        scalar computeMinQuality
+        (
+            const label eIndex,
+            labelList& hullVertices
+        ) const;
 
         // Compute minQuality given addressing
         scalar computeMinQuality
@@ -698,6 +695,7 @@ class dynamicTopoFvMesh
             const label eIndex,
             scalar& minQuality,
             labelList& m,
+            labelList& hullVertices,
             PtrList<scalarListList>& Q,
             PtrList<labelListList>& K,
             PtrList<labelListList>& triangulations,
@@ -732,6 +730,7 @@ class dynamicTopoFvMesh
         (
             const label eIndex,
             const scalar minQuality,
+            const labelList& hullVertices,
             PtrList<scalarListList>& Q,
             PtrList<labelListList>& K,
             PtrList<labelListList>& triangulations,

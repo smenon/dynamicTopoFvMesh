@@ -135,7 +135,7 @@ inline void constructHull
     const UList<label>& neighbour,
     const UList<labelList>& faceEdges,
     const UList<labelList>& edgeFaces,
-    const UList<labelList>& edgePoints,
+    const labelList& vertexHull,
     labelList& hullEdges,
     labelList& hullFaces,
     labelList& hullCells,
@@ -144,9 +144,9 @@ inline void constructHull
 {
     // [1] hullEdges is an ordered list of edge-labels around eIndex,
     //     but not connected to it.
-    //      - Ordering is in the same manner as edgePoints.
+    //      - Ordering is in the same manner as vertexHull.
     // [2] hullFaces is an ordered list of face-labels connected to eIndex.
-    //      - Ordering is in the same manner as edgePoints.
+    //      - Ordering is in the same manner as vertexHull.
     // [3] hullCells is an ordered list of cell-labels connected to eIndex.
     //      - For boundary hulls, the last cell label is -1
     // [4] ringEntities are edges and faces connected to eIndex[0] and eIndex[1]
@@ -161,7 +161,6 @@ inline void constructHull
     // Obtain a reference to this edge, and its edgeFaces
     const edge& edgeToCheck = edges[eIndex];
     const labelList& eFaces = edgeFaces[eIndex];
-    const labelList& hullVertices = edgePoints[eIndex];
 
     // Loop through all faces of this edge and add them to hullFaces
     forAll(eFaces, faceI)
@@ -169,7 +168,7 @@ inline void constructHull
         const face& faceToCheck = faces[eFaces[faceI]];
 
         // Find the isolated point on this face,
-        // and compare it with hullVertices
+        // and compare it with vertexHull
         meshOps::findIsolatedPoint
         (
             faceToCheck,
@@ -180,9 +179,9 @@ inline void constructHull
 
         found = false;
 
-        forAll(hullVertices, indexI)
+        forAll(vertexHull, indexI)
         {
-            if (hullVertices[indexI] == otherPoint)
+            if (vertexHull[indexI] == otherPoint)
             {
                 // Fill in the position of this face on the hull
                 hullFaces[indexI] = eFaces[faceI];
@@ -234,8 +233,8 @@ inline void constructHull
 
                 if (hullCells[indexI] != -1)
                 {
-                    label nextI = hullVertices.fcIndex(indexI);
-                    label nextHullPoint = hullVertices[nextI];
+                    label nextI = vertexHull.fcIndex(indexI);
+                    label nextHullPoint = vertexHull[nextI];
                     const cell& currCell = cells[hullCells[indexI]];
 
                     // Look for the ring-faces
@@ -315,7 +314,7 @@ inline void constructHull
                 << " edgeFaces connectivity is inconsistent. " << nl
                 << " Edge: " << eIndex << ":: " << edgeToCheck << nl
                 << " edgeFaces: " << eFaces << nl
-                << " edgePoints: " << hullVertices
+                << " vertexHull: " << vertexHull
                 << abort(FatalError);
         }
     }

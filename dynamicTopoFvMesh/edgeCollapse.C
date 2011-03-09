@@ -3562,7 +3562,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     //      [6] Checks the orientation of faces connected to the retained
     //          vertices
     //      [7] Remove one of the vertices of the edge
-    //      Update faceEdges, edgeFaces and edgePoints information
+    //      Update faceEdges and edgeFaces information
 
     // For 2D meshes, perform face-collapse
     if (twoDMesh_)
@@ -4318,9 +4318,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
     }
 
+    // Build hullVertices for this edge
+    labelList vertexHull;
+    buildVertexHull(eIndex, vertexHull);
+
     // Hull variables
     bool found = false;
-    label replaceIndex = -1, m = edgePoints_[eIndex].size();
+    label replaceIndex = -1, m = vertexHull.size();
 
     // Size up the hull lists
     labelList cellHull(m, -1);
@@ -4339,7 +4343,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         neighbour_,
         faceEdges_,
         edgeFaces_,
-        edgePoints_,
+        vertexHull,
         edgeHull,
         faceHull,
         cellHull,
@@ -4718,8 +4722,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         if (debug > 2)
         {
-            Pout<< " Vertices: " << edgePoints_[eIndex] << nl
-                << " Edges: " << edgeHull << nl
+            Pout<< " Edges: " << edgeHull << nl
                 << " Faces: " << faceHull << nl
                 << " Cells: " << cellHull << nl
                 << " replacePoint: " << replacePoint << nl
@@ -4849,7 +4852,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             // Convert patch for edge
             edge newEdge = edges_[replaceEdge];
             labelList newEdgeFaces = edgeFaces_[replaceEdge];
-            labelList newEdgePoints = edgePoints_[replaceEdge];
 
             // Insert the new edge
             label newEdgeIndex =
@@ -4858,8 +4860,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 (
                     removePatch,
                     newEdge,
-                    newEdgeFaces,
-                    newEdgePoints
+                    newEdgeFaces
                 )
             );
 
@@ -4890,27 +4891,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
 
         const labelList& rmvEdgeFaces = edgeFaces_[edgeToRemove];
-
-        // Replace edgePoints for all edges emanating from hullVertices
-        // except ring-edges; those are sized-down later
-        const labelList& hpEdges = pointEdges_[edgePoints_[eIndex][indexI]];
-
-        forAll(hpEdges, edgeI)
-        {
-            if
-            (
-                findIndex(edgePoints_[hpEdges[edgeI]], collapsePoint) != -1
-             && findIndex(edgePoints_[hpEdges[edgeI]], replacePoint) == -1
-            )
-            {
-                meshOps::replaceLabel
-                (
-                    collapsePoint,
-                    replacePoint,
-                    edgePoints_[hpEdges[edgeI]]
-                );
-            }
-        }
 
         forAll(rmvEdgeFaces, faceI)
         {
@@ -4991,13 +4971,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             edgeFaces_[edgeHull[indexI]]
         );
 
-        // Size down edgePoints for the ring edges
-        meshOps::sizeDownList
-        (
-            collapsePoint,
-            edgePoints_[edgeHull[indexI]]
-        );
-
         // Ensure proper orientation of retained faces
         if (owner_[faceToRemove] == cellToRemove)
         {
@@ -5055,7 +5028,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         {
                             edge newEdge = edges_[newFE[edgeI]];
                             labelList newEF = edgeFaces_[newFE[edgeI]];
-                            labelList newEP = edgePoints_[newFE[edgeI]];
 
                             // Need patch information for the new edge.
                             // Find the corresponding edge in ringEntities.
@@ -5085,8 +5057,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                 (
                                     repIndex,
                                     newEdge,
-                                    newEF,
-                                    newEP
+                                    newEF
                                 )
                             );
 
@@ -5281,7 +5252,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         edge newEdge = edges_[newFE[edgeI]];
                         labelList newEF = edgeFaces_[newFE[edgeI]];
-                        labelList newEP = edgePoints_[newFE[edgeI]];
 
                         // Need patch information for the new edge.
                         // Find the corresponding edge in ringEntities.
@@ -5311,8 +5281,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             (
                                 repIndex,
                                 newEdge,
-                                newEF,
-                                newEP
+                                newEF
                             )
                         );
 
@@ -5540,36 +5509,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         modifiedFaces.append(eFaces[faceI]);
                     }
-
-                    // Look for an edge on this face that doesn't
-                    // contain collapsePoint or replacePoint.
-                    label rplIndex = -1;
-                    const labelList& fEdges = faceEdges_[eFaces[faceI]];
-
-                    forAll(fEdges, edgeI)
-                    {
-                        const edge& eCheck = edges_[fEdges[edgeI]];
-
-                        if
-                        (
-                            eCheck[0] != collapsePoint
-                         && eCheck[1] != collapsePoint
-                         && eCheck[0] != replacePoint
-                         && eCheck[1] != replacePoint
-                        )
-                        {
-                            rplIndex = fEdges[edgeI];
-                            break;
-                        }
-                    }
-
-                    // Modify edgePoints for this edge
-                    meshOps::replaceLabel
-                    (
-                        collapsePoint,
-                        replacePoint,
-                        edgePoints_[rplIndex]
-                    );
                 }
             }
         }
@@ -5584,23 +5523,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     // Update map
     map.removePoint(collapsePoint);
-
-    // Check for unused edgePoints, and delete if necessary
-    //  - Needs to be done after collapsePoint is removed,
-    //    for consistency in coupled updates
-    const labelList& ePoints = edgePoints_[eIndex];
-
-    forAll(ePoints, pointI)
-    {
-        if (pointEdges_[ePoints[pointI]].empty())
-        {
-            // Remove the point
-            removePoint(ePoints[pointI]);
-
-            // Update map
-            map.removePoint(ePoints[pointI]);
-        }
-    }
 
     // Remove the edge
     removeEdge(eIndex);
@@ -5663,9 +5585,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         mergeBoundaryFaces(mergeFaces);
     }
 
-    // At this point, edgePoints for the replacement edges are broken,
-    // but edgeFaces are consistent. So use this information to re-build
-    // edgePoints for all replacement edges.
+    // Check and remove edges with an empty edgeFaces list
     const labelList& replaceEdges = ringEntities[replaceEdgeIndex];
 
     forAll(replaceEdges, edgeI)
@@ -5695,23 +5615,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     // Update map
                     map.removeEdge(replaceEdge);
                 }
-            }
-            else
-            {
-                // Correct edgePoints for the replacement edge
-                buildEdgePoints(replaceEdge);
-            }
-        }
-
-        // Check edgeHull for possible corrections
-        label ringEdge = edgeHull[edgeI];
-
-        if (ringEdge > -1)
-        {
-            if (edgePoints_[ringEdge].size() != edgeFaces_[ringEdge].size())
-            {
-                // Correct edgePoints for the ring edge
-                buildEdgePoints(ringEdge);
             }
         }
     }
@@ -6478,7 +6381,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         edge newEdge = edges_[meIndex];
                         labelList newEdgeFaces = edgeFaces_[meIndex];
-                        labelList newEdgePoints = edgePoints_[meIndex];
 
                         // Insert the new edge
                         label newEdgeIndex =
@@ -6487,8 +6389,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             (
                                 newPatch,
                                 newEdge,
-                                newEdgeFaces,
-                                newEdgePoints
+                                newEdgeFaces
                             )
                         );
 
@@ -6607,7 +6508,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         sMesh.writeVTK
                         (
-                            "failedEdgePoints_"
+                            "failedEdge_"
                           + Foam::name(meIndex),
                             cE, 0, false, true
                         );
@@ -6897,8 +6798,7 @@ const changeMap dynamicTopoFvMesh::mergeBoundaryFaces
                 (
                     -1,
                     edge(edges_[eIndex]),
-                    labelList(edgeFaces_[eIndex]),
-                    labelList(0)
+                    labelList(edgeFaces_[eIndex])
                 )
             );
 
@@ -6927,9 +6827,6 @@ const changeMap dynamicTopoFvMesh::mergeBoundaryFaces
             // Replace index
             checkEdges[edgeI] = newEdgeIndex;
         }
-
-        // Build edgePoints
-        buildEdgePoints(checkEdges[edgeI]);
     }
 
     if (debug > 2)

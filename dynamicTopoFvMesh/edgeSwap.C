@@ -1067,74 +1067,6 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 }
 
 
-// Method for the swapping of an edge in 3D
-//  - To be used mainly for testing purposes only.
-//  - Use swap3DEdges on the entire mesh for efficiency.
-void dynamicTopoFvMesh::swapEdge
-(
-    const label eIndex,
-    bool forceOp
-)
-{
-    // Dynamic programming variables
-    labelList m;
-    PtrList<scalarListList> Q;
-    PtrList<labelListList> K, triangulations;
-
-    // Allocate dynamic programming tables
-    initTables(m, Q, K, triangulations);
-
-    // Compute the minimum quality of cells around this edge
-    scalar minQuality = computeMinQuality(eIndex);
-
-    // Check if this edge is on a bounding curve
-    if (checkBoundingCurve(eIndex))
-    {
-        FatalErrorIn
-        (
-            "void dynamicTopoFvMesh::swapEdge"
-            "(const label eIndex, bool forceOp)"
-        )
-            << nl << " Cannot swap edges on bounding curves. "
-            << abort(FatalError);
-    }
-
-    // Fill the dynamic programming tables
-    if (fillTables(eIndex, minQuality, m, Q, K, triangulations))
-    {
-        // Check if edge-swapping is required.
-        scalar newQuality = Q[0][0][m[0]-1];
-
-        if (newQuality > minQuality)
-        {
-            // Remove this edge according to the swap sequence
-            removeEdgeFlips(eIndex, minQuality, Q, K, triangulations);
-        }
-        else
-        if (forceOp)
-        {
-            if (newQuality < 0.0)
-            {
-                FatalErrorIn
-                (
-                    "void dynamicTopoFvMesh::swapEdge"
-                    "(const label eIndex, bool forceOp)"
-                )
-                    << " Forcing swap on edge: " << eIndex
-                    << ":: " << edges_[eIndex]
-                    << " will yield an invalid cell quality: "
-                    << newQuality << " Old Quality: " << minQuality
-                    << abort(FatalError);
-            }
-            else
-            {
-                removeEdgeFlips(eIndex, minQuality, Q, K, triangulations);
-            }
-        }
-    }
-}
-
-
 // Allocate dynamic programming tables
 void dynamicTopoFvMesh::initTables
 (
@@ -1197,6 +1129,7 @@ bool dynamicTopoFvMesh::fillTables
     const label eIndex,
     scalar& minQuality,
     labelList& m,
+    labelList& hullVertices,
     PtrList<scalarListList>& Q,
     PtrList<labelListList>& K,
     PtrList<labelListList>& triangulations,
@@ -1210,7 +1143,6 @@ bool dynamicTopoFvMesh::fillTables
     }
 
     const edge& edgeToCheck = edges_[eIndex];
-    const labelList& hullVertices = edgePoints_[eIndex];
 
     if (coupledModification_)
     {
@@ -1345,6 +1277,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 (
     const label eIndex,
     const scalar minQuality,
+    const labelList& vertexHull,
     PtrList<scalarListList>& Q,
     PtrList<labelListList>& K,
     PtrList<labelListList>& triangulations,
@@ -1422,14 +1355,17 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             }
 
             const edge& newEdge = edges_[newIndex];
-            const labelList& newEdgePoints = edgePoints_[newIndex];
+
+            // Build vertexHull for this edge
+            labelList newVertexHull;
+            buildVertexHull(newIndex, newVertexHull);
 
             fillTables
             (
                 newEdge,
                 minQuality,
-                newEdgePoints.size(),
-                newEdgePoints,
+                newVertexHull.size(),
+                newVertexHull,
                 points_,
                 Q[0],
                 K[0],
@@ -1437,7 +1373,18 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             );
 
             // Recursively call this function for the new edge
-            map = removeEdgeFlips(newIndex, minQuality, Q, K, triangulations);
+            map =
+            (
+                removeEdgeFlips
+                (
+                    newIndex,
+                    minQuality,
+                    newVertexHull,
+                    Q,
+                    K,
+                    triangulations
+                )
+            );
 
             // Turn it back on.
             setCoupledModification();
@@ -1446,12 +1393,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         }
     }
 
-    // Make a copy of edgePoints, since it will be
-    // modified during swaps
-    labelList hullVertices(edgePoints_[eIndex]);
-
-    label m = hullVertices.size();
-
+    label m = vertexHull.size();
     labelList hullFaces(m, -1);
     labelList hullCells(m, -1);
     labelList hullEdges(m, -1);
@@ -1468,7 +1410,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         neighbour_,
         faceEdges_,
         edgeFaces_,
-        edgePoints_,
+        vertexHull,
         hullEdges,
         hullFaces,
         hullCells,
@@ -1493,7 +1435,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         checkTriangulationVolumes
         (
             eIndex,
-            hullVertices,
+            vertexHull,
             triangulations[checkIndex]
         )
     )
@@ -1512,7 +1454,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
         identify32Swap
         (
             eIndex,
-            hullVertices,
+            vertexHull,
             triangulations[checkIndex]
         )
     );
@@ -1624,13 +1566,26 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
                     << " for master edge: " << eIndex << endl;
             }
 
+            // Build vertexHull for this edge
+            labelList slaveVertexHull;
+            buildVertexHull(sIndex, slaveVertexHull);
+
             // Turn off switch temporarily.
             unsetCoupledModification();
 
             // Recursively call for the slave edge.
             slaveMap =
             (
-                removeEdgeFlips(sIndex, minQuality, Q, K, triangulations, 1)
+                removeEdgeFlips
+                (
+                    sIndex,
+                    minQuality,
+                    slaveVertexHull,
+                    Q,
+                    K,
+                    triangulations,
+                    1
+                )
             );
 
             // Turn it back on.
@@ -1679,7 +1634,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
                             i,
                             numTriangulations,
                             triangulations[checkIndex],
-                            hullVertices,
+                            vertexHull,
                             hullFaces,
                             hullCells
                         )
@@ -1734,7 +1689,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
             tF,
             numTriangulations,
             triangulations[checkIndex],
-            hullVertices,
+            vertexHull,
             hullFaces,
             hullCells
         )
@@ -2094,19 +2049,26 @@ bool dynamicTopoFvMesh::boundaryTriangulation
 
 
 // Utility method to compute the minimum quality of a vertex hull
-scalar dynamicTopoFvMesh::computeMinQuality(const label eIndex) const
+scalar dynamicTopoFvMesh::computeMinQuality
+(
+    const label eIndex,
+    labelList& hullVertices
+) const
 {
     scalar minQuality = GREAT;
 
-    // Obtain a reference to this edge and corresponding edgePoints
+    // Obtain a reference to this edge
     const edge& edgeToCheck = edges_[eIndex];
-    const labelList& hullVertices = edgePoints_[eIndex];
+    const labelList& edgeFaces = edgeFaces_[eIndex];
 
     // If this entity was deleted, skip it.
-    if (hullVertices.empty())
+    if (edgeFaces.empty())
     {
         return minQuality;
     }
+
+    // Build vertexHull for this edge
+    buildVertexHull(eIndex, hullVertices);
 
     if (coupledModification_)
     {
@@ -2143,10 +2105,14 @@ scalar dynamicTopoFvMesh::computeMinQuality(const label eIndex) const
                     << abort(FatalError);
             }
 
+            // Build vertexHull for this edge
+            labelList slaveVertexHull;
+            buildVertexHull(eIndex, slaveVertexHull);
+
             // Temporarily turn off coupledModification
             unsetCoupledModification();
 
-            scalar slaveQuality = computeMinQuality(sIndex);
+            scalar slaveQuality = computeMinQuality(sIndex, slaveVertexHull);
 
             minQuality = Foam::min(slaveQuality, minQuality);
 
@@ -2234,7 +2200,7 @@ scalar dynamicTopoFvMesh::computeMinQuality(const label eIndex) const
         )
             << "Encountered negative cell-quality!" << nl
             << "Edge: " << eIndex << ": " << edgeToCheck << nl
-            << "EdgePoints: " << hullVertices << nl
+            << "vertexHull: " << hullVertices << nl
             << "Minimum Quality: " << minQuality
             << abort(FatalError);
     }
@@ -2302,7 +2268,7 @@ const changeMap dynamicTopoFvMesh::swap23
     //      [3] Add one edge
     //      [4] Add three new faces
     //      [5] Add three new cells
-    //      Update faceEdges, edgeFaces and edgePoints information
+    //      Update faceEdges and edgeFaces information
 
     changeMap map;
 
@@ -2535,12 +2501,6 @@ const changeMap dynamicTopoFvMesh::swap23
     newEdgeFaces[1] = newFaceIndex[1];
     newEdgeFaces[2] = newFaceIndex[2];
 
-    // Add an entry for edgePoints as well
-    labelList newEdgePoints(3);
-    newEdgePoints[0] = vertexForRemoval;
-    newEdgePoints[1] = edgeToCheck[0];
-    newEdgePoints[2] = edgeToCheck[1];
-
     // Add a new internal edge to the mesh
     label newEdgeIndex =
     (
@@ -2552,8 +2512,7 @@ const changeMap dynamicTopoFvMesh::swap23
                 otherVertices[0],
                 otherVertices[1]
             ),
-            newEdgeFaces,
-            newEdgePoints
+            newEdgeFaces
         )
     );
 
@@ -2653,7 +2612,7 @@ const changeMap dynamicTopoFvMesh::swap23
                 // Add this face to the cell
                 newTetCell[1][nF1++] = faceIndex;
 
-                // Update faceEdges, edgeFaces, and edgePoints.
+                // Update faceEdges and edgeFaces
                 forAll(faceEdges_[faceIndex], edgeI)
                 {
                     if (edges_[faceEdges_[faceIndex][edgeI]] == check[0])
@@ -2664,14 +2623,6 @@ const changeMap dynamicTopoFvMesh::swap23
                         (
                             newFaceIndex[0],
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
-                        );
-
-                        meshOps::insertLabel
-                        (
-                            otherVertices[1],
-                            edgeToCheck[0],
-                            edgeToCheck[1],
-                            edgePoints_[faceEdges_[faceIndex][edgeI]]
                         );
                     }
 
@@ -2684,14 +2635,6 @@ const changeMap dynamicTopoFvMesh::swap23
                             newFaceIndex[0],
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
-
-                        meshOps::insertLabel
-                        (
-                            otherVertices[0],
-                            edgeToCheck[0],
-                            edgeToCheck[1],
-                            edgePoints_[faceEdges_[faceIndex][edgeI]]
-                        );
                     }
 
                     if (edges_[faceEdges_[faceIndex][edgeI]] == check[2])
@@ -2703,14 +2646,6 @@ const changeMap dynamicTopoFvMesh::swap23
                             newFaceIndex[1],
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
                         );
-
-                        meshOps::insertLabel
-                        (
-                            otherVertices[1],
-                            vertexForRemoval,
-                            edgeToCheck[1],
-                            edgePoints_[faceEdges_[faceIndex][edgeI]]
-                        );
                     }
 
                     if (edges_[faceEdges_[faceIndex][edgeI]] == check[4])
@@ -2721,14 +2656,6 @@ const changeMap dynamicTopoFvMesh::swap23
                         (
                             newFaceIndex[1],
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
-                        );
-
-                        meshOps::insertLabel
-                        (
-                            otherVertices[0],
-                            vertexForRemoval,
-                            edgeToCheck[1],
-                            edgePoints_[faceEdges_[faceIndex][edgeI]]
                         );
                     }
                 }
@@ -2764,7 +2691,7 @@ const changeMap dynamicTopoFvMesh::swap23
                 // Add this face to the cell
                 newTetCell[0][nF0++] = faceIndex;
 
-                // Update faceEdges, edgeFaces, and edgePoints.
+                // Update faceEdges and edgeFaces
                 const labelList& fEdges = faceEdges_[faceIndex];
 
                 forAll(fEdges, edgeI)
@@ -2778,14 +2705,6 @@ const changeMap dynamicTopoFvMesh::swap23
                             newFaceIndex[2],
                             edgeFaces_[fEdges[edgeI]]
                         );
-
-                        meshOps::insertLabel
-                        (
-                            otherVertices[1],
-                            vertexForRemoval,
-                            edgeToCheck[0],
-                            edgePoints_[fEdges[edgeI]]
-                        );
                     }
 
                     if (edges_[fEdges[edgeI]] == check[5])
@@ -2796,14 +2715,6 @@ const changeMap dynamicTopoFvMesh::swap23
                         (
                             newFaceIndex[2],
                             edgeFaces_[fEdges[edgeI]]
-                        );
-
-                        meshOps::insertLabel
-                        (
-                            otherVertices[0],
-                            vertexForRemoval,
-                            edgeToCheck[0],
-                            edgePoints_[fEdges[edgeI]]
                         );
                     }
                 }
@@ -2852,9 +2763,7 @@ const changeMap dynamicTopoFvMesh::swap23
         faceEdges_[newFaceIndex[faceI]] = newFaceEdges[faceI];
     }
 
-    // Update edgeFaces and edgePoints for edges of the removed face
-    label otherPoint = -1, nextPoint = -1;
-
+    // Update edgeFaces for edges of the removed face
     forAll(faceEdges_[faceForRemoval], edgeI)
     {
         label edgeIndex = faceEdges_[faceForRemoval][edgeI];
@@ -2863,21 +2772,6 @@ const changeMap dynamicTopoFvMesh::swap23
         (
             faceForRemoval,
             edgeFaces_[edgeIndex]
-        );
-
-        // Find the isolated point and remove it
-        meshOps::findIsolatedPoint
-        (
-            faces_[faceForRemoval],
-            edges_[edgeIndex],
-            otherPoint,
-            nextPoint
-        );
-
-        meshOps::sizeDownList
-        (
-            otherPoint,
-            edgePoints_[edgeIndex]
         );
     }
 
@@ -3006,7 +2900,7 @@ const changeMap dynamicTopoFvMesh::swap32
     //      [5] If edgeToCheck is on a boundary,
     //          add two boundary faces and a boundary edge (2-2 swap)
     //      eIndex is removed later by removeEdgeFlips
-    //      Update faceEdges, edgeFaces and edgePoints information
+    //      Update faceEdges and edgeFaces information
 
     changeMap map;
 
@@ -3316,12 +3210,6 @@ const changeMap dynamicTopoFvMesh::swap32
             nextPoint
         );
 
-        // Add an edgePoints entry
-        labelList newBdyEdgePoints(3, -1);
-        newBdyEdgePoints[0] = edgeToCheck[0];
-        newBdyEdgePoints[1] = otherPoint;
-        newBdyEdgePoints[2] = edgeToCheck[1];
-
         // Insert the edge
         newEdgeIndex =
         (
@@ -3329,8 +3217,7 @@ const changeMap dynamicTopoFvMesh::swap32
             (
                 edgePatch,
                 newEdge,
-                newBdyEdgeFaces,
-                newBdyEdgePoints
+                newBdyEdgeFaces
             )
         );
 
@@ -3342,7 +3229,7 @@ const changeMap dynamicTopoFvMesh::swap32
         bdyFaceEdges[0][nBE[0]++] = newEdgeIndex;
         bdyFaceEdges[1][nBE[1]++] = newEdgeIndex;
 
-        // Update edgeFaces and edgePoints with the two new faces
+        // Update edgeFaces with the two new faces
         forAll(bdyEdges[0], edgeI)
         {
             meshOps::sizeUpList
@@ -3355,52 +3242,6 @@ const changeMap dynamicTopoFvMesh::swap32
             (
                 newBdyFaceIndex[1],
                 edgeFaces_[bdyEdges[1][edgeI]]
-            );
-
-            // Replace the edgePoints label, and preserve position on the list
-            meshOps::findIsolatedPoint
-            (
-                newBdyTriFace[0],
-                edges_[bdyEdges[0][edgeI]],
-                otherPoint,
-                nextPoint
-            );
-
-            meshOps::replaceLabel
-            (
-                edgeToCheck[1],
-                otherPoint,
-                edgePoints_[bdyEdges[0][edgeI]]
-            );
-
-            // Size up edgePoints again, so that it is sized down later
-            meshOps::sizeUpList
-            (
-                edgeToCheck[1],
-                edgePoints_[bdyEdges[0][edgeI]]
-            );
-
-            // Replace the edgePoints label, and preserve position on the list
-            meshOps::findIsolatedPoint
-            (
-                newBdyTriFace[1],
-                edges_[bdyEdges[1][edgeI]],
-                otherPoint,
-                nextPoint
-            );
-
-            meshOps::replaceLabel
-            (
-                edgeToCheck[0],
-                otherPoint,
-                edgePoints_[bdyEdges[1][edgeI]]
-            );
-
-            // Size up edgePoints again, so that it is sized down later
-            meshOps::sizeUpList
-            (
-                edgeToCheck[0],
-                edgePoints_[bdyEdges[1][edgeI]]
             );
         }
 
@@ -3470,7 +3311,7 @@ const changeMap dynamicTopoFvMesh::swap32
                 // Add this face to the cell
                 newTetCell[1][nF1++] = faceIndex;
 
-                // Update faceEdges, edgeFaces and edgePoints
+                // Update faceEdges and edgeFaces
                 forAll(faceEdges_[faceIndex], edgeI)
                 {
                     if
@@ -3489,23 +3330,6 @@ const changeMap dynamicTopoFvMesh::swap32
                         (
                             newFaceIndex,
                             edgeFaces_[faceEdges_[faceIndex][edgeI]]
-                        );
-
-                        // Find the isolated point and insert it
-                        meshOps::findIsolatedPoint
-                        (
-                            newTriFace,
-                            edges_[faceEdges_[faceIndex][edgeI]],
-                            otherPoint,
-                            nextPoint
-                        );
-
-                        meshOps::insertLabel
-                        (
-                            otherPoint,
-                            edgeToCheck[0],
-                            edgeToCheck[1],
-                            edgePoints_[faceEdges_[faceIndex][edgeI]]
                         );
 
                         break;
@@ -3549,7 +3373,7 @@ const changeMap dynamicTopoFvMesh::swap32
     // Remove the faces and update associated edges
     forAll(facesForRemoval, faceI)
     {
-        // Update edgeFaces and edgePoints
+        // Update edgeFaces
         forAll(faceEdges_[facesForRemoval[faceI]], edgeI)
         {
             label edgeIndex = faceEdges_[facesForRemoval[faceI]][edgeI];
@@ -3560,21 +3384,6 @@ const changeMap dynamicTopoFvMesh::swap32
                 (
                     facesForRemoval[faceI],
                     edgeFaces_[edgeIndex]
-                );
-
-                // Find the isolated point and remove it
-                meshOps::findIsolatedPoint
-                (
-                    faces_[facesForRemoval[faceI]],
-                    edges_[edgeIndex],
-                    otherPoint,
-                    nextPoint
-                );
-
-                meshOps::sizeDownList
-                (
-                    otherPoint,
-                    edgePoints_[edgeIndex]
                 );
             }
         }

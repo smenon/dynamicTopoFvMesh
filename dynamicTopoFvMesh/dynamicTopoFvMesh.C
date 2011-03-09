@@ -330,12 +330,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     // Now build edgeFaces and pointEdges information.
     edgeFaces_ = invertManyToMany<labelList, labelList>(nEdges_, faceEdges_);
 
-    // Size-up edgePoints for now, but explicitly construct
-    // for each edge later, based on point coupling.
     if (!twoDMesh_)
     {
         pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
-        edgePoints_.setSize(nEdges_, labelList(0));
     }
 }
 
@@ -754,19 +751,13 @@ label dynamicTopoFvMesh::insertEdge
 (
     const label patch,
     const edge& newEdge,
-    const labelList& edgeFaces,
-    const labelList& edgePoints
+    const labelList& edgeFaces
 )
 {
     label newEdgeIndex = edges_.size();
 
     edges_.append(newEdge);
     edgeFaces_.append(edgeFaces);
-
-    if (!twoDMesh_)
-    {
-        edgePoints_.append(edgePoints);
-    }
 
     if (debug > 2)
     {
@@ -790,27 +781,6 @@ label dynamicTopoFvMesh::insertEdge
         else
         {
             Pout<< " New patch: " << patch << endl;
-        }
-
-        if (!twoDMesh_)
-        {
-            if (findIndex(edgePoints, -1) != -1)
-            {
-                FatalErrorIn
-                (
-                    "\n"
-                    "label dynamicTopoFvMesh::insertEdge\n"
-                    "(\n"
-                    "    const label patch,\n"
-                    "    const edge& newEdge,\n"
-                    "    const labelList& edgeFaces,\n"
-                    "    const labelList& edgePoints\n"
-                    ")"
-                )
-                    << " EdgePoints is incorrectly specified." << nl
-                    << " edgePoints: " << edgePoints << nl
-                    << abort(FatalError);
-            }
         }
     }
 
@@ -861,9 +831,6 @@ void dynamicTopoFvMesh::removeEdge
 {
     if (!twoDMesh_)
     {
-        // Remove the edgePoints entry
-        edgePoints_[eIndex].clear();
-
         const edge& rEdge = edges_[eIndex];
 
         // Size-down the pointEdges list
@@ -1100,18 +1067,19 @@ void dynamicTopoFvMesh::removePoint
 }
 
 
-// Utility method to build edgePoints for an edge [3D].
+// Utility method to build vertexHull for an edge [3D].
 // Assumes that edgeFaces information is consistent.
-void dynamicTopoFvMesh::buildEdgePoints
+void dynamicTopoFvMesh::buildVertexHull
 (
     const label eIndex,
+    labelList& vertexHull,
     const label checkIndex,
     bool debugReport
-)
+) const
 {
     if (debug > 2 && debugReport)
     {
-        Pout<< " Building edgePoints for edge: "
+        Pout<< " Building vertexHull for edge: "
             << eIndex << ": " << edges_[eIndex]
             << endl;
     }
@@ -1126,10 +1094,8 @@ void dynamicTopoFvMesh::buildEdgePoints
     const labelList& eFaces = edgeFaces_[eIndex];
 
     // Re-size the list first
-    labelList& ePoints = edgePoints_[eIndex];
-
-    ePoints.clear();
-    ePoints.setSize(eFaces.size(), -1);
+    vertexHull.clear();
+    vertexHull.setSize(eFaces.size(), -1);
 
     if (whichEdgePatch(eIndex) == -1)
     {
@@ -1169,7 +1135,7 @@ void dynamicTopoFvMesh::buildEdgePoints
     else
     {
         // Shuffle vertices to appear in CCW order
-        forAll(ePoints, indexI)
+        forAll(vertexHull, indexI)
         {
             meshOps::findIsolatedPoint
             (
@@ -1180,7 +1146,7 @@ void dynamicTopoFvMesh::buildEdgePoints
             );
 
             // Add the isolated point
-            ePoints[indexI] = otherPoint;
+            vertexHull[indexI] = otherPoint;
 
             // Figure out how this edge is oriented.
             if (nextPoint == edgeToCheck[checkIndex])
@@ -1195,7 +1161,7 @@ void dynamicTopoFvMesh::buildEdgePoints
                 cellIndex = neighbour_[faceIndex];
             }
             else
-            if (indexI != (ePoints.size() - 1))
+            if (indexI != (vertexHull.size() - 1))
             {
                 // This could be a pinched manifold edge
                 // (situation with more than two boundary faces)
@@ -1217,7 +1183,7 @@ void dynamicTopoFvMesh::buildEdgePoints
                         if
                         (
                             (nextPoint == edgeToCheck[checkIndex]) &&
-                            (findIndex(ePoints, otherPoint) == -1)
+                            (findIndex(vertexHull, otherPoint) == -1)
                         )
                         {
                             faceIndex = eFaces[faceI];
@@ -1302,7 +1268,7 @@ void dynamicTopoFvMesh::buildEdgePoints
     if (debug > 2 && !failMode)
     {
         // Check for invalid indices
-        if (findIndex(ePoints, -1) > -1)
+        if (findIndex(vertexHull, -1) > -1)
         {
             failMode = 4;
         }
@@ -1312,16 +1278,16 @@ void dynamicTopoFvMesh::buildEdgePoints
         {
             labelHashSet uniquePoints;
 
-            forAll(ePoints, pointI)
+            forAll(vertexHull, pointI)
             {
-                bool inserted = uniquePoints.insert(ePoints[pointI]);
+                bool inserted = uniquePoints.insert(vertexHull[pointI]);
 
                 if (!inserted)
                 {
-                    Pout<< " edgePoints for edge: "
+                    Pout<< " vertexHull for edge: "
                         << eIndex << "::" << edgeToCheck
                         << " contains identical vertex labels: "
-                        << ePoints << endl;
+                        << vertexHull << endl;
 
                     failMode = 5;
                 }
@@ -1372,10 +1338,12 @@ void dynamicTopoFvMesh::buildEdgePoints
         FatalErrorIn
         (
             "\n"
-            "void dynamicTopoFvMesh::buildEdgePoints\n"
+            "void dynamicTopoFvMesh::buildVertexHull\n"
             "(\n"
             "    const label eIndex,\n"
-            "    const label checkIndex\n"
+            "    labelList& vertexHull,\n"
+            "    const label checkIndex,\n"
+            "    bool debugReport"
             ")"
         )
             << " Failed to determine a vertex ring. " << nl
@@ -1383,7 +1351,7 @@ void dynamicTopoFvMesh::buildEdgePoints
             << " Edge: " << eIndex << ":: " << edgeToCheck << nl
             << " edgeFaces: " << eFaces << nl
             << " Patch: " << whichEdgePatch(eIndex) << nl
-            << " Current edgePoints: " << ePoints
+            << " Current vertexHull: " << vertexHull
             << abort(FatalError);
     }
 }
@@ -1864,15 +1832,6 @@ void dynamicTopoFvMesh::initEdges()
     {
         // Invert edges to obtain pointEdges
         pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
-
-        // Size up edgePoints and build
-        edgePoints_.setSize(nEdges_, labelList(0));
-
-        forAll(edgePoints_, edgeI)
-        {
-            // Disable debug reporting, not very useful anyway
-            buildEdgePoints(edgeI, 0, false);
-        }
     }
 
     // Clear out unwanted eMesh connectivity
@@ -2185,6 +2144,9 @@ void dynamicTopoFvMesh::swap3DEdges
     PtrList<scalarListList> Q;
     PtrList<labelListList> K, triangulations;
 
+    // Hull vertices information
+    labelList hullV;
+
     // Allocate dynamic programming tables
     mesh.initTables(m, Q, K, triangulations);
 
@@ -2233,7 +2195,7 @@ void dynamicTopoFvMesh::swap3DEdges
         label eIndex = mesh.stack(tIndex).pop();
 
         // Compute the minimum quality of cells around this edge
-        scalar minQuality = mesh.computeMinQuality(eIndex);
+        scalar minQuality = mesh.computeMinQuality(eIndex, hullV);
 
         // Check if this edge is on a bounding curve
         // (Override purity check for processor edges)
@@ -2243,7 +2205,7 @@ void dynamicTopoFvMesh::swap3DEdges
         }
 
         // Fill the dynamic programming tables
-        if (mesh.fillTables(eIndex, minQuality, m, Q, K, triangulations))
+        if (mesh.fillTables(eIndex, minQuality, m, hullV, Q, K, triangulations))
         {
             // Check if edge-swapping is required.
             if (mesh.checkQuality(eIndex, m, Q, minQuality))
@@ -2255,6 +2217,7 @@ void dynamicTopoFvMesh::swap3DEdges
                     (
                         eIndex,
                         minQuality,
+                        hullV,
                         Q,
                         K,
                         triangulations

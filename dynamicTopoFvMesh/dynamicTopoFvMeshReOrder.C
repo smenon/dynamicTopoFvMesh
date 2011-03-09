@@ -333,7 +333,6 @@ void dynamicTopoFvMesh::reOrderEdges
     label edgeInOrder = 0, allEdges = edges_.size();
     edgeList oldEdges(allEdges);
     labelListList oldEdgeFaces(allEdges);
-    labelListList oldEdgePoints(allEdges);
 
     addedEdgeRenumbering_.clear();
 
@@ -345,16 +344,6 @@ void dynamicTopoFvMesh::reOrderEdges
     }
 
     edges_.setSize(nEdges_); edgeFaces_.setSize(nEdges_);
-
-    if (!twoDMesh_)
-    {
-        forAll(edgePoints_, edgeI)
-        {
-            oldEdgePoints[edgeI].transfer(edgePoints_[edgeI]);
-        }
-
-        edgePoints_.setSize(nEdges_);
-    }
 
     // Keep track of inserted boundary edge indices
     labelList boundaryPatchIndices(edgePatchStarts_);
@@ -398,11 +387,6 @@ void dynamicTopoFvMesh::reOrderEdges
             // Insert entities into mesh-reset lists
             edges[bEdgeIndex] = thisEdge;
             edgeFaces[bEdgeIndex].transfer(thisEF);
-
-            if (!twoDMesh_)
-            {
-                edgePoints_[bEdgeIndex].transfer(oldEdgePoints[edgeI]);
-            }
         }
         else
         {
@@ -425,11 +409,6 @@ void dynamicTopoFvMesh::reOrderEdges
             edges[edgeInOrder] = thisEdge;
             edgeFaces[edgeInOrder].transfer(thisEF);
 
-            if (!twoDMesh_)
-            {
-                edgePoints_[edgeInOrder].transfer(oldEdgePoints[edgeI]);
-            }
-
             edgeInOrder++;
         }
     }
@@ -449,7 +428,7 @@ void dynamicTopoFvMesh::reOrderEdges
             << abort(FatalError);
     }
 
-    // Renumber all edges / edgePoints with updated point information
+    // Renumber all edges with updated point information
     label pIndex = -1;
 
     if (threaded)
@@ -487,24 +466,6 @@ void dynamicTopoFvMesh::reOrderEdges
 
         thisEdge[1] = pIndex;
         thisREdge[1] = pIndex;
-
-        // Renumber edgePoints
-        if (!twoDMesh_)
-        {
-            labelList& ePoints = edgePoints_[edgeI];
-
-            forAll(ePoints, pointI)
-            {
-                if (ePoints[pointI] < nOldPoints_)
-                {
-                    ePoints[pointI] = reversePointMap_[ePoints[pointI]];
-                }
-                else
-                {
-                    ePoints[pointI] = addedPointRenumbering_[ePoints[pointI]];
-                }
-            }
-        }
     }
 
     if (threaded)

@@ -118,7 +118,7 @@ namespace meshOps
         const UList<label>& neighbour,
         const UList<labelList>& faceEdges,
         const UList<labelList>& edgeFaces,
-        const UList<labelList>& edgePoints,
+        const labelList& hullVertices,
         labelList& hullEdges,
         labelList& hullFaces,
         labelList& hullCells,

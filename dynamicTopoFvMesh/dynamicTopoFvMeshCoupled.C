@@ -1764,7 +1764,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 continue;
             }
 
-            // Insert edge with null edgeFaces / edgePoints for now.
+            // Insert edge with null edgeFaces for now.
             // This can be corrected later.
             eIter() =
             (
@@ -1772,7 +1772,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 (
                     masterConvertEdgePatch[pI][eIter.key()],
                     newEdge,
-                    labelList(0),
                     labelList(0)
                 )
             );
@@ -2502,8 +2501,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 (
                     physPatch,
                     edge(edges_[eIndex]),
-                    labelList(edgeFaces_[eIndex]),
-                    labelList(0)
+                    labelList(edgeFaces_[eIndex])
                 )
             );
 
@@ -2536,38 +2534,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 map.index() = newEdgeIndex;
             }
 
-            // Replace the entry in edgesToInsert, so that
-            // edgePoints is corrected for the right edge
+            // Replace the entry in edgesToInsert
             edgesToInsert[pI][eIter.key()] = newEdgeIndex;
-        }
-    }
-
-    if (!twoDMesh_)
-    {
-        // Fix edgePoints for all new / converted edges
-        DynamicList<label> fixEdges(10);
-
-        forAll(edgesToInsert, pI)
-        {
-            const Map<label>& procEdgeMap = edgesToInsert[pI];
-
-            forAllConstIter(Map<label>, procEdgeMap, eIter)
-            {
-                if
-                (
-                    (findIndex(fixEdges, eIter()) < 0) &&
-                    (edgeFaces_[eIter()].size())
-                )
-                {
-                    fixEdges.append(eIter());
-                }
-            }
-        }
-
-        // Sequentially fix all edges
-        forAll(fixEdges, indexI)
-        {
-            buildEdgePoints(fixEdges[indexI]);
         }
     }
 
@@ -3257,12 +3225,6 @@ const changeMap dynamicTopoFvMesh::removeCells
             // Create copies before appending.
             edge newEdge = edges_[eIter.key()];
             labelList eFaces = edgeFaces_[eIter.key()];
-            labelList ePoints;
-
-            if (!twoDMesh_)
-            {
-                ePoints = edgePoints_[eIter.key()];
-            }
 
             eIter() =
             (
@@ -3270,8 +3232,7 @@ const changeMap dynamicTopoFvMesh::removeCells
                 (
                     patch,
                     newEdge,
-                    eFaces,
-                    ePoints
+                    eFaces
                 )
             );
 
@@ -3342,16 +3303,6 @@ const changeMap dynamicTopoFvMesh::removeCells
                     fEdges[edgeI] = edgesToConvert[fEdges[edgeI]];
                 }
             }
-        }
-    }
-
-    // At this point, edgeFaces is consistent.
-    // Correct edge-points for all converted edges
-    if (!twoDMesh_)
-    {
-        forAllConstIter(Map<label>, edgesToConvert, eIter)
-        {
-            buildEdgePoints(eIter());
         }
     }
 
@@ -6112,19 +6063,6 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 << " Unmatched faces were found for processor: " << proc
                 << abort(FatalError);
         }
-
-        // If the received mesh is of higher rank,
-        // build associated edgePoints.
-        if (proc > Pstream::myProcNo() && !twoDMesh_)
-        {
-            dynamicTopoFvMesh& mesh = rPM.subMesh();
-
-            forAll(mesh.edges_, edgeI)
-            {
-                // Disable debug reporting, not very useful anyway
-                mesh.buildEdgePoints(edgeI, 0, false);
-            }
-        }
     }
 }
 
@@ -7349,8 +7287,10 @@ bool dynamicTopoFvMesh::coupledFillTables
         // Turn off switch temporarily.
         unsetCoupledModification();
 
+        labelList hullV(10);
+
         // Call fillTables for the slave edge.
-        success = fillTables(sI, minQuality, m, Q, K, triangulations, 1);
+        success = fillTables(sI, minQuality, m, hullV, Q, K, triangulations, 1);
 
         // Turn it back on.
         setCoupledModification();
