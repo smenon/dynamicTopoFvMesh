@@ -47,6 +47,8 @@ Author
 #include "SortableList.H"
 #include "surfaceFields.H"
 #include "globalMeshData.H"
+#include "faceSetAlgorithm.H"
+#include "cellSetAlgorithm.H"
 #include "coordinateSystem.H"
 #include "processorPolyPatch.H"
 
@@ -2251,8 +2253,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Loop through all boundary faces,
             // and compute / compare face centres
-            label sTot = mesh.faces_.size();
-            label sInt = mesh.nOldInternalFaces_;
+            label sTot = mesh.faces_.size(), sInt = mesh.nOldInternalFaces_;
 
             for (label faceI = sInt; faceI < sTot; faceI++)
             {
@@ -2357,18 +2358,18 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 );
             }
 
-            // Finally remove the face
-            mesh.removeFace(replaceFace);
-
             if (debug > 3)
             {
                 Pout<< " Pushing CONVERT_PATCH for face: " << replaceFace
-                    << " :: " << mesh.faces_[replaceFace]
+                    << " :: " << mesh.faces_[replaceFace] << nl
                     << " with new point: " << fIter().first()
                     << " and old point: " << fIter().second()
                     << " on proc: " << procIndices_[pI]
                     << endl;
             }
+
+            // Finally remove the face
+            mesh.removeFace(replaceFace);
 
             cMap.pushOperation
             (
@@ -2804,6 +2805,35 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
             }
         }
+
+        // Check removed points
+        const labelList& rspList = slaveMap.removedPointList();
+
+        forAll(rspList, indexI)
+        {
+            label spIndex = rspList[indexI], mpIndex = -1;
+
+            // Does an entry exist?
+            mpIndex = cMap.findMaster(coupleMap::POINT, spIndex);
+
+            if (mpIndex > -1)
+            {
+                if (debug > 2)
+                {
+                    Pout<< " Removing map for master point: " << mpIndex
+                        << " :: new: " << points_[mpIndex]
+                        << " :: old: " << oldPoints_[mpIndex] << nl
+                        << " Master point map: "
+                        << cMap.findSlave(coupleMap::POINT, mpIndex)
+                        << " and slave point: " << spIndex
+                        << " on proc: " << procIndices_[pI]
+                        << endl;
+                }
+
+                cMap.removeSlave(coupleMap::POINT, spIndex);
+                cMap.removeMaster(coupleMap::POINT, mpIndex);
+            }
+        }
     }
 
     // Write out cells for debug, if necessary
@@ -2819,7 +2849,11 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
 
         // Write it out
-        writeVTK("insertCells(" + Foam::name(mIndex) + ')', addedCells);
+        writeVTK
+        (
+            "insertCells(" + Foam::name(mIndex) + ')',
+            addedCells, 3, false, true
+        );
     }
 
     // Set mapping information for any added faces
@@ -2827,19 +2861,203 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
     forAll(afList, indexI)
     {
-        label nfIndex = afList[indexI].index();
-        label patch = whichPatch(nfIndex);
+        label mfIndex = afList[indexI].index();
+        label patch = whichPatch(mfIndex);
+        label neiProc = getNeighbourProcessor(patch);
 
         if (patch == -1)
         {
             // Set default mapping for interior faces
-            setFaceMapping(nfIndex);
+            setFaceMapping(mfIndex);
         }
         else
-        if (getNeighbourProcessor(patch) == -1)
+        if (neiProc == -1)
         {
             // Physical patch
-            setFaceMapping(nfIndex, afList[indexI].masterObjects());
+            setFaceMapping(mfIndex, afList[indexI].masterObjects());
+        }
+
+        // Disregard non-processor faces for coupled mapping
+        if (neiProc == -1)
+        {
+            continue;
+        }
+
+        // Update couple maps, if necessary
+        const face& mFace = faces_[mfIndex];
+
+        forAll(procIndices_, pI)
+        {
+            // Skip face if not on this processor
+            if (neiProc != procIndices_[pI])
+            {
+                continue;
+            }
+
+            const coupleMap& cMap = recvMeshes_[pI].map();
+            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+            // Configure a comparison face
+            face cFace(mFace);
+
+            forAll(cFace, pointI)
+            {
+                cFace[pointI] =
+                (
+                    cMap.findSlave
+                    (
+                        coupleMap::POINT,
+                        cFace[pointI]
+                    )
+                );
+            }
+
+            // Ensure all points are found
+            if (findIndex(cFace, -1) > -1)
+            {
+                continue;
+            }
+
+            // Loop through boundary faces on slave and look for a match
+            label sTot = mesh.faces_.size(), sInt = mesh.nOldInternalFaces_;
+
+            label sfIndex = -1;
+
+            for (label sfI = sInt; sfI < sTot; sfI++)
+            {
+                const face& sFace = mesh.faces_[sfI];
+
+                if (sFace.empty())
+                {
+                    continue;
+                }
+
+                label pIndex = mesh.whichPatch(sfI);
+
+                if (mesh.getNeighbourProcessor(pIndex) == -1)
+                {
+                    continue;
+                }
+
+                if (twoDMesh_)
+                {
+                    if (face::compare(cFace, sFace))
+                    {
+                        sfIndex = sfI;
+                    }
+                }
+                else
+                {
+                    if
+                    (
+                        triFace::compare
+                        (
+                            triFace(cFace[0], cFace[1], cFace[2]),
+                            triFace(sFace[0], sFace[1], sFace[2])
+                        )
+                    )
+                    {
+                        sfIndex = sfI;
+                    }
+                }
+
+                // Break out if we're done
+                if (sfIndex > -1)
+                {
+                    if (debug > 2)
+                    {
+                        Pout<< " Matched master face: " << mfIndex
+                            << " :: " << mFace
+                            << " with slave: " << sfIndex
+                            << " :: " << sFace
+                            << " on proc: " << procIndices_[pI]
+                            << endl;
+                    }
+
+                    // Found the slave. Add a map entry
+                    cMap.mapSlave
+                    (
+                        coupleMap::FACE,
+                        mfIndex,
+                        sfIndex
+                    );
+
+                    cMap.mapMaster
+                    (
+                        coupleMap::FACE,
+                        sfIndex,
+                        mfIndex
+                    );
+
+                    break;
+                }
+            }
+
+            if (sfIndex == -1)
+            {
+                Pout<< " Failed match for master face: " << mfIndex
+                    << " :: " << mFace
+                    << " on proc: " << procIndices_[pI]
+                    << abort(FatalError);
+            }
+
+            if (twoDMesh_)
+            {
+                continue;
+            }
+
+            // Map edges on this face as well
+            const labelList& mfEdges = faceEdges_[mfIndex];
+            const labelList& sfEdges = mesh.faceEdges_[sfIndex];
+
+            forAll(mfEdges, edgeI)
+            {
+                label meIndex = mfEdges[edgeI];
+                const edge& mEdge = edges_[meIndex];
+
+                // Configure a comparison edge
+                edge cEdge
+                (
+                    cMap.findSlave(coupleMap::POINT, mEdge[0]),
+                    cMap.findSlave(coupleMap::POINT, mEdge[1])
+                );
+
+                forAll(sfEdges, edgeJ)
+                {
+                    label seIndex = sfEdges[edgeJ];
+                    const edge& sEdge = mesh.edges_[seIndex];
+
+                    if (cEdge == sEdge)
+                    {
+                        if (debug > 2)
+                        {
+                            Pout<< " Matched master edge: " << meIndex
+                                << " :: " << mEdge
+                                << " with slave: " << seIndex
+                                << " :: " << sEdge
+                                << " on proc: " << procIndices_[pI]
+                                << endl;
+                        }
+
+                        // Found the slave. Add a map entry
+                        cMap.mapSlave
+                        (
+                            coupleMap::EDGE,
+                            meIndex,
+                            seIndex
+                        );
+
+                        cMap.mapMaster
+                        (
+                            coupleMap::EDGE,
+                            seIndex,
+                            meIndex
+                        );
+
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -7740,6 +7958,21 @@ bool dynamicTopoFvMesh::coupledFillTables
     }
 
     return success;
+}
+
+
+// Additional mapping contributions for coupled entities
+void dynamicTopoFvMesh::computeCoupledWeights
+(
+    const label index,
+    const scalar mTol,
+    const label dimension,
+    labelList& parents,
+    scalarField& weights,
+    vectorField& centres
+)
+{
+
 }
 
 

@@ -15,6 +15,10 @@ edgeSwap.C
 edgeBisect.C
 edgeCollapse.C
 
+convexSetAlgorithm/convexSetAlgorithm.C
+convexSetAlgorithm/faceSetAlgorithm.C
+convexSetAlgorithm/cellSetAlgorithm.C
+
 fieldMapping/topoMapper.C
 fieldMapping/fluxCorrector.C
 fieldMapping/topoCellMapper.C

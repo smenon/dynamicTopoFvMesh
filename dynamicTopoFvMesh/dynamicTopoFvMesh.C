@@ -997,9 +997,10 @@ void dynamicTopoFvMesh::removePoint
 {
     if (debug > 2)
     {
-        Pout<< "Removing point: "
-            << pIndex << ": "
-            << points_[pIndex] << endl;
+        Pout<< "Removing point: " << pIndex
+            << " :: new: " << points_[pIndex]
+            << " :: old: " << oldPoints_[pIndex]
+            << endl;
     }
 
     // Remove the point
@@ -1312,18 +1313,25 @@ void dynamicTopoFvMesh::buildVertexHull
         }
 
         // Write out for post-processing
-        writeVTK("vRingEdge_" + Foam::name(eIndex), eIndex, 1);
-        writeVTK("vRingEdgeFaces_" + Foam::name(eIndex), eFaces, 2);
-        writeVTK("vRingEdgeCells_" + Foam::name(eIndex), eCells, 3);
+        label eI = eIndex, epI = whichEdgePatch(eIndex);
+        word epName(epI < 0 ? "Internal" : boundaryMesh()[epI].name());
+
+        writeVTK("vRingEdge_" + Foam::name(eI), eIndex, 1, false, true);
+        writeVTK("vRingEdgeFaces_" + Foam::name(eI), eFaces, 2, false, true);
+        writeVTK("vRingEdgeCells_" + Foam::name(eI), eCells, 3, false, true);
 
         Pout<< "edgeFaces: " << endl;
 
         forAll(eFaces, faceI)
         {
+            label fpI = whichPatch(eFaces[faceI]);
+            word fpName(fpI < 0 ? "Internal" : boundaryMesh()[fpI].name());
+
             Pout<< " Face: " << eFaces[faceI]
                 << ":: " << faces_[eFaces[faceI]]
                 << " Owner: " << owner_[eFaces[faceI]]
                 << " Neighbour: " << neighbour_[eFaces[faceI]]
+                << " Patch: " << fpName
                 << endl;
         }
 
@@ -1334,15 +1342,14 @@ void dynamicTopoFvMesh::buildVertexHull
             "(\n"
             "    const label eIndex,\n"
             "    labelList& vertexHull,\n"
-            "    const label checkIndex,\n"
-            "    bool debugReport"
-            ")"
+            "    const label checkIndex\n"
+            ")\n"
         )
             << " Failed to determine a vertex ring. " << nl
             << " Failure mode: " << failMode << nl
             << " Edge: " << eIndex << ":: " << edgeToCheck << nl
             << " edgeFaces: " << eFaces << nl
-            << " Patch: " << whichEdgePatch(eIndex) << nl
+            << " Patch: " << epName << nl
             << " Current vertexHull: " << vertexHull
             << abort(FatalError);
     }

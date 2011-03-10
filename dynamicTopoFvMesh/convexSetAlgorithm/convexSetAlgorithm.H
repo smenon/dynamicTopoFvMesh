@@ -146,6 +146,19 @@ public:
             bool output
         ) const = 0;
 
+        // Obtain map weighting factors
+        virtual void computeWeights
+        (
+            const label index,
+            const label offset,
+            const labelList& mapCandidates,
+            const labelListList& oldNeighbourList,
+            const scalar mTol,
+            labelList& parents,
+            scalarField& weights,
+            vectorField& centres
+        );
+
         // Write out connectivity information to disk
         bool write() const;
 
@@ -172,12 +185,6 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-#    include "convexSetAlgorithm.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

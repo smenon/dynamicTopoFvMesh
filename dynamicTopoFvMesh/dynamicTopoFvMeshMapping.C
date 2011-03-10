@@ -77,9 +77,9 @@ void dynamicTopoFvMesh::computeMapping
         neighbour_
     );
 
-    scalar maxError = 0.0;
     label nInconsistencies = 0;
     List<objectMap> failedCells, failedFaces;
+    scalar maxFaceError = 0.0, maxCellError = 0.0;
 
     // Compute cell mapping
     for (label cellI = cellStart; cellI < (cellStart + cellSize); cellI++)
@@ -97,48 +97,37 @@ void dynamicTopoFvMesh::computeMapping
         else
         {
             // Obtain weighting factors for this cell.
-            bool consistent =
+            cellAlgorithm.computeWeights
             (
-                computeWeights
-                (
-                    cIndex,
-                    cellParents_[cIndex],
-                    polyMesh::cellCells(),
-                    matchTol,
-                    cellAlgorithm,
-                    masterObjects,
-                    cellWeights_[cellI],
-                    cellCentres_[cellI]
-                )
+                cIndex,
+                0,
+                cellParents_[cIndex],
+                polyMesh::cellCells(),
+                matchTol,
+                masterObjects,
+                cellWeights_[cellI],
+                cellCentres_[cellI]
             );
 
-            if (!consistent)
+            // Add contributions from subMeshes, if any.
+            computeCoupledWeights
+            (
+                cIndex,
+                matchTol,
+                cellAlgorithm.dimension(),
+                masterObjects,
+                cellWeights_[cellI],
+                cellCentres_[cellI]
+            );
+
+            // Compute error
+            scalar error = mag(1.0 - sum(cellWeights_[cellI]));
+
+            // Accumulate error stats
+            maxCellError = Foam::max(maxCellError, error);
+
+            if (error > matchTol)
             {
-                maxError =
-                (
-                    Foam::max(maxError, mag(1.0 - sum(cellWeights_[cellI])))
-                );
-
-                if (debug > 1)
-                {
-                    if (debug > 4)
-                    {
-                        Pout<< nl
-                            << " Inconsistent cell: " << cIndex << nl
-                            << " parents: " << cellParents_[cIndex] << nl
-                            << " masterObjects: " << masterObjects << nl
-                            << " Weights: " << cellWeights_[cellI] << nl
-                            << " Error: " << mag(1.0 - sum(cellWeights_[cellI]))
-                            << endl;
-                    }
-
-                    meshOps::sizeUpList
-                    (
-                        objectMap(cIndex, cellParents_[cIndex]),
-                        failedCells
-                    );
-                }
-
                 nInconsistencies++;
             }
         }
@@ -186,48 +175,37 @@ void dynamicTopoFvMesh::computeMapping
         else
         {
             // Obtain weighting factors for this face.
-            bool consistent =
+            faceAlgorithm.computeWeights
             (
-                computeWeights
-                (
-                    fIndex,
-                    faceParents_[fIndex],
-                    boundaryMesh()[patchIndex].faceFaces(),
-                    matchTol,
-                    faceAlgorithm,
-                    masterObjects,
-                    faceWeights_[faceI],
-                    faceCentres_[faceI]
-                )
+                fIndex,
+                boundaryMesh()[patchIndex].start(),
+                faceParents_[fIndex],
+                boundaryMesh()[patchIndex].faceFaces(),
+                matchTol,
+                masterObjects,
+                faceWeights_[faceI],
+                faceCentres_[faceI]
             );
 
-            if (!consistent)
+            // Add contributions from subMeshes, if any.
+            computeCoupledWeights
+            (
+                fIndex,
+                matchTol,
+                faceAlgorithm.dimension(),
+                masterObjects,
+                faceWeights_[faceI],
+                faceCentres_[faceI]
+            );
+
+            // Compute error
+            scalar error = mag(1.0 - sum(faceWeights_[faceI]));
+
+            // Accumulate error stats
+            maxFaceError = Foam::max(maxFaceError, error);
+
+            if (error > matchTol)
             {
-                maxError =
-                (
-                    Foam::max(maxError, mag(1.0 - sum(faceWeights_[faceI])))
-                );
-
-                if (debug > 1)
-                {
-                    if (debug > 4)
-                    {
-                        Pout<< nl
-                            << " Inconsistent face: " << fIndex << nl
-                            << " parents: " << faceParents_[fIndex] << nl
-                            << " masterObjects: " << masterObjects << nl
-                            << " Weights: " << faceWeights_[faceI] << nl
-                            << " Error: " << mag(1.0 - sum(faceWeights_[faceI]))
-                            << endl;
-                    }
-
-                    meshOps::sizeUpList
-                    (
-                        objectMap(fIndex, faceParents_[fIndex]),
-                        failedFaces
-                    );
-                }
-
                 nInconsistencies++;
             }
         }
@@ -235,8 +213,9 @@ void dynamicTopoFvMesh::computeMapping
 
     if (nInconsistencies)
     {
-        Pout<< " Mapping inconsistencies: " << nInconsistencies
-            << " max error: " << maxError
+        Pout<< " Mapping errors: "
+            << " max cell error: " << maxCellError
+            << " max face error: " << maxFaceError
             << endl;
 
         if (debug > 1)
@@ -432,415 +411,6 @@ void dynamicTopoFvMesh::threadedMapping
 
     // Execute threads in linear sequence
     executeThreads(identity(nThreads), hdl, &computeMappingThread);
-}
-
-
-// Obtain map weighting factors
-bool dynamicTopoFvMesh::computeWeights
-(
-    const label index,
-    const labelList& mapCandidates,
-    const labelListList& oldNeighbourList,
-    const scalar mTol,
-    const convexSetAlgorithm& algorithm,
-    labelList& parents,
-    scalarField& weights,
-    vectorField& centres
-) const
-{
-    if (parents.size() || weights.size() || centres.size())
-    {
-        FatalErrorIn
-        (
-            "\n\n"
-            "bool dynamicTopoFvMesh::computeWeights\n"
-            "(\n"
-            "    const label index,\n"
-            "    const labelList& mapCandidates,\n"
-            "    const labelListList& oldNeighbourList,\n"
-            "    const scalar mTol,\n"
-            "    const convexSetAlgorithm& algorithm,\n"
-            "    labelList& parents,\n"
-            "    scalarField& weights,\n"
-            "    vectorField& centres\n"
-            ") const\n"
-        )
-            << " Addressing has already been calculated." << nl
-            << " Index: " << index << nl
-            << " Type: "
-            << (algorithm.dimension() == 2 ? "Face" : "Cell") << nl
-            << " mapCandidates: " << mapCandidates << nl
-            << " Parents: " << parents << nl
-            << " Weights: " << weights << nl
-            << " Centres: " << centres << nl
-            << abort(FatalError);
-    }
-
-    bool changed;
-    label nAttempts = 0, nIntersects = 0;
-
-    // Figure out the patch offset
-    label offset = -1;
-
-    if (algorithm.dimension() == 2)
-    {
-        offset = boundaryMesh()[whichPatch(index)].start();
-    }
-    else
-    if (algorithm.dimension() == 3)
-    {
-        offset = 0;
-    }
-
-    // Calculate the algorithm normFactor
-    algorithm.computeNormFactor(index);
-
-    // Maintain a check-list
-    labelHashSet checked, skipped;
-
-    // Loop and add intersections until nothing changes
-    do
-    {
-        // Reset flag
-        changed = false;
-
-        // Fetch the set of candidates
-        labelList checkList;
-
-        if (nAttempts == 0)
-        {
-            checkList = mapCandidates;
-        }
-        else
-        {
-            checkList = checked.toc();
-        }
-
-        forAll(checkList, indexI)
-        {
-            labelList checkEntities;
-
-            if (nAttempts == 0)
-            {
-                checkEntities = labelList(1, checkList[indexI] - offset);
-            }
-            else
-            {
-                checkEntities = oldNeighbourList[checkList[indexI]];
-            }
-
-            forAll(checkEntities, entityI)
-            {
-                label checkEntity = checkEntities[entityI];
-
-                // Skip if this is already
-                // on the checked / skipped list
-                if
-                (
-                    (checked.found(checkEntity)) ||
-                    (skipped.found(checkEntity))
-                )
-                {
-                    continue;
-                }
-
-                bool intersect =
-                (
-                    algorithm.computeIntersection
-                    (
-                        index,
-                        checkEntity + offset,
-                        false
-                    )
-                );
-
-                if (intersect)
-                {
-                    nIntersects++;
-
-                    if (!checked.found(checkEntity))
-                    {
-                        checked.insert(checkEntity);
-                    }
-
-                    changed = true;
-                }
-                else
-                {
-                    // Add to the skipped list
-                    if (!skipped.found(checkEntity))
-                    {
-                        skipped.insert(checkEntity);
-                    }
-                }
-            }
-        }
-
-        if (nAttempts == 0 && !changed)
-        {
-            // Need to setup a rescue mechanism.
-            labelHashSet rescue;
-
-            forAll(mapCandidates, cI)
-            {
-                if (!rescue.found(mapCandidates[cI] - offset))
-                {
-                    rescue.insert(mapCandidates[cI] - offset);
-                }
-            }
-
-            for (label level = 0; level < 10; level++)
-            {
-                labelList initList = rescue.toc();
-
-                forAll(initList, fI)
-                {
-                    const labelList& ff = oldNeighbourList[initList[fI]];
-
-                    forAll(ff, entityI)
-                    {
-                        if (!rescue.found(ff[entityI]))
-                        {
-                            rescue.insert(ff[entityI]);
-                        }
-                    }
-                }
-            }
-
-            labelList finalList = rescue.toc();
-
-            forAll(finalList, entityI)
-            {
-                label checkEntity = finalList[entityI];
-
-                bool intersect =
-                (
-                    algorithm.computeIntersection
-                    (
-                        index,
-                        checkEntity + offset,
-                        false
-                    )
-                );
-
-                if (intersect)
-                {
-                    nIntersects++;
-
-                    if (!checked.found(checkEntity))
-                    {
-                        checked.insert(checkEntity);
-                    }
-
-                    changed = true;
-                    break;
-                }
-            }
-
-            if (!changed)
-            {
-                // No point in continuing further...
-                break;
-            }
-        }
-
-        nAttempts++;
-
-        // Break out if we're taking too long
-        if (nAttempts > 20)
-        {
-            break;
-        }
-
-    } while (changed);
-
-    // Test weights for consistency
-    bool consistent = algorithm.consistent(mTol);
-    bool normByWeights = false;
-
-    if (!consistent)
-    {
-        // Inconsistent weights.
-        switch (algorithm.dimension())
-        {
-            case 2:
-            {
-                // Check whether any edges lie on bounding curves.
-                // These faces can have relaxed weights to account
-                // for addressing into patches on the other side
-                // of the curve.
-                const labelList& fEdges = faceEdges_[index];
-
-                forAll(fEdges, edgeI)
-                {
-                    if (checkBoundingCurve(fEdges[edgeI]))
-                    {
-                        consistent = true;
-                    }
-                }
-
-                break;
-            }
-
-            case 3:
-            {
-                // Check whether any edges lie on boundary patches.
-                // These cells can have relaxed weights to account
-                // for mild convexity.
-                const cell& cellToCheck = cells_[index];
-
-                if (twoDMesh_)
-                {
-                    forAll(parents, cellI)
-                    {
-                        const cell& pCell = polyMesh::cells()[parents[cellI]];
-
-                        forAll(pCell, faceI)
-                        {
-                            const face& pFace = polyMesh::faces()[pCell[faceI]];
-
-                            if (pFace.size() == 3)
-                            {
-                                continue;
-                            }
-
-                            if (boundaryMesh().whichPatch(pCell[faceI]) > -1)
-                            {
-                                consistent = true;
-                                break;
-                            }
-                        }
-
-                        if (consistent)
-                        {
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    forAll(cellToCheck, faceI)
-                    {
-                        const labelList& fE = faceEdges_[cellToCheck[faceI]];
-
-                        forAll(fE, edgeI)
-                        {
-                            if (whichEdgePatch(fE[edgeI]) > -1)
-                            {
-                                consistent = true;
-                                break;
-                            }
-                        }
-
-                        if (consistent)
-                        {
-                            break;
-                        }
-                    }
-                }
-
-                break;
-            }
-        }
-
-        if (consistent)
-        {
-            // Optionally output for post-processing
-            if (debug > 4)
-            {
-                labelList uList = skipped.toc();
-
-                // Renumber to global indices (for faces)
-                forAll(uList, entityI)
-                {
-                    uList[entityI] += offset;
-                }
-
-                label pT = algorithm.dimension();
-
-                // Populate lists
-                algorithm.populateLists(parents, centres, weights);
-
-                writeVTK("n_" + Foam::name(index), index, pT, false, true);
-                writeVTK("m_" + Foam::name(index), parents, pT, true, true);
-                writeVTK("u_" + Foam::name(index), uList, pT, true, true);
-
-                // Write out intersections for post-processing
-                forAll(parents, indexI)
-                {
-                    algorithm.computeIntersection
-                    (
-                        index,
-                        parents[indexI],
-                        true
-                    );
-                }
-            }
-
-            // Normalize by sum of weights instead
-            normByWeights = true;
-        }
-    }
-
-    // Normalize weights
-    algorithm.normalize(normByWeights);
-
-    // Populate lists
-    algorithm.populateLists(parents, centres, weights);
-
-    if (debug > 1)
-    {
-        label pT = algorithm.dimension();
-
-        if (!consistent)
-        {
-            Info<< "*** Inconsistent weights ***" << endl;
-
-            // Write out for post-processing
-            labelList uList = skipped.toc();
-
-            // Renumber to global indices (for faces)
-            forAll(uList, entityI)
-            {
-                uList[entityI] += offset;
-            }
-
-            // Write out intersections for post-processing
-            forAll(parents, indexI)
-            {
-                algorithm.computeIntersection
-                (
-                    index,
-                    parents[indexI],
-                    true
-                );
-            }
-
-            writeVTK("uE_" + Foam::name(index), uList, pT, true, true);
-            writeVTK("oE_" + Foam::name(index), mapCandidates, pT, true, true);
-        }
-
-        if (debug > 2 || !consistent)
-        {
-            writeVTK("nE_" + Foam::name(index), index, pT, false, true);
-            writeVTK("mE_" + Foam::name(index), parents, pT, true, true);
-
-            Info<< nl
-                << " Index: " << index << nl
-                << " Type: " << (pT == 2 ? "Face" : "Cell") << nl
-                << " mapCandidates: " << mapCandidates << nl
-                << " nParents: " << parents.size() << nl
-                << " nAttempts: " << nAttempts << nl
-                << setprecision(15)
-                << " Norm Sum(Weights): " << sum(weights) << nl
-                << " Norm Error: " << mag(1.0 - sum(weights)) << nl
-                << " Parents: " << parents << nl
-                << " Weights: " << weights
-                << endl;
-        }
-    }
-
-    return consistent;
 }
 
 

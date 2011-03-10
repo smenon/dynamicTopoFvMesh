@@ -2340,7 +2340,8 @@ const changeMap dynamicTopoFvMesh::swap23
               + "_beforeSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
-                cellsForRemoval
+                cellsForRemoval,
+                3, false, true
             );
         }
     }
@@ -2869,7 +2870,8 @@ const changeMap dynamicTopoFvMesh::swap23
               + "_afterSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
-                newCellIndex
+                newCellIndex,
+                3, false, true
             );
         }
     }
@@ -3004,7 +3006,8 @@ const changeMap dynamicTopoFvMesh::swap32
               + "_beforeSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
-                cellRemovalList
+                cellRemovalList,
+                3, false, true
             );
         }
     }
@@ -3494,7 +3497,8 @@ const changeMap dynamicTopoFvMesh::swap32
               + "_afterSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
-                newCellIndex
+                newCellIndex,
+                3, false, true
             );
         }
     }

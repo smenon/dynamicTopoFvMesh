@@ -193,9 +193,12 @@ class dynamicTopoFvMesh
         Map<labelList> faceParents_;
         List<scalarField> faceWeights_;
         List<vectorField> faceCentres_;
+        List<Map<labelList> > coupledFaceParents_;
+
         Map<labelList> cellParents_;
         List<scalarField> cellWeights_;
         List<vectorField> cellCentres_;
+        List<Map<labelList> > coupledCellParents_;
 
         // Information for mapPolyMesh
         List<objectMap> pointsFromPoints_;
@@ -310,19 +313,6 @@ class dynamicTopoFvMesh
 
         // Routine to invoke threaded mapping
         void threadedMapping(scalar matchTol, bool skipMapping);
-
-        // Obtain map weighting factors
-        bool computeWeights
-        (
-            const label index,
-            const labelList& mapCandidates,
-            const labelListList& oldNeighbourList,
-            const scalar mTol,
-            const convexSetAlgorithm& algorithm,
-            labelList& parents,
-            scalarField& weights,
-            vectorField& centres
-        ) const;
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();
@@ -940,6 +930,17 @@ class dynamicTopoFvMesh
             PtrList<labelListList>& K,
             PtrList<labelListList>& triangulations
         ) const;
+
+        // Additional mapping contributions for coupled entities
+        void computeCoupledWeights
+        (
+            const label index,
+            const scalar mTol,
+            const label dimension,
+            labelList& parents,
+            scalarField& weights,
+            vectorField& centres
+        );
 
         // Fetch length-scale info for processor entities
         scalar processorLengthScale(const label index) const;

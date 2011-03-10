@@ -4405,25 +4405,44 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
         }
 
-        if (!coupledModification_ && nProcCurves[0] && nProcCurves[1])
+        // Check for procCurves first
+        if (!coupledModification_ && !isSubMesh_)
         {
-            return map;
+            // Bail out for now
+            if (nProcCurves[0] && nProcCurves[1])
+            {
+                return map;
+            }
+
+            if (nProcCurves[0] && !nProcCurves[1])
+            {
+                collapseCase = 1;
+            }
+
+            if (!nProcCurves[0] && nProcCurves[1])
+            {
+                collapseCase = 2;
+            }
         }
 
-        // Pick the point which is connected to more bounding curves
-        if (nBoundCurves[0] > nBoundCurves[1])
+        // If still undecided, choose based on bounding curves
+        if (collapseCase == -1)
         {
-            collapseCase = 1;
-        }
-        else
-        if (nBoundCurves[1] > nBoundCurves[0])
-        {
-            collapseCase = 2;
-        }
-        else
-        {
-            // Bounding edge: collapseEdge can collapse this edge
-            collapseCase = 3;
+            // Pick the point which is connected to more bounding curves
+            if (nBoundCurves[0] > nBoundCurves[1])
+            {
+                collapseCase = 1;
+            }
+            else
+            if (nBoundCurves[1] > nBoundCurves[0])
+            {
+                collapseCase = 2;
+            }
+            else
+            {
+                // Bounding edge: collapseEdge can collapse this edge
+                collapseCase = 3;
+            }
         }
     }
     else

@@ -78,6 +78,216 @@ convexSetAlgorithm::convexSetAlgorithm
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+// Obtain map weighting factors
+void convexSetAlgorithm::computeWeights
+(
+    const label index,
+    const label offset,
+    const labelList& mapCandidates,
+    const labelListList& oldNeighbourList,
+    const scalar mTol,
+    labelList& parents,
+    scalarField& weights,
+    vectorField& centres
+)
+{
+    if (parents.size() || weights.size() || centres.size())
+    {
+        FatalErrorIn
+        (
+            "\n\n"
+            "void convexSetAlgorithm::computeWeights\n"
+            "(\n"
+            "    const label index,\n"
+            "    const label offset,\n"
+            "    const labelList& mapCandidates,\n"
+            "    const labelListList& oldNeighbourList,\n"
+            "    const scalar mTol,\n"
+            "    labelList& parents,\n"
+            "    scalarField& weights,\n"
+            "    vectorField& centres\n"
+            ")\n"
+        )
+            << " Addressing has already been calculated." << nl
+            << " Index: " << index << nl
+            << " Type: " << (dimension() == 2 ? "Face" : "Cell") << nl
+            << " mapCandidates: " << mapCandidates << nl
+            << " Parents: " << parents << nl
+            << " Weights: " << weights << nl
+            << " Centres: " << centres << nl
+            << abort(FatalError);
+    }
+
+    bool changed;
+    label nAttempts = 0, nIntersects = 0;
+
+    // Calculate the algorithm normFactor
+    computeNormFactor(index);
+
+    // Maintain a check-list
+    labelHashSet checked, skipped;
+
+    // Loop and add intersections until nothing changes
+    do
+    {
+        // Reset flag
+        changed = false;
+
+        // Fetch the set of candidates
+        labelList checkList;
+
+        if (nAttempts == 0)
+        {
+            checkList = mapCandidates;
+        }
+        else
+        {
+            checkList = checked.toc();
+        }
+
+        forAll(checkList, indexI)
+        {
+            labelList checkEntities;
+
+            if (nAttempts == 0)
+            {
+                checkEntities = labelList(1, checkList[indexI] - offset);
+            }
+            else
+            {
+                checkEntities = oldNeighbourList[checkList[indexI]];
+            }
+
+            forAll(checkEntities, entityI)
+            {
+                label checkEntity = checkEntities[entityI];
+
+                // Skip if this is already
+                // on the checked / skipped list
+                if
+                (
+                    (checked.found(checkEntity)) ||
+                    (skipped.found(checkEntity))
+                )
+                {
+                    continue;
+                }
+
+                bool intersect =
+                (
+                    computeIntersection
+                    (
+                        index,
+                        checkEntity + offset,
+                        false
+                    )
+                );
+
+                if (intersect)
+                {
+                    nIntersects++;
+
+                    if (!checked.found(checkEntity))
+                    {
+                        checked.insert(checkEntity);
+                    }
+
+                    changed = true;
+                }
+                else
+                {
+                    // Add to the skipped list
+                    if (!skipped.found(checkEntity))
+                    {
+                        skipped.insert(checkEntity);
+                    }
+                }
+            }
+        }
+
+        if (nAttempts == 0 && !changed)
+        {
+            // Need to setup a rescue mechanism.
+            labelHashSet rescue;
+
+            forAll(mapCandidates, cI)
+            {
+                if (!rescue.found(mapCandidates[cI] - offset))
+                {
+                    rescue.insert(mapCandidates[cI] - offset);
+                }
+            }
+
+            for (label level = 0; level < 10; level++)
+            {
+                labelList initList = rescue.toc();
+
+                forAll(initList, fI)
+                {
+                    const labelList& ff = oldNeighbourList[initList[fI]];
+
+                    forAll(ff, entityI)
+                    {
+                        if (!rescue.found(ff[entityI]))
+                        {
+                            rescue.insert(ff[entityI]);
+                        }
+                    }
+                }
+            }
+
+            labelList finalList = rescue.toc();
+
+            forAll(finalList, entityI)
+            {
+                label checkEntity = finalList[entityI];
+
+                bool intersect =
+                (
+                    computeIntersection
+                    (
+                        index,
+                        checkEntity + offset,
+                        false
+                    )
+                );
+
+                if (intersect)
+                {
+                    nIntersects++;
+
+                    if (!checked.found(checkEntity))
+                    {
+                        checked.insert(checkEntity);
+                    }
+
+                    changed = true;
+                    break;
+                }
+            }
+
+            if (!changed)
+            {
+                // No point in continuing further...
+                break;
+            }
+        }
+
+        nAttempts++;
+
+        // Break out if we're taking too long
+        if (nAttempts > 20)
+        {
+            break;
+        }
+
+    } while (changed);
+
+    // Populate lists
+    populateLists(parents, centres, weights);
+}
+
+
 // Output an entity as a VTK file
 void convexSetAlgorithm::writeVTK
 (
