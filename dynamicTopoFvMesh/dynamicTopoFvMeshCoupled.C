@@ -1112,6 +1112,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                     Pout<< nl << nl
                                         << " No direct contact with"
                                         << " processor: " << neiProcNo
+                                        << " so adding to: " << neiProcPatch
                                         << endl;
                                 }
 
@@ -1357,6 +1358,21 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
             }
         }
+
+        // Find index in processor list
+        label pI = findIndex(procIndices_, neiProcNo);
+
+        if (pI == -1)
+        {
+            Pout<< " Could not find index for processor: " << neiProcNo
+                << " in indices: " << procIndices_
+                << abort(FatalError);
+        }
+
+        // Create patch on subMesh
+        dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+        mesh.createProcessorPatch(Pstream::myProcNo());
     }
 
     // Build a list of mapping entities on this processor
@@ -2207,13 +2223,16 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const coupleMap& cMap = recvMeshes_[pI].map();
         dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-        const polyBoundaryMesh& slaveBoundary = mesh.boundaryMesh();
+        if (convertPatchPoints[pI].empty())
+        {
+            continue;
+        }
 
         // Find the appropriate processor patch
         // for patch conversion operations
         label procPatch = -1;
 
-        forAll(slaveBoundary, patchI)
+        for (label patchI = 0; patchI < mesh.nPatches_; patchI++)
         {
             label neiProc = mesh.getNeighbourProcessor(patchI);
 
@@ -2227,8 +2246,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         if (procPatch == -1)
         {
             Pout<< " * * * insertCells() * * * " << nl
-                << " Could not find patch for processor: "
+                << " Could not find patch on slave processor: "
                 << procIndices_[pI] << nl
+                << " convertPatchPoints: " << convertPatchPoints[pI]
                 << abort(FatalError);
         }
 
@@ -6293,19 +6313,54 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
         return -2;
     }
 
-    // Size up procIndices, if necessary
-    label pI = findIndex(procIndices_, proc);
-
-    if (pI == -1)
-    {
-        Pout<< " Could not find index for processor: " << proc
-            << " in indices: " << procIndices_
-            << abort(FatalError);
-    }
-
     // Get the new patch index,
     // and increment the number of patches
     label patchID = nPatches_++;
+
+    // Find index in list of processors
+    label pI = findIndex(procIndices_, proc);
+
+    // Set the new patch index in patchMaps
+    if (isSubMesh_)
+    {
+        if (pI == -1)
+        {
+            pI = procIndices_.size();
+
+            procIndices_.setSize(pI + 1);
+            sendMeshes_.setSize(pI + 1);
+        }
+
+        // Create a basic entry
+        procIndices_[pI] = proc;
+
+        sendMeshes_.set
+        (
+            pI,
+            new coupledInfo
+            (
+                *this,               // Reference to this mesh
+                twoDMesh_,           // 2D or 3D
+                false,               // Not local
+                true,                // Sent to neighbour
+                patchID,             // Patch index
+                proc,                // Master index
+                -1                   // Slave index
+            )
+        );
+    }
+    else
+    {
+        if (pI == -1)
+        {
+            Pout<< " Could not find index for processor: " << proc
+                << " in indices: " << procIndices_
+                << abort(FatalError);
+        }
+
+        sendMeshes_[pI].map().patchIndex() = patchID;
+        recvMeshes_[pI].map().patchIndex() = patchID;
+    }
 
     // Size up patches, and copy old information
     label prevPatchID = patchID - 1;
@@ -6341,14 +6396,11 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
     patchNMeshPoints_.setSize(nPatches_, 0);
     oldPatchNMeshPoints_.setSize(nPatches_, 0);
 
-    // Set the new patch index in patchMaps
-    sendMeshes_[pI].map().patchIndex() = patchID;
-    recvMeshes_[pI].map().patchIndex() = patchID;
-
     if (debug)
     {
         Pout<< " dynamicTopoFvMesh::createProcessorPatch :"
             << " Created new patch for processor: " << proc << nl
+            << " On subMesh: " << Switch::asText(isSubMesh_) << nl
             << " pI: " << pI << nl
             << " patchID: " << patchID << nl
             << " patchStarts: " << patchStarts_ << nl
