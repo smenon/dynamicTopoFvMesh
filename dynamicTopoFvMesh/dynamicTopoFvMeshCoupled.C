@@ -1543,7 +1543,63 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                     if (cMe > -1)
                     {
+                        if (debug > 2)
+                        {
+                            Pout<< " Found master edge: " << cMe
+                                << " :: " << edges_[cMe]
+                                << " for slave edge: " << seIndex
+                                << " :: " << mesh.edges_[seIndex]
+                                << " on proc: " << procIndices_[pI]
+                                << endl;
+                        }
+
                         edgesToInsert[pI][seIndex] = cMe;
+
+                        continue;
+                    }
+
+                    // Check for point-only coupling
+                    const edge& sEdge = mesh.edges_[seIndex];
+
+                    edge cEdge
+                    (
+                        cMap.findMaster(coupleMap::POINT, sEdge[0]),
+                        cMap.findMaster(coupleMap::POINT, sEdge[1])
+                    );
+
+                    if (cEdge[0] > -1 && cEdge[1] > -1)
+                    {
+                        label meIndex = -1;
+
+                        // Look at pointEdges info for a boundary edge
+                        const labelList& pEdges = pointEdges_[cEdge[0]];
+
+                        forAll(pEdges, edgeJ)
+                        {
+                            if (edges_[pEdges[edgeJ]] == cEdge)
+                            {
+                                if (whichEdgePatch(pEdges[edgeJ]) > -1)
+                                {
+                                    meIndex = pEdges[edgeJ];
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (meIndex > -1)
+                        {
+                            if (debug > 2)
+                            {
+                                Pout<< " Found master edge: " << meIndex
+                                    << " :: " << edges_[meIndex]
+                                    << " for slave edge: " << seIndex
+                                    << " :: " << mesh.edges_[seIndex]
+                                    << " on proc: " << procIndices_[pI]
+                                    << endl;
+                            }
+
+                            edgesToInsert[pI][seIndex] = meIndex;
+                        }
                     }
                 }
             }
@@ -6209,12 +6265,11 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 }
             }
         }
-        else
+
+        // Attempt to match other edges in 3D, provided any common ones exist.
+        //  - This will handle point-only coupling situations for edges.
         if (!twoDMesh_)
         {
-            // Not a nearest neighbour. Attempt to match
-            // edges, provided any common ones exist.
-
             // Fetch Maps for this processor
             const Map<label>& edgeMap = cMap.entityMap(coupleMap::EDGE);
             const Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
@@ -6227,14 +6282,14 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 {
                     const label eIndex = pEdges[edgeI];
 
-                    // Skip mapped edges
-                    if (edgeMap.found(eIndex))
+                    // Only pick boundary edges
+                    if (whichEdgePatch(eIndex) == -1)
                     {
                         continue;
                     }
 
-                    // Only pick boundary edges
-                    if (whichEdgePatch(eIndex) == -1)
+                    // Skip mapped edges
+                    if (edgeMap.found(eIndex))
                     {
                         continue;
                     }
@@ -8218,18 +8273,18 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                 // Write out for post-processing
                 forAll(eFaces, faceI)
                 {
-                    label p = whichPatch(eFaces[faceI]);
+                    label fpI = whichPatch(eFaces[faceI]);
 
-                    word pN =
+                    word fpName =
                     (
-                        (p < 0) ?
+                        (fpI < 0) ?
                         word("Internal") :
-                        boundaryMesh()[p].name()
+                        boundaryMesh()[fpI].name()
                     );
 
                     Pout<< " Face:" << eFaces[faceI]
                         << " :: " << faces_[eFaces[faceI]]
-                        << " Patch: " << pN
+                        << " Patch: " << fpName
                         << nl;
                 }
 
@@ -8255,24 +8310,38 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
                         forAll(peF, faceI)
                         {
-                            label p = mesh.whichPatch(peF[faceI]);
+                            label fpI = mesh.whichPatch(peF[faceI]);
 
-                            word pN =
+                            word fpName =
                             (
-                                (p < 0) ?
+                                (fpI < 0) ?
                                 word("Internal") :
-                                mesh.boundaryMesh()[p].name()
+                                mesh.boundaryMesh()[fpI].name()
                             );
 
                             Pout<< " Face:" << peF[faceI]
                                 << " :: " << mesh.faces_[peF[faceI]]
-                                << " Patch: " << pN
+                                << " Patch: " << fpName
                                 << nl;
                         }
 
-                        mesh.writeVTK("eFaces_" + Foam::name(sIndex), peF, 2);
+                        mesh.writeVTK
+                        (
+                            "eFaces_" + Foam::name(sIndex),
+                            peF, 2, false, true
+                        );
                     }
                 }
+
+                // Get edge patch
+                label epI = whichEdgePatch(index);
+
+                word epName =
+                (
+                    (epI < 0) ?
+                    word("Internal") :
+                    boundaryMesh()[epI].name()
+                );
 
                 FatalErrorIn
                 (
@@ -8282,7 +8351,8 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                     << " Expected two physical boundary patches: " << nl
                     << " nBoundary: " << nBoundary
                     << " Master edge: " << index
-                    << " :: " << edges_[index] << nl
+                    << " :: " << edges_[index]
+                    << " Patch: " << epName << nl
                     << abort(FatalError);
             }
 
