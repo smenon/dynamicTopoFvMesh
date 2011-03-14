@@ -56,6 +56,7 @@ namespace Foam
 convexSetAlgorithm::convexSetAlgorithm
 (
     const polyMesh& mesh,
+    const bool isTwoDMesh,
     const pointField& newPoints,
     const UList<edge>& newEdges,
     const UList<face>& newFaces,
@@ -64,7 +65,7 @@ convexSetAlgorithm::convexSetAlgorithm
     const UList<label>& newNeighbour
 )
 :
-    twoDMesh_(mesh.nGeometricD() == 2),
+    twoDMesh_(isTwoDMesh),
     nOldPoints_(mesh.nPoints()),
     mesh_(mesh),
     newPoints_(newPoints),
@@ -87,7 +88,8 @@ void convexSetAlgorithm::computeWeights
     const labelListList& oldNeighbourList,
     labelList& parents,
     scalarField& weights,
-    vectorField& centres
+    vectorField& centres,
+    bool output
 )
 {
     if (parents.size() || weights.size() || centres.size())
@@ -103,7 +105,8 @@ void convexSetAlgorithm::computeWeights
             "    const labelListList& oldNeighbourList,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
-            "    vectorField& centres\n"
+            "    vectorField& centres,\n"
+            "    bool output\n"
             ")\n"
         )
             << " Addressing has already been calculated." << nl
@@ -184,7 +187,7 @@ void convexSetAlgorithm::computeWeights
                         index,
                         checkEntity + offset,
                         offset,
-                        true
+                        output
                     )
                 );
 
@@ -254,7 +257,7 @@ void convexSetAlgorithm::computeWeights
                         index,
                         checkEntity + offset,
                         offset,
-                        false
+                        output
                     )
                 );
 
@@ -288,6 +291,9 @@ void convexSetAlgorithm::computeWeights
         }
 
     } while (changed);
+
+    // Normalize weights
+    normalize(false);
 
     // Populate lists
     populateLists(parents, centres, weights);

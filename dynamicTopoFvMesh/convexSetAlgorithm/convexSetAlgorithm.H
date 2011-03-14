@@ -100,6 +100,7 @@ public:
         convexSetAlgorithm
         (
             const polyMesh& mesh,
+            const bool isTwoDMesh,
             const pointField& newPoints,
             const UList<edge>& newEdges,
             const UList<face>& newFaces,
@@ -156,7 +157,8 @@ public:
             const labelListList& oldNeighbourList,
             labelList& parents,
             scalarField& weights,
-            vectorField& centres
+            vectorField& centres,
+            bool output = false
         );
 
         // Write out connectivity information to disk

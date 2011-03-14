@@ -69,6 +69,7 @@ void dynamicTopoFvMesh::computeMapping
     cellSetAlgorithm cellAlgorithm
     (
         (*this),
+        twoDMesh_,
         oldPoints_,
         edges_,
         faces_,
@@ -138,6 +139,7 @@ void dynamicTopoFvMesh::computeMapping
     faceSetAlgorithm faceAlgorithm
     (
         (*this),
+        twoDMesh_,
         oldPoints_,
         edges_,
         faces_,

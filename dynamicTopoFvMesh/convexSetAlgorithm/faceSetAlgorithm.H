@@ -79,6 +79,7 @@ public:
         faceSetAlgorithm
         (
             const polyMesh& mesh,
+            const bool isTwoDMesh,
             const pointField& newPoints,
             const UList<edge>& newEdges,
             const UList<face>& newFaces,

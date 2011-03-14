@@ -53,6 +53,7 @@ namespace Foam
 cellSetAlgorithm::cellSetAlgorithm
 (
     const polyMesh& mesh,
+    const bool isTwoDMesh,
     const pointField& newPoints,
     const UList<edge>& newEdges,
     const UList<face>& newFaces,
@@ -64,6 +65,7 @@ cellSetAlgorithm::cellSetAlgorithm
     convexSetAlgorithm
     (
         mesh,
+        isTwoDMesh,
         newPoints,
         newEdges,
         newFaces,
