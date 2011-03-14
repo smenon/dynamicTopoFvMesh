@@ -33,7 +33,7 @@ Author
     University of Massachusetts Amherst
     All rights reserved
 
-\*----------------------------------------------------------------------------*/
+\*---------------------------------------------------------------------------*/
 
 #include "IOmanip.H"
 #include "meshOps.H"
@@ -76,7 +76,6 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
     // Information from the old patch
     const label oldPatchSize = mpm_.oldPatchSizes()[patch_.index()];
     const label oldPatchStart = mpm_.oldPatchStarts()[patch_.index()];
-    const label oldPatchEnd = oldPatchStart + oldPatchSize;
 
     // Allocate for inserted face labels and addressing
     label nInsertedFaces = 0;
@@ -144,22 +143,12 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
                 // Make an entry for addressing
                 labelList& addr = insertedAddressing[nInsertedFaces];
 
-                // Renumber addressing to patch.
-                // Also, check mapping for hits into
-                // other patches / internal faces.
+                // Check for illegal addressing
                 addr = fffI.masterObjects();
 
                 forAll(addr, faceI)
                 {
-                    if
-                    (
-                        addr[faceI] >= oldPatchStart
-                     && addr[faceI] < oldPatchEnd
-                    )
-                    {
-                        addr[faceI] -= oldPatchStart;
-                    }
-                    else
+                    if (addr[faceI] < 0 || addr[faceI] >= oldPatchSize)
                     {
                         // Write out for post-processing
                         meshOps::writeVTK
@@ -185,7 +174,6 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
                             << nl << " addr[faceI]: " << addr[faceI]
                             << nl << " oldPatchStart: " << oldPatchStart
                             << nl << " oldPatchSize: " << oldPatchSize
-                            << nl << " oldPatchEnd: " << oldPatchEnd
                             << abort(FatalError);
                     }
                 }
@@ -221,7 +209,10 @@ void topoPatchMapper::calcAddressing() const
     if (direct())
     {
         // Direct mapping - slice to size
-        directAddrPtr_ = new labelList(patch_.patch().patchSlice(mpm_.faceMap()));
+        directAddrPtr_ =
+        (
+            new labelList(patch_.patch().patchSlice(mpm_.faceMap()))
+        );
 
         labelList& addr = *directAddrPtr_;
 

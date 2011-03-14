@@ -98,6 +98,7 @@ bool faceSetAlgorithm::computeIntersection
 (
     const label newIndex,
     const label oldIndex,
+    const label offset,
     bool output
 ) const
 {
@@ -193,7 +194,7 @@ bool faceSetAlgorithm::computeIntersection
             // Normalize and check if this is worth it
             if (mag(totalArea/normFactor_) > SMALL)
             {
-                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList((oldIndex - offset), parents_);
                 meshOps::sizeUpList(totalArea, weights_);
                 meshOps::sizeUpList(totalCentre, centres_);
 
@@ -240,13 +241,38 @@ bool faceSetAlgorithm::computeIntersection
             // Normalize and check if this is worth it
             if (mag(area/normFactor_) > SMALL)
             {
-                // Size-up the internal lists
-                if (!output)
+                if (output)
                 {
-                    meshOps::sizeUpList(oldIndex, parents_);
-                    meshOps::sizeUpList(area, weights_);
-                    meshOps::sizeUpList(centre, centres_);
+                    writeVTK
+                    (
+                        "triIntersectNew_"
+                      + Foam::name(newIndex),
+                        List<FixedList<point, 3> >(1, clippingTri)
+                    );
+
+                    writeVTK
+                    (
+                        "triIntersectOld_"
+                      + Foam::name(newIndex)
+                      + '_'
+                      + Foam::name(oldIndex),
+                        List<FixedList<point, 3> >(1, subjectTri)
+                    );
+
+                    writeVTK
+                    (
+                        "triIntersect_"
+                      + Foam::name(newIndex)
+                      + '_'
+                      + Foam::name(oldIndex),
+                        intersector.getIntersection()
+                    );
                 }
+
+                // Size-up the internal lists
+                meshOps::sizeUpList((oldIndex - offset), parents_);
+                meshOps::sizeUpList(area, weights_);
+                meshOps::sizeUpList(centre, centres_);
             }
             else
             {
@@ -256,6 +282,47 @@ bool faceSetAlgorithm::computeIntersection
     }
 
     return intersects;
+}
+
+
+//- Write out tris as a VTK
+void faceSetAlgorithm::writeVTK
+(
+    const word& name,
+    const List<FixedList<point, 3> >& triList
+) const
+{
+    // Fill up all points
+    label pI = 0;
+
+    List<face> allTris(triList.size(), face(3));
+    pointField allPoints(3 * triList.size());
+
+    forAll(triList, triI)
+    {
+        allTris[triI][0] = pI;
+        allPoints[pI++] = triList[triI][0];
+
+        allTris[triI][1] = pI;
+        allPoints[pI++] = triList[triI][1];
+
+        allTris[triI][2] = pI;
+        allPoints[pI++] = triList[triI][2];
+    }
+
+    // Write out in face-to-node addressing
+    meshOps::writeVTK
+    (
+        mesh_,
+        name,
+        identity(triList.size()),
+        2,
+        allPoints,
+        List<edge>(0),
+        allTris,
+        List<cell>(0),
+        List<label>(0)
+    );
 }
 
 

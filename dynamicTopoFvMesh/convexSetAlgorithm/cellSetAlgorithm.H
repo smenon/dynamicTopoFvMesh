@@ -69,7 +69,7 @@ class cellSetAlgorithm
         void writeVTK
         (
             const word&,
-            const DynamicList<FixedList<point, 4> >&
+            const List<FixedList<point, 4> >&
         ) const;
 
 public:
@@ -108,6 +108,7 @@ public:
         (
             const label newIndex,
             const label oldIndex,
+            const label offset,
             bool output
         ) const;
 };

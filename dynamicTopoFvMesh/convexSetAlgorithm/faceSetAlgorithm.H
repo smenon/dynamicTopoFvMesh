@@ -65,6 +65,13 @@ class faceSetAlgorithm
         //- Disallow default bitwise assignment
         void operator=(const faceSetAlgorithm&);
 
+        //- Write out tris as a VTK
+        void writeVTK
+        (
+            const word&,
+            const List<FixedList<point, 3> >&
+        ) const;
+
 public:
 
     //- Constructor
@@ -101,6 +108,7 @@ public:
         (
             const label newIndex,
             const label oldIndex,
+            const label offset,
             bool output
         ) const;
 };

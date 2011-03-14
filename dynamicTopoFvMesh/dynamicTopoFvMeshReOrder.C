@@ -1771,7 +1771,7 @@ void dynamicTopoFvMesh::reOrderMesh
         checkConnectivity();
     }
 
-    if (threader_->multiThreaded())
+    if (threader_->multiThreaded() && !Pstream::parRun())
     {
         // Initialize multi-threaded reOrdering
         threadedMeshReOrdering

@@ -193,6 +193,12 @@ public:
         //- Fetch cell centres
         const List<vectorField>& cellCentres() const;
 
+        //- Fetch cell offsets
+        const labelList& cellOffsets() const;
+
+        //- Fetch patch offsets
+        const labelListList& patchOffsets() const;
+
         //- Store mesh information for the mapping stage
         void storeMeshInformation() const;
 

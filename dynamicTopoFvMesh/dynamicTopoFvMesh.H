@@ -935,7 +935,6 @@ class dynamicTopoFvMesh
         void computeCoupledWeights
         (
             const label index,
-            const scalar mTol,
             const label dimension,
             labelList& parents,
             scalarField& weights,

@@ -4203,18 +4203,12 @@ bool dynamicTopoFvMesh::resetMesh()
             sendMeshes_.clear();
             recvMeshes_.clear();
 
-            if (threader_->multiThreaded())
-            {
-                threader_->addToWorkQueue
-                (
-                    &initCoupledConnectivity,
-                    this
-                );
-            }
-            else
-            {
-                initCoupledConnectivity(this);
-            }
+            // Clear mapping structures
+            coupledFaceParents_.clear();
+            coupledCellParents_.clear();
+
+            // Re-initialize coupled connectivity
+            initCoupledConnectivity(this);
         }
 
         // Reset statistics

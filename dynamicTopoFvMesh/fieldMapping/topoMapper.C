@@ -221,6 +221,20 @@ const List<vectorField>& topoMapper::cellCentres() const
 }
 
 
+//- Fetch cell offsets
+const labelList& topoMapper::cellOffsets() const
+{
+    return cellOffsets_;
+}
+
+
+//- Fetch patch offsets
+const labelListList& topoMapper::patchOffsets() const
+{
+    return patchOffsets_;
+}
+
+
 //- Store mesh information for the mapping stage
 void topoMapper::storeMeshInformation() const
 {

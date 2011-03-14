@@ -33,7 +33,7 @@ Author
     University of Massachusetts Amherst
     All rights reserved
 
-\*----------------------------------------------------------------------------*/
+\*---------------------------------------------------------------------------*/
 
 #include "dynamicTopoFvMesh.H"
 
@@ -78,8 +78,8 @@ void dynamicTopoFvMesh::computeMapping
     );
 
     label nInconsistencies = 0;
-    List<objectMap> failedCells, failedFaces;
     scalar maxFaceError = 0.0, maxCellError = 0.0;
+    DynamicList<objectMap> failedCells(10), failedFaces(10);
 
     // Compute cell mapping
     for (label cellI = cellStart; cellI < (cellStart + cellSize); cellI++)
@@ -90,7 +90,7 @@ void dynamicTopoFvMesh::computeMapping
         if (skipMapping)
         {
             // Dummy map from cell[0]
-            cellsFromCells_[cellI].masterObjects() = labelList(1, 0);
+            masterObjects = labelList(1, 0);
             cellWeights_[cellI].setSize(1, 1.0);
             cellCentres_[cellI].setSize(1, vector::zero);
         }
@@ -103,7 +103,6 @@ void dynamicTopoFvMesh::computeMapping
                 0,
                 cellParents_[cIndex],
                 polyMesh::cellCells(),
-                matchTol,
                 masterObjects,
                 cellWeights_[cellI],
                 cellCentres_[cellI]
@@ -113,7 +112,6 @@ void dynamicTopoFvMesh::computeMapping
             computeCoupledWeights
             (
                 cIndex,
-                matchTol,
                 cellAlgorithm.dimension(),
                 masterObjects,
                 cellWeights_[cellI],
@@ -129,6 +127,9 @@ void dynamicTopoFvMesh::computeMapping
             if (error > matchTol)
             {
                 nInconsistencies++;
+
+                // Add to list
+                failedCells.append(objectMap(cIndex, cellParents_[cIndex]));
             }
         }
     }
@@ -158,17 +159,15 @@ void dynamicTopoFvMesh::computeMapping
         {
             // Set dummy masters, so that the conventional
             // faceMapper doesn't crash-and-burn
-            facesFromFaces_[faceI].masterObjects() = labelList(1, 0);
+            masterObjects = labelList(1, 0);
 
             continue;
         }
 
         if (skipMapping)
         {
-            // Map from patch[0]
-            labelList mo(1, boundaryMesh()[patchIndex].start());
-
-            facesFromFaces_[faceI].masterObjects() = mo;
+            // Dummy map from patch[0]
+            masterObjects = labelList(1, 0);
             faceWeights_[faceI].setSize(1, 1.0);
             faceCentres_[faceI].setSize(1, vector::zero);
         }
@@ -181,7 +180,6 @@ void dynamicTopoFvMesh::computeMapping
                 boundaryMesh()[patchIndex].start(),
                 faceParents_[fIndex],
                 boundaryMesh()[patchIndex].faceFaces(),
-                matchTol,
                 masterObjects,
                 faceWeights_[faceI],
                 faceCentres_[faceI]
@@ -191,7 +189,6 @@ void dynamicTopoFvMesh::computeMapping
             computeCoupledWeights
             (
                 fIndex,
-                matchTol,
                 faceAlgorithm.dimension(),
                 masterObjects,
                 faceWeights_[faceI],
@@ -207,6 +204,9 @@ void dynamicTopoFvMesh::computeMapping
             if (error > matchTol)
             {
                 nInconsistencies++;
+
+                // Add to list
+                failedFaces.append(objectMap(fIndex, faceParents_[fIndex]));
             }
         }
     }
@@ -217,6 +217,16 @@ void dynamicTopoFvMesh::computeMapping
             << " max cell error: " << maxCellError
             << " max face error: " << maxFaceError
             << endl;
+
+        if (failedCells.size())
+        {
+            Pout<< " failedCells: " << failedCells << endl;
+        }
+
+        if (failedFaces.size())
+        {
+            Pout<< " failedFaces: " << failedFaces << endl;
+        }
 
         if (debug > 1)
         {
@@ -458,7 +468,7 @@ void dynamicTopoFvMesh::setCellMapping
     }
 
     // Update cell-parents information
-    labelHashSet masterCells;
+    DynamicList<label> masterCells(5);
 
     forAll(mapCells, cellI)
     {
@@ -469,7 +479,7 @@ void dynamicTopoFvMesh::setCellMapping
 
         if (mapCells[cellI] < nOldCells_)
         {
-            masterCells.insert(mapCells[cellI]);
+            masterCells.append(mapCells[cellI]);
         }
         else
         if (cellParents_.found(mapCells[cellI]))
@@ -478,12 +488,46 @@ void dynamicTopoFvMesh::setCellMapping
 
             forAll(nParents, cI)
             {
-                masterCells.insert(nParents[cI]);
+                masterCells.append(nParents[cI]);
+            }
+        }
+
+        // Check coupled entries
+        forAll(coupledCellParents_, pI)
+        {
+            // Fetch non-const reference
+            Map<labelList>& parents = coupledCellParents_[pI];
+
+            if (parents.found(mapCells[cellI]))
+            {
+                const labelList& nParents = parents[mapCells[cellI]];
+
+                // Transfer parents for this cell
+                if (parents.found(cIndex))
+                {
+                    forAll(nParents, cI)
+                    {
+                        // Sequentially add any new entries
+                        if (findIndex(parents[cIndex], nParents[cI]) == -1)
+                        {
+                            meshOps::sizeUpList
+                            (
+                                nParents[cI],
+                                parents[cIndex]
+                            );
+                        }
+                    }
+                }
+                else
+                {
+                    // Add entry
+                    parents.insert(cIndex, nParents);
+                }
             }
         }
     }
 
-    cellParents_.set(cIndex, masterCells.toc());
+    cellParents_.set(cIndex, masterCells);
 }
 
 
@@ -600,7 +644,7 @@ void dynamicTopoFvMesh::setFaceMapping
     }
 
     // Update face-parents information
-    labelHashSet masterFaces;
+    DynamicList<label> masterFaces(5);
 
     forAll(mapFaces, faceI)
     {
@@ -611,7 +655,7 @@ void dynamicTopoFvMesh::setFaceMapping
 
         if (mapFaces[faceI] < nOldFaces_)
         {
-            masterFaces.insert(mapFaces[faceI]);
+            masterFaces.append(mapFaces[faceI]);
         }
         else
         if (faceParents_.found(mapFaces[faceI]))
@@ -620,12 +664,46 @@ void dynamicTopoFvMesh::setFaceMapping
 
             forAll(nParents, fI)
             {
-                masterFaces.insert(nParents[fI]);
+                masterFaces.append(nParents[fI]);
+            }
+        }
+
+        // Check coupled entries
+        forAll(coupledFaceParents_, pI)
+        {
+            // Fetch non-const reference
+            Map<labelList>& parents = coupledFaceParents_[pI];
+
+            if (parents.found(mapFaces[faceI]))
+            {
+                const labelList& nParents = parents[mapFaces[faceI]];
+
+                // Transfer parents for this cell
+                if (parents.found(fIndex))
+                {
+                    forAll(nParents, fI)
+                    {
+                        // Sequentially add any new entries
+                        if (findIndex(parents[fIndex], nParents[fI]) == -1)
+                        {
+                            meshOps::sizeUpList
+                            (
+                                nParents[fI],
+                                parents[fIndex]
+                            );
+                        }
+                    }
+                }
+                else
+                {
+                    // Add entry
+                    parents.insert(fIndex, nParents);
+                }
             }
         }
     }
 
-    faceParents_.set(fIndex, masterFaces.toc());
+    faceParents_.set(fIndex, masterFaces);
 }
 
 

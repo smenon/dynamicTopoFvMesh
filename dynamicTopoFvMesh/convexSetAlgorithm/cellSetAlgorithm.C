@@ -102,6 +102,7 @@ bool cellSetAlgorithm::computeIntersection
 (
     const label newIndex,
     const label oldIndex,
+    const label offset,
     bool output
 ) const
 {
@@ -243,7 +244,7 @@ bool cellSetAlgorithm::computeIntersection
             // Normalize and check if this is worth it
             if (mag(totalVolume/normFactor_) > SMALL)
             {
-                meshOps::sizeUpList(oldIndex, parents_);
+                meshOps::sizeUpList((oldIndex - offset), parents_);
                 meshOps::sizeUpList(totalVolume, weights_);
                 meshOps::sizeUpList(totalCentre, centres_);
 
@@ -320,13 +321,38 @@ bool cellSetAlgorithm::computeIntersection
             // Normalize and check if this is worth it
             if (mag(volume/normFactor_) > SMALL)
             {
-                // Size-up the internal lists
-                if (!output)
+                if (output)
                 {
-                    meshOps::sizeUpList(oldIndex, parents_);
-                    meshOps::sizeUpList(volume, weights_);
-                    meshOps::sizeUpList(centre, centres_);
+                    writeVTK
+                    (
+                        "tetIntersectNew_"
+                      + Foam::name(newIndex),
+                        List<FixedList<point, 4> >(1, clippingTet)
+                    );
+
+                    writeVTK
+                    (
+                        "tetIntersectOld_"
+                      + Foam::name(newIndex)
+                      + '_'
+                      + Foam::name(oldIndex),
+                        List<FixedList<point, 4> >(1, subjectTet)
+                    );
+
+                    writeVTK
+                    (
+                        "tetIntersect_"
+                      + Foam::name(newIndex)
+                      + '_'
+                      + Foam::name(oldIndex),
+                        intersector.getIntersection()
+                    );
                 }
+
+                // Size-up the internal lists
+                meshOps::sizeUpList((oldIndex - offset), parents_);
+                meshOps::sizeUpList(volume, weights_);
+                meshOps::sizeUpList(centre, centres_);
             }
             else
             {
@@ -343,7 +369,7 @@ bool cellSetAlgorithm::computeIntersection
 void cellSetAlgorithm::writeVTK
 (
     const word& name,
-    const DynamicList<FixedList<point, 4> >& tetList
+    const List<FixedList<point, 4> >& tetList
 ) const
 {
     // Fill up all points

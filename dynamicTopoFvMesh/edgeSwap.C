@@ -2796,14 +2796,6 @@ const changeMap dynamicTopoFvMesh::swap23
         map.removeCell(cellsForRemoval[cellI]);
     }
 
-    // Fill-in candidate mapping information
-    labelList mC(2, -1);
-
-    forAll(mC, indexI)
-    {
-        mC[indexI] = cellsForRemoval[indexI];
-    }
-
     // Update the cell list with newly configured cells.
     forAll(newCellIndex, cellI)
     {
@@ -2812,12 +2804,12 @@ const changeMap dynamicTopoFvMesh::swap23
         if (cellI == 2)
         {
             // Skip mapping for the intermediate cell.
-            setCellMapping(newCellIndex[cellI], mC, false);
+            setCellMapping(newCellIndex[cellI], hullCells, false);
         }
         else
         {
             // Set the mapping for this cell
-            setCellMapping(newCellIndex[cellI], mC);
+            setCellMapping(newCellIndex[cellI], hullCells);
         }
     }
 
@@ -3417,16 +3409,8 @@ const changeMap dynamicTopoFvMesh::swap32
     {
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
 
-        // Fill-in candidate mapping information
-        labelList mC(cellRemovalList.size(), -1);
-
-        forAll(mC, indexI)
-        {
-            mC[indexI] = cellRemovalList[indexI];
-        }
-
         // Set the mapping for this cell
-        setCellMapping(newCellIndex[cellI], mC);
+        setCellMapping(newCellIndex[cellI], hullCells);
     }
 
     // Set fill-in mapping for two new boundary faces

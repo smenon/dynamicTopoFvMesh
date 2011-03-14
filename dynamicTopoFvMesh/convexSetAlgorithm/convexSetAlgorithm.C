@@ -85,7 +85,6 @@ void convexSetAlgorithm::computeWeights
     const label offset,
     const labelList& mapCandidates,
     const labelListList& oldNeighbourList,
-    const scalar mTol,
     labelList& parents,
     scalarField& weights,
     vectorField& centres
@@ -102,7 +101,6 @@ void convexSetAlgorithm::computeWeights
             "    const label offset,\n"
             "    const labelList& mapCandidates,\n"
             "    const labelListList& oldNeighbourList,\n"
-            "    const scalar mTol,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
             "    vectorField& centres\n"
@@ -116,6 +114,12 @@ void convexSetAlgorithm::computeWeights
             << " Weights: " << weights << nl
             << " Centres: " << centres << nl
             << abort(FatalError);
+    }
+
+    // Do nothing for empty lists
+    if (mapCandidates.empty() || oldNeighbourList.empty())
+    {
+        return;
     }
 
     bool changed;
@@ -179,7 +183,8 @@ void convexSetAlgorithm::computeWeights
                     (
                         index,
                         checkEntity + offset,
-                        false
+                        offset,
+                        true
                     )
                 );
 
@@ -248,6 +253,7 @@ void convexSetAlgorithm::computeWeights
                     (
                         index,
                         checkEntity + offset,
+                        offset,
                         false
                     )
                 );

@@ -33,7 +33,7 @@ Author
     University of Massachusetts Amherst
     All rights reserved
 
-\*----------------------------------------------------------------------------*/
+\*---------------------------------------------------------------------------*/
 
 #include "dynamicTopoFvMesh.H"
 
@@ -463,6 +463,10 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     // Size the PtrLists.
     sendMeshes_.setSize(nTotalProcs);
     recvMeshes_.setSize(nTotalProcs);
+
+    // Size up mapping lists
+    coupledFaceParents_.setSize(nTotalProcs);
+    coupledCellParents_.setSize(nTotalProcs);
 
     // Create send/recv patch meshes, and copy
     // the list of points for each processor.
@@ -1456,6 +1460,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Add this cell to the map.
             map.addCell(cIter(), mapCells);
+
+            // Set basic mapping for this cell
+            setCellMapping(cIter(), mapCells);
+
+            // Set coupled mapping information for this cell
+            coupledCellParents_[pI].insert(cIter(), labelList(1, cIter.key()));
         }
 
         // Push operation for the slave into coupleMap
@@ -2147,13 +2157,11 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             }
 
             // Add this face to the map.
-            if (nPatch == -1 || getNeighbourProcessor(nPatch) > -1)
+            map.addFace(fI());
+
+            if (nPatch > -1 && getNeighbourProcessor(nPatch) == -1)
             {
-                map.addFace(fI());
-            }
-            else
-            {
-                // Select a face to map from
+                // Physical patch. Select a face to map from
                 label mapFace = -1;
 
                 forAll(nFaceEdges, edgeI)
@@ -2182,7 +2190,19 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     }
                 }
 
-                map.addFace(fI(), labelList(1, mapFace));
+                if (mapFace > -1)
+                {
+                    // Set basic mapping for this face
+                    setFaceMapping(fI(), labelList(1, mapFace));
+                }
+
+                // Add slave face for mapping as well
+                coupledFaceParents_[pI].insert(fI(), labelList(1, fI.key()));
+            }
+            else
+            {
+                // Interior / processor face
+                setFaceMapping(fI());
             }
 
             // Update cells
@@ -2232,6 +2252,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Update map
             map.addFace(newFaceIndex, labelList(1, fIndex));
+
+            // Set mapping information
+            setFaceMapping(newFaceIndex);
 
             // Update the owner cell
             meshOps::replaceLabel
@@ -2415,6 +2438,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             // Edges don't have to change, since they're
             // all on the boundary anyway.
             mesh.faceEdges_.append(newFaceEdges);
+
+            // Update map
+            map.addFace(newFaceIndex);
+
+            // Set mapping information
+            setFaceMapping(newFaceIndex);
 
             meshOps::replaceLabel
             (
@@ -2941,18 +2970,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         label patch = whichPatch(mfIndex);
         label neiProc = getNeighbourProcessor(patch);
 
-        if (patch == -1)
-        {
-            // Set default mapping for interior faces
-            setFaceMapping(mfIndex);
-        }
-        else
-        if (neiProc == -1)
-        {
-            // Physical patch
-            setFaceMapping(mfIndex, afList[indexI].masterObjects());
-        }
-
         // Disregard non-processor faces for coupled mapping
         if (neiProc == -1)
         {
@@ -3135,16 +3152,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
             }
         }
-    }
-
-    // Set mapping information for any added cells
-    const List<objectMap>& acList = map.addedCellList();
-
-    forAll(acList, indexI)
-    {
-        label ncIndex = acList[indexI].index();
-
-        setCellMapping(ncIndex, acList[indexI].masterObjects());
     }
 
     // Specify that the operation was successful
@@ -3754,7 +3761,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
     // Set offsets in mapper
     mapper_->setOffsets(cellOffsets, patchOffsets);
 
-    if (debug > 2)
+    if (debug > 3)
     {
         Pout<< " procIndices: " << procIndices_ << nl
             << " nCells: " << nOldCells_ << nl
@@ -8072,14 +8079,166 @@ bool dynamicTopoFvMesh::coupledFillTables
 void dynamicTopoFvMesh::computeCoupledWeights
 (
     const label index,
-    const scalar mTol,
     const label dimension,
     labelList& parents,
     scalarField& weights,
     vectorField& centres
 )
 {
+    // Fetch offsets from mapper
+    const labelList& cOffsets = mapper_->cellOffsets();
+    const labelListList& pOffsets = mapper_->patchOffsets();
 
+    if (dimension == 2)
+    {
+        forAll(coupledFaceParents_, pI)
+        {
+            if (coupledFaceParents_[pI].found(index))
+            {
+                label patchIndex = whichPatch(index);
+
+                // Ensure that the patch is physical
+                if (patchIndex < 0 || patchIndex >= pOffsets.size())
+                {
+                    Pout<< " Face: " << index
+                        << " Patch: " << patchIndex
+                        << " does not belong to a physical patch." << nl
+                        << abort(FatalError);
+                }
+
+                // Fetch reference to subMesh
+                const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+                const labelList& candidates = coupledFaceParents_[pI][index];
+
+                // Prepare lists
+                labelList coupleObjects;
+                scalarField coupleWeights;
+                vectorField coupleCentres;
+
+                // Convex-set algorithm for faces
+                faceSetAlgorithm faceAlgorithm
+                (
+                    mesh,
+                    oldPoints_,
+                    edges_,
+                    faces_,
+                    cells_,
+                    owner_,
+                    neighbour_
+                );
+
+                // Obtain weighting factors for this face.
+                label patchStart = mesh.boundaryMesh()[patchIndex].start();
+
+                faceAlgorithm.computeWeights
+                (
+                    index,
+                    patchStart,
+                    candidates,
+                    mesh.boundaryMesh()[patchIndex].faceFaces(),
+                    coupleObjects,
+                    coupleWeights,
+                    coupleCentres
+                );
+
+                // Add contributions with offsets
+                if (coupleObjects.size())
+                {
+                    label patchOffset = pOffsets[pI][patchIndex];
+
+                    // Resize lists
+                    label oldSize = parents.size();
+
+                    parents.setSize(oldSize + coupleObjects.size());
+                    weights.setSize(oldSize + coupleObjects.size());
+                    centres.setSize(oldSize + coupleObjects.size());
+
+                    forAll(coupleObjects, indexI)
+                    {
+                        parents[indexI + oldSize] =
+                        (
+                            patchOffset + (coupleObjects[indexI] - patchStart)
+                        );
+
+                        weights[indexI + oldSize] = coupleWeights[indexI];
+                        centres[indexI + oldSize] = coupleCentres[indexI];
+                    }
+                }
+            }
+        }
+    }
+    else
+    if (dimension == 3)
+    {
+        forAll(coupledCellParents_, pI)
+        {
+            if (coupledCellParents_[pI].found(index))
+            {
+                // Fetch reference to subMesh
+                const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+                const labelList& candidates = coupledCellParents_[pI][index];
+
+                // Prepare lists
+                labelList coupleObjects;
+                scalarField coupleWeights;
+                vectorField coupleCentres;
+
+                // Convex-set algorithm for cells
+                cellSetAlgorithm cellAlgorithm
+                (
+                    mesh,
+                    oldPoints_,
+                    edges_,
+                    faces_,
+                    cells_,
+                    owner_,
+                    neighbour_
+                );
+
+                // Obtain weighting factors for this cell.
+                cellAlgorithm.computeWeights
+                (
+                    index,
+                    0,
+                    candidates,
+                    mesh.polyMesh::cellCells(),
+                    coupleObjects,
+                    coupleWeights,
+                    coupleCentres
+                );
+
+                // Add contributions with offsets
+                if (coupleObjects.size())
+                {
+                    label cellOffset = cOffsets[pI];
+
+                    // Resize lists
+                    label oldSize = parents.size();
+
+                    parents.setSize(oldSize + coupleObjects.size());
+                    weights.setSize(oldSize + coupleObjects.size());
+                    centres.setSize(oldSize + coupleObjects.size());
+
+                    forAll(coupleObjects, indexI)
+                    {
+                        parents[indexI + oldSize] =
+                        (
+                            cellOffset + coupleObjects[indexI]
+                        );
+
+                        weights[indexI + oldSize] = coupleWeights[indexI];
+                        centres[indexI + oldSize] = coupleCentres[indexI];
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        FatalErrorIn("scalar dynamicTopoFvMesh::computeCoupledWeights()")
+            << " Incorrect dimension: " << dimension << nl
+            << abort(FatalError);
+    }
 }
 
 

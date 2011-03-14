@@ -143,6 +143,7 @@ public:
         (
             const label newIndex,
             const label oldIndex,
+            const label offset,
             bool output
         ) const = 0;
 
@@ -153,7 +154,6 @@ public:
             const label offset,
             const labelList& mapCandidates,
             const labelListList& oldNeighbourList,
-            const scalar mTol,
             labelList& parents,
             scalarField& weights,
             vectorField& centres
