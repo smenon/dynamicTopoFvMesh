@@ -491,7 +491,10 @@ void dynamicTopoFvMesh::setCellMapping
 
             forAll(nParents, cI)
             {
-                masterCells.append(nParents[cI]);
+                if (findIndex(masterCells, nParents[cI]) == -1)
+                {
+                    masterCells.append(nParents[cI]);
+                }
             }
         }
 
@@ -567,7 +570,7 @@ void dynamicTopoFvMesh::setFaceMapping
         Pout<< "Inserting mapping face: " << fIndex
             << " patch: " << pName
             << " mapFaces: " << mapFaces
-            << (neiProc > -1 ? (" neiProc: " + Foam::name(neiProc)) : word())
+            << " neiProc: "  << neiProc
             << endl;
     }
 

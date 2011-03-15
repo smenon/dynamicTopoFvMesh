@@ -759,74 +759,6 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 }
 
 
-// Move coupled patch subMesh points
-void dynamicTopoFvMesh::moveCoupledSubMeshes()
-{
-    if (!Pstream::parRun())
-    {
-        return;
-    }
-
-    if (debug)
-    {
-        Info<< " void dynamicTopoFvMesh::moveCoupledSubMeshes() :"
-            << " Moving points for coupled subMeshes."
-            << endl;
-    }
-
-    forAll(procIndices_, pI)
-    {
-        label proc = procIndices_[pI];
-
-        const coupledInfo& sPM = sendMeshes_[pI];
-        const coupledInfo& rPM = recvMeshes_[pI];
-
-        // Fetch the coupleMap
-        const coupleMap& scMap = sPM.map();
-        const coupleMap& rcMap = rPM.map();
-
-        Map<label>& pointMap = scMap.entityMap(coupleMap::POINT);
-
-        // Fill point buffers
-        pointField& pBuffer = scMap.pointBuffer();
-        pointField& opBuffer = scMap.oldPointBuffer();
-
-        forAllConstIter(Map<label>, pointMap, pIter)
-        {
-            pBuffer[pIter.key()] = points_[pIter()];
-            opBuffer[pIter.key()] = oldPoints_[pIter()];
-        }
-
-        // Buffers have already been allocated
-        // to the right size, so just transfer points
-
-        // Send point buffers to neighbour
-        meshOps::pWrite(proc, scMap.pointBuffer());
-        meshOps::pWrite(proc, scMap.oldPointBuffer());
-
-        // Receive point buffers from neighbour
-        meshOps::pRead(proc, rcMap.pointBuffer());
-        meshOps::pRead(proc, rcMap.oldPointBuffer());
-    }
-
-    // Wait for transfers to complete before moving on
-    meshOps::waitForBuffers();
-
-    // Set points in mesh
-    forAll(procIndices_, pI)
-    {
-        // Fetch non-const reference to patchSubMesh
-        coupledInfo& rPM = recvMeshes_[pI];
-
-        // Fetch the coupleMap
-        const coupleMap& rcMap = rPM.map();
-
-        rPM.subMesh().points_ = rcMap.pointBuffer();
-        rPM.subMesh().oldPoints_ = rcMap.oldPointBuffer();
-    }
-}
-
-
 // Insert the cells around the coupled master entity to the mesh
 // - Returns a changeMap with a type specifying:
 //     1: Insertion was successful
@@ -3659,13 +3591,13 @@ void dynamicTopoFvMesh::handleCoupledPatches
     labelHashSet& entities
 )
 {
+    // Initialize coupled patch connectivity for topology modifications.
+    initCoupledConnectivity(this);
+
     if (patchCoupling_.empty() && procIndices_.empty())
     {
         return;
     }
-
-    // Move coupled subMesh points
-    moveCoupledSubMeshes();
 
     if (debug)
     {
@@ -8082,7 +8014,8 @@ void dynamicTopoFvMesh::computeCoupledWeights
     const label dimension,
     labelList& parents,
     scalarField& weights,
-    vectorField& centres
+    vectorField& centres,
+    bool output
 )
 {
     // Fetch offsets from mapper
@@ -8140,7 +8073,8 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     mesh.boundaryMesh()[patchIndex].faceFaces(),
                     coupleObjects,
                     coupleWeights,
-                    coupleCentres
+                    coupleCentres,
+                    output
                 );
 
                 // Add contributions with offsets
@@ -8207,7 +8141,8 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     mesh.polyMesh::cellCells(),
                     coupleObjects,
                     coupleWeights,
-                    coupleCentres
+                    coupleCentres,
+                    output
                 );
 
                 // Add contributions with offsets

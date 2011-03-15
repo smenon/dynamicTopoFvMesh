@@ -170,9 +170,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Initialize edge-related connectivity structures
     initEdges();
 
-    // Initialize coupled patch connectivity for topology modifications.
-    initCoupledConnectivity(this);
-
     // Load the mesh-motion solver
     loadMotionSolver();
 
@@ -4175,17 +4172,21 @@ bool dynamicTopoFvMesh::resetMesh()
             oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
         }
 
-        // Basic checks for mesh-validity
-        if (debug > 2)
-        {
-            checkMesh(true);
-        }
-
         // Now that all connectivity changes are successful,
         // update coupled maps (in a separate thread, if available).
         if (Pstream::parRun())
         {
-            if (debug)
+            bool checkParBoundaries = false;
+
+            if (meshSubDict.found("checkParBoundaries") || mandatory_)
+            {
+                checkParBoundaries =
+                (
+                    readBool(meshSubDict.lookup("checkParBoundaries"))
+                );
+            }
+
+            if (checkParBoundaries)
             {
                 bool failed = checkParallelBoundaries();
 
@@ -4196,6 +4197,9 @@ bool dynamicTopoFvMesh::resetMesh()
                         << Pstream::myProcNo()
                         << abort(FatalError);
                 }
+
+                // Basic checks for mesh-validity
+                checkMesh(true);
             }
 
             // Clear parallel structures
@@ -4206,9 +4210,12 @@ bool dynamicTopoFvMesh::resetMesh()
             // Clear mapping structures
             coupledFaceParents_.clear();
             coupledCellParents_.clear();
-
-            // Re-initialize coupled connectivity
-            initCoupledConnectivity(this);
+        }
+        else
+        if (debug > 2)
+        {
+            // Basic checks for mesh-validity
+            checkMesh(true);
         }
 
         // Reset statistics
