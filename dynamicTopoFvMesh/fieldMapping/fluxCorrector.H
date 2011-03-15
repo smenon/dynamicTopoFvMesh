@@ -49,8 +49,6 @@ SourceFiles
 namespace Foam
 {
 
-// Forward class declarations
-
 /*---------------------------------------------------------------------------*\
                          Class fluxCorrector Declaration
 \*---------------------------------------------------------------------------*/

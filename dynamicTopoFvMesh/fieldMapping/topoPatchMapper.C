@@ -698,55 +698,6 @@ const labelListList& topoPatchMapper::insertedFaceAddressing() const
 }
 
 
-//- Map the patch field
-template <class Type>
-void topoPatchMapper::mapPatchField
-(
-    const word& fieldName,
-    Field<Type>& pF
-) const
-{
-    // Specify that mapping is conservative
-    conservative_ = true;
-
-    // Compute the integral of the source field
-    Type intSource = pTraits<Type>::zero;
-    Type intTarget = pTraits<Type>::zero;
-
-    if (pF.size())
-    {
-        intSource = sum(pF * tMapper_.patchAreas(patch_.index()));
-    }
-
-    // Map patchField onto itself
-    pF.autoMap(*this);
-
-    // Compute the integral of the target field
-    const polyPatch& ppI = mpm_.mesh().boundaryMesh()[patch_.index()];
-
-    if (pF.size())
-    {
-        intTarget = sum(pF * mag(ppI.faceAreas()));
-    }
-
-    if (polyMesh::debug)
-    {
-        int oldP = Info().precision();
-
-        // Compare the global integral
-        Pout<< " Field : " << fieldName
-            << " Patch : " << ppI.name()
-            << " integral errors : " << setprecision(10)
-            << " source : " << mag(intSource)
-            << " target : " << mag(intTarget)
-            << " norm : "
-            << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
-            << setprecision(oldP)
-            << endl;
-    }
-}
-
-
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 void topoPatchMapper::operator=(const topoPatchMapper& rhs)

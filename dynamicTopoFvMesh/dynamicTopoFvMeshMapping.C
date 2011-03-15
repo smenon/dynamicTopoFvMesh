@@ -155,9 +155,10 @@ void dynamicTopoFvMesh::computeMapping
         labelList& masterObjects = facesFromFaces_[faceI].masterObjects();
 
         label patchIndex = whichPatch(fIndex);
+        label neiProc = getNeighbourProcessor(patchIndex);
 
-        // Skip mapping for internal faces.
-        if (patchIndex == -1)
+        // Skip mapping for internal / processor faces.
+        if (patchIndex == -1 || neiProc > -1)
         {
             // Set dummy masters, so that the conventional
             // faceMapper doesn't crash-and-burn
@@ -541,6 +542,7 @@ void dynamicTopoFvMesh::setFaceMapping
 )
 {
     label patch = whichPatch(fIndex);
+    label neiProc = getNeighbourProcessor(patch);
 
     if (debug > 3)
     {
@@ -565,6 +567,7 @@ void dynamicTopoFvMesh::setFaceMapping
         Pout<< "Inserting mapping face: " << fIndex
             << " patch: " << pName
             << " mapFaces: " << mapFaces
+            << (neiProc > -1 ? (" neiProc: " + Foam::name(neiProc)) : word())
             << endl;
     }
 
@@ -577,14 +580,10 @@ void dynamicTopoFvMesh::setFaceMapping
         foundError = true;
     }
 
-    // Check to ensure that mapFaces is non-empty
-    if (patch > -1 && mapFaces.empty())
+    // Check to ensure that mapFaces is non-empty for physical patches
+    if (patch > -1 && mapFaces.empty() && neiProc == -1)
     {
-        // Is this a non-processor patch?
-        if (getNeighbourProcessor(patch) == -1)
-        {
-            foundError = true;
-        }
+        foundError = true;
     }
 
     if (foundError)
@@ -639,8 +638,8 @@ void dynamicTopoFvMesh::setFaceMapping
         facesFromFaces_[index].masterObjects() = labelList(0);
     }
 
-    // For internal faces, set dummy maps / weights, and bail out
-    if (patch == -1)
+    // For internal / processor faces, bail out
+    if (patch == -1 || neiProc > -1)
     {
         return;
     }

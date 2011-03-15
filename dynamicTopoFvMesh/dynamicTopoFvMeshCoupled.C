@@ -8098,11 +8098,12 @@ void dynamicTopoFvMesh::computeCoupledWeights
                 label patchIndex = whichPatch(index);
 
                 // Ensure that the patch is physical
-                if (patchIndex < 0 || patchIndex >= pOffsets.size())
+                if (patchIndex < 0 || patchIndex >= pOffsets[pI].size())
                 {
                     Pout<< " Face: " << index
                         << " Patch: " << patchIndex
                         << " does not belong to a physical patch." << nl
+                        << " nPhysicalPatches: " << pOffsets[pI].size()
                         << abort(FatalError);
                 }
 

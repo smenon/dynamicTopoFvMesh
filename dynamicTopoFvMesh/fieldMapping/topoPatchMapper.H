@@ -44,16 +44,13 @@ SourceFiles
 #define topoPatchMapper_H
 
 #include "vectorList.H"
-#include "morphFieldMapper.H"
+#include "topoMapper.H"
+#include "fvPatchFieldMapper.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-
-// Class forward declarations
-class topoMapper;
-class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
                     Class topoPatchMapper Declaration
@@ -199,6 +196,12 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifdef NoRepository
+#   include "topoPatchMapperTemplates.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

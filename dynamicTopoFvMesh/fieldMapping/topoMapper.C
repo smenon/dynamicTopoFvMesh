@@ -109,6 +109,27 @@ void topoMapper::storeGeometry() const
     }
 }
 
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+//- Construct from mesh and dictionary
+topoMapper::topoMapper
+(
+    const fvMesh& mesh,
+    const dictionary& dict
+)
+:
+    mesh_(mesh),
+    dict_(dict),
+    cellMap_(NULL),
+    surfaceMap_(NULL),
+    boundaryMap_(NULL),
+    fluxCorrector_(fluxCorrector::New(mesh, dict)),
+    cellVolumesPtr_(NULL),
+    cellCentresPtr_(NULL),
+    patchAreasPtr_(mesh.boundary().size()),
+    patchCentresPtr_(mesh.boundary().size())
+{}
+
 
 // * * * * * * * * * * * * * * * * Destructor * * * * * * * * * * * * * * *  //
 

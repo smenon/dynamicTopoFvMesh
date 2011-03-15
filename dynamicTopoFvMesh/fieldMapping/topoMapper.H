@@ -43,16 +43,19 @@ SourceFiles
 #define topoMapper_H
 
 #include "autoPtr.H"
+#include "IOmanip.H"
 #include "volFields.H"
-#include "fluxCorrector.H"
-#include "topoCellMapper.H"
-#include "topoSurfaceMapper.H"
-#include "topoBoundaryMeshMapper.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
+
+// Class forward declarations
+class fluxCorrector;
+class topoCellMapper;
+class topoSurfaceMapper;
+class topoBoundaryMeshMapper;
 
 /*---------------------------------------------------------------------------*\
                          Class topoMapper Declaration
@@ -131,19 +134,7 @@ public:
     // Constructors
 
         //- Construct from mesh and dictionary
-        topoMapper(const fvMesh& mesh, const dictionary& dict)
-        :
-            mesh_(mesh),
-            dict_(dict),
-            cellMap_(NULL),
-            surfaceMap_(NULL),
-            boundaryMap_(NULL),
-            fluxCorrector_(fluxCorrector::New(mesh, dict)),
-            cellVolumesPtr_(NULL),
-            cellCentresPtr_(NULL),
-            patchAreasPtr_(mesh.boundary().size()),
-            patchCentresPtr_(mesh.boundary().size())
-        {}
+        topoMapper(const fvMesh& mesh, const dictionary& dict);
 
     // Destructor
 

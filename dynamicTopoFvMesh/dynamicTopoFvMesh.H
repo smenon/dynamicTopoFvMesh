@@ -51,6 +51,7 @@ SourceFiles
 
 #include "Switch.H"
 #include "tetMetric.H"
+#include "topoMapper.H"
 #include "DynamicField.H"
 #include "threadHandler.H"
 #include "dynamicFvMesh.H"
@@ -65,9 +66,8 @@ class eMesh;
 class Stack;
 class changeMap;
 class objectMap;
-class topoMapper;
-class motionSolver;
 class coupledInfo;
+class motionSolver;
 class convexSetAlgorithm;
 class lengthScaleEstimator;
 

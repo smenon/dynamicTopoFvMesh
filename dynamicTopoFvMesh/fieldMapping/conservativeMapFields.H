@@ -25,6 +25,9 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "topoMapper.H"
+#include "topoCellMapper.H"
+#include "topoSurfaceMapper.H"
+#include "topoBoundaryMeshMapper.H"
 
 namespace Foam
 {
