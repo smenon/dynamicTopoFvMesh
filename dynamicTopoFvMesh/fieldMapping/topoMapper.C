@@ -40,6 +40,7 @@ Author
 #include "topoCellMapper.H"
 #include "topoSurfaceMapper.H"
 #include "topoBoundaryMeshMapper.H"
+#include "fixedValueFvPatchFields.H"
 
 namespace Foam
 {
@@ -63,50 +64,58 @@ void topoMapper::storeGradients() const
 //- Store geometric information
 void topoMapper::storeGeometry() const
 {
-    if (cellCentresPtr_)
+    // Wipe out existing information
+    deleteDemandDrivenData(cellCentresPtr_);
+
+    vectorField Cv(mesh_.cellCentres());
+    vectorField Cf(mesh_.faceCentres());
+
+    // Create and map the patch field values
+    label nPatches = mesh_.boundary().size();
+
+    // Create field parts
+    PtrList<fvPatchField<vector> > volCentrePatches(nPatches);
+
+    // Over-ride and set all patches to fixedValue
+    for (label patchI = 0; patchI < nPatches; patchI++)
     {
-        deleteDemandDrivenData(cellVolumesPtr_);
-        deleteDemandDrivenData(cellCentresPtr_);
+        volCentrePatches.set
+        (
+            patchI,
+            new fixedValueFvPatchField<vector>
+            (
+                mesh_.boundary()[patchI],
+                DimensionedField<vector, volMesh>::null()
+            )
+        );
 
-        patchAreasPtr_.clear();
-        patchCentresPtr_.clear();
+        // Slice field to patch (forced assignment)
+        volCentrePatches[patchI] ==
+        (
+            mesh_.boundaryMesh()[patchI].patchSlice(Cf)
+        );
     }
-
-    // Set the cell-volumes pointer.
-    cellVolumesPtr_ = new scalarField(mesh_.cellVolumes());
 
     // Set the cell-centres pointer.
-    cellCentresPtr_ = new vectorField(mesh_.cellCentres());
-
-    // Set patch-areas
-    patchAreasPtr_.setSize(mesh_.boundaryMesh().size());
-
-    forAll(mesh_.boundaryMesh(), patchI)
-    {
-        patchAreasPtr_.set
+    cellCentresPtr_ =
+    (
+        new volVectorField
         (
-            patchI,
-            new scalarField
+            IOobject
             (
-                mag(mesh_.boundaryMesh()[patchI].faceAreas())
-            )
-        );
-    }
-
-    // Set patch-centres.
-    patchCentresPtr_.setSize(mesh_.boundaryMesh().size());
-
-    forAll(mesh_.boundaryMesh(), patchI)
-    {
-        patchCentresPtr_.set
-        (
-            patchI,
-            new vectorField
-            (
-                mesh_.boundaryMesh()[patchI].faceCentres()
-            )
-        );
-    }
+                "cellCentres",
+                mesh_.time().timeName(),
+                mesh_,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            mesh_,
+            dimLength,
+            SubField<vector>(Cv, mesh_.nCells()),
+            volCentrePatches
+        )
+    );
 }
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -124,10 +133,7 @@ topoMapper::topoMapper
     surfaceMap_(NULL),
     boundaryMap_(NULL),
     fluxCorrector_(fluxCorrector::New(mesh, dict)),
-    cellVolumesPtr_(NULL),
-    cellCentresPtr_(NULL),
-    patchAreasPtr_(mesh.boundary().size()),
-    patchCentresPtr_(mesh.boundary().size())
+    cellCentresPtr_(NULL)
 {}
 
 
@@ -205,12 +211,16 @@ void topoMapper::setCellWeights
 //- Set cell / patch offset information
 void topoMapper::setOffsets
 (
-    const labelList& cellOffsets,
-    const labelListList& patchOffsets
+    const labelList& cellSizes,
+    const labelList& cellStarts,
+    const labelListList& patchSizes,
+    const labelListList& patchStarts
 ) const
 {
-    cellOffsets_ = cellOffsets;
-    patchOffsets_ = patchOffsets;
+    cellSizes_ = cellSizes;
+    cellStarts_ = cellStarts;
+    patchSizes_ = patchSizes;
+    patchStarts_ = patchStarts;
 }
 
 
@@ -242,17 +252,31 @@ const List<vectorField>& topoMapper::cellCentres() const
 }
 
 
-//- Fetch cell offsets
-const labelList& topoMapper::cellOffsets() const
+//- Fetch cell sizes
+const labelList& topoMapper::cellSizes() const
 {
-    return cellOffsets_;
+    return cellSizes_;
 }
 
 
-//- Fetch patch offsets
-const labelListList& topoMapper::patchOffsets() const
+//- Fetch patch sizes
+const labelListList& topoMapper::patchSizes() const
 {
-    return patchOffsets_;
+    return patchSizes_;
+}
+
+
+//- Fetch cell starts
+const labelList& topoMapper::cellStarts() const
+{
+    return cellStarts_;
+}
+
+
+//- Fetch patch starts
+const labelListList& topoMapper::patchStarts() const
+{
+    return patchStarts_;
 }
 
 
@@ -266,20 +290,19 @@ void topoMapper::storeMeshInformation() const
     storeGeometry();
 }
 
-
-//- Return stored cell volume information
-const scalarField& topoMapper::cellVolumes() const
+//- Return non-const access to cell centres
+volVectorField& topoMapper::volCentres() const
 {
-    if (!cellVolumesPtr_)
+    if (!cellCentresPtr_)
     {
         FatalErrorIn
         (
-            "const scalarField& topoMapper::cellVolumes()"
+            "const vectorField& topoMapper::volCentres() const"
         ) << nl << " Pointer has not been set. "
           << abort(FatalError);
     }
 
-    return *cellVolumesPtr_;
+    return *cellCentresPtr_;
 }
 
 
@@ -290,7 +313,7 @@ const vectorField& topoMapper::internalCentres() const
     {
         FatalErrorIn
         (
-            "const vectorField& topoMapper::internalCentres()"
+            "const vectorField& topoMapper::internalCentres() const"
         ) << nl << " Pointer has not been set. "
           << abort(FatalError);
     }
@@ -299,37 +322,20 @@ const vectorField& topoMapper::internalCentres() const
 }
 
 
-//- Return stored patch areas information
-const scalarField& topoMapper::patchAreas(const label i) const
-{
-    if (!patchAreasPtr_.set(i))
-    {
-        FatalErrorIn
-        (
-            "const scalarField& topoMapper::patchAreas"
-            "(const label i) const"
-        ) << nl << " Pointer has not been set at index: " << i
-          << abort(FatalError);
-    }
-
-    return patchAreasPtr_[i];
-}
-
-
 //- Return stored patch centre information
 const vectorField& topoMapper::patchCentres(const label i) const
 {
-    if (!patchCentresPtr_.set(i))
+    if (!cellCentresPtr_)
     {
         FatalErrorIn
         (
             "const vectorField& topoMapper::patchCentres"
             "(const label i) const"
-        ) << nl << " Pointer has not been set at index: " << i
+        ) << nl << " Pointer has not been set. index: " << i
           << abort(FatalError);
     }
 
-    return patchCentresPtr_[i];
+    return (*cellCentresPtr_).boundaryField()[i];
 }
 
 
@@ -407,7 +413,7 @@ const topoCellMapper& topoMapper::volMap() const
     {
         FatalErrorIn
         (
-            "const topoCellMapper& topoMapper::volMap()"
+            "const topoCellMapper& topoMapper::volMap() const"
         ) << nl << " Volume mapper has not been set. "
           << abort(FatalError);
     }
@@ -423,7 +429,7 @@ const topoSurfaceMapper& topoMapper::surfaceMap() const
     {
         FatalErrorIn
         (
-            "const topoSurfaceMapper& topoMapper::surfaceMap()"
+            "const topoSurfaceMapper& topoMapper::surfaceMap() const"
         ) << nl << " Surface mapper has not been set. "
           << abort(FatalError);
     }
@@ -439,7 +445,7 @@ const topoBoundaryMeshMapper& topoMapper::boundaryMap() const
     {
         FatalErrorIn
         (
-            "const topoBoundaryMeshMapper& topoMapper::boundaryMap()"
+            "const topoBoundaryMeshMapper& topoMapper::boundaryMap() const"
         ) << nl << " Boundary mapper has not been set. "
           << abort(FatalError);
     }
@@ -455,7 +461,7 @@ const fluxCorrector& topoMapper::surfaceFluxCorrector() const
     {
         FatalErrorIn
         (
-            "const fluxCorrector& topoMapper::surfaceFluxCorrector()"
+            "const fluxCorrector& topoMapper::surfaceFluxCorrector() const"
         ) << nl << " fluxCorrector has not been set. "
           << abort(FatalError);
     }
@@ -477,10 +483,7 @@ void topoMapper::clear() const
     vGrads_.clear();
 
     // Wipe out geomtry information
-    deleteDemandDrivenData(cellVolumesPtr_);
     deleteDemandDrivenData(cellCentresPtr_);
-    patchAreasPtr_.clear();
-    patchCentresPtr_.clear();
 
     // Clear maps
     faceWeights_.clear();

@@ -362,7 +362,21 @@ label topoCellMapper::size() const
 //- Return size before mapping
 label topoCellMapper::sizeBeforeMapping() const
 {
-    return mpm_.nOldCells();
+    // Fetch offset sizes from topoMapper
+    const labelList& sizes = tMapper_.cellSizes();
+
+    label totalSize = mpm_.nOldCells();
+
+    // Add offset sizes
+    if (sizes.size())
+    {
+        forAll(sizes, pI)
+        {
+            totalSize += sizes[pI];
+        }
+    }
+
+    return totalSize;
 }
 
 

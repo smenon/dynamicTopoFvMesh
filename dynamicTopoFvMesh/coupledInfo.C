@@ -29,6 +29,7 @@ License
 #include "dynamicTopoFvMesh.H"
 #include "emptyFvPatchFields.H"
 #include "emptyFvsPatchFields.H"
+#include "fixedValueFvPatchFields.H"
 
 namespace Foam
 {
@@ -200,6 +201,68 @@ label coupledInfo::masterFaceZone() const
 label coupledInfo::slaveFaceZone() const
 {
     return slaveFaceZone_;
+}
+
+
+// Set subMesh centres
+void coupledInfo::setCentres(PtrList<volVectorField>& centres) const
+{
+    // Fetch reference to subMesh
+    const dynamicTopoFvMesh& mesh = subMesh();
+
+    // Set size
+    centres.setSize(1);
+
+    vectorField Cv(mesh.cellCentres());
+    vectorField Cf(mesh.faceCentres());
+
+    // Create and map the patch field values
+    label nPatches = mesh.boundary().size();
+
+    // Create field parts
+    PtrList<fvPatchField<vector> > volCentrePatches(nPatches);
+
+    // Over-ride and set all patches to fixedValue
+    for (label patchI = 0; patchI < nPatches; patchI++)
+    {
+        volCentrePatches.set
+        (
+            patchI,
+            new fixedValueFvPatchField<vector>
+            (
+                mesh.boundary()[patchI],
+                DimensionedField<vector, volMesh>::null()
+            )
+        );
+
+        // Slice field to patch (forced assignment)
+        volCentrePatches[patchI] ==
+        (
+            mesh.boundaryMesh()[patchI].patchSlice(Cf)
+        );
+    }
+
+    // Set the cell-centres pointer.
+    centres.set
+    (
+        0,
+        new volVectorField
+        (
+            IOobject
+            (
+                "cellCentres",
+                mesh.time().timeName(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            mesh,
+            dimLength,
+            SubField<vector>(Cv, mesh.nCells()),
+            volCentrePatches
+        )
+    );
 }
 
 

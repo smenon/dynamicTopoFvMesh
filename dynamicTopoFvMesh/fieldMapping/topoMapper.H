@@ -90,10 +90,7 @@ class topoMapper
         mutable HashTable<autoPtr<volTensorField> > vGrads_;
 
         //- Geometric information on the old mesh
-        mutable scalarField* cellVolumesPtr_;
-        mutable vectorField* cellCentresPtr_;
-        mutable PtrList<scalarField> patchAreasPtr_;
-        mutable PtrList<vectorField> patchCentresPtr_;
+        mutable volVectorField* cellCentresPtr_;
 
         //- Intersection volume weights
         mutable List<scalarField> faceWeights_;
@@ -103,9 +100,11 @@ class topoMapper
         mutable List<vectorField> faceCentres_;
         mutable List<vectorField> cellCentres_;
 
-        //- Offsets
-        mutable labelList cellOffsets_;
-        mutable labelListList patchOffsets_;
+        //- Sizes / starts for mapping
+        mutable labelList cellSizes_;
+        mutable labelList cellStarts_;
+        mutable labelListList patchSizes_;
+        mutable labelListList patchStarts_;
 
     // Private Member Functions
 
@@ -168,7 +167,9 @@ public:
         //- Set cell / patch offset information
         void setOffsets
         (
+            const labelList& cellSizes,
             const labelList& cellOffsets,
+            const labelListList& patchSizes,
             const labelListList& patchOffsets
         ) const;
 
@@ -184,23 +185,26 @@ public:
         //- Fetch cell centres
         const List<vectorField>& cellCentres() const;
 
-        //- Fetch cell offsets
-        const labelList& cellOffsets() const;
+        //- Fetch cell sizes
+        const labelList& cellSizes() const;
 
-        //- Fetch patch offsets
-        const labelListList& patchOffsets() const;
+        //- Fetch patch sizes
+        const labelListList& patchSizes() const;
+
+        //- Fetch cell starts
+        const labelList& cellStarts() const;
+
+        //- Fetch patch starts
+        const labelListList& patchStarts() const;
 
         //- Store mesh information for the mapping stage
         void storeMeshInformation() const;
 
-        //- Return stored cell volume information
-        const scalarField& cellVolumes() const;
+        //- Return non-const access to cell centres
+        volVectorField& volCentres() const;
 
         //- Return stored cell centre information
         const vectorField& internalCentres() const;
-
-        //- Return stored patch area information
-        const scalarField& patchAreas(const label i) const;
 
         //- Return stored patch centre information
         const vectorField& patchCentres(const label i) const;

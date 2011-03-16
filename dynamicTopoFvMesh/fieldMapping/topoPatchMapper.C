@@ -568,7 +568,22 @@ label topoPatchMapper::sizeBeforeMapping() const
         return 0;
     }
 
-    return mpm_.oldPatchSizes()[patch_.index()];
+    // Fetch offset sizes from topoMapper
+    const labelListList& sizes = tMapper_.patchSizes();
+
+    label patchIndex = patch_.index();
+    label totalSize = mpm_.oldPatchSizes()[patchIndex];
+
+    // Add offset sizes
+    if (sizes.size())
+    {
+        forAll(sizes, pI)
+        {
+            totalSize += sizes[pI][patchIndex];
+        }
+    }
+
+    return totalSize;
 }
 
 

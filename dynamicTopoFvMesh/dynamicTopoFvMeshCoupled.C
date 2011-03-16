@@ -3638,7 +3638,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
     const polyBoundaryMesh& boundary = boundaryMesh();
 
     // Determine number of physical (non-processor) patches
-    label nPhysical = 0;
+    label nPhys = 0;
 
     forAll(boundary, patchI)
     {
@@ -3647,28 +3647,30 @@ void dynamicTopoFvMesh::handleCoupledPatches
             continue;
         }
 
-        nPhysical++;
+        nPhys++;
     }
 
     // Fetch number of processors
     label nProcs = procIndices_.size();
 
     // Allocate cell and patch offsets
-    labelList cellOffsets(nProcs, 0);
-    labelListList patchOffsets(nProcs, labelList(nPhysical, 0));
+    labelList cellSizes(nProcs, 0), cellStarts(nProcs, 0);
+    labelListList patchSizes(nProcs, labelList(nPhys, 0));
+    labelListList patchStarts(nProcs, labelList(nPhys, 0));
 
     label nTotalCells = nOldCells_;
-    labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhysical));
+    labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhys));
 
     forAll(procIndices_, pI)
     {
         const coupleMap& cMap = recvMeshes_[pI].map();
 
-        // Set cell-offset for this processor
-        cellOffsets[pI] = nTotalCells;
-
         // Fetch cell size from subMesh
         label nCells = cMap.nEntities(coupleMap::CELL);
+
+        // Set cell size / offset for this processor
+        cellSizes[pI] = nCells;
+        cellStarts[pI] = nTotalCells;
 
         // Update cell count
         nTotalCells += nCells;
@@ -3679,28 +3681,36 @@ void dynamicTopoFvMesh::handleCoupledPatches
         // Loop over physical patches
         forAll(nTotalPatchFaces, patchI)
         {
-            // Set patch-offsets for this processor
-            patchOffsets[pI][patchI] = nTotalPatchFaces[patchI];
-
             // Fetch patch size from subMesh
             label nFaces = nPatchFaces[patchI];
+
+            // Set patch size / offset for this processor
+            patchSizes[pI][patchI] = nFaces;
+            patchStarts[pI][patchI] = nTotalPatchFaces[patchI];
 
             // Update patch count
             nTotalPatchFaces[patchI] += nFaces;
         }
     }
 
-    // Set offsets in mapper
-    mapper_->setOffsets(cellOffsets, patchOffsets);
+    // Set sizes / starts in mapper
+    mapper_->setOffsets
+    (
+        cellSizes,
+        cellStarts,
+        patchSizes,
+        patchStarts
+    );
 
     if (debug > 3)
     {
         Pout<< " procIndices: " << procIndices_ << nl
             << " nCells: " << nOldCells_ << nl
-            << " cellOffsets: " << cellOffsets << nl
-            << " patchSizes: "
-            << SubList<label>(oldPatchSizes_, nPhysical) << nl
-            << " patchOffsets: " << patchOffsets << endl;
+            << " proc cellSizes: " << cellSizes << nl
+            << " cellStarts: " << cellStarts << nl
+            << " patchSizes: " << SubList<label>(oldPatchSizes_, nPhys) << nl
+            << " proc patchSizes: " << patchSizes << nl
+            << " patchStarts: " << patchStarts << endl;
     }
 
     // Set coupled modifications.
@@ -6818,20 +6828,28 @@ void dynamicTopoFvMesh::syncFieldTransfers
     PtrList<IStringStream> stream(nProcs);
 
     // Size up field PtrLists
+
+    // Volume Fields
     List<PtrList<volScalarField> > vsF(nProcs);
     List<PtrList<volVectorField> > vvF(nProcs);
     List<PtrList<volSphericalTensorField> > vsptF(nProcs);
     List<PtrList<volSymmTensorField> > vsytF(nProcs);
     List<PtrList<volTensorField> > vtF(nProcs);
 
+    // Surface fields
     List<PtrList<surfaceScalarField> > ssF(nProcs);
     List<PtrList<surfaceVectorField> > svF(nProcs);
     List<PtrList<surfaceSphericalTensorField> > ssptF(nProcs);
     List<PtrList<surfaceSymmTensorField> > ssytF(nProcs);
     List<PtrList<surfaceTensorField> > stF(nProcs);
 
+    // Gradients
     List<PtrList<volVectorField> > vgsF(nProcs);
     List<PtrList<volTensorField> > vgvF(nProcs);
+
+    // Geometry
+    List<PtrList<volVectorField> > vC(nProcs);
+    List<PtrList<surfaceScalarField> > sSf(nProcs);
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -6849,11 +6867,11 @@ void dynamicTopoFvMesh::syncFieldTransfers
     }
 
     // Keep track of extra / total entities
-    label nTotalCells = nOldCells_;
+    label nTotalCells = nOldCells_, nTotalIntFaces = nOldInternalFaces_;
     labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhysical));
 
     // Allocate reverse maps
-    List<labelList> irMaps(nProcs);
+    List<labelList> irvMaps(nProcs), irsMaps(nProcs);
     List<labelListList> brMaps(nProcs, labelListList(nPhysical));
 
     forAll(procIndices_, pI)
@@ -6885,17 +6903,23 @@ void dynamicTopoFvMesh::syncFieldTransfers
         cInfo.setField(names[10], dict.subDict(types[10]), vgsF[pI]);
         cInfo.setField(names[11], dict.subDict(types[11]), vgvF[pI]);
 
+        // Set centres
+        cInfo.setCentres(vC[pI]);
+
         // Count the number of additional entities
         const coupleMap& cMap = cInfo.map();
 
-        // Fetch cell size from subMesh
+        // Fetch size from subMesh
         label nCells = cMap.nEntities(coupleMap::CELL);
+        label nIntFaces = cMap.nEntities(coupleMap::INTERNAL_FACE);
 
         // Set rmap for this processor
-        irMaps[pI] = (labelField(identity(nCells)) + nTotalCells);
+        irvMaps[pI] = (labelField(identity(nCells)) + nTotalCells);
+        irsMaps[pI] = (labelField(identity(nIntFaces)) + nTotalIntFaces);
 
-        // Update cell count
+        // Update count
         nTotalCells += nCells;
+        nTotalIntFaces += nIntFaces;
 
         // Fetch patch sizes from subMesh
         const labelList& nPatchFaces = cMap.entityBuffer(coupleMap::FACE_SIZES);
@@ -6919,12 +6943,20 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
     // Prepare internal mappers
     labelList cellAddressing(nTotalCells, 0);
+    labelList faceAddressing(nTotalIntFaces, 0);
 
     // Set identity map for first nCells,
     // and map from cell[0] for the rest
     for (label i = 0; i < nOldCells_; i++)
     {
         cellAddressing[i] = i;
+    }
+
+    // Set identity map for first nIntFaces,
+    // and map from face[0] for the rest
+    for (label i = 0; i < nOldInternalFaces_; i++)
+    {
+        faceAddressing[i] = i;
     }
 
     coupledInfo::subMeshMapper vMap
@@ -6936,7 +6968,7 @@ void dynamicTopoFvMesh::syncFieldTransfers
     coupledInfo::subMeshMapper sMap
     (
         nOldInternalFaces_,
-        identity(nOldInternalFaces_)
+        faceAddressing
     );
 
     // Prepare boundary mappers
@@ -6969,17 +7001,17 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
     // Loop through all volFields and re-size
     // to accomodate additional cells / faces
-    coupledInfo::resizeMap(names[0], *this, vMap, irMaps, bMap, brMaps, vsF);
-    coupledInfo::resizeMap(names[1], *this, vMap, irMaps, bMap, brMaps, vvF);
-    coupledInfo::resizeMap(names[2], *this, vMap, irMaps, bMap, brMaps, vsptF);
-    coupledInfo::resizeMap(names[3], *this, vMap, irMaps, bMap, brMaps, vsytF);
-    coupledInfo::resizeMap(names[4], *this, vMap, irMaps, bMap, brMaps, vtF);
+    coupledInfo::resizeMap(names[0], *this, vMap, irvMaps, bMap, brMaps, vsF);
+    coupledInfo::resizeMap(names[1], *this, vMap, irvMaps, bMap, brMaps, vvF);
+    coupledInfo::resizeMap(names[2], *this, vMap, irvMaps, bMap, brMaps, vsptF);
+    coupledInfo::resizeMap(names[3], *this, vMap, irvMaps, bMap, brMaps, vsytF);
+    coupledInfo::resizeMap(names[4], *this, vMap, irvMaps, bMap, brMaps, vtF);
 
-    coupledInfo::resizeMap(names[5], *this, sMap, irMaps, bMap, brMaps, ssF);
-    coupledInfo::resizeMap(names[6], *this, sMap, irMaps, bMap, brMaps, svF);
-    coupledInfo::resizeMap(names[7], *this, sMap, irMaps, bMap, brMaps, ssptF);
-    coupledInfo::resizeMap(names[8], *this, sMap, irMaps, bMap, brMaps, ssytF);
-    coupledInfo::resizeMap(names[9], *this, sMap, irMaps, bMap, brMaps, stF);
+    coupledInfo::resizeMap(names[5], *this, sMap, irsMaps, bMap, brMaps, ssF);
+    coupledInfo::resizeMap(names[6], *this, sMap, irsMaps, bMap, brMaps, svF);
+    coupledInfo::resizeMap(names[7], *this, sMap, irsMaps, bMap, brMaps, ssptF);
+    coupledInfo::resizeMap(names[8], *this, sMap, irsMaps, bMap, brMaps, ssytF);
+    coupledInfo::resizeMap(names[9], *this, sMap, irsMaps, bMap, brMaps, stF);
 
     // Fetch reference to mapper
     const topoMapper& fieldMapper = mapper_();
@@ -6993,7 +7025,7 @@ void dynamicTopoFvMesh::syncFieldTransfers
         );
 
         // Map the field
-        coupledInfo::resizeMap(i, vMap, irMaps, bMap, brMaps, vgsF, sGrad);
+        coupledInfo::resizeMap(i, vMap, irvMaps, bMap, brMaps, vgsF, sGrad);
     }
 
     forAll(names[11], i)
@@ -7004,8 +7036,14 @@ void dynamicTopoFvMesh::syncFieldTransfers
         );
 
         // Map the field
-        coupledInfo::resizeMap(i, vMap, irMaps, bMap, brMaps, vgvF, vGrad);
+        coupledInfo::resizeMap(i, vMap, irvMaps, bMap, brMaps, vgvF, vGrad);
     }
+
+    // Map stored geometry
+    volVectorField& mapC = fieldMapper.volCentres();
+
+    // Map geometry fields
+    coupledInfo::resizeMap(0, vMap, irvMaps, bMap, brMaps, vC, mapC);
 }
 
 
@@ -8019,8 +8057,8 @@ void dynamicTopoFvMesh::computeCoupledWeights
 )
 {
     // Fetch offsets from mapper
-    const labelList& cOffsets = mapper_->cellOffsets();
-    const labelListList& pOffsets = mapper_->patchOffsets();
+    const labelList& cStarts = mapper_->cellStarts();
+    const labelListList& pStarts = mapper_->patchStarts();
 
     if (dimension == 2)
     {
@@ -8031,12 +8069,12 @@ void dynamicTopoFvMesh::computeCoupledWeights
                 label patchIndex = whichPatch(index);
 
                 // Ensure that the patch is physical
-                if (patchIndex < 0 || patchIndex >= pOffsets[pI].size())
+                if (patchIndex < 0 || patchIndex >= pStarts[pI].size())
                 {
                     Pout<< " Face: " << index
                         << " Patch: " << patchIndex
                         << " does not belong to a physical patch." << nl
-                        << " nPhysicalPatches: " << pOffsets[pI].size()
+                        << " nPhysicalPatches: " << pStarts[pI].size()
                         << abort(FatalError);
                 }
 
@@ -8063,12 +8101,12 @@ void dynamicTopoFvMesh::computeCoupledWeights
                 );
 
                 // Obtain weighting factors for this face.
-                label patchStart = mesh.boundaryMesh()[patchIndex].start();
+                label sPatchStart = mesh.boundaryMesh()[patchIndex].start();
 
                 faceAlgorithm.computeWeights
                 (
                     index,
-                    patchStart,
+                    sPatchStart,
                     candidates,
                     mesh.boundaryMesh()[patchIndex].faceFaces(),
                     coupleObjects,
@@ -8080,7 +8118,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
                 // Add contributions with offsets
                 if (coupleObjects.size())
                 {
-                    label patchOffset = pOffsets[pI][patchIndex];
+                    label patchStart = pStarts[pI][patchIndex];
 
                     // Resize lists
                     label oldSize = parents.size();
@@ -8093,7 +8131,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     {
                         parents[indexI + oldSize] =
                         (
-                            patchOffset + (coupleObjects[indexI] - patchStart)
+                            patchStart + (coupleObjects[indexI] - sPatchStart)
                         );
 
                         weights[indexI + oldSize] = coupleWeights[indexI];
@@ -8148,7 +8186,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
                 // Add contributions with offsets
                 if (coupleObjects.size())
                 {
-                    label cellOffset = cOffsets[pI];
+                    label cellStart = cStarts[pI];
 
                     // Resize lists
                     label oldSize = parents.size();
@@ -8161,7 +8199,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     {
                         parents[indexI + oldSize] =
                         (
-                            cellOffset + coupleObjects[indexI]
+                            cellStart + coupleObjects[indexI]
                         );
 
                         weights[indexI + oldSize] = coupleWeights[indexI];

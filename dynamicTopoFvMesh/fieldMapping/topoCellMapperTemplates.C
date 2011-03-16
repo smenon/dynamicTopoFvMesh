@@ -65,9 +65,6 @@ void topoCellMapper::mapInternalField
     // Fetch geometry
     const vectorField& centres = tMapper_.internalCentres();
 
-    // Compute the integral of the source field
-    Type intSource = sum(iF * tMapper_.cellVolumes());
-
     // Copy the original field
     Field<Type> fieldCpy(iF);
 
@@ -99,24 +96,6 @@ void topoCellMapper::mapInternalField
                 )
             );
         }
-    }
-
-    // Compute the integral of the target field
-    Type intTarget = sum(iF * mesh_.cellVolumes());
-
-    if (polyMesh::debug)
-    {
-        int oldP = Info().precision();
-
-        // Compare the global integral
-        Pout<< " Field : " << fieldName
-            << " integral errors : " << setprecision(10)
-            << " source : " << mag(intSource)
-            << " target : " << mag(intTarget)
-            << " norm : "
-            << (mag(intTarget - intSource) / (mag(intSource) + VSMALL))
-            << setprecision(oldP)
-            << endl;
     }
 }
 

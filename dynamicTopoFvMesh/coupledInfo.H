@@ -194,6 +194,9 @@ public:
                 }
         };
 
+        // Set subMesh centres
+        inline void setCentres(PtrList<volVectorField>& centres) const;
+
         // Subset volume field
         template <class Type>
         tmp<GeometricField<Type, fvPatchField, volMesh> >
