@@ -79,34 +79,6 @@ inline label changeMap::type() const
 }
 
 
-// For sliver-type cells, opposite edges
-// are identified for removal.
-inline label& changeMap::firstEdge()
-{
-    return firstEdge_;
-}
-
-
-inline label& changeMap::secondEdge()
-{
-    return secondEdge_;
-}
-
-
-// For cap-type cells, the face requiring splitting
-// is identified for removal.
-inline label& changeMap::apexPoint()
-{
-    return apexPoint_;
-}
-
-
-inline label& changeMap::opposingFace()
-{
-    return opposingFace_;
-}
-
-
 inline void changeMap::addPoint
 (
     const label pIndex,
@@ -230,16 +202,13 @@ changeMap::removedCellList() const
 // Clear existing lists
 inline void changeMap::clear()
 {
+    // Clear base dictionary
+    dictionary::clear();
+
     index_ = -1;
     pIndex_ = -1;
 
     type_ = -1;
-
-    firstEdge_ = -1;
-    secondEdge_ = -1;
-
-    apexPoint_ = -1;
-    opposingFace_ = -1;
 
     // Clear added entities
     addedPoints_.clear();
@@ -257,16 +226,13 @@ inline void changeMap::clear()
 
 inline void changeMap::operator=(const changeMap& rhs)
 {
+    // Copy base dictionary
+    dictionary::operator=(rhs);
+
     index_ = rhs.index_;
     pIndex_ = rhs.pIndex_;
 
     type_ = rhs.type_;
-
-    // Copy sliver-specific information
-    firstEdge_ = rhs.firstEdge_;
-    secondEdge_ = rhs.secondEdge_;
-    apexPoint_ = rhs.apexPoint_;
-    opposingFace_ = rhs.opposingFace_;
 
     // Copy maps
     addedPoints_.setSize(rhs.addedPoints_.size());
@@ -326,18 +292,15 @@ inline void changeMap::operator=(const changeMap& rhs)
 
 inline Ostream& operator<<(Ostream& os, changeMap& cm)
 {
+    // Write base dictionary
+    os << static_cast<const dictionary&>(cm);
+
     // Write indices
     os << "Index: " << cm.index_ << endl;
     os << "patchIndex: " << cm.pIndex_ << endl;
 
     // Write out type
     os << " Type: " << cm.type_ << endl;
-
-    // Write out sliver-specific information
-    os << " firstEdge: " << cm.firstEdge_ << endl;
-    os << " secondEdge: " << cm.secondEdge_ << endl;
-    os << " apexPoint: " << cm.apexPoint_ << endl;
-    os << " opposingFace: " << cm.opposingFace_ << endl;
 
     // Write out added entity information
     os << " addedPoints: " << cm.addedPoints_ << endl;

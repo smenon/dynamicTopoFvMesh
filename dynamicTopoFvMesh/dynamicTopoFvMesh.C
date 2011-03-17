@@ -2748,7 +2748,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     {
         // Region R0: Cap cell.
         map.type() = 2;
-        map.apexPoint() = fourthPoint;
+        map.add("apexPoint", fourthPoint);
 
         faceToCheck[0] = tFace[0];
         faceToCheck[1] = tFace[1];
@@ -2792,7 +2792,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     {
         // Region R4: Cap cell.
         map.type() = 2;
-        map.apexPoint() = tFace[0];
+        map.add("apexPoint", tFace[0]);
 
         faceToCheck[0] = tFace[1];
         faceToCheck[1] = tFace[2];
@@ -2803,7 +2803,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     {
         // Region R5: Cap cell.
         map.type() = 2;
-        map.apexPoint() = tFace[1];
+        map.add("apexPoint", tFace[1]);
 
         faceToCheck[0] = tFace[2];
         faceToCheck[1] = tFace[0];
@@ -2814,7 +2814,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     {
         // Region R6: Cap cell.
         map.type() = 2;
-        map.apexPoint() = tFace[2];
+        map.add("apexPoint", tFace[2]);
 
         faceToCheck[0] = tFace[0];
         faceToCheck[1] = tFace[1];
@@ -2849,7 +2849,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         {
             // Spade case: Too close to edge vector r1
             map.type() = 3;
-            map.apexPoint() = fourthPoint;
+            map.add("apexPoint", fourthPoint);
 
             edgeToCheck[0][0] = tFace[0];
             edgeToCheck[0][1] = tFace[1];
@@ -2871,7 +2871,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         {
             // Spade case: Too close to edge vector r2
             map.type() = 3;
-            map.apexPoint() = fourthPoint;
+            map.add("apexPoint", fourthPoint);
 
             edgeToCheck[0][0] = tFace[1];
             edgeToCheck[0][1] = tFace[2];
@@ -2884,7 +2884,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
         {
             // Spade case: Too close to edge vector r3
             map.type() = 3;
-            map.apexPoint() = fourthPoint;
+            map.add("apexPoint", fourthPoint);
 
             edgeToCheck[0][0] = tFace[2];
             edgeToCheck[0][1] = tFace[0];
@@ -2909,14 +2909,14 @@ const changeMap dynamicTopoFvMesh::identifySliverType
 
                     if (thisEdge == edgeToCheck[0])
                     {
-                        map.firstEdge() = fEdges[edgeI];
+                        map.add("firstEdge", fEdges[edgeI]);
 
                         foundEdge[0] = true;
                     }
 
                     if (thisEdge == edgeToCheck[1])
                     {
-                        map.secondEdge() = fEdges[edgeI];
+                        map.add("secondEdge", fEdges[edgeI]);
 
                         foundEdge[1] = true;
                     }
@@ -2940,7 +2940,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
 
                 if (triFace::compare(triFace(thisFace), triFace(faceToCheck)))
                 {
-                    map.opposingFace() = cellToCheck[faceI];
+                    map.add("opposingFace", cellToCheck[faceI]);
 
                     break;
                 }
@@ -2965,7 +2965,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
 
                     if (thisEdge == edgeToCheck[0])
                     {
-                        map.firstEdge() = fEdges[edgeI];
+                        map.add("firstEdge", fEdges[edgeI]);
 
                         foundEdge = true;
                     }
@@ -3141,8 +3141,8 @@ void dynamicTopoFvMesh::removeSlivers()
             {
                 // Sliver cell.
                 // Determine which edges need to be bisected.
-                label firstEdge = map.firstEdge();
-                label secondEdge = map.secondEdge();
+                label firstEdge = readLabel(map.lookup("firstEdge"));
+                label secondEdge = readLabel(map.lookup("secondEdge"));
 
                 // Force bisection on both edges.
                 changeMap firstMap  = bisectEdge(firstEdge, false, true);
@@ -3237,7 +3237,7 @@ void dynamicTopoFvMesh::removeSlivers()
             case 2:
             {
                 // Cap cell.
-                label opposingFace = map.opposingFace();
+                label opposingFace = readLabel(map.lookup("opposingFace"));
 
                 // Force trisection of the opposing face.
                 changeMap faceMap =
@@ -3250,7 +3250,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 // through recently added edges and compare.
                 edge edgeToCheck
                 (
-                    map.apexPoint(),
+                    readLabel(map.lookup("apexPoint")),
                     faceMap.addedPointList()[0].index()
                 );
 
@@ -3294,7 +3294,12 @@ void dynamicTopoFvMesh::removeSlivers()
                 // Force bisection on the first edge.
                 changeMap firstMap =
                 (
-                    bisectEdge(map.firstEdge(), false, true)
+                    bisectEdge
+                    (
+                        readLabel(map.lookup("firstEdge")),
+                        false,
+                        true
+                    )
                 );
 
                 // Collapse the intermediate edge.
@@ -3302,7 +3307,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 // through recently added edges and compare.
                 edge edgeToCheck
                 (
-                    map.apexPoint(),
+                    readLabel(map.lookup("apexPoint")),
                     firstMap.addedPointList()[0].index()
                 );
 
@@ -3349,7 +3354,7 @@ void dynamicTopoFvMesh::removeSlivers()
                 (
                     collapseEdge
                     (
-                        map.firstEdge(),
+                        readLabel(map.lookup("firstEdge")),
                         -1,
                         false,
                         true
@@ -3422,7 +3427,7 @@ void dynamicTopoFvMesh::getCheckEdges
                 checkEdge[1] = thisEdge;
 
                 // Update the map
-                map.firstEdge() = checkEdgeIndex[1];
+                map.add("firstEdge", checkEdgeIndex[1]);
             }
             else
             if
@@ -3435,7 +3440,7 @@ void dynamicTopoFvMesh::getCheckEdges
                 checkEdge[2] = thisEdge;
 
                 // Update the map
-                map.secondEdge() = checkEdgeIndex[2];
+                map.add("secondEdge", checkEdgeIndex[2]);
             }
             else
             {

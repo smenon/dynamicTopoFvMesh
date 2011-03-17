@@ -338,7 +338,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         cEdge[1] = p1;
 
                         edgeCouple = 1;
-                        sIndex = map.firstEdge();
+                        sIndex = readLabel(map.lookup("firstEdge"));
                     }
                     else
                     if ((p0 == -1 && p1 == -1) && (p2 > -1 && p3 > -1))
@@ -347,7 +347,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         cEdge[1] = p3;
 
                         edgeCouple = 2;
-                        sIndex = map.secondEdge();
+                        sIndex = readLabel(map.lookup("secondEdge"));
                     }
 
                     label curIndex = slaveMaps.size();
@@ -578,8 +578,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     slaveCheckEdgeIndex
                 );
 
-                sEdge[0] = edges_[slaveMap.firstEdge()];
-                sEdge[1] = edges_[slaveMap.secondEdge()];
+                sEdge[0] = edges_[readLabel(slaveMap.lookup("firstEdge"))];
+                sEdge[1] = edges_[readLabel(slaveMap.lookup("secondEdge"))];
             }
             else
             if (procCouple)
@@ -604,8 +604,15 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         slaveCheckEdgeIndex
                     );
 
-                    sEdge[0] = sMesh.edges_[slaveMap.firstEdge()];
-                    sEdge[1] = sMesh.edges_[slaveMap.secondEdge()];
+                    sEdge[0] =
+                    (
+                        sMesh.edges_[readLabel(slaveMap.lookup("firstEdge"))]
+                    );
+
+                    sEdge[1] =
+                    (
+                        sMesh.edges_[readLabel(slaveMap.lookup("secondEdge"))]
+                    );
                 }
             }
 
@@ -659,9 +666,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                             << checkEdgeIndex[2] << ": "
                             << checkEdge[2] << nl
                             << "Slaves: " << nl
-                            << slaveMap.firstEdge() << ": "
+                            << readLabel(slaveMap.lookup("firstEdge")) << ": "
                             << sEdge[0] << nl
-                            << slaveMap.secondEdge() << ": "
+                            << readLabel(slaveMap.lookup("secondEdge")) << ": "
                             << sEdge[1] << nl
                             << abort(FatalError);
                     }
@@ -713,9 +720,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                             << checkEdgeIndex[2] << ": "
                             << checkEdge[2] << nl
                             << "Slaves: " << nl
-                            << slaveMap.firstEdge() << ": "
+                            << readLabel(slaveMap.lookup("firstEdge")) << ": "
                             << sEdge[0] << nl
-                            << slaveMap.secondEdge() << ": "
+                            << readLabel(slaveMap.lookup("secondEdge")) << ": "
                             << sEdge[1] << nl
                             << abort(FatalError);
                     }

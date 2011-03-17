@@ -43,6 +43,7 @@ SourceFiles
 
 #include "objectMap.H"
 #include "labelList.H"
+#include "dictionary.H"
 #include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -63,27 +64,17 @@ Ostream& operator<<(Ostream&, changeMap&);
 \*---------------------------------------------------------------------------*/
 
 class changeMap
+:
+    public dictionary
 {
-    // Entity indices
+    // Entity index
     label index_;
 
     // Coupled patch index
     label pIndex_;
 
-    // Sliver type index.
-    //  Type 1: Sliver
-    //  Type 2: Cap
-    //  Type 3: Spade
-    //  Type 4: Wedge
+    // Type
     label type_;
-
-    // Data specific to sliver-type cells
-    label firstEdge_;
-    label secondEdge_;
-
-    // Data specific to cap-type cells
-    label apexPoint_;
-    label opposingFace_;
 
     // Entities that were added during the operation.
     DynamicList<objectMap> addedPoints_;
@@ -105,10 +96,6 @@ public:
         index_(-1),
         pIndex_(-1),
         type_(-1),
-        firstEdge_(-1),
-        secondEdge_(-1),
-        apexPoint_(-1),
-        opposingFace_(-1),
         addedPoints_(5),
         addedEdges_(5),
         addedFaces_(5),
@@ -132,16 +119,6 @@ public:
         // Type
         inline label& type();
         inline label type() const;
-
-        // For sliver-type cells, opposite edges
-        // are identified for removal.
-        inline label& firstEdge();
-        inline label& secondEdge();
-
-        // For cap-type cells, the face requiring splitting
-        // is identified for removal.
-        inline label& apexPoint();
-        inline label& opposingFace();
 
         // Added entities
         inline void addPoint
