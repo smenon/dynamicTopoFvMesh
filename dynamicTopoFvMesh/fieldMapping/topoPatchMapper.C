@@ -229,12 +229,20 @@ void topoPatchMapper::calcAddressing() const
                 addr[faceI] -= oldPatchStart;
             }
             else
+            if (isA<processorPolyPatch>(patch_))
+            {
+                // Relax restriction for processor patches
+                addr[faceI] = 0;
+            }
+            else
             {
                 FatalErrorIn
                 (
                     "void topoPatchMapper::calcAddressing() const"
                 )
                     << "Addressing into another patch is not allowed."
+                    << nl << " Patch: " << patch_.name()
+                    << nl << " Patch index: " << patch_.index()
                     << nl << " Patch face index: " << faceI
                     << nl << " addr[faceI]: " << addr[faceI]
                     << nl << " oldPatchStart: " << oldPatchStart
@@ -286,6 +294,8 @@ void topoPatchMapper::calcAddressing() const
                         "void topoPatchMapper::calcAddressing() const"
                     )
                         << "Addressing into another patch is not allowed."
+                        << nl << " Patch: " << patch_.name()
+                        << nl << " Patch index: " << patch_.index()
                         << nl << " Patch face index: " << faceI
                         << nl << " faceMap[faceI]: " << oldFace
                         << nl << " oldPatchStart: " << oldPatchStart
@@ -563,7 +573,7 @@ label topoPatchMapper::size() const
 //- Return size before mapping
 label topoPatchMapper::sizeBeforeMapping() const
 {
-    if (patch_.type() == "empty")
+    if (isA<emptyPolyPatch>(patch_))
     {
         return 0;
     }
@@ -579,7 +589,16 @@ label topoPatchMapper::sizeBeforeMapping() const
     {
         forAll(sizes, pI)
         {
-            totalSize += sizes[pI][patchIndex];
+            // If this patch is a processor-type
+            // skip this and break out
+            if (patchIndex < sizes[pI].size())
+            {
+                totalSize += sizes[pI][patchIndex];
+            }
+            else
+            {
+                break;
+            }
         }
     }
 
