@@ -3599,6 +3599,9 @@ void dynamicTopoFvMesh::handleCoupledPatches
         return;
     }
 
+    // Exchange length-scale buffers across processors.
+    exchangeLengthBuffers();
+
     if (debug)
     {
         // Check coupled-patch sizes first.
@@ -7440,6 +7443,11 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
         return;
     }
 
+    if (!edgeRefinement_)
+    {
+        return;
+    }
+
     forAll(procIndices_, pI)
     {
         coupledInfo& sPM = sendMeshes_[pI];
@@ -8062,6 +8070,8 @@ void dynamicTopoFvMesh::computeCoupledWeights
 
     if (dimension == 2)
     {
+        DynamicList<label> faceParents(10);
+
         forAll(coupledFaceParents_, pI)
         {
             if (coupledFaceParents_[pI].found(index))
@@ -8100,6 +8110,33 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     neighbour_
                 );
 
+                // Build a parent list for mapping
+                forAll(candidates, indexI)
+                {
+                    label fpIndex = candidates[indexI];
+
+                    if (fpIndex < mesh.nOldFaces_)
+                    {
+                        if (findIndex(faceParents, fpIndex) == -1)
+                        {
+                            faceParents.append(fpIndex);
+                        }
+                    }
+                    else
+                    if (mesh.faceParents_.found(fpIndex))
+                    {
+                        const labelList& nParents = mesh.faceParents_[fpIndex];
+
+                        forAll(nParents, fI)
+                        {
+                            if (findIndex(faceParents, nParents[fI]) == -1)
+                            {
+                                faceParents.append(nParents[fI]);
+                            }
+                        }
+                    }
+                }
+
                 // Obtain weighting factors for this face.
                 label sPatchStart = mesh.boundaryMesh()[patchIndex].start();
 
@@ -8107,7 +8144,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
                 (
                     index,
                     sPatchStart,
-                    candidates,
+                    faceParents,
                     mesh.boundaryMesh()[patchIndex].faceFaces(),
                     coupleObjects,
                     coupleWeights,
@@ -8144,6 +8181,8 @@ void dynamicTopoFvMesh::computeCoupledWeights
     else
     if (dimension == 3)
     {
+        DynamicList<label> cellParents(10);
+
         forAll(coupledCellParents_, pI)
         {
             if (coupledCellParents_[pI].found(index))
@@ -8170,12 +8209,39 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     neighbour_
                 );
 
+                // Build a parent list for mapping
+                forAll(candidates, indexI)
+                {
+                    label cpIndex = candidates[indexI];
+
+                    if (cpIndex < mesh.nOldCells_)
+                    {
+                        if (findIndex(cellParents, cpIndex) == -1)
+                        {
+                            cellParents.append(cpIndex);
+                        }
+                    }
+                    else
+                    if (mesh.cellParents_.found(cpIndex))
+                    {
+                        const labelList& nParents = mesh.cellParents_[cpIndex];
+
+                        forAll(nParents, cI)
+                        {
+                            if (findIndex(cellParents, nParents[cI]) == -1)
+                            {
+                                cellParents.append(nParents[cI]);
+                            }
+                        }
+                    }
+                }
+
                 // Obtain weighting factors for this cell.
                 cellAlgorithm.computeWeights
                 (
                     index,
                     0,
-                    candidates,
+                    cellParents,
                     mesh.polyMesh::cellCells(),
                     coupleObjects,
                     coupleWeights,
@@ -8206,6 +8272,9 @@ void dynamicTopoFvMesh::computeCoupledWeights
                         centres[indexI + oldSize] = coupleCentres[indexI];
                     }
                 }
+
+                // Clear list
+                cellParents.clear();
             }
         }
     }

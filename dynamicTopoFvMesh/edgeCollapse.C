@@ -5674,6 +5674,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         );
     }
 
+    // If this is a subMesh, add a sub-dictionary for mapping
+    if (isSubMesh_)
+    {
+        map.add("mappingCellsDict", dictionary());
+        map.add("mappingFacesDict", dictionary());
+    }
+
     // Now that all old / new cells possess correct connectivity,
     // compute mapping information.
     forAll(cellsChecked, cellI)
@@ -5688,6 +5695,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         // Set the mapping for this cell
         setCellMapping(cellsChecked[cellI], mC);
+
+        // Add entries for later
+        if (isSubMesh_)
+        {
+            dictionary& mapDict = map.subDict("mappingCellsDict");
+
+            // Add entry
+            mapDict.add
+            (
+                Foam::name(cellsChecked[cellI]),
+                objectMap(cellsChecked[cellI], mC)
+            );
+        }
     }
 
     // Set face mapping information for modified faces
@@ -5743,6 +5763,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             // Set the mapping for this face
             setFaceMapping(mfIndex, faceCandidates);
+
+            // Add entries for later
+            if (isSubMesh_)
+            {
+                dictionary& mapDict = map.subDict("mappingFacesDict");
+
+                // Add entry
+                mapDict.add
+                (
+                    Foam::name(mfIndex),
+                    objectMap(mfIndex, faceCandidates)
+                );
+            }
         }
     }
 

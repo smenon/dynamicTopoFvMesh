@@ -1637,9 +1637,6 @@ void dynamicTopoFvMesh::calculateLengthScale(bool dump)
 
         lsfPtr->write();
     }
-
-    // Exchange length-scale buffers across processors.
-    exchangeLengthBuffers();
 }
 
 

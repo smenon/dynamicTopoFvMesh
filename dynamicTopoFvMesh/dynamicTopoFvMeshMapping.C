@@ -482,7 +482,10 @@ void dynamicTopoFvMesh::setCellMapping
 
         if (mapCells[cellI] < nOldCells_)
         {
-            masterCells.append(mapCells[cellI]);
+            if (findIndex(masterCells, mapCells[cellI]) == -1)
+            {
+                masterCells.append(mapCells[cellI]);
+            }
         }
         else
         if (cellParents_.found(mapCells[cellI]))
@@ -659,7 +662,10 @@ void dynamicTopoFvMesh::setFaceMapping
 
         if (mapFaces[faceI] < nOldFaces_)
         {
-            masterFaces.append(mapFaces[faceI]);
+            if (findIndex(masterFaces, mapFaces[faceI]) == -1)
+            {
+                masterFaces.append(mapFaces[faceI]);
+            }
         }
         else
         if (faceParents_.found(mapFaces[faceI]))
@@ -668,7 +674,10 @@ void dynamicTopoFvMesh::setFaceMapping
 
             forAll(nParents, fI)
             {
-                masterFaces.append(nParents[fI]);
+                if (findIndex(masterFaces, nParents[fI]) == -1)
+                {
+                    masterFaces.append(nParents[fI]);
+                }
             }
         }
 

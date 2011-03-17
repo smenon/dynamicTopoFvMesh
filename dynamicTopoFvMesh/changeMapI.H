@@ -290,23 +290,22 @@ inline void changeMap::operator=(const changeMap& rhs)
 }
 
 
-inline Ostream& operator<<(Ostream& os, changeMap& cm)
+inline Ostream& operator<<(Ostream& os, const changeMap& cm)
 {
     // Write base dictionary
-    os << static_cast<const dictionary&>(cm);
+    os << static_cast<const dictionary&>(cm) << endl;
 
-    // Write indices
-    os << "Index: " << cm.index_ << endl;
-    os << "patchIndex: " << cm.pIndex_ << endl;
-
-    // Write out type
-    os << " Type: " << cm.type_ << endl;
-
-    // Write out added entity information
-    os << " addedPoints: " << cm.addedPoints_ << endl;
-    os << " addedEdges: " << cm.addedEdges_ << endl;
-    os << " addedFaces: " << cm.addedFaces_ << endl;
-    os << " addedCells: " << cm.addedCells_ << endl;
+    os << " index: " << cm.index_ << nl
+       << " patchIndex: " << cm.pIndex_ << nl
+       << " type: " << cm.type_ << nl
+       << " addedPoints: " << cm.addedPoints_ << nl
+       << " addedEdges: " << cm.addedEdges_ << nl
+       << " addedFaces: " << cm.addedFaces_ << nl
+       << " addedCells: " << cm.addedCells_ << nl
+       << " removedPoints: " << cm.removedPoints_ << nl
+       << " removedEdges: " << cm.removedEdges_ << nl
+       << " removedFaces: " << cm.removedFaces_ << nl
+       << " removedCells: " << cm.removedCells_ << endl;
 
     // Check state of IOstream
     os.check("Ostream& operator<<(Ostream&, changeMap&)");

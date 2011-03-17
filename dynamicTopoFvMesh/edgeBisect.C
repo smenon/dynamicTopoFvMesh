@@ -3411,6 +3411,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         }
     }
 
+    // If this is a subMesh, add a sub-dictionary for mapping
+    if (isSubMesh_)
+    {
+        map.add("mappingCellsDict", dictionary());
+        map.add("mappingFacesDict", dictionary());
+    }
+
     // Now that all old / new cells possess correct connectivity,
     // compute mapping information.
     forAll(cellHull, indexI)
@@ -3433,6 +3440,19 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         {
             // Set the mapping for this cell
             setCellMapping(cmIndex[cmI], mC);
+
+            // Add entries for later
+            if (isSubMesh_)
+            {
+                dictionary& mapDict = map.subDict("mappingCellsDict");
+
+                // Add entry
+                mapDict.add
+                (
+                    Foam::name(cmIndex[cmI]),
+                    objectMap(cmIndex[cmI], mC)
+                );
+            }
         }
     }
 
@@ -3468,6 +3488,19 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             {
                 // Set the mapping for this face
                 setFaceMapping(fmIndex[fmI], mF);
+
+                // Add entries for later
+                if (isSubMesh_)
+                {
+                    dictionary& mapDict = map.subDict("mappingFacesDict");
+
+                    // Add entry
+                    mapDict.add
+                    (
+                        Foam::name(fmIndex[fmI]),
+                        objectMap(fmIndex[fmI], mF)
+                    );
+                }
             }
         }
     }

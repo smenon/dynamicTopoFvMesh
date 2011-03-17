@@ -56,7 +56,7 @@ class changeMap;
 
 // * * * * * * * * Forward declaration of friend fuctions  * * * * * * * * * //
 
-Ostream& operator<<(Ostream&, changeMap&);
+Ostream& operator<<(Ostream&, const changeMap&);
 
 
 /*---------------------------------------------------------------------------*\
@@ -174,7 +174,7 @@ public:
 
     //- IOstream Operators
 
-        inline friend Ostream& operator<<(Ostream&, changeMap&);
+        inline friend Ostream& operator<<(Ostream&, const changeMap&);
 };
 
 

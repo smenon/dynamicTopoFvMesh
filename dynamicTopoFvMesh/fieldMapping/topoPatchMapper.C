@@ -171,6 +171,9 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
                             << "Addressing into another patch is not allowed."
                             << nl << " Patch face index: " << faceI
                             << nl << " Patch: " << patch_.name()
+                            << nl << " fffI.index: " << fffI.index()
+                            << nl << " pStart: " << pStart
+                            << nl << " addr: " << addr
                             << nl << " addr[faceI]: " << addr[faceI]
                             << nl << " oldPatchStart: " << oldPatchStart
                             << nl << " oldPatchSize: " << oldPatchSize
