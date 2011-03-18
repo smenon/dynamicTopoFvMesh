@@ -80,6 +80,7 @@ void dynamicTopoFvMesh::computeMapping
 
     label nInconsistencies = 0;
     scalar maxFaceError = 0.0, maxCellError = 0.0;
+    DynamicList<scalar> cellErrors(10), faceErrors(10);
     DynamicList<objectMap> failedCells(10), failedFaces(10);
 
     // Compute cell mapping
@@ -130,6 +131,7 @@ void dynamicTopoFvMesh::computeMapping
                 nInconsistencies++;
 
                 // Add to list
+                cellErrors.append(error);
                 failedCells.append(objectMap(cIndex, cellParents_[cIndex]));
             }
         }
@@ -209,6 +211,7 @@ void dynamicTopoFvMesh::computeMapping
                 nInconsistencies++;
 
                 // Add to list
+                faceErrors.append(error);
                 failedFaces.append(objectMap(fIndex, faceParents_[fIndex]));
             }
         }
@@ -221,59 +224,99 @@ void dynamicTopoFvMesh::computeMapping
             << " max face error: " << maxFaceError
             << endl;
 
-        if (failedCells.size())
+        if (debug)
         {
-            Pout<< " failedCells: " << failedCells << endl;
-        }
-
-        if (failedFaces.size())
-        {
-            Pout<< " failedFaces: " << failedFaces << endl;
-        }
-
-        if (debug > 1)
-        {
-            // Write out list of failed entities
             if (failedCells.size())
             {
-                IOList<objectMap>
-                (
-                    IOobject
-                    (
-                        "failedCells",
-                        time().timeName(),
-                        "convexSetAlgorithm",
-                        (*this),
-                        IOobject::NO_READ,
-                        IOobject::NO_WRITE,
-                        false
-                    ),
-                    failedCells
-                ).write();
+                Pout<< " failedCells: " << endl;
+
+                forAll(failedCells, cellI)
+                {
+                    label index = failedCells[cellI].index();
+
+                    Pout<< "  Cell: " << index
+                        << "  Error: " << cellErrors[cellI]
+                        << endl;
+                }
             }
 
             if (failedFaces.size())
             {
-                IOList<objectMap>
-                (
-                    IOobject
-                    (
-                        "failedFaces",
-                        time().timeName(),
-                        "convexSetAlgorithm",
-                        (*this),
-                        IOobject::NO_READ,
-                        IOobject::NO_WRITE,
-                        false
-                    ),
-                    failedFaces
-                ).write();
+                Pout<< " failedFaces: " << endl;
+
+                forAll(failedFaces, faceI)
+                {
+                    label index = failedFaces[faceI].index();
+                    label patchIndex = whichPatch(index);
+
+                    const polyBoundaryMesh& boundary = boundaryMesh();
+
+                    Pout<< "  Face: " << index
+                        << "  Patch: " << boundary[patchIndex].name()
+                        << "  Error: " << faceErrors[faceI]
+                        << endl;
+                }
             }
 
-            // Write out connectivity information for post-processing
-            if (failedCells.size() || failedFaces.size())
+            if (debug > 3)
             {
-                cellAlgorithm.write();
+                // Prepare lists
+                labelList objects;
+                scalarField weights;
+                vectorField centres;
+
+                if (failedCells.size())
+                {
+                    forAll(failedCells, cellI)
+                    {
+                        label index = failedCells[cellI].index();
+
+                        cellAlgorithm.computeWeights
+                        (
+                            index,
+                            0,
+                            cellParents_[index],
+                            polyMesh::cellCells(),
+                            objects,
+                            weights,
+                            centres,
+                            true
+                        );
+
+                        // Clear lists
+                        objects.clear();
+                        weights.clear();
+                        centres.clear();
+                    }
+                }
+
+                if (failedFaces.size())
+                {
+                    forAll(failedFaces, faceI)
+                    {
+                        label index = failedFaces[faceI].index();
+                        label patchIndex = whichPatch(index);
+
+                        const polyBoundaryMesh& boundary = boundaryMesh();
+
+                        faceAlgorithm.computeWeights
+                        (
+                            index,
+                            boundary[patchIndex].start(),
+                            faceParents_[index],
+                            boundary[patchIndex].faceFaces(),
+                            objects,
+                            weights,
+                            centres,
+                            true
+                        );
+
+                        // Clear lists
+                        objects.clear();
+                        weights.clear();
+                        centres.clear();
+                    }
+                }
             }
         }
     }

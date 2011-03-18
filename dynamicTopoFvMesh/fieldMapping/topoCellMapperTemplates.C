@@ -57,6 +57,13 @@ void topoCellMapper::mapInternalField
            << abort(FatalError);
     }
 
+    // If we have direct addressing, map and bail out
+    if (direct())
+    {
+        iF.autoMap(*this);
+        return;
+    }
+
     // Fetch addressing
     const labelListList& cAddressing = addressing();
     const List<scalarField>& wC = intersectionWeights();
