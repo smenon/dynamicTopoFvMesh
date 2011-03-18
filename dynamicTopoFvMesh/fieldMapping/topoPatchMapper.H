@@ -74,6 +74,9 @@ class topoPatchMapper
         //- Is the mapping direct
         bool direct_;
 
+        //- Size before mapping
+        mutable label sizeBeforeMapping_;
+
         //- Is the mapping conservative
         mutable bool conservative_;
 

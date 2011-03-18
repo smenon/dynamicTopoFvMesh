@@ -111,6 +111,7 @@ void convexSetAlgorithm::computeWeights
         )
             << " Addressing has already been calculated." << nl
             << " Index: " << index << nl
+            << " Offset: " << offset << nl
             << " Type: " << (dimension() == 2 ? "Face" : "Cell") << nl
             << " mapCandidates: " << mapCandidates << nl
             << " Parents: " << parents << nl

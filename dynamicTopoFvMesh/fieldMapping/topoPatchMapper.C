@@ -74,7 +74,7 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
     }
 
     // Information from the old patch
-    const label oldPatchSize = mpm_.oldPatchSizes()[patch_.index()];
+    const label oldPatchSize = sizeBeforeMapping();
     const label oldPatchStart = mpm_.oldPatchStarts()[patch_.index()];
 
     // Allocate for inserted face labels and addressing
@@ -204,7 +204,7 @@ void topoPatchMapper::calcAddressing() const
     }
 
     // Information from the old patch
-    const label oldPatchSize = mpm_.oldPatchSizes()[patch_.index()];
+    const label oldPatchSize = sizeBeforeMapping();
     const label oldPatchStart = mpm_.oldPatchStarts()[patch_.index()];
     const label oldPatchEnd = oldPatchStart + oldPatchSize;
 
@@ -232,12 +232,6 @@ void topoPatchMapper::calcAddressing() const
                 addr[faceI] -= oldPatchStart;
             }
             else
-            if (isA<processorPolyPatch>(patch_))
-            {
-                // Relax restriction for processor patches
-                addr[faceI] = 0;
-            }
-            else
             {
                 FatalErrorIn
                 (
@@ -251,6 +245,7 @@ void topoPatchMapper::calcAddressing() const
                     << nl << " oldPatchStart: " << oldPatchStart
                     << nl << " oldPatchSize: " << oldPatchSize
                     << nl << " oldPatchEnd: " << oldPatchEnd
+                    << nl << " nInserted: " << insertedObjectLabels().size()
                     << abort(FatalError);
             }
         }
@@ -529,6 +524,7 @@ topoPatchMapper::topoPatchMapper
     mpm_(mpm),
     tMapper_(mapper),
     direct_(false),
+    sizeBeforeMapping_(0),
     conservative_(false),
     directAddrPtr_(NULL),
     interpolationAddrPtr_(NULL),
@@ -539,6 +535,42 @@ topoPatchMapper::topoPatchMapper
     areasPtr_(NULL),
     centresPtr_(NULL)
 {
+    // Compute sizeBeforeMapping.
+    // - This needs to be done before insertedObjects
+    //   is computed to determine direct mapping
+    if (isA<emptyPolyPatch>(patch_))
+    {
+        sizeBeforeMapping_ = 0;
+    }
+    else
+    {
+        label patchIndex = patch_.index();
+        label totalSize = mpm_.oldPatchSizes()[patchIndex];
+
+        // Fetch offset sizes from topoMapper
+        const labelListList& sizes = tMapper_.patchSizes();
+
+        // Add offset sizes
+        if (sizes.size())
+        {
+            forAll(sizes, pI)
+            {
+                // If this patch is a processor-type
+                // skip this and break out
+                if (patchIndex < sizes[pI].size())
+                {
+                    totalSize += sizes[pI][patchIndex];
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        sizeBeforeMapping_ = totalSize;
+    }
+
     // Check for the possibility of direct mapping
     if (insertedObjects())
     {
@@ -576,36 +608,7 @@ label topoPatchMapper::size() const
 //- Return size before mapping
 label topoPatchMapper::sizeBeforeMapping() const
 {
-    if (isA<emptyPolyPatch>(patch_))
-    {
-        return 0;
-    }
-
-    // Fetch offset sizes from topoMapper
-    const labelListList& sizes = tMapper_.patchSizes();
-
-    label patchIndex = patch_.index();
-    label totalSize = mpm_.oldPatchSizes()[patchIndex];
-
-    // Add offset sizes
-    if (sizes.size())
-    {
-        forAll(sizes, pI)
-        {
-            // If this patch is a processor-type
-            // skip this and break out
-            if (patchIndex < sizes[pI].size())
-            {
-                totalSize += sizes[pI][patchIndex];
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
-
-    return totalSize;
+    return sizeBeforeMapping_;
 }
 
 

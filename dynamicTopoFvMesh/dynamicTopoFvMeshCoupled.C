@@ -3435,6 +3435,10 @@ const changeMap dynamicTopoFvMesh::removeCells
         // Add this face to the map.
         map.addFace(fIter());
 
+        // Set mapping information
+        //  - But where to map from?
+        setFaceMapping(fIter());
+
         // Replace cell with the new face label
         meshOps::replaceLabel
         (
@@ -8066,7 +8070,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
 {
     // Fetch offsets from mapper
     const labelList& cStarts = mapper_->cellStarts();
-    const labelListList& pStarts = mapper_->patchStarts();
+    const labelListList& pSizes = mapper_->patchSizes();
 
     if (dimension == 2)
     {
@@ -8079,12 +8083,12 @@ void dynamicTopoFvMesh::computeCoupledWeights
                 label patchIndex = whichPatch(index);
 
                 // Ensure that the patch is physical
-                if (patchIndex < 0 || patchIndex >= pStarts[pI].size())
+                if (patchIndex < 0 || patchIndex >= pSizes[pI].size())
                 {
                     Pout<< " Face: " << index
                         << " Patch: " << patchIndex
                         << " does not belong to a physical patch." << nl
-                        << " nPhysicalPatches: " << pStarts[pI].size()
+                        << " nPhysicalPatches: " << pSizes[pI].size()
                         << abort(FatalError);
                 }
 
@@ -8155,7 +8159,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
                 // Add contributions with offsets
                 if (coupleObjects.size())
                 {
-                    label patchStart = pStarts[pI][patchIndex];
+                    label patchSize = boundaryMesh()[patchIndex].size();
 
                     // Resize lists
                     label oldSize = parents.size();
@@ -8168,7 +8172,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     {
                         parents[indexI + oldSize] =
                         (
-                            patchStart + (coupleObjects[indexI] - sPatchStart)
+                            patchSize + coupleObjects[indexI]
                         );
 
                         weights[indexI + oldSize] = coupleWeights[indexI];
