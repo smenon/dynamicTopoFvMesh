@@ -444,13 +444,15 @@ inline label coupleMap::findSlave
     const label Index
 ) const
 {
-    if (entityMap_[eType].found(Index))
+    Map<label>::const_iterator it = entityMap_[eType].find(Index);
+
+    if (it == entityMap_[eType].end())
     {
-        return entityMap_[eType][Index];
+        return -1;
     }
     else
     {
-        return -1;
+        return it();
     }
 }
 
@@ -461,13 +463,15 @@ inline label coupleMap::findMaster
     const label Index
 ) const
 {
-    if (reverseEntityMap_[eType].found(Index))
+    Map<label>::const_iterator it = reverseEntityMap_[eType].find(Index);
+
+    if (it == reverseEntityMap_[eType].end())
     {
-        return reverseEntityMap_[eType][Index];
+        return -1;
     }
     else
     {
-        return -1;
+        return it();
     }
 }
 
@@ -478,9 +482,11 @@ inline void coupleMap::removeSlave
     const label Index
 ) const
 {
-    if (reverseEntityMap_[eType].found(Index))
+    Map<label>::iterator it = reverseEntityMap_[eType].find(Index);
+
+    if (it != reverseEntityMap_[eType].end())
     {
-        reverseEntityMap_[eType].erase(Index);
+        reverseEntityMap_[eType].erase(it);
     }
 }
 
@@ -491,9 +497,11 @@ inline void coupleMap::removeMaster
     const label Index
 ) const
 {
-    if (entityMap_[eType].found(Index))
+    Map<label>::iterator it = entityMap_[eType].find(Index);
+
+    if (it != entityMap_[eType].end())
     {
-        entityMap_[eType].erase(Index);
+        entityMap_[eType].erase(it);
     }
 }
 

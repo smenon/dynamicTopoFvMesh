@@ -488,9 +488,11 @@ inline label dynamicTopoFvMesh::whichPatch
 
     // If not in any of the above, it's possible that the face was added
     // at the end of the list. Check addedFacePatches_ for the patch info
-    if (addedFacePatches_.found(index))
+    Map<label>::const_iterator it = addedFacePatches_.find(index);
+
+    if (it != addedFacePatches_.end())
     {
-        return addedFacePatches_[index];
+        return it();
     }
     else
     {
@@ -539,9 +541,11 @@ inline label dynamicTopoFvMesh::whichEdgePatch
 
     // If not in any of the above, it's possible that the edge was added
     // at the end of the list. Check addedEdgePatches_ for the patch info
-    if (addedEdgePatches_.found(index))
+    Map<label>::const_iterator it = addedEdgePatches_.find(index);
+
+    if (it != addedEdgePatches_.end())
     {
-        return addedEdgePatches_[index];
+        return it();
     }
     else
     {
@@ -601,13 +605,15 @@ inline void dynamicTopoFvMesh::setFlip(const label fIndex)
 {
     if (fIndex < nOldFaces_)
     {
-        if (flipFaces_.found(fIndex))
+        labelHashSet::iterator it = flipFaces_.find(fIndex);
+
+        if (it == flipFaces_.end())
         {
-            flipFaces_.erase(fIndex);
+            flipFaces_.insert(fIndex);
         }
         else
         {
-            flipFaces_.insert(fIndex);
+            flipFaces_.erase(it);
         }
     }
 }

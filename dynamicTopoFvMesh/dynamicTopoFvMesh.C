@@ -413,9 +413,11 @@ void dynamicTopoFvMesh::removeCell
     }
 
     // Check if this cell was added to a zone
-    if (addedCellZones_.found(cIndex))
+    Map<label>::iterator it = addedCellZones_.find(cIndex);
+
+    if (it != addedCellZones_.end())
     {
-        addedCellZones_.erase(cIndex);
+        addedCellZones_.erase(it);
     }
 
     // Check if the cell was added in the current morph, and delete
@@ -675,15 +677,19 @@ void dynamicTopoFvMesh::removeFace
     }
 
     // Check and remove from the list of added face patches
-    if (addedFacePatches_.found(fIndex))
+    Map<label>::iterator fpit = addedFacePatches_.find(fIndex);
+
+    if (fpit != addedFacePatches_.end())
     {
-        addedFacePatches_.erase(fIndex);
+        addedFacePatches_.erase(fpit);
     }
 
     // Check if this face was added to a zone
-    if (addedFaceZones_.found(fIndex))
+    Map<label>::iterator fzit = addedFaceZones_.find(fIndex);
+
+    if (fzit != addedFaceZones_.end())
     {
-        addedFaceZones_.erase(fIndex);
+        addedFaceZones_.erase(fzit);
     }
 
     // Check if the face was added in the current morph, and delete
@@ -733,9 +739,11 @@ void dynamicTopoFvMesh::removeFace
     }
 
     // Remove from the flipFaces list, if necessary
-    if (flipFaces_.found(fIndex))
+    labelHashSet::iterator ffit = flipFaces_.find(fIndex);
+
+    if (ffit != flipFaces_.end())
     {
-        flipFaces_.erase(fIndex);
+        flipFaces_.erase(ffit);
     }
 
     // Decrement the total face-count
@@ -924,9 +932,11 @@ void dynamicTopoFvMesh::removeEdge
     }
 
     // Check and remove from the list of added edge patches
-    if (addedEdgePatches_.found(eIndex))
+    Map<label>::iterator it = addedEdgePatches_.find(eIndex);
+
+    if (it != addedEdgePatches_.end())
     {
-        addedEdgePatches_.erase(eIndex);
+        addedEdgePatches_.erase(it);
     }
 
     // Decrement the total edge-count
@@ -1022,9 +1032,11 @@ void dynamicTopoFvMesh::removePoint
     }
 
     // Check if this point was added to a zone
-    if (addedPointZones_.found(pIndex))
+    Map<label>::iterator pzit = addedPointZones_.find(pIndex);
+
+    if (pzit != addedPointZones_.end())
     {
-        addedPointZones_.erase(pIndex);
+        addedPointZones_.erase(pzit);
     }
 
     // Update coupled point maps, if necessary.
@@ -1038,13 +1050,15 @@ void dynamicTopoFvMesh::removePoint
             Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
             Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
 
-            if (pointMap.found(pIndex))
+            Map<label>::iterator pmit = pointMap.find(pIndex);
+
+            if (pmit != pointMap.end())
             {
                 // Erase the reverse map first
-                rPointMap.erase(pointMap[pIndex]);
+                rPointMap.erase(pmit());
 
                 // Update pointMap
-                pointMap.erase(pIndex);
+                pointMap.erase(pmit);
             }
         }
     }

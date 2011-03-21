@@ -4050,11 +4050,43 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                     // Pick localIndex based on entity type
                     if (twoDMesh_)
                     {
-                        localIndex = cMap.entityMap(coupleMap::FACE)[index];
+                        const Map<label>& fM = cMap.entityMap(coupleMap::FACE);
+
+                        Map<label>::const_iterator it = fM.find(index);
+
+                        if (it != fM.end())
+                        {
+                            localIndex = it();
+                        }
+                        else
+                        {
+                            Pout<< " * * * Sync Operations * * * " << nl
+                                << " Could not find index: " << index
+                                << " in faceMap for proc: " << proc << nl
+                                << " nSentFaces: "
+                                << cMap.nEntities(coupleMap::FACE)
+                                << abort(FatalError);
+                        }
                     }
                     else
                     {
-                        localIndex = cMap.entityMap(coupleMap::EDGE)[index];
+                        const Map<label>& eM = cMap.entityMap(coupleMap::EDGE);
+
+                        Map<label>::const_iterator it = eM.find(index);
+
+                        if (it != eM.end())
+                        {
+                            localIndex = it();
+                        }
+                        else
+                        {
+                            Pout<< " * * * Sync Operations * * * " << nl
+                                << " Could not find index: " << index
+                                << " in edgeMap for proc: " << proc << nl
+                                << " nSentEdges: "
+                                << cMap.nEntities(coupleMap::EDGE)
+                                << abort(FatalError);
+                        }
                     }
                 }
 
@@ -7649,9 +7681,6 @@ bool dynamicTopoFvMesh::coupledFillTables
         forAll(eFaces, faceI)
         {
             label fPatch = whichPatch(eFaces[faceI]);
-
-            // If this is talking to a lower-ranked processor,
-            // skip the insertion step.
             label neiProc = getNeighbourProcessor(fPatch);
 
             if (neiProc > -1 && neiProc < Pstream::myProcNo())
@@ -7680,7 +7709,7 @@ bool dynamicTopoFvMesh::coupledFillTables
 
             // Physical patch: Is this an appropriate start face?
             //  - If yes, swap with first index
-            if (fPatch > -1)
+            if (fPatch > -1 && neiProc == -1)
             {
                 closed = false;
 
@@ -7777,7 +7806,7 @@ bool dynamicTopoFvMesh::coupledFillTables
 
                 // Physical patch: Is this an appropriate start face?
                 //  - If yes, swap with first index
-                if (slavePatch > -1)
+                if (slavePatch > -1 && neiProc == -1)
                 {
                     closed = false;
 
@@ -7934,7 +7963,17 @@ bool dynamicTopoFvMesh::coupledFillTables
                     continue;
                 }
 
+                const edge& slaveEdge = mesh.edges_[sI];
                 const labelList& seF = mesh.edgeFaces_[sI];
+
+                edge cE
+                (
+                    cMap.findMaster(coupleMap::POINT, slaveEdge[0]),
+                    cMap.findMaster(coupleMap::POINT, slaveEdge[1])
+                );
+
+                Pout<< " >> Edge: " << sI << "::" << slaveEdge
+                    << " mapped: " << cE << nl;
 
                 mesh.writeVTK
                 (
