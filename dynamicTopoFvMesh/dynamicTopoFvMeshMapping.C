@@ -128,11 +128,81 @@ void dynamicTopoFvMesh::computeMapping
 
             if (error > matchTol)
             {
-                nInconsistencies++;
+                bool consistent = false;
 
-                // Add to list
-                cellErrors.append(error);
-                failedCells.append(objectMap(cIndex, cellParents_[cIndex]));
+                // Check whether any edges lie on boundary patches.
+                // These cells can have relaxed weights to account
+                // for mild convexity.
+                const cell& cellToCheck = cells_[cIndex];
+
+                if (twoDMesh_)
+                {
+                    const labelList& parents = cellParents_[cIndex];
+
+                    forAll(parents, cI)
+                    {
+                        const cell& pCell = polyMesh::cells()[parents[cI]];
+
+                        forAll(pCell, fI)
+                        {
+                            const face& pFace = polyMesh::faces()[pCell[fI]];
+
+                            if (pFace.size() == 3)
+                            {
+                                continue;
+                            }
+
+                            if (boundaryMesh().whichPatch(pCell[fI]) > -1)
+                            {
+                                consistent = true;
+                                break;
+                            }
+                        }
+
+                        if (consistent)
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    forAll(cellToCheck, fI)
+                    {
+                        const labelList& fE = faceEdges_[cellToCheck[fI]];
+
+                        forAll(fE, eI)
+                        {
+                            if (whichEdgePatch(fE[eI]) > -1)
+                            {
+                                consistent = true;
+                                break;
+                            }
+                        }
+
+                        if (consistent)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (!consistent)
+                {
+                    nInconsistencies++;
+
+                    // Add to list
+                    cellErrors.append(error);
+
+                    failedCells.append
+                    (
+                        objectMap
+                        (
+                            cIndex,
+                            cellParents_[cIndex]
+                        )
+                    );
+                }
             }
         }
     }
@@ -208,11 +278,38 @@ void dynamicTopoFvMesh::computeMapping
 
             if (error > matchTol)
             {
-                nInconsistencies++;
+                bool consistent = false;
 
-                // Add to list
-                faceErrors.append(error);
-                failedFaces.append(objectMap(fIndex, faceParents_[fIndex]));
+                // Check whether any edges lie on bounding curves.
+                // These faces can have relaxed weights to account
+                // for addressing into patches on the other side
+                // of the curve.
+                const labelList& fEdges = faceEdges_[fIndex];
+
+                forAll(fEdges, eI)
+                {
+                    if (checkBoundingCurve(fEdges[eI]))
+                    {
+                        consistent = true;
+                    }
+                }
+
+                if (!consistent)
+                {
+                    nInconsistencies++;
+
+                    // Add to list
+                    faceErrors.append(error);
+
+                    failedFaces.append
+                    (
+                        objectMap
+                        (
+                            fIndex,
+                            faceParents_[fIndex]
+                        )
+                    );
+                }
             }
         }
     }
