@@ -42,9 +42,32 @@ Author
 namespace Foam
 {
 
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+// NB: values chosen such that bitwise '&' 0x1 yields the bool value
+// INVALID is also evaluates to false, but don't rely on that
+const char* coupleMap::names[coupleMap::INVALID + 1] =
+{
+    "BISECTION",
+    "COLLAPSE_FIRST",
+    "COLLAPSE_SECOND",
+    "COLLAPSE_MIDPOINT",
+    "REMOVE_CELL",
+    "MOVE_POINT",
+    "CONVERT_PATCH",
+    "INVALID"
+};
+
+// * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * * //
+
+const char* coupleMap::asText(const opType oType)
+{
+    return names[oType];
+}
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline coupleMap::coupleMap
+coupleMap::coupleMap
 (
     const IOobject& io,
     const bool twoDMesh,
@@ -63,12 +86,8 @@ inline coupleMap::coupleMap
     masterIndex_(masterIndex),
     slaveIndex_(slaveIndex),
     nEntities_(-1),
-    nInternalFaces_(-1),
-    ownerPtr_(NULL),
-    neighbourPtr_(NULL),
     edgesPtr_(NULL),
     facesPtr_(NULL),
-    cellsPtr_(NULL),
     faceEdgesPtr_(NULL)
 {
     if
@@ -85,7 +104,7 @@ inline coupleMap::coupleMap
 
 
 // Construct as copy
-inline coupleMap::coupleMap(const coupleMap& cm)
+coupleMap::coupleMap(const coupleMap& cm)
 :
     regIOobject(cm, true),
     twoDMesh_(cm.twoDMesh_),
@@ -95,12 +114,8 @@ inline coupleMap::coupleMap(const coupleMap& cm)
     masterIndex_(cm.masterIndex_),
     slaveIndex_(cm.slaveIndex_),
     nEntities_(cm.nEntities_),
-    nInternalFaces_(-1),
-    ownerPtr_(NULL),
-    neighbourPtr_(NULL),
     edgesPtr_(NULL),
     facesPtr_(NULL),
-    cellsPtr_(NULL),
     faceEdgesPtr_(NULL)
 {
     if
@@ -118,7 +133,7 @@ inline coupleMap::coupleMap(const coupleMap& cm)
 
 // * * * * * * * * * * * * * * * * Destructors * * * * * * * * * * * * * * * //
 
-inline coupleMap::~coupleMap()
+coupleMap::~coupleMap()
 {
     clearMaps();
     clearBuffers();
@@ -128,84 +143,21 @@ inline coupleMap::~coupleMap()
 
 // * * * * * * * * * * * * * * * Private Functions * * * * * * * * * * * * * //
 
-inline void coupleMap::clearAddressing() const
+void coupleMap::clearAddressing() const
 {
-    nInternalFaces_ = -1;
-    deleteDemandDrivenData(ownerPtr_);
-    deleteDemandDrivenData(neighbourPtr_);
     deleteDemandDrivenData(edgesPtr_);
     deleteDemandDrivenData(facesPtr_);
-    deleteDemandDrivenData(cellsPtr_);
     deleteDemandDrivenData(faceEdgesPtr_);
 }
 
 
-inline void coupleMap::makeAddressing() const
-{
-    // It is an error to attempt to recalculate
-    // if the pointer is already set
-    if (ownerPtr_ || neighbourPtr_ || nInternalFaces_ > -1)
-    {
-        FatalErrorIn("inline void coupleMap::makeAddressing() const")
-            << "Addressing has already been calculated."
-            << abort(FatalError);
-    }
-
-    label nFaces = nEntities(coupleMap::FACE);
-
-    if (nFaces < 0)
-    {
-        FatalErrorIn("inline void coupleMap::makeAddressing() const")
-            << "Invalid buffers. Cannot continue."
-            << abort(FatalError);
-    }
-
-    // Set sizes.
-    ownerPtr_ = new labelList(nFaces, -1);
-    neighbourPtr_ = new labelList(nFaces, -1);
-
-    labelList& own = *ownerPtr_;
-    labelList& nei = *neighbourPtr_;
-
-    boolList markedFaces(nFaces, false);
-
-    label nInternalFaces_ = 0;
-
-    // Fetch the demand-driven cell list.
-    const cellList& cList = cells();
-
-    forAll(cList, cellI)
-    {
-        const cell& cellToCheck = cList[cellI];
-
-        forAll(cellToCheck, faceI)
-        {
-            if (!markedFaces[cellToCheck[faceI]])
-            {
-                // First visit: owner
-                own[cellToCheck[faceI]] = cellI;
-                markedFaces[cellToCheck[faceI]] = true;
-            }
-            else
-            {
-                // Second visit: neighbour
-                nei[cellToCheck[faceI]] = cellI;
-                nInternalFaces_++;
-            }
-        }
-    }
-
-    nei.setSize(nInternalFaces_);
-}
-
-
-inline void coupleMap::makeEdges() const
+void coupleMap::makeEdges() const
 {
     // It is an error to attempt to recalculate
     // if the pointer is already set
     if (edgesPtr_)
     {
-        FatalErrorIn("inline void coupleMap::makeEdges() const")
+        FatalErrorIn("void coupleMap::makeEdges() const")
             << "Edges have already been calculated."
             << abort(FatalError);
     }
@@ -225,13 +177,13 @@ inline void coupleMap::makeEdges() const
 }
 
 
-inline void coupleMap::makeFaces() const
+void coupleMap::makeFaces() const
 {
     // It is an error to attempt to recalculate
     // if the pointer is already set
     if (facesPtr_ || faceEdgesPtr_)
     {
-        FatalErrorIn("inline void coupleMap::makeFaces() const")
+        FatalErrorIn("void coupleMap::makeFaces() const")
             << "Faces have already been calculated."
             << abort(FatalError);
     }
@@ -273,7 +225,7 @@ inline void coupleMap::makeFaces() const
 
     if (sumNFE != nEntities(coupleMap::NFE_SIZE))
     {
-        FatalErrorIn("inline void coupleMap::makeFaces() const")
+        FatalErrorIn("void coupleMap::makeFaces() const")
             << " Mismatched buffer." << nl
             << " sumNFE: " << sumNFE << nl
             << " NFE_SIZE: " << nEntities(coupleMap::NFE_SIZE) << nl
@@ -282,44 +234,13 @@ inline void coupleMap::makeFaces() const
 }
 
 
-inline void coupleMap::makeCells() const
-{
-    // It is an error to attempt to recalculate
-    // if the pointer is already set
-    if (cellsPtr_)
-    {
-        FatalErrorIn("inline void coupleMap::makeCells() const")
-            << "Cells have already been calculated."
-            << abort(FatalError);
-    }
-
-    label nCells = nEntities(coupleMap::CELL);
-    const labelList& cBuffer = entityBuffer(coupleMap::CELL);
-
-    // Set number of cell faces
-    label ncf = twoDMesh_ ? 5 : 4;
-
-    cellsPtr_ = new cellList(nCells, cell(ncf));
-
-    cellList& cells = *cellsPtr_;
-
-    forAll(cells, cellI)
-    {
-        for (label f = 0; f < ncf; f++)
-        {
-            cells[cellI][f] = cBuffer[(ncf*cellI) + f];
-        }
-    }
-}
-
-
-inline void coupleMap::makeFaceMap() const
+void coupleMap::makeFaceMap() const
 {
     // It is an error to attempt to recalculate
     // if the map is already calculated
     if (faceMap_.size())
     {
-        FatalErrorIn("inline void coupleMap::makeFaceMap() const")
+        FatalErrorIn("void coupleMap::makeFaceMap() const")
             << "faceMap has already been calculated."
             << abort(FatalError);
     }
@@ -337,13 +258,13 @@ inline void coupleMap::makeFaceMap() const
 }
 
 
-inline void coupleMap::makeCellMap() const
+void coupleMap::makeCellMap() const
 {
     // It is an error to attempt to recalculate
     // if the map is already calculated
     if (cellMap_.size())
     {
-        FatalErrorIn("inline void coupleMap::makeCellMap() const")
+        FatalErrorIn("void coupleMap::makeCellMap() const")
             << "cellMap has already been calculated."
             << abort(FatalError);
     }
@@ -363,37 +284,37 @@ inline void coupleMap::makeCellMap() const
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline pointField& coupleMap::pointBuffer() const
+pointField& coupleMap::pointBuffer() const
 {
     return pointBuffer_;
 }
 
 
-inline pointField& coupleMap::oldPointBuffer() const
+pointField& coupleMap::oldPointBuffer() const
 {
     return oldPointBuffer_;
 }
 
 
-inline labelList& coupleMap::subMeshPoints() const
+labelList& coupleMap::subMeshPoints() const
 {
     return subMeshPoints_;
 }
 
 
-inline List<labelPair>& coupleMap::globalProcPoints() const
+List<labelPair>& coupleMap::globalProcPoints() const
 {
     return globalProcPoints_;
 }
 
 
-inline void coupleMap::allocateBuffers() const
+void coupleMap::allocateBuffers() const
 {
     forAll(nEntities_, entityI)
     {
         if (nEntities_[entityI] < 0)
         {
-            FatalErrorIn("inline void coupleMap::allocateBuffers() const")
+            FatalErrorIn("void coupleMap::allocateBuffers() const")
                 << " Entity sizes are not valid." << nl
                 << " nEntities: " << nEntities_
                 << abort(FatalError);
@@ -401,44 +322,44 @@ inline void coupleMap::allocateBuffers() const
     }
 
     // Size up point buffers
-    pointBuffer().setSize(nEntities(coupleMap::POINT));
-    oldPointBuffer().setSize(nEntities(coupleMap::POINT));
+    pointBuffer().setSize(nEntities(POINT));
+    oldPointBuffer().setSize(nEntities(POINT));
 
     // Size up connectivity buffers
-    entityBuffer(coupleMap::POINT).setSize
+    entityBuffer(POINT).setSize
     (
-        nEntities(coupleMap::GLOBAL_POINT)
-      - nEntities(coupleMap::SHARED_POINT)
+        nEntities(GLOBAL_POINT)
+      - nEntities(SHARED_POINT)
     );
 
-    entityBuffer(coupleMap::EDGE).setSize(2 * nEntities(coupleMap::EDGE));
+    // Set edge buffer
+    entityBuffer(EDGE).setSize(2 * nEntities(EDGE));
+
+    // Set addressing buffers
+    entityBuffer(OWNER).setSize(nEntities(FACE));
+    entityBuffer(NEIGHBOUR).setSize(nEntities(INTERNAL_FACE));
 
     // Size up boundary buffers
-    entityBuffer(coupleMap::FACE_STARTS).setSize(nEntities(coupleMap::NBDY));
-    entityBuffer(coupleMap::FACE_SIZES).setSize(nEntities(coupleMap::NBDY));
-    entityBuffer(coupleMap::EDGE_STARTS).setSize(nEntities(coupleMap::NBDY));
-    entityBuffer(coupleMap::EDGE_SIZES).setSize(nEntities(coupleMap::NBDY));
-    entityBuffer(coupleMap::PATCH_ID).setSize(nEntities(coupleMap::NBDY));
+    entityBuffer(FACE_STARTS).setSize(nEntities(NBDY));
+    entityBuffer(FACE_SIZES).setSize(nEntities(NBDY));
+    entityBuffer(EDGE_STARTS).setSize(nEntities(NBDY));
+    entityBuffer(EDGE_SIZES).setSize(nEntities(NBDY));
+    entityBuffer(PATCH_ID).setSize(nEntities(NBDY));
 
     // nFaceEdges buffer is required only for 2D,
     // due to a mix of triangle / quad faces
     if (twoDMesh_)
     {
-        entityBuffer(coupleMap::NFE_BUFFER).setSize(nEntities(coupleMap::FACE));
+        entityBuffer(NFE_BUFFER).setSize(nEntities(FACE));
     }
 
-    // Set number of cell faces
-    label ncf = twoDMesh_ ? 5 : 4;
-    entityBuffer(coupleMap::CELL).setSize(ncf*nEntities(coupleMap::CELL));
-
     // Allocate for variable size face-lists
-    // For 3D, this is always 3 times the number of faces
-    entityBuffer(coupleMap::FACE).setSize(nEntities(coupleMap::NFE_SIZE));
-    entityBuffer(coupleMap::FACE_EDGE).setSize(nEntities(coupleMap::NFE_SIZE));
+    entityBuffer(FACE).setSize(nEntities(NFE_SIZE));
+    entityBuffer(FACE_EDGE).setSize(nEntities(NFE_SIZE));
 }
 
 
-inline label coupleMap::findSlave
+label coupleMap::findSlave
 (
     const label eType,
     const label Index
@@ -457,7 +378,7 @@ inline label coupleMap::findSlave
 }
 
 
-inline label coupleMap::findMaster
+label coupleMap::findMaster
 (
     const label eType,
     const label Index
@@ -476,7 +397,7 @@ inline label coupleMap::findMaster
 }
 
 
-inline void coupleMap::removeSlave
+void coupleMap::removeSlave
 (
     const label eType,
     const label Index
@@ -491,7 +412,7 @@ inline void coupleMap::removeSlave
 }
 
 
-inline void coupleMap::removeMaster
+void coupleMap::removeMaster
 (
     const label eType,
     const label Index
@@ -506,7 +427,7 @@ inline void coupleMap::removeMaster
 }
 
 
-inline void coupleMap::mapSlave
+void coupleMap::mapSlave
 (
     const label eType,
     const label master,
@@ -517,7 +438,7 @@ inline void coupleMap::mapSlave
 }
 
 
-inline void coupleMap::mapMaster
+void coupleMap::mapMaster
 (
     const label eType,
     const label slave,
@@ -528,21 +449,21 @@ inline void coupleMap::mapMaster
 }
 
 
-inline void coupleMap::pushOperation
+void coupleMap::pushOperation
 (
     const label index,
-    const label opType,
+    const opType oType,
     const point& newPoint,
     const point& oldPoint
 ) const
 {
     entityIndices_.setSize(entityIndices_.size() + 1, index);
-    entityOperations_.setSize(entityOperations_.size() + 1, opType);
+    entityOperations_.setSize(entityOperations_.size() + 1, oType);
 
     if
     (
-        opType == coupleMap::MOVE_POINT ||
-        opType == coupleMap::CONVERT_PATCH
+        oType == coupleMap::MOVE_POINT ||
+        oType == coupleMap::CONVERT_PATCH
     )
     {
         moveNewPoints_.setSize(moveNewPoints_.size() + 1, newPoint);
@@ -551,7 +472,7 @@ inline void coupleMap::pushOperation
 }
 
 
-inline void coupleMap::transferMaps
+void coupleMap::transferMaps
 (
     const label eType,
     Map<label>& newEntityMap,
@@ -563,7 +484,7 @@ inline void coupleMap::transferMaps
 }
 
 
-inline void coupleMap::clearMaps() const
+void coupleMap::clearMaps() const
 {
     faceMap_.clear();
     cellMap_.clear();
@@ -576,7 +497,7 @@ inline void coupleMap::clearMaps() const
 }
 
 
-inline void coupleMap::clearBuffers() const
+void coupleMap::clearBuffers() const
 {
     pointBuffer_.clear();
     oldPointBuffer_.clear();
@@ -597,40 +518,25 @@ inline void coupleMap::clearBuffers() const
 }
 
 
-inline label coupleMap::nInternalFaces() const
+label coupleMap::nInternalFaces() const
 {
-    if (nInternalFaces_ == -1)
-    {
-        makeAddressing();
-    }
-
-    return nInternalFaces_;
+    return nEntities(INTERNAL_FACE);
 }
 
 
-inline const labelList& coupleMap::owner() const
+const labelList& coupleMap::owner() const
 {
-    if (!ownerPtr_)
-    {
-        makeAddressing();
-    }
-
-    return *ownerPtr_;
+    return entityBuffer(OWNER);
 }
 
 
-inline const labelList& coupleMap::neighbour() const
+const labelList& coupleMap::neighbour() const
 {
-    if (!neighbourPtr_)
-    {
-        makeAddressing();
-    }
-
-    return *neighbourPtr_;
+    return entityBuffer(NEIGHBOUR);
 }
 
 
-inline const edgeList& coupleMap::edges() const
+const edgeList& coupleMap::edges() const
 {
     if (!edgesPtr_)
     {
@@ -641,7 +547,7 @@ inline const edgeList& coupleMap::edges() const
 }
 
 
-inline const faceList& coupleMap::faces() const
+const faceList& coupleMap::faces() const
 {
     if (!facesPtr_)
     {
@@ -652,18 +558,7 @@ inline const faceList& coupleMap::faces() const
 }
 
 
-inline const cellList& coupleMap::cells() const
-{
-    if (!cellsPtr_)
-    {
-        makeCells();
-    }
-
-    return *cellsPtr_;
-}
-
-
-inline const labelListList& coupleMap::faceEdges() const
+const labelListList& coupleMap::faceEdges() const
 {
     if (!faceEdgesPtr_)
     {
@@ -674,7 +569,7 @@ inline const labelListList& coupleMap::faceEdges() const
 }
 
 
-inline const labelList& coupleMap::faceMap() const
+const labelList& coupleMap::faceMap() const
 {
     if (faceMap_.empty())
     {
@@ -685,7 +580,7 @@ inline const labelList& coupleMap::faceMap() const
 }
 
 
-inline const labelList& coupleMap::cellMap() const
+const labelList& coupleMap::cellMap() const
 {
     if (cellMap_.empty())
     {
@@ -696,7 +591,7 @@ inline const labelList& coupleMap::cellMap() const
 }
 
 
-inline bool coupleMap::readData(Istream& is)
+bool coupleMap::readData(Istream& is)
 {
     Map<label> tmpMap(is);
 
@@ -715,7 +610,7 @@ inline bool coupleMap::readData(Istream& is)
 }
 
 
-inline bool coupleMap::writeData(Ostream& os) const
+bool coupleMap::writeData(Ostream& os) const
 {
     // Only write-out point-map information
     // to avoid geometric checking.
@@ -726,7 +621,7 @@ inline bool coupleMap::writeData(Ostream& os) const
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-inline void coupleMap::operator=(const coupleMap& rhs)
+void coupleMap::operator=(const coupleMap& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)

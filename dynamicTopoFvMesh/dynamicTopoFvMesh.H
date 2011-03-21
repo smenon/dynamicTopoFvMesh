@@ -279,7 +279,6 @@ class dynamicTopoFvMesh
             const Xfer<labelListList>& faceEdges,
             const Xfer<labelList>& owner,
             const Xfer<labelList>& neighbour,
-            const Xfer<cellList>& cells,
             const labelList& faceStarts,
             const labelList& faceSizes,
             const labelList& edgeStarts,

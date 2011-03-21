@@ -247,7 +247,7 @@ inline Map<label>& coupleMap::reverseEntityMap(const label eType) const
 }
 
 
-inline FixedList<labelList,11>& coupleMap::entityBuffer() const
+inline FixedList<labelList,12>& coupleMap::entityBuffer() const
 {
     return entityBuffer_;
 }
@@ -265,7 +265,7 @@ inline labelList& coupleMap::entityIndices() const
 }
 
 
-inline labelList& coupleMap::entityOperations() const
+inline List<coupleMap::opType>& coupleMap::entityOperations() const
 {
     return entityOperations_;
 }

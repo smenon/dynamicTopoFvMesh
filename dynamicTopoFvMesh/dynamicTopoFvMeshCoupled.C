@@ -3814,7 +3814,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
             {
                 // Size up the receipt buffers
                 labelList& indices = cMap.entityIndices();
-                labelList& operations = cMap.entityOperations();
+                List<coupleMap::opType>& operations = cMap.entityOperations();
 
                 indices.setSize(nEntities);
                 operations.setSize(nEntities);
@@ -3955,7 +3955,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
         {
             const coupleMap& cMap = sPM.map();
             const labelList& indices = cMap.entityIndices();
-            const labelList& operations = cMap.entityOperations();
+            const List<coupleMap::opType>& operations = cMap.entityOperations();
             const pointField& newPoints = cMap.moveNewPoints();
             const pointField& oldPoints = cMap.moveOldPoints();
 
@@ -4010,7 +4010,8 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             // Sequentially execute operations
             forAll(indices, indexI)
             {
-                label index = indices[indexI], op = operations[indexI];
+                const label index = indices[indexI];
+                const coupleMap::opType op = operations[indexI];
 
                 if (debug > 3)
                 {
@@ -4361,6 +4362,18 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                         break;
                     }
+
+                    case coupleMap::INVALID:
+                    {
+                        Pout<< " * * * Sync Operations * * * " << nl
+                            << " Invalid operation." << nl
+                            << " Index: " << index << nl
+                            << " localIndex: " << localIndex << nl
+                            << " operation: " << coupleMap::asText(op) << nl
+                            << abort(FatalError);
+
+                        break;
+                    }
                 }
 
                 if (opMap.type() <= 0)
@@ -4369,7 +4382,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         << " Operation failed." << nl
                         << " Index: " << index << nl
                         << " localIndex: " << localIndex << nl
-                        << " operation: " << op << nl
+                        << " operation: " << coupleMap::asText(op) << nl
                         << " opMap.type: " << opMap.type() << nl
                         << abort(FatalError);
                 }
@@ -5198,6 +5211,8 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     index = 0;
     face thisFace;
     labelList& fBuffer = cMap.entityBuffer(coupleMap::FACE);
+    labelList& fOwner = cMap.entityBuffer(coupleMap::OWNER);
+    labelList& fNeighbour = cMap.entityBuffer(coupleMap::NEIGHBOUR);
     labelList& feBuffer = cMap.entityBuffer(coupleMap::FACE_EDGE);
 
     for (label i = 0; i < nF; i++)
@@ -5206,22 +5221,35 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         label own = owner_[fIndex];
         label nei = neighbour_[fIndex];
 
-        if (rCellMap.found(own))
+        // Fetch mapped addressing
+        label fOwn = rCellMap.found(own) ? rCellMap[own] : -1;
+        label fNei = rCellMap.found(nei) ? rCellMap[nei] : -1;
+
+        if (fOwn > -1)
         {
             // Check if this face is pointed the right way
-            if (rCellMap.found(nei) && (rCellMap[nei] < rCellMap[own]))
+            if ((fNei > -1) && (fNei < fOwn))
             {
                 thisFace = faces_[fIndex].reverseFace();
+                fOwner[i] = fNei;
+                fNeighbour[i] = fOwn;
             }
             else
             {
                 thisFace = faces_[fIndex];
+                fOwner[i] = fOwn;
+
+                if (fNei > -1)
+                {
+                    fNeighbour[i] = fNei;
+                }
             }
         }
         else
         {
             // This face is pointed the wrong way.
             thisFace = faces_[fIndex].reverseFace();
+            fOwner[i] = fNei;
         }
 
         const labelList& fEdges = faceEdges_[fIndex];
@@ -5243,20 +5271,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         forAllConstIter(Map<label>, faceMap, fIter)
         {
             nfeBuffer[fIter.key()] = faces_[fIter()].size();
-        }
-    }
-
-    index = 0;
-    labelList& cBuffer = cMap.entityBuffer(coupleMap::CELL);
-
-    for (label i = 0; i < nC; i++)
-    {
-        label cIndex = cellMap[i];
-        const cell& cellToCheck = cells_[cIndex];
-
-        forAll(cellToCheck, faceI)
-        {
-            cBuffer[index++] = rFaceMap[cellToCheck[faceI]];
         }
     }
 
@@ -5382,7 +5396,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
             xferCopy(cMap.faceEdges()),
             xferCopy(cMap.owner()),
             xferCopy(cMap.neighbour()),
-            xferCopy(cMap.cells()),
             bdyFaceStarts,
             bdyFaceSizes,
             bdyEdgeStarts,
@@ -5884,7 +5897,6 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 xferCopy(cMap.faceEdges()),
                 xferCopy(cMap.owner()),
                 xferCopy(cMap.neighbour()),
-                xferCopy(cMap.cells()),
                 faceStarts,
                 faceSizes,
                 edgeStarts,
@@ -5905,7 +5917,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
               + Foam::name(Pstream::myProcNo())
               + "to"
               + Foam::name(proc),
-                identity(cMap.cells().size())
+                identity(cMap.nEntities(coupleMap::CELL))
             );
         }
 

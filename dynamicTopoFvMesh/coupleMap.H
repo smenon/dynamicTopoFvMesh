@@ -65,133 +65,155 @@ class coupleMap
 :
     public regIOobject
 {
-    // Private data
-    mutable bool twoDMesh_;
-
-    mutable bool isLocal_;
-    mutable bool isSend_;
-
-    mutable label patchIndex_;
-
-    mutable label masterIndex_;
-    mutable label slaveIndex_;
-
-    mutable pointField pointBuffer_;
-    mutable pointField oldPointBuffer_;
-
-    // List of points that are required
-    // during patch sub-mesh creation
-    mutable labelList subMeshPoints_;
-    mutable List<labelPair> globalProcPoints_;
-
-    // Entity sizes (as specified by the entityType enumerant)
-    mutable FixedList<label,10> nEntities_;
-
-    // Maps for entities
-    mutable FixedList<Map<label>,4> entityMap_;
-    mutable FixedList<Map<label>,4> reverseEntityMap_;
-
-    // Entity Buffers (as specified by the entityType enumerant)
-    mutable FixedList<labelList,11> entityBuffer_;
-
-    // List of entity indices with topological operations
-    mutable labelList entityIndices_;
-
-    // List of operations performed on entities
-    mutable labelList entityOperations_;
-
-    // List of point-locations to move points to
-    mutable pointField moveNewPoints_;
-    mutable pointField moveOldPoints_;
-
-    // Addressing for field mapping
-    mutable labelList faceMap_;
-    mutable labelList cellMap_;
-
-    //- Demand-driven connectivity data.
-        mutable label nInternalFaces_;
-        mutable labelList* ownerPtr_;
-        mutable labelList* neighbourPtr_;
-        mutable edgeList* edgesPtr_;
-        mutable faceList* facesPtr_;
-        mutable cellList* cellsPtr_;
-        mutable labelListList* faceEdgesPtr_;
-
-        inline void makeEdges() const;
-        inline void makeFaces() const;
-        inline void makeCells() const;
-
-        inline void makeFaceMap() const;
-        inline void makeCellMap() const;
-
-        inline void makeAddressing() const;
-
-        inline void clearAddressing() const;
-
-    //- Disallow default bitwise assignment
-        inline void operator=(const coupleMap&);
 
 public:
 
-    // Enumerants for entity-types
-    enum entityType
-    {
-        // Buffers and sizes
-        POINT = 0,
-        EDGE = 1,
-        FACE = 2,
-        CELL = 3,
-        // Sizes only
-        INTERNAL_EDGE = 4,
-        INTERNAL_FACE = 5,
-        SHARED_POINT = 6,
-        GLOBAL_POINT = 7,
-        NFE_SIZE = 8,
-        NBDY = 9,
-        // Buffers only
-        FACE_EDGE = 4,
-        NFE_BUFFER = 5,
-        FACE_STARTS = 6,
-        FACE_SIZES = 7,
-        EDGE_STARTS = 8,
-        EDGE_SIZES = 9,
-        PATCH_ID = 10
-    };
+    // Public data types
 
-    enum operationType
-    {
-        BISECTION = 0,
-        COLLAPSE_FIRST = 1,
-        COLLAPSE_SECOND = 2,
-        COLLAPSE_MIDPOINT = 3,
-        REMOVE_CELL = 4,
-        MOVE_POINT = 5,
-        CONVERT_PATCH = 6
-    };
+        //- Enumerants for entity-types
+        enum entityType
+        {
+            // Buffers and sizes
+            POINT = 0,
+            EDGE = 1,
+            FACE = 2,
+            // Sizes only
+            CELL = 3,
+            INTERNAL_EDGE = 4,
+            INTERNAL_FACE = 5,
+            SHARED_POINT = 6,
+            GLOBAL_POINT = 7,
+            NFE_SIZE = 8,
+            NBDY = 9,
+            // Buffers only
+            OWNER = 3,
+            NEIGHBOUR = 4,
+            FACE_EDGE = 5,
+            NFE_BUFFER = 6,
+            FACE_STARTS = 7,
+            FACE_SIZES = 8,
+            EDGE_STARTS = 9,
+            EDGE_SIZES = 10,
+            PATCH_ID = 11
+        };
 
-    //- Runtime type information
-    TypeName("coupleMap");
+        //- Enumerants for operations
+        enum opType
+        {
+            BISECTION = 0,
+            COLLAPSE_FIRST = 1,
+            COLLAPSE_SECOND = 2,
+            COLLAPSE_MIDPOINT = 3,
+            REMOVE_CELL = 4,
+            MOVE_POINT = 5,
+            CONVERT_PATCH = 6,
+            INVALID
+        };
 
-    // Constructor
-    inline coupleMap
-    (
-        const IOobject& io,
-        const bool twoDMesh,
-        const bool isLocal,
-        const bool isSend,
-        const label patchIndex,
-        const label masterIndex,
-        const label slaveIndex
-    );
+private:
 
-    // Construct as copy
-    inline coupleMap(const coupleMap&);
+    // Private data
+
+        mutable bool twoDMesh_;
+
+        // Flags for coupled entities
+        mutable bool isLocal_;
+        mutable bool isSend_;
+
+        // Patch index for coupled entities
+        mutable label patchIndex_;
+
+        // Master / slave indices
+        mutable label masterIndex_;
+        mutable label slaveIndex_;
+
+        // Point buffers
+        mutable pointField pointBuffer_;
+        mutable pointField oldPointBuffer_;
+
+        // List of points that are required
+        // during patch sub-mesh creation
+        mutable labelList subMeshPoints_;
+        mutable List<labelPair> globalProcPoints_;
+
+        // Entity sizes (as specified by the entityType enumerant)
+        mutable FixedList<label,10> nEntities_;
+
+        // Maps for entities
+        mutable FixedList<Map<label>,4> entityMap_;
+        mutable FixedList<Map<label>,4> reverseEntityMap_;
+
+        // Entity Buffers (as specified by the entityType enumerant)
+        mutable FixedList<labelList,12> entityBuffer_;
+
+        // List of entity indices with topological operations
+        mutable labelList entityIndices_;
+
+        // List of operations performed on entities
+        mutable List<opType> entityOperations_;
+
+        // List of point-locations to move points to
+        mutable pointField moveNewPoints_;
+        mutable pointField moveOldPoints_;
+
+        // Addressing for field mapping
+        mutable labelList faceMap_;
+        mutable labelList cellMap_;
+
+        //- Demand-driven connectivity data.
+        mutable edgeList* edgesPtr_;
+        mutable faceList* facesPtr_;
+        mutable labelListList* faceEdgesPtr_;
+
+        void makeEdges() const;
+        void makeFaces() const;
+
+        void makeFaceMap() const;
+        void makeCellMap() const;
+
+        void clearAddressing() const;
+
+        //- Disallow default bitwise assignment
+        void operator=(const coupleMap&);
+
+public:
+
+    // Static data members
+
+        //- The set of names corresponding to the operationType enumeration
+        //  Includes an extra entry for "invalid".
+        static const char* names[INVALID + 1];
+
+        //- Runtime type information
+        TypeName("coupleMap");
+
+    // Static Member Functions
+
+        //- Return a text representation of an opType
+        static const char* asText(const opType);
+
+    // Constructors
+
+        //- Construct from components
+        coupleMap
+        (
+            const IOobject& io,
+            const bool twoDMesh,
+            const bool isLocal,
+            const bool isSend,
+            const label patchIndex,
+            const label masterIndex,
+            const label slaveIndex
+        );
+
+        //- Construct as copy
+        coupleMap(const coupleMap&);
 
     // Destructor
 
-        inline virtual ~coupleMap();
+        virtual ~coupleMap();
 
-    // Interpolation functions
+    //- Interpolation functions
 
         //- Interpolate point field
         template<class Type>
@@ -244,46 +266,46 @@ public:
         inline bool isSend() const;
         inline bool isRecv() const;
 
-        inline pointField& pointBuffer() const;
-        inline pointField& oldPointBuffer() const;
+        pointField& pointBuffer() const;
+        pointField& oldPointBuffer() const;
 
-        inline labelList& subMeshPoints() const;
-        inline List<labelPair>& globalProcPoints() const;
+        labelList& subMeshPoints() const;
+        List<labelPair>& globalProcPoints() const;
 
-        inline void allocateBuffers() const;
+        void allocateBuffers() const;
 
-        inline label findSlave
+        label findSlave
         (
             const label eType,
             const label Index
         ) const;
 
-        inline label findMaster
+        label findMaster
         (
             const label eType,
             const label Index
         ) const;
 
-        inline void removeSlave
+        void removeSlave
         (
             const label eType,
             const label Index
         ) const;
 
-        inline void removeMaster
+        void removeMaster
         (
             const label eType,
             const label Index
         ) const;
 
-        inline void mapSlave
+        void mapSlave
         (
             const label eType,
             const label master,
             const label slave
         ) const;
 
-        inline void mapMaster
+        void mapMaster
         (
             const label eType,
             const label slave,
@@ -296,49 +318,48 @@ public:
         inline Map<label>& entityMap(const label eType) const;
         inline Map<label>& reverseEntityMap(const label eType) const;
 
-        inline FixedList<labelList,11>& entityBuffer() const;
+        inline FixedList<labelList,12>& entityBuffer() const;
         inline labelList& entityBuffer(const label eType) const;
 
         inline labelList& entityIndices() const;
-        inline labelList& entityOperations() const;
+        inline List<opType>& entityOperations() const;
 
         inline pointField& moveNewPoints() const;
         inline pointField& moveOldPoints() const;
 
-        inline void pushOperation
+        void pushOperation
         (
             const label index,
-            const label opType,
+            const opType oType,
             const point& newPoint = vector::zero,
             const point& oldPoint = vector::zero
         ) const;
 
         //- Demand-driven data
-        inline label nInternalFaces() const;
-        inline const labelList& owner() const;
-        inline const labelList& neighbour() const;
-        inline const edgeList& edges() const;
-        inline const faceList& faces() const;
-        inline const cellList& cells() const;
-        inline const labelListList& faceEdges() const;
+        label nInternalFaces() const;
+        const labelList& owner() const;
+        const labelList& neighbour() const;
+        const edgeList& edges() const;
+        const faceList& faces() const;
+        const labelListList& faceEdges() const;
 
-        inline const labelList& faceMap() const;
-        inline const labelList& cellMap() const;
+        const labelList& faceMap() const;
+        const labelList& cellMap() const;
 
-        inline void transferMaps
+        void transferMaps
         (
             const label eType,
             Map<label>& newEntityMap,
             Map<label>& newReverseEntityMap
         ) const;
 
-        inline void clearMaps() const;
+        void clearMaps() const;
 
-        inline void clearBuffers() const;
+        void clearBuffers() const;
 
-        inline bool readData(Istream&);
+        bool readData(Istream&);
 
-        inline bool writeData(Ostream&) const;
+        bool writeData(Ostream&) const;
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -346,10 +367,6 @@ public:
 } // End namespace Foam
 
 #include "coupleMapI.H"
-
-#ifdef NoRepository
-#    include "coupleMap.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
