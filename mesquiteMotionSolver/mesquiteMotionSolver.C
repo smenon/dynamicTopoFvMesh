@@ -1475,11 +1475,11 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
     recvSurfPointMap_.setSize(procIndices_.size());
 
     // Build a reverse processor map for convenience
-    Map<label> procMap;
+    labelList procMap(Pstream::nProcs(), -1);
 
     forAll(procIndices_, pI)
     {
-        procMap.insert(procIndices_[pI], pI);
+        procMap[procIndices_[pI]] = pI;
     }
 
     const labelListList& eFaces = mesh().edgeFaces();
@@ -1629,43 +1629,23 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         }
     }
 
-    if (debug)
+    // Check to ensure that field sizes match
+    labelList nProcSize(procIndices_.size(), -1);
+
+    forAll(sendSurfPointMap_, pI)
     {
-        // Check to ensure that field sizes match
-        Map<label> nProcSize;
+        // Send size to neighbour
+        parWrite(procIndices_[pI], sendSurfPointMap_[pI].size());
 
-        forAll(sendSurfPointMap_, pI)
+        // Receive size from neighbour
+        parRead(procIndices_[pI], nProcSize[pI]);
+
+        if (debug)
         {
-            // Transfer to neighbour
-            parWrite(procIndices_[pI], sendSurfPointMap_[pI].size());
-
-            // Set an entry for this processor
-            nProcSize.insert(procIndices_[pI], -1);
-        }
-
-        forAll(sendSurfPointMap_, pI)
-        {
-            // Receive from neighbour
-            parRead(procIndices_[pI], nProcSize[procIndices_[pI]]);
-
             Pout<< " neiProcNo: " << procIndices_[pI]
                 << " mySize: " << sendSurfPointMap_[pI].size()
                 << " neiSize: " << nProcSize[procIndices_[pI]]
                 << endl;
-
-            if (nProcSize[procIndices_[pI]] != sendSurfPointMap_[pI].size())
-            {
-                FatalErrorIn
-                (
-                    "void mesquiteMotionSolver::initParallelSurfaceSmoothing()"
-                )
-                    << " Buffer size mismatch: " << nl
-                    << " My proc: " << Pstream::myProcNo()
-                    << " mySize: " << sendSurfPointMap_[pI].size() << nl
-                    << " neiProcNo: " << procIndices_[pI]
-                    << " neiSize: " << nProcSize[procIndices_[pI]] << nl
-                    << abort(FatalError);
-            }
         }
     }
 
@@ -1729,15 +1709,19 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         }
     }
 
-    // Match points geometrically
+    // Send and receive points for geometric match
+    vector largeVec(GREAT, GREAT, GREAT);
+
     forAll(sendSurfPointMap_, pI)
     {
         label proc = procIndices_[pI];
-        label bSize = sendSurfPointMap_[pI].size();
+
+        // Set size to max, incase of mismatch
+        label bSize = Foam::max(sendSurfPointMap_[pI].size(), nProcSize[pI]);
 
         // Size-up send / recv fields
-        sendSurfFields_[pI].setSize(bSize, vector::zero);
-        recvSurfFields_[pI].setSize(bSize, vector::zero);
+        sendSurfFields_[pI].setSize(bSize, largeVec);
+        recvSurfFields_[pI].setSize(bSize, largeVec);
 
         // Fetch references
         vectorField& recvField = recvSurfFields_[pI];
@@ -1761,52 +1745,38 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
 
     forAll(sendSurfPointMap_, pI)
     {
-        label proc = procIndices_[pI];
-
         // Fetch references
         vectorField& recvField = recvSurfFields_[pI];
         DynamicList<point>& bufPoints = auxSurfPoints[pI];
 
+        // Match points geometrically
         labelList pMap(recvField.size(), -1);
 
-        bool matchedAll =
+        matchPoints
         (
-            matchPoints
+            bufPoints,
+            recvField,
+            List<scalar>
             (
-                bufPoints,
-                recvField,
-                List<scalar>
-                (
-                    recvField.size(),
-                    1e-4 * Foam::sqrt(matchMag)
-                ),
-                true,
-                pMap
-            )
+                recvField.size(),
+                1e-4 * Foam::sqrt(matchMag)
+            ),
+            false,
+            pMap
         );
 
-        if (matchedAll)
-        {
-            // Renumber to shuffled indices
-            Map<label>& anbMap = recvSurfPointMap_[pI];
+        // Renumber to shuffled indices
+        Map<label>& anbMap = recvSurfPointMap_[pI];
 
-            forAllIter(Map<label>, anbMap, pIter)
-            {
-                pIter() = pMap[pIter()];
-            }
-        }
-        else
+        forAllIter(Map<label>, anbMap, pIter)
         {
-            FatalErrorIn
-            (
-                "void mesquiteMotionSolver::initParallelSurfaceSmoothing()"
-            )
-                << " Failed point match: " << nl
-                << " My proc: " << Pstream::myProcNo() << nl
-                << " neiProcNo: " << proc << nl
-                << " size(bufPoints): " << bufPoints.size() << nl
-                << " size(recvField): " << recvField.size() << nl
-                << abort(FatalError);
+            // Deal with mismatches later
+            if (pMap[pIter()] < 0)
+            {
+                continue;
+            }
+
+            pIter() = pMap[pIter()];
         }
     }
 

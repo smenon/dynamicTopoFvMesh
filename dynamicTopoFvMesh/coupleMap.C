@@ -44,8 +44,6 @@ namespace Foam
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-// NB: values chosen such that bitwise '&' 0x1 yields the bool value
-// INVALID is also evaluates to false, but don't rely on that
 const char* coupleMap::names[coupleMap::INVALID + 1] =
 {
     "BISECTION",

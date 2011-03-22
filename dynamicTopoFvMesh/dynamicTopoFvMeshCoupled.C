@@ -867,23 +867,25 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
         forAll(boundary, patchI)
         {
-            if (isA<processorPolyPatch>(boundary[patchI]))
+            if (getNeighbourProcessor(patchI) == procIndices_[pI])
             {
-                const processorPolyPatch& pp =
-                (
-                    refCast<const processorPolyPatch>(boundary[patchI])
-                );
-
-                if (pp.neighbProcNo() == procIndices_[pI])
-                {
-                    neiProcPatch = patchI;
-                    break;
-                }
+                neiProcPatch = patchI;
+                break;
             }
         }
 
         // Prepare information about inserted / converted faces and edges
         const polyBoundaryMesh& slaveBoundary = mesh.boundaryMesh();
+
+        // Set the slave conversion patch
+        forAll(slaveBoundary, patchI)
+        {
+            if (mesh.getNeighbourProcessor(patchI) == Pstream::myProcNo())
+            {
+                slaveConvertPatch[pI] = patchI;
+                break;
+            }
+        }
 
         forAllIter(Map<label>, procCellMap, cIter)
         {
@@ -1123,9 +1125,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                     if (neiProcNo == Pstream::myProcNo())
                     {
-                        // Set the slave conversion patch
-                        slaveConvertPatch[pI] = sfPatch;
-
                         // Set the master face patch
                         facePatch = neiProcPatch;
                     }
@@ -2371,11 +2370,11 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             // all on the boundary anyway.
             mesh.faceEdges_.append(newFaceEdges);
 
-            // Update map
-            map.addFace(newFaceIndex);
+            // changeMap update for the new face is not necessary,
+            // since it is on the slave subMesh
 
             // Set mapping information
-            setFaceMapping(newFaceIndex);
+            mesh.setFaceMapping(newFaceIndex);
 
             meshOps::replaceLabel
             (
@@ -3110,6 +3109,11 @@ const changeMap dynamicTopoFvMesh::removeCells
 {
     if (cList.empty() || patch < 0)
     {
+        if (cList.size())
+        {
+            writeVTK("removeCellsFailed_" + rcN, cList, 3, false, true);
+        }
+
         FatalErrorIn
         (
             "const changeMap dynamicTopoFvMesh::removeCells"
@@ -4066,6 +4070,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                                 << " in faceMap for proc: " << proc << nl
                                 << " nSentFaces: "
                                 << cMap.nEntities(coupleMap::FACE)
+                                << " opType: " << coupleMap::asText(op)
                                 << abort(FatalError);
                         }
                     }
@@ -4086,6 +4091,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                                 << " in edgeMap for proc: " << proc << nl
                                 << " nSentEdges: "
                                 << cMap.nEntities(coupleMap::EDGE)
+                                << " opType: " << coupleMap::asText(op)
                                 << abort(FatalError);
                         }
                     }
