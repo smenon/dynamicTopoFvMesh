@@ -759,6 +759,101 @@ void dynamicTopoFvMesh::initCoupledConnectivity
 }
 
 
+// Move coupled subMesh points
+void dynamicTopoFvMesh::moveCoupledSubMeshes()
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    if (debug)
+    {
+        Info<< " void dynamicTopoFvMesh::moveCoupledSubMeshes() :"
+            << " Moving points for coupled subMeshes."
+            << endl;
+    }
+
+    forAll(procIndices_, pI)
+    {
+        label proc = procIndices_[pI];
+
+        const coupledInfo& sPM = sendMeshes_[pI];
+        const coupledInfo& rPM = recvMeshes_[pI];
+
+        // Fetch the coupleMap
+        const coupleMap& scMap = sPM.map();
+        const coupleMap& rcMap = rPM.map();
+
+        Map<label>& pointMap = scMap.entityMap(coupleMap::POINT);
+
+        // Fill point buffers
+        pointField& pBuffer = scMap.pointBuffer();
+        pointField& opBuffer = scMap.oldPointBuffer();
+
+        forAllConstIter(Map<label>, pointMap, pIter)
+        {
+            pBuffer[pIter.key()] = points_[pIter()];
+            opBuffer[pIter.key()] = oldPoints_[pIter()];
+        }
+
+        // Buffers have already been allocated
+        // to the right size, so just transfer points
+
+        // Send point buffers to neighbour
+        meshOps::pWrite(proc, scMap.pointBuffer());
+        meshOps::pWrite(proc, scMap.oldPointBuffer());
+
+        // Receive point buffers from neighbour
+        meshOps::pRead(proc, rcMap.pointBuffer());
+        meshOps::pRead(proc, rcMap.oldPointBuffer());
+    }
+
+    // Wait for transfers to complete before moving on
+    meshOps::waitForBuffers();
+
+    // Set points in mesh
+    forAll(procIndices_, pI)
+    {
+        // Fetch non-const reference to patchSubMesh
+        coupledInfo& rPM = recvMeshes_[pI];
+
+        // Fetch the coupleMap
+        const coupleMap& rcMap = rPM.map();
+
+        dynamicTopoFvMesh& mesh = rPM.subMesh();
+        const polyBoundaryMesh& boundary = mesh.boundaryMesh();
+
+        // Set points / oldPoints
+        mesh.points_ = rcMap.pointBuffer();
+        mesh.oldPoints_ = rcMap.oldPointBuffer();
+
+        labelList patchSizes(boundary.size(), -1);
+        labelList patchStarts(boundary.size(), -1);
+
+        forAll(boundary, patchI)
+        {
+            patchSizes[patchI] = boundary[patchI].size();
+            patchStarts[patchI] = boundary[patchI].start();
+        }
+
+        // Reset underlying mesh.
+        //  - Use null lists for addressing to avoid over-writes
+        //  - Specify non-valid boundary to avoid globalData creation
+        mesh.resetPrimitives
+        (
+            xferCopy(rcMap.pointBuffer()),
+            Xfer<faceList>::null(),
+            Xfer<labelList>::null(),
+            Xfer<labelList>::null(),
+            patchSizes,
+            patchStarts,
+            false
+        );
+    }
+}
+
+
 // Insert the cells around the coupled master entity to the mesh
 // - Returns a changeMap with a type specifying:
 //     1: Insertion was successful

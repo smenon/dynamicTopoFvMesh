@@ -301,6 +301,7 @@ class dynamicTopoFvMesh
         (
             const scalar matchTol,
             const bool skipMapping,
+            const bool mappingOutput,
             const label faceStart,
             const label faceSize,
             const label cellStart,
@@ -311,7 +312,12 @@ class dynamicTopoFvMesh
         static void computeMappingThread(void *argument);
 
         // Routine to invoke threaded mapping
-        void threadedMapping(scalar matchTol, bool skipMapping);
+        void threadedMapping
+        (
+            scalar matchTol,
+            bool skipMapping,
+            bool mappingOutput
+        );
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();
@@ -978,6 +984,9 @@ class dynamicTopoFvMesh
 
         // Initialize coupled patch connectivity for topology modifications.
         static void initCoupledConnectivity(void *argument);
+
+        // Move coupled subMesh points
+        void moveCoupledSubMeshes();
 
         // Build a list of entities that need to be avoided
         // by regular topo-changes.

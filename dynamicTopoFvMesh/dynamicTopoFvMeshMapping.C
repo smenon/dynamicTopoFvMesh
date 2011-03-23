@@ -59,6 +59,7 @@ void dynamicTopoFvMesh::computeMapping
 (
     const scalar matchTol,
     const bool skipMapping,
+    const bool mappingOutput,
     const label faceStart,
     const label faceSize,
     const label cellStart,
@@ -152,7 +153,15 @@ void dynamicTopoFvMesh::computeMapping
                                 continue;
                             }
 
-                            if (boundaryMesh().whichPatch(pCell[fI]) > -1)
+                            label fP = boundaryMesh().whichPatch(pCell[fI]);
+
+                            // Disregard processor patches
+                            if (getNeighbourProcessor(fP) > -1)
+                            {
+                                continue;
+                            }
+
+                            if (fP > -1)
                             {
                                 consistent = true;
                                 break;
@@ -173,7 +182,15 @@ void dynamicTopoFvMesh::computeMapping
 
                         forAll(fE, eI)
                         {
-                            if (whichEdgePatch(fE[eI]) > -1)
+                            label eP = whichEdgePatch(fE[eI]);
+
+                            // Disregard processor patches
+                            if (getNeighbourProcessor(eP) > -1)
+                            {
+                                continue;
+                            }
+
+                            if (eP > -1)
                             {
                                 consistent = true;
                                 break;
@@ -321,7 +338,7 @@ void dynamicTopoFvMesh::computeMapping
             << " max face error: " << maxFaceError
             << endl;
 
-        if (debug)
+        if (debug || mappingOutput)
         {
             if (failedCells.size())
             {
@@ -355,7 +372,7 @@ void dynamicTopoFvMesh::computeMapping
                 }
             }
 
-            if (debug > 3)
+            if (debug > 3 || mappingOutput)
             {
                 // Prepare lists
                 labelList objects;
@@ -366,14 +383,24 @@ void dynamicTopoFvMesh::computeMapping
                 {
                     forAll(failedCells, cellI)
                     {
-                        label index = failedCells[cellI].index();
+                        label cIndex = failedCells[cellI].index();
 
                         cellAlgorithm.computeWeights
                         (
-                            index,
+                            cIndex,
                             0,
-                            cellParents_[index],
+                            cellParents_[cIndex],
                             polyMesh::cellCells(),
+                            objects,
+                            weights,
+                            centres,
+                            true
+                        );
+
+                        computeCoupledWeights
+                        (
+                            cIndex,
+                            cellAlgorithm.dimension(),
                             objects,
                             weights,
                             centres,
@@ -391,17 +418,27 @@ void dynamicTopoFvMesh::computeMapping
                 {
                     forAll(failedFaces, faceI)
                     {
-                        label index = failedFaces[faceI].index();
-                        label patchIndex = whichPatch(index);
+                        label fIndex = failedFaces[faceI].index();
+                        label patchIndex = whichPatch(fIndex);
 
                         const polyBoundaryMesh& boundary = boundaryMesh();
 
                         faceAlgorithm.computeWeights
                         (
-                            index,
+                            fIndex,
                             boundary[patchIndex].start(),
-                            faceParents_[index],
+                            faceParents_[fIndex],
                             boundary[patchIndex].faceFaces(),
+                            objects,
+                            weights,
+                            centres,
+                            true
+                        );
+
+                        computeCoupledWeights
+                        (
+                            fIndex,
+                            faceAlgorithm.dimension(),
                             objects,
                             weights,
                             centres,
@@ -436,16 +473,18 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
     // Recast the pointers for the argument
     scalar& matchTol  = *(static_cast<scalar*>(thread->operator()(0)));
     bool& skipMapping = *(static_cast<bool*>(thread->operator()(1)));
-    label& faceStart  = *(static_cast<label*>(thread->operator()(2)));
-    label& faceSize   = *(static_cast<label*>(thread->operator()(3)));
-    label& cellStart  = *(static_cast<label*>(thread->operator()(4)));
-    label& cellSize   = *(static_cast<label*>(thread->operator()(5)));
+    bool& mappingOutput = *(static_cast<bool*>(thread->operator()(2)));
+    label& faceStart = *(static_cast<label*>(thread->operator()(3)));
+    label& faceSize = *(static_cast<label*>(thread->operator()(4)));
+    label& cellStart = *(static_cast<label*>(thread->operator()(5)));
+    label& cellSize = *(static_cast<label*>(thread->operator()(6)));
 
     // Now calculate addressing
     mesh.computeMapping
     (
         matchTol,
         skipMapping,
+        mappingOutput,
         faceStart, faceSize,
         cellStart, cellSize
     );
@@ -461,7 +500,8 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
 void dynamicTopoFvMesh::threadedMapping
 (
     scalar matchTol,
-    bool skipMapping
+    bool skipMapping,
+    bool mappingOutput
 )
 {
     label nThreads = threader_->getNumThreads();
@@ -479,6 +519,7 @@ void dynamicTopoFvMesh::threadedMapping
         (
             matchTol,
             skipMapping,
+            mappingOutput,
             0, facesFromFaces_.size(),
             0, cellsFromCells_.size()
         );
@@ -535,7 +576,7 @@ void dynamicTopoFvMesh::threadedMapping
     forAll(hdl, i)
     {
         // Size up the argument list
-        hdl[i].setSize(6);
+        hdl[i].setSize(7);
 
         // Set match tolerance
         hdl[i].set(0, &matchTol);
@@ -543,11 +584,14 @@ void dynamicTopoFvMesh::threadedMapping
         // Set the skipMapping flag
         hdl[i].set(1, &skipMapping);
 
+        // Set the mappingOutput flag
+        hdl[i].set(2, &mappingOutput);
+
         // Set the start/size indices
-        hdl[i].set(2, &(tStarts[0][i]));
-        hdl[i].set(3, &(tSizes[0][i]));
-        hdl[i].set(4, &(tStarts[1][i]));
-        hdl[i].set(5, &(tSizes[1][i]));
+        hdl[i].set(3, &(tStarts[0][i]));
+        hdl[i].set(4, &(tSizes[0][i]));
+        hdl[i].set(5, &(tStarts[1][i]));
+        hdl[i].set(6, &(tSizes[1][i]));
     }
 
     // Prior to multi-threaded operation,

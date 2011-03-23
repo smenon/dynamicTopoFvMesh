@@ -3871,10 +3871,18 @@ bool dynamicTopoFvMesh::resetMesh()
             mapTol = readScalar(meshSubDict.lookup("mappingTol"));
         }
 
+        // Check if outputs are enabled on failure
+        bool mappingOutput = false;
+
+        if (meshSubDict.found("mappingOutput") || mandatory_)
+        {
+            mappingOutput = readBool(meshSubDict.lookup("mappingOutput"));
+        }
+
         clockTime mappingTimer;
 
         // Compute mapping weights for modified entities
-        threadedMapping(mapTol, skipMapping);
+        threadedMapping(mapTol, skipMapping, mappingOutput);
 
         // Print out stats
         Info<< " Mapping time: "
@@ -4245,6 +4253,9 @@ bool dynamicTopoFvMesh::resetMesh()
         {
             movePoints(points_);
         }
+
+        // Move coupled subMeshes
+        moveCoupledSubMeshes();
     }
 
     // Obtain mesh stats after topo-changes
