@@ -193,12 +193,10 @@ class dynamicTopoFvMesh
         Map<labelList> faceParents_;
         List<scalarField> faceWeights_;
         List<vectorField> faceCentres_;
-        List<Map<labelList> > coupledFaceParents_;
 
         Map<labelList> cellParents_;
         List<scalarField> cellWeights_;
         List<vectorField> cellCentres_;
-        List<Map<labelList> > coupledCellParents_;
 
         // Information for mapPolyMesh
         List<objectMap> pointsFromPoints_;

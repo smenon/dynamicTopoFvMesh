@@ -92,10 +92,39 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
 
     // Normalize for later use
     refNorm_ /= normFactor_ + VSMALL;
+
+    // Compute a bounding box around the face
+    box_ = boundBox(newFaces_[index].points(newPoints_), false);
+
+    vector minToXb = (box_.min() - box_.midpoint());
+    vector maxToXb = (box_.max() - box_.midpoint());
+
+    // Scale it by a bit
+    box_.min() += (1.5 * minToXb);
+    box_.max() += (1.5 * maxToXb);
 }
 
 
-// Compute intersections
+// Check whether the bounding box contains the entity
+bool faceSetAlgorithm::contains(const label index) const
+{
+    // Fetch old face
+    const face& checkFace = mesh_.faces()[index];
+
+    // Check if the bounding box contains any of the supplied points
+    forAll(checkFace, pointI)
+    {
+        if (box_.contains(mesh_.points()[checkFace[pointI]]))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+// Compute intersection
 bool faceSetAlgorithm::computeIntersection
 (
     const label newIndex,

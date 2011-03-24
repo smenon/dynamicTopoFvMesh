@@ -97,9 +97,40 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
         refNorm_,
         normFactor_
     );
+
+    // Compute a bounding box around the cell
+    box_ = boundBox(newCells_[index].points(newFaces_, newPoints_), false);
+
+    vector minToXb = (box_.min() - box_.midpoint());
+    vector maxToXb = (box_.max() - box_.midpoint());
+
+    // Scale it by a bit
+    box_.min() += (1.5 * minToXb);
+    box_.max() += (1.5 * maxToXb);
 }
 
 
+// Check whether the bounding box contains the entity
+bool cellSetAlgorithm::contains(const label index) const
+{
+    // Fetch old points
+    const labelListList& cellPoints = mesh_.cellPoints();
+    const labelList& checkCell = cellPoints[index];
+
+    // Check if the bounding box contains any of the supplied points
+    forAll(checkCell, pointI)
+    {
+        if (box_.contains(mesh_.points()[checkCell[pointI]]))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+// Compute intersection
 bool cellSetAlgorithm::computeIntersection
 (
     const label newIndex,

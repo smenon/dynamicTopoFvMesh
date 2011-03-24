@@ -464,10 +464,6 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     sendMeshes_.setSize(nTotalProcs);
     recvMeshes_.setSize(nTotalProcs);
 
-    // Size up mapping lists
-    coupledFaceParents_.setSize(nTotalProcs);
-    coupledCellParents_.setSize(nTotalProcs);
-
     // Create send/recv patch meshes, and copy
     // the list of points for each processor.
     forAll(procIndices_, pI)
@@ -1489,9 +1485,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Set basic mapping for this cell
             setCellMapping(cIter(), mapCells);
-
-            // Set coupled mapping information for this cell
-            coupledCellParents_[pI].insert(cIter(), labelList(1, cIter.key()));
         }
 
         // Push operation for the slave into coupleMap
@@ -2221,9 +2214,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     // Set basic mapping for this face
                     setFaceMapping(fI(), labelList(1, mapFace));
                 }
-
-                // Add slave face for mapping as well
-                coupledFaceParents_[pI].insert(fI(), labelList(1, fI.key()));
             }
             else
             {
@@ -8220,6 +8210,11 @@ void dynamicTopoFvMesh::computeCoupledWeights
     bool output
 )
 {
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
     // Fetch offsets from mapper
     const labelList& cStarts = mapper_->cellStarts();
     const labelListList& pSizes = mapper_->patchSizes();
@@ -8228,110 +8223,98 @@ void dynamicTopoFvMesh::computeCoupledWeights
     {
         DynamicList<label> faceParents(10);
 
-        forAll(coupledFaceParents_, pI)
+        label patchIndex = whichPatch(index);
+
+        forAll(procIndices_, pI)
         {
-            if (coupledFaceParents_[pI].found(index))
+            // Ensure that the patch is physical
+            if (patchIndex < 0 || patchIndex >= pSizes[pI].size())
             {
-                label patchIndex = whichPatch(index);
+                Pout<< " Face: " << index
+                    << " Patch: " << patchIndex
+                    << " does not belong to a physical patch." << nl
+                    << " nPhysicalPatches: " << pSizes[pI].size()
+                    << abort(FatalError);
+            }
 
-                // Ensure that the patch is physical
-                if (patchIndex < 0 || patchIndex >= pSizes[pI].size())
+            // Fetch reference to subMesh
+            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+            // Prepare lists
+            labelList coupleObjects;
+            scalarField coupleWeights;
+            vectorField coupleCentres;
+
+            // Convex-set algorithm for faces
+            faceSetAlgorithm faceAlgorithm
+            (
+                mesh,
+                twoDMesh_,
+                oldPoints_,
+                edges_,
+                faces_,
+                cells_,
+                owner_,
+                neighbour_
+            );
+
+            // Initialize the bounding box
+            faceAlgorithm.computeNormFactor(index);
+
+            // Loop through all subMesh faces, and check for bounds
+            const polyBoundaryMesh& boundary = mesh.boundaryMesh();
+
+            label pSize = boundary[patchIndex].size();
+            label pStart = boundary[patchIndex].start();
+
+            for (label faceI = pStart; faceI < (pStart + pSize); faceI++)
+            {
+                if (faceAlgorithm.contains(faceI))
                 {
-                    Pout<< " Face: " << index
-                        << " Patch: " << patchIndex
-                        << " does not belong to a physical patch." << nl
-                        << " nPhysicalPatches: " << pSizes[pI].size()
-                        << abort(FatalError);
-                }
-
-                // Fetch reference to subMesh
-                const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
-                const labelList& candidates = coupledFaceParents_[pI][index];
-
-                // Prepare lists
-                labelList coupleObjects;
-                scalarField coupleWeights;
-                vectorField coupleCentres;
-
-                // Convex-set algorithm for faces
-                faceSetAlgorithm faceAlgorithm
-                (
-                    mesh,
-                    twoDMesh_,
-                    oldPoints_,
-                    edges_,
-                    faces_,
-                    cells_,
-                    owner_,
-                    neighbour_
-                );
-
-                // Build a parent list for mapping
-                forAll(candidates, indexI)
-                {
-                    label fpIndex = candidates[indexI];
-
-                    if (fpIndex < mesh.nOldFaces_)
-                    {
-                        if (findIndex(faceParents, fpIndex) == -1)
-                        {
-                            faceParents.append(fpIndex);
-                        }
-                    }
-                    else
-                    if (mesh.faceParents_.found(fpIndex))
-                    {
-                        const labelList& nParents = mesh.faceParents_[fpIndex];
-
-                        forAll(nParents, fI)
-                        {
-                            if (findIndex(faceParents, nParents[fI]) == -1)
-                            {
-                                faceParents.append(nParents[fI]);
-                            }
-                        }
-                    }
-                }
-
-                // Obtain weighting factors for this face.
-                label sPatchStart = mesh.boundaryMesh()[patchIndex].start();
-
-                faceAlgorithm.computeWeights
-                (
-                    index,
-                    sPatchStart,
-                    faceParents,
-                    mesh.boundaryMesh()[patchIndex].faceFaces(),
-                    coupleObjects,
-                    coupleWeights,
-                    coupleCentres,
-                    output
-                );
-
-                // Add contributions with offsets
-                if (coupleObjects.size())
-                {
-                    label patchSize = boundaryMesh()[patchIndex].size();
-
-                    // Resize lists
-                    label oldSize = parents.size();
-
-                    parents.setSize(oldSize + coupleObjects.size());
-                    weights.setSize(oldSize + coupleObjects.size());
-                    centres.setSize(oldSize + coupleObjects.size());
-
-                    forAll(coupleObjects, indexI)
-                    {
-                        parents[indexI + oldSize] =
-                        (
-                            patchSize + coupleObjects[indexI]
-                        );
-
-                        weights[indexI + oldSize] = coupleWeights[indexI];
-                        centres[indexI + oldSize] = coupleCentres[indexI];
-                    }
+                    faceParents.append(faceI);
                 }
             }
+
+            // Obtain weighting factors for this face.
+            faceAlgorithm.computeWeights
+            (
+                index,
+                pStart,
+                faceParents,
+                boundary[patchIndex].faceFaces(),
+                coupleObjects,
+                coupleWeights,
+                coupleCentres,
+                output
+            );
+
+            // Add contributions with offsets
+            if (coupleObjects.size())
+            {
+                // Fetch patch size on master
+                label patchSize = boundaryMesh()[patchIndex].size();
+
+                // Resize lists
+                label oldSize = parents.size();
+
+                parents.setSize(oldSize + coupleObjects.size());
+                weights.setSize(oldSize + coupleObjects.size());
+                centres.setSize(oldSize + coupleObjects.size());
+
+                forAll(coupleObjects, indexI)
+                {
+                    parents[indexI + oldSize] =
+                    (
+                        patchSize + coupleObjects[indexI]
+                    );
+
+                    weights[indexI + oldSize] = coupleWeights[indexI];
+                    centres[indexI + oldSize] = coupleCentres[indexI];
+                }
+            }
+
+            // Clear list
+            faceParents.clear();
         }
     }
     else
@@ -8339,99 +8322,82 @@ void dynamicTopoFvMesh::computeCoupledWeights
     {
         DynamicList<label> cellParents(10);
 
-        forAll(coupledCellParents_, pI)
+        forAll(procIndices_, pI)
         {
-            if (coupledCellParents_[pI].found(index))
+            // Fetch reference to subMesh
+            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+            // Prepare lists
+            labelList coupleObjects;
+            scalarField coupleWeights;
+            vectorField coupleCentres;
+
+            // Convex-set algorithm for cells
+            cellSetAlgorithm cellAlgorithm
+            (
+                mesh,
+                twoDMesh_,
+                oldPoints_,
+                edges_,
+                faces_,
+                cells_,
+                owner_,
+                neighbour_
+            );
+
+            // Initialize the bounding box
+            cellAlgorithm.computeNormFactor(index);
+
+            // Loop through all subMesh cells, and check for bounds
+            const cellList& meshCells = mesh.cells();
+
+            forAll(meshCells, cellI)
             {
-                // Fetch reference to subMesh
-                const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
-                const labelList& candidates = coupledCellParents_[pI][index];
-
-                // Prepare lists
-                labelList coupleObjects;
-                scalarField coupleWeights;
-                vectorField coupleCentres;
-
-                // Convex-set algorithm for cells
-                cellSetAlgorithm cellAlgorithm
-                (
-                    mesh,
-                    twoDMesh_,
-                    oldPoints_,
-                    edges_,
-                    faces_,
-                    cells_,
-                    owner_,
-                    neighbour_
-                );
-
-                // Build a parent list for mapping
-                forAll(candidates, indexI)
+                if (cellAlgorithm.contains(cellI))
                 {
-                    label cpIndex = candidates[indexI];
-
-                    if (cpIndex < mesh.nOldCells_)
-                    {
-                        if (findIndex(cellParents, cpIndex) == -1)
-                        {
-                            cellParents.append(cpIndex);
-                        }
-                    }
-                    else
-                    if (mesh.cellParents_.found(cpIndex))
-                    {
-                        const labelList& nParents = mesh.cellParents_[cpIndex];
-
-                        forAll(nParents, cI)
-                        {
-                            if (findIndex(cellParents, nParents[cI]) == -1)
-                            {
-                                cellParents.append(nParents[cI]);
-                            }
-                        }
-                    }
+                    cellParents.append(cellI);
                 }
-
-                // Obtain weighting factors for this cell.
-                cellAlgorithm.computeWeights
-                (
-                    index,
-                    0,
-                    cellParents,
-                    mesh.polyMesh::cellCells(),
-                    coupleObjects,
-                    coupleWeights,
-                    coupleCentres,
-                    output
-                );
-
-                // Add contributions with offsets
-                if (coupleObjects.size())
-                {
-                    label cellStart = cStarts[pI];
-
-                    // Resize lists
-                    label oldSize = parents.size();
-
-                    parents.setSize(oldSize + coupleObjects.size());
-                    weights.setSize(oldSize + coupleObjects.size());
-                    centres.setSize(oldSize + coupleObjects.size());
-
-                    forAll(coupleObjects, indexI)
-                    {
-                        parents[indexI + oldSize] =
-                        (
-                            cellStart + coupleObjects[indexI]
-                        );
-
-                        weights[indexI + oldSize] = coupleWeights[indexI];
-                        centres[indexI + oldSize] = coupleCentres[indexI];
-                    }
-                }
-
-                // Clear list
-                cellParents.clear();
             }
+
+            // Obtain weighting factors for this cell.
+            cellAlgorithm.computeWeights
+            (
+                index,
+                0,
+                cellParents,
+                mesh.polyMesh::cellCells(),
+                coupleObjects,
+                coupleWeights,
+                coupleCentres,
+                output
+            );
+
+            // Add contributions with offsets
+            if (coupleObjects.size())
+            {
+                label cellStart = cStarts[pI];
+
+                // Resize lists
+                label oldSize = parents.size();
+
+                parents.setSize(oldSize + coupleObjects.size());
+                weights.setSize(oldSize + coupleObjects.size());
+                centres.setSize(oldSize + coupleObjects.size());
+
+                forAll(coupleObjects, indexI)
+                {
+                    parents[indexI + oldSize] =
+                    (
+                        cellStart + coupleObjects[indexI]
+                    );
+
+                    weights[indexI + oldSize] = coupleWeights[indexI];
+                    centres[indexI + oldSize] = coupleCentres[indexI];
+                }
+            }
+
+            // Clear list
+            cellParents.clear();
         }
     }
     else

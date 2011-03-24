@@ -46,6 +46,7 @@ SourceFiles
 #include "edgeList.H"
 #include "faceList.H"
 #include "cellList.H"
+#include "boundBox.H"
 #include "objectMap.H"
 #include "vectorField.H"
 
@@ -86,7 +87,8 @@ protected:
         //- Entity parents
         mutable labelList parents_;
 
-        //- Internal fields
+        //- Internal data members
+        mutable boundBox box_;
         mutable vector refNorm_;
         mutable scalar normFactor_;
         mutable vectorField centres_;
@@ -127,6 +129,9 @@ public:
 
         // Normalize stored weights
         virtual void normalize(bool normSum) const;
+
+        // Check whether the bounding box contains the entity
+        virtual bool contains(const label index) const = 0;
 
         // Extract weights and centres to lists
         virtual void populateLists

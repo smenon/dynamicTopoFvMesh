@@ -684,40 +684,6 @@ void dynamicTopoFvMesh::setCellMapping
                 }
             }
         }
-
-        // Check coupled entries
-        forAll(coupledCellParents_, pI)
-        {
-            // Fetch non-const reference
-            Map<labelList>& parents = coupledCellParents_[pI];
-
-            if (parents.found(mapCells[cellI]))
-            {
-                const labelList& nParents = parents[mapCells[cellI]];
-
-                // Transfer parents for this cell
-                if (parents.found(cIndex))
-                {
-                    forAll(nParents, cI)
-                    {
-                        // Sequentially add any new entries
-                        if (findIndex(parents[cIndex], nParents[cI]) == -1)
-                        {
-                            meshOps::sizeUpList
-                            (
-                                nParents[cI],
-                                parents[cIndex]
-                            );
-                        }
-                    }
-                }
-                else
-                {
-                    // Add entry
-                    parents.insert(cIndex, nParents);
-                }
-            }
-        }
     }
 
     cellParents_.set(cIndex, masterCells);
@@ -861,40 +827,6 @@ void dynamicTopoFvMesh::setFaceMapping
                 if (findIndex(masterFaces, nParents[fI]) == -1)
                 {
                     masterFaces.append(nParents[fI]);
-                }
-            }
-        }
-
-        // Check coupled entries
-        forAll(coupledFaceParents_, pI)
-        {
-            // Fetch non-const reference
-            Map<labelList>& parents = coupledFaceParents_[pI];
-
-            if (parents.found(mapFaces[faceI]))
-            {
-                const labelList& nParents = parents[mapFaces[faceI]];
-
-                // Transfer parents for this cell
-                if (parents.found(fIndex))
-                {
-                    forAll(nParents, fI)
-                    {
-                        // Sequentially add any new entries
-                        if (findIndex(parents[fIndex], nParents[fI]) == -1)
-                        {
-                            meshOps::sizeUpList
-                            (
-                                nParents[fI],
-                                parents[fIndex]
-                            );
-                        }
-                    }
-                }
-                else
-                {
-                    // Add entry
-                    parents.insert(fIndex, nParents);
                 }
             }
         }

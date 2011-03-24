@@ -4230,10 +4230,6 @@ bool dynamicTopoFvMesh::resetMesh()
             procIndices_.clear();
             sendMeshes_.clear();
             recvMeshes_.clear();
-
-            // Clear mapping structures
-            coupledFaceParents_.clear();
-            coupledCellParents_.clear();
         }
         else
         if (debug > 2)

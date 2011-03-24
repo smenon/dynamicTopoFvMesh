@@ -104,6 +104,9 @@ public:
         // Compute normFactor
         virtual void computeNormFactor(const label index) const;
 
+        // Check whether the bounding box contains the entity
+        virtual bool contains(const label index) const;
+
         // Compute intersections
         virtual bool computeIntersection
         (
