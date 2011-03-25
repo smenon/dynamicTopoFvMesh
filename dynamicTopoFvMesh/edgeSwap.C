@@ -1336,6 +1336,9 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
 
             if (processorCoupledEntity(newIndex))
             {
+                // Write out edge connectivity
+                writeEdgeConnectivity(newIndex);
+
                 FatalErrorIn
                 (
                     "\n"

@@ -7745,13 +7745,6 @@ bool dynamicTopoFvMesh::coupledFillTables
     else
     if (processorCoupledEntity(eIndex))
     {
-        // If this is a new entity, bail out for now.
-        // This will be handled at the next time-step.
-        if (eIndex >= nOldEdges_)
-        {
-            return false;
-        }
-
         const edge& checkEdge = edges_[eIndex];
         const labelList& eFaces = edgeFaces_[eIndex];
 
@@ -7840,6 +7833,13 @@ bool dynamicTopoFvMesh::coupledFillTables
             if ((sI = cMap.findSlave(coupleMap::EDGE, eIndex)) == -1)
             {
                 continue;
+            }
+
+            // If this is a new edge, bail out for now.
+            // This will be handled at the next time-step.
+            if (sI >= mesh.nOldEdges_)
+            {
+                return false;
             }
 
             const edge& slaveEdge = mesh.edges_[sI];
@@ -7980,7 +7980,8 @@ bool dynamicTopoFvMesh::coupledFillTables
 
         if (debug > 4 || minQuality < 0.0)
         {
-            writeVTK("parEdge_" + Foam::name(eIndex), eIndex, 1);
+            // Write out edge connectivity
+            writeEdgeConnectivity(eIndex);
 
             meshOps::writeVTK
             (
@@ -7991,154 +7992,6 @@ bool dynamicTopoFvMesh::coupledFillTables
                 parPts.size(),
                 pointField(parPts)
             );
-
-            writeVTK
-            (
-                "parEdgeFaces_"
-              + Foam::name(eIndex)
-              + '_'
-              + Foam::name(Pstream::myProcNo()),
-                eFaces,
-                2, false, true
-            );
-
-            DynamicList<label> edgeCells(10);
-
-            forAll(eFaces, faceI)
-            {
-                if (minQuality < 0.0)
-                {
-                    label pIdx = whichPatch(eFaces[faceI]);
-
-                    word pName
-                    (
-                        (pIdx < 0) ?
-                        "Internal" :
-                        boundaryMesh()[pIdx].name()
-                    );
-
-                    Pout<< " Face: " << eFaces[faceI]
-                        << " :: " << faces_[eFaces[faceI]]
-                        << " Patch: " << pName
-                        << " Proc: " << Pstream::myProcNo() << nl;
-                }
-
-                label own = owner_[eFaces[faceI]];
-                label nei = neighbour_[eFaces[faceI]];
-
-                if (findIndex(edgeCells, own) == -1)
-                {
-                    edgeCells.append(own);
-                }
-
-                if (nei == -1)
-                {
-                    continue;
-                }
-
-                if (findIndex(edgeCells, nei) == -1)
-                {
-                    edgeCells.append(nei);
-                }
-            }
-
-            writeVTK
-            (
-                "parEdgeCells_"
-              + Foam::name(eIndex)
-              + '_'
-              + Foam::name(Pstream::myProcNo()),
-                edgeCells,
-                3, false, true
-            );
-
-            forAll(procIndices_, pI)
-            {
-                // Fetch reference to subMesh
-                const label edgeEnum = coupleMap::EDGE;
-                const coupleMap& cMap = recvMeshes_[pI].map();
-                const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
-
-                label sI = -1;
-
-                if ((sI = cMap.findSlave(edgeEnum, eIndex)) == -1)
-                {
-                    continue;
-                }
-
-                const edge& slaveEdge = mesh.edges_[sI];
-                const labelList& seF = mesh.edgeFaces_[sI];
-
-                edge cE
-                (
-                    cMap.findMaster(coupleMap::POINT, slaveEdge[0]),
-                    cMap.findMaster(coupleMap::POINT, slaveEdge[1])
-                );
-
-                Pout<< " >> Edge: " << sI << "::" << slaveEdge
-                    << " mapped: " << cE << nl;
-
-                mesh.writeVTK
-                (
-                    "parEdgeFaces_"
-                  + Foam::name(eIndex)
-                  + '_'
-                  + Foam::name(procIndices_[pI]),
-                    seF,
-                    2, false, true
-                );
-
-                // Clear existing list
-                edgeCells.clear();
-
-                forAll(seF, faceI)
-                {
-                    if (minQuality < 0.0)
-                    {
-                        label pIdx = mesh.whichPatch(seF[faceI]);
-
-                        word pName
-                        (
-                            (pIdx < 0) ?
-                            "Internal" :
-                            mesh.boundaryMesh()[pIdx].name()
-                        );
-
-                        Pout<< " Face: " << seF[faceI]
-                            << " :: " << mesh.faces_[seF[faceI]]
-                            << " Patch: " << pName
-                            << " Proc: " << procIndices_[pI] << nl;
-                    }
-
-                    label own = mesh.owner_[seF[faceI]];
-                    label nei = mesh.neighbour_[seF[faceI]];
-
-                    if (findIndex(edgeCells, own) == -1)
-                    {
-                        edgeCells.append(own);
-                    }
-
-                    if (nei == -1)
-                    {
-                        continue;
-                    }
-
-                    if (findIndex(edgeCells, nei) == -1)
-                    {
-                        edgeCells.append(nei);
-                    }
-                }
-
-                mesh.writeVTK
-                (
-                    "parEdgeCells_"
-                  + Foam::name(eIndex)
-                  + '_'
-                  + Foam::name(procIndices_[pI]),
-                    edgeCells,
-                    3, false, true
-                );
-            }
 
             if (minQuality < 0.0)
             {

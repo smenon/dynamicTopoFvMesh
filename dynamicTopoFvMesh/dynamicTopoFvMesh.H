@@ -877,6 +877,9 @@ class dynamicTopoFvMesh
         // Reset the mesh and generate mapping information
         bool resetMesh();
 
+        // Write out connectivity for an edge
+        void writeEdgeConnectivity(const label eIndex) const;
+
         // Output an entity as a VTK file
         void writeVTK
         (
