@@ -38,6 +38,7 @@ Author
 #include "dynamicTopoFvMesh.H"
 
 #include "Time.H"
+#include "eMesh.H"
 #include "triFace.H"
 #include "volFields.H"
 #include "changeMap.H"
@@ -45,12 +46,16 @@ Author
 #include "coupledInfo.H"
 #include "matchPoints.H"
 #include "SortableList.H"
+#include "motionSolver.H"
 #include "surfaceFields.H"
 #include "globalMeshData.H"
+#include "fvMeshDistribute.H"
 #include "faceSetAlgorithm.H"
 #include "cellSetAlgorithm.H"
 #include "coordinateSystem.H"
 #include "processorPolyPatch.H"
+#include "decompositionMethod.H"
+#include "mapDistributePolyMesh.H"
 
 namespace Foam
 {
@@ -257,6 +262,197 @@ void dynamicTopoFvMesh::initCoupledStack
             );
         }
     }
+}
+
+
+// Execute load balancing operations on the mesh
+void dynamicTopoFvMesh::executeLoadBalancing
+(
+    const dictionary& balanceDict
+)
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    bool enabled = readBool(balanceDict.lookup("enabled"));
+
+    if (!enabled)
+    {
+        return;
+    }
+
+    // Read interval
+    label interval = readLabel(balanceDict.lookup("interval"));
+
+    // Are we at the interval?
+    if ((interval < 0) || (time().timeIndex() % interval != 0))
+    {
+        return;
+    }
+
+    if (debug)
+    {
+        Info<< " void dynamicTopoFvMesh::executeLoadBalancing() :"
+            << " Executing load-balancing operations on the mesh."
+            << endl;
+    }
+
+    // Read decomposition options and initialize
+    autoPtr<decompositionMethod> decomposerPtr
+    (
+        decompositionMethod::New
+        (
+            balanceDict,
+            (*this)
+        )
+    );
+
+    // Alias for convenience...
+    decompositionMethod& decomposer = decomposerPtr();
+
+    if (!decomposer.parallelAware())
+    {
+        FatalErrorIn("void dynamicTopoFvMesh::executeLoadBalancing()")
+            << "You have selected decomposition method "
+            << decomposer.typeName
+            << " which is not parallel aware." << endl
+            << "Please select one that is (hierarchical, parMetis)"
+            << exit(FatalError);
+    }
+
+    // Calculate a merge-distance
+    const boundBox& box = polyMesh::bounds();
+    scalar mergeTol = readScalar(balanceDict.lookup("mergeTol"));
+
+    // Compute mergeDist
+    scalar mergeDist = mergeTol * box.mag();
+
+    // Compute write tolerance
+    scalar writeTol =
+    (
+        std::pow
+        (
+            scalar(10.0),
+           -scalar(IOstream::defaultPrecision())
+        )
+    );
+
+    Info<< nl
+        << " Overall mesh bounding box  : " << box << nl
+        << " Relative tolerance         : " << mergeTol << nl
+        << " Absolute matching distance : " << mergeDist << nl
+        << endl;
+
+    // Check for compatibility
+    if (time().writeFormat() == IOstream::ASCII && mergeTol < writeTol)
+    {
+        FatalErrorIn("void dynamicTopoFvMesh::executeLoadBalancing()")
+            << " Your current settings specify ASCII writing with "
+            << IOstream::defaultPrecision() << " digits precision." << nl
+            << " Your mergeTol (" << mergeTol << ") is finer than this." << nl
+            << " Remedies: " << nl
+            << "  - Change writeFormat to binary" << nl
+            << "  - Increase writePrecision" << nl
+            << "  - Adjust the merge tolerance (mergeTol)" << endl
+            << exit(FatalError);
+    }
+
+    // Decompose the mesh and obtain distribution
+    labelList cellDistribution
+    (
+        decomposer.decompose
+        (
+            primitiveMesh::cellCentres(),
+            scalarField(nCells_, 1)
+        )
+    );
+
+    // Set the coupledModification switch
+    setCoupledModification();
+
+    // Initialize the mesh distribution engine
+    fvMeshDistribute distributor(*this, mergeDist);
+
+    // Re-distribute mesh according to new decomposition
+    distributor.distribute(cellDistribution);
+
+    // Reset the coupledModification switch
+    unsetCoupledModification();
+
+    // Set old / new sizes
+    nPoints_ = nOldPoints_ = primitiveMesh::nPoints();
+    nEdges_ = nOldEdges_ = 0;
+    nFaces_ = nOldFaces_ = primitiveMesh::nFaces();
+    nCells_ = nOldCells_ = primitiveMesh::nCells();
+    nInternalFaces_ = nOldInternalFaces_ = primitiveMesh::nInternalFaces();
+    nInternalEdges_ = nOldInternalEdges_ = 0;
+
+    // Now re-initialize all connectivity structures
+    oldPoints_ = polyMesh::points();
+    points_ = polyMesh::points();
+    faces_ = polyMesh::faces();
+    owner_ = polyMesh::faceOwner();
+    neighbour_ = polyMesh::faceNeighbour();
+    cells_ = primitiveMesh::cells();
+
+    // Check the size of owner / neighbour
+    if (owner_.size() != neighbour_.size())
+    {
+        // Size up to number of faces
+        neighbour_.setSize(nFaces_, -1);
+    }
+
+    const polyBoundaryMesh& boundary = polyMesh::boundaryMesh();
+
+    // Initialize patch-size information
+    nPatches_ = boundary.size();
+
+    oldPatchSizes_.setSize(nPatches_, 0);
+    oldPatchStarts_.setSize(nPatches_, -1);
+    oldEdgePatchSizes_.setSize(nPatches_, 0);
+    oldEdgePatchStarts_.setSize(nPatches_, -1);
+    oldPatchNMeshPoints_.setSize(nPatches_, -1);
+
+    patchSizes_.setSize(nPatches_, 0);
+    patchStarts_.setSize(nPatches_, -1);
+    edgePatchSizes_.setSize(nPatches_, 0);
+    edgePatchStarts_.setSize(nPatches_, -1);
+    patchNMeshPoints_.setSize(nPatches_, -1);
+
+    for (label i = 0; i < nPatches_; i++)
+    {
+        patchNMeshPoints_[i] = boundary[i].meshPoints().size();
+        oldPatchSizes_[i] = patchSizes_[i] = boundary[i].size();
+        oldPatchStarts_[i] = patchStarts_[i] = boundary[i].start();
+        oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
+    }
+
+    // Clear pointers and re-initialize
+    mapper_.clear();
+    eMeshPtr_.clear();
+    motionSolver_.clear();
+    lengthEstimator_.clear();
+
+    // Initialize edge-related connectivity structures
+    initEdges();
+
+    // Load the mesh-motion solver
+    loadMotionSolver();
+
+    // Load the field-mapper
+    loadFieldMapper();
+
+    // Set sizes for the reverse maps
+    reversePointMap_.setSize(nPoints_, -7);
+    reverseEdgeMap_.setSize(nEdges_, -7);
+    reverseFaceMap_.setSize(nFaces_, -7);
+    reverseCellMap_.setSize(nCells_, -7);
+
+    // Load the length-scale estimator,
+    // and read refinement options
+    loadLengthScaleEstimator();
 }
 
 

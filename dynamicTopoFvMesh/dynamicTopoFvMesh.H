@@ -977,6 +977,9 @@ class dynamicTopoFvMesh
         // Read optional dictionary parameters
         void readOptionalParameters(bool reRead = false);
 
+        // Execute load balancing operations on the mesh
+        void executeLoadBalancing(const dictionary& balanceDict);
+
         // Identify coupled patches.
         bool identifyCoupledPatches();
 

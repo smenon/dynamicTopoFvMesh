@@ -1809,6 +1809,13 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
             allowTableResize_ = false;
         }
     }
+
+    // Check for load-balancing in parallel
+    if (reRead && (meshSubDict.found("loadBalancing") || mandatory_))
+    {
+        // Execute balancing
+        executeLoadBalancing(meshSubDict.subDict("loadBalancing"));
+    }
 }
 
 
@@ -4275,6 +4282,14 @@ bool dynamicTopoFvMesh::resetMesh()
 // Update mesh corresponding to the given map
 void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
 {
+    if (coupledModification_)
+    {
+        // This bit gets called only during the load-balancing
+        // stage, since the fvMesh::updateMesh is a bit different
+        fvMesh::updateMesh(mpm);
+        return;
+    }
+
     // Delete oldPoints in polyMesh
     polyMesh::resetMotion();
 
@@ -4292,6 +4307,14 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
 // Map all fields in time using a customized mapper
 void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm) const
 {
+    if (coupledModification_)
+    {
+        // This bit gets called only during the load-balancing
+        // stage, since the fvMesh::mapFields is a bit different
+        fvMesh::mapFields(mpm);
+        return;
+    }
+
     if (debug)
     {
         Info<< "void dynamicTopoFvMesh::mapFields(const mapPolyMesh&) const: "
