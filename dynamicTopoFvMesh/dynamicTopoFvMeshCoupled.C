@@ -1258,6 +1258,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                     label edgePatch = -1;
                     label sePatch = mesh.whichEdgePatch(seIndex);
+                    label neiProcNo = mesh.getNeighbourProcessor(sePatch);
 
                     // Determine patch
                     if (sePatch == -1)
@@ -1272,18 +1273,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         edgePatch = neiProcPatch;
                     }
                     else
-                    if (isA<processorPolyPatch>(slaveBoundary[sePatch]))
+                    if (neiProcNo > -1)
                     {
-                        const processorPolyPatch& pp =
-                        (
-                            refCast<const processorPolyPatch>
-                            (
-                                slaveBoundary[sePatch]
-                            )
-                        );
-
-                        label neiProcNo = pp.neighbProcNo();
-
                         if (neiProcNo == Pstream::myProcNo())
                         {
                             // Set the master edge patch
@@ -1312,21 +1303,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                             // Find an appropriate boundary patch
                             forAll(boundary, patchI)
                             {
-                                if (isA<processorPolyPatch>(boundary[patchI]))
-                                {
-                                    const processorPolyPatch& pp =
-                                    (
-                                        refCast<const processorPolyPatch>
-                                        (
-                                            boundary[patchI]
-                                        )
-                                    );
+                                label eP = getNeighbourProcessor(patchI);
 
-                                    if (pp.neighbProcNo() == neiProcNo)
-                                    {
-                                        edgePatch = patchI;
-                                        break;
-                                    }
+                                if (eP == neiProcNo)
+                                {
+                                    edgePatch = patchI;
+                                    break;
                                 }
                             }
 
@@ -1385,6 +1367,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 }
 
                 label facePatch = -1;
+                label neiProcNo = mesh.getNeighbourProcessor(sfPatch);
 
                 if (sfPatch == -1)
                 {
@@ -1398,20 +1381,50 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     facePatch = neiProcPatch;
                 }
                 else
-                if (isA<processorPolyPatch>(slaveBoundary[sfPatch]))
+                if (neiProcNo > -1)
                 {
-                    const processorPolyPatch& pp =
-                    (
-                        refCast<const processorPolyPatch>
-                        (
-                            slaveBoundary[sfPatch]
-                        )
-                    );
-
-                    label neiProcNo = pp.neighbProcNo();
-
                     if (neiProcNo == Pstream::myProcNo())
                     {
+                        // Check to see if this face was converted before
+                        if
+                        (
+                            findIndex
+                            (
+                                cMap.entityOperations(),
+                                coupleMap::CONVERT_PATCH
+                            ) > -1
+                        )
+                        {
+                            // Loop through points and check for match
+                            const pointField& pts = cMap.moveNewPoints();
+                            const face& fCheck = mesh.faces_[sfIndex];
+                            const point fC = fCheck.centre(mesh.points_);
+
+                            scalar tol = mag(fC - mesh.points_[fCheck[0]]);
+
+                            forAll(pts, ptI)
+                            {
+                                scalar dist = mag(fC - pts[ptI]);
+
+                                if (dist < (1e-4 * tol))
+                                {
+                                    // Face was converted before
+                                    if (debug > 3)
+                                    {
+                                        Pout<< nl << nl
+                                            << " Face: " << sfIndex
+                                            << " :: " << mesh.faces_[sfIndex]
+                                            << " was converted before."
+                                            << endl;
+                                    }
+
+                                    map.type() = -2;
+
+                                    return map;
+                                }
+                            }
+                        }
+
                         // Set the master face patch
                         facePatch = neiProcPatch;
                     }
@@ -1438,21 +1451,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         // Find an appropriate boundary patch
                         forAll(boundary, patchI)
                         {
-                            if (isA<processorPolyPatch>(boundary[patchI]))
-                            {
-                                const processorPolyPatch& pp =
-                                (
-                                    refCast<const processorPolyPatch>
-                                    (
-                                        boundary[patchI]
-                                    )
-                                );
+                            label fP = getNeighbourProcessor(patchI);
 
-                                if (pp.neighbProcNo() == neiProcNo)
-                                {
-                                    facePatch = patchI;
-                                    break;
-                                }
+                            if (fP == neiProcNo)
+                            {
+                                facePatch = patchI;
+                                break;
                             }
                         }
 

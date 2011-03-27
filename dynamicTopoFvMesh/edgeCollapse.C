@@ -5798,7 +5798,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
 
         // Output check entities
-        if (debug > 3)
+        if (debug > 4)
         {
             writeVTK
             (
@@ -6172,7 +6172,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             continue;
                         }
 
-                        // Fail for now (TODO)
+                        // Fail for now
                         Pout<< " Conversion required... "
                             << " Face: " << newFace << " : "
                             << newFace.centre(points_)
@@ -6225,21 +6225,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             {
                                 if (debug > 2)
                                 {
-                                    word pN;
-
-                                    if (mfPatch < 0)
-                                    {
-                                        pN = "Internal";
-                                    }
-                                    else
-                                    if (mfPatch < boundaryMesh().size())
-                                    {
-                                        pN = boundaryMesh()[mfPatch].name();
-                                    }
-                                    else
-                                    {
-                                        pN = "Patch: " + Foam::name(mfPatch);
-                                    }
+                                    word pN(boundaryMesh()[mfPatch].name());
 
                                     Pout<< " Found face: " << sfIndex
                                         << " :: " << sF
