@@ -7846,21 +7846,28 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 
         if (scMap.slaveIndex() == Pstream::myProcNo())
         {
+            // Clear existing buffer
+            sPM.subMesh().lengthScale_.clear();
+
             // Fill in buffers to send.
-            scalarList sendLength
+            sPM.subMesh().lengthScale_.setSize
             (
                 scMap.nEntities(coupleMap::CELL),
-                0.0
+                -1.0
             );
 
             Map<label>& cellMap = scMap.entityMap(coupleMap::CELL);
 
             forAllIter(Map<label>, cellMap, cIter)
             {
-                sendLength[cIter.key()] = lengthScale_[cIter()];
+                sPM.subMesh().lengthScale_[cIter.key()] = lengthScale_[cIter()];
             }
 
-            meshOps::pWrite(scMap.masterIndex(), sendLength);
+            meshOps::pWrite
+            (
+                scMap.masterIndex(),
+                sPM.subMesh().lengthScale_
+            );
 
             if (debug > 4)
             {
@@ -7874,11 +7881,14 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 
         if (rcMap.masterIndex() == Pstream::myProcNo())
         {
+            // Clear existing buffer
+            rPM.subMesh().lengthScale_.clear();
+
             // Schedule receipt from neighbour
             rPM.subMesh().lengthScale_.setSize
             (
                 rcMap.nEntities(coupleMap::CELL),
-                0.0
+                -1.0
             );
 
             // Schedule for receipt
