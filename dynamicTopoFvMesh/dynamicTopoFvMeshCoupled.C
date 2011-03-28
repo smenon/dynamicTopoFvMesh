@@ -1742,6 +1742,179 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
+    // Loop through all insertion points, and merge if necessary
+    scalar mergeTol =
+    (
+        twoDMesh_ ? 0.0 : 1e-4 * mag(edges_[mIndex].vec(points_))
+    );
+
+    // Insert all points
+    forAll(pointsToInsert, pI)
+    {
+        Map<label>& procPointMapI = pointsToInsert[pI];
+
+        // Fetch reference to subMesh
+        const coupleMap& cMapI = recvMeshes_[pI].map();
+        const dynamicTopoFvMesh& meshI = recvMeshes_[pI].subMesh();
+
+        forAllIter(Map<label>, procPointMapI, pItI)
+        {
+            if (pItI() != -1)
+            {
+                continue;
+            }
+
+            const point& pointI = meshI.points_[pItI.key()];
+
+            bool foundMerge = false;
+
+            forAll(pointsToInsert, pJ)
+            {
+                if (pJ == pI)
+                {
+                    continue;
+                }
+
+                Map<label>& procPointMapJ = pointsToInsert[pJ];
+
+                // Fetch reference to subMesh
+                const coupleMap& cMapJ = recvMeshes_[pJ].map();
+                const dynamicTopoFvMesh& meshJ = recvMeshes_[pJ].subMesh();
+
+                // Compare points with this processor
+                forAllIter(Map<label>, procPointMapJ, pItJ)
+                {
+                    const point& pointJ = meshJ.points_[pItJ.key()];
+
+                    if (mag(pointI - pointJ) < mergeTol)
+                    {
+                        if (pItJ() == -1)
+                        {
+                            // Make a merge entry
+                            label mergePointIndex =
+                            (
+                                insertPoint
+                                (
+                                    pointJ,
+                                    meshJ.oldPoints_[pItJ.key()],
+                                    labelList(1, -1)
+                                )
+                            );
+
+                            pItI() = mergePointIndex;
+                            pItJ() = mergePointIndex;
+
+                            // Update maps for the new point
+                            cMapI.mapSlave
+                            (
+                                coupleMap::POINT,
+                                pItI(), pItI.key()
+                            );
+
+                            cMapI.mapMaster
+                            (
+                                coupleMap::POINT,
+                                pItI.key(), pItI()
+                            );
+
+                            cMapJ.mapSlave
+                            (
+                                coupleMap::POINT,
+                                pItJ(), pItJ.key()
+                            );
+
+                            cMapJ.mapMaster
+                            (
+                                coupleMap::POINT,
+                                pItJ.key(), pItJ()
+                            );
+
+                            if (debug > 2)
+                            {
+                                Pout<< " Map point: " << mergePointIndex
+                                    << " pointI: " << pItI.key()
+                                    << " procI: " << procIndices_[pI]
+                                    << " pointJ: " << pItJ.key()
+                                    << " procJ: " << procIndices_[pJ]
+                                    << endl;
+                            }
+
+                            // Add this point to the map.
+                            map.addPoint(mergePointIndex);
+                        }
+                        else
+                        {
+                            // Point appears to have been inserted
+                            // by a previous operation. Map to it.
+                            if (debug > 2)
+                            {
+                                Pout<< " Inserted point: " << pItJ()
+                                    << " pointI: " << pItI.key()
+                                    << " procI: " << procIndices_[pI]
+                                    << " pointJ: " << pItJ.key()
+                                    << " procJ: " << procIndices_[pJ]
+                                    << endl;
+                            }
+
+                            // Set the entry
+                            pItI() = pItJ();
+
+                            // Update maps for the point
+                            cMapI.mapSlave
+                            (
+                                coupleMap::POINT,
+                                pItI(), pItI.key()
+                            );
+
+                            cMapI.mapMaster
+                            (
+                                coupleMap::POINT,
+                                pItI.key(), pItI()
+                            );
+                        }
+
+                        foundMerge = true;
+                        break;
+                    }
+                }
+            }
+
+            if (foundMerge)
+            {
+                continue;
+            }
+
+            // Add a new unique point
+            label newPointIndex =
+            (
+                insertPoint
+                (
+                    pointI,
+                    meshI.oldPoints_[pItI.key()],
+                    labelList(1, -1)
+                )
+            );
+
+            // Set the entry
+            pItI() = newPointIndex;
+
+            // Update maps for the new point
+            cMapI.mapSlave(coupleMap::POINT, pItI(), pItI.key());
+            cMapI.mapMaster(coupleMap::POINT, pItI.key(), pItI());
+
+            if (debug > 2)
+            {
+                Pout<< " Map point: " << newPointIndex
+                    << " for point: " << pItI.key()
+                    << " on proc: " << procIndices_[pI]
+                    << endl;
+            }
+
+            // Add this point to the map.
+            map.addPoint(newPointIndex);
+        }
+    }
+
     // Occassionally, inserted edges may already be present.
     // Ensure that edges are not added twice.
     if (!twoDMesh_)
@@ -1783,6 +1956,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         }
 
                         edgesToInsert[pI][seIndex] = cMe;
+                        edgesToConvert[pI][seIndex] = cMe;
 
                         continue;
                     }
@@ -1828,6 +2002,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                             }
 
                             edgesToInsert[pI][seIndex] = meIndex;
+                            edgesToConvert[pI][seIndex] = meIndex;
                         }
                     }
                 }
@@ -1835,7 +2010,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Write out prior to modifications
+    // Write out some debug info
     if (debug > 2)
     {
         forAll(cellsToInsert, pI)
@@ -1887,132 +2062,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             writeOutputVTK("edgesToInsert", edgesToInsert[pI], 1, true)
             writeOutputVTK("facesToInsert", facesToInsert[pI], 2, true)
             writeOutputVTK("cellsToInsert", cellsToInsert[pI], 3, false)
-        }
-    }
-
-    // Loop through all insertion points, and merge if necessary
-    scalar mergeTol =
-    (
-        twoDMesh_ ? 0.0 : 1e-4 * mag(edges_[mIndex].vec(points_))
-    );
-
-    // Insert all points
-    forAll(pointsToInsert, pI)
-    {
-        Map<label>& procPointMapI = pointsToInsert[pI];
-
-        // Fetch reference to subMesh
-        const coupleMap& cMapI = recvMeshes_[pI].map();
-        const dynamicTopoFvMesh& meshI = recvMeshes_[pI].subMesh();
-
-        forAllIter(Map<label>, procPointMapI, pItI)
-        {
-            if (pItI() != -1)
-            {
-                continue;
-            }
-
-            const point& pointI = meshI.points_[pItI.key()];
-
-            bool foundMerge = false;
-
-            forAll(pointsToInsert, pJ)
-            {
-                if (pJ == pI)
-                {
-                    continue;
-                }
-
-                Map<label>& procPointMapJ = pointsToInsert[pJ];
-
-                // Fetch reference to subMesh
-                const coupleMap& cMapJ = recvMeshes_[pJ].map();
-                const dynamicTopoFvMesh& meshJ = recvMeshes_[pJ].subMesh();
-
-                // Compare points with this processor
-                forAllIter(Map<label>, procPointMapJ, pItJ)
-                {
-                    if (pItJ() != -1)
-                    {
-                        continue;
-                    }
-
-                    const point& pointJ = meshJ.points_[pItJ.key()];
-
-                    if (mag(pointI - pointJ) < mergeTol)
-                    {
-                        // Make a merge entry
-                        label mergePointIndex =
-                        (
-                            insertPoint
-                            (
-                                pointJ,
-                                meshJ.oldPoints_[pItJ.key()],
-                                labelList(1, -1)
-                            )
-                        );
-
-                        pItI() = mergePointIndex;
-                        pItJ() = mergePointIndex;
-
-                        // Update maps for the new point
-                        cMapI.mapSlave(coupleMap::POINT, pItI(), pItI.key());
-                        cMapI.mapMaster(coupleMap::POINT, pItI.key(), pItI());
-
-                        cMapJ.mapSlave(coupleMap::POINT, pItJ(), pItJ.key());
-                        cMapJ.mapMaster(coupleMap::POINT, pItJ.key(), pItJ());
-
-                        if (debug > 3)
-                        {
-                            Pout<< " Map point: " << mergePointIndex
-                                << " pointI: " << pItI.key()
-                                << " procI: " << procIndices_[pI]
-                                << " pointJ: " << pItJ.key()
-                                << " procJ: " << procIndices_[pJ]
-                                << endl;
-                        }
-
-                        // Add this point to the map.
-                        map.addPoint(mergePointIndex);
-
-                        foundMerge = true;
-                        break;
-                    }
-                }
-            }
-
-            if (foundMerge)
-            {
-                continue;
-            }
-
-            // Add a new unique point
-            label newPointIndex =
-            (
-                insertPoint
-                (
-                    pointI,
-                    meshI.oldPoints_[pItI.key()],
-                    labelList(1, -1)
-                )
-            );
-
-            pItI() = newPointIndex;
-
-            // Update maps for the new point
-            cMapI.mapSlave(coupleMap::POINT, pItI(), pItI.key());
-            cMapI.mapMaster(coupleMap::POINT, pItI.key(), pItI());
-
-            if (debug > 3)
-            {
-                Pout<< " Map point: " << newPointIndex
-                    << " for point: " << pItI.key()
-                    << " on proc: " << procIndices_[pI]
-                    << endl;
-            }
-
-            // Add this point to the map.
-            map.addPoint(newPointIndex);
         }
     }
 
@@ -2079,7 +2128,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 )
             );
 
-            if (debug > 3)
+            if (debug > 2)
             {
                 Pout<< " Map edge: " << eIter() << "::" << newEdge
                     << " for edge: " << eIter.key() << "::" << sEdge
