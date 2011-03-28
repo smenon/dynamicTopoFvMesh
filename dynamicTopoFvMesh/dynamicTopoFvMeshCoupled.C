@@ -453,6 +453,11 @@ void dynamicTopoFvMesh::executeLoadBalancing
     // Load the length-scale estimator,
     // and read refinement options
     loadLengthScaleEstimator();
+
+    // Clear parallel structures
+    procIndices_.clear();
+    sendMeshes_.clear();
+    recvMeshes_.clear();
 }
 
 
@@ -8709,77 +8714,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
             if (nBoundary != 2)
             {
                 // Write out for post-processing
-                forAll(eFaces, faceI)
-                {
-                    label fpI = whichPatch(eFaces[faceI]);
-
-                    word fpName =
-                    (
-                        (fpI < 0) ?
-                        word("Internal") :
-                        boundaryMesh()[fpI].name()
-                    );
-
-                    Pout<< " Face:" << eFaces[faceI]
-                        << " :: " << faces_[eFaces[faceI]]
-                        << " Patch: " << fpName
-                        << nl;
-                }
-
-                writeVTK
-                (
-                    "eFaces_" + Foam::name(index),
-                    eFaces, 2, false, true
-                );
-
-                forAll(procIndices_, pI)
-                {
-                    Pout<< nl << "Proc: " << procIndices_[pI] << nl;
-
-                    const coupleMap& cMap = recvMeshes_[pI].map();
-                    const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
-
-                    label sIndex = -1;
-
-                    if ((sIndex = cMap.findSlave(edgeEnum, index)) > -1)
-                    {
-                        // Fetch connectivity from patchSubMesh
-                        const labelList& peF = mesh.edgeFaces_[sIndex];
-
-                        forAll(peF, faceI)
-                        {
-                            label fpI = mesh.whichPatch(peF[faceI]);
-
-                            word fpName =
-                            (
-                                (fpI < 0) ?
-                                word("Internal") :
-                                mesh.boundaryMesh()[fpI].name()
-                            );
-
-                            Pout<< " Face:" << peF[faceI]
-                                << " :: " << mesh.faces_[peF[faceI]]
-                                << " Patch: " << fpName
-                                << nl;
-                        }
-
-                        mesh.writeVTK
-                        (
-                            "eFaces_" + Foam::name(sIndex),
-                            peF, 2, false, true
-                        );
-                    }
-                }
-
-                // Get edge patch
-                label epI = whichEdgePatch(index);
-
-                word epName =
-                (
-                    (epI < 0) ?
-                    word("Internal") :
-                    boundaryMesh()[epI].name()
-                );
+                writeEdgeConnectivity(index);
 
                 FatalErrorIn
                 (
@@ -8790,7 +8725,8 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                     << " nBoundary: " << nBoundary
                     << " Master edge: " << index
                     << " :: " << edges_[index]
-                    << " Patch: " << epName << nl
+                    << " Patch: "
+                    << boundaryMesh()[whichEdgePatch(index)].name() << nl
                     << abort(FatalError);
             }
 
