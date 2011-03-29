@@ -49,6 +49,7 @@ Author
 #include "motionSolver.H"
 #include "surfaceFields.H"
 #include "globalMeshData.H"
+#include "cyclicPolyPatch.H"
 #include "fvMeshDistribute.H"
 #include "faceSetAlgorithm.H"
 #include "cellSetAlgorithm.H"
@@ -6384,15 +6385,21 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
         if (debug > 1)
         {
+            const boundBox& box = polyMesh::bounds();
             const pointField& sPoints = rPM.subMesh().points_;
-
             const Map<label>& pMap = cMap.entityMap(coupleMap::POINT);
+
+            // Fetch relative tolerance
+            scalar relTol = debug::tolerances("processorMatchTol", 1e-4);
+
+            // Compute tolerance
+            scalar tol = relTol * box.mag();
 
             forAllConstIter(Map<label>, pMap, pIter)
             {
                 scalar dist = mag(points_[pIter.key()] - sPoints[pIter()]);
 
-                if (dist > debug::tolerances("processorMatchTol", 1e-4))
+                if (dist > tol)
                 {
                     FatalErrorIn
                     (
@@ -6401,8 +6408,9 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                         << " Failed to match point: " << pIter.key()
                         << ": " << points_[pIter.key()]
                         << " with point: " << pIter()
-                        << ": " << sPoints[pIter()]
-                        << " Missed by: " << dist
+                        << ": " << sPoints[pIter()] << nl
+                        << " Missed by: " << dist << nl
+                        << " Tolerance: " << tol << nl
                         << abort(FatalError);
                 }
             }
@@ -7624,6 +7632,38 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                     slaveCentres[pI]
                 );
             }
+        }
+    }
+
+    // Handle any cyclics in the meantime
+    for (label pI = 0; pI < nPatches_; pI++)
+    {
+        if (!isA<cyclicPolyPatch>(boundaryMesh()[pI]))
+        {
+            continue;
+        }
+
+        // Forward primitive patch to handle ordering
+        bool changed = boundaryMesh()[pI].order
+        (
+            primitivePatch
+            (
+                SubList<face>
+                (
+                    faces_,
+                    patchSizes_[pI],
+                    patchStarts_[pI]
+                ),
+                points_
+            ),
+            patchMaps[pI],
+            rotations[pI]
+        );
+
+        // Set the flag if changed
+        if (changed)
+        {
+            anyChange = true;
         }
     }
 

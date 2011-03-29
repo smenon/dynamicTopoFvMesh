@@ -4423,12 +4423,28 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             if (nProcCurves[0] && !nProcCurves[1])
             {
-                collapseCase = 1;
+                if (nBoundCurves[1])
+                {
+                    // Bail out for now
+                    return map;
+                }
+                else
+                {
+                    collapseCase = 1;
+                }
             }
 
             if (!nProcCurves[0] && nProcCurves[1])
             {
-                collapseCase = 2;
+                if (nBoundCurves[0])
+                {
+                    // Bail out for now
+                    return map;
+                }
+                else
+                {
+                    collapseCase = 2;
+                }
             }
         }
 
