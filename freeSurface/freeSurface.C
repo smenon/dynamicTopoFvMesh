@@ -230,59 +230,6 @@ freeSurface::freeSurface
         correction[patchID] = true;
     }
 
-
-    // Mark free surface boundary points
-    // which do not belonge to empty and wedge patch
-    forAll(aMesh().boundary(), patchI)
-    {
-        if
-        (
-            (
-                aMesh().boundary()[patchI].type()
-             != emptyFaPatch::typeName
-            )
-         && (
-                aMesh().boundary()[patchI].type()
-             != wedgeFaPatch::typeName
-            )
-        )
-        {
-            const labelList& patchPoints =
-                aMesh().boundary()[patchI].pointLabels();
-
-            forAll(patchPoints, pointI)
-            {
-                motionPointsMask()[patchPoints[pointI]] = 0.0;
-            }
-        }
-    }
-
-
-    // Mark free-surface boundary point
-    // at the axis of 2-D axisymmetic cases
-    forAll(aMesh().boundary(), patchI)
-    {
-        if
-        (
-            aMesh().boundary()[patchI].type()
-         == wedgeFaPatch::typeName
-        )
-        {
-            const wedgeFaPatch& wedgePatch =
-                refCast<const wedgeFaPatch>(aMesh().boundary()[patchI]);
-
-            if(wedgePatch.axisPoint() > -1)
-            {
-                motionPointsMask()[wedgePatch.axisPoint()] = 0;
-
-                Info << "Axis point: "
-                    << wedgePatch.axisPoint()
-                    << "vector: "
-                    << aMesh().points()[wedgePatch.axisPoint()] << endl;
-            }
-        }
-    }
-
     // Read free-surface points total displacement if present
     readTotalDisplacement();
 

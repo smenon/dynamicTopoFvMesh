@@ -7568,12 +7568,61 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
     labelListList& rotations
 ) const
 {
-    if (!Pstream::parRun())
+    bool anyChange = false;
+
+    // Handle any cyclics in the meantime
+    for (label pI = 0; pI < nPatches_; pI++)
     {
-        return false;
+        if (!isA<cyclicPolyPatch>(boundaryMesh()[pI]))
+        {
+            continue;
+        }
+
+        // Forward primitive patch to handle ordering
+        bool changed = boundaryMesh()[pI].order
+        (
+            primitivePatch
+            (
+                SubList<face>
+                (
+                    faces_,
+                    patchSizes_[pI],
+                    patchStarts_[pI]
+                ),
+                points_
+            ),
+            patchMaps[pI],
+            rotations[pI]
+        );
+
+        // Set the flag if changed
+        if (changed)
+        {
+            anyChange = true;
+        }
+
+        if (debug > 3)
+        {
+            writeVTK
+            (
+                "oldCyclicPatchFaces_" + Foam::name(pI),
+                identity(patchSizes_[pI]) + patchStarts_[pI],
+                2, false, true
+            );
+
+            writeVTK
+            (
+                "newCyclicPatchFaces_" + Foam::name(pI),
+                identity(patchSizes_[pI]) + patchStarts_[pI],
+                2
+            );
+        }
     }
 
-    bool anyChange = false;
+    if (!Pstream::parRun())
+    {
+        return anyChange;
+    }
 
     // Calculate centres and tolerances for any slave patches
     List<scalarField> slaveTols(nPatches_);
@@ -7632,38 +7681,6 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                     slaveCentres[pI]
                 );
             }
-        }
-    }
-
-    // Handle any cyclics in the meantime
-    for (label pI = 0; pI < nPatches_; pI++)
-    {
-        if (!isA<cyclicPolyPatch>(boundaryMesh()[pI]))
-        {
-            continue;
-        }
-
-        // Forward primitive patch to handle ordering
-        bool changed = boundaryMesh()[pI].order
-        (
-            primitivePatch
-            (
-                SubList<face>
-                (
-                    faces_,
-                    patchSizes_[pI],
-                    patchStarts_[pI]
-                ),
-                points_
-            ),
-            patchMaps[pI],
-            rotations[pI]
-        );
-
-        // Set the flag if changed
-        if (changed)
-        {
-            anyChange = true;
         }
     }
 

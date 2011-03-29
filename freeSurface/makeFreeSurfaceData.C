@@ -26,6 +26,7 @@ License
 
 #include "freeSurface.H"
 #include "primitivePatchInterpolation.H"
+#include "emptyFaPatch.H"
 #include "wedgeFaPatch.H"
 #include "wedgeFaPatchFields.H"
 
@@ -325,6 +326,57 @@ void freeSurface::makeMotionPointsMask() const
         mesh().boundaryMesh()[aPatchID()].nPoints(),
         1.0
     );
+
+    // Mark free surface boundary points
+    // which do not belong to empty / wedge patches
+    forAll(aMesh().boundary(), patchI)
+    {
+        if
+        (
+            (
+                aMesh().boundary()[patchI].type()
+             != emptyFaPatch::typeName
+            )
+         && (
+                aMesh().boundary()[patchI].type()
+             != wedgeFaPatch::typeName
+            )
+        )
+        {
+            const labelList& patchPoints =
+                aMesh().boundary()[patchI].pointLabels();
+
+            forAll(patchPoints, pointI)
+            {
+                motionPointsMask()[patchPoints[pointI]] = 0.0;
+            }
+        }
+    }
+
+    // Mark free-surface boundary point
+    // at the axis of 2-D axisymmetic cases
+    forAll(aMesh().boundary(), patchI)
+    {
+        if
+        (
+            aMesh().boundary()[patchI].type()
+         == wedgeFaPatch::typeName
+        )
+        {
+            const wedgeFaPatch& wedgePatch =
+                refCast<const wedgeFaPatch>(aMesh().boundary()[patchI]);
+
+            if(wedgePatch.axisPoint() > -1)
+            {
+                motionPointsMask()[wedgePatch.axisPoint()] = 0;
+
+                Info<< "Axis point: "
+                    << wedgePatch.axisPoint()
+                    << "vector: "
+                    << aMesh().points()[wedgePatch.axisPoint()] << endl;
+            }
+        }
+    }
 }
 
 
