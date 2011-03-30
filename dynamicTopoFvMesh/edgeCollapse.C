@@ -3903,6 +3903,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             label slaveOverRide = -1;
             label sIndex = slaveMap.index();
             label pI = slaveMap.patchIndex();
+
+            // If the edge is mapped onto itself, skip check
+            // (occurs for cyclic edges)
+            if ((sIndex == eIndex) && localCouple)
+            {
+                continue;
+            }
+
             const coupleMap* cMapPtr = NULL;
 
             edge mEdge(eCheck), sEdge(-1, -1);
@@ -4206,6 +4214,14 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             label sIndex = slaveMap.index();
             label pI = slaveMap.patchIndex();
+
+            // If the edge is mapped onto itself, skip modification
+            // (occurs for cyclic edges)
+            if ((sIndex == eIndex) && localCouple)
+            {
+                continue;
+            }
+
             label slaveOverRide = slaveMap.type();
 
             // Temporarily turn off coupledModification
@@ -5831,7 +5847,305 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
         if (localCouple && !procCouple)
         {
+            // Alias for convenience...
+            const changeMap& slaveMap = slaveMaps[0];
 
+            const label pI = slaveMap.patchIndex();
+            const coupleMap& cMap = patchCoupling_[pI].map();
+
+            // Obtain references
+            Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
+            Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
+
+            const labelList& rpList = slaveMap.removedPointList();
+            const List<objectMap>& apList = slaveMap.addedPointList();
+
+            // Configure the slave replacement point.
+            //  - collapseEdge stores this as an 'addedPoint'
+            label scPoint = rpList[0];
+            label srPoint = apList[0].index();
+
+            if (collapsingSlave)
+            {
+                if (rPointMap[replacePoint] == scPoint)
+                {
+                    pointMap[srPoint] = replacePoint;
+                    rPointMap[replacePoint] = srPoint;
+                }
+
+                pointMap.erase(rPointMap[collapsePoint]);
+                rPointMap.erase(collapsePoint);
+            }
+            else
+            {
+                if (pointMap[replacePoint] == scPoint)
+                {
+                    rPointMap[srPoint] = replacePoint;
+                    pointMap[replacePoint] = srPoint;
+                }
+
+                rPointMap.erase(pointMap[collapsePoint]);
+                pointMap.erase(collapsePoint);
+            }
+
+            // If any other points were removed, update map
+            for (label pointI = 1; pointI < rpList.size(); pointI++)
+            {
+                if (collapsingSlave)
+                {
+                    if (pointMap.found(rpList[pointI]))
+                    {
+                        rPointMap.erase(pointMap[rpList[pointI]]);
+                        pointMap.erase(rpList[pointI]);
+                    }
+                }
+                else
+                {
+                    if (rPointMap.found(rpList[pointI]))
+                    {
+                        if (debug > 2)
+                        {
+                            Pout<< " Found removed point: "
+                                << rpList[pointI]
+                                << " for point on this patch: "
+                                << rPointMap[rpList[pointI]]
+                                << endl;
+                        }
+
+                        pointMap.erase(rPointMap[rpList[pointI]]);
+                        rPointMap.erase(rpList[pointI]);
+                    }
+                }
+            }
+
+            // Update face maps
+            const label faceEnum = coupleMap::FACE;
+
+            // Obtain references
+            Map<label>& faceMap = cMap.entityMap(faceEnum);
+            Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
+
+            forAll(checkFaces, faceI)
+            {
+                label mfIndex = checkFaces[faceI];
+                label mfPatch = whichPatch(mfIndex);
+
+                const face& mF = faces_[mfIndex];
+
+                triFace cF
+                (
+                    pointMap.found(mF[0]) ? pointMap[mF[0]] : -1,
+                    pointMap.found(mF[1]) ? pointMap[mF[1]] : -1,
+                    pointMap.found(mF[2]) ? pointMap[mF[2]] : -1
+                );
+
+                if (cF[0] == -1 || cF[1] == -1 || cF[2] == -1)
+                {
+                    writeVTK
+                    (
+                        "failedFace_"
+                      + Foam::name(mfIndex),
+                        mfIndex,
+                        2, false, true
+                    );
+
+                    Pout<< " Failed to configure face for: "
+                        << mfIndex << " :: " << faces_[mfIndex]
+                        << " using comparison face: " << cF
+                        << abort(FatalError);
+                }
+
+                bool matchedFace = false;
+
+                // Fetch edges connected to first slave point
+                const labelList& spEdges = pointEdges_[cF[0]];
+
+                forAll(spEdges, edgeJ)
+                {
+                    label seIndex = spEdges[edgeJ];
+
+                    if (whichEdgePatch(seIndex) == -1)
+                    {
+                        continue;
+                    }
+
+                    const labelList& seFaces = edgeFaces_[seIndex];
+
+                    forAll(seFaces, faceI)
+                    {
+                        label sfIndex = seFaces[faceI];
+
+                        if (whichPatch(sfIndex) == -1)
+                        {
+                            continue;
+                        }
+
+                        const face& sF = faces_[sfIndex];
+
+                        if
+                        (
+                            triFace::compare
+                            (
+                                triFace(sF[0], sF[1], sF[2]), cF
+                            )
+                        )
+                        {
+                            if (debug > 2)
+                            {
+                                word pN(boundaryMesh()[mfPatch].name());
+
+                                Pout<< " Found face: " << sfIndex
+                                    << " :: " << sF
+                                    << " with mfIndex: " << mfIndex
+                                    << " :: " << faces_[mfIndex]
+                                    << " Patch: " << pN
+                                    << endl;
+                            }
+
+                            if (rFaceMap.found(sfIndex))
+                            {
+                                rFaceMap[sfIndex] = mfIndex;
+                            }
+                            else
+                            {
+                                rFaceMap.insert(sfIndex, mfIndex);
+                            }
+
+                            if (faceMap.found(mfIndex))
+                            {
+                                faceMap[mfIndex] = sfIndex;
+                            }
+                            else
+                            {
+                                faceMap.insert(mfIndex, sfIndex);
+                            }
+
+                            matchedFace = true;
+
+                            break;
+                        }
+                    }
+
+                    if (matchedFace)
+                    {
+                        break;
+                    }
+                }
+
+                if (!matchedFace)
+                {
+                    writeVTK
+                    (
+                        "failedFacePoints_"
+                      + Foam::name(mfIndex),
+                        cF, 0, false, true
+                    );
+
+                    Pout<< " Failed to match face: "
+                        << mfIndex << " :: " << faces_[mfIndex]
+                        << " using comparison face: " << cF
+                        << abort(FatalError);
+                }
+            }
+
+            // Update edge maps
+            const label edgeEnum = coupleMap::EDGE;
+
+            // Obtain references
+            Map<label>& edgeMap = cMap.entityMap(edgeEnum);
+            Map<label>& rEdgeMap = cMap.reverseEntityMap(edgeEnum);
+
+            forAll(checkEdges, edgeI)
+            {
+                label meIndex = checkEdges[edgeI];
+
+                const edge& mE = edges_[meIndex];
+
+                edge cE
+                (
+                    pointMap.found(mE[0]) ? pointMap[mE[0]] : -1,
+                    pointMap.found(mE[1]) ? pointMap[mE[1]] : -1
+                );
+
+                if (cE[0] == -1 || cE[1] == -1)
+                {
+                    writeVTK
+                    (
+                        "failedEdge_"
+                      + Foam::name(meIndex),
+                        meIndex,
+                        1, false, true
+                    );
+
+                    Pout<< " Failed to configure edge for: "
+                        << meIndex << " :: " << edges_[meIndex]
+                        << " using comparison edge: " << cE
+                        << abort(FatalError);
+                }
+
+                bool matchedEdge = false;
+
+                // Fetch edges connected to first slave point
+                const labelList& spEdges = pointEdges_[cE[0]];
+
+                forAll(spEdges, edgeJ)
+                {
+                    label seIndex = spEdges[edgeJ];
+
+                    const edge& sE = edges_[seIndex];
+
+                    if (sE == cE)
+                    {
+                        if (debug > 2)
+                        {
+                            Pout<< " Found edge: " << seIndex
+                                << " :: " << sE
+                                << " with meIndex: " << meIndex
+                                << " :: " << edges_[meIndex]
+                                << endl;
+                        }
+
+                        // Update reverse map
+                        if (rEdgeMap.found(seIndex))
+                        {
+                            rEdgeMap[seIndex] = meIndex;
+                        }
+                        else
+                        {
+                            rEdgeMap.insert(seIndex, meIndex);
+                        }
+
+                        // Update map
+                        if (edgeMap.found(meIndex))
+                        {
+                            edgeMap[meIndex] = seIndex;
+                        }
+                        else
+                        {
+                            edgeMap.insert(meIndex, seIndex);
+                        }
+
+                        matchedEdge = true;
+
+                        break;
+                    }
+                }
+
+                if (!matchedEdge)
+                {
+                    writeVTK
+                    (
+                        "failedEdgePoints_"
+                      + Foam::name(meIndex),
+                        cE, 0, false, true
+                    );
+
+                    Pout<< " Failed to match edge: "
+                        << meIndex << " :: " << edges_[meIndex]
+                        << " using comparison edge: " << cE
+                        << abort(FatalError);
+                }
+            }
         }
         else
         if (procCouple && !localCouple)
@@ -5841,13 +6155,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             {
                 const coupleMap& cMap = recvMeshes_[pI].map();
 
-                const label pointEnum = coupleMap::POINT;
-
                 // Obtain references
-                Map<label>& pointMap = cMap.entityMap(pointEnum);
-                Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
+                Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
+                Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
 
                 const changeMap* slaveMapPtr = NULL;
+                const label pointEnum = coupleMap::POINT;
 
                 forAll(slaveMaps, slaveI)
                 {
@@ -6536,7 +6849,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         sMesh.writeVTK
                         (
-                            "failedEdge_"
+                            "failedEdgePoints_"
                           + Foam::name(meIndex),
                             cE, 0, false, true
                         );

@@ -240,13 +240,13 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
                     }
 
                     // The following bit happens only during the sliver
-                    // exudation process, since slave edges are
-                    // usually not added to the coupled edge-stack.
+                    // exudation process, since slave faces are
+                    // usually not added to the coupled face-stack.
                     if ((sIndex = cMap.findMaster(faceEnum, fIndex)) > -1)
                     {
                         pIndex = patchI;
 
-                        // Notice that we are collapsing a slave edge first.
+                        // Notice that we are collapsing a slave face first.
                         bisectingSlave = true;
 
                         break;
@@ -2664,6 +2664,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             label sIndex = slaveMap.index();
             label pI = slaveMap.patchIndex();
 
+            // If the edge is mapped onto itself, skip check
+            // (occurs for cyclic edges)
+            if ((sIndex == eIndex) && localCouple)
+            {
+                continue;
+            }
+
             // Temporarily turn off coupledModification
             unsetCoupledModification();
 
@@ -2713,6 +2720,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             label sIndex = slaveMap.index();
             label pI = slaveMap.patchIndex();
+
+            // If the edge is mapped onto itself, skip modification
+            // (occurs for cyclic edges)
+            if ((sIndex == eIndex) && localCouple)
+            {
+                continue;
+            }
 
             // Temporarily turn off coupledModification
             unsetCoupledModification();
@@ -3543,293 +3557,305 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             );
         }
 
-        if (localCouple && !procCouple)
+        forAll(slaveMaps, slaveI)
         {
+            // Alias for convenience...
+            const changeMap& slaveMap = slaveMaps[slaveI];
 
-        }
-        else
-        if (procCouple && !localCouple)
-        {
-            forAll(slaveMaps, slaveI)
+            const label pI = slaveMap.patchIndex();
+
+            // Fetch the appropriate coupleMap / mesh
+            const coupleMap* cMapPtr = NULL;
+            const dynamicTopoFvMesh* sMeshPtr = NULL;
+
+            if (localCouple && !procCouple)
             {
-                // Alias for convenience...
-                const changeMap& slaveMap = slaveMaps[slaveI];
+                cMapPtr = &(patchCoupling_[pI].map());
+                sMeshPtr = this;
+            }
+            else
+            if (procCouple && !localCouple)
+            {
+                cMapPtr = &(recvMeshes_[pI].map());
+                sMeshPtr = &(recvMeshes_[pI].subMesh());
+            }
 
-                const label pI = slaveMap.patchIndex();
+            // Alias for convenience
+            const coupleMap& cMap = *cMapPtr;
+            const dynamicTopoFvMesh& sMesh = *sMeshPtr;
 
-                const coupleMap& cMap = recvMeshes_[pI].map();
-                const dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
+            // Add the new points to the coupling map
+            const List<objectMap>& apList = slaveMap.addedPointList();
 
-                // Add the new points to the coupling map
-                const List<objectMap>& apList = slaveMap.addedPointList();
+            // Fetch the slave point
+            label slavePoint = apList[0].index();
 
-                // Fetch the slave point
-                label slavePoint = apList[0].index();
+            // Map points
+            if (bisectingSlave)
+            {
+                // Update reverse pointMap
+                cMap.mapMaster
+                (
+                    coupleMap::POINT,
+                    newPointIndex,
+                    slavePoint
+                );
 
-                // Map points
-                if (bisectingSlave)
+                // Update pointMap
+                cMap.mapSlave
+                (
+                    coupleMap::POINT,
+                    slavePoint,
+                    newPointIndex
+                );
+            }
+            else
+            {
+                // Update pointMap
+                cMap.mapSlave
+                (
+                    coupleMap::POINT,
+                    newPointIndex,
+                    slavePoint
+                );
+
+                // Update reverse pointMap
+                cMap.mapMaster
+                (
+                    coupleMap::POINT,
+                    slavePoint,
+                    newPointIndex
+                );
+            }
+
+            if (debug > 2)
+            {
+                Pout<< " Adding point: " << slavePoint
+                    << " for point: " << newPointIndex
+                    << endl;
+            }
+
+            // Obtain point maps
+            const Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
+
+            // Update face mapping
+            const label faceEnum = coupleMap::FACE;
+
+            // Obtain references
+            Map<label>& faceMap = cMap.entityMap(faceEnum);
+            Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
+
+            forAll(checkFaces, faceI)
+            {
+                label mfIndex = checkFaces[faceI];
+
+                const face& mF = faces_[mfIndex];
+
+                label mfPatch = whichPatch(mfIndex);
+
+                // Check for processor match
+                label neiProc = getNeighbourProcessor(mfPatch);
+
+                if (procCouple && !localCouple)
                 {
-                    // Update reverse pointMap
-                    cMap.mapMaster
-                    (
-                        coupleMap::POINT,
-                        newPointIndex,
-                        slavePoint
-                    );
-
-                    // Update pointMap
-                    cMap.mapSlave
-                    (
-                        coupleMap::POINT,
-                        slavePoint,
-                        newPointIndex
-                    );
-                }
-                else
-                {
-                    // Update pointMap
-                    cMap.mapSlave
-                    (
-                        coupleMap::POINT,
-                        newPointIndex,
-                        slavePoint
-                    );
-
-                    // Update reverse pointMap
-                    cMap.mapMaster
-                    (
-                        coupleMap::POINT,
-                        slavePoint,
-                        newPointIndex
-                    );
-                }
-
-                if (debug > 2)
-                {
-                    Pout<< " Adding point: " << slavePoint
-                        << " on proc: " << procIndices_[pI]
-                        << " for point: " << newPointIndex
-                        << endl;
-                }
-
-                // Obtain point maps
-                const Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
-
-                // Update face mapping
-                const label faceEnum = coupleMap::FACE;
-
-                // Obtain references
-                Map<label>& faceMap = cMap.entityMap(faceEnum);
-                Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
-
-                forAll(checkFaces, faceI)
-                {
-                    label mfIndex = checkFaces[faceI];
-
-                    const face& mF = faces_[mfIndex];
-
-                    label mfPatch = whichPatch(mfIndex);
-                    label neiProc = getNeighbourProcessor(mfPatch);
-
-                    // Check for processor match
                     if (neiProc != procIndices_[pI])
                     {
                         continue;
                     }
+                }
 
-                    triFace cF
-                    (
-                        pointMap.found(mF[0]) ? pointMap[mF[0]] : -1,
-                        pointMap.found(mF[1]) ? pointMap[mF[1]] : -1,
-                        pointMap.found(mF[2]) ? pointMap[mF[2]] : -1
-                    );
+                triFace cF
+                (
+                    pointMap.found(mF[0]) ? pointMap[mF[0]] : -1,
+                    pointMap.found(mF[1]) ? pointMap[mF[1]] : -1,
+                    pointMap.found(mF[2]) ? pointMap[mF[2]] : -1
+                );
 
-                    // Skip mapping if all points were not found
-                    if (cF[0] == -1 || cF[1] == -1 || cF[2] == -1)
+                // Skip mapping if all points were not found
+                if (cF[0] == -1 || cF[1] == -1 || cF[2] == -1)
+                {
+                    continue;
+                }
+
+                bool matchedFace = false;
+
+                // Fetch edges connected to the slave point
+                const labelList& spEdges = sMesh.pointEdges_[slavePoint];
+
+                forAll(spEdges, edgeI)
+                {
+                    label seIndex = spEdges[edgeI];
+
+                    if (sMesh.whichEdgePatch(seIndex) == -1)
                     {
                         continue;
                     }
 
-                    bool matchedFace = false;
+                    const labelList& seFaces = sMesh.edgeFaces_[seIndex];
 
-                    // Fetch edges connected to the slave point
-                    const labelList& spEdges = sMesh.pointEdges_[slavePoint];
-
-                    forAll(spEdges, edgeI)
+                    forAll(seFaces, faceI)
                     {
-                        label seIndex = spEdges[edgeI];
+                        label sfIndex = seFaces[faceI];
 
-                        if (sMesh.whichEdgePatch(seIndex) == -1)
+                        if (sMesh.whichPatch(sfIndex) == -1)
                         {
                             continue;
                         }
 
-                        const labelList& seFaces = sMesh.edgeFaces_[seIndex];
+                        const face& sF = sMesh.faces_[sfIndex];
 
-                        forAll(seFaces, faceI)
-                        {
-                            label sfIndex = seFaces[faceI];
-
-                            if (sMesh.whichPatch(sfIndex) == -1)
-                            {
-                                continue;
-                            }
-
-                            const face& sF = sMesh.faces_[sfIndex];
-
-                            if
+                        if
+                        (
+                            triFace::compare
                             (
-                                triFace::compare
-                                (
-                                    triFace(sF[0], sF[1], sF[2]), cF
-                                )
+                                triFace(sF[0], sF[1], sF[2]), cF
                             )
-                            {
-                                if (debug > 2)
-                                {
-                                    word pN(boundaryMesh()[mfPatch].name());
-
-                                    Pout<< " Found face: " << sfIndex
-                                        << " :: " << sF
-                                        << " with mfIndex: " << mfIndex
-                                        << " :: " << mF
-                                        << " on proc: " << procIndices_[pI]
-                                        << " Patch: " << pN
-                                        << endl;
-                                }
-
-                                if (rFaceMap.found(sfIndex))
-                                {
-                                    rFaceMap[sfIndex] = mfIndex;
-                                }
-                                else
-                                {
-                                    rFaceMap.insert(sfIndex, mfIndex);
-                                }
-
-                                if (faceMap.found(mfIndex))
-                                {
-                                    faceMap[mfIndex] = sfIndex;
-                                }
-                                else
-                                {
-                                    faceMap.insert(mfIndex, sfIndex);
-                                }
-
-                                matchedFace = true;
-
-                                break;
-                            }
-                        }
-
-                        if (matchedFace)
-                        {
-                            break;
-                        }
-                    }
-
-                    if (!matchedFace)
-                    {
-                        sMesh.writeVTK
-                        (
-                            "failedFacePoints_"
-                          + Foam::name(mfIndex),
-                            cF, 0, false, true
-                        );
-
-                        writeVTK
-                        (
-                            "checkFaces_" + Foam::name(eIndex),
-                            checkFaces, 2, false, true
-                        );
-
-                        Pout<< " Failed to match face: "
-                            << mfIndex << " :: " << mF
-                            << " masterPatch: " << mfPatch
-                            << " using comparison face: " << cF
-                            << " on proc: " << procIndices_[pI]
-                            << abort(FatalError);
-                    }
-                }
-
-                // Update edge mapping
-                const label edgeEnum = coupleMap::EDGE;
-
-                // Obtain references
-                Map<label>& edgeMap = cMap.entityMap(edgeEnum);
-                Map<label>& rEdgeMap = cMap.reverseEntityMap(edgeEnum);
-
-                forAll(checkEdges, edgeI)
-                {
-                    label meIndex = checkEdges[edgeI];
-
-                    const edge& mE = edges_[meIndex];
-
-                    label mePatch = whichPatch(meIndex);
-                    label neiProc = getNeighbourProcessor(mePatch);
-
-                    edge cE
-                    (
-                        pointMap.found(mE[0]) ? pointMap[mE[0]] : -1,
-                        pointMap.found(mE[1]) ? pointMap[mE[1]] : -1
-                    );
-
-                    // Skip mapping if all points were not found
-                    if (cE[0] == -1 || cE[1] == -1)
-                    {
-                        continue;
-                    }
-
-                    bool matchedEdge = false;
-
-                    // Fetch edges connected to the slave point
-                    const labelList& spEdges = sMesh.pointEdges_[cE[0]];
-
-                    forAll(spEdges, edgeI)
-                    {
-                        label seIndex = spEdges[edgeI];
-
-                        const edge& sE = sMesh.edges_[seIndex];
-
-                        if (sE == cE)
+                        )
                         {
                             if (debug > 2)
                             {
-                                Pout<< " Found edge: " << seIndex
-                                    << " :: " << sE
-                                    << " with meIndex: " << meIndex
-                                    << " :: " << mE
-                                    << " on proc: " << procIndices_[pI]
+                                word pN(boundaryMesh()[mfPatch].name());
+
+                                Pout<< " Found face: " << sfIndex
+                                    << " :: " << sF
+                                    << " with mfIndex: " << mfIndex
+                                    << " :: " << mF
+                                    << " Patch: " << pN
                                     << endl;
                             }
 
-                            // Update reverse map
-                            if (rEdgeMap.found(seIndex))
+                            if (rFaceMap.found(sfIndex))
                             {
-                                rEdgeMap[seIndex] = meIndex;
+                                rFaceMap[sfIndex] = mfIndex;
                             }
                             else
                             {
-                                rEdgeMap.insert(seIndex, meIndex);
+                                rFaceMap.insert(sfIndex, mfIndex);
                             }
 
-                            // Update map
-                            if (edgeMap.found(meIndex))
+                            if (faceMap.found(mfIndex))
                             {
-                                edgeMap[meIndex] = seIndex;
+                                faceMap[mfIndex] = sfIndex;
                             }
                             else
                             {
-                                edgeMap.insert(meIndex, seIndex);
+                                faceMap.insert(mfIndex, sfIndex);
                             }
 
-                            matchedEdge = true;
+                            matchedFace = true;
 
                             break;
                         }
                     }
 
-                    if (!matchedEdge)
+                    if (matchedFace)
+                    {
+                        break;
+                    }
+                }
+
+                if (!matchedFace)
+                {
+                    sMesh.writeVTK
+                    (
+                        "failedFacePoints_"
+                      + Foam::name(mfIndex),
+                        cF, 0, false, true
+                    );
+
+                    writeVTK
+                    (
+                        "checkFaces_" + Foam::name(eIndex),
+                        checkFaces, 2, false, true
+                    );
+
+                    Pout<< " Failed to match face: "
+                        << mfIndex << " :: " << mF
+                        << " masterPatch: " << mfPatch
+                        << " using comparison face: " << cF
+                        << abort(FatalError);
+                }
+            }
+
+            // Update edge mapping
+            const label edgeEnum = coupleMap::EDGE;
+
+            // Obtain references
+            Map<label>& edgeMap = cMap.entityMap(edgeEnum);
+            Map<label>& rEdgeMap = cMap.reverseEntityMap(edgeEnum);
+
+            forAll(checkEdges, edgeI)
+            {
+                label meIndex = checkEdges[edgeI];
+
+                const edge& mE = edges_[meIndex];
+
+                label mePatch = whichPatch(meIndex);
+                label neiProc = getNeighbourProcessor(mePatch);
+
+                edge cE
+                (
+                    pointMap.found(mE[0]) ? pointMap[mE[0]] : -1,
+                    pointMap.found(mE[1]) ? pointMap[mE[1]] : -1
+                );
+
+                // Skip mapping if all points were not found
+                if (cE[0] == -1 || cE[1] == -1)
+                {
+                    continue;
+                }
+
+                bool matchedEdge = false;
+
+                // Fetch edges connected to the slave point
+                const labelList& spEdges = sMesh.pointEdges_[cE[0]];
+
+                forAll(spEdges, edgeI)
+                {
+                    label seIndex = spEdges[edgeI];
+
+                    const edge& sE = sMesh.edges_[seIndex];
+
+                    if (sE == cE)
+                    {
+                        if (debug > 2)
+                        {
+                            Pout<< " Found edge: " << seIndex
+                                << " :: " << sE
+                                << " with meIndex: " << meIndex
+                                << " :: " << mE
+                                << endl;
+                        }
+
+                        // Update reverse map
+                        if (rEdgeMap.found(seIndex))
+                        {
+                            rEdgeMap[seIndex] = meIndex;
+                        }
+                        else
+                        {
+                            rEdgeMap.insert(seIndex, meIndex);
+                        }
+
+                        // Update map
+                        if (edgeMap.found(meIndex))
+                        {
+                            edgeMap[meIndex] = seIndex;
+                        }
+                        else
+                        {
+                            edgeMap.insert(meIndex, seIndex);
+                        }
+
+                        matchedEdge = true;
+
+                        break;
+                    }
+                }
+
+                if (!matchedEdge)
+                {
+                    if (procCouple && !localCouple)
                     {
                         // Rare occassion where both points
                         // of the edge lie on processor, but
@@ -3849,31 +3875,33 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             matchedEdge = true;
                         }
                     }
-
-                    if (!matchedEdge)
-                    {
-                        sMesh.writeVTK
-                        (
-                            "failedEdge_"
-                          + Foam::name(meIndex),
-                            cE, 0, false, true
-                        );
-
-                        writeVTK
-                        (
-                            "checkEdges_" + Foam::name(eIndex),
-                            checkEdges, 1, false, true
-                        );
-
-                        Pout<< " Failed to match edge: "
-                            << meIndex << " :: " << mE
-                            << " using comparison edge: " << cE
-                            << " on proc: " << procIndices_[pI]
-                            << abort(FatalError);
-                    }
                 }
 
-                // Push operation into coupleMap
+                if (!matchedEdge)
+                {
+                    sMesh.writeVTK
+                    (
+                        "failedEdge_"
+                      + Foam::name(meIndex),
+                        cE, 0, false, true
+                    );
+
+                    writeVTK
+                    (
+                        "checkEdges_" + Foam::name(eIndex),
+                        checkEdges, 1, false, true
+                    );
+
+                    Pout<< " Failed to match edge: "
+                        << meIndex << " :: " << mE
+                        << " using comparison edge: " << cE
+                        << abort(FatalError);
+                }
+            }
+
+            // Push operation into coupleMap
+            if (procCouple && !localCouple)
+            {
                 cMap.pushOperation
                 (
                     slaveMap.index(),

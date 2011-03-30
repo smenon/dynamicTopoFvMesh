@@ -166,19 +166,37 @@ void dynamicTopoFvMesh::initCoupledStack
         {
             if (patchCoupling_(pIndex))
             {
-                // Add this to the coupled modification stack.
-                if (twoDMesh_)
-                {
-                    stack(0).push(faceI);
-                }
-                else
-                {
-                    const labelList& mfEdges = faceEdges_[faceI];
+                // Is patch cyclic?
+                bool addIndex = true;
 
-                    forAll(mfEdges, edgeI)
+                if (isA<cyclicPolyPatch>(boundaryMesh()[pIndex]))
+                {
+                    // Check if this is a cyclic master face
+                    const coupleMap& cMap = patchCoupling_[pIndex].map();
+                    const Map<label>& fMap = cMap.entityMap(coupleMap::FACE);
+
+                    if (!fMap.found(faceI))
                     {
-                        // Add this to the coupled modification stack.
-                        stack(0).push(mfEdges[edgeI]);
+                        addIndex = false;
+                    }
+                }
+
+                // Add this to the coupled modification stack.
+                if (addIndex)
+                {
+                    if (twoDMesh_)
+                    {
+                        stack(0).push(faceI);
+                    }
+                    else
+                    {
+                        const labelList& mfEdges = faceEdges_[faceI];
+
+                        forAll(mfEdges, edgeI)
+                        {
+                            // Add this to the coupled modification stack.
+                            stack(0).push(mfEdges[edgeI]);
+                        }
                     }
                 }
             }
@@ -877,7 +895,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                     );
                 }
 
-                // Configure a regIOobject for check-in.
+                // Configure with regIOobject for check-in
                 coupleMap cMap
                 (
                     IOobject
@@ -901,6 +919,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                     sPatch
                 );
 
+                // Set the pointer
                 patchCoupling_.set
                 (
                     mPatch,
@@ -925,6 +944,59 @@ void dynamicTopoFvMesh::readCoupledPatches()
                     << abort(FatalError);
             }
         }
+    }
+
+    // Loop through boundaries and add any cyclic patches
+    forAll(boundary, patchI)
+    {
+        if (!isA<cyclicPolyPatch>(boundary[patchI]))
+        {
+            continue;
+        }
+
+        // Size up patchCoupling, if necessary
+        if (patchCoupling_.empty())
+        {
+            patchCoupling_.setSize(boundary.size());
+        }
+
+        if (debug)
+        {
+            Info<< " Adding cyclic: " << patchI
+                << " : " << boundary[patchI].name()
+                << endl;
+        }
+
+        // Configure with regIOobject for check-in
+        coupleMap cMap
+        (
+            IOobject
+            (
+                "coupleMap_"
+              + Foam::name(patchI)
+              + "_To_"
+              + Foam::name(patchI)
+              + "_Local",
+                time().timeName(),
+                *this,
+                IOobject::READ_IF_PRESENT,
+                IOobject::AUTO_WRITE,
+                true
+            ),
+            twoDMesh_,
+            true,
+            false,
+            patchI,
+            patchI,
+            patchI
+        );
+
+        // Set the pointer
+        patchCoupling_.set
+        (
+            patchI,
+            new coupledInfo(*this, cMap, -1, -1)
+        );
     }
 }
 
@@ -3985,83 +4057,90 @@ void dynamicTopoFvMesh::handleCoupledPatches
         Info<< "Handling coupled patches...";
     }
 
-    // Calculate mapping offsets
-    const polyBoundaryMesh& boundary = boundaryMesh();
-
-    // Determine number of physical (non-processor) patches
-    label nPhys = 0;
-
-    forAll(boundary, patchI)
+    if (Pstream::parRun())
     {
-        if (isA<processorPolyPatch>(boundary[patchI]))
+        // Calculate mapping offsets
+        const polyBoundaryMesh& boundary = boundaryMesh();
+
+        // Determine number of physical (non-processor) patches
+        label nPhys = 0;
+
+        forAll(boundary, patchI)
         {
-            continue;
+            if (isA<processorPolyPatch>(boundary[patchI]))
+            {
+                continue;
+            }
+
+            nPhys++;
         }
 
-        nPhys++;
-    }
+        // Fetch number of processors
+        label nProcs = procIndices_.size();
 
-    // Fetch number of processors
-    label nProcs = procIndices_.size();
+        // Allocate cell and patch offsets
+        labelList cellSizes(nProcs, 0), cellStarts(nProcs, 0);
+        labelListList patchSizes(nProcs, labelList(nPhys, 0));
+        labelListList patchStarts(nProcs, labelList(nPhys, 0));
 
-    // Allocate cell and patch offsets
-    labelList cellSizes(nProcs, 0), cellStarts(nProcs, 0);
-    labelListList patchSizes(nProcs, labelList(nPhys, 0));
-    labelListList patchStarts(nProcs, labelList(nPhys, 0));
+        label nTotalCells = nOldCells_;
+        labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhys));
 
-    label nTotalCells = nOldCells_;
-    labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhys));
-
-    forAll(procIndices_, pI)
-    {
-        const coupleMap& cMap = recvMeshes_[pI].map();
-
-        // Fetch cell size from subMesh
-        label nCells = cMap.nEntities(coupleMap::CELL);
-
-        // Set cell size / offset for this processor
-        cellSizes[pI] = nCells;
-        cellStarts[pI] = nTotalCells;
-
-        // Update cell count
-        nTotalCells += nCells;
-
-        // Fetch patch sizes from subMesh
-        const labelList& nPatchFaces = cMap.entityBuffer(coupleMap::FACE_SIZES);
-
-        // Loop over physical patches
-        forAll(nTotalPatchFaces, patchI)
+        forAll(procIndices_, pI)
         {
-            // Fetch patch size from subMesh
-            label nFaces = nPatchFaces[patchI];
+            const coupleMap& cMap = recvMeshes_[pI].map();
 
-            // Set patch size / offset for this processor
-            patchSizes[pI][patchI] = nFaces;
-            patchStarts[pI][patchI] = nTotalPatchFaces[patchI];
+            // Fetch cell size from subMesh
+            label nCells = cMap.nEntities(coupleMap::CELL);
 
-            // Update patch count
-            nTotalPatchFaces[patchI] += nFaces;
+            // Set cell size / offset for this processor
+            cellSizes[pI] = nCells;
+            cellStarts[pI] = nTotalCells;
+
+            // Update cell count
+            nTotalCells += nCells;
+
+            // Fetch patch sizes from subMesh
+            const labelList& nPatchFaces =
+            (
+                cMap.entityBuffer(coupleMap::FACE_SIZES)
+            );
+
+            // Loop over physical patches
+            forAll(nTotalPatchFaces, patchI)
+            {
+                // Fetch patch size from subMesh
+                label nFaces = nPatchFaces[patchI];
+
+                // Set patch size / offset for this processor
+                patchSizes[pI][patchI] = nFaces;
+                patchStarts[pI][patchI] = nTotalPatchFaces[patchI];
+
+                // Update patch count
+                nTotalPatchFaces[patchI] += nFaces;
+            }
         }
-    }
 
-    // Set sizes / starts in mapper
-    mapper_->setOffsets
-    (
-        cellSizes,
-        cellStarts,
-        patchSizes,
-        patchStarts
-    );
+        // Set sizes / starts in mapper
+        mapper_->setOffsets
+        (
+            cellSizes,
+            cellStarts,
+            patchSizes,
+            patchStarts
+        );
 
-    if (debug > 3)
-    {
-        Pout<< " procIndices: " << procIndices_ << nl
-            << " nCells: " << nOldCells_ << nl
-            << " proc cellSizes: " << cellSizes << nl
-            << " cellStarts: " << cellStarts << nl
-            << " patchSizes: " << SubList<label>(oldPatchSizes_, nPhys) << nl
-            << " proc patchSizes: " << patchSizes << nl
-            << " patchStarts: " << patchStarts << endl;
+        if (debug > 3)
+        {
+            Pout<< " procIndices: " << procIndices_ << nl
+                << " nCells: " << nOldCells_ << nl
+                << " proc cellSizes: " << cellSizes << nl
+                << " cellStarts: " << cellStarts << nl
+                << " patchSizes: "
+                << SubList<label>(oldPatchSizes_, nPhys) << nl
+                << " proc patchSizes: " << patchSizes << nl
+                << " patchStarts: " << patchStarts << endl;
+        }
     }
 
     // Set coupled modifications.
@@ -5797,7 +5876,11 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
     }
 
     // Check if a geometric tolerance has been specified.
-    scalar gTol = debug::tolerances("processorMatchTol", 1e-4);
+    const boundBox& box = polyMesh::bounds();
+    scalar relTol = debug::tolerances("patchFaceMatchTol", 1e-4);
+
+    // Compute tolerance
+    scalar tol = relTol * box.mag();
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -5809,8 +5892,14 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         }
 
         // Build maps only for the first time.
-        // coupledInfo is subsequently mapped for each topo-change.
+        // Information is subsequently mapped for each topo-change.
         if (patchCoupling_[patchI].builtMaps())
+        {
+            continue;
+        }
+
+        // Deal with cyclics later
+        if (isA<cyclicPolyPatch>(boundary[patchI]))
         {
             continue;
         }
@@ -5833,63 +5922,56 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
         // If so, geometric checking is unnecessary.
         if (cMap.entityMap(coupleMap::POINT).size() == 0)
         {
+            // Match points geometrically
+            labelList pointMap(mP.size(), -1);
+
+            bool matchedAll =
+            (
+                matchPoints
+                (
+                    boundary[cMap.masterIndex()].localPoints(),
+                    boundary[cMap.slaveIndex()].localPoints(),
+                    scalarField(mP.size(), tol),
+                    false,
+                    pointMap
+                )
+            );
+
+            if (!matchedAll)
+            {
+                FatalErrorIn("void dynamicTopoFvMesh::buildLocalCoupledMaps()")
+                    << " Failed to match all points"
+                    << " within a tolerance of: " << tol << nl
+                    << " relTol: " << relTol << nl
+                    << abort(FatalError);
+            }
+
+            // Now build maps
             forAll(mP, indexI)
             {
-                bool matched = false;
-                scalar minDistance = GREAT;
+                label masterIndex = mP[indexI];
+                label slaveIndex = sP[pointMap[indexI]];
 
-                forAll(sP, indexJ)
-                {
-                    scalar distance =
-                    (
-                        mag(points_[mP[indexI]] - points_[sP[indexJ]])
-                    );
+                cMap.mapSlave
+                (
+                    coupleMap::POINT,
+                    masterIndex,
+                    slaveIndex
+                );
 
-                    minDistance = minDistance < distance
-                                ? minDistance : distance;
-
-                    if (distance < gTol)
-                    {
-                        // Add a map entry
-                        cMap.mapSlave
-                        (
-                            coupleMap::POINT,
-                            mP[indexI],
-                            sP[indexJ]
-                        );
-
-                        cMap.mapMaster
-                        (
-                            coupleMap::POINT,
-                            sP[indexJ],
-                            mP[indexI]
-                        );
-
-                        matched = true;
-
-                        break;
-                    }
-                }
-
-                if (!matched)
-                {
-                    FatalErrorIn
-                    (
-                        "void dynamicTopoFvMesh::buildLocalCoupledMaps()"
-                    )
-                        << " Failed to match point: " << mP[indexI]
-                        << ": " << points_[mP[indexI]]
-                        << " within a tolerance of: " << gTol << nl
-                        << " Missed by: " << minDistance
-                        << abort(FatalError);
-                }
+                cMap.mapMaster
+                (
+                    coupleMap::POINT,
+                    slaveIndex,
+                    masterIndex
+                );
             }
         }
 
         const labelListList& mpF = boundary[cMap.masterIndex()].pointFaces();
         const labelListList& spF = boundary[cMap.slaveIndex()].pointFaces();
 
-        // Abbreviate for convenience
+        // Fetch reference to maps
         const Map<label>& pMap = cMap.entityMap(coupleMap::POINT);
         const Map<label>& eMap = cMap.entityMap(coupleMap::EDGE);
         const Map<label>& fMap = cMap.entityMap(coupleMap::FACE);
@@ -6100,6 +6182,138 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
         // Set maps as built
         patchCoupling_[patchI].setBuiltMaps();
+    }
+
+    // Build maps for cyclics
+    forAll(patchCoupling_, patchI)
+    {
+        if (!patchCoupling_(patchI))
+        {
+            continue;
+        }
+
+        // Build maps only for the first time.
+        // Information is subsequently mapped for each topo-change.
+        if (patchCoupling_[patchI].builtMaps())
+        {
+            continue;
+        }
+
+        // Skip if not cyclic
+        if (!isA<cyclicPolyPatch>(boundary[patchI]))
+        {
+            continue;
+        }
+
+        const coupleMap& cMap = patchCoupling_[patchI].map();
+
+        // Match faces and points in one go
+        label halfSize = boundary[patchI].size() / 2;
+        label patchStart = boundary[patchI].start();
+
+        // Fetch reference to map
+        const Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
+
+        for (label i = 0; i < halfSize; i++)
+        {
+            label half0Index = (i + patchStart);
+            label half1Index = (i + halfSize + patchStart);
+
+            // Map the face
+            cMap.mapSlave
+            (
+                coupleMap::FACE,
+                half0Index,
+                half1Index
+            );
+
+            cMap.mapMaster
+            (
+                coupleMap::FACE,
+                half1Index,
+                half0Index
+            );
+
+            const face& half0Face = faces_[half0Index];
+            const face& half1Face = faces_[half1Index];
+
+            label fS = half0Face.size();
+
+            forAll(half0Face, pointI)
+            {
+                if (pointMap.found(half0Face[pointI]))
+                {
+                    continue;
+                }
+
+                label masterIndex = half0Face[pointI];
+                label slaveIndex = half1Face[(fS - pointI) % fS];
+
+                // Map the point
+                cMap.mapSlave
+                (
+                    coupleMap::POINT,
+                    masterIndex,
+                    slaveIndex
+                );
+
+                cMap.mapMaster
+                (
+                    coupleMap::POINT,
+                    slaveIndex,
+                    masterIndex
+                );
+            }
+
+            if (twoDMesh_)
+            {
+                continue;
+            }
+
+            // Fetch reference to map
+            const Map<label>& edgeMap = cMap.entityMap(coupleMap::EDGE);
+
+            const labelList& f0Edges = faceEdges_[half0Index];
+            const labelList& f1Edges = faceEdges_[half1Index];
+
+            forAll(f0Edges, edgeI)
+            {
+                if (edgeMap.found(f0Edges[edgeI]))
+                {
+                    continue;
+                }
+
+                const edge& mEdge = edges_[f0Edges[edgeI]];
+
+                // Build a comparison edge
+                edge cEdge(pointMap[mEdge[0]], pointMap[mEdge[1]]);
+
+                forAll(f1Edges, edgeJ)
+                {
+                    const edge& sEdge = edges_[f1Edges[edgeJ]];
+
+                    if (sEdge == cEdge)
+                    {
+                        // Map the edge
+                        cMap.mapSlave
+                        (
+                            coupleMap::EDGE,
+                            f0Edges[edgeI],
+                            f1Edges[edgeJ]
+                        );
+
+                        cMap.mapMaster
+                        (
+                            coupleMap::EDGE,
+                            f1Edges[edgeJ],
+                            f0Edges[edgeI]
+                        );
+
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     if (debug)
