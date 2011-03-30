@@ -5800,6 +5800,21 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     {
                         continue;
                     }
+
+                    // Check for cyclics
+                    if (boundaryMesh()[fPatch].type() == "cyclic")
+                    {
+                        // Check if this is a master face
+                        const coupleMap& cM = patchCoupling_[fPatch].map();
+                        const Map<label>& fM = cM.entityMap(coupleMap::FACE);
+
+                        // Only add master faces
+                        // (belonging to the first half)
+                        if (!fM.found(eFaces[faceI]))
+                        {
+                            continue;
+                        }
+                    }
                 }
                 else
                 if (procCouple && !localCouple)
@@ -5862,8 +5877,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
             // Configure the slave replacement point.
             //  - collapseEdge stores this as an 'addedPoint'
-            label scPoint = rpList[0];
-            label srPoint = apList[0].index();
+            label scPoint = -1, srPoint = -1;
+
+            if ((slaveMap.index() == eIndex) && localCouple)
+            {
+                // Cyclic edge at axis
+                scPoint = collapsePoint;
+                srPoint = replacePoint;
+            }
+            else
+            {
+                scPoint = rpList[0];
+                srPoint = apList[0].index();
+            }
 
             if (collapsingSlave)
             {
@@ -5872,9 +5898,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     pointMap[srPoint] = replacePoint;
                     rPointMap[replacePoint] = srPoint;
                 }
-
-                pointMap.erase(rPointMap[collapsePoint]);
-                rPointMap.erase(collapsePoint);
             }
             else
             {
@@ -5882,39 +5905,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 {
                     rPointMap[srPoint] = replacePoint;
                     pointMap[replacePoint] = srPoint;
-                }
-
-                rPointMap.erase(pointMap[collapsePoint]);
-                pointMap.erase(collapsePoint);
-            }
-
-            // If any other points were removed, update map
-            for (label pointI = 1; pointI < rpList.size(); pointI++)
-            {
-                if (collapsingSlave)
-                {
-                    if (pointMap.found(rpList[pointI]))
-                    {
-                        rPointMap.erase(pointMap[rpList[pointI]]);
-                        pointMap.erase(rpList[pointI]);
-                    }
-                }
-                else
-                {
-                    if (rPointMap.found(rpList[pointI]))
-                    {
-                        if (debug > 2)
-                        {
-                            Pout<< " Found removed point: "
-                                << rpList[pointI]
-                                << " for point on this patch: "
-                                << rPointMap[rpList[pointI]]
-                                << endl;
-                        }
-
-                        pointMap.erase(rPointMap[rpList[pointI]]);
-                        rPointMap.erase(rpList[pointI]);
-                    }
                 }
             }
 

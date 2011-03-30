@@ -3586,14 +3586,28 @@ scalar dynamicTopoFvMesh::edgeLengthScale
         // Search for boundary faces, and average their scale
         forAll(eFaces, faceI)
         {
-            if (neighbour_[eFaces[faceI]] == -1)
+            label facePatch = whichPatch(eFaces[faceI]);
+
+            // Skip internal faces
+            if (facePatch == -1)
             {
+                continue;
+            }
+
+            // If this is a floating face, pick the owner length-scale
+            if (lengthEstimator().isFreePatch(facePatch))
+            {
+                scale += lengthScale_[owner_[eFaces[faceI]]];
+            }
+            else
+            {
+                // Fetch fixed length-scale
                 scale +=
                 (
                     lengthEstimator().fixedLengthScale
                     (
                         eFaces[faceI],
-                        edgePatch
+                        facePatch
                     )
                 );
             }

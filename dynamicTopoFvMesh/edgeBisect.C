@@ -3512,6 +3512,23 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     {
                         continue;
                     }
+
+                    // Check for cyclics
+                    if (boundaryMesh()[cPatch].type() == "cyclic")
+                    {
+                        // Check if this is a master face
+                        const coupleMap& cM = patchCoupling_[cPatch].map();
+                        const Map<label>& fM = cM.entityMap(coupleMap::FACE);
+
+                        // Only add master faces
+                        // (belonging to the first half)
+                        //  - Only check[0] will be present,
+                        //    so check for that alone
+                        if (!fM.found(check[0]))
+                        {
+                            continue;
+                        }
+                    }
                 }
                 else
                 if (procCouple && !localCouple)
@@ -3588,7 +3605,17 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             const List<objectMap>& apList = slaveMap.addedPointList();
 
             // Fetch the slave point
-            label slavePoint = apList[0].index();
+            label slavePoint = -1;
+
+            if ((slaveMap.index() == eIndex) && localCouple)
+            {
+                // Cyclic edge at axis
+                slavePoint = newPointIndex;
+            }
+            else
+            {
+                slavePoint = apList[0].index();
+            }
 
             // Map points
             if (bisectingSlave)
