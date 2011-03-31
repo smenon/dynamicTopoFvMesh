@@ -7905,9 +7905,241 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
     labelListList& rotations
 ) const
 {
-    bool anyChange = false;
+    bool anyChange = false, failedPatchMatch = false;
 
-    // Handle any cyclics in the meantime
+    // Fetch tolerance
+    scalar matchTol = Foam::debug::tolerances("patchFaceMatchTol", 1e-4);
+
+    // Calculate centres and tolerances for any slave patches
+    List<scalarField> slaveTols(nPatches_);
+    List<pointField> slaveCentres(nPatches_);
+
+    // Handle locally coupled patches
+    forAll(patchCoupling_, pI)
+    {
+        if (patchCoupling_(pI))
+        {
+            const coupleMap& cMap = patchCoupling_[pI].map();
+
+            label masterPatch = cMap.masterIndex();
+            label slavePatch = cMap.slaveIndex();
+
+            // Avoid cyclics for now.
+            // This will be handled next.
+            if (masterPatch == slavePatch)
+            {
+                continue;
+            }
+
+            label mSize = patchSizes_[masterPatch];
+            label sSize = patchSizes_[slavePatch];
+
+            label mStart = patchStarts_[masterPatch];
+            label sStart = patchStarts_[slavePatch];
+
+            if (mSize != sSize)
+            {
+                Pout<< " Patch size mismatch: " << nl
+                    << "  mSize: " << mSize << nl
+                    << "  sSize: " << sSize << nl
+                    << "  mStart: " << mStart << nl
+                    << "  sStart: " << sStart << nl
+                    << "  master: " << masterPatch << nl
+                    << "  slave: " << slavePatch << nl
+                    << abort(FatalError);
+            }
+
+            // Calculate centres / tolerances
+            slaveTols[slavePatch].setSize(sSize, 0.0);
+            centres[masterPatch].setSize(mSize, vector::zero);
+            slaveCentres[slavePatch].setSize(sSize, vector::zero);
+
+            for (label fI = 0; fI < mSize; fI++)
+            {
+                point& mfa = anchors[masterPatch][fI];
+                point& mfc = centres[masterPatch][fI];
+                point& sfc = slaveCentres[slavePatch][fI];
+
+                const face& mFace = faces_[fI + mStart];
+                const face& sFace = faces_[fI + sStart];
+
+                // Calculate anchor / centres
+                mfa = points_[mFace[0]];
+                mfc = mFace.centre(points_);
+                sfc = sFace.centre(points_);
+
+                scalar maxLen = -GREAT;
+
+                forAll(sFace, fpI)
+                {
+                    maxLen = max(maxLen, mag(points_[sFace[fpI]] - sfc));
+                }
+
+                slaveTols[slavePatch][fI] = matchTol*maxLen;
+            }
+
+            // Fetch references
+            labelList& patchMap = patchMaps[slavePatch];
+            labelList& rotation = rotations[slavePatch];
+
+            // Initialize map and rotation
+            patchMap.setSize(sSize, -1);
+            rotation.setSize(sSize, 0);
+
+            // Try zero separation automatic matching
+            bool matchedAll =
+            (
+                matchPoints
+                (
+                    slaveCentres[slavePatch],
+                    centres[masterPatch],
+                    slaveTols[slavePatch],
+                    false,
+                    patchMap
+                )
+            );
+
+            // Write out master centres to disk
+            if (debug > 3 || !matchedAll)
+            {
+                meshOps::writeVTK
+                (
+                    (*this),
+                    "localMasterCentres_"
+                  + Foam::name(masterPatch)
+                  + '_'
+                  + Foam::name(slavePatch),
+                    mSize, mSize, mSize,
+                    centres[masterPatch]
+                );
+
+                meshOps::writeVTK
+                (
+                    (*this),
+                    "localSlaveCentres_"
+                  + Foam::name(masterPatch)
+                  + '_'
+                  + Foam::name(slavePatch),
+                    sSize, sSize, sSize,
+                    slaveCentres[slavePatch]
+                );
+
+                writeVTK
+                (
+                    "localMasterFaces_"
+                  + Foam::name(masterPatch)
+                  + '_'
+                  + Foam::name(slavePatch),
+                    identity(mSize) + mStart,
+                    2, false, true
+                );
+
+                writeVTK
+                (
+                    "localSlaveFaces_"
+                  + Foam::name(masterPatch)
+                  + '_'
+                  + Foam::name(slavePatch),
+                    identity(sSize) + sStart,
+                    2, false, true
+                );
+
+                if (!matchedAll)
+                {
+                    Pout<< " Master: " << masterPatch
+                        << " Slave: " << slavePatch
+                        << " mSize: " << mSize << " sSize: " << sSize
+                        << " failed on match for face centres."
+                        << endl;
+
+                    // Failed on match-for-all, so patchMaps
+                    // will be invalid. Bail out for now.
+                    failedPatchMatch = true;
+
+                    continue;
+                }
+            }
+
+            // Set rotation.
+            forAll(patchMap, oldFaceI)
+            {
+                label newFaceI = patchMap[oldFaceI];
+
+                const point& anchor = anchors[slavePatch][newFaceI];
+                const scalar& faceTol = slaveTols[slavePatch][oldFaceI];
+                const face& checkFace = faces_[sStart + oldFaceI];
+
+                label anchorFp = -1;
+                scalar minDSqr = GREAT;
+
+                forAll(checkFace, fpI)
+                {
+                    scalar dSqr = magSqr(anchor - points_[checkFace[fpI]]);
+
+                    if (dSqr < minDSqr)
+                    {
+                        minDSqr = dSqr;
+                        anchorFp = fpI;
+                    }
+                }
+
+                if (anchorFp == -1 || mag(minDSqr) > faceTol)
+                {
+                    FatalErrorIn
+                    (
+                        "\n"
+                        "void dynamicTopoFvMesh::"
+                        "syncCoupledBoundaryOrdering\n"
+                        "(\n"
+                        "    List<pointField>& centres,\n"
+                        "    List<pointField>& anchors,\n"
+                        "    labelListList& patchMaps,\n"
+                        "    labelListList& rotations\n"
+                        ") const\n"
+                    )
+                        << "Cannot find anchor: " << anchor << nl
+                        << " Face: " << checkFace << nl
+                        << " Vertices: "
+                        << UIndirectList<point>(points_, checkFace) << nl
+                        << " on patch: " << slavePatch
+                        << abort(FatalError);
+                }
+                else
+                {
+                    // Positive rotation
+                    //  - Set for old face. Will be rotated later
+                    //    during the shuffling stage
+                    rotation[oldFaceI] =
+                    (
+                        (checkFace.size() - anchorFp) % checkFace.size()
+                    );
+                }
+            }
+
+            // Set the flag
+            anyChange = true;
+        }
+    }
+
+    if (failedPatchMatch)
+    {
+        FatalErrorIn
+        (
+            "\n"
+            "void dynamicTopoFvMesh::"
+            "syncCoupledBoundaryOrdering\n"
+            "(\n"
+            "    List<pointField>& centres,\n"
+            "    List<pointField>& anchors,\n"
+            "    labelListList& patchMaps,\n"
+            "    labelListList& rotations\n"
+            ") const\n"
+        )
+            << " Matching for local patches failed. " << nl
+            << abort(FatalError);
+    }
+
+    // Handle cyclics
     for (label pI = 0; pI < nPatches_; pI++)
     {
         if (!isA<cyclicPolyPatch>(boundaryMesh()[pI]))
@@ -7960,12 +8192,6 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
     {
         return anyChange;
     }
-
-    // Calculate centres and tolerances for any slave patches
-    List<scalarField> slaveTols(nPatches_);
-    List<pointField> slaveCentres(nPatches_);
-
-    scalar matchTol = Foam::debug::tolerances("patchFaceMatchTol", 1e-4);
 
     for (label pI = 0; pI < nPatches_; pI++)
     {
@@ -8024,8 +8250,6 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
     // Wait for transfers before continuing.
     meshOps::waitForBuffers();
 
-    bool failedPatchMatch = false;
-
     for (label pI = 0; pI < nPatches_; pI++)
     {
         label neiProcNo = getNeighbourProcessor(pI);
@@ -8066,7 +8290,7 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                 )
             );
 
-            // Write out master centres to disk
+            // Write out centres to disk
             if (debug > 3 || !matchedAll)
             {
                 label mSize = centres[pI].size();
