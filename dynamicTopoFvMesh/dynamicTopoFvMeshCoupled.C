@@ -4853,15 +4853,18 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 }
 
 
-// Check the state of parallel boundaries
+// Check the state of coupled boundaries
 //  - Return true if errors are present
-bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
+bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
 {
     const polyBoundaryMesh& boundary = boundaryMesh();
+
+    bool sizeError = false, misMatchError = false;
 
     // Check if a geometric tolerance has been specified.
     scalar gTol = debug::tolerances("processorMatchTol", 1e-4);
 
+    // Maintain a list of master / neighbour anchors
     List<vectorField> mAnchors(boundary.size());
     List<vectorField> nAnchors(boundary.size());
 
@@ -4898,14 +4901,134 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
 
             meshOps::pWrite(neiProcNo, mAnchors[pI]);
         }
+
+        if (isA<cyclicPolyPatch>(boundary[pI]))
+        {
+            const cyclicPolyPatch& cp =
+            (
+                refCast<const cyclicPolyPatch>(boundary[pI])
+            );
+
+            if (cp.size() & 1)
+            {
+                sizeError = true;
+
+                Pout<< " Incorrect size for cyclic patch: "
+                    << cp.size() << endl;
+            }
+
+            if (!sizeError)
+            {
+                // Compute halfSize
+                label halfSize = cp.size() / 2;
+
+                vectorField half0Areas
+                (
+                    SubField<vector>
+                    (
+                        cp.faceAreas(),
+                        halfSize
+                    )
+                );
+
+                vectorField half0Centres
+                (
+                    SubField<vector>
+                    (
+                        cp.faceCentres(),
+                        halfSize
+                    )
+                );
+
+                vectorField half1Areas
+                (
+                    SubField<vector>
+                    (
+                        cp.faceAreas(),
+                        halfSize,
+                        halfSize
+                    )
+                );
+
+                vectorField half1Centres
+                (
+                    SubField<vector>
+                    (
+                        cp.faceCentres(),
+                        halfSize,
+                        halfSize
+                    )
+                );
+
+                // Transform points and check
+                if (cp.transform() == cyclicPolyPatch::ROTATIONAL)
+                {
+                    forAll(half0Centres, faceI)
+                    {
+                        half0Centres[faceI] =
+                        (
+                            Foam::transform
+                            (
+                                cp.transformT(0),
+                                half0Centres[faceI]
+                            )
+                        );
+                    }
+                }
+                else
+                if (cp.transform() == cyclicPolyPatch::TRANSLATIONAL)
+                {
+                    half0Centres += cp.separationVector();
+                }
+                else
+                {
+                    Pout<< " Cyclic check: Unknown transform."
+                        << abort(FatalError);
+                }
+
+                // Check areas
+                forAll(half0Areas, faceI)
+                {
+                    scalar fMagSf = mag(half0Areas[faceI]);
+                    scalar rMagSf = mag(half1Areas[faceI]);
+                    scalar avSf = 0.5 * (fMagSf + rMagSf);
+
+                    if (mag(fMagSf - rMagSf)/avSf > gTol)
+                    {
+                        misMatchError = true;
+
+                        Pout<< " Face: " << faceI
+                            << " area does not match neighbour by: "
+                            << 100 * mag(fMagSf - rMagSf)/avSf
+                            << "% - possible patch ordering problem. "
+                            << " Front area:" << fMagSf
+                            << " Rear area: " << rMagSf
+                            << endl;
+                    }
+                }
+
+                if (misMatchError)
+                {
+                    // Write out to disk
+                    meshOps::writeVTK
+                    (
+                        (*this),
+                        cp.name(),
+                        identity(cp.size()),
+                        2,
+                        cp.localPoints(),
+                        List<edge>(0),
+                        cp.localFaces()
+                    );
+                }
+            }
+        }
     }
 
     // Maintain a list of points / areas / centres
     List<vectorField> fAreas(boundary.size());
     List<vectorField> fCentres(boundary.size());
     List<vectorField> neiPoints(boundary.size());
-
-    bool sizeError = false, misMatchError = false;
 
     forAll(boundary, pI)
     {
@@ -5070,7 +5193,7 @@ bool dynamicTopoFvMesh::checkParallelBoundaries(bool report) const
 
     if (!sizeError && !misMatchError && report)
     {
-        Pout<< " Parallel boundary check: No problems." << endl;
+        Pout<< " Coupled boundary check: No problems." << endl;
     }
 
     return (sizeError || misMatchError);

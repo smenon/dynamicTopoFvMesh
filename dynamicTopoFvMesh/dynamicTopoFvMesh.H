@@ -1018,8 +1018,8 @@ class dynamicTopoFvMesh
         // Synchronize topology operations across processors
         void syncCoupledPatches(labelHashSet& entities);
 
-        // Check the state of parallel boundaries
-        bool checkParallelBoundaries(bool report = true) const;
+        // Check the state of coupled boundaries
+        bool checkCoupledBoundaries(bool report = true) const;
 
         // Build patch sub-meshes for processor patches
         void buildProcessorPatchMeshes();

@@ -29,6 +29,7 @@ License
 #include "IOmanip.H"
 #include "SortableList.H"
 #include "globalMeshData.H"
+#include "cyclicPolyPatch.H"
 #include "processorPolyPatch.H"
 #include "addToRunTimeSelectionTable.H"
 #include "polyMesh.H"
@@ -2868,6 +2869,67 @@ void mesquiteMotionSolver::smoothSurfaces()
                     (relax_ * xV_[pointI + offsets_[patchI]])
                   + ((1.0 - relax_) * origPoints_[meshPts[pointI]])
                 );
+            }
+        }
+    }
+
+    // Transform and update any cyclics
+    forAll(boundary, patchI)
+    {
+        if (!isA<cyclicPolyPatch>(boundary[patchI]))
+        {
+            continue;
+        }
+
+        // Cast to cyclic
+        const cyclicPolyPatch& cyclicPatch =
+        (
+            refCast<const cyclicPolyPatch>(boundary[patchI])
+        );
+
+        bool translate =
+        (
+            cyclicPatch.transform()
+         == cyclicPolyPatch::TRANSLATIONAL
+        );
+
+        label patchStart = boundary[patchI].start();
+        label halfSize = (boundary[patchI].size() / 2);
+
+        for (label faceI = 0; faceI < halfSize; faceI++)
+        {
+            label half0Index = (patchStart + faceI);
+            label half1Index = (patchStart + halfSize + faceI);
+
+            const face& half0Face = mesh().faces()[half0Index];
+            const face& half1Face = mesh().faces()[half1Index];
+
+            label fS = half0Face.size();
+
+            forAll(half0Face, pointI)
+            {
+                label masterIndex = half0Face[pointI];
+                label slaveIndex = half1Face[(fS - pointI) % fS];
+
+                if (translate)
+                {
+                    refPoints_[slaveIndex] =
+                    (
+                        refPoints_[masterIndex]
+                      + cyclicPatch.separationVector()
+                    );
+                }
+                else
+                {
+                    refPoints_[slaveIndex] =
+                    (
+                        cyclicPatch.transform
+                        (
+                            refPoints_[masterIndex],
+                            faceI
+                        )
+                    );
+                }
             }
         }
     }

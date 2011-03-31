@@ -4217,46 +4217,35 @@ bool dynamicTopoFvMesh::resetMesh()
             oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
         }
 
-        // Now that all connectivity changes are successful,
-        // update coupled maps (in a separate thread, if available).
+        // Clear parallel structures
         if (Pstream::parRun())
         {
-            bool checkParBoundaries = false;
-
-            if (meshSubDict.found("checkParBoundaries") || mandatory_)
-            {
-                checkParBoundaries =
-                (
-                    readBool(meshSubDict.lookup("checkParBoundaries"))
-                );
-            }
-
-            if (checkParBoundaries)
-            {
-                bool failed = checkParallelBoundaries();
-
-                if (failed)
-                {
-                    FatalErrorIn("bool dynamicTopoFvMesh::resetMesh()")
-                        << " Parallel boundary check failed on processor: "
-                        << Pstream::myProcNo()
-                        << abort(FatalError);
-                }
-
-                // Basic checks for mesh-validity
-                checkMesh(true);
-            }
-
-            // Clear parallel structures
             procIndices_.clear();
             sendMeshes_.clear();
             recvMeshes_.clear();
         }
-        else
-        if (debug > 2)
+
+        bool checkCplBoundaries = false;
+
+        if (meshSubDict.found("checkCoupledBoundaries") || mandatory_)
         {
-            // Basic checks for mesh-validity
-            checkMesh(true);
+            checkCplBoundaries =
+            (
+                readBool(meshSubDict.lookup("checkCoupledBoundaries"))
+            );
+        }
+
+        if (checkCplBoundaries)
+        {
+            bool failed = checkCoupledBoundaries();
+
+            if (failed)
+            {
+                FatalErrorIn("bool dynamicTopoFvMesh::resetMesh()")
+                    << " Coupled boundary check failed on processor: "
+                    << Pstream::myProcNo()
+                    << abort(FatalError);
+            }
         }
 
         // Reset statistics

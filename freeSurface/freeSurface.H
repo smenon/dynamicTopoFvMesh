@@ -343,6 +343,9 @@ class freeSurface
         //- Correct surface velocity boundary conditions
         void correctUsBoundaryConditions();
 
+        // Correct points for cyclics
+        void correctCyclics(pointField& points) const;
+
         //- Disallow default bitwise copy construct
         freeSurface(const freeSurface&);
 

@@ -47,6 +47,7 @@ Description
 #include "fixedValuePointPatchFields.H"
 #include "twoDPointCorrector.H"
 
+#include "cyclicPolyPatch.H"
 #include "slipFvPatchFields.H"
 #include "symmetryFvPatchFields.H"
 #include "fixedGradientFvPatchFields.H"
@@ -461,6 +462,9 @@ bool freeSurface::movePoints(const scalarField& interfacePhi)
     twoDPointCorrector twoDPointCorr(mesh());
     twoDPointCorr.correctPoints(newMeshPoints);
 
+    // Correct points for cyclics
+    correctCyclics(newMeshPoints);
+
     mesh().movePoints(newMeshPoints);
     aMesh().movePoints(mesh().points());
 
@@ -468,6 +472,74 @@ bool freeSurface::movePoints(const scalarField& interfacePhi)
     moveFvSubMeshes();
 
     return true;
+}
+
+
+// Correct points for cyclics
+void freeSurface::correctCyclics(pointField& points) const
+{
+    // Correct points on cyclics
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    forAll(boundary, patchI)
+    {
+        if (!isA<cyclicPolyPatch>(boundary[patchI]))
+        {
+            continue;
+        }
+
+        // Cast to cyclic
+        const cyclicPolyPatch& cyclicPatch =
+        (
+            refCast<const cyclicPolyPatch>(boundary[patchI])
+        );
+
+        bool translate =
+        (
+            cyclicPatch.transform()
+         == cyclicPolyPatch::TRANSLATIONAL
+        );
+
+        label patchStart = boundary[patchI].start();
+        label halfSize = (boundary[patchI].size() / 2);
+
+        for (label faceI = 0; faceI < halfSize; faceI++)
+        {
+            label half0Index = (patchStart + faceI);
+            label half1Index = (patchStart + halfSize + faceI);
+
+            const face& half0Face = mesh().faces()[half0Index];
+            const face& half1Face = mesh().faces()[half1Index];
+
+            label fS = half0Face.size();
+
+            forAll(half0Face, pointI)
+            {
+                label masterIndex = half0Face[pointI];
+                label slaveIndex = half1Face[(fS - pointI) % fS];
+
+                if (translate)
+                {
+                    points[slaveIndex] =
+                    (
+                        points[masterIndex]
+                      + cyclicPatch.separationVector()
+                    );
+                }
+                else
+                {
+                    points[slaveIndex] =
+                    (
+                        cyclicPatch.transform
+                        (
+                            points[masterIndex],
+                            faceI
+                        )
+                    );
+                }
+            }
+        }
+    }
 }
 
 
@@ -516,6 +588,9 @@ bool freeSurface::moveMeshPointsForOldFreeSurfDisplacement()
 
     twoDPointCorrector twoDPointCorr(mesh());
     twoDPointCorr.correctPoints(newPoints);
+
+    // Correct points for cyclics
+    correctCyclics(newPoints);
 
     // Move mesh points to old positions
     mesh().movePoints(newPoints);
