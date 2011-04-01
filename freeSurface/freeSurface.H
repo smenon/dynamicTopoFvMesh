@@ -82,8 +82,8 @@ class freeSurface
         //- Name of the interface shadow patch
         word shadowPatch_;
 
-        //- Use coupleMaps for interpolation
-        Switch useCoupleMap_;
+        //- Are patches ordered for interpolation
+        Switch orderedPatches_;
 
         //- Time index for the interface
         mutable label curTimeIndex_;

@@ -120,7 +120,7 @@ freeSurface::freeSurface
     p_(Pb),
     phi_(sfPhi),
     interfacePatch_(word(lookup("interfacePatch"))),
-    useCoupleMap_(true),
+    orderedPatches_(true),
     curTimeIndex_(Ub.mesh().time().timeIndex()),
     twoFluids_(lookup("twoFluids")),
     normalMotionDir_(lookup("normalMotionDir")),
@@ -251,49 +251,223 @@ freeSurface::~freeSurface()
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
 
-// Interpolate from A to B using coupleMap
+// Interpolate from A to B using either interpolator or direct copy
 template<class Type>
 tmp<Field<Type> > Foam::freeSurface::pointInterpolateAB
 (
     const Field<Type>& field
 )
 {
+    if (orderedPatches_)
+    {
+        label srcSize = mesh_.boundaryMesh()[aPatchID_].nPoints();
+        label patchSize = mesh_.boundaryMesh()[bPatchID_].nPoints();
+
+        if (patchSize != field.size() || patchSize != srcSize)
+        {
+            FatalErrorIn("freeSurface::pointInterpolateAB()")
+                << "Sizes don't match: " << nl
+                << "  srcSize: " << srcSize << nl
+                << "  patchSize: " << patchSize << nl
+                << "  Field size: " << field.size() << nl
+                << "  Master: " << aPatchID() << nl
+                << "  Slave: " << bPatchID() << nl
+                << abort(FatalError);
+        }
+
+        tmp<Field<Type> > tresult
+        (
+            new Field<Type>
+            (
+                patchSize,
+                pTraits<Type>::zero
+            )
+        );
+
+        Field<Type>& result = tresult();
+
+        // Fetch face-lists
+        const faceList& mFaces = mesh_.boundaryMesh()[aPatchID_].localFaces();
+        const faceList& sFaces = mesh_.boundaryMesh()[bPatchID_].localFaces();
+
+        // Assume coupled face-point ordering
+        forAll(mFaces, faceI)
+        {
+            const face& mFace = mFaces[faceI];
+            const face& sFace = sFaces[faceI];
+
+            label fS = sFace.size();
+
+            forAll(mFace, pointI)
+            {
+                label masterIndex = mFace[pointI];
+                label slaveIndex = sFace[(fS - pointI) % fS];
+
+                // Copy value
+                result[slaveIndex] = field[masterIndex];
+            }
+        }
+
+        return tresult;
+    }
+
     // Return conventional interpolation
     return interpolatorAB().pointInterpolate(field);
 }
 
 
-// Interpolate from B to A using coupleMap
+// Interpolate from B to A using either interpolator or direct copy
 template<class Type>
 tmp<Field<Type> > Foam::freeSurface::pointInterpolateBA
 (
     const Field<Type>& field
 )
 {
+    if (orderedPatches_)
+    {
+        label srcSize = mesh_.boundaryMesh()[bPatchID_].nPoints();
+        label patchSize = mesh_.boundaryMesh()[aPatchID_].nPoints();
+
+        if (patchSize != field.size() || patchSize != srcSize)
+        {
+            FatalErrorIn("freeSurface::pointInterpolateBA()")
+                << "Sizes don't match: " << nl
+                << "  srcSize: " << srcSize << nl
+                << "  patchSize: " << patchSize << nl
+                << "  Field size: " << field.size() << nl
+                << "  Master: " << aPatchID() << nl
+                << "  Slave: " << bPatchID() << nl
+                << abort(FatalError);
+        }
+
+        tmp<Field<Type> > tresult
+        (
+            new Field<Type>
+            (
+                patchSize,
+                pTraits<Type>::zero
+            )
+        );
+
+        Field<Type>& result = tresult();
+
+        // Fetch face-lists
+        const faceList& mFaces = mesh_.boundaryMesh()[aPatchID_].localFaces();
+        const faceList& sFaces = mesh_.boundaryMesh()[bPatchID_].localFaces();
+
+        // Assume coupled face-point ordering
+        forAll(mFaces, faceI)
+        {
+            const face& mFace = mFaces[faceI];
+            const face& sFace = sFaces[faceI];
+
+            label fS = sFace.size();
+
+            forAll(mFace, pointI)
+            {
+                label masterIndex = mFace[pointI];
+                label slaveIndex = sFace[(fS - pointI) % fS];
+
+                // Copy value
+                result[masterIndex] = field[slaveIndex];
+            }
+        }
+
+        return tresult;
+    }
+
     // Return conventional interpolation
     return interpolatorBA().pointInterpolate(field);
 }
 
 
-// Interpolate from A to B using coupleMap
+// Interpolate from A to B using either interpolator or direct copy
 template<class Type>
 tmp<Field<Type> > Foam::freeSurface::faceInterpolateAB
 (
     const Field<Type>& field
 )
 {
+    if (orderedPatches_)
+    {
+        label srcSize = mesh_.boundaryMesh()[aPatchID_].size();
+        label patchSize = mesh_.boundaryMesh()[bPatchID_].size();
+
+        if (patchSize != field.size() || patchSize != srcSize)
+        {
+            FatalErrorIn("freeSurface::faceInterpolateAB()")
+                << "Sizes don't match: " << nl
+                << "  srcSize: " << srcSize << nl
+                << "  patchSize: " << patchSize << nl
+                << "  Field size: " << field.size() << nl
+                << "  Master: " << aPatchID() << nl
+                << "  Slave: " << bPatchID() << nl
+                << abort(FatalError);
+        }
+
+        tmp<Field<Type> > tresult
+        (
+            new Field<Type>
+            (
+                patchSize,
+                pTraits<Type>::zero
+            )
+        );
+
+        Field<Type>& result = tresult();
+
+        // Assume ordered faces, direct copy
+        result = field;
+
+        return tresult;
+    }
+
     // Return conventional interpolation
     return interpolatorAB().faceInterpolate(field);
 }
 
 
-// Interpolate from B to A using coupleMap
+// Interpolate from B to A using either interpolator or direct copy
 template<class Type>
 tmp<Field<Type> > Foam::freeSurface::faceInterpolateBA
 (
     const Field<Type>& field
 )
 {
+    if (orderedPatches_)
+    {
+        label srcSize = mesh_.boundaryMesh()[bPatchID_].size();
+        label patchSize = mesh_.boundaryMesh()[aPatchID_].size();
+
+        if (patchSize != field.size() || patchSize != srcSize)
+        {
+            FatalErrorIn("freeSurface::faceInterpolateBA()")
+                << "Sizes don't match: " << nl
+                << "  srcSize: " << srcSize << nl
+                << "  patchSize: " << patchSize << nl
+                << "  Field size: " << field.size() << nl
+                << "  Master: " << aPatchID() << nl
+                << "  Slave: " << bPatchID() << nl
+                << abort(FatalError);
+        }
+
+        tmp<Field<Type> > tresult
+        (
+            new Field<Type>
+            (
+                patchSize,
+                pTraits<Type>::zero
+            )
+        );
+
+        Field<Type>& result = tresult();
+
+        // Assume ordered faces, direct copy
+        result = field;
+
+        return tresult;
+    }
+
     // Return conventional interpolation
     return interpolatorBA().faceInterpolate(field);;
 }
@@ -426,7 +600,7 @@ bool freeSurface::movePoints(const scalarField& interfacePhi)
 
     if (twoFluids_)
     {
-        // Interpolate using coupleMap or patchToPatchInterpolation
+        // Interpolate directly or using patchToPatchInterpolation
         pointField displacementB = pointInterpolateAB(displacement);
 
         const labelList& meshPtsB =
