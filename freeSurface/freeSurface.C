@@ -210,27 +210,6 @@ freeSurface::freeSurface
         }
     }
 
-    // Set point normal correction patches
-    boolList& correction = aMesh().correctPatchPointNormals();
-
-    forAll(pointNormalsCorrectionPatches_, patchI)
-    {
-        word patchName = pointNormalsCorrectionPatches_[patchI];
-
-        label patchID = aMesh().boundary().findPatchID(patchName);
-
-        if(patchID == -1)
-        {
-            FatalErrorIn
-            (
-                "freeSurface::freeSurface(...)"
-            )   << "Patch name for point normals correction does not exist"
-                << abort(FatalError);
-        }
-
-        correction[patchID] = true;
-    }
-
     // Read free-surface points total displacement if present
     readTotalDisplacement();
 

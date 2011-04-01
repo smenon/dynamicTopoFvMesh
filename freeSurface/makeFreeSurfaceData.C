@@ -549,6 +549,27 @@ void freeSurface::makeFaMesh() const
     }
 
     aMeshPtr_ = new faMesh(mesh(), "faMeshDefinition");
+
+    // Set point normal correction patches
+    boolList& correction = aMeshPtr_->correctPatchPointNormals();
+
+    forAll(pointNormalsCorrectionPatches_, patchI)
+    {
+        word patchName = pointNormalsCorrectionPatches_[patchI];
+
+        label patchID = aMeshPtr_->boundary().findPatchID(patchName);
+
+        if (patchID == -1)
+        {
+            FatalErrorIn
+            (
+                "freeSurface::makeFaMesh()"
+            )   << "Patch name for point normals correction does not exist"
+                << abort(FatalError);
+        }
+
+        correction[patchID] = true;
+    }
 }
 
 void freeSurface::makeUs() const
