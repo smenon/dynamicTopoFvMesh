@@ -4960,7 +4960,19 @@ bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
                     )
                 );
 
-                // Transform points and check
+                const faceList& lF = boundary[pI].localFaces();
+                const pointField& lP = boundary[pI].localPoints();
+                const vectorField& lC = boundary[pI].faceCentres();
+
+                // Prepare anchor points
+                mAnchors[pI].setSize(boundary[pI].size());
+
+                forAll(lF, faceI)
+                {
+                    mAnchors[pI][faceI] = lP[lF[faceI][0]];
+                }
+
+                // Transform first-half points and check
                 if (cp.transform() == cyclicPolyPatch::ROTATIONAL)
                 {
                     forAll(half0Centres, faceI)
@@ -4973,12 +4985,25 @@ bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
                                 half0Centres[faceI]
                             )
                         );
+
+                        mAnchors[pI][faceI] =
+                        (
+                            Foam::transform
+                            (
+                                cp.transformT(0),
+                                mAnchors[pI][faceI]
+                            )
+                        );
                     }
                 }
                 else
                 if (cp.transform() == cyclicPolyPatch::TRANSLATIONAL)
                 {
-                    half0Centres += cp.separationVector();
+                    forAll(half0Centres, faceI)
+                    {
+                        half0Centres[faceI] += cp.separationVector();
+                        mAnchors[pI][faceI] += cp.separationVector();
+                    }
                 }
                 else
                 {
@@ -4986,7 +5011,10 @@ bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
                         << abort(FatalError);
                 }
 
-                // Check areas
+                // Calculate a point-match tolerance per patch
+                scalar pTol = -GREAT;
+
+                // Check areas / compute tolerance
                 forAll(half0Areas, faceI)
                 {
                     scalar fMagSf = mag(half0Areas[faceI]);
@@ -5003,6 +5031,58 @@ bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
                             << "% - possible patch ordering problem. "
                             << " Front area:" << fMagSf
                             << " Rear area: " << rMagSf
+                            << endl;
+                    }
+
+                    pTol =
+                    (
+                        Foam::max
+                        (
+                            pTol,
+                            gTol * mag(lP[lF[faceI][0]] - lC[faceI])
+                        )
+                    );
+                }
+
+                // Check centres / anchor points
+                forAll(half0Centres, faceI)
+                {
+                    scalar distA =
+                    (
+                        mag
+                        (
+                            mAnchors[pI][faceI]
+                          - mAnchors[pI][faceI + halfSize]
+                        )
+                    );
+
+                    scalar distC =
+                    (
+                        mag
+                        (
+                            half0Centres[faceI]
+                          - half1Centres[faceI]
+                        )
+                    );
+
+                    if (distA > pTol || distC > pTol)
+                    {
+                        misMatchError = true;
+
+                        UIndirectList<point> f1(lP, lF[faceI]);
+                        UIndirectList<point> f2(lP, lF[faceI + halfSize]);
+
+                        Pout<< " Face: " << faceI << nl
+                            << " Points: " << nl << f1 << nl << f2 << nl
+                            << " Anchors ::" << nl
+                            << mAnchors[pI][faceI] << nl
+                            << mAnchors[pI][faceI + halfSize] << nl
+                            << " Centres ::" << nl
+                            << half0Centres[faceI] << nl
+                            << half1Centres[faceI] << nl
+                            << " Tolerance: " << pTol << nl
+                            << " Measured Anchor distance: " << distA << nl
+                            << " Measured Centre distance: " << distC << nl
                             << endl;
                     }
                 }
