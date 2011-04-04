@@ -8004,13 +8004,6 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
             label masterPatch = cMap.masterIndex();
             label slavePatch = cMap.slaveIndex();
 
-            // Avoid cyclics for now.
-            // This will be handled next.
-            if (masterPatch == slavePatch)
-            {
-                continue;
-            }
-
             label mSize = patchSizes_[masterPatch];
             label sSize = patchSizes_[slavePatch];
 
@@ -8030,8 +8023,10 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
             }
 
             // Calculate centres / tolerances
-            slaveTols[slavePatch].setSize(sSize, 0.0);
+            anchors[masterPatch].setSize(mSize, vector::zero);
             centres[masterPatch].setSize(mSize, vector::zero);
+
+            slaveTols[slavePatch].setSize(sSize, 0.0);
             slaveCentres[slavePatch].setSize(sSize, vector::zero);
 
             for (label fI = 0; fI < mSize; fI++)
@@ -8058,13 +8053,130 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                 slaveTols[slavePatch][fI] = matchTol*maxLen;
             }
 
-            // Fetch references
-            labelList& patchMap = patchMaps[slavePatch];
-            labelList& rotation = rotations[slavePatch];
+            // For cyclics, additionally test for halves,
+            // and transform points as necessary.
+            labelList halfMap;
 
-            // Initialize map and rotation
-            patchMap.setSize(sSize, -1);
-            rotation.setSize(sSize, 0);
+            if (masterPatch == slavePatch)
+            {
+                scalar featureCos = 0.9;
+                label halfSize = (mSize / 2);
+                label half0Index = 0, half1Index = 0;
+
+                // Size up halfMap and slaveAnchors
+                halfMap.setSize(mSize, -1);
+
+                scalarField half1Tols(halfSize, 0.0);
+                vectorField half1Anchors(halfSize, vector::zero);
+
+                // Fetch face-normal for the first face
+                vector fhN = boundaryMesh()[masterPatch].faceAreas()[0];
+
+                // Normalize
+                fhN /= mag(fhN) + VSMALL;
+
+                // Fetch transform type
+                const cyclicPolyPatch& cyclicPatch =
+                (
+                    refCast<const cyclicPolyPatch>
+                    (
+                        boundaryMesh()[masterPatch]
+                    )
+                );
+
+                bool translate =
+                (
+                    cyclicPatch.transform()
+                 == cyclicPolyPatch::TRANSLATIONAL
+                );
+
+                for (label fI = 0; fI < mSize; fI++)
+                {
+                    const face& mFace = faces_[fI + mStart];
+
+                    // Compute normal
+                    vector fN = mFace.normal(points_);
+
+                    // Normalize
+                    fN /= mag(fN) + VSMALL;
+
+                    // Check which half this face belongs to...
+                    bool isFirstHalf = ((fhN & fN) > featureCos);
+
+                    if (isFirstHalf)
+                    {
+                        vector mA = anchors[masterPatch][fI];
+                        vector mC = centres[masterPatch][fI];
+
+                        // Set master anchor
+                        anchors[masterPatch][half0Index] = mA;
+
+                        // Transform master points
+                        if (translate)
+                        {
+                            mA += cyclicPatch.separationVector();
+                            mC += cyclicPatch.separationVector();
+                        }
+                        else
+                        {
+                            // Assume constant transform tensor
+                            mA = Foam::transform(cyclicPatch.transformT(0), mA);
+                            mC = Foam::transform(cyclicPatch.transformT(0), mC);
+                        }
+
+                        // Set the transformed anchor / centre
+                        half1Anchors[half0Index] = mA;
+                        centres[masterPatch][half0Index] = mC;
+                        half1Tols[half0Index] = slaveTols[masterPatch][fI];
+
+                        // Set halfMap
+                        halfMap[fI] = half0Index;
+
+                        half0Index++;
+                    }
+                    else
+                    {
+                        // Set the slave centre
+                        const scalar& sT = slaveTols[slavePatch][fI];
+                        const point& sC = slaveCentres[slavePatch][fI];
+
+                        // Duplicate slaveTols for first / second half
+                        slaveTols[slavePatch][half1Index] = sT;
+                        slaveCentres[slavePatch][half1Index] = sC;
+
+                        // Set halfMap
+                        halfMap[fI] = half1Index + halfSize;
+
+                        half1Index++;
+                    }
+                }
+
+                // Sanity check for halfSize
+                if (half0Index != halfSize || half1Index != halfSize)
+                {
+                    Pout<< " Master: " << masterPatch << nl
+                        << " Slave: " << slavePatch << nl
+                        << " half0Index: " << half0Index << nl
+                        << " half1Index: " << half1Index << nl
+                        << " halfSize: " << halfSize << nl
+                        << " failed to divide into halves."
+                        << abort(FatalError);
+                }
+
+                // Resize lists
+                centres[masterPatch].setSize(halfSize);
+                slaveCentres[slavePatch].setSize(halfSize);
+
+                // Set slave tols / anchors
+                forAll(half1Anchors, fI)
+                {
+                    slaveTols[masterPatch][fI + halfSize] = half1Tols[fI];
+                    anchors[masterPatch][fI + halfSize] = half1Anchors[fI];
+                }
+            }
+
+            // Fetch reference to slave map
+            labelList& patchMap = patchMaps[slavePatch];
 
             // Try zero separation automatic matching
             bool matchedAll =
@@ -8140,6 +8252,33 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                 }
             }
 
+            // Renumber patchMap for cyclics
+            if (masterPatch == slavePatch)
+            {
+                label halfSize = (mSize / 2);
+
+                forAll(halfMap, fI)
+                {
+                    if (halfMap[fI] >= halfSize)
+                    {
+                        halfMap[fI] =
+                        (
+                            patchMap[halfMap[fI] - halfSize]
+                          + halfSize
+                        );
+                    }
+                }
+
+                // Transfer map
+                patchMap.transfer(halfMap);
+            }
+
+            // Fetch reference to rotation map
+            labelList& rotation = rotations[slavePatch];
+
+            // Initialize rotation to zero
+            rotation.setSize(sSize, 0);
+
             // Set rotation.
             forAll(patchMap, oldFaceI)
             {
@@ -8181,7 +8320,12 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                         << " Face: " << checkFace << nl
                         << " Vertices: "
                         << UIndirectList<point>(points_, checkFace) << nl
-                        << " on patch: " << slavePatch
+                        << " on patch: " << slavePatch << nl
+                        << " faceTol: " << faceTol << nl
+                        << " newFaceI: " << newFaceI << nl
+                        << " oldFaceI: " << oldFaceI << nl
+                        << " mSize: " << mSize << nl
+                        << " sSize: " << sSize << nl
                         << abort(FatalError);
                 }
                 else
@@ -8217,55 +8361,6 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
         )
             << " Matching for local patches failed. " << nl
             << abort(FatalError);
-    }
-
-    // Handle cyclics
-    for (label pI = 0; pI < nPatches_; pI++)
-    {
-        if (!isA<cyclicPolyPatch>(boundaryMesh()[pI]))
-        {
-            continue;
-        }
-
-        // Forward primitive patch to handle ordering
-        bool changed = boundaryMesh()[pI].order
-        (
-            primitivePatch
-            (
-                SubList<face>
-                (
-                    faces_,
-                    patchSizes_[pI],
-                    patchStarts_[pI]
-                ),
-                points_
-            ),
-            patchMaps[pI],
-            rotations[pI]
-        );
-
-        // Set the flag if changed
-        if (changed)
-        {
-            anyChange = true;
-        }
-
-        if (debug > 3)
-        {
-            writeVTK
-            (
-                "oldCyclicPatchFaces_" + Foam::name(pI),
-                identity(patchSizes_[pI]) + patchStarts_[pI],
-                2, false, true
-            );
-
-            writeVTK
-            (
-                "newCyclicPatchFaces_" + Foam::name(pI),
-                identity(patchSizes_[pI]) + patchStarts_[pI],
-                2
-            );
-        }
     }
 
     if (!Pstream::parRun())
