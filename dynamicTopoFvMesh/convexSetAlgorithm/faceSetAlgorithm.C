@@ -141,6 +141,18 @@ bool faceSetAlgorithm::computeIntersection
     const face& newFace = newFaces_[newIndex];
     const face& oldFace = mesh_.faces()[oldIndex];
 
+    // Compute the normal for the old face
+    vector oldNorm = oldFace.normal(oldPoints);
+
+    // Normalize
+    oldNorm /= mag(oldNorm) + VSMALL;
+
+    if ((oldNorm & refNorm_) < 0.0)
+    {
+        // Opposite face orientation. Skip it.
+        return false;
+    }
+
     if (twoDMesh_ && newFace.size() == 4 && oldFace.size() == 4)
     {
         // Decompose new / old quad faces into 4 tris each

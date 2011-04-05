@@ -124,9 +124,6 @@ void dynamicTopoFvMesh::computeMapping
             // Compute error
             scalar error = mag(1.0 - sum(cellWeights_[cellI]));
 
-            // Accumulate error stats
-            maxCellError = Foam::max(maxCellError, error);
-
             if (error > matchTol)
             {
                 bool consistent = false;
@@ -211,6 +208,9 @@ void dynamicTopoFvMesh::computeMapping
                     // Add to list
                     cellErrors.append(error);
 
+                    // Accumulate error stats
+                    maxCellError = Foam::max(maxCellError, error);
+
                     failedCells.append
                     (
                         objectMap
@@ -290,9 +290,6 @@ void dynamicTopoFvMesh::computeMapping
             // Compute error
             scalar error = mag(1.0 - sum(faceWeights_[faceI]));
 
-            // Accumulate error stats
-            maxFaceError = Foam::max(maxFaceError, error);
-
             if (error > matchTol)
             {
                 bool consistent = false;
@@ -317,6 +314,9 @@ void dynamicTopoFvMesh::computeMapping
 
                     // Add to list
                     faceErrors.append(error);
+
+                    // Accumulate error stats
+                    maxFaceError = Foam::max(maxFaceError, error);
 
                     failedFaces.append
                     (
