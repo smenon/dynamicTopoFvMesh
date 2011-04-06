@@ -9442,26 +9442,39 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
             forAll(eFaces, faceI)
             {
-                if (neighbour_[eFaces[faceI]] == -1)
+                label facePatch = whichPatch(eFaces[faceI]);
+
+                // Skip internal faces
+                if (facePatch == -1)
                 {
-                    label patch = whichPatch(eFaces[faceI]);
+                    continue;
+                }
 
-                    if (getNeighbourProcessor(patch) > -1)
-                    {
-                        continue;
-                    }
+                // Skip processor patches
+                if (getNeighbourProcessor(facePatch) > -1)
+                {
+                    continue;
+                }
 
+                // If this is a floating face, pick the owner length-scale
+                if (lengthEstimator().isFreePatch(facePatch))
+                {
+                    procScale += lengthScale_[owner_[eFaces[faceI]]];
+                }
+                else
+                {
+                    // Fetch fixed length-scale
                     procScale +=
                     (
                         lengthEstimator().fixedLengthScale
                         (
                             eFaces[faceI],
-                            patch
+                            facePatch
                         )
                     );
-
-                    nBoundary++;
                 }
+
+                nBoundary++;
             }
 
             forAll(procIndices_, pI)
@@ -9480,26 +9493,43 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
                     forAll(peFaces, faceI)
                     {
-                        if (mesh.neighbour_[peFaces[faceI]] == -1)
+                        label facePatch = mesh.whichPatch(peFaces[faceI]);
+
+                        // Skip internal faces
+                        if (facePatch == -1)
                         {
-                            label patch = mesh.whichPatch(peFaces[faceI]);
+                            continue;
+                        }
 
-                            if (mesh.getNeighbourProcessor(patch) > -1)
-                            {
-                                continue;
-                            }
+                        // Skip processor patches
+                        if (mesh.getNeighbourProcessor(facePatch) > -1)
+                        {
+                            continue;
+                        }
 
+                        // If this is a floating face,
+                        // pick the owner length-scale
+                        if (lengthEstimator().isFreePatch(facePatch))
+                        {
+                            procScale +=
+                            (
+                                mesh.lengthScale_[mesh.owner_[peFaces[faceI]]]
+                            );
+                        }
+                        else
+                        {
+                            // Fetch fixed length-scale
                             procScale +=
                             (
                                 lengthEstimator().fixedLengthScale
                                 (
                                     peFaces[faceI],
-                                    patch
+                                    facePatch
                                 )
                             );
-
-                            nBoundary++;
                         }
+
+                        nBoundary++;
                     }
                 }
             }
