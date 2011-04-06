@@ -103,6 +103,16 @@ sixDOFBody::sixDOFBody
             bodyDict.lookup("patchName")
         )
     ),
+    odeSolver_
+    (
+        ODESolver::New
+        (
+            dict.subDict("ODECoeffs").lookup("ODESolver"),
+            ode_
+        )
+    ),
+    eps_(readScalar(dict.subDict("ODECoeffs").lookup("eps"))),
+    hEst_(readScalar(dict.subDict("ODECoeffs").lookup("hEst"))),
     weightFactor_(bodyDict.lookup("weightFactor")),
     localVelocity_(vector::zero),
     localOldVelocity_
@@ -164,20 +174,6 @@ sixDOFBody::sixDOFBody
     pName_(bodyDict.lookupOrDefault("pName", word("p"))),
     gName_(bodyDict.lookupOrDefault("gName", word("g")))
 {
-    // Load the ODE solver
-    odeSolver_ =
-    (
-        ODESolver::New
-        (
-            dict_.subDict("ODECoeffs").lookup("ODESolver"),
-            ode_
-        )
-    );
-
-    // Read ODE options
-    eps_ = readScalar(dict_.subDict("ODECoeffs").lookup("eps"));
-    hEst_ = readScalar(dict_.subDict("ODECoeffs").lookup("hEst"));
-
     // Convert rotation to radians, if necessary
     {
         Rot_ *= (mathematicalConstant::pi / 180.0);
@@ -186,6 +182,38 @@ sixDOFBody::sixDOFBody
     // Initialize transformation tensors
     globalToLocal_ = calcTensor( 1.0 * Rot_);
     localToGlobal_ = calcTensor(-1.0 * Rot_);
+
+    // Attempt to read restart info from disk
+    IOdictionary sixDOFDict
+    (
+        IOobject
+        (
+            "sixDOFDict",
+            mesh_.time().timeName(),
+            "uniform",
+            mesh_,
+            IOobject::READ_IF_PRESENT,
+            IOobject::NO_WRITE,
+            false
+        )
+    );
+
+    if (sixDOFDict.headerOk())
+    {
+        Info<< "Reading sixDOF information from dictionary" << endl;
+
+        totalDisplacement_ = sixDOFDict.lookup("totalDisplacement");
+        totalRotation_ = sixDOFDict.lookup("totalRotation");
+        localOldVelocity_ = sixDOFDict.lookup("localOldVelocity");
+        localOldOmega_ = sixDOFDict.lookup("localOldOmega");
+        Fs_[0] = sixDOFDict.lookup("Fs0");
+        Fs_[1] = sixDOFDict.lookup("Fs1");
+        Ms_[0] = sixDOFDict.lookup("Ms0");
+        Ms_[1] = sixDOFDict.lookup("Ms1");
+
+        // Update CentreOfGravity
+        Cg_ += totalDisplacement_;
+    }
 }
 
 
@@ -410,6 +438,37 @@ void sixDOFBody::balanceForces()
     forAll(meshPts,pointI)
     {
         refPoints[meshPts[pointI]] += motionDisplacement[pointI];
+    }
+
+    // If this is an output time-step, write out
+    if (mesh_.time().outputTime())
+    {
+        IOdictionary sixDOFDict
+        (
+            IOobject
+            (
+                "sixDOFDict",
+                mesh_.time().timeName(),
+                "uniform",
+                mesh_,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            )
+        );
+
+        // Add relevant info
+        sixDOFDict.add("totalDisplacement", totalDisplacement_);
+        sixDOFDict.add("totalRotation", totalRotation_);
+        sixDOFDict.add("localOldVelocity", localOldVelocity_);
+        sixDOFDict.add("localOldOmega", localOldOmega_);
+        sixDOFDict.add("Fs0", Fs_[0]);
+        sixDOFDict.add("Fs1", Fs_[1]);
+        sixDOFDict.add("Ms0", Ms_[0]);
+        sixDOFDict.add("Ms1", Ms_[1]);
+
+        // Write it out
+        sixDOFDict.regIOobject::write();
     }
 }
 
