@@ -211,6 +211,13 @@ void topoPatchMapper::calcAddressing() const
     // Assemble the maps: slice to patch
     if (direct())
     {
+        if (oldPatchSize == 0)
+        {
+            // Nothing to map from. Return empty.
+            directAddrPtr_ = new labelList(0);
+            return;
+        }
+
         // Direct mapping - slice to size
         directAddrPtr_ =
         (
@@ -252,6 +259,13 @@ void topoPatchMapper::calcAddressing() const
     }
     else
     {
+        if (oldPatchSize == 0)
+        {
+            // Nothing to map from. Return empty.
+            interpolationAddrPtr_ = new labelListList(0);
+            return;
+        }
+
         // Interpolative addressing
         interpolationAddrPtr_ = new labelListList(patchSize(), labelList(0));
         labelListList& addr = *interpolationAddrPtr_;
@@ -343,6 +357,13 @@ void topoPatchMapper::calcInverseDistanceWeights() const
     // Fetch interpolative addressing
     const labelListList& addr = addressing();
 
+    if (addr.empty())
+    {
+        // Nothing to map from. Return empty.
+        weightsPtr_ = new scalarListList(0);
+        return;
+    }
+
     // Allocate memory
     weightsPtr_ = new scalarListList(patchSize());
     scalarListList& w = *weightsPtr_;
@@ -412,6 +433,14 @@ void topoPatchMapper::calcIntersectionWeightsAndCentres() const
 
     // Fetch interpolative addressing
     const labelListList& addr = addressing();
+
+    if (addr.empty())
+    {
+        // Nothing to map from. Return empty.
+        areasPtr_ = new List<scalarList>(0);
+        centresPtr_ = new List<vectorList>(0);
+        return;
+    }
 
     // Allocate memory
     areasPtr_ = new List<scalarList>(patchSize(), scalarList(0));
@@ -538,7 +567,7 @@ topoPatchMapper::topoPatchMapper
     // Compute sizeBeforeMapping.
     // - This needs to be done before insertedObjects
     //   is computed to determine direct mapping
-    if (isA<emptyPolyPatch>(patch_))
+    if (isA<emptyPolyPatch>(patch_.patch()))
     {
         sizeBeforeMapping_ = 0;
     }
