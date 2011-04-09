@@ -305,6 +305,7 @@ const List<vectorField>& topoCellMapper::intersectionCentres() const
     return *centresPtr_;
 }
 
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
@@ -318,6 +319,7 @@ topoCellMapper::topoCellMapper
     mpm_(mpm),
     tMapper_(mapper),
     direct_(false),
+    sizeBeforeMapping_(mpm.nOldCells()),
     directAddrPtr_(NULL),
     interpolationAddrPtr_(NULL),
     weightsPtr_(NULL),
@@ -325,6 +327,18 @@ topoCellMapper::topoCellMapper
     volumesPtr_(NULL),
     centresPtr_(NULL)
 {
+    // Fetch offset sizes from topoMapper
+    const labelList& sizes = tMapper_.cellSizes();
+
+    // Add offset sizes
+    if (sizes.size())
+    {
+        forAll(sizes, pI)
+        {
+            sizeBeforeMapping_ += sizes[pI];
+        }
+    }
+
     // Check for possibility of direct mapping
     if
     (
@@ -362,21 +376,7 @@ label topoCellMapper::size() const
 //- Return size before mapping
 label topoCellMapper::sizeBeforeMapping() const
 {
-    // Fetch offset sizes from topoMapper
-    const labelList& sizes = tMapper_.cellSizes();
-
-    label totalSize = mpm_.nOldCells();
-
-    // Add offset sizes
-    if (sizes.size())
-    {
-        forAll(sizes, pI)
-        {
-            totalSize += sizes[pI];
-        }
-    }
-
-    return totalSize;
+    return sizeBeforeMapping_;
 }
 
 

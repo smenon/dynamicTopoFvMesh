@@ -92,17 +92,19 @@ class topoMapper
         //- Geometric information on the old mesh
         mutable volVectorField* cellCentresPtr_;
 
-        //- Intersection volume weights
+        //- Intersection weights
         mutable List<scalarField> faceWeights_;
         mutable List<scalarField> cellWeights_;
 
-        //- Intersection centre weights
+        //- Intersection centres
         mutable List<vectorField> faceCentres_;
         mutable List<vectorField> cellCentres_;
 
         //- Sizes / starts for mapping
         mutable labelList cellSizes_;
         mutable labelList cellStarts_;
+        mutable labelList faceSizes_;
+        mutable labelList faceStarts_;
         mutable labelListList patchSizes_;
         mutable labelListList patchStarts_;
 
@@ -168,9 +170,11 @@ public:
         void setOffsets
         (
             const labelList& cellSizes,
-            const labelList& cellOffsets,
+            const labelList& cellStarts,
+            const labelList& faceSizes,
+            const labelList& faceStarts,
             const labelListList& patchSizes,
-            const labelListList& patchOffsets
+            const labelListList& patchStarts
         ) const;
 
         //- Fetch face weights
@@ -188,11 +192,17 @@ public:
         //- Fetch cell sizes
         const labelList& cellSizes() const;
 
+        //- Fetch face sizes
+        const labelList& faceSizes() const;
+
         //- Fetch patch sizes
         const labelListList& patchSizes() const;
 
         //- Fetch cell starts
         const labelList& cellStarts() const;
+
+        //- Fetch face starts
+        const labelList& faceStarts() const;
 
         //- Fetch patch starts
         const labelListList& patchStarts() const;

@@ -50,6 +50,12 @@ void topoMapper::storeGradients
         mesh_.objectRegistry::lookupClass<volType>()
     );
 
+    // Store old-times before gradient computation
+    forAllIter(typename HashTable<const volType*>, fields, fIter)
+    {
+        fIter()->storeOldTimes();
+    }
+
     forAllConstIter(typename HashTable<const volType*>, fields, fIter)
     {
         const volType& field = *fIter();

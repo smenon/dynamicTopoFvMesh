@@ -46,9 +46,7 @@ void conservativeMapVolFields(const topoMapper& mapper)
     // Store old-times before mapping
     forAllIter(typename HashTable<const volType*>, fields, fIter)
     {
-        volType& field = const_cast<volType&>(*fIter());
-
-        field.storeOldTimes();
+        fIter()->storeOldTimes();
     }
 
     // Fetch internal/boundary mappers
@@ -104,9 +102,7 @@ void conservativeMapSurfaceFields(const topoMapper& mapper)
     // Store old-times before mapping
     forAllIter(typename HashTable<const surfType*>, fields, fIter)
     {
-        surfType& field = const_cast<surfType&>(*fIter());
-
-        field.storeOldTimes();
+        fIter()->storeOldTimes();
     }
 
     // Fetch internal/boundary mappers

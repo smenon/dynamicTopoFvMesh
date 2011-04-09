@@ -4063,7 +4063,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
         const polyBoundaryMesh& boundary = boundaryMesh();
 
         // Determine number of physical (non-processor) patches
-        label nPhys = 0;
+        label nPhysical = 0;
 
         forAll(boundary, patchI)
         {
@@ -4072,33 +4072,39 @@ void dynamicTopoFvMesh::handleCoupledPatches
                 continue;
             }
 
-            nPhys++;
+            nPhysical++;
         }
 
         // Fetch number of processors
         label nProcs = procIndices_.size();
 
-        // Allocate cell and patch offsets
+        // Allocate cell, face and patch offsets
         labelList cellSizes(nProcs, 0), cellStarts(nProcs, 0);
-        labelListList patchSizes(nProcs, labelList(nPhys, 0));
-        labelListList patchStarts(nProcs, labelList(nPhys, 0));
+        labelList faceSizes(nProcs, 0), faceStarts(nProcs, 0);
+        labelListList patchSizes(nProcs, labelList(nPhysical, 0));
+        labelListList patchStarts(nProcs, labelList(nPhysical, 0));
 
-        label nTotalCells = nOldCells_;
-        labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhys));
+        label nTotalCells = nOldCells_, nTotalIntFaces = nOldInternalFaces_;
+        labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhysical));
 
         forAll(procIndices_, pI)
         {
             const coupleMap& cMap = recvMeshes_[pI].map();
 
-            // Fetch cell size from subMesh
+            // Fetch size from subMesh
             label nCells = cMap.nEntities(coupleMap::CELL);
+            label nIntFaces = cMap.nEntities(coupleMap::INTERNAL_FACE);
 
-            // Set cell size / offset for this processor
+            // Set size / offset for this processor
             cellSizes[pI] = nCells;
             cellStarts[pI] = nTotalCells;
 
-            // Update cell count
+            faceSizes[pI] = nIntFaces;
+            faceStarts[pI] = nTotalIntFaces;
+
+            // Update count
             nTotalCells += nCells;
+            nTotalIntFaces += nIntFaces;
 
             // Fetch patch sizes from subMesh
             const labelList& nPatchFaces =
@@ -4126,18 +4132,23 @@ void dynamicTopoFvMesh::handleCoupledPatches
         (
             cellSizes,
             cellStarts,
+            faceSizes,
+            faceStarts,
             patchSizes,
             patchStarts
         );
 
         if (debug > 3)
         {
+            SubList<label> physicalPatches(oldPatchSizes_, nPhysical);
+
             Pout<< " procIndices: " << procIndices_ << nl
                 << " nCells: " << nOldCells_ << nl
                 << " proc cellSizes: " << cellSizes << nl
                 << " cellStarts: " << cellStarts << nl
-                << " patchSizes: "
-                << SubList<label>(oldPatchSizes_, nPhys) << nl
+                << " proc faceSizes: " << faceSizes << nl
+                << " faceStarts: " << faceStarts << nl
+                << " patchSizes: " << physicalPatches << nl
                 << " proc patchSizes: " << patchSizes << nl
                 << " patchStarts: " << patchStarts << endl;
         }
@@ -7743,11 +7754,15 @@ void dynamicTopoFvMesh::syncFieldTransfers
         nTotalIntFaces += nIntFaces;
 
         // Fetch patch sizes from subMesh
-        const labelList& nPatchFaces = cMap.entityBuffer(coupleMap::FACE_SIZES);
+        const labelList& nPatchFaces =
+        (
+            cMap.entityBuffer(coupleMap::FACE_SIZES)
+        );
 
         // Loop over physical patches
         forAll(nTotalPatchFaces, patchI)
         {
+            // Fetch patch size from subMesh
             label nFaces = nPatchFaces[patchI];
 
             // Set rmap for this patch

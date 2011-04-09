@@ -73,6 +73,9 @@ class topoSurfaceMapper
         //- Is the mapping direct
         bool direct_;
 
+        //- Size before mapping
+        mutable label sizeBeforeMapping_;
+
     // Demand-driven private data
 
         //- Direct addressing

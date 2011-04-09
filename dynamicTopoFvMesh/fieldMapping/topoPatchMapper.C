@@ -77,6 +77,15 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
     const label oldPatchSize = sizeBeforeMapping();
     const label oldPatchStart = mpm_.oldPatchStarts()[patch_.index()];
 
+    if (oldPatchSize == 0)
+    {
+        // Nothing to map from. Return empty.
+        insertedFaceLabelsPtr_ = new labelList(0);
+        insertedFaceIndexMapPtr_ = new labelList(0);
+        insertedFaceAddressingPtr_ = new labelListList(0);
+        return;
+    }
+
     // Allocate for inserted face labels and addressing
     label nInsertedFaces = 0;
 
@@ -240,6 +249,19 @@ void topoPatchMapper::calcAddressing() const
             }
             else
             {
+                // Write out for post-processing
+                meshOps::writeVTK
+                (
+                    mpm_.mesh(),
+                    "patchFacePatchError_"
+                  + Foam::name(faceI),
+                    labelList(1, faceI),
+                    2,
+                    mpm_.mesh().points(),
+                    List<edge>(0),
+                    mpm_.mesh().faces()
+                );
+
                 FatalErrorIn
                 (
                     "void topoPatchMapper::calcAddressing() const"
@@ -582,17 +604,14 @@ topoPatchMapper::topoPatchMapper
         // Add offset sizes
         if (sizes.size())
         {
-            forAll(sizes, pI)
+            // Fetch number of physical patches
+            label nPhysical = sizes[0].size();
+
+            if (patchIndex < nPhysical)
             {
-                // If this patch is a processor-type
-                // skip this and break out
-                if (patchIndex < sizes[pI].size())
+                forAll(sizes, pI)
                 {
                     totalSize += sizes[pI][patchIndex];
-                }
-                else
-                {
-                    break;
                 }
             }
         }
