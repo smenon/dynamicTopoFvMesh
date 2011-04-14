@@ -2507,40 +2507,11 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             if (nPatch > -1 && getNeighbourProcessor(nPatch) == -1)
             {
-                // Physical patch. Select a face to map from
-                label mapFace = -1;
-
-                forAll(nFaceEdges, edgeI)
-                {
-                    const labelList& neF = edgeFaces_[nFaceEdges[edgeI]];
-
-                    forAll(neF, faceI)
-                    {
-                        label fPatch = whichPatch(neF[faceI]);
-
-                        if (fPatch == -1 || neF[faceI] == fI())
-                        {
-                            continue;
-                        }
-
-                        if (fPatch == nPatch)
-                        {
-                            mapFace = neF[faceI];
-                            break;
-                        }
-                    }
-
-                    if (mapFace > -1)
-                    {
-                        break;
-                    }
-                }
-
-                if (mapFace > -1)
-                {
-                    // Set basic mapping for this face
-                    setFaceMapping(fI(), labelList(1, mapFace));
-                }
+                // Physical patch on subMesh.
+                //  - Set an invalid number so that
+                //    an entry is made in facesFromFaces,
+                //    while faceParents is empty.
+                setFaceMapping(fI(), labelList(1, -1));
             }
             else
             {
