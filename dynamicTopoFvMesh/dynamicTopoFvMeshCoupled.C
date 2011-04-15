@@ -1112,7 +1112,7 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
         //  - Specify non-valid boundary to avoid globalData creation
         mesh.resetPrimitives
         (
-            xferCopy(rcMap.pointBuffer()),
+            xferCopy(rcMap.oldPointBuffer()),
             Xfer<faceList>::null(),
             Xfer<labelList>::null(),
             Xfer<labelList>::null(),
@@ -3989,6 +3989,9 @@ void dynamicTopoFvMesh::handleCoupledPatches
     {
         return;
     }
+
+    // Move coupled subMeshes
+    moveCoupledSubMeshes();
 
     // Exchange length-scale buffers across processors.
     exchangeLengthBuffers();
