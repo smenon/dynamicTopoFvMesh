@@ -8482,6 +8482,16 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                     slaveCentres[pI]
                 );
 
+                writeVTK
+                (
+                    "procPatchFaces_"
+                  + Foam::name(Pstream::myProcNo())
+                  + '_'
+                  + Foam::name(neiProcNo),
+                    identity(mSize) + patchStarts_[pI],
+                    2, false, true
+                );
+
                 if (!matchedAll)
                 {
                     Pout<< " Patch: " << pI
@@ -8584,7 +8594,7 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
               + '_'
               + Foam::name(neiProcNo),
                 identity(patchSizes_[pI]) + patchStarts_[pI],
-                2, false, true
+                2
             );
         }
 

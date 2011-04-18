@@ -347,6 +347,17 @@ void topoPatchMapper::calcAddressing() const
         {
             if (addr[faceI].empty())
             {
+                // Relax addressing requirement for
+                // processor patch faces. These require
+                // cell-to-face interpolation anyway.
+                if (isA<processorPolyPatch>(patch_.patch()))
+                {
+                    // Artificially map from face[0] of this patch.
+                    addr[faceI] = labelList(1, 0);
+
+                    continue;
+                }
+
                 FatalErrorIn
                 (
                     "void topoPatchMapper::calcAddressing() const"
