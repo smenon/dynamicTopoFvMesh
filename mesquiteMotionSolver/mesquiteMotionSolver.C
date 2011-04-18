@@ -1470,10 +1470,10 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
     );
 
     // Prepare a new Map for all processors
-    sendSurfFields_.setSize(procIndices_.size());
-    recvSurfFields_.setSize(procIndices_.size());
-    sendSurfPointMap_.setSize(procIndices_.size());
-    recvSurfPointMap_.setSize(procIndices_.size());
+    sendSurfFields_.setSize(procIndices_.size(), vectorField(0));
+    recvSurfFields_.setSize(procIndices_.size(), vectorField(0));
+    sendSurfPointMap_.setSize(procIndices_.size(), Map<label>());
+    recvSurfPointMap_.setSize(procIndices_.size(), Map<label>());
 
     // Build a reverse processor map for convenience
     labelList procMap(Pstream::nProcs(), -1);
@@ -1483,90 +1483,69 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         procMap[procIndices_[pI]] = pI;
     }
 
-    const labelListList& eFaces = mesh().edgeFaces();
-
-    // Configure a magnitude for distance matching
-    scalar matchMag = GREAT;
-
     forAll(pIDs_, patchI)
     {
-        const edgeList& edges = boundary[pIDs_[patchI]].edges();
         const pointField& points = boundary[pIDs_[patchI]].localPoints();
-        const labelList& meshEdges = boundary[pIDs_[patchI]].meshEdges();
 
-        // Loop through boundary edges, and determine
-        // if this is adjacent to a processor patch.
-        for
-        (
-            label i = boundary[pIDs_[patchI]].nInternalEdges();
-            i < edges.size();
-            i++
-        )
+        forAll(boundary, patchJ)
         {
-            const labelList& eF = eFaces[meshEdges[i]];
+            // Determine processor id
+            label pI = -1;
 
-            forAll(eF, fI)
+            if (isA<processorPolyPatch>(boundary[patchJ]))
             {
-                label curPatchID = boundary.whichPatch(eF[fI]);
+                const processorPolyPatch& pp =
+                (
+                    refCast<const processorPolyPatch>(boundary[patchJ])
+                );
 
-                // Disregard internal faces
-                if (curPatchID == -1)
+                // Fetch index from map
+                pI = procMap[pp.neighbProcNo()];
+            }
+            else
+            {
+                // Disregard non-processor patches
+                continue;
+            }
+
+            // Fetch references
+            Map<label>& aspMap = sendSurfPointMap_[pI];
+            Map<label>& anbMap = recvSurfPointMap_[pI];
+            DynamicList<point>& asPoints = auxSurfPoints[pI];
+
+            // Fetch mesh points for this patch
+            const labelList& mp = boundary[patchJ].meshPoints();
+
+            forAll(mp, pointI)
+            {
+                // Find local index in patch
+                label local = boundary[pIDs_[patchI]].whichPoint(mp[pointI]);
+
+                if (local == -1)
                 {
                     continue;
                 }
 
-                // Determine processor id
-                label pI = -1;
+                // Locate index in field
+                label fieldIndex = local + offsets_[patchI];
 
-                if (isA<processorPolyPatch>(boundary[curPatchID]))
-                {
-                    const processorPolyPatch& pp =
-                    (
-                        refCast<const processorPolyPatch>(boundary[curPatchID])
-                    );
+                // Fix boundary condition for this point.
+                bdy_[fieldIndex] = vector::one;
 
-                    // Fetch index from map
-                    pI = procMap[pp.neighbProcNo()];
-                }
-                else
+                // Modify point marker
+                if (procIndices_[pI] < Pstream::myProcNo())
                 {
-                    // Disregard non-processor patches
-                    continue;
+                    pointMarker_[fieldIndex] = 0.0;
                 }
 
-                // Fetch references
-                Map<label>& aspMap = sendSurfPointMap_[pI];
-                Map<label>& anbMap = recvSurfPointMap_[pI];
-                DynamicList<point>& asPoints = auxSurfPoints[pI];
-
-                const edge& localEdge = edges[i];
-
-                // Update match magnitude
-                matchMag = Foam::min(matchMag, magSqr(localEdge.vec(points)));
-
-                forAll(localEdge, pointI)
+                // Add an entry if it wasn't done before
+                if (!aspMap.found(fieldIndex))
                 {
-                    // Locate index in field
-                    label fieldIndex = localEdge[pointI] + offsets_[patchI];
+                    aspMap.insert(fieldIndex, asPoints.size());
+                    anbMap.insert(fieldIndex, asPoints.size());
 
-                    // Fix boundary condition for this point.
-                    bdy_[fieldIndex] = vector::one;
-
-                    // Modify point marker
-                    if (procIndices_[pI] < Pstream::myProcNo())
-                    {
-                        pointMarker_[fieldIndex] = 0.0;
-                    }
-
-                    // Add a mapping entry.
-                    if (!aspMap.found(fieldIndex))
-                    {
-                        aspMap.insert(fieldIndex, asPoints.size());
-                        anbMap.insert(fieldIndex, asPoints.size());
-
-                        // Insert corresponding point
-                        asPoints.append(points[localEdge[pointI]]);
-                    }
+                    // Insert corresponding point
+                    asPoints.append(points[local]);
                 }
             }
         }
@@ -1575,6 +1554,11 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         // and check if additional points need to be added
         forAll(globalProcPoints_, pI)
         {
+            // Fetch references
+            Map<label>& aspMap = sendSurfPointMap_[pI];
+            Map<label>& anbMap = recvSurfPointMap_[pI];
+            DynamicList<point>& asPoints = auxSurfPoints[pI];
+
             const List<labelPair>& pLabels = globalProcPoints_[pI];
 
             forAll(pLabels, pointI)
@@ -1604,11 +1588,6 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                 {
                     pointMarker_[fieldIndex] = 0.0;
                 }
-
-                // Fetch references
-                Map<label>& aspMap = sendSurfPointMap_[pI];
-                Map<label>& anbMap = recvSurfPointMap_[pI];
-                DynamicList<point>& asPoints = auxSurfPoints[pI];
 
                 // Add an entry if it wasn't done before
                 if (!aspMap.found(fieldIndex))
@@ -1645,12 +1624,13 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         {
             Pout<< " neiProcNo: " << procIndices_[pI]
                 << " mySize: " << sendSurfPointMap_[pI].size()
-                << " neiSize: " << nProcSize[procIndices_[pI]]
+                << " neiSize: " << nProcSize[pI]
                 << endl;
         }
     }
 
     // Prepare boundary markers for correction
+    const labelListList& eFaces = mesh().edgeFaces();
     vectorField bdyMarker(pointMarker_.size(), vector::zero);
 
     // Prepare edgeMarkers
@@ -1740,6 +1720,15 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         }
     }
 
+    // Configure a magnitude for distance matching
+    const boundBox& box = mesh().bounds();
+
+    // Fetch relative tolerance
+    scalar relTol = debug::tolerances("processorMatchTol", 1e-4);
+
+    // Compute tolerance
+    scalar tol = relTol * box.mag();
+
     // Wait for all transfers to complete.
     OPstream::waitRequests();
     IPstream::waitRequests();
@@ -1757,11 +1746,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         (
             bufPoints,
             recvField,
-            List<scalar>
-            (
-                recvField.size(),
-                1e-4 * Foam::sqrt(matchMag)
-            ),
+            List<scalar>(recvField.size(), tol),
             false,
             pMap
         );
