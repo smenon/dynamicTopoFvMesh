@@ -249,6 +249,16 @@ void topoPatchMapper::calcAddressing() const
             }
             else
             {
+                // Relax addressing requirement for
+                // processor patch faces. These require
+                // cell-to-face interpolation anyway.
+                if (isA<processorPolyPatch>(patch_.patch()))
+                {
+                    // Artificially map from face[0] of this patch.
+                    addr[faceI] = 0;
+                    continue;
+                }
+
                 // Write out for post-processing
                 meshOps::writeVTK
                 (

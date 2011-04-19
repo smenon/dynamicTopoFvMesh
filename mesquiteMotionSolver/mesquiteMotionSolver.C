@@ -1611,6 +1611,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
 
     // Check to ensure that field sizes match
     labelList nProcSize(procIndices_.size(), -1);
+    boolList requiresSync(procIndices_.size(), false);
 
     forAll(sendSurfPointMap_, pI)
     {
@@ -1620,11 +1621,18 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         // Receive size from neighbour
         parRead(procIndices_[pI], nProcSize[pI]);
 
+        // Require a sync for size mismatch
+        if (nProcSize[pI] != sendSurfPointMap_[pI].size())
+        {
+            requiresSync[pI] = true;
+        }
+
         if (debug)
         {
             Pout<< " neiProcNo: " << procIndices_[pI]
                 << " mySize: " << sendSurfPointMap_[pI].size()
                 << " neiSize: " << nProcSize[pI]
+                << " requireSync: " << Switch::asText(requiresSync[pI])
                 << endl;
         }
     }
@@ -1759,6 +1767,14 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
             // Deal with mismatches later
             if (pMap[pIter()] < 0)
             {
+                if (debug)
+                {
+                    Pout<< " Could not match point: " << pIter()
+                        << " :: " << bufPoints[pIter()]
+                        << " for proc: " << procIndices_[pI]
+                        << endl;
+                }
+
                 continue;
             }
 
