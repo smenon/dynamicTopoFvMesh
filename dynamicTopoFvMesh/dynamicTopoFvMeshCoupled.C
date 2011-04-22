@@ -316,6 +316,37 @@ void dynamicTopoFvMesh::executeLoadBalancing
         Info<< " void dynamicTopoFvMesh::executeLoadBalancing() :"
             << " Executing load-balancing operations on the mesh."
             << endl;
+
+        // Write out patch boundaries before re-distribution
+        for (label pI = 0; pI < nPatches_; pI++)
+        {
+            label neiProcNo = getNeighbourProcessor(pI);
+
+            if (neiProcNo == -1)
+            {
+                continue;
+            }
+
+            writeVTK
+            (
+                "procPatchFacesNew_"
+              + Foam::name(Pstream::myProcNo())
+              + '_'
+              + Foam::name(neiProcNo),
+                identity(patchSizes_[pI]) + patchStarts_[pI],
+                2
+            );
+
+            writeVTK
+            (
+                "procPatchFacesOld_"
+              + Foam::name(Pstream::myProcNo())
+              + '_'
+              + Foam::name(neiProcNo),
+                identity(patchSizes_[pI]) + patchStarts_[pI],
+                2, false, true
+            );
+        }
     }
 
     // Read decomposition options and initialize
@@ -4128,6 +4159,17 @@ void dynamicTopoFvMesh::handleCoupledPatches
         }
     }
 
+    // Optionally switch off topo-changes
+    // on processor patches at run-time
+    bool procTopoChanges = true;
+
+    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
+    if (meshSubDict.found("procTopoChanges") || mandatory_)
+    {
+        procTopoChanges = readBool(meshSubDict.lookup("procTopoChanges"));
+    }
+
     // Set coupled modifications.
     setCoupledModification();
 
@@ -4135,13 +4177,19 @@ void dynamicTopoFvMesh::handleCoupledPatches
     if (edgeRefinement_)
     {
         // Initialize the coupled stack
-        initCoupledStack(entities, false);
+        if (procTopoChanges)
+        {
+            initCoupledStack(entities, false);
+        }
 
         edgeRefinementEngine(&(handlerPtr_[0]));
     }
 
     // Re-Initialize the stack
-    initCoupledStack(entities, false);
+    if (procTopoChanges)
+    {
+        initCoupledStack(entities, false);
+    }
 
     if (twoDMesh_)
     {

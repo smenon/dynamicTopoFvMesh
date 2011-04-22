@@ -585,14 +585,25 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
 ) const
 {
     label m = hullVertices.size();
-    scalar tetVol = 0.0;
+    scalar oldTetVol = 0.0, newTetVol = 0.0;
 
     const edge& edgeToCheck = edges_[eIndex];
 
     for (label i = 0; i < (m-2); i++)
     {
         // Compute volume for the upper-half
-        tetVol =
+        newTetVol =
+        (
+            tetPointRef
+            (
+                points_[hullVertices[triangulations[0][i]]],
+                points_[hullVertices[triangulations[1][i]]],
+                points_[hullVertices[triangulations[2][i]]],
+                points_[edgeToCheck[0]]
+            ).mag()
+        );
+
+        oldTetVol =
         (
             tetPointRef
             (
@@ -603,34 +614,37 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
             ).mag()
         );
 
-        if (tetVol < 0.0)
+        if (oldTetVol < 0.0 || (mag(oldTetVol) < mag(0.1 * newTetVol)))
         {
             if (debug > 2)
             {
-                InfoIn
-                (
-                    "bool dynamicTopoFvMesh::checkTriangulationVolumes\n"
-                    "(\n"
-                    "    const label eIndex,\n"
-                    "    const labelList& hullVertices,\n"
-                    "    const labelListList& triangulations\n"
-                    ") const\n"
-                )
-                    << " Swap sequence leads to negative old-volumes." << nl
+                Pout<< " Swap sequence leads to bad old-volumes." << nl
                     << " Edge: " << edgeToCheck << nl
                     << " using Points: " << nl
                     << oldPoints_[hullVertices[triangulations[0][i]]] << nl
                     << oldPoints_[hullVertices[triangulations[1][i]]] << nl
                     << oldPoints_[hullVertices[triangulations[2][i]]] << nl
                     << oldPoints_[edgeToCheck[0]] << nl
-                    << " Volume: " << tetVol
+                    << " Old Volume: " << oldTetVol << nl
+                    << " New Volume: " << newTetVol << nl
                     << endl;
             }
 
             return true;
         }
 
-        tetVol =
+        newTetVol =
+        (
+            tetPointRef
+            (
+                points_[hullVertices[triangulations[2][i]]],
+                points_[hullVertices[triangulations[1][i]]],
+                points_[hullVertices[triangulations[0][i]]],
+                points_[edgeToCheck[1]]
+            ).mag()
+        );
+
+        oldTetVol =
         (
             tetPointRef
             (
@@ -641,27 +655,19 @@ bool dynamicTopoFvMesh::checkTriangulationVolumes
             ).mag()
         );
 
-        if (tetVol < 0.0)
+        if (oldTetVol < 0.0 || (mag(oldTetVol) < mag(0.1 * newTetVol)))
         {
             if (debug > 2)
             {
-                InfoIn
-                (
-                    "bool dynamicTopoFvMesh::checkTriangulationVolumes\n"
-                    "(\n"
-                    "    const label eIndex,\n"
-                    "    const labelList& hullVertices,\n"
-                    "    const labelListList& triangulations\n"
-                    ") const\n"
-                )
-                    << " Swap sequence leads to negative old-volumes." << nl
+                Pout<< " Swap sequence leads to bad old-volumes." << nl
                     << " Edge: " << edgeToCheck << nl
                     << " using Points: " << nl
                     << oldPoints_[hullVertices[triangulations[2][i]]] << nl
                     << oldPoints_[hullVertices[triangulations[1][i]]] << nl
                     << oldPoints_[hullVertices[triangulations[0][i]]] << nl
                     << oldPoints_[edgeToCheck[1]] << nl
-                    << " Volume: " << tetVol
+                    << " Old Volume: " << oldTetVol << nl
+                    << " New Volume: " << newTetVol << nl
                     << endl;
             }
 
@@ -2144,7 +2150,7 @@ bool dynamicTopoFvMesh::checkCollapse
 ) const
 {
     label faceIndex = -1;
-    scalar cQuality = 0.0, oldVolume = 0.0;
+    scalar cQuality = 0.0, oldVolume = 0.0, newVolume = 0.0;
     const cell& cellToCheck = cells_[cellIndex];
 
     // Look for a face that doesn't contain 'pointIndex'
@@ -2175,6 +2181,17 @@ bool dynamicTopoFvMesh::checkCollapse
             )
         );
 
+        newVolume =
+        (
+            tetPointRef
+            (
+                points_[faceToCheck[2]],
+                points_[faceToCheck[1]],
+                points_[faceToCheck[0]],
+                newPoint
+            ).mag()
+        );
+
         oldVolume =
         (
             tetPointRef
@@ -2197,6 +2214,17 @@ bool dynamicTopoFvMesh::checkCollapse
                 points_[faceToCheck[2]],
                 newPoint
             )
+        );
+
+        newVolume =
+        (
+            tetPointRef
+            (
+                points_[faceToCheck[0]],
+                points_[faceToCheck[1]],
+                points_[faceToCheck[2]],
+                newPoint
+            ).mag()
         );
 
         oldVolume =
@@ -2253,7 +2281,7 @@ bool dynamicTopoFvMesh::checkCollapse
     }
 
     // Negative old-volume is also a no-no
-    if (oldVolume < 0.0)
+    if (oldVolume < 0.0 || (mag(oldVolume) < mag(0.1 * newVolume)))
     {
         if (forceOp)
         {
@@ -2266,6 +2294,7 @@ bool dynamicTopoFvMesh::checkCollapse
                 << ", when " << pointIndex
                 << " is moved to location: " << nl
                 << oldPoint << nl
+                << "newVolume: " << newVolume << nl
                 << "Operation cannot be forced."
                 << endl;
         }
