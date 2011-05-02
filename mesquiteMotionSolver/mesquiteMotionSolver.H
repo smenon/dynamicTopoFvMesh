@@ -118,13 +118,16 @@ class mesquiteMotionSolver
         scalar relax_;
 
         //- Vertex coordinate array passed into Mesquite
-        mutable double* vtxCoords_;
+        mutable List<double> vtxCoords_;
 
         //- Connectivity array passed into mesquite
-        mutable unsigned long* cellToNode_;
+        mutable List<unsigned long> cellToNode_;
 
         //- Flag array for vertices (fixed/free)
-        mutable int* fixFlags_;
+        mutable List<int> fixFlags_;
+
+        //- Array with element types
+        mutable List<Mesquite::EntityTopology> mixedTypes_;
 
         //- Reference points
         mutable pointIOField refPoints_;
@@ -132,8 +135,8 @@ class mesquiteMotionSolver
         //- Original points prior to surface-smoothing
         mutable pointField origPoints_;
 
-        //- The quality metric
-        word qMetric_;
+        //- Quality metric list
+        wordList qMetrics_;
 
         //- Pointers to base element metric class
         HashTable<autoPtr<Mesquite::QualityMetric> > qMetricTable_;
@@ -288,9 +291,6 @@ class mesquiteMotionSolver
             const labelList& jList,
             scalar& beta
         );
-
-        // Clear out addressing
-        void clearOut();
 
         // Update on topology change
         void update(const mapPolyMesh&);
