@@ -911,6 +911,12 @@ class dynamicTopoFvMesh
         // Handle mesh slicing events.
         void handleMeshSlicing();
 
+        // Handle layer addition / removal events
+        void handleLayerAdditionRemoval();
+
+        // Add cell layer above specified patch
+        const changeMap addCellLayer(const label patchID);
+
         // Test an edge / face for proximity with other non-neighbouring faces.
         // Return the scalar distance to the nearest face.
         scalar testProximity

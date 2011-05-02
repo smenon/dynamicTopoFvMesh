@@ -1454,6 +1454,81 @@ void dynamicTopoFvMesh::handleMeshSlicing()
 }
 
 
+// Handle layer addition / removal events
+void dynamicTopoFvMesh::handleLayerAdditionRemoval()
+{
+    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
+    if (meshSubDict.found("layering") || mandatory_)
+    {
+        // Bail out if no entries are present
+        if (meshSubDict.subDict("layering").empty())
+        {
+            return;
+        }
+    }
+
+    // Fetch layering patches
+    const polyBoundaryMesh& boundary = boundaryMesh();
+    const dictionary& layeringDict = meshSubDict.subDict("layering");
+
+    wordList layeringPatches = layeringDict.toc();
+
+    forAll(layeringPatches, wordI)
+    {
+        word pName = layeringPatches[wordI];
+        label patchID = boundary.findPatchID(pName);
+
+        // If this patch has no faces, move on
+        if (boundary[patchID].empty())
+        {
+            continue;
+        }
+
+        // Use first face to determine layer thickness
+        scalar magSf = mag(boundary[patchID].faceAreas()[0]);
+        scalar Vc = cellVolumes()[boundary[patchID].faceCells()[0]];
+
+        // Define thickness
+        scalar thickness = (Vc / (magSf + VSMALL));
+
+        // Fetch min / max thickness
+        scalar minThickness =
+        (
+            readScalar(layeringDict.subDict(pName).lookup("minThickness"))
+        );
+
+        scalar maxThickness =
+        (
+            readScalar(layeringDict.subDict(pName).lookup("maxThickness"))
+        );
+
+        if (debug)
+        {
+            Pout<< " Patch: " << pName << nl
+                << " Face area: " << magSf << nl
+                << " Cell volume: " << Vc << nl
+                << " Layer thickness: " << thickness << nl
+                << " Min thickness: " << minThickness << nl
+                << " Max thickness: " << maxThickness << nl
+                << endl;
+        }
+
+        if (thickness > maxThickness)
+        {
+            // Add cell layer above patch
+            addCellLayer(patchID);
+        }
+        else
+        if (thickness < minThickness)
+        {
+            // Remove cell layer above patch
+
+        }
+    }
+}
+
+
 // Test an edge / face for proximity with other faces on proximity patches
 // and return the scalar distance to an oppositely-oriented face.
 scalar dynamicTopoFvMesh::testProximity
@@ -3742,6 +3817,9 @@ void dynamicTopoFvMesh::threadedTopoModifier()
 
     // Handle coupled patches.
     handleCoupledPatches(entities);
+
+    // Handle layer addition / removal
+    handleLayerAdditionRemoval();
 
     // Set the thread scheduling sequence
     labelList topoSequence(threader_->getNumThreads());

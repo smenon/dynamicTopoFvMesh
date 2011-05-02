@@ -6603,6 +6603,269 @@ void dynamicTopoFvMesh::sliceMesh
 }
 
 
+// Add cell layer above specified patch
+const changeMap dynamicTopoFvMesh::addCellLayer
+(
+    const label patchID
+)
+{
+    changeMap map;
+
+    // Maps for added entities
+    Map<label> addedPoints;
+    Map<label> addedHEdges, addedVEdges;
+    Map<label> addedHFaces, addedVFaces;
+    Map<label> addedCells;
+
+    // Allocate a list of patch faces
+    DynamicList<label> patchFaces(patchSizes_[patchID]);
+
+    // Loop through all patch faces and create a cell for each
+    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+    {
+        label pIndex = whichPatch(faceI);
+
+        if (pIndex != patchID)
+        {
+            continue;
+        }
+
+        // Add face to the list
+        patchFaces.append(faceI);
+
+        // Add a new cell
+        label cIndex = owner_[faceI];
+        scalar newLengthScale = -1.0;
+        const cell& ownCell = cells_[cIndex];
+
+        if (edgeRefinement_)
+        {
+            newLengthScale = lengthScale_[cIndex];
+        }
+
+        label newCellIndex =
+        (
+            insertCell
+            (
+                cell(ownCell.size()),
+                newLengthScale
+            )
+        );
+
+        // Update maps
+        map.addCell(newCellIndex, labelList(1, cIndex));
+        addedCells.insert(cIndex, newCellIndex);
+    }
+
+    face newVFace(4);
+    labelList mP(2, -1);
+
+    forAll(patchFaces, indexI)
+    {
+        label faceI = patchFaces[indexI];
+
+        label cIndex = owner_[faceI];
+        const face& bFace = faces_[faceI];
+        const cell& ownCell = cells_[cIndex];
+
+        // Configure a new face for insertion
+        face newFace(bFace);
+        labelList newFaceEdges(bFace.size(), -1);
+
+        // Get the opposing face from the cell
+        oppositeFace oFace = ownCell.opposingFace(faceI, faces_);
+
+        if (!oFace.found())
+        {
+            // Something's wrong here.
+            FatalErrorIn("dynamicTopoFvMesh::addCellLayer()")
+                << " Face: " << faceI << " :: " << bFace << nl
+                << " has no opposing face in cell: "
+                << cIndex << " :: " << ownCell << nl
+                << abort(FatalError);
+        }
+
+        // Create points
+        forAll(bFace, pointI)
+        {
+            label pIndex = bFace[pointI];
+
+            // Skip if we've added this already
+            if (addedPoints.found(pIndex))
+            {
+                continue;
+            }
+
+            // Set master points
+            mP[0] = pIndex;
+            mP[1] = oFace[pointI];
+
+            label newPointIndex =
+            (
+                insertPoint
+                (
+                    0.5 * (points_[mP[0]] + points_[mP[1]]),
+                    oldPoints_[mP[1]],
+                    mP
+                )
+            );
+
+            // Update maps
+            map.addPoint(newPointIndex, mP);
+            addedPoints.insert(pIndex, newPointIndex);
+        }
+
+        // Fetch faceEdges from opposite faces
+        const labelList& bfEdges = faceEdges_[faceI];
+        const labelList& ofEdges = faceEdges_[oFace.oppositeIndex()];
+
+        // Create edges for each edge of the new horizontal face
+        forAll(bfEdges, edgeI)
+        {
+            label beIndex = bfEdges[edgeI];
+
+            // Skip if we've added this already
+            if (addedHEdges.found(beIndex))
+            {
+                continue;
+            }
+
+            // Configure the new edge
+            edge newEdge = edges_[beIndex];
+            label edgePatch = -1, oeIndex = -1;
+
+            // Build an edge for comparison
+            edge cEdge
+            (
+                oFace[bFace.which(newEdge[0])],
+                oFace[bFace.which(newEdge[1])]
+            );
+
+            forAll(ofEdges, edgeJ)
+            {
+                const edge& ofEdge = edges_[ofEdges[edgeJ]];
+
+                if (cEdge == ofEdge)
+                {
+                    oeIndex = ofEdges[edgeJ];
+                    break;
+                }
+            }
+
+            if (oeIndex < 0)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::addCellLayer()")
+                    << " Could not find comparison edge: " << cEdge
+                    << " for edge: " << newEdge
+                    << abort(FatalError);
+            }
+
+            // Fetch patch information
+            edgePatch = whichEdgePatch(oeIndex);
+
+            // Renumber indices
+            newEdge[0] = addedPoints[newEdge[0]];
+            newEdge[1] = addedPoints[newEdge[1]];
+
+            // Insert a new edge with empty edgeFaces
+            label newEdgeIndex =
+            (
+                insertEdge
+                (
+                    edgePatch,
+                    newEdge,
+                    labelList(0)
+                )
+            );
+
+            // Update maps
+            map.addEdge(newEdgeIndex);
+            addedHEdges.insert(beIndex, newEdgeIndex);
+
+            // Update face edges for the new horizontal face
+            newFaceEdges[edgeI] = newEdgeIndex;
+
+            // Add a new vertical face for this edge
+            label vFaceIndex = -1;
+
+            // Find a vertical face that contains both edges
+            const labelList& beFaces = edgeFaces_[beIndex];
+
+            forAll(beFaces, faceJ)
+            {
+                const labelList& testEdges = faceEdges_[beFaces[faceJ]];
+
+                if
+                (
+                    (findIndex(testEdges, beIndex) > -1) &&
+                    (findIndex(testEdges, oeIndex) > -1)
+                )
+                {
+                    vFaceIndex = beFaces[faceJ];
+                    break;
+                }
+            }
+
+            if (vFaceIndex < 0)
+            {
+                FatalErrorIn("dynamicTopoFvMesh::addCellLayer()")
+                    << " Could not find an appropriate vertical face"
+                    << " containing edges: " << oeIndex
+                    << " and " << beIndex
+                    << abort(FatalError);
+            }
+
+            newVFace[0] = -1;
+            newVFace[1] = -1;
+            newVFace[2] = -1;
+            newVFace[3] = -1;
+
+            // Replace edge on vertical face
+            meshOps::replaceLabel
+            (
+                beIndex,
+                newEdgeIndex,
+                faceEdges_[vFaceIndex]
+            );
+        }
+
+        // Add a new interior face, with identical orientation
+        forAll(newFace, pointI)
+        {
+            newFace[pointI] = addedPoints[newFace[pointI]];
+        }
+
+        label newFaceIndex =
+        (
+            insertFace
+            (
+                -1,
+                newFace,
+                cIndex,
+                addedCells[cIndex]
+            )
+        );
+
+        // Add a faceEdges entry
+        faceEdges_.append(newFaceEdges);
+
+        // Update maps
+        map.addFace(newFaceIndex, labelList(1, faceI));
+        addedHFaces.insert(faceI, newFaceIndex);
+
+        // Replace index on cell
+        meshOps::replaceLabel
+        (
+            faceI,
+            newFaceIndex,
+            cells_[cIndex]
+        );
+    }
+
+    return map;
+}
+
+
 // Split a set of internal faces into boundary faces
 //   - Add boundary faces and edges to the patch specified by 'patchIndex'
 //   - Cell color should specify a binary value dictating either side
