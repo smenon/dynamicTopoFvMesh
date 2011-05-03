@@ -74,6 +74,21 @@ bool dynamicTopoFvMesh::meshQuality
             continue;
         }
 
+        // Skip hexahedral cells
+        if (cellToCheck.size() == 6)
+        {
+            cQuality = 1.0;
+            meanQuality += cQuality;
+
+            // Update min / max
+            maxQuality = Foam::max(cQuality, maxQuality);
+            minQuality = Foam::min(cQuality, minQuality);
+
+            nCells++;
+
+            continue;
+        }
+
         if (twoDMesh_)
         {
             // Assume XY plane here
@@ -1450,8 +1465,11 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
         if (edgeFaces.size() != nEdgeFaces[edgeI])
         {
-            Pout<< nl << nl << "Edge: " << edgeI
-                << ": edgeFaces: " << edgeFaces << endl;
+            Pout<< nl << nl << "Edge: " << edgeI << ": " << edges_[edgeI]
+                << ": edgeFaces: " << edgeFaces
+                << nl << UIndirectList<face>(faces_, edgeFaces)
+                << nl << " Expected nFaces: " << nEdgeFaces[edgeI]
+                << endl;
 
             nFailedChecks++;
 
@@ -1466,13 +1484,17 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         // Check if this edge belongs to faceEdges for each face
         forAll(edgeFaces, faceI)
         {
-            if (findIndex(faceEdges_[edgeFaces[faceI]], edgeI) == -1)
+            const labelList& faceEdges = faceEdges_[edgeFaces[faceI]];
+
+            if (findIndex(faceEdges, edgeI) == -1)
             {
                 Pout<< nl << nl << "Edge: " << edgeI << ": " << edges_[edgeI]
-                    << ", edgeFaces: " << edgeFaces << nl
+                    << ", edgeFaces: " << edgeFaces
+                    << nl << UIndirectList<face>(faces_, edgeFaces)
                     << "was not found in faceEdges of face: "
                     << edgeFaces[faceI] << ": " << faces_[edgeFaces[faceI]]
-                    << nl << "faceEdges: " << faceEdges_[edgeFaces[faceI]]
+                    << nl << "faceEdges: " << faceEdges
+                    << nl << UIndirectList<edge>(edges_, faceEdges)
                     << endl;
 
                 nFailedChecks++;
@@ -1725,7 +1747,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
                 nFailedChecks++;
 
                 ConnectivityWarning()
-                    << "Size inconsistency."
+                    << nl << "Size inconsistency."
                     << nl << "Point-Edge connectivity is inconsistent."
                     << endl;
             }
@@ -1783,6 +1805,16 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
     // Preliminary check for size
     forAll(cellToNode, cellI)
     {
+        // Check for hexahedral cells
+        if
+        (
+            (cellToNode[cellI].size() == 8) &&
+            (cells_[cellIndex[cellI]].size() == 6)
+        )
+        {
+            continue;
+        }
+
         if
         (
             (cellToNode[cellI].size() != 6 && twoDMesh_) ||
