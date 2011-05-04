@@ -147,18 +147,12 @@ bool cellSetAlgorithm::computeIntersection
     const cell& newCell = newCells_[newIndex];
     const cell& oldCell = mesh_.cells()[oldIndex];
 
-    if (twoDMesh_)
+    // Check if decomposition is necessary
+    if (oldCell.size() > 4 || newCell.size() > 4)
     {
-        // Decompose new / old prism cells into 14 tets each
-        FixedList<FixedList<point, 4>, 14> clippingTets
-        (
-            FixedList<point, 4>(vector::zero)
-        );
-
-        FixedList<FixedList<point, 4>, 14> subjectTets
-        (
-            FixedList<point, 4>(vector::zero)
-        );
+        // Decompose new / old cells
+        DynamicList<FixedList<point, 4> > clippingTets(15);
+        DynamicList<FixedList<point, 4> > subjectTets(15);
 
         label ntOld = 0, ntNew = 0;
         vector oldCentre = vector::zero, newCentre = vector::zero;
@@ -172,6 +166,9 @@ bool cellSetAlgorithm::computeIntersection
 
             if (oldFace.size() == 3)
             {
+                // Add a new entry
+                subjectTets.append(FixedList<point, 4>(vector::zero));
+
                 subjectTets[ntOld][0] = oldPoints[oldFace[0]];
                 subjectTets[ntOld][1] = oldPoints[oldFace[1]];
                 subjectTets[ntOld][2] = oldPoints[oldFace[2]];
@@ -182,6 +179,9 @@ bool cellSetAlgorithm::computeIntersection
             {
                 forAll(oldFace, pI)
                 {
+                    // Add a new entry
+                    subjectTets.append(FixedList<point, 4>(vector::zero));
+
                     subjectTets[ntOld][0] = oldPoints[oldFace[pI]];
                     subjectTets[ntOld][1] = oldPoints[oldFace.nextLabel(pI)];
                     subjectTets[ntOld][2] = fCentre;
@@ -202,6 +202,9 @@ bool cellSetAlgorithm::computeIntersection
 
             if (newFace.size() == 3)
             {
+                // Add a new entry
+                clippingTets.append(FixedList<point, 4>(vector::zero));
+
                 clippingTets[ntNew][0] = newPoints[newFace[0]];
                 clippingTets[ntNew][1] = newPoints[newFace[1]];
                 clippingTets[ntNew][2] = newPoints[newFace[2]];
@@ -212,6 +215,9 @@ bool cellSetAlgorithm::computeIntersection
             {
                 forAll(newFace, pI)
                 {
+                    // Add a new entry
+                    clippingTets.append(FixedList<point, 4>(vector::zero));
+
                     clippingTets[ntNew][0] = newPoints[newFace[pI]];
                     clippingTets[ntNew][1] = newPoints[newFace.nextLabel(pI)];
                     clippingTets[ntNew][2] = fCentre;
@@ -223,13 +229,17 @@ bool cellSetAlgorithm::computeIntersection
             newCentre += fCentre;
         }
 
-        oldCentre /= 5.0;
-        newCentre /= 5.0;
+        oldCentre /= oldCell.size();
+        newCentre /= newCell.size();
 
         // Fill-in last points for all tets
-        for (label i = 0; i < 14; i++)
+        forAll(subjectTets, i)
         {
             subjectTets[i][3] = oldCentre;
+        }
+
+        forAll(clippingTets, i)
+        {
             clippingTets[i][3] = newCentre;
         }
 
@@ -240,14 +250,14 @@ bool cellSetAlgorithm::computeIntersection
         vector totalCentre = vector::zero;
 
         // Loop through all clipping tets
-        for (label i = 0; i < 14; i++)
+        forAll(clippingTets, i)
         {
             // Initialize the intersector
             tetIntersection intersector(clippingTets[i]);
 
             // Test for intersection and evaluate
             // against all subject tets
-            for (label j = 0; j < 14; j++)
+            forAll(subjectTets, j)
             {
                 intersects = intersector.evaluate(subjectTets[j]);
 

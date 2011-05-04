@@ -153,44 +153,72 @@ bool faceSetAlgorithm::computeIntersection
         return false;
     }
 
-    if (twoDMesh_ && newFace.size() == 4 && oldFace.size() == 4)
+    // Check if decomposition is necessary
+    if (oldFace.size() > 3 || newFace.size() > 3)
     {
-        // Decompose new / old quad faces into 4 tris each
-        FixedList<FixedList<point, 3>, 4> clippingTris
-        (
-            FixedList<point, 3>(vector::zero)
-        );
-
-        FixedList<FixedList<point, 3>, 4> subjectTris
-        (
-            FixedList<point, 3>(vector::zero)
-        );
+        // Decompose new / old faces
+        DynamicList<FixedList<point, 3> > clippingTris(15);
+        DynamicList<FixedList<point, 3> > subjectTris(15);
 
         label ntOld = 0, ntNew = 0;
         vector oldCentre = vector::zero, newCentre = vector::zero;
 
-        // Configure tris from oldFace
-        vector ofCentre = oldFace.centre(oldPoints);
-
-        forAll(oldFace, pI)
+        if (oldFace.size() == 3)
         {
-            subjectTris[ntOld][0] = oldPoints[oldFace[pI]];
-            subjectTris[ntOld][1] = oldPoints[oldFace.nextLabel(pI)];
-            subjectTris[ntOld][2] = ofCentre;
+            // Add a new entry
+            subjectTris.append(FixedList<point, 3>(vector::zero));
+
+            subjectTris[ntOld][0] = oldPoints[oldFace[0]];
+            subjectTris[ntOld][1] = oldPoints[oldFace[1]];
+            subjectTris[ntOld][2] = oldPoints[oldFace[2]];
 
             ntOld++;
         }
-
-        // Configure tris from newFace
-        vector nfCentre = newFace.centre(newPoints);
-
-        forAll(newFace, pI)
+        else
         {
-            clippingTris[ntNew][0] = newPoints[newFace[pI]];
-            clippingTris[ntNew][1] = newPoints[newFace.nextLabel(pI)];
-            clippingTris[ntNew][2] = nfCentre;
+            // Configure tris from oldFace
+            vector ofCentre = oldFace.centre(oldPoints);
+
+            forAll(oldFace, pI)
+            {
+                // Add a new entry
+                subjectTris.append(FixedList<point, 3>(vector::zero));
+
+                subjectTris[ntOld][0] = oldPoints[oldFace[pI]];
+                subjectTris[ntOld][1] = oldPoints[oldFace.nextLabel(pI)];
+                subjectTris[ntOld][2] = ofCentre;
+
+                ntOld++;
+            }
+        }
+
+        if (newFace.size() == 3)
+        {
+            // Add a new entry
+            clippingTris.append(FixedList<point, 3>(vector::zero));
+
+            clippingTris[ntNew][0] = newPoints[newFace[0]];
+            clippingTris[ntNew][1] = newPoints[newFace[1]];
+            clippingTris[ntNew][2] = newPoints[newFace[2]];
 
             ntNew++;
+        }
+        else
+        {
+            // Configure tris from newFace
+            vector nfCentre = newFace.centre(newPoints);
+
+            forAll(newFace, pI)
+            {
+                // Add a new entry
+                clippingTris.append(FixedList<point, 3>(vector::zero));
+
+                clippingTris[ntNew][0] = newPoints[newFace[pI]];
+                clippingTris[ntNew][1] = newPoints[newFace.nextLabel(pI)];
+                clippingTris[ntNew][2] = nfCentre;
+
+                ntNew++;
+            }
         }
 
         // Accumulate area / centroid over all intersections
@@ -200,14 +228,14 @@ bool faceSetAlgorithm::computeIntersection
         vector totalCentre = vector::zero;
 
         // Loop through all clipping tris
-        for (label i = 0; i < 4; i++)
+        forAll(clippingTris, i)
         {
             // Initialize the intersector
             triIntersection intersector(clippingTris[i]);
 
             // Test for intersection and evaluate
             // against all subject tris
-            for (label j = 0; j < 4; j++)
+            forAll(subjectTris, j)
             {
                 intersects = intersector.evaluate(subjectTris[j]);
 
