@@ -60,6 +60,22 @@ bool dynamicTopoFvMesh::testDelaunay
         return failed;
     }
 
+    // If face is not shared by prism cells, skip it.
+    label own = owner_[fIndex], nei = neighbour_[fIndex];
+
+    if (cells_[own].size() != 5)
+    {
+        return failed;
+    }
+
+    if (nei > -1)
+    {
+        if (cells_[nei].size() != 5)
+        {
+            return failed;
+        }
+    }
+
     // Boundary faces are discarded.
     if (whichPatch(fIndex) > -1)
     {
@@ -1136,10 +1152,22 @@ bool dynamicTopoFvMesh::fillTables
     const label checkIndex
 ) const
 {
+    // Obtain a reference to this edge
+    const labelList& edgeFaces = edgeFaces_[eIndex];
+
     // If this entity was deleted, skip it.
-    if (edgeFaces_[eIndex].empty())
+    if (edgeFaces.empty())
     {
         return false;
+    }
+
+    // Ensure that edge is surrounded by triangles
+    forAll(edgeFaces, faceI)
+    {
+        if (faces_[edgeFaces[faceI]].size() != 3)
+        {
+            return false;
+        }
     }
 
     const edge& edgeToCheck = edges_[eIndex];
@@ -2076,6 +2104,15 @@ scalar dynamicTopoFvMesh::computeMinQuality
         return minQuality;
     }
 
+    // Ensure that edge is surrounded by triangles
+    forAll(edgeFaces, faceI)
+    {
+        if (faces_[edgeFaces[faceI]].size() != 3)
+        {
+            return minQuality;
+        }
+    }
+
     // Build vertexHull for this edge
     buildVertexHull(eIndex, hullVertices);
 
@@ -2106,7 +2143,7 @@ scalar dynamicTopoFvMesh::computeMinQuality
                 FatalErrorIn
                 (
                     "scalar dynamicTopoFvMesh::computeMinQuality"
-                    "(const label eIndex) const"
+                    "(const label eIndex, labelList& hullVertices) const"
                 )
                     << nl << "Coupled maps were improperly specified." << nl
                     << " Slave index not found for: " << nl
@@ -2205,7 +2242,7 @@ scalar dynamicTopoFvMesh::computeMinQuality
         FatalErrorIn
         (
             "scalar dynamicTopoFvMesh::computeMinQuality"
-            "(const label eIndex) const"
+            "(const label eIndex, labelList& hullVertices) const"
         )
             << "Encountered negative cell-quality!" << nl
             << "Edge: " << eIndex << ": " << edgeToCheck << nl

@@ -1523,7 +1523,7 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
         if (thickness < minThickness)
         {
             // Remove cell layer above patch
-
+            removeCellLayer(patchID);
         }
     }
 }

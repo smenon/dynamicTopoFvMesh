@@ -6617,7 +6617,7 @@ const changeMap dynamicTopoFvMesh::addCellLayer
     Map<label> addedHFaces, addedVFaces, currentVFaces;
     Map<labelPair> addedCells;
 
-    // Allocate a list of vertical edges / patch faces
+    // Allocate a list of patch faces
     DynamicList<label> patchFaces(patchSizes_[patchID]);
 
     // Loop through all patch faces and create a cell for each
@@ -6680,17 +6680,15 @@ const changeMap dynamicTopoFvMesh::addCellLayer
         if (!oFace.found())
         {
             // Something's wrong here.
-            FatalErrorIn("void dynamicTopoFvMesh::addCellLayer()")
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::addCellLayer"
+                "(const label patchID)"
+            )
                 << " Face: " << faceI << " :: " << bFace << nl
                 << " has no opposing face in cell: "
                 << cIndex << " :: " << ownCell << nl
                 << abort(FatalError);
-        }
-
-        if (debug > 3)
-        {
-            Pout<< " Face: " << faceI << " :: " << bFace << nl
-                << " Opposite: " << oFace << endl;
         }
 
         // Create points
@@ -6766,7 +6764,11 @@ const changeMap dynamicTopoFvMesh::addCellLayer
 
             if (oeIndex < 0)
             {
-                FatalErrorIn("void dynamicTopoFvMesh::addCellLayer()")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::addCellLayer"
+                    "(const label patchID)"
+                )
                     << " Could not find comparison edge: " << cEdge
                     << " for edge: " << bEdge
                     << abort(FatalError);
@@ -6823,21 +6825,15 @@ const changeMap dynamicTopoFvMesh::addCellLayer
 
             if (vFaceIndex < 0)
             {
-                FatalErrorIn("dynamicTopoFvMesh::addCellLayer()")
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::addCellLayer"
+                    "(const label patchID)"
+                )
                     << " Could not find an appropriate vertical face"
                     << " containing edges: " << oeIndex
                     << " and " << beIndex
                     << abort(FatalError);
-            }
-
-            if (debug > 3)
-            {
-                Pout<< " Vertical face: " << vFaceIndex
-                    << " :: " << faces_[vFaceIndex]
-                    << " fE: " << faceEdges_[vFaceIndex] << nl
-                    << " beIndex: " << beIndex << nl
-                    << " oeIndex: " << oeIndex << nl
-                    << endl;
             }
 
             // Find two vertical edges on this face
@@ -7019,6 +7015,9 @@ const changeMap dynamicTopoFvMesh::addCellLayer
 
         // Update face count on the new cell
         label newCellIndex = addedCells[cIndex].first();
+
+        // Modify owner for the existing boundary face
+        owner_[faceI] = newCellIndex;
 
         cells_[newCellIndex][addedCells[cIndex].second()++] = faceI;
         cells_[newCellIndex][addedCells[cIndex].second()++] = newHFaceIndex;

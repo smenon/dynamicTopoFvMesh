@@ -6871,6 +6871,436 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 }
 
 
+// Remove cell layer above specified patch
+const changeMap dynamicTopoFvMesh::removeCellLayer
+(
+    const label patchID
+)
+{
+    changeMap map;
+
+    labelHashSet edgesToRemove, facesToRemove;
+    Map<labelPair> pointsToRemove, edgesToKeep;
+
+    DynamicList<label> patchFaces(patchSizes_[patchID]);
+    DynamicList<labelPair> cellsToRemove(patchSizes_[patchID]);
+    DynamicList<labelPair> hFacesToRemove(patchSizes_[patchID]);
+
+    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+    {
+        label pIndex = whichPatch(faceI);
+
+        if (pIndex != patchID)
+        {
+            continue;
+        }
+
+        // Fetch owner cell
+        label cIndex = owner_[faceI];
+
+        // Add face to the list
+        patchFaces.append(faceI);
+
+        // Fetch appropriate face / cell
+        const face& bFace = faces_[faceI];
+        const cell& ownCell = cells_[cIndex];
+
+        // Get the opposing face from the cell
+        oppositeFace oFace = ownCell.opposingFace(faceI, faces_);
+
+        if (!oFace.found())
+        {
+            // Something's wrong here.
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::removeCellLayer"
+                "(const label patchID)"
+            )
+                << " Face: " << faceI << " :: " << bFace << nl
+                << " has no opposing face in cell: "
+                << cIndex << " :: " << ownCell << nl
+                << abort(FatalError);
+        }
+
+        // Fetch cell on the other-side of the opposite face
+        label otherCellIndex =
+        (
+            (owner_[oFace.oppositeIndex()] == cIndex) ?
+            neighbour_[oFace.oppositeIndex()] :
+            owner_[oFace.oppositeIndex()]
+        );
+
+        if (otherCellIndex == -1)
+        {
+            // Opposite face is on a boundary, and layer
+            // removal would be invalid if we continued.
+            map.type() = -2;
+
+            return map;
+        }
+
+        // Fetch reference to other cell
+        const cell& otherCell = cells_[otherCellIndex];
+
+        // Find opposite face on the other cell
+        oppositeFace otFace =
+        (
+            otherCell.opposingFace
+            (
+                oFace.oppositeIndex(),
+                faces_
+            )
+        );
+
+        if (!otFace.found())
+        {
+            // Something's wrong here.
+            FatalErrorIn
+            (
+                "const changeMap dynamicTopoFvMesh::removeCellLayer"
+                "(const label patchID)"
+            )
+                << " Face: " << oFace.oppositeIndex()
+                << " :: " << oFace << nl
+                << " has no opposing face in cell: "
+                << otherCellIndex << " :: " << otherCell << nl
+                << abort(FatalError);
+        }
+
+        // All edges on the boundary face are to be retained
+        const labelList& fEdges = faceEdges_[faceI];
+        const labelList& ofEdges = faceEdges_[oFace.oppositeIndex()];
+        const labelList& otfEdges = faceEdges_[otFace.oppositeIndex()];
+
+        forAll(fEdges, edgeI)
+        {
+            label eIndex = fEdges[edgeI];
+
+            if (!edgesToKeep.found(eIndex))
+            {
+                // Find equivalent edge on opposite face
+                label oeIndex = -1, oteIndex = -1;
+                const edge& bEdge = edges_[eIndex];
+
+                // Build edges for comparison
+                label startLoc = bFace.which(bEdge[0]);
+                label endLoc = bFace.which(bEdge[1]);
+
+                edge cEdge(oFace[startLoc], oFace[endLoc]);
+                edge ctEdge(otFace[startLoc], otFace[endLoc]);
+
+                forAll(ofEdges, edgeJ)
+                {
+                    const edge& ofEdge = edges_[ofEdges[edgeJ]];
+
+                    if (cEdge == ofEdge)
+                    {
+                        oeIndex = ofEdges[edgeJ];
+                        break;
+                    }
+                }
+
+                forAll(otfEdges, edgeJ)
+                {
+                    const edge& otfEdge = edges_[otfEdges[edgeJ]];
+
+                    if (ctEdge == otfEdge)
+                    {
+                        oteIndex = otfEdges[edgeJ];
+                        break;
+                    }
+                }
+
+                if (oeIndex < 0 || oteIndex < 0)
+                {
+                    FatalErrorIn
+                    (
+                        "const changeMap dynamicTopoFvMesh::removeCellLayer"
+                        "(const label patchID)"
+                    )
+                        << " Could not find comparison edge: " << nl
+                        << " cEdge: " << cEdge
+                        << " oeIndex: " << oeIndex << nl
+                        << " ctEdge: " << ctEdge
+                        << " oteIndex: " << oteIndex << nl
+                        << " for edge: " << bEdge
+                        << abort(FatalError);
+                }
+
+                // Make entry
+                edgesToKeep.insert(eIndex, labelPair(oeIndex, oteIndex));
+            }
+        }
+
+        // Add information to removal lists
+        cellsToRemove.append
+        (
+            labelPair
+            (
+                cIndex,
+                otherCellIndex
+            )
+        );
+
+        hFacesToRemove.append
+        (
+            labelPair
+            (
+                oFace.oppositeIndex(),
+                otFace.oppositeIndex()
+            )
+        );
+
+        // Mark points for removal
+        forAll(oFace, pointI)
+        {
+            label pIndex = oFace[pointI];
+
+            if (!pointsToRemove.found(pIndex))
+            {
+                // Make entry
+                pointsToRemove.insert
+                (
+                    pIndex,
+                    labelPair(bFace[pointI], otFace[pointI])
+                );
+            }
+        }
+
+        // Loop through cell faces and mark
+        // faces / edges for removal
+        forAll(ownCell, faceJ)
+        {
+            label fIndex = ownCell[faceJ];
+
+            if (fIndex == faceI || fIndex == oFace.oppositeIndex())
+            {
+                continue;
+            }
+
+            if (!facesToRemove.found(fIndex))
+            {
+                facesToRemove.insert(fIndex);
+            }
+
+            const labelList& checkEdges = faceEdges_[fIndex];
+
+            forAll(checkEdges, edgeI)
+            {
+                label eIndex = checkEdges[edgeI];
+
+                if (edgesToKeep.found(eIndex))
+                {
+                    continue;
+                }
+
+                if (!edgesToRemove.found(eIndex))
+                {
+                    edgesToRemove.insert(eIndex);
+                }
+            }
+        }
+    }
+
+    // Correct edgeFaces / faceEdges for retained edges
+    forAllConstIter(Map<labelPair>, edgesToKeep, eIter)
+    {
+        const labelList& rmeFaces = edgeFaces_[eIter().first()];
+
+        forAll(rmeFaces, faceI)
+        {
+            labelList& fE = faceEdges_[rmeFaces[faceI]];
+
+            bool foundRp = (findIndex(fE, eIter.key()) > -1);
+            bool foundRn = (findIndex(fE, eIter().second()) > -1);
+
+            if (foundRp)
+            {
+                // Size-down edgeFaces for replacement
+                meshOps::sizeDownList
+                (
+                    rmeFaces[faceI],
+                    edgeFaces_[eIter.key()]
+                );
+            }
+
+            if (foundRn)
+            {
+                // Size-up edgeFaces for replacement
+                meshOps::sizeUpList
+                (
+                    rmeFaces[faceI],
+                    edgeFaces_[eIter.key()]
+                );
+
+                // Replace edge index
+                meshOps::replaceLabel
+                (
+                    eIter().first(),
+                    eIter.key(),
+                    fE
+                );
+            }
+        }
+    }
+
+    // Remove unwanted faces
+    forAllConstIter(labelHashSet, facesToRemove, fIter)
+    {
+        // Remove the face
+        removeFace(fIter.key());
+
+        // Update map
+        map.removeFace(fIter.key());
+    }
+
+    // Remove unwanted edges
+    forAllConstIter(labelHashSet, edgesToRemove, eIter)
+    {
+        // Remove the edge
+        removeEdge(eIter.key());
+
+        // Update map
+        map.removeEdge(eIter.key());
+    }
+
+    // Remove unwanted points
+    forAllConstIter(Map<labelPair>, pointsToRemove, pIter)
+    {
+        // Update pointEdges information first
+        if (!twoDMesh_)
+        {
+            const labelList& pEdges = pointEdges_[pIter.key()];
+
+            // Configure edge for comparison
+            edge cEdge
+            (
+                pIter.key(),
+                pIter().second()
+            );
+
+            label replaceEdge = -1;
+
+            forAll(pEdges, edgeI)
+            {
+                const edge& checkEdge = edges_[pEdges[edgeI]];
+
+                if (checkEdge == cEdge)
+                {
+                    replaceEdge = pEdges[edgeI];
+                    break;
+                }
+            }
+
+            if (replaceEdge == -1)
+            {
+                FatalErrorIn
+                (
+                    "const changeMap dynamicTopoFvMesh::removeCellLayer"
+                    "(const label patchID)"
+                )
+                    << " Could not find comparison edge: " << nl
+                    << " cEdge: " << cEdge
+                    << " for point: " << pIter.key() << nl
+                    << " pointEdges: " << pEdges
+                    << abort(FatalError);
+            }
+
+            // Size-up pointEdges
+            meshOps::sizeUpList
+            (
+                replaceEdge,
+                pointEdges_[pIter().first()]
+            );
+        }
+
+        // Remove the point
+        removePoint(pIter.key());
+
+        // Update map
+        map.removePoint(pIter.key());
+    }
+
+    // Remove all cells
+    forAll(cellsToRemove, indexI)
+    {
+        // Replace face label on the other cell
+        meshOps::replaceLabel
+        (
+            hFacesToRemove[indexI].first(),
+            patchFaces[indexI],
+            cells_[cellsToRemove[indexI].second()]
+        );
+
+        // Set owner information
+        owner_[patchFaces[indexI]] = cellsToRemove[indexI].second();
+
+        // Replace points on faces / edges
+        const cell& otherCell = cells_[cellsToRemove[indexI].second()];
+
+        forAll(otherCell, faceI)
+        {
+            face& faceToCheck = faces_[otherCell[faceI]];
+
+            forAll(faceToCheck, pointI)
+            {
+                if (pointsToRemove.found(faceToCheck[pointI]))
+                {
+                    faceToCheck[pointI] =
+                    (
+                        pointsToRemove[faceToCheck[pointI]].first()
+                    );
+                }
+            }
+
+            const labelList& fEdges = faceEdges_[otherCell[faceI]];
+
+            forAll(fEdges, edgeI)
+            {
+                edge& edgeToCheck = edges_[fEdges[edgeI]];
+
+                if (pointsToRemove.found(edgeToCheck[0]))
+                {
+                    edgeToCheck[0] =
+                    (
+                        pointsToRemove[edgeToCheck[0]].first()
+                    );
+                }
+
+                if (pointsToRemove.found(edgeToCheck[1]))
+                {
+                    edgeToCheck[1] =
+                    (
+                        pointsToRemove[edgeToCheck[1]].first()
+                    );
+                }
+            }
+        }
+
+        // Remove horizontal interior face
+        removeFace(hFacesToRemove[indexI].first());
+
+        // Update map
+        map.removeFace(hFacesToRemove[indexI].first());
+
+        // Remove the cell
+        removeCell(cellsToRemove[indexI].first());
+
+        // Update map
+        map.removeCell(cellsToRemove[indexI].first());
+    }
+
+    // Set the flag
+    topoChangeFlag_ = true;
+
+    // Specify that the operation was successful
+    map.type() = 1;
+
+    // Return the changeMap
+    return map;
+}
+
+
 // Merge a set of boundary faces into internal
 const changeMap dynamicTopoFvMesh::mergeBoundaryFaces
 (
