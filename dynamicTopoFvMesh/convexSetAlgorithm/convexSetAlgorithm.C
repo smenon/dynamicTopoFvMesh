@@ -56,7 +56,6 @@ namespace Foam
 convexSetAlgorithm::convexSetAlgorithm
 (
     const polyMesh& mesh,
-    const bool isTwoDMesh,
     const pointField& newPoints,
     const UList<edge>& newEdges,
     const UList<face>& newFaces,
@@ -65,7 +64,6 @@ convexSetAlgorithm::convexSetAlgorithm
     const UList<label>& newNeighbour
 )
 :
-    twoDMesh_(isTwoDMesh),
     nOldPoints_(mesh.nPoints()),
     mesh_(mesh),
     newPoints_(newPoints),

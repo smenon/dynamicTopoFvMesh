@@ -53,7 +53,6 @@ namespace Foam
 cellSetAlgorithm::cellSetAlgorithm
 (
     const polyMesh& mesh,
-    const bool isTwoDMesh,
     const pointField& newPoints,
     const UList<edge>& newEdges,
     const UList<face>& newFaces,
@@ -65,7 +64,6 @@ cellSetAlgorithm::cellSetAlgorithm
     convexSetAlgorithm
     (
         mesh,
-        isTwoDMesh,
         newPoints,
         newEdges,
         newFaces,
@@ -274,6 +272,20 @@ bool cellSetAlgorithm::computeIntersection
                     totalCentre += (volume * centre);
 
                     foundIntersect = true;
+
+                    if (output)
+                    {
+                        writeVTK
+                        (
+                            "polyhedronIntersect_"
+                          + Foam::name(newIndex)
+                          + '_'
+                          + Foam::name(oldIndex)
+                          + '_' + Foam::name(i)
+                          + '_' + Foam::name(j),
+                            intersector.getIntersection()
+                        );
+                    }
                 }
             }
         }
@@ -287,6 +299,7 @@ bool cellSetAlgorithm::computeIntersection
             // Normalize and check if this is worth it
             if (mag(totalVolume/normFactor_) > SMALL)
             {
+                // Size-up the internal lists
                 meshOps::sizeUpList((oldIndex - offset), parents_);
                 meshOps::sizeUpList(totalVolume, weights_);
                 meshOps::sizeUpList(totalCentre, centres_);

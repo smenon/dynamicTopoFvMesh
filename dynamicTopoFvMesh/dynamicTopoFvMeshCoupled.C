@@ -9206,7 +9206,6 @@ void dynamicTopoFvMesh::computeCoupledWeights
             faceSetAlgorithm faceAlgorithm
             (
                 mesh,
-                twoDMesh_,
                 oldPoints_,
                 edges_,
                 faces_,
@@ -9293,7 +9292,6 @@ void dynamicTopoFvMesh::computeCoupledWeights
             cellSetAlgorithm cellAlgorithm
             (
                 mesh,
-                twoDMesh_,
                 oldPoints_,
                 edges_,
                 faces_,

@@ -7108,6 +7108,26 @@ const changeMap dynamicTopoFvMesh::addCellLayer
         );
     }
 
+    // Now that all old / new cells possess correct connectivity,
+    // compute mapping information.
+    const List<objectMap>& afList = map.addedFaceList();
+
+    forAll(afList, indexI)
+    {
+        label parent = afList[indexI].masterObjects()[0];
+
+        if (whichPatch(afList[indexI].index()) == -1)
+        {
+            // Interior faces get default mapping
+            if (whichPatch(parent) == -1)
+            {
+                setFaceMapping(parent);
+            }
+
+            setFaceMapping(afList[indexI].index());
+        }
+    }
+
     // Set the flag
     topoChangeFlag_ = true;
 

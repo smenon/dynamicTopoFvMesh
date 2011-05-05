@@ -68,7 +68,6 @@ protected:
 
     // Protected data
 
-        const bool twoDMesh_;
         const label nOldPoints_;
 
         //- References to old-level connectivity
@@ -102,7 +101,6 @@ public:
         convexSetAlgorithm
         (
             const polyMesh& mesh,
-            const bool isTwoDMesh,
             const pointField& newPoints,
             const UList<edge>& newEdges,
             const UList<face>& newFaces,

@@ -7221,6 +7221,9 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
         map.removePoint(pIter.key());
     }
 
+    // Track modified faces for mapping
+    labelHashSet modifiedFaces;
+
     // Remove all cells
     forAll(cellsToRemove, indexI)
     {
@@ -7242,6 +7245,8 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
         {
             face& faceToCheck = faces_[otherCell[faceI]];
 
+            bool modified = false;
+
             forAll(faceToCheck, pointI)
             {
                 if (pointsToRemove.found(faceToCheck[pointI]))
@@ -7251,6 +7256,14 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
                         pointsToRemove[faceToCheck[pointI]].first()
                     );
                 }
+
+                modified = true;
+            }
+
+            // Add face to list
+            if (modified && !modifiedFaces.found(otherCell[faceI]))
+            {
+                modifiedFaces.insert(otherCell[faceI]);
             }
 
             const labelList& fEdges = faceEdges_[otherCell[faceI]];
@@ -7288,6 +7301,37 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
 
         // Update map
         map.removeCell(cellsToRemove[indexI].first());
+    }
+
+    // Now that all old / new cells possess correct connectivity,
+    // compute mapping information.
+    forAll(cellsToRemove, indexI)
+    {
+        // Set mapping for the modified cell
+        setCellMapping
+        (
+            cellsToRemove[indexI].second(),
+            cellsToRemove[indexI]
+        );
+    }
+
+    // Set face mapping information for modified faces
+    forAllConstIter(labelHashSet, modifiedFaces, fIter)
+    {
+        // Decide between default / weighted mapping
+        // based on boundary information
+        label fPatch = whichPatch(fIter.key());
+
+        if (fPatch == -1)
+        {
+            // Default mapping for interior faces
+            setFaceMapping(fIter.key());
+        }
+        else
+        {
+            // Map boundary face from itself
+            setFaceMapping(fIter.key(), labelList(1, fIter.key()));
+        }
     }
 
     // Set the flag
