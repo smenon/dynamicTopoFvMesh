@@ -1467,6 +1467,11 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
             return;
         }
     }
+    else
+    {
+        // No dictionary present.
+        return;
+    }
 
     // Fetch layering patches
     const polyBoundaryMesh& boundary = boundaryMesh();
