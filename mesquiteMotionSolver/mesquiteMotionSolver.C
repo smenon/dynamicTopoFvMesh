@@ -1824,9 +1824,12 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
     {
         label proc = procIndices_[pI];
 
+        // Set size to max, in case of mismatch
+        label maxSize = Foam::max(sendSurfPointMap_[pI].size(), nProcSize[pI]);
+
         // Size-up send / recv fields
-        sendSurfFields_[pI].setSize(sendSurfPointMap_[pI].size());
-        recvSurfFields_[pI].setSize(nProcSize[pI]);
+        sendSurfFields_[pI].setSize(maxSize, vector::zero);
+        recvSurfFields_[pI].setSize(maxSize, vector::zero);
 
         // Fetch references
         vectorField& recvField = recvSurfFields_[pI];
@@ -3146,7 +3149,7 @@ void mesquiteMotionSolver::smoothSurfaces()
         forAll(procIndices_, pI)
         {
             label neiProcNo = procIndices_[pI];
-            const Map<label>& pointMap = recvSurfPointMap_[pI];
+            const Map<label>& pointMap = sendSurfPointMap_[pI];
 
             // Fetch references
             vectorField& recvField = recvSurfFields_[pI];
