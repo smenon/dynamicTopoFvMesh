@@ -42,6 +42,7 @@ Author
 #include "triFace.H"
 #include "IOmanip.H"
 #include "polyMesh.H"
+#include "OFstream.H"
 #include "triPointRef.H"
 #include "tetPointRef.H"
 

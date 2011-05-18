@@ -167,6 +167,7 @@ class mesquiteMotionSolver
         labelListList procPointLabels_;
         List<List<labelPair> > globalProcPoints_;
 
+        List<Map<label> > unmatchedRecvPoints_;
         List<vectorField> sendSurfFields_, recvSurfFields_;
         List<Map<label> > sendSurfPointMap_, recvSurfPointMap_;
 
