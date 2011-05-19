@@ -198,24 +198,19 @@ bool dynamicTopoFvMesh::meshQuality
     // Output statistics:
     if (outputOption || (debug > 0))
     {
+        if (minQuality < 0.0)
+        {
+            Pout<< nl
+                << " Warning: Minimum cell quality is: " << minQuality
+                << " at cell: " << minCell
+                << endl;
+        }
+
         // Reduce statistics across processors.
         reduce(minQuality, minOp<scalar>());
         reduce(maxQuality, maxOp<scalar>());
         reduce(meanQuality, sumOp<scalar>());
         reduce(nCells, sumOp<label>());
-
-        if (minQuality < 0.0)
-        {
-            WarningIn
-            (
-                "bool dynamicTopoFvMesh::meshQuality"
-                "(bool outputOption)"
-            )
-                << nl
-                << "Minimum cell quality is: " << minQuality
-                << " at cell: " << minCell
-                << endl;
-        }
 
         Info<< nl
             << " ~~~ Mesh Quality Statistics ~~~ " << nl

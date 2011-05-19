@@ -3265,6 +3265,12 @@ inline scalar mesquiteMotionSolver::tetQuality
 {
     const cell& cellToCheck = mesh().cells()[cIndex];
 
+    // Disregard non-tetrahedral cells
+    if (cellToCheck.size() != 4)
+    {
+        return 1.0;
+    }
+
     const face& currFace = mesh().faces()[cellToCheck[0]];
     const face& nextFace = mesh().faces()[cellToCheck[1]];
 
@@ -3370,7 +3376,7 @@ void mesquiteMotionSolver::correctInvalidCells()
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
     // Check if a minimum quality was specified.
-    scalar thresh = 0.45;
+    scalar thresh = 0.15;
 
     if (optionsDict.found("sliverThreshold"))
     {
@@ -3404,7 +3410,12 @@ void mesquiteMotionSolver::correctInvalidCells()
         }
     }
 
-    if (invCells.size() == 0)
+    label nInvCells = invCells.size();
+
+    // Reduce across processors
+    reduce(nInvCells, sumOp<label>());
+
+    if (nInvCells == 0)
     {
         return;
     }
@@ -3443,6 +3454,9 @@ void mesquiteMotionSolver::correctInvalidCells()
                 break;
             }
         }
+
+        // Reduce across processors
+        reduce(valid, andOp<bool>());
 
         if (valid)
         {
