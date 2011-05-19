@@ -47,9 +47,9 @@ SourceFiles
 #include "MeshObject.H"
 #include "HashSet.H"
 
-#ifdef __GNUC__
 // Have gcc ignore certain warnings while including mesquite headers
-#pragma GCC diagnostic ignored "-Wold-style-cast"
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
+#   pragma GCC diagnostic ignored "-Wold-style-cast"
 #endif
 
 #include "Mesquite_all_headers.hpp"

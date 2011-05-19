@@ -456,11 +456,24 @@ void mesquiteMotionSolver::readOptions()
         )
     );
 
+    // Size up metric list to contain at least one entry
+    qMetrics_.setSize(1);
+
     // Read the optimization metric
     if (optionsDict.isDict("optMetric"))
     {
         // Metrics are in dictionary form
-        qMetrics_ = optionsDict.subDict("optMetric").toc();
+        const dictionary& metricDict = optionsDict.subDict("optMetric");
+
+        // Read first metric
+        qMetrics_[0] = word(metricDict.lookup("firstMetric"));
+
+        // Optionally read the second metric
+        if (metricDict.found("secondMetric"))
+        {
+            qMetrics_.setSize(2);
+            qMetrics_[1] = word(metricDict.lookup("secondMetric"));
+        }
 
         forAll(qMetrics_, wordI)
         {
@@ -483,7 +496,6 @@ void mesquiteMotionSolver::readOptions()
     else
     {
         // Conventional keyword entry
-        qMetrics_.setSize(1);
 
         // Alias for convenience...
         word& qMetric = qMetrics_[0];
@@ -553,6 +565,14 @@ void mesquiteMotionSolver::readOptions()
         {
             FatalErrorIn("void mesquiteMotionSolver::readOptions()")
                 << "Cannot make a composite of composite functions."
+                << abort(FatalError);
+        }
+
+        // Make sure we have two quality metrics
+        if (qMetrics_.size() < 2)
+        {
+            FatalErrorIn("void mesquiteMotionSolver::readOptions()")
+                << "Two quality metrics are needed for composite functions."
                 << abort(FatalError);
         }
     }
