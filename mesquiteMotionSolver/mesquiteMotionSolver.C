@@ -3386,7 +3386,7 @@ void mesquiteMotionSolver::correctInvalidCells()
     // Fetch the sub-dictionary
     const dictionary& optionsDict = subDict("mesquiteOptions");
 
-    bool checkTetValidity = false;
+    bool checkTetValidity = true;
 
     if (optionsDict.found("checkTetValidity"))
     {

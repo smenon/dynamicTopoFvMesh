@@ -7,6 +7,9 @@ wclean freeSurface
 wclean enginePointPatchFields
 wclean dynamicTopoFvMesh
 wclean conservativeMeshToMesh
+
+(cd fluxCorrector; ./Allwclean)
+
 wclean interTrackFoam
 wclean mapConservativeFields
 

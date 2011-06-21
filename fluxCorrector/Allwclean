@@ -1,0 +1,9 @@
+#!/bin/sh
+set -x
+
+# Clean out existing object files
+wclean incompressible
+
+# Wipe out all lnInclude directories and re-link
+wcleanLnIncludeAll
+
