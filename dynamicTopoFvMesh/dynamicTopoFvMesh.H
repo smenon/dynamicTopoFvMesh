@@ -70,6 +70,7 @@ class coupledInfo;
 class motionSolver;
 class convexSetAlgorithm;
 class lengthScaleEstimator;
+class subMeshLduAddressing;
 
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration
@@ -114,6 +115,9 @@ class dynamicTopoFvMesh
 
         //- Coupled modification switch
         mutable Switch coupledModification_;
+
+        //- Sub-Mesh lduAddressing
+        mutable subMeshLduAddressing* lduPtr_;
 
         //- Specify the re-meshing interval
         label interval_;
@@ -1109,14 +1113,17 @@ public:
 
     // Member Functions
 
-        //- Update mesh corresponding to the given map
+        // Return custom lduAddressing
+        virtual const lduAddressing& lduAddr() const;
+
+        // Update mesh corresponding to the given map
         virtual void updateMesh(const mapPolyMesh& mpm);
 
         // Map all fields in time using a customized mapper
         virtual void mapFields(const mapPolyMesh& mpm) const;
 
         // Update the mesh for motion / topology changes
-        // Return true if topology changes have occurred
+        //  - Return true if topology changes have occurred
         virtual bool update();
 };
 

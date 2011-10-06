@@ -9,13 +9,13 @@ $(ePatches)/ePatch/newEPatch.C
 dynamicTopoFvMesh.C
 dynamicTopoFvMeshCheck.C
 dynamicTopoFvMeshReOrder.C
-dynamicTopoFvMeshCoupled.C
 dynamicTopoFvMeshMapping.C
 edgeSwap.C
 edgeBisect.C
 edgeCollapse.C
 
-coupleMap.C
+coupledMesh/coupleMap.C
+coupledMesh/dynamicTopoFvMeshCoupled.C
 
 convexSetAlgorithm/convexSetAlgorithm.C
 convexSetAlgorithm/faceSetAlgorithm.C

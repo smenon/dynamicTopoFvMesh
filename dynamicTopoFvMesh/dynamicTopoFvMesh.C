@@ -53,6 +53,7 @@ Author
 #include "motionSolver.H"
 #include "fvPatchFields.H"
 #include "fvsPatchFields.H"
+#include "subMeshLduAddressing.H"
 #include "lengthScaleEstimator.H"
 #include "conservativeMapFields.H"
 
@@ -99,6 +100,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     loadMotionSolver_(true),
     bandWidthReduction_(false),
     coupledModification_(false),
+    lduPtr_(NULL),
     interval_(1),
     eMeshPtr_(NULL),
     mapper_(NULL),
@@ -228,6 +230,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     loadMotionSolver_(mesh.loadMotionSolver_),
     bandWidthReduction_(mesh.bandWidthReduction_),
     coupledModification_(false),
+    lduPtr_(NULL),
     interval_(1),
     eMeshPtr_(NULL),
     mapper_(NULL),
@@ -337,7 +340,9 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 dynamicTopoFvMesh::~dynamicTopoFvMesh()
-{}
+{
+    deleteDemandDrivenData(lduPtr_);
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -1745,6 +1750,31 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
     // Enable/disable run-time debug level
     if (meshSubDict.found("debug") || mandatory_)
     {
+        // Set an attachment point for debugging
+        if
+        (
+            Pstream::parRun() &&
+            meshSubDict.found("parDebugAttach") &&
+            !reRead
+        )
+        {
+            label wait;
+
+            if (Pstream::master())
+            {
+                cin >> wait;
+
+                for (label i = 0; i < Pstream::nProcs(); i++)
+                {
+                    meshOps::pWrite(i, wait);
+                }
+            }
+            else
+            {
+                meshOps::pRead(Pstream::masterNo(), wait);
+            }
+        }
+
         // Look for a processor-specific debug flag
         if (Pstream::parRun() && meshSubDict.found("parDebugProcs"))
         {
@@ -4359,6 +4389,26 @@ bool dynamicTopoFvMesh::resetMesh()
 
     // No changes were made.
     return false;
+}
+
+
+// Return custom lduAddressing
+const lduAddressing& dynamicTopoFvMesh::lduAddr() const
+{
+    // For subMeshes, avoid globalData construction
+    // due to lduAddressing::patchSchedule, using a
+    // customized approach.
+    if (isSubMesh_)
+    {
+        if (!lduPtr_)
+        {
+            lduPtr_ = new subMeshLduAddressing(*this);
+        }
+
+        return *lduPtr_;
+    }
+
+    return fvMesh::lduAddr();
 }
 
 
