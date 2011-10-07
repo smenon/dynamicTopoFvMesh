@@ -232,12 +232,21 @@ public:
         ) const;
 
         // Set volume field pointer from input dictionary
-        template <class GeomField>
-        void setField
+        template <class Type>
+        void setVolField
         (
             const wordList& fieldNames,
             const dictionary& fieldDicts,
-            PtrList<GeomField>& fields
+            PtrList<GeometricField<Type, fvPatchField, volMesh> >& fields
+        ) const;
+
+        // Set surface field pointer from input dictionary
+        template <class Type>
+        void setSurfaceField
+        (
+            const wordList& fieldNames,
+            const dictionary& fieldDicts,
+            PtrList<GeometricField<Type, fvsPatchField, surfaceMesh> >& fields
         ) const;
 
         // Resize map for individual field

@@ -16,6 +16,8 @@ edgeCollapse.C
 
 coupledMesh/coupleMap.C
 coupledMesh/dynamicTopoFvMeshCoupled.C
+coupledMesh/subMeshProcessorPolyPatch.C
+coupledMesh/subMeshProcessorFvPatch.C
 
 convexSetAlgorithm/convexSetAlgorithm.C
 convexSetAlgorithm/faceSetAlgorithm.C

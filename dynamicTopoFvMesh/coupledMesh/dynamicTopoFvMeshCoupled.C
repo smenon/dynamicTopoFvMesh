@@ -6010,7 +6010,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
             );
 
             // Add type
-            patchSubDict.add("type", "processor");
+            patchSubDict.add("type", "subMeshProcessor");
 
             // Add start / size
             patchSubDict.add("startFace", bdyFaceStarts[patchI]);
@@ -6646,7 +6646,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 );
 
                 // Add type
-                patchSubDict.add("type", "processor");
+                patchSubDict.add("type", "subMeshProcessor");
 
                 // Add start / size
                 patchSubDict.add("startFace", faceStarts[patchI]);
@@ -7742,20 +7742,20 @@ void dynamicTopoFvMesh::syncFieldTransfers
         dictionary dict(stream[pI]);
 
         // Set field pointers
-        cInfo.setField(names[0], dict.subDict(types[0]), vsF[pI]);
-        cInfo.setField(names[1], dict.subDict(types[1]), vvF[pI]);
-        cInfo.setField(names[2], dict.subDict(types[2]), vsptF[pI]);
-        cInfo.setField(names[3], dict.subDict(types[3]), vsytF[pI]);
-        cInfo.setField(names[4], dict.subDict(types[4]), vtF[pI]);
+        cInfo.setVolField(names[0], dict.subDict(types[0]), vsF[pI]);
+        cInfo.setVolField(names[1], dict.subDict(types[1]), vvF[pI]);
+        cInfo.setVolField(names[2], dict.subDict(types[2]), vsptF[pI]);
+        cInfo.setVolField(names[3], dict.subDict(types[3]), vsytF[pI]);
+        cInfo.setVolField(names[4], dict.subDict(types[4]), vtF[pI]);
 
-        cInfo.setField(names[5], dict.subDict(types[5]), ssF[pI]);
-        cInfo.setField(names[6], dict.subDict(types[6]), svF[pI]);
-        cInfo.setField(names[7], dict.subDict(types[7]), ssptF[pI]);
-        cInfo.setField(names[8], dict.subDict(types[8]), ssytF[pI]);
-        cInfo.setField(names[9], dict.subDict(types[9]), stF[pI]);
+        cInfo.setSurfaceField(names[5], dict.subDict(types[5]), ssF[pI]);
+        cInfo.setSurfaceField(names[6], dict.subDict(types[6]), svF[pI]);
+        cInfo.setSurfaceField(names[7], dict.subDict(types[7]), ssptF[pI]);
+        cInfo.setSurfaceField(names[8], dict.subDict(types[8]), ssytF[pI]);
+        cInfo.setSurfaceField(names[9], dict.subDict(types[9]), stF[pI]);
 
-        cInfo.setField(names[10], dict.subDict(types[10]), vgsF[pI]);
-        cInfo.setField(names[11], dict.subDict(types[11]), vgvF[pI]);
+        cInfo.setVolField(names[10], dict.subDict(types[10]), vgsF[pI]);
+        cInfo.setVolField(names[11], dict.subDict(types[11]), vgvF[pI]);
 
         // Set centres
         cInfo.setCentres(vC[pI]);
