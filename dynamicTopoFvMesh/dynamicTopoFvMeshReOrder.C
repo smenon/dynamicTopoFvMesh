@@ -1725,7 +1725,25 @@ void dynamicTopoFvMesh::reOrderMesh
 {
     if (debug)
     {
-        Info<< nl
+        // Buffered print-out of mesh-stats
+        if (Pstream::parRun())
+        {
+            if (Pstream::master())
+            {
+                for (label i = Pstream::nProcs()-1; i >= 1; i--)
+                {
+                    meshOps::pWrite(i, i);
+                    sleep(0.25);
+                }
+            }
+            else
+            {
+                label i = 0;
+                meshOps::pRead(0, i);
+            }
+        }
+
+        Pout<< nl
             << "=================" << nl
             << " Mesh reOrdering " << nl
             << "=================" << nl
@@ -1740,13 +1758,13 @@ void dynamicTopoFvMesh::reOrderMesh
 
         if (debug > 1)
         {
-            Info<< " Patch Starts [Face]: " << oldPatchStarts_ << nl
+            Pout<< " Patch Starts [Face]: " << oldPatchStarts_ << nl
                 << " Patch Sizes  [Face]: " << oldPatchSizes_ << nl
                 << " Patch Starts [Edge]: " << oldEdgePatchStarts_ << nl
                 << " Patch Sizes  [Edge]: " << oldEdgePatchSizes_ << nl;
         }
 
-        Info<< "=================" << nl
+        Pout<< "=================" << nl
             << " Mesh Info [n+1]:" << nl
             << " Points: " << nPoints_ << nl
             << " Edges: " << nEdges_ << nl
@@ -1758,13 +1776,16 @@ void dynamicTopoFvMesh::reOrderMesh
 
         if (debug > 1)
         {
-            Info<< " Patch Starts [Face]: " << patchStarts_ << nl
+            Pout<< " Patch Starts [Face]: " << patchStarts_ << nl
                 << " Patch Sizes: [Face]: " << patchSizes_ << nl
                 << " Patch Starts [Edge]: " << edgePatchStarts_ << nl
                 << " Patch Sizes: [Edge]: " << edgePatchSizes_ << nl;
         }
 
-        Info<< "=================" << endl;
+        Pout<< "=================" << endl;
+
+        bool checkPoint = false;
+        reduce(checkPoint, andOp<bool>());
 
         // Check connectivity structures for consistency
         // before entering the reOrdering phase.

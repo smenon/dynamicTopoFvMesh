@@ -314,8 +314,6 @@ coupledInfo::subSetVolField
                     DimensionedField<Type, volMesh>::null()
                 )
             );
-
-            patchFields[patchI] == pTraits<Type>::zero;
         }
         else
         {
@@ -408,8 +406,6 @@ coupledInfo::subSetSurfaceField
                     DimensionedField<Type, surfaceMesh>::null()
                 )
             );
-
-            patchFields[patchI] == pTraits<Type>::zero;
         }
         else
         {
