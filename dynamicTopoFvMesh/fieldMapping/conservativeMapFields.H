@@ -77,7 +77,7 @@ void conservativeMapVolFields(const topoMapper& mapper)
         // Map patch fields
         forAll(bMap, patchI)
         {
-            bMap[patchI].mapPatchField
+            bMap[patchI].mapFvPatchField
             (
                 field.name(),
                 field.boundaryField()[patchI]
@@ -132,7 +132,7 @@ void conservativeMapSurfaceFields(const topoMapper& mapper)
         // Map patch fields
         forAll(bMap, patchI)
         {
-            bMap[patchI].mapPatchField
+            bMap[patchI].mapFvsPatchField
             (
                 field.name(),
                 field.boundaryField()[patchI]
