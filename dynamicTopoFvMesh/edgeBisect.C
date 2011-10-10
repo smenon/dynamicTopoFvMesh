@@ -5840,11 +5840,10 @@ scalar dynamicTopoFvMesh::computeBisectionQuality
         {
             const face& checkFace = faces_[checkCell[faceI]];
 
-            if
-            (
-                (findIndex(checkFace, edgeToCheck[0]) == -1) &&
-                (findIndex(checkFace, edgeToCheck[1]) == -1)
-            )
+            bool check0 = (findIndex(checkFace, edgeToCheck[0]) == -1);
+            bool check1 = (findIndex(checkFace, edgeToCheck[1]) == -1);
+
+            if ((check0 && !check1) || (!check0 && check1))
             {
                 // Check orientation
                 if (owner_[checkCell[faceI]] == cellIndex)
