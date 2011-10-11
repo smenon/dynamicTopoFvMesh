@@ -2921,6 +2921,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 }
             }
 
+            if (faceCandidates.empty())
+            {
+                // Add the face itself
+                faceCandidates.setSize(1, mfIndex);
+            }
+
             // Set the mapping for this face
             setFaceMapping(mfIndex, faceCandidates);
         }
@@ -5771,6 +5777,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         }
                     }
                 }
+            }
+
+            if (faceCandidates.empty())
+            {
+                // Add the face itself
+                faceCandidates.setSize(1, mfIndex);
             }
 
             // Set the mapping for this face
