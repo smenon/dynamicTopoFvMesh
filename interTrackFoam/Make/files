@@ -1,3 +1,0 @@
-interTrackFoam.C
-
-EXE = $(FOAM_APPBIN)/surfaceTrackingFoam

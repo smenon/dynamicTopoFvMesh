@@ -21,7 +21,6 @@ fi
 
 ./AllwmakeLnInclude
 
-wmake libso freeSurface
 wmake libso enginePointPatchFields
 wmake libso mesquiteMotionSolver
 wmake libso dynamicTopoFvMesh
@@ -29,5 +28,4 @@ wmake libso conservativeMeshToMesh
 
 (cd fluxCorrector; ./Allwmake)
 
-wmake interTrackFoam
 wmake mapConservativeFields

@@ -1,0 +1,67 @@
+Installation instructions:
+-------------------------
+
+Pre-installation steps:
+
+Ensure that OpenFOAM-extend is installed and properly configured.
+
+Since this is an updated version, installing these libraries requires 
+replacing the original version already present in OpenFOAM-extend.
+
+To do so, follow these steps prior to installation:
+
+ 1. Open $FOAM_SRC/dynamicMesh/dynamicFvMesh/Make/files
+
+ 2. Remove (or comment out with /* .. */) the following lines in the list:
+
+    tetMetrics = dynamicTopoFvMesh/tetMetrics
+    $(tetMetrics)/tetMetric.C
+    $(tetMetrics)/tetMetrics.C
+
+    lengthScaleEstimator = dynamicTopoFvMesh/lengthScaleEstimator
+    $(lengthScaleEstimator)/lengthScaleEstimator.C
+
+    eMesh = dynamicTopoFvMesh/eMesh
+    $(eMesh)/eMesh.C
+    $(eMesh)/eMeshDemandDrivenData.C
+    $(eMesh)/eBoundaryMesh/eBoundaryMesh.C
+    ePatches = $(eMesh)/ePatches
+    $(ePatches)/ePatch/ePatch.C
+    $(ePatches)/ePatch/newEPatch.C
+    dynamicTopoFvMesh/meshOps.C
+    dynamicTopoFvMesh/dynamicTopoFvMesh.C
+    dynamicTopoFvMesh/dynamicTopoFvMeshCheck.C
+    dynamicTopoFvMesh/dynamicTopoFvMeshReOrder.C
+    dynamicTopoFvMesh/dynamicTopoFvMeshMapping.C
+    dynamicTopoFvMesh/edgeSwap.C
+    dynamicTopoFvMesh/edgeBisect.C
+    dynamicTopoFvMesh/edgeCollapse.C
+
+ 3. In the $FOAM_SRC/dynamicMesh/dynamicFvMesh directory, type:
+
+    (wclean && wmake libso)
+
+
+Repository check-out and installation:
+
+ 1. Checkout the repository contents to an appropriate location on disk:
+
+    git clone https://github.com/smenon/dynamicTopoFvMesh <check-out directory>
+
+    or, if you're having trouble with the https protocol, 
+    you can alternatively do it through SSH:
+
+    git clone git@ssh.github.com:smenon/dynamicTopoFvMesh <check-out directory>
+
+ 2. Go to the checked-out directory and type:
+
+    ./Allwmake
+
+ 3. This will build the relevant libraries / executables, and place them in 
+    $FOAM_USER_LIBBIN / $FOAM_USER_APPBIN.
+
+Usage:
+
+ 1. To use the updated library, place the following line in your dynamicMeshDict:
+
+    dynamicFvMeshLibs       ("libdynamicTopoFvMesh.so");
