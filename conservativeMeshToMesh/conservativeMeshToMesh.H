@@ -336,6 +336,62 @@ public:
             ) const;
 };
 
+// Template specialisation
+template<>
+class token::Compound<Field<scalar> >
+:
+    public token::compound,
+    public Field<scalar>
+{
+public:
+
+    //- Runtime type information
+    TypeName("Compound<T>");
+
+    Compound(Istream& is)
+    :
+        Field<scalar>(is)
+    {}
+
+    label size() const
+    {
+        return Field<scalar>::size();
+    }
+
+    void write(Ostream& os) const
+    {
+        operator<<(os, static_cast<const Field<scalar>&>(*this));
+    }
+};
+
+// Template specialisation
+template<>
+class token::Compound<Field<vector> >
+:
+    public token::compound,
+    public Field<vector>
+{
+public:
+
+    //- Runtime type information
+    TypeName("Compound<T>");
+
+    Compound(Istream& is)
+    :
+        Field<vector>(is)
+    {}
+
+    label size() const
+    {
+        return Field<vector>::size();
+    }
+
+    void write(Ostream& os) const
+    {
+        operator<<(os, static_cast<const Field<vector>&>(*this));
+    }
+};
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
