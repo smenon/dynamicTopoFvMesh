@@ -336,6 +336,8 @@ public:
             ) const;
 };
 
+#if defined(__INTEL_COMPILER)
+
 // Template specialisation
 template<>
 class token::Compound<Field<scalar> >
@@ -391,6 +393,8 @@ public:
         operator<<(os, static_cast<const Field<vector>&>(*this));
     }
 };
+
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
