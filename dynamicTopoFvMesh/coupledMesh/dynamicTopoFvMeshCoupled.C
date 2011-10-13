@@ -5924,15 +5924,12 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         }
     }
 
-    // Fill variable size face-list sizes for 2D
-    if (twoDMesh_)
-    {
-        labelList& nfeBuffer = cMap.entityBuffer(coupleMap::NFE_BUFFER);
+    // Fill variable size face-list sizes
+    labelList& nfeBuffer = cMap.entityBuffer(coupleMap::NFE_BUFFER);
 
-        forAllConstIter(Map<label>, faceMap, fIter)
-        {
-            nfeBuffer[fIter.key()] = faces_[fIter()].size();
-        }
+    forAllConstIter(Map<label>, faceMap, fIter)
+    {
+        nfeBuffer[fIter.key()] = faces_[fIter()].size();
     }
 
     // Fill in boundary information
@@ -6889,7 +6886,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             const labelListList& spF = rPM.subMesh().pointFaces();
 
             // Match patch faces for both 2D and 3D.
-            for(label i = 0; i < mSize; i++)
+            for (label i = 0; i < mSize; i++)
             {
                 // Fetch the global face index
                 label mfIndex = (mStart + i);
@@ -6910,160 +6907,129 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 // Fetch pointFaces for the zeroth point.
                 const labelList& spFaces = spF[cFace[0]];
 
-                if (twoDMesh_)
+                label sFaceIndex = -1, compareVal = -1;
+
+                forAll(spFaces, faceJ)
                 {
-                    bool matched = false;
+                    // Fetch the global face index
+                    label sfIndex = spFaces[faceJ];
 
-                    forAll(spFaces, faceJ)
+                    const face& sFace = slaveFaces[sfIndex];
+
+                    // Check for triangle face optimization
+                    if (mFace.size() == 3)
                     {
-                        // Fetch the global face index
-                        label sfIndex = spFaces[faceJ];
-
-                        const face& sFace = slaveFaces[sfIndex];
-
-                        if (face::compare(cFace, sFace))
-                        {
-                            // Found the slave. Add a map entry
-                            cMap.mapSlave
-                            (
-                                coupleMap::FACE,
-                                mfIndex,
-                                sfIndex
-                            );
-
-                            cMap.mapMaster
-                            (
-                                coupleMap::FACE,
-                                sfIndex,
-                                mfIndex
-                            );
-
-                            matched = true;
-
-                            break;
-                        }
-                    }
-
-                    if (!matched)
-                    {
-                        unMatchedFaces.insert(mfIndex);
-
-                        continue;
-                    }
-                }
-                else
-                {
-                    label sFaceIndex = -1;
-
-                    forAll(spFaces, faceJ)
-                    {
-                        // Fetch the global face index
-                        label sfIndex = spFaces[faceJ];
-
-                        const face& sFace = slaveFaces[sfIndex];
-
-                        if
+                        compareVal =
                         (
                             triFace::compare
                             (
                                 triFace(cFace[0], cFace[1], cFace[2]),
                                 triFace(sFace[0], sFace[1], sFace[2])
                             )
-                        )
+                        );
+                    }
+                    else
+                    {
+                        compareVal = face::compare(cFace, sFace);
+                    }
+
+                    if (compareVal)
+                    {
+                        // Found the slave. Add a map entry
+                        cMap.mapSlave
+                        (
+                            coupleMap::FACE,
+                            mfIndex,
+                            sfIndex
+                        );
+
+                        cMap.mapMaster
+                        (
+                            coupleMap::FACE,
+                            sfIndex,
+                            mfIndex
+                        );
+
+                        sFaceIndex = sfIndex;
+
+                        break;
+                    }
+                }
+
+                if (sFaceIndex == -1)
+                {
+                    unMatchedFaces.insert(mfIndex);
+
+                    continue;
+                }
+
+                // No need to match edges in 2D
+                if (twoDMesh_)
+                {
+                    continue;
+                }
+
+                // Match all edges on this face as well.
+                const labelList& mfEdges = faceEdges_[mfIndex];
+                const labelList& sfEdges = sMesh.faceEdges_[sFaceIndex];
+
+                forAll(mfEdges, edgeI)
+                {
+                    if (eMap.found(mfEdges[edgeI]))
+                    {
+                        continue;
+                    }
+
+                    const edge& mEdge = edges_[mfEdges[edgeI]];
+
+                    // Configure a comparison edge.
+                    edge cEdge(pMap[mEdge[0]], pMap[mEdge[1]]);
+
+                    bool matchedEdge = false;
+
+                    forAll(sfEdges, edgeJ)
+                    {
+                        const edge& sEdge =	sMesh.edges_[sfEdges[edgeJ]];
+
+                        if (cEdge == sEdge)
                         {
                             // Found the slave. Add a map entry
                             cMap.mapSlave
                             (
-                                coupleMap::FACE,
-                                mfIndex,
-                                sfIndex
+                                coupleMap::EDGE,
+                                mfEdges[edgeI],
+                                sfEdges[edgeJ]
                             );
 
                             cMap.mapMaster
                             (
-                                coupleMap::FACE,
-                                sfIndex,
-                                mfIndex
+                                coupleMap::EDGE,
+                                sfEdges[edgeJ],
+                                mfEdges[edgeI]
                             );
 
-                            sFaceIndex = sfIndex;
+                            matchedEdge = true;
 
                             break;
                         }
                     }
 
-                    if (sFaceIndex == -1)
+                    if (!matchedEdge)
                     {
-                        unMatchedFaces.insert(mfIndex);
+                        // Write out the edge
+                        writeVTK("mEdge", mfEdges[edgeI], 1);
 
-                        continue;
-                    }
-
-                    // Match all edges on this face as well.
-                    const labelList& mfEdges = faceEdges_[mfIndex];
-                    const labelList& sfEdges = sMesh.faceEdges_[sFaceIndex];
-
-                    forAll(mfEdges, edgeI)
-                    {
-                        if (eMap.found(mfEdges[edgeI]))
-                        {
-                            continue;
-                        }
-
-                        const edge& mEdge = edges_[mfEdges[edgeI]];
-
-                        // Configure a comparison edge.
-                        edge cEdge(pMap[mEdge[0]], pMap[mEdge[1]]);
-
-                        bool matchedEdge = false;
-
-                        forAll(sfEdges, edgeJ)
-                        {
-                            const edge& sEdge =
-                            (
-                                sMesh.edges_[sfEdges[edgeJ]]
-                            );
-
-                            if (cEdge == sEdge)
-                            {
-                                // Found the slave. Add a map entry
-                                cMap.mapSlave
-                                (
-                                    coupleMap::EDGE,
-                                    mfEdges[edgeI],
-                                    sfEdges[edgeJ]
-                                );
-
-                                cMap.mapMaster
-                                (
-                                    coupleMap::EDGE,
-                                    sfEdges[edgeJ],
-                                    mfEdges[edgeI]
-                                );
-
-                                matchedEdge = true;
-
-                                break;
-                            }
-                        }
-
-                        if (!matchedEdge)
-                        {
-                            // Write out the edge
-                            writeVTK("mEdge", mfEdges[edgeI], 1);
-
-                            FatalErrorIn
-                            (
-                                "void dynamicTopoFvMesh::"
-                                "buildProcessorCoupledMaps()"
-                            )
-                                << " Failed to match edge: "
-                                << mfEdges[edgeI] << ": "
-                                << mEdge << nl
-                                << " cEdge: " << cEdge
-                                << " for processor: " << proc
-                                << abort(FatalError);
-                        }
+                        FatalErrorIn
+                        (
+                            "void dynamicTopoFvMesh::"
+                            "buildProcessorCoupledMaps()"
+                        )
+                            << " Failed to match edge: "
+                            << mfEdges[edgeI] << ": "
+                            << mEdge << nl
+                            << " cEdge: " << cEdge
+                            << " for processor: " << proc
+                            << abort(FatalError);
                     }
                 }
             }

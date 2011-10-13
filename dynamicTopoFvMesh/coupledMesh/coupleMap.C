@@ -205,8 +205,8 @@ void coupleMap::makeFaces() const
         face& f = faces[faceI];
         labelList& fe = faceEdges[faceI];
 
-        // Fetch the buffer value for 2D meshes
-        label nfe = twoDMesh_ ? nfeBuffer[faceI] : 3;
+        // Fetch the buffer value
+        label nfe = nfeBuffer[faceI];
 
         // Size up the lists
         f.setSize(nfe, -1);
@@ -344,12 +344,8 @@ void coupleMap::allocateBuffers() const
     entityBuffer(EDGE_SIZES).setSize(nEntities(NBDY));
     entityBuffer(PATCH_ID).setSize(nEntities(NBDY));
 
-    // nFaceEdges buffer is required only for 2D,
-    // due to a mix of triangle / quad faces
-    if (twoDMesh_)
-    {
-        entityBuffer(NFE_BUFFER).setSize(nEntities(FACE));
-    }
+    // Set face-sizes
+    entityBuffer(NFE_BUFFER).setSize(nEntities(FACE));
 
     // Allocate for variable size face-lists
     entityBuffer(FACE).setSize(nEntities(NFE_SIZE));
