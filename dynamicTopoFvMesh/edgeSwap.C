@@ -2104,10 +2104,27 @@ scalar dynamicTopoFvMesh::computeMinQuality
         return minQuality;
     }
 
-    // Ensure that edge is surrounded by triangles
+    // Ensure that edge is surrounded by tetrahedra
     forAll(edgeFaces, faceI)
     {
-        if (faces_[edgeFaces[faceI]].size() != 3)
+        const label& faceIndex = edgeFaces[faceI];
+        const face& faceToCheck = faces_[faceIndex];
+
+        if (faceToCheck.size() != 3)
+        {
+            return minQuality;
+        }
+
+        // Ensure tet-cells
+        const label& faceOwn = owner_[faceIndex];
+        const label& faceNei = neighbour_[faceIndex];
+
+        if (cells_[faceOwn].size() != 4)
+        {
+            return minQuality;
+        }
+
+        if ((faceNei > -1) && (cells_[faceNei].size() != 4))
         {
             return minQuality;
         }

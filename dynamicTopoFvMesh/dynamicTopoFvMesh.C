@@ -1487,20 +1487,62 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
     forAll(layeringPatches, wordI)
     {
         word pName = layeringPatches[wordI];
-        label patchID = boundary.findPatchID(pName);
 
-        // If this patch has no faces, move on
-        if (boundary[patchID].empty())
+        label patchID = boundary.findPatchID(pName);
+        label zoneID = faceZones().findZoneID(pName);
+
+        if (zoneID == -1 && patchID == -1)
         {
-            continue;
+            FatalErrorIn("void dynamicTopoFvMesh::handleLayerAdditionRemoval()")
+                << " No patch or zone named: " << pName
+                << abort(FatalError);
         }
 
-        // Use first face to determine layer thickness
-        scalar magSf = mag(boundary[patchID].faceAreas()[0]);
-        scalar Vc = cellVolumes()[boundary[patchID].faceCells()[0]];
+        if (zoneID > -1 && patchID > -1)
+        {
+            FatalErrorIn("void dynamicTopoFvMesh::handleLayerAdditionRemoval()")
+                << " Patch / zone duplicate: " << pName
+                << abort(FatalError);
+        }
+
+        scalarField fieldMagSf, fieldVc;
+
+        if (zoneID > -1)
+        {
+            // Look for orientation vector
+            vector orient
+            (
+                layeringDict.subDict(pName).lookup("orientationVector")
+            );
+
+            const faceZone& fz = faceZones()[zoneID];
+
+            fieldVc.setSize(fz.size());
+            fieldMagSf.setSize(fz.size());
+
+            forAll(fz, faceI)
+            {
+
+            }
+        }
+        else
+        {
+            const polyPatch& fp = boundary[patchID];
+
+            fieldVc.setSize(fp.size());
+            fieldMagSf.setSize(fp.size());
+
+            forAll(fp, faceI)
+            {
+
+            }
+        }
 
         // Define thickness
-        scalar thickness = (Vc / (magSf + VSMALL));
+        scalar thickness = Foam::min(fieldVc / (fieldMagSf + VSMALL));
+
+        // Reduce across processors
+        reduce(thickness, minOp<scalar>());
 
         // Fetch min / max thickness
         scalar minThickness =
@@ -1516,8 +1558,6 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
         if (debug)
         {
             Pout<< " Patch: " << pName << nl
-                << " Face area: " << magSf << nl
-                << " Cell volume: " << Vc << nl
                 << " Layer thickness: " << thickness << nl
                 << " Min thickness: " << minThickness << nl
                 << " Max thickness: " << maxThickness << nl
