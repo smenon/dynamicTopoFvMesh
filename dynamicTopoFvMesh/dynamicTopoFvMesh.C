@@ -1505,7 +1505,7 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
                 << abort(FatalError);
         }
 
-        scalarField fieldMagSf, fieldVc;
+        DynamicList<label> patchFaces, patchCells;
 
         if (zoneID > -1)
         {
@@ -1517,25 +1517,109 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
 
             const faceZone& fz = faceZones()[zoneID];
 
-            fieldVc.setSize(fz.size());
-            fieldMagSf.setSize(fz.size());
+            patchFaces.setCapacity(fz.size());
+            patchCells.setCapacity(fz.size());
+
+            label cellIndex = -1;
 
             forAll(fz, faceI)
             {
+                if (reverseFaceMap_[fz[faceI]] == -1)
+                {
+                    continue;
+                }
 
+                const face& checkFace = faces_[fz[faceI]];
+
+                vector fN = checkFace.normal(points_);
+
+                if ((fN & orient) > 0.0)
+                {
+                    cellIndex = owner_[fz[faceI]];
+                }
+                else
+                {
+                    cellIndex = neighbour_[fz[faceI]];
+                }
+
+                patchFaces.append(fz[faceI]);
+                patchCells.append(cellIndex);
+            }
+
+            forAllConstIter(Map<label>, addedFaceZones_, fIter)
+            {
+                if (fIter() == zoneID)
+                {
+                    const face& checkFace = faces_[fIter.key()];
+
+                    vector fN = checkFace.normal(points_);
+
+                    if ((fN & orient) > 0.0)
+                    {
+                        cellIndex = owner_[fz[fIter.key()]];
+                    }
+                    else
+                    {
+                        cellIndex = neighbour_[fz[fIter.key()]];
+                    }
+
+                    patchFaces.append(fIter.key());
+                    patchCells.append(cellIndex);
+                }
             }
         }
         else
         {
             const polyPatch& fp = boundary[patchID];
 
-            fieldVc.setSize(fp.size());
-            fieldMagSf.setSize(fp.size());
+            patchFaces.setCapacity(fp.size());
+            patchCells.setCapacity(fp.size());
 
             forAll(fp, faceI)
             {
+                if (reverseFaceMap_[faceI + fp.start()] == -1)
+                {
+                    continue;
+                }
 
+                patchFaces.append(faceI + fp.start());
+                patchCells.append(owner_[faceI + fp.start()]);
             }
+
+            forAllConstIter(Map<label>, addedFacePatches_, fIter)
+            {
+                if (fIter() == patchID)
+                {
+                    patchFaces.append(fIter.key());
+                    patchCells.append(owner_[fIter.key()]);
+                }
+            }
+        }
+
+        // Loop through all faces / cells
+        // and accumulate necessary information
+        scalar cellVolume = 0.0;
+        vector cellCentre(vector::zero);
+        scalarField fieldVc(patchFaces.size());
+        scalarField fieldMagSf(patchFaces.size());
+
+        forAll(patchFaces, faceI)
+        {
+            const face& checkFace = faces_[patchFaces[faceI]];
+
+            meshOps::cellCentreAndVolume
+            (
+                patchCells[faceI],
+                points_,
+                faces_,
+                cells_,
+                owner_,
+                cellCentre,
+                cellVolume
+            );
+
+            fieldVc[faceI] = cellVolume;
+            fieldMagSf[faceI] = Foam::mag(checkFace.normal(points_));
         }
 
         // Define thickness
@@ -1567,13 +1651,13 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
         if (thickness > maxThickness)
         {
             // Add cell layer above patch
-            addCellLayer(patchID);
+            addCellLayer(patchFaces, patchCells);
         }
         else
         if (thickness < minThickness)
         {
             // Remove cell layer above patch
-            removeCellLayer(patchID);
+            removeCellLayer(patchFaces, patchCells);
         }
     }
 }

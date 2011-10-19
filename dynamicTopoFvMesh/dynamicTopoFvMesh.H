@@ -918,11 +918,19 @@ class dynamicTopoFvMesh
         // Handle layer addition / removal events
         void handleLayerAdditionRemoval();
 
-        // Add cell layer above specified patch
-        const changeMap addCellLayer(const label patchID);
+        // Add cell layer
+        const changeMap addCellLayer
+        (
+            const DynamicList<label>& patchFaces,
+            const DynamicList<label>& patchCells
+        );
 
-        // Remove cell layer above specified patch
-        const changeMap removeCellLayer(const label patchID);
+        // Remove cell layer
+        const changeMap removeCellLayer
+        (
+            const DynamicList<label>& patchFaces,
+            const DynamicList<label>& patchCells
+        );
 
         // Test an edge / face for proximity with other non-neighbouring faces.
         // Return the scalar distance to the nearest face.
