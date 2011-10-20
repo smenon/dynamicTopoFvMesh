@@ -74,8 +74,12 @@ bool dynamicTopoFvMesh::meshQuality
             continue;
         }
 
-        // Skip hexahedral cells
-        if (cellToCheck.size() == 6)
+        // Skip hexahedral / 3D-prism cells
+        if
+        (
+            (cellToCheck.size() == 6) ||
+            (cellToCheck.size() == 5 && !twoDMesh_)
+        )
         {
             cQuality = 1.0;
             meanQuality += cQuality;
@@ -1805,6 +1809,17 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         (
             (cellToNode[cellI].size() == 8) &&
             (cells_[cellIndex[cellI]].size() == 6)
+        )
+        {
+            continue;
+        }
+
+        // Check for 3D prism-cells
+        if
+        (
+            !twoDMesh_ &&
+            (cellToNode[cellI].size() == 6) &&
+            (cells_[cellIndex[cellI]].size() == 5)
         )
         {
             continue;

@@ -2999,12 +2999,16 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             // Create a new cell. Add it for now, but update later.
             cell newCell(4);
 
+            // Assign same zone as parent cell
+            label newCellZone = getZoneIndex(cellHull[indexI], 3);
+
             addedCellIndices[indexI] =
             (
                 insertCell
                 (
                     newCell,
-                    lengthScale_[cellHull[indexI]]
+                    lengthScale_[cellHull[indexI]],
+                    newCellZone
                 )
             );
 
@@ -6631,12 +6635,16 @@ const changeMap dynamicTopoFvMesh::addCellLayer
             newLengthScale = lengthScale_[cIndex];
         }
 
+        // Assign same zone as parent cell
+        label newCellZone = getZoneIndex(cIndex, 3);
+
         label newCellIndex =
         (
             insertCell
             (
                 cell(ownCell.size()),
-                newLengthScale
+                newLengthScale,
+                newCellZone
             )
         );
 
@@ -6650,7 +6658,7 @@ const changeMap dynamicTopoFvMesh::addCellLayer
     forAll(patchFaces, indexI)
     {
         label faceI = patchFaces[indexI];
-        label cIndex = owner_[faceI];
+        label cIndex = patchCells[indexI];
 
         // Fetch appropriate face / cell
         //  - Make copies, since holding references

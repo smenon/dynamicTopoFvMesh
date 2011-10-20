@@ -619,6 +619,13 @@ class dynamicTopoFvMesh
             const label pIndex
         );
 
+        // Return zone index for a specified entity
+        label getZoneIndex
+        (
+            const label index,
+            const label eType
+        ) const;
+
         // Utility method to build vertexHull for an edge [3D]
         void buildVertexHull
         (

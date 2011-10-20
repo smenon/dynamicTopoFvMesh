@@ -1084,6 +1084,123 @@ void dynamicTopoFvMesh::removePoint
 }
 
 
+// Return zone index for a specified entity
+label dynamicTopoFvMesh::getZoneIndex
+(
+    const label index,
+    const label eType
+) const
+{
+    switch (eType)
+    {
+        // Point zone
+        case 0:
+        {
+            if (index < nOldPoints_)
+            {
+                // Check zone ID
+                const pointZoneMesh& pz = pointZones();
+
+                forAll(pz, zoneI)
+                {
+                    if (pz[zoneI].whichPoint(index) > -1)
+                    {
+                        return pz[zoneI].index();
+                    }
+                }
+            }
+            else
+            {
+                Map<label>::const_iterator it = addedPointZones_.find(index);
+
+                if (it != addedPointZones_.end())
+                {
+                    return it();
+                }
+            }
+
+            break;
+        }
+
+        // Face zone
+        case 2:
+        {
+            if (index < nOldFaces_)
+            {
+                // Check zone ID
+                const faceZoneMesh& fz = faceZones();
+
+                forAll(fz, zoneI)
+                {
+                    if (fz[zoneI].whichFace(index) > -1)
+                    {
+                        return fz[zoneI].index();
+                    }
+                }
+            }
+            else
+            {
+                Map<label>::const_iterator it = addedFaceZones_.find(index);
+
+                if (it != addedFaceZones_.end())
+                {
+                    return it();
+                }
+            }
+
+            break;
+        }
+
+        // Cell zone
+        case 3:
+        {
+            if (index < nOldCells_)
+            {
+                // Check zone ID
+                const cellZoneMesh& cz = cellZones();
+
+                forAll(cz, zoneI)
+                {
+                    if (cz[zoneI].whichCell(index) > -1)
+                    {
+                        return cz[zoneI].index();
+                    }
+                }
+            }
+            else
+            {
+                Map<label>::const_iterator it = addedCellZones_.find(index);
+
+                if (it != addedCellZones_.end())
+                {
+                    return it();
+                }
+            }
+
+            break;
+        }
+
+        default:
+        {
+            FatalErrorIn
+            (
+                "\n"
+                "label dynamicTopoFvMesh::getZoneIndex\n"
+                "(\n"
+                "    const label index,\n"
+                "    const label eType\n"
+                ")\n"
+            )
+                << " Unknown entity type: " << eType << nl
+                << " Index: " << index
+                << abort(FatalError);
+        }
+    }
+
+    return -1;
+}
+
+
 // Utility method to build vertexHull for an edge [3D].
 // Assumes that edgeFaces information is consistent.
 void dynamicTopoFvMesh::buildVertexHull
@@ -1493,14 +1610,20 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
 
         if (zoneID == -1 && patchID == -1)
         {
-            FatalErrorIn("void dynamicTopoFvMesh::handleLayerAdditionRemoval()")
+            FatalErrorIn
+            (
+                "void dynamicTopoFvMesh::handleLayerAdditionRemoval()"
+            )
                 << " No patch or zone named: " << pName
                 << abort(FatalError);
         }
 
         if (zoneID > -1 && patchID > -1)
         {
-            FatalErrorIn("void dynamicTopoFvMesh::handleLayerAdditionRemoval()")
+            FatalErrorIn
+            (
+                "void dynamicTopoFvMesh::handleLayerAdditionRemoval()"
+            )
                 << " Patch / zone duplicate: " << pName
                 << abort(FatalError);
         }
@@ -1556,11 +1679,11 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
 
                     if ((fN & orient) > 0.0)
                     {
-                        cellIndex = owner_[fz[fIter.key()]];
+                        cellIndex = owner_[fIter.key()];
                     }
                     else
                     {
-                        cellIndex = neighbour_[fz[fIter.key()]];
+                        cellIndex = neighbour_[fIter.key()];
                     }
 
                     patchFaces.append(fIter.key());
