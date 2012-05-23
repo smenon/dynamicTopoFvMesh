@@ -34,6 +34,7 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include "polyMesh.H"
 
+#include "tetPointRef.H"
 #include "matchPoints.H"
 #include "DimensionedField.H"
 #include "pointPatchField.H"
@@ -69,7 +70,9 @@ mesquiteMotionSolver::mesquiteMotionSolver
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     arraysInitialized_(false),
     nPoints_(mesh.nPoints()),
-    nCells_(mesh.nCells()),
+    nCells_(0),
+    decompType_(-1),
+    nDecompPoints_(0),
     surfaceSmoothing_(false),
     volumeCorrection_(false),
     volCorrTolerance_(1e-20),
@@ -109,7 +112,9 @@ mesquiteMotionSolver::mesquiteMotionSolver
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     arraysInitialized_(false),
     nPoints_(mesh.nPoints()),
-    nCells_(mesh.nCells()),
+    nCells_(0),
+    decompType_(-1),
+    nDecompPoints_(0),
     surfaceSmoothing_(false),
     volumeCorrection_(false),
     volCorrTolerance_(1e-20),
@@ -1132,6 +1137,34 @@ void mesquiteMotionSolver::readOptions()
 
         tcOuter_.add_iteration_limit(1);
     }
+
+    // Set decomposition type, if available
+    if (optionsDict.found("decompType"))
+    {
+        word dType(optionsDict.lookup("decompType"));
+
+        if (dType == "cell")
+        {
+            decompType_ = 1;
+        }
+        else
+        if (dType == "face")
+        {
+            decompType_ = 2;
+        }
+        else
+        {
+            FatalErrorIn("void mesquiteMotionSolver::readOptions()")
+                << "Unknown decomposition type: " << dType
+                << "Available types are: cell or face"
+                << abort(FatalError);
+        }
+    }
+    else
+    {
+        // Set default
+        decompType_ = 2;
+    }
 }
 
 
@@ -1207,28 +1240,61 @@ void mesquiteMotionSolver::initArrays()
         return;
     }
 
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
+    label nPolyhedra = 0;
+    label nCellPoints = 0, nFacePoints = 0;
+
     // Construct shape recognizers
-    label nUnknown = 0;
     FixedList<label, 4> nTypes(0);
     FixedList<autoPtr<cellMatcher>, 4> matcher;
     FixedList<Mesquite::EntityTopology, 4> cellType;
 
     // Set types
-    matcher[0].set(new hexMatcher());
-    cellType[0] = Mesquite::HEXAHEDRON;
+    bool standardTypes = false;
 
-    matcher[1].set(new tetMatcher());
-    cellType[1] = Mesquite::TETRAHEDRON;
+    if (optionsDict.found("standardCellTypes"))
+    {
+        standardTypes = readBool(optionsDict.lookup("standardCellTypes"));
+    }
 
-    matcher[2].set(new pyrMatcher());
-    cellType[2] = Mesquite::PYRAMID;
+    if (standardTypes)
+    {
+        matcher[0].set(new tetMatcher());
+        cellType[0] = Mesquite::TETRAHEDRON;
 
-    matcher[3].set(new prismMatcher());
-    cellType[3] = Mesquite::PRISM;
+        matcher[1].set(new hexMatcher());
+        cellType[1] = Mesquite::HEXAHEDRON;
+
+        matcher[2].set(new pyrMatcher());
+        cellType[2] = Mesquite::PYRAMID;
+
+        matcher[3].set(new prismMatcher());
+        cellType[3] = Mesquite::PRISM;
+    }
+    else
+    {
+        // No standard types.
+        // Default to tetrahedra, and decompose the rest.
+        matcher[0].set(new tetMatcher());
+        cellType[0] = Mesquite::TETRAHEDRON;
+
+        matcher[1].set(NULL);
+        matcher[2].set(NULL);
+        matcher[3].set(NULL);
+    }
 
     const faceList& meshFaces = mesh().faces();
     const cellList& meshCells = mesh().cells();
     const labelList& faceOwner = mesh().faceOwner();
+
+    // Face marker list
+    List<labelPair> faceMarker;
+
+    if (decompType_ == 2)
+    {
+        faceMarker.setSize(meshFaces.size(), labelPair(-1, -1));
+    }
 
     forAll(meshCells, cellI)
     {
@@ -1236,8 +1302,13 @@ void mesquiteMotionSolver::initArrays()
 
         forAll(matcher, indexI)
         {
-            if (matcher[indexI]->isA(mesh(), cellI))
+            if 
+            (
+                matcher[indexI].valid() &&
+                matcher[indexI]->isA(mesh(), cellI)
+            )
             {
+                nCells_++;
                 nTypes[indexI]++;
 
                 foundMatch = true;
@@ -1245,43 +1316,126 @@ void mesquiteMotionSolver::initArrays()
             }
         }
 
-        if (!foundMatch)
+        if (foundMatch)
         {
-            nUnknown++;
+            continue;
+        }
+
+        // Assume polyhedron
+        nPolyhedra++;
+
+        // Decompose into tets.
+        const cell& checkCell = meshCells[cellI];
+
+        // Add a central point for the cell
+        nCellPoints++;
+        nDecompPoints_++;
+
+        forAll(checkCell, faceI)
+        {
+            const face& checkFace = meshFaces[checkCell[faceI]];
+
+            switch (decompType_)
+            {
+                case 1:
+                {
+                    nCells_ += (checkFace.size() - 2);
+                    nTypes[0] += (checkFace.size() - 2);
+
+                    break;
+                }
+
+                case 2:
+                {
+                    if (checkFace.size() == 3)
+                    {
+                        nCells_++;
+                        nTypes[0]++;
+                    }
+                    else
+                    {
+                        // Add a central point for the face
+                        labelPair& fPair = faceMarker[checkCell[faceI]];
+
+                        if (fPair.first() == -1)
+                        {
+                            fPair.first() = 1;
+
+                            nFacePoints++;
+                            nDecompPoints_++;
+                        }
+
+                        nCells_ += checkFace.size();
+                        nTypes[0] += checkFace.size();
+                    }
+
+                    break;
+                }
+
+                default:
+                {
+                    FatalErrorIn("void mesquiteMotionSolver::initArrays()")
+                        << "Unknown polyhedron decomposition type."
+                        << abort(FatalError);
+
+                    break;
+                }
+            }
         }
     }
 
     if (debug)
     {
-        Pout<< "nHex     = " << nTypes[0] << nl
-            << "nTet     = " << nTypes[1] << nl
-            << "nPyr     = " << nTypes[2] << nl
-            << "nPrism   = " << nTypes[3] << nl
-            << "nUnknown = " << nUnknown << endl;
+        Pout<< "nTet       = " << nTypes[0] << nl
+            << "nHex       = " << nTypes[1] << nl
+            << "nPyr       = " << nTypes[2] << nl
+            << "nPrism     = " << nTypes[3] << nl
+            << "nPolyhedra = " << nPolyhedra << endl;
     }
 
     label nCellToNode =
     (
-        (8 * nTypes[0])
-      + (4 * nTypes[1])
+        (4 * nTypes[0])
+      + (8 * nTypes[1])
       + (5 * nTypes[2])
       + (6 * nTypes[3])
     );
 
     // Prepare arrays for mesquite
-    vtxCoords_.setSize(3 * nPoints_);
+    vtxCoords_.setSize(3 * (nPoints_ + nDecompPoints_));
     cellToNode_.setSize(nCellToNode);
-    fixFlags_.setSize(nPoints_);
+    fixFlags_.setSize(nPoints_ + nDecompPoints_);
     mixedTypes_.setSize(nCells_);
+    decompCellCentres_.setSize(nCellPoints);
+    decompFaceCentres_.setSize(nFacePoints);
+
+    // Reset faceMarker
+    if (nFacePoints)
+    {
+        forAll(faceMarker, faceI)
+        {
+            faceMarker[faceI].first() = -1;
+        }
+    }
+
+    // Reset counters
+    nDecompPoints_ = 0;
+    nCellPoints = 0, nFacePoints = 0;
 
     // Set connectivity information
     label cIndex = 0, cellIndex = 0;
 
     forAll(meshCells, cellI)
     {
+        bool foundMatch = false;
+
         forAll(matcher, indexI)
         {
-            if (matcher[indexI]->isA(mesh(), cellI))
+            if
+            (
+                matcher[indexI].valid() &&
+                matcher[indexI]->isA(mesh(), cellI)
+            )
             {
                 // Match shape
                 matcher[indexI]->matchShape
@@ -1304,13 +1458,160 @@ void mesquiteMotionSolver::initArrays()
                 // Set element type
                 mixedTypes_[cellIndex++] = cellType[indexI];
 
+                foundMatch = true;
+                break;
+            }
+        }
+
+        if (foundMatch)
+        {
+            continue;
+        }
+
+        // Decompose into tets.
+        const cell& checkCell = meshCells[cellI];
+
+        // Add a central point for the cell
+        label cellPoint = nPoints_ + nDecompPoints_;
+
+        decompCellCentres_[nCellPoints].first() = cellI;
+        decompCellCentres_[nCellPoints].second() = cellPoint;
+
+        nCellPoints++;
+        nDecompPoints_++;
+
+        switch (decompType_)
+        {
+            case 1:
+            {
+                forAll(checkCell, faceI)
+                {
+                    const face& checkFace = meshFaces[checkCell[faceI]];
+                    const label& checkOwner = faceOwner[checkCell[faceI]];
+
+                    if (checkOwner == cellI)
+                    {
+                        for (label nI = (checkFace.size() - 1); nI > 1; nI--)
+                        {
+                            cellToNode_[cIndex++] = checkFace[0];
+                            cellToNode_[cIndex++] = checkFace[nI];
+                            cellToNode_[cIndex++] = checkFace[nI - 1];
+                            cellToNode_[cIndex++] = cellPoint;
+
+                            mixedTypes_[cellIndex++] = cellType[0];
+                        }
+                    }
+                    else
+                    {
+                        for (label nI = 1; nI < (checkFace.size() - 1); nI++)
+                        {
+                            cellToNode_[cIndex++] = checkFace[0];
+                            cellToNode_[cIndex++] = checkFace[nI];
+                            cellToNode_[cIndex++] = checkFace[nI + 1];
+                            cellToNode_[cIndex++] = cellPoint;
+
+                            mixedTypes_[cellIndex++] = cellType[0];
+                        }
+                    }
+                }
+
+                break;
+            }
+
+            case 2:
+            {
+                forAll(checkCell, faceI)
+                {
+                    const face& checkFace = meshFaces[checkCell[faceI]];
+                    const label& checkOwner = faceOwner[checkCell[faceI]];
+
+                    if (checkFace.size() == 3)
+                    {
+                        if (checkOwner == cellI)
+                        {
+                            cellToNode_[cIndex++] = checkFace[2];
+                            cellToNode_[cIndex++] = checkFace[1];
+                            cellToNode_[cIndex++] = checkFace[0];
+                            cellToNode_[cIndex++] = cellPoint;
+
+                            mixedTypes_[cellIndex++] = cellType[0];
+                        }
+                        else
+                        {
+                            cellToNode_[cIndex++] = checkFace[0];
+                            cellToNode_[cIndex++] = checkFace[1];
+                            cellToNode_[cIndex++] = checkFace[2];
+                            cellToNode_[cIndex++] = cellPoint;
+
+                            mixedTypes_[cellIndex++] = cellType[0];
+                        }
+                    }
+                    else
+                    {
+                        // Add a central point for the face
+                        labelPair& fPair = faceMarker[checkCell[faceI]];
+
+                        if (fPair.first() == -1)
+                        {
+                            fPair.first() = checkCell[faceI];
+                            fPair.second() = nPoints_ + nDecompPoints_;
+
+                            nFacePoints++;
+                            nDecompPoints_++;
+                        }
+
+                        if (checkOwner == cellI)
+                        {
+                            forAllReverse(checkFace, nI)
+                            {
+                                cellToNode_[cIndex++] = checkFace[nI];
+                                cellToNode_[cIndex++] = checkFace.prevLabel(nI);
+                                cellToNode_[cIndex++] = fPair.second();
+                                cellToNode_[cIndex++] = cellPoint;
+
+                                mixedTypes_[cellIndex++] = cellType[0];
+                            }
+                        }
+                        else
+                        {
+                            forAll(checkFace, nI)
+                            {
+                                cellToNode_[cIndex++] = checkFace[nI];
+                                cellToNode_[cIndex++] = checkFace.nextLabel(nI);
+                                cellToNode_[cIndex++] = fPair.second();
+                                cellToNode_[cIndex++] = cellPoint;
+
+                                mixedTypes_[cellIndex++] = cellType[0];
+                            }
+                        }
+                    }
+                }
+
                 break;
             }
         }
     }
 
+    // Condense the faceMarker
+    if (nFacePoints)
+    {
+        nFacePoints = 0;
+
+        forAll(faceMarker, faceI)
+        {
+            const labelPair& fPair = faceMarker[faceI];
+
+            if (fPair.first() > -1)
+            {
+                decompFaceCentres_[nFacePoints++] = fPair;
+            }
+        }
+    }
+
+    faceMarker.clear();
+
     // Fix patch information, but blank out first
-    forAll(refPoints_, pointI)
+    forAll(fixFlags_, pointI)
     {
         fixFlags_[pointI] = 0;
     }
@@ -1331,9 +1632,30 @@ void mesquiteMotionSolver::initArrays()
         }
     }
 
-    // Optionally fix additional zone points
-    const dictionary& optionsDict = subDict("mesquiteOptions");
+    // Fix points on decomposed boundary faces
+    forAll(decompFaceCentres_, indexI)
+    {
+        label fIndex = decompFaceCentres_[indexI].first();
+        label pIndex = decompFaceCentres_[indexI].second();
 
+        label patchI = boundary.whichPatch(fIndex);
+
+        if (patchI < 0)
+        {
+            continue;
+        }
+
+        // Leave processor boundaries out.
+        if (boundary[patchI].type() == "processor")
+        {
+            continue;
+        }
+
+        // Point is on physical boundary patch
+        fixFlags_[pIndex] = 1;
+    }
+
+    // Optionally fix additional zone points
     if (optionsDict.found("fixPointsZone"))
     {
         wordList fixZones = optionsDict.subDict("fixPointsZone").toc();
@@ -2045,22 +2367,45 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
     List<labelList> neiTypes(procIndices_.size());
     List<DynamicList<label> > myTypes(procIndices_.size());
 
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
     // Construct shape recognizers
     FixedList<autoPtr<cellMatcher>, 4> matcher;
     FixedList<Mesquite::EntityTopology, 4> cellType;
 
     // Set types
-    matcher[0].set(new hexMatcher());
-    cellType[0] = Mesquite::HEXAHEDRON;
+    bool standardTypes = false;
 
-    matcher[1].set(new tetMatcher());
-    cellType[1] = Mesquite::TETRAHEDRON;
+    if (optionsDict.found("standardCellTypes"))
+    {
+        standardTypes = readBool(optionsDict.lookup("standardCellTypes"));
+    }
 
-    matcher[2].set(new pyrMatcher());
-    cellType[2] = Mesquite::PYRAMID;
+    if (standardTypes)
+    {
+        matcher[0].set(new tetMatcher());
+        cellType[0] = Mesquite::TETRAHEDRON;
 
-    matcher[3].set(new prismMatcher());
-    cellType[3] = Mesquite::PRISM;
+        matcher[1].set(new hexMatcher());
+        cellType[1] = Mesquite::HEXAHEDRON;
+
+        matcher[2].set(new pyrMatcher());
+        cellType[2] = Mesquite::PYRAMID;
+
+        matcher[3].set(new prismMatcher());
+        cellType[3] = Mesquite::PRISM;
+    }
+    else
+    {
+        // No standard types.
+        // Default to tetrahedra, and decompose the rest.
+        matcher[0].set(new tetMatcher());
+        cellType[0] = Mesquite::TETRAHEDRON;
+
+        matcher[1].set(NULL);
+        matcher[2].set(NULL);
+        matcher[3].set(NULL);
+    }
 
     const cellList& cells = mesh().cells();
     const faceList& faces = mesh().faces();
@@ -2153,7 +2498,11 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
 
                 forAll(matcher, indexI)
                 {
-                    if (matcher[indexI]->isA(mesh(), pCells[cellI]))
+                    if
+                    (
+                        matcher[indexI].valid() &&
+                        matcher[indexI]->isA(mesh(), pCells[cellI])
+                    )
                     {
                         // Match shape
                         matcher[indexI]->matchShape
@@ -2197,23 +2546,23 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
                     }
                 }
 
+                // Add to list
+                addedCells.insert(pCells[cellI], nProcCells++);
+
                 if (!foundMatch)
                 {
                     Pout<< " Unknown type for cell: " << pCells[cellI]
                         << " :: " << cells[pCells[cellI]]
                         << abort(FatalError);
                 }
-
-                // Add to list
-                addedCells.insert(pCells[cellI], nProcCells++);
             }
         }
 
         // Estimate size for cellToNode
         label nCellToNode =
         (
-            (8 * nTypes[0])
-          + (4 * nTypes[1])
+            (4 * nTypes[0])
+          + (8 * nTypes[1])
           + (5 * nTypes[2])
           + (6 * nTypes[3])
         );
@@ -2306,9 +2655,9 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
         nExtraCellToNode += nAuxCellToNode[pI];
     }
 
-    List<double> vtxCoordsNew(3 * (nPoints_ + nExtraPoints));
+    List<double> vtxCoordsNew(3 * (nPoints_ + nDecompPoints_ + nExtraPoints));
     List<unsigned long> cellToNodeNew(nCellToNode + nExtraCellToNode);
-    List<int> fixFlagsNew(nPoints_ + nExtraPoints);
+    List<int> fixFlagsNew(nPoints_ + nDecompPoints_ + nExtraPoints);
     List<Mesquite::EntityTopology> mixedTypesNew(nCells_ + nExtraCells);
 
     // Copy existing arrays
@@ -2385,7 +2734,7 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
     }
 
     label expectedCells = (nCellToNode + nExtraCellToNode);
-    label expectedPoints = (nPoints_ + nExtraPoints);
+    label expectedPoints = (nPoints_ + nDecompPoints_ + nExtraPoints);
 
     if ( (cIndex != expectedCells) || (pIndex != expectedPoints) )
     {
@@ -2470,9 +2819,265 @@ void mesquiteMotionSolver::initParallelConnectivity()
 }
 
 
+// Compute centroids based on up-to-date point positions
+void mesquiteMotionSolver::computeCentroids
+(
+    const pointField& p,
+    pointField& fCtrs,
+    pointField& cCtrs
+)
+{
+    label nInvTets = 0;
+    scalarField cVols(mesh().nCells(), 0.0);
+
+    // Size the lists
+    fCtrs.setSize(mesh().nFaces(), vector::zero);
+    cCtrs.setSize(mesh().nCells(), vector::zero);
+
+    const faceList& fs = mesh().faces();
+
+    forAll(fs, faceI)
+    {
+        const face& f = fs[faceI];
+
+        label nPoints = f.size();
+
+        if (nPoints == 3)
+        {
+            fCtrs[faceI] = (1.0/3.0)*(p[f[0]] + p[f[1]] + p[f[2]]);
+        }
+        else
+        {
+            scalar sumA = 0.0;
+            vector sumAc = vector::zero;
+
+            point fCentre = p[f[0]];
+
+            for (label pi = 1; pi < nPoints; pi++)
+            {
+                fCentre += p[f[pi]];
+            }
+
+            fCentre /= nPoints;
+
+            for (label pi = 0; pi < nPoints; pi++)
+            {
+                const point& nextPoint = p[f[(pi + 1) % nPoints]];
+
+                vector c = p[f[pi]] + nextPoint + fCentre;
+                vector n = (nextPoint - p[f[pi]])^(fCentre - p[f[pi]]);
+                scalar a = mag(n);
+
+                sumA += a;
+                sumAc += a*c;
+            }
+
+            fCtrs[faceI] = (1.0/3.0)*sumAc/(sumA + VSMALL);
+        }
+    }
+
+    const labelList& own = mesh().faceOwner();
+    const labelList& nei = mesh().faceNeighbour();
+
+    labelField nCellFaces(mesh().nCells(), 0);
+    vectorField cEst(mesh().nCells(), vector::zero);
+
+    forAll (own, faceI)
+    {
+        cEst[own[faceI]] += fCtrs[faceI];
+        nCellFaces[own[faceI]] += 1;
+    }
+
+    forAll (nei, faceI)
+    {
+        cEst[nei[faceI]] += fCtrs[faceI];
+        nCellFaces[nei[faceI]] += 1;
+    }
+
+    forAll(cCtrs, cellI)
+    {
+        cEst[cellI] /= nCellFaces[cellI];
+    }
+
+    scalar tetVol;
+
+    forAll(own, faceI)
+    {
+        const face& f = fs[faceI];
+
+        if (f.size() == 3)
+        {
+            tetPointRef tpr(p[f[2]], p[f[1]], p[f[0]], cEst[own[faceI]]);
+
+            tetVol = tpr.mag();
+
+            if (tetVol < 0.0)
+            {
+                nInvTets++;
+
+                if (debug)
+                {
+                    Info<< "Warning: Inverted tetrahedron:" << nl
+                        << " tetVol: " << tetVol << nl
+                        << " tet: " << tpr << nl
+                        << " Face: " << f << endl;
+                }
+            }
+
+            // Accumulate volume-weighted tet centre
+            cCtrs[own[faceI]] += tetVol*tpr.centre();
+
+            // Accumulate tet volume
+            cVols[own[faceI]] += tetVol;
+        }
+        else
+        {
+            forAll(f, pI)
+            {
+                tetPointRef tpr
+                (
+                    p[f[pI]],
+                    p[f.prevLabel(pI)],
+                    fCtrs[faceI],
+                    cEst[own[faceI]]
+                );
+
+                tetVol = tpr.mag();
+
+                if (tetVol < 0.0)
+                {
+                    nInvTets++;
+
+                    if (debug)
+                    {
+                        Info<< "Warning: Inverted tetrahedron:" << nl
+                            << " tetVol: " << tetVol << nl
+                            << " tet: " << tpr << nl
+                            << " Face: " << f << endl;
+                    }
+                }
+
+                // Accumulate volume-weighted tet centre
+                cCtrs[own[faceI]] += tetVol*tpr.centre();
+
+                // Accumulate tet volume
+                cVols[own[faceI]] += tetVol;
+            }
+        }
+    }
+
+    forAll(nei, faceI)
+    {
+        const face& f = fs[faceI];
+
+        if (f.size() == 3)
+        {
+            tetPointRef tpr(p[f[0]], p[f[1]], p[f[2]], cEst[nei[faceI]]);
+
+            tetVol = tpr.mag();
+
+            if (tetVol < 0.0)
+            {
+                nInvTets++;
+
+                if (debug)
+                {
+                    Info<< "Warning: Inverted tetrahedron:" << nl
+                        << " tetVol: " << tetVol << nl
+                        << " tet: " << tpr << nl
+                        << " Face: " << f << endl;
+                }
+            }
+
+            // Accumulate volume-weighted tet centre
+            cCtrs[nei[faceI]] += tetVol*tpr.centre();
+
+            // Accumulate tet volume
+            cVols[nei[faceI]] += tetVol;
+        }
+        else
+        {
+            forAll(f, pI)
+            {
+                tetPointRef tpr
+                (
+                    p[f[pI]],
+                    p[f.nextLabel(pI)],
+                    fCtrs[faceI],
+                    cEst[nei[faceI]]
+                );
+
+                tetVol = tpr.mag();
+
+                if (tetVol < 0.0)
+                {
+                    nInvTets++;
+
+                    if (debug)
+                    {
+                        Info<< "Warning: Inverted tetrahedron:" << nl
+                            << " tetVol: " << tetVol << nl
+                            << " tet: " << tpr << nl
+                            << " Face: " << f << endl;
+                    }
+                }
+
+                // Accumulate volume-weighted tet centre
+                cCtrs[nei[faceI]] += tetVol*tpr.centre();
+
+                // Accumulate tet volume
+                cVols[nei[faceI]] += tetVol;
+            }
+        }
+    }
+
+    if (nInvTets)
+    {
+        Info<< "Warning: Inverted tetrahedralisation was found:" << nl
+            << " nInvTets: " << nInvTets << nl
+            << " Enable debug flag for more information." << endl;
+    }
+
+    cCtrs /= cVols + VSMALL;
+}
+
+
 // Copy auxiliary points to/from buffers
 void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
 {
+    if (firstCopy && nDecompPoints_)
+    {
+        // Compute up-to-date centroids
+        vectorField xF, xC;
+
+        computeCentroids(refPoints_, xF, xC);
+
+        // Copy points from decomposition
+        forAll(decompCellCentres_, indexI)
+        {
+            label cIndex = decompCellCentres_[indexI].first();
+            label pIndex = decompCellCentres_[indexI].second();
+
+            const vector& v = xC[cIndex];
+
+            vtxCoords_[(3*pIndex)+0] = v.x();
+            vtxCoords_[(3*pIndex)+1] = v.y();
+            vtxCoords_[(3*pIndex)+2] = v.z();
+        }
+
+        forAll(decompFaceCentres_, indexI)
+        {
+            label fIndex = decompFaceCentres_[indexI].first();
+            label pIndex = decompFaceCentres_[indexI].second();
+
+            const vector& v = xF[fIndex];
+
+            vtxCoords_[(3*pIndex)+0] = v.x();
+            vtxCoords_[(3*pIndex)+1] = v.y();
+            vtxCoords_[(3*pIndex)+2] = v.z();
+        }
+    }
+
     if (!Pstream::parRun())
     {
         return;
@@ -3932,7 +4537,7 @@ void mesquiteMotionSolver::solve()
     msqMesh
     (
         3,                         // Number of coords per vertex
-        nPoints_,                  // Number of vertices
+        nPoints_ + nDecompPoints_, // Number of vertices
         vtxCoords_.begin(),        // The vertex coordinates
         fixFlags_.begin(),         // Fixed vertex flags
         nCells_,                   // Number of elements
@@ -4061,7 +4666,11 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     }
 
     nPoints_ = Mesh_.nPoints();
-    nCells_ = Mesh_.nCells();
+    nCells_ = 0;
+    nDecompPoints_ = 0;
+
+    decompCellCentres_.clear();
+    decompFaceCentres_.clear();
 
     nAuxPoints_.clear();
     nAuxCells_.clear();

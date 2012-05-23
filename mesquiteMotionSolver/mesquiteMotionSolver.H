@@ -89,6 +89,17 @@ class mesquiteMotionSolver
         //- Number of elements
         unsigned long nCells_;
 
+        //- Polyhedra decomposition type
+        //  1: for cell, 2: for face
+        label decompType_;
+
+        //- Number of points from poly decomposition
+        unsigned long nDecompPoints_;
+
+        //- List of decomposition centres
+        List<labelPair> decompCellCentres_;
+        List<labelPair> decompFaceCentres_;
+
         //- Number of auxiliary points
         labelList nAuxPoints_;
 
@@ -107,7 +118,7 @@ class mesquiteMotionSolver
         //- Specify max volume correction iterations
         label volCorrMaxIter_;
 
-        // Specify tolerance for the CG solver
+        //- Specify tolerance for the CG solver
         scalar tolerance_;
 
         //- Specify multiple mesh-motion sweeps
@@ -253,6 +264,14 @@ class mesquiteMotionSolver
 
         // Prepare mesquite connectivity for parallel runs
         void initMesquiteParallelArrays();
+
+        // Compute centroids based on up-to-date point positions
+        void computeCentroids
+        (
+            const pointField& points,
+            pointField& faceCentres,
+            pointField& cellCentres
+        );
 
         // Copy auxiliary points to/from buffers
         void copyAuxiliaryPoints(bool firstCopy);
