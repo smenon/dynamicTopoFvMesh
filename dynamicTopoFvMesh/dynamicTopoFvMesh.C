@@ -1513,6 +1513,13 @@ void dynamicTopoFvMesh::buildCellConnectivity
                     // Update faceEdges
                     faceEdges_[fIndex][pointI] = nEdges_;
 
+                    // Update pointEdges
+                    if (!twoDMesh_)
+                    {
+                        meshOps::sizeUpList(nEdges_, pointEdges_[checkEdge[0]]);
+                        meshOps::sizeUpList(nEdges_, pointEdges_[checkEdge[1]]);
+                    }
+
                     // Track edge patch
                     addedEdgePatches_.insert(nEdges_, facePatch);
 
@@ -1547,12 +1554,6 @@ void dynamicTopoFvMesh::buildCellConnectivity
 
     // Invert faceEdges
     edgeFaces_ = invertManyToMany<labelList, labelList>(nEdges_, faceEdges_);
-
-    // Invert edges
-    if (!twoDMesh_)
-    {
-        pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
-    }
 }
 
 
