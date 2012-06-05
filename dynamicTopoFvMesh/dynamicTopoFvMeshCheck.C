@@ -1770,22 +1770,40 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
         cellIndex[cIndex] = cellI;
 
-        forAll(thisCell, faceI)
+        if (edgeLists_)
         {
-            const labelList& fEdges = faceEdges_[thisCell[faceI]];
-
-            forAll(fEdges, edgeI)
+            forAll(thisCell, faceI)
             {
-                const edge& thisEdge = edges_[fEdges[edgeI]];
+                const labelList& fEdges = faceEdges_[thisCell[faceI]];
 
-                if (!cellToNode[cIndex].found(thisEdge[0]))
+                forAll(fEdges, edgeI)
                 {
-                    cellToNode[cIndex].insert(thisEdge[0]);
+                    const edge& thisEdge = edges_[fEdges[edgeI]];
+
+                    if (!cellToNode[cIndex].found(thisEdge[0]))
+                    {
+                        cellToNode[cIndex].insert(thisEdge[0]);
+                    }
+
+                    if (!cellToNode[cIndex].found(thisEdge[1]))
+                    {
+                        cellToNode[cIndex].insert(thisEdge[1]);
+                    }
                 }
+            }
+        }
+        else
+        {
+            forAll(thisCell, faceI)
+            {
+                const face& fPoints = faces_[thisCell[faceI]];
 
-                if (!cellToNode[cIndex].found(thisEdge[1]))
+                forAll(fPoints, pointI)
                 {
-                    cellToNode[cIndex].insert(thisEdge[1]);
+                    if (!cellToNode[cIndex].found(fPoints[pointI]))
+                    {
+                        cellToNode[cIndex].insert(fPoints[pointI]);
+                    }
                 }
             }
         }

@@ -113,6 +113,9 @@ class dynamicTopoFvMesh
         //- Switch for cell-bandwidth reduction
         Switch bandWidthReduction_;
 
+        //- Switch for edge-lists
+        Switch edgeLists_;
+
         //- Coupled modification switch
         mutable Switch coupledModification_;
 
@@ -389,6 +392,9 @@ class dynamicTopoFvMesh
         // 3D Edge-swapping engine
         static void swap3DEdges(void *argument);
 
+        // 3D Cell edge-swapping engine
+        static void swap3DCells(void *argument);
+
         // Edge refinement engine
         static void edgeRefinementEngine(void *argument);
 
@@ -626,6 +632,17 @@ class dynamicTopoFvMesh
             labelList& vertexHull,
             const label checkIndex = 0
         ) const;
+
+        // Utility method to build local connectivity for a cell
+        void buildCellConnectivity
+        (
+            const label cIndex,
+            DynamicList<label>& hullCells,
+            DynamicList<label>& cellEdges
+        );
+
+        // Utility method to clear local connectivity for a cell
+        void clearCellConnectivity();
 
         // Utility to check whether points of an edge lie on a boundary
         const FixedList<bool,2> checkEdgeBoundary(const label eIndex) const;

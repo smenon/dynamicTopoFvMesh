@@ -41,6 +41,11 @@ Author
 #include "linePointRef.H"
 #include "lengthScaleEstimator.H"
 
+// Disable inlining when debugging
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER) && defined(FULLDEBUG)
+#   pragma GCC diagnostic ignored "-fdefault-inline"
+#endif
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -414,22 +419,37 @@ inline void dynamicTopoFvMesh::initStacks
     }
     else
     {
-        forAll(edges_, edgeI)
+        if (edgeLists_)
         {
-            // For coupled meshes, avoid certain edges.
-            if (patchCoupling_.size() || procIndices_.size())
+            forAll(edges_, edgeI)
             {
-                if (entities.found(edgeI))
+                // For coupled meshes, avoid certain edges.
+                if (patchCoupling_.size() || procIndices_.size())
                 {
-                    continue;
+                    if (entities.found(edgeI))
+                    {
+                        continue;
+                    }
+                }
+
+                if (edgeFaces_[edgeI].size())
+                {
+                    stack(tID[tIndex]).insert(edgeI);
+
+                    tIndex = tID.fcIndex(tIndex);
                 }
             }
-
-            if (edgeFaces_[edgeI].size())
+        }
+        else
+        {
+            forAll(cells_, cellI)
             {
-                stack(tID[tIndex]).insert(edgeI);
+                if (cells_[cellI].size())
+                {
+                    stack(tID[tIndex]).insert(cellI);
 
-                tIndex = tID.fcIndex(tIndex);
+                    tIndex = tID.fcIndex(tIndex);
+                }
             }
         }
     }

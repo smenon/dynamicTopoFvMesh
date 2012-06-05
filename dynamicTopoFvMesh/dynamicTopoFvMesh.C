@@ -798,24 +798,27 @@ label dynamicTopoFvMesh::insertEdge
     // This information will be required at the reordering stage
     addedEdgePatches_.insert(newEdgeIndex,patch);
 
-    if (patch >= 0)
+    if (edgeLists_)
     {
-        // Modify patch information for this boundary edge
-        edgePatchSizes_[patch]++;
-
-        for (label i = (patch + 1); i < nPatches_; i++)
+        if (patch >= 0)
         {
-            edgePatchStarts_[i]++;
+            // Modify patch information for this boundary edge
+            edgePatchSizes_[patch]++;
+
+            for (label i = (patch + 1); i < nPatches_; i++)
+            {
+                edgePatchStarts_[i]++;
+            }
         }
-    }
-    else
-    {
-        // Increment the number of internal edges, and subsequent patch-starts
-        nInternalEdges_++;
-
-        for (label i = 0; i < nPatches_; i++)
+        else
         {
-            edgePatchStarts_[i]++;
+            // Increment the number of internal edges, and subsequent patch-starts
+            nInternalEdges_++;
+
+            for (label i = 0; i < nPatches_; i++)
+            {
+                edgePatchStarts_[i]++;
+            }
         }
     }
 
@@ -902,24 +905,27 @@ void dynamicTopoFvMesh::removeEdge
     edges_[eIndex] = edge(-1, -1);
     edgeFaces_[eIndex].clear();
 
-    if (patch >= 0)
+    if (edgeLists_)
     {
-        // Modify patch information for this boundary edge
-        edgePatchSizes_[patch]--;
-
-        for (label i = (patch + 1); i < nPatches_; i++)
+        if (patch >= 0)
         {
-            edgePatchStarts_[i]--;
+            // Modify patch information for this boundary edge
+            edgePatchSizes_[patch]--;
+
+            for (label i = (patch + 1); i < nPatches_; i++)
+            {
+                edgePatchStarts_[i]--;
+            }
         }
-    }
-    else
-    {
-        // Decrement the internal edge count, and subsequent patch-starts
-        nInternalEdges_--;
-
-        forAll(edgePatchStarts_, patchI)
+        else
         {
-            edgePatchStarts_[patchI]--;
+            // Decrement the internal edge count, and subsequent patch-starts
+            nInternalEdges_--;
+
+            forAll(edgePatchStarts_, patchI)
+            {
+                edgePatchStarts_[patchI]--;
+            }
         }
     }
 
@@ -1369,6 +1375,226 @@ void dynamicTopoFvMesh::buildVertexHull
             << " Current vertexHull: " << vertexHull
             << abort(FatalError);
     }
+}
+
+
+// Utility method to build local connectivity for a cell
+void dynamicTopoFvMesh::buildCellConnectivity
+(
+    const label cIndex,
+    DynamicList<label>& hullCells,
+    DynamicList<label>& cellEdges
+)
+{
+    label checkIndex = 0;
+
+    // Clear existing lists
+    hullCells.clear();
+    cellEdges.clear();
+
+    const cell& seedCell = cells_[cIndex];
+
+    // Skip if deleted
+    if (seedCell.empty())
+    {
+        return;
+    }
+
+    // Insert source cell
+    hullCells.append(cIndex);
+
+    // Fetch cell vertices
+    labelList cellVerts = seedCell.labels(faces_);
+
+    // Loop until all connected cells have been discovered
+    while (checkIndex < hullCells.size())
+    {
+        label cellIndex = hullCells[checkIndex];
+
+        const cell& checkCell = cells_[cellIndex];
+
+        // Check cell neighbours
+        forAll(checkCell, faceI)
+        {
+            const label& fIndex = checkCell[faceI];
+
+            labelPair nPair(owner_[fIndex], neighbour_[fIndex]);
+
+            forAll(nPair, i)
+            {
+                label cI = nPair[i];
+                label oI = (i == 0 ? nPair[1] : nPair[0]);
+
+                // Add cell neighbours, if applicable
+                if
+                (
+                    oI > -1
+                 && cI == cellIndex
+                 && (findIndex(hullCells, oI) == -1)
+                )
+                {
+                    bool foundCell = false;
+
+                    const cell& oCell = cells_[oI];
+
+                    forAll(oCell, faceJ)
+                    {
+                        const face& checkFace = faces_[oCell[faceJ]];
+
+                        forAll(checkFace, pointI)
+                        {
+                            const label& pIndex = checkFace[pointI];
+
+                            if (findIndex(cellVerts, pIndex) > -1)
+                            {
+                                foundCell = true;
+                                break;
+                            }
+                        }
+
+                        if (foundCell)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (foundCell)
+                    {
+                        hullCells.append(oI);
+                    }
+                }
+            }
+        }
+
+        checkIndex++;
+    }
+
+    // Now that a list of cells is available,
+    // build edge-related connectivity.
+    forAll(hullCells, cellI)
+    {
+        label cellIndex = hullCells[cellI];
+        const cell& checkCell = cells_[cellIndex];
+
+        forAll(checkCell, faceI)
+        {
+            const label& fIndex = checkCell[faceI];
+            const face& checkFace = faces_[fIndex];
+
+            // Allocate if necessary
+            if (faceEdges_[fIndex].empty())
+            {
+                faceEdges_[fIndex].setSize(checkFace.size(), -1);
+            }
+
+            // Fetch face patch information
+            label facePatch = whichPatch(fIndex);
+
+            forAll(checkFace, pointI)
+            {
+                edge checkEdge = checkFace.faceEdge(pointI);
+
+                label foundEdge = -1;
+
+                for (label i = 0; i < nEdges_; i++)
+                {
+                    if (edges_[i] == checkEdge)
+                    {
+                        foundEdge = i;
+                        break;
+                    }
+                }
+
+                if (foundEdge == -1)
+                {
+                    // Add a new edge
+                    edges_.append(checkEdge);
+
+                    // Update faceEdges
+                    faceEdges_[fIndex][pointI] = nEdges_;
+
+                    // Track edge patch
+                    addedEdgePatches_.insert(nEdges_, facePatch);
+
+                    // Add to list if necessary
+                    if
+                    (
+                        cellIndex == cIndex
+                     && findIndex(cellEdges, nEdges_) == -1
+                    )
+                    {
+                        cellEdges.append(nEdges_);
+                    }
+
+                    nEdges_++;
+                }
+                else
+                {
+                    // Update faceEdges
+                    faceEdges_[fIndex][pointI] = foundEdge;
+
+                    Map<label>::iterator it = addedEdgePatches_.find(foundEdge);
+
+                    // Convert to boundary if necessary
+                    if (it() == -1 && facePatch != -1)
+                    {
+                        it() = facePatch;
+                    }
+                }
+            }
+        }
+    }
+
+    // Invert faceEdges
+    edgeFaces_ = invertManyToMany<labelList, labelList>(nEdges_, faceEdges_);
+
+    // Invert edges
+    if (!twoDMesh_)
+    {
+        pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
+    }
+}
+
+
+// Utility method to clear local connectivity for a cell
+void dynamicTopoFvMesh::clearCellConnectivity()
+{
+    // Clear edges
+    forAll(edges_, edgeI)
+    {
+        edge& checkEdge = edges_[edgeI];
+        labelList& eFaces = edgeFaces_[edgeI];
+
+        // Skip if already deleted
+        if (eFaces.empty())
+        {
+            continue;
+        }
+
+        if (!twoDMesh_)
+        {
+            pointEdges_[checkEdge[0]].clear();
+            pointEdges_[checkEdge[1]].clear();
+        }
+
+        // Clear faceEdges
+        forAll(eFaces, faceI)
+        {
+            faceEdges_[eFaces[faceI]].clear();
+        }
+
+        // Invalidate edge and edgeFaces
+        checkEdge = edge(-1, -1);
+        eFaces.clear();
+    }
+
+    // Reset counter / lists
+    nEdges_ = 0;
+    edges_.setSize(0);
+    edgeFaces_.setSize(0);
+
+    // Clear edge patch information
+    addedEdgePatches_.clear();
 }
 
 
@@ -1920,6 +2146,16 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
         }
     }
 
+    // Check for edge-lists
+    if (meshSubDict.found("allowEdgeLists") || mandatory_)
+    {
+        edgeLists_ = readBool(meshSubDict.lookup("allowEdgeLists"));
+    }
+    else
+    {
+        edgeLists_ = false;
+    }
+
     // Check for load-balancing in parallel
     if (reRead && (meshSubDict.found("loadBalancing") || mandatory_))
     {
@@ -1932,6 +2168,19 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
 // Initialize edge related connectivity lists
 void dynamicTopoFvMesh::initEdges()
 {
+    if (!edgeLists_)
+    {
+        // Merely allocate to existing sizes
+        faceEdges_.setSize(nFaces_);
+
+        if (!twoDMesh_)
+        {
+            pointEdges_.setSize(nPoints_);
+        }
+
+        return;
+    }
+
     // Initialize eMesh, and copy to local lists
     eMeshPtr_.set(new eMesh(*this));
 
@@ -2354,6 +2603,151 @@ void dynamicTopoFvMesh::swap3DEdges
                 }
             }
         }
+    }
+
+    if (thread->slave())
+    {
+        thread->sendSignal(meshHandler::STOP);
+    }
+
+    if (reported)
+    {
+        Info<< "  Swap Progress: 100% :"
+            << "  Surface: " << mesh.status(2)
+            << ", Total: " << mesh.status(1)
+            << "             \r"
+            << endl;
+    }
+}
+
+
+// 3D Cell edge-swapping engine
+void dynamicTopoFvMesh::swap3DCells
+(
+    void *argument
+)
+{
+    // Recast the argument
+    meshHandler *thread = static_cast<meshHandler*>(argument);
+
+    if (thread->slave())
+    {
+        thread->sendSignal(meshHandler::START);
+    }
+
+    dynamicTopoFvMesh& mesh = thread->reference();
+
+    // Figure out which thread this is...
+    label tIndex = mesh.self();
+
+    // Dynamic programming variables
+    labelList m;
+    PtrList<scalarListList> Q;
+    PtrList<labelListList> K, triangulations;
+
+    // Hull vertices information
+    labelList hullV;
+
+    // Allocate dynamic programming tables
+    mesh.initTables(m, Q, K, triangulations);
+
+    // Set the timer
+    clockTime sTimer;
+
+    bool reported = false;
+    label stackSize = mesh.stack(tIndex).size();
+    scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
+
+    // Edge list for cells
+    DynamicList<label> hullCells(10), cellEdges(6);
+
+    oIndex = ::floor(sTimer.elapsedTime() / interval);
+
+    // Pick edges off the stack
+    while (!mesh.stack(tIndex).empty())
+    {
+        // Report progress
+        if (thread->master())
+        {
+            // Update the index, if its changed
+            nIndex = ::floor(sTimer.elapsedTime() / interval);
+
+            if ((nIndex - oIndex) > VSMALL)
+            {
+                oIndex = nIndex;
+
+                scalar percent =
+                (
+                    100.0 -
+                    (
+                        (100.0 * mesh.stack(tIndex).size())
+                      / (stackSize + VSMALL)
+                    )
+                );
+
+                Info<< "  Swap Progress: " << percent << "% :"
+                    << "  Surface: " << mesh.status(2)
+                    << ", Total: " << mesh.status(1)
+                    << "             \r"
+                    << flush;
+
+                reported = true;
+            }
+        }
+
+        // Retrieve a cell from the stack
+        label cIndex = mesh.stack(tIndex).pop();
+
+        // Build local connectivity for the cell
+        mesh.buildCellConnectivity
+        (
+            cIndex,
+            hullCells,
+            cellEdges
+        );
+
+        // Loop through cell edges and check for swap configurations
+        forAll(cellEdges, edgeI)
+        {
+            label eIndex = cellEdges[edgeI];
+
+            // Compute the minimum quality of cells around this edge
+            scalar minQuality = mesh.computeMinQuality(eIndex, hullV);
+
+            // Check if this edge is on a bounding curve
+            // (Override purity check for processor edges)
+            if (mesh.checkBoundingCurve(eIndex, true))
+            {
+                continue;
+            }
+
+            // Fill the dynamic programming tables
+            if (mesh.fillTables(eIndex, minQuality, m, hullV, Q, K, triangulations))
+            {
+                // Check if edge-swapping is required.
+                if (mesh.checkQuality(eIndex, m, Q, minQuality))
+                {
+                    if (thread->master())
+                    {
+                        // Remove this edge according to the swap sequence
+                        mesh.removeEdgeFlips
+                        (
+                            eIndex,
+                            minQuality,
+                            hullV,
+                            Q,
+                            K,
+                            triangulations
+                        );
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        // Clear local connectivity for the cell
+        mesh.clearCellConnectivity();
     }
 
     if (thread->slave())
@@ -3900,7 +4294,14 @@ void dynamicTopoFvMesh::threadedTopoModifier()
         }
         else
         {
-            executeThreads(topoSequence, handlerPtr_, &swap3DEdges);
+            if (edgeLists_)
+            {
+                executeThreads(topoSequence, handlerPtr_, &swap3DEdges);
+            }
+            else
+            {
+                executeThreads(topoSequence, handlerPtr_, &swap3DCells);
+            }
         }
     }
 
@@ -3911,7 +4312,14 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     }
     else
     {
-        swap3DEdges(&(handlerPtr_[0]));
+        if (edgeLists_)
+        {
+            swap3DEdges(&(handlerPtr_[0]));
+        }
+        else
+        {
+            swap3DCells(&(handlerPtr_[0]));
+        }
     }
 
     if (debug)
@@ -4143,16 +4551,19 @@ bool dynamicTopoFvMesh::resetMesh()
         }
 
         // Reset the edge mesh
-        eMeshPtr_->resetPrimitives
-        (
-            edges,
-            faceEdges,
-            edgeFaces,
-            edgePatchSizes_,
-            edgePatchStarts_,
-            true,
-            (time().outputTime() && storePrimitives)
-        );
+        if (eMeshPtr_.valid())
+        {
+            eMeshPtr_->resetPrimitives
+            (
+                edges,
+                faceEdges,
+                edgeFaces,
+                edgePatchSizes_,
+                edgePatchStarts_,
+                true,
+                (time().outputTime() && storePrimitives)
+            );
+        }
 
         // Generate mapping for points on boundary patches
         labelListList patchPointMap(nPatches_);
