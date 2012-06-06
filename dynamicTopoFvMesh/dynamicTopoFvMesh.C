@@ -1471,6 +1471,8 @@ void dynamicTopoFvMesh::buildCellConnectivity
 
     // Now that a list of cells is available,
     // build edge-related connectivity.
+    HashTable<label, edge, Hash<edge> > eht;
+
     forAll(hullCells, cellI)
     {
         label cellIndex = hullCells[cellI];
@@ -1494,24 +1496,25 @@ void dynamicTopoFvMesh::buildCellConnectivity
             {
                 edge checkEdge = checkFace.faceEdge(pointI);
 
-                label foundEdge = -1;
+                HashTable<label, edge, Hash<edge> >::const_iterator foundEdge =
+                (
+                    eht.find(checkEdge)
+                );
 
-                for (label i = 0; i < nEdges_; i++)
-                {
-                    if (edges_[i] == checkEdge)
-                    {
-                        foundEdge = i;
-                        break;
-                    }
-                }
-
-                if (foundEdge == -1)
+                if (foundEdge == eht.end())
                 {
                     // Add a new edge
                     edges_.append(checkEdge);
 
                     // Update faceEdges
                     faceEdges_[fIndex][pointI] = nEdges_;
+
+                    // Update pointEdges
+                    if (!twoDMesh_)
+                    {
+                        meshOps::sizeUpList(nEdges_, pointEdges_[checkEdge[0]]);
+                        meshOps::sizeUpList(nEdges_, pointEdges_[checkEdge[1]]);
+                    }
 
                     // Track edge patch
                     addedEdgePatches_.insert(nEdges_, facePatch);
@@ -1526,14 +1529,20 @@ void dynamicTopoFvMesh::buildCellConnectivity
                         cellEdges.append(nEdges_);
                     }
 
+                    // Insert the new edge
+                    eht.insert(checkEdge, nEdges_);
+
                     nEdges_++;
                 }
                 else
                 {
                     // Update faceEdges
-                    faceEdges_[fIndex][pointI] = foundEdge;
+                    faceEdges_[fIndex][pointI] = foundEdge();
 
-                    Map<label>::iterator it = addedEdgePatches_.find(foundEdge);
+                    Map<label>::iterator it =
+                    (
+                        addedEdgePatches_.find(foundEdge())
+                    );
 
                     // Convert to boundary if necessary
                     if (it() == -1 && facePatch != -1)
@@ -1547,12 +1556,6 @@ void dynamicTopoFvMesh::buildCellConnectivity
 
     // Invert faceEdges
     edgeFaces_ = invertManyToMany<labelList, labelList>(nEdges_, faceEdges_);
-
-    // Invert edges
-    if (!twoDMesh_)
-    {
-        pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
-    }
 }
 
 
@@ -2740,8 +2743,6 @@ void dynamicTopoFvMesh::swap3DCells
                             triangulations
                         );
                     }
-
-                    break;
                 }
             }
         }
@@ -4262,7 +4263,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     if (edgeRefinement_)
     {
         // Initialize stacks
-        initStacks(entities);
+        initStacks(REFINEMENT, entities);
 
         // Execute threads
         if (threader_->multiThreaded())
@@ -4283,7 +4284,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     }
 
     // Re-Initialize stacks
-    initStacks(entities);
+    initStacks(QUALITY, entities);
 
     // Execute threads
     if (threader_->multiThreaded())

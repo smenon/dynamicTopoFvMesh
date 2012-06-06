@@ -404,8 +404,19 @@ class dynamicTopoFvMesh
         // Return the integer ID for a given thread
         inline label self() const;
 
+        // Enumerants for topo-modifier types
+        enum topoType
+        {
+            REFINEMENT,
+            QUALITY
+        };
+
         // Initialize stacks
-        inline void initStacks(const labelHashSet& entities);
+        inline void initStacks
+        (
+            const topoType tType,
+            const labelHashSet& entities
+        );
 
         // Initialize the coupled stack
         void initCoupledStack
@@ -1112,7 +1123,12 @@ class dynamicTopoFvMesh
         ) const;
 
         // Dump cell-quality statistics
-        bool meshQuality(bool outputOption);
+        bool meshQuality
+        (
+            bool outputOption,
+            bool initStacks = false,
+            const scalar maxVal = 0.0
+        );
 
 public:
 
