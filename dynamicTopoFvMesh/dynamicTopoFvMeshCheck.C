@@ -51,7 +51,9 @@ namespace Foam
 // Compute mesh-quality, and return true if no slivers are present
 bool dynamicTopoFvMesh::meshQuality
 (
-    bool outputOption
+    bool outputOption,
+    bool initStacks,
+    const scalar maxVal
 )
 {
     // Compute statistics on the fly
@@ -180,10 +182,24 @@ bool dynamicTopoFvMesh::meshQuality
         meanQuality += cQuality;
         nCells++;
 
-        // Add to the list of slivers
-        if ((cQuality < sliverThreshold_) && (cQuality > 0.0))
+        if (cQuality > 0.0)
         {
-            thresholdSlivers_.insert(cellI, cQuality);
+            if (initStacks)
+            {
+                // Append to stack list
+                if (cQuality < maxVal)
+                {
+                    stack(0).insert(cellI);
+                }
+            }
+            else
+            {
+                // Add to the list of slivers
+                if (cQuality < sliverThreshold_)
+                {
+                    thresholdSlivers_.insert(cellI, cQuality);
+                }
+            }
         }
     }
 

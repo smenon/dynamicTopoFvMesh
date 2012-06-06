@@ -372,6 +372,7 @@ inline label dynamicTopoFvMesh::self() const
 // Initialize edge-stacks
 inline void dynamicTopoFvMesh::initStacks
 (
+    const topoType tType,
     const labelHashSet& entities
 )
 {
@@ -394,6 +395,44 @@ inline void dynamicTopoFvMesh::initStacks
     else
     {
         tID = 0;
+    }
+
+    if (!edgeLists_)
+    {
+        switch (tType)
+        {
+            case REFINEMENT:
+            {
+                break;
+            }
+
+            case QUALITY:
+            {
+                // Read from dictionary
+                const dictionary& mD = dict_.subDict("dynamicTopoFvMesh");
+                scalar qThreshold = readScalar(mD.lookup("qualityThreshold"));
+
+                if (qThreshold > 1.0 || qThreshold < 0.0)
+                {
+                    FatalErrorIn("void dynamicTopoFvMesh::initStacks()")
+                        << " Quality threshold out of range [0..1]"
+                        << abort(FatalError);
+                }
+
+                meshQuality(false, true, qThreshold);
+
+                break;
+            }
+
+            default:
+            {
+                WarningIn("void dynamicTopoFvMesh::initStacks()")
+                    << nl << "Unknown topoType: " << tType
+                    << endl;
+            }
+        }
+
+        return;
     }
 
     if (twoDMesh_)
@@ -419,37 +458,22 @@ inline void dynamicTopoFvMesh::initStacks
     }
     else
     {
-        if (edgeLists_)
+        forAll(edges_, edgeI)
         {
-            forAll(edges_, edgeI)
+            // For coupled meshes, avoid certain edges.
+            if (patchCoupling_.size() || procIndices_.size())
             {
-                // For coupled meshes, avoid certain edges.
-                if (patchCoupling_.size() || procIndices_.size())
+                if (entities.found(edgeI))
                 {
-                    if (entities.found(edgeI))
-                    {
-                        continue;
-                    }
-                }
-
-                if (edgeFaces_[edgeI].size())
-                {
-                    stack(tID[tIndex]).insert(edgeI);
-
-                    tIndex = tID.fcIndex(tIndex);
+                    continue;
                 }
             }
-        }
-        else
-        {
-            forAll(cells_, cellI)
-            {
-                if (cells_[cellI].size())
-                {
-                    stack(tID[tIndex]).insert(cellI);
 
-                    tIndex = tID.fcIndex(tIndex);
-                }
+            if (edgeFaces_[edgeI].size())
+            {
+                stack(tID[tIndex]).insert(edgeI);
+
+                tIndex = tID.fcIndex(tIndex);
             }
         }
     }
