@@ -392,9 +392,6 @@ class dynamicTopoFvMesh
         // 3D Edge-swapping engine
         static void swap3DEdges(void *argument);
 
-        // 3D Cell edge-swapping engine
-        static void swap3DCells(void *argument);
-
         // Edge refinement engine
         static void edgeRefinementEngine(void *argument);
 
@@ -412,7 +409,7 @@ class dynamicTopoFvMesh
         };
 
         // Initialize stacks
-        inline void initStacks
+        void initStacks
         (
             const topoType tType,
             const labelHashSet& entities
@@ -645,7 +642,7 @@ class dynamicTopoFvMesh
         ) const;
 
         // Utility method to build local connectivity for a cell
-        void buildCellConnectivity
+        void buildLocalConnectivity
         (
             const label cIndex,
             DynamicList<label>& hullCells,
@@ -653,7 +650,7 @@ class dynamicTopoFvMesh
         );
 
         // Utility method to clear local connectivity for a cell
-        void clearCellConnectivity();
+        void clearLocalConnectivity();
 
         // Utility to check whether points of an edge lie on a boundary
         const FixedList<bool,2> checkEdgeBoundary(const label eIndex) const;
