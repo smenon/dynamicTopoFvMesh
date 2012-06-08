@@ -641,15 +641,10 @@ class dynamicTopoFvMesh
             const label checkIndex = 0
         ) const;
 
-        // Utility method to build local connectivity for a cell
-        void buildLocalConnectivity
-        (
-            const label cIndex,
-            DynamicList<label>& hullCells,
-            DynamicList<label>& cellEdges
-        );
+        // Utility method to build local connectivity
+        void buildLocalConnectivity();
 
-        // Utility method to clear local connectivity for a cell
+        // Utility method to clear local connectivity
         void clearLocalConnectivity();
 
         // Utility to check whether points of an edge lie on a boundary

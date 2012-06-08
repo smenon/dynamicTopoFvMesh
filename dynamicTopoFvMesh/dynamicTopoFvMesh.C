@@ -1379,103 +1379,110 @@ void dynamicTopoFvMesh::buildVertexHull
 
 
 // Utility method to build local connectivity for a cell
-void dynamicTopoFvMesh::buildLocalConnectivity
-(
-    const label cIndex,
-    DynamicList<label>& hullCells,
-    DynamicList<label>& checkIndices
-)
+void dynamicTopoFvMesh::buildLocalConnectivity()
 {
-    label checkIndex = 0;
+    Map<bool> allCells;
+    labelHashSet hullCells;
 
-    // Clear existing lists
-    hullCells.clear();
-    checkIndices.clear();
-
-    const cell& seedCell = cells_[cIndex];
-
-    // Skip if deleted
-    if (seedCell.empty())
+    // Insert source cells
+    while (!stack(0).empty())
     {
-        return;
+        label cIndex = stack(0).pop();
+        const cell& checkCell = cells_[cIndex];
+
+        // Skip if deleted
+        if (checkCell.empty())
+        {
+            return;
+        }
+
+        hullCells.insert(cIndex);
+        allCells.insert(cIndex, true);
     }
 
-    // Insert source cell
-    hullCells.append(cIndex);
-
-    // Fetch cell vertices
-    labelList cellVerts = seedCell.labels(faces_);
+    // Clear the stack
+    stack(0).clear();
 
     // Loop until all connected cells have been discovered
-    while (checkIndex < hullCells.size())
+    while (!hullCells.empty())
     {
-        label cellIndex = hullCells[checkIndex];
+        // Loop through cells of the current level
+        labelList currentLvlCells = hullCells.toc();
+        hullCells.clear();
 
-        const cell& checkCell = cells_[cellIndex];
-
-        // Check cell neighbours
-        forAll(checkCell, faceI)
+        forAll(currentLvlCells, cellI)
         {
-            const label& fIndex = checkCell[faceI];
+            label cIndex = currentLvlCells[cellI];
+            const cell& checkCell = cells_[cIndex];
 
-            labelPair nPair(owner_[fIndex], neighbour_[fIndex]);
+            // Fetch cell vertices
+            labelList cellVerts = checkCell.labels(faces_);
 
-            forAll(nPair, i)
+            // Check cell neighbours
+            forAll(checkCell, faceI)
             {
-                label cI = nPair[i];
-                label oI = (i == 0 ? nPair[1] : nPair[0]);
+                const label& fIndex = checkCell[faceI];
 
-                // Add cell neighbours, if applicable
-                if
-                (
-                    oI > -1
-                 && cI == cellIndex
-                 && (findIndex(hullCells, oI) == -1)
-                )
+                labelPair nPair(owner_[fIndex], neighbour_[fIndex]);
+
+                forAll(nPair, i)
                 {
-                    bool foundCell = false;
+                    label cI = nPair[i];
+                    label oI = (i == 0 ? nPair[1] : nPair[0]);
 
-                    const cell& oCell = cells_[oI];
-
-                    forAll(oCell, faceJ)
+                    // Add cell neighbours, if applicable
+                    if
+                    (
+                        oI > -1
+                     && cI == cIndex
+                     && !allCells.found(oI)
+                    )
                     {
-                        const face& checkFace = faces_[oCell[faceJ]];
+                        bool foundCell = false;
 
-                        forAll(checkFace, pointI)
+                        const cell& oCell = cells_[oI];
+
+                        forAll(oCell, faceJ)
                         {
-                            const label& pIndex = checkFace[pointI];
+                            const face& checkFace = faces_[oCell[faceJ]];
 
-                            if (findIndex(cellVerts, pIndex) > -1)
+                            forAll(checkFace, pointI)
                             {
-                                foundCell = true;
+                                const label& pIndex = checkFace[pointI];
+
+                                if (findIndex(cellVerts, pIndex) > -1)
+                                {
+                                    foundCell = true;
+                                    break;
+                                }
+                            }
+
+                            if (foundCell)
+                            {
                                 break;
                             }
                         }
 
                         if (foundCell)
                         {
-                            break;
+                            hullCells.insert(oI);
+                            allCells.insert(oI, false);
                         }
-                    }
-
-                    if (foundCell)
-                    {
-                        hullCells.append(oI);
                     }
                 }
             }
         }
-
-        checkIndex++;
     }
 
     // Now that a list of cells is available,
     // build edge-related connectivity.
+    labelHashSet stackFaces;
     HashTable<label, edge, Hash<edge> > eht;
+    labelList currCheckCells = allCells.toc();
 
-    forAll(hullCells, cellI)
+    forAll(currCheckCells, cellI)
     {
-        label cellIndex = hullCells[cellI];
+        label cellIndex = currCheckCells[cellI];
         const cell& checkCell = cells_[cellIndex];
 
         forAll(checkCell, faceI)
@@ -1489,10 +1496,15 @@ void dynamicTopoFvMesh::buildLocalConnectivity
                 faceEdges_[fIndex].setSize(checkFace.size(), -1);
             }
 
-            // Add faces in 2D
-            if (twoDMesh_ && checkFace.size() == 4)
+            // Add quad faces in 2D
+            if
+            (
+                twoDMesh_
+             && checkFace.size() == 4
+             && !stackFaces.found(fIndex)
+            )
             {
-                checkIndices.append(fIndex);
+                stackFaces.insert(fIndex);
             }
 
             // Fetch face patch information
@@ -1526,14 +1538,17 @@ void dynamicTopoFvMesh::buildLocalConnectivity
                     addedEdgePatches_.insert(nEdges_, facePatch);
 
                     // Add to list if necessary
-                    if
-                    (
-                        !twoDMesh_
-                     && cellIndex == cIndex
-                     && findIndex(checkIndices, nEdges_) == -1
-                    )
+                    if (!twoDMesh_)
                     {
-                        checkIndices.append(nEdges_);
+                        Map<bool>::const_iterator cIter =
+                        (
+                            allCells.find(cellIndex)
+                        );
+
+                        if (cIter != allCells.end() && cIter())
+                        {
+                            stack(0).insert(nEdges_);
+                        }
                     }
 
                     // Insert the new edge
@@ -1558,6 +1573,15 @@ void dynamicTopoFvMesh::buildLocalConnectivity
                     }
                 }
             }
+        }
+    }
+
+    // Add faces to stack in 2D
+    if (twoDMesh_)
+    {
+        forAllIter(labelHashSet, stackFaces, sIter)
+        {
+            stack(0).insert(sIter.key());
         }
     }
 
@@ -2434,9 +2458,6 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     label stackSize = mesh.stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
-    // Edge list for cells
-    DynamicList<label> hullCells(10), checkIndices(10);
-
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
     // Pick items off the stack
@@ -2470,55 +2491,24 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
             }
         }
 
-        if (mesh.edgeLists_)
+        // Retrieve the index for this face
+        label fIndex = mesh.stack(tIndex).pop();
+
+        // Perform a Delaunay test and check if a flip is necesary.
+        bool failed = mesh.testDelaunay(fIndex);
+
+        if (failed)
         {
-            checkIndices.append(mesh.stack(tIndex).pop());
-        }
-        else
-        {
-            // Retrieve a cell from the stack
-            label cIndex = mesh.stack(tIndex).pop();
-
-            // Build local connectivity for the cell
-            mesh.buildLocalConnectivity
-            (
-                cIndex,
-                hullCells,
-                checkIndices
-            );
-        }
-
-        forAll(checkIndices, indexI)
-        {
-            // Retrieve the index for this face
-            label fIndex = mesh.stack(tIndex).pop();
-
-            // Perform a Delaunay test and check if a flip is necesary.
-            bool failed = mesh.testDelaunay(fIndex);
-
-            if (failed)
+            if (thread->master())
             {
-                if (thread->master())
-                {
-                    // Swap this face.
-                    mesh.swapQuadFace(fIndex);
-                }
-                else
-                {
-                    // Push this on to the master stack
-                    mesh.stack(0).push(fIndex);
-                }
+                // Swap this face.
+                mesh.swapQuadFace(fIndex);
             }
-        }
-
-        if (mesh.edgeLists_)
-        {
-            checkIndices.clear();
-        }
-        else
-        {
-            // Clear local connectivity for the cell
-            mesh.clearLocalConnectivity();
+            else
+            {
+                // Push this on to the master stack
+                mesh.stack(0).push(fIndex);
+            }
         }
     }
 
@@ -2574,9 +2564,6 @@ void dynamicTopoFvMesh::swap3DEdges
     label stackSize = mesh.stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
-    // Edge list for cells
-    DynamicList<label> hullCells(10), checkIndices(10);
-
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
     // Pick items off the stack
@@ -2611,82 +2598,51 @@ void dynamicTopoFvMesh::swap3DEdges
             }
         }
 
-        if (mesh.edgeLists_)
-        {
-            checkIndices.append(mesh.stack(tIndex).pop());
-        }
-        else
-        {
-            // Retrieve a cell from the stack
-            label cIndex = mesh.stack(tIndex).pop();
+        // Retrieve an edge
+        label eIndex = mesh.stack(tIndex).pop();
 
-            // Build local connectivity for the cell
-            mesh.buildLocalConnectivity
-            (
-                cIndex,
-                hullCells,
-                checkIndices
-            );
+        // Compute the minimum quality of cells around this edge
+        scalar minQuality = mesh.computeMinQuality(eIndex, hullV);
+
+        // Check if this edge is on a bounding curve
+        // (Override purity check for processor edges)
+        if (mesh.checkBoundingCurve(eIndex, true))
+        {
+            continue;
         }
 
-        forAll(checkIndices, indexI)
-        {
-            // Retrieve an edge
-            label eIndex = checkIndices[indexI];
-
-            // Compute the minimum quality of cells around this edge
-            scalar minQuality = mesh.computeMinQuality(eIndex, hullV);
-
-            // Check if this edge is on a bounding curve
-            // (Override purity check for processor edges)
-            if (mesh.checkBoundingCurve(eIndex, true))
-            {
-                continue;
-            }
-
-            // Fill the dynamic programming tables
-            if
+        // Fill the dynamic programming tables
+        if
+        (
+            mesh.fillTables
             (
-                mesh.fillTables
-                (
-                    eIndex,
-                    minQuality,
-                    m, hullV, Q, K,
-                    triangulations
-                )
+                eIndex,
+                minQuality,
+                m, hullV, Q, K,
+                triangulations
             )
+        )
+        {
+            // Check if edge-swapping is required.
+            if (mesh.checkQuality(eIndex, m, Q, minQuality))
             {
-                // Check if edge-swapping is required.
-                if (mesh.checkQuality(eIndex, m, Q, minQuality))
+                if (thread->master())
                 {
-                    if (thread->master())
-                    {
-                        // Remove this edge according to the swap sequence
-                        mesh.removeEdgeFlips
-                        (
-                            eIndex,
-                            minQuality,
-                            hullV, Q, K,
-                            triangulations
-                        );
-                    }
-                    else
-                    {
-                        // Push this on to the master stack
-                        mesh.stack(0).push(eIndex);
-                    }
+                    // Remove this edge according to the swap sequence
+                    mesh.removeEdgeFlips
+                    (
+                        eIndex,
+                        minQuality,
+                        hullV, Q, K,
+                        triangulations
+                    );
+                }
+                else
+                {
+                    // Push this on to the master stack
+                    mesh.stack(0).push(eIndex);
                 }
             }
-        }
-
-        if (mesh.edgeLists_)
-        {
-            checkIndices.clear();
-        }
-        else
-        {
-            // Clear local connectivity for the cell
-            mesh.clearLocalConnectivity();
         }
     }
 
@@ -2736,9 +2692,6 @@ void dynamicTopoFvMesh::edgeRefinementEngine
     label stackSize = mesh.stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
-    // Edge list for cells
-    DynamicList<label> hullCells(10), checkIndices(10);
-
     oIndex = ::floor(sTimer.elapsedTime() / interval);
 
     while (!mesh.stack(tIndex).empty())
@@ -2773,66 +2726,35 @@ void dynamicTopoFvMesh::edgeRefinementEngine
             }
         }
 
-        if (mesh.edgeLists_)
-        {
-            checkIndices.append(mesh.stack(tIndex).pop());
-        }
-        else
-        {
-            // Retrieve a cell from the stack
-            label cIndex = mesh.stack(tIndex).pop();
+        // Retrieve an entity
+        label eIndex = mesh.stack(tIndex).pop();
 
-            // Build local connectivity for the cell
-            mesh.buildLocalConnectivity
-            (
-                cIndex,
-                hullCells,
-                checkIndices
-            );
-        }
-
-        forAll(checkIndices, indexI)
+        if (mesh.checkBisection(eIndex))
         {
-            // Retrieve an entity
-            label eIndex = checkIndices[indexI];
-
-            if (mesh.checkBisection(eIndex))
+            if (thread->master())
             {
-                if (thread->master())
-                {
-                    // Bisect this edge
-                    mesh.bisectEdge(eIndex);
-                }
-                else
-                {
-                    // Push this on to the master stack
-                    mesh.stack(0).push(eIndex);
-                }
+                // Bisect this edge
+                mesh.bisectEdge(eIndex);
             }
             else
-            if (mesh.checkCollapse(eIndex))
             {
-                if (thread->master())
-                {
-                    // Collapse this edge
-                    mesh.collapseEdge(eIndex);
-                }
-                else
-                {
-                    // Push this on to the master stack
-                    mesh.stack(0).push(eIndex);
-                }
+                // Push this on to the master stack
+                mesh.stack(0).push(eIndex);
             }
         }
-
-        if (mesh.edgeLists_)
-        {
-            checkIndices.clear();
-        }
         else
+        if (mesh.checkCollapse(eIndex))
         {
-            // Clear local connectivity for the cell
-            mesh.clearLocalConnectivity();
+            if (thread->master())
+            {
+                // Collapse this edge
+                mesh.collapseEdge(eIndex);
+            }
+            else
+            {
+                // Push this on to the master stack
+                mesh.stack(0).push(eIndex);
+            }
         }
     }
 
@@ -4333,6 +4255,9 @@ void dynamicTopoFvMesh::initStacks
             }
         }
 
+        // Build local connectivity for the cell list
+        buildLocalConnectivity();
+
         return;
     }
 
@@ -4445,6 +4370,12 @@ void dynamicTopoFvMesh::threadedTopoModifier()
         // Set the master thread to implement modifications
         edgeRefinementEngine(&(handlerPtr_[0]));
 
+        // Clear edge lists
+        if (!edgeLists_)
+        {
+            clearLocalConnectivity();
+        }
+
         // Handle mesh slicing events, if necessary
         handleMeshSlicing();
 
@@ -4478,6 +4409,12 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     else
     {
         swap3DEdges(&(handlerPtr_[0]));
+    }
+
+    // Clear edge lists
+    if (!edgeLists_)
+    {
+        clearLocalConnectivity();
     }
 
     if (debug)
