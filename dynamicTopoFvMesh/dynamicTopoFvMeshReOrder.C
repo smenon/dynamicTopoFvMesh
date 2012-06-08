@@ -481,26 +481,34 @@ void dynamicTopoFvMesh::reOrderEdges
         entityMutex_[2].lock();
     }
 
-    forAll(faceEdges_, faceI)
+    if (edgeLists_)
     {
-        // Obtain references
-        labelList& fEdges = faceEdges_[faceI];
-        labelList& rfEdges = faceEdges[faceI];
-
-        forAll(fEdges, edgeI)
+        forAll(faceEdges_, faceI)
         {
-            if (fEdges[edgeI] < nOldEdges_)
-            {
-                eIndex = reverseEdgeMap_[fEdges[edgeI]];
-            }
-            else
-            {
-                eIndex = addedEdgeRenumbering_[fEdges[edgeI]];
-            }
+            // Obtain references
+            labelList& fEdges = faceEdges_[faceI];
+            labelList& rfEdges = faceEdges[faceI];
 
-            fEdges[edgeI] = eIndex;
-            rfEdges[edgeI] = eIndex;
+            forAll(fEdges, edgeI)
+            {
+                if (fEdges[edgeI] < nOldEdges_)
+                {
+                    eIndex = reverseEdgeMap_[fEdges[edgeI]];
+                }
+                else
+                {
+                    eIndex = addedEdgeRenumbering_[fEdges[edgeI]];
+                }
+
+                fEdges[edgeI] = eIndex;
+                rfEdges[edgeI] = eIndex;
+            }
         }
+    }
+    else
+    {
+        // Merely resize
+        faceEdges_.setSize(nFaces_);
     }
 
     // Renumber all edgeFaces
@@ -537,7 +545,15 @@ void dynamicTopoFvMesh::reOrderEdges
     if (!twoDMesh_)
     {
         // Invert edges to obtain pointEdges
-        pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
+        if (edgeLists_)
+        {
+            pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
+        }
+        else
+        {
+            // Merely resize
+            pointEdges_.setSize(nPoints_);
+        }
 
         // Loop through all local coupling maps, and renumber edges.
         forAll(patchCoupling_, patchI)

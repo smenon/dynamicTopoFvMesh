@@ -1415,9 +1415,6 @@ void dynamicTopoFvMesh::buildLocalConnectivity()
             label cIndex = currentLvlCells[cellI];
             const cell& checkCell = cells_[cIndex];
 
-            // Fetch cell vertices
-            labelList cellVerts = checkCell.labels(faces_);
-
             // Check cell neighbours
             forAll(checkCell, faceI)
             {
@@ -1439,6 +1436,9 @@ void dynamicTopoFvMesh::buildLocalConnectivity()
                     )
                     {
                         bool foundCell = false;
+
+                        // Fetch cell vertices
+                        labelList cellVerts = checkCell.labels(faces_);
 
                         const cell& oCell = cells_[oI];
 
