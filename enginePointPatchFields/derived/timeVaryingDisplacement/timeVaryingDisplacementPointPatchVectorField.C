@@ -88,7 +88,7 @@ timeVaryingDisplacementPointPatchVectorField
     const timeVaryingDisplacementPointPatchVectorField& ptf,
     const pointPatch& p,
     const DimensionedField<vector, pointMesh>& iF,
-    const PointPatchFieldMapper& mapper
+    const pointPatchFieldMapper& mapper
 )
 :
     fixedValuePointPatchVectorField(ptf, p, iF, mapper),

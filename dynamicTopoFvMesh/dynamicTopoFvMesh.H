@@ -1120,7 +1120,7 @@ public:
         virtual void updateMesh(const mapPolyMesh& mpm);
 
         // Map all fields in time using a customized mapper
-        virtual void mapFields(const mapPolyMesh& mpm) const;
+        virtual void mapFields(const mapPolyMesh& mpm);
 
         // Update the mesh for motion / topology changes
         //  - Return true if topology changes have occurred

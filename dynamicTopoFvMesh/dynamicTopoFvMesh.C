@@ -4438,7 +4438,7 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
 
 
 // Map all fields in time using a customized mapper
-void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm) const
+void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm)
 {
     if (coupledModification_)
     {
@@ -4450,7 +4450,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm) const
 
     if (debug)
     {
-        Info<< "void dynamicTopoFvMesh::mapFields(const mapPolyMesh&) const: "
+        Info<< "void dynamicTopoFvMesh::mapFields(const mapPolyMesh&): "
             << "Mapping fv fields."
             << endl;
     }

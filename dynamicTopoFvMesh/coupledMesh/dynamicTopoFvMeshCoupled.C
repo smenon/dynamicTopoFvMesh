@@ -354,8 +354,7 @@ void dynamicTopoFvMesh::executeLoadBalancing
     (
         decompositionMethod::New
         (
-            balanceDict,
-            (*this)
+            balanceDict
         )
     );
 
@@ -4895,7 +4894,7 @@ bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
     bool sizeError = false, misMatchError = false;
 
     // Check if a geometric tolerance has been specified.
-    scalar gTol = debug::tolerances("processorMatchTol", 1e-4);
+    scalar gTol = 1e-4;
 
     // Maintain a list of master / neighbour anchors
     List<vectorField> mAnchors(boundary.size());
@@ -5014,7 +5013,7 @@ bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
                         (
                             Foam::transform
                             (
-                                cp.transformT(0),
+                                cp.forwardT()[0],
                                 half0Centres[faceI]
                             )
                         );
@@ -5023,7 +5022,7 @@ bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
                         (
                             Foam::transform
                             (
-                                cp.transformT(0),
+                                cp.forwardT()[0],
                                 mAnchors[pI][faceI]
                             )
                         );
@@ -6110,7 +6109,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
     // Check if a geometric tolerance has been specified.
     const boundBox& box = polyMesh::bounds();
-    scalar relTol = debug::tolerances("patchFaceMatchTol", 1e-4);
+    scalar relTol = 1e-4;
 
     // Compute tolerance
     scalar tol = relTol * box.mag();
@@ -6837,7 +6836,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             const Map<label>& pMap = cMap.entityMap(coupleMap::POINT);
 
             // Fetch relative tolerance
-            scalar relTol = debug::tolerances("processorMatchTol", 1e-4);
+            scalar relTol = 1e-4;
 
             // Compute tolerance
             scalar tol = relTol * box.mag();
@@ -7224,7 +7223,7 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
     {
         Pout<< " dynamicTopoFvMesh::createProcessorPatch :"
             << " Created new patch for processor: " << proc << nl
-            << " On subMesh: " << Switch::asText(isSubMesh_) << nl
+            << " On subMesh: " << (Switch(isSubMesh_)).asText() << nl
             << " pI: " << pI << nl
             << " patchID: " << patchID << nl
             << " patchStarts: " << patchStarts_ << nl
@@ -7991,7 +7990,7 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
     bool anyChange = false, failedPatchMatch = false;
 
     // Fetch tolerance
-    scalar matchTol = Foam::debug::tolerances("patchFaceMatchTol", 1e-4);
+    scalar matchTol = 1e-4;
 
     // Calculate centres and tolerances for any slave patches
     List<scalarField> slaveTols(nPatches_);
@@ -8123,8 +8122,8 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                         else
                         {
                             // Assume constant transform tensor
-                            mA = Foam::transform(cyclicPatch.transformT(0), mA);
-                            mC = Foam::transform(cyclicPatch.transformT(0), mC);
+                            mA = Foam::transform(cyclicPatch.forwardT()[0], mA);
+                            mC = Foam::transform(cyclicPatch.forwardT()[0], mC);
                         }
 
                         // Set the transformed anchor / centre
@@ -9000,7 +8999,7 @@ bool dynamicTopoFvMesh::coupledFillTables
         SortableList<scalar> angles(nPoints, 0.0);
 
         // Fetch 2 * pi
-        scalar twoPi = mathematicalConstant::twoPi;
+        scalar twoPi = constant::mathematical::twoPi;
 
         // Define a base direction
         // from the start point
@@ -9068,7 +9067,7 @@ bool dynamicTopoFvMesh::coupledFillTables
                 Pout<< " * * * Error in fillTables * * * " << nl
                     << " Edge: " << eIndex << " :: " << checkEdge << nl
                     << " minQuality: " << minQuality << nl
-                    << " Closed: " << Switch::asText(closed) << nl
+                    << " Closed: " << (Switch(closed)).asText() << nl
                     << abort(FatalError);
             }
         }

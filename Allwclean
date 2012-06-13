@@ -5,11 +5,8 @@ set -x
 wclean mesquiteMotionSolver
 wclean enginePointPatchFields
 wclean dynamicTopoFvMesh
-wclean conservativeMeshToMesh
 
 (cd fluxCorrector; ./Allwclean)
-
-wclean mapConservativeFields
 
 # Wipe out all lnInclude directories and re-link
 wcleanLnIncludeAll

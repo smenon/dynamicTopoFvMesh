@@ -54,14 +54,7 @@ namespace Foam
 
 class rotatingTranslationPointPatchVectorField
 :
-    public FixedValuePointPatchField
-    <
-        pointPatchField,
-        pointMesh,
-        pointPatch,
-        DummyMatrix,
-        vector
-    >
+    public fixedValuePointPatchField<vector>
 {
     // Private data
 
@@ -111,7 +104,7 @@ public:
             const rotatingTranslationPointPatchVectorField&,
             const pointPatch&,
             const DimensionedField<vector, pointMesh>&,
-            const PointPatchFieldMapper&
+            const pointPatchFieldMapper&
         );
 
         //- Construct and return a clone

@@ -1,4 +1,0 @@
-conservativeMeshToMesh.C
-conservativeMeshToMeshAddressing.C
-
-LIB = $(FOAM_USER_LIBBIN)/libconservativeMeshToMesh

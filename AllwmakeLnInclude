@@ -4,8 +4,6 @@ set -x
 wmakeLnInclude enginePointPatchFields
 wmakeLnInclude mesquiteMotionSolver
 wmakeLnInclude dynamicTopoFvMesh
-wmakeLnInclude conservativeMeshToMesh
 
 (cd fluxCorrector; ./AllwmakeLnInclude)
 
-wmakeLnInclude mapConservativeFields

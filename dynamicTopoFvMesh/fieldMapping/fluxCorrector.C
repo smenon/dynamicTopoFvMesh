@@ -60,7 +60,9 @@ autoPtr<fluxCorrector> fluxCorrector::New
         word correctorTypeName(dict.lookup("fluxCorrector"));
 
         // Open any supplied libraries in dictionary
-        dlLibraryTable::open
+        dlLibraryTable dlTable;
+
+        dlTable.open
         (
             dict,
             "fluxCorrectorLibs",

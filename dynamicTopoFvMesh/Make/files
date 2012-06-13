@@ -1,3 +1,5 @@
+tools/multiThreader/multiThreader.C
+
 eMesh/eMesh.C
 eMesh/eMeshDemandDrivenData.C
 eMesh/eBoundaryMesh/eBoundaryMesh.C

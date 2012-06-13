@@ -58,7 +58,7 @@ void rotatingTranslationPointPatchVectorField::rotatePoints
     vector p(vector::zero), q(vector::zero), r(rotAxis_);
 
     // Convert to radians
-    scalar theta = rotMag_ * (mathematicalConstant::pi/180.0);
+    scalar theta = rotMag_ * (constant::mathematical::pi/180.0);
 
     // Fetch sines / cosines
     scalar costheta = Foam::cos(theta);
@@ -138,7 +138,7 @@ rotatingTranslationPointPatchVectorField
     const rotatingTranslationPointPatchVectorField& ptf,
     const pointPatch& p,
     const DimensionedField<vector, pointMesh>& iF,
-    const PointPatchFieldMapper& mapper
+    const pointPatchFieldMapper& mapper
 )
 :
     fixedValuePointPatchVectorField(ptf, p, iF, mapper),

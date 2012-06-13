@@ -1382,7 +1382,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             << "faceEdges: " << fE << " is to be collapsed. "
             << nl;
 
-        Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+        Pout<< " On SubMesh: " << (Switch(isSubMesh_)).asText() << nl;
         Pout<< " coupledModification: " << coupledModification_ << nl;
 
         label epIndex = whichPatch(fIndex);
@@ -4756,7 +4756,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             << "Edge: " << eIndex << ": " << edges_[eIndex]
             << " is to be collapsed. " << nl;
 
-        Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+        Pout<< " On SubMesh: " << (Switch(isSubMesh_)).asText() << nl;
         Pout<< " coupledModification: " << coupledModification_ << nl;
 
         label epIndex = whichEdgePatch(eIndex);
@@ -6040,7 +6040,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     (
                         "failedFacePoints_"
                       + Foam::name(mfIndex),
-                        cF, 0, false, true
+                        labelList(cF), 0, false, true
                     );
 
                     Pout<< " Failed to match face: "
@@ -6139,7 +6139,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     (
                         "failedEdgePoints_"
                       + Foam::name(meIndex),
-                        cE, 0, false, true
+                        labelList(cE), 0, false, true
                     );
 
                     Pout<< " Failed to match edge: "
@@ -6603,7 +6603,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         (
                             "failedFacePoints_"
                           + Foam::name(mfIndex),
-                            cF, 0, false, true
+                            labelList(cF), 0, false, true
                         );
 
                         Pout<< " Failed to match face: "
@@ -6853,7 +6853,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         (
                             "failedEdgePoints_"
                           + Foam::name(meIndex),
-                            cE, 0, false, true
+                            labelList(cE), 0, false, true
                         );
 
                         Pout<< " Failed to match edge: "
@@ -7323,7 +7323,7 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
         setCellMapping
         (
             cellsToRemove[indexI].second(),
-            cellsToRemove[indexI]
+            labelList(cellsToRemove[indexI])
         );
     }
 

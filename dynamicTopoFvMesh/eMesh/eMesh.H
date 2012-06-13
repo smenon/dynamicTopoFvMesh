@@ -48,6 +48,7 @@ namespace Foam
 {
 
 // Class forward declarations
+typedef IOList<labelList> labelListIOList;
 
 /*---------------------------------------------------------------------------*\
                            Class eMesh Declaration

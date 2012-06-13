@@ -24,8 +24,6 @@ fi
 wmake libso enginePointPatchFields
 wmake libso mesquiteMotionSolver
 wmake libso dynamicTopoFvMesh
-wmake libso conservativeMeshToMesh
 
 (cd fluxCorrector; ./Allwmake)
 
-wmake mapConservativeFields

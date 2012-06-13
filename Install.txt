@@ -3,44 +3,31 @@ Installation instructions:
 
 Pre-installation steps:
 
-Ensure that OpenFOAM-extend is installed and properly configured.
+ 1. Ensure that OpenFOAM is installed and properly configured.
 
-Since this is an updated version, installing these libraries requires 
-replacing the original version already present in OpenFOAM-extend.
+ 2. Configure and install Mesquite.
 
-To do so, follow these steps prior to installation:
+    - Obtain the sources from:
+      http://www.cs.sandia.gov/optimization/knupp/Software.htm
 
- 1. Open $FOAM_SRC/dynamicMesh/dynamicFvMesh/Make/files
+    - Follow installation instructions and compile Mesquite.
 
- 2. Remove (or comment out with /* .. */) the following lines in the list:
+    - Assuming that Mesquite is installed in $WM_THIRD_PARTY_DIR,
+      define the following environment variables:
 
-    tetMetrics = dynamicTopoFvMesh/tetMetrics
-    $(tetMetrics)/tetMetric.C
-    $(tetMetrics)/tetMetrics.C
+      In Bash:
+        export MESQUITE_DIR=$WM_THIRD_PARTY_DIR/mesquite-x.x.x
 
-    lengthScaleEstimator = dynamicTopoFvMesh/lengthScaleEstimator
-    $(lengthScaleEstimator)/lengthScaleEstimator.C
+      In Csh:
+        setenv MESQUITE_DIR $WM_THIRD_PARTY_DIR/mesquite-x.x.x
 
-    eMesh = dynamicTopoFvMesh/eMesh
-    $(eMesh)/eMesh.C
-    $(eMesh)/eMeshDemandDrivenData.C
-    $(eMesh)/eBoundaryMesh/eBoundaryMesh.C
-    ePatches = $(eMesh)/ePatches
-    $(ePatches)/ePatch/ePatch.C
-    $(ePatches)/ePatch/newEPatch.C
-    dynamicTopoFvMesh/meshOps.C
-    dynamicTopoFvMesh/dynamicTopoFvMesh.C
-    dynamicTopoFvMesh/dynamicTopoFvMeshCheck.C
-    dynamicTopoFvMesh/dynamicTopoFvMeshReOrder.C
-    dynamicTopoFvMesh/dynamicTopoFvMeshMapping.C
-    dynamicTopoFvMesh/edgeSwap.C
-    dynamicTopoFvMesh/edgeBisect.C
-    dynamicTopoFvMesh/edgeCollapse.C
+    - Add the Mesquite lib directory to the library path:
 
- 3. In the $FOAM_SRC/dynamicMesh/dynamicFvMesh directory, type:
+      In Bash:
+        export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MESQUITE_DIR/lib
 
-    (wclean && wmake libso)
-
+      In Csh:
+        setenv LD_LIBRARY_PATH ${LD_LIBRARY_PATH}:${MESQUITE_DIR}/lib
 
 Repository check-out and installation:
 
@@ -48,7 +35,7 @@ Repository check-out and installation:
 
     git clone https://github.com/smenon/dynamicTopoFvMesh <check-out directory>
 
-    or, if you're having trouble with the https protocol, 
+    or, if you're having trouble with the https protocol,
     you can alternatively do it through SSH:
 
     git clone git@ssh.github.com:smenon/dynamicTopoFvMesh <check-out directory>
@@ -57,11 +44,12 @@ Repository check-out and installation:
 
     ./Allwmake
 
- 3. This will build the relevant libraries / executables, and place them in 
+ 3. This will build the relevant libraries / executables, and place them in
     $FOAM_USER_LIBBIN / $FOAM_USER_APPBIN.
 
 Usage:
 
- 1. To use the updated library, place the following line in your dynamicMeshDict:
+ 1. To use the libraries, add the following lines in your dynamicMeshDict:
 
     dynamicFvMeshLibs       ("libdynamicTopoFvMesh.so");
+    motionSolverLibs        ("libmesquiteMotionSolver.so");

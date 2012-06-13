@@ -1302,7 +1302,7 @@ void mesquiteMotionSolver::initArrays()
 
         forAll(matcher, indexI)
         {
-            if 
+            if
             (
                 matcher[indexI].valid() &&
                 matcher[indexI]->isA(mesh(), cellI)
@@ -2095,7 +2095,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
             Pout<< " neiProcNo: " << procIndices_[pI]
                 << " mySize: " << sendSurfPointMap_[pI].size()
                 << " neiSize: " << nProcSize[pI]
-                << " requireSync: " << Switch::asText(requiresSync)
+                << " requireSync: " << (Switch(requiresSync)).asText()
                 << endl;
         }
     }
@@ -2195,7 +2195,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
     const boundBox& box = mesh().bounds();
 
     // Fetch relative tolerance
-    scalar relTol = debug::tolerances("processorMatchTol", 1e-4);
+    scalar relTol = 1e-4;
 
     // Compute tolerance
     scalar tol = relTol * box.mag();
@@ -3872,13 +3872,13 @@ void mesquiteMotionSolver::smoothSurfaces()
                 }
                 else
                 {
-                    refPoints_[slaveIndex] =
+                    // Copy and transform
+                    refPoints_[slaveIndex] = refPoints_[masterIndex];
+
+                    cyclicPatch.transformPosition
                     (
-                        cyclicPatch.transform
-                        (
-                            refPoints_[masterIndex],
-                            faceI
-                        )
+                        refPoints_[slaveIndex],
+                        faceI
                     );
                 }
             }
