@@ -541,7 +541,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         if (debug > 2)
         {
-            Pout<< " On SubMesh: " << (Switch(isSubMesh_)).asText() << nl;
+            Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
             Pout<< " coupledModification: " << coupledModification_ << nl;
 
             const polyBoundaryMesh& boundary = boundaryMesh();
@@ -2871,7 +2871,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             << ": " << origEdge
             << " is to be bisected. " << endl;
 
-        Pout<< " On SubMesh: " << (Switch(isSubMesh_)).asText() << nl;
+        Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
         Pout<< " coupledModification: " << coupledModification_ << nl;
 
         label epIndex = whichEdgePatch(eIndex);
@@ -3787,7 +3787,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     (
                         "failedFacePoints_"
                       + Foam::name(mfIndex),
-                        labelList(cF), 0, false, true
+                        cF, 0, false, true
                     );
 
                     writeVTK
@@ -3817,7 +3817,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 const edge& mE = edges_[meIndex];
 
-                label mePatch = whichPatch(meIndex);
+                label mePatch = whichEdgePatch(meIndex);
                 label neiProc = getNeighbourProcessor(mePatch);
 
                 edge cE
@@ -3910,7 +3910,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     (
                         "failedEdge_"
                       + Foam::name(meIndex),
-                        labelList(cE), 0, false, true
+                        cE, 0, false, true
                     );
 
                     writeVTK
@@ -6656,7 +6656,7 @@ const changeMap dynamicTopoFvMesh::addCellLayer
         addedCells.insert(cIndex, labelPair(newCellIndex, 0));
     }
 
-    labelList mP(2, -1);
+    FixedList<label, 2> mP(-1);
 
     forAll(patchFaces, indexI)
     {
