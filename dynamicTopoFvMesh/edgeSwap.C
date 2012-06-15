@@ -2338,7 +2338,7 @@ const changeMap dynamicTopoFvMesh::swap23
 
         if (debug > 2)
         {
-            Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+            Pout<< " On SubMesh: " << isSubMesh_ << nl;
             Pout<< " coupledModification: " << coupledModification_ << nl;
 
             label bPatch = whichEdgePatch(eIndex);
@@ -2380,7 +2380,7 @@ const changeMap dynamicTopoFvMesh::swap23
               + "_beforeSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
-                cellsForRemoval,
+                labelList(cellsForRemoval),
                 3, false, true
             );
         }
@@ -2902,7 +2902,7 @@ const changeMap dynamicTopoFvMesh::swap23
               + "_afterSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
-                newCellIndex,
+                labelList(newCellIndex),
                 3, false, true
             );
         }
@@ -2997,7 +2997,7 @@ const changeMap dynamicTopoFvMesh::swap32
 
         if (debug > 2)
         {
-            Pout<< " On SubMesh: " << Switch::asText(isSubMesh_) << nl;
+            Pout<< " On SubMesh: " << isSubMesh_ << nl;
             Pout<< " coupledModification: " << coupledModification_ << nl;
 
             label bPatch = whichEdgePatch(eIndex);
@@ -3521,7 +3521,7 @@ const changeMap dynamicTopoFvMesh::swap32
               + "_afterSwap_"
               + Foam::name(numTriangulations) + "_"
               + Foam::name(triangulationIndex),
-                newCellIndex,
+                labelList(newCellIndex),
                 3, false, true
             );
         }

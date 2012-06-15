@@ -7224,7 +7224,7 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
     {
         Pout<< " dynamicTopoFvMesh::createProcessorPatch :"
             << " Created new patch for processor: " << proc << nl
-            << " On subMesh: " << Switch::asText(isSubMesh_) << nl
+            << " On subMesh: " << isSubMesh_ << nl
             << " pI: " << pI << nl
             << " patchID: " << patchID << nl
             << " patchStarts: " << patchStarts_ << nl
