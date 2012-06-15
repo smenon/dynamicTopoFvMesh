@@ -1382,7 +1382,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             << "faceEdges: " << fE << " is to be collapsed. "
             << nl;
 
-        Pout<< " On SubMesh: " << (Switch(isSubMesh_)).asText() << nl;
+        Pout<< " On SubMesh: " << isSubMesh_ << nl;
         Pout<< " coupledModification: " << coupledModification_ << nl;
 
         label epIndex = whichPatch(fIndex);
@@ -4756,7 +4756,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             << "Edge: " << eIndex << ": " << edges_[eIndex]
             << " is to be collapsed. " << nl;
 
-        Pout<< " On SubMesh: " << (Switch(isSubMesh_)).asText() << nl;
+        Pout<< " On SubMesh: " << isSubMesh_ << nl;
         Pout<< " coupledModification: " << coupledModification_ << nl;
 
         label epIndex = whichEdgePatch(eIndex);

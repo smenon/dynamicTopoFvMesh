@@ -92,7 +92,7 @@ class dynamicTopoFvMesh
         bool topoChangeFlag_;
 
         //- Is this a subMesh?
-        bool isSubMesh_;
+        Switch isSubMesh_;
 
         //- Dynamic mesh dictionary
         IOdictionary dict_;
