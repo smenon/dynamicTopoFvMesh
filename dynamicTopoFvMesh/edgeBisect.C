@@ -3817,7 +3817,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 const edge& mE = edges_[meIndex];
 
-                label mePatch = whichPatch(meIndex);
+                label mePatch = whichEdgePatch(meIndex);
                 label neiProc = getNeighbourProcessor(mePatch);
 
                 edge cE
