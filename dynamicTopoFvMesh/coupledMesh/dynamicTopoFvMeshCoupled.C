@@ -4347,6 +4347,12 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
         return;
     }
 
+    // Temporarily reset maxModifications to
+    // ensure that synchronization succeeds
+    label maxModSave = maxModifications_;
+
+    maxModifications_ = -1;
+
     const polyBoundaryMesh& boundary = boundaryMesh();
 
     labelList createPatchOrders(Pstream::nProcs(), 0);
@@ -4847,6 +4853,9 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             }
         }
     }
+
+    // Reinstate max modifications
+    maxModifications_ = maxModSave;
 
     // Re-Initialize the stack with avoided entities from subMeshes
     // and leave those on processor patches untouched
