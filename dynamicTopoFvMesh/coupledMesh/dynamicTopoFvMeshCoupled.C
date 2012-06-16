@@ -5441,26 +5441,6 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     // Check if this is a direct neighbour
     const polyBoundaryMesh& boundary = boundaryMesh();
 
-    label patchIndex = -1;
-
-    forAll(boundary, patchI)
-    {
-        if (isA<processorPolyPatch>(boundary[patchI]))
-        {
-            const processorPolyPatch& pp =
-            (
-                refCast<const processorPolyPatch>(boundary[patchI])
-            );
-
-            if (pp.neighbProcNo() == proc)
-            {
-                patchIndex = patchI;
-
-                break;
-            }
-        }
-    }
-
     // Add sub-mesh points first.
     // Additional halo points will be added later.
     forAll(subMeshPoints, pointI)
