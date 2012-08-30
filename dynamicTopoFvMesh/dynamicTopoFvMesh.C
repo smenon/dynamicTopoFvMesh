@@ -178,12 +178,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Load the field-mapper
     loadFieldMapper();
 
-    // Set sizes for the reverse maps
-    reversePointMap_.setSize(nPoints_, -7);
-    reverseEdgeMap_.setSize(nEdges_, -7);
-    reverseFaceMap_.setSize(nFaces_, -7);
-    reverseCellMap_.setSize(nCells_, -7);
-
     // Load the length-scale estimator,
     // and read refinement options
     loadLengthScaleEstimator();
@@ -320,12 +314,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
 
     // Add patches, but don't calculate geometry, etc
     fvMesh::addFvPatches(patches, false);
-
-    // Set sizes for the reverse maps
-    reversePointMap_.setSize(nPoints_, -7);
-    reverseEdgeMap_.setSize(nEdges_, -7);
-    reverseFaceMap_.setSize(nFaces_, -7);
-    reverseCellMap_.setSize(nCells_, -7);
 
     // Now build edgeFaces and pointEdges information.
     edgeFaces_ = invertManyToMany<labelList, labelList>(nEdges_, faceEdges_);
@@ -475,6 +463,7 @@ label dynamicTopoFvMesh::insertFace
     const face& newFace,
     const label newOwner,
     const label newNeighbour,
+    const labelList& newFaceEdges,
     const label zoneID
 )
 {
@@ -486,6 +475,7 @@ label dynamicTopoFvMesh::insertFace
     faces_.append(newFace);
     owner_.append(newOwner);
     neighbour_.append(newNeighbour);
+    faceEdges_.append(newFaceEdges);
 
     if (debug > 2)
     {
@@ -493,7 +483,8 @@ label dynamicTopoFvMesh::insertFace
             << newFaceIndex << ": "
             << newFace
             << " Owner: " << newOwner
-            << " Neighbour: " << newNeighbour;
+            << " Neighbour: " << newNeighbour
+            << " faceEdges: " << newFaceEdges;
 
         const polyBoundaryMesh& boundary = boundaryMesh();
 
@@ -516,7 +507,7 @@ label dynamicTopoFvMesh::insertFace
 
     // Keep track of added boundary faces in a separate hash-table
     // This information will be required at the reordering stage
-    addedFacePatches_.insert(newFaceIndex,patch);
+    addedFacePatches_.insert(newFaceIndex, patch);
 
     if (newNeighbour == -1)
     {
@@ -3365,13 +3356,13 @@ void dynamicTopoFvMesh::removeSlivers()
             case 2:
             {
                 // Cap cell.
-                label opposingFace = readLabel(map.lookup("opposingFace"));
+                //label opposingFace = readLabel(map.lookup("opposingFace"));
 
                 // Force trisection of the opposing face.
-                changeMap faceMap =
-                (
-                    trisectFace(opposingFace, false, true)
-                );
+                changeMap faceMap;
+                //(
+                //    trisectFace(opposingFace, false, true)
+                //);
 
                 // Collapse the intermediate edge.
                 // Since we don't know which edge it is, search
@@ -3844,6 +3835,12 @@ scalar dynamicTopoFvMesh::edgeLengthScale
 // MultiThreaded topology modifier
 void dynamicTopoFvMesh::threadedTopoModifier()
 {
+    // Set sizes for the reverse maps
+    reversePointMap_.setSize(nPoints_, -7);
+    reverseEdgeMap_.setSize(nEdges_, -7);
+    reverseFaceMap_.setSize(nFaces_, -7);
+    reverseCellMap_.setSize(nCells_, -7);
+
     // Remove sliver cells first.
     removeSlivers();
 
@@ -4307,11 +4304,11 @@ bool dynamicTopoFvMesh::resetMesh()
         // Clear flipFaces
         flipFaces_.clear();
 
-        // Set new sizes for the reverse maps
-        reversePointMap_.setSize(nPoints_, -7);
-        reverseEdgeMap_.setSize(nEdges_, -7);
-        reverseFaceMap_.setSize(nFaces_, -7);
-        reverseCellMap_.setSize(nCells_, -7);
+        // Clear reverse maps
+        reversePointMap_.clear();
+        reverseEdgeMap_.clear();
+        reverseFaceMap_.clear();
+        reverseCellMap_.clear();
 
         // Update "old" information
         nOldPoints_ = nPoints_;

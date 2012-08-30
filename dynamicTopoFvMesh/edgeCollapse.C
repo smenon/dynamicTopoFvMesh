@@ -2608,6 +2608,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         // This face is being converted from interior to boundary. Remove
         // from the interior list and add as a boundary face to the end.
+        // Edges don't have to change, since they're all on the boundary anyway.
         label newFaceIndex =
         (
             insertFace
@@ -2615,7 +2616,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 whichPatch(faceToThrow[0]),
                 newFace,
                 newOwn,
-                -1
+                -1,
+                newFaceEdges
             )
         );
 
@@ -2624,11 +2626,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
         // Update map
         map.addFace(newFaceIndex, labelList(1, faceToThrow[0]));
-
-        // Add a faceEdges entry as well.
-        // Edges don't have to change, since they're
-        // all on the boundary anyway.
-        faceEdges_.append(newFaceEdges);
 
         meshOps::replaceLabel
         (
@@ -2717,6 +2714,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             // This face is being converted from interior to boundary. Remove
             // from the interior list and add as a boundary face to the end.
+            // Edges don't have to change, since they're on the boundary anyway.
             label newFaceIndex =
             (
                 insertFace
@@ -2724,7 +2722,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     whichPatch(faceToThrow[1]),
                     newFace,
                     newOwn,
-                    -1
+                    -1,
+                    newFaceEdges
                 )
             );
 
@@ -2733,11 +2732,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             // Update map
             map.addFace(newFaceIndex, labelList(1, faceToThrow[1]));
-
-            // Add a faceEdges entry as well.
-            // Edges don't have to change, since they're
-            // all on the boundary anyway.
-            faceEdges_.append(newFaceEdges);
 
             meshOps::replaceLabel
             (
@@ -5074,7 +5068,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             whichPatch(faceToRemove),
                             newFace,
                             newOwner,
-                            newNeighbour
+                            newNeighbour,
+                            newFE
                         )
                     );
 
@@ -5158,7 +5153,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                     }
 
                     // Add the new faceEdges
-                    faceEdges_.append(newFE);
+                    faceEdges_[newFaceIndex] = newFE;
 
                     // Replace edgeFaces with the new face index
                     const labelList& newFEdges = faceEdges_[newFaceIndex];
@@ -5298,7 +5293,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         whichPatch(faceToRemove),
                         newFace,
                         newOwner,
-                        newNeighbour
+                        newNeighbour,
+                        newFE
                     )
                 );
 
@@ -5382,7 +5378,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 }
 
                 // Add the new faceEdges
-                faceEdges_.append(newFE);
+                faceEdges_[newFaceIndex] = newFE;
 
                 // Replace edgeFaces with the new face index
                 const labelList& newFEdges = faceEdges_[newFaceIndex];
@@ -6461,11 +6457,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                 newPatch,
                                 newFace,
                                 newOwn,
-                                -1
+                                -1,
+                                newFaceEdges
                             )
                         );
-
-                        faceEdges_.append(newFaceEdges);
 
                         meshOps::replaceLabel
                         (
@@ -7458,12 +7453,10 @@ const changeMap dynamicTopoFvMesh::mergeBoundaryFaces
                 -1,
                 face(faces_[retainedFace]),
                 newOwner,
-                newNeighbour
+                newNeighbour,
+                labelList(faceEdges_[retainedFace])
             )
         );
-
-        // Add the faceEdges entry
-        faceEdges_.append(labelList(faceEdges_[retainedFace]));
 
         // Update map
         map.addFace(newFaceIndex);

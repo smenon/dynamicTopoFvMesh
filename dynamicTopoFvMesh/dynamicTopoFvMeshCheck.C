@@ -1190,7 +1190,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
             if (nCommon != 1)
             {
-                Pout<< "Cells: " << nl
+                Pout<< "Cells for face: " << faceI << "::" << curFace << nl
                     << '\t' << owner_[faceI] << ":: " << ownCell << nl
                     << '\t' << neighbour_[faceI] << " :: " << neiCell << nl
                     << " share multiple faces. "
