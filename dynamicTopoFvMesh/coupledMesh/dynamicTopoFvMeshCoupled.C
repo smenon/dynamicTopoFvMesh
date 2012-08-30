@@ -499,12 +499,6 @@ void dynamicTopoFvMesh::executeLoadBalancing
     // Load the field-mapper
     loadFieldMapper();
 
-    // Set sizes for the reverse maps
-    reversePointMap_.setSize(nPoints_, -7);
-    reverseEdgeMap_.setSize(nEdges_, -7);
-    reverseFaceMap_.setSize(nFaces_, -7);
-    reverseCellMap_.setSize(nCells_, -7);
-
     // Load the length-scale estimator,
     // and read refinement options
     loadLengthScaleEstimator();
@@ -2510,12 +2504,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     nPatch,
                     nF,
                     nOwner,
-                    nNeighbour
+                    nNeighbour,
+                    nFaceEdges
                 )
             );
-
-            // Add the faceEdges entry as well
-            faceEdges_.append(nFaceEdges);
 
             // Size up edgeFaces for each edge
             forAll(nFaceEdges, edgeI)
@@ -2583,8 +2575,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             label newNeighbour = cellsToInsert[pI][sFaceOwn];
 
             // Insert a new internal face.
-            // Orientation should be correct, because this is a boundary
-            // face converted to an interior, and adjacent to an added cell.
+            //  - Orientation should be correct, because this is a boundary
+            //    face converted to an interior, and adjacent to an added cell.
+            //  - Add the new faceEdges from the existing face. This may contain
+            //    edges that need to be converted, but that will be done later.
             label newFaceIndex =
             (
                 insertFace
@@ -2592,13 +2586,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     -1,
                     face(faces_[fIndex]),
                     mFaceOwn,
-                    newNeighbour
+                    newNeighbour,
+                    labelList(faceEdges_[fIndex])
                 )
             );
-
-            // Add the new faceEdges from the existing face. This may contain
-            // edges that need to be converted, but that will be done later.
-            faceEdges_.append(labelList(faceEdges_[fIndex]));
 
             // Update map
             map.addFace(newFaceIndex, labelList(1, fIndex));
@@ -2769,6 +2760,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             // Obtain a copy before adding the new face,
             // since the reference might become
             // invalid during list resizing.
+            // Edges don't have to change, since they're
+            // all on the boundary anyway.
             face newFace = mesh.faces_[replaceFace];
             label newOwn = mesh.owner_[replaceFace];
             labelList newFaceEdges = mesh.faceEdges_[replaceFace];
@@ -2780,14 +2773,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     procPatch,
                     newFace,
                     newOwn,
-                    -1
+                    -1,
+                    newFaceEdges
                 )
             );
-
-            // Add a faceEdges entry as well.
-            // Edges don't have to change, since they're
-            // all on the boundary anyway.
-            mesh.faceEdges_.append(newFaceEdges);
 
             // changeMap update for the new face is not necessary,
             // since it is on the slave subMesh
@@ -3840,6 +3829,7 @@ const changeMap dynamicTopoFvMesh::removeCells
         }
 
         // Insert the reconfigured face at the boundary.
+        // faceEdges will be corrected later.
         fIter() =
         (
             insertFace
@@ -3847,13 +3837,10 @@ const changeMap dynamicTopoFvMesh::removeCells
                 patch,
                 newFace,
                 newOwner,
-                -1
+                -1,
+                fEdges
             )
         );
-
-        // Add the faceEdges entry.
-        // Edges will be corrected later.
-        faceEdges_.append(fEdges);
 
         // Add this face to the map.
         map.addFace(fIter());
@@ -4773,6 +4760,8 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         // Obtain a copy before adding the new face,
                         // since the reference might become
                         // invalid during list resizing.
+                        // Edges don't have to change, since they're
+                        // all on the boundary anyway.
                         face newFace = faces_[localIndex];
                         label newOwn = owner_[localIndex];
                         labelList newFaceEdges = faceEdges_[localIndex];
@@ -4784,14 +4773,10 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                                 procPatch,
                                 newFace,
                                 newOwn,
-                                -1
+                                -1,
+                                newFaceEdges
                             )
                         );
-
-                        // Add a faceEdges entry as well.
-                        // Edges don't have to change, since they're
-                        // all on the boundary anyway.
-                        faceEdges_.append(newFaceEdges);
 
                         meshOps::replaceLabel
                         (

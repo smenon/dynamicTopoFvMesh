@@ -453,15 +453,6 @@ class dynamicTopoFvMesh
             bool forceOp = false
         );
 
-        // Method for the trisection of a face in 3D
-        const changeMap
-        trisectFace
-        (
-            const label fIndex,
-            bool checkOnly = false,
-            bool forceOp = false
-        );
-
         // Method for the collapse of an edge in 3D
         const changeMap
         collapseEdge
@@ -565,6 +556,7 @@ class dynamicTopoFvMesh
             const face& newFace,
             const label newOwner,
             const label newNeighbour,
+            const labelList& newFaceEdges,
             const label zoneID = -1
         );
 
@@ -652,10 +644,6 @@ class dynamicTopoFvMesh
         // Utility method to compute the quality of a vertex hull
         // around an edge after bisection.
         scalar computeBisectionQuality(const label eIndex) const;
-
-        // Utility method to compute the quality of cells
-        // around a face after trisection.
-        scalar computeTrisectionQuality(const label fIndex) const;
 
         // Check whether the given edge is on a bounding curve
         bool checkBoundingCurve
@@ -1099,8 +1087,8 @@ class dynamicTopoFvMesh
 
 public:
 
-    // Declare the name of the class and its debug switch
-        TypeName("dynamicTopoFvMesh");
+    //- Runtime type information
+    TypeName("dynamicTopoFvMesh");
 
     // Constructors
 
