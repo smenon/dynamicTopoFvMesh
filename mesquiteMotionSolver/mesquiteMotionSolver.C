@@ -1180,6 +1180,7 @@ void mesquiteMotionSolver::initArrays()
         gradEdge_.setSize(pIDs_.size());
         localPts_.setSize(pIDs_.size());
         edgeMarker_.setSize(pIDs_.size());
+        edgeConstant_.setSize(pIDs_.size());
 
         label totalSize = 0;
 
@@ -1192,6 +1193,7 @@ void mesquiteMotionSolver::initArrays()
             localPts_[patchI].setSize(nPts, vector::zero);
             gradEdge_[patchI].setSize(nEdg, vector::zero);
             edgeMarker_[patchI].setSize(nEdg, 1.0);
+            edgeConstant_[patchI].setSize(nEdg, 1.0);
 
             // Accumulate the total size
             totalSize += nPts;
@@ -1212,6 +1214,7 @@ void mesquiteMotionSolver::initArrays()
         // Prepare the boundary condition vectorField
         forAll(pIDs_, patchI)
         {
+            const label pOffset = offsets_[patchI];
             const edgeList& edges = boundary[pIDs_[patchI]].edges();
 
             for
@@ -1221,8 +1224,8 @@ void mesquiteMotionSolver::initArrays()
                 i++
             )
             {
-                bdy_[edges[i][0] + offsets_[patchI]] = vector::zero;
-                bdy_[edges[i][1] + offsets_[patchI]] = vector::zero;
+                bdy_[edges[i][0] + pOffset] = vector::zero;
+                bdy_[edges[i][1] + pOffset] = vector::zero;
             }
         }
 
@@ -1947,6 +1950,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
 
     forAll(pIDs_, patchI)
     {
+        const label pOffset = offsets_[patchI];
         const pointField& points = boundary[pIDs_[patchI]].localPoints();
 
         forAll(boundary, patchJ)
@@ -1989,7 +1993,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                 }
 
                 // Locate index in field
-                label fieldIndex = local + offsets_[patchI];
+                label fieldIndex = local + pOffset;
 
                 // Fix boundary condition for this point.
                 bdy_[fieldIndex] = vector::one;
@@ -2040,7 +2044,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                 }
 
                 // Locate index in field
-                label fieldIndex = local + offsets_[patchI];
+                label fieldIndex = local + pOffset;
 
                 // Fix boundary condition for this point.
                 bdy_[fieldIndex] = vector::one;
@@ -2107,6 +2111,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
     // Prepare edgeMarkers
     forAll(pIDs_, patchI)
     {
+        const label pOffset = offsets_[patchI];
         const edgeList& edges = boundary[pIDs_[patchI]].edges();
         const labelList& meshEdges = boundary[pIDs_[patchI]].meshEdges();
 
@@ -2119,8 +2124,8 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         {
             // If both points on this edge are marked,
             // this edge needs to be left out.
-            label i0 = edges[i][0] + offsets_[patchI];
-            label i1 = edges[i][1] + offsets_[patchI];
+            label i0 = edges[i][0] + pOffset;
+            label i1 = edges[i][1] + pOffset;
 
             bool p0 = (pointMarker_[i0] < 0.5);
             bool p1 = (pointMarker_[i1] < 0.5);
@@ -3260,14 +3265,15 @@ void mesquiteMotionSolver::A
     // Gradient (n2e)
     forAll(pIDs_, patchI)
     {
+        const label pOffset = offsets_[patchI];
         const edgeList& edges = boundary[pIDs_[patchI]].edges();
 
         forAll(edges, edgeI)
         {
             gradEdge_[patchI][edgeI] =
             (
-                p[edges[edgeI][1] + offsets_[patchI]]
-              - p[edges[edgeI][0] + offsets_[patchI]]
+                p[edges[edgeI][1] + pOffset]
+              - p[edges[edgeI][0] + pOffset]
             );
         }
     }
@@ -3275,14 +3281,18 @@ void mesquiteMotionSolver::A
     // Divergence (e2n)
     forAll(pIDs_, patchI)
     {
+        const label pOffset = offsets_[patchI];
         const edgeList& edges = boundary[pIDs_[patchI]].edges();
 
         forAll(edges, edgeI)
         {
             gradEdge_[patchI][edgeI] *= edgeMarker_[patchI][edgeI];
 
-            w[edges[edgeI][0] + offsets_[patchI]] += gradEdge_[patchI][edgeI];
-            w[edges[edgeI][1] + offsets_[patchI]] -= gradEdge_[patchI][edgeI];
+            // Account for edge constant
+            gradEdge_[patchI][edgeI] *= edgeConstant_[patchI][edgeI];
+
+            w[edges[edgeI][0] + pOffset] += gradEdge_[patchI][edgeI];
+            w[edges[edgeI][1] + pOffset] -= gradEdge_[patchI][edgeI];
         }
     }
 
@@ -3362,14 +3372,16 @@ void mesquiteMotionSolver::applyBCs
 {
     forAll(pIDs_, patchI)
     {
+        const label pOffset = offsets_[patchI];
+
         // Apply slip conditions for internal nodes
         forAll(pNormals_[patchI], pointI)
         {
             const vector& n = pNormals_[patchI][pointI];
 
-            field[pointI + offsets_[patchI]] -=
+            field[pointI + pOffset] -=
             (
-                (field[pointI + offsets_[patchI]] & n)*n
+                (field[pointI + pOffset] & n)*n
             );
         }
     }
@@ -3387,8 +3399,9 @@ void mesquiteMotionSolver::applyBCs
     {
         if (Foam::min(bdy_) > vector(0.5,0.5,0.5))
         {
-            Random randomizer(1);
-            label nFix = (field.size()*5)/100;
+            Random randomizer(std::time(NULL));
+
+            label nFix = 0; //(field.size()*5)/100;
 
             for(label i = 0; i < nFix; i++)
             {
@@ -3722,13 +3735,17 @@ void mesquiteMotionSolver::smoothSurfaces()
         // Copy existing point-positions
         forAll(pIDs_, patchI)
         {
+            const label pOffset = offsets_[patchI];
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
             forAll(meshPts,pointI)
             {
-                xV_[pointI + offsets_[patchI]] = refPoints_[meshPts[pointI]];
+                xV_[pointI + pOffset] = refPoints_[meshPts[pointI]];
             }
         }
+
+        // Prepare edge constants
+        prepareEdgeConstants(xV_);
 
         Info<< "Solving for point motion: ";
 
@@ -3739,13 +3756,14 @@ void mesquiteMotionSolver::smoothSurfaces()
         // Update refPoints (with relaxation if necessary)
         forAll(pIDs_, patchI)
         {
+            const label pOffset = offsets_[patchI];
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
             forAll(meshPts,pointI)
             {
                 refPoints_[meshPts[pointI]] =
                 (
-                    (relax_ * xV_[pointI + offsets_[patchI]])
+                    (relax_ * xV_[pointI + pOffset])
                   + ((1.0 - relax_) * origPoints_[meshPts[pointI]])
                 );
             }
@@ -3772,11 +3790,12 @@ void mesquiteMotionSolver::smoothSurfaces()
         // Fill buffers with current points, and transfer
         forAll(pIDs_, patchI)
         {
+            const label pOffset = offsets_[patchI];
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
             forAll(meshPts,pointI)
             {
-                xV_[pointI + offsets_[patchI]] = refPoints_[meshPts[pointI]];
+                xV_[pointI + pOffset] = refPoints_[meshPts[pointI]];
             }
         }
 
@@ -4468,6 +4487,50 @@ void mesquiteMotionSolver::preparePointNormals()
 }
 
 
+// Prepare non-uniform edge constants with updated point positions
+void mesquiteMotionSolver::prepareEdgeConstants
+(
+    const vectorField& p
+)
+{
+    // Fetch the sub-dictionary
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
+    // Check for sub-dictionary entry
+    if (!optionsDict.found("nonUniformEdgeConstant"))
+    {
+        return;
+    }
+
+    if (debug)
+    {
+        Info<< "Preparing non-uniform edge constants" << endl;
+    }
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    forAll(pIDs_, patchI)
+    {
+        const label pOffset = offsets_[patchI];
+        const edgeList& edges = boundary[pIDs_[patchI]].edges();
+
+        scalarField& k = edgeConstant_[patchI];
+
+        forAll(edges, edgeI)
+        {
+            k[edgeI] =
+            (
+                Foam::mag
+                (
+                    p[edges[edgeI][1] + pOffset]
+                  - p[edges[edgeI][0] + pOffset]
+                )
+            );
+        }
+    }
+}
+
+
 //- Return point location obtained from the current motion field
 tmp<pointField> mesquiteMotionSolver::curPoints() const
 {
@@ -4663,6 +4726,7 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
         pNormals_.clear();
         offsets_.clear();
         edgeMarker_.clear();
+        edgeConstant_.clear();
     }
 
     nPoints_ = Mesh_.nPoints();

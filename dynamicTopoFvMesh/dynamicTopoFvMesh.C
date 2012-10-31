@@ -315,6 +315,12 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     // Add patches, but don't calculate geometry, etc
     fvMesh::addFvPatches(patches, false);
 
+    // Set sizes for the reverse maps
+    reversePointMap_.setSize(nPoints_, -7);
+    reverseEdgeMap_.setSize(nEdges_, -7);
+    reverseFaceMap_.setSize(nFaces_, -7);
+    reverseCellMap_.setSize(nCells_, -7);
+
     // Now build edgeFaces and pointEdges information.
     edgeFaces_ = invertManyToMany<labelList, labelList>(nEdges_, faceEdges_);
 

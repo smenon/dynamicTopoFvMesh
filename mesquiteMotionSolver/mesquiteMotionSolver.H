@@ -171,6 +171,7 @@ class mesquiteMotionSolver
         List<vectorField> gradEdge_;
         List<vectorField> localPts_;
         List<scalarField> edgeMarker_;
+        List<scalarField> edgeConstant_;
 
         //- Data for the auxiliary entities
         labelList procIndices_;
@@ -305,6 +306,9 @@ class mesquiteMotionSolver
 
         // Prepare point-normals with updated point positions
         void preparePointNormals();
+
+        // Prepare non-uniform edge constants with updated point positions
+        void prepareEdgeConstants(const vectorField& p);
 
         // Utility method to check validity of cells connected to a point.
         bool checkValidity
