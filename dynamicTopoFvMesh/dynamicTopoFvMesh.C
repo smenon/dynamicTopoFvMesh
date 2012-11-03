@@ -1776,12 +1776,20 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
         if (Pstream::parRun() && meshSubDict.found("parDebugProcs"))
         {
             labelList procs(meshSubDict.lookup("parDebugProcs"));
+            label pdebug = readLabel(meshSubDict.lookup("debug"));
 
             forAll(procs, procI)
             {
                 if (Pstream::myProcNo() == procs[procI])
                 {
-                    debug = readLabel(meshSubDict.lookup("debug"));
+                    debug = pdebug;
+                }
+                else
+                if (pdebug)
+                {
+                    // Minimal debug information,
+                    // so that synchronizations are successful
+                    debug = 1;
                 }
             }
         }
