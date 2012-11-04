@@ -1773,15 +1773,27 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
         }
 
         // Look for a processor-specific debug flag
-        if (Pstream::parRun() && meshSubDict.found("parDebugProcs"))
+        if
+        (
+            Pstream::parRun() &&
+            meshSubDict.found("parDebugProcs")
+        )
         {
-            labelList procs(meshSubDict.lookup("parDebugProcs"));
-
-            forAll(procs, procI)
+            if (!reRead)
             {
-                if (Pstream::myProcNo() == procs[procI])
+                labelList procs(meshSubDict.lookup("parDebugProcs"));
+                label pdebug = readLabel(meshSubDict.lookup("debug"));
+
+                if (findIndex(procs, Pstream::myProcNo()) > -1)
                 {
                     debug = readLabel(meshSubDict.lookup("debug"));
+                }
+                else
+                if (pdebug)
+                {
+                    // Minimal debug information,
+                    // so that synchronizations are successful
+                    debug = 1;
                 }
             }
         }

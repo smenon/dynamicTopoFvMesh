@@ -223,11 +223,15 @@ void dynamicTopoFvMesh::initCoupledStack
                 else
                 {
                     const label edgeEnum = coupleMap::EDGE;
+                    const label pointEnum = coupleMap::POINT;
+
                     const labelList& mfEdges = faceEdges_[faceI];
 
                     forAll(mfEdges, edgeI)
                     {
                         label eIndex = mfEdges[edgeI];
+
+                        const edge& checkEdge = edges_[eIndex];
 
                         // Need to avoid this edge if it is
                         // talking to lower-ranked processors.
@@ -235,9 +239,11 @@ void dynamicTopoFvMesh::initCoupledStack
 
                         forAll(procIndices_, pI)
                         {
+                            // List is specified in ascending order
+                            // of neighbour processors, so break out.
                             if (procIndices_[pI] > Pstream::myProcNo())
                             {
-                                continue;
+                                break;
                             }
 
                             // Fetch reference to subMeshes
@@ -245,6 +251,19 @@ void dynamicTopoFvMesh::initCoupledStack
                             const coupleMap& rcMap = recvMesh.map();
 
                             if (rcMap.findSlave(edgeEnum, eIndex) > -1)
+                            {
+                                permissible = false;
+                                break;
+                            }
+
+                            // Check points as well, since there might be
+                            // situations where both points lie on a lower
+                            // ranked processor, but not the edge itself.
+                            if
+                            (
+                                (rcMap.findSlave(pointEnum, checkEdge[0]) > -1)
+                             && (rcMap.findSlave(pointEnum, checkEdge[1]) > -1)
+                            )
                             {
                                 permissible = false;
                                 break;
