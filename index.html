@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="dynamicTopoFvMesh : Parallel Adaptive Simplical Remeshing for OpenFOAM" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>dynamicTopoFvMesh</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/smenon/dynamicTopoFvMesh">View on GitHub</a>
+
+          <h1 id="project_title">dynamicTopoFvMesh</h1>
+          <h2 id="project_tagline">Parallel Adaptive Simplical Remeshing for OpenFOAM</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/smenon/dynamicTopoFvMesh/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/smenon/dynamicTopoFvMesh/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>dynamicTopoFvMesh</h1>
+
+<p>An implementation of parallel, adaptive, simplical remeshing for OpenFOAM.</p>
+
+<h2>Copyright Information</h2>
+
+<pre><code>Copyright (C) 2007-2012
+Sandeep Menon
+University of Massachusetts Amherst.
+</code></pre>
+
+<h2>License</h2>
+
+<p>This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.</p>
+
+<p>This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.</p>
+
+<p>You should have received a copy of the GNU General Public License
+along with this program.  If not, see <a href="http://www.gnu.org/licenses/">http://www.gnu.org/licenses/</a>.</p>
+
+<h2>Description</h2>
+
+<p>The source-tree is separated into several classes for convenience:</p>
+
+<h3>dynamicTopoFvMesh</h3>
+
+<p>Mesh class that extends dynamicFvMesh functionality to handle dynamic simplical meshes, which consist of        triangle prisms in 2D, and tetrahedra in 3D. Adaptation is driven mainly by mesh-quality and mesh refinement criteria. When used in combination with mesh-smoothing methods, this functionality is expected to suit situations where domain deformation characteristics are not known a-priori. Conservative solution remapping after mesh reconnection is performed automatically. Parallel functionality is also included.</p>
+
+<h3>fluxCorrector</h3>
+
+<p>Auxiliary library which is used by dynamicTopoFvMesh to perform a correction to velocity fluxes after mesh reconnection.</p>
+
+<h3>mesquiteMotionSolver</h3>
+
+<p>Class that provides a general interface to the Mesquite mesh smoothing library from Sandia National Labs.       The class also performs smoothing for surface meshes using a spring-analogy approach, and is known to work in parallel.</p>
+
+<h3>conservativeMeshToMesh</h3>
+
+<p>Conservative mesh-to-mesh interpolation class.</p>
+
+<h3>mapConservativeFields</h3>
+
+<p>Field-mapping utility that works in a manner similar to mapFields in OpenFOAM, using the conservativeMeshToMesh class as a back end. This utility is currently not designed to work in parallel.</p>
+
+<h2>Target platform</h2>
+
+<p>The master branch is known to work with OpenFOAM-extend.
+To compile with the OpenFOAM-2.1.x release, switch to the Port-2.1.x branch.</p>
+
+<h2>Author</h2>
+
+<pre><code>Sandeep Menon
+University of Massachusetts Amherst
+</code></pre>
+
+<h2>Disclaimer</h2>
+
+<p>This offering is not approved or endorsed by ESI or OpenCFD Ltd, the producer of the OpenFOAM software and owner of the OpenFOAM and OpenCFD trade marks.</p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">dynamicTopoFvMesh maintained by <a href="https://github.com/smenon">smenon</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+              <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-37250769-1");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
+
+  </body>
+</html>
