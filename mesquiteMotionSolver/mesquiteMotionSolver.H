@@ -43,7 +43,7 @@ SourceFiles
 #include "Switch.H"
 #include "edgeList.H"
 #include "labelPair.H"
-#include "pointIOField.H"
+#include "pointFields.H"
 #include "MeshObject.H"
 #include "HashSet.H"
 
@@ -147,6 +147,9 @@ class mesquiteMotionSolver
 
         //- Original points prior to surface-smoothing
         mutable pointField origPoints_;
+
+        //- Boundary conditions
+        mutable autoPtr<pointVectorField> boundaryConditions_;
 
         //- Quality metric list
         wordList qMetrics_;

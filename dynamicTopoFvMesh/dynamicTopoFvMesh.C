@@ -4441,14 +4441,8 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
     // Delete oldPoints in polyMesh
     polyMesh::resetMotion();
 
-    // Clear-out fvMesh geometry and addressing
-    fvMesh::clearOut();
-
-    // Update polyMesh.
-    polyMesh::updateMesh(mpm);
-
-    // Map all fields
-    mapFields(mpm);
+    // Update fvMesh and polyMesh, and map all fields
+    fvMesh::updateMesh(mpm);
 }
 
 

@@ -93,6 +93,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
         ),
         mesh.points()
     ),
+    boundaryConditions_(NULL),
     oldVolume_(0.0)
 {
     // Read options from the dictionary
@@ -135,6 +136,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
         ),
         mesh.points()
     ),
+    boundaryConditions_(NULL),
     oldVolume_(0.0)
 {
     // Read options from the dictionary
@@ -229,6 +231,25 @@ void mesquiteMotionSolver::readOptions()
 
     // Fetch the sub-dictionary
     const dictionary& optionsDict = subDict("mesquiteOptions");
+
+    if (optionsDict.found("usePointDisplacement"))
+    {
+        boundaryConditions_.reset
+        (
+            new pointVectorField
+            (
+                IOobject
+                (
+                    "pointDisplacement",
+                    Mesh_.time().timeName(),
+                    Mesh_,
+                    IOobject::MUST_READ,
+                    IOobject::AUTO_WRITE
+                ),
+                pointMesh::New(Mesh_)
+            )
+        );
+    }
 
     // Check if any slip patches are specified
     if (optionsDict.found("slipPatches") || twoDMesh_)
@@ -3583,11 +3604,18 @@ void mesquiteMotionSolver::applyFixedValuePatches()
     // Fetch the sub-dictionary
     const dictionary& optionsDict = subDict("mesquiteOptions");
 
-    // Check the dictionary for entries corresponding to constant
-    // fixed-displacement BCs. This is done because a 'motionU'
-    // field is not used to specify such BC types.
+    if (boundaryConditions_.valid())
+    {
+        // Use the pointVectorField form of boundary conditions
+        boundaryConditions_().correctBoundaryConditions();
+        refPoints_ += boundaryConditions_().internalField();
+    }
+    else
     if (optionsDict.found("fixedValuePatches"))
     {
+        // Check the dictionary for entries corresponding to constant
+        // fixed-displacement BCs. This is done because a 'motionU'
+        // field is not used to specify such BC types.
         const polyBoundaryMesh& boundary = mesh().boundaryMesh();
         const dictionary& fvpDict = optionsDict.subDict("fixedValuePatches");
 
@@ -3595,7 +3623,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         wordList fixPatches = fvpDict.toc();
 
         // Construct a pointMesh.
-        pointMesh pMesh(Mesh_);
+        const pointMesh& pMesh = pointMesh::New(Mesh_);
 
         // Create a temporary dimensioned field
         DimensionedField<point, pointMesh> dPointField
