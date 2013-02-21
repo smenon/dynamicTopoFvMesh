@@ -41,62 +41,89 @@ void topoMapper::storeGradients
 {
     // Define a few typedefs for convenience
     typedef typename outerProduct<vector, Type>::type gCmptType;
-    typedef GeometricField<Type, fvPatchField, volMesh> volType;
     typedef GeometricField<gCmptType, fvPatchField, volMesh> gVolType;
 
+    typedef GeometricField<Type, fvPatchField, volMesh> volType;
+    typedef const GeometricField<Type, fvPatchField, volMesh> constVolType;
+
+    typedef HashTable<constVolType*> volTypeTable;
+
     // Fetch all fields from registry
-    HashTable<const volType*> fields
-    (
-        mesh_.objectRegistry::lookupClass<volType>()
-    );
+    volTypeTable fields(mesh_.objectRegistry::lookupClass<volType>());
 
     // Store old-times before gradient computation
-    forAllIter(typename HashTable<const volType*>, fields, fIter)
+    for
+    (
+        typename volTypeTable::iterator fIter = fields.begin();
+        fIter != fields.end();
+        ++fIter
+    )
     {
         fIter()->storeOldTimes();
     }
 
-    forAllConstIter(typename HashTable<const volType*>, fields, fIter)
+    for
+    (
+        typename volTypeTable::const_iterator fIter = fields.begin();
+        fIter != fields.end();
+        ++fIter
+    )
     {
         const volType& field = *fIter();
 
         // Compute the gradient.
-        tmp<gVolType> tGrad;
 
         // If the fvSolution dictionary contains an entry,
         // use that, otherwise, default to leastSquares
         word gradName("grad(" + field.name() + ')');
 
+        // Make a new entry, but don't register the field.
         if (mesh_.schemesDict().subDict("gradSchemes").found(gradName))
         {
-            tGrad = fvc::grad(field);
+            gradTable.insert
+            (
+                field.name(),
+                autoPtr<gradType>
+                (
+                    new gradType
+                    (
+                        IOobject
+                        (
+                            gradName,
+                            mesh_.time().timeName(),
+                            mesh_,
+                            IOobject::NO_READ,
+                            IOobject::NO_WRITE,
+                            false
+                        ),
+                        fvc::grad(field, gradName)()
+                    )
+                )
+            );
         }
         else
         {
-            tGrad = fv::leastSquaresGrad<Type>(mesh_).grad(field);
-        }
-
-        // Make a new entry, but don't register the field.
-        gradTable.insert
-        (
-            field.name(),
-            autoPtr<gradType>
+            gradTable.insert
             (
-                new gradType
+                field.name(),
+                autoPtr<gradType>
                 (
-                    IOobject
+                    new gradType
                     (
-                        tGrad().name(),
-                        mesh_.time().timeName(),
-                        mesh_,
-                        IOobject::NO_READ,
-                        IOobject::NO_WRITE,
-                        false
-                    ),
-                    tGrad()
+                        IOobject
+                        (
+                            gradName,
+                            mesh_.time().timeName(),
+                            mesh_,
+                            IOobject::NO_READ,
+                            IOobject::NO_WRITE,
+                            false
+                        ),
+                        fv::leastSquaresGrad<Type>(mesh_).grad(field)()
+                    )
                 )
-            )
-        );
+            );
+        }
     }
 }
 
