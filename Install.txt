@@ -10,9 +10,7 @@ Pre-installation steps:
     - Obtain the sources from:
       http://www.cs.sandia.gov/optimization/knupp/Software.htm
 
-    - Follow installation instructions and compile Mesquite.
-
-    - Assuming that Mesquite is installed in $WM_THIRD_PARTY_DIR,
+    - Assuming that Mesquite is to be installed in $WM_THIRD_PARTY_DIR,
       define the following environment variables:
 
       In Bash:
@@ -20,6 +18,25 @@ Pre-installation steps:
 
       In Csh:
         setenv MESQUITE_DIR $WM_THIRD_PARTY_DIR/mesquite-x.x.x
+
+      where x.x.x is the appropriate version on Mesquite.
+
+    - Follow installation instructions and compile Mesquite. The following
+      configuration is known to work:
+
+          ./configure                     \
+              --prefix=$MESQUITE_DIR      \
+              --enable-release            \
+              --disable-debug-assertions  \
+              --disable-igeom             \
+              --disable-imesh             \
+              --disable-irel              \
+              --enable-shared             \
+              --without-cppunit           \
+              --enable-trap-fpe           \
+              --disable-function-timers
+
+      Once configured, proceed with 'make' and 'make install'
 
     - Add the Mesquite lib directory to the library path:
 

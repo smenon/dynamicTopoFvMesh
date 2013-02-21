@@ -36,6 +36,7 @@ Author
 \*---------------------------------------------------------------------------*/
 
 #include "fluxCorrector.H"
+#include "Time.H"
 #include "dlLibraryTable.H"
 
 namespace Foam
@@ -57,12 +58,10 @@ autoPtr<fluxCorrector> fluxCorrector::New
     // Check if an optional entry was specified
     if (dict.found("fluxCorrector"))
     {
-        word correctorTypeName(dict.lookup("fluxCorrector"));
+        word correctorTypeName;
 
         // Open any supplied libraries in dictionary
-        dlLibraryTable dlTable;
-
-        dlTable.open
+        const_cast<Time&>(mesh.time()).libs().open
         (
             dict,
             "fluxCorrectorLibs",

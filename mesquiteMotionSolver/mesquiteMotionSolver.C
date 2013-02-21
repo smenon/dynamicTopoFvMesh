@@ -4579,6 +4579,11 @@ void mesquiteMotionSolver::solve()
         enforceCylindricalConstraints();
     }
 
+    if (twoDMesh_)
+    {
+        return;
+    }
+
     // Copy refPoints prior to internal smoothing
     origPoints_ = refPoints_;
 
