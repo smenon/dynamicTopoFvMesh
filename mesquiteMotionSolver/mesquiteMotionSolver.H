@@ -50,9 +50,15 @@ SourceFiles
 // Have gcc ignore certain warnings while including mesquite headers
 #if defined(__GNUC__) && !defined(__INTEL_COMPILER)
 #   pragma GCC diagnostic ignored "-Wold-style-cast"
+#   pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #endif
 
 #include "Mesquite_all_headers.hpp"
+
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
+#   pragma GCC diagnostic warning "-Wold-style-cast"
+#   pragma GCC diagnostic warning "-Wunused-but-set-variable"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

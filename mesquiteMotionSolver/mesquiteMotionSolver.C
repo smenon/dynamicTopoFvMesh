@@ -232,6 +232,8 @@ void mesquiteMotionSolver::readOptions()
     // Fetch the sub-dictionary
     const dictionary& optionsDict = subDict("mesquiteOptions");
 
+    // Check if the 'pointDisplacement' file is to be used
+    // for moving boundary conditions
     if (optionsDict.found("usePointDisplacement"))
     {
         boundaryConditions_.reset
