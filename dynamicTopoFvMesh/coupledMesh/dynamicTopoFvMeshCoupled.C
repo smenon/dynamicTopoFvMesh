@@ -8172,6 +8172,8 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
             // Try zero separation automatic matching
             bool matchedAll =
             (
+                (mSize == sSize)
+             &&
                 matchPoints
                 (
                     slaveCentres[slavePatch],
@@ -8444,8 +8446,13 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
         else
         {
             // Try zero separation automatic matching
+            label mSize = centres[pI].size();
+            label sSize = slaveCentres[pI].size();
+
             bool matchedAll =
             (
+                (mSize == sSize)
+             &&
                 matchPoints
                 (
                     slaveCentres[pI],
@@ -8459,9 +8466,6 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
             // Write out centres to disk
             if (debug > 3 || !matchedAll)
             {
-                label mSize = centres[pI].size();
-                label sSize = slaveCentres[pI].size();
-
                 meshOps::writeVTK
                 (
                     (*this),
