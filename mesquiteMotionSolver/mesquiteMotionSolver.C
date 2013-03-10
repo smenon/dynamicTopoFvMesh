@@ -34,7 +34,7 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include "polyMesh.H"
 
-#include "tetPointRef.H"
+#include "tetrahedron.H"
 #include "matchPoints.H"
 #include "DimensionedField.H"
 #include "pointPatchField.H"
@@ -65,7 +65,12 @@ mesquiteMotionSolver::mesquiteMotionSolver
 )
 :
     motionSolver(mesh),
-    MeshObject<polyMesh, mesquiteMotionSolver>(mesh),
+    MeshObject
+    <
+        polyMesh,
+        UpdateableMeshObject,
+        mesquiteMotionSolver
+    >(mesh),
     Mesh_(mesh),
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     arraysInitialized_(false),
@@ -104,11 +109,16 @@ mesquiteMotionSolver::mesquiteMotionSolver
 mesquiteMotionSolver::mesquiteMotionSolver
 (
     const polyMesh& mesh,
-    Istream& msData
+    const IOdictionary& dict
 )
 :
     motionSolver(mesh),
-    MeshObject<polyMesh, mesquiteMotionSolver>(mesh),
+    MeshObject
+    <
+        polyMesh,
+        UpdateableMeshObject,
+        mesquiteMotionSolver
+    >(mesh),
     Mesh_(mesh),
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     arraysInitialized_(false),
@@ -4713,25 +4723,21 @@ void mesquiteMotionSolver::solve()
 
 
 //- Move points
-bool mesquiteMotionSolver::movePoints() const
+bool mesquiteMotionSolver::movePoints()
 {
     return true;
 }
+
+
+//- Move points
+void mesquiteMotionSolver::movePoints(const pointField&)
+{}
 
 
 //- Update topology
 void mesquiteMotionSolver::updateMesh(const mapPolyMesh& mpm)
 {
     update(mpm);
-}
-
-
-//- Update topology (using meshObjectBase)
-bool mesquiteMotionSolver::updateMesh(const mapPolyMesh& mpm) const
-{
-    const_cast<mesquiteMotionSolver*>(this)->update(mpm);
-
-    return true;
 }
 
 

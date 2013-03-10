@@ -13,11 +13,9 @@ Pre-installation steps:
     - Assuming that Mesquite is to be installed in $WM_THIRD_PARTY_DIR,
       define the following environment variables:
 
-      In Bash:
-        export MESQUITE_DIR=$WM_THIRD_PARTY_DIR/mesquite-x.x.x
+      In Bash: export MESQUITE_DIR=$WM_THIRD_PARTY_DIR/mesquite-x.x.x
 
-      In Csh:
-        setenv MESQUITE_DIR $WM_THIRD_PARTY_DIR/mesquite-x.x.x
+      In Csh:  setenv MESQUITE_DIR $WM_THIRD_PARTY_DIR/mesquite-x.x.x
 
       where x.x.x is the appropriate version on Mesquite.
 
@@ -38,13 +36,17 @@ Pre-installation steps:
 
       Once configured, proceed with 'make' and 'make install'
 
-    - Add the Mesquite lib directory to the library path:
+    - Set the Mesquite library directory, based on architecture:
 
-      In Bash:
-        export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MESQUITE_DIR/lib
+        In Bash: export MESQUITE_LIB_DIR=$MESQUITE_DIR/lib
 
-      In Csh:
-        setenv LD_LIBRARY_PATH ${LD_LIBRARY_PATH}:${MESQUITE_DIR}/lib
+        In Csh:  setenv MESQUITE_LIB_DIR $MESQUITE_DIR/lib
+
+      for 64-bit:
+
+        In Bash: export MESQUITE_LIB_DIR=$MESQUITE_DIR/lib64
+
+        In Csh:  setenv MESQUITE_LIB_DIR $MESQUITE_DIR/lib64
 
 Repository check-out and installation:
 

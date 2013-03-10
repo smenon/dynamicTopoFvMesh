@@ -40,7 +40,7 @@ Author
 #include "IOmanip.H"
 #include "volFields.H"
 #include "triPointRef.H"
-#include "tetPointRef.H"
+#include "tetrahedron.H"
 #include "coupledInfo.H"
 
 namespace Foam

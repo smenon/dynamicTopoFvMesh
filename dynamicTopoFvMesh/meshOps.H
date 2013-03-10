@@ -51,7 +51,7 @@ SourceFiles
 #include "edgeList.H"
 #include "faceList.H"
 #include "triPointRef.H"
-#include "tetPointRef.H"
+#include "tetrahedron.H"
 #include "vectorField.H"
 #include "linePointRef.H"
 

@@ -6,4 +6,4 @@ EXE_INC = \
 LIB_LIBS = \
     -lmeshTools \
     -ldynamicMesh \
-    -L$(MESQUITE_DIR)/lib -lmesquite
+    -L$(MESQUITE_LIB_DIR) -lmesquite

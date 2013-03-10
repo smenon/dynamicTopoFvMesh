@@ -44,7 +44,6 @@ Author
 #include "polyMesh.H"
 #include "OFstream.H"
 #include "triPointRef.H"
-#include "tetPointRef.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 

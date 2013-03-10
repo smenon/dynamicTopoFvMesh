@@ -50,6 +50,7 @@ SourceFiles
 // Have gcc ignore certain warnings while including mesquite headers
 #if defined(__GNUC__) && !defined(__INTEL_COMPILER)
 #   pragma GCC diagnostic ignored "-Wold-style-cast"
+#   pragma GCC diagnostic ignored "-Wnon-virtual-dtor"
 #   pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #endif
 
@@ -57,6 +58,7 @@ SourceFiles
 
 #if defined(__GNUC__) && !defined(__INTEL_COMPILER)
 #   pragma GCC diagnostic warning "-Wold-style-cast"
+#   pragma GCC diagnostic warning "-Wnon-virtual-dtor"
 #   pragma GCC diagnostic warning "-Wunused-but-set-variable"
 #endif
 
@@ -75,7 +77,7 @@ class polyMesh;
 class mesquiteMotionSolver
 :
     public motionSolver,
-    public MeshObject<polyMesh, mesquiteMotionSolver>
+    public MeshObject<polyMesh, UpdateableMeshObject, mesquiteMotionSolver>
 {
 
     // Private data
@@ -341,7 +343,12 @@ public:
         //- Construct from polyMesh
         mesquiteMotionSolver(const polyMesh& mesh);
 
-        mesquiteMotionSolver(const polyMesh& mesh, Istream& msData);
+        //- Construct from polyMesh and IOdictionary
+        mesquiteMotionSolver
+        (
+            const polyMesh& mesh,
+            const IOdictionary& dict
+        );
 
     // Destructor
 
@@ -363,13 +370,13 @@ public:
         virtual void solve();
 
         //- Move points
-        virtual bool movePoints() const;
+        virtual bool movePoints();
+
+        //- Move points
+        virtual void movePoints(const pointField&);
 
         //- Update topology
         virtual void updateMesh(const mapPolyMesh&);
-
-        //- Update topology (using meshObjectBase)
-        virtual bool updateMesh(const mapPolyMesh&) const;
 };
 
 

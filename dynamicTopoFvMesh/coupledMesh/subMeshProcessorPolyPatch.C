@@ -56,7 +56,8 @@ subMeshProcessorPolyPatch::subMeshProcessorPolyPatch
     const label index,
     const polyBoundaryMesh& bm,
     const int myProcNo,
-    const int neighbProcNo
+    const int neighbProcNo,
+    const transformType transform
 )
 :
     processorPolyPatch
@@ -67,7 +68,8 @@ subMeshProcessorPolyPatch::subMeshProcessorPolyPatch
         index,
         bm,
         myProcNo,
-        neighbProcNo
+        neighbProcNo,
+        transform
     )
 {}
 
@@ -77,10 +79,11 @@ subMeshProcessorPolyPatch::subMeshProcessorPolyPatch
     const word& name,
     const dictionary& dict,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
-    processorPolyPatch(name, dict, index, bm)
+    processorPolyPatch(name, dict, index, bm, patchType)
 {}
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //

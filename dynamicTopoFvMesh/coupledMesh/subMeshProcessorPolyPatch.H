@@ -73,7 +73,8 @@ public:
             const label index,
             const polyBoundaryMesh& bm,
             const int myProcNo,
-            const int neighbProcNo
+            const int neighbProcNo,
+            const transformType transform = UNKNOWN
         );
 
         //- Construct from dictionary
@@ -82,7 +83,8 @@ public:
             const word& name,
             const dictionary& dict,
             const label index,
-            const polyBoundaryMesh&
+            const polyBoundaryMesh&,
+            const word& patchType
         );
 
     // Destructor

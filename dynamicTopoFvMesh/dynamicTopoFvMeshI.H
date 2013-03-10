@@ -37,7 +37,7 @@ Author
 
 #include "Stack.H"
 #include "meshOps.H"
-#include "tetPointRef.H"
+#include "tetrahedron.H"
 #include "linePointRef.H"
 #include "lengthScaleEstimator.H"
 
