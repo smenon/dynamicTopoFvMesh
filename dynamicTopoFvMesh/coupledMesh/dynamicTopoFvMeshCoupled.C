@@ -1674,6 +1674,50 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
+    // Check for edge-edge processor connections 
+    if (!twoDMesh_)
+    {
+        forAll(procIndices_, pI)
+        {
+            const Map<label>& cEdges = edgesToConvert[pI];
+            const coupleMap& cMap = recvMeshes_[pI].map();
+
+            forAllConstIter(Map<label>, cEdges, eIter)
+            {
+                label cMe = cMap.findMaster(coupleMap::EDGE, eIter.key());
+
+                if (cMe == -1)
+                {
+                    continue;
+                }
+
+                forAll(procIndices_, pJ)
+                {
+                    if (procIndices_[pJ] < Pstream::myProcNo())
+                    {
+                        const coupleMap& jMap = recvMeshes_[pJ].map();
+                        
+                        if (jMap.findSlave(coupleMap::EDGE, cMe) > -1)
+                        {
+                            if (debug > 3)
+                            {
+                                Pout<< nl << nl
+                                    << " Edge: " << cMe
+                                    << " :: " << edges_[cMe]
+                                    << " is talking to processor: "
+                                    << procIndices_[pJ] << endl;
+                            }
+
+                            map.type() = -2;
+
+                            return map;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Perform a few debug calls before modifications
     if (debug > 1)
     {
