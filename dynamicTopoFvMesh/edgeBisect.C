@@ -2371,7 +2371,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     //      Update faceEdges and edgeFaces information
 
     // For 2D meshes, perform face-bisection
-    if (twoDMesh_)
+    if (is2D())
     {
         return bisectQuadFace(eIndex, changeMap(), checkOnly);
     }
@@ -4266,7 +4266,7 @@ void dynamicTopoFvMesh::sliceMesh
     vector gCentre = vector::zero;
     FixedList<vector, 2> fC(vector::zero);
 
-    if (twoDMesh_)
+    if (is2D())
     {
         patchIndex = whichPatch(pointPair.first());
 
@@ -4326,7 +4326,7 @@ void dynamicTopoFvMesh::sliceMesh
     Map<vector> checkPoints, surfFaces;
     Map<edge> checkEdges;
 
-    if (twoDMesh_)
+    if (is2D())
     {
         // Assign plane point / normal
         p = gCentre;
@@ -4602,7 +4602,7 @@ void dynamicTopoFvMesh::sliceMesh
             continue;
         }
 
-        if (twoDMesh_ && faces_[faceI].size() == 3)
+        if (is2D() && faces_[faceI].size() == 3)
         {
             continue;
         }
@@ -4666,7 +4666,7 @@ void dynamicTopoFvMesh::sliceMesh
         // Loop through all points (and associated pointEdges)
         // for this face, and check if connected cells are also
         // present in the checkCells/cellColors list
-        if (twoDMesh_)
+        if (is2D())
         {
             const labelList& fEdges = faceEdges_[fIter.key()];
 
@@ -5279,7 +5279,7 @@ const changeMap dynamicTopoFvMesh::addCellLayer
         }
 
         // Size down pointEdges
-        if (!twoDMesh_)
+        if (is3D())
         {
             meshOps::sizeDownList
             (
@@ -5416,7 +5416,7 @@ void dynamicTopoFvMesh::splitInternalFaces
 
         pIter() = insertPoint(newPoint, oldPoint, labelList(1, pIter.key()));
 
-        if (!twoDMesh_)
+        if (is3D())
         {
             const labelList& pEdges = pointEdges_[pIter.key()];
 
@@ -5483,7 +5483,7 @@ void dynamicTopoFvMesh::splitInternalFaces
         label i = 0;
         labelList mPoints(mirrorPointLabels.size());
 
-        if (!twoDMesh_)
+        if (is3D())
         {
             forAllIter(Map<label>, mirrorPointLabels, pIter)
             {
@@ -5757,7 +5757,7 @@ void dynamicTopoFvMesh::splitInternalFaces
         }
     }
 
-    if (twoDMesh_)
+    if (is2D())
     {
         // Renumber edges and faces
         forAllIter(Map<label>, mirrorEdgeLabels[0], eIter)

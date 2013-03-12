@@ -89,7 +89,7 @@ bool dynamicTopoFvMesh::meshQuality
             continue;
         }
 
-        if (twoDMesh_)
+        if (is2D())
         {
             // Assume XY plane here
             vector n = vector(0,0,1);
@@ -754,7 +754,7 @@ void dynamicTopoFvMesh::writeEdgeConnectivity
         3, false, true
     );
 
-    if (twoDMesh_)
+    if (is2D())
     {
         return;
     }
@@ -1704,7 +1704,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
         }
     }
 
-    if (!twoDMesh_)
+    if (is3D())
     {
         Pout<< "Checking point-edge connectivity...";
 
@@ -1831,8 +1831,8 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
         if
         (
-            (cellToNode[cellI].size() != 6 && twoDMesh_) ||
-            (cellToNode[cellI].size() != 4 && !twoDMesh_)
+            (cellToNode[cellI].size() != 6 && is2D()) ||
+            (cellToNode[cellI].size() != 4 && is3D())
         )
         {
             Pout<< nl << "Warning: Cell: "

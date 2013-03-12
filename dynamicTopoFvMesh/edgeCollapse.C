@@ -3572,7 +3572,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     //      Update faceEdges and edgeFaces information
 
     // For 2D meshes, perform face-collapse
-    if (twoDMesh_)
+    if (is2D())
     {
         return collapseQuadFace(eIndex, overRideCase, checkOnly);
     }
@@ -7175,7 +7175,7 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
     forAllConstIter(Map<labelPair>, pointsToRemove, pIter)
     {
         // Update pointEdges information first
-        if (!twoDMesh_)
+        if (is3D())
         {
             const labelList& pEdges = pointEdges_[pIter.key()];
 

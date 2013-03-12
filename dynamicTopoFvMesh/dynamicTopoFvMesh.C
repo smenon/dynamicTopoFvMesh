@@ -324,7 +324,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     // Now build edgeFaces and pointEdges information.
     edgeFaces_ = invertManyToMany<labelList, labelList>(nEdges_, faceEdges_);
 
-    if (!twoDMesh_)
+    if (is3D())
     {
         pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
     }
@@ -817,7 +817,7 @@ label dynamicTopoFvMesh::insertEdge
     }
 
     // Size-up the pointEdges list
-    if (!twoDMesh_)
+    if (is3D())
     {
         meshOps::sizeUpList(newEdgeIndex, pointEdges_[newEdge[0]]);
         meshOps::sizeUpList(newEdgeIndex, pointEdges_[newEdge[1]]);
@@ -836,7 +836,7 @@ void dynamicTopoFvMesh::removeEdge
     const label eIndex
 )
 {
-    if (!twoDMesh_)
+    if (is3D())
     {
         const edge& rEdge = edges_[eIndex];
 
@@ -981,7 +981,7 @@ label dynamicTopoFvMesh::insertPoint
 
     // Add an empty entry to pointEdges as well.
     // This entry can be sized-up appropriately at a later stage.
-    if (!twoDMesh_)
+    if (is3D())
     {
         pointEdges_.append(labelList(0));
     }
@@ -1018,7 +1018,7 @@ void dynamicTopoFvMesh::removePoint
     // oldPoints_[pIndex] = point();
 
     // Remove pointEdges as well
-    if (!twoDMesh_)
+    if (is3D())
     {
         pointEdges_[pIndex].clear();
     }
@@ -1397,7 +1397,7 @@ void dynamicTopoFvMesh::handleMeshSlicing()
 
         bool available = true;
 
-        if (twoDMesh_)
+        if (is2D())
         {
             forAll(pairToCheck, indexI)
             {
@@ -1547,7 +1547,7 @@ scalar dynamicTopoFvMesh::testProximity
     scalar proxDistance = GREAT, testStep = 0.0;
     vector gCentre = vector::zero, gNormal = vector::zero;
 
-    if (twoDMesh_)
+    if (is2D())
     {
         // Obtain the face-normal.
         gNormal = faces_[index].normal(points_);
@@ -1616,7 +1616,7 @@ scalar dynamicTopoFvMesh::testProximity
         labelPair proxPoints(-1, -1);
         bool foundPoint = false;
 
-        if (twoDMesh_)
+        if (is2D())
         {
             proxPoints.first() = index;
             proxPoints.second() = proximityFace;
@@ -1880,7 +1880,7 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
     }
 
     // For tetrahedral meshes...
-    if (!twoDMesh_)
+    if (is3D())
     {
         // Check if swapping is to be avoided on any patches
         if (meshSubDict.found("noSwapPatches") || mandatory_)
@@ -1961,7 +1961,7 @@ void dynamicTopoFvMesh::initEdges()
     edgeFaces_ = eMeshPtr_->edgeFaces();
     faceEdges_ = eMeshPtr_->faceEdges();
 
-    if (!twoDMesh_)
+    if (is3D())
     {
         // Invert edges to obtain pointEdges
         pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);
@@ -1978,7 +1978,7 @@ void dynamicTopoFvMesh::initEdges()
 // Load the mesh-quality metric from the library
 void dynamicTopoFvMesh::loadMetric()
 {
-    if (twoDMesh_)
+    if (is2D())
     {
         return;
     }
@@ -3165,7 +3165,7 @@ void dynamicTopoFvMesh::removeSlivers()
     }
 
     // Invoke the 2D sliver removal routine
-    if (twoDMesh_)
+    if (is2D())
     {
         remove2DSlivers();
         return;
@@ -3909,7 +3909,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     // Execute threads
     if (threader_->multiThreaded())
     {
-        if (twoDMesh_)
+        if (is2D())
         {
             executeThreads(topoSequence, handlerPtr_, &swap2DEdges);
         }
@@ -3920,7 +3920,7 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     }
 
     // Set the master thread to implement modifications
-    if (twoDMesh_)
+    if (is2D())
     {
         swap2DEdges(&(handlerPtr_[0]));
     }
