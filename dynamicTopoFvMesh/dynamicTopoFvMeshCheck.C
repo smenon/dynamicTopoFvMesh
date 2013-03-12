@@ -1126,6 +1126,25 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
         if (curFace.empty())
         {
+            // This might be a deleted face
+            if (faceI < nOldFaces_)
+            {
+                if (reverseFaceMap_[faceI] == -1)
+                {
+                    continue;
+                }
+            }
+            else
+            if (deletedFaces_.found(faceI))
+            {
+                continue;
+            }
+
+            Pout<< "Face " << faceI
+                << " has no vertex labels."
+                << endl;
+
+            nFailedChecks++;
             continue;
         }
 

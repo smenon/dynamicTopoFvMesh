@@ -1786,7 +1786,7 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
 
                 if (findIndex(procs, Pstream::myProcNo()) > -1)
                 {
-                    debug = readLabel(meshSubDict.lookup("debug"));
+                    debug = pdebug;
                 }
                 else
                 if (pdebug)
