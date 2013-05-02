@@ -7192,8 +7192,6 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 label mStart = pp.start();
                 label mSize  = pp.size();
 
-                Map<labelList>::iterator pIt, eIt;
-
                 for (label i = 0; i < mSize; i++)
                 {
                     const face& f = sMesh.faces_[i + mStart];
@@ -7204,7 +7202,9 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                         const label pIndex = f[j];
                         const label eIndex = fe[j];
 
-                        if ((pIt = pPointMap.find(pIndex)) == pPointMap.end())
+                        Map<labelList>::iterator pIt = pPointMap.find(pIndex);
+
+                        if (pIt == pPointMap.end())
                         {
                             pPointMap.insert(pIndex, labelList(1, neiProcNo));
                         }
@@ -7216,7 +7216,9 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                             }
                         }
 
-                        if ((eIt = pEdgeMap.find(eIndex)) == pEdgeMap.end())
+                        Map<labelList>::iterator eIt = pEdgeMap.find(eIndex);
+
+                        if (eIt == pEdgeMap.end())
                         {
                             pEdgeMap.insert(eIndex, labelList(1, neiProcNo));
                         }
