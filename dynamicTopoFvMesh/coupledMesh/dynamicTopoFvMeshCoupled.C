@@ -1673,45 +1673,62 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Check for edge-edge processor connections 
+    // Check for point / edge processor connections 
     if (is3D())
     {
         forAll(procIndices_, pI)
         {
-            const Map<label>& cEdges = edgesToConvert[pI];
+            const Map<label>& cEdges = edgesToInsert[pI];
             const coupleMap& cMap = recvMeshes_[pI].map();
+            const Map<labelList>& pEdgeMap = cMap.procEdgeMap();
+            const Map<labelList>& pPointMap = cMap.procPointMap();
+            const dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
             forAllConstIter(Map<label>, cEdges, eIter)
             {
-                label cMe = cMap.findMaster(coupleMap::EDGE, eIter.key());
+                label cSe = eIter.key();
 
-                if (cMe == -1)
+                if (pEdgeMap.found(cSe))
                 {
-                    continue;
+                    if (debug > 3)
+                    {
+                        Pout<< nl << nl
+                            << " Edge: " << cSe
+                            << " :: " << sMesh.edges_[cSe]
+                            << " is talking to processors: "
+                            << pEdgeMap[cSe] << endl;
+                    }
+
+                    map.type() = -2;
+
+                    return map;
                 }
 
-                forAll(procIndices_, pJ)
+                const edge& checkEdge = sMesh.edges_[cSe];
+
+                bool found0 = pPointMap.found(checkEdge[0]);
+                bool found1 = pPointMap.found(checkEdge[1]);
+
+                if (found0 || found1)
                 {
-                    if (procIndices_[pJ] < Pstream::myProcNo())
+                    if (debug > 3)
                     {
-                        const coupleMap& jMap = recvMeshes_[pJ].map();
-                        
-                        if (jMap.findSlave(coupleMap::EDGE, cMe) > -1)
-                        {
-                            if (debug > 3)
-                            {
-                                Pout<< nl << nl
-                                    << " Edge: " << cMe
-                                    << " :: " << edges_[cMe]
-                                    << " is talking to processor: "
-                                    << procIndices_[pJ] << endl;
-                            }
-
-                            map.type() = -2;
-
-                            return map;
-                        }
+                        Pout<< nl << nl
+                            << " Points: " << nl
+                            << "  Edge[0]: " << checkEdge[0]
+                            << "  Edge[1]: " << checkEdge[1]
+                            << nl
+                            << " Processor conflicts: " << nl
+                            << "  Edge[0]: "
+                            << (found0 ? pPointMap[checkEdge[0]] : labelList(0))
+                            << "  Edge[1]: "
+                            << (found1 ? pPointMap[checkEdge[1]] : labelList(0))
+                            << endl;
                     }
+
+                    map.type() = -2;
+
+                    return map;
                 }
             }
         }
@@ -3049,6 +3066,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     List<changeMap> slaveMaps(procIndices_.size());
 
     // Loop through all processors, and remove cells
+    const label emptyMap = -7;
+
     forAll(cellsToInsert, pI)
     {
         const Map<label>& procCellMap = cellsToInsert[pI];
@@ -3056,7 +3075,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         if (procCellMap.empty())
         {
             // Set type to something recognizable
-            slaveMaps[pI].type() = -7;
+            slaveMaps[pI].type() = emptyMap;
 
             continue;
         }
@@ -3085,7 +3104,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const changeMap& slaveMap = slaveMaps[pI];
 
         // Skip empty entities
-        if (slaveMap.type() == -7)
+        if (slaveMap.type() == emptyMap)
         {
             continue;
         }
@@ -6903,9 +6922,6 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
         // Now match all faces connected to master points.
         if (nPrc.found(proc))
         {
-            // Fetch a global faceList for the slave subMesh
-            const faceList& slaveFaces = rPM.subMesh().faces();
-
             // This is an immediate neighbour.
             label mStart = boundary[nPrc[proc]].start();
             label mSize  = boundary[nPrc[proc]].size();
@@ -6917,7 +6933,8 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             const Map<label>& fMap = cMap.entityMap(coupleMap::FACE);
 
             // Fetch global pointFaces for the slave.
-            const labelListList& spF = rPM.subMesh().pointFaces();
+            const faceList& slaveFaces = sMesh.faces();
+            const labelListList& spF = sMesh.pointFaces();
 
             // Match patch faces for both 2D and 3D.
             for (label i = 0; i < mSize; i++)
@@ -7140,6 +7157,74 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                                 );
 
                                 break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Prepare processor point and edge maps
+            Map<labelList>& pEdgeMap = cMap.procEdgeMap();
+            Map<labelList>& pPointMap = cMap.procPointMap();
+
+            const dynamicTopoFvMesh& sMesh = rPM.subMesh();
+            const polyBoundaryMesh& bdy = sMesh.boundaryMesh();
+
+            forAll(bdy, pI)
+            {
+                if (!isA<processorPolyPatch>(bdy[pI]))
+                {
+                    continue;
+                }
+
+                const processorPolyPatch& pp =
+                (
+                    refCast<const processorPolyPatch>(bdy[pI])
+                );
+
+                label neiProcNo = pp.neighbProcNo();
+
+                if (neiProcNo >= Pstream::myProcNo())
+                {
+                    continue;
+                }
+
+                label mStart = pp.start();
+                label mSize  = pp.size();
+
+                Map<labelList>::iterator pIt, eIt;
+
+                for (label i = 0; i < mSize; i++)
+                {
+                    const face& f = sMesh.faces_[i + mStart];
+                    const labelList& fe = sMesh.faceEdges_[i + mStart];
+
+                    forAll(f, j)
+                    {
+                        const label pIndex = f[j];
+                        const label eIndex = fe[j];
+
+                        if ((pIt = pPointMap.find(pIndex)) == pPointMap.end())
+                        {
+                            pPointMap.insert(pIndex, labelList(1, neiProcNo));
+                        }
+                        else
+                        {
+                            if (findIndex(pIt(), neiProcNo) == -1)
+                            {
+                                meshOps::sizeUpList(neiProcNo, pIt());
+                            }
+                        }
+
+                        if ((eIt = pEdgeMap.find(eIndex)) == pEdgeMap.end())
+                        {
+                            pEdgeMap.insert(eIndex, labelList(1, neiProcNo));
+                        }
+                        else
+                        {
+                            if (findIndex(eIt(), neiProcNo) == -1)
+                            {
+                                meshOps::sizeUpList(neiProcNo, eIt());
                             }
                         }
                     }

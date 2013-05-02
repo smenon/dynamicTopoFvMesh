@@ -483,6 +483,9 @@ void coupleMap::clearMaps() const
     faceMap_.clear();
     cellMap_.clear();
 
+    procPointMap_.clear();
+    procEdgeMap_.clear();
+
     forAll(entityMap_, mapI)
     {
         entityMap_[mapI].clear();
