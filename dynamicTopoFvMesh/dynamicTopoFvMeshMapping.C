@@ -132,7 +132,7 @@ void dynamicTopoFvMesh::computeMapping
                 // for mild convexity.
                 const cell& cellToCheck = cells_[cIndex];
 
-                if (twoDMesh_)
+                if (is2D())
                 {
                     const labelList& parents = cellParents_[cIndex];
 

@@ -534,7 +534,7 @@ void dynamicTopoFvMesh::reOrderEdges
         entityMutex_[2].unlock();
     }
 
-    if (!twoDMesh_)
+    if (is3D())
     {
         // Invert edges to obtain pointEdges
         pointEdges_ = invertManyToMany<edge, labelList>(nPoints_, edges_);

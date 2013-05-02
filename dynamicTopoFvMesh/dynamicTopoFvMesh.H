@@ -102,7 +102,7 @@ class dynamicTopoFvMesh
         Switch mandatory_;
 
         //- Mesh characteristics [2D/3D]
-        Switch twoDMesh_;
+        bool twoDMesh_;
 
         //- Edge refinement switch
         Switch edgeRefinement_;
@@ -338,6 +338,12 @@ class dynamicTopoFvMesh
 
         // Initialize the threading environment
         void initializeThreadingEnvironment(const label specThreads = -1);
+
+        // Return if mesh is 2D
+        inline bool is2D() const;
+
+        // Return if mesh is 3D
+        inline bool is3D() const;
 
         // Return a non-const reference to the lengthScaleEstimator
         inline lengthScaleEstimator& lengthEstimator();

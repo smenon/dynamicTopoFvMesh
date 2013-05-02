@@ -107,7 +107,7 @@ void dynamicTopoFvMesh::initCoupledStack
             // Add only valid entities
             emptyEntity =
             (
-                twoDMesh_ ?
+                is2D() ?
                 faces_[eIter.key()].empty() :
                 edgeFaces_[eIter.key()].empty()
             );
@@ -134,7 +134,7 @@ void dynamicTopoFvMesh::initCoupledStack
                     stackElements[elemI] = stack(0)[elemI];
                 }
 
-                label elemType = twoDMesh_ ? 2 : 1;
+                label elemType = is2D() ? 2 : 1;
 
                 writeVTK
                 (
@@ -189,7 +189,7 @@ void dynamicTopoFvMesh::initCoupledStack
                 // Add this to the coupled modification stack.
                 if (addIndex)
                 {
-                    if (twoDMesh_)
+                    if (is2D())
                     {
                         stack(0).push(faceI);
                     }
@@ -216,7 +216,7 @@ void dynamicTopoFvMesh::initCoupledStack
             if (neiProcID > Pstream::myProcNo())
             {
                 // Add this to the coupled modification stack.
-                if (twoDMesh_)
+                if (is2D())
                 {
                     stack(0).push(faceI);
                 }
@@ -294,7 +294,7 @@ void dynamicTopoFvMesh::initCoupledStack
                 stackElements[elemI] = stack(0)[elemI];
             }
 
-            label elemType = twoDMesh_ ? 2 : 1;
+            label elemType = is2D() ? 2 : 1;
 
             writeVTK
             (
@@ -760,7 +760,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             new coupledInfo
             (
                 *this,               // Reference to this mesh
-                twoDMesh_,           // 2D or 3D
+                is2D(),              // 2D or 3D
                 false,               // Not local
                 true,                // Sent to neighbour
                 patchID,             // Patch index
@@ -785,7 +785,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             new coupledInfo
             (
                 *this,               // Reference to this mesh
-                twoDMesh_,           // 2D or 3D
+                is2D(),              // 2D or 3D
                 false,               // Not local
                 false,               // Not sent to neighbour
                 patchID,             // Patch index
@@ -960,7 +960,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                         IOobject::AUTO_WRITE,
                         true
                     ),
-                    twoDMesh_,
+                    is2D(),
                     true,
                     false,
                     mPatch,
@@ -1032,7 +1032,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                 IOobject::AUTO_WRITE,
                 true
             ),
-            twoDMesh_,
+            is2D(),
             true,
             false,
             patchI,
@@ -1208,7 +1208,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // First check to ensure that this case can be handled
     forAll(procIndices_, pI)
     {
-        const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
+        const label cplEnum = is2D() ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
         const coupleMap& cMap = recvMeshes_[pI].map();
@@ -1233,7 +1233,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // Agglomerate cells from surrounding subMeshes
     forAll(procIndices_, pI)
     {
-        const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
+        const label cplEnum = is2D() ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
         const coupleMap& cMap = recvMeshes_[pI].map();
@@ -1249,7 +1249,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         // Fetch references
         Map<label>& procCellMap = cellsToInsert[pI];
 
-        if (twoDMesh_)
+        if (is2D())
         {
             // Insert the owner cell
             procCellMap.insert(mesh.owner_[sIndex], -1);
@@ -1674,45 +1674,62 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Check for edge-edge processor connections 
-    if (!twoDMesh_)
+    // Check for point / edge processor connections 
+    if (is3D())
     {
         forAll(procIndices_, pI)
         {
-            const Map<label>& cEdges = edgesToConvert[pI];
+            const Map<label>& cEdges = edgesToInsert[pI];
             const coupleMap& cMap = recvMeshes_[pI].map();
+            const Map<labelList>& pEdgeMap = cMap.procEdgeMap();
+            const Map<labelList>& pPointMap = cMap.procPointMap();
+            const dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
             forAllConstIter(Map<label>, cEdges, eIter)
             {
-                label cMe = cMap.findMaster(coupleMap::EDGE, eIter.key());
+                label cSe = eIter.key();
 
-                if (cMe == -1)
+                if (pEdgeMap.found(cSe))
                 {
-                    continue;
+                    if (debug > 3)
+                    {
+                        Pout<< nl << nl
+                            << " Edge: " << cSe
+                            << " :: " << sMesh.edges_[cSe]
+                            << " is talking to processors: "
+                            << pEdgeMap[cSe] << endl;
+                    }
+
+                    map.type() = -2;
+
+                    return map;
                 }
 
-                forAll(procIndices_, pJ)
+                const edge& checkEdge = sMesh.edges_[cSe];
+
+                bool found0 = pPointMap.found(checkEdge[0]);
+                bool found1 = pPointMap.found(checkEdge[1]);
+
+                if (found0 || found1)
                 {
-                    if (procIndices_[pJ] < Pstream::myProcNo())
+                    if (debug > 3)
                     {
-                        const coupleMap& jMap = recvMeshes_[pJ].map();
-                        
-                        if (jMap.findSlave(coupleMap::EDGE, cMe) > -1)
-                        {
-                            if (debug > 3)
-                            {
-                                Pout<< nl << nl
-                                    << " Edge: " << cMe
-                                    << " :: " << edges_[cMe]
-                                    << " is talking to processor: "
-                                    << procIndices_[pJ] << endl;
-                            }
-
-                            map.type() = -2;
-
-                            return map;
-                        }
+                        Pout<< nl << nl
+                            << " Points: " << nl
+                            << "  Edge[0]: " << checkEdge[0]
+                            << "  Edge[1]: " << checkEdge[1]
+                            << nl
+                            << " Processor conflicts: " << nl
+                            << "  Edge[0]: "
+                            << (found0 ? pPointMap[checkEdge[0]] : labelList(0))
+                            << "  Edge[1]: "
+                            << (found1 ? pPointMap[checkEdge[1]] : labelList(0))
+                            << endl;
                     }
+
+                    map.type() = -2;
+
+                    return map;
                 }
             }
         }
@@ -1723,7 +1740,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     {
         Pout<< nl << nl
             << "Inserting cell(s) around coupled "
-            << (twoDMesh_ ? "face: " : "edge: ") << mIndex
+            << (is2D() ? "face: " : "edge: ") << mIndex
             << endl;
     }
 
@@ -1775,7 +1792,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // Build a list of mapping entities on this processor
     DynamicList<label> mapCells(10);
 
-    if (twoDMesh_)
+    if (is2D())
     {
         label own = owner_[mIndex];
 
@@ -1809,7 +1826,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // create an equivalent on this mesh
     forAll(procIndices_, pI)
     {
-        const label cplEnum = twoDMesh_ ? coupleMap::FACE : coupleMap::EDGE;
+        const label cplEnum = is2D() ? coupleMap::FACE : coupleMap::EDGE;
 
         // Fetch reference to maps
         const coupleMap& cMap = recvMeshes_[pI].map();
@@ -1916,7 +1933,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     // Loop through all insertion points, and merge if necessary
     scalar mergeTol =
     (
-        twoDMesh_ ? 0.0 : geomMatchTol_ * mag(edges_[mIndex].vec(points_))
+        is2D() ? 0.0 : geomMatchTol_ * mag(edges_[mIndex].vec(points_))
     );
 
     // Insert all points
@@ -2088,7 +2105,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
     // Occassionally, inserted edges may already be present.
     // Ensure that edges are not added twice.
-    if (!twoDMesh_)
+    if (is3D())
     {
         forAll(facesToInsert, pI)
         {
@@ -2692,7 +2709,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // For 2D meshes, the boundary face gets converted
             // to an interior one. Note the index for further operations.
-            if ((mIndex == fIndex) && twoDMesh_)
+            if ((mIndex == fIndex) && is2D())
             {
                 map.index() = newFaceIndex;
             }
@@ -2989,7 +3006,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     keepEdge = false;
                 }
                 else
-                if ((mIndex == eIndex) && !twoDMesh_ && map.index() == -1)
+                if ((mIndex == eIndex) && is3D() && map.index() == -1)
                 {
                     // Keep the edge, and note index for later
                     keepEdge = true;
@@ -3037,7 +3054,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // For 3D meshes, the boundary edge gets converted
             // to an interior one. Note the index for further operations.
-            if ((mIndex == eIndex) && !twoDMesh_)
+            if ((mIndex == eIndex) && is3D())
             {
                 map.index() = newEdgeIndex;
             }
@@ -3050,6 +3067,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     List<changeMap> slaveMaps(procIndices_.size());
 
     // Loop through all processors, and remove cells
+    const label emptyMap = -7;
+
     forAll(cellsToInsert, pI)
     {
         const Map<label>& procCellMap = cellsToInsert[pI];
@@ -3057,7 +3076,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         if (procCellMap.empty())
         {
             // Set type to something recognizable
-            slaveMaps[pI].type() = -7;
+            slaveMaps[pI].type() = emptyMap;
 
             continue;
         }
@@ -3086,7 +3105,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const changeMap& slaveMap = slaveMaps[pI];
 
         // Skip empty entities
-        if (slaveMap.type() == -7)
+        if (slaveMap.type() == emptyMap)
         {
             continue;
         }
@@ -3221,7 +3240,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
 
         // Map edges for 3D meshes
-        if (!twoDMesh_)
+        if (is3D())
         {
             // Map edges from patches.
             const Map<label>& procEdgeMap = edgesToInsert[pI];
@@ -3434,7 +3453,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     continue;
                 }
 
-                if (twoDMesh_)
+                if (is2D())
                 {
                     if (face::compare(cFace, sFace))
                     {
@@ -3496,7 +3515,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     << abort(FatalError);
             }
 
-            if (twoDMesh_)
+            if (is2D())
             {
                 continue;
             }
@@ -3656,7 +3675,7 @@ const changeMap dynamicTopoFvMesh::removeCells
                 edgesToConvert.set(fEdges[edgeI], -1);
             }
 
-            if (twoDMesh_)
+            if (is2D())
             {
                 // Add all points as candidates for removal.
                 // Some (or all) of these will be weeded out.
@@ -3718,7 +3737,7 @@ const changeMap dynamicTopoFvMesh::removeCells
     }
 
     // Build a set of points to be removed.
-    if (twoDMesh_)
+    if (is2D())
     {
         forAllConstIter(Map<label>, edgesToConvert, eIter)
         {
@@ -4246,7 +4265,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
         initCoupledStack(entities, false);
     }
 
-    if (twoDMesh_)
+    if (is2D())
     {
         swap2DEdges(&(handlerPtr_[0]));
     }
@@ -4566,7 +4585,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                 else
                 {
                     // Pick localIndex based on entity type
-                    if (twoDMesh_)
+                    if (is2D())
                     {
                         const Map<label>& fM = cMap.entityMap(coupleMap::FACE);
 
@@ -4643,7 +4662,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         // Clear existing list
                         rCellList.clear();
 
-                        if (twoDMesh_)
+                        if (is2D())
                         {
                             // Insert the owner cell
                             rCellList.append(owner_[localIndex]);
@@ -4937,7 +4956,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
     // Re-Initialize the stack, using supplied entities
     initCoupledStack(entities, true);
 
-    if (twoDMesh_)
+    if (is2D())
     {
         swap2DEdges(&(handlerPtr_[0]));
     }
@@ -5525,7 +5544,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     labelHashSet localCommonCells;
 
     // Detect all cells surrounding shared points.
-    if (twoDMesh_)
+    if (is2D())
     {
         // No pointEdges structure, so loop through all cells
         // to check for those connected to subMeshPoints
@@ -6279,7 +6298,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
 
                 const face& mFace = faces_[mfIndex];
 
-                if (twoDMesh_)
+                if (is2D())
                 {
                     // Set up a comparison face.
                     face cFace(4);
@@ -6536,7 +6555,7 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                 );
             }
 
-            if (twoDMesh_)
+            if (is2D())
             {
                 continue;
             }
@@ -6904,9 +6923,6 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
         // Now match all faces connected to master points.
         if (nPrc.found(proc))
         {
-            // Fetch a global faceList for the slave subMesh
-            const faceList& slaveFaces = rPM.subMesh().faces();
-
             // This is an immediate neighbour.
             label mStart = boundary[nPrc[proc]].start();
             label mSize  = boundary[nPrc[proc]].size();
@@ -6918,7 +6934,8 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             const Map<label>& fMap = cMap.entityMap(coupleMap::FACE);
 
             // Fetch global pointFaces for the slave.
-            const labelListList& spF = rPM.subMesh().pointFaces();
+            const faceList& slaveFaces = sMesh.faces();
+            const labelListList& spF = sMesh.pointFaces();
 
             // Match patch faces for both 2D and 3D.
             for (label i = 0; i < mSize; i++)
@@ -6999,7 +7016,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 }
 
                 // No need to match edges in 2D
-                if (twoDMesh_)
+                if (is2D())
                 {
                     continue;
                 }
@@ -7072,7 +7089,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
         // Attempt to match other edges in 3D, provided any common ones exist.
         //  - This will handle point-only coupling situations for edges.
-        if (!twoDMesh_)
+        if (is3D())
         {
             // Fetch Maps for this processor
             const Map<label>& edgeMap = cMap.entityMap(coupleMap::EDGE);
@@ -7146,6 +7163,76 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                     }
                 }
             }
+
+            // Prepare processor point and edge maps
+            Map<labelList>& pEdgeMap = cMap.procEdgeMap();
+            Map<labelList>& pPointMap = cMap.procPointMap();
+
+            const dynamicTopoFvMesh& sMesh = rPM.subMesh();
+            const polyBoundaryMesh& bdy = sMesh.boundaryMesh();
+
+            forAll(bdy, pI)
+            {
+                if (!isA<processorPolyPatch>(bdy[pI]))
+                {
+                    continue;
+                }
+
+                const processorPolyPatch& pp =
+                (
+                    refCast<const processorPolyPatch>(bdy[pI])
+                );
+
+                label neiProcNo = pp.neighbProcNo();
+
+                if (neiProcNo >= Pstream::myProcNo())
+                {
+                    continue;
+                }
+
+                label mStart = pp.start();
+                label mSize  = pp.size();
+
+                for (label i = 0; i < mSize; i++)
+                {
+                    const face& f = sMesh.faces_[i + mStart];
+                    const labelList& fe = sMesh.faceEdges_[i + mStart];
+
+                    forAll(f, j)
+                    {
+                        const label pIndex = f[j];
+                        const label eIndex = fe[j];
+
+                        Map<labelList>::iterator pIt = pPointMap.find(pIndex);
+
+                        if (pIt == pPointMap.end())
+                        {
+                            pPointMap.insert(pIndex, labelList(1, neiProcNo));
+                        }
+                        else
+                        {
+                            if (findIndex(pIt(), neiProcNo) == -1)
+                            {
+                                meshOps::sizeUpList(neiProcNo, pIt());
+                            }
+                        }
+
+                        Map<labelList>::iterator eIt = pEdgeMap.find(eIndex);
+
+                        if (eIt == pEdgeMap.end())
+                        {
+                            pEdgeMap.insert(eIndex, labelList(1, neiProcNo));
+                        }
+                        else
+                        {
+                            if (findIndex(eIt(), neiProcNo) == -1)
+                            {
+                                meshOps::sizeUpList(neiProcNo, eIt());
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if (unMatchedFaces.size())
@@ -7199,7 +7286,7 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
             new coupledInfo
             (
                 *this,               // Reference to this mesh
-                twoDMesh_,           // 2D or 3D
+                is2D(),              // 2D or 3D
                 false,               // Not local
                 true,                // Sent to neighbour
                 patchID,             // Patch index
@@ -9373,7 +9460,7 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 {
     scalar procScale = 0.0;
 
-    if (twoDMesh_)
+    if (is2D())
     {
         // First check the master processor
         procScale += lengthScale_[owner_[index]];
@@ -9639,7 +9726,7 @@ bool dynamicTopoFvMesh::locallyCoupledEntity
         return false;
     }
 
-    if (twoDMesh_ || checkFace)
+    if (is2D() || checkFace)
     {
         label patch = whichPatch(index);
 
@@ -9804,7 +9891,7 @@ bool dynamicTopoFvMesh::processorCoupledEntity
 
     label patch = -2;
 
-    if ((twoDMesh_ || checkFace) && !checkEdge)
+    if ((is2D() || checkFace) && !checkEdge)
     {
         patch = whichPatch(index);
 
@@ -9973,7 +10060,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
             getNeighbourProcessor(pIndex) > -1
         )
         {
-            if (twoDMesh_)
+            if (is2D())
             {
                 // Avoid this face during regular modification.
                 if (!entities.found(faceI))
@@ -10009,7 +10096,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
             {
                 forAllConstIter(Map<label>, rEdgeMap, eIter)
                 {
-                    if (twoDMesh_)
+                    if (is2D())
                     {
                         const labelList& eFaces = edgeFaces_[eIter.key()];
 
@@ -10058,7 +10145,7 @@ void dynamicTopoFvMesh::buildEntitiesToAvoid
         if (debug > 4)
         {
             // Write out entities
-            label elemType = twoDMesh_ ? 2 : 1;
+            label elemType = is2D() ? 2 : 1;
 
             writeVTK
             (

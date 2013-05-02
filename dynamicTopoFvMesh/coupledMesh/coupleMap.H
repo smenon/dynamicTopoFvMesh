@@ -79,12 +79,14 @@ public:
             FACE = 2,
             // Sizes only
             CELL = 3,
+            MAX_ENTITIES = 4,
             INTERNAL_EDGE = 4,
             INTERNAL_FACE = 5,
             SHARED_POINT = 6,
             GLOBAL_POINT = 7,
             NFE_SIZE = 8,
             NBDY = 9,
+            MAX_SIZES = 10,
             // Buffers only
             OWNER = 3,
             NEIGHBOUR = 4,
@@ -94,7 +96,8 @@ public:
             FACE_SIZES = 8,
             EDGE_STARTS = 9,
             EDGE_SIZES = 10,
-            PATCH_ID = 11
+            PATCH_ID = 11,
+            MAX_BUFFERS = 12
         };
 
         //- Enumerants for operations
@@ -109,6 +112,11 @@ public:
             CONVERT_PATCH = 6,
             INVALID
         };
+
+        //- Public typedefs
+        typedef FixedList<label, MAX_SIZES> EntitySizeList;
+        typedef FixedList<Map<label>, MAX_ENTITIES> EntityMapList;
+        typedef FixedList<labelList, MAX_BUFFERS> EntityBufferList;
 
 private:
 
@@ -137,14 +145,14 @@ private:
         mutable List<labelPair> globalProcPoints_;
 
         // Entity sizes (as specified by the entityType enumerant)
-        mutable FixedList<label,10> nEntities_;
+        mutable EntitySizeList nEntities_;
 
         // Maps for entities
-        mutable FixedList<Map<label>,4> entityMap_;
-        mutable FixedList<Map<label>,4> reverseEntityMap_;
+        mutable EntityMapList entityMap_;
+        mutable EntityMapList reverseEntityMap_;
 
         // Entity Buffers (as specified by the entityType enumerant)
-        mutable FixedList<labelList,12> entityBuffer_;
+        mutable EntityBufferList entityBuffer_;
 
         // List of entity indices with topological operations
         mutable labelList entityIndices_;
@@ -159,6 +167,10 @@ private:
         // Addressing for field mapping
         mutable labelList faceMap_;
         mutable labelList cellMap_;
+
+        // Processor point and edge mapping
+        mutable Map<labelList> procPointMap_;
+        mutable Map<labelList> procEdgeMap_;
 
         //- Demand-driven connectivity data.
         mutable edgeList* edgesPtr_;
@@ -312,13 +324,13 @@ public:
             const label master
         ) const;
 
-        inline FixedList<label,10>& nEntities() const;
+        inline EntitySizeList& nEntities() const;
         inline label& nEntities(const label eType) const;
 
         inline Map<label>& entityMap(const label eType) const;
         inline Map<label>& reverseEntityMap(const label eType) const;
 
-        inline FixedList<labelList,12>& entityBuffer() const;
+        inline EntityBufferList& entityBuffer() const;
         inline labelList& entityBuffer(const label eType) const;
 
         inline labelList& entityIndices() const;
@@ -326,6 +338,9 @@ public:
 
         inline pointField& moveNewPoints() const;
         inline pointField& moveOldPoints() const;
+
+        inline Map<labelList>& procPointMap() const;
+        inline Map<labelList>& procEdgeMap() const;
 
         void pushOperation
         (

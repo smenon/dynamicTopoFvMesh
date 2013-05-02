@@ -48,6 +48,20 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+// Return if mesh is 2D
+inline bool dynamicTopoFvMesh::is2D() const
+{
+    return twoDMesh_;
+}
+
+
+// Return if mesh is 3D
+inline bool dynamicTopoFvMesh::is3D() const
+{
+    return !twoDMesh_;
+}
+
+
 // Return a non-const reference to the lengthScaleEstimator
 inline lengthScaleEstimator&
 dynamicTopoFvMesh::lengthEstimator()
@@ -122,7 +136,7 @@ inline label dynamicTopoFvMesh::getEdgeIndex
     const edge& edgeToCheck
 ) const
 {
-    if (twoDMesh_)
+    if (is2D())
     {
         // No efficient search method. Loop through all edges.
         forAll(edges_, edgeI)
@@ -207,7 +221,7 @@ inline bool dynamicTopoFvMesh::checkBisection
 {
     scalar length = 0.0, scale = 0.0;
 
-    if (twoDMesh_)
+    if (is2D())
     {
         // If this entity was deleted, skip it.
         if (faces_[index].empty())
@@ -275,7 +289,7 @@ inline bool dynamicTopoFvMesh::checkCollapse
 {
     scalar length = 0.0, scale = 0.0;
 
-    if (twoDMesh_)
+    if (is2D())
     {
         // If this entity was deleted, skip it.
         if (faces_[index].empty())
@@ -391,7 +405,7 @@ inline void dynamicTopoFvMesh::initStacks
         tID = 0;
     }
 
-    if (twoDMesh_)
+    if (is2D())
     {
         forAll(faces_, faceI)
         {
@@ -448,7 +462,7 @@ inline void dynamicTopoFvMesh::initStacks
                 stackElements[elemI] = stack(0)[elemI];
             }
 
-            label elemType = twoDMesh_ ? 2 : 1;
+            label elemType = is2D() ? 2 : 1;
 
             writeVTK
             (
