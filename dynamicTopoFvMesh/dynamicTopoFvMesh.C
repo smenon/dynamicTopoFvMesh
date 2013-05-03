@@ -4349,6 +4349,7 @@ bool dynamicTopoFvMesh::resetMesh()
         if (Pstream::parRun())
         {
             procIndices_.clear();
+            procPriority_.clear();
             sendMeshes_.clear();
             recvMeshes_.clear();
         }

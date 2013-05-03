@@ -39,6 +39,7 @@ Author
 
 #include "Time.H"
 #include "eMesh.H"
+#include "Random.H"
 #include "triFace.H"
 #include "volFields.H"
 #include "changeMap.H"
@@ -68,6 +69,25 @@ defineTypeNameAndDebug(coupleMap, 0);
 //! \cond fileScope
 // Geometric relative match tolerance
 static scalar geomMatchTol_ = 1e-4;
+
+// Priority scheme enumerants
+enum priorityScheme
+{
+    LINEAR,
+    RANDOM,
+    LIST,
+    MAX_PRIORITY_SCHEMES
+};
+
+// Priority scheme names
+static const char* prioritySchemeNames_[MAX_PRIORITY_SCHEMES + 1] =
+{
+    "Linear",
+    "Random",
+    "List",
+    "Invalid"
+};
+
 //! \endcond
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -523,8 +543,124 @@ void dynamicTopoFvMesh::executeLoadBalancing
 
     // Clear parallel structures
     procIndices_.clear();
+    procPriority_.clear();
     sendMeshes_.clear();
     recvMeshes_.clear();
+}
+
+
+// Set processor rank priority
+void dynamicTopoFvMesh::initProcessorPriority()
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    if (Pstream::master())
+    {
+        // Default to linear
+        int type = LINEAR;
+
+        const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+  
+        if (meshSubDict.found("priorityScheme") || mandatory_)
+        {
+            word schemeType(meshSubDict.lookup("priorityScheme"));
+  
+            type = MAX_PRIORITY_SCHEMES;
+  
+            for (label i = 0; i < MAX_PRIORITY_SCHEMES; i++)
+            {
+                if (prioritySchemeNames_[i] == schemeType)
+                {
+                    type = i;
+                    break;
+                }
+            }
+        }
+
+        switch (type)
+        {
+            case LINEAR:
+            {
+                // Initialize to identity map
+                procPriority_ = identity(Pstream::nProcs());
+                break;
+            }
+
+            case RANDOM:
+            {
+                Random randomizer(std::time(NULL));
+
+                // Initialize to identity map
+                procPriority_ = identity(Pstream::nProcs());
+
+                for (label i = 0; i < Pstream::nProcs(); i++)
+                {
+                    // Specify a random index to shuffle
+                    label j = randomizer.integer(0, Pstream::nProcs() - 1);
+
+                    Foam::Swap(procPriority_[i], procPriority_[j]);
+                }
+
+                break;
+            }
+
+            case LIST:
+            {
+                procPriority_ = labelList(meshSubDict.lookup("priorityList"));
+
+                if (procPriority_.size() != Pstream::nProcs())
+                {
+                    FatalErrorIn
+                    (
+                        "void dynamicTopoFvMesh::initProcessorPriority()"
+                    )
+                        << " Priority scheme size mismatch." << nl
+                        << "   List size: " << procPriority_.size() << nl
+                        << "   Processor count: " << Pstream::nProcs() << nl
+                        << abort(FatalError);
+                }
+
+                break;
+            }
+
+            default:
+            {
+                Info<< "Available schemes: " << endl;
+
+                for (label i = 0; i < MAX_PRIORITY_SCHEMES; i++)
+                {
+                    Info<< ' ' << prioritySchemeNames_[i] << endl;
+                }
+
+                FatalErrorIn
+                (
+                    "void dynamicTopoFvMesh::initProcessorPriority()"
+                )
+                    << " Unknown priority scheme." << nl
+                    << abort(FatalError);
+            }
+        }
+
+        // Send priority list to others
+        for (label proc = 1; proc < Pstream::nProcs(); proc++)
+        {
+            meshOps::pWrite(proc, procPriority_);
+        }
+    }
+    else
+    {
+        // Receive priority from master
+        procPriority_.setSize(Pstream::nProcs());
+        meshOps::pRead(Pstream::masterNo(), procPriority_);
+    }
+
+    // Wait for transfers to complete
+    meshOps::waitForBuffers();
+
+    Info<< " Processor priority: " << procPriority_ << endl;
 }
 
 
@@ -707,8 +843,6 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     // Estimate an initial size
     procIndices_.setSize(Pstream::nProcs());
 
-    // Patch sub meshes need to be prepared in ascending
-    // order of neighbouring processors.
     label nTotalProcs = 0;
 
     forAll(procPoints, procI)
@@ -727,6 +861,17 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
 
     // Shrink to actual size
     procIndices_.setSize(nTotalProcs);
+
+    // Initialize the processor priority list
+    initProcessorPriority();
+
+    // Sort by order of neighbouring
+    // processor priority - highest to lowest
+    Foam::sort
+    (
+        procIndices_,
+        typename UList<label>::less(procPriority_)
+    );
 
     // Size the PtrLists.
     sendMeshes_.setSize(nTotalProcs);

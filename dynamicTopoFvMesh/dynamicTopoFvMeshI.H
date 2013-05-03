@@ -633,6 +633,19 @@ inline void dynamicTopoFvMesh::setFlip(const label fIndex)
 }
 
 
+// Check for processor priority
+template <class BinaryOp>
+inline bool dynamicTopoFvMesh::priority
+(
+    const BinaryOp& bop,
+    const label first,
+    const label second
+)
+{
+    return bop(procPriority_[first], procPriority_[second]);
+}
+
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam

@@ -259,6 +259,9 @@ class dynamicTopoFvMesh
         // List of processors that this sub-domain talks to
         labelList procIndices_;
 
+        // Processor priority list
+        labelList procPriority_;
+
         // Sub-Mesh pointers
         PtrList<coupledInfo> sendMeshes_;
         PtrList<coupledInfo> recvMeshes_;
@@ -1087,6 +1090,18 @@ class dynamicTopoFvMesh
             labelListList& faceMaps,
             labelListList& rotations
         ) const;
+
+        // Set processor rank priority
+        void initProcessorPriority();
+
+        // Check for processor priority
+        template <class BinaryOp>
+        inline bool priority
+        (
+            const BinaryOp& bop,
+            const label first,
+            const label second
+        );
 
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);
