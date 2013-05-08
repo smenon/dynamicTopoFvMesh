@@ -39,6 +39,7 @@ Author
 
 #include "Time.H"
 #include "eMesh.H"
+#include "Random.H"
 #include "triFace.H"
 #include "volFields.H"
 #include "changeMap.H"
@@ -68,6 +69,25 @@ defineTypeNameAndDebug(coupleMap, 0);
 //! \cond fileScope
 // Geometric relative match tolerance
 static scalar geomMatchTol_ = 1e-4;
+
+// Priority scheme enumerants
+enum priorityScheme
+{
+    LINEAR,
+    RANDOM,
+    LIST,
+    MAX_PRIORITY_SCHEMES
+};
+
+// Priority scheme names
+static const char* prioritySchemeNames_[MAX_PRIORITY_SCHEMES + 1] =
+{
+    "Linear",
+    "Random",
+    "List",
+    "Invalid"
+};
+
 //! \endcond
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -208,72 +228,76 @@ void dynamicTopoFvMesh::initCoupledStack
         }
 
         // Check if this is a processor patch.
+        label myProcID = Pstream::myProcNo();
         label neiProcID = getNeighbourProcessor(pIndex);
 
-        if (neiProcID > -1)
+        // Check if this is a master processor patch.
+        if
+        (
+            neiProcID > -1
+         && priority(neiProcID, greaterOp<label>(), myProcID)
+        )
         {
-            // Check if this is a master processor patch.
-            if (neiProcID > Pstream::myProcNo())
+            // Add this to the coupled modification stack.
+            if (is2D())
             {
-                // Add this to the coupled modification stack.
-                if (is2D())
-                {
-                    stack(0).push(faceI);
-                }
-                else
-                {
-                    const label edgeEnum = coupleMap::EDGE;
-                    const label pointEnum = coupleMap::POINT;
+                stack(0).push(faceI);
+            }
+            else
+            {
+                const label edgeEnum = coupleMap::EDGE;
+                const label pointEnum = coupleMap::POINT;
 
-                    const labelList& mfEdges = faceEdges_[faceI];
+                const labelList& mfEdges = faceEdges_[faceI];
 
-                    forAll(mfEdges, edgeI)
+                forAll(mfEdges, edgeI)
+                {
+                    label eIndex = mfEdges[edgeI];
+
+                    const edge& checkEdge = edges_[eIndex];
+
+                    // Need to avoid this edge if it is
+                    // talking to higher-priority processors.
+                    bool permissible = true;
+
+                    forAll(procIndices_, pI)
                     {
-                        label eIndex = mfEdges[edgeI];
+                        label nProc = procIndices_[pI];
 
-                        const edge& checkEdge = edges_[eIndex];
-
-                        // Need to avoid this edge if it is
-                        // talking to lower-ranked processors.
-                        bool permissible = true;
-
-                        forAll(procIndices_, pI)
+                        // List is specified in ascending order
+                        // of neighbour processors, so break out.
+                        if (priority(nProc, greaterOp<label>(), myProcID))
                         {
-                            // List is specified in ascending order
-                            // of neighbour processors, so break out.
-                            if (procIndices_[pI] > Pstream::myProcNo())
-                            {
-                                break;
-                            }
-
-                            // Fetch reference to subMeshes
-                            const coupledInfo& recvMesh = recvMeshes_[pI];
-                            const coupleMap& rcMap = recvMesh.map();
-
-                            if (rcMap.findSlave(edgeEnum, eIndex) > -1)
-                            {
-                                permissible = false;
-                                break;
-                            }
-
-                            // Check points as well, since there might be
-                            // situations where both points lie on a lower
-                            // ranked processor, but not the edge itself.
-                            if
-                            (
-                                (rcMap.findSlave(pointEnum, checkEdge[0]) > -1)
-                             && (rcMap.findSlave(pointEnum, checkEdge[1]) > -1)
-                            )
-                            {
-                                permissible = false;
-                                break;
-                            }
+                            break;
                         }
 
-                        if (permissible)
+                        // Fetch reference to subMeshes
+                        const coupledInfo& recvMesh = recvMeshes_[pI];
+                        const coupleMap& rcMap = recvMesh.map();
+
+                        if (rcMap.findSlave(edgeEnum, eIndex) > -1)
                         {
-                            stack(0).push(eIndex);
+                            permissible = false;
+                            break;
                         }
+
+                        // Check points as well, since there might be
+                        // situations where both points lie on a lower
+                        // ranked processor, but not the edge itself.
+                        if
+                        (
+                            (rcMap.findSlave(pointEnum, checkEdge[0]) > -1)
+                         && (rcMap.findSlave(pointEnum, checkEdge[1]) > -1)
+                        )
+                        {
+                            permissible = false;
+                            break;
+                        }
+                    }
+
+                    if (permissible)
+                    {
+                        stack(0).push(eIndex);
                     }
                 }
             }
@@ -524,8 +548,124 @@ void dynamicTopoFvMesh::executeLoadBalancing
 
     // Clear parallel structures
     procIndices_.clear();
+    procPriority_.clear();
     sendMeshes_.clear();
     recvMeshes_.clear();
+}
+
+
+// Set processor rank priority
+void dynamicTopoFvMesh::initProcessorPriority()
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    if (Pstream::master())
+    {
+        // Default to linear
+        int type = LINEAR;
+
+        const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+  
+        if (meshSubDict.found("priorityScheme") || mandatory_)
+        {
+            word schemeType(meshSubDict.lookup("priorityScheme"));
+  
+            type = MAX_PRIORITY_SCHEMES;
+  
+            for (label i = 0; i < MAX_PRIORITY_SCHEMES; i++)
+            {
+                if (prioritySchemeNames_[i] == schemeType)
+                {
+                    type = i;
+                    break;
+                }
+            }
+        }
+
+        switch (type)
+        {
+            case LINEAR:
+            {
+                // Initialize to identity map
+                procPriority_ = identity(Pstream::nProcs());
+                break;
+            }
+
+            case RANDOM:
+            {
+                Random randomizer(std::time(NULL));
+
+                // Initialize to identity map
+                procPriority_ = identity(Pstream::nProcs());
+
+                for (label i = 0; i < Pstream::nProcs(); i++)
+                {
+                    // Specify a random index to shuffle
+                    label j = randomizer.integer(0, Pstream::nProcs() - 1);
+
+                    Foam::Swap(procPriority_[i], procPriority_[j]);
+                }
+
+                break;
+            }
+
+            case LIST:
+            {
+                procPriority_ = labelList(meshSubDict.lookup("priorityList"));
+
+                if (procPriority_.size() != Pstream::nProcs())
+                {
+                    FatalErrorIn
+                    (
+                        "void dynamicTopoFvMesh::initProcessorPriority()"
+                    )
+                        << " Priority scheme size mismatch." << nl
+                        << "   List size: " << procPriority_.size() << nl
+                        << "   Processor count: " << Pstream::nProcs() << nl
+                        << abort(FatalError);
+                }
+
+                break;
+            }
+
+            default:
+            {
+                Info<< "Available schemes: " << endl;
+
+                for (label i = 0; i < MAX_PRIORITY_SCHEMES; i++)
+                {
+                    Info<< ' ' << prioritySchemeNames_[i] << endl;
+                }
+
+                FatalErrorIn
+                (
+                    "void dynamicTopoFvMesh::initProcessorPriority()"
+                )
+                    << " Unknown priority scheme." << nl
+                    << abort(FatalError);
+            }
+        }
+
+        // Send priority list to others
+        for (label proc = 1; proc < Pstream::nProcs(); proc++)
+        {
+            meshOps::pWrite(proc, procPriority_);
+        }
+    }
+    else
+    {
+        // Receive priority from master
+        procPriority_.setSize(Pstream::nProcs());
+        meshOps::pRead(Pstream::masterNo(), procPriority_);
+    }
+
+    // Wait for transfers to complete
+    meshOps::waitForBuffers();
+
+    Info<< " Processor priority: " << procPriority_ << endl;
 }
 
 
@@ -708,8 +848,6 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     // Estimate an initial size
     procIndices_.setSize(Pstream::nProcs());
 
-    // Patch sub meshes need to be prepared in ascending
-    // order of neighbouring processors.
     label nTotalProcs = 0;
 
     forAll(procPoints, procI)
@@ -729,6 +867,17 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     // Shrink to actual size
     procIndices_.setSize(nTotalProcs);
 
+    // Initialize the processor priority list
+    initProcessorPriority();
+
+    // Sort by order of neighbouring
+    // processor priority - highest to lowest
+    Foam::sort
+    (
+        procIndices_,
+        UList<label>::less(procPriority_)
+    );
+
     // Size the PtrLists.
     sendMeshes_.setSize(nTotalProcs);
     recvMeshes_.setSize(nTotalProcs);
@@ -743,7 +892,8 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
         // specify an invalid patch ID for now
         label patchID = immNeighbours.found(proc) ? immNeighbours[proc] : -1;
 
-        if (proc < Pstream::myProcNo())
+        // Check if this processor is of higher priority
+        if (priority(proc, lessOp<label>(), Pstream::myProcNo()))
         {
             master = proc;
             slave = Pstream::myProcNo();
@@ -818,7 +968,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
             const List<labelPair>* gppPtr = NULL;
 
             // Write out subMeshPoints as a VTK
-            if (proc < Pstream::myProcNo())
+            if (priority(proc, lessOp<label>(), Pstream::myProcNo()))
             {
                 const coupleMap& cMap = sendMeshes_[pI].map();
 
@@ -1220,7 +1370,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
 
         // If this entity is being handled elsewhere, bail out
-        if (procIndices_[pI] < Pstream::myProcNo())
+        if (priority(procIndices_[pI], lessOp<label>(), Pstream::myProcNo()))
         {
             map.type() = -2;
 
@@ -1411,7 +1561,15 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         {
                             // If this other processor is
                             // lesser-ranked, bail out.
-                            if (neiProcNo < Pstream::myProcNo())
+                            if
+                            (
+                                priority
+                                (
+                                    neiProcNo,
+                                    lessOp<label>(),
+                                    Pstream::myProcNo()
+                                )
+                            )
                             {
                                 map.type() = -2;
 
@@ -1559,7 +1717,15 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     {
                         // If this other processor is
                         // lesser-ranked, bail out.
-                        if (neiProcNo < Pstream::myProcNo())
+                        if
+                        (
+                            priority
+                            (
+                                neiProcNo,
+                                lessOp<label>(),
+                                Pstream::myProcNo()
+                            )
+                        )
                         {
                             map.type() = -2;
 
@@ -4321,7 +4487,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
         coupledInfo& sPM = sendMeshes_[pI];
         coupledInfo& rPM = recvMeshes_[pI];
 
-        if (proc < Pstream::myProcNo())
+        if (priority(proc, lessOp<label>(), Pstream::myProcNo()))
         {
             const coupleMap& cMap = sPM.map();
 
@@ -4450,7 +4616,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             continue;
         }
 
-        if (proc > Pstream::myProcNo())
+        if (priority(proc, greaterOp<label>(), Pstream::myProcNo()))
         {
             meshOps::pWrite(proc, createPatchOrders[proc]);
         }
@@ -4487,7 +4653,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
         const coupledInfo& sPM = sendMeshes_[pI];
 
-        if (proc < Pstream::myProcNo())
+        if (priority(proc, lessOp<label>(), Pstream::myProcNo()))
         {
             const coupleMap& cMap = sPM.map();
             const labelList& indices = cMap.entityIndices();
@@ -7184,8 +7350,9 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 );
 
                 label neiProcNo = pp.neighbProcNo();
+                label myProcNo = Pstream::myProcNo();
 
-                if (neiProcNo >= Pstream::myProcNo())
+                if (priority(neiProcNo, greaterEqOp<label>(), myProcNo))
                 {
                     continue;
                 }
@@ -8972,7 +9139,11 @@ bool dynamicTopoFvMesh::coupledFillTables
             label fPatch = whichPatch(eFaces[faceI]);
             label neiProc = getNeighbourProcessor(fPatch);
 
-            if (neiProc > -1 && neiProc < Pstream::myProcNo())
+            if
+            (
+                neiProc > -1
+             && priority(neiProc, lessOp<label>(), Pstream::myProcNo())
+            )
             {
                 // This edge should not be here
                 Pout<< " Edge: " << eIndex
@@ -9079,7 +9250,11 @@ bool dynamicTopoFvMesh::coupledFillTables
                 // skip the insertion step.
                 label neiProc = mesh.getNeighbourProcessor(slavePatch);
 
-                if (neiProc > -1 && neiProc < proc)
+                if
+                (
+                    neiProc > -1
+                 && priority(neiProc, lessOp<label>(), proc)
+                )
                 {
                     continue;
                 }
