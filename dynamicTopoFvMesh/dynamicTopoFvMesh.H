@@ -1098,10 +1098,10 @@ class dynamicTopoFvMesh
         template <class BinaryOp>
         inline bool priority
         (
-            const BinaryOp& bop,
             const label first,
+            const BinaryOp& bop,
             const label second
-        );
+        ) const;
 
         // Dump cell-quality statistics
         bool meshQuality(bool outputOption);

@@ -637,10 +637,10 @@ inline void dynamicTopoFvMesh::setFlip(const label fIndex)
 template <class BinaryOp>
 inline bool dynamicTopoFvMesh::priority
 (
-    const BinaryOp& bop,
     const label first,
+    const BinaryOp& bop,
     const label second
-)
+) const
 {
     return bop(procPriority_[first], procPriority_[second]);
 }

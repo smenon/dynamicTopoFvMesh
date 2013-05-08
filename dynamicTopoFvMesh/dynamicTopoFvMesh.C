@@ -3225,7 +3225,7 @@ void dynamicTopoFvMesh::removeSlivers()
             {
                 label proc = procIndices_[procI];
 
-                if (proc < Pstream::myProcNo())
+                if (priority(proc, lessOp<label>(), Pstream::myProcNo()))
                 {
                     Map<label>& rCellMap =
                     (

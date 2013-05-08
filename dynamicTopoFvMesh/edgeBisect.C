@@ -323,7 +323,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
                     // Check if a lower-ranked processor is
                     // handling this edge
-                    if (procIndices_[pI] < Pstream::myProcNo())
+                    if
+                    (
+                        priority
+                        (
+                            procIndices_[pI],
+                            lessOp<label>(),
+                            Pstream::myProcNo()
+                        )
+                    )
                     {
                         if (debug > 3)
                         {
@@ -2543,7 +2551,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                 // If this edge was sent to a lower-ranked
                 // processor, skip it.
-                if (procIndices_[pI] < Pstream::myProcNo())
+                if
+                (
+                    priority
+                    (
+                        procIndices_[pI],
+                        lessOp<label>(),
+                        Pstream::myProcNo()
+                    )
+                )
                 {
                     if (scMap.reverseEntityMap(edgeEnum).found(eIndex))
                     {
@@ -2575,7 +2591,15 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                     // Check if a lower-ranked processor is
                     // handling this edge
-                    if (procIndices_[pI] < Pstream::myProcNo())
+                    if
+                    (
+                        priority
+                        (
+                            procIndices_[pI],
+                            lessOp<label>(),
+                            Pstream::myProcNo()
+                        )
+                    )
                     {
                         if (debug > 3)
                         {
