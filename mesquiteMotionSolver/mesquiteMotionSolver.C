@@ -3684,58 +3684,101 @@ void mesquiteMotionSolver::applyFixedValuePatches()
             pField().updateCoeffs();
         }
 
-        if (Pstream::parRun() && !twoDMesh_)
+        if (Pstream::parRun())
         {
-            label nDomainPoints = refPoints_.size();
+            vector smallVec(VSMALL, VSMALL, VSMALL);
 
-            forAll(procIndices_, pI)
+            if (twoDMesh_)
             {
-                label proc = procIndices_[pI];
+                // Size up the buffer
+                vectorField parDisp(pointMarker_.size(), vector::zero);
 
-                const Map<label>& pointMap = sendPointMap_[pI];
-
-                // Fetch reference to send / recv point buffers
-                vectorField& psField = sendPointBuffer_[pI];
-                vectorField& prField = recvPointBuffer_[pI];
-
-                // Fill the send buffer
-                forAllConstIter(Map<label>, pointMap, pIter)
+                forAll(pIDs_, patchI)
                 {
-                    if (pIter.key() < nDomainPoints)
+                    const label pID = pIDs_[patchI];
+                    const label pOffset = offsets_[patchI];
+                    const labelList& meshPts = boundary[pID].meshPoints();
+
+                    forAll(meshPts, pointI)
                     {
-                        psField[pIter()] = dPointField[pIter.key()];
+                        const label gIndex = meshPts[pointI];
+                        parDisp[pOffset + pointI] = dPointField[gIndex];
                     }
                 }
 
-                // Send to neighbour
-                parWrite(proc, psField);
+                // Transfer buffers across processors
+                transferBuffers(parDisp);
 
-                // Receive from neighbour
-                parRead(proc, prField);
-            }
-
-            // Wait for all transfers to complete.
-            OPstream::waitRequests();
-            IPstream::waitRequests();
-
-            vector smallVec(VSMALL, VSMALL, VSMALL);
-
-            forAll(procIndices_, pI)
-            {
-                const Map<label>& pointMap = recvPointMap_[pI];
-
-                // Fetch reference to recv buffer
-                const vectorField& prField = recvPointBuffer_[pI];
-
-                forAllConstIter(Map<label>, pointMap, pIter)
+                forAll(pIDs_, patchI)
                 {
-                    // Only update points in this domain
-                    if (pIter() < nDomainPoints)
+                    const label pID = pIDs_[patchI];
+                    const label pOffset = offsets_[patchI];
+                    const labelList& meshPts = boundary[pID].meshPoints();
+
+                    forAll(meshPts, pointI)
                     {
+                        const label gIndex = meshPts[pointI];
+                        const vector& disp = parDisp[pOffset + pointI];
+
                         // Only update for non-zero displacement
-                        if (cmptMag(dPointField[pIter()]) < smallVec)
+                        if (cmptMag(dPointField[gIndex]) < smallVec)
                         {
-                            dPointField[pIter()] = prField[pIter.key()];
+                            dPointField[gIndex] = disp;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                label nDomainPoints = refPoints_.size();
+
+                forAll(procIndices_, pI)
+                {
+                    label proc = procIndices_[pI];
+
+                    const Map<label>& pointMap = sendPointMap_[pI];
+
+                    // Fetch reference to send / recv point buffers
+                    vectorField& psField = sendPointBuffer_[pI];
+                    vectorField& prField = recvPointBuffer_[pI];
+
+                    // Fill the send buffer
+                    forAllConstIter(Map<label>, pointMap, pIter)
+                    {
+                        if (pIter.key() < nDomainPoints)
+                        {
+                            psField[pIter()] = dPointField[pIter.key()];
+                        }
+                    }
+
+                    // Send to neighbour
+                    parWrite(proc, psField);
+
+                    // Receive from neighbour
+                    parRead(proc, prField);
+                }
+
+                // Wait for all transfers to complete.
+                OPstream::waitRequests();
+                IPstream::waitRequests();
+
+                forAll(procIndices_, pI)
+                {
+                    const Map<label>& pointMap = recvPointMap_[pI];
+
+                    // Fetch reference to recv buffer
+                    const vectorField& prField = recvPointBuffer_[pI];
+
+                    forAllConstIter(Map<label>, pointMap, pIter)
+                    {
+                        // Only update points in this domain
+                        if (pIter() < nDomainPoints)
+                        {
+                            // Only update for non-zero displacement
+                            if (cmptMag(dPointField[pIter()]) < smallVec)
+                            {
+                                dPointField[pIter()] = prField[pIter.key()];
+                            }
                         }
                     }
                 }
