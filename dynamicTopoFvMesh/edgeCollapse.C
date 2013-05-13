@@ -1603,7 +1603,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 (
                     Foam::name(fIndex)
                   + "_Collapse_0",
-                    vtkCells.toc()
+                    vtkCells.toc(),
+                    3, false, true
                 );
             }
         }
@@ -2612,6 +2613,77 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     // Remove orphaned faces
     if (owner_[faceToKeep[0]] == -1)
     {
+        const face& keepFace = faces_[faceToKeep[0]];
+        const labelList& rmFE = faceEdges_[faceToKeep[0]];
+
+        labelList keepPoints(keepFace.size(), 0);
+
+        forAll(rmFE, edgeI)
+        {
+            label eIndex = rmFE[edgeI];
+            labelList& eFaces = edgeFaces_[eIndex];
+            const edge& checkEdge = edges_[eIndex];
+
+            if
+            (
+                (eFaces.size() == 1) &&
+                (eFaces[0] == faceToKeep[0])
+            )
+            {
+                // This edge has to be removed entirely.
+                removeEdge(eIndex);
+
+                // Update map
+                map.removeEdge(eIndex);
+            }
+            else
+            {
+                // Mark points
+                keepPoints[keepFace.which(checkEdge[0])] = 1;
+                keepPoints[keepFace.which(checkEdge[1])] = 1;
+
+                // Size-down edgeFaces
+                meshOps::sizeDownList
+                (
+                    faceToKeep[0],
+                    eFaces
+                );
+            }
+        }
+
+        // If this is a subMesh, and faceToKeep is on
+        // a physical boundary, make a 'special' entry
+        // for coupled mapping purposes.
+        if (isSubMesh_)
+        {
+            label kfPatch = whichPatch(faceToKeep[0]);
+            label rfPatch = whichPatch(faceToThrow[0]);
+
+            if
+            (
+                (getNeighbourProcessor(rfPatch) > -1) &&
+                (getNeighbourProcessor(kfPatch) == -1)
+            )
+            {
+                map.addFace
+                (
+                    faceToThrow[0],
+                    labelList(1, (-2 - kfPatch))
+                );
+            }
+        }
+
+        // Remove unused points
+        forAll(keepPoints, pointI)
+        {
+            if (keepPoints[pointI] == 0)
+            {
+                removePoint(keepFace[pointI]);
+                map.removePoint(keepFace[pointI]);
+            }
+        }
+
+        // Remove the face
         removeFace(faceToKeep[0]);
 
         // Update map
@@ -2718,6 +2790,77 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         // Remove orphaned faces
         if (owner_[faceToKeep[1]] == -1)
         {
+            const face& keepFace = faces_[faceToKeep[1]];
+            const labelList& rmFE = faceEdges_[faceToKeep[1]];
+
+            labelList keepPoints(keepFace.size(), 0);
+
+            forAll(rmFE, edgeI)
+            {
+                label eIndex = rmFE[edgeI];
+                labelList& eFaces = edgeFaces_[eIndex];
+                const edge& checkEdge = edges_[eIndex];
+
+                if
+                (
+                    (eFaces.size() == 1) &&
+                    (eFaces[0] == faceToKeep[1])
+                )
+                {
+                    // This edge has to be removed entirely.
+                    removeEdge(eIndex);
+
+                    // Update map
+                    map.removeEdge(eIndex);
+                }
+                else
+                {
+                    // Mark points
+                    keepPoints[keepFace.which(checkEdge[0])] = 1;
+                    keepPoints[keepFace.which(checkEdge[1])] = 1;
+
+                    // Size-down edgeFaces
+                    meshOps::sizeDownList
+                    (
+                        faceToKeep[1],
+                        eFaces
+                    );
+                }
+            }
+
+            // If this is a subMesh, and faceToKeep is on
+            // a physical boundary, make a 'special' entry
+            // for coupled mapping purposes.
+            if (isSubMesh_)
+            {
+                label kfPatch = whichPatch(faceToKeep[1]);
+                label rfPatch = whichPatch(faceToThrow[1]);
+
+                if
+                (
+                    (getNeighbourProcessor(rfPatch) > -1) &&
+                    (getNeighbourProcessor(kfPatch) == -1)
+                )
+                {
+                    map.addFace
+                    (
+                        faceToThrow[1],
+                        labelList(1, (-2 - kfPatch))
+                    );
+                }
+            }
+
+            // Remove unused points
+            forAll(keepPoints, pointI)
+            {
+                if (keepPoints[pointI] == 0)
+                {
+                    removePoint(keepFace[pointI]);
+                    map.removePoint(keepFace[pointI]);
+                }
+            }
+
+            // Remove the face
             removeFace(faceToKeep[1]);
 
             // Update map
@@ -2861,7 +3004,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         (
             Foam::name(fIndex)
           + "_Collapse_1",
-            vtkCells.toc()
+            vtkCells.toc(),
+            3, false, true
         );
     }
 
@@ -3396,20 +3540,103 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 label sfPatch = sMesh.whichPatch(sfIndex);
 
                 // Skip dissimilar patches
-                if (ofPatch != sfPatch)
+                if (ofPatch != sfPatch && localCouple)
                 {
                     continue;
                 }
 
                 const face& sFace = sMesh.faces_[sfIndex];
 
-                forAll(cFace, pointI)
+                if (sFace.empty())
                 {
-                    cFace[pointI] =
+                    // Slave face was removed. Update map.
+                    Map<label>::iterator sit = rFaceMap.find(sfIndex);
+
+                    label mfIndex = -1;
+
+                    if (sit != rFaceMap.end())
+                    {
+                        mfIndex = sit();
+                        faceMap.erase(sit());
+                        rFaceMap.erase(sit);
+                    }
+
+                    // Check if this is a special entry
+                    label mo =
                     (
-                        rPointMap.found(sFace[pointI]) ?
-                        rPointMap[sFace[pointI]] : -1
+                        sadF[faceI].masterObjects().size() ?
+                        sadF[faceI].masterObjects()[0] : 0
                     );
+
+                    // Check if a patch conversion is necessary
+                    label newPatch = -1;
+
+                    // Back out the physical patch ID
+                    if (mo < 0 && mfIndex > -1)
+                    {
+                        newPatch = Foam::mag(mo + 2);
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    // Obtain a copy before adding the new face,
+                    // since the reference might become
+                    // invalid during list resizing.
+                    face newFace = faces_[mfIndex];
+                    label newOwn = owner_[mfIndex];
+                    labelList newFaceEdges = faceEdges_[mfIndex];
+
+                    label newFaceIndex =
+                    (
+                        insertFace
+                        (
+                            newPatch,
+                            newFace,
+                            newOwn,
+                            -1,
+                            newFaceEdges
+                        )
+                    );
+
+                    meshOps::replaceLabel
+                    (
+                        mfIndex,
+                        newFaceIndex,
+                        cells_[newOwn]
+                    );
+
+                    // Correct edgeFaces with the new face label.
+                    forAll(newFaceEdges, edgeI)
+                    {
+                        meshOps::replaceLabel
+                        (
+                            mfIndex,
+                            newFaceIndex,
+                            edgeFaces_[newFaceEdges[edgeI]]
+                        );
+                    }
+
+                    // Finally remove the face
+                    removeFace(mfIndex);
+
+                    // Update map
+                    map.removeFace(mfIndex);
+                    map.addFace(newFaceIndex, labelList(1, mfIndex));
+
+                    continue;
+                }
+                else
+                {
+                    forAll(cFace, pointI)
+                    {
+                        cFace[pointI] =
+                        (
+                            rPointMap.found(sFace[pointI]) ?
+                            rPointMap[sFace[pointI]] : -1
+                        );
+                    }
                 }
 
                 bool matchedFace = false;
