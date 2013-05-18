@@ -76,6 +76,7 @@ enum priorityScheme
     LINEAR,
     RANDOM,
     LIST,
+    ROTATE,
     MAX_PRIORITY_SCHEMES
 };
 
@@ -85,6 +86,7 @@ static const char* prioritySchemeNames_[MAX_PRIORITY_SCHEMES + 1] =
     "Linear",
     "Random",
     "List",
+    "Rotate",
     "Invalid"
 };
 
@@ -607,6 +609,48 @@ void dynamicTopoFvMesh::initProcessorPriority()
 
                     Foam::Swap(procPriority_[i], procPriority_[j]);
                 }
+
+                break;
+            }
+
+            case ROTATE:
+            {
+                const label listSize = Pstream::nProcs();
+
+                // Initialize to identity map
+                procPriority_ = identity(listSize);
+
+                // In-place reverse macro
+#               define inPlaceReverse(list)                                    \
+                {                                                              \
+                    const label listSize = list.size();                        \
+                    const label lastIndex = listSize - 1;                      \
+                    const label nIterations = listSize >> 1;                   \
+                                                                               \
+                    label elemI = 0;                                           \
+                    while (elemI < nIterations)                                \
+                    {                                                          \
+                        Swap(list[elemI], list[lastIndex - elemI]);            \
+                        elemI++;                                               \
+                    }                                                          \
+                }
+
+                // Rotate by time index
+                label n = time().timeIndex() % listSize;
+
+                if (n < 0)
+                {
+                    n += listSize;
+                }
+
+                // Rotate list in place
+                SubList<label> firstHalf(procPriority_, n, 0);
+                SubList<label> secondHalf(procPriority_, listSize - n, n);
+
+                inPlaceReverse(firstHalf);
+                inPlaceReverse(secondHalf);
+
+                inPlaceReverse(procPriority_);
 
                 break;
             }
