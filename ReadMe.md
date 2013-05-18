@@ -2,7 +2,7 @@
 An implementation of parallel, adaptive, simplical remeshing for OpenFOAM.
 
 ## Copyright Information
-    Copyright (C) 2007-2012
+    Copyright (C) 2007-2013
     Sandeep Menon
     University of Massachusetts Amherst.
 
@@ -41,7 +41,7 @@ Field-mapping utility that works in a manner similar to mapFields in OpenFOAM, u
 
 ## Target platform
 The master branch is known to work with OpenFOAM-extend.
-To compile with the OpenFOAM-2.1.x release, switch to the Port-2.1.x branch.
+To compile with the OpenFOAM-2.2.x release, switch to the Port-2.2.x branch.
 
 ## Author
     Sandeep Menon

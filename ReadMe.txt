@@ -2,7 +2,7 @@ dynamicTopoFvMesh - An implementation of parallel, adaptive,
                     simplical remeshing for OpenFOAM.
 
 Copyright Information
-    Copyright (C) 2007-2012 Sandeep Menon, University of Massachusetts Amherst.
+    Copyright (C) 2007-2013 Sandeep Menon, University of Massachusetts Amherst.
 
 License
     This program is free software: you can redistribute it and/or modify
@@ -58,13 +58,13 @@ Description
 Target platform
     The master branch is known to work with OpenFOAM-extend.
 
-    To compile with the OpenFOAM-2.1.x release, switch to the Port-2.1.x branch.
+    To compile with the OpenFOAM-2.2.x release, switch to the Port-2.2.x branch.
 
 Author
     Sandeep Menon
     University of Massachusetts Amherst
 
 Disclaimer
-    This offering is not approved or endorsed by SGI or OpenCFD Ltd, the
+    This offering is not approved or endorsed by ESI or OpenCFD Ltd, the
     producer of the OpenFOAM software and owner of the OpenFOAM and
     OpenCFD trade marks.
