@@ -567,13 +567,13 @@ void dynamicTopoFvMesh::initProcessorPriority()
         int type = LINEAR;
 
         const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
-  
+
         if (meshSubDict.found("priorityScheme") || mandatory_)
         {
             word schemeType(meshSubDict.lookup("priorityScheme"));
-  
+
             type = MAX_PRIORITY_SCHEMES;
-  
+
             for (label i = 0; i < MAX_PRIORITY_SCHEMES; i++)
             {
                 if (prioritySchemeNames_[i] == schemeType)
@@ -1839,7 +1839,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Check for point / edge processor connections 
+    // Check for point / edge processor connections
     if (is3D())
     {
         forAll(procIndices_, pI)

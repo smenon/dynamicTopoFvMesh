@@ -797,6 +797,19 @@ void coupledInfo::resizeMap
     // Map physical boundary-fields
     forAll(boundaryMapper, patchI)
     {
+        if
+        (
+            field.boundaryField()[patchI].empty()
+         && boundaryMapper[patchI].directAddressing().size()
+        )
+        {
+            // Artificially set the size prior to remap,
+            // since fvPatchField::autoMap appears to be
+            // assigning the field to patchInternalField
+            // (which is empty, since the patch is zero-sized)
+            field.boundaryField()[patchI].setSize(1);
+        }
+
         // autoMap the patchField
         field.boundaryField()[patchI].autoMap(boundaryMapper[patchI]);
 

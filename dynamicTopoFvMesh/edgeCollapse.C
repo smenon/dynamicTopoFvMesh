@@ -3264,7 +3264,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     rPointMap[replacement[0]] = srP1;
                 }
 
-                pointMap.erase(rPointMap[original[0]]);
+                if (rPointMap[original[0]] == scP0)
+                {
+                    pointMap.erase(scP0);
+                }
+                else
+                if (rPointMap[original[0]] == scP1)
+                {
+                    pointMap.erase(scP1);
+                }
+
                 rPointMap.erase(original[0]);
             }
             else
@@ -3281,7 +3290,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     pointMap[replacement[0]] = srP1;
                 }
 
-                rPointMap.erase(pointMap[original[0]]);
+                if (pointMap[original[0]] == scP0)
+                {
+                    rPointMap.erase(scP0);
+                }
+                else
+                if (pointMap[original[0]] == scP1)
+                {
+                    rPointMap.erase(scP1);
+                }
+
                 pointMap.erase(original[0]);
             }
 
@@ -3299,7 +3317,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     rPointMap[replacement[1]] = srP1;
                 }
 
-                pointMap.erase(rPointMap[original[1]]);
+                if (rPointMap[original[1]] == scP0)
+                {
+                    pointMap.erase(scP0);
+                }
+                else
+                if (rPointMap[original[1]] == scP1)
+                {
+                    pointMap.erase(scP1);
+                }
+
                 rPointMap.erase(original[1]);
             }
             else
@@ -3316,7 +3343,16 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     pointMap[replacement[1]] = srP1;
                 }
 
-                rPointMap.erase(pointMap[original[1]]);
+                if (pointMap[original[1]] == scP0)
+                {
+                    rPointMap.erase(scP0);
+                }
+                else
+                if (pointMap[original[1]] == scP1)
+                {
+                    rPointMap.erase(scP1);
+                }
+
                 pointMap.erase(original[1]);
             }
 
