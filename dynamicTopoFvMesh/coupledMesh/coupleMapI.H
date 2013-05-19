@@ -271,6 +271,12 @@ inline List<coupleMap::opType>& coupleMap::entityOperations() const
 }
 
 
+inline labelList& coupleMap::patchIndices() const
+{
+    return patchIndices_;
+}
+
+
 inline pointField& coupleMap::moveNewPoints() const
 {
     return moveNewPoints_;
