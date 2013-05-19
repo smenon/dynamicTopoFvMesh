@@ -935,12 +935,12 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             }
             else
             {
+                const coupleMap& cMap = recvMeshes_[pI].map();
                 dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
 
                 if (sIndex < 0)
                 {
                     // Edge-based coupling
-                    const coupleMap& cMap = recvMeshes_[pI].map();
 
                     // Fetch the slave edge
                     edge sEdge = sMesh.edges_[mag(sIndex)];
@@ -985,6 +985,43 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                             forceOp
                         )
                     );
+
+                    // Push operation into coupleMap
+                    switch (slaveMap.type())
+                    {
+                        case 1:
+                        {
+                            cMap.pushOperation
+                            (
+                                sIndex,
+                                coupleMap::COLLAPSE_FIRST
+                            );
+
+                            break;
+                        }
+
+                        case 2:
+                        {
+                            cMap.pushOperation
+                            (
+                                sIndex,
+                                coupleMap::COLLAPSE_SECOND
+                            );
+
+                            break;
+                        }
+
+                        case 3:
+                        {
+                            cMap.pushOperation
+                            (
+                                sIndex,
+                                coupleMap::COLLAPSE_MIDPOINT
+                            );
+
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -2627,25 +2664,73 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             }
         }
 
-        // If this is a subMesh, and faceToKeep is on
-        // a physical boundary, make a 'special' entry
-        // for coupled mapping purposes.
-        if (isSubMesh_)
-        {
-            label kfPatch = whichPatch(faceToKeep[0]);
-            label rfPatch = whichPatch(faceToThrow[0]);
+        // Check if processor patches are being
+        // converted into physical ones
+        label neiProc = -1;
+        label kfPatch = whichPatch(faceToKeep[0]);
+        label rfPatch = whichPatch(faceToThrow[0]);
 
-            if
-            (
-                (getNeighbourProcessor(rfPatch) > -1) &&
-                (getNeighbourProcessor(kfPatch) == -1)
-            )
+        if
+        (
+            (getNeighbourProcessor(kfPatch) == -1) &&
+            ((neiProc = getNeighbourProcessor(rfPatch)) > -1)
+        )
+        {
+            if (isSubMesh_)
             {
+                // If this is a subMesh, and faceToKeep is on
+                // a physical boundary, make a 'special' entry
+                // for coupled mapping purposes.
                 map.addFace
                 (
                     faceToThrow[0],
                     labelList(1, (-2 - kfPatch))
                 );
+            }
+            else
+            {
+                // This is a wierd overhanging cell on the master
+                // processor which is being removed entirely.
+                // Since the processor patch face is being converted
+                // to a physical one, the slave processor needs to
+                // be notified of the change.
+                forAll(procIndices_, pI)
+                {
+                    if (procIndices_[pI] == neiProc)
+                    {
+                        // Find slave index from the face map
+                        const coupleMap& cMap = recvMeshes_[pI].map();
+
+                        label replaceFace =
+                        (
+                            cMap.findSlave
+                            (
+                                coupleMap::FACE,
+                                faceToThrow[0]
+                            )
+                        );
+
+                        if (replaceFace == -1)
+                        {
+                            // Something is wrong here.
+                            Pout<< " Could not find slave face for: " << nl
+                                << "  Master face: " << faceToThrow[0]
+                                << "  :: " << faces_[faceToThrow[0]] << nl
+                                << "  on proc: " << procIndices_[pI] << nl
+                                << "  on converting to patch: " << kfPatch
+                                << abort(FatalError);
+                        }
+
+                        cMap.pushOperation
+                        (
+                            replaceFace,
+                            coupleMap::CONVERT_PHYSICAL,
+                            kfPatch
+                        );
+
+                        break;
+                    }
+                }
             }
         }
 
@@ -2804,25 +2889,73 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 }
             }
 
-            // If this is a subMesh, and faceToKeep is on
-            // a physical boundary, make a 'special' entry
-            // for coupled mapping purposes.
-            if (isSubMesh_)
-            {
-                label kfPatch = whichPatch(faceToKeep[1]);
-                label rfPatch = whichPatch(faceToThrow[1]);
+            // Check if processor patches are being
+            // converted into physical ones
+            label neiProc = -1;
+            label kfPatch = whichPatch(faceToKeep[1]);
+            label rfPatch = whichPatch(faceToThrow[1]);
 
-                if
-                (
-                    (getNeighbourProcessor(rfPatch) > -1) &&
-                    (getNeighbourProcessor(kfPatch) == -1)
-                )
+            if
+            (
+                (getNeighbourProcessor(kfPatch) == -1) &&
+                ((neiProc = getNeighbourProcessor(rfPatch)) > -1)
+            )
+            {
+                if (isSubMesh_)
                 {
+                    // If this is a subMesh, and faceToKeep is on
+                    // a physical boundary, make a 'special' entry
+                    // for coupled mapping purposes.
                     map.addFace
                     (
                         faceToThrow[1],
                         labelList(1, (-2 - kfPatch))
                     );
+                }
+                else
+                {
+                    // This is a wierd overhanging cell on the master
+                    // processor which is being removed entirely.
+                    // Since the processor patch face is being converted
+                    // to a physical one, the slave processor needs to
+                    // be notified of the change.
+                    forAll(procIndices_, pI)
+                    {
+                        if (procIndices_[pI] == neiProc)
+                        {
+                            // Find slave index from the face map
+                            const coupleMap& cMap = recvMeshes_[pI].map();
+
+                            label replaceFace =
+                            (
+                                cMap.findSlave
+                                (
+                                    coupleMap::FACE,
+                                    faceToThrow[1]
+                                )
+                            );
+
+                            if (replaceFace == -1)
+                            {
+                                // Something is wrong here.
+                                Pout<< " Could not find slave face for: " << nl
+                                    << "  Master face: " << faceToThrow[1]
+                                    << "  :: " << faces_[faceToThrow[1]] << nl
+                                    << "  on proc: " << procIndices_[pI] << nl
+                                    << "  on converting to patch: " << kfPatch
+                                    << abort(FatalError);
+                            }
+
+                            cMap.pushOperation
+                            (
+                                replaceFace,
+                                coupleMap::CONVERT_PHYSICAL,
+                                kfPatch
+                            );
+
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -3740,43 +3873,6 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         << ": " << sFace << " could not be matched." << nl
                         << " cFace: " << cFace << nl
                         << abort(FatalError);
-                }
-            }
-
-            // Push operation into coupleMap
-            switch (slaveMap.type())
-            {
-                case 1:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_FIRST
-                    );
-
-                    break;
-                }
-
-                case 2:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_SECOND
-                    );
-
-                    break;
-                }
-
-                case 3:
-                {
-                    cMap.pushOperation
-                    (
-                        slaveMap.index(),
-                        coupleMap::COLLAPSE_MIDPOINT
-                    );
-
-                    break;
                 }
             }
         }

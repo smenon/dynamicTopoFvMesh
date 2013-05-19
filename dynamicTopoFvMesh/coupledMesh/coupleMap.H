@@ -110,6 +110,7 @@ public:
             REMOVE_CELL = 4,
             MOVE_POINT = 5,
             CONVERT_PATCH = 6,
+            CONVERT_PHYSICAL = 7,
             INVALID
         };
 
@@ -159,6 +160,9 @@ private:
 
         // List of operations performed on entities
         mutable List<opType> entityOperations_;
+
+        // Physical patch conversion indices
+        mutable labelList patchIndices_;
 
         // List of point-locations to move points to
         mutable pointField moveNewPoints_;
@@ -336,6 +340,7 @@ public:
         inline labelList& entityIndices() const;
         inline List<opType>& entityOperations() const;
 
+        inline labelList& patchIndices() const;
         inline pointField& moveNewPoints() const;
         inline pointField& moveOldPoints() const;
 
@@ -345,9 +350,22 @@ public:
         void pushOperation
         (
             const label index,
+            const opType oType
+        ) const;
+
+        void pushOperation
+        (
+            const label index,
             const opType oType,
-            const point& newPoint = vector::zero,
-            const point& oldPoint = vector::zero
+            const label pIndex
+        ) const;
+
+        void pushOperation
+        (
+            const label index,
+            const opType oType,
+            const point& newPoint,
+            const point& oldPoint
         ) const;
 
         //- Demand-driven data

@@ -1674,7 +1674,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Check for point / edge processor connections 
+    // Check for point / edge processor connections
     if (is3D())
     {
         forAll(procIndices_, pI)
@@ -4326,10 +4326,13 @@ void dynamicTopoFvMesh::handleCoupledPatches
             const coupleMap& cMap = sPM.map();
 
             // How many entities am I receiving..
-            label nEntities = -1, nMovePoints = -1;
+            FixedList<label, 3> nOps(-1);
 
-            meshOps::pRead(proc, nEntities);
-            meshOps::pRead(proc, nMovePoints);
+            meshOps::pRead(proc, nOps);
+
+            label nEntities = nOps[0];
+            label nMovePoints = nOps[1];
+            label nPatchConvert = nOps[2];
 
             if (debug > 3)
             {
@@ -4337,6 +4340,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
                     << " Receiving from [" << proc << "]::"
                     << " nEntities: " << nEntities
                     << " nMovePoints: " << nMovePoints
+                    << " nPatchConvert: " << nPatchConvert
                     << endl;
             }
 
@@ -4367,13 +4371,27 @@ void dynamicTopoFvMesh::handleCoupledPatches
                 meshOps::pRead(proc, newPoints);
                 meshOps::pRead(proc, oldPoints);
             }
+
+            if (nPatchConvert)
+            {
+                // Size up the receipt buffers
+                labelList& patches = cMap.patchIndices();
+
+                patches.setSize(nPatchConvert);
+
+                // Schedule patch indices for receipt
+                meshOps::pRead(proc, patches);
+            }
         }
         else
         {
             const coupleMap& cMap = rPM.map();
 
+            FixedList<label, 3> nOps(-1);
+
             label nEntities = cMap.entityIndices().size();
             label nMovePoints = cMap.moveNewPoints().size();
+            label nPatchConvert = cMap.patchIndices().size();
 
             if (debug > 3)
             {
@@ -4385,11 +4403,16 @@ void dynamicTopoFvMesh::handleCoupledPatches
                     << " nMovePoints: " << nMovePoints << nl
                     << "  moveNewPoints: " << cMap.moveNewPoints() << nl
                     << "  moveOldPoints: " << cMap.moveOldPoints() << nl
+                    << " nPatchConvert: " << nPatchConvert << nl
+                    << "  patchIndices: " << cMap.patchIndices() << nl
                     << endl;
             }
 
-            meshOps::pWrite(proc, nEntities);
-            meshOps::pWrite(proc, nMovePoints);
+            nOps[0] = nEntities;
+            nOps[1] = nMovePoints;
+            nOps[2] = nPatchConvert;
+
+            meshOps::pWrite(proc, nOps);
 
             if (nEntities)
             {
@@ -4403,6 +4426,12 @@ void dynamicTopoFvMesh::handleCoupledPatches
                 // Schedule transfer to processor
                 meshOps::pWrite(proc, cMap.moveNewPoints());
                 meshOps::pWrite(proc, cMap.moveOldPoints());
+            }
+
+            if (nPatchConvert)
+            {
+                // Schedule transfer to processor
+                meshOps::pWrite(proc, cMap.patchIndices());
             }
         }
     }
@@ -4492,6 +4521,8 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             const coupleMap& cMap = sPM.map();
             const labelList& indices = cMap.entityIndices();
             const List<coupleMap::opType>& operations = cMap.entityOperations();
+
+            const labelList& patches = cMap.patchIndices();
             const pointField& newPoints = cMap.moveNewPoints();
             const pointField& oldPoints = cMap.moveOldPoints();
 
@@ -4541,7 +4572,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                 }
             }
 
-            label pointCounter = 0;
+            label pointCounter = 0, patchCounter = 0;
 
             // Sequentially execute operations
             forAll(indices, indexI)
@@ -4562,7 +4593,11 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                     localIndex = cMap.entityMap(coupleMap::POINT)[index];
                 }
                 else
-                if (op == coupleMap::CONVERT_PATCH)
+                if
+                (
+                    op == coupleMap::CONVERT_PATCH ||
+                    op == coupleMap::CONVERT_PHYSICAL
+                )
                 {
                     localIndex =
                     (
@@ -4572,14 +4607,25 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
                     if (debug > 3)
                     {
-                        const point& newCentre = newPoints[pointCounter];
-                        const point& oldCentre = oldPoints[pointCounter];
+                        if (op == coupleMap::CONVERT_PATCH)
+                        {
+                            const point& newCentre = newPoints[pointCounter];
+                            const point& oldCentre = oldPoints[pointCounter];
 
-                        Pout<< " Convert patch: " << index << nl
-                            << " localIndex: " << localIndex << nl
-                            << " newCentre: " << newCentre << nl
-                            << " oldCentre: " << oldCentre << nl
-                            << endl;
+                            Pout<< " Convert patch: " << index << nl
+                                << "  localIndex: " << localIndex << nl
+                                << "  newCentre: " << newCentre << nl
+                                << "  oldCentre: " << oldCentre << nl
+                                << endl;
+                        }
+
+                        if (op == coupleMap::CONVERT_PHYSICAL)
+                        {
+                            Pout<< " Convert patch: " << index << nl
+                                << "  localIndex: " << localIndex << nl
+                                << "  patch: " << patches[patchCounter] << nl
+                                << endl;
+                        }
                     }
                 }
                 else
@@ -4895,6 +4941,70 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                         opMap.type() = 1;
 
                         pointCounter++;
+
+                        break;
+                    }
+
+                    case coupleMap::CONVERT_PHYSICAL:
+                    {
+                        const label patchIndex = patches[patchCounter];
+
+                        // Obtain a copy before adding the new face,
+                        // since the reference might become
+                        // invalid during list resizing.
+                        // Edges don't have to change, since they're
+                        // all on the boundary anyway.
+                        face newFace = faces_[localIndex];
+                        label newOwn = owner_[localIndex];
+                        labelList newFaceEdges = faceEdges_[localIndex];
+
+                        label newFaceIndex =
+                        (
+                            insertFace
+                            (
+                                patchIndex,
+                                newFace,
+                                newOwn,
+                                -1,
+                                newFaceEdges
+                            )
+                        );
+
+                        meshOps::replaceLabel
+                        (
+                            localIndex,
+                            newFaceIndex,
+                            cells_[newOwn]
+                        );
+
+                        // Correct edgeFaces with the new face label.
+                        forAll(newFaceEdges, edgeI)
+                        {
+                            meshOps::replaceLabel
+                            (
+                                localIndex,
+                                newFaceIndex,
+                                edgeFaces_[newFaceEdges[edgeI]]
+                            );
+                        }
+
+                        // Finally remove the face
+                        removeFace(localIndex);
+
+                        // Clear the existing map
+                        opMap.clear();
+
+                        // Update map
+                        opMap.addFace
+                        (
+                            newFaceIndex,
+                            labelList(1, localIndex)
+                        );
+
+                        // Force a successful operation
+                        opMap.type() = 1;
+
+                        patchCounter++;
 
                         break;
                     }
@@ -8625,7 +8735,7 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
                   + Foam::name(Pstream::myProcNo())
                   + '_'
                   + Foam::name(neiProcNo),
-                    identity(mSize) + patchStarts_[pI],
+                    identity(patchSizes_[pI]) + patchStarts_[pI],
                     2, false, true
                 );
 

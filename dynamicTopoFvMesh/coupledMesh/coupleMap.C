@@ -53,6 +53,7 @@ const char* coupleMap::names[coupleMap::INVALID + 1] =
     "REMOVE_CELL",
     "MOVE_POINT",
     "CONVERT_PATCH",
+    "CONVERT_PHYSICAL",
     "INVALID"
 };
 
@@ -446,6 +447,43 @@ void coupleMap::mapMaster
 void coupleMap::pushOperation
 (
     const label index,
+    const opType oType
+) const
+{
+    entityIndices_.setSize(entityIndices_.size() + 1, index);
+    entityOperations_.setSize(entityOperations_.size() + 1, oType);
+}
+
+
+void coupleMap::pushOperation
+(
+    const label index,
+    const opType oType,
+    const label pIndex
+) const
+{
+    if (oType == coupleMap::CONVERT_PHYSICAL)
+    {
+        entityIndices_.setSize(entityIndices_.size() + 1, index);
+        entityOperations_.setSize(entityOperations_.size() + 1, oType);
+
+        patchIndices_.setSize(patchIndices_.size() + 1, pIndex);
+    }
+    else
+    {
+        opType t = (oType < coupleMap::INVALID ? oType : coupleMap::INVALID);
+
+        FatalErrorIn("void coupleMap::pushOperation() const")
+            << " Expected CONVERT_PHYSICAL" << nl
+            << " Found: " << coupleMap::names[t]
+            << abort(FatalError);
+    }
+}
+
+
+void coupleMap::pushOperation
+(
+    const label index,
     const opType oType,
     const point& newPoint,
     const point& oldPoint
@@ -462,6 +500,15 @@ void coupleMap::pushOperation
     {
         moveNewPoints_.setSize(moveNewPoints_.size() + 1, newPoint);
         moveOldPoints_.setSize(moveOldPoints_.size() + 1, oldPoint);
+    }
+    else
+    {
+        opType t = (oType < coupleMap::INVALID ? oType : coupleMap::INVALID);
+
+        FatalErrorIn("void coupleMap::pushOperation() const")
+            << " Expected either MOVE_POINT or CONVERT_PATCH" << nl
+            << " Found: " << coupleMap::names[t]
+            << abort(FatalError);
     }
 }
 
@@ -510,6 +557,7 @@ void coupleMap::clearBuffers() const
     entityIndices_.clear();
     entityOperations_.clear();
 
+    patchIndices_.clear();
     moveNewPoints_.clear();
     moveOldPoints_.clear();
 }
