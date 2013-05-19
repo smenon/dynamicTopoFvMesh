@@ -239,7 +239,15 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                 // If this face was sent to a lower-ranked
                 // processor, skip it.
-                if (procIndices_[pI] < Pstream::myProcNo())
+                if
+                (
+                    priority
+                    (
+                        procIndices_[pI],
+                        lessOp<label>(),
+                        Pstream::myProcNo()
+                    )
+                )
                 {
                     if (scMap.reverseEntityMap(faceEnum).found(fIndex))
                     {
@@ -263,7 +271,15 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 {
                     // Check if a lower-ranked processor is
                     // handling this face
-                    if (procIndices_[pI] < Pstream::myProcNo())
+                    if
+                    (
+                        priority
+                        (
+                            procIndices_[pI],
+                            lessOp<label>(),
+                            Pstream::myProcNo()
+                        )
+                    )
                     {
                         if (debug > 3)
                         {
@@ -308,7 +324,15 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                     // Check if a lower-ranked processor is
                     // handling this face
-                    if (procIndices_[pI] < Pstream::myProcNo())
+                    if
+                    (
+                        priority
+                        (
+                            procIndices_[pI],
+                            lessOp<label>(),
+                            Pstream::myProcNo()
+                        )
+                    )
                     {
                          if (debug > 3)
                          {
@@ -4106,7 +4130,15 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                 // If this edge was sent to a lower-ranked
                 // processor, skip it.
-                if (procIndices_[pI] < Pstream::myProcNo())
+                if
+                (
+                    priority
+                    (
+                        procIndices_[pI],
+                        lessOp<label>(),
+                        Pstream::myProcNo()
+                    )
+                )
                 {
                     if (scMap.reverseEntityMap(edgeEnum).found(eIndex))
                     {
@@ -4130,7 +4162,15 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 {
                     // Check if a lower-ranked processor is
                     // handling this edge
-                    if (procIndices_[pI] < Pstream::myProcNo())
+                    if
+                    (
+                        priority
+                        (
+                            procIndices_[pI],
+                            lessOp<label>(),
+                            Pstream::myProcNo()
+                        )
+                    )
                     {
                         if (debug > 3)
                         {
@@ -4169,7 +4209,15 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                     // Check if a lower-ranked processor is
                     // handling this edge
-                    if (procIndices_[pI] < Pstream::myProcNo())
+                    if
+                    (
+                        priority
+                        (
+                            procIndices_[pI],
+                            lessOp<label>(),
+                            Pstream::myProcNo()
+                        )
+                    )
                     {
                          if (debug > 3)
                          {
