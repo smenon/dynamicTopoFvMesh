@@ -243,7 +243,7 @@ class mesquiteMotionSolver
         scalar cmptSumMag(const vectorField& field);
 
         // Transfer buffers for surface point fields
-        void transferBuffers(vectorField &field);
+        void transferBuffers(vectorField &field, bool fix = false);
 
         // Apply boundary conditions
         void applyBCs(vectorField &field);

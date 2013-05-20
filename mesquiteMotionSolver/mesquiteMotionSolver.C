@@ -3340,7 +3340,8 @@ void mesquiteMotionSolver::A
 // Transfer buffers for surface point fields
 void mesquiteMotionSolver::transferBuffers
 (
-    vectorField& field
+    vectorField& field,
+    bool fix
 )
 {
     if (!Pstream::parRun())
@@ -3387,10 +3388,21 @@ void mesquiteMotionSolver::transferBuffers
 
         if (recvField.size())
         {
-            // Correct field values
-            forAllConstIter(Map<label>, pointMap, pIter)
+            if (fix)
             {
-                field[pIter.key()] += recvField[pIter()];
+                // Fix field values
+                forAllConstIter(Map<label>, pointMap, pIter)
+                {
+                    field[pIter.key()] = recvField[pIter()];
+                }
+            }
+            else
+            {
+                // Correct field values
+                forAllConstIter(Map<label>, pointMap, pIter)
+                {
+                    field[pIter.key()] += recvField[pIter()];
+                }
             }
         }
     }
@@ -3707,7 +3719,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
                 }
 
                 // Transfer buffers across processors
-                transferBuffers(parDisp);
+                transferBuffers(parDisp, true);
 
                 forAll(pIDs_, patchI)
                 {
