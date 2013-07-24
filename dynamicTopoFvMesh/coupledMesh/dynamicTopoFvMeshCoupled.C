@@ -7955,19 +7955,19 @@ void dynamicTopoFvMesh::initFieldTransfers
         // Initialize stream
         stream.set(pI, new OStringStream(IOstream::BINARY));
 
-        // Subset volFields to stream
-        cInfo.mapVolField<scalar>(names[0], types[0], stream[pI]);
-        cInfo.mapVolField<vector>(names[1], types[1], stream[pI]);
-        cInfo.mapVolField<sphericalTensor>(names[2], types[2], stream[pI]);
-        cInfo.mapVolField<symmTensor>(names[3], types[3], stream[pI]);
-        cInfo.mapVolField<tensor>(names[4], types[4], stream[pI]);
+        // Subset and send volFields to stream
+        cInfo.send<volScalarField>(names[0], types[0], stream[pI]);
+        cInfo.send<volVectorField>(names[1], types[1], stream[pI]);
+        cInfo.send<volSphericalTensorField>(names[2], types[2], stream[pI]);
+        cInfo.send<volSymmTensorField>(names[3], types[3], stream[pI]);
+        cInfo.send<volTensorField>(names[4], types[4], stream[pI]);
 
-        // Subset surfaceFields to stream
-        cInfo.mapSurfaceField<scalar>(names[5], types[5], stream[pI]);
-        cInfo.mapSurfaceField<vector>(names[6], types[6], stream[pI]);
-        cInfo.mapSurfaceField<sphericalTensor>(names[7], types[7], stream[pI]);
-        cInfo.mapSurfaceField<symmTensor>(names[8], types[8], stream[pI]);
-        cInfo.mapSurfaceField<tensor>(names[9], types[9], stream[pI]);
+        // Subset and send surfaceFields to stream
+        cInfo.send<surfaceScalarField>(names[5], types[5], stream[pI]);
+        cInfo.send<surfaceVectorField>(names[6], types[6], stream[pI]);
+        cInfo.send<surfaceSphericalTensorField>(names[7], types[7], stream[pI]);
+        cInfo.send<surfaceSymmTensorField>(names[8], types[8], stream[pI]);
+        cInfo.send<surfaceTensorField>(names[9], types[9], stream[pI]);
 
         // Subset scalar gradients to stream
         stream[pI]
@@ -7978,7 +7978,7 @@ void dynamicTopoFvMesh::initFieldTransfers
         {
             tmp<volVectorField> tvvfFld =
             (
-                cInfo.subSetVolField
+                cInfo.subSetField
                 (
                     fieldMapper.gradient<volVectorField>
                     (
@@ -8008,7 +8008,7 @@ void dynamicTopoFvMesh::initFieldTransfers
         {
             tmp<volTensorField> tvtfFld =
             (
-                cInfo.subSetVolField
+                cInfo.subSetField
                 (
                     fieldMapper.gradient<volTensorField>
                     (
@@ -8066,7 +8066,8 @@ void dynamicTopoFvMesh::syncFieldTransfers
 (
     wordList& types,
     List<wordList>& names,
-    List<List<char> >& recvBuffer
+    List<List<char> >& recvBuffer,
+    label nOldPatches
 )
 {
     if (!Pstream::parRun())
@@ -8113,14 +8114,14 @@ void dynamicTopoFvMesh::syncFieldTransfers
     List<PtrList<volVectorField> > vC(nProcs);
     List<PtrList<surfaceScalarField> > sSf(nProcs);
 
-    const polyBoundaryMesh& boundary = boundaryMesh();
+    const polyBoundaryMesh& polyBoundary = boundaryMesh();
 
     // Determine number of physical (non-processor) patches
     label nPhysical = 0;
 
-    forAll(boundary, patchI)
+    forAll(polyBoundary, patchI)
     {
-        if (isA<processorPolyPatch>(boundary[patchI]))
+        if (isA<processorPolyPatch>(polyBoundary[patchI]))
         {
             continue;
         }
@@ -8150,20 +8151,20 @@ void dynamicTopoFvMesh::syncFieldTransfers
         dictionary dict(stream[pI]);
 
         // Set field pointers
-        cInfo.setVolField(names[0], dict.subDict(types[0]), vsF[pI]);
-        cInfo.setVolField(names[1], dict.subDict(types[1]), vvF[pI]);
-        cInfo.setVolField(names[2], dict.subDict(types[2]), vsptF[pI]);
-        cInfo.setVolField(names[3], dict.subDict(types[3]), vsytF[pI]);
-        cInfo.setVolField(names[4], dict.subDict(types[4]), vtF[pI]);
+        cInfo.setField(names[0], dict.subDict(types[0]), vsF[pI]);
+        cInfo.setField(names[1], dict.subDict(types[1]), vvF[pI]);
+        cInfo.setField(names[2], dict.subDict(types[2]), vsptF[pI]);
+        cInfo.setField(names[3], dict.subDict(types[3]), vsytF[pI]);
+        cInfo.setField(names[4], dict.subDict(types[4]), vtF[pI]);
 
-        cInfo.setSurfaceField(names[5], dict.subDict(types[5]), ssF[pI]);
-        cInfo.setSurfaceField(names[6], dict.subDict(types[6]), svF[pI]);
-        cInfo.setSurfaceField(names[7], dict.subDict(types[7]), ssptF[pI]);
-        cInfo.setSurfaceField(names[8], dict.subDict(types[8]), ssytF[pI]);
-        cInfo.setSurfaceField(names[9], dict.subDict(types[9]), stF[pI]);
+        cInfo.setField(names[5], dict.subDict(types[5]), ssF[pI]);
+        cInfo.setField(names[6], dict.subDict(types[6]), svF[pI]);
+        cInfo.setField(names[7], dict.subDict(types[7]), ssptF[pI]);
+        cInfo.setField(names[8], dict.subDict(types[8]), ssytF[pI]);
+        cInfo.setField(names[9], dict.subDict(types[9]), stF[pI]);
 
-        cInfo.setVolField(names[10], dict.subDict(types[10]), vgsF[pI]);
-        cInfo.setVolField(names[11], dict.subDict(types[11]), vgvF[pI]);
+        cInfo.setField(names[10], dict.subDict(types[10]), vgsF[pI]);
+        cInfo.setField(names[11], dict.subDict(types[11]), vgvF[pI]);
 
         // Set centres
         cInfo.setCentres(vC[pI]);
@@ -8310,6 +8311,35 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
     // Map geometry fields
     coupledInfo::resizeMap(0, vMap, irvMaps, bMap, brMaps, vC, mapC);
+
+    // If the number of patches are different from boundaryMesh,
+    // then additional processor patches were added during topology change,
+    // and all boundaryFields need to be resized
+    if (nPatches_ > nOldPatches)
+    {
+        if (debug)
+        {
+            Pout<< " Resizing boundaryFields of size: " << nOldPatches
+                << " to size: "<< nPatches_
+                << endl;
+        }
+
+        // At this point, boundaryMesh has already
+        // been resized to include new patches
+        const fvBoundaryMesh& bdy = boundary();
+
+        coupledInfo::resizeBoundaries(names[0], nOldPatches, *this, bdy, vsF);
+        coupledInfo::resizeBoundaries(names[1], nOldPatches, *this, bdy, vvF);
+        coupledInfo::resizeBoundaries(names[2], nOldPatches, *this, bdy, vsptF);
+        coupledInfo::resizeBoundaries(names[3], nOldPatches, *this, bdy, vsytF);
+        coupledInfo::resizeBoundaries(names[4], nOldPatches, *this, bdy, vtF);
+
+        coupledInfo::resizeBoundaries(names[5], nOldPatches, *this, bdy, ssF);
+        coupledInfo::resizeBoundaries(names[6], nOldPatches, *this, bdy, svF);
+        coupledInfo::resizeBoundaries(names[7], nOldPatches, *this, bdy, ssptF);
+        coupledInfo::resizeBoundaries(names[8], nOldPatches, *this, bdy, ssytF);
+        coupledInfo::resizeBoundaries(names[9], nOldPatches, *this, bdy, stF);
+    }
 }
 
 

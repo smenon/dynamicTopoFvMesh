@@ -44,13 +44,13 @@ SourceFiles
 #include "autoPtr.H"
 #include "coupleMap.H"
 #include "volFieldsFwd.H"
-#include "surfaceFieldsFwd.H"
 #include "fvPatchFieldMapper.H"
 
 namespace Foam
 {
 
 // Class forward declarations
+class fvBoundaryMesh;
 class dynamicTopoFvMesh;
 
 /*---------------------------------------------------------------------------*\
@@ -197,56 +197,27 @@ public:
         // Set subMesh centres
         inline void setCentres(PtrList<volVectorField>& centres) const;
 
-        // Subset volume field
-        template <class Type>
-        tmp<GeometricField<Type, fvPatchField, volMesh> >
-        subSetVolField
-        (
-            const GeometricField<Type, fvPatchField, volMesh>& field
-        ) const;
+        // Subset geometric field
+        template<class Type, template<class> class PatchField, class Mesh>
+        tmp<GeometricField<Type, PatchField, Mesh> >
+        subSetField(const GeometricField<Type, PatchField, Mesh>& field) const;
 
-        // Subset surface field
-        template <class Type>
-        tmp<GeometricField<Type, fvsPatchField, surfaceMesh> >
-        subSetSurfaceField
-        (
-            const GeometricField<Type, fvsPatchField, surfaceMesh>& field
-        ) const;
-
-        // Subset the volume fields from registry to output stream
-        template <class Type>
-        void mapVolField
+        // Subset geometric fields from registry to output stream
+        template<class GeomField>
+        void send
         (
             const wordList& fieldNames,
             const word& fieldType,
             OSstream& strStream
         ) const;
 
-        // Subset the surface field from registry to output stream
-        template <class Type>
-        void mapSurfaceField
-        (
-            const wordList& fieldNames,
-            const word& fieldType,
-            OSstream& strStream
-        ) const;
-
-        // Set volume field pointer from input dictionary
-        template <class Type>
-        void setVolField
+        // Set geometric field pointer from input dictionary
+        template<class Type, template<class> class PatchField, class Mesh>
+        void setField
         (
             const wordList& fieldNames,
             const dictionary& fieldDicts,
-            PtrList<GeometricField<Type, fvPatchField, volMesh> >& fields
-        ) const;
-
-        // Set surface field pointer from input dictionary
-        template <class Type>
-        void setSurfaceField
-        (
-            const wordList& fieldNames,
-            const dictionary& fieldDicts,
-            PtrList<GeometricField<Type, fvsPatchField, surfaceMesh> >& fields
+            PtrList<GeometricField<Type, PatchField, Mesh> >& fields
         ) const;
 
         // Resize map for individual field
@@ -273,6 +244,17 @@ public:
             const PtrList<subMeshMapper>& boundaryMapper,
             const List<labelListList>& boundaryReverseMaps,
             const List<PtrList<GeomField> >& srcFields
+        );
+
+        // Resize boundaryFields for all fields in the registry
+        template<class Type, template<class> class PatchField, class Mesh>
+        static void resizeBoundaries
+        (
+            const wordList& names,
+            const label nOldPatches,
+            const objectRegistry& mesh,
+            const fvBoundaryMesh& boundary,
+            const List<PtrList<GeometricField<Type, PatchField, Mesh> > >& src
         );
 };
 
