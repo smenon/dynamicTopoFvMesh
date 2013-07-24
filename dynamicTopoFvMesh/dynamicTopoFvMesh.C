@@ -4038,12 +4038,24 @@ bool dynamicTopoFvMesh::resetMesh()
             << mappingTimer.elapsedTime() << " s"
             << endl;
 
+        // Obtain the number of patches before
+        // any possible boundary reset
+        label nOldPatches = boundaryMesh().size();
+
+        // If the number of patches have changed
+        // at run-time, reset boundaries first
+        if (nPatches_ != nOldPatches)
+        {
+            resetBoundaries();
+        }
+
         // Synchronize field transfers prior to the reOrdering stage
         syncFieldTransfers
         (
             fieldTypes,
             fieldNames,
-            recvBuffer
+            recvBuffer,
+            nOldPatches
         );
 
         // Obtain references to zones, if any
@@ -4098,9 +4110,6 @@ bool dynamicTopoFvMesh::resetMesh()
             << reOrderingTimer.elapsedTime() << " s"
             << endl;
 
-        // Obtain the number of patches before mesh reset
-        label nOldPatches = boundaryMesh().size();
-
         // Obtain the patch-point maps before resetting the mesh
         List<Map<label> > oldPatchPointMaps(nOldPatches);
 
@@ -4122,13 +4131,6 @@ bool dynamicTopoFvMesh::resetMesh()
             xferMove(cellWeights_),
             xferMove(cellCentres_)
         );
-
-        // If the number of patches have changed
-        // at run-time, reset boundaries first
-        if (nPatches_ != nOldPatches)
-        {
-            resetBoundaries();
-        }
 
         // Reset the mesh, and specify a non-valid
         // boundary to avoid globalData construction

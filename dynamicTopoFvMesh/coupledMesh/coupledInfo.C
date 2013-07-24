@@ -268,24 +268,25 @@ void coupledInfo::setCentres(PtrList<volVectorField>& centres) const
 }
 
 
-// Subset volume field
-template <class Type>
-tmp<GeometricField<Type, fvPatchField, volMesh> >
-coupledInfo::subSetVolField
-(
-    const GeometricField<Type, fvPatchField, volMesh>& fld
-) const
+// Subset geometric field
+template<class Type, template<class> class PatchField, class Mesh>
+tmp<GeometricField<Type, PatchField, Mesh> >
+coupledInfo::subSetField(const GeometricField<Type, PatchField, Mesh>& f) const
 {
+    typedef PatchField<Type> PatchFieldType;
+    typedef GeometricField<Type, PatchField, Mesh> GeomFieldType;
+
     // Create and map the internal-field values
-    Field<Type> internalField
-    (
-        fld.internalField(),
-        map().cellMap()
-    );
+    Field<Type> internalField(f.internalField(), map().cellMap());
 
     // Create and map the patch field values
     label nPatches = subMesh().boundary().size();
-    PtrList<fvPatchField<Type> > patchFields(nPatches);
+    PtrList<PatchFieldType> patchFields(nPatches);
+
+    // Define patch type names, assumed to be
+    // common for volume and surface fields
+    word emptyType(emptyPolyPatch::typeName);
+    word processorType(processorPolyPatch::typeName);
 
     forAll(patchFields, patchI)
     {
@@ -295,10 +296,11 @@ coupledInfo::subSetVolField
             patchFields.set
             (
                 patchI,
-                new emptyFvPatchField<Type>
+                PatchFieldType::New
                 (
+                    emptyType,
                     subMesh().boundary()[patchI],
-                    DimensionedField<Type, volMesh>::null()
+                    DimensionedField<Type, Mesh>::null()
                 )
             );
         }
@@ -308,10 +310,11 @@ coupledInfo::subSetVolField
             patchFields.set
             (
                 patchI,
-                new processorFvPatchField<Type>
+                PatchFieldType::New
                 (
+                    processorType,
                     subMesh().boundary()[patchI],
-                    DimensionedField<Type, volMesh>::null()
+                    DimensionedField<Type, Mesh>::null()
                 )
             );
         }
@@ -320,11 +323,11 @@ coupledInfo::subSetVolField
             patchFields.set
             (
                 patchI,
-                fvPatchField<Type>::New
+                PatchFieldType::New
                 (
-                    fld.boundaryField()[patchI],
+                    f.boundaryField()[patchI],
                     subMesh().boundary()[patchI],
-                    DimensionedField<Type, volMesh>::null(),
+                    DimensionedField<Type, Mesh>::null(),
                     subMeshMapper(*this, patchI)
                 )
             );
@@ -332,13 +335,13 @@ coupledInfo::subSetVolField
     }
 
     // Create new field from pieces
-    tmp<GeometricField<Type, fvPatchField, volMesh> > subFld
+    tmp<GeomFieldType> subFld
     (
-        new GeometricField<Type, fvPatchField, volMesh>
+        new GeomFieldType
         (
             IOobject
             (
-                "subField_" + fld.name(),
+                "subField_" + f.name(),
                 subMesh().time().timeName(),
                 subMesh(),
                 IOobject::NO_READ,
@@ -346,7 +349,7 @@ coupledInfo::subSetVolField
                 false
             ),
             subMesh(),
-            fld.dimensions(),
+            f.dimensions(),
             internalField,
             patchFields
         )
@@ -356,100 +359,9 @@ coupledInfo::subSetVolField
 }
 
 
-// Subset surface field
-template <class Type>
-tmp<GeometricField<Type, fvsPatchField, surfaceMesh> >
-coupledInfo::subSetSurfaceField
-(
-    const GeometricField<Type, fvsPatchField, surfaceMesh>& fld
-) const
-{
-    // Create and map the internal-field values
-    Field<Type> internalField
-    (
-        fld.internalField(),
-        SubList<label>
-        (
-            map().faceMap(),
-            subMesh().nInternalFaces()
-        )
-    );
-
-    // Create and map the patch field values
-    label nPatches = subMesh().boundary().size();
-    PtrList<fvsPatchField<Type> > patchFields(nPatches);
-
-    forAll(patchFields, patchI)
-    {
-        if (patchI == (nPatches - 1))
-        {
-            // Artificially set last patch
-            patchFields.set
-            (
-                patchI,
-                new emptyFvsPatchField<Type>
-                (
-                    subMesh().boundary()[patchI],
-                    DimensionedField<Type, surfaceMesh>::null()
-                )
-            );
-        }
-        else
-        if (isA<processorPolyPatch>(subMesh().boundary()[patchI].patch()))
-        {
-            patchFields.set
-            (
-                patchI,
-                new processorFvsPatchField<Type>
-                (
-                    subMesh().boundary()[patchI],
-                    DimensionedField<Type, surfaceMesh>::null()
-                )
-            );
-        }
-        else
-        {
-            patchFields.set
-            (
-                patchI,
-                fvsPatchField<Type>::New
-                (
-                    fld.boundaryField()[patchI],
-                    subMesh().boundary()[patchI],
-                    DimensionedField<Type, surfaceMesh>::null(),
-                    subMeshMapper(*this, patchI)
-                )
-            );
-        }
-    }
-
-    // Create new field from pieces
-    tmp<GeometricField<Type, fvsPatchField, surfaceMesh> > subFld
-    (
-        new GeometricField<Type, fvsPatchField, surfaceMesh>
-        (
-            IOobject
-            (
-                "subField_" + fld.name(),
-                subMesh().time().timeName(),
-                subMesh(),
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            subMesh(),
-            fld.dimensions(),
-            internalField,
-            patchFields
-        )
-    );
-
-    return subFld;
-}
-
-
-template <class Type>
-void coupledInfo::mapVolField
+// Subset geometric fields from registry to output stream
+template<class GeomField>
+void coupledInfo::send
 (
     const wordList& fieldNames,
     const word& fieldType,
@@ -462,20 +374,13 @@ void coupledInfo::mapVolField
 
     forAll(fieldNames, i)
     {
-        const GeometricField<Type, fvPatchField, volMesh>& fld =
-        (
-            mesh_.lookupObject
-            <
-                GeometricField<Type, fvPatchField, volMesh>
-            >(fieldNames[i])
-        );
+        // Fetch object from registry
+        const GeomField& fld = mesh_.lookupObject<GeomField>(fieldNames[i]);
 
-        tmp<GeometricField<Type, fvPatchField, volMesh> > tsubFld =
-        (
-            subSetVolField(fld)
-        );
+        // Subset the field
+        tmp<GeomField> tsubFld = subSetField(fld);
 
-        // Send field through stream
+        // Send field subset through stream
         strStream
             << fieldNames[i]
             << token::NL << token::BEGIN_BLOCK
@@ -489,58 +394,25 @@ void coupledInfo::mapVolField
 }
 
 
-template <class Type>
-void coupledInfo::mapSurfaceField
-(
-    const wordList& fieldNames,
-    const word& fieldType,
-    OSstream& strStream
-) const
-{
-    strStream
-        << fieldType << token::NL
-        << token::BEGIN_BLOCK << token::NL;
-
-    forAll(fieldNames, i)
-    {
-        const GeometricField<Type, fvsPatchField, surfaceMesh>& fld =
-        (
-            mesh_.lookupObject
-            <
-                GeometricField<Type, fvsPatchField, surfaceMesh>
-            >(fieldNames[i])
-        );
-
-        tmp<GeometricField<Type, fvsPatchField, surfaceMesh> > tsubFld =
-        (
-            subSetSurfaceField(fld)
-        );
-
-        // Send field through stream
-        strStream
-            << fieldNames[i]
-            << token::NL << token::BEGIN_BLOCK
-            << tsubFld
-            << token::NL << token::END_BLOCK
-            << token::NL;
-    }
-
-    strStream
-        << token::END_BLOCK << token::NL;
-}
-
-
-// Set volume field pointer from input dictionary
-template <class Type>
-void coupledInfo::setVolField
+// Set geometric field pointer from input dictionary
+template<class Type, template<class> class PatchField, class Mesh>
+void coupledInfo::setField
 (
     const wordList& fieldNames,
     const dictionary& fieldDicts,
-    PtrList<GeometricField<Type, fvPatchField, volMesh> >& fields
+    PtrList<GeometricField<Type, PatchField, Mesh> >& fields
 ) const
 {
+    typedef PatchField<Type> PatchFieldType;
+    typedef GeometricField<Type, PatchField, Mesh> GeomFieldType;
+
     // Size up the pointer list
     fields.setSize(fieldNames.size());
+
+    // Define patch type names, assumed to be
+    // common for volume and surface fields
+    word emptyType(emptyPolyPatch::typeName);
+    word processorType(processorPolyPatch::typeName);
 
     forAll(fieldNames, i)
     {
@@ -548,7 +420,7 @@ void coupledInfo::setVolField
         label nPatches = subMesh().boundary().size();
 
         // Create field parts
-        PtrList<fvPatchField<Type> > patchFields(nPatches);
+        PtrList<PatchFieldType> patchFields(nPatches);
 
         // Read dimensions
         dimensionSet dimSet
@@ -561,7 +433,7 @@ void coupledInfo::setVolField
         (
             "internalField",
             fieldDicts.subDict(fieldNames[i]),
-            volMesh::size(subMesh())
+            Mesh::size(subMesh())
         );
 
         // Create a temporary DimensionedField for patch-evaluation
@@ -575,7 +447,7 @@ void coupledInfo::setVolField
             false
         );
 
-        DimensionedField<Type, volMesh> tmpInternal
+        DimensionedField<Type, Mesh> tmpInternal
         (
             io,
             subMesh(),
@@ -591,8 +463,9 @@ void coupledInfo::setVolField
                 patchFields.set
                 (
                     patchI,
-                    new emptyFvPatchField<Type>
+                    PatchFieldType::New
                     (
+                        emptyType,
                         subMesh().boundary()[patchI],
                         tmpInternal
                     )
@@ -604,8 +477,9 @@ void coupledInfo::setVolField
                 patchFields.set
                 (
                     patchI,
-                    new processorFvPatchField<Type>
+                    PatchFieldType::New
                     (
+                        processorType,
                         subMesh().boundary()[patchI],
                         tmpInternal
                     )
@@ -616,7 +490,7 @@ void coupledInfo::setVolField
                 patchFields.set
                 (
                     patchI,
-                    fvPatchField<Type>::New
+                    PatchFieldType::New
                     (
                         subMesh().boundary()[patchI],
                         tmpInternal,
@@ -635,125 +509,7 @@ void coupledInfo::setVolField
         fields.set
         (
             i,
-            new GeometricField<Type, fvPatchField, volMesh>
-            (
-                io,
-                subMesh(),
-                dimSet,
-                internalField,
-                patchFields
-            )
-        );
-    }
-}
-
-
-// Set surface field pointer from input dictionary
-template <class Type>
-void coupledInfo::setSurfaceField
-(
-    const wordList& fieldNames,
-    const dictionary& fieldDicts,
-    PtrList<GeometricField<Type, fvsPatchField, surfaceMesh> >& fields
-) const
-{
-    // Size up the pointer list
-    fields.setSize(fieldNames.size());
-
-    forAll(fieldNames, i)
-    {
-        // Create and map the patch field values
-        label nPatches = subMesh().boundary().size();
-
-        // Create field parts
-        PtrList<fvsPatchField<Type> > patchFields(nPatches);
-
-        // Read dimensions
-        dimensionSet dimSet
-        (
-            fieldDicts.subDict(fieldNames[i]).lookup("dimensions")
-        );
-
-        // Read the internal field
-        Field<Type> internalField
-        (
-            "internalField",
-            fieldDicts.subDict(fieldNames[i]),
-            surfaceMesh::size(subMesh())
-        );
-
-        // Create a temporary DimensionedField for patch-evaluation
-        IOobject io
-        (
-            fieldNames[i],
-            subMesh().time().timeName(),
-            subMesh(),
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false
-        );
-
-        DimensionedField<Type, surfaceMesh> tmpInternal
-        (
-            io,
-            subMesh(),
-            dimSet,
-            internalField
-        );
-
-        forAll(patchFields, patchI)
-        {
-            if (patchI == (nPatches - 1))
-            {
-                // Artificially set last patch
-                patchFields.set
-                (
-                    patchI,
-                    new emptyFvsPatchField<Type>
-                    (
-                        subMesh().boundary()[patchI],
-                        tmpInternal
-                    )
-                );
-            }
-            else
-            if (isA<processorPolyPatch>(subMesh().boundary()[patchI].patch()))
-            {
-                patchFields.set
-                (
-                    patchI,
-                    new processorFvsPatchField<Type>
-                    (
-                        subMesh().boundary()[patchI],
-                        tmpInternal
-                    )
-                );
-            }
-            else
-            {
-                patchFields.set
-                (
-                    patchI,
-                    fvsPatchField<Type>::New
-                    (
-                        subMesh().boundary()[patchI],
-                        tmpInternal,
-                        fieldDicts.subDict
-                        (
-                            fieldNames[i]
-                        ).subDict("boundaryField").subDict
-                        (
-                            subMesh().boundary()[patchI].name()
-                        )
-                    )
-                );
-            }
-        }
-
-        fields.set
-        (
-            i,
-            new GeometricField<Type, fvsPatchField, surfaceMesh>
+            new GeomFieldType
             (
                 io,
                 subMesh(),
@@ -851,6 +607,57 @@ void coupledInfo::resizeMap
             srcFields,
             field
         );
+    }
+}
+
+
+// Resize boundaryFields for all fields in the registry
+template<class Type, template<class> class PatchField, class Mesh>
+void coupledInfo::resizeBoundaries
+(
+    const wordList& names,
+    const label nOldPatches,
+    const objectRegistry& mesh,
+    const fvBoundaryMesh& boundary,
+    const List<PtrList<GeometricField<Type, PatchField, Mesh> > >& srcFields
+)
+{
+    typedef GeometricField<Type, PatchField, Mesh> GeomFieldType;
+    typedef typename GeomFieldType::GeometricBoundaryField GeomBoundaryType;
+
+    forAll(names, indexI)
+    {
+        // Fetch field from registry
+        GeomFieldType& field =
+        (
+            const_cast<GeomFieldType&>
+            (
+                mesh.lookupObject<GeomFieldType>(names[indexI])
+            )
+        );
+
+        GeomBoundaryType& bf = field.boundaryField();
+
+        // Resize boundary
+        label nPatches = boundary.size();
+
+        // Existing fields are simply cloned here
+        bf.setSize(nPatches);
+
+        // Size up new patches
+        for (label patchI = nOldPatches; patchI < nPatches; patchI++)
+        {
+            bf.set
+            (
+                patchI,
+                PatchField<Type>::New
+                (
+                    boundary[patchI].type(),
+                    boundary[patchI],
+                    field
+                )
+            );
+        }
     }
 }
 
