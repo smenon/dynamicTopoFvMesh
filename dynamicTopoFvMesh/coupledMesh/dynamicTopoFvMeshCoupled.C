@@ -918,7 +918,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
     Foam::sort
     (
         procIndices_,
-        typename UList<label>::less(procPriority_)
+        UList<label>::less(procPriority_)
     );
 
     // Size the PtrLists.
