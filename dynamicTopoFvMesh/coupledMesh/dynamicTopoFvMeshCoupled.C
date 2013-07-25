@@ -5871,6 +5871,12 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
         forAll(cells_, cellI)
         {
             const cell& cellToCheck = cells_[cellI];
+
+            if (cellToCheck.empty())
+            {
+                continue;
+            }
+
             const labelList cellPoints = cellToCheck.labels(faces_);
 
             forAll(cellPoints, pointI)
