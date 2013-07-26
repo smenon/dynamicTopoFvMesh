@@ -180,7 +180,7 @@ public:
 
                 label sizeBeforeMapping() const
                 {
-                    return directAddressing_.size();
+                    return sizeBeforeMapping_;
                 }
 
                 bool direct() const
@@ -194,13 +194,10 @@ public:
                 }
         };
 
-        // Set subMesh centres
-        inline void setCentres(PtrList<volVectorField>& centres) const;
-
         // Subset geometric field
-        template<class Type, template<class> class PatchField, class Mesh>
-        tmp<GeometricField<Type, PatchField, Mesh> >
-        subSetField(const GeometricField<Type, PatchField, Mesh>& field) const;
+        template<class GeomField>
+        tmp<GeomField>
+        subSetField(const GeomField& field) const;
 
         // Subset geometric fields from registry to output stream
         template<class GeomField>
@@ -247,14 +244,11 @@ public:
         );
 
         // Resize boundaryFields for all fields in the registry
-        template<class Type, template<class> class PatchField, class Mesh>
+        template <class GeomField>
         static void resizeBoundaries
         (
-            const wordList& names,
-            const label nOldPatches,
             const objectRegistry& mesh,
-            const fvBoundaryMesh& boundary,
-            const List<PtrList<GeometricField<Type, PatchField, Mesh> > >& src
+            const fvBoundaryMesh& boundary
         );
 };
 

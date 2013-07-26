@@ -2660,7 +2660,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                             if
                             (
                                 convertPatchPoints[pI].found(fJ.key())
-                             &&	convertPatchPoints[pJ].found(fI.key())
+                             && convertPatchPoints[pJ].found(fI.key())
                             )
                             {
                                 convertPatchPoints[pI].erase(fJ.key());
@@ -7367,7 +7367,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
 
                     forAll(sfEdges, edgeJ)
                     {
-                        const edge& sEdge =	sMesh.edges_[sfEdges[edgeJ]];
+                        const edge& sEdge = sMesh.edges_[sfEdges[edgeJ]];
 
                         if (cEdge == sEdge)
                         {
@@ -7676,6 +7676,8 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
             << " On subMesh: " << isSubMesh_ << nl
             << " pI: " << pI << nl
             << " patchID: " << patchID << nl
+            << " oldPatchStarts: " << oldPatchStarts_ << nl
+            << " oldPatchSizes: " << oldPatchSizes_ << nl
             << " patchStarts: " << patchStarts_ << nl
             << " patchSizes: " << patchSizes_ << nl
             << endl;
@@ -7755,17 +7757,19 @@ void dynamicTopoFvMesh::resetBoundaries()
     // Fetch reference to existing boundary
     // - The removeBoundary member merely resets
     //   boundary size, so this reference is safe
-    const polyBoundaryMesh& boundary = boundaryMesh();
+    const polyBoundaryMesh& polyBoundary = boundaryMesh();
 
     // Copy all existing patches first
-    for (label patchI = 0; patchI < boundaryMesh().size(); patchI++)
+    label nOldPatches = polyBoundary.size();
+
+    for (label patchI = 0; patchI < nOldPatches; patchI++)
     {
         // Clone the patch
-        patches[patchI] = boundary[patchI].clone(boundary).ptr();
+        patches[patchI] = polyBoundary[patchI].clone(polyBoundary).ptr();
     }
 
     // Create new processor patches
-    for (label patchI = boundaryMesh().size(); patchI < nPatches_; patchI++)
+    for (label patchI = nOldPatches; patchI < nPatches_; patchI++)
     {
         // Make a temporary dictionary for patch construction
         dictionary patchDict;
@@ -7775,8 +7779,8 @@ void dynamicTopoFvMesh::resetBoundaries()
 
         // Add relevant info
         patchDict.add("type", "processor");
-        patchDict.add("startFace", patchStarts_[patchI]);
-        patchDict.add("nFaces", patchSizes_[patchI]);
+        patchDict.add("startFace", oldPatchStarts_[patchI]);
+        patchDict.add("nFaces", oldPatchSizes_[patchI]);
         patchDict.add("myProcNo", Pstream::myProcNo());
         patchDict.add("neighbProcNo", neiProcNo);
 
@@ -7791,7 +7795,7 @@ void dynamicTopoFvMesh::resetBoundaries()
               + Foam::name(neiProcNo),
                 patchDict,
                 patchI,
-                boundary
+                polyBoundary
             ).ptr()
         );
     }
@@ -7801,6 +7805,23 @@ void dynamicTopoFvMesh::resetBoundaries()
 
     // Add patches, but don't calculate geometry, etc
     fvMesh::addFvPatches(patches, false);
+
+    // Since all fvPatches in fvBoundaryMesh have been reset,
+    // fvPatch references in all fvPatchFields are no longer
+    // valid, and must therefore be remapped.
+    const fvBoundaryMesh& bdy = fvMesh::boundary();
+
+    coupledInfo::resizeBoundaries<volScalarField>(*this, bdy);
+    coupledInfo::resizeBoundaries<volVectorField>(*this, bdy);
+    coupledInfo::resizeBoundaries<volSphericalTensorField>(*this, bdy);
+    coupledInfo::resizeBoundaries<volSymmTensorField>(*this, bdy);
+    coupledInfo::resizeBoundaries<volTensorField>(*this, bdy);
+
+    coupledInfo::resizeBoundaries<surfaceScalarField>(*this, bdy);
+    coupledInfo::resizeBoundaries<surfaceVectorField>(*this, bdy);
+    coupledInfo::resizeBoundaries<surfaceSphericalTensorField>(*this, bdy);
+    coupledInfo::resizeBoundaries<surfaceSymmTensorField>(*this, bdy);
+    coupledInfo::resizeBoundaries<surfaceTensorField>(*this, bdy);
 }
 
 
@@ -7833,10 +7854,8 @@ void dynamicTopoFvMesh::initFieldTransfers
     // Size up wordLists
     //  - Five templated volFields
     //  - Five templated surfaceFields
-    //  - One scalar volume gradient (conservative mapping)
-    //  - One vector volume gradient (conservative mapping)
-    names.setSize(12);
-    types.setSize(12);
+    names.setSize(10);
+    types.setSize(10);
 
     // Fill in field-types
     types[0] = volScalarField::typeName;
@@ -7851,14 +7870,8 @@ void dynamicTopoFvMesh::initFieldTransfers
     types[8] = surfaceSymmTensorField::typeName;
     types[9] = surfaceTensorField::typeName;
 
-    types[10] = "grad(" + volScalarField::typeName + ')';
-    types[11] = "grad(" + volVectorField::typeName + ')';
-
     // Send / recv buffers for field names
     List<char> fieldNameSendBuffer, fieldNameRecvBuffer;
-
-    // Fetch reference to mapper
-    const topoMapper& fieldMapper = mapper_();
 
     if (Pstream::master())
     {
@@ -7871,17 +7884,11 @@ void dynamicTopoFvMesh::initFieldTransfers
         OStringStream& fNStream = fieldNameStream[0];
 
         // Fetch field-names by type
-        for (label typeI = 0; typeI < 10; typeI++)
+        forAll(types, typeI)
         {
             // Get all fields of type
             names[typeI] = objectRegistry::names(types[typeI]);
         }
-
-        // Fetch scalar gradient names
-        names[10] = fieldMapper.scalarGrads();
-
-        // Fetch vector gradient names
-        names[11] = fieldMapper.vectorGrads();
 
         // Send field names to Ostream
         fNStream << names;
@@ -7976,66 +7983,6 @@ void dynamicTopoFvMesh::initFieldTransfers
         cInfo.send<surfaceSymmTensorField>(names[8], types[8], stream[pI]);
         cInfo.send<surfaceTensorField>(names[9], types[9], stream[pI]);
 
-        // Subset scalar gradients to stream
-        stream[pI]
-            << types[10] << token::NL
-            << token::BEGIN_BLOCK << token::NL;
-
-        forAll(names[10], i)
-        {
-            tmp<volVectorField> tvvfFld =
-            (
-                cInfo.subSetField
-                (
-                    fieldMapper.gradient<volVectorField>
-                    (
-                        names[10][i]
-                    )
-                )
-            );
-
-            // Send field through stream
-            stream[pI]
-                << names[10][i]
-                << token::NL << token::BEGIN_BLOCK
-                << tvvfFld
-                << token::NL << token::END_BLOCK
-                << token::NL;
-        }
-
-        stream[pI]
-            << token::END_BLOCK << token::NL;
-
-        // Subset vector gradients to stream
-        stream[pI]
-            << types[11] << token::NL
-            << token::BEGIN_BLOCK << token::NL;
-
-        forAll(names[11], i)
-        {
-            tmp<volTensorField> tvtfFld =
-            (
-                cInfo.subSetField
-                (
-                    fieldMapper.gradient<volTensorField>
-                    (
-                        names[11][i]
-                    )
-                )
-            );
-
-            // Send field through stream
-            stream[pI]
-                << names[11][i]
-                << token::NL << token::BEGIN_BLOCK
-                << tvtfFld
-                << token::NL << token::END_BLOCK
-                << token::NL;
-        }
-
-        stream[pI]
-            << token::END_BLOCK << token::NL;
-
         // Size up buffers and fill contents
         string contents = stream[pI].str();
         const char* ptr = contents.data();
@@ -8073,8 +8020,7 @@ void dynamicTopoFvMesh::syncFieldTransfers
 (
     wordList& types,
     List<wordList>& names,
-    List<List<char> >& recvBuffer,
-    label nOldPatches
+    List<List<char> >& recvBuffer
 )
 {
     if (!Pstream::parRun())
@@ -8112,14 +8058,6 @@ void dynamicTopoFvMesh::syncFieldTransfers
     List<PtrList<surfaceSphericalTensorField> > ssptF(nProcs);
     List<PtrList<surfaceSymmTensorField> > ssytF(nProcs);
     List<PtrList<surfaceTensorField> > stF(nProcs);
-
-    // Gradients
-    List<PtrList<volVectorField> > vgsF(nProcs);
-    List<PtrList<volTensorField> > vgvF(nProcs);
-
-    // Geometry
-    List<PtrList<volVectorField> > vC(nProcs);
-    List<PtrList<surfaceScalarField> > sSf(nProcs);
 
     const polyBoundaryMesh& polyBoundary = boundaryMesh();
 
@@ -8169,12 +8107,6 @@ void dynamicTopoFvMesh::syncFieldTransfers
         cInfo.setField(names[7], dict.subDict(types[7]), ssptF[pI]);
         cInfo.setField(names[8], dict.subDict(types[8]), ssytF[pI]);
         cInfo.setField(names[9], dict.subDict(types[9]), stF[pI]);
-
-        cInfo.setField(names[10], dict.subDict(types[10]), vgsF[pI]);
-        cInfo.setField(names[11], dict.subDict(types[11]), vgvF[pI]);
-
-        // Set centres
-        cInfo.setCentres(vC[pI]);
 
         // Count the number of additional entities
         const coupleMap& cMap = cInfo.map();
@@ -8286,67 +8218,6 @@ void dynamicTopoFvMesh::syncFieldTransfers
     coupledInfo::resizeMap(names[7], *this, sMap, irsMaps, bMap, brMaps, ssptF);
     coupledInfo::resizeMap(names[8], *this, sMap, irsMaps, bMap, brMaps, ssytF);
     coupledInfo::resizeMap(names[9], *this, sMap, irsMaps, bMap, brMaps, stF);
-
-    // Fetch reference to mapper
-    const topoMapper& fieldMapper = mapper_();
-
-    // Map gradient fields
-    forAll(names[10], i)
-    {
-        volVectorField& sGrad =
-        (
-            fieldMapper.gradient<volVectorField>(names[10][i])
-        );
-
-        // Map the field
-        coupledInfo::resizeMap(i, vMap, irvMaps, bMap, brMaps, vgsF, sGrad);
-    }
-
-    forAll(names[11], i)
-    {
-        volTensorField& vGrad =
-        (
-            fieldMapper.gradient<volTensorField>(names[11][i])
-        );
-
-        // Map the field
-        coupledInfo::resizeMap(i, vMap, irvMaps, bMap, brMaps, vgvF, vGrad);
-    }
-
-    // Map stored geometry
-    volVectorField& mapC = fieldMapper.volCentres();
-
-    // Map geometry fields
-    coupledInfo::resizeMap(0, vMap, irvMaps, bMap, brMaps, vC, mapC);
-
-    // If the number of patches are different from boundaryMesh,
-    // then additional processor patches were added during topology change,
-    // and all boundaryFields need to be resized
-    if (nPatches_ > nOldPatches)
-    {
-        if (debug)
-        {
-            Pout<< " Resizing boundaryFields of size: " << nOldPatches
-                << " to size: "<< nPatches_
-                << endl;
-        }
-
-        // At this point, boundaryMesh has already
-        // been resized to include new patches
-        const fvBoundaryMesh& bdy = boundary();
-
-        coupledInfo::resizeBoundaries(names[0], nOldPatches, *this, bdy, vsF);
-        coupledInfo::resizeBoundaries(names[1], nOldPatches, *this, bdy, vvF);
-        coupledInfo::resizeBoundaries(names[2], nOldPatches, *this, bdy, vsptF);
-        coupledInfo::resizeBoundaries(names[3], nOldPatches, *this, bdy, vsytF);
-        coupledInfo::resizeBoundaries(names[4], nOldPatches, *this, bdy, vtF);
-
-        coupledInfo::resizeBoundaries(names[5], nOldPatches, *this, bdy, ssF);
-        coupledInfo::resizeBoundaries(names[6], nOldPatches, *this, bdy, svF);
-        coupledInfo::resizeBoundaries(names[7], nOldPatches, *this, bdy, ssptF);
-        coupledInfo::resizeBoundaries(names[8], nOldPatches, *this, bdy, ssytF);
-        coupledInfo::resizeBoundaries(names[9], nOldPatches, *this, bdy, stF);
-    }
 }
 
 

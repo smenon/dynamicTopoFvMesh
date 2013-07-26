@@ -3981,6 +3981,17 @@ bool dynamicTopoFvMesh::resetMesh()
         //  - Must be done prior to field-transfers and mesh reset
         fieldMapper.storeMeshInformation();
 
+        // Obtain the number of patches before
+        // any possible boundary reset
+        label nOldPatches = boundaryMesh().size();
+
+        // If the number of patches have changed
+        // at run-time, reset boundaries first
+        if (nPatches_ != nOldPatches)
+        {
+            resetBoundaries();
+        }
+
         // Set up field-transfers before dealing with mapping
         wordList fieldTypes;
         List<wordList> fieldNames;
@@ -4038,24 +4049,12 @@ bool dynamicTopoFvMesh::resetMesh()
             << mappingTimer.elapsedTime() << " s"
             << endl;
 
-        // Obtain the number of patches before
-        // any possible boundary reset
-        label nOldPatches = boundaryMesh().size();
-
-        // If the number of patches have changed
-        // at run-time, reset boundaries first
-        if (nPatches_ != nOldPatches)
-        {
-            resetBoundaries();
-        }
-
         // Synchronize field transfers prior to the reOrdering stage
         syncFieldTransfers
         (
             fieldTypes,
             fieldNames,
-            recvBuffer,
-            nOldPatches
+            recvBuffer
         );
 
         // Obtain references to zones, if any
@@ -4471,6 +4470,10 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm) const
 
     // Set the mapPolyMesh object in the mapper
     fieldMapper.setMapper(mpm);
+
+    // Deregister gradient fields and centres,
+    // but retain for mapping
+    fieldMapper.deregisterMeshInformation();
 
     // Conservatively map scalar/vector volFields
     conservativeMapVolFields<scalar>(fieldMapper);
